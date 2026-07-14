@@ -1,0 +1,7 @@
+settings.json
+settings.json.tmp
+runtime-status.json
+runtime-status.json.tmp
+launcher-state.json
+*.new
+*.invalid

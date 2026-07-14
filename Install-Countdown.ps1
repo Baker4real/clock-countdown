@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch] $ValidateOnly
 )
 
@@ -11,8 +11,8 @@ $legacyTaskName = '敏敏子倒计时'
 $expected = @{
     'Countdown.Core.psm1' = '5B8C81886DCA03E5797FDA818A26889AE538D9A150D86EADE4749FA6DBFAC46D'
     'Countdown.Core.Tests.ps1' = '44C283C6527E86082C317D63AEF8AE6DC8C224049CEB7A60D04FD5B43F324BDC'
-    'Countdown.Ui.Tests.ps1' = 'A12003E1FAE6B39C139BDA8E4D6CA74D37ECA8113A148B60C6100D40D6AF4DDF'
-    '敏敏子倒计时.ps1' = 'CF6A51E5B4781520DF9D0D43FDC2B8FD17F3A228204DEFF689F27FB415F525EA'
+    'Countdown.Ui.Tests.ps1' = '7693E0B01B61203064F26DC5FE5854993D7111B60135F956804E422AA1B8663D'
+    '敏敏子倒计时.ps1' = 'D60C6327FEBAAB87C6DB63DD7DE3270555FE3D18D770DB9957B5BD53273E6381'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
 }
@@ -47,7 +47,7 @@ if (-not (Test-Path -LiteralPath $installResolved)) {
 
 Set-Service -Name W32Time -StartupType Automatic
 Start-Service -Name W32Time
-$resync = (w32tm.exe /resync /force | Out-String).Trim()
+$resync = (w32tm.exe /resync /rediscover | Out-String).Trim()
 if ($LASTEXITCODE -ne 0) {
     throw "Windows Time resync failed: $resync"
 }
@@ -81,17 +81,23 @@ if (-not (Test-Path -LiteralPath $desktop)) {
     throw "Interactive user's desktop does not exist: $desktop"
 }
 
-$testOutput = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
+$powerShellEngine = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
+    $powerShellEngine = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+}
+$powerShellProcessName = [System.IO.Path]::GetFileName($powerShellEngine)
+
+$testOutput = & $powerShellEngine `
     -NoLogo -NoProfile -NonInteractive -File (Join-Path $staging 'Countdown.Core.Tests.ps1') | Out-String
 if ($LASTEXITCODE -ne 0) {
     throw "Remote tests failed: $testOutput"
 }
-$uiTestOutput = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
+$uiTestOutput = & $powerShellEngine `
     -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $staging 'Countdown.Ui.Tests.ps1') | Out-String
 if ($LASTEXITCODE -ne 0) {
     throw "Remote UI regression test failed: $uiTestOutput"
 }
-$uiValidationOutput = & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
+$uiValidationOutput = & $powerShellEngine `
     -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $staging '敏敏子倒计时.ps1') -ValidateOnly | Out-String
 if ($LASTEXITCODE -ne 0) {
     throw "Remote WPF validation failed: $uiValidationOutput"
@@ -117,7 +123,7 @@ Copy-Item -LiteralPath (Join-Path $staging 'CountdownLauncher.exe') -Destination
 Copy-Item -LiteralPath (Join-Path $staging 'countdown-icon.ico') -Destination (Join-Path $install 'countdown-icon.ico') -Force
 
 $appPath = Join-Path $install '敏敏子倒计时.ps1'
-$powershell = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+$powershell = $powerShellEngine
 $arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$appPath`""
 $launcherPath = Join-Path $desktop '敏敏子倒计时.exe'
 $launcherStatePath = Join-Path $install 'launcher-state.json'
@@ -181,7 +187,7 @@ Start-Sleep -Seconds 4
     Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
     Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}
     TaskInfo = Get-ScheduledTaskInfo -TaskName $taskName | Select-Object LastRunTime, LastTaskResult, NextRunTime
-    Process = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*敏敏子倒计时.ps1*' } | Select-Object ProcessId, SessionId, CommandLine)
+    Process = @(Get-CimInstance Win32_Process -Filter "Name='$powerShellProcessName'" | Where-Object { $_.CommandLine -like '*敏敏子倒计时.ps1*' } | Select-Object ProcessId, SessionId, CommandLine)
     TimeSource = $timeSource
     TimeStatus = $timeStatus
 } | ConvertTo-Json -Depth 6

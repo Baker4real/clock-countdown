@@ -1,6 +1,7 @@
 ﻿[CmdletBinding()]
 param(
-    [switch] $ValidateOnly
+    [switch] $ValidateOnly,
+    [string] $SettingsFile
 )
 
 Set-StrictMode -Version Latest
@@ -11,65 +12,74 @@ if (-not $ValidateOnly) {
     $createdNew = $false
     $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $script:singleInstanceMutex = New-Object System.Threading.Mutex($true, "Local\MinminCountdown-$userSid", [ref] $createdNew)
-    if (-not $createdNew) {
-        exit 0
-    }
+    if (-not $createdNew) { exit 0 }
 }
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 
-$settingsPath = Join-Path $PSScriptRoot 'settings.json'
+$settingsPath = if ([string]::IsNullOrWhiteSpace($SettingsFile)) { Join-Path $PSScriptRoot 'settings.json' } else { $SettingsFile }
 $runtimeStatusPath = Join-Path $PSScriptRoot 'runtime-status.json'
-$script:targetUtc = $null
+$script:countdowns = [System.Collections.ArrayList]::new()
+$script:cardViews = @{}
+$script:editingId = $null
+$script:settingsWereMigrated = $false
+$script:lastSortSignature = ''
 
 [xml] $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="敏敏子倒计时" Width="640" Height="520"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
-        Background="#F0EEE9" FontFamily="Microsoft YaHei UI"
-        Topmost="True">
+        Title="敏敏子倒计时" Width="720" Height="760" MinWidth="660" MinHeight="620"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip"
+        Background="{DynamicResource BackgroundBrush}" FontFamily="Microsoft YaHei UI" Topmost="True">
   <Window.Resources>
+    <SolidColorBrush x:Key="CanvasBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BackgroundBrush" Color="#F8F9FA"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#F5F5F5"/>
+    <SolidColorBrush x:Key="InkBrush" Color="#111111"/>
+    <SolidColorBrush x:Key="BodyBrush" Color="#374151"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#6B7280"/>
+    <SolidColorBrush x:Key="HairlineBrush" Color="#E5E7EB"/>
+    <SolidColorBrush x:Key="ActiveBrush" Color="#242424"/>
+    <SolidColorBrush x:Key="FocusBrush" Color="#3B82F6"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="#DC2626"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="#10B981"/>
+    <SolidColorBrush x:Key="SuccessTextBrush" Color="#166534"/>
+    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#DCFCE7"/>
+    <SolidColorBrush x:Key="ExpiredTextBrush" Color="#991B1B"/>
+    <SolidColorBrush x:Key="ExpiredSurfaceBrush" Color="#FEE2E2"/>
+    <SolidColorBrush x:Key="DangerTextBrush" Color="#B91C1C"/>
     <Style TargetType="TextBox">
-      <Setter Property="Height" Value="42"/>
-      <Setter Property="Padding" Value="12,0"/>
-      <Setter Property="VerticalContentAlignment" Value="Center"/>
-      <Setter Property="FontSize" Value="15"/>
-      <Setter Property="Foreground" Value="#202634"/>
-      <Setter Property="Background" Value="#FFFFFF"/>
-      <Setter Property="BorderBrush" Value="#D9DCE3"/>
-      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="12,0"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{StaticResource InkBrush}"/><Setter Property="Background" Value="{StaticResource CanvasBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="10,0"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{StaticResource InkBrush}"/><Setter Property="Background" Value="{StaticResource CanvasBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="IsEditable" Value="False"/>
     </Style>
     <Style TargetType="DatePicker">
-      <Setter Property="Height" Value="42"/>
-      <Setter Property="FontSize" Value="15"/>
-      <Setter Property="Foreground" Value="#202634"/>
-      <Setter Property="Background" Value="#FFFFFF"/>
-      <Setter Property="BorderBrush" Value="#D9DCE3"/>
-      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Height" Value="40"/><Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{StaticResource InkBrush}"/><Setter Property="Background" Value="{StaticResource CanvasBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="DatePicker">
             <Grid>
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/></Grid.ColumnDefinitions>
-              <DatePickerTextBox x:Name="PART_TextBox" Grid.Column="0" Padding="12,0" VerticalContentAlignment="Center" Background="#FFFFFF" Foreground="#202634" BorderBrush="#D9DCE3" BorderThickness="1,1,0,1" Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, StringFormat={}{0:yyyy年M月d日}}"/>
-              <Button x:Name="PART_Button" Grid.Column="1" Background="#F1EFEA" BorderBrush="#D9DCE3" BorderThickness="0" Cursor="Hand" ToolTip="打开日历">
-                <Button.Template>
-                  <ControlTemplate TargetType="Button">
-                    <Border x:Name="DropSurface" Background="{TemplateBinding Background}" BorderBrush="#D9DCE3" BorderThickness="1" CornerRadius="0,7,7,0">
-                      <Path Width="10" Height="6" Fill="#3F4858" Stretch="Fill" Data="M 0,0 L 10,0 L 5,6 Z" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DropSurface" Property="Background" Value="#E6E3DC"/></Trigger>
-                      <Trigger Property="IsPressed" Value="True"><Setter TargetName="DropSurface" Property="Background" Value="#D8D4CC"/></Trigger>
-                    </ControlTemplate.Triggers>
-                  </ControlTemplate>
-                </Button.Template>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+              <DatePickerTextBox x:Name="PART_TextBox" Grid.Column="0" Padding="12,0" IsReadOnly="True" Focusable="False"
+                 VerticalContentAlignment="Center" Background="{StaticResource CanvasBrush}" Foreground="{StaticResource InkBrush}" BorderBrush="{StaticResource HairlineBrush}"
+                 BorderThickness="1,1,0,1" Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, StringFormat={}{0:yyyy年M月d日}}"/>
+              <Button x:Name="PART_Button" Grid.Column="1" Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" Cursor="Hand" ToolTip="打开日历">
+                <Path Width="10" Height="6" Fill="{StaticResource BodyBrush}" Stretch="Fill" Data="M 0,0 L 10,0 L 5,6 Z"/>
               </Button>
               <Popup x:Name="PART_Popup" Grid.ColumnSpan="2" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" Focusable="False">
-                <Border Margin="0,6,0,0" Padding="10" Background="#FBFAF8" BorderBrush="#D9DCE3" BorderThickness="1" CornerRadius="12">
-                  <Border.Effect><DropShadowEffect Color="#172033" BlurRadius="18" ShadowDepth="4" Opacity="0.2"/></Border.Effect>
+                <Border Margin="0,6,0,0" Padding="8" Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" CornerRadius="12">
+                  <Border.Effect><DropShadowEffect Color="#111111" BlurRadius="16" ShadowDepth="3" Opacity="0.14"/></Border.Effect>
                   <Calendar x:Name="PART_Calendar"/>
                 </Border>
               </Popup>
@@ -78,366 +88,394 @@ $script:targetUtc = $null
         </Setter.Value>
       </Setter>
     </Style>
-    <Style TargetType="Calendar">
-      <Setter Property="Background" Value="#FBFAF8"/>
-      <Setter Property="Foreground" Value="#202634"/>
-      <Setter Property="BorderBrush" Value="#D9DCE3"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
-      <Setter Property="FontSize" Value="13"/>
-    </Style>
-    <Style TargetType="CalendarDayButton">
-      <Setter Property="Width" Value="34"/>
-      <Setter Property="Height" Value="30"/>
-      <Setter Property="Margin" Value="2"/>
-      <Setter Property="Padding" Value="0"/>
-      <Setter Property="HorizontalContentAlignment" Value="Center"/>
-      <Setter Property="VerticalContentAlignment" Value="Center"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="Foreground" Value="#303746"/>
-      <Setter Property="BorderBrush" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="CalendarDayButton">
-            <Border x:Name="DaySurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsInactive" Value="True"><Setter TargetName="DaySurface" Property="Opacity" Value="0.35"/></Trigger>
-              <Trigger Property="IsBlackout" Value="True"><Setter TargetName="DaySurface" Property="Opacity" Value="0.25"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
-              <Trigger Property="IsToday" Value="True"><Setter TargetName="DaySurface" Property="BorderBrush" Value="#D85C4B"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DaySurface" Property="Background" Value="#F4E4E0"/></Trigger>
-              <Trigger Property="IsSelected" Value="True"><Setter TargetName="DaySurface" Property="Background" Value="#D85C4B"/><Setter Property="Foreground" Value="White"/><Setter TargetName="DaySurface" Property="BorderBrush" Value="#D85C4B"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="DaySurface" Property="BorderBrush" Value="#172033"/><Setter TargetName="DaySurface" Property="BorderThickness" Value="2"/></Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-    <Style TargetType="CalendarButton">
-      <Setter Property="Margin" Value="3"/>
-      <Setter Property="Padding" Value="8,6"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="Foreground" Value="#303746"/>
-      <Setter Property="BorderBrush" Value="Transparent"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Style.Triggers>
-        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#F4E4E0"/></Trigger>
-        <Trigger Property="IsInactive" Value="True"><Setter Property="Opacity" Value="0.4"/></Trigger>
-      </Style.Triggers>
-    </Style>
     <Style x:Key="PrimaryButton" TargetType="Button">
-      <Setter Property="Height" Value="44"/>
-      <Setter Property="Padding" Value="18,0"/>
-      <Setter Property="Foreground" Value="White"/>
-      <Setter Property="Background" Value="#D85C4B"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="FontSize" Value="15"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonSurface" Property="Background" Value="#C94E3E"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonSurface" Property="Background" Value="#B94435"/></Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonSurface" Property="BorderBrush" Value="#172033"/><Setter TargetName="ButtonSurface" Property="BorderThickness" Value="2"/></Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
+      <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="18,0"/>
+      <Setter Property="Foreground" Value="{StaticResource CanvasBrush}"/><Setter Property="Background" Value="{StaticResource InkBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource ActiveBrush}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource FocusBrush}"/><Setter TargetName="Surface" Property="BorderThickness" Value="2"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="SecondaryButton" TargetType="Button">
-      <Setter Property="Height" Value="44"/>
-      <Setter Property="Padding" Value="14,0"/>
-      <Setter Property="Foreground" Value="#596171"/>
-      <Setter Property="Background" Value="#FBFAF8"/>
-      <Setter Property="BorderBrush" Value="#C9CDD6"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="FontSize" Value="14"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonSurface" Property="Background" Value="#F0EEE9"/><Setter TargetName="ButtonSurface" Property="BorderBrush" Value="#AEB4C0"/></Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonSurface" Property="Background" Value="#E5E2DC"/></Trigger>
-              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.42"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonSurface" Property="BorderBrush" Value="#172033"/><Setter TargetName="ButtonSurface" Property="BorderThickness" Value="2"/></Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
+      <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="14,0"/>
+      <Setter Property="Foreground" Value="{StaticResource InkBrush}"/><Setter Property="Background" Value="{StaticResource CanvasBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource CardBrush}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource FocusBrush}"/><Setter TargetName="Surface" Property="BorderThickness" Value="2"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
   </Window.Resources>
 
-  <Border Margin="16" Padding="28,24" Background="#FBFAF8" CornerRadius="18" BorderBrush="#E3E0DA" BorderThickness="1">
-    <Border.Effect>
-      <DropShadowEffect Color="#1C2535" BlurRadius="22" ShadowDepth="5" Opacity="0.16"/>
-    </Border.Effect>
-    <Grid>
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="162"/>
-        <RowDefinition Height="164"/>
-        <RowDefinition Height="Auto" MinHeight="32"/>
-        <RowDefinition Height="*"/>
-      </Grid.RowDefinitions>
+  <Grid Margin="24,20,24,18">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid Grid.Row="0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock Text="倒计时" FontSize="26" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
+        <TextBlock Text="管理所有重要时刻 · 北京时间 UTC+8" Margin="0,5,0,0" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+      </StackPanel>
+      <CheckBox x:Name="TopmostCheck" Grid.Column="1" Content="窗口置顶" IsChecked="True" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource BodyBrush}"/>
+    </Grid>
 
-      <Grid Grid.Row="0">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <StackPanel>
-          <TextBlock Text="敏敏子倒计时" FontSize="24" FontWeight="SemiBold" Foreground="#171B26"/>
-          <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
-            <Border Background="#E7EBF2" CornerRadius="10" Padding="9,3">
-              <TextBlock Text="北京时间  UTC+8" FontSize="11" FontWeight="SemiBold" Foreground="#344057"/>
-            </Border>
-            <TextBlock Text="依据系统校准时间" Margin="10,2,0,0" FontSize="12" Foreground="#727986"/>
-          </StackPanel>
-        </StackPanel>
-        <CheckBox x:Name="TopmostCheck" Grid.Column="1" Content="窗口置顶" IsChecked="True" VerticalAlignment="Center" FontSize="13" Foreground="#4E5563"/>
-      </Grid>
-
-      <Border Grid.Row="1" Margin="0,20,0,0" Padding="24,18" Background="#172033" CornerRadius="14">
-        <Grid>
-          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <TextBlock Text="距目标还有" FontSize="12" Foreground="#AEB8CA"/>
-          <TextBlock x:Name="CountdownText" Grid.Row="1" Text="请设置截止日期" FontFamily="Segoe UI" FontSize="36" FontWeight="SemiBold" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          <TextBlock x:Name="TargetText" Grid.Row="2" FontSize="12" Foreground="#BFC7D5" HorizontalAlignment="Center"/>
-        </Grid>
-      </Border>
-
-      <Border Grid.Row="2" Margin="0,18,0,0" Padding="16,13" Background="#F1EFEA" CornerRadius="12">
-        <Grid>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-          </Grid.RowDefinitions>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="172"/>
-          </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="0">
-            <TextBlock Text="截止日期" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="#555D6B"/>
-            <DatePicker x:Name="TargetDate" SelectedDateFormat="Long" ToolTip="选择北京时间日期"/>
+    <Border Grid.Row="1" Margin="0,20,0,0" Padding="20" Background="{StaticResource CardBrush}" CornerRadius="12" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock x:Name="EditorTitle" Text="新增倒计时" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
+        <Grid Grid.Row="1" Margin="0,14,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <StackPanel>
+            <TextBlock Text="名称" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/>
+            <TextBox x:Name="CountdownName" MaxLength="30" ToolTip="输入唯一名称，最多 30 个字符"/>
           </StackPanel>
           <StackPanel Grid.Column="1" Margin="12,0,0,0">
-            <TextBlock Text="具体时间" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="#555D6B"/>
-            <TextBox x:Name="TargetTime" Text="18:00:00" ToolTip="请输入时:分:秒，例如 18:00:00"/>
-          </StackPanel>
-          <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="SaveButton" Width="138" Style="{StaticResource PrimaryButton}" Content="保存日期" IsDefault="True"/>
-            <Button x:Name="ClearButton" Width="118" Margin="10,0,0,0" Style="{StaticResource SecondaryButton}" Content="停止并清除" IsEnabled="False"/>
+            <TextBlock Text="截止日期" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/>
+            <DatePicker x:Name="TargetDate" SelectedDateFormat="Long" ToolTip="点击选择北京时间日期"/>
           </StackPanel>
         </Grid>
-      </Border>
-
-      <TextBlock x:Name="MessageText" Grid.Row="3" Margin="2,7,0,0" FontSize="12" Foreground="#B23A34" TextAlignment="Left" TextWrapping="Wrap"/>
-
-      <Grid Grid.Row="4" Margin="0,10,0,0" VerticalAlignment="Bottom">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-        <Ellipse Width="7" Height="7" Fill="#4D9B6A" VerticalAlignment="Center"/>
-        <TextBlock x:Name="NowText" Grid.Column="1" Margin="8,0,0,0" FontSize="12" Foreground="#68707D"/>
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="时" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetHour"/></StackPanel>
+          <StackPanel Grid.Column="1" Margin="8,0,0,0"><TextBlock Text="分" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetMinute"/></StackPanel>
+          <StackPanel Grid.Column="2" Margin="8,0,0,0"><TextBlock Text="秒" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetSecond"/></StackPanel>
+          <Button x:Name="SetNowButton" Grid.Column="3" Width="94" Margin="12,18,0,0" Style="{StaticResource SecondaryButton}" Content="设为现在" ToolTip="使用当前北京时间"/>
+        </Grid>
+        <Grid Grid.Row="3" Margin="0,14,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock x:Name="MessageText" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap"/>
+          <Button x:Name="CancelButton" Grid.Column="1" Width="76" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="取消" Visibility="Collapsed"/>
+          <Button x:Name="SaveButton" Grid.Column="2" Width="112" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}" Content="添加倒计时" IsDefault="True"/>
+        </Grid>
       </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" Margin="0,20,0,10">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock Text="我的倒计时" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
+      <TextBlock x:Name="CountdownCount" Grid.Column="1" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
     </Grid>
-  </Border>
+
+    <Grid Grid.Row="3">
+      <TextBlock x:Name="EmptyState" Text="还没有倒计时。先在上方添加一个重要时刻。" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl x:Name="CountdownList"/>
+      </ScrollViewer>
+    </Grid>
+
+    <Grid Grid.Row="4" Margin="0,12,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Ellipse Width="7" Height="7" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center"/>
+      <TextBlock x:Name="NowText" Grid.Column="1" Margin="8,0,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+    </Grid>
+  </Grid>
 </Window>
 '@
 
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
-
 $iconPath = Join-Path $PSScriptRoot 'countdown-icon.ico'
-if (Test-Path -LiteralPath $iconPath) {
-    $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create((New-Object System.Uri($iconPath)))
-}
+if (Test-Path -LiteralPath $iconPath) { $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create((New-Object System.Uri($iconPath))) }
 
-$countdownText = $window.FindName('CountdownText')
-$targetText = $window.FindName('TargetText')
+$countdownName = $window.FindName('CountdownName')
 $targetDate = $window.FindName('TargetDate')
-$targetTime = $window.FindName('TargetTime')
+$targetHour = $window.FindName('TargetHour')
+$targetMinute = $window.FindName('TargetMinute')
+$targetSecond = $window.FindName('TargetSecond')
+$setNowButton = $window.FindName('SetNowButton')
 $saveButton = $window.FindName('SaveButton')
-$clearButton = $window.FindName('ClearButton')
+$cancelButton = $window.FindName('CancelButton')
 $messageText = $window.FindName('MessageText')
 $nowText = $window.FindName('NowText')
 $topmostCheck = $window.FindName('TopmostCheck')
+$editorTitle = $window.FindName('EditorTitle')
+$countdownList = $window.FindName('CountdownList')
+$countdownCount = $window.FindName('CountdownCount')
+$emptyState = $window.FindName('EmptyState')
+$canvasBrush = $window.FindResource('CanvasBrush')
+$inkBrush = $window.FindResource('InkBrush')
+$mutedBrush = $window.FindResource('MutedBrush')
+$hairlineBrush = $window.FindResource('HairlineBrush')
+$errorBrush = $window.FindResource('ErrorBrush')
+$successTextBrush = $window.FindResource('SuccessTextBrush')
+$successSurfaceBrush = $window.FindResource('SuccessSurfaceBrush')
+$expiredTextBrush = $window.FindResource('ExpiredTextBrush')
+$expiredSurfaceBrush = $window.FindResource('ExpiredSurfaceBrush')
+$dangerTextBrush = $window.FindResource('DangerTextBrush')
+
+foreach ($hour in 0..23) { [void] $targetHour.Items.Add(('{0:D2}' -f $hour)) }
+foreach ($minute in 0..59) { [void] $targetMinute.Items.Add(('{0:D2}' -f $minute)); [void] $targetSecond.Items.Add(('{0:D2}' -f $minute)) }
+
+function New-CountdownRecord {
+    param([string] $Id, [string] $Name, [DateTimeOffset] $TargetUtc)
+    [pscustomobject]@{ id = $Id; name = $Name; targetUtc = $TargetUtc.ToUniversalTime() }
+}
+
+function ConvertFrom-SettingsObject {
+    param([Parameter(Mandatory)] [object] $Settings)
+    $records = [System.Collections.ArrayList]::new()
+    if ($Settings.timeZoneId -ne 'China Standard Time') { throw '设置文件时区无效。' }
+    if ($Settings.schemaVersion -eq 1) {
+        [void] $records.Add((New-CountdownRecord -Id ([guid]::NewGuid().ToString('N')) -Name '我的倒计时' -TargetUtc ([DateTimeOffset]::Parse($Settings.targetUtc, [System.Globalization.CultureInfo]::InvariantCulture))))
+        return [pscustomobject]@{ Records = $records; Migrated = $true }
+    }
+    if ($Settings.schemaVersion -ne 2) { throw '设置文件版本无效。' }
+    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $ids = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($item in @($Settings.countdowns)) {
+        $id = ([string] $item.id).Trim()
+        $name = ([string] $item.name).Trim()
+        if ([string]::IsNullOrWhiteSpace($name) -or $name.Length -gt 30) { throw '设置中包含无效的倒计时名称。' }
+        if ([string]::IsNullOrWhiteSpace($id)) { throw '设置中包含空的倒计时 ID。' }
+        if (-not $names.Add($name)) { throw '设置中包含重复的倒计时名称。' }
+        if (-not $ids.Add($id)) { throw '设置中包含重复的倒计时 ID。' }
+        [void] $records.Add((New-CountdownRecord -Id $id -Name $name -TargetUtc ([DateTimeOffset]::Parse($item.targetUtc, [System.Globalization.CultureInfo]::InvariantCulture))))
+    }
+    [pscustomobject]@{ Records = $records; Migrated = $false }
+}
+
+function ConvertTo-SettingsJson {
+    $items = @($script:countdowns | ForEach-Object { [ordered]@{ id = $_.id; name = $_.name; targetUtc = $_.targetUtc.ToUniversalTime().ToString('o') } })
+    [ordered]@{ schemaVersion = 2; timeZoneId = 'China Standard Time'; countdowns = $items } | ConvertTo-Json -Depth 4
+}
 
 function Save-Settings {
-    param([Parameter(Mandatory)] [DateTimeOffset] $TargetUtc)
-
-    $payload = [ordered]@{
-        schemaVersion = 1
-        title = '敏敏子倒计时'
-        targetUtc = $TargetUtc.ToUniversalTime().ToString('o')
-        timeZoneId = 'China Standard Time'
-    } | ConvertTo-Json
+    $payload = ConvertTo-SettingsJson
     $tempPath = "$settingsPath.tmp"
     [System.IO.File]::WriteAllText($tempPath, $payload, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath $tempPath -Destination $settingsPath -Force
 }
 
-function Set-TargetControls {
-    param([Parameter(Mandatory)] [DateTimeOffset] $TargetUtc)
-
-    $beijing = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($TargetUtc, 'China Standard Time')
-    $targetDate.SelectedDate = $beijing.Date
-    $targetTime.Text = $beijing.ToString('HH:mm:ss')
-    $targetText.Text = "截止：$($beijing.ToString('yyyy年MM月dd日 HH:mm:ss'))（北京时间）"
+function Set-TimeControls {
+    param([Parameter(Mandatory)] [DateTimeOffset] $BeijingTime)
+    $targetDate.SelectedDate = $BeijingTime.Date
+    $targetHour.SelectedItem = $BeijingTime.ToString('HH')
+    $targetMinute.SelectedItem = $BeijingTime.ToString('mm')
+    $targetSecond.SelectedItem = $BeijingTime.ToString('ss')
 }
 
-function Update-Display {
-    $beijingNow = Get-BeijingNow
-    $nowText.Text = "当前北京时间：$($beijingNow.ToString('yyyy年MM月dd日 HH:mm:ss'))"
+function Reset-Editor {
+    $script:editingId = $null
+    $editorTitle.Text = '新增倒计时'
+    $countdownName.Text = ''
+    Set-TimeControls -BeijingTime ((Get-BeijingNow).Date.AddDays(1).AddHours(18))
+    $saveButton.Content = '添加倒计时'
+    $cancelButton.Visibility = 'Collapsed'
+    $messageText.Text = ''
+}
 
-    if ($null -eq $script:targetUtc) {
-        $countdownText.Text = '请设置截止日期'
-        $targetText.Text = ''
-        return
-    }
+function Get-SortedCountdowns {
+    $now = [DateTimeOffset]::UtcNow
+    @($script:countdowns | Sort-Object @{ Expression = { if ($_.targetUtc -gt $now) { 0 } else { 1 } } }, @{ Expression = { $_.targetUtc } })
+}
 
-    $parts = Get-CountdownParts -TargetUtc $script:targetUtc -NowUtc ([DateTimeOffset]::UtcNow)
-    if ($parts.IsElapsed) {
-        $countdownText.Text = '目标时间已到'
+function New-CardButton {
+    param([string] $Content, [string] $ToolTip)
+    $button = New-Object System.Windows.Controls.Button
+    $button.Content = $Content; $button.ToolTip = $ToolTip; $button.Height = 40; $button.MinWidth = 58
+    $button.Margin = '8,0,0,0'; $button.Padding = '12,0'; $button.Cursor = 'Hand'
+    $button.Background = $canvasBrush; $button.Foreground = $inkBrush; $button.BorderBrush = $hairlineBrush; $button.BorderThickness = 1
+    $button.Style = $window.FindResource('SecondaryButton')
+    $button
+}
+
+function Update-CardValues {
+    $nowUtc = [DateTimeOffset]::UtcNow
+    foreach ($record in $script:countdowns) {
+        $view = $script:cardViews[$record.id]
+        if ($null -eq $view) { continue }
+        $parts = Get-CountdownParts -TargetUtc $record.targetUtc -NowUtc $nowUtc
+        if ($parts.IsElapsed) {
+            $view.Remaining.Text = '已到期'
+            $view.Remaining.Foreground = $errorBrush
+            $view.Status.Text = '已到期'
+            $view.Status.Background = $expiredSurfaceBrush
+            $view.Status.Foreground = $expiredTextBrush
+        }
+        else {
+            $view.Remaining.Text = ('{0} 天 {1:D2} 时 {2:D2} 分 {3:D2} 秒' -f $parts.Days, $parts.Hours, $parts.Minutes, $parts.Seconds)
+            $view.Remaining.Foreground = $inkBrush
+            $view.Status.Text = '进行中'
+            $view.Status.Background = $successSurfaceBrush
+            $view.Status.Foreground = $successTextBrush
+        }
     }
-    else {
-        $countdownText.Text = ('{0} 天 {1:D2} 时 {2:D2} 分 {3:D2} 秒' -f $parts.Days, $parts.Hours, $parts.Minutes, $parts.Seconds)
+}
+
+function Render-Cards {
+    $countdownList.Items.Clear()
+    $script:cardViews = @{}
+    $sorted = @(Get-SortedCountdowns)
+    $script:lastSortSignature = @($sorted | ForEach-Object { $_.id }) -join '|'
+    $emptyState.Visibility = if ($sorted.Count -eq 0) { 'Visible' } else { 'Collapsed' }
+    $countdownCount.Text = "$($sorted.Count) 个"
+    foreach ($record in $sorted) {
+        $border = New-Object System.Windows.Controls.Border
+        $border.Background = $canvasBrush; $border.BorderBrush = $hairlineBrush; $border.BorderThickness = 1
+        $border.CornerRadius = 12; $border.Padding = 18; $border.Margin = '0,0,0,10'
+        $grid = New-Object System.Windows.Controls.Grid
+        [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = '*' }))
+        [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = 'Auto' }))
+        $stack = New-Object System.Windows.Controls.StackPanel
+        $header = New-Object System.Windows.Controls.StackPanel; $header.Orientation = 'Horizontal'
+        $name = New-Object System.Windows.Controls.TextBlock; $name.Text = $record.name; $name.FontSize = 16; $name.FontWeight = 'SemiBold'; $name.Foreground = $inkBrush; $name.VerticalAlignment = 'Center'; $name.TextWrapping = 'Wrap'; $name.MaxWidth = 360
+        $status = New-Object System.Windows.Controls.TextBlock; $status.Margin = '10,0,0,0'; $status.Padding = '9,3'; $status.FontSize = 11; $status.FontWeight = 'SemiBold'
+        [void] $header.Children.Add($name); [void] $header.Children.Add($status)
+        $remaining = New-Object System.Windows.Controls.TextBlock; $remaining.Margin = '0,10,0,0'; $remaining.FontFamily = 'Consolas'; $remaining.FontSize = 22; $remaining.FontWeight = 'SemiBold'
+        $beijing = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($record.targetUtc, 'China Standard Time')
+        $deadline = New-Object System.Windows.Controls.TextBlock; $deadline.Margin = '0,7,0,0'; $deadline.FontSize = 12; $deadline.Foreground = $mutedBrush; $deadline.Text = "截止：$($beijing.ToString('yyyy年MM月dd日 HH:mm:ss'))"
+        [void] $stack.Children.Add($header); [void] $stack.Children.Add($remaining); [void] $stack.Children.Add($deadline)
+        $actions = New-Object System.Windows.Controls.StackPanel; $actions.Orientation = 'Horizontal'; $actions.VerticalAlignment = 'Center'; [System.Windows.Controls.Grid]::SetColumn($actions, 1)
+        $edit = New-CardButton -Content '编辑' -ToolTip "编辑 $($record.name)"
+        $delete = New-CardButton -Content '删除' -ToolTip "删除 $($record.name)"; $delete.Foreground = $dangerTextBrush
+        $edit.Tag = $record.id
+        $delete.Tag = $record.id
+        $edit.Add_Click({ param($sender, $eventArgs)
+            $actionId = [string] $sender.Tag
+            $item = @($script:countdowns | Where-Object { $_.id -eq $actionId })[0]
+            $script:editingId = $item.id; $editorTitle.Text = "编辑：$($item.name)"; $countdownName.Text = $item.name
+            Set-TimeControls -BeijingTime ([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($item.targetUtc, 'China Standard Time'))
+            $saveButton.Content = '保存修改'; $cancelButton.Visibility = 'Visible'; $messageText.Text = ''; $countdownName.Focus()
+        })
+        $delete.Add_Click({ param($sender, $eventArgs)
+            $actionId = [string] $sender.Tag
+            $item = @($script:countdowns | Where-Object { $_.id -eq $actionId })[0]
+            $answer = [System.Windows.MessageBox]::Show(('确定永久删除“{0}”吗？' -f $item.name), '删除倒计时', 'YesNo', 'Warning')
+            if ($answer -eq 'Yes') {
+                [void] $script:countdowns.Remove($item); Save-Settings
+                if ($script:editingId -eq $actionId) { Reset-Editor }
+                Render-Cards; $messageText.Foreground = $successTextBrush; $messageText.Text = ('已删除“{0}”。' -f $item.name)
+            }
+        })
+        [void] $actions.Children.Add($edit); [void] $actions.Children.Add($delete)
+        [void] $grid.Children.Add($stack); [void] $grid.Children.Add($actions); $border.Child = $grid
+        [void] $countdownList.Items.Add($border)
+        $script:cardViews[$record.id] = [pscustomobject]@{ Remaining = $remaining; Status = $status }
     }
+    Update-CardValues
 }
 
 if (Test-Path -LiteralPath $settingsPath) {
     try {
-        $settingsJson = [System.IO.File]::ReadAllText($settingsPath, [System.Text.Encoding]::UTF8)
-        $settings = $settingsJson | ConvertFrom-Json
-        if ($settings.schemaVersion -ne 1 -or $settings.timeZoneId -ne 'China Standard Time') {
-            throw '设置文件版本或时区无效。'
-        }
-        $script:targetUtc = [DateTimeOffset]::Parse($settings.targetUtc, [System.Globalization.CultureInfo]::InvariantCulture)
-        Set-TargetControls -TargetUtc $script:targetUtc
-        $clearButton.IsEnabled = $true
+        $settings = [System.IO.File]::ReadAllText($settingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        $loaded = ConvertFrom-SettingsObject -Settings $settings
+        foreach ($record in $loaded.Records) { [void] $script:countdowns.Add($record) }
+        $script:settingsWereMigrated = $loaded.Migrated
+        if ($loaded.Migrated -and -not $ValidateOnly) { Save-Settings }
     }
-    catch {
-        $messageText.Text = "已有设置无法读取：$($_.Exception.Message)"
-        $clearButton.IsEnabled = $true
-    }
+    catch { $messageText.Text = "已有设置无法读取：$($_.Exception.Message)" }
 }
 
-if ($null -eq $targetDate.SelectedDate) {
-    $targetDate.SelectedDate = (Get-BeijingNow).Date.AddDays(1)
-}
-
+$targetDate.Add_PreviewMouseLeftButtonDown({ param($sender, $eventArgs); if (-not $targetDate.IsDropDownOpen) { $targetDate.IsDropDownOpen = $true }; $eventArgs.Handled = $true })
+$setNowButton.Add_Click({ Set-TimeControls -BeijingTime (Get-BeijingNow); $messageText.Text = '' })
+$cancelButton.Add_Click({ Reset-Editor })
 $saveButton.Add_Click({
     try {
         $messageText.Text = ''
-        if ($null -eq $targetDate.SelectedDate) {
-            throw '请选择截止日期。'
-        }
+        $name = $countdownName.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($name)) { throw '请输入倒计时名称。' }
+        if ($name.Length -gt 30) { throw '倒计时名称不能超过 30 个字符。' }
+        $duplicate = @($script:countdowns | Where-Object { $_.id -ne $script:editingId -and [string]::Equals($_.name, $name, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+        if ($duplicate) { throw '倒计时名称不能重复。' }
+        if ($null -eq $targetDate.SelectedDate -or $null -eq $targetHour.SelectedItem -or $null -eq $targetMinute.SelectedItem -or $null -eq $targetSecond.SelectedItem) { throw '请选择完整的截止日期和时间。' }
         $dateText = ConvertTo-CountdownDateText -SelectedDate $targetDate.SelectedDate
-        $newTarget = ConvertTo-CountdownTargetUtc -DateText $dateText -TimeText $targetTime.Text.Trim()
-        if ($newTarget -le [DateTimeOffset]::UtcNow) {
-            throw '截止日期必须晚于当前北京时间。'
+        $timeText = "$($targetHour.SelectedItem):$($targetMinute.SelectedItem):$($targetSecond.SelectedItem)"
+        $targetUtc = ConvertTo-CountdownTargetUtc -DateText $dateText -TimeText $timeText
+        if ($targetUtc -le [DateTimeOffset]::UtcNow) { throw '截止时间必须晚于当前北京时间，请向后调整。' }
+        if ($null -eq $script:editingId) {
+            [void] $script:countdowns.Add((New-CountdownRecord -Id ([guid]::NewGuid().ToString('N')) -Name $name -TargetUtc $targetUtc))
+            $success = '已添加“{0}”。' -f $name
         }
-        Save-Settings -TargetUtc $newTarget
-        $script:targetUtc = $newTarget
-        $clearButton.IsEnabled = $true
-        Set-TargetControls -TargetUtc $newTarget
-        $messageText.Foreground = '#477A54'
-        $messageText.Text = '已保存，倒计时立即生效。'
-        Update-Display
+        else {
+            $item = @($script:countdowns | Where-Object { $_.id -eq $script:editingId })[0]
+            $item.name = $name; $item.targetUtc = $targetUtc
+            $success = '已保存“{0}”。' -f $name
+        }
+        Save-Settings; Reset-Editor; Render-Cards
+        $messageText.Foreground = $successTextBrush; $messageText.Text = $success
     }
-    catch {
-        $messageText.Foreground = '#B33A48'
-        $messageText.Text = $_.Exception.Message
-    }
-})
-
-$clearButton.Add_Click({
-    try {
-        $null = Remove-CountdownSettings -SettingsPath $settingsPath
-        $script:targetUtc = $null
-        $clearButton.IsEnabled = $false
-        $targetDate.SelectedDate = (Get-BeijingNow).Date.AddDays(1)
-        $targetTime.Text = '18:00:00'
-        $messageText.Foreground = '#477A54'
-        $messageText.Text = '倒计时已停止，保存的截止日期已清除。'
-        Update-Display
-    }
-    catch {
-        $messageText.Foreground = '#B23A34'
-        $messageText.Text = "无法清除倒计时：$($_.Exception.Message)"
-    }
+    catch { $messageText.Foreground = $errorBrush; $messageText.Text = $_.Exception.Message }
 })
 
 $topmostCheck.Add_Checked({ $window.Topmost = $true })
 $topmostCheck.Add_Unchecked({ $window.Topmost = $false })
 $window.Add_Loaded({
-    $status = [ordered]@{
-        schemaVersion = 1
-        title = $window.Title
-        processId = $PID
-        sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
-        loadedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-        timeZoneId = 'China Standard Time'
-    } | ConvertTo-Json
-    $statusTemp = "$runtimeStatusPath.tmp"
-    [System.IO.File]::WriteAllText($statusTemp, $status, (New-Object System.Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $statusTemp -Destination $runtimeStatusPath -Force
+    $status = [ordered]@{ schemaVersion = 2; title = $window.Title; processId = $PID; sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId; loadedAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); timeZoneId = 'China Standard Time' } | ConvertTo-Json
+    [System.IO.File]::WriteAllText("$runtimeStatusPath.tmp", $status, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath "$runtimeStatusPath.tmp" -Destination $runtimeStatusPath -Force
 })
-$window.Add_Closed({
-    if ($null -ne $script:singleInstanceMutex) {
-        $script:singleInstanceMutex.ReleaseMutex()
-        $script:singleInstanceMutex.Dispose()
-    }
-})
+$window.Add_Closed({ if ($null -ne $script:singleInstanceMutex) { $script:singleInstanceMutex.ReleaseMutex(); $script:singleInstanceMutex.Dispose() } })
+
+Reset-Editor
+Render-Cards
 
 if ($ValidateOnly) {
     $targetDate.SelectedDate = [DateTime]'2026-08-30'
-    $null = $targetDate.ApplyTemplate()
-    $datePickerParts = @(
-        $targetDate.Template.FindName('PART_TextBox', $targetDate),
-        $targetDate.Template.FindName('PART_Button', $targetDate),
-        $targetDate.Template.FindName('PART_Popup', $targetDate),
-        $targetDate.Template.FindName('PART_Calendar', $targetDate)
-    )
-    if (@($datePickerParts | Where-Object { $null -eq $_ }).Count -gt 0) {
-        throw 'DatePicker template is missing one or more required PART_* controls.'
+    [void] $targetDate.ApplyTemplate()
+    $datePickerParts = @($targetDate.Template.FindName('PART_TextBox', $targetDate), $targetDate.Template.FindName('PART_Button', $targetDate), $targetDate.Template.FindName('PART_Popup', $targetDate), $targetDate.Template.FindName('PART_Calendar', $targetDate))
+    if (@($datePickerParts | Where-Object { $null -eq $_ }).Count -gt 0) { throw 'DatePicker template is missing one or more required PART_* controls.' }
+    if ($datePickerParts[0].Text -ne '2026年8月30日') { throw "DatePicker did not render the complete selected date. Actual: $($datePickerParts[0].Text)" }
+    if ($null -eq $window.Icon) { throw 'Window icon was not loaded.' }
+    $legacy = [pscustomobject]@{ schemaVersion = 1; timeZoneId = 'China Standard Time'; targetUtc = '2026-08-30T10:00:00Z' }
+    $migration = ConvertFrom-SettingsObject -Settings $legacy
+    $persistenceRoundTrip = $false
+    if (-not [string]::IsNullOrWhiteSpace($SettingsFile)) {
+        $roundTrip = ConvertTo-SettingsJson | ConvertFrom-Json
+        $persistenceRoundTrip = $roundTrip.schemaVersion -eq 2 -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
     }
-    $datePickerText = $datePickerParts[0].Text
-    if ($datePickerText -ne '2026年8月30日') {
-        throw "DatePicker did not render the complete selected date. Actual: $datePickerText"
+    $duplicateSettingsRejected = $false
+    try {
+        ConvertFrom-SettingsObject -Settings ([pscustomobject]@{ schemaVersion = 2; timeZoneId = 'China Standard Time'; countdowns = @([pscustomobject]@{ id = 'a'; name = '计划'; targetUtc = '2099-01-01T00:00:00Z' }, [pscustomobject]@{ id = 'b'; name = '计划'; targetUtc = '2099-02-01T00:00:00Z' }) }) | Out-Null
     }
-    if ($null -eq $window.Icon) {
-        throw 'Window icon was not loaded.'
+    catch { $duplicateSettingsRejected = $true }
+    $cardActionsBoundByTag = $true
+    $sortedForValidation = @(Get-SortedCountdowns)
+    for ($index = 0; $index -lt $sortedForValidation.Count; $index++) {
+        $card = $countdownList.Items[$index]
+        $actions = @($card.Child.Children | Where-Object { [System.Windows.Controls.Grid]::GetColumn($_) -eq 1 })[0]
+        $tags = @($actions.Children | ForEach-Object { [string] $_.Tag })
+        if ($tags.Count -ne 2 -or @($tags | Where-Object { $_ -ne $sortedForValidation[$index].id }).Count -gt 0) {
+            $cardActionsBoundByTag = $false
+            break
+        }
     }
     [pscustomobject]@{
-        Valid = $true
-        Title = $window.Title
-        Width = $window.Width
-        Height = $window.Height
-        RequiredControls = @($countdownText, $targetText, $targetDate, $targetTime, $saveButton, $clearButton, $messageText, $nowText, $topmostCheck).Count
-        DatePickerTemplateParts = $datePickerParts.Count
-        DatePickerText = $datePickerText
+        Valid = $true; Title = $window.Title; Width = $window.Width; Height = $window.Height
+        RequiredControls = @($countdownName, $targetDate, $targetHour, $targetMinute, $targetSecond, $setNowButton, $saveButton, $cancelButton, $countdownList, $messageText, $nowText, $topmostCheck).Count
+        DatePickerTemplateParts = $datePickerParts.Count; DatePickerText = $datePickerParts[0].Text
+        DateInputReadOnly = $datePickerParts[0].IsReadOnly; TimeDropDowns = @($targetHour, $targetMinute, $targetSecond).Count
+        TimeOptionCounts = @($targetHour.Items.Count, $targetMinute.Items.Count, $targetSecond.Items.Count)
+        HasSetNowButton = $null -ne $setNowButton; HasCountdownList = $null -ne $countdownList; HasNameEditor = $null -ne $countdownName
+        LegacyMigrationSupported = $migration.Migrated -and $migration.Records.Count -eq 1 -and $migration.Records[0].name -eq '我的倒计时'
+        DuplicateSettingsRejected = $duplicateSettingsRejected
+        PersistenceRoundTrip = $persistenceRoundTrip
+        CardActionsBoundByTag = $cardActionsBoundByTag
+        LoadedCountdowns = $script:countdowns.Count; SortedNames = @((Get-SortedCountdowns) | ForEach-Object { $_.name })
         WindowIconLoaded = $null -ne $window.Icon
     } | ConvertTo-Json
-    if ($null -ne $script:singleInstanceMutex) {
-        $script:singleInstanceMutex.ReleaseMutex()
-        $script:singleInstanceMutex.Dispose()
-    }
     exit 0
 }
 
 $timer = New-Object Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(250)
-$timer.Add_Tick({ Update-Display })
+$timer.Add_Tick({
+    $now = Get-BeijingNow
+    $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
+    $sortSignature = @((Get-SortedCountdowns) | ForEach-Object { $_.id }) -join '|'
+    if ($sortSignature -ne $script:lastSortSignature) { Render-Cards } else { Update-CardValues }
+})
 $timer.Start()
-Update-Display
-
+$now = Get-BeijingNow; $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
 $null = $window.ShowDialog()

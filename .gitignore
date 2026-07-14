@@ -5,3 +5,6 @@ runtime-status.json.tmp
 launcher-state.json
 *.new
 *.invalid
+.local/
+*.local.md
+.env.local

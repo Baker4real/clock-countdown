@@ -50,3 +50,10 @@ pwsh -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
 ```
 
 重新生成 `CountdownLauncher.exe` 后，需要同步更新 `Install-Countdown.ps1` 中对应的 SHA-256 清单值。
+
+重新生成图标需要 Python 和 Pillow：
+
+```powershell
+python -m pip install Pillow
+python .\make_countdown_icon.py
+```

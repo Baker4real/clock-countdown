@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch] $ValidateOnly
 )
@@ -76,6 +76,7 @@ if ($LASTEXITCODE -ne 0) { throw "办公室设备的 Tailscale 连通性检查�
 $script:sshOptions = @(
     '-i', $env:REPLICATOR_OFFICE_SSH_IDENTITY_FILE,
     '-o', 'BatchMode=yes',
+    '-o', 'IdentitiesOnly=yes',
     '-o', "ConnectTimeout=$env:REPLICATOR_OFFICE_SSH_CONNECT_TIMEOUT_SECONDS",
     '-o', "ConnectionAttempts=$env:REPLICATOR_OFFICE_SSH_CONNECTION_ATTEMPTS",
     '-o', 'StrictHostKeyChecking=yes',

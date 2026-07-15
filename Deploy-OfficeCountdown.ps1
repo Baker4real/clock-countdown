@@ -103,6 +103,38 @@ $remoteInstall = @"
 `$priorTask = Get-ScheduledTask -TaskName 'Minmin Countdown' -ErrorAction SilentlyContinue
 `$priorTaskState = if (`$null -ne `$priorTask) { [string]`$priorTask.State } else { `$null }
 `$hadInstall = Test-Path -LiteralPath `$install
+function Test-SettingsPreservedOrExpectedMigration {
+  param(
+    [AllowNull()] [string] `$BeforeHash,
+    [AllowNull()] [string] `$AfterHash,
+    [AllowNull()] [string] `$BeforeJson,
+    [AllowNull()] [string] `$AfterJson
+  )
+  if (`$BeforeHash -eq `$AfterHash) { return `$true }
+  if ([string]::IsNullOrWhiteSpace(`$BeforeHash) -or [string]::IsNullOrWhiteSpace(`$AfterHash) -or [string]::IsNullOrWhiteSpace(`$BeforeJson) -or [string]::IsNullOrWhiteSpace(`$AfterJson)) { return `$false }
+  try {
+    `$before = `$BeforeJson | ConvertFrom-Json
+    `$after = `$AfterJson | ConvertFrom-Json
+  }
+  catch { return `$false }
+  if (`$before.schemaVersion -ne 3 -or `$after.schemaVersion -ne 4) { return `$false }
+  if (`$null -eq `$after.PSObject.Properties['notes'] -or @(`$after.notes).Count -ne 0) { return `$false }
+  if (([string] `$before.timeZoneId) -cne ([string] `$after.timeZoneId)) { return `$false }
+  if (([string] `$before.displayPrecision) -cne ([string] `$after.displayPrecision)) { return `$false }
+  if (([decimal] `$before.monthlySalary) -ne ([decimal] `$after.monthlySalary)) { return `$false }
+  if (([TimeSpan]::Parse([string] `$before.workStart)) -ne ([TimeSpan]::Parse([string] `$after.workStart))) { return `$false }
+  if (([TimeSpan]::Parse([string] `$before.workEnd)) -ne ([TimeSpan]::Parse([string] `$after.workEnd))) { return `$false }
+  `$previousCountdowns = @(`$before.countdowns)
+  `$migratedCountdowns = @(`$after.countdowns)
+  if (`$previousCountdowns.Count -ne `$migratedCountdowns.Count) { return `$false }
+  foreach (`$previous in `$previousCountdowns) {
+    `$matching = @(`$migratedCountdowns | Where-Object { `$_.id -eq `$previous.id })
+    if (`$matching.Count -ne 1) { return `$false }
+    if (([string] `$matching[0].name) -cne ([string] `$previous.name)) { return `$false }
+    if ([DateTimeOffset]::Parse([string] `$matching[0].targetUtc).ToUniversalTime().Ticks -ne [DateTimeOffset]::Parse([string] `$previous.targetUtc).ToUniversalTime().Ticks) { return `$false }
+  }
+  `$true
+}
 if (`$hadInstall) {
   New-Item -ItemType Directory -Path `$backupInstall -Force | Out-Null
   Copy-Item -Path (Join-Path `$install '*') -Destination `$backupInstall -Recurse -Force
@@ -112,6 +144,7 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath `$archive).Hash -ne '$archiveHa
 try {
   Expand-Archive -LiteralPath `$archive -DestinationPath `$source -Force
   `$settingsPath = Join-Path `$install 'settings.json'
+  `$settingsJsonBefore = if (Test-Path -LiteralPath `$settingsPath) { Get-Content -LiteralPath `$settingsPath -Raw } else { `$null }
   `$settingsHashBefore = if (Test-Path -LiteralPath `$settingsPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath `$settingsPath).Hash } else { `$null }
   `$installer = & (Join-Path `$source 'Install-Countdown.ps1') | Out-String | ConvertFrom-Json
   `$coreTests = `$installer.TestOutput | ConvertFrom-Json
@@ -125,11 +158,12 @@ $remoteExpectedHashes
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path `$install `$entry.Key)).Hash -ne `$entry.Value) { throw "安装后哈希不匹配：`$(`$entry.Key)" }
   }
   `$validation = & pwsh.exe -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path `$install '敏敏子倒计时.ps1') -ValidateOnly | Out-String | ConvertFrom-Json
+  `$settingsJsonAfter = if (Test-Path -LiteralPath `$settingsPath) { Get-Content -LiteralPath `$settingsPath -Raw } else { `$null }
   `$settingsHashAfter = if (Test-Path -LiteralPath `$settingsPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath `$settingsPath).Hash } else { `$null }
   `$task = Get-ScheduledTask -TaskName 'Minmin Countdown'
   `$status = Get-Content -LiteralPath (Join-Path `$install 'runtime-status.json') -Raw | ConvertFrom-Json
   `$processes = @(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" | Where-Object { `$_.CommandLine -like '*敏敏子倒计时.ps1*' })
-  if (`$settingsHashBefore -ne `$settingsHashAfter) { throw '部署改动了 settings.json。' }
+  if (-not (Test-SettingsPreservedOrExpectedMigration -BeforeHash `$settingsHashBefore -AfterHash `$settingsHashAfter -BeforeJson `$settingsJsonBefore -AfterJson `$settingsJsonAfter)) { throw '部署修改了 settings.json（非预期迁移）。' }
   if ([string]`$task.State -ne 'Running') { throw "计划任务未运行：`$(`$task.State)" }
   if (`$status.processId -notin @(`$processes.ProcessId)) { throw 'runtime-status.json 未匹配正在运行的应用进程。' }
   if (-not (`$validation.FloatingWindowPresent -and `$validation.FloatingManagerButtonPresent)) { throw '悬浮框验证失败。' }

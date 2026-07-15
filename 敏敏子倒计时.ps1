@@ -22,33 +22,40 @@ $settingsPath = if ([string]::IsNullOrWhiteSpace($SettingsFile)) { Join-Path $PS
 $runtimeStatusPath = Join-Path $PSScriptRoot 'runtime-status.json'
 $script:countdowns = [System.Collections.ArrayList]::new()
 $script:cardViews = @{}
+$script:floatingViews = @{}
 $script:editingId = $null
 $script:settingsWereMigrated = $false
 $script:lastSortSignature = ''
+$script:displayPrecision = 'Second'
+$script:salary = [decimal]0
+$script:workStart = [TimeSpan]::FromHours(9)
+$script:workEnd = [TimeSpan]::FromHours(18)
+$script:workdayMap = $null
+$script:holidayCalendarStatus = '节假日日历未就绪'
 
 [xml] $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="敏敏子倒计时" Width="720" Height="760" MinWidth="660" MinHeight="620"
+        Title="敏敏子倒计时" Width="720" Height="860" MinWidth="660" MinHeight="700"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip"
         Background="{DynamicResource BackgroundBrush}" FontFamily="Microsoft YaHei UI" Topmost="True">
   <Window.Resources>
-    <SolidColorBrush x:Key="CanvasBrush" Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="BackgroundBrush" Color="#F8F9FA"/>
-    <SolidColorBrush x:Key="CardBrush" Color="#F5F5F5"/>
-    <SolidColorBrush x:Key="InkBrush" Color="#111111"/>
-    <SolidColorBrush x:Key="BodyBrush" Color="#374151"/>
-    <SolidColorBrush x:Key="MutedBrush" Color="#6B7280"/>
-    <SolidColorBrush x:Key="HairlineBrush" Color="#E5E7EB"/>
-    <SolidColorBrush x:Key="ActiveBrush" Color="#242424"/>
-    <SolidColorBrush x:Key="FocusBrush" Color="#3B82F6"/>
-    <SolidColorBrush x:Key="ErrorBrush" Color="#DC2626"/>
-    <SolidColorBrush x:Key="SuccessBrush" Color="#10B981"/>
-    <SolidColorBrush x:Key="SuccessTextBrush" Color="#166534"/>
-    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#DCFCE7"/>
-    <SolidColorBrush x:Key="ExpiredTextBrush" Color="#991B1B"/>
-    <SolidColorBrush x:Key="ExpiredSurfaceBrush" Color="#FEE2E2"/>
-    <SolidColorBrush x:Key="DangerTextBrush" Color="#B91C1C"/>
+    <SolidColorBrush x:Key="CanvasBrush" Color="#FFFDFC"/>
+    <SolidColorBrush x:Key="BackgroundBrush" Color="#FFF6EF"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#FFF0E4"/>
+    <SolidColorBrush x:Key="InkBrush" Color="#4A2D24"/>
+    <SolidColorBrush x:Key="BodyBrush" Color="#765247"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#A57B6C"/>
+    <SolidColorBrush x:Key="HairlineBrush" Color="#F1D5C5"/>
+    <SolidColorBrush x:Key="ActiveBrush" Color="#D86F52"/>
+    <SolidColorBrush x:Key="FocusBrush" Color="#E99A76"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="#C75748"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="#E89A5D"/>
+    <SolidColorBrush x:Key="SuccessTextBrush" Color="#92522E"/>
+    <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#FFE3C7"/>
+    <SolidColorBrush x:Key="ExpiredTextBrush" Color="#9D5E60"/>
+    <SolidColorBrush x:Key="ExpiredSurfaceBrush" Color="#F9DFDB"/>
+    <SolidColorBrush x:Key="DangerTextBrush" Color="#B95A4D"/>
     <Style TargetType="TextBox">
       <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="12,0"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="FontSize" Value="14"/>
@@ -94,7 +101,7 @@ $script:lastSortSignature = ''
       <Setter Property="BorderThickness" Value="0"/><Setter Property="FontSize" Value="14"/>
       <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="12" Padding="{TemplateBinding Padding}">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <ControlTemplate.Triggers>
@@ -109,7 +116,7 @@ $script:lastSortSignature = ''
       <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12" Padding="{TemplateBinding Padding}">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <ControlTemplate.Triggers>
@@ -121,12 +128,12 @@ $script:lastSortSignature = ''
   </Window.Resources>
 
   <Grid Margin="24,20,24,18">
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Grid Grid.Row="0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <StackPanel>
-        <TextBlock Text="倒计时" FontSize="26" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
-        <TextBlock Text="管理所有重要时刻 · 北京时间 UTC+8" Margin="0,5,0,0" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+        <TextBlock Text="敏敏子的时光小屋" FontSize="26" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
+        <TextBlock Text="重要时刻和今日努力，都在这里慢慢长大" Margin="0,5,0,0" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
       </StackPanel>
       <CheckBox x:Name="TopmostCheck" Grid.Column="1" Content="窗口置顶" IsChecked="True" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource BodyBrush}"/>
     </Grid>
@@ -162,20 +169,37 @@ $script:lastSortSignature = ''
       </Grid>
     </Border>
 
-    <Grid Grid.Row="2" Margin="0,20,0,10">
+    <Border Grid.Row="2" Margin="0,16,0,0" Padding="18" Background="{StaticResource CardBrush}" CornerRadius="16" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="悬浮窗显示精度" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="DisplayPrecision" ToolTip="选择悬浮窗倒计时显示到哪一位"/></StackPanel>
+          <StackPanel Grid.Column="1" Margin="12,0,0,0"><TextBlock Text="月薪（元）" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="MonthlySalary" ToolTip="用于计算本工作日截至此刻已赚收入"/></StackPanel>
+        </Grid>
+        <Grid Grid.Row="1" Margin="0,12,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="上班时间" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="WorkStart" ToolTip="输入 09:00 这样的 24 小时制时间"/></StackPanel>
+          <StackPanel Grid.Column="1" Margin="12,0,0,0"><TextBlock Text="下班时间" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="WorkEnd" ToolTip="输入 18:00 这样的 24 小时制时间"/></StackPanel>
+          <Button x:Name="SavePreferencesButton" Grid.Column="2" Width="104" Margin="12,18,0,0" Style="{StaticResource PrimaryButton}" Content="保存设置" ToolTip="保存显示和收入计算设置"/>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="3" Margin="0,20,0,10">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <TextBlock Text="我的倒计时" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
       <TextBlock x:Name="CountdownCount" Grid.Column="1" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
     </Grid>
 
-    <Grid Grid.Row="3">
+    <Grid Grid.Row="4">
       <TextBlock x:Name="EmptyState" Text="还没有倒计时。先在上方添加一个重要时刻。" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl x:Name="CountdownList"/>
       </ScrollViewer>
     </Grid>
 
-    <Grid Grid.Row="4" Margin="0,12,0,0">
+    <Grid Grid.Row="5" Margin="0,12,0,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Ellipse Width="7" Height="7" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center"/>
       <TextBlock x:Name="NowText" Grid.Column="1" Margin="8,0,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
@@ -204,6 +228,11 @@ $editorTitle = $window.FindName('EditorTitle')
 $countdownList = $window.FindName('CountdownList')
 $countdownCount = $window.FindName('CountdownCount')
 $emptyState = $window.FindName('EmptyState')
+$displayPrecisionInput = $window.FindName('DisplayPrecision')
+$monthlySalary = $window.FindName('MonthlySalary')
+$workStartInput = $window.FindName('WorkStart')
+$workEndInput = $window.FindName('WorkEnd')
+$savePreferencesButton = $window.FindName('SavePreferencesButton')
 $canvasBrush = $window.FindResource('CanvasBrush')
 $inkBrush = $window.FindResource('InkBrush')
 $mutedBrush = $window.FindResource('MutedBrush')
@@ -218,24 +247,29 @@ $dangerTextBrush = $window.FindResource('DangerTextBrush')
 [xml] $floatingXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="敏敏子倒计时悬浮窗" Width="336" Height="148" ResizeMode="NoResize"
+        Title="敏敏子倒计时悬浮窗" Width="368" Height="440" ResizeMode="NoResize"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True"
         ShowInTaskbar="False" FontFamily="Microsoft YaHei UI">
-  <Border Background="#FFFFFF" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="8" Padding="14">
-    <Border.Effect><DropShadowEffect Color="#111111" BlurRadius="18" ShadowDepth="4" Opacity="0.18"/></Border.Effect>
+  <Border Background="#FFFDFC" BorderBrush="#F1D5C5" BorderThickness="1" CornerRadius="18" Padding="16">
+    <Border.Effect><DropShadowEffect Color="#8A5240" BlurRadius="20" ShadowDepth="5" Opacity="0.20"/></Border.Effect>
     <Grid>
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <Grid x:Name="FloatingDragArea" Cursor="SizeAll">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <TextBlock x:Name="FloatingName" Text="暂无倒计时" FontSize="14" FontWeight="SemiBold" Foreground="#111111" TextTrimming="CharacterEllipsis"/>
-        <TextBlock x:Name="FloatingCount" Grid.Column="1" FontSize="11" Foreground="#6B7280" VerticalAlignment="Center"/>
+        <TextBlock Text="今天也在闪闪发光" FontSize="16" FontWeight="SemiBold" Foreground="#4A2D24" TextTrimming="CharacterEllipsis"/>
+        <TextBlock x:Name="FloatingCount" Grid.Column="1" FontSize="11" Foreground="#A57B6C" VerticalAlignment="Center"/>
       </Grid>
-      <TextBlock x:Name="FloatingRemaining" Grid.Row="1" Margin="0,8,0,7" FontFamily="Consolas" FontSize="22" FontWeight="SemiBold" Foreground="#111111" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-      <Grid Grid.Row="2">
+      <Border Grid.Row="1" Margin="0,10,0,10" Padding="12,8" Background="#FFF0E4" CornerRadius="12">
+        <TextBlock x:Name="FloatingIncome" Text="今日已赚 ￥0.00" FontSize="16" FontWeight="SemiBold" Foreground="#92522E"/>
+      </Border>
+      <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl x:Name="FloatingList"/>
+      </ScrollViewer>
+      <Grid Grid.Row="3" Margin="0,10,0,0">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <TextBlock x:Name="FloatingHint" Text="北京时间 UTC+8" FontSize="11" Foreground="#6B7280" VerticalAlignment="Center"/>
-        <Button x:Name="OpenManagerButton" Grid.Column="1" Width="62" Height="28" Margin="8,0,0,0" Content="管理" FontSize="12" Cursor="Hand" ToolTip="打开倒计时管理窗口"/>
-        <Button x:Name="CloseFloatingButton" Grid.Column="2" Width="28" Height="28" Margin="6,0,0,0" Content="×" FontSize="16" Cursor="Hand" ToolTip="退出倒计时"/>
+        <TextBlock Text="北京时间 UTC+8" FontSize="11" Foreground="#A57B6C" VerticalAlignment="Center"/>
+        <Button x:Name="OpenManagerButton" Grid.Column="1" Width="62" Height="30" Margin="8,0,0,0" Content="管理" FontSize="12" Cursor="Hand" ToolTip="打开倒计时管理窗口" Background="#FFE3C7" Foreground="#92522E" BorderBrush="#F1D5C5"/>
+        <Button x:Name="CloseFloatingButton" Grid.Column="2" Width="30" Height="30" Margin="6,0,0,0" Content="×" FontSize="16" Cursor="Hand" ToolTip="退出倒计时" Background="#FFF0E4" Foreground="#92522E" BorderBrush="#F1D5C5"/>
       </Grid>
     </Grid>
   </Border>
@@ -244,30 +278,64 @@ $dangerTextBrush = $window.FindResource('DangerTextBrush')
 $floatingReader = New-Object System.Xml.XmlNodeReader $floatingXaml
 $floatingWindow = [Windows.Markup.XamlReader]::Load($floatingReader)
 $floatingDragArea = $floatingWindow.FindName('FloatingDragArea')
-$floatingName = $floatingWindow.FindName('FloatingName')
 $floatingCount = $floatingWindow.FindName('FloatingCount')
-$floatingRemaining = $floatingWindow.FindName('FloatingRemaining')
-$floatingHint = $floatingWindow.FindName('FloatingHint')
+$floatingIncome = $floatingWindow.FindName('FloatingIncome')
+$floatingList = $floatingWindow.FindName('FloatingList')
 $openManagerButton = $floatingWindow.FindName('OpenManagerButton')
 $closeFloatingButton = $floatingWindow.FindName('CloseFloatingButton')
 
 foreach ($hour in 0..23) { [void] $targetHour.Items.Add(('{0:D2}' -f $hour)) }
 foreach ($minute in 0..59) { [void] $targetMinute.Items.Add(('{0:D2}' -f $minute)); [void] $targetSecond.Items.Add(('{0:D2}' -f $minute)) }
+$displayPrecisionInput.DisplayMemberPath = 'Label'
+$displayPrecisionInput.SelectedValuePath = 'Value'
+foreach ($item in @(
+    [pscustomobject]@{ Value = 'Day'; Label = '精确到天' },
+    [pscustomobject]@{ Value = 'Hour'; Label = '精确到小时' },
+    [pscustomobject]@{ Value = 'Minute'; Label = '精确到分钟' },
+    [pscustomobject]@{ Value = 'Second'; Label = '精确到秒' }
+)) { [void] $displayPrecisionInput.Items.Add($item) }
 
 function New-CountdownRecord {
     param([string] $Id, [string] $Name, [DateTimeOffset] $TargetUtc)
     [pscustomobject]@{ id = $Id; name = $Name; targetUtc = $TargetUtc.ToUniversalTime() }
 }
 
+function New-Preferences {
+    param(
+        [ValidateSet('Day', 'Hour', 'Minute', 'Second')] [string] $Precision = 'Second',
+        [decimal] $MonthlySalary = 0,
+        [TimeSpan] $WorkStart = ([TimeSpan]'09:00'),
+        [TimeSpan] $WorkEnd = ([TimeSpan]'18:00')
+    )
+    if ($MonthlySalary -lt 0) { throw '月薪不能小于 0。' }
+    if ($WorkEnd -le $WorkStart) { throw '下班时间必须晚于上班时间。' }
+    [pscustomobject]@{ Precision = $Precision; MonthlySalary = $MonthlySalary; WorkStart = $WorkStart; WorkEnd = $WorkEnd }
+}
+
+function ConvertTo-WorkTime {
+    param([Parameter(Mandatory)] [string] $Text)
+    [TimeSpan] $value = [TimeSpan]::Zero
+    if (-not [TimeSpan]::TryParseExact($Text.Trim(), 'hh\:mm', [System.Globalization.CultureInfo]::InvariantCulture, [ref] $value)) {
+        throw '上下班时间格式无效，请使用 09:00 这样的 24 小时制时间。'
+    }
+    $value
+}
+
+function Format-WorkTime {
+    param([Parameter(Mandatory)] [TimeSpan] $Value)
+    '{0:D2}:{1:D2}' -f $Value.Hours, $Value.Minutes
+}
+
 function ConvertFrom-SettingsObject {
     param([Parameter(Mandatory)] [object] $Settings)
     $records = [System.Collections.ArrayList]::new()
+    $preferences = New-Preferences
     if ($Settings.timeZoneId -ne 'China Standard Time') { throw '设置文件时区无效。' }
     if ($Settings.schemaVersion -eq 1) {
         [void] $records.Add((New-CountdownRecord -Id ([guid]::NewGuid().ToString('N')) -Name '我的倒计时' -TargetUtc ([DateTimeOffset]::Parse($Settings.targetUtc, [System.Globalization.CultureInfo]::InvariantCulture))))
-        return [pscustomobject]@{ Records = $records; Migrated = $true }
+        return [pscustomobject]@{ Records = $records; Preferences = $preferences; Migrated = $true }
     }
-    if ($Settings.schemaVersion -ne 2) { throw '设置文件版本无效。' }
+    if ($Settings.schemaVersion -notin @(2, 3)) { throw '设置文件版本无效。' }
     $names = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     $ids = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($item in @($Settings.countdowns)) {
@@ -279,12 +347,19 @@ function ConvertFrom-SettingsObject {
         if (-not $ids.Add($id)) { throw '设置中包含重复的倒计时 ID。' }
         [void] $records.Add((New-CountdownRecord -Id $id -Name $name -TargetUtc ([DateTimeOffset]::Parse($item.targetUtc, [System.Globalization.CultureInfo]::InvariantCulture))))
     }
-    [pscustomobject]@{ Records = $records; Migrated = $false }
+    if ($Settings.schemaVersion -eq 3) {
+        $precision = [string] $Settings.displayPrecision
+        if ($precision -notin @('Day', 'Hour', 'Minute', 'Second')) { throw '设置中包含无效的悬浮窗显示精度。' }
+        [decimal] $salary = 0
+        if (-not [decimal]::TryParse(([string] $Settings.monthlySalary), [System.Globalization.NumberStyles]::Number, [System.Globalization.CultureInfo]::InvariantCulture, [ref] $salary)) { throw '设置中包含无效的月薪。' }
+        $preferences = New-Preferences -Precision $precision -MonthlySalary $salary -WorkStart (ConvertTo-WorkTime -Text ([string] $Settings.workStart)) -WorkEnd (ConvertTo-WorkTime -Text ([string] $Settings.workEnd))
+    }
+    [pscustomobject]@{ Records = $records; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 3 }
 }
 
 function ConvertTo-SettingsJson {
     $items = @($script:countdowns | ForEach-Object { [ordered]@{ id = $_.id; name = $_.name; targetUtc = $_.targetUtc.ToUniversalTime().ToString('o') } })
-    [ordered]@{ schemaVersion = 2; timeZoneId = 'China Standard Time'; countdowns = $items } | ConvertTo-Json -Depth 4
+    [ordered]@{ schemaVersion = 3; timeZoneId = 'China Standard Time'; displayPrecision = $script:displayPrecision; monthlySalary = $script:salary; workStart = (Format-WorkTime -Value $script:workStart); workEnd = (Format-WorkTime -Value $script:workEnd); countdowns = $items } | ConvertTo-Json -Depth 4
 }
 
 function Save-Settings {
@@ -317,27 +392,76 @@ function Get-SortedCountdowns {
     @($script:countdowns | Sort-Object @{ Expression = { if ($_.targetUtc -gt $now) { 0 } else { 1 } } }, @{ Expression = { $_.targetUtc } })
 }
 
-function Update-FloatingCountdown {
-    $sorted = @(Get-SortedCountdowns)
-    $active = $sorted | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow } | Select-Object -First 1
-    $floatingCount.Text = if ($sorted.Count -gt 0) { "$($sorted.Count) 个" } else { '' }
-    if ($null -eq $active) {
-        $floatingName.Text = if ($sorted.Count -gt 0) { '没有进行中的倒计时' } else { '暂无倒计时' }
-        $floatingRemaining.Text = if ($sorted.Count -gt 0) { '全部已到期' } else { '点击管理添加一个' }
-        $floatingRemaining.FontFamily = 'Microsoft YaHei UI'
-        $floatingRemaining.FontSize = 17
-        $floatingRemaining.Foreground = $mutedBrush
-        $floatingHint.Text = '北京时间 UTC+8'
-        return
+function Update-ChinaHolidayCalendar {
+    param([Parameter(Mandatory)] [int] $Year, [switch] $AllowNetwork)
+    $cacheDirectory = Join-Path $PSScriptRoot 'holiday-cache'
+    $cachePath = Join-Path $cacheDirectory "$Year.json"
+    $payload = $null
+    if (Test-Path -LiteralPath $cachePath) {
+        try { $payload = [System.IO.File]::ReadAllText($cachePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json } catch { $payload = $null }
     }
-    $parts = Get-CountdownParts -TargetUtc $active.targetUtc -NowUtc ([DateTimeOffset]::UtcNow)
-    $floatingName.Text = $active.name
-    $floatingRemaining.Text = ('{0} 天 {1:D2}:{2:D2}:{3:D2}' -f $parts.Days, $parts.Hours, $parts.Minutes, $parts.Seconds)
-    $floatingRemaining.FontFamily = 'Consolas'
-    $floatingRemaining.FontSize = 22
-    $floatingRemaining.Foreground = $inkBrush
-    $beijing = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($active.targetUtc, 'China Standard Time')
-    $floatingHint.Text = "截止 $($beijing.ToString('MM月dd日 HH:mm')) · 北京时间"
+    if ($null -eq $payload -and $AllowNetwork) {
+        try {
+            $uri = "https://uapis.cn/api/v1/misc/holiday-calendar?year=$Year&holiday_type=legal&timezone=Asia%2FShanghai"
+            $payload = (Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 10).Content | ConvertFrom-Json
+            New-Item -ItemType Directory -Path $cacheDirectory -Force | Out-Null
+            [System.IO.File]::WriteAllText($cachePath, ($payload | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
+        }
+        catch { $script:holidayCalendarStatus = '节假日日历未就绪'; return $false }
+    }
+    if ($null -eq $payload -or @($payload.days).Count -lt 365) { $script:holidayCalendarStatus = '节假日日历未就绪'; return $false }
+    $map = @{}
+    foreach ($day in @($payload.days)) { $map[[string] $day.date] = [bool] $day.is_workday }
+    $script:workdayMap = $map
+    $script:holidayCalendarStatus = "已同步 $Year 年法定节假日与调休"
+    $true
+}
+
+function New-FloatingCountdownView {
+    param([Parameter(Mandatory)] [object] $Record)
+    $border = New-Object System.Windows.Controls.Border
+    $border.Background = $canvasBrush; $border.BorderBrush = $hairlineBrush; $border.BorderThickness = 1
+    $border.CornerRadius = 12; $border.Padding = 10; $border.Margin = '0,0,0,8'
+    $stack = New-Object System.Windows.Controls.StackPanel
+    $name = New-Object System.Windows.Controls.TextBlock; $name.Text = $Record.name; $name.ToolTip = $Record.name; $name.FontSize = 13; $name.FontWeight = 'SemiBold'; $name.Foreground = $inkBrush; $name.TextTrimming = 'CharacterEllipsis'
+    $remaining = New-Object System.Windows.Controls.TextBlock; $remaining.Margin = '0,4,0,0'; $remaining.FontFamily = 'Consolas'; $remaining.FontSize = 16; $remaining.FontWeight = 'SemiBold'
+    [void] $stack.Children.Add($name); [void] $stack.Children.Add($remaining); $border.Child = $stack
+    [pscustomobject]@{ Border = $border; Remaining = $remaining }
+}
+
+function Update-FloatingCountdowns {
+    param([DateTimeOffset] $NowUtc = ([DateTimeOffset]::UtcNow))
+    $activeCount = @($script:countdowns | Where-Object { $_.targetUtc -gt $NowUtc }).Count
+    $floatingCount.Text = if ($activeCount -gt 0) { "$activeCount 个倒计时" } else { '' }
+    $beijingNow = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($NowUtc, 'China Standard Time')
+    if ($null -eq $script:workdayMap) { $floatingIncome.Text = $script:holidayCalendarStatus }
+    else {
+        $earnings = Get-WorkdayEarnings -MonthlySalary $script:salary -WorkStart $script:workStart -WorkEnd $script:workEnd -BeijingNow $beijingNow -WorkdayMap $script:workdayMap
+        $floatingIncome.Text = ('今日已赚 ￥{0:N2}' -f $earnings)
+    }
+    foreach ($record in $script:countdowns) {
+        $view = $script:floatingViews[$record.id]
+        if ($null -eq $view) { continue }
+        $parts = Get-CountdownParts -TargetUtc $record.targetUtc -NowUtc $NowUtc
+        $view.Remaining.Text = Format-CountdownParts -Parts $parts -Precision $script:displayPrecision
+        $view.Remaining.Foreground = if ($parts.IsElapsed) { $expiredTextBrush } else { $inkBrush }
+    }
+}
+
+function Render-FloatingCountdowns {
+    $floatingList.Items.Clear()
+    $script:floatingViews = @{}
+    $sorted = @(Get-SortedCountdowns | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow })
+    if ($sorted.Count -eq 0) {
+        $empty = New-Object System.Windows.Controls.TextBlock; $empty.Text = '点击管理添加一个进行中的倒计时吧'; $empty.Foreground = $mutedBrush; $empty.FontSize = 13; $empty.Margin = '2,8,0,8'
+        [void] $floatingList.Items.Add($empty)
+    }
+    foreach ($record in $sorted) {
+        $view = New-FloatingCountdownView -Record $record
+        [void] $floatingList.Items.Add($view.Border)
+        $script:floatingViews[$record.id] = $view
+    }
+    Update-FloatingCountdowns
 }
 
 function New-CardButton {
@@ -364,7 +488,7 @@ function Update-CardValues {
             $view.Status.Foreground = $expiredTextBrush
         }
         else {
-            $view.Remaining.Text = ('{0} 天 {1:D2} 时 {2:D2} 分 {3:D2} 秒' -f $parts.Days, $parts.Hours, $parts.Minutes, $parts.Seconds)
+            $view.Remaining.Text = Format-CountdownParts -Parts $parts -Precision Second
             $view.Remaining.Foreground = $inkBrush
             $view.Status.Text = '进行中'
             $view.Status.Background = $successSurfaceBrush
@@ -424,7 +548,7 @@ function Render-Cards {
         $script:cardViews[$record.id] = [pscustomobject]@{ Remaining = $remaining; Status = $status }
     }
     Update-CardValues
-    Update-FloatingCountdown
+    Render-FloatingCountdowns
 }
 
 if (Test-Path -LiteralPath $settingsPath) {
@@ -432,6 +556,10 @@ if (Test-Path -LiteralPath $settingsPath) {
         $settings = [System.IO.File]::ReadAllText($settingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
         $loaded = ConvertFrom-SettingsObject -Settings $settings
         foreach ($record in $loaded.Records) { [void] $script:countdowns.Add($record) }
+        $script:displayPrecision = $loaded.Preferences.Precision
+        $script:salary = $loaded.Preferences.MonthlySalary
+        $script:workStart = $loaded.Preferences.WorkStart
+        $script:workEnd = $loaded.Preferences.WorkEnd
         $script:settingsWereMigrated = $loaded.Migrated
         if ($loaded.Migrated -and -not $ValidateOnly) { Save-Settings }
     }
@@ -440,6 +568,17 @@ if (Test-Path -LiteralPath $settingsPath) {
 
 $setNowButton.Add_Click({ Set-TimeControls -BeijingTime (Get-BeijingNow); $messageText.Text = '' })
 $cancelButton.Add_Click({ Reset-Editor })
+$savePreferencesButton.Add_Click({
+    try {
+        [decimal] $salary = 0
+        if (-not [decimal]::TryParse($monthlySalary.Text.Trim(), [System.Globalization.NumberStyles]::Number, [System.Globalization.CultureInfo]::InvariantCulture, [ref] $salary)) { throw '月薪请输入 0 或更大的数字。' }
+        $preferences = New-Preferences -Precision ([string] $displayPrecisionInput.SelectedValue) -MonthlySalary $salary -WorkStart (ConvertTo-WorkTime -Text $workStartInput.Text) -WorkEnd (ConvertTo-WorkTime -Text $workEndInput.Text)
+        $script:displayPrecision = $preferences.Precision; $script:salary = $preferences.MonthlySalary; $script:workStart = $preferences.WorkStart; $script:workEnd = $preferences.WorkEnd
+        Save-Settings; Update-FloatingCountdowns
+        $messageText.Foreground = $successTextBrush; $messageText.Text = '悬浮窗精度和今日收入设置已保存。'
+    }
+    catch { $messageText.Foreground = $errorBrush; $messageText.Text = $_.Exception.Message }
+})
 $saveButton.Add_Click({
     try {
         $messageText.Text = ''
@@ -481,7 +620,7 @@ $openManagerButton.Add_Click({
 })
 $closeFloatingButton.Add_Click({ $floatingWindow.Close() })
 $floatingWindow.Add_Loaded({
-    $status = [ordered]@{ schemaVersion = 2; title = $window.Title; processId = $PID; sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId; loadedAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); timeZoneId = 'China Standard Time' } | ConvertTo-Json
+    $status = [ordered]@{ schemaVersion = 3; title = $window.Title; processId = $PID; sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId; loadedAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); timeZoneId = 'China Standard Time' } | ConvertTo-Json
     [System.IO.File]::WriteAllText("$runtimeStatusPath.tmp", $status, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath "$runtimeStatusPath.tmp" -Destination $runtimeStatusPath -Force
 })
@@ -492,6 +631,11 @@ $floatingWindow.Add_Closed({
 })
 
 Reset-Editor
+$displayPrecisionInput.SelectedValue = $script:displayPrecision
+$monthlySalary.Text = $script:salary.ToString('0.##', [System.Globalization.CultureInfo]::InvariantCulture)
+$workStartInput.Text = Format-WorkTime -Value $script:workStart
+$workEndInput.Text = Format-WorkTime -Value $script:workEnd
+if (-not $ValidateOnly) { [void] (Update-ChinaHolidayCalendar -Year (Get-BeijingNow).Year -AllowNetwork) }
 Render-Cards
 
 if ($ValidateOnly) {
@@ -513,7 +657,7 @@ if ($ValidateOnly) {
     $persistenceRoundTrip = $false
     if (-not [string]::IsNullOrWhiteSpace($SettingsFile)) {
         $roundTrip = ConvertTo-SettingsJson | ConvertFrom-Json
-        $persistenceRoundTrip = $roundTrip.schemaVersion -eq 2 -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
+        $persistenceRoundTrip = $roundTrip.schemaVersion -eq 3 -and $roundTrip.displayPrecision -eq $script:displayPrecision -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
     }
     $duplicateSettingsRejected = $false
     try {
@@ -544,8 +688,11 @@ if ($ValidateOnly) {
         PersistenceRoundTrip = $persistenceRoundTrip
         CardActionsBoundByTag = $cardActionsBoundByTag
         FloatingWindowPresent = $null -ne $floatingWindow
-        FloatingCountdownText = $floatingRemaining.Text
+        FloatingCountdownCount = $script:floatingViews.Count
+        FloatingCountdownTexts = @((Get-SortedCountdowns | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow }) | ForEach-Object { $script:floatingViews[$_.id].Remaining.Text })
+        FloatingIncomeText = $floatingIncome.Text
         FloatingManagerButtonPresent = $null -ne $openManagerButton
+        HasPreferenceControls = $null -ne $displayPrecisionInput -and $null -ne $monthlySalary -and $null -ne $workStartInput -and $null -ne $workEndInput -and $null -ne $savePreferencesButton
         LoadedCountdowns = $script:countdowns.Count; SortedNames = @((Get-SortedCountdowns) | ForEach-Object { $_.name })
         WindowIconLoaded = $null -ne $window.Icon
     } | ConvertTo-Json
@@ -558,7 +705,7 @@ $timer.Add_Tick({
     $now = Get-BeijingNow
     $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
     $sortSignature = @((Get-SortedCountdowns) | ForEach-Object { $_.id }) -join '|'
-    if ($sortSignature -ne $script:lastSortSignature) { Render-Cards } else { Update-CardValues; Update-FloatingCountdown }
+    if ($sortSignature -ne $script:lastSortSignature) { Render-Cards } else { Update-CardValues; Update-FloatingCountdowns }
 })
 $timer.Start()
 $now = Get-BeijingNow; $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"

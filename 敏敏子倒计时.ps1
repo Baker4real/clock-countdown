@@ -454,7 +454,7 @@ function Get-WorkdayEndCountdown {
     [pscustomobject]@{
         id = '__workday_end__'
         name = '距离下班'
-        targetUtc = ConvertTo-CountdownTargetUtc -DateText $dateText -TimeText (Format-WorkTime -Value $script:workEnd)
+        targetUtc = ConvertTo-CountdownTargetUtc -DateText $dateText -TimeText ((Format-WorkTime -Value $script:workEnd) + ':00')
     }
 }
 

@@ -1,6 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [switch] $ValidateOnly,
+    [switch] $ExerciseNoteAdd,
     [string] $SettingsFile
 )
 
@@ -173,7 +174,15 @@ $script:workdayEndSignature = ''
       <CheckBox x:Name="TopmostCheck" Grid.Column="1" Content="窗口置顶" IsChecked="True" VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource BodyBrush}"/>
     </Grid>
 
-    <Border x:Name="CountdownEditorWorkspace" Grid.Row="1" Margin="0,20,0,0" Padding="20" Background="{StaticResource CardBrush}" CornerRadius="12" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1">
+    <Grid x:Name="WorkspaceSwitcher" Grid.Row="1" Margin="0,16,0,10">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="WorkspaceTitle" Text="我的倒计时" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center"/>
+      <Button x:Name="ShowCountdownsButton" Grid.Column="1" Width="74" Height="32" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="倒计时" ToolTip="切换到倒计时管理"/>
+      <Button x:Name="ShowNotesButton" Grid.Column="2" Width="62" Height="32" Margin="6,0,0,0" Style="{StaticResource SecondaryButton}" Content="便签" ToolTip="切换到便签管理"/>
+      <TextBlock x:Name="CountdownCount" Grid.Column="3" Margin="10,0,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+    </Grid>
+
+    <Border x:Name="CountdownEditorWorkspace" Grid.Row="2" Margin="0,8,0,0" Padding="20" Background="{StaticResource CardBrush}" CornerRadius="12" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <TextBlock x:Name="EditorTitle" Text="新增倒计时" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
@@ -204,7 +213,7 @@ $script:workdayEndSignature = ''
       </Grid>
     </Border>
 
-    <Border x:Name="PreferencesWorkspace" Grid.Row="2" Margin="0,16,0,0" Padding="18" Background="{StaticResource CardBrush}" CornerRadius="16" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1">
+    <Border x:Name="PreferencesWorkspace" Grid.Row="3" Margin="0,16,0,0" Padding="18" Background="{StaticResource CardBrush}" CornerRadius="16" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid>
@@ -220,14 +229,6 @@ $script:workdayEndSignature = ''
         </Grid>
       </Grid>
     </Border>
-
-    <Grid Grid.Row="3" Margin="0,20,0,10">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock x:Name="WorkspaceTitle" Text="我的倒计时" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center"/>
-      <Button x:Name="ShowCountdownsButton" Grid.Column="1" Width="74" Height="32" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="倒计时" ToolTip="切换到倒计时管理"/>
-      <Button x:Name="ShowNotesButton" Grid.Column="2" Width="62" Height="32" Margin="6,0,0,0" Style="{StaticResource SecondaryButton}" Content="便签" ToolTip="切换到便签管理"/>
-      <TextBlock x:Name="CountdownCount" Grid.Column="3" Margin="10,0,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
-    </Grid>
 
     <Grid Grid.Row="4">
       <Grid x:Name="CountdownWorkspace">
@@ -248,6 +249,7 @@ $script:workdayEndSignature = ''
           <TextBlock x:Name="NoteEmptyState" Text="还没有便签。写下一件现在最想完成的事吧。" Foreground="{StaticResource MutedBrush}" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
+              <TextBlock x:Name="ActiveNotesHeading" Margin="2,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource NoteInkBrush}" Visibility="Collapsed"/>
               <ItemsControl x:Name="NoteList"/>
               <Button x:Name="ToggleCompletedNotesButton" Margin="0,8,0,0" Style="{StaticResource SecondaryButton}" Content="已完成" Visibility="Collapsed"/>
               <ItemsControl x:Name="CompletedNoteList" Visibility="Collapsed"/>
@@ -286,6 +288,7 @@ $countdownEditorWorkspace = $window.FindName('CountdownEditorWorkspace')
 $preferencesWorkspace = $window.FindName('PreferencesWorkspace')
 $editorTitle = $window.FindName('EditorTitle')
 $workspaceTitle = $window.FindName('WorkspaceTitle')
+$workspaceSwitcher = $window.FindName('WorkspaceSwitcher')
 $showCountdownsButton = $window.FindName('ShowCountdownsButton')
 $showNotesButton = $window.FindName('ShowNotesButton')
 $countdownWorkspace = $window.FindName('CountdownWorkspace')
@@ -298,6 +301,7 @@ $addNoteButton = $window.FindName('AddNoteButton')
 $noteMessageText = $window.FindName('NoteMessageText')
 $noteEmptyState = $window.FindName('NoteEmptyState')
 $noteList = $window.FindName('NoteList')
+$activeNotesHeading = $window.FindName('ActiveNotesHeading')
 $toggleCompletedNotesButton = $window.FindName('ToggleCompletedNotesButton')
 $completedNoteList = $window.FindName('CompletedNoteList')
 $displayPrecisionInput = $window.FindName('DisplayPrecision')
@@ -629,6 +633,7 @@ function New-NoteRow {
     param([Parameter(Mandatory)] [object] $Record, [switch] $Compact)
     $horizontalPadding = if ($Compact) { 10 } else { 14 }
     $maxWidth = if ($Compact) { 220 } else { 420 }
+    $isCompleted = [bool] $Record.isCompleted
     $border = New-Object System.Windows.Controls.Border
     $border.Background = $noteSurfaceBrush; $border.BorderBrush = $noteLineBrush; $border.BorderThickness = 1
     $border.CornerRadius = 12; $border.Padding = "$horizontalPadding,10"; $border.Margin = '0,0,0,8'
@@ -636,23 +641,30 @@ function New-NoteRow {
     [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = 'Auto' }))
     [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = '*' }))
     [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = 'Auto' }))
+    [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = 'Auto' }))
     $check = New-Object System.Windows.Controls.CheckBox
-    $check.Width = 22; $check.Height = 22; $check.Margin = '0,1,9,0'; $check.VerticalAlignment = 'Top'; $check.Cursor = 'Hand'; $check.ToolTip = '切换完成状态'
-    $check.Tag = $Record.id; $check.IsChecked = [bool] $Record.isCompleted
+    $check.Width = 22; $check.Height = 22; $check.Margin = '0,1,9,0'; $check.VerticalAlignment = 'Top'; $check.Cursor = 'Hand'
+    $check.ToolTip = if ($isCompleted) { '标记为未完成' } else { '标记为已完成' }
+    $check.Tag = $Record.id; $check.IsChecked = $isCompleted
     $text = New-Object System.Windows.Controls.TextBlock
     $text.Text = $Record.text; $text.FontSize = if ($Compact) { 13 } else { 14 }; $text.MaxWidth = $maxWidth
-    $text.TextWrapping = 'Wrap'; $text.VerticalAlignment = 'Center'; $text.Foreground = if ([bool] $Record.isCompleted) { $completedNoteBrush } else { $noteInkBrush }
-    if ([bool] $Record.isCompleted) { $text.TextDecorations = [System.Windows.TextDecorations]::Strikethrough }
+    $text.TextWrapping = 'Wrap'; $text.VerticalAlignment = 'Center'; $text.Foreground = if ($isCompleted) { $completedNoteBrush } else { $noteInkBrush }
+    if ($isCompleted) { $text.TextDecorations = [System.Windows.TextDecorations]::Strikethrough }
     [System.Windows.Controls.Grid]::SetColumn($text, 1)
+    $status = New-Object System.Windows.Controls.TextBlock
+    $status.Text = if ($isCompleted) { '已完成' } else { '未完成' }
+    $status.FontSize = if ($Compact) { 10 } else { 11 }; $status.FontWeight = 'SemiBold'; $status.VerticalAlignment = 'Center'; $status.Margin = '8,0,0,0'
+    $status.Foreground = if ($isCompleted) { $completedNoteBrush } else { $noteInkBrush }
+    [System.Windows.Controls.Grid]::SetColumn($status, 2)
     $delete = New-Object System.Windows.Controls.Button
     $delete.Content = '×'; $delete.Width = 28; $delete.Height = 28; $delete.Margin = '8,0,0,0'; $delete.Padding = 0
     $delete.Cursor = 'Hand'; $delete.ToolTip = '删除便签'; $delete.Background = $canvasBrush; $delete.Foreground = $dangerTextBrush; $delete.BorderBrush = $noteLineBrush; $delete.BorderThickness = 1
     $delete.Tag = $Record.id
-    [System.Windows.Controls.Grid]::SetColumn($delete, 2)
+    [System.Windows.Controls.Grid]::SetColumn($delete, 3)
     $check.Add_Checked({ param($sender, $eventArgs) Set-NoteCompletion -Id ([string] $sender.Tag) -IsCompleted $true })
     $check.Add_Unchecked({ param($sender, $eventArgs) Set-NoteCompletion -Id ([string] $sender.Tag) -IsCompleted $false })
     $delete.Add_Click({ param($sender, $eventArgs) Remove-Note -Id ([string] $sender.Tag) })
-    [void] $grid.Children.Add($check); [void] $grid.Children.Add($text); [void] $grid.Children.Add($delete); $border.Child = $grid
+    [void] $grid.Children.Add($check); [void] $grid.Children.Add($text); [void] $grid.Children.Add($status); [void] $grid.Children.Add($delete); $border.Child = $grid
     $border
 }
 
@@ -670,6 +682,8 @@ function Render-Notes {
     $noteList.Items.Clear(); $completedNoteList.Items.Clear()
     $active = @(Get-ActiveNotes); $completed = @(Get-CompletedNotes)
     $noteEmptyState.Visibility = if ($script:notes.Count -eq 0) { 'Visible' } else { 'Collapsed' }
+    $activeNotesHeading.Visibility = if ($active.Count -gt 0) { 'Visible' } else { 'Collapsed' }
+    $activeNotesHeading.Text = "待完成（$($active.Count)）"
     foreach ($record in $active) { [void] $noteList.Items.Add((New-NoteRow -Record $record)) }
     $toggleCompletedNotesButton.Visibility = if ($completed.Count -eq 0) { 'Collapsed' } else { 'Visible' }
     $toggleCompletedNotesButton.Content = if ($script:showCompletedNotes) { "已完成（$($completed.Count)）⌃" } else { "已完成（$($completed.Count)）⌄" }
@@ -730,13 +744,13 @@ function Set-Workspace {
 }
 
 function Add-NoteFromInput {
-    param([Parameter(Mandatory)] [System.Windows.Controls.TextBox] $Input)
+    param([Parameter(Mandatory)] [System.Windows.Controls.TextBox] $TextBox)
     try {
-        $text = $Input.Text.Trim()
+        $text = $TextBox.Text.Trim()
         [void] $script:notes.Add((New-NoteRecord -Id ([guid]::NewGuid().ToString('N')) -Text $text))
         $noteInput.Text = ''; $floatingNoteInput.Text = ''
         Save-Settings; Set-NoteMessage -Text '已添加到便签。'; Render-Notes; Render-FloatingContent
-        [void] $Input.Focus()
+        [void] $TextBox.Focus()
     }
     catch { Set-NoteMessage -Text $_.Exception.Message -IsError }
 }
@@ -745,8 +759,19 @@ function Set-NoteCompletion {
     param([Parameter(Mandatory)] [string] $Id, [Parameter(Mandatory)] [bool] $IsCompleted)
     $note = @($script:notes | Where-Object { $_.id -eq $Id })[0]
     if ($null -eq $note) { return }
+    $previousIsCompleted = [bool] $note.isCompleted
     $note.isCompleted = $IsCompleted
-    Save-Settings; Set-NoteMessage -Text ''; Render-Notes; Render-FloatingContent
+    try {
+        Save-Settings
+        $statusMessage = if ($IsCompleted) { '已标记为已完成。' } else { '已恢复为未完成。' }
+        Set-NoteMessage -Text $statusMessage
+        Render-Notes; Render-FloatingContent
+    }
+    catch {
+        $note.isCompleted = $previousIsCompleted
+        Render-Notes; Render-FloatingContent
+        Set-NoteMessage -Text $_.Exception.Message -IsError
+    }
 }
 
 function Remove-Note {
@@ -914,15 +939,15 @@ $showCountdownsButton.Add_Click({ Set-Workspace -Workspace 'Countdowns' })
 $showNotesButton.Add_Click({ Set-Workspace -Workspace 'Notes' })
 $showFloatingCountdownsButton.Add_Click({ Set-Workspace -Workspace 'Countdowns' })
 $showFloatingNotesButton.Add_Click({ Set-Workspace -Workspace 'Notes' })
-$addNoteButton.Add_Click({ Add-NoteFromInput -Input $noteInput })
-$floatingAddNoteButton.Add_Click({ Add-NoteFromInput -Input $floatingNoteInput })
+$addNoteButton.Add_Click({ Add-NoteFromInput -TextBox $noteInput })
+$floatingAddNoteButton.Add_Click({ Add-NoteFromInput -TextBox $floatingNoteInput })
 $noteInput.Add_KeyDown({
     param($sender, $eventArgs)
-    if ($eventArgs.Key -eq [System.Windows.Input.Key]::Enter) { Add-NoteFromInput -Input $noteInput; $eventArgs.Handled = $true }
+    if ($eventArgs.Key -eq [System.Windows.Input.Key]::Enter) { Add-NoteFromInput -TextBox $noteInput; $eventArgs.Handled = $true }
 })
 $floatingNoteInput.Add_KeyDown({
     param($sender, $eventArgs)
-    if ($eventArgs.Key -eq [System.Windows.Input.Key]::Enter) { Add-NoteFromInput -Input $floatingNoteInput; $eventArgs.Handled = $true }
+    if ($eventArgs.Key -eq [System.Windows.Input.Key]::Enter) { Add-NoteFromInput -TextBox $floatingNoteInput; $eventArgs.Handled = $true }
 })
 $toggleCompletedNotesButton.Add_Click({ Toggle-CompletedNotes })
 $floatingDragArea.Add_MouseLeftButtonDown({
@@ -981,6 +1006,34 @@ if ($ValidateOnly) {
         $persistenceRoundTrip = $roundTrip.schemaVersion -eq 4 -and $roundTrip.displayPrecision -eq $script:displayPrecision -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
         $notePersistenceRoundTrip = $roundTrip.schemaVersion -eq 4 -and @($roundTrip.notes).Count -eq $script:notes.Count
     }
+    $noteAddViaClick = $false
+    $noteStatusViaCheckbox = $false
+    if ($ExerciseNoteAdd) {
+        if ([string]::IsNullOrWhiteSpace($SettingsFile)) { throw '-ExerciseNoteAdd requires -SettingsFile.' }
+        Set-Workspace -Workspace 'Notes'
+        $notesBeforeAdd = $script:notes.Count
+        $addedNoteText = '验证点击添加便签'
+        $noteInput.Text = $addedNoteText
+        $addNoteButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        $noteAddViaClick = $script:notes.Count -eq ($notesBeforeAdd + 1) -and $noteInput.Text -eq '' -and @($script:notes | Where-Object { $_.text -eq $addedNoteText -and -not $_.isCompleted }).Count -eq 1
+        if ($noteAddViaClick) {
+            $addedNote = @($script:notes | Where-Object { $_.text -eq $addedNoteText })[0]
+            $activeRow = New-NoteRow -Record $addedNote
+            $activeCheckBox = @($activeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and [string] $_.Tag -eq $addedNote.id })[0]
+            if ($null -ne $activeCheckBox) {
+                $activeCheckBox.IsChecked = $true
+                $activeCheckBox.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ToggleButton]::CheckedEvent)))
+                $wasMarkedComplete = [bool] $addedNote.isCompleted -and @((Get-CompletedNotes) | Where-Object { $_.id -eq $addedNote.id }).Count -eq 1
+                $completedRow = New-NoteRow -Record $addedNote
+                $completedCheckBox = @($completedRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and [string] $_.Tag -eq $addedNote.id })[0]
+                if ($null -ne $completedCheckBox) {
+                    $completedCheckBox.IsChecked = $false
+                    $completedCheckBox.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ToggleButton]::UncheckedEvent)))
+                }
+                $noteStatusViaCheckbox = $wasMarkedComplete -and -not [bool] $addedNote.isCompleted -and @((Get-ActiveNotes) | Where-Object { $_.id -eq $addedNote.id }).Count -eq 1
+            }
+        }
+    }
     $invalidNotesRejected = $false
     try {
         ConvertFrom-SettingsObject -Settings ([pscustomobject]@{ schemaVersion = 4; timeZoneId = 'China Standard Time'; displayPrecision = 'Second'; monthlySalary = 0; workStart = '09:00'; workEnd = '18:00'; countdowns = @(); notes = @([pscustomobject]@{ id = 'note'; text = ''; isCompleted = $false }) }) | Out-Null
@@ -1021,11 +1074,16 @@ if ($ValidateOnly) {
             }
         }
     }
+    $renderedNoteTexts = @($renderedNoteCards | ForEach-Object {
+        @($_.Child.Children | Where-Object { $_ -is [System.Windows.Controls.TextBlock] } | ForEach-Object { [string] $_.Text })
+    })
+    $noteStatusLabelsPresent = $renderedNoteTexts -contains '未完成' -and $renderedNoteTexts -contains '已完成'
     $script:showCompletedNotes = $false
     Render-Notes
     Set-Workspace -Workspace 'Notes'
     [void] ($unifiedWorkspaceSwitches = $notesWorkspace.Visibility -eq 'Visible' -and $countdownWorkspace.Visibility -eq 'Collapsed' -and $floatingNotesEditor.Visibility -eq 'Visible' -and $floatingCountdownSummary.Visibility -eq 'Collapsed')
     Set-Workspace -Workspace 'Countdowns'
+    $workspaceSwitcherBeforeEditors = [System.Windows.Controls.Grid]::GetRow($workspaceSwitcher) -lt [System.Windows.Controls.Grid]::GetRow($countdownEditorWorkspace)
     [pscustomobject]@{
         Valid = $true; Title = $window.Title; Width = $window.Width; Height = $window.Height
         RequiredControls = @($countdownName, $targetDate, $targetHour, $targetMinute, $targetSecond, $setNowButton, $saveButton, $cancelButton, $countdownList, $messageText, $nowText, $topmostCheck).Count
@@ -1039,8 +1097,11 @@ if ($ValidateOnly) {
         InvalidNotesRejected = $invalidNotesRejected
         PersistenceRoundTrip = $persistenceRoundTrip
         NotePersistenceRoundTrip = $notePersistenceRoundTrip
+        NoteAddViaClick = $noteAddViaClick
+        NoteStatusViaCheckbox = $noteStatusViaCheckbox
         CardActionsBoundByTag = $cardActionsBoundByTag
         NoteActionsBoundByTag = $noteActionsBoundByTag
+        NoteStatusLabelsPresent = $noteStatusLabelsPresent
         CompletedNotesCollapsed = $completedNotesCollapsed
         FloatingWindowPresent = $null -ne $floatingWindow
         FloatingCountdownCount = @($script:floatingViews.Keys | Where-Object { $_ -ne '__workday_end__' }).Count
@@ -1048,10 +1109,11 @@ if ($ValidateOnly) {
         FloatingCountdownTexts = @((Get-SortedCountdowns | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow }) | ForEach-Object { $script:floatingViews[$_.id].Remaining.Text })
         FloatingIncomeText = $floatingIncome.Text
         FloatingManagerButtonPresent = $null -ne $openManagerButton
-        HasUnifiedNoteEntry = $null -ne $showNotesButton -and $null -ne $showFloatingNotesButton -and $null -ne $notesWorkspace
+        HasUnifiedNoteEntry = $null -ne $workspaceSwitcher -and $null -ne $showNotesButton -and $null -ne $showFloatingNotesButton -and $null -ne $notesWorkspace
         HasNoteControls = $null -ne $noteInput -and $null -ne $addNoteButton -and $null -ne $floatingNoteInput -and $null -ne $floatingAddNoteButton
         HasOpenNotesActions = $null -ne $showNotesButton -and $null -ne $showFloatingNotesButton
         UnifiedWorkspaceSwitches = $unifiedWorkspaceSwitches
+        WorkspaceSwitcherBeforeEditors = $workspaceSwitcherBeforeEditors
         HasPreferenceControls = $null -ne $displayPrecisionInput -and $null -ne $monthlySalary -and $null -ne $workStartInput -and $null -ne $workEndInput -and $null -ne $savePreferencesButton
         LoadedCountdowns = $script:countdowns.Count; LoadedNotes = $script:notes.Count; SettingsWereMigrated = $script:settingsWereMigrated
         LoadedDisplayPrecision = $script:displayPrecision; LoadedMonthlySalary = $script:salary

@@ -35,12 +35,14 @@ if (-not $validation.HasUnifiedNoteEntry) { throw 'Unified sticky-note entry is 
 if (-not $validation.HasNoteControls) { throw 'Sticky-note input or add action is missing.' }
 if (-not $validation.HasOpenNotesActions) { throw 'No action opens the unified sticky-note workspace.' }
 if (-not $validation.UnifiedWorkspaceSwitches) { throw 'Countdown and sticky-note workspaces do not switch together.' }
+if (-not $validation.WorkspaceSwitcherBeforeEditors) { throw 'Countdown and sticky-note entry switcher must appear before the editors.' }
 if (@($validation.TimeOptionCounts) -join ',' -ne '24,60,60') { throw "Unexpected time option counts: $(@($validation.TimeOptionCounts) -join ',')." }
 if (-not $validation.LegacyMigrationSupported) { throw 'Legacy single-countdown settings are not migrated.' }
 if (-not $validation.DuplicateSettingsRejected) { throw 'Duplicate persisted countdown names are not rejected.' }
 if (-not $validation.InvalidNotesRejected) { throw 'Invalid persisted sticky notes are not rejected.' }
 
 $testSettingsPath = Join-Path $PSScriptRoot 'ui-test.settings.json'
+$noteAddSettingsPath = Join-Path $PSScriptRoot 'ui-note-add-test.settings.json'
 $legacyV3SettingsPath = Join-Path $PSScriptRoot 'ui-test-v3.settings.json'
 try {
     [System.IO.File]::WriteAllText($testSettingsPath, (@{
@@ -72,6 +74,7 @@ try {
     if ($listValidation.ActiveNoteCount -ne 1 -or $listValidation.CompletedNoteCount -ne 1) { throw "Unexpected sticky-note grouping: active=$($listValidation.ActiveNoteCount), completed=$($listValidation.CompletedNoteCount)." }
     if (-not $listValidation.NotePersistenceRoundTrip) { throw 'Sticky-note persistence round-trip failed.' }
     if (-not $listValidation.NoteActionsBoundByTag) { throw 'Sticky-note actions are not bound to their note ID.' }
+    if (-not $listValidation.NoteStatusLabelsPresent) { throw 'Sticky-note status labels are missing from rendered rows.' }
     if (-not $listValidation.CompletedNotesCollapsed) { throw 'Completed sticky notes should be collapsed by default.' }
     $settingsHashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $testSettingsPath).Hash
     if ($settingsHashAfterValidation -ne $settingsHashBeforeValidation) { throw 'ValidateOnly modified the supplied settings file.' }
@@ -79,6 +82,17 @@ try {
     if ($listValidation.FloatingCountdownCount -ne 1) { throw "Expected one active floating countdown card, got $($listValidation.FloatingCountdownCount)." }
     if ((@($listValidation.FloatingCountdownTexts).Count -ne 1) -or $listValidation.FloatingCountdownTexts[0] -notmatch '天 .*小时 .*分钟 .*秒') { throw "Floating countdowns did not use the unified unit format: $(@($listValidation.FloatingCountdownTexts) -join ',')" }
     if ($listValidation.FloatingIncomeText -notmatch '今日已赚 ￥|节假日日历未就绪') { throw "Floating income text is missing: $($listValidation.FloatingIncomeText)" }
+
+    Copy-Item -LiteralPath $testSettingsPath -Destination $noteAddSettingsPath -Force
+    $noteAddValidationJson = & $powerShellEngine `
+        -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
+        -ValidateOnly -ExerciseNoteAdd -SettingsFile $noteAddSettingsPath | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "Sticky-note add click validation failed: $noteAddValidationJson" }
+    $noteAddValidation = $noteAddValidationJson | ConvertFrom-Json
+    if (-not $noteAddValidation.NoteAddViaClick) { throw 'Clicking Add did not create an active sticky note and retain the application validation flow.' }
+    if (-not $noteAddValidation.NoteStatusViaCheckbox) { throw 'Sticky-note completion status did not change through its checkbox.' }
+    $noteAddSettings = [System.IO.File]::ReadAllText($noteAddSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and -not $_.isCompleted }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note.' }
 
     [System.IO.File]::WriteAllText($legacyV3SettingsPath, (@{
         schemaVersion = 3
@@ -108,6 +122,8 @@ try {
 finally {
     Remove-Item -LiteralPath $testSettingsPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$testSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $noteAddSettingsPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$noteAddSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $legacyV3SettingsPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$legacyV3SettingsPath.tmp" -Force -ErrorAction SilentlyContinue
 }

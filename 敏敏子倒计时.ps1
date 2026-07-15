@@ -32,6 +32,7 @@ $script:workStart = [TimeSpan]::FromHours(9)
 $script:workEnd = [TimeSpan]::FromHours(18)
 $script:workdayMap = $null
 $script:holidayCalendarStatus = '节假日日历未就绪'
+$script:workdayEndSignature = ''
 
 [xml] $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -444,6 +445,19 @@ function Update-ChinaHolidayCalendar {
     $true
 }
 
+function Get-WorkdayEndCountdown {
+    param([DateTimeOffset] $NowUtc = ([DateTimeOffset]::UtcNow))
+    if ($null -eq $script:workdayMap) { return $null }
+    $beijingNow = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($NowUtc, 'China Standard Time')
+    $dateText = $beijingNow.ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    if (-not $script:workdayMap.ContainsKey($dateText) -or -not [bool] $script:workdayMap[$dateText] -or $beijingNow.TimeOfDay -ge $script:workEnd) { return $null }
+    [pscustomobject]@{
+        id = '__workday_end__'
+        name = '距离下班'
+        targetUtc = ConvertTo-CountdownTargetUtc -DateText $dateText -TimeText (Format-WorkTime -Value $script:workEnd)
+    }
+}
+
 function New-FloatingCountdownView {
     param([Parameter(Mandatory)] [object] $Record)
     $border = New-Object System.Windows.Controls.Border
@@ -473,22 +487,33 @@ function Update-FloatingCountdowns {
         $view.Remaining.Text = Format-CountdownParts -Parts $parts -Precision $script:displayPrecision
         $view.Remaining.Foreground = if ($parts.IsElapsed) { $expiredTextBrush } else { $inkBrush }
     }
+    $workdayEnd = Get-WorkdayEndCountdown -NowUtc $NowUtc
+    if ($null -ne $workdayEnd -and $null -ne $script:floatingViews[$workdayEnd.id]) {
+        $parts = Get-CountdownParts -TargetUtc $workdayEnd.targetUtc -NowUtc $NowUtc
+        $script:floatingViews[$workdayEnd.id].Remaining.Text = Format-CountdownParts -Parts $parts -Precision $script:displayPrecision
+    }
 }
 
 function Render-FloatingCountdowns {
     $floatingList.Items.Clear()
     $script:floatingViews = @{}
-    $sorted = @(Get-SortedCountdowns | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow })
-    if ($sorted.Count -eq 0) {
+    $nowUtc = [DateTimeOffset]::UtcNow
+    $workdayEnd = Get-WorkdayEndCountdown -NowUtc $nowUtc
+    $script:workdayEndSignature = if ($null -eq $workdayEnd) { '' } else { $workdayEnd.targetUtc.ToString('o') }
+    $sorted = @(Get-SortedCountdowns | Where-Object { $_.targetUtc -gt $nowUtc })
+    $floatingRecords = @()
+    if ($null -ne $workdayEnd) { $floatingRecords += $workdayEnd }
+    $floatingRecords += $sorted
+    if ($floatingRecords.Count -eq 0) {
         $empty = New-Object System.Windows.Controls.TextBlock; $empty.Text = '点击管理添加一个进行中的倒计时吧'; $empty.Foreground = $mutedBrush; $empty.FontSize = 13; $empty.Margin = '2,8,0,8'
         [void] $floatingList.Items.Add($empty)
     }
-    foreach ($record in $sorted) {
+    foreach ($record in $floatingRecords) {
         $view = New-FloatingCountdownView -Record $record
         [void] $floatingList.Items.Add($view.Border)
         $script:floatingViews[$record.id] = $view
     }
-    Update-FloatingCountdowns
+    Update-FloatingCountdowns -NowUtc $nowUtc
 }
 
 function New-CardButton {
@@ -715,7 +740,8 @@ if ($ValidateOnly) {
         PersistenceRoundTrip = $persistenceRoundTrip
         CardActionsBoundByTag = $cardActionsBoundByTag
         FloatingWindowPresent = $null -ne $floatingWindow
-        FloatingCountdownCount = $script:floatingViews.Count
+        FloatingCountdownCount = @($script:floatingViews.Keys | Where-Object { $_ -ne '__workday_end__' }).Count
+        HasWorkdayEndCountdown = $null -ne (Get-WorkdayEndCountdown)
         FloatingCountdownTexts = @((Get-SortedCountdowns | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow }) | ForEach-Object { $script:floatingViews[$_.id].Remaining.Text })
         FloatingIncomeText = $floatingIncome.Text
         FloatingManagerButtonPresent = $null -ne $openManagerButton
@@ -732,7 +758,11 @@ $timer.Add_Tick({
     $now = Get-BeijingNow
     $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
     $sortSignature = @((Get-SortedCountdowns) | ForEach-Object { $_.id }) -join '|'
-    if ($sortSignature -ne $script:lastSortSignature) { Render-Cards } else { Update-CardValues; Update-FloatingCountdowns }
+    $workdayEnd = Get-WorkdayEndCountdown
+    $workdayEndSignature = if ($null -eq $workdayEnd) { '' } else { $workdayEnd.targetUtc.ToString('o') }
+    if ($sortSignature -ne $script:lastSortSignature) { Render-Cards }
+    elseif ($workdayEndSignature -ne $script:workdayEndSignature) { Render-FloatingCountdowns }
+    else { Update-CardValues; Update-FloatingCountdowns }
 })
 $timer.Start()
 $now = Get-BeijingNow; $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"

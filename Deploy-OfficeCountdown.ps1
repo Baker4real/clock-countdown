@@ -35,7 +35,7 @@ function Invoke-OfficeEncodedCommand {
     if ($LASTEXITCODE -ne 0) { throw '办公室设备上的远程命令失败。' }
 }
 
-if ((git -C $repoRoot status --porcelain).Count -ne 0) { throw '工作树不干净，拒绝部署未提交内容。' }
+if (@(git -C $repoRoot status --porcelain).Count -ne 0) { throw '工作树不干净，拒绝部署未提交内容。' }
 if ((git -C $repoRoot branch --show-current).Trim() -ne 'main') { throw '仅允许从 main 分支部署。' }
 git -C $repoRoot fetch origin main
 if ($LASTEXITCODE -ne 0) { throw '无法同步 origin/main。' }

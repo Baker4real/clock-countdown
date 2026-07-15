@@ -215,6 +215,42 @@ $expiredTextBrush = $window.FindResource('ExpiredTextBrush')
 $expiredSurfaceBrush = $window.FindResource('ExpiredSurfaceBrush')
 $dangerTextBrush = $window.FindResource('DangerTextBrush')
 
+[xml] $floatingXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="敏敏子倒计时悬浮窗" Width="336" Height="148" ResizeMode="NoResize"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True"
+        ShowInTaskbar="False" FontFamily="Microsoft YaHei UI">
+  <Border Background="#FFFFFF" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="8" Padding="14">
+    <Border.Effect><DropShadowEffect Color="#111111" BlurRadius="18" ShadowDepth="4" Opacity="0.18"/></Border.Effect>
+    <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Grid x:Name="FloatingDragArea" Cursor="SizeAll">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock x:Name="FloatingName" Text="暂无倒计时" FontSize="14" FontWeight="SemiBold" Foreground="#111111" TextTrimming="CharacterEllipsis"/>
+        <TextBlock x:Name="FloatingCount" Grid.Column="1" FontSize="11" Foreground="#6B7280" VerticalAlignment="Center"/>
+      </Grid>
+      <TextBlock x:Name="FloatingRemaining" Grid.Row="1" Margin="0,8,0,7" FontFamily="Consolas" FontSize="22" FontWeight="SemiBold" Foreground="#111111" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+      <Grid Grid.Row="2">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock x:Name="FloatingHint" Text="北京时间 UTC+8" FontSize="11" Foreground="#6B7280" VerticalAlignment="Center"/>
+        <Button x:Name="OpenManagerButton" Grid.Column="1" Width="62" Height="28" Margin="8,0,0,0" Content="管理" FontSize="12" Cursor="Hand" ToolTip="打开倒计时管理窗口"/>
+        <Button x:Name="CloseFloatingButton" Grid.Column="2" Width="28" Height="28" Margin="6,0,0,0" Content="×" FontSize="16" Cursor="Hand" ToolTip="退出倒计时"/>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>
+'@
+$floatingReader = New-Object System.Xml.XmlNodeReader $floatingXaml
+$floatingWindow = [Windows.Markup.XamlReader]::Load($floatingReader)
+$floatingDragArea = $floatingWindow.FindName('FloatingDragArea')
+$floatingName = $floatingWindow.FindName('FloatingName')
+$floatingCount = $floatingWindow.FindName('FloatingCount')
+$floatingRemaining = $floatingWindow.FindName('FloatingRemaining')
+$floatingHint = $floatingWindow.FindName('FloatingHint')
+$openManagerButton = $floatingWindow.FindName('OpenManagerButton')
+$closeFloatingButton = $floatingWindow.FindName('CloseFloatingButton')
+
 foreach ($hour in 0..23) { [void] $targetHour.Items.Add(('{0:D2}' -f $hour)) }
 foreach ($minute in 0..59) { [void] $targetMinute.Items.Add(('{0:D2}' -f $minute)); [void] $targetSecond.Items.Add(('{0:D2}' -f $minute)) }
 
@@ -279,6 +315,29 @@ function Reset-Editor {
 function Get-SortedCountdowns {
     $now = [DateTimeOffset]::UtcNow
     @($script:countdowns | Sort-Object @{ Expression = { if ($_.targetUtc -gt $now) { 0 } else { 1 } } }, @{ Expression = { $_.targetUtc } })
+}
+
+function Update-FloatingCountdown {
+    $sorted = @(Get-SortedCountdowns)
+    $active = $sorted | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow } | Select-Object -First 1
+    $floatingCount.Text = if ($sorted.Count -gt 0) { "$($sorted.Count) 个" } else { '' }
+    if ($null -eq $active) {
+        $floatingName.Text = if ($sorted.Count -gt 0) { '没有进行中的倒计时' } else { '暂无倒计时' }
+        $floatingRemaining.Text = if ($sorted.Count -gt 0) { '全部已到期' } else { '点击管理添加一个' }
+        $floatingRemaining.FontFamily = 'Microsoft YaHei UI'
+        $floatingRemaining.FontSize = 17
+        $floatingRemaining.Foreground = $mutedBrush
+        $floatingHint.Text = '北京时间 UTC+8'
+        return
+    }
+    $parts = Get-CountdownParts -TargetUtc $active.targetUtc -NowUtc ([DateTimeOffset]::UtcNow)
+    $floatingName.Text = $active.name
+    $floatingRemaining.Text = ('{0} 天 {1:D2}:{2:D2}:{3:D2}' -f $parts.Days, $parts.Hours, $parts.Minutes, $parts.Seconds)
+    $floatingRemaining.FontFamily = 'Consolas'
+    $floatingRemaining.FontSize = 22
+    $floatingRemaining.Foreground = $inkBrush
+    $beijing = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($active.targetUtc, 'China Standard Time')
+    $floatingHint.Text = "截止 $($beijing.ToString('MM月dd日 HH:mm')) · 北京时间"
 }
 
 function New-CardButton {
@@ -365,6 +424,7 @@ function Render-Cards {
         $script:cardViews[$record.id] = [pscustomobject]@{ Remaining = $remaining; Status = $status }
     }
     Update-CardValues
+    Update-FloatingCountdown
 }
 
 if (Test-Path -LiteralPath $settingsPath) {
@@ -410,12 +470,26 @@ $saveButton.Add_Click({
 
 $topmostCheck.Add_Checked({ $window.Topmost = $true })
 $topmostCheck.Add_Unchecked({ $window.Topmost = $false })
-$window.Add_Loaded({
+$floatingDragArea.Add_MouseLeftButtonDown({
+    param($sender, $eventArgs)
+    if ($eventArgs.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $floatingWindow.DragMove() }
+})
+$openManagerButton.Add_Click({
+    $window.Show()
+    $window.WindowState = 'Normal'
+    $window.Activate()
+})
+$closeFloatingButton.Add_Click({ $floatingWindow.Close() })
+$floatingWindow.Add_Loaded({
     $status = [ordered]@{ schemaVersion = 2; title = $window.Title; processId = $PID; sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId; loadedAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); timeZoneId = 'China Standard Time' } | ConvertTo-Json
     [System.IO.File]::WriteAllText("$runtimeStatusPath.tmp", $status, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath "$runtimeStatusPath.tmp" -Destination $runtimeStatusPath -Force
 })
-$window.Add_Closed({ if ($null -ne $script:singleInstanceMutex) { $script:singleInstanceMutex.ReleaseMutex(); $script:singleInstanceMutex.Dispose() } })
+$window.Add_Closing({ param($sender, $eventArgs) if (-not $ValidateOnly) { $eventArgs.Cancel = $true; $window.Hide() } })
+$floatingWindow.Add_Closed({
+    if ($null -ne $script:singleInstanceMutex) { $script:singleInstanceMutex.ReleaseMutex(); $script:singleInstanceMutex.Dispose() }
+    [Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
+})
 
 Reset-Editor
 Render-Cards
@@ -469,6 +543,9 @@ if ($ValidateOnly) {
         DuplicateSettingsRejected = $duplicateSettingsRejected
         PersistenceRoundTrip = $persistenceRoundTrip
         CardActionsBoundByTag = $cardActionsBoundByTag
+        FloatingWindowPresent = $null -ne $floatingWindow
+        FloatingCountdownText = $floatingRemaining.Text
+        FloatingManagerButtonPresent = $null -ne $openManagerButton
         LoadedCountdowns = $script:countdowns.Count; SortedNames = @((Get-SortedCountdowns) | ForEach-Object { $_.name })
         WindowIconLoaded = $null -ne $window.Icon
     } | ConvertTo-Json
@@ -481,8 +558,13 @@ $timer.Add_Tick({
     $now = Get-BeijingNow
     $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
     $sortSignature = @((Get-SortedCountdowns) | ForEach-Object { $_.id }) -join '|'
-    if ($sortSignature -ne $script:lastSortSignature) { Render-Cards } else { Update-CardValues }
+    if ($sortSignature -ne $script:lastSortSignature) { Render-Cards } else { Update-CardValues; Update-FloatingCountdown }
 })
 $timer.Start()
 $now = Get-BeijingNow; $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
-$null = $window.ShowDialog()
+$floatingWindow.WindowStartupLocation = 'Manual'
+$workArea = [System.Windows.SystemParameters]::WorkArea
+$floatingWindow.Left = $workArea.Right - $floatingWindow.Width - 24
+$floatingWindow.Top = $workArea.Bottom - $floatingWindow.Height - 48
+$floatingWindow.Show()
+[Windows.Threading.Dispatcher]::Run()

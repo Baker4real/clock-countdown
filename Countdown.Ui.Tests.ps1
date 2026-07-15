@@ -28,6 +28,8 @@ if ($validation.TimeDropDowns -ne 3) { throw "Expected three time drop-downs, go
 if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
 if (-not $validation.HasNameEditor) { throw 'Countdown name editor is missing.' }
+if (-not $validation.FloatingWindowPresent) { throw 'Desktop floating countdown window is missing.' }
+if (-not $validation.FloatingManagerButtonPresent) { throw 'Floating countdown manager action is missing.' }
 if (@($validation.TimeOptionCounts) -join ',' -ne '24,60,60') { throw "Unexpected time option counts: $(@($validation.TimeOptionCounts) -join ',')." }
 if (-not $validation.LegacyMigrationSupported) { throw 'Legacy single-countdown settings are not migrated.' }
 if (-not $validation.DuplicateSettingsRejected) { throw 'Duplicate persisted countdown names are not rejected.' }
@@ -54,6 +56,7 @@ try {
     $settingsHashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $testSettingsPath).Hash
     if ($settingsHashAfterValidation -ne $settingsHashBeforeValidation) { throw 'ValidateOnly modified the supplied settings file.' }
     if (-not $listValidation.CardActionsBoundByTag) { throw 'Card edit/delete actions are not bound to their countdown ID.' }
+    if ($listValidation.FloatingCountdownText -notmatch '天') { throw "Floating countdown did not render the upcoming countdown: $($listValidation.FloatingCountdownText)" }
 }
 finally {
     Remove-Item -LiteralPath $testSettingsPath -Force -ErrorAction SilentlyContinue
@@ -61,7 +64,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 15
+    Passed = 18
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

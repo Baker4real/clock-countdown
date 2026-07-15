@@ -275,13 +275,13 @@ $dangerTextBrush = $window.FindResource('DangerTextBrush')
 [xml] $floatingXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="敏敏子倒计时悬浮窗" Width="368" Height="440" ResizeMode="NoResize"
+        Title="敏敏子倒计时悬浮窗" Width="368" SizeToContent="Height" ResizeMode="NoResize"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True"
         ShowInTaskbar="False" FontFamily="Microsoft YaHei UI">
   <Border Background="#FFFDFC" BorderBrush="#F1D5C5" BorderThickness="1" CornerRadius="18" Padding="16">
     <Border.Effect><DropShadowEffect Color="#8A5240" BlurRadius="20" ShadowDepth="5" Opacity="0.20"/></Border.Effect>
     <Grid>
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <Grid x:Name="FloatingDragArea" Cursor="SizeAll">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <TextBlock Text="今天也在闪闪发光" FontSize="16" FontWeight="SemiBold" Foreground="#4A2D24" TextTrimming="CharacterEllipsis"/>
@@ -290,7 +290,7 @@ $dangerTextBrush = $window.FindResource('DangerTextBrush')
       <Border Grid.Row="1" Margin="0,10,0,10" Padding="12,8" Background="#FFF0E4" CornerRadius="12">
         <TextBlock x:Name="FloatingIncome" Text="今日已赚 ￥0.00" FontSize="16" FontWeight="SemiBold" Foreground="#92522E"/>
       </Border>
-      <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <ScrollViewer Grid.Row="2" MaxHeight="480" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl x:Name="FloatingList"/>
       </ScrollViewer>
       <Grid Grid.Row="3" Margin="0,10,0,0">
@@ -675,6 +675,9 @@ $floatingWindow.Add_Loaded({
     $status = [ordered]@{ schemaVersion = 3; title = $window.Title; processId = $PID; sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId; loadedAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); timeZoneId = 'China Standard Time' } | ConvertTo-Json
     [System.IO.File]::WriteAllText("$runtimeStatusPath.tmp", $status, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath "$runtimeStatusPath.tmp" -Destination $runtimeStatusPath -Force
+    $workArea = [System.Windows.SystemParameters]::WorkArea
+    $floatingWindow.Left = $workArea.Right - $floatingWindow.ActualWidth - 24
+    $floatingWindow.Top = $workArea.Bottom - $floatingWindow.ActualHeight - 48
 })
 $window.Add_Closing({ param($sender, $eventArgs) if (-not $ValidateOnly) { $eventArgs.Cancel = $true; $window.Hide() } })
 $floatingWindow.Add_Closed({
@@ -767,8 +770,5 @@ $timer.Add_Tick({
 $timer.Start()
 $now = Get-BeijingNow; $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
 $floatingWindow.WindowStartupLocation = 'Manual'
-$workArea = [System.Windows.SystemParameters]::WorkArea
-$floatingWindow.Left = $workArea.Right - $floatingWindow.Width - 24
-$floatingWindow.Top = $workArea.Bottom - $floatingWindow.Height - 48
 $floatingWindow.Show()
 [Windows.Threading.Dispatcher]::Run()

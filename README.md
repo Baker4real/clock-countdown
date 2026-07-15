@@ -47,6 +47,8 @@ pwsh -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
 
 安装器只支持安装目录和交互用户桌面均位于 `D:\` 的设备，这是当前办公室设备的安全边界。
 
+办公室设备的稳定部署方式见 [办公室部署](docs/办公室部署.md)。
+
 ## 重新编译启动器
 
 ```powershell

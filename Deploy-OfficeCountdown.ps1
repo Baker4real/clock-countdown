@@ -70,6 +70,9 @@ if ($ValidateOnly) {
 }
 
 . 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1' | Out-Null
+$officeHost = ($env:REPLICATOR_OFFICE_SSH_DESTINATION -split '@')[-1]
+& tailscale.exe ping --timeout 10s $officeHost
+if ($LASTEXITCODE -ne 0) { throw "办公室设备的 Tailscale 连通性检查失败：$officeHost" }
 $script:sshOptions = @(
     '-i', $env:REPLICATOR_OFFICE_SSH_IDENTITY_FILE,
     '-o', 'BatchMode=yes',

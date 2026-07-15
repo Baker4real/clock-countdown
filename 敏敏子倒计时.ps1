@@ -378,7 +378,6 @@ if (Test-Path -LiteralPath $settingsPath) {
     catch { $messageText.Text = "已有设置无法读取：$($_.Exception.Message)" }
 }
 
-$targetDate.Add_PreviewMouseLeftButtonDown({ param($sender, $eventArgs); if (-not $targetDate.IsDropDownOpen) { $targetDate.IsDropDownOpen = $true }; $eventArgs.Handled = $true })
 $setNowButton.Add_Click({ Set-TimeControls -BeijingTime (Get-BeijingNow); $messageText.Text = '' })
 $cancelButton.Add_Click({ Reset-Editor })
 $saveButton.Add_Click({
@@ -427,6 +426,13 @@ if ($ValidateOnly) {
     $datePickerParts = @($targetDate.Template.FindName('PART_TextBox', $targetDate), $targetDate.Template.FindName('PART_Button', $targetDate), $targetDate.Template.FindName('PART_Popup', $targetDate), $targetDate.Template.FindName('PART_Calendar', $targetDate))
     if (@($datePickerParts | Where-Object { $null -eq $_ }).Count -gt 0) { throw 'DatePicker template is missing one or more required PART_* controls.' }
     if ($datePickerParts[0].Text -ne '2026年8月30日') { throw "DatePicker did not render the complete selected date. Actual: $($datePickerParts[0].Text)" }
+    $targetDate.IsDropDownOpen = $false
+    $previewClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
+    $previewClick.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+    $targetDate.RaiseEvent($previewClick)
+    $datePickerParts[1].RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+    $datePickerButtonOpensCalendar = $targetDate.IsDropDownOpen
+    $targetDate.IsDropDownOpen = $false
     if ($null -eq $window.Icon) { throw 'Window icon was not loaded.' }
     $legacy = [pscustomobject]@{ schemaVersion = 1; timeZoneId = 'China Standard Time'; targetUtc = '2026-08-30T10:00:00Z' }
     $migration = ConvertFrom-SettingsObject -Settings $legacy
@@ -455,7 +461,8 @@ if ($ValidateOnly) {
         Valid = $true; Title = $window.Title; Width = $window.Width; Height = $window.Height
         RequiredControls = @($countdownName, $targetDate, $targetHour, $targetMinute, $targetSecond, $setNowButton, $saveButton, $cancelButton, $countdownList, $messageText, $nowText, $topmostCheck).Count
         DatePickerTemplateParts = $datePickerParts.Count; DatePickerText = $datePickerParts[0].Text
-        DateInputReadOnly = $datePickerParts[0].IsReadOnly; TimeDropDowns = @($targetHour, $targetMinute, $targetSecond).Count
+        DateInputReadOnly = $datePickerParts[0].IsReadOnly; DatePickerButtonOpensCalendar = $datePickerButtonOpensCalendar
+        TimeDropDowns = @($targetHour, $targetMinute, $targetSecond).Count
         TimeOptionCounts = @($targetHour.Items.Count, $targetMinute.Items.Count, $targetSecond.Items.Count)
         HasSetNowButton = $null -ne $setNowButton; HasCountdownList = $null -ne $countdownList; HasNameEditor = $null -ne $countdownName
         LegacyMigrationSupported = $migration.Migrated -and $migration.Records.Count -eq 1 -and $migration.Records[0].name -eq '我的倒计时'

@@ -23,6 +23,7 @@ if ($LASTEXITCODE -ne 0) {
 $validation = $validationJson | ConvertFrom-Json
 
 if (-not $validation.DateInputReadOnly) { throw 'Date selection still accepts free-text input.' }
+if (-not $validation.DatePickerButtonOpensCalendar) { throw 'Date picker calendar closes immediately after the drop-down button is clicked.' }
 if ($validation.TimeDropDowns -ne 3) { throw "Expected three time drop-downs, got $($validation.TimeDropDowns)." }
 if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
@@ -60,7 +61,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 14
+    Passed = 15
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

@@ -24,6 +24,7 @@ Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
 - `countdown-icon.ico`：窗口和桌面启动器图标
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
+- `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.Ui.Tests.ps1`：回归测试
 
 ## 本机验证
@@ -35,6 +36,7 @@ pwsh -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
 pwsh -NoLogo -NoProfile -STA -File .\Countdown.Ui.Tests.ps1
 pwsh -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1 -ValidateOnly
 pwsh -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
+pwsh -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
 
 ## 安装

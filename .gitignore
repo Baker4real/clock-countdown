@@ -1,6 +1,16 @@
 settings.json
 settings.json.tmp
+# 中断测试后可能残留的回归测试设置文件。
+clear-test.settings.json
+clear-test.settings.json.tmp
+settings-module-test.json
+settings-module-test.json.tmp
 ui-test.settings.json
+ui-test.settings.json.tmp
+ui-note-add-test.settings.json
+ui-note-add-test.settings.json.tmp
+ui-test-v3.settings.json
+ui-test-v3.settings.json.tmp
 runtime-status.json
 holiday-cache/
 .codegraph/

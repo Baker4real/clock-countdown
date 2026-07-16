@@ -34,16 +34,18 @@ Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.Ui.Tests.ps1`：回归测试
 
+设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
+
 ## 本机验证
 
 硬约束：本项目的应用、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF 入口仍必须使用 `-STA`。
 
 ```powershell
-pwsh -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
-pwsh -NoLogo -NoProfile -STA -File .\Countdown.Ui.Tests.ps1
-pwsh -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1 -ValidateOnly
-pwsh -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
-pwsh -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
+pwsh.exe -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
+pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.Ui.Tests.ps1
+pwsh.exe -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1 -ValidateOnly
+pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
+pwsh.exe -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
 
 ## 安装
@@ -51,7 +53,7 @@ pwsh -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会校准 Windows 网络时间、运行测试、复制程序到 `D:\敏敏子倒计时`、创建桌面启动器，并注册登录后自动启动的计划任务。请在管理员 PowerShell 7 中从仓库根目录运行：
 
 ```powershell
-.\Install-Countdown.ps1
+pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1
 ```
 
 安装器只支持安装目录和交互用户桌面均位于 `D:\` 的设备，这是当前办公室设备的安全边界。
@@ -61,7 +63,7 @@ pwsh -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ## 重新编译启动器
 
 ```powershell
-.\Build-Launcher.ps1
+pwsh.exe -NoLogo -NoProfile -File .\Build-Launcher.ps1
 ```
 
 重新生成 `CountdownLauncher.exe` 后，需要同步更新 `Install-Countdown.ps1` 中对应的 SHA-256 清单值。

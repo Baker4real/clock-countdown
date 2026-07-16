@@ -45,6 +45,7 @@ if (-not $validation.InvalidNotesRejected) { throw 'Invalid persisted sticky not
 
 $testSettingsPath = Join-Path $PSScriptRoot 'ui-test.settings.json'
 $noteAddSettingsPath = Join-Path $PSScriptRoot 'ui-note-add-test.settings.json'
+$persistenceFailureSettingsPath = Join-Path $PSScriptRoot 'ui-persistence-failure.settings.json'
 $legacyV3SettingsPath = Join-Path $PSScriptRoot 'ui-test-v3.settings.json'
 try {
     [System.IO.File]::WriteAllText($testSettingsPath, (@{
@@ -96,6 +97,23 @@ try {
     $noteAddSettings = [System.IO.File]::ReadAllText($noteAddSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and -not $_.isCompleted }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note.' }
 
+    Copy-Item -LiteralPath $testSettingsPath -Destination $persistenceFailureSettingsPath -Force
+    New-Item -ItemType Directory -Path "$persistenceFailureSettingsPath.tmp" -Force | Out-Null
+    $persistenceFailureHashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $persistenceFailureSettingsPath).Hash
+    $persistenceFailureValidationJson = & $powerShellEngine `
+        -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
+        -ValidateOnly -ExercisePersistenceFailures -SettingsFile $persistenceFailureSettingsPath | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "Persistence-failure validation failed: $persistenceFailureValidationJson" }
+    $persistenceFailureValidation = $persistenceFailureValidationJson | ConvertFrom-Json
+    if (-not $persistenceFailureValidation.CountdownSaveFailurePreservesState) { throw 'Countdown save committed state after persistence failed.' }
+    if (-not $persistenceFailureValidation.PreferenceSaveFailurePreservesState) { throw 'Preference save committed state after persistence failed.' }
+    if (-not $persistenceFailureValidation.CountdownSaveFailureRetainsDraft) { throw 'Countdown save failure did not retain a retryable draft.' }
+    if (-not $persistenceFailureValidation.PreferenceSaveFailureRetainsDraft) { throw 'Preference save failure did not retain a retryable draft.' }
+    if (-not $persistenceFailureValidation.PersistenceFailureTempPathRemainsDirectory) { throw 'Persistence failure fixture did not remain a temporary directory.' }
+    if (-not (Test-Path -LiteralPath "$persistenceFailureSettingsPath.tmp" -PathType Container)) { throw 'Persistence failure test did not preserve the blocked temporary path.' }
+    $persistenceFailureHashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $persistenceFailureSettingsPath).Hash
+    if ($persistenceFailureHashAfterValidation -ne $persistenceFailureHashBeforeValidation) { throw 'Persistence failure changed the supplied settings file.' }
+
     [System.IO.File]::WriteAllText($legacyV3SettingsPath, (@{
         schemaVersion = 3
         timeZoneId = 'China Standard Time'
@@ -126,6 +144,8 @@ finally {
     Remove-Item -LiteralPath "$testSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $noteAddSettingsPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$noteAddSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $persistenceFailureSettingsPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$persistenceFailureSettingsPath.tmp" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $legacyV3SettingsPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$legacyV3SettingsPath.tmp" -Force -ErrorAction SilentlyContinue
 }

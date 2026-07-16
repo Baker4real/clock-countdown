@@ -9,6 +9,8 @@ ui-test.settings.json
 ui-test.settings.json.tmp
 ui-note-add-test.settings.json
 ui-note-add-test.settings.json.tmp
+ui-persistence-failure.settings.json
+ui-persistence-failure.settings.json.tmp
 ui-test-v3.settings.json
 ui-test-v3.settings.json.tmp
 runtime-status.json

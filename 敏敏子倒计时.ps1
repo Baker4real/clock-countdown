@@ -4,6 +4,7 @@
 param(
     [switch] $ValidateOnly,
     [switch] $ExerciseNoteAdd,
+    [switch] $ExercisePersistenceFailures,
     [string] $SettingsFile
 )
 
@@ -1038,6 +1039,60 @@ if ($ValidateOnly) {
             }
         }
     }
+    $countdownSaveFailurePreservesState = $false
+    $countdownSaveFailureRetainsDraft = $false
+    $preferenceSaveFailurePreservesState = $false
+    $preferenceSaveFailureRetainsDraft = $false
+    $persistenceFailureTempPathRemainsDirectory = $false
+    if ($ExercisePersistenceFailures) {
+        if ([string]::IsNullOrWhiteSpace($SettingsFile)) { throw '-ExercisePersistenceFailures requires -SettingsFile.' }
+
+        Set-Workspace -Workspace 'Countdowns'
+        $countdownStateBeforeFailure = ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState)
+        $countdownDraftName = '验证保存失败倒计时'
+        Reset-Editor
+        $countdownName.Text = $countdownDraftName
+        $targetDate.SelectedDate = [DateTime]'2099-08-30'
+        $targetHour.SelectedItem = '12'
+        $targetMinute.SelectedItem = '34'
+        $targetSecond.SelectedItem = '56'
+        if ($null -eq $targetDate.SelectedDate -or [string] $targetHour.SelectedItem -ne '12' -or [string] $targetMinute.SelectedItem -ne '34' -or [string] $targetSecond.SelectedItem -ne '56') { throw 'Persistence-failure countdown test controls were not initialized.' }
+        $countdownFailureSentinel = 'countdown persistence failure was not exercised'
+        $messageText.Text = $countdownFailureSentinel
+        $messageText.Foreground = $mutedBrush
+        $saveButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        $countdownSaveFailurePreservesState =
+            (ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState)) -eq $countdownStateBeforeFailure -and
+            $messageText.Text -ne $countdownFailureSentinel -and
+            $messageText.Foreground -eq $errorBrush
+        $countdownSaveFailureRetainsDraft =
+            $countdownName.Text -eq $countdownDraftName -and
+            $targetDate.SelectedDate -eq [DateTime]'2099-08-30' -and
+            [string] $targetHour.SelectedItem -eq '12' -and
+            [string] $targetMinute.SelectedItem -eq '34' -and
+            [string] $targetSecond.SelectedItem -eq '56'
+
+        $preferenceStateBeforeFailure = ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState)
+        $displayPrecisionInput.SelectedValue = 'Day'
+        $monthlySalary.Text = '23001'
+        $workStartInput.Text = '08:30'
+        $workEndInput.Text = '17:30'
+        if ([string] $displayPrecisionInput.SelectedValue -ne 'Day' -or $monthlySalary.Text -ne '23001' -or $workStartInput.Text -ne '08:30' -or $workEndInput.Text -ne '17:30') { throw 'Persistence-failure preference test controls were not initialized.' }
+        $preferenceFailureSentinel = 'preference persistence failure was not exercised'
+        $messageText.Text = $preferenceFailureSentinel
+        $messageText.Foreground = $mutedBrush
+        $savePreferencesButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        $preferenceSaveFailurePreservesState =
+            (ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState)) -eq $preferenceStateBeforeFailure -and
+            $messageText.Text -ne $preferenceFailureSentinel -and
+            $messageText.Foreground -eq $errorBrush
+        $preferenceSaveFailureRetainsDraft =
+            [string] $displayPrecisionInput.SelectedValue -eq 'Day' -and
+            $monthlySalary.Text -eq '23001' -and
+            $workStartInput.Text -eq '08:30' -and
+            $workEndInput.Text -eq '17:30'
+        $persistenceFailureTempPathRemainsDirectory = Test-Path -LiteralPath "$settingsPath.tmp" -PathType Container
+    }
     $invalidNotesRejected = $false
     try {
         ConvertFrom-CountdownSettingsObject -Settings ([pscustomobject]@{ schemaVersion = 4; timeZoneId = 'China Standard Time'; displayPrecision = 'Second'; monthlySalary = 0; workStart = '09:00'; workEnd = '18:00'; countdowns = @(); notes = @([pscustomobject]@{ id = 'note'; text = ''; isCompleted = $false }) }) | Out-Null
@@ -1103,6 +1158,11 @@ if ($ValidateOnly) {
         NotePersistenceRoundTrip = $notePersistenceRoundTrip
         NoteAddViaClick = $noteAddViaClick
         NoteStatusViaCheckbox = $noteStatusViaCheckbox
+        CountdownSaveFailurePreservesState = $countdownSaveFailurePreservesState
+        PreferenceSaveFailurePreservesState = $preferenceSaveFailurePreservesState
+        CountdownSaveFailureRetainsDraft = $countdownSaveFailureRetainsDraft
+        PreferenceSaveFailureRetainsDraft = $preferenceSaveFailureRetainsDraft
+        PersistenceFailureTempPathRemainsDirectory = $persistenceFailureTempPathRemainsDirectory
         CardActionsBoundByTag = $cardActionsBoundByTag
         NoteActionsBoundByTag = $noteActionsBoundByTag
         NoteStatusLabelsPresent = $noteStatusLabelsPresent

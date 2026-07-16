@@ -1,9 +1,17 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 
+[CmdletBinding()]
 param(
-    [switch] $ValidateOnly
+    [switch] $ValidateOnly,
+    [switch] $DeferCommit,
+    [string] $DeferredReceiptPath,
+    [switch] $ParentTransactionMutexHeld,
+    [string] $ExpectedInteractiveUser,
+    [int] $ExpectedInteractiveSessionId,
+    [string] $ExpectedDesktopPath
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $staging = $PSScriptRoot
@@ -11,19 +19,33 @@ $install = 'D:\敏敏子倒计时'
 $taskName = 'Minmin Countdown'
 $legacyTaskName = '敏敏子倒计时'
 $expected = @{
+    'Countdown.App.psm1' = '34FC07AADFBC6EAEF3EEE40115E9808EA7098F5EA255ECC530CDD19A3FA515A4'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
+    'Countdown.InstallTransaction.psm1' = '369310130EF36C45449D7A7F26490BFA356B008B3FA68D6D3083CDE026C49327'
     'Countdown.Notes.psm1' = 'A87FC67C86576699F1C9ADE67C228744A8168CEE4402B08A917E16AADA4B9405'
+    'Countdown.Runtime.psm1' = '1FC8A9EB1E8A3ED4539004C5D5A04ECE871BC29BA3D5BB9DA78DAFB1EF86B407'
     'Countdown.Settings.psm1' = '410499207842F48FDF1E55B5677E622045CC06A080330FC989A5CCACEFE5F980'
-    'Countdown.Core.Tests.ps1' = '922A8CEC8E37EEFDC96F058A8D246A479AC69767DA01874A523849CB689AFCBE'
-    'Countdown.Ui.Tests.ps1' = 'D13F1B402D7F85B2598A2367953F32FCBB9E12EB184C4460573BDD782F2CFAEC'
-    '敏敏子倒计时.ps1' = 'C987BD3B2535226765514D9538CFD7574FB801FEDF82D1BA9C240AFAD6A6A906'
+    'Countdown.Core.Tests.ps1' = '7534D2BE642525568F1B49BA86FE63947F3986B089F05616CB2B6419D280BA78'
+    'Countdown.Ui.Tests.ps1' = '8EB07D5E532195F7A9DFFA16A63B7533224FD32AFE3AEC74B0D60EADE8F1BDBA'
+    '敏敏子倒计时.ps1' = '5803746184038A79391B64E901DF9142E9646A04CDD68C834333D549EDCD9EBE'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
 }
+$applicationFiles = @(
+    'Countdown.App.psm1',
+    'Countdown.Core.psm1',
+    'Countdown.InstallTransaction.psm1',
+    'Countdown.Notes.psm1',
+    'Countdown.Runtime.psm1',
+    'Countdown.Settings.psm1',
+    '敏敏子倒计时.ps1',
+    'CountdownLauncher.exe',
+    'countdown-icon.ico'
+)
 
 foreach ($entry in $expected.GetEnumerator()) {
     $path = Join-Path $staging $entry.Key
-    if (-not (Test-Path -LiteralPath $path)) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Missing staging file: $($entry.Key)"
     }
     $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
@@ -37,52 +59,25 @@ if ($ValidateOnly) {
         Valid = $true
         SourceRoot = $staging
         VerifiedFiles = $expected.Count
+        Transactional = $true
+        DeferredCommitSupported = $true
     } | ConvertTo-Json
     exit 0
+}
+
+if ($DeferCommit -and ((-not $ParentTransactionMutexHeld) -or [string]::IsNullOrWhiteSpace($DeferredReceiptPath))) {
+    throw '延迟提交只能由已持有父安装事务锁的验收方调用，并且必须提供独立回执路径。'
+}
+if ($ParentTransactionMutexHeld -and -not $DeferCommit) {
+    throw '父安装事务锁上下文只允许与 -DeferCommit 一起使用。'
 }
 
 $installResolved = [System.IO.Path]::GetFullPath($install)
 if (-not $installResolved.StartsWith('D:\', [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Install path is outside D drive: $installResolved"
 }
-if (-not (Test-Path -LiteralPath $installResolved)) {
-    New-Item -ItemType Directory -Path $installResolved -Force | Out-Null
-}
-
-Set-Service -Name W32Time -StartupType Automatic
-Start-Service -Name W32Time
-$resync = (w32tm.exe /resync /rediscover | Out-String).Trim()
-if ($LASTEXITCODE -ne 0) {
-    throw "Windows Time resync failed: $resync"
-}
-Start-Sleep -Seconds 3
-$timeSource = (w32tm.exe /query /source | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $timeSource -match 'Local CMOS|Free-running|VM IC') {
-    throw "Windows Time is not using a network source: $timeSource"
-}
-$timeStatus = (w32tm.exe /query /status | Out-String).Trim()
-if ($LASTEXITCODE -ne 0) {
-    throw 'Windows Time status query failed.'
-}
-
-$explorer = @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | Where-Object { $_.SessionId -gt 0 })
-if ($explorer.Count -ne 1) {
-    throw "Expected exactly one interactive Explorer session, found $($explorer.Count)."
-}
-$owner = Invoke-CimMethod -InputObject $explorer[0] -MethodName GetOwner
-if ($owner.ReturnValue -ne 0) {
-    throw "Could not resolve Explorer owner, return value $($owner.ReturnValue)."
-}
-$interactiveUser = "$($owner.Domain)\$($owner.User)"
-$account = New-Object System.Security.Principal.NTAccount($interactiveUser)
-$sid = $account.Translate([System.Security.Principal.SecurityIdentifier]).Value
-$userShellFolders = Get-ItemProperty -LiteralPath "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
-$desktop = [Environment]::ExpandEnvironmentVariables($userShellFolders.Desktop)
-if (-not ([System.IO.Path]::GetFullPath($desktop)).StartsWith('D:\', [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Interactive user's desktop is outside D drive: $desktop"
-}
-if (-not (Test-Path -LiteralPath $desktop)) {
-    throw "Interactive user's desktop does not exist: $desktop"
+if ((Test-Path -LiteralPath $installResolved) -and -not (Test-Path -LiteralPath $installResolved -PathType Container)) {
+    throw "Install path is not a directory: $installResolved"
 }
 
 $powerShellEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
@@ -90,9 +85,95 @@ if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
     throw '未找到 pwsh.exe；本项目要求 PowerShell 7+，不支持 Windows PowerShell 5.1。'
 }
 $powerShellProcessName = [System.IO.Path]::GetFileName($powerShellEngine)
+Get-Service -Name W32Time -ErrorAction Stop | Out-Null
 
-$testOutput = & $powerShellEngine `
-    -NoLogo -NoProfile -NonInteractive -File (Join-Path $staging 'Countdown.Core.Tests.ps1') | Out-String
+Import-Module (Join-Path $staging 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+$interactiveContext = Get-CountdownInteractiveDesktopContext
+$contextExpectationProvided = $PSBoundParameters.ContainsKey('ExpectedInteractiveUser') -or $PSBoundParameters.ContainsKey('ExpectedInteractiveSessionId') -or $PSBoundParameters.ContainsKey('ExpectedDesktopPath')
+if ($contextExpectationProvided) {
+    if (-not ($PSBoundParameters.ContainsKey('ExpectedInteractiveUser') -and $PSBoundParameters.ContainsKey('ExpectedInteractiveSessionId') -and $PSBoundParameters.ContainsKey('ExpectedDesktopPath'))) {
+        throw '办公室部署传入的交互上下文必须同时包含用户、会话和桌面路径。'
+    }
+    $expectedDesktop = Assert-CountdownInstallPathOnDDrive -Path $ExpectedDesktopPath
+    if (-not [string]::Equals([string] $interactiveContext.User, $ExpectedInteractiveUser, [System.StringComparison]::OrdinalIgnoreCase) -or
+        [int] $interactiveContext.SessionId -ne $ExpectedInteractiveSessionId -or
+        -not [string]::Equals([string] $interactiveContext.Desktop, $expectedDesktop, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw '办公室部署开始安装前交互用户、会话或桌面路径已变化；未创建安装事务。'
+    }
+}
+$interactiveUser = [string] $interactiveContext.User
+$desktop = [string] $interactiveContext.Desktop
+$legacyManagedLauncherHash = 'E5E37A9D20669E4A888969F0DB95560D45D581913B68EA7600055DE50E20AC14'
+function Assert-CountdownInstallInteractiveContextStable {
+    param([Parameter(Mandatory)] [object] $ExpectedContext)
+
+    $actualContext = Get-CountdownInteractiveDesktopContext
+    if (-not [string]::Equals([string] $actualContext.User, [string] $ExpectedContext.User, [System.StringComparison]::OrdinalIgnoreCase) -or
+        [int] $actualContext.SessionId -ne [int] $ExpectedContext.SessionId -or
+        -not [string]::Equals([string] $actualContext.Desktop, [string] $ExpectedContext.Desktop, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw '安装事务开始前交互用户、会话或桌面路径已变化；未创建安装事务。'
+    }
+    $actualContext
+}
+
+function Get-CountdownManagedDesktopLauncherOwnership {
+    param(
+        [Parameter(Mandatory)] [string] $LauncherPath,
+        [Parameter(Mandatory)] [string] $LauncherStatePath,
+        [Parameter(Mandatory)] [hashtable] $Expected,
+        [Parameter(Mandatory)] [string] $LegacyManagedLauncherHash
+    )
+
+    if (-not (Test-Path -LiteralPath $LauncherPath -PathType Leaf)) {
+        return [pscustomobject]@{ Exists = $false; Sha256 = $null; Managed = $true }
+    }
+    $currentLauncherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $LauncherPath).Hash
+    $managed = $false
+    if (Test-Path -LiteralPath $LauncherStatePath -PathType Leaf) {
+        $launcherStateJson = [System.IO.File]::ReadAllText($LauncherStatePath, [System.Text.Encoding]::UTF8)
+        $previousLauncherState = $launcherStateJson | ConvertFrom-Json
+        $pathMatches = [string]::Equals([string] $previousLauncherState.desktopPath, $LauncherPath, [System.StringComparison]::OrdinalIgnoreCase)
+        $hashMatches = $currentLauncherHash -eq $previousLauncherState.desktopSha256 -or $currentLauncherHash -eq $Expected['CountdownLauncher.exe']
+        $managed = $pathMatches -and $hashMatches
+    }
+    else {
+        $managed = $currentLauncherHash -eq $LegacyManagedLauncherHash
+    }
+    [pscustomobject]@{ Exists = $true; Sha256 = $currentLauncherHash; Managed = [bool] $managed }
+}
+
+function Wait-CountdownNetworkTimeSource {
+    param(
+        [ValidateRange(1, 120)] [int] $TimeoutSeconds = 30,
+        [ValidateRange(50, 5000)] [int] $PollMilliseconds = 500,
+        [scriptblock] $QueryTimeSourceAction
+    )
+
+    if ($null -eq $QueryTimeSourceAction) {
+        $QueryTimeSourceAction = {
+            $source = (w32tm.exe /query /source | Out-String).Trim()
+            [pscustomobject]@{ ExitCode = $LASTEXITCODE; Source = $source }
+        }
+    }
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastResult = '未返回时间源'
+    do {
+        $probe = & $QueryTimeSourceAction
+        $exitCode = if ($null -eq $probe) { -1 } else { [int] $probe.ExitCode }
+        $source = if ($null -eq $probe) { '' } else { [string] $probe.Source }
+        if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($source) -and $source -notmatch '(?i)Local CMOS|Free-running|VM IC') {
+            return $source
+        }
+        $lastResult = "exit=$exitCode; source=$source"
+        if ([DateTimeOffset]::UtcNow -ge $deadline) { break }
+        Start-Sleep -Milliseconds $PollMilliseconds
+    } while ($true)
+    throw "Windows Time did not report a network source within $TimeoutSeconds seconds: $lastResult"
+}
+
+$coreTestArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $staging 'Countdown.Core.Tests.ps1'))
+if ($ParentTransactionMutexHeld) { $coreTestArguments += '-ParentTransactionMutexHeld' }
+$testOutput = & $powerShellEngine @coreTestArguments | Out-String
 if ($LASTEXITCODE -ne 0) {
     throw "Remote tests failed: $testOutput"
 }
@@ -107,102 +188,178 @@ if ($LASTEXITCODE -ne 0) {
     throw "Remote WPF validation failed: $uiValidationOutput"
 }
 
-$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($null -ne $existingTask -and $existingTask.State -eq 'Running') {
-    Stop-ScheduledTask -TaskName $taskName
-    Start-Sleep -Seconds 2
-}
-$legacyTask = Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
-if ($null -ne $legacyTask) {
-    if ($legacyTask.State -eq 'Running') {
-        Stop-ScheduledTask -TaskName $legacyTaskName
-        Start-Sleep -Seconds 2
-    }
-    Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false
-}
-
-Copy-Item -LiteralPath (Join-Path $staging 'Countdown.Core.psm1') -Destination (Join-Path $install 'Countdown.Core.psm1') -Force
-Copy-Item -LiteralPath (Join-Path $staging 'Countdown.Notes.psm1') -Destination (Join-Path $install 'Countdown.Notes.psm1') -Force
-Copy-Item -LiteralPath (Join-Path $staging 'Countdown.Settings.psm1') -Destination (Join-Path $install 'Countdown.Settings.psm1') -Force
-Copy-Item -LiteralPath (Join-Path $staging '敏敏子倒计时.ps1') -Destination (Join-Path $install '敏敏子倒计时.ps1') -Force
-Copy-Item -LiteralPath (Join-Path $staging 'CountdownLauncher.exe') -Destination (Join-Path $install 'CountdownLauncher.exe') -Force
-Copy-Item -LiteralPath (Join-Path $staging 'countdown-icon.ico') -Destination (Join-Path $install 'countdown-icon.ico') -Force
-
-$appPath = Join-Path $install '敏敏子倒计时.ps1'
-$powershell = $powerShellEngine
-$arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$appPath`""
 $launcherPath = Join-Path $desktop '敏敏子倒计时.exe'
 $launcherStatePath = Join-Path $install 'launcher-state.json'
-if (Test-Path -LiteralPath $launcherPath) {
-    $currentLauncherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $launcherPath).Hash
-    $managedLauncher = $false
-    if (Test-Path -LiteralPath $launcherStatePath) {
-        $launcherStateJson = [System.IO.File]::ReadAllText($launcherStatePath, [System.Text.Encoding]::UTF8)
-        $previousLauncherState = $launcherStateJson | ConvertFrom-Json
-        $pathMatches = [string]::Equals($previousLauncherState.desktopPath, $launcherPath, [System.StringComparison]::OrdinalIgnoreCase)
-        $hashMatches = $currentLauncherHash -eq $previousLauncherState.desktopSha256 -or $currentLauncherHash -eq $expected['CountdownLauncher.exe']
-        $managedLauncher = $pathMatches -and $hashMatches
+$legacyLauncherPath = Join-Path $desktop '敏敏子倒计时.cmd'
+$launcherTempPath = "$launcherPath.new"
+
+Import-Module (Join-Path $staging 'Countdown.Runtime.psm1') -Force
+$installMutex = $null
+try {
+    # 即使父验收已持锁也再次获取同线程可重入 mutex；公开参数不能跳过真实安装锁。
+    $installMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 120
+    $interactiveContext = Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext
+    # 先按 journal 恢复崩溃留下的候选启动器；否则候选 exe 与旧 launcher-state 的哈希不一致，会永久阻断恢复。
+    $recoveryResult = Recover-CountdownInstallTransactions -InstallPath $install -PowerShell7Path $powerShellEngine -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
+    $recoveredTransactions = @($recoveryResult.RecoveredTransactionPaths)
+    if (@($recoveryResult.UnresolvedLauncherOwnershipConflicts).Count -gt 0) {
+        throw '检测到用户替换的桌面启动器：应用、任务和时间服务已恢复，但事务证据被保留，拒绝继续安装。'
     }
-    elseif ($currentLauncherHash -eq 'E5E37A9D20669E4A888969F0DB95560D45D581913B68EA7600055DE50E20AC14') {
-        $managedLauncher = $true
-    }
-    if (-not $managedLauncher) {
+    $initialLauncherOwnership = Get-CountdownManagedDesktopLauncherOwnership -LauncherPath $launcherPath -LauncherStatePath $launcherStatePath -Expected $expected -LegacyManagedLauncherHash $legacyManagedLauncherHash
+    if (-not [bool] $initialLauncherOwnership.Managed) {
         throw "Refusing to overwrite an unmanaged desktop launcher: $launcherPath"
     }
-}
-$launcherTempPath = "$launcherPath.new"
-Copy-Item -LiteralPath (Join-Path $install 'CountdownLauncher.exe') -Destination $launcherTempPath -Force
-$launcherTempHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $launcherTempPath).Hash
-if ($launcherTempHash -ne $expected['CountdownLauncher.exe']) {
-    Remove-Item -LiteralPath $launcherTempPath -Force
-    throw 'Desktop launcher staging hash mismatch.'
-}
-Move-Item -LiteralPath $launcherTempPath -Destination $launcherPath -Force
-if (-not (Test-Path -LiteralPath $launcherPath)) {
-    throw 'Desktop launcher was not created.'
-}
-$launcherState = [ordered]@{ schemaVersion = 1; desktopPath = $launcherPath; desktopSha256 = $launcherTempHash } | ConvertTo-Json
-[System.IO.File]::WriteAllText("$launcherStatePath.tmp", $launcherState, (New-Object System.Text.UTF8Encoding($false)))
-Move-Item -LiteralPath "$launcherStatePath.tmp" -Destination $launcherStatePath -Force
-$legacyLauncherPath = Join-Path $desktop '敏敏子倒计时.cmd'
-if (Test-Path -LiteralPath $legacyLauncherPath) {
-    $legacyExpected = "@echo off`r`nC:\Windows\System32\schtasks.exe /Run /TN `"$taskName`" >nul 2>&1`r`nexit /b %errorlevel%`r`n"
-    $legacyActual = [System.IO.File]::ReadAllText($legacyLauncherPath, [System.Text.Encoding]::ASCII)
-    if ($legacyActual -eq $legacyExpected) {
-        Remove-Item -LiteralPath $legacyLauncherPath -Force
+    $interactiveContext = Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext
+    $transaction = Start-CountdownInstallTransaction -InstallPath $install -LauncherPath $launcherPath -LegacyLauncherPath $legacyLauncherPath -TaskName $taskName -LegacyTaskName $legacyTaskName
+    $transactionCompleted = $false
+
+    try {
+        Set-Service -Name W32Time -StartupType Automatic
+        Start-Service -Name W32Time
+        $resync = (w32tm.exe /resync /rediscover | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw "Windows Time resync failed: $resync"
+        }
+        $timeSource = Wait-CountdownNetworkTimeSource -TimeoutSeconds 30 -PollMilliseconds 500
+        $timeStatus = (w32tm.exe /query /status | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Windows Time status query failed.'
+        }
+
+        Stop-CountdownManagedApplication -InstallPath $install -TaskName $taskName -LegacyTaskName $legacyTaskName -FreezeFutureStarts
+        # 旧进程已经静止后才捕获可变 settings/runtime 与桌面文件；任务原状态仍取自 prepared journal。
+        $transaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
+        $legacyTask = Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
+        if ($null -ne $legacyTask) {
+            Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false
+        }
+        if (-not (Test-Path -LiteralPath $install -PathType Container)) {
+            New-Item -ItemType Directory -Path $install -Force | Out-Null
+        }
+        $runtimeStatusPath = Join-Path $install 'runtime-status.json'
+        $startupRequestPath = Join-Path $install 'startup-request.json'
+        Remove-Item -LiteralPath $runtimeStatusPath -Force -ErrorAction SilentlyContinue
+        $startupRequest = New-CountdownStartupRequest -Path $startupRequestPath
+
+        foreach ($file in $applicationFiles) {
+            Copy-Item -LiteralPath (Join-Path $staging $file) -Destination (Join-Path $install $file) -Force
+        }
+
+        $appPath = Join-Path $install '敏敏子倒计时.ps1'
+        $arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$appPath`""
+        # 候选启动器放在受管事务目录，桌面上的 .new 仅作为用户已有文件的快照目标，绝不作为安装候选。
+        $candidateLauncherPath = Join-Path $transaction.transactionPath 'candidate-launcher.exe'
+        Copy-Item -LiteralPath (Join-Path $install 'CountdownLauncher.exe') -Destination $candidateLauncherPath -Force
+        $candidateLauncherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidateLauncherPath).Hash
+        if ($candidateLauncherHash -ne $expected['CountdownLauncher.exe']) {
+            Remove-Item -LiteralPath $candidateLauncherPath -Force
+            throw 'Transaction launcher candidate hash mismatch.'
+        }
+        # Move 前持久化候选哈希；崩溃恢复只会覆盖候选文件、原备份或缺失路径，绝不静默覆盖用户后续替换的启动器。
+        $transaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $transaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
+        # 将所有慢操作放在此前完成；紧贴替换前比较初始哈希，准备期间的任意 launcher 替换都会安全回滚。
+        $preparedLauncherOwnership = Get-CountdownManagedDesktopLauncherOwnership -LauncherPath $launcherPath -LauncherStatePath $launcherStatePath -Expected $expected -LegacyManagedLauncherHash $legacyManagedLauncherHash
+        if (-not [bool] $preparedLauncherOwnership.Managed -or
+            [bool] $preparedLauncherOwnership.Exists -ne [bool] $initialLauncherOwnership.Exists -or
+            -not [string]::Equals([string] $preparedLauncherOwnership.Sha256, [string] $initialLauncherOwnership.Sha256, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to overwrite a desktop launcher changed while installation was preparing: $launcherPath"
+        }
+        $candidateLauncherHashBeforeMove = if (Test-Path -LiteralPath $candidateLauncherPath -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $candidateLauncherPath).Hash } else { $null }
+        if ($candidateLauncherHashBeforeMove -ne $candidateLauncherHash) {
+            throw 'Transaction launcher candidate changed before desktop replacement.'
+        }
+        Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force
+        if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
+            throw 'Desktop launcher was not created.'
+        }
+        $installedLauncherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $launcherPath).Hash
+        if ($installedLauncherHash -ne $candidateLauncherHash) {
+            throw 'Desktop launcher hash mismatch after replacement.'
+        }
+        $launcherState = [ordered]@{ schemaVersion = 1; desktopPath = $launcherPath; desktopSha256 = $candidateLauncherHash } | ConvertTo-Json
+        [System.IO.File]::WriteAllText("$launcherStatePath.tmp", $launcherState, (New-Object System.Text.UTF8Encoding($false)))
+        Move-Item -LiteralPath "$launcherStatePath.tmp" -Destination $launcherStatePath -Force
+        if (Test-Path -LiteralPath $legacyLauncherPath -PathType Leaf) {
+            $legacyExpected = "@echo off`r`nC:\Windows\System32\schtasks.exe /Run /TN `"$taskName`" >nul 2>&1`r`nexit /b %errorlevel%`r`n"
+            $legacyActual = [System.IO.File]::ReadAllText($legacyLauncherPath, [System.Text.Encoding]::ASCII)
+            if ($legacyActual -eq $legacyExpected) {
+                Remove-Item -LiteralPath $legacyLauncherPath -Force
+            }
+        }
+
+        $action = New-ScheduledTaskAction -Execute $powerShellEngine -Argument $arguments -WorkingDirectory $install
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $interactiveUser
+        $principal = New-ScheduledTaskPrincipal -UserId $interactiveUser -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal `
+            -Settings $settings -Description '登录后启动敏敏子倒计时，按北京时间计算。' -Force | Out-Null
+
+        $registeredTask = Get-ScheduledTask -TaskName $taskName
+        if (-not [string]::Equals(
+                [System.IO.Path]::GetFullPath([string] $registeredTask.Actions.Execute),
+                [System.IO.Path]::GetFullPath($powerShellEngine),
+                [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+            throw "计划任务未使用 PowerShell 7：$($registeredTask.Actions.Execute)"
+        }
+
+        Start-ScheduledTask -TaskName $taskName
+        $runtimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 30 -PollMilliseconds 250
+        $result = [ordered]@{
+            TestOutput = $testOutput.Trim()
+            UiTestOutput = $uiTestOutput.Trim()
+            UiValidationOutput = $uiValidationOutput.Trim()
+            InstalledFiles = @(Get-ChildItem -LiteralPath $install -File | Select-Object Name, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
+            Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
+            Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}
+            TaskInfo = Get-ScheduledTaskInfo -TaskName $taskName | Select-Object LastRunTime, LastTaskResult, NextRunTime
+            RuntimeStatus = $runtimeStatus
+            LaunchToken = $startupRequest.launchToken
+            InteractiveSessionId = [int] $interactiveContext.SessionId
+            TimeSource = $timeSource
+            TimeStatus = $timeStatus
+            RecoveredTransactions = $recoveredTransactions
+            DeferredCommit = [bool] $DeferCommit
+            TransactionPath = if ($DeferCommit) { $transaction.transactionPath } else { $null }
+        }
+        if ($DeferCommit) {
+            [void] (Write-CountdownDeferredInstallReceipt -Path $DeferredReceiptPath -TransactionPath $transaction.transactionPath -LaunchToken $startupRequest.launchToken -InteractiveSessionId ([int] $interactiveContext.SessionId))
+            $result.DeferredReceiptPath = [System.IO.Path]::GetFullPath($DeferredReceiptPath)
+            $result | ConvertTo-Json -Depth 8
+            return
+        }
+
+        [void] (Remove-CountdownStartupRequest -Path $startupRequestPath -LaunchToken $startupRequest.launchToken)
+        [void] (Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext)
+        Complete-CountdownInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
+        $transactionCompleted = $true
+        & "$env:SystemRoot\System32\ie4uinit.exe" -show 2>$null
+        $result | ConvertTo-Json -Depth 8
+    }
+    catch {
+        $failure = $_.Exception.Message
+        if ($transactionCompleted) {
+            throw "安装已提交，但提交后收尾失败，未回滚：$failure"
+        }
+        if (-not $transactionCompleted) {
+            $rollbackResult = $null
+            try {
+                # 任意失败都优先恢复应用、任务与时间服务；若用户在事务窗口替换桌面文件，只保留该文件和可审计 journal。
+                $rollbackResult = Undo-CountdownInstallTransaction -TransactionPath $transaction.transactionPath -PowerShell7Path $powerShellEngine -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath -PreserveUnmanagedLaunchers
+            }
+            catch {
+                throw "安装失败：$failure；回滚也失败：$($_.Exception.Message)"
+            }
+            if ($null -ne $rollbackResult -and [bool] $rollbackResult.PreservedUnmanagedLaunchers) {
+                throw "安装失败，已恢复应用、任务和时间服务；为保护用户替换的桌面启动器，保留了事务证据：$failure"
+            }
+        }
+        throw "安装失败，已回滚：$failure"
     }
 }
-& "$env:SystemRoot\System32\ie4uinit.exe" -show 2>$null
-
-$action = New-ScheduledTaskAction -Execute $powershell -Argument $arguments -WorkingDirectory $install
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $interactiveUser
-$principal = New-ScheduledTaskPrincipal -UserId $interactiveUser -LogonType Interactive -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-    -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal `
-    -Settings $settings -Description '登录后启动敏敏子倒计时，按北京时间计算。' -Force | Out-Null
-
-$registeredTask = Get-ScheduledTask -TaskName $taskName
-if (-not [string]::Equals(
-        [System.IO.Path]::GetFullPath([string] $registeredTask.Actions.Execute),
-        [System.IO.Path]::GetFullPath($powerShellEngine),
-        [System.StringComparison]::OrdinalIgnoreCase
-    )) {
-    throw "计划任务未使用 PowerShell 7：$($registeredTask.Actions.Execute)"
+finally {
+    if ($null -ne $installMutex) {
+        Exit-CountdownInstallTransactionMutex -Mutex $installMutex
+    }
 }
-
-Start-ScheduledTask -TaskName $taskName
-Start-Sleep -Seconds 4
-
-[ordered]@{
-    TestOutput = $testOutput.Trim()
-    UiTestOutput = $uiTestOutput.Trim()
-    UiValidationOutput = $uiValidationOutput.Trim()
-    InstalledFiles = @(Get-ChildItem -LiteralPath $install -File | Select-Object Name, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
-    Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
-    Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}
-    TaskInfo = Get-ScheduledTaskInfo -TaskName $taskName | Select-Object LastRunTime, LastTaskResult, NextRunTime
-    Process = @(Get-CimInstance Win32_Process -Filter "Name='$powerShellProcessName'" | Where-Object { $_.CommandLine -like '*敏敏子倒计时.ps1*' } | Select-Object ProcessId, SessionId, CommandLine)
-    TimeSource = $timeSource
-    TimeStatus = $timeStatus
-} | ConvertTo-Json -Depth 6

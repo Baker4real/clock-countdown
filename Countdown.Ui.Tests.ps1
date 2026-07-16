@@ -3,6 +3,7 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 
 $powerShellEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
@@ -23,6 +24,79 @@ if ($LASTEXITCODE -ne 0) {
     throw "Application validation failed: $validationJson"
 }
 $validation = $validationJson | ConvertFrom-Json
+
+$applicationHostPath = Join-Path $PSScriptRoot 'Countdown.App.psm1'
+$applicationHostCommand = "Import-Module -Force -Name '$($applicationHostPath.Replace("'", "''"))'; Start-CountdownApplication -ValidateOnly"
+$applicationHostValidationJson = & $powerShellEngine `
+    -NoLogo -NoProfile -NonInteractive -STA -Command $applicationHostCommand | Out-String
+if ($LASTEXITCODE -ne 0) {
+    throw "Application-host validation failed: $applicationHostValidationJson"
+}
+$applicationHostValidation = $applicationHostValidationJson | ConvertFrom-Json
+if (-not $applicationHostValidation.Valid) { throw 'Application host did not preserve the ValidateOnly contract.' }
+
+$runtimeIntegrationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-ui-tests'
+$runtimeIntegrationRoot = Join-Path $runtimeIntegrationEvidenceRoot ("ui-runtime-integration-" + [guid]::NewGuid().ToString('N'))
+$runtimeIntegrationProcess = $null
+try {
+    New-Item -ItemType Directory -Path $runtimeIntegrationRoot -Force | Out-Null
+    foreach ($file in @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'countdown-icon.ico')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $runtimeIntegrationRoot $file) -Force
+    }
+    $runtimeIntegrationHostPath = Join-Path $runtimeIntegrationRoot 'Countdown.App.psm1'
+    $runtimeIntegrationEntry = Join-Path $runtimeIntegrationRoot 'runtime-harness.ps1'
+    $runtimeIntegrationRequestPath = Join-Path $runtimeIntegrationRoot 'startup-request.json'
+    $runtimeIntegrationStatusPath = Join-Path $runtimeIntegrationRoot 'runtime-status.json'
+    $runtimeIntegrationMarkerPath = Join-Path $runtimeIntegrationRoot 'calendar-bootstrap-started.txt'
+    $runtimeIntegrationHostLiteral = $runtimeIntegrationHostPath.Replace("'", "''")
+    $runtimeIntegrationMarkerLiteral = $runtimeIntegrationMarkerPath.Replace("'", "''")
+    $runtimeIntegrationHarness = @"
+`$ErrorActionPreference = 'Stop'
+trap {
+    [Console]::Error.WriteLine("HARNESS_ERROR: `$(`$_.Exception.Message)")
+    [Console]::Error.WriteLine(`$_.ScriptStackTrace)
+    exit 1
+}
+Import-Module -Name '$runtimeIntegrationHostLiteral' -Force
+`$calendarTaskFactory = {
+    param([uri] `$Uri)
+    [System.IO.File]::WriteAllText('$runtimeIntegrationMarkerLiteral', 'started', [System.Text.UTF8Encoding]::new(`$false))
+    [System.Threading.Tasks.Task]::Delay(10000)
+}
+Start-CountdownApplication -ExitAfterReadyForTest -ApplicationPath `$PSCommandPath -HolidayCalendarTaskFactory `$calendarTaskFactory
+"@
+    [System.IO.File]::WriteAllText($runtimeIntegrationEntry, $runtimeIntegrationHarness, (New-Object System.Text.UTF8Encoding($false)))
+    $runtimeIntegrationRequest = New-CountdownStartupRequest -Path $runtimeIntegrationRequestPath
+    $runtimeIntegrationOutputPath = Join-Path $runtimeIntegrationRoot 'app.stdout.txt'
+    $runtimeIntegrationErrorPath = Join-Path $runtimeIntegrationRoot 'app.stderr.txt'
+    $runtimeIntegrationArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', ('"{0}"' -f $runtimeIntegrationEntry))
+    $runtimeIntegrationProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $runtimeIntegrationArguments -PassThru -RedirectStandardOutput $runtimeIntegrationOutputPath -RedirectStandardError $runtimeIntegrationErrorPath
+    $runtimeIntegrationReceipt = Wait-CountdownWindowReady -Path $runtimeIntegrationStatusPath -LaunchToken $runtimeIntegrationRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $runtimeIntegrationEntry -TimeoutSeconds 15 -PollMilliseconds 100
+    if ($runtimeIntegrationReceipt.stage -ne 'window-ready') { throw 'Real WPF launch did not emit a window-ready receipt.' }
+    if ($runtimeIntegrationReceipt.calendarState -ne 'Pending') { throw 'Real WPF launch should become ready before the holiday calendar finishes.' }
+    $calendarBootstrapDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
+    while (-not (Test-Path -LiteralPath $runtimeIntegrationMarkerPath -PathType Leaf) -and [DateTimeOffset]::UtcNow -lt $calendarBootstrapDeadline) {
+        Start-Sleep -Milliseconds 50
+    }
+    if (-not (Test-Path -LiteralPath $runtimeIntegrationMarkerPath -PathType Leaf)) {
+        $runtimeError = if (Test-Path -LiteralPath $runtimeIntegrationErrorPath) { Get-Content -LiteralPath $runtimeIntegrationErrorPath -Raw } else { '' }
+        throw "Real WPF launch did not start the asynchronous holiday-calendar bootstrap: $runtimeError"
+    }
+    if (-not $runtimeIntegrationProcess.WaitForExit(10000)) { throw 'Real WPF launch did not close after the receipt integration test.' }
+    if ($runtimeIntegrationProcess.ExitCode -ne 0) {
+        $runtimeError = if (Test-Path -LiteralPath $runtimeIntegrationErrorPath) { Get-Content -LiteralPath $runtimeIntegrationErrorPath -Raw } else { '' }
+        throw "Real WPF launch exited with $($runtimeIntegrationProcess.ExitCode): $runtimeError"
+    }
+}
+finally {
+    if ($null -ne $runtimeIntegrationProcess -and -not $runtimeIntegrationProcess.HasExited) {
+        Stop-Process -Id $runtimeIntegrationProcess.Id -Force -ErrorAction Stop
+        if (-not $runtimeIntegrationProcess.WaitForExit(5000)) { throw 'Runtime integration child process did not exit during cleanup.' }
+    }
+    if (Test-Path -LiteralPath $runtimeIntegrationRoot) {
+        Remove-Item -LiteralPath $runtimeIntegrationRoot -Recurse -Force -ErrorAction Stop
+    }
+}
 
 if (-not $validation.DateInputReadOnly) { throw 'Date selection still accepts free-text input.' }
 if (-not $validation.DatePickerButtonOpensCalendar) { throw 'Date picker calendar closes immediately after the drop-down button is clicked.' }
@@ -163,7 +237,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 39
+    Passed = 44
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

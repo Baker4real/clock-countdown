@@ -19,6 +19,9 @@ runtime-status.json
 holiday-cache/
 .codegraph/
 runtime-status.json.tmp
+runtime-status.json.*.tmp
+startup-request.json
+startup-request.json.*.tmp
 launcher-state.json
 launcher-state.json.tmp
 *.new

@@ -25,6 +25,8 @@ Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设
 
 - `敏敏子倒计时.ps1`：WPF 桌面程序
 - `Countdown.Core.psm1`：北京时间换算与倒计时核心逻辑
+- `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
+- `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
 - `CountdownLauncher.cs`：无控制台桌面启动器源码
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
 - `countdown-icon.ico`：窗口和桌面启动器图标
@@ -34,7 +36,7 @@ Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设
 
 ## 本机验证
 
-在 PowerShell 7 中运行：
+硬约束：本项目的应用、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF 入口仍必须使用 `-STA`。
 
 ```powershell
 pwsh -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
@@ -46,7 +48,7 @@ pwsh -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 
 ## 安装
 
-安装器会优先使用 PowerShell 7（`pwsh`），仅在未安装时回退到 Windows PowerShell 5.1。它会校准 Windows 网络时间、运行测试、复制程序到 `D:\敏敏子倒计时`、创建桌面启动器，并注册登录后自动启动的计划任务。请在管理员 PowerShell 中从仓库根目录运行：
+安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会校准 Windows 网络时间、运行测试、复制程序到 `D:\敏敏子倒计时`、创建桌面启动器，并注册登录后自动启动的计划任务。请在管理员 PowerShell 7 中从仓库根目录运行：
 
 ```powershell
 .\Install-Countdown.ps1

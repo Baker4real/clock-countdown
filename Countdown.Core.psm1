@@ -1,4 +1,6 @@
-﻿Set-StrictMode -Version Latest
+﻿#requires -Version 7.0
+
+Set-StrictMode -Version Latest
 
 $script:BeijingTimeZone = [System.TimeZoneInfo]::FindSystemTimeZoneById('China Standard Time')
 

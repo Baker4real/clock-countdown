@@ -1,4 +1,6 @@
-﻿param(
+﻿#requires -Version 7.0
+
+param(
     [switch] $ValidateOnly
 )
 
@@ -9,10 +11,12 @@ $install = 'D:\敏敏子倒计时'
 $taskName = 'Minmin Countdown'
 $legacyTaskName = '敏敏子倒计时'
 $expected = @{
-    'Countdown.Core.psm1' = '9ADF262D297F1507814DAAC7E09EDD71CA8F71D8F6B43D1BEAFDD3DFB4C09C9D'
-    'Countdown.Core.Tests.ps1' = '72C4FBF9A78250731913239B2BEF55927408126C25988A39AA03CDF37BC5985F'
-    'Countdown.Ui.Tests.ps1' = '9D26F3B11E6A31A92E8D6A9F96E419863478D729C10929CB15F575E14493D614'
-    '敏敏子倒计时.ps1' = '3A087046AAC1D87B9889B78F02B3F3DCE0DADA6D16C7CBF112FF78211E4B919B'
+    'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
+    'Countdown.Notes.psm1' = 'A87FC67C86576699F1C9ADE67C228744A8168CEE4402B08A917E16AADA4B9405'
+    'Countdown.Settings.psm1' = '410499207842F48FDF1E55B5677E622045CC06A080330FC989A5CCACEFE5F980'
+    'Countdown.Core.Tests.ps1' = '922A8CEC8E37EEFDC96F058A8D246A479AC69767DA01874A523849CB689AFCBE'
+    'Countdown.Ui.Tests.ps1' = 'ACEC00A7FFBFB74A4BF44EBA064D501B7E3B8BCFF66564EF5ADF0CA43C39F144'
+    '敏敏子倒计时.ps1' = '3A1F85BCBBCA7B2F772C2D4B66CABFF065C9176B2C1244980CCE14D9D480C84D'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
 }
@@ -81,9 +85,9 @@ if (-not (Test-Path -LiteralPath $desktop)) {
     throw "Interactive user's desktop does not exist: $desktop"
 }
 
-$powerShellEngine = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+$powerShellEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
-    $powerShellEngine = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+    throw '未找到 pwsh.exe；本项目要求 PowerShell 7+，不支持 Windows PowerShell 5.1。'
 }
 $powerShellProcessName = [System.IO.Path]::GetFileName($powerShellEngine)
 
@@ -118,6 +122,8 @@ if ($null -ne $legacyTask) {
 }
 
 Copy-Item -LiteralPath (Join-Path $staging 'Countdown.Core.psm1') -Destination (Join-Path $install 'Countdown.Core.psm1') -Force
+Copy-Item -LiteralPath (Join-Path $staging 'Countdown.Notes.psm1') -Destination (Join-Path $install 'Countdown.Notes.psm1') -Force
+Copy-Item -LiteralPath (Join-Path $staging 'Countdown.Settings.psm1') -Destination (Join-Path $install 'Countdown.Settings.psm1') -Force
 Copy-Item -LiteralPath (Join-Path $staging '敏敏子倒计时.ps1') -Destination (Join-Path $install '敏敏子倒计时.ps1') -Force
 Copy-Item -LiteralPath (Join-Path $staging 'CountdownLauncher.exe') -Destination (Join-Path $install 'CountdownLauncher.exe') -Force
 Copy-Item -LiteralPath (Join-Path $staging 'countdown-icon.ico') -Destination (Join-Path $install 'countdown-icon.ico') -Force
@@ -175,6 +181,15 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
     -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal `
     -Settings $settings -Description '登录后启动敏敏子倒计时，按北京时间计算。' -Force | Out-Null
+
+$registeredTask = Get-ScheduledTask -TaskName $taskName
+if (-not [string]::Equals(
+        [System.IO.Path]::GetFullPath([string] $registeredTask.Actions.Execute),
+        [System.IO.Path]::GetFullPath($powerShellEngine),
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+    throw "计划任务未使用 PowerShell 7：$($registeredTask.Actions.Execute)"
+}
 
 Start-ScheduledTask -TaskName $taskName
 Start-Sleep -Seconds 4

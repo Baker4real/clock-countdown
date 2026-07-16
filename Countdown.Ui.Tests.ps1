@@ -1,10 +1,12 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿#requires -Version 7.0
+
+$ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 
-$powerShellEngine = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+$powerShellEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
-    $powerShellEngine = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+    throw '未找到 pwsh.exe；本项目要求 PowerShell 7+，不支持 Windows PowerShell 5.1。'
 }
 
 $picker = New-Object System.Windows.Controls.DatePicker

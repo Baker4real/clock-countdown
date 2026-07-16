@@ -1,4 +1,6 @@
-﻿[CmdletBinding()]
+﻿#requires -Version 7.0
+
+[CmdletBinding()]
 param(
     [switch] $ValidateOnly,
     [switch] $ExerciseNoteAdd,
@@ -18,6 +20,8 @@ if (-not $ValidateOnly) {
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Notes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
 
 $settingsPath = if ([string]::IsNullOrWhiteSpace($SettingsFile)) { Join-Path $PSScriptRoot 'settings.json' } else { $SettingsFile }
 $runtimeStatusPath = Join-Path $PSScriptRoot 'runtime-status.json'
@@ -401,95 +405,50 @@ function New-CountdownRecord {
     [pscustomobject]@{ id = $Id; name = $Name; targetUtc = $TargetUtc.ToUniversalTime() }
 }
 
-function New-NoteRecord {
-    param([string] $Id, [string] $Text, [bool] $IsCompleted = $false)
-    $normalizedId = ([string] $Id).Trim()
-    $normalizedText = ([string] $Text).Trim()
-    if ([string]::IsNullOrWhiteSpace($normalizedId)) { throw '便签 ID 不能为空。' }
-    if ([string]::IsNullOrWhiteSpace($normalizedText)) { throw '便签内容不能为空。' }
-    if ($normalizedText.Length -gt 140) { throw '便签内容不能超过 140 个字符。' }
-    [pscustomobject]@{ id = $normalizedId; text = $normalizedText; isCompleted = [bool] $IsCompleted }
-}
-
-function New-Preferences {
-    param(
-        [ValidateSet('Day', 'Hour', 'Minute', 'Second')] [string] $Precision = 'Second',
-        [decimal] $MonthlySalary = 0,
-        [TimeSpan] $WorkStart = ([TimeSpan]'09:00'),
-        [TimeSpan] $WorkEnd = ([TimeSpan]'18:00')
-    )
-    if ($MonthlySalary -lt 0) { throw '月薪不能小于 0。' }
-    if ($WorkEnd -le $WorkStart) { throw '下班时间必须晚于上班时间。' }
-    [pscustomobject]@{ Precision = $Precision; MonthlySalary = $MonthlySalary; WorkStart = $WorkStart; WorkEnd = $WorkEnd }
-}
-
-function ConvertTo-WorkTime {
-    param([Parameter(Mandatory)] [string] $Text)
-    [TimeSpan] $value = [TimeSpan]::Zero
-    if (-not [TimeSpan]::TryParseExact($Text.Trim(), 'hh\:mm', [System.Globalization.CultureInfo]::InvariantCulture, [ref] $value)) {
-        throw '上下班时间格式无效，请使用 09:00 这样的 24 小时制时间。'
-    }
-    $value
-}
-
 function Format-WorkTime {
     param([Parameter(Mandatory)] [TimeSpan] $Value)
     '{0:D2}:{1:D2}' -f $Value.Hours, $Value.Minutes
 }
 
-function ConvertFrom-SettingsObject {
-    param([Parameter(Mandatory)] [object] $Settings)
-    $records = [System.Collections.ArrayList]::new()
-    $notes = [System.Collections.ArrayList]::new()
-    $preferences = New-Preferences
-    if ($Settings.timeZoneId -ne 'China Standard Time') { throw '设置文件时区无效。' }
-    if ($Settings.schemaVersion -eq 1) {
-        [void] $records.Add((New-CountdownRecord -Id ([guid]::NewGuid().ToString('N')) -Name '我的倒计时' -TargetUtc ([DateTimeOffset]::Parse($Settings.targetUtc, [System.Globalization.CultureInfo]::InvariantCulture))))
-        return [pscustomobject]@{ Records = $records; Notes = $notes; Preferences = $preferences; Migrated = $true }
-    }
-    if ($Settings.schemaVersion -notin @(2, 3, 4)) { throw '设置文件版本无效。' }
-    $names = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    $ids = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($item in @($Settings.countdowns)) {
-        $id = ([string] $item.id).Trim()
-        $name = ([string] $item.name).Trim()
-        if ([string]::IsNullOrWhiteSpace($name) -or $name.Length -gt 30) { throw '设置中包含无效的倒计时名称。' }
-        if ([string]::IsNullOrWhiteSpace($id)) { throw '设置中包含空的倒计时 ID。' }
-        if (-not $names.Add($name)) { throw '设置中包含重复的倒计时名称。' }
-        if (-not $ids.Add($id)) { throw '设置中包含重复的倒计时 ID。' }
-        [void] $records.Add((New-CountdownRecord -Id $id -Name $name -TargetUtc ([DateTimeOffset]::Parse($item.targetUtc, [System.Globalization.CultureInfo]::InvariantCulture))))
-    }
-    if ($Settings.schemaVersion -ge 3) {
-        $precision = [string] $Settings.displayPrecision
-        if ($precision -notin @('Day', 'Hour', 'Minute', 'Second')) { throw '设置中包含无效的悬浮窗显示精度。' }
-        [decimal] $salary = 0
-        if (-not [decimal]::TryParse(([string] $Settings.monthlySalary), [System.Globalization.NumberStyles]::Number, [System.Globalization.CultureInfo]::InvariantCulture, [ref] $salary)) { throw '设置中包含无效的月薪。' }
-        $preferences = New-Preferences -Precision $precision -MonthlySalary $salary -WorkStart (ConvertTo-WorkTime -Text ([string] $Settings.workStart)) -WorkEnd (ConvertTo-WorkTime -Text ([string] $Settings.workEnd))
-    }
-    if ($Settings.schemaVersion -eq 4) {
-        if ($null -eq $Settings.PSObject.Properties['notes']) { throw '设置中缺少便签列表。' }
-        $noteIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-        foreach ($item in @($Settings.notes)) {
-            $id = ([string] $item.id).Trim()
-            if ($null -eq $item.PSObject.Properties['isCompleted'] -or $item.isCompleted -isnot [bool]) { throw '设置中包含无效的便签完成状态。' }
-            if (-not $noteIds.Add($id)) { throw '设置中包含重复的便签 ID。' }
-            [void] $notes.Add((New-NoteRecord -Id $id -Text ([string] $item.text) -IsCompleted ([bool] $item.isCompleted)))
+function Get-CurrentSettingsState {
+    param([System.Collections.IEnumerable] $Notes)
+
+    $effectiveNotes = if ($null -eq $Notes) { $script:notes } else { $Notes }
+    [pscustomobject]@{
+        Records = $script:countdowns
+        Notes = $effectiveNotes
+        Preferences = [pscustomobject]@{
+            Precision = $script:displayPrecision
+            MonthlySalary = $script:salary
+            WorkStart = $script:workStart
+            WorkEnd = $script:workEnd
         }
     }
-    [pscustomobject]@{ Records = $records; Notes = $notes; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 4 }
 }
 
-function ConvertTo-SettingsJson {
-    $items = @($script:countdowns | ForEach-Object { [ordered]@{ id = $_.id; name = $_.name; targetUtc = $_.targetUtc.ToUniversalTime().ToString('o') } })
-    $notes = @($script:notes | ForEach-Object { [ordered]@{ id = $_.id; text = $_.text; isCompleted = [bool] $_.isCompleted } })
-    [ordered]@{ schemaVersion = 4; timeZoneId = 'China Standard Time'; displayPrecision = $script:displayPrecision; monthlySalary = $script:salary; workStart = (Format-WorkTime -Value $script:workStart); workEnd = (Format-WorkTime -Value $script:workEnd); countdowns = $items; notes = $notes } | ConvertTo-Json -Depth 4
+function New-CurrentSettingsCandidate {
+    Copy-CountdownSettingsState -State (Get-CurrentSettingsState)
+}
+
+function Commit-SettingsState {
+    param([Parameter(Mandatory)] [object] $State)
+
+    $script:countdowns = $State.Records
+    $script:notes = $State.Notes
+    $script:displayPrecision = $State.Preferences.Precision
+    $script:salary = $State.Preferences.MonthlySalary
+    $script:workStart = $State.Preferences.WorkStart
+    $script:workEnd = $State.Preferences.WorkEnd
 }
 
 function Save-Settings {
-    $payload = ConvertTo-SettingsJson
-    $tempPath = "$settingsPath.tmp"
-    [System.IO.File]::WriteAllText($tempPath, $payload, (New-Object System.Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $tempPath -Destination $settingsPath -Force
+    param(
+        [System.Collections.IEnumerable] $Notes,
+        [object] $State
+    )
+
+    $stateToSave = if ($null -ne $State) { $State } else { Get-CurrentSettingsState -Notes $Notes }
+    Save-CountdownSettings -Path $settingsPath -State $stateToSave
 }
 
 function Set-TimeControls {
@@ -743,45 +702,75 @@ function Set-Workspace {
     }
 }
 
+function Invoke-NoteMutationFromUi {
+    param(
+        [Parameter(Mandatory)] [ValidateSet('Add', 'SetCompletion', 'Remove')] [string] $Action,
+        [string] $Text,
+        [string] $Id,
+        [bool] $IsCompleted
+    )
+
+    $arguments = @{
+        Notes = $script:notes
+        Action = $Action
+        PersistCandidate = {
+            param($candidateNotes)
+            Save-Settings -Notes $candidateNotes
+        }
+    }
+    if ($Action -eq 'Add') { $arguments.Text = $Text }
+    if ($Action -eq 'SetCompletion') {
+        $arguments.Id = $Id
+        $arguments.IsCompleted = $IsCompleted
+    }
+    if ($Action -eq 'Remove') { $arguments.Id = $Id }
+
+    try {
+        $result = Invoke-NoteMutation @arguments
+    }
+    catch {
+        try { Render-Notes; Render-FloatingContent } catch {}
+        Set-NoteMessage -Text $_.Exception.Message -IsError
+        return $null
+    }
+
+    if (-not $result.Changed) { return $result }
+    $script:notes = $result.Notes
+    try {
+        Set-NoteMessage -Text $result.Message
+        Render-Notes; Render-FloatingContent
+    }
+    catch {
+        Set-NoteMessage -Text ('便签已保存，但显示更新失败：{0}' -f $_.Exception.Message) -IsError
+    }
+    $result
+}
+
 function Add-NoteFromInput {
     param([Parameter(Mandatory)] [System.Windows.Controls.TextBox] $TextBox)
-    try {
-        $text = $TextBox.Text.Trim()
-        [void] $script:notes.Add((New-NoteRecord -Id ([guid]::NewGuid().ToString('N')) -Text $text))
-        $noteInput.Text = ''; $floatingNoteInput.Text = ''
-        Save-Settings; Set-NoteMessage -Text '已添加到便签。'; Render-Notes; Render-FloatingContent
+
+    $result = Invoke-NoteMutationFromUi -Action Add -Text $TextBox.Text
+    if ($null -ne $result -and $result.Changed) {
+        $noteInput.Text = ''
+        $floatingNoteInput.Text = ''
         [void] $TextBox.Focus()
     }
-    catch { Set-NoteMessage -Text $_.Exception.Message -IsError }
 }
 
 function Set-NoteCompletion {
     param([Parameter(Mandatory)] [string] $Id, [Parameter(Mandatory)] [bool] $IsCompleted)
-    $note = @($script:notes | Where-Object { $_.id -eq $Id })[0]
-    if ($null -eq $note) { return }
-    $previousIsCompleted = [bool] $note.isCompleted
-    $note.isCompleted = $IsCompleted
-    try {
-        Save-Settings
-        $statusMessage = if ($IsCompleted) { '已标记为已完成。' } else { '已恢复为未完成。' }
-        Set-NoteMessage -Text $statusMessage
-        Render-Notes; Render-FloatingContent
-    }
-    catch {
-        $note.isCompleted = $previousIsCompleted
-        Render-Notes; Render-FloatingContent
-        Set-NoteMessage -Text $_.Exception.Message -IsError
-    }
+
+    [void] (Invoke-NoteMutationFromUi -Action SetCompletion -Id $Id -IsCompleted $IsCompleted)
 }
 
 function Remove-Note {
     param([Parameter(Mandatory)] [string] $Id)
+
     $note = @($script:notes | Where-Object { $_.id -eq $Id })[0]
     if ($null -eq $note) { return }
     $answer = [System.Windows.MessageBox]::Show(('确定永久删除“{0}”吗？' -f $note.text), '删除便签', 'YesNo', 'Warning')
     if ($answer -ne 'Yes') { return }
-    [void] $script:notes.Remove($note)
-    Save-Settings; Set-NoteMessage -Text ('已删除“{0}”。' -f $note.text); Render-Notes; Render-FloatingContent
+    [void] (Invoke-NoteMutationFromUi -Action Remove -Id $Id)
 }
 
 function Toggle-CompletedNotes {
@@ -862,9 +851,17 @@ function Render-Cards {
             $item = @($script:countdowns | Where-Object { $_.id -eq $actionId })[0]
             $answer = [System.Windows.MessageBox]::Show(('确定永久删除“{0}”吗？' -f $item.name), '删除倒计时', 'YesNo', 'Warning')
             if ($answer -eq 'Yes') {
-                [void] $script:countdowns.Remove($item); Save-Settings
-                if ($script:editingId -eq $actionId) { Reset-Editor }
-                Render-Cards; Render-FloatingContent; $messageText.Foreground = $successTextBrush; $messageText.Text = ('已删除“{0}”。' -f $item.name)
+                try {
+                    $candidate = New-CurrentSettingsCandidate
+                    $candidateItem = @($candidate.Records | Where-Object { $_.id -eq $actionId })[0]
+                    if ($null -eq $candidateItem) { throw '未找到要删除的倒计时。' }
+                    [void] $candidate.Records.Remove($candidateItem)
+                    Save-Settings -State $candidate
+                    Commit-SettingsState -State $candidate
+                    if ($script:editingId -eq $actionId) { Reset-Editor }
+                    Render-Cards; Render-FloatingContent; $messageText.Foreground = $successTextBrush; $messageText.Text = ('已删除“{0}”。' -f $item.name)
+                }
+                catch { $messageText.Foreground = $errorBrush; $messageText.Text = $_.Exception.Message }
             }
         })
         [void] $actions.Children.Add($edit); [void] $actions.Children.Add($delete)
@@ -878,7 +875,7 @@ function Render-Cards {
 if (Test-Path -LiteralPath $settingsPath) {
     try {
         $settings = [System.IO.File]::ReadAllText($settingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-        $loaded = ConvertFrom-SettingsObject -Settings $settings
+        $loaded = ConvertFrom-CountdownSettingsObject -Settings $settings
         foreach ($record in $loaded.Records) { [void] $script:countdowns.Add($record) }
         foreach ($note in $loaded.Notes) { [void] $script:notes.Add($note) }
         $script:displayPrecision = $loaded.Preferences.Precision
@@ -897,9 +894,12 @@ $savePreferencesButton.Add_Click({
     try {
         [decimal] $salary = 0
         if (-not [decimal]::TryParse($monthlySalary.Text.Trim(), [System.Globalization.NumberStyles]::Number, [System.Globalization.CultureInfo]::InvariantCulture, [ref] $salary)) { throw '月薪请输入 0 或更大的数字。' }
-        $preferences = New-Preferences -Precision ([string] $displayPrecisionInput.SelectedValue) -MonthlySalary $salary -WorkStart (ConvertTo-WorkTime -Text $workStartInput.Text) -WorkEnd (ConvertTo-WorkTime -Text $workEndInput.Text)
-        $script:displayPrecision = $preferences.Precision; $script:salary = $preferences.MonthlySalary; $script:workStart = $preferences.WorkStart; $script:workEnd = $preferences.WorkEnd
-        Save-Settings; Update-FloatingCountdowns
+        $preferences = New-CountdownPreferences -Precision ([string] $displayPrecisionInput.SelectedValue) -MonthlySalary $salary -WorkStartText $workStartInput.Text -WorkEndText $workEndInput.Text
+        $candidate = New-CurrentSettingsCandidate
+        $candidate.Preferences = $preferences
+        Save-Settings -State $candidate
+        Commit-SettingsState -State $candidate
+        Update-FloatingCountdowns
         $messageText.Foreground = $successTextBrush; $messageText.Text = '悬浮窗精度和今日收入设置已保存。'
     }
     catch { $messageText.Foreground = $errorBrush; $messageText.Text = $_.Exception.Message }
@@ -917,16 +917,20 @@ $saveButton.Add_Click({
         $timeText = "$($targetHour.SelectedItem):$($targetMinute.SelectedItem):$($targetSecond.SelectedItem)"
         $targetUtc = ConvertTo-CountdownTargetUtc -DateText $dateText -TimeText $timeText
         if ($targetUtc -le [DateTimeOffset]::UtcNow) { throw '截止时间必须晚于当前北京时间，请向后调整。' }
+        $candidate = New-CurrentSettingsCandidate
         if ($null -eq $script:editingId) {
-            [void] $script:countdowns.Add((New-CountdownRecord -Id ([guid]::NewGuid().ToString('N')) -Name $name -TargetUtc $targetUtc))
+            [void] $candidate.Records.Add((New-CountdownRecord -Id ([guid]::NewGuid().ToString('N')) -Name $name -TargetUtc $targetUtc))
             $success = '已添加“{0}”。' -f $name
         }
         else {
-            $item = @($script:countdowns | Where-Object { $_.id -eq $script:editingId })[0]
+            $item = @($candidate.Records | Where-Object { $_.id -eq $script:editingId })[0]
+            if ($null -eq $item) { throw '未找到要编辑的倒计时。' }
             $item.name = $name; $item.targetUtc = $targetUtc
             $success = '已保存“{0}”。' -f $name
         }
-        Save-Settings; Reset-Editor; Render-Cards
+        Save-Settings -State $candidate
+        Commit-SettingsState -State $candidate
+        Reset-Editor; Render-Cards
         Render-FloatingContent
         $messageText.Foreground = $successTextBrush; $messageText.Text = $success
     }
@@ -998,11 +1002,11 @@ if ($ValidateOnly) {
     $targetDate.IsDropDownOpen = $false
     if ($null -eq $window.Icon) { throw 'Window icon was not loaded.' }
     $legacy = [pscustomobject]@{ schemaVersion = 1; timeZoneId = 'China Standard Time'; targetUtc = '2026-08-30T10:00:00Z' }
-    $migration = ConvertFrom-SettingsObject -Settings $legacy
+    $migration = ConvertFrom-CountdownSettingsObject -Settings $legacy
     $persistenceRoundTrip = $false
     $notePersistenceRoundTrip = $false
     if (-not [string]::IsNullOrWhiteSpace($SettingsFile)) {
-        $roundTrip = ConvertTo-SettingsJson | ConvertFrom-Json
+        $roundTrip = ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState) | ConvertFrom-Json
         $persistenceRoundTrip = $roundTrip.schemaVersion -eq 4 -and $roundTrip.displayPrecision -eq $script:displayPrecision -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
         $notePersistenceRoundTrip = $roundTrip.schemaVersion -eq 4 -and @($roundTrip.notes).Count -eq $script:notes.Count
     }
@@ -1021,27 +1025,27 @@ if ($ValidateOnly) {
             $activeRow = New-NoteRow -Record $addedNote
             $activeCheckBox = @($activeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and [string] $_.Tag -eq $addedNote.id })[0]
             if ($null -ne $activeCheckBox) {
-                $activeCheckBox.IsChecked = $true
                 $activeCheckBox.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ToggleButton]::CheckedEvent)))
-                $wasMarkedComplete = [bool] $addedNote.isCompleted -and @((Get-CompletedNotes) | Where-Object { $_.id -eq $addedNote.id }).Count -eq 1
-                $completedRow = New-NoteRow -Record $addedNote
+                $completedNote = @($script:notes | Where-Object { $_.id -eq $addedNote.id })[0]
+                $wasMarkedComplete = [bool] $completedNote.isCompleted -and @((Get-CompletedNotes) | Where-Object { $_.id -eq $addedNote.id }).Count -eq 1
+                $completedRow = New-NoteRow -Record $completedNote
                 $completedCheckBox = @($completedRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and [string] $_.Tag -eq $addedNote.id })[0]
                 if ($null -ne $completedCheckBox) {
-                    $completedCheckBox.IsChecked = $false
                     $completedCheckBox.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ToggleButton]::UncheckedEvent)))
                 }
-                $noteStatusViaCheckbox = $wasMarkedComplete -and -not [bool] $addedNote.isCompleted -and @((Get-ActiveNotes) | Where-Object { $_.id -eq $addedNote.id }).Count -eq 1
+                $restoredNote = @($script:notes | Where-Object { $_.id -eq $addedNote.id })[0]
+                $noteStatusViaCheckbox = $wasMarkedComplete -and -not [bool] $restoredNote.isCompleted -and @((Get-ActiveNotes) | Where-Object { $_.id -eq $addedNote.id }).Count -eq 1
             }
         }
     }
     $invalidNotesRejected = $false
     try {
-        ConvertFrom-SettingsObject -Settings ([pscustomobject]@{ schemaVersion = 4; timeZoneId = 'China Standard Time'; displayPrecision = 'Second'; monthlySalary = 0; workStart = '09:00'; workEnd = '18:00'; countdowns = @(); notes = @([pscustomobject]@{ id = 'note'; text = ''; isCompleted = $false }) }) | Out-Null
+        ConvertFrom-CountdownSettingsObject -Settings ([pscustomobject]@{ schemaVersion = 4; timeZoneId = 'China Standard Time'; displayPrecision = 'Second'; monthlySalary = 0; workStart = '09:00'; workEnd = '18:00'; countdowns = @(); notes = @([pscustomobject]@{ id = 'note'; text = ''; isCompleted = $false }) }) | Out-Null
     }
     catch { $invalidNotesRejected = $true }
     $duplicateSettingsRejected = $false
     try {
-        ConvertFrom-SettingsObject -Settings ([pscustomobject]@{ schemaVersion = 2; timeZoneId = 'China Standard Time'; countdowns = @([pscustomobject]@{ id = 'a'; name = '计划'; targetUtc = '2099-01-01T00:00:00Z' }, [pscustomobject]@{ id = 'b'; name = '计划'; targetUtc = '2099-02-01T00:00:00Z' }) }) | Out-Null
+        ConvertFrom-CountdownSettingsObject -Settings ([pscustomobject]@{ schemaVersion = 2; timeZoneId = 'China Standard Time'; countdowns = @([pscustomobject]@{ id = 'a'; name = '计划'; targetUtc = '2099-01-01T00:00:00Z' }, [pscustomobject]@{ id = 'b'; name = '计划'; targetUtc = '2099-02-01T00:00:00Z' }) }) | Out-Null
     }
     catch { $duplicateSettingsRejected = $true }
     $cardActionsBoundByTag = $true

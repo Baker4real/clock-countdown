@@ -1,4 +1,6 @@
-﻿[CmdletBinding()]
+﻿#requires -Version 7.0
+
+[CmdletBinding()]
 param(
     [switch] $ValidateOnly
 )
@@ -9,6 +11,8 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = $PSScriptRoot
 $requiredFiles = @(
     'Countdown.Core.psm1',
+    'Countdown.Notes.psm1',
+    'Countdown.Settings.psm1',
     'Countdown.Core.Tests.ps1',
     'Countdown.Ui.Tests.ps1',
     '敏敏子倒计时.ps1',
@@ -23,14 +27,15 @@ function Get-InstallerHashes {
     $hashes = @{}
     $matches = (Get-Content -Raw -LiteralPath $InstallerPath | Select-String -Pattern "'([^']+)'\s*=\s*'([A-F0-9]{64})'" -AllMatches).Matches
     foreach ($match in $matches) { $hashes[$match.Groups[1].Value] = $match.Groups[2].Value }
-    if ($hashes.Count -ne 6) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
+    if ($hashes.Count -ne 8) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
     $hashes
 }
 
 function Invoke-OfficeEncodedCommand {
     param([Parameter(Mandatory)] [string] $ScriptText)
 
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($ScriptText))
+    $runtimeGuard = "`$ErrorActionPreference = 'Stop'; if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') { throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。' }"
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("$runtimeGuard`r`n$ScriptText"))
     & ssh.exe @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
     if ($LASTEXITCODE -ne 0) { throw '办公室设备上的远程命令失败。' }
 }
@@ -88,13 +93,15 @@ Invoke-OfficeEncodedCommand -ScriptText "`$ErrorActionPreference='Stop'; if (Tes
 & scp.exe @script:sshOptions $archive "$($env:REPLICATOR_OFFICE_SSH_DESTINATION):D:/Codex/deploy/clock-countdown-$shortCommit-$runId/clock-countdown.zip"
 if ($LASTEXITCODE -ne 0) { throw '无法上传办公室部署包。' }
 
-$installedFiles = @('Countdown.Core.psm1', '敏敏子倒计时.ps1', 'CountdownLauncher.exe', 'countdown-icon.ico')
+$installedFiles = @('Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Settings.psm1', '敏敏子倒计时.ps1', 'CountdownLauncher.exe', 'countdown-icon.ico')
 $remoteExpectedHashes = ($installedFiles | ForEach-Object { "  '$($_)' = '$($expectedHashes[$_])'" }) -join "`r`n"
 
 $remoteInstall = @"
 `$ErrorActionPreference = 'Stop'
 `$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(`$false)
+`$powerShell7 = Join-Path `$PSHOME 'pwsh.exe'
+if (-not (Test-Path -LiteralPath `$powerShell7)) { throw '未找到当前 PowerShell 7 可执行文件。' }
 `$archive = '$remoteRoot\clock-countdown.zip'
 `$source = '$remoteRoot\source'
 `$install = 'D:\敏敏子倒计时'
@@ -103,38 +110,6 @@ $remoteInstall = @"
 `$priorTask = Get-ScheduledTask -TaskName 'Minmin Countdown' -ErrorAction SilentlyContinue
 `$priorTaskState = if (`$null -ne `$priorTask) { [string]`$priorTask.State } else { `$null }
 `$hadInstall = Test-Path -LiteralPath `$install
-function Test-SettingsPreservedOrExpectedMigration {
-  param(
-    [AllowNull()] [string] `$BeforeHash,
-    [AllowNull()] [string] `$AfterHash,
-    [AllowNull()] [string] `$BeforeJson,
-    [AllowNull()] [string] `$AfterJson
-  )
-  if (`$BeforeHash -eq `$AfterHash) { return `$true }
-  if ([string]::IsNullOrWhiteSpace(`$BeforeHash) -or [string]::IsNullOrWhiteSpace(`$AfterHash) -or [string]::IsNullOrWhiteSpace(`$BeforeJson) -or [string]::IsNullOrWhiteSpace(`$AfterJson)) { return `$false }
-  try {
-    `$before = `$BeforeJson | ConvertFrom-Json
-    `$after = `$AfterJson | ConvertFrom-Json
-  }
-  catch { return `$false }
-  if (`$before.schemaVersion -ne 3 -or `$after.schemaVersion -ne 4) { return `$false }
-  if (`$null -eq `$after.PSObject.Properties['notes'] -or @(`$after.notes).Count -ne 0) { return `$false }
-  if (([string] `$before.timeZoneId) -cne ([string] `$after.timeZoneId)) { return `$false }
-  if (([string] `$before.displayPrecision) -cne ([string] `$after.displayPrecision)) { return `$false }
-  if (([decimal] `$before.monthlySalary) -ne ([decimal] `$after.monthlySalary)) { return `$false }
-  if (([TimeSpan]::Parse([string] `$before.workStart)) -ne ([TimeSpan]::Parse([string] `$after.workStart))) { return `$false }
-  if (([TimeSpan]::Parse([string] `$before.workEnd)) -ne ([TimeSpan]::Parse([string] `$after.workEnd))) { return `$false }
-  `$previousCountdowns = @(`$before.countdowns)
-  `$migratedCountdowns = @(`$after.countdowns)
-  if (`$previousCountdowns.Count -ne `$migratedCountdowns.Count) { return `$false }
-  foreach (`$previous in `$previousCountdowns) {
-    `$matching = @(`$migratedCountdowns | Where-Object { `$_.id -eq `$previous.id })
-    if (`$matching.Count -ne 1) { return `$false }
-    if (([string] `$matching[0].name) -cne ([string] `$previous.name)) { return `$false }
-    if ([DateTimeOffset]::Parse([string] `$matching[0].targetUtc).ToUniversalTime().Ticks -ne [DateTimeOffset]::Parse([string] `$previous.targetUtc).ToUniversalTime().Ticks) { return `$false }
-  }
-  `$true
-}
 if (`$hadInstall) {
   New-Item -ItemType Directory -Path `$backupInstall -Force | Out-Null
   Copy-Item -Path (Join-Path `$install '*') -Destination `$backupInstall -Recurse -Force
@@ -157,14 +132,16 @@ $remoteExpectedHashes
   foreach (`$entry in `$expected.GetEnumerator()) {
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path `$install `$entry.Key)).Hash -ne `$entry.Value) { throw "安装后哈希不匹配：`$(`$entry.Key)" }
   }
-  `$validation = & pwsh.exe -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path `$install '敏敏子倒计时.ps1') -ValidateOnly | Out-String | ConvertFrom-Json
+  Import-Module (Join-Path `$install 'Countdown.Settings.psm1') -Force
+  `$validation = & `$powerShell7 -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path `$install '敏敏子倒计时.ps1') -ValidateOnly | Out-String | ConvertFrom-Json
   `$settingsJsonAfter = if (Test-Path -LiteralPath `$settingsPath) { Get-Content -LiteralPath `$settingsPath -Raw } else { `$null }
   `$settingsHashAfter = if (Test-Path -LiteralPath `$settingsPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath `$settingsPath).Hash } else { `$null }
   `$task = Get-ScheduledTask -TaskName 'Minmin Countdown'
   `$status = Get-Content -LiteralPath (Join-Path `$install 'runtime-status.json') -Raw | ConvertFrom-Json
   `$processes = @(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" | Where-Object { `$_.CommandLine -like '*敏敏子倒计时.ps1*' })
-  if (-not (Test-SettingsPreservedOrExpectedMigration -BeforeHash `$settingsHashBefore -AfterHash `$settingsHashAfter -BeforeJson `$settingsJsonBefore -AfterJson `$settingsJsonAfter)) { throw '部署修改了 settings.json（非预期迁移）。' }
+  if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash `$settingsHashBefore -AfterHash `$settingsHashAfter -BeforeJson `$settingsJsonBefore -AfterJson `$settingsJsonAfter)) { throw '部署修改了 settings.json（非预期迁移）。' }
   if ([string]`$task.State -ne 'Running') { throw "计划任务未运行：`$(`$task.State)" }
+  if (-not [string]::Equals([System.IO.Path]::GetFullPath([string]`$task.Actions.Execute), [System.IO.Path]::GetFullPath(`$powerShell7), [System.StringComparison]::OrdinalIgnoreCase)) { throw '计划任务未使用当前 PowerShell 7。' }
   if (`$status.processId -notin @(`$processes.ProcessId)) { throw 'runtime-status.json 未匹配正在运行的应用进程。' }
   if (-not (`$validation.FloatingWindowPresent -and `$validation.FloatingManagerButtonPresent)) { throw '悬浮框验证失败。' }
   [pscustomobject]@{ CoreTests = `$coreTests.Passed; UiTests = `$uiTests.Passed; UiValid = `$uiValidation.Valid; TaskState = [string]`$task.State; RuntimeProcessId = `$status.processId } | ConvertTo-Json -Compress
@@ -182,7 +159,11 @@ catch {
     elseif (Test-Path -LiteralPath `$install) { Remove-Item -LiteralPath `$install -Recurse -Force }
     if (Test-Path -LiteralPath `$backupTaskXml) {
       Unregister-ScheduledTask -TaskName 'Minmin Countdown' -Confirm:`$false -ErrorAction SilentlyContinue
-      Register-ScheduledTask -TaskName 'Minmin Countdown' -Xml (Get-Content -LiteralPath `$backupTaskXml -Raw) -Force | Out-Null
+      [xml]`$taskXml = Get-Content -LiteralPath `$backupTaskXml -Raw
+      `$commandNode = `$taskXml.SelectSingleNode('/*[local-name()="Task"]/*[local-name()="Actions"]/*[local-name()="Exec"]/*[local-name()="Command"]')
+      if (`$null -eq `$commandNode) { throw '无法在备份任务中定位 PowerShell 命令。' }
+      if ([System.IO.Path]::GetFileName([string] `$commandNode.InnerText) -ieq 'powershell.exe') { `$commandNode.InnerText = `$powerShell7 }
+      Register-ScheduledTask -TaskName 'Minmin Countdown' -Xml `$taskXml.OuterXml -Force | Out-Null
       if (`$priorTaskState -eq 'Running') { Start-ScheduledTask -TaskName 'Minmin Countdown' }
     }
     elseif (`$null -eq `$priorTask) { Unregister-ScheduledTask -TaskName 'Minmin Countdown' -Confirm:`$false -ErrorAction SilentlyContinue }

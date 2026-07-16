@@ -46,6 +46,7 @@ if (-not $validation.InvalidNotesRejected) { throw 'Invalid persisted sticky not
 $testSettingsPath = Join-Path $PSScriptRoot 'ui-test.settings.json'
 $noteAddSettingsPath = Join-Path $PSScriptRoot 'ui-note-add-test.settings.json'
 $persistenceFailureSettingsPath = Join-Path $PSScriptRoot 'ui-persistence-failure.settings.json'
+$persistenceFailureUnblockedSettingsPath = Join-Path $PSScriptRoot 'ui-persistence-failure-unblocked.settings.json'
 $legacyV3SettingsPath = Join-Path $PSScriptRoot 'ui-test-v3.settings.json'
 try {
     [System.IO.File]::WriteAllText($testSettingsPath, (@{
@@ -97,6 +98,15 @@ try {
     $noteAddSettings = [System.IO.File]::ReadAllText($noteAddSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and -not $_.isCompleted }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note.' }
 
+    Copy-Item -LiteralPath $testSettingsPath -Destination $persistenceFailureUnblockedSettingsPath -Force
+    $persistenceFailureUnblockedHashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $persistenceFailureUnblockedSettingsPath).Hash
+    $persistenceFailureUnblockedValidationOutput = & $powerShellEngine `
+        -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
+        -ValidateOnly -ExercisePersistenceFailures -SettingsFile $persistenceFailureUnblockedSettingsPath 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0) { throw 'Persistence-failure validation must reject an unblocked temporary path.' }
+    $persistenceFailureUnblockedHashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $persistenceFailureUnblockedSettingsPath).Hash
+    if ($persistenceFailureUnblockedHashAfterValidation -ne $persistenceFailureUnblockedHashBeforeValidation) { throw 'Persistence-failure validation changed the supplied settings file without a blocked temporary path.' }
+
     Copy-Item -LiteralPath $testSettingsPath -Destination $persistenceFailureSettingsPath -Force
     New-Item -ItemType Directory -Path "$persistenceFailureSettingsPath.tmp" -Force | Out-Null
     $persistenceFailureHashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $persistenceFailureSettingsPath).Hash
@@ -146,12 +156,14 @@ finally {
     Remove-Item -LiteralPath "$noteAddSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $persistenceFailureSettingsPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$persistenceFailureSettingsPath.tmp" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $persistenceFailureUnblockedSettingsPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$persistenceFailureUnblockedSettingsPath.tmp" -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $legacyV3SettingsPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$legacyV3SettingsPath.tmp" -Force -ErrorAction SilentlyContinue
 }
 
 [pscustomobject]@{
-    Passed = 38
+    Passed = 39
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

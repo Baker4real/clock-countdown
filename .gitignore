@@ -11,6 +11,8 @@ ui-note-add-test.settings.json
 ui-note-add-test.settings.json.tmp
 ui-persistence-failure.settings.json
 ui-persistence-failure.settings.json.tmp
+ui-persistence-failure-unblocked.settings.json
+ui-persistence-failure-unblocked.settings.json.tmp
 ui-test-v3.settings.json
 ui-test-v3.settings.json.tmp
 runtime-status.json
@@ -18,6 +20,7 @@ holiday-cache/
 .codegraph/
 runtime-status.json.tmp
 launcher-state.json
+launcher-state.json.tmp
 *.new
 *.invalid
 .local/

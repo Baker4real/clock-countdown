@@ -48,6 +48,12 @@ pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
 pwsh.exe -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
 
+## 运行应用
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1
+```
+
 ## 安装
 
 安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会校准 Windows 网络时间、运行测试、复制程序到 `D:\敏敏子倒计时`、创建桌面启动器，并注册登录后自动启动的计划任务。请在管理员 PowerShell 7 中从仓库根目录运行：

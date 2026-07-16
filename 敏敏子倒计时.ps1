@@ -1046,6 +1046,7 @@ if ($ValidateOnly) {
     $persistenceFailureTempPathRemainsDirectory = $false
     if ($ExercisePersistenceFailures) {
         if ([string]::IsNullOrWhiteSpace($SettingsFile)) { throw '-ExercisePersistenceFailures requires -SettingsFile.' }
+        if (-not (Test-Path -LiteralPath "$settingsPath.tmp" -PathType Container)) { throw '-ExercisePersistenceFailures requires a pre-created <SettingsFile>.tmp directory.' }
 
         Set-Workspace -Workspace 'Countdowns'
         $countdownStateBeforeFailure = ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState)

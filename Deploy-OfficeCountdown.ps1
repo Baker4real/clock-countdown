@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = $PSScriptRoot
 $requiredFiles = @(
+    'Deploy-OfficeCountdown.ps1',
     'Countdown.App.psm1',
     'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',
@@ -66,6 +67,11 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 foreach ($file in $requiredFiles) { Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination (Join-Path $packageRoot $file) -Force }
 Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $archive -CompressionLevel Optimal
 Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot -Force
+foreach ($file in $requiredFiles) {
+    if (-not (Test-Path -LiteralPath (Join-Path $extractRoot $file) -PathType Leaf)) {
+        throw "Windows 部署包缺少声明的源码文件：$file"
+    }
+}
 foreach ($entry in $expectedHashes.GetEnumerator()) {
     $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $extractRoot $entry.Key)).Hash
     if ($actual -ne $entry.Value) { throw "Windows 部署包哈希不匹配：$($entry.Key)" }

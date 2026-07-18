@@ -156,6 +156,10 @@ if (-not $validation.ToolTipTemplateMaterializes) { throw 'The themed ToolTip te
 if (-not $validation.ThemedControlTemplatesApplied) { throw 'One or more primary or floating controls did not receive the shared theme template.' }
 if (-not $validation.ComboBoxesUseThemedDropDowns) { throw 'A ComboBox drop-down, option, or scroll bar is still using an unthemed surface.' }
 if (-not $validation.DatePickerCalendarIsThemed) { throw 'The DatePicker text box, trigger, or calendar family is not fully themed.' }
+if (-not $validation.DatePickerTextFits) {
+    throw "The complete selected date is clipped: available=$($validation.DatePickerTextAvailableWidth), required=$($validation.DatePickerTextRequiredWidth)."
+}
+if (-not $validation.LiveDatePickerPopupIsThemed) { throw 'The opened DatePicker popup fell back to system calendar styles.' }
 if (-not $validation.CalendarHeaderTextFits) {
     throw "The calendar month header is clipped: available=$($validation.CalendarHeaderTextAvailableWidth), required=$($validation.CalendarHeaderTextRequiredWidth)."
 }
@@ -333,7 +337,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 100
+    Passed = 102
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

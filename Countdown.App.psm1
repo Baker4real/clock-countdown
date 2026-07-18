@@ -617,7 +617,7 @@ $script:testCloseTimer = $null
               <TextBox x:Name="NoteInput" MaxLength="140" ToolTip="写下一件要做的事，最多 140 个字符"/>
               <StackPanel Grid.Column="1" Margin="8,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="日期" Margin="0,0,6,0" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource NoteInkBrush}" VerticalAlignment="Center"/>
-                <DatePicker x:Name="NoteDate" Width="150" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
+                <DatePicker x:Name="NoteDate" Width="190" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
               </StackPanel>
               <Button x:Name="AddNoteButton" Grid.Column="2" Width="76" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}" Content="添加" ToolTip="添加便签"/>
               <Button x:Name="CancelNoteEditButton" Grid.Column="3" Width="64" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="取消" ToolTip="取消编辑便签" Visibility="Collapsed"/>
@@ -693,6 +693,9 @@ function Set-DatePickerCalendarTheme {
     if ($calendar -isnot [System.Windows.Controls.Calendar]) { return }
 
     $calendar.Style = $window.Resources[[System.Windows.Controls.Calendar]]
+    $calendar.CalendarItemStyle = $window.Resources[[System.Windows.Controls.Primitives.CalendarItem]]
+    $calendar.CalendarDayButtonStyle = $window.Resources[[System.Windows.Controls.Primitives.CalendarDayButton]]
+    $calendar.CalendarButtonStyle = $window.Resources[[System.Windows.Controls.Primitives.CalendarButton]]
     $calendar.Resources[[System.Windows.Controls.Primitives.CalendarItem]] = $window.Resources[[System.Windows.Controls.Primitives.CalendarItem]]
     $calendar.Resources[[System.Windows.Controls.Primitives.CalendarDayButton]] = $window.Resources[[System.Windows.Controls.Primitives.CalendarDayButton]]
     $calendar.Resources[[System.Windows.Controls.Primitives.CalendarButton]] = $window.Resources[[System.Windows.Controls.Primitives.CalendarButton]]
@@ -821,7 +824,7 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
         </Grid>
         <StackPanel Grid.Row="1" Margin="2,8,2,0" Orientation="Horizontal">
           <TextBlock Text="便签日期" Margin="0,0,8,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource NoteInkBrush}" VerticalAlignment="Center"/>
-          <DatePicker x:Name="FloatingNoteDate" Width="150" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
+          <DatePicker x:Name="FloatingNoteDate" Width="190" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
         </StackPanel>
         <TextBlock x:Name="FloatingNoteMessage" Grid.Row="2" Margin="2,6,2,0" MinHeight="16" FontSize="11" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap"/>
       </Grid>
@@ -1269,7 +1272,7 @@ function Initialize-TagInterface {
     $noteDateFilterLabel.Margin = '0,0,8,6'
     $script:noteDateFilterPanel.Children.Add($noteDateFilterLabel) | Out-Null
     $script:noteDateFilterPicker = New-Object System.Windows.Controls.DatePicker
-    $script:noteDateFilterPicker.Width = 150
+    $script:noteDateFilterPicker.Width = 190
     $script:noteDateFilterPicker.Height = 34
     $script:noteDateFilterPicker.Margin = '0,0,6,6'
     $script:noteDateFilterPicker.SelectedDateFormat = [System.Windows.Controls.DatePickerFormat]::Long
@@ -3612,6 +3615,47 @@ if ($ValidateOnly) {
             RequiredWidth = [Math]::Round($formattedText.WidthIncludingTrailingWhitespace, 2)
         }
     }
+    function Measure-DatePickerTextFit {
+        param([Parameter(Mandatory)] [System.Windows.Controls.DatePicker] $DatePicker)
+
+        [void] $DatePicker.ApplyTemplate()
+        $pickerWidth = if ([double]::IsNaN($DatePicker.Width)) { $DatePicker.DesiredSize.Width } else { $DatePicker.Width }
+        $pickerHeight = if ([double]::IsNaN($DatePicker.Height)) { $DatePicker.DesiredSize.Height } else { $DatePicker.Height }
+        $DatePicker.Measure([System.Windows.Size]::new($pickerWidth, $pickerHeight))
+        $DatePicker.Arrange([System.Windows.Rect]::new(0, 0, $pickerWidth, $pickerHeight))
+        $DatePicker.UpdateLayout()
+        $textBox = $DatePicker.Template.FindName('PART_TextBox', $DatePicker)
+        if ($textBox -isnot [System.Windows.Controls.Primitives.DatePickerTextBox]) {
+            throw 'DatePicker text box is missing.'
+        }
+        $typeface = [System.Windows.Media.Typeface]::new(
+            $textBox.FontFamily,
+            $textBox.FontStyle,
+            $textBox.FontWeight,
+            $textBox.FontStretch
+        )
+        $formattedText = [System.Windows.Media.FormattedText]::new(
+            [string] $textBox.Text,
+            [System.Globalization.CultureInfo]::CurrentUICulture,
+            $textBox.FlowDirection,
+            $typeface,
+            $textBox.FontSize,
+            $textBox.Foreground,
+            [System.Windows.Media.VisualTreeHelper]::GetDpi($textBox).PixelsPerDip
+        )
+        $availableWidth =
+            $textBox.ActualWidth -
+            $textBox.Padding.Left -
+            $textBox.Padding.Right -
+            $textBox.BorderThickness.Left -
+            $textBox.BorderThickness.Right
+        [pscustomobject]@{
+            Fits = $availableWidth -ge $formattedText.WidthIncludingTrailingWhitespace
+            AvailableWidth = [Math]::Round($availableWidth, 2)
+            RequiredWidth = [Math]::Round($formattedText.WidthIncludingTrailingWhitespace, 2)
+            Text = [string] $textBox.Text
+        }
+    }
     function Test-ThemedComboBoxDropDown {
         param([Parameter(Mandatory)] [System.Windows.Controls.ComboBox] $ComboBox)
 
@@ -3681,6 +3725,29 @@ if ($ValidateOnly) {
                 $_.Template.FindName('PART_TextBox', $_).Style -ne $window.FindResource('DatePickerTextBoxStyle') -or
                 $_.Template.FindName('PART_Button', $_).Style -ne $window.FindResource('DatePickerToggleButton')
             }).Count -eq 0
+    $originalNoteDateSelections = [System.Collections.Generic.List[object]]::new()
+    foreach ($picker in $noteDatePickers) {
+        [void] $originalNoteDateSelections.Add($picker.SelectedDate)
+    }
+    $script:settingNoteDateFilterInternally = $true
+    try {
+        $datePickerTextFitResults = @($noteDatePickers | ForEach-Object {
+                $_.SelectedDate = [DateTime]'2026-07-19'
+                Measure-DatePickerTextFit -DatePicker $_
+            })
+    }
+    finally {
+        for ($index = 0; $index -lt $noteDatePickers.Count; $index++) {
+            $noteDatePickers[$index].SelectedDate = $originalNoteDateSelections[$index]
+        }
+        $script:settingNoteDateFilterInternally = $false
+    }
+    $datePickerTextFits = @($datePickerTextFitResults | Where-Object { -not $_.Fits }).Count -eq 0
+    $datePickerTextAvailableWidth = ($datePickerTextFitResults | Measure-Object -Property AvailableWidth -Minimum).Minimum
+    $datePickerTextRequiredWidth = ($datePickerTextFitResults | Measure-Object -Property RequiredWidth -Maximum).Maximum
+    if (-not $datePickerTextFits) {
+        throw "DatePicker selected date is clipped: available=$datePickerTextAvailableWidth, required=$datePickerTextRequiredWidth."
+    }
     $themeProbeNote = [pscustomobject]@{ id = '__theme_probe__'; text = '主题控件检查'; date = '2026-07-18'; isCompleted = $false; tagIds = @() }
     $themeProbeRow = New-NoteRow -Record $themeProbeNote
     $themeProbeControls = @($themeProbeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -or $_ -is [System.Windows.Controls.Button] })
@@ -3765,6 +3832,74 @@ if ($ValidateOnly) {
         Test-ThemeStyleTemplate -Resources $window.Resources -Key ([System.Windows.Controls.Primitives.CalendarButton])
     )
     $datePickerCalendarIsThemed = @($datePickerThemeChecks | Where-Object { -not [bool] $_ }).Count -eq 0
+    $liveProbeWindow = New-Object System.Windows.Window
+    $liveProbeWindow.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+    $liveProbeWindow.Left = -10000
+    $liveProbeWindow.Top = -10000
+    $liveProbeWindow.ShowInTaskbar = $false
+    $liveProbeWindow.Opacity = 0
+    $liveProbeWindow.SizeToContent = [System.Windows.SizeToContent]::WidthAndHeight
+    foreach ($resourceKey in $window.Resources.Keys) {
+        $liveProbeWindow.Resources[$resourceKey] = $window.Resources[$resourceKey]
+    }
+    $liveDatePicker = New-Object System.Windows.Controls.DatePicker
+    $liveDatePicker.Width = 190
+    $liveDatePicker.Height = 40
+    $liveDatePicker.SelectedDateFormat = [System.Windows.Controls.DatePickerFormat]::Long
+    $liveDatePicker.Style = $window.Resources[[System.Windows.Controls.DatePicker]]
+    $liveDatePicker.SelectedDate = [DateTime]'2026-07-19'
+    $liveProbeWindow.Content = $liveDatePicker
+    Initialize-ThemedDatePicker -DatePicker $liveDatePicker
+    $livePopupWasOpen = $false
+    $liveCalendarDayButtons = @()
+    $liveCalendarStyleMismatches = 0
+    $liveCalendarTemplateMismatches = 0
+    $liveCalendarStyleContractsBound = $false
+    try {
+        $liveProbeWindow.Show()
+        $liveProbeWindow.UpdateLayout()
+        $liveDatePicker.IsDropDownOpen = $true
+        $liveDatePicker.UpdateLayout()
+        $liveProbeWindow.Dispatcher.Invoke([System.Action] { $liveProbeWindow.UpdateLayout() }, [System.Windows.Threading.DispatcherPriority]::ApplicationIdle)
+        $livePopup = $liveDatePicker.Template.FindName('PART_Popup', $liveDatePicker)
+        $liveCalendar = $liveDatePicker.Template.FindName('PART_Calendar', $liveDatePicker)
+        if ($livePopup -isnot [System.Windows.Controls.Primitives.Popup] -or $liveCalendar -isnot [System.Windows.Controls.Calendar]) {
+            throw 'Live DatePicker popup parts are missing.'
+        }
+        $liveCalendarStyleContractsBound =
+            $liveCalendar.CalendarItemStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarItem]] -and
+            $liveCalendar.CalendarDayButtonStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarDayButton]] -and
+            $liveCalendar.CalendarButtonStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarButton]]
+        $liveCalendar.DisplayDate = [DateTime]'2026-07-01'
+        $liveCalendar.DisplayMode = [System.Windows.Controls.CalendarMode]::Month
+        $liveCalendar.UpdateLayout()
+        $liveCalendarItem = $liveCalendar.Template.FindName('PART_CalendarItem', $liveCalendar)
+        if ($liveCalendarItem -is [System.Windows.Controls.Primitives.CalendarItem]) {
+            [void] $liveCalendarItem.ApplyTemplate()
+            $liveCalendarItem.UpdateLayout()
+        }
+        $liveCalendarDayButtons = @(Get-VisualDescendantControls -Root $liveCalendar | Where-Object { $_ -is [System.Windows.Controls.Primitives.CalendarDayButton] })
+        $liveCalendarStyleMismatches = @($liveCalendarDayButtons | Where-Object {
+                $_.Style -ne $window.Resources[[System.Windows.Controls.Primitives.CalendarDayButton]]
+            }).Count
+        $liveCalendarTemplateMismatches = @($liveCalendarDayButtons | Where-Object {
+                -not (Test-ThemedControlTemplatePart -Control $_ -PartName 'Surface')
+            }).Count
+        $livePopupWasOpen = $livePopup.IsOpen
+    }
+    finally {
+        $liveDatePicker.IsDropDownOpen = $false
+        $liveProbeWindow.Close()
+    }
+    $liveDatePickerPopupIsThemed =
+        $livePopupWasOpen -and
+        $liveCalendarStyleContractsBound -and
+        $liveCalendarDayButtons.Count -gt 0 -and
+        $liveCalendarStyleMismatches -eq 0 -and
+        $liveCalendarTemplateMismatches -eq 0
+    if (-not $liveDatePickerPopupIsThemed) {
+        throw "Live DatePicker popup fell back to system calendar styles: popupOpen=$livePopupWasOpen, contractsBound=$liveCalendarStyleContractsBound, dayButtons=$($liveCalendarDayButtons.Count), styleMismatches=$liveCalendarStyleMismatches, templateMismatches=$liveCalendarTemplateMismatches."
+    }
     $themedPopups = @($script:filterPopup, $script:tagManagerPopup, $script:countdownTagPopup, $script:noteTagPopup, $script:floatingTagPopup)
     function Test-ThemedPopupSurface {
         param([Parameter(Mandatory)] [System.Windows.Controls.Primitives.Popup] $Popup)
@@ -4257,6 +4392,10 @@ if ($ValidateOnly) {
         ThemedControlTemplatesApplied = $themedControlTemplatesApplied
         ComboBoxesUseThemedDropDowns = $comboBoxesUseThemedDropDowns
         DatePickerCalendarIsThemed = $datePickerCalendarIsThemed
+        DatePickerTextFits = $datePickerTextFits
+        DatePickerTextAvailableWidth = $datePickerTextAvailableWidth
+        DatePickerTextRequiredWidth = $datePickerTextRequiredWidth
+        LiveDatePickerPopupIsThemed = $liveDatePickerPopupIsThemed
         CalendarHeaderTextFits = $calendarHeaderTextFit.Fits
         CalendarHeaderTextAvailableWidth = $calendarHeaderTextFit.AvailableWidth
         CalendarHeaderTextRequiredWidth = $calendarHeaderTextFit.RequiredWidth

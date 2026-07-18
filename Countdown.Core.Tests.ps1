@@ -108,6 +108,7 @@ $runtimeTestRoot = Join-Path $PSScriptRoot ("runtime-test-" + [guid]::NewGuid().
 $runtimeStatusTestPath = Join-Path $runtimeTestRoot 'runtime-status.json'
 $startupRequestTestPath = Join-Path $runtimeTestRoot 'startup-request.json'
 $runtimeApplicationPath = Join-Path $runtimeTestRoot '敏敏子倒计时.ps1'
+$diagnosticLogTestPath = Join-Path $runtimeTestRoot 'logs\application.jsonl'
 try {
     New-Item -ItemType Directory -Path $runtimeTestRoot -Force | Out-Null
     [System.IO.File]::WriteAllText($runtimeApplicationPath, '# test application', (New-Object System.Text.UTF8Encoding($false)))
@@ -152,6 +153,25 @@ try {
     }
     catch { $timeoutObserved = $_.Exception.Message -match '启动就绪回执超时' }
     Assert-Equal $true $timeoutObserved 'Window-ready wait has a bounded timeout'
+    $diagnosticStarted = Write-CountdownDiagnosticEvent -Path $diagnosticLogTestPath -Level Info -Event 'ProcessStarted'
+    Assert-Equal $true $diagnosticStarted 'Diagnostic logging reports a successful append'
+    $diagnosticStartEntry = Get-Content -LiteralPath $diagnosticLogTestPath -Encoding UTF8 | Select-Object -First 1 | ConvertFrom-Json
+    Assert-Equal 1 $diagnosticStartEntry.schemaVersion 'Diagnostic log schema'
+    Assert-Equal 'ProcessStarted' $diagnosticStartEntry.event 'Diagnostic log event name'
+    Assert-Equal 'Info' $diagnosticStartEntry.level 'Diagnostic log level'
+    Assert-Equal $PID $diagnosticStartEntry.processId 'Diagnostic log process identity'
+    $diagnosticException = [System.InvalidOperationException]::new('Deferred theme template failed')
+    $diagnosticFailed = Write-CountdownDiagnosticEvent -Path $diagnosticLogTestPath -Level Error -Event 'FatalUnhandledException' -Exception $diagnosticException -ScriptStackTrace 'Start-CountdownApplication line 1'
+    Assert-Equal $true $diagnosticFailed 'Diagnostic logging records fatal exceptions'
+    $diagnosticErrorEntry = Get-Content -LiteralPath $diagnosticLogTestPath -Encoding UTF8 | Select-Object -Last 1 | ConvertFrom-Json
+    Assert-Equal 'System.InvalidOperationException' $diagnosticErrorEntry.exceptionType 'Diagnostic log exception type'
+    Assert-Equal 'Deferred theme template failed' $diagnosticErrorEntry.exceptionMessage 'Diagnostic log exception message'
+    Assert-Equal 'Start-CountdownApplication line 1' $diagnosticErrorEntry.scriptStackTrace 'Diagnostic log PowerShell stack'
+    foreach ($index in 1..3) {
+        Write-CountdownDiagnosticEvent -Path $diagnosticLogTestPath -Level Info -Event ("RotationProbe$index-" + ('x' * 180)) -MaxBytes 300 -MaxArchives 2 | Out-Null
+    }
+    Assert-Equal $true (Test-Path -LiteralPath "$diagnosticLogTestPath.1" -PathType Leaf) 'Diagnostic log rotates at the size bound'
+    Assert-Equal $true ((Get-Item -LiteralPath $diagnosticLogTestPath).Length -lt 1024) 'Diagnostic current log remains bounded after rotation'
 }
 finally {
     Remove-Item -LiteralPath $runtimeTestRoot -Recurse -Force -ErrorAction SilentlyContinue

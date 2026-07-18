@@ -11,12 +11,24 @@ function Start-CountdownApplication {
         [switch] $ExerciseNoteAdd,
         [switch] $ExercisePersistenceFailures,
         [switch] $ExerciseTagInteractions,
+        [switch] $ExerciseFatalDiagnostic,
         [switch] $ExitAfterReadyForTest,
         [string] $SettingsFile,
         [string] $ApplicationPath,
+        [string] $DiagnosticLogPath,
         [scriptblock] $HolidayCalendarTaskFactory
     )
 
+$diagnosticsEnabled = -not $ValidateOnly -or $PSBoundParameters.ContainsKey('DiagnosticLogPath')
+$script:diagnosticLogPath = if ([string]::IsNullOrWhiteSpace($DiagnosticLogPath)) {
+    Join-Path $PSScriptRoot 'logs\application.jsonl'
+}
+else {
+    [System.IO.Path]::GetFullPath($DiagnosticLogPath)
+}
+if ($ExerciseFatalDiagnostic -and -not $ValidateOnly) {
+    throw '-ExerciseFatalDiagnostic 只能与 -ValidateOnly 一起使用。'
+}
 $settingsPath = if ([string]::IsNullOrWhiteSpace($SettingsFile)) {
     [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'settings.json'))
 }
@@ -52,7 +64,19 @@ Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Notes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Tags.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1')
+
+function Write-CountdownApplicationDiagnostic {
+    param(
+        [Parameter(Mandatory)] [ValidateSet('Info', 'Warning', 'Error')] [string] $Level,
+        [Parameter(Mandatory)] [string] $Event,
+        [AllowNull()] [System.Exception] $Exception,
+        [AllowNull()] [AllowEmptyString()] [string] $ScriptStackTrace
+    )
+
+    if (-not $diagnosticsEnabled) { return }
+    Write-CountdownDiagnosticEvent -Path $script:diagnosticLogPath -Level $Level -Event $Event -Exception $Exception -ScriptStackTrace $ScriptStackTrace | Out-Null
+}
 
 $script:countdowns = [System.Collections.ArrayList]::new()
 $script:notes = [System.Collections.ArrayList]::new()
@@ -69,6 +93,9 @@ $script:selectedTagIds = [System.Collections.ArrayList]::new()
 $script:tagMatchMode = 'Any'
 $script:countdownStatusFilter = 'All'
 $script:noteStatusFilter = 'All'
+$script:noteDateFilterMode = 'All'
+$script:noteDateFilterDate = $null
+$script:settingNoteDateFilterInternally = $false
 $script:noteSearchText = ''
 $script:countdownEditorTagIds = [System.Collections.ArrayList]::new()
 $script:noteEditorTagIds = [System.Collections.ArrayList]::new()
@@ -209,7 +236,7 @@ $script:testCloseTimer = $null
       <Setter Property="Background" Value="{StaticResource CanvasBrush}"/><Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
       <Setter Property="Padding" Value="8,5"/><Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToolTip">
-        <Border Background="{TemplateBinding Background}" Foreground="{TemplateBinding Foreground}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
           <Border.Effect><DropShadowEffect Color="{StaticResource ShadowColor}" BlurRadius="10" ShadowDepth="2" Opacity="0.12"/></Border.Effect>
           <ContentPresenter/>
         </Border>
@@ -419,7 +446,7 @@ $script:testCloseTimer = $null
       <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="MinWidth" Value="30"/><Setter Property="Padding" Value="0"/>
       <Setter Property="Foreground" Value="{StaticResource SelectedTextBrush}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <ControlTemplate.Triggers>
@@ -450,7 +477,7 @@ $script:testCloseTimer = $null
             <Button x:Name="PART_PreviousButton" Style="{StaticResource CalendarNavigationButton}" ToolTip="上一个月">
               <Path Width="8" Height="12" Fill="{StaticResource SelectedTextBrush}" Stretch="Fill" Data="M 7,0 L 1,6 L 7,12 Z"/>
             </Button>
-            <Button x:Name="PART_HeaderButton" Grid.Column="1" Style="{StaticResource CalendarNavigationButton}" HorizontalAlignment="Stretch" FontSize="13" FontWeight="SemiBold" ToolTip="切换月份或年份"/>
+            <Button x:Name="PART_HeaderButton" Grid.Column="1" Width="Auto" MinWidth="96" Padding="8,0" Style="{StaticResource CalendarNavigationButton}" HorizontalAlignment="Stretch" FontSize="13" FontWeight="SemiBold" ToolTip="切换月份或年份"/>
             <Button x:Name="PART_NextButton" Grid.Column="2" Style="{StaticResource CalendarNavigationButton}" ToolTip="下一个月">
               <Path Width="8" Height="12" Fill="{StaticResource SelectedTextBrush}" Stretch="Fill" Data="M 1,0 L 7,6 L 1,12 Z"/>
             </Button>
@@ -623,6 +650,9 @@ $script:testCloseTimer = $null
 
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
+if ($ExerciseFatalDiagnostic) {
+    throw [System.InvalidOperationException]::new('Synthetic fatal diagnostic probe.')
+}
 $iconPath = Join-Path $PSScriptRoot 'countdown-icon.ico'
 if (Test-Path -LiteralPath $iconPath) { $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create((New-Object System.Uri($iconPath))) }
 
@@ -1229,6 +1259,31 @@ function Initialize-TagInterface {
     $statusRow.Children.Add($script:noteStatusFilterPanel) | Out-Null
     $script:tagFilterBar.Children.Add($statusRow) | Out-Null
 
+    $script:noteDateFilterPanel = New-Object System.Windows.Controls.WrapPanel
+    $script:noteDateFilterPanel.Margin = '0,0,0,2'
+    $noteDateFilterLabel = New-Object System.Windows.Controls.TextBlock
+    $noteDateFilterLabel.Text = '便签日期'
+    $noteDateFilterLabel.FontSize = 12
+    $noteDateFilterLabel.Foreground = $mutedBrush
+    $noteDateFilterLabel.VerticalAlignment = 'Center'
+    $noteDateFilterLabel.Margin = '0,0,8,6'
+    $script:noteDateFilterPanel.Children.Add($noteDateFilterLabel) | Out-Null
+    $script:noteDateFilterPicker = New-Object System.Windows.Controls.DatePicker
+    $script:noteDateFilterPicker.Width = 150
+    $script:noteDateFilterPicker.Height = 34
+    $script:noteDateFilterPicker.Margin = '0,0,6,6'
+    $script:noteDateFilterPicker.SelectedDateFormat = [System.Windows.Controls.DatePickerFormat]::Long
+    $script:noteDateFilterPicker.Style = $window.FindResource([System.Windows.Controls.DatePicker])
+    $script:noteDateFilterPicker.ToolTip = '选择要显示的便签日期'
+    Set-AccessibleName -Control $script:noteDateFilterPicker -Name '按便签日期筛选'
+    Initialize-ThemedDatePicker -DatePicker $script:noteDateFilterPicker
+    $script:noteDateFilterPanel.Children.Add($script:noteDateFilterPicker) | Out-Null
+    $script:noteDateFilterUndatedButton = New-TagFilterOption -Content '未设置' -ToolTip '仅显示历史未设置日期的便签' -Width 68
+    $script:noteDateFilterPanel.Children.Add($script:noteDateFilterUndatedButton) | Out-Null
+    $script:noteDateFilterClearButton = New-TagActionButton -Content '清除' -ToolTip '清除便签日期筛选' -Width 54
+    $script:noteDateFilterPanel.Children.Add($script:noteDateFilterClearButton) | Out-Null
+    $script:tagFilterBar.Children.Add($script:noteDateFilterPanel) | Out-Null
+
     $script:filterPopup = New-Object System.Windows.Controls.Primitives.Popup
     $script:filterPopup.PlacementTarget = $filterToggleButton
     $script:filterPopup.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Bottom
@@ -1548,6 +1603,8 @@ function Get-FilteredNotes {
             if (-not (Test-CurrentTagFilter -Record $_)) { return $false }
             if ($script:noteStatusFilter -eq 'Active' -and [bool] $_.isCompleted) { return $false }
             if ($script:noteStatusFilter -eq 'Completed' -and -not [bool] $_.isCompleted) { return $false }
+            if ($script:noteDateFilterMode -eq 'Selected' -and -not [string]::Equals([string] $_.date, [string] $script:noteDateFilterDate, [System.StringComparison]::Ordinal)) { return $false }
+            if ($script:noteDateFilterMode -eq 'Undated' -and -not [string]::IsNullOrWhiteSpace([string] $_.date)) { return $false }
             [string]::IsNullOrWhiteSpace($query) -or ([string] $_.text).IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
         })
 }
@@ -1707,6 +1764,31 @@ function Set-NoteStatusFilter {
     Refresh-TagFilteredViews
 }
 
+function Set-NoteDateFilter {
+    param(
+        [Parameter(Mandatory)] [ValidateSet('All', 'Selected', 'Undated')] [string] $Mode,
+        [AllowNull()] [object] $Date
+    )
+
+    $selectedDate = $null
+    $dateText = $null
+    if ($Mode -eq 'Selected') {
+        if ($null -eq $Date) { throw '按日期筛选需要选择一个日期。' }
+        $selectedDate = [DateTime] $Date
+        $dateText = $selectedDate.ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    $script:settingNoteDateFilterInternally = $true
+    try {
+        $script:noteDateFilterMode = $Mode
+        $script:noteDateFilterDate = $dateText
+        $script:noteDateFilterPicker.SelectedDate = $selectedDate
+    }
+    finally {
+        $script:settingNoteDateFilterInternally = $false
+    }
+    Refresh-TagFilteredViews
+}
+
 function New-TagChipPanel {
     param(
         [System.Collections.IEnumerable] $TagIds,
@@ -1822,6 +1904,16 @@ function Update-FilterSummary {
         [void] $parts.Add($statusText)
         [void] $detailParts.Add($statusText)
     }
+    if ($script:activeWorkspace -eq 'Notes' -and $script:noteDateFilterMode -ne 'All') {
+        $dateFilterText = if ($script:noteDateFilterMode -eq 'Undated') {
+            '未设置日期'
+        }
+        else {
+            Format-NoteDateForDisplay -Date $script:noteDateFilterDate
+        }
+        [void] $parts.Add('日期')
+        [void] $detailParts.Add("日期：$dateFilterText")
+    }
     $summary = if ($parts.Count -eq 1 -and $parts[0] -eq '全部') { '筛选' } else { "筛选（$($parts.Count)）" }
     $details = "筛选条件：$($detailParts -join '；')"
     $filterToggleButton.Content = $summary
@@ -1858,6 +1950,9 @@ function Render-TagFilterControls {
     $showNotes = $script:activeWorkspace -eq 'Notes'
     $script:countdownStatusFilterPanel.Visibility = if ($showNotes) { 'Collapsed' } else { 'Visible' }
     $script:noteStatusFilterPanel.Visibility = if ($showNotes) { 'Visible' } else { 'Collapsed' }
+    $script:noteDateFilterPanel.Visibility = if ($showNotes) { 'Visible' } else { 'Collapsed' }
+    Set-TagActionState -Control $script:noteDateFilterUndatedButton -Selected ($script:noteDateFilterMode -eq 'Undated')
+    $script:noteDateFilterClearButton.IsEnabled = $script:noteDateFilterMode -ne 'All'
     Update-FilterSummary
 }
 
@@ -2325,6 +2420,7 @@ function Complete-ChinaHolidayCalendarBootstrap {
 
     Stop-ChinaHolidayCalendarRequest
     Write-CountdownCalendarStateReceipt -CalendarState $CalendarState
+    Write-CountdownApplicationDiagnostic -Level $(if ($CalendarState -eq 'Ready') { 'Info' } else { 'Warning' }) -Event "HolidayCalendar$CalendarState"
     Refresh-CountdownAfterCalendarState
 }
 
@@ -3006,6 +3102,14 @@ $script:countdownStatusExpiredButton.Add_Click({ Set-CountdownStatusFilter -Stat
 $script:noteStatusAllButton.Add_Click({ Set-NoteStatusFilter -Status 'All' })
 $script:noteStatusActiveButton.Add_Click({ Set-NoteStatusFilter -Status 'Active' })
 $script:noteStatusCompletedButton.Add_Click({ Set-NoteStatusFilter -Status 'Completed' })
+$script:noteDateFilterPicker.Add_SelectedDateChanged({
+        param($sender, $eventArgs)
+        if ($script:settingNoteDateFilterInternally) { return }
+        if ($null -eq $sender.SelectedDate) { Set-NoteDateFilter -Mode 'All' }
+        else { Set-NoteDateFilter -Mode 'Selected' -Date $sender.SelectedDate }
+    })
+$script:noteDateFilterUndatedButton.Add_Click({ Set-NoteDateFilter -Mode 'Undated' })
+$script:noteDateFilterClearButton.Add_Click({ Set-NoteDateFilter -Mode 'All' })
 $script:noteSearchInput.Add_TextChanged({
     param($sender, $eventArgs)
     $script:noteSearchText = $sender.Text
@@ -3071,6 +3175,7 @@ $floatingWindow.Add_ContentRendered({
     if ($script:runtimeReceiptWritten) { return }
     [void] (Write-CountdownWindowReadyReceipt -Path $runtimeStatusPath -LaunchToken $script:launchToken -ProcessId $PID -SessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ApplicationPath $script:applicationPath -CalendarState Pending)
     $script:runtimeReceiptWritten = $true
+    Write-CountdownApplicationDiagnostic -Level Info -Event 'WindowReady'
     if ($ExitAfterReadyForTest) {
         $script:testCloseTimer = New-Object Windows.Threading.DispatcherTimer
         # Keep the test process alive beyond the receipt waiter's 20-second deadline on a busy host.
@@ -3131,6 +3236,7 @@ function Invoke-TagInteractionValidation {
     $floatingOverrideText = "验证悬浮改选$token"
     $floatingClearText = "验证悬浮清空$token"
     $editedFloatingNoteText = "验证便签编辑$token"
+    $noteFilterDateValue = '2033-06-07'
     $floatingNoteDateValue = '2032-05-06'
     $editedNoteDateValue = '2034-07-08'
 
@@ -3201,6 +3307,7 @@ function Invoke-TagInteractionValidation {
     (Get-ValidationTagToggle -Panel $script:noteTagSelectorPanel -Id $tagA.id).IsChecked = $true
     (Get-ValidationTagToggle -Panel $script:noteTagSelectorPanel -Id $tagB.id).IsChecked = $true
     $noteInput.Text = $noteBothText
+    $noteDate.SelectedDate = [DateTime] $noteFilterDateValue
     Invoke-ValidationButtonClick -Button $addNoteButton
     $noteBoth = @($script:notes | Where-Object { $_.text -eq $noteBothText })[0]
     if ($null -eq $noteBoth -or @($noteBoth.tagIds).Count -ne 2) { throw '便签没有保存共享标签关联。' }
@@ -3223,6 +3330,44 @@ function Invoke-TagInteractionValidation {
     $completionRetainsTags = $null -ne $completedNote -and [bool] $completedNote.isCompleted -and @($completedNote.tagIds).Count -eq 2 -and $completedNote.id -in @(Get-FilteredNotes | ForEach-Object { $_.id })
     Set-NoteStatusFilter -Status 'All'
     $script:noteSearchInput.Text = ''
+
+    $noteDateFilterControlsPresent = $false
+    $noteDateFilterBehavior = $false
+    $noteDateFilterPickerVariable = Get-Variable -Name noteDateFilterPicker -Scope Script -ErrorAction SilentlyContinue
+    $noteDateFilterUndatedButtonVariable = Get-Variable -Name noteDateFilterUndatedButton -Scope Script -ErrorAction SilentlyContinue
+    $noteDateFilterClearButtonVariable = Get-Variable -Name noteDateFilterClearButton -Scope Script -ErrorAction SilentlyContinue
+    if ($null -ne $noteDateFilterPickerVariable -and $null -ne $noteDateFilterUndatedButtonVariable -and $null -ne $noteDateFilterClearButtonVariable) {
+        $noteDateFilterPicker = $noteDateFilterPickerVariable.Value
+        $noteDateFilterUndatedButton = $noteDateFilterUndatedButtonVariable.Value
+        $noteDateFilterClearButton = $noteDateFilterClearButtonVariable.Value
+        $noteDateFilterControlsPresent =
+            $noteDateFilterPicker -is [System.Windows.Controls.DatePicker] -and
+            $noteDateFilterUndatedButton -is [System.Windows.Controls.Primitives.ToggleButton] -and
+            $noteDateFilterClearButton -is [System.Windows.Controls.Button]
+        if ($noteDateFilterControlsPresent) {
+            [void] $noteDateFilterPicker.ApplyTemplate()
+            $noteDateFilterControlsPresent =
+                $noteDateFilterPicker.Style -eq $window.FindResource([System.Windows.Controls.DatePicker]) -and
+                $null -ne $noteDateFilterPicker.Template.FindName('PART_TextBox', $noteDateFilterPicker) -and
+                $null -ne $noteDateFilterPicker.Template.FindName('PART_Button', $noteDateFilterPicker) -and
+                $null -ne $noteDateFilterPicker.Template.FindName('PART_Calendar', $noteDateFilterPicker)
+        }
+        if ($noteDateFilterControlsPresent) {
+            Set-TagFilter -Mode 'All'
+            Set-NoteStatusFilter -Status 'All'
+            $script:noteSearchInput.Text = ''
+            $noteDateFilterPicker.SelectedDate = [DateTime] $noteFilterDateValue
+            $datedIds = @(Get-FilteredNotes | ForEach-Object { $_.id })
+            $selectedDateMatches = $noteBoth.id -in $datedIds -and @($script:notes | Where-Object { [string]::IsNullOrWhiteSpace([string] $_.date) -and $_.id -in $datedIds }).Count -eq 0
+            Invoke-ValidationButtonClick -Button $noteDateFilterUndatedButton
+            $undatedIds = @(Get-FilteredNotes | ForEach-Object { $_.id })
+            $undatedMatches = @($script:notes | Where-Object { [string]::IsNullOrWhiteSpace([string] $_.date) }).Count -gt 0 -and $noteBoth.id -notin $undatedIds -and @($script:notes | Where-Object { [string]::IsNullOrWhiteSpace([string] $_.date) -and $_.id -notin $undatedIds }).Count -eq 0
+            Invoke-ValidationButtonClick -Button $noteDateFilterClearButton
+            $allDateIds = @(Get-FilteredNotes | ForEach-Object { $_.id })
+            $dateFilterClears = $noteBoth.id -in $allDateIds -and @($script:notes | Where-Object { [string]::IsNullOrWhiteSpace([string] $_.date) -and $_.id -notin $allDateIds }).Count -eq 0
+            $noteDateFilterBehavior = $selectedDateMatches -and $undatedMatches -and $dateFilterClears
+        }
+    }
 
     Set-TagFilter -Mode 'All'
     (Get-ValidationTagToggle -Panel $script:tagFilterTagsPanel -Id $tagA.id).IsChecked = $true
@@ -3311,6 +3456,8 @@ function Invoke-TagInteractionValidation {
         EditorTagSummaryIsCompact = $editorTagSummaryIsCompact
         UntaggedAndCountdownStatus = $untaggedMatches -and $activeStatusMatches
         NoteStatusSearchAndCompletion = $searchMatches -and $completionRetainsTags
+        NoteDateFilterControls = $noteDateFilterControlsPresent
+        NoteDateFilterBehavior = $noteDateFilterBehavior
         FloatingNoteInheritsTags = $floatingInheritsTags
         FloatingNoteDateViaPicker = $floatingNoteDateViaPicker
         TagSearchCreateAvoidsDefaultSubmit = $tagSearchCreateAvoidedDefaultSubmit
@@ -3323,6 +3470,7 @@ function Invoke-TagInteractionValidation {
     Set-TagFilter -Mode 'All'
     Set-CountdownStatusFilter -Status 'All'
     Set-NoteStatusFilter -Status 'All'
+    if ($noteDateFilterControlsPresent) { Invoke-ValidationButtonClick -Button $noteDateFilterClearButton }
     $script:noteSearchInput.Text = ''
     $script:tagManagerVisible = $false
     Set-Workspace -Workspace 'Countdowns'
@@ -3451,8 +3599,9 @@ if ($ValidateOnly) {
             $Button.Foreground,
             [System.Windows.Media.VisualTreeHelper]::GetDpi($Button).PixelsPerDip
         )
+        $buttonWidth = if ([double]::IsNaN($Button.Width)) { $Button.ActualWidth } else { $Button.Width }
         $availableWidth =
-            $Button.Width -
+            $buttonWidth -
             $Button.Padding.Left -
             $Button.Padding.Right -
             $Button.BorderThickness.Left -
@@ -3481,6 +3630,21 @@ if ($ValidateOnly) {
             $ComboBox.IsDropDownOpen = $false
         }
     }
+    function Test-ThemedToolTipTemplate {
+        $toolTip = New-Object System.Windows.Controls.ToolTip
+        $toolTip.Content = '主题提示'
+        $toolTip.Style = $window.Resources[[System.Windows.Controls.ToolTip]]
+        $toolTip.PlacementTarget = $filterToggleButton
+        try {
+            $toolTip.IsOpen = $true
+            [void] $toolTip.ApplyTemplate()
+            $toolTip.UpdateLayout()
+            $null -ne $toolTip.Template
+        }
+        finally {
+            $toolTip.IsOpen = $false
+        }
+    }
     $themeTemplateKeys = @(
         [System.Windows.Controls.TextBox],
         [System.Windows.Controls.Button],
@@ -3505,9 +3669,10 @@ if ($ValidateOnly) {
         (Test-ThemeStyleTemplate -Resources $window.Resources -Key 'TitleBarButton') -and
         (Test-ThemeStyleTemplate -Resources $window.Resources -Key 'FilterOptionButton') -and
         (Test-ThemeStyleTemplate -Resources $window.Resources -Key 'TagToggleButton')
+    $toolTipTemplateMaterializes = Test-ThemedToolTipTemplate
     $floatingThemeResourcesCopied = @($themeTemplateKeys | Where-Object { -not (Test-ThemeStyleTemplate -Resources $floatingWindow.Resources -Key $_) }).Count -eq 0
-    foreach ($control in @($countdownName, $noteInput, $script:noteSearchInput, $floatingNoteInput, $targetHour, $targetMinute, $targetSecond, $displayPrecisionInput, $targetDate, $noteDate, $floatingNoteDate, $topmostCheck, $filterToggleButton, $minimizeWindowButton, $closeWindowButton, $floatingAddNoteButton, $closeFloatingButton)) { [void] $control.ApplyTemplate() }
-    $noteDatePickers = @($noteDate, $floatingNoteDate)
+    foreach ($control in @($countdownName, $noteInput, $script:noteSearchInput, $floatingNoteInput, $targetHour, $targetMinute, $targetSecond, $displayPrecisionInput, $targetDate, $noteDate, $floatingNoteDate, $script:noteDateFilterPicker, $topmostCheck, $filterToggleButton, $minimizeWindowButton, $closeWindowButton, $floatingAddNoteButton, $closeFloatingButton)) { [void] $control.ApplyTemplate() }
+    $noteDatePickers = @($noteDate, $floatingNoteDate, $script:noteDateFilterPicker)
     $hasNoteDateControls =
         @($noteDatePickers | Where-Object {
                 $_ -isnot [System.Windows.Controls.DatePicker] -or
@@ -3559,10 +3724,20 @@ if ($ValidateOnly) {
     [void] $calendar.ApplyTemplate()
     $calendarItem = $calendar.Template.FindName('PART_CalendarItem', $calendar)
     if ($null -ne $calendarItem) { [void] $calendarItem.ApplyTemplate() }
-    $calendar.DisplayDate = [DateTime]'2026-08-01'
+    $calendar.DisplayDate = [DateTime]'2026-07-01'
     $calendar.DisplayMode = [System.Windows.Controls.CalendarMode]::Month
+    $calendar.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
+    $calendar.Arrange([System.Windows.Rect]::new(0, 0, $calendar.DesiredSize.Width, $calendar.DesiredSize.Height))
     $calendar.UpdateLayout()
     Set-CalendarButtonTheme -Calendar $calendar
+    $calendarHeaderButton = $calendarItem.Template.FindName('PART_HeaderButton', $calendarItem)
+    if ($calendarHeaderButton -isnot [System.Windows.Controls.Button]) { throw 'Calendar month header button is missing.' }
+    [void] $calendarHeaderButton.ApplyTemplate()
+    $calendarHeaderButton.UpdateLayout()
+    $calendarHeaderTextFit = Measure-ButtonTextFit -Button $calendarHeaderButton
+    if (-not $calendarHeaderTextFit.Fits) {
+        throw "Calendar month header is clipped: available=$($calendarHeaderTextFit.AvailableWidth), required=$($calendarHeaderTextFit.RequiredWidth)."
+    }
     $calendarDayButtons = @(Get-VisualDescendantControls -Root $calendar | Where-Object { $_ -is [System.Windows.Controls.Primitives.CalendarDayButton] })
     $calendar.DisplayMode = [System.Windows.Controls.CalendarMode]::Year
     $calendar.UpdateLayout()
@@ -3851,6 +4026,8 @@ if ($ValidateOnly) {
         EditorTagSummaryIsCompact = $false
         UntaggedAndCountdownStatus = $false
         NoteStatusSearchAndCompletion = $false
+        NoteDateFilterControls = $false
+        NoteDateFilterBehavior = $false
         FloatingNoteInheritsTags = $false
         FloatingNoteDateViaPicker = $false
         TagSearchCreateAvoidsDefaultSubmit = $false
@@ -4076,9 +4253,13 @@ if ($ValidateOnly) {
     [pscustomobject]@{
         Valid = $true; Title = $window.Title; Width = $window.Width; Height = $window.Height
         ThemeControlInventoryCovered = $themeControlInventoryCovered
+        ToolTipTemplateMaterializes = $toolTipTemplateMaterializes
         ThemedControlTemplatesApplied = $themedControlTemplatesApplied
         ComboBoxesUseThemedDropDowns = $comboBoxesUseThemedDropDowns
         DatePickerCalendarIsThemed = $datePickerCalendarIsThemed
+        CalendarHeaderTextFits = $calendarHeaderTextFit.Fits
+        CalendarHeaderTextAvailableWidth = $calendarHeaderTextFit.AvailableWidth
+        CalendarHeaderTextRequiredWidth = $calendarHeaderTextFit.RequiredWidth
         PopupSurfacesUseThemeTokens = $popupSurfacesUseThemeTokens
         NoDefaultSystemSurfaces = $noDefaultSystemSurfaces
         NoRawFloatingThemeBypass = $noRawFloatingThemeBypass
@@ -4127,6 +4308,8 @@ if ($ValidateOnly) {
         TagEditorSummaryIsCompact = $tagInteractions.EditorTagSummaryIsCompact
         TagUntaggedAndCountdownStatus = $tagInteractions.UntaggedAndCountdownStatus
         TagNoteStatusSearchAndCompletion = $tagInteractions.NoteStatusSearchAndCompletion
+        NoteDateFilterControls = $tagInteractions.NoteDateFilterControls
+        NoteDateFilterBehavior = $tagInteractions.NoteDateFilterBehavior
         TagFloatingNoteInheritsTags = $tagInteractions.FloatingNoteInheritsTags
         TagFloatingNoteDateViaPicker = $tagInteractions.FloatingNoteDateViaPicker
         TagSearchCreateAvoidsDefaultSubmit = $tagInteractions.TagSearchCreateAvoidsDefaultSubmit

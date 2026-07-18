@@ -111,6 +111,84 @@ function Write-CountdownRuntimeJsonAtomically {
     }
 }
 
+function ConvertTo-CountdownDiagnosticText {
+    param(
+        [AllowNull()] [object] $Value,
+        [Parameter(Mandatory)] [ValidateRange(1, 16384)] [int] $MaxLength
+    )
+
+    if ($null -eq $Value) { return $null }
+    $text = [string] $Value
+    if ($text.Length -le $MaxLength) { return $text }
+    $text.Substring(0, $MaxLength)
+}
+
+function Rotate-CountdownDiagnosticLog {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $NextLine,
+        [Parameter(Mandatory)] [ValidateRange(256, 104857600)] [long] $MaxBytes,
+        [Parameter(Mandatory)] [ValidateRange(1, 10)] [int] $MaxArchives
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    $nextBytes = $encoding.GetByteCount($NextLine + [Environment]::NewLine)
+    if ((Get-Item -LiteralPath $Path).Length + $nextBytes -le $MaxBytes) { return }
+    for ($archive = $MaxArchives; $archive -ge 1; $archive--) {
+        $source = if ($archive -eq 1) { $Path } else { "$Path.$($archive - 1)" }
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { continue }
+        $destination = "$Path.$archive"
+        Remove-Item -LiteralPath $destination -Force -ErrorAction SilentlyContinue
+        Move-Item -LiteralPath $source -Destination $destination -Force
+    }
+}
+
+function Write-CountdownDiagnosticEvent {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [ValidateSet('Info', 'Warning', 'Error')] [string] $Level,
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Event,
+        [AllowNull()] [System.Exception] $Exception,
+        [AllowNull()] [AllowEmptyString()] [string] $ScriptStackTrace,
+        [ValidateRange(256, 104857600)] [long] $MaxBytes = 1048576,
+        [ValidateRange(1, 10)] [int] $MaxArchives = 3
+    )
+
+    try {
+        $resolvedPath = ConvertTo-CountdownRuntimeFullPath -Path $Path
+        $directory = Split-Path -Parent $resolvedPath
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        }
+        $entry = [ordered]@{
+            schemaVersion = 1
+            timestampUtc = [DateTimeOffset]::UtcNow.ToString('o')
+            level = $Level
+            event = ConvertTo-CountdownDiagnosticText -Value $Event -MaxLength 256
+            processId = $PID
+            sessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+            powerShellVersion = $PSVersionTable.PSVersion.ToString()
+        }
+        if ($null -ne $Exception) {
+            $entry.exceptionType = $Exception.GetType().FullName
+            $entry.exceptionMessage = ConvertTo-CountdownDiagnosticText -Value $Exception.Message -MaxLength 2048
+            $entry.hResult = $Exception.HResult
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ScriptStackTrace)) {
+            $entry.scriptStackTrace = ConvertTo-CountdownDiagnosticText -Value $ScriptStackTrace -MaxLength 4096
+        }
+        $line = $entry | ConvertTo-Json -Depth 4 -Compress
+        Rotate-CountdownDiagnosticLog -Path $resolvedPath -NextLine $line -MaxBytes $MaxBytes -MaxArchives $MaxArchives
+        [System.IO.File]::AppendAllText($resolvedPath, $line + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+        $true
+    }
+    catch {
+        $false
+    }
+}
+
 function New-CountdownStartupRequest {
     param([Parameter(Mandatory)] [string] $Path)
 
@@ -266,4 +344,4 @@ function Wait-CountdownWindowReady {
     throw "启动就绪回执超时（$TimeoutSeconds 秒）：$lastReason"
 }
 
-Export-ModuleMember -Function New-CountdownStartupRequest, Get-CountdownStartupLaunchToken, Remove-CountdownStartupRequest, Write-CountdownWindowReadyReceipt, Read-CountdownRuntimeReceipt, Test-CountdownWindowReadyReceipt, Wait-CountdownWindowReady
+Export-ModuleMember -Function New-CountdownStartupRequest, Get-CountdownStartupLaunchToken, Remove-CountdownStartupRequest, Write-CountdownWindowReadyReceipt, Read-CountdownRuntimeReceipt, Test-CountdownWindowReadyReceipt, Wait-CountdownWindowReady, Write-CountdownDiagnosticEvent

@@ -18,6 +18,21 @@ if ($actual -ne '2026-08-22') {
     throw "DatePicker selection formatting failed. Expected 2026-08-22, got $actual"
 }
 
+$diagnosticLogPath = Join-Path $PSScriptRoot 'ui-diagnostic-test\application.jsonl'
+$fatalDiagnosticOutput = & $powerShellEngine `
+    -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
+    -ValidateOnly -ExerciseFatalDiagnostic -DiagnosticLogPath $diagnosticLogPath 2>&1 | Out-String
+if ($LASTEXITCODE -eq 0) { throw 'Fatal diagnostic exercise unexpectedly succeeded.' }
+if (-not (Test-Path -LiteralPath $diagnosticLogPath -PathType Leaf)) {
+    throw "Fatal diagnostic exercise did not create a log: $fatalDiagnosticOutput"
+}
+$fatalDiagnosticEntries = @(Get-Content -LiteralPath $diagnosticLogPath -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json })
+if (@($fatalDiagnosticEntries | Where-Object { $_.event -eq 'ProcessStarted' }).Count -ne 1) { throw 'Diagnostic lifecycle log is missing ProcessStarted.' }
+$fatalDiagnosticEntry = @($fatalDiagnosticEntries | Where-Object { $_.event -eq 'FatalUnhandledException' })[-1]
+if ($null -eq $fatalDiagnosticEntry -or $fatalDiagnosticEntry.exceptionType -ne 'System.InvalidOperationException') {
+    throw "Fatal diagnostic log is missing the unhandled exception: $fatalDiagnosticOutput"
+}
+
 $validationJson = & $powerShellEngine `
     -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') -ValidateOnly | Out-String
 if ($LASTEXITCODE -ne 0) {
@@ -137,9 +152,13 @@ if (-not $validation.TagCreateStaysCollapsedWithoutQuery) { throw 'The tag-creat
 if (-not $validation.TagFilterSupportsAnyAll) { throw 'Tag filtering does not expose explicit any/all matching.' }
 if (-not $validation.TagChipsUseUid) { throw 'Tag chips must not reuse the record-ID Tag property.' }
 if (-not $validation.ThemeControlInventoryCovered) { throw 'The theme inventory does not cover every visible control family.' }
+if (-not $validation.ToolTipTemplateMaterializes) { throw 'The themed ToolTip template cannot be instantiated safely.' }
 if (-not $validation.ThemedControlTemplatesApplied) { throw 'One or more primary or floating controls did not receive the shared theme template.' }
 if (-not $validation.ComboBoxesUseThemedDropDowns) { throw 'A ComboBox drop-down, option, or scroll bar is still using an unthemed surface.' }
 if (-not $validation.DatePickerCalendarIsThemed) { throw 'The DatePicker text box, trigger, or calendar family is not fully themed.' }
+if (-not $validation.CalendarHeaderTextFits) {
+    throw "The calendar month header is clipped: available=$($validation.CalendarHeaderTextAvailableWidth), required=$($validation.CalendarHeaderTextRequiredWidth)."
+}
 if (-not $validation.PopupSurfacesUseThemeTokens) { throw 'A popup surface is missing the shared themed background, border, or motion treatment.' }
 if (-not $validation.NoDefaultSystemSurfaces) { throw 'A system window frame or MessageBox remains in the application flow.' }
 if (-not $validation.NoRawFloatingThemeBypass) { throw 'The floating window bypasses shared theme tokens with raw colors.' }
@@ -226,6 +245,8 @@ if (-not $tagInteractionValidation.TagEditorSummaryIsCompact) { throw 'Long sele
 if (-not $tagInteractionValidation.TagSearchCreateAvoidsDefaultSubmit) { throw 'Creating a tag from the search field triggered an unrelated default submit.' }
 if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untagged or countdown-status filtering failed.' }
     if (-not $tagInteractionValidation.TagNoteStatusSearchAndCompletion) { throw 'Note text search, status filtering, or completion tag retention failed.' }
+    if (-not $tagInteractionValidation.NoteDateFilterControls) { throw 'The sticky-note filter is missing themed exact-date, undated, or clear controls.' }
+    if (-not $tagInteractionValidation.NoteDateFilterBehavior) { throw 'Sticky-note exact-date, undated, or clear filtering did not return the expected records.' }
     if (-not $tagInteractionValidation.TagFloatingNoteInheritsTags) { throw 'Floating note creation did not inherit the current selected tag.' }
     if (-not $tagInteractionValidation.TagFloatingNoteDateViaPicker) { throw 'Floating note creation did not preserve its selected calendar date.' }
     if (-not $tagInteractionValidation.TagFloatingNotePopupOnDemand) { throw 'Floating note tags were not hidden until the compact selector was opened.' }
@@ -293,6 +314,10 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if ($legacyV3HashAfterValidation -ne $legacyV3HashBeforeValidation) { throw 'ValidateOnly modified the supplied schema-v3 settings file.' }
 }
 finally {
+    foreach ($diagnosticPath in @($diagnosticLogPath, "$diagnosticLogPath.1", "$diagnosticLogPath.2", "$diagnosticLogPath.3")) {
+        Remove-Item -LiteralPath $diagnosticPath -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -LiteralPath (Split-Path -Parent $diagnosticLogPath) -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $testSettingsPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath "$testSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $noteAddSettingsPath -Force -ErrorAction SilentlyContinue
@@ -308,7 +333,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 92
+    Passed = 100
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

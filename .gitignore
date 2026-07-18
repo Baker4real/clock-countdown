@@ -17,6 +17,8 @@ ui-test-v3.settings.json
 ui-test-v3.settings.json.tmp
 runtime-status.json
 holiday-cache/
+logs/
+ui-diagnostic-test/
 .codegraph/
 runtime-status.json.tmp
 runtime-status.json.*.tmp

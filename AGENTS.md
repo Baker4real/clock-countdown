@@ -1,6 +1,8 @@
 # 项目协作规则
 
 - 用户可见内容使用简体中文；代码标识符和 Windows API 名称保留原文。
+- 界面改动必须延续现有温暖可爱方向：暖白、蜜桃、便签黄、珊瑚强调；除非用户明确要求，不大改整体布局、主要工作流或视觉语言，标签区域优先保持紧凑、清晰。
+- 所有用户可见 WPF 控件与动态表面必须使用项目主题模板；`ComboBox`、`DatePicker` / `Calendar`、`ScrollViewer` / `ScrollBar`、`Popup`、悬浮窗和确认窗不得回退到默认 WPF 或系统外观。
 - **硬约束：项目的应用、测试、安装和办公室部署必须使用 `pwsh.exe`（PowerShell 7+）；不得以 `powershell.exe` 或 Windows PowerShell 5.1 作为 fallback。** WPF 入口仍必须以 `-STA` 运行。
 - 所有日期计算统一使用 `China Standard Time`，不要依赖设备当前时区推断北京时间。
 - 修改倒计时逻辑后运行 `Countdown.Core.Tests.ps1`；修改界面后同时运行 `Countdown.Ui.Tests.ps1` 和应用的 `-ValidateOnly` 检查。

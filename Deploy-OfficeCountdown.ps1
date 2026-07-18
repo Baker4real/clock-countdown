@@ -17,6 +17,7 @@ $requiredFiles = @(
     'Countdown.Notes.psm1',
     'Countdown.Runtime.psm1',
     'Countdown.Settings.psm1',
+    'Countdown.Tags.psm1',
     'Countdown.Core.Tests.ps1',
     'Countdown.Ui.Tests.ps1',
     '敏敏子倒计时.ps1',
@@ -31,7 +32,7 @@ function Get-InstallerHashes {
     $hashes = @{}
     $matches = (Get-Content -Raw -LiteralPath $InstallerPath | Select-String -Pattern "'([^']+)'\s*=\s*'([A-F0-9]{64})'" -AllMatches).Matches
     foreach ($match in $matches) { $hashes[$match.Groups[1].Value] = $match.Groups[2].Value }
-    if ($hashes.Count -ne 11) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
+    if ($hashes.Count -ne 12) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
     $hashes
 }
 
@@ -102,7 +103,7 @@ Invoke-OfficeEncodedCommand -ScriptText "`$ErrorActionPreference='Stop'; if (Tes
 & scp.exe @script:sshOptions $archive "$($env:REPLICATOR_OFFICE_SSH_DESTINATION):D:/Codex/deploy/clock-countdown-$shortCommit-$runId/clock-countdown.zip"
 if ($LASTEXITCODE -ne 0) { throw '无法上传办公室部署包。' }
 
-$installedFiles = @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.InstallTransaction.psm1', 'Countdown.Notes.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', '敏敏子倒计时.ps1', 'CountdownLauncher.exe', 'countdown-icon.ico')
+$installedFiles = @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.InstallTransaction.psm1', 'Countdown.Notes.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'Countdown.Tags.psm1', '敏敏子倒计时.ps1', 'CountdownLauncher.exe', 'countdown-icon.ico')
 $remoteExpectedHashes = ($installedFiles | ForEach-Object { "  '$($_)' = '$($expectedHashes[$_])'" }) -join "`r`n"
 
 $remoteInstall = @"

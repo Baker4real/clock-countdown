@@ -5,6 +5,7 @@ param(
     [switch] $ValidateOnly,
     [switch] $ExerciseNoteAdd,
     [switch] $ExercisePersistenceFailures,
+    [switch] $ExerciseTagInteractions,
     [switch] $ExitAfterReadyForTest,
     [string] $SettingsFile
 )

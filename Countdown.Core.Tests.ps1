@@ -6,6 +6,7 @@ param([switch] $ParentTransactionMutexHeld)
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Notes.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Tags.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
@@ -18,6 +19,55 @@ function Assert-Equal($Expected, $Actual, [string] $Name) {
         $failures.Add("$Name expected=[$Expected] actual=[$Actual]")
     }
 }
+
+$firstTag = New-CountdownTagRecord -Id ' work ' -Name ' 工作 ' -Color ' #6B8E23 '
+Assert-Equal 'work' $firstTag.id 'Tag record normalizes ID'
+Assert-Equal '工作' $firstTag.name 'Tag record normalizes name'
+Assert-Equal '#6B8E23' $firstTag.color 'Tag record preserves optional color'
+$invalidTagColorRejected = $false
+try {
+    New-CountdownTagRecord -Id 'invalid-color' -Name '无效颜色' -Color 'red' | Out-Null
+}
+catch {
+    $invalidTagColorRejected = $true
+}
+Assert-Equal $true $invalidTagColorRejected 'Invalid tag color is rejected'
+$tagLibrary = [System.Collections.ArrayList]::new()
+[void] $tagLibrary.Add($firstTag)
+$tagLibraryCopy = Copy-CountdownTags -Tags $tagLibrary
+$tagLibraryCopy[0].name = '已改名'
+Assert-Equal '工作' $tagLibrary[0].name 'Tag library copy does not mutate source tag'
+$normalizedTagIds = ConvertTo-CountdownTagIds -TagIds @(' work ', 'home') -KnownTagIds @('work', 'home')
+Assert-Equal 2 $normalizedTagIds.Count 'Tag IDs retain unique values'
+Assert-Equal 'work' $normalizedTagIds[0] 'Tag IDs preserve first-known canonical value'
+Assert-Equal 'home' $normalizedTagIds[1] 'Tag IDs retain additional values'
+$emptyTagIds = ConvertTo-CountdownTagIds -TagIds $null -KnownTagIds @('work')
+Assert-Equal 0 $emptyTagIds.Count 'Empty tag IDs are valid for untagged records'
+$duplicateTagIdRejected = $false
+try {
+    ConvertTo-CountdownTagIds -TagIds @('work', 'work') -KnownTagIds @('work') | Out-Null
+}
+catch {
+    $duplicateTagIdRejected = $true
+}
+Assert-Equal $true $duplicateTagIdRejected 'Duplicate tag ID is rejected'
+$danglingTagRejected = $false
+try {
+    ConvertTo-CountdownTagIds -TagIds @('missing') -KnownTagIds @('work') | Out-Null
+}
+catch {
+    $danglingTagRejected = $true
+}
+Assert-Equal $true $danglingTagRejected 'Unknown tag ID is rejected'
+Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @() -MatchMode Any) 'Empty tag selection includes tagged records'
+Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @('work') -MatchMode Any) 'Any tag filter matches selected tag'
+Assert-Equal $false (Test-CountdownTagFilter -TagIds @('home') -SelectedTagIds @('work') -MatchMode Any) 'Any tag filter excludes unselected tag'
+Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work', 'home') -SelectedTagIds @('home') -MatchMode Any) 'Any tag filter evaluates a non-first selected tag'
+Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work', 'home') -SelectedTagIds @('work', 'home') -MatchMode All) 'All tag filter matches every selected tag'
+Assert-Equal $false (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @('work', 'home') -MatchMode All) 'All tag filter requires every selected tag'
+Assert-Equal $false (Test-CountdownTagFilter -TagIds @('work', 'home') -SelectedTagIds @('home', 'office') -MatchMode All) 'All tag filter excludes a missing selected tag'
+Assert-Equal $true (Test-CountdownTagFilter -TagIds @() -SelectedTagIds @() -UntaggedOnly) 'Untagged filter includes untagged record'
+Assert-Equal $false (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @() -UntaggedOnly) 'Untagged filter excludes tagged record'
 
 $target = ConvertTo-CountdownTargetUtc -DateText '2026-07-15' -TimeText '18:00:00'
 Assert-Equal '2026-07-15T10:00:00.0000000+00:00' $target.ToString('o') 'Beijing to UTC'
@@ -416,7 +466,7 @@ $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonI
 if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
 $installerValidation = $installerValidationJson | ConvertFrom-Json
 Assert-Equal $true $installerValidation.Valid 'Installer package validation succeeds'
-Assert-Equal 11 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, application host and transaction modules'
+Assert-Equal 12 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, application host, transaction and tag modules'
 Assert-Equal $true $installerValidation.Transactional 'Installer exposes transactional install boundary'
 Assert-Equal $true $installerValidation.DeferredCommitSupported 'Installer exposes deferred commit for office acceptance'
 $installerCommand = Get-Command (Join-Path $PSScriptRoot 'Install-Countdown.ps1')
@@ -476,11 +526,15 @@ $loadedLegacyV3 = ConvertFrom-CountdownSettingsObject -Settings $legacyV3Setting
 Assert-Equal $true $loadedLegacyV3.Migrated 'Schema v3 settings migrate'
 Assert-Equal 1 $loadedLegacyV3.Records.Count 'Schema v3 record count'
 Assert-Equal 0 $loadedLegacyV3.Notes.Count 'Schema v3 creates empty notes'
+Assert-Equal 0 $loadedLegacyV3.Tags.Count 'Schema v3 creates an empty tag library'
+Assert-Equal 0 @($loadedLegacyV3.Records[0].tagIds).Count 'Schema v3 creates untagged countdowns'
 Assert-Equal 'Minute' $loadedLegacyV3.Preferences.Precision 'Schema v3 preserves precision'
 $canonicalLegacyV3 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV3
 $canonicalLegacyV3Object = $canonicalLegacyV3 | ConvertFrom-Json
-Assert-Equal 4 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
+Assert-Equal 5 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
+Assert-Equal 0 @($canonicalLegacyV3Object.tags).Count 'Canonical settings tags'
 Assert-Equal 0 @($canonicalLegacyV3Object.notes).Count 'Canonical settings notes'
+Assert-Equal 0 @($canonicalLegacyV3Object.countdowns[0].tagIds).Count 'Canonical settings countdown tag IDs'
 $settingsCandidate = Copy-CountdownSettingsState -State $loadedLegacyV3
 $settingsCandidate.Records[0].name = '候选倒计时'
 $settingsCandidate.Preferences.MonthlySalary = 1
@@ -497,7 +551,7 @@ catch {
 Assert-Equal $true $candidateSaveFailureObserved 'Settings candidate persistence failure is observable'
 Assert-Equal '旧版倒计时' $loadedLegacyV3.Records[0].name 'Settings candidate persistence failure preserves source record'
 Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'same' -AfterHash 'same' -BeforeJson $null -AfterJson $null) 'Unchanged settings are accepted for deployment'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v4 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v5 migration is accepted for deployment'
 $legacyV1Settings = [pscustomobject]@{ schemaVersion = 1; timeZoneId = 'China Standard Time'; targetUtc = '2099-01-01T00:00:00Z' }
 $canonicalLegacyV1 = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $legacyV1Settings)
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV1Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV1) 'Schema v1 migration remains rejected for deployment'
@@ -505,7 +559,7 @@ $settingsModuleTestPath = Join-Path $PSScriptRoot 'settings-module-test.json'
 try {
     Save-CountdownSettings -Path $settingsModuleTestPath -State $loadedLegacyV3
     $savedSettings = [System.IO.File]::ReadAllText($settingsModuleTestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    Assert-Equal 4 $savedSettings.schemaVersion 'Settings module writes canonical schema'
+    Assert-Equal 5 $savedSettings.schemaVersion 'Settings module writes canonical schema'
     Assert-Equal $false (Test-Path -LiteralPath "$settingsModuleTestPath.tmp") 'Settings module cleans temporary file'
 }
 finally {
@@ -513,10 +567,128 @@ finally {
     Remove-Item -LiteralPath "$settingsModuleTestPath.tmp" -Force -ErrorAction SilentlyContinue
 }
 
+$legacyV4Settings = [pscustomobject]@{
+    schemaVersion = 4
+    timeZoneId = 'China Standard Time'
+    displayPrecision = 'Second'
+    monthlySalary = 23000
+    workStart = '09:00'
+    workEnd = '18:00'
+    countdowns = @([pscustomobject]@{ id = 'legacy-v4-countdown'; name = '旧版带便签倒计时'; targetUtc = '2099-02-01T00:00:00Z' })
+    notes = @([pscustomobject]@{ id = 'legacy-v4-note'; text = '保留的旧版便签'; isCompleted = $true })
+}
+$loadedLegacyV4 = ConvertFrom-CountdownSettingsObject -Settings $legacyV4Settings
+Assert-Equal $true $loadedLegacyV4.Migrated 'Schema v4 settings migrate'
+Assert-Equal 0 $loadedLegacyV4.Tags.Count 'Schema v4 creates an empty tag library'
+Assert-Equal 0 @($loadedLegacyV4.Records[0].tagIds).Count 'Schema v4 creates untagged countdowns'
+Assert-Equal 0 @($loadedLegacyV4.Notes[0].tagIds).Count 'Schema v4 creates untagged notes'
+Assert-Equal '保留的旧版便签' $loadedLegacyV4.Notes[0].text 'Schema v4 preserves notes'
+$canonicalLegacyV4 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV4
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV4) 'Strict schema v4 to v5 migration is accepted for deployment'
+$invalidV4Transition = $canonicalLegacyV4 | ConvertFrom-Json
+$invalidV4Transition.notes[0].text = '被篡改的便签'
+Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson ($invalidV4Transition | ConvertTo-Json -Depth 5)) 'Schema v4 migration rejects changed notes'
+
+$v5Settings = [pscustomobject]@{
+    schemaVersion = 5
+    timeZoneId = 'China Standard Time'
+    displayPrecision = 'Hour'
+    monthlySalary = 8000
+    workStart = '08:00'
+    workEnd = '17:00'
+    tags = @(
+        [pscustomobject]@{ id = 'work'; name = '工作'; color = '#6B8E23' },
+        [pscustomobject]@{ id = 'home'; name = '家庭'; color = $null }
+    )
+    countdowns = @([pscustomobject]@{ id = 'v5-countdown'; name = '带标签倒计时'; targetUtc = '2099-03-01T00:00:00Z'; tagIds = @(' WORK ') })
+    notes = @([pscustomobject]@{ id = 'v5-note'; text = '带标签便签'; isCompleted = $false; tagIds = @('home') })
+}
+$loadedV5 = ConvertFrom-CountdownSettingsObject -Settings $v5Settings
+Assert-Equal $false $loadedV5.Migrated 'Schema v5 settings do not migrate'
+Assert-Equal 2 $loadedV5.Tags.Count 'Schema v5 loads tags'
+Assert-Equal 'work' $loadedV5.Records[0].tagIds[0] 'Schema v5 canonicalizes countdown tag IDs'
+Assert-Equal 'home' $loadedV5.Notes[0].tagIds[0] 'Schema v5 preserves note tag IDs'
+$v5Copy = Copy-CountdownSettingsState -State $loadedV5
+$v5Copy.Tags[0].name = '已改名'
+$v5Copy.Records[0].tagIds[0] = 'home'
+$v5Copy.Notes[0].tagIds[0] = 'work'
+Assert-Equal '工作' $loadedV5.Tags[0].name 'Settings state copy does not mutate source tags'
+Assert-Equal 'work' $loadedV5.Records[0].tagIds[0] 'Settings state copy does not mutate source countdown tags'
+Assert-Equal 'home' $loadedV5.Notes[0].tagIds[0] 'Settings state copy does not mutate source note tags'
+$canonicalV5 = ConvertTo-CountdownSettingsJson -State $loadedV5 | ConvertFrom-Json
+Assert-Equal 5 $canonicalV5.schemaVersion 'Schema v5 remains canonical'
+Assert-Equal '#6B8E23' $canonicalV5.tags[0].color 'Schema v5 serializes tag color'
+Assert-Equal $true ($null -eq $canonicalV5.tags[1].PSObject.Properties['color']) 'Schema v5 omits an unspecified tag color'
+Assert-Equal 'work' $canonicalV5.countdowns[0].tagIds[0] 'Schema v5 serializes countdown tag IDs'
+Assert-Equal 'home' $canonicalV5.notes[0].tagIds[0] 'Schema v5 serializes note tag IDs'
+$reloadedCanonicalV5 = ConvertFrom-CountdownSettingsObject -Settings $canonicalV5
+Assert-Equal 2 $reloadedCanonicalV5.Tags.Count 'Schema v5 reloads tags without optional colors'
+Assert-Equal $null $reloadedCanonicalV5.Tags[1].color 'Schema v5 reload preserves an unspecified tag color'
+
+$missingV5TagsRejected = $false
+try {
+    $missingV5Tags = $v5Settings | Select-Object * -ExcludeProperty tags
+    ConvertFrom-CountdownSettingsObject -Settings $missingV5Tags | Out-Null
+}
+catch {
+    $missingV5TagsRejected = $true
+}
+Assert-Equal $true $missingV5TagsRejected 'Schema v5 requires a tag library'
+$duplicateTagIdRejected = $false
+try {
+    $duplicateTagIdSettings = $v5Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $duplicateTagIdSettings.tags += [pscustomobject]@{ id = 'WORK'; name = '第二个工作'; color = $null }
+    ConvertFrom-CountdownSettingsObject -Settings $duplicateTagIdSettings | Out-Null
+}
+catch {
+    $duplicateTagIdRejected = $true
+}
+Assert-Equal $true $duplicateTagIdRejected 'Schema v5 rejects duplicate tag IDs without case sensitivity'
+$duplicateTagNameRejected = $false
+try {
+    $duplicateTagNameSettings = $v5Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $duplicateTagNameSettings.tags += [pscustomobject]@{ id = 'office'; name = '工作'; color = $null }
+    ConvertFrom-CountdownSettingsObject -Settings $duplicateTagNameSettings | Out-Null
+}
+catch {
+    $duplicateTagNameRejected = $true
+}
+Assert-Equal $true $duplicateTagNameRejected 'Schema v5 rejects duplicate tag names without case sensitivity'
+$danglingCountdownTagRejected = $false
+try {
+    $danglingCountdownTagSettings = $v5Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $danglingCountdownTagSettings.countdowns[0].tagIds = @('missing')
+    ConvertFrom-CountdownSettingsObject -Settings $danglingCountdownTagSettings | Out-Null
+}
+catch {
+    $danglingCountdownTagRejected = $true
+}
+Assert-Equal $true $danglingCountdownTagRejected 'Schema v5 rejects dangling countdown tag IDs'
+$duplicateNoteTagRejected = $false
+try {
+    $duplicateNoteTagSettings = $v5Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $duplicateNoteTagSettings.notes[0].tagIds = @('home', 'HOME')
+    ConvertFrom-CountdownSettingsObject -Settings $duplicateNoteTagSettings | Out-Null
+}
+catch {
+    $duplicateNoteTagRejected = $true
+}
+Assert-Equal $true $duplicateNoteTagRejected 'Schema v5 rejects duplicate note tag IDs without case sensitivity'
+$invalidTagColorSettingsRejected = $false
+try {
+    $invalidTagColorSettings = $v5Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $invalidTagColorSettings.tags[0].color = 'blue'
+    ConvertFrom-CountdownSettingsObject -Settings $invalidTagColorSettings | Out-Null
+}
+catch {
+    $invalidTagColorSettingsRejected = $true
+}
+Assert-Equal $true $invalidTagColorSettingsRejected 'Schema v5 validates tag colors through tag records'
+
 $originalNotes = [System.Collections.ArrayList]::new()
-[void] $originalNotes.Add([pscustomobject]@{ id = 'existing'; text = '已有便签'; isCompleted = $false })
+[void] $originalNotes.Add([pscustomobject]@{ id = 'existing'; text = '已有便签'; isCompleted = $false; tagIds = @('work') })
 $persistedCandidates = [System.Collections.ArrayList]::new()
-$addResult = Invoke-NoteMutation -Notes $originalNotes -Action Add -Text '新增便签' -PersistCandidate {
+$addResult = Invoke-NoteMutation -Notes $originalNotes -Action Add -Text '新增便签' -TagIds @('home') -PersistCandidate {
     param($candidate)
     [void] $persistedCandidates.Add($candidate)
 }
@@ -524,12 +696,14 @@ Assert-Equal 1 $originalNotes.Count 'Note add does not mutate source before comm
 Assert-Equal 2 $addResult.Notes.Count 'Note add returns candidate notes'
 Assert-Equal $true $addResult.Changed 'Note add reports change'
 Assert-Equal 1 $persistedCandidates.Count 'Note add persists one candidate'
+Assert-Equal 'home' $addResult.Notes[1].tagIds[0] 'Note add preserves selected tag IDs'
 $completionResult = Invoke-NoteMutation -Notes $addResult.Notes -Action SetCompletion -Id 'existing' -IsCompleted $true -PersistCandidate {
     param($candidate)
     [void] $persistedCandidates.Add($candidate)
 }
 Assert-Equal $false ([bool] $addResult.Notes[0].isCompleted) 'Note completion does not mutate source before commit'
 Assert-Equal $true ([bool] $completionResult.Notes[0].isCompleted) 'Note completion returns changed candidate'
+Assert-Equal 'work' $completionResult.Notes[0].tagIds[0] 'Note completion retains existing tag IDs'
 $noOpPersistCalls = [pscustomobject]@{ Count = 0 }
 $noOpResult = Invoke-NoteMutation -Notes $completionResult.Notes -Action SetCompletion -Id 'existing' -IsCompleted $true -PersistCandidate {
     param($candidate)

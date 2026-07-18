@@ -18,11 +18,35 @@ function ConvertTo-CountdownNoteTagIds {
     return ,$normalizedTagIds
 }
 
+function ConvertTo-CountdownNoteDate {
+    [CmdletBinding()]
+    param([AllowNull()] [object] $Date)
+
+    if ($null -eq $Date) { return $null }
+    if ($Date -isnot [string]) { throw '便签日期必须使用 yyyy-MM-dd 格式。' }
+    if ([string]::IsNullOrWhiteSpace($Date)) { throw '便签日期必须使用 yyyy-MM-dd 格式。' }
+    if ($Date -cnotmatch '^\d{4}-\d{2}-\d{2}$') { throw '便签日期必须使用 yyyy-MM-dd 格式。' }
+
+    $parsed = [DateTime]::MinValue
+    if (-not [DateTime]::TryParseExact(
+            $Date,
+            'yyyy-MM-dd',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None,
+            [ref] $parsed
+        )) {
+        throw '便签日期无效。'
+    }
+
+    $parsed.ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
 function New-CountdownNoteRecord {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $Id,
         [Parameter(Mandatory)] [string] $Text,
+        [AllowNull()] [object] $Date,
         [bool] $IsCompleted = $false,
         [AllowNull()] [System.Collections.IEnumerable] $TagIds
     )
@@ -32,11 +56,13 @@ function New-CountdownNoteRecord {
     if ([string]::IsNullOrWhiteSpace($normalizedId)) { throw '便签 ID 不能为空。' }
     if ([string]::IsNullOrWhiteSpace($normalizedText)) { throw '便签内容不能为空。' }
     if ($normalizedText.Length -gt 140) { throw '便签内容不能超过 140 个字符。' }
+    $normalizedDate = ConvertTo-CountdownNoteDate -Date $Date
     $normalizedTagIds = ConvertTo-CountdownNoteTagIds -TagIds $TagIds
 
     [pscustomobject]@{
         id = $normalizedId
         text = $normalizedText
+        date = $normalizedDate
         isCompleted = [bool] $IsCompleted
         tagIds = $normalizedTagIds
     }
@@ -47,8 +73,9 @@ function Copy-CountdownNotes {
 
     $copy = [System.Collections.ArrayList]::new()
     foreach ($note in @($Notes)) {
+        $date = if ($null -eq $note.PSObject.Properties['date']) { $null } else { $note.date }
         $tagIds = if ($null -eq $note.PSObject.Properties['tagIds']) { @() } else { $note.tagIds }
-        [void] $copy.Add((New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -IsCompleted ([bool] $note.isCompleted) -TagIds $tagIds))
+        [void] $copy.Add((New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $date -IsCompleted ([bool] $note.isCompleted) -TagIds $tagIds))
     }
     return ,$copy
 }
@@ -59,6 +86,7 @@ function Invoke-NoteMutation {
         [Parameter(Mandatory)] [System.Collections.IEnumerable] $Notes,
         [Parameter(Mandatory)] [ValidateSet('Add', 'Update', 'SetCompletion', 'Remove')] [string] $Action,
         [string] $Text,
+        [AllowNull()] [AllowEmptyString()] [string] $Date,
         [string] $Id,
         [bool] $IsCompleted,
         [AllowNull()] [System.Collections.IEnumerable] $TagIds,
@@ -72,7 +100,8 @@ function Invoke-NoteMutation {
 
     switch ($Action) {
         'Add' {
-            $note = New-CountdownNoteRecord -Id ([guid]::NewGuid().ToString('N')) -Text $Text -TagIds $TagIds
+            if ([string]::IsNullOrWhiteSpace($Date)) { throw '请选择便签日期。' }
+            $note = New-CountdownNoteRecord -Id ([guid]::NewGuid().ToString('N')) -Text $Text -Date $Date -TagIds $TagIds
             [void] $candidate.Add($note)
             $changed = $true
             $message = '已添加到便签。'
@@ -80,10 +109,11 @@ function Invoke-NoteMutation {
         'Update' {
             $note = @($candidate | Where-Object { $_.id -eq $Id })[0]
             if ($null -ne $note) {
-                $updatedNote = New-CountdownNoteRecord -Id $note.id -Text $Text -IsCompleted ([bool] $note.isCompleted) -TagIds $TagIds
+                if ([string]::IsNullOrWhiteSpace($Date)) { throw '请选择便签日期。' }
+                $updatedNote = New-CountdownNoteRecord -Id $note.id -Text $Text -Date $Date -IsCompleted ([bool] $note.isCompleted) -TagIds $TagIds
                 $oldTagIds = [string]::Join([char] 0, [string[]] @(ConvertTo-CountdownNoteTagIds -TagIds $note.tagIds))
                 $newTagIds = [string]::Join([char] 0, [string[]] $updatedNote.tagIds)
-                if ($note.text -ne $updatedNote.text -or $oldTagIds -ne $newTagIds) {
+                if ($note.text -ne $updatedNote.text -or $note.date -ne $updatedNote.date -or $oldTagIds -ne $newTagIds) {
                     $candidate[$candidate.IndexOf($note)] = $updatedNote
                     $note = $updatedNote
                     $changed = $true

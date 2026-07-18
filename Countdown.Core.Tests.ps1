@@ -531,7 +531,7 @@ Assert-Equal 0 @($loadedLegacyV3.Records[0].tagIds).Count 'Schema v3 creates unt
 Assert-Equal 'Minute' $loadedLegacyV3.Preferences.Precision 'Schema v3 preserves precision'
 $canonicalLegacyV3 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV3
 $canonicalLegacyV3Object = $canonicalLegacyV3 | ConvertFrom-Json
-Assert-Equal 5 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
+Assert-Equal 6 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
 Assert-Equal 0 @($canonicalLegacyV3Object.tags).Count 'Canonical settings tags'
 Assert-Equal 0 @($canonicalLegacyV3Object.notes).Count 'Canonical settings notes'
 Assert-Equal 0 @($canonicalLegacyV3Object.countdowns[0].tagIds).Count 'Canonical settings countdown tag IDs'
@@ -551,7 +551,7 @@ catch {
 Assert-Equal $true $candidateSaveFailureObserved 'Settings candidate persistence failure is observable'
 Assert-Equal '旧版倒计时' $loadedLegacyV3.Records[0].name 'Settings candidate persistence failure preserves source record'
 Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'same' -AfterHash 'same' -BeforeJson $null -AfterJson $null) 'Unchanged settings are accepted for deployment'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v5 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v6 migration is accepted for deployment'
 $legacyV1Settings = [pscustomobject]@{ schemaVersion = 1; timeZoneId = 'China Standard Time'; targetUtc = '2099-01-01T00:00:00Z' }
 $canonicalLegacyV1 = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $legacyV1Settings)
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV1Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV1) 'Schema v1 migration remains rejected for deployment'
@@ -559,7 +559,7 @@ $settingsModuleTestPath = Join-Path $PSScriptRoot 'settings-module-test.json'
 try {
     Save-CountdownSettings -Path $settingsModuleTestPath -State $loadedLegacyV3
     $savedSettings = [System.IO.File]::ReadAllText($settingsModuleTestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    Assert-Equal 5 $savedSettings.schemaVersion 'Settings module writes canonical schema'
+    Assert-Equal 6 $savedSettings.schemaVersion 'Settings module writes canonical schema'
     Assert-Equal $false (Test-Path -LiteralPath "$settingsModuleTestPath.tmp") 'Settings module cleans temporary file'
 }
 finally {
@@ -583,8 +583,9 @@ Assert-Equal 0 $loadedLegacyV4.Tags.Count 'Schema v4 creates an empty tag librar
 Assert-Equal 0 @($loadedLegacyV4.Records[0].tagIds).Count 'Schema v4 creates untagged countdowns'
 Assert-Equal 0 @($loadedLegacyV4.Notes[0].tagIds).Count 'Schema v4 creates untagged notes'
 Assert-Equal '保留的旧版便签' $loadedLegacyV4.Notes[0].text 'Schema v4 preserves notes'
+Assert-Equal $null $loadedLegacyV4.Notes[0].date 'Schema v4 does not invent a note date'
 $canonicalLegacyV4 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV4
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV4) 'Strict schema v4 to v5 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV4) 'Strict schema v4 to v6 migration is accepted for deployment'
 $invalidV4Transition = $canonicalLegacyV4 | ConvertFrom-Json
 $invalidV4Transition.notes[0].text = '被篡改的便签'
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson ($invalidV4Transition | ConvertTo-Json -Depth 5)) 'Schema v4 migration rejects changed notes'
@@ -604,10 +605,11 @@ $v5Settings = [pscustomobject]@{
     notes = @([pscustomobject]@{ id = 'v5-note'; text = '带标签便签'; isCompleted = $false; tagIds = @('home') })
 }
 $loadedV5 = ConvertFrom-CountdownSettingsObject -Settings $v5Settings
-Assert-Equal $false $loadedV5.Migrated 'Schema v5 settings do not migrate'
+Assert-Equal $true $loadedV5.Migrated 'Schema v5 settings migrate to add note dates'
 Assert-Equal 2 $loadedV5.Tags.Count 'Schema v5 loads tags'
 Assert-Equal 'work' $loadedV5.Records[0].tagIds[0] 'Schema v5 canonicalizes countdown tag IDs'
 Assert-Equal 'home' $loadedV5.Notes[0].tagIds[0] 'Schema v5 preserves note tag IDs'
+Assert-Equal $null $loadedV5.Notes[0].date 'Schema v5 migration does not invent a note date'
 $v5Copy = Copy-CountdownSettingsState -State $loadedV5
 $v5Copy.Tags[0].name = '已改名'
 $v5Copy.Records[0].tagIds[0] = 'home'
@@ -615,15 +617,61 @@ $v5Copy.Notes[0].tagIds[0] = 'work'
 Assert-Equal '工作' $loadedV5.Tags[0].name 'Settings state copy does not mutate source tags'
 Assert-Equal 'work' $loadedV5.Records[0].tagIds[0] 'Settings state copy does not mutate source countdown tags'
 Assert-Equal 'home' $loadedV5.Notes[0].tagIds[0] 'Settings state copy does not mutate source note tags'
-$canonicalV5 = ConvertTo-CountdownSettingsJson -State $loadedV5 | ConvertFrom-Json
-Assert-Equal 5 $canonicalV5.schemaVersion 'Schema v5 remains canonical'
-Assert-Equal '#6B8E23' $canonicalV5.tags[0].color 'Schema v5 serializes tag color'
-Assert-Equal $true ($null -eq $canonicalV5.tags[1].PSObject.Properties['color']) 'Schema v5 omits an unspecified tag color'
-Assert-Equal 'work' $canonicalV5.countdowns[0].tagIds[0] 'Schema v5 serializes countdown tag IDs'
-Assert-Equal 'home' $canonicalV5.notes[0].tagIds[0] 'Schema v5 serializes note tag IDs'
-$reloadedCanonicalV5 = ConvertFrom-CountdownSettingsObject -Settings $canonicalV5
-Assert-Equal 2 $reloadedCanonicalV5.Tags.Count 'Schema v5 reloads tags without optional colors'
-Assert-Equal $null $reloadedCanonicalV5.Tags[1].color 'Schema v5 reload preserves an unspecified tag color'
+$canonicalFromV5 = ConvertTo-CountdownSettingsJson -State $loadedV5 | ConvertFrom-Json
+Assert-Equal 6 $canonicalFromV5.schemaVersion 'Schema v5 migrates to canonical schema v6'
+Assert-Equal '#6B8E23' $canonicalFromV5.tags[0].color 'Schema v6 serializes tag color'
+Assert-Equal $true ($null -eq $canonicalFromV5.tags[1].PSObject.Properties['color']) 'Schema v6 omits an unspecified tag color'
+Assert-Equal 'work' $canonicalFromV5.countdowns[0].tagIds[0] 'Schema v6 serializes countdown tag IDs'
+Assert-Equal 'home' $canonicalFromV5.notes[0].tagIds[0] 'Schema v6 serializes note tag IDs'
+Assert-Equal $null $canonicalFromV5.notes[0].date 'Schema v6 preserves an unknown legacy note date as null'
+$loadedNullDateV6 = ConvertFrom-CountdownSettingsObject -Settings $canonicalFromV5
+Assert-Equal $null $loadedNullDateV6.Notes[0].date 'Schema v6 accepts an explicitly unknown note date'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalFromV5 | ConvertTo-Json -Depth 5)) 'Strict schema v5 to v6 migration is accepted for deployment'
+$invalidV5Transition = $canonicalFromV5 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$invalidV5Transition.notes[0].date = '2026-07-18'
+Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($invalidV5Transition | ConvertTo-Json -Depth 5)) 'Schema v5 migration rejects an invented note date'
+
+$v6Settings = $canonicalFromV5 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$v6Settings.notes[0].date = '2026-07-18'
+$loadedV6 = ConvertFrom-CountdownSettingsObject -Settings $v6Settings
+Assert-Equal $false $loadedV6.Migrated 'Schema v6 settings do not migrate'
+Assert-Equal '2026-07-18' $loadedV6.Notes[0].date 'Schema v6 loads an exact note date'
+$canonicalV6 = ConvertTo-CountdownSettingsJson -State $loadedV6 | ConvertFrom-Json
+Assert-Equal '2026-07-18' $canonicalV6.notes[0].date 'Schema v6 round-trips an exact note date'
+$reloadedCanonicalV6 = ConvertFrom-CountdownSettingsObject -Settings $canonicalV6
+Assert-Equal 2 $reloadedCanonicalV6.Tags.Count 'Schema v6 reloads tags without optional colors'
+Assert-Equal $null $reloadedCanonicalV6.Tags[1].color 'Schema v6 reload preserves an unspecified tag color'
+
+$missingV6NoteDateRejected = $false
+try {
+    $missingV6NoteDate = $v6Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $missingV6NoteDate.notes[0].PSObject.Properties.Remove('date')
+    ConvertFrom-CountdownSettingsObject -Settings $missingV6NoteDate | Out-Null
+}
+catch {
+    $missingV6NoteDateRejected = $true
+}
+Assert-Equal $true $missingV6NoteDateRejected 'Schema v6 requires a note date field'
+$invalidV6NoteDateRejected = $false
+try {
+    $invalidV6NoteDate = $v6Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $invalidV6NoteDate.notes[0].date = '2026-7-18'
+    ConvertFrom-CountdownSettingsObject -Settings $invalidV6NoteDate | Out-Null
+}
+catch {
+    $invalidV6NoteDateRejected = $true
+}
+Assert-Equal $true $invalidV6NoteDateRejected 'Schema v6 rejects a non-canonical note date'
+$blankV6NoteDateRejected = $false
+try {
+    $blankV6NoteDate = $v6Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $blankV6NoteDate.notes[0].date = '   '
+    ConvertFrom-CountdownSettingsObject -Settings $blankV6NoteDate | Out-Null
+}
+catch {
+    $blankV6NoteDateRejected = $true
+}
+Assert-Equal $true $blankV6NoteDateRejected 'Schema v6 rejects a blank note date'
 
 $missingV5TagsRejected = $false
 try {
@@ -685,10 +733,39 @@ catch {
 }
 Assert-Equal $true $invalidTagColorSettingsRejected 'Schema v5 validates tag colors through tag records'
 
+$datedNote = New-CountdownNoteRecord -Id 'dated-note' -Text '带日期便签' -Date '2026-07-18' -TagIds @('work')
+Assert-Equal '2026-07-18' $datedNote.date 'Note records preserve an exact calendar date'
+$leapDayNote = New-CountdownNoteRecord -Id 'leap-day-note' -Text '闰日便签' -Date '2028-02-29' -TagIds @()
+Assert-Equal '2028-02-29' $leapDayNote.date 'Note records accept a valid leap day'
+$invalidNoteDateRejected = $false
+try {
+    New-CountdownNoteRecord -Id 'invalid-date-note' -Text '无效日期便签' -Date '2026-7-18' -TagIds @() | Out-Null
+}
+catch {
+    $invalidNoteDateRejected = $true
+}
+Assert-Equal $true $invalidNoteDateRejected 'Note records reject non-canonical calendar dates'
+$invalidCalendarDateRejected = $false
+try {
+    New-CountdownNoteRecord -Id 'invalid-calendar-note' -Text '不存在日期便签' -Date '2026-02-29' -TagIds @() | Out-Null
+}
+catch {
+    $invalidCalendarDateRejected = $true
+}
+Assert-Equal $true $invalidCalendarDateRejected 'Note records reject an impossible calendar date'
+
 $originalNotes = [System.Collections.ArrayList]::new()
-[void] $originalNotes.Add([pscustomobject]@{ id = 'existing'; text = '已有便签'; isCompleted = $false; tagIds = @('work') })
+[void] $originalNotes.Add([pscustomobject]@{ id = 'existing'; text = '已有便签'; date = '2026-07-17'; isCompleted = $false; tagIds = @('work') })
+$missingAddDateRejected = $false
+try {
+    Invoke-NoteMutation -Notes $originalNotes -Action Add -Text '缺少日期' -TagIds @() -PersistCandidate { param($candidate) } | Out-Null
+}
+catch {
+    $missingAddDateRejected = $true
+}
+Assert-Equal $true $missingAddDateRejected 'Note add requires a calendar date'
 $persistedCandidates = [System.Collections.ArrayList]::new()
-$addResult = Invoke-NoteMutation -Notes $originalNotes -Action Add -Text '新增便签' -TagIds @('home') -PersistCandidate {
+$addResult = Invoke-NoteMutation -Notes $originalNotes -Action Add -Text '新增便签' -Date '2026-07-18' -TagIds @('home') -PersistCandidate {
     param($candidate)
     [void] $persistedCandidates.Add($candidate)
 }
@@ -697,13 +774,21 @@ Assert-Equal 2 $addResult.Notes.Count 'Note add returns candidate notes'
 Assert-Equal $true $addResult.Changed 'Note add reports change'
 Assert-Equal 1 $persistedCandidates.Count 'Note add persists one candidate'
 Assert-Equal 'home' $addResult.Notes[1].tagIds[0] 'Note add preserves selected tag IDs'
-$completionResult = Invoke-NoteMutation -Notes $addResult.Notes -Action SetCompletion -Id 'existing' -IsCompleted $true -PersistCandidate {
+Assert-Equal '2026-07-18' $addResult.Notes[1].date 'Note add preserves the selected calendar date'
+$updateResult = Invoke-NoteMutation -Notes $addResult.Notes -Action Update -Id 'existing' -Text '已有便签' -Date '2026-07-19' -TagIds @('work') -PersistCandidate {
     param($candidate)
     [void] $persistedCandidates.Add($candidate)
 }
-Assert-Equal $false ([bool] $addResult.Notes[0].isCompleted) 'Note completion does not mutate source before commit'
+Assert-Equal '2026-07-17' $addResult.Notes[0].date 'Note update does not mutate the source date before commit'
+Assert-Equal '2026-07-19' $updateResult.Notes[0].date 'Note update preserves the selected calendar date'
+$completionResult = Invoke-NoteMutation -Notes $updateResult.Notes -Action SetCompletion -Id 'existing' -IsCompleted $true -PersistCandidate {
+    param($candidate)
+    [void] $persistedCandidates.Add($candidate)
+}
+Assert-Equal $false ([bool] $updateResult.Notes[0].isCompleted) 'Note completion does not mutate source before commit'
 Assert-Equal $true ([bool] $completionResult.Notes[0].isCompleted) 'Note completion returns changed candidate'
 Assert-Equal 'work' $completionResult.Notes[0].tagIds[0] 'Note completion retains existing tag IDs'
+Assert-Equal '2026-07-19' $completionResult.Notes[0].date 'Note completion retains the existing calendar date'
 $noOpPersistCalls = [pscustomobject]@{ Count = 0 }
 $noOpResult = Invoke-NoteMutation -Notes $completionResult.Notes -Action SetCompletion -Id 'existing' -IsCompleted $true -PersistCandidate {
     param($candidate)
@@ -726,6 +811,7 @@ catch {
 Assert-Equal $true $persistFailureObserved 'Note persistence failure is observable'
 Assert-Equal 2 $completionResult.Notes.Count 'Note persistence failure preserves source notes'
 Assert-Equal $true ([bool] $completionResult.Notes[0].isCompleted) 'Note persistence failure preserves source record state'
+Assert-Equal '2026-07-19' $completionResult.Notes[0].date 'Note persistence failure preserves the source calendar date'
 Assert-Equal 1 $failedPersistCalls.Count 'Note persistence failure invokes persistence once'
 
 if ($failures.Count -gt 0) {

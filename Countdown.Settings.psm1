@@ -85,9 +85,9 @@ function ConvertFrom-CountdownSettingsObject {
         [void] $records.Add((New-CountdownRecordFromSettings -Id ([guid]::NewGuid().ToString('N')) -Name '我的倒计时' -TargetUtc (ConvertTo-CountdownSettingsTargetUtc -Value $Settings.targetUtc)))
         return [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $true }
     }
-    if ($Settings.schemaVersion -notin @(2, 3, 4, 5)) { throw '设置文件版本无效。' }
+    if ($Settings.schemaVersion -notin @(2, 3, 4, 5, 6)) { throw '设置文件版本无效。' }
 
-    if ($Settings.schemaVersion -eq 5) {
+    if ($Settings.schemaVersion -ge 5) {
         if ($null -eq $Settings.PSObject.Properties['tags'] -or $null -eq $Settings.tags) { throw '设置中缺少标签库。' }
         $tagIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $tagNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -112,7 +112,7 @@ function ConvertFrom-CountdownSettingsObject {
         if (-not $names.Add($name)) { throw '设置中包含重复的倒计时名称。' }
         if (-not $ids.Add($id)) { throw '设置中包含重复的倒计时 ID。' }
         $recordTagIds = @()
-        if ($Settings.schemaVersion -eq 5) {
+        if ($Settings.schemaVersion -ge 5) {
             if ($null -eq $item.PSObject.Properties['tagIds'] -or $null -eq $item.tagIds) { throw '设置中的倒计时缺少标签 ID 列表。' }
             $recordTagIds = ConvertTo-CountdownTagIds -TagIds $item.tagIds -KnownTagIds $knownTagIds
         }
@@ -137,15 +137,20 @@ function ConvertFrom-CountdownSettingsObject {
             if ($null -eq $item.PSObject.Properties['isCompleted'] -or $item.isCompleted -isnot [bool]) { throw '设置中包含无效的便签完成状态。' }
             if (-not $noteIds.Add($id)) { throw '设置中包含重复的便签 ID。' }
             $noteTagIds = @()
-            if ($Settings.schemaVersion -eq 5) {
+            if ($Settings.schemaVersion -ge 5) {
                 if ($null -eq $item.PSObject.Properties['tagIds'] -or $null -eq $item.tagIds) { throw '设置中的便签缺少标签 ID 列表。' }
                 $noteTagIds = ConvertTo-CountdownTagIds -TagIds $item.tagIds -KnownTagIds $knownTagIds
             }
-            [void] $notes.Add((New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds))
+            $noteDate = $null
+            if ($Settings.schemaVersion -eq 6) {
+                if ($null -eq $item.PSObject.Properties['date']) { throw '设置中的便签缺少日期字段。' }
+                $noteDate = $item.date
+            }
+            [void] $notes.Add((New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -Date $noteDate -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds))
         }
     }
 
-    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 5 }
+    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 6 }
 }
 
 function ConvertTo-CountdownSettingsJson {
@@ -196,18 +201,20 @@ function ConvertTo-CountdownSettingsJson {
     foreach ($note in @($State.Notes)) {
         if ($null -eq $note.PSObject.Properties['tagIds'] -or $null -eq $note.tagIds) { throw '设置中的便签缺少标签 ID 列表。' }
         $noteTagIds = ConvertTo-CountdownTagIds -TagIds $note.tagIds -KnownTagIds $knownTagIds
-        $validNote = New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -IsCompleted ([bool] $note.isCompleted) -TagIds $noteTagIds
+        $noteDate = if ($null -eq $note.PSObject.Properties['date']) { $null } else { $note.date }
+        $validNote = New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $noteDate -IsCompleted ([bool] $note.isCompleted) -TagIds $noteTagIds
         if (-not $noteIds.Add($validNote.id)) { throw '设置中包含重复的便签 ID。' }
         $notes += [ordered]@{
             id = $validNote.id
             text = $validNote.text
+            date = $validNote.date
             isCompleted = [bool] $validNote.isCompleted
             tagIds = @($validNote.tagIds | ForEach-Object { [string] $_ })
         }
     }
 
     [ordered]@{
-        schemaVersion = 5
+        schemaVersion = 6
         timeZoneId = 'China Standard Time'
         displayPrecision = $preferences.Precision
         monthlySalary = $preferences.MonthlySalary
@@ -306,7 +313,7 @@ function Test-CountdownSettingsDeploymentTransition {
     try {
         $before = $BeforeJson | ConvertFrom-Json
         $after = $AfterJson | ConvertFrom-Json
-        if ($before.schemaVersion -notin @(3, 4) -or $after.schemaVersion -ne 5) { return $false }
+        if ($before.schemaVersion -notin @(3, 4, 5) -or $after.schemaVersion -ne 6) { return $false }
         $expectedMigration = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $before) | ConvertFrom-Json
         $null = ConvertFrom-CountdownSettingsObject -Settings $after
         if (-not (Test-CountdownSettingsJsonEquivalent -Expected $expectedMigration -Actual $after)) { return $false }

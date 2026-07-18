@@ -74,6 +74,9 @@ $script:countdownEditorTagIds = [System.Collections.ArrayList]::new()
 $script:noteEditorTagIds = [System.Collections.ArrayList]::new()
 $script:floatingNoteTagIds = [System.Collections.ArrayList]::new()
 $script:editingNoteId = $null
+$script:settingNoteDateInternally = $false
+$script:noteDateUsesDefault = $true
+$script:floatingNoteDateUsesDefault = $true
 $script:tagManagerVisible = $false
 $script:displayPrecision = 'Second'
 $script:salary = [decimal]0
@@ -583,10 +586,14 @@ $script:testCloseTimer = $null
           <Grid x:Name="NoteEditorGrid">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid>
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <TextBox x:Name="NoteInput" MaxLength="140" ToolTip="写下一件要做的事，最多 140 个字符"/>
-              <Button x:Name="AddNoteButton" Grid.Column="1" Width="76" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}" Content="添加" ToolTip="添加便签"/>
-              <Button x:Name="CancelNoteEditButton" Grid.Column="2" Width="64" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="取消" ToolTip="取消编辑便签" Visibility="Collapsed"/>
+              <StackPanel Grid.Column="1" Margin="8,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="日期" Margin="0,0,6,0" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource NoteInkBrush}" VerticalAlignment="Center"/>
+                <DatePicker x:Name="NoteDate" Width="150" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
+              </StackPanel>
+              <Button x:Name="AddNoteButton" Grid.Column="2" Width="76" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}" Content="添加" ToolTip="添加便签"/>
+              <Button x:Name="CancelNoteEditButton" Grid.Column="3" Width="64" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="取消" ToolTip="取消编辑便签" Visibility="Collapsed"/>
             </Grid>
             <TextBlock x:Name="NoteMessageText" Grid.Row="1" Margin="2,8,2,0" MinHeight="18" FontSize="12" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap"/>
           </Grid>
@@ -670,13 +677,19 @@ function Set-DatePickerCalendarTheme {
     Set-CalendarButtonTheme -Calendar $calendar
 }
 
+function Initialize-ThemedDatePicker {
+    param([Parameter(Mandatory)] [System.Windows.Controls.DatePicker] $DatePicker)
+
+    Set-DatePickerCalendarTheme -DatePicker $DatePicker
+    $DatePicker.Add_CalendarOpened({
+            param($sender, $eventArgs)
+            Set-DatePickerCalendarTheme -DatePicker $sender
+        })
+}
+
 $countdownName = $window.FindName('CountdownName')
 $targetDate = $window.FindName('TargetDate')
-Set-DatePickerCalendarTheme -DatePicker $targetDate
-$targetDate.Add_CalendarOpened({
-        param($sender, $eventArgs)
-        Set-DatePickerCalendarTheme -DatePicker $sender
-    })
+Initialize-ThemedDatePicker -DatePicker $targetDate
 $targetHour = $window.FindName('TargetHour')
 $targetMinute = $window.FindName('TargetMinute')
 $targetSecond = $window.FindName('TargetSecond')
@@ -706,6 +719,8 @@ $countdownList = $window.FindName('CountdownList')
 $countdownCount = $window.FindName('CountdownCount')
 $emptyState = $window.FindName('EmptyState')
 $noteInput = $window.FindName('NoteInput')
+$noteDate = $window.FindName('NoteDate')
+Initialize-ThemedDatePicker -DatePicker $noteDate
 $noteSearchGroup = $window.FindName('NoteSearchGroup')
 $script:noteSearchInput = $window.FindName('NoteSearchInput')
 $addNoteButton = $window.FindName('AddNoteButton')
@@ -768,13 +783,17 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
         <TextBlock x:Name="FloatingIncome" Text="今日已赚 ￥0.00" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SuccessTextBrush}"/>
       </Border>
       <Grid x:Name="FloatingNotesEditor" Grid.Row="1" Margin="0,10,0,10" Visibility="Collapsed">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid>
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <TextBox x:Name="FloatingNoteInput" Height="36" Padding="10,0" VerticalContentAlignment="Center" FontSize="13" Foreground="{DynamicResource InkBrush}" Background="{DynamicResource CanvasBrush}" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1" MaxLength="140" ToolTip="写下待办，按回车或点击添加"/>
           <Button x:Name="FloatingAddNoteButton" Grid.Column="1" Width="58" Height="36" Margin="8,0,0,0" Style="{DynamicResource PrimaryButton}" Content="添加" FontSize="12" FontWeight="SemiBold" Cursor="Hand" ToolTip="添加便签"/>
         </Grid>
-        <TextBlock x:Name="FloatingNoteMessage" Grid.Row="1" Margin="2,6,2,0" MinHeight="16" FontSize="11" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap"/>
+        <StackPanel Grid.Row="1" Margin="2,8,2,0" Orientation="Horizontal">
+          <TextBlock Text="便签日期" Margin="0,0,8,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource NoteInkBrush}" VerticalAlignment="Center"/>
+          <DatePicker x:Name="FloatingNoteDate" Width="150" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
+        </StackPanel>
+        <TextBlock x:Name="FloatingNoteMessage" Grid.Row="2" Margin="2,6,2,0" MinHeight="16" FontSize="11" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap"/>
       </Grid>
       <ScrollViewer Grid.Row="2" MaxHeight="480" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl x:Name="FloatingList"/>
@@ -802,10 +821,42 @@ $floatingNotesEditor = $floatingWindow.FindName('FloatingNotesEditor')
 $floatingIncome = $floatingWindow.FindName('FloatingIncome')
 $floatingList = $floatingWindow.FindName('FloatingList')
 $floatingNoteInput = $floatingWindow.FindName('FloatingNoteInput')
+$floatingNoteDate = $floatingWindow.FindName('FloatingNoteDate')
+Initialize-ThemedDatePicker -DatePicker $floatingNoteDate
 $floatingAddNoteButton = $floatingWindow.FindName('FloatingAddNoteButton')
 $floatingNoteMessage = $floatingWindow.FindName('FloatingNoteMessage')
 $openManagerButton = $floatingWindow.FindName('OpenManagerButton')
 $closeFloatingButton = $floatingWindow.FindName('CloseFloatingButton')
+
+function Set-NoteDateSelection {
+    param(
+        [Parameter(Mandatory)] [ValidateSet('NoteEditor', 'FloatingNoteEditor')] [string] $Context,
+        [AllowNull()] [object] $Date,
+        [switch] $UseDefault
+    )
+
+    $datePicker = if ($Context -eq 'NoteEditor') { $noteDate } else { $floatingNoteDate }
+    $script:settingNoteDateInternally = $true
+    try {
+        $datePicker.SelectedDate = if ($null -eq $Date) { $null } else { [DateTime] $Date }
+        if ($Context -eq 'NoteEditor') {
+            $script:noteDateUsesDefault = [bool] $UseDefault
+        }
+        else {
+            $script:floatingNoteDateUsesDefault = [bool] $UseDefault
+        }
+    }
+    finally {
+        $script:settingNoteDateInternally = $false
+    }
+}
+
+$noteDate.Add_SelectedDateChanged({
+        if (-not $script:settingNoteDateInternally) { $script:noteDateUsesDefault = $false }
+    })
+$floatingNoteDate.Add_SelectedDateChanged({
+        if (-not $script:settingNoteDateInternally) { $script:floatingNoteDateUsesDefault = $false }
+    })
 
 foreach ($hour in 0..23) { [void] $targetHour.Items.Add(('{0:D2}' -f $hour)) }
 foreach ($minute in 0..59) { [void] $targetMinute.Items.Add(('{0:D2}' -f $minute)); [void] $targetSecond.Items.Add(('{0:D2}' -f $minute)) }
@@ -826,6 +877,9 @@ function Set-AccessibleName {
 
     [System.Windows.Automation.AutomationProperties]::SetName($Control, $Name)
 }
+
+Set-AccessibleName -Control $noteDate -Name '便签日期'
+Set-AccessibleName -Control $floatingNoteDate -Name '悬浮便签日期'
 
 function Show-ThemedConfirmation {
     param(
@@ -1314,7 +1368,7 @@ function Initialize-TagInterface {
     $script:floatingInheritedTagText.TextWrapping = 'Wrap'
     Set-AccessibleName -Control $script:floatingInheritedTagText -Name '悬浮便签继承的标签'
     $floatingTagSummary.Children.Add($script:floatingInheritedTagText) | Out-Null
-    [System.Windows.Controls.Grid]::SetRow($floatingTagSummary, 2)
+    [System.Windows.Controls.Grid]::SetRow($floatingTagSummary, 3)
     $floatingNotesEditor.Children.Add($floatingTagSummary) | Out-Null
 
     $script:floatingTagPopup = New-Object System.Windows.Controls.Primitives.Popup
@@ -2430,6 +2484,38 @@ function Set-NoteMessage {
     Set-WorkspaceMessage -Text $Text -IsError:$IsError -IsSuccess:(-not $IsError -and -not [string]::IsNullOrWhiteSpace($Text))
 }
 
+function Format-NoteDateForDisplay {
+    param([AllowNull()] [AllowEmptyString()] [string] $Date)
+
+    if ([string]::IsNullOrWhiteSpace($Date)) { return '未设置日期' }
+    ([DateTime]::ParseExact(
+            $Date,
+            'yyyy-MM-dd',
+            [System.Globalization.CultureInfo]::InvariantCulture
+        )).ToString('yyyy年M月d日', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Refresh-DefaultNoteDates {
+    param([Parameter(Mandatory)] [DateTimeOffset] $BeijingTime)
+
+    $today = $BeijingTime.Date
+    if (
+        $script:noteDateUsesDefault -and
+        [string]::IsNullOrWhiteSpace($script:editingNoteId) -and
+        [string]::IsNullOrWhiteSpace($noteInput.Text) -and
+        $noteDate.SelectedDate -ne $today
+    ) {
+        Set-NoteDateSelection -Context 'NoteEditor' -Date $today -UseDefault
+    }
+    if (
+        $script:floatingNoteDateUsesDefault -and
+        [string]::IsNullOrWhiteSpace($floatingNoteInput.Text) -and
+        $floatingNoteDate.SelectedDate -ne $today
+    ) {
+        Set-NoteDateSelection -Context 'FloatingNoteEditor' -Date $today -UseDefault
+    }
+}
+
 function New-NoteRow {
     param([Parameter(Mandatory)] [object] $Record, [switch] $Compact)
     $horizontalPadding = if ($Compact) { 10 } else { 14 }
@@ -2457,6 +2543,16 @@ function New-NoteRow {
     $text.TextWrapping = 'Wrap'; $text.VerticalAlignment = 'Center'; $text.Foreground = if ($isCompleted) { $completedNoteBrush } else { $noteInkBrush }
     if ($isCompleted) { $text.TextDecorations = [System.Windows.TextDecorations]::Strikethrough }
     [void] $content.Children.Add($text)
+    $dateValue = if ($null -eq $Record.PSObject.Properties['date']) { $null } else { [string] $Record.date }
+    $dateText = New-Object System.Windows.Controls.TextBlock
+    $dateText.Text = '日期 · {0}' -f (Format-NoteDateForDisplay -Date $dateValue)
+    $dateText.Uid = 'NoteDate'
+    $dateText.Margin = '0,4,0,0'
+    $dateText.FontSize = if ($Compact) { 10 } else { 11 }
+    $dateText.Foreground = if ($isCompleted) { $completedNoteBrush } else { $noteInkBrush }
+    $dateText.Opacity = 0.78
+    Set-AccessibleName -Control $dateText -Name ('便签日期：{0}' -f (Format-NoteDateForDisplay -Date $dateValue))
+    [void] $content.Children.Add($dateText)
     if (@(Get-RecordTagIds -Record $Record).Count -gt 0) { [void] $content.Children.Add((New-TagChipPanel -TagIds $Record.tagIds -Compact:$Compact)) }
     [System.Windows.Controls.Grid]::SetColumn($content, 1)
     $status = New-Object System.Windows.Controls.TextBlock
@@ -2542,6 +2638,7 @@ function Set-Workspace {
 
     $script:activeWorkspace = $Workspace
     $showNotes = $Workspace -eq 'Notes'
+    if ($showNotes) { Refresh-DefaultNoteDates -BeijingTime (Get-BeijingNow) }
     Close-TransientPanels
     $countdownEditorWorkspace.Visibility = if ($showNotes) { 'Collapsed' } else { 'Visible' }
     $preferencesWorkspace.Visibility = if ($showNotes) { 'Collapsed' } else { 'Visible' }
@@ -2574,6 +2671,7 @@ function Invoke-NoteMutationFromUi {
     param(
         [Parameter(Mandatory)] [ValidateSet('Add', 'Update', 'SetCompletion', 'Remove')] [string] $Action,
         [string] $Text,
+        [AllowNull()] [AllowEmptyString()] [string] $Date,
         [string] $Id,
         [bool] $IsCompleted,
         [System.Collections.IEnumerable] $TagIds
@@ -2589,6 +2687,7 @@ function Invoke-NoteMutationFromUi {
     }
     if ($Action -in @('Add', 'Update')) {
         $arguments.Text = $Text
+        $arguments.Date = $Date
         $arguments.TagIds = $TagIds
     }
     if ($Action -eq 'Update') { $arguments.Id = $Id }
@@ -2627,12 +2726,18 @@ function Add-NoteFromInput {
 
     $knownTagIds = @($script:tags | ForEach-Object { $_.id })
     $tagIds = ConvertTo-CountdownTagIds -TagIds (Get-TagSelectionForContext -Context $Context) -KnownTagIds $knownTagIds
+    $datePicker = if ($Context -eq 'NoteEditor') { $noteDate } else { $floatingNoteDate }
+    if ($null -eq $datePicker.SelectedDate) {
+        Set-NoteMessage -Text '请选择便签日期。' -IsError
+        return
+    }
+    $dateText = ConvertTo-CountdownDateText -SelectedDate $datePicker.SelectedDate
     $isNoteEdit = $Context -eq 'NoteEditor' -and -not [string]::IsNullOrWhiteSpace($script:editingNoteId)
     $result = if ($isNoteEdit) {
-        Invoke-NoteMutationFromUi -Action Update -Id $script:editingNoteId -Text $TextBox.Text -TagIds $tagIds
+        Invoke-NoteMutationFromUi -Action Update -Id $script:editingNoteId -Text $TextBox.Text -Date $dateText -TagIds $tagIds
     }
     else {
-        Invoke-NoteMutationFromUi -Action Add -Text $TextBox.Text -TagIds $tagIds
+        Invoke-NoteMutationFromUi -Action Add -Text $TextBox.Text -Date $dateText -TagIds $tagIds
     }
     if ($null -ne $result -and $result.Changed) {
         if ($isNoteEdit) {
@@ -2640,6 +2745,7 @@ function Add-NoteFromInput {
         }
         else {
             $TextBox.Text = ''
+            Set-NoteDateSelection -Context $Context -Date (Get-BeijingNow).Date -UseDefault
             [void] $TextBox.Focus()
         }
     }
@@ -2648,6 +2754,7 @@ function Add-NoteFromInput {
 function Reset-NoteEditor {
     $script:editingNoteId = $null
     $noteInput.Text = ''
+    Set-NoteDateSelection -Context 'NoteEditor' -Date (Get-BeijingNow).Date -UseDefault
     $addNoteButton.Content = '添加'
     $addNoteButton.ToolTip = '添加便签'
     $cancelNoteEditButton.Visibility = 'Collapsed'
@@ -2672,6 +2779,13 @@ function Start-NoteEditing {
     Set-TagEditorMessage -Context 'NoteEditor' -Text ''
     $script:editingNoteId = $note.id
     $noteInput.Text = $note.text
+    $selectedNoteDate = if ([string]::IsNullOrWhiteSpace([string] $note.date)) {
+        $null
+    }
+    else {
+        [DateTime]::ParseExact([string] $note.date, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    Set-NoteDateSelection -Context 'NoteEditor' -Date $selectedNoteDate
     $addNoteButton.Content = '保存'
     $addNoteButton.ToolTip = '保存便签修改'
     $cancelNoteEditButton.Visibility = 'Visible'
@@ -2959,8 +3073,8 @@ $floatingWindow.Add_ContentRendered({
     $script:runtimeReceiptWritten = $true
     if ($ExitAfterReadyForTest) {
         $script:testCloseTimer = New-Object Windows.Threading.DispatcherTimer
-        # WMI process probes can take longer than the first render on a busy host.
-        $script:testCloseTimer.Interval = [TimeSpan]::FromSeconds(20)
+        # Keep the test process alive beyond the receipt waiter's 20-second deadline on a busy host.
+        $script:testCloseTimer.Interval = [TimeSpan]::FromSeconds(30)
         $script:testCloseTimer.Add_Tick({
             $script:testCloseTimer.Stop()
             $floatingWindow.Close()
@@ -3017,6 +3131,8 @@ function Invoke-TagInteractionValidation {
     $floatingOverrideText = "验证悬浮改选$token"
     $floatingClearText = "验证悬浮清空$token"
     $editedFloatingNoteText = "验证便签编辑$token"
+    $floatingNoteDateValue = '2032-05-06'
+    $editedNoteDateValue = '2034-07-08'
 
     Set-Workspace -Workspace 'Countdowns'
     Reset-Editor
@@ -3112,9 +3228,11 @@ function Invoke-TagInteractionValidation {
     (Get-ValidationTagToggle -Panel $script:tagFilterTagsPanel -Id $tagA.id).IsChecked = $true
     Set-Workspace -Workspace 'Notes'
     $floatingNoteInput.Text = $floatingNoteText
+    $floatingNoteDate.SelectedDate = [DateTime] $floatingNoteDateValue
     Invoke-ValidationButtonClick -Button $floatingAddNoteButton
     $floatingNote = @($script:notes | Where-Object { $_.text -eq $floatingNoteText })[0]
     $floatingInheritsTags = $null -ne $floatingNote -and @($floatingNote.tagIds).Count -eq 1 -and $floatingNote.tagIds[0] -eq $tagA.id -and [string] $script:floatingTagSelectorButton.Content -eq '标签（1）' -and $script:floatingInheritedTagText.Text -eq '已选 1 个标签'
+    $floatingNoteDateViaPicker = $null -ne $floatingNote -and $floatingNote.date -eq $floatingNoteDateValue
 
     $floatingPopupStartsClosed = -not $script:floatingTagPopup.IsOpen
     Invoke-ValidationButtonClick -Button $script:floatingTagSelectorButton
@@ -3148,6 +3266,7 @@ function Invoke-TagInteractionValidation {
     if (-not $script:noteTagPopup.IsOpen) { throw '编辑便签时标签选择器没有按需展开。' }
     (Get-ValidationTagToggle -Panel $script:noteTagSelectorPanel -Id $tagB.id).IsChecked = $false
     $noteInput.Text = $editedFloatingNoteText
+    $noteDate.SelectedDate = [DateTime] $editedNoteDateValue
     Invoke-ValidationButtonClick -Button $addNoteButton
     $editedFloatingNote = @($script:notes | Where-Object { $_.id -eq $floatingOverrideNote.id })[0]
     $persistedEditedFloatingNote = @((([System.IO.File]::ReadAllText($settingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json).notes) | Where-Object { $_.id -eq $floatingOverrideNote.id })[0]
@@ -3163,6 +3282,11 @@ function Invoke-TagInteractionValidation {
         [string]::IsNullOrWhiteSpace($script:editingNoteId) -and
         [string] $addNoteButton.Content -eq '添加' -and
         $cancelNoteEditButton.Visibility -eq 'Collapsed'
+    $noteEditingPersistsDate =
+        $null -ne $editedFloatingNote -and
+        $editedFloatingNote.date -eq $editedNoteDateValue -and
+        $null -ne $persistedEditedFloatingNote -and
+        $persistedEditedFloatingNote.date -eq $editedNoteDateValue
 
     if (-not $script:tagManagerVisible) { Toggle-TagManager }
     $tagManagerRow = @($script:tagManagerList.Items | Where-Object {
@@ -3188,10 +3312,12 @@ function Invoke-TagInteractionValidation {
         UntaggedAndCountdownStatus = $untaggedMatches -and $activeStatusMatches
         NoteStatusSearchAndCompletion = $searchMatches -and $completionRetainsTags
         FloatingNoteInheritsTags = $floatingInheritsTags
+        FloatingNoteDateViaPicker = $floatingNoteDateViaPicker
         TagSearchCreateAvoidsDefaultSubmit = $tagSearchCreateAvoidedDefaultSubmit
         FloatingNotePopupOnDemand = $floatingPopupOnDemand
         FloatingNoteCanOverrideTags = $floatingCanSelectAdditionalTag -and $floatingCanClearTags
         NoteEditingPersistsTags = $noteEditingPersistsTags
+        NoteEditingPersistsDate = $noteEditingPersistsDate
         RenameAndDeleteDetachOnly = $renamePreservesAssociations -and $deleteDetachesOnly
     }
     Set-TagFilter -Mode 'All'
@@ -3204,6 +3330,8 @@ function Invoke-TagInteractionValidation {
 }
 
 Reset-Editor
+Reset-NoteEditor
+Set-NoteDateSelection -Context 'FloatingNoteEditor' -Date (Get-BeijingNow).Date -UseDefault
 $displayPrecisionInput.SelectedValue = $script:displayPrecision
 $monthlySalary.Text = $script:salary.ToString('0.##', [System.Globalization.CultureInfo]::InvariantCulture)
 $workStartInput.Text = Format-WorkTime -Value $script:workStart
@@ -3378,8 +3506,17 @@ if ($ValidateOnly) {
         (Test-ThemeStyleTemplate -Resources $window.Resources -Key 'FilterOptionButton') -and
         (Test-ThemeStyleTemplate -Resources $window.Resources -Key 'TagToggleButton')
     $floatingThemeResourcesCopied = @($themeTemplateKeys | Where-Object { -not (Test-ThemeStyleTemplate -Resources $floatingWindow.Resources -Key $_) }).Count -eq 0
-    foreach ($control in @($countdownName, $noteInput, $script:noteSearchInput, $floatingNoteInput, $targetHour, $targetMinute, $targetSecond, $displayPrecisionInput, $targetDate, $topmostCheck, $filterToggleButton, $minimizeWindowButton, $closeWindowButton, $floatingAddNoteButton, $closeFloatingButton)) { [void] $control.ApplyTemplate() }
-    $themeProbeNote = [pscustomobject]@{ id = '__theme_probe__'; text = '主题控件检查'; isCompleted = $false; tagIds = @() }
+    foreach ($control in @($countdownName, $noteInput, $script:noteSearchInput, $floatingNoteInput, $targetHour, $targetMinute, $targetSecond, $displayPrecisionInput, $targetDate, $noteDate, $floatingNoteDate, $topmostCheck, $filterToggleButton, $minimizeWindowButton, $closeWindowButton, $floatingAddNoteButton, $closeFloatingButton)) { [void] $control.ApplyTemplate() }
+    $noteDatePickers = @($noteDate, $floatingNoteDate)
+    $hasNoteDateControls =
+        @($noteDatePickers | Where-Object {
+                $_ -isnot [System.Windows.Controls.DatePicker] -or
+                $null -eq $_.Template.FindName('PART_TextBox', $_) -or
+                $null -eq $_.Template.FindName('PART_Button', $_) -or
+                $_.Template.FindName('PART_TextBox', $_).Style -ne $window.FindResource('DatePickerTextBoxStyle') -or
+                $_.Template.FindName('PART_Button', $_).Style -ne $window.FindResource('DatePickerToggleButton')
+            }).Count -eq 0
+    $themeProbeNote = [pscustomobject]@{ id = '__theme_probe__'; text = '主题控件检查'; date = '2026-07-18'; isCompleted = $false; tagIds = @() }
     $themeProbeRow = New-NoteRow -Record $themeProbeNote
     $themeProbeControls = @($themeProbeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -or $_ -is [System.Windows.Controls.Button] })
     foreach ($control in $themeProbeControls) { [void] $control.ApplyTemplate() }
@@ -3662,23 +3799,35 @@ if ($ValidateOnly) {
     $tagPersistenceRoundTrip = $false
     if (-not [string]::IsNullOrWhiteSpace($SettingsFile)) {
         $roundTrip = ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState) | ConvertFrom-Json
-        $persistenceRoundTrip = $roundTrip.schemaVersion -eq 5 -and $roundTrip.displayPrecision -eq $script:displayPrecision -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
-        $notePersistenceRoundTrip = $roundTrip.schemaVersion -eq 5 -and @($roundTrip.notes).Count -eq $script:notes.Count
-        $tagPersistenceRoundTrip = $roundTrip.schemaVersion -eq 5 -and @($roundTrip.tags).Count -eq $script:tags.Count
+        $persistenceRoundTrip = $roundTrip.schemaVersion -eq 6 -and $roundTrip.displayPrecision -eq $script:displayPrecision -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
+        $notePersistenceRoundTrip = $roundTrip.schemaVersion -eq 6 -and @($roundTrip.notes).Count -eq $script:notes.Count
+        $tagPersistenceRoundTrip = $roundTrip.schemaVersion -eq 6 -and @($roundTrip.tags).Count -eq $script:tags.Count
     }
     $noteAddViaClick = $false
+    $noteDateRequired = $false
+    $noteDateViaPicker = $false
     $noteStatusViaCheckbox = $false
     if ($ExerciseNoteAdd) {
         if ([string]::IsNullOrWhiteSpace($SettingsFile)) { throw '-ExerciseNoteAdd requires -SettingsFile.' }
         Set-Workspace -Workspace 'Notes'
         Reset-NoteEditor
         $notesBeforeAdd = $script:notes.Count
+        $missingDateText = '验证缺少便签日期'
+        $noteInput.Text = $missingDateText
+        $noteDate.SelectedDate = $null
+        $addNoteButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+        $noteDateRequired =
+            $script:notes.Count -eq $notesBeforeAdd -and
+            $noteInput.Text -eq $missingDateText -and
+            $noteMessageText.Text -eq '请选择便签日期。'
         $addedNoteText = '验证点击添加便签'
         $noteInput.Text = $addedNoteText
+        $noteDate.SelectedDate = [DateTime]'2031-04-05'
         $addNoteButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
         $noteAddViaClick = $noteEditorWorkspace.Visibility -eq 'Visible' -and $script:notes.Count -eq ($notesBeforeAdd + 1) -and $noteInput.Text -eq '' -and @($script:notes | Where-Object { $_.text -eq $addedNoteText -and -not $_.isCompleted }).Count -eq 1
         if ($noteAddViaClick) {
             $addedNote = @($script:notes | Where-Object { $_.text -eq $addedNoteText })[0]
+            $noteDateViaPicker = $addedNote.date -eq '2031-04-05'
             $activeRow = New-NoteRow -Record $addedNote
             $activeCheckBox = @($activeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and [string] $_.Tag -eq $addedNote.id })[0]
             if ($null -ne $activeCheckBox) {
@@ -3703,10 +3852,12 @@ if ($ValidateOnly) {
         UntaggedAndCountdownStatus = $false
         NoteStatusSearchAndCompletion = $false
         FloatingNoteInheritsTags = $false
+        FloatingNoteDateViaPicker = $false
         TagSearchCreateAvoidsDefaultSubmit = $false
         FloatingNotePopupOnDemand = $false
         FloatingNoteCanOverrideTags = $false
         NoteEditingPersistsTags = $false
+        NoteEditingPersistsDate = $false
         RenameAndDeleteDetachOnly = $false
     }
     if ($ExerciseTagInteractions) {
@@ -3889,8 +4040,35 @@ if ($ValidateOnly) {
         @($_.Child.Children | Where-Object { $_ -is [System.Windows.Controls.TextBlock] } | ForEach-Object { [string] $_.Text })
     })
     $noteStatusLabelsPresent = $renderedNoteTexts -contains '未完成' -and $renderedNoteTexts -contains '已完成'
+    $renderedNoteDateTexts = @($renderedNoteCards | ForEach-Object {
+        $content = @($_.Child.Children | Where-Object { $_ -is [System.Windows.Controls.StackPanel] -and [System.Windows.Controls.Grid]::GetColumn($_) -eq 1 })[0]
+        @($content.Children | Where-Object { $_ -is [System.Windows.Controls.TextBlock] -and [string] $_.Uid -eq 'NoteDate' } | ForEach-Object { [string] $_.Text })
+    })
+    $noteDatesRendered =
+        $renderedNoteDateTexts.Count -eq $renderedNoteCards.Count -and
+        @($renderedNoteDateTexts | Where-Object { $_ -notmatch '^日期 · (?:未设置日期|\d{4}年\d{1,2}月\d{1,2}日)$' }).Count -eq 0
     $script:showCompletedNotes = $false
     Render-Notes
+    Reset-NoteEditor
+    $floatingNoteInput.Text = ''
+    $dayBeforeBeijingMidnight = [DateTime] '2030-12-31'
+    $dayAfterBeijingMidnight = [DateTime] '2031-01-01'
+    Set-NoteDateSelection -Context 'NoteEditor' -Date $dayBeforeBeijingMidnight -UseDefault
+    Set-NoteDateSelection -Context 'FloatingNoteEditor' -Date $dayBeforeBeijingMidnight -UseDefault
+    Refresh-DefaultNoteDates -BeijingTime ([DateTimeOffset] '2031-01-01T00:00:00+08:00')
+    $noteDateDefaultsTrackBeijingDay =
+        $noteDate.SelectedDate -eq $dayAfterBeijingMidnight -and
+        $floatingNoteDate.SelectedDate -eq $dayAfterBeijingMidnight
+    Set-NoteDateSelection -Context 'NoteEditor' -Date ([DateTime] '2030-12-30')
+    $floatingNoteInput.Text = '跨日草稿'
+    Set-NoteDateSelection -Context 'FloatingNoteEditor' -Date $dayBeforeBeijingMidnight -UseDefault
+    Refresh-DefaultNoteDates -BeijingTime ([DateTimeOffset] '2031-01-01T00:00:00+08:00')
+    $noteDateChoicesSurviveBeijingDayChange =
+        $noteDate.SelectedDate -eq [DateTime] '2030-12-30' -and
+        $floatingNoteDate.SelectedDate -eq $dayBeforeBeijingMidnight
+    Reset-NoteEditor
+    $floatingNoteInput.Text = ''
+    Set-NoteDateSelection -Context 'FloatingNoteEditor' -Date (Get-BeijingNow).Date -UseDefault
     Set-Workspace -Workspace 'Notes'
     [void] ($unifiedWorkspaceSwitches = $notesWorkspace.Visibility -eq 'Visible' -and $countdownWorkspace.Visibility -eq 'Collapsed' -and $floatingNotesEditor.Visibility -eq 'Visible' -and $floatingCountdownSummary.Visibility -eq 'Collapsed')
     Set-Workspace -Workspace 'Countdowns'
@@ -3938,6 +4116,10 @@ if ($ValidateOnly) {
         NotePersistenceRoundTrip = $notePersistenceRoundTrip
         TagPersistenceRoundTrip = $tagPersistenceRoundTrip
         NoteAddViaClick = $noteAddViaClick
+        NoteDateRequired = $noteDateRequired
+        NoteDateViaPicker = $noteDateViaPicker
+        NoteDateDefaultsTrackBeijingDay = $noteDateDefaultsTrackBeijingDay
+        NoteDateChoicesSurviveBeijingDayChange = $noteDateChoicesSurviveBeijingDayChange
         NoteStatusViaCheckbox = $noteStatusViaCheckbox
         TagInteractionsExecuted = $tagInteractions.Executed
         TagCreationAndAssociation = $tagInteractions.CreationAndAssociation
@@ -3946,10 +4128,12 @@ if ($ValidateOnly) {
         TagUntaggedAndCountdownStatus = $tagInteractions.UntaggedAndCountdownStatus
         TagNoteStatusSearchAndCompletion = $tagInteractions.NoteStatusSearchAndCompletion
         TagFloatingNoteInheritsTags = $tagInteractions.FloatingNoteInheritsTags
+        TagFloatingNoteDateViaPicker = $tagInteractions.FloatingNoteDateViaPicker
         TagSearchCreateAvoidsDefaultSubmit = $tagInteractions.TagSearchCreateAvoidsDefaultSubmit
         TagFloatingNotePopupOnDemand = $tagInteractions.FloatingNotePopupOnDemand
         TagFloatingNoteCanOverrideTags = $tagInteractions.FloatingNoteCanOverrideTags
         TagNoteEditingPersistsTags = $tagInteractions.NoteEditingPersistsTags
+        TagNoteEditingPersistsDate = $tagInteractions.NoteEditingPersistsDate
         TagRenameAndDeleteDetachOnly = $tagInteractions.RenameAndDeleteDetachOnly
         CountdownSaveFailurePreservesState = $countdownSaveFailurePreservesState
         PreferenceSaveFailurePreservesState = $preferenceSaveFailurePreservesState
@@ -3962,6 +4146,7 @@ if ($ValidateOnly) {
         CardActionsBoundByTag = $cardActionsBoundByTag
         NoteActionsBoundByTag = $noteActionsBoundByTag
         NoteStatusLabelsPresent = $noteStatusLabelsPresent
+        NoteDatesRendered = $noteDatesRendered
         CompletedNotesCollapsed = $completedNotesCollapsed
         FloatingWindowPresent = $null -ne $floatingWindow
         FloatingCountdownButtonTextFits = $floatingCountdownButtonTextFit.Fits
@@ -3977,6 +4162,7 @@ if ($ValidateOnly) {
         FloatingManagerButtonPresent = $null -ne $openManagerButton
         HasUnifiedNoteEntry = $null -ne $workspaceSwitcher -and $null -ne $showNotesButton -and $null -ne $showFloatingNotesButton -and $null -ne $notesWorkspace
         HasNoteControls = $null -ne $noteInput -and $null -ne $addNoteButton -and $null -ne $cancelNoteEditButton -and $null -ne $floatingNoteInput -and $null -ne $floatingAddNoteButton
+        HasNoteDateControls = $hasNoteDateControls
         HasOpenNotesActions = $null -ne $showNotesButton -and $null -ne $showFloatingNotesButton
         UnifiedWorkspaceSwitches = $unifiedWorkspaceSwitches
         WorkspaceSwitcherBeforeEditors = $workspaceSwitcherBeforeEditors
@@ -3995,6 +4181,7 @@ $timer = New-Object Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(250)
 $timer.Add_Tick({
     $now = Get-BeijingNow
+    Refresh-DefaultNoteDates -BeijingTime $now
     $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
     $sortSignature = @((Get-SortedCountdowns) | ForEach-Object { $_.id }) -join '|'
     $workdayEnd = Get-WorkdayEndCountdown

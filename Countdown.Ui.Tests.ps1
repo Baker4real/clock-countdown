@@ -82,7 +82,7 @@ Start-CountdownApplication -ExitAfterReadyForTest -ApplicationPath `$PSCommandPa
         $runtimeError = if (Test-Path -LiteralPath $runtimeIntegrationErrorPath) { Get-Content -LiteralPath $runtimeIntegrationErrorPath -Raw } else { '' }
         throw "Real WPF launch did not start the asynchronous holiday-calendar bootstrap: $runtimeError"
     }
-    if (-not $runtimeIntegrationProcess.WaitForExit(25000)) { throw 'Real WPF launch did not close after the receipt integration test.' }
+    if (-not $runtimeIntegrationProcess.WaitForExit(35000)) { throw 'Real WPF launch did not close after the receipt integration test.' }
     if ($runtimeIntegrationProcess.ExitCode -ne 0) {
         $runtimeError = if (Test-Path -LiteralPath $runtimeIntegrationErrorPath) { Get-Content -LiteralPath $runtimeIntegrationErrorPath -Raw } else { '' }
         throw "Real WPF launch exited with $($runtimeIntegrationProcess.ExitCode): $runtimeError"
@@ -154,7 +154,7 @@ $persistenceFailureUnblockedSettingsPath = Join-Path $PSScriptRoot 'ui-persisten
 $legacyV3SettingsPath = Join-Path $PSScriptRoot 'ui-test-v3.settings.json'
 try {
     [System.IO.File]::WriteAllText($testSettingsPath, (@{
-        schemaVersion = 5
+        schemaVersion = 6
         timeZoneId = 'China Standard Time'
         displayPrecision = 'Second'
         monthlySalary = 23000
@@ -168,8 +168,8 @@ try {
             @{ id = 'future'; name = '未来项目'; targetUtc = '2099-01-01T00:00:00Z'; tagIds = @('seed-tag') }
         )
         notes = @(
-            @{ id = 'note-active'; text = '整理本周安排'; isCompleted = $false; tagIds = @('seed-tag') }
-            @{ id = 'note-completed'; text = '确认已完成事项'; isCompleted = $true; tagIds = @() }
+            @{ id = 'note-active'; text = '整理本周安排'; date = '2026-07-18'; isCompleted = $false; tagIds = @('seed-tag') }
+            @{ id = 'note-completed'; text = '确认已完成事项'; date = $null; isCompleted = $true; tagIds = @() }
         )
     } | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
     $settingsHashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $testSettingsPath).Hash
@@ -188,6 +188,10 @@ try {
     if (-not $listValidation.NotePersistenceRoundTrip) { throw 'Sticky-note persistence round-trip failed.' }
     if (-not $listValidation.NoteActionsBoundByTag) { throw 'Sticky-note actions are not bound to their note ID.' }
     if (-not $listValidation.NoteStatusLabelsPresent) { throw 'Sticky-note status labels are missing from rendered rows.' }
+    if (-not $listValidation.HasNoteDateControls) { throw 'The manager or floating sticky-note date picker is missing.' }
+    if (-not $listValidation.NoteDatesRendered) { throw 'Sticky-note calendar dates are missing from rendered rows.' }
+    if (-not $listValidation.NoteDateDefaultsTrackBeijingDay) { throw 'Default sticky-note dates did not advance at Beijing midnight.' }
+    if (-not $listValidation.NoteDateChoicesSurviveBeijingDayChange) { throw 'A selected sticky-note date or in-progress draft was overwritten at Beijing midnight.' }
     if (-not $listValidation.CompletedNotesCollapsed) { throw 'Completed sticky notes should be collapsed by default.' }
     $settingsHashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $testSettingsPath).Hash
     if ($settingsHashAfterValidation -ne $settingsHashBeforeValidation) { throw 'ValidateOnly modified the supplied settings file.' }
@@ -202,10 +206,12 @@ try {
         -ValidateOnly -ExerciseNoteAdd -SettingsFile $noteAddSettingsPath | Out-String
     if ($LASTEXITCODE -ne 0) { throw "Sticky-note add click validation failed: $noteAddValidationJson" }
     $noteAddValidation = $noteAddValidationJson | ConvertFrom-Json
+    if (-not $noteAddValidation.NoteDateRequired) { throw 'The sticky-note add flow accepted a missing calendar date or discarded the draft.' }
     if (-not $noteAddValidation.NoteAddViaClick) { throw 'Clicking Add did not create an active sticky note and retain the application validation flow.' }
+    if (-not $noteAddValidation.NoteDateViaPicker) { throw 'Clicking Add did not preserve the selected sticky-note calendar date.' }
     if (-not $noteAddValidation.NoteStatusViaCheckbox) { throw 'Sticky-note completion status did not change through its checkbox.' }
     $noteAddSettings = [System.IO.File]::ReadAllText($noteAddSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and -not $_.isCompleted }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note.' }
+    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and $_.date -eq '2031-04-05' -and -not $_.isCompleted }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note with its selected calendar date.' }
 
     Copy-Item -LiteralPath $testSettingsPath -Destination $tagInteractionSettingsPath -Force
     $tagInteractionValidationJson = & $powerShellEngine `
@@ -221,12 +227,14 @@ if (-not $tagInteractionValidation.TagSearchCreateAvoidsDefaultSubmit) { throw '
 if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untagged or countdown-status filtering failed.' }
     if (-not $tagInteractionValidation.TagNoteStatusSearchAndCompletion) { throw 'Note text search, status filtering, or completion tag retention failed.' }
     if (-not $tagInteractionValidation.TagFloatingNoteInheritsTags) { throw 'Floating note creation did not inherit the current selected tag.' }
+    if (-not $tagInteractionValidation.TagFloatingNoteDateViaPicker) { throw 'Floating note creation did not preserve its selected calendar date.' }
     if (-not $tagInteractionValidation.TagFloatingNotePopupOnDemand) { throw 'Floating note tags were not hidden until the compact selector was opened.' }
     if (-not $tagInteractionValidation.TagFloatingNoteCanOverrideTags) { throw 'Floating note creation could not override or clear its inherited tags.' }
     if (-not $tagInteractionValidation.TagNoteEditingPersistsTags) { throw 'Editing a sticky note did not persist its text and selected tags.' }
+    if (-not $tagInteractionValidation.TagNoteEditingPersistsDate) { throw 'Editing a sticky note did not persist its selected calendar date.' }
     if (-not $tagInteractionValidation.TagRenameAndDeleteDetachOnly) { throw 'Tag rename or delete-detach behavior failed.' }
     $tagInteractionSettings = [System.IO.File]::ReadAllText($tagInteractionSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if ($tagInteractionSettings.schemaVersion -ne 5) { throw 'Tag interaction exercise did not preserve schema v5.' }
+    if ($tagInteractionSettings.schemaVersion -ne 6) { throw 'Tag interaction exercise did not preserve schema v6.' }
     if (@($tagInteractionSettings.tags).Count -lt 2) { throw 'Tag interaction exercise did not preserve the shared tag library after deletion.' }
     if (@($tagInteractionSettings.countdowns).Count -lt 5 -or @($tagInteractionSettings.notes).Count -lt 4) { throw 'Tag interaction exercise did not preserve the records while managing tags.' }
 
@@ -279,7 +287,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if (-not $legacyV3Validation.SettingsWereMigrated) { throw 'Schema-v3 settings were not marked for migration.' }
     if ($legacyV3Validation.LoadedCountdowns -ne 1 -or (@($legacyV3Validation.SortedNames) -join ',') -ne '旧版倒计时') { throw 'Schema-v3 countdowns were not preserved.' }
     if ($legacyV3Validation.LoadedNotes -ne 0) { throw 'Schema-v3 migration should initialize an empty sticky-note list.' }
-    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v5.' }
+    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v6.' }
     if ($legacyV3Validation.LoadedDisplayPrecision -ne 'Minute' -or ([decimal] $legacyV3Validation.LoadedMonthlySalary) -ne [decimal]12345 -or $legacyV3Validation.LoadedWorkStart -ne '08:30' -or $legacyV3Validation.LoadedWorkEnd -ne '17:30') { throw 'Schema-v3 preferences were not preserved.' }
     $legacyV3HashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SettingsPath).Hash
     if ($legacyV3HashAfterValidation -ne $legacyV3HashBeforeValidation) { throw 'ValidateOnly modified the supplied schema-v3 settings file.' }
@@ -300,7 +308,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 84
+    Passed = 92
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

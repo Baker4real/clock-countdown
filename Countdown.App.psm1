@@ -761,8 +761,8 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
           <TextBlock Text="今天也在闪闪发光" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource InkBrush}" TextTrimming="CharacterEllipsis"/>
           <TextBlock x:Name="FloatingCount" Grid.Column="1" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
         </Grid>
-        <Button x:Name="ShowFloatingCountdownsButton" Grid.Column="1" Width="52" Height="28" Margin="8,0,0,0" Content="倒计时" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource SelectedSurfaceBrush}" Foreground="{DynamicResource SelectedTextBrush}" BorderBrush="{DynamicResource TagLineBrush}" ToolTip="显示进行中的倒计时"/>
-        <Button x:Name="ShowFloatingNotesButton" Grid.Column="2" Width="44" Height="28" Margin="6,0,0,0" Content="便签" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}" BorderBrush="{DynamicResource HairlineBrush}" ToolTip="显示桌面便签"/>
+        <Button x:Name="ShowFloatingCountdownsButton" Grid.Column="1" Width="52" Height="28" Margin="8,0,0,0" Padding="6,0" Content="倒计时" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource SelectedSurfaceBrush}" Foreground="{DynamicResource SelectedTextBrush}" BorderBrush="{DynamicResource TagLineBrush}" ToolTip="显示进行中的倒计时"/>
+        <Button x:Name="ShowFloatingNotesButton" Grid.Column="2" Width="44" Height="28" Margin="6,0,0,0" Padding="6,0" Content="便签" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}" BorderBrush="{DynamicResource HairlineBrush}" ToolTip="显示桌面便签"/>
       </Grid>
       <Border x:Name="FloatingCountdownSummary" Grid.Row="1" Margin="0,10,0,10" Padding="12,8" Background="{DynamicResource SuccessSurfaceBrush}" CornerRadius="12">
         <TextBlock x:Name="FloatingIncome" Text="今日已赚 ￥0.00" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SuccessTextBrush}"/>
@@ -3304,6 +3304,37 @@ if ($ValidateOnly) {
         }
         $result.ToArray()
     }
+
+    function Measure-ButtonTextFit {
+        param([Parameter(Mandatory)] [System.Windows.Controls.Button] $Button)
+
+        $typeface = [System.Windows.Media.Typeface]::new(
+            $Button.FontFamily,
+            $Button.FontStyle,
+            $Button.FontWeight,
+            $Button.FontStretch
+        )
+        $formattedText = [System.Windows.Media.FormattedText]::new(
+            [string] $Button.Content,
+            [System.Globalization.CultureInfo]::CurrentUICulture,
+            $Button.FlowDirection,
+            $typeface,
+            $Button.FontSize,
+            $Button.Foreground,
+            [System.Windows.Media.VisualTreeHelper]::GetDpi($Button).PixelsPerDip
+        )
+        $availableWidth =
+            $Button.Width -
+            $Button.Padding.Left -
+            $Button.Padding.Right -
+            $Button.BorderThickness.Left -
+            $Button.BorderThickness.Right
+        [pscustomobject]@{
+            Fits = $availableWidth -ge $formattedText.WidthIncludingTrailingWhitespace
+            AvailableWidth = [Math]::Round($availableWidth, 2)
+            RequiredWidth = [Math]::Round($formattedText.WidthIncludingTrailingWhitespace, 2)
+        }
+    }
     function Test-ThemedComboBoxDropDown {
         param([Parameter(Mandatory)] [System.Windows.Controls.ComboBox] $ComboBox)
 
@@ -3358,6 +3389,8 @@ if ($ValidateOnly) {
     foreach ($control in $themeProbeToggleControls) { [void] $control.ApplyTemplate() }
     $floatingStaticControls = @($showFloatingCountdownsButton, $showFloatingNotesButton, $floatingAddNoteButton, $openManagerButton, $closeFloatingButton)
     foreach ($control in $floatingStaticControls) { [void] $control.ApplyTemplate() }
+    $floatingCountdownButtonTextFit = Measure-ButtonTextFit -Button $showFloatingCountdownsButton
+    $floatingNotesButtonTextFit = Measure-ButtonTextFit -Button $showFloatingNotesButton
     $floatingScrollViewers = @(Get-LogicalDescendantControls -Root $floatingWindow | Where-Object { $_ -is [System.Windows.Controls.ScrollViewer] })
     $themedControlTemplatesApplied =
         $themeControlInventoryCovered -and
@@ -3931,6 +3964,12 @@ if ($ValidateOnly) {
         NoteStatusLabelsPresent = $noteStatusLabelsPresent
         CompletedNotesCollapsed = $completedNotesCollapsed
         FloatingWindowPresent = $null -ne $floatingWindow
+        FloatingCountdownButtonTextFits = $floatingCountdownButtonTextFit.Fits
+        FloatingCountdownButtonTextAvailableWidth = $floatingCountdownButtonTextFit.AvailableWidth
+        FloatingCountdownButtonTextRequiredWidth = $floatingCountdownButtonTextFit.RequiredWidth
+        FloatingNotesButtonTextFits = $floatingNotesButtonTextFit.Fits
+        FloatingNotesButtonTextAvailableWidth = $floatingNotesButtonTextFit.AvailableWidth
+        FloatingNotesButtonTextRequiredWidth = $floatingNotesButtonTextFit.RequiredWidth
         FloatingCountdownCount = @($script:floatingViews.Keys | Where-Object { $_ -ne '__workday_end__' }).Count
         HasWorkdayEndCountdown = $null -ne (Get-WorkdayEndCountdown)
         FloatingCountdownTexts = @((Get-SortedCountdowns | Where-Object { $_.targetUtc -gt [DateTimeOffset]::UtcNow }) | ForEach-Object { $script:floatingViews[$_.id].Remaining.Text })

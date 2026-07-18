@@ -105,6 +105,12 @@ if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
 if (-not $validation.HasNameEditor) { throw 'Countdown name editor is missing.' }
 if (-not $validation.FloatingWindowPresent) { throw 'Desktop floating countdown window is missing.' }
+if (-not $validation.FloatingCountdownButtonTextFits) {
+    throw "Floating countdown switch label is clipped: available=$($validation.FloatingCountdownButtonTextAvailableWidth), required=$($validation.FloatingCountdownButtonTextRequiredWidth)."
+}
+if (-not $validation.FloatingNotesButtonTextFits) {
+    throw "Floating notes switch label is clipped: available=$($validation.FloatingNotesButtonTextAvailableWidth), required=$($validation.FloatingNotesButtonTextRequiredWidth)."
+}
 if (-not $validation.FloatingManagerButtonPresent) { throw 'Floating countdown manager action is missing.' }
 if (-not $validation.HasPreferenceControls) { throw 'Floating precision or income settings controls are missing.' }
 if (-not $validation.HasUnifiedNoteEntry) { throw 'Unified sticky-note entry is missing from the countdown workspace.' }

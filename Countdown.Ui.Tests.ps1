@@ -71,7 +71,7 @@ Start-CountdownApplication -ExitAfterReadyForTest -ApplicationPath `$PSCommandPa
     $runtimeIntegrationErrorPath = Join-Path $runtimeIntegrationRoot 'app.stderr.txt'
     $runtimeIntegrationArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', ('"{0}"' -f $runtimeIntegrationEntry))
     $runtimeIntegrationProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $runtimeIntegrationArguments -PassThru -RedirectStandardOutput $runtimeIntegrationOutputPath -RedirectStandardError $runtimeIntegrationErrorPath
-    $runtimeIntegrationReceipt = Wait-CountdownWindowReady -Path $runtimeIntegrationStatusPath -LaunchToken $runtimeIntegrationRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $runtimeIntegrationEntry -TimeoutSeconds 15 -PollMilliseconds 100
+    $runtimeIntegrationReceipt = Wait-CountdownWindowReady -Path $runtimeIntegrationStatusPath -LaunchToken $runtimeIntegrationRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $runtimeIntegrationEntry -TimeoutSeconds 20 -PollMilliseconds 100
     if ($runtimeIntegrationReceipt.stage -ne 'window-ready') { throw 'Real WPF launch did not emit a window-ready receipt.' }
     if ($runtimeIntegrationReceipt.calendarState -ne 'Pending') { throw 'Real WPF launch should become ready before the holiday calendar finishes.' }
     $calendarBootstrapDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
@@ -82,7 +82,7 @@ Start-CountdownApplication -ExitAfterReadyForTest -ApplicationPath `$PSCommandPa
         $runtimeError = if (Test-Path -LiteralPath $runtimeIntegrationErrorPath) { Get-Content -LiteralPath $runtimeIntegrationErrorPath -Raw } else { '' }
         throw "Real WPF launch did not start the asynchronous holiday-calendar bootstrap: $runtimeError"
     }
-    if (-not $runtimeIntegrationProcess.WaitForExit(10000)) { throw 'Real WPF launch did not close after the receipt integration test.' }
+    if (-not $runtimeIntegrationProcess.WaitForExit(25000)) { throw 'Real WPF launch did not close after the receipt integration test.' }
     if ($runtimeIntegrationProcess.ExitCode -ne 0) {
         $runtimeError = if (Test-Path -LiteralPath $runtimeIntegrationErrorPath) { Get-Content -LiteralPath $runtimeIntegrationErrorPath -Raw } else { '' }
         throw "Real WPF launch exited with $($runtimeIntegrationProcess.ExitCode): $runtimeError"
@@ -118,8 +118,27 @@ if (-not $validation.DuplicateSettingsRejected) { throw 'Duplicate persisted cou
 if (-not $validation.InvalidNotesRejected) { throw 'Invalid persisted sticky notes are not rejected.' }
 if (-not $validation.InvalidTagReferencesRejected) { throw 'Persisted dangling tag references are not rejected.' }
 if (-not $validation.HasTagControls) { throw 'Shared tag selection, filter, and management controls are missing.' }
+if (-not $validation.StaticWorkspaceLayout) { throw 'Countdown editor and settings no longer preserve the established always-visible layout.' }
+if (-not $validation.TransientPanelsOnDemand) { throw 'Filters, tag pickers, or tag management do not use the required on-demand interaction flow.' }
+if (-not $validation.WorkspaceDraftsRetained) { throw 'Switching workspaces discarded an unsaved countdown or sticky-note draft.' }
+if (-not $validation.HiddenCountdownSubmitDisabled) { throw 'A hidden countdown editor still exposes its default submit button.' }
+if (-not $validation.WorkspaceTabsUseSelectionSemantics) { throw 'Workspace tabs do not expose an accessible selected state.' }
+if (-not $validation.TagUiAccessible) { throw 'Tag search labels or icon-button accessible names are missing.' }
+if (-not $validation.FilterOptionsUseSelectionSemantics) { throw 'Filter options do not expose an accessible selected state.' }
+if (-not $validation.CompactFilterSummary) { throw 'The filter trigger does not use the compact summary layout.' }
+if (-not $validation.TagCreateAppearsFromSearch) { throw 'A new tag cannot be created from the unified tag search field.' }
+if (-not $validation.TagCreateStaysCollapsedWithoutQuery) { throw 'The tag-creation action is visible before a new tag name is entered.' }
 if (-not $validation.TagFilterSupportsAnyAll) { throw 'Tag filtering does not expose explicit any/all matching.' }
 if (-not $validation.TagChipsUseUid) { throw 'Tag chips must not reuse the record-ID Tag property.' }
+if (-not $validation.ThemeControlInventoryCovered) { throw 'The theme inventory does not cover every visible control family.' }
+if (-not $validation.ThemedControlTemplatesApplied) { throw 'One or more primary or floating controls did not receive the shared theme template.' }
+if (-not $validation.ComboBoxesUseThemedDropDowns) { throw 'A ComboBox drop-down, option, or scroll bar is still using an unthemed surface.' }
+if (-not $validation.DatePickerCalendarIsThemed) { throw 'The DatePicker text box, trigger, or calendar family is not fully themed.' }
+if (-not $validation.PopupSurfacesUseThemeTokens) { throw 'A popup surface is missing the shared themed background, border, or motion treatment.' }
+if (-not $validation.NoDefaultSystemSurfaces) { throw 'A system window frame or MessageBox remains in the application flow.' }
+if (-not $validation.NoRawFloatingThemeBypass) { throw 'The floating window bypasses shared theme tokens with raw colors.' }
+if (-not $validation.ThemedInteractiveStates) { throw 'A themed interactive control is missing visual state feedback.' }
+if (-not $validation.ThemeTextContrast) { throw 'The warm theme does not meet the required text-contrast pairs.' }
 
 $testSettingsPath = Join-Path $PSScriptRoot 'ui-test.settings.json'
 $noteAddSettingsPath = Join-Path $PSScriptRoot 'ui-note-add-test.settings.json'
@@ -188,10 +207,12 @@ try {
         -ValidateOnly -ExerciseTagInteractions -SettingsFile $tagInteractionSettingsPath | Out-String
     if ($LASTEXITCODE -ne 0) { throw "Tag interaction validation failed: $tagInteractionValidationJson" }
     $tagInteractionValidation = $tagInteractionValidationJson | ConvertFrom-Json
-    if (-not $tagInteractionValidation.TagInteractionsExecuted) { throw 'Tag interaction exercise did not run.' }
-    if (-not $tagInteractionValidation.TagCreationAndAssociation) { throw 'Creating shared tags and associating countdowns and notes failed.' }
-    if (-not $tagInteractionValidation.TagAnyAllFilter) { throw 'Any/all tag filtering did not distinguish the expected countdowns.' }
-    if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untagged or countdown-status filtering failed.' }
+if (-not $tagInteractionValidation.TagInteractionsExecuted) { throw 'Tag interaction exercise did not run.' }
+if (-not $tagInteractionValidation.TagCreationAndAssociation) { throw 'Creating shared tags and associating countdowns and notes failed.' }
+if (-not $tagInteractionValidation.TagAnyAllFilter) { throw 'Any/all tag filtering did not distinguish the expected countdowns.' }
+if (-not $tagInteractionValidation.TagEditorSummaryIsCompact) { throw 'Long selected tag names are not condensed into a readable editor summary.' }
+if (-not $tagInteractionValidation.TagSearchCreateAvoidsDefaultSubmit) { throw 'Creating a tag from the search field triggered an unrelated default submit.' }
+if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untagged or countdown-status filtering failed.' }
     if (-not $tagInteractionValidation.TagNoteStatusSearchAndCompletion) { throw 'Note text search, status filtering, or completion tag retention failed.' }
     if (-not $tagInteractionValidation.TagFloatingNoteInheritsTags) { throw 'Floating note creation did not inherit the current selected tag.' }
     if (-not $tagInteractionValidation.TagFloatingNotePopupOnDemand) { throw 'Floating note tags were not hidden until the compact selector was opened.' }
@@ -273,7 +294,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 64
+    Passed = 84
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

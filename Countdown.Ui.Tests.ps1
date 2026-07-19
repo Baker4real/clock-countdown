@@ -19,6 +19,9 @@ if ($actual -ne '2026-08-22') {
 }
 
 $diagnosticLogPath = Join-Path $PSScriptRoot 'ui-diagnostic-test\application.jsonl'
+foreach ($diagnosticPath in @($diagnosticLogPath, "$diagnosticLogPath.1", "$diagnosticLogPath.2", "$diagnosticLogPath.3")) {
+    Remove-Item -LiteralPath $diagnosticPath -Force -ErrorAction SilentlyContinue
+}
 $fatalDiagnosticOutput = & $powerShellEngine `
     -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
     -ValidateOnly -ExerciseFatalDiagnostic -DiagnosticLogPath $diagnosticLogPath 2>&1 | Out-String
@@ -55,7 +58,7 @@ $runtimeIntegrationRoot = Join-Path $runtimeIntegrationEvidenceRoot ("ui-runtime
 $runtimeIntegrationProcess = $null
 try {
     New-Item -ItemType Directory -Path $runtimeIntegrationRoot -Force | Out-Null
-    foreach ($file in @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'countdown-icon.ico')) {
+    foreach ($file in @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'countdown-icon.ico', 'sanrio-official-mymelody.png', 'sanrio-official-cinnamoroll.png', 'sanrio-official-kuromi.png')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $runtimeIntegrationRoot $file) -Force
     }
     $runtimeIntegrationHostPath = Join-Path $runtimeIntegrationRoot 'Countdown.App.psm1'
@@ -119,6 +122,9 @@ if ($validation.TimeDropDowns -ne 3) { throw "Expected three time drop-downs, go
 if (-not $validation.CompactSelectionFieldLayout) {
     throw "Short selection fields should stay content-sized at default and expanded window widths: default(name=$($validation.CountdownNameWidth), date=$($validation.TargetDateWidth), hour=$($validation.TargetHourWidth), minute=$($validation.TargetMinuteWidth), second=$($validation.TargetSecondWidth), precision=$($validation.DisplayPrecisionWidth)); expanded(date=$($validation.ExpandedTargetDateWidth), hour=$($validation.ExpandedTargetHourWidth), minute=$($validation.ExpandedTargetMinuteWidth), second=$($validation.ExpandedTargetSecondWidth), precision=$($validation.ExpandedDisplayPrecisionWidth))."
 }
+if (-not $validation.CompactPreferenceFieldLayout) {
+    throw "Preference fields should stay compact at default and expanded window widths: default(precision=$($validation.DisplayPrecisionWidth), salary=$($validation.MonthlySalaryWidth), start=$($validation.WorkStartWidth), end=$($validation.WorkEndWidth)); expanded(precision=$($validation.ExpandedDisplayPrecisionWidth), salary=$($validation.ExpandedMonthlySalaryWidth), start=$($validation.ExpandedWorkStartWidth), end=$($validation.ExpandedWorkEndWidth))."
+}
 if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
 if (-not $validation.HasNameEditor) { throw 'Countdown name editor is missing.' }
@@ -133,6 +139,13 @@ if (-not $validation.FloatingManagerButtonPresent) { throw 'Floating countdown m
 if (-not $validation.HasPreferenceControls) { throw 'Floating precision or income settings controls are missing.' }
 if (-not $validation.HasUnifiedNoteEntry) { throw 'Unified sticky-note entry is missing from the countdown workspace.' }
 if (-not $validation.HasNoteControls) { throw 'Sticky-note input or add action is missing.' }
+if (-not $validation.HasNoteReminderControls) { throw 'Sticky-note reminder selectors or custom-minute inputs are missing from the manager or floating entry.' }
+if (-not $validation.NoteReminderControlsWork) { throw 'Sticky-note reminder selectors do not support presets, custom minutes, and disabling reminders.' }
+if (-not $validation.NoteReminderDispatchWorks) { throw 'Sticky-note reminders were not dispatched exactly once per due interval.' }
+if (-not $validation.NoteReminderWindowIsThemed) { throw 'Sticky-note reminder window did not use the warm non-blocking application theme.' }
+if (-not $validation.OfficialCharacterBackgroundLoaded) { throw 'The official Sanrio character background was not loaded into the main window.' }
+if (-not $validation.OfficialCharacterBackgroundCharactersExclusive) { throw 'The official Sanrio background must contain only My Melody, Cinnamoroll, and Kuromi.' }
+if (-not $validation.OfficialCharacterBackgroundLowContrast) { throw 'The official Sanrio character background is too strong for readable application content.' }
 if (-not $validation.HasOpenNotesActions) { throw 'No action opens the unified sticky-note workspace.' }
 if (-not $validation.UnifiedWorkspaceSwitches) { throw 'Countdown and sticky-note workspaces do not switch together.' }
 if (-not $validation.WorkspaceSwitcherBeforeEditors) { throw 'Countdown and sticky-note entry switcher must appear before the editors.' }
@@ -163,6 +176,7 @@ if (-not $validation.DatePickerTextFits) {
     throw "The complete selected date is clipped: available=$($validation.DatePickerTextAvailableWidth), required=$($validation.DatePickerTextRequiredWidth)."
 }
 if (-not $validation.LiveDatePickerPopupIsThemed) { throw 'The opened DatePicker popup fell back to system calendar styles.' }
+if (-not $validation.LiveDatePickerPopupVisuallyUnified) { throw 'The opened DatePicker popup does not use the shared warm border, header, and selected-date treatment.' }
 if (-not $validation.CalendarHeaderTextFits) {
     throw "The calendar month header is clipped: available=$($validation.CalendarHeaderTextAvailableWidth), required=$($validation.CalendarHeaderTextRequiredWidth)."
 }
@@ -235,9 +249,10 @@ try {
     if (-not $noteAddValidation.NoteDateRequired) { throw 'The sticky-note add flow accepted a missing calendar date or discarded the draft.' }
     if (-not $noteAddValidation.NoteAddViaClick) { throw 'Clicking Add did not create an active sticky note and retain the application validation flow.' }
     if (-not $noteAddValidation.NoteDateViaPicker) { throw 'Clicking Add did not preserve the selected sticky-note calendar date.' }
+    if (-not $noteAddValidation.NoteReminderViaSelector) { throw 'Clicking Add did not preserve the selected sticky-note reminder interval and start time.' }
     if (-not $noteAddValidation.NoteStatusViaCheckbox) { throw 'Sticky-note completion status did not change through its checkbox.' }
     $noteAddSettings = [System.IO.File]::ReadAllText($noteAddSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and $_.date -eq '2031-04-05' -and -not $_.isCompleted }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note with its selected calendar date.' }
+    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and $_.date -eq '2031-04-05' -and -not $_.isCompleted -and $_.reminderIntervalMinutes -eq 30 -and $null -ne $_.reminderStartUtc }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note with its selected date and reminder.' }
 
     Copy-Item -LiteralPath $testSettingsPath -Destination $tagInteractionSettingsPath -Force
     $tagInteractionValidationJson = & $powerShellEngine `
@@ -262,7 +277,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if (-not $tagInteractionValidation.TagNoteEditingPersistsDate) { throw 'Editing a sticky note did not persist its selected calendar date.' }
     if (-not $tagInteractionValidation.TagRenameAndDeleteDetachOnly) { throw 'Tag rename or delete-detach behavior failed.' }
     $tagInteractionSettings = [System.IO.File]::ReadAllText($tagInteractionSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if ($tagInteractionSettings.schemaVersion -ne 6) { throw 'Tag interaction exercise did not preserve schema v6.' }
+    if ($tagInteractionSettings.schemaVersion -ne 7) { throw 'Tag interaction exercise did not persist schema v7.' }
     if (@($tagInteractionSettings.tags).Count -lt 2) { throw 'Tag interaction exercise did not preserve the shared tag library after deletion.' }
     if (@($tagInteractionSettings.countdowns).Count -lt 5 -or @($tagInteractionSettings.notes).Count -lt 4) { throw 'Tag interaction exercise did not preserve the records while managing tags.' }
 
@@ -315,7 +330,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if (-not $legacyV3Validation.SettingsWereMigrated) { throw 'Schema-v3 settings were not marked for migration.' }
     if ($legacyV3Validation.LoadedCountdowns -ne 1 -or (@($legacyV3Validation.SortedNames) -join ',') -ne '旧版倒计时') { throw 'Schema-v3 countdowns were not preserved.' }
     if ($legacyV3Validation.LoadedNotes -ne 0) { throw 'Schema-v3 migration should initialize an empty sticky-note list.' }
-    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v6.' }
+    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v7.' }
     if ($legacyV3Validation.LoadedDisplayPrecision -ne 'Minute' -or ([decimal] $legacyV3Validation.LoadedMonthlySalary) -ne [decimal]12345 -or $legacyV3Validation.LoadedWorkStart -ne '08:30' -or $legacyV3Validation.LoadedWorkEnd -ne '17:30') { throw 'Schema-v3 preferences were not preserved.' }
     $legacyV3HashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SettingsPath).Hash
     if ($legacyV3HashAfterValidation -ne $legacyV3HashBeforeValidation) { throw 'ValidateOnly modified the supplied schema-v3 settings file.' }
@@ -340,7 +355,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 102
+    Passed = 111
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

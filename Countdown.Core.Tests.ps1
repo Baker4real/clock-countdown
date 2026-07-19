@@ -486,7 +486,8 @@ $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonI
 if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
 $installerValidation = $installerValidationJson | ConvertFrom-Json
 Assert-Equal $true $installerValidation.Valid 'Installer package validation succeeds'
-Assert-Equal 12 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, application host, transaction and tag modules'
+Assert-Equal 15 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, application host, transaction, tag modules and exactly three official character backgrounds'
+Assert-Equal 'sanrio-official-mymelody.png,sanrio-official-cinnamoroll.png,sanrio-official-kuromi.png' (@($installerValidation.OfficialCharacterAssets) -join ',') 'Installer includes only the requested official Sanrio character backgrounds'
 Assert-Equal $true $installerValidation.Transactional 'Installer exposes transactional install boundary'
 Assert-Equal $true $installerValidation.DeferredCommitSupported 'Installer exposes deferred commit for office acceptance'
 $installerCommand = Get-Command (Join-Path $PSScriptRoot 'Install-Countdown.ps1')
@@ -551,7 +552,7 @@ Assert-Equal 0 @($loadedLegacyV3.Records[0].tagIds).Count 'Schema v3 creates unt
 Assert-Equal 'Minute' $loadedLegacyV3.Preferences.Precision 'Schema v3 preserves precision'
 $canonicalLegacyV3 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV3
 $canonicalLegacyV3Object = $canonicalLegacyV3 | ConvertFrom-Json
-Assert-Equal 6 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
+Assert-Equal 7 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
 Assert-Equal 0 @($canonicalLegacyV3Object.tags).Count 'Canonical settings tags'
 Assert-Equal 0 @($canonicalLegacyV3Object.notes).Count 'Canonical settings notes'
 Assert-Equal 0 @($canonicalLegacyV3Object.countdowns[0].tagIds).Count 'Canonical settings countdown tag IDs'
@@ -571,7 +572,7 @@ catch {
 Assert-Equal $true $candidateSaveFailureObserved 'Settings candidate persistence failure is observable'
 Assert-Equal '旧版倒计时' $loadedLegacyV3.Records[0].name 'Settings candidate persistence failure preserves source record'
 Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'same' -AfterHash 'same' -BeforeJson $null -AfterJson $null) 'Unchanged settings are accepted for deployment'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v6 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v7 migration is accepted for deployment'
 $legacyV1Settings = [pscustomobject]@{ schemaVersion = 1; timeZoneId = 'China Standard Time'; targetUtc = '2099-01-01T00:00:00Z' }
 $canonicalLegacyV1 = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $legacyV1Settings)
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV1Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV1) 'Schema v1 migration remains rejected for deployment'
@@ -579,7 +580,7 @@ $settingsModuleTestPath = Join-Path $PSScriptRoot 'settings-module-test.json'
 try {
     Save-CountdownSettings -Path $settingsModuleTestPath -State $loadedLegacyV3
     $savedSettings = [System.IO.File]::ReadAllText($settingsModuleTestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    Assert-Equal 6 $savedSettings.schemaVersion 'Settings module writes canonical schema'
+    Assert-Equal 7 $savedSettings.schemaVersion 'Settings module writes canonical schema'
     Assert-Equal $false (Test-Path -LiteralPath "$settingsModuleTestPath.tmp") 'Settings module cleans temporary file'
 }
 finally {
@@ -605,7 +606,7 @@ Assert-Equal 0 @($loadedLegacyV4.Notes[0].tagIds).Count 'Schema v4 creates untag
 Assert-Equal '保留的旧版便签' $loadedLegacyV4.Notes[0].text 'Schema v4 preserves notes'
 Assert-Equal $null $loadedLegacyV4.Notes[0].date 'Schema v4 does not invent a note date'
 $canonicalLegacyV4 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV4
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV4) 'Strict schema v4 to v6 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV4) 'Strict schema v4 to v7 migration is accepted for deployment'
 $invalidV4Transition = $canonicalLegacyV4 | ConvertFrom-Json
 $invalidV4Transition.notes[0].text = '被篡改的便签'
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson ($invalidV4Transition | ConvertTo-Json -Depth 5)) 'Schema v4 migration rejects changed notes'
@@ -638,29 +639,50 @@ Assert-Equal '工作' $loadedV5.Tags[0].name 'Settings state copy does not mutat
 Assert-Equal 'work' $loadedV5.Records[0].tagIds[0] 'Settings state copy does not mutate source countdown tags'
 Assert-Equal 'home' $loadedV5.Notes[0].tagIds[0] 'Settings state copy does not mutate source note tags'
 $canonicalFromV5 = ConvertTo-CountdownSettingsJson -State $loadedV5 | ConvertFrom-Json
-Assert-Equal 6 $canonicalFromV5.schemaVersion 'Schema v5 migrates to canonical schema v6'
-Assert-Equal '#6B8E23' $canonicalFromV5.tags[0].color 'Schema v6 serializes tag color'
-Assert-Equal $true ($null -eq $canonicalFromV5.tags[1].PSObject.Properties['color']) 'Schema v6 omits an unspecified tag color'
-Assert-Equal 'work' $canonicalFromV5.countdowns[0].tagIds[0] 'Schema v6 serializes countdown tag IDs'
-Assert-Equal 'home' $canonicalFromV5.notes[0].tagIds[0] 'Schema v6 serializes note tag IDs'
-Assert-Equal $null $canonicalFromV5.notes[0].date 'Schema v6 preserves an unknown legacy note date as null'
-$loadedNullDateV6 = ConvertFrom-CountdownSettingsObject -Settings $canonicalFromV5
-Assert-Equal $null $loadedNullDateV6.Notes[0].date 'Schema v6 accepts an explicitly unknown note date'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalFromV5 | ConvertTo-Json -Depth 5)) 'Strict schema v5 to v6 migration is accepted for deployment'
+Assert-Equal 7 $canonicalFromV5.schemaVersion 'Schema v5 migrates to canonical schema v7'
+Assert-Equal '#6B8E23' $canonicalFromV5.tags[0].color 'Schema v7 serializes tag color'
+Assert-Equal $true ($null -eq $canonicalFromV5.tags[1].PSObject.Properties['color']) 'Schema v7 omits an unspecified tag color'
+Assert-Equal 'work' $canonicalFromV5.countdowns[0].tagIds[0] 'Schema v7 serializes countdown tag IDs'
+Assert-Equal 'home' $canonicalFromV5.notes[0].tagIds[0] 'Schema v7 serializes note tag IDs'
+Assert-Equal $null $canonicalFromV5.notes[0].date 'Schema v7 preserves an unknown legacy note date as null'
+Assert-Equal $null $canonicalFromV5.notes[0].reminderIntervalMinutes 'Schema v7 disables reminders for migrated notes'
+Assert-Equal $null $canonicalFromV5.notes[0].reminderStartUtc 'Schema v7 does not invent a reminder start for migrated notes'
+$loadedNullDateV7 = ConvertFrom-CountdownSettingsObject -Settings $canonicalFromV5
+Assert-Equal $null $loadedNullDateV7.Notes[0].date 'Schema v7 accepts an explicitly unknown note date'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalFromV5 | ConvertTo-Json -Depth 5)) 'Strict schema v5 to v7 migration is accepted for deployment'
 $invalidV5Transition = $canonicalFromV5 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
 $invalidV5Transition.notes[0].date = '2026-07-18'
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($invalidV5Transition | ConvertTo-Json -Depth 5)) 'Schema v5 migration rejects an invented note date'
 
 $v6Settings = $canonicalFromV5 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$v6Settings.schemaVersion = 6
+$v6Settings.notes[0].PSObject.Properties.Remove('reminderIntervalMinutes')
+$v6Settings.notes[0].PSObject.Properties.Remove('reminderStartUtc')
 $v6Settings.notes[0].date = '2026-07-18'
 $loadedV6 = ConvertFrom-CountdownSettingsObject -Settings $v6Settings
-Assert-Equal $false $loadedV6.Migrated 'Schema v6 settings do not migrate'
+Assert-Equal $true $loadedV6.Migrated 'Schema v6 settings migrate to add reminder fields'
 Assert-Equal '2026-07-18' $loadedV6.Notes[0].date 'Schema v6 loads an exact note date'
+Assert-Equal $null $loadedV6.Notes[0].reminderIntervalMinutes 'Schema v6 migration disables reminders'
 $canonicalV6 = ConvertTo-CountdownSettingsJson -State $loadedV6 | ConvertFrom-Json
-Assert-Equal '2026-07-18' $canonicalV6.notes[0].date 'Schema v6 round-trips an exact note date'
-$reloadedCanonicalV6 = ConvertFrom-CountdownSettingsObject -Settings $canonicalV6
-Assert-Equal 2 $reloadedCanonicalV6.Tags.Count 'Schema v6 reloads tags without optional colors'
-Assert-Equal $null $reloadedCanonicalV6.Tags[1].color 'Schema v6 reload preserves an unspecified tag color'
+Assert-Equal 7 $canonicalV6.schemaVersion 'Schema v6 migrates to canonical schema v7'
+Assert-Equal '2026-07-18' $canonicalV6.notes[0].date 'Schema v7 preserves an exact note date'
+Assert-Equal $null $canonicalV6.notes[0].reminderIntervalMinutes 'Schema v7 persists a disabled reminder explicitly'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v6Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalV6 | ConvertTo-Json -Depth 5)) 'Strict schema v6 to v7 migration is accepted for deployment'
+
+$v7Settings = $canonicalV6 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$v7Settings.schemaVersion = 7
+$v7Settings.notes[0] | Add-Member -NotePropertyName reminderIntervalMinutes -NotePropertyValue 30 -Force
+$v7Settings.notes[0] | Add-Member -NotePropertyName reminderStartUtc -NotePropertyValue '2026-07-19T00:00:00.0000000+00:00' -Force
+$loadedV7 = ConvertFrom-CountdownSettingsObject -Settings $v7Settings
+Assert-Equal $false $loadedV7.Migrated 'Schema v7 settings do not migrate'
+Assert-Equal 30 $loadedV7.Notes[0].reminderIntervalMinutes 'Schema v7 loads a reminder interval'
+Assert-Equal ([DateTimeOffset]'2026-07-19T00:00:00Z') $loadedV7.Notes[0].reminderStartUtc 'Schema v7 loads a UTC reminder start'
+$canonicalV7 = ConvertTo-CountdownSettingsJson -State $loadedV7 | ConvertFrom-Json
+Assert-Equal 30 $canonicalV7.notes[0].reminderIntervalMinutes 'Schema v7 round-trips a reminder interval'
+Assert-Equal ([DateTimeOffset]'2026-07-19T00:00:00Z') ([DateTimeOffset] $canonicalV7.notes[0].reminderStartUtc).ToUniversalTime() 'Schema v7 round-trips a canonical UTC reminder start'
+$reloadedCanonicalV7 = ConvertFrom-CountdownSettingsObject -Settings $canonicalV7
+Assert-Equal 2 $reloadedCanonicalV7.Tags.Count 'Schema v7 reloads tags without optional colors'
+Assert-Equal $null $reloadedCanonicalV7.Tags[1].color 'Schema v7 reload preserves an unspecified tag color'
 
 $missingV6NoteDateRejected = $false
 try {
@@ -692,6 +714,27 @@ catch {
     $blankV6NoteDateRejected = $true
 }
 Assert-Equal $true $blankV6NoteDateRejected 'Schema v6 rejects a blank note date'
+
+$missingV7ReminderFieldsRejected = $false
+try {
+    $missingV7ReminderFields = $v7Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $missingV7ReminderFields.notes[0].PSObject.Properties.Remove('reminderIntervalMinutes')
+    ConvertFrom-CountdownSettingsObject -Settings $missingV7ReminderFields | Out-Null
+}
+catch {
+    $missingV7ReminderFieldsRejected = $true
+}
+Assert-Equal $true $missingV7ReminderFieldsRejected 'Schema v7 requires reminder fields'
+$invalidV7ReminderTypeRejected = $false
+try {
+    $invalidV7ReminderType = $v7Settings | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+    $invalidV7ReminderType.notes[0].reminderIntervalMinutes = '30'
+    ConvertFrom-CountdownSettingsObject -Settings $invalidV7ReminderType | Out-Null
+}
+catch {
+    $invalidV7ReminderTypeRejected = $true
+}
+Assert-Equal $true $invalidV7ReminderTypeRejected 'Schema v7 rejects a string reminder interval'
 
 $missingV5TagsRejected = $false
 try {
@@ -755,6 +798,29 @@ Assert-Equal $true $invalidTagColorSettingsRejected 'Schema v5 validates tag col
 
 $datedNote = New-CountdownNoteRecord -Id 'dated-note' -Text '带日期便签' -Date '2026-07-18' -TagIds @('work')
 Assert-Equal '2026-07-18' $datedNote.date 'Note records preserve an exact calendar date'
+$reminderStart = [DateTimeOffset]'2026-07-19T08:00:00+08:00'
+$reminderNote = New-CountdownNoteRecord -Id 'reminder-note' -Text '每半小时站起来活动' -Date '2026-07-19' -TagIds @() -ReminderIntervalMinutes 30 -ReminderStartUtc $reminderStart
+Assert-Equal 30 $reminderNote.reminderIntervalMinutes 'Note records preserve a reminder interval'
+Assert-Equal ([DateTimeOffset]'2026-07-19T00:00:00Z') $reminderNote.reminderStartUtc 'Note records normalize reminder start to UTC'
+$dueBeforeInterval = @(Get-DueCountdownNoteReminders -Notes @($reminderNote) -BeijingTime ([DateTimeOffset]'2026-07-19T08:29:59+08:00') -LastShownCycles @{})
+Assert-Equal 0 $dueBeforeInterval.Count 'Note reminder does not fire before its interval'
+$dueAtInterval = @(Get-DueCountdownNoteReminders -Notes @($reminderNote) -BeijingTime ([DateTimeOffset]'2026-07-19T08:30:00+08:00') -LastShownCycles @{})
+Assert-Equal 1 $dueAtInterval.Count 'Note reminder fires when its interval elapses'
+Assert-Equal 1 $dueAtInterval[0].Cycle 'First note reminder reports cycle one'
+$dueAlreadyShown = @(Get-DueCountdownNoteReminders -Notes @($reminderNote) -BeijingTime ([DateTimeOffset]'2026-07-19T08:30:00+08:00') -LastShownCycles @{ 'reminder-note' = 1 })
+Assert-Equal 0 $dueAlreadyShown.Count 'Note reminder does not repeat within the same cycle'
+$dueNextCycle = @(Get-DueCountdownNoteReminders -Notes @($reminderNote) -BeijingTime ([DateTimeOffset]'2026-07-19T09:00:00+08:00') -LastShownCycles @{ 'reminder-note' = 1 })
+Assert-Equal 1 $dueNextCycle.Count 'Note reminder fires again at the next interval'
+$completedReminderNote = New-CountdownNoteRecord -Id 'completed-reminder-note' -Text '已经完成' -Date '2026-07-19' -IsCompleted $true -TagIds @() -ReminderIntervalMinutes 30 -ReminderStartUtc $reminderStart
+Assert-Equal 0 @(Get-DueCountdownNoteReminders -Notes @($completedReminderNote) -BeijingTime ([DateTimeOffset]'2026-07-19T09:00:00+08:00') -LastShownCycles @{}).Count 'Completed notes do not produce reminders'
+$invalidReminderIntervalRejected = $false
+try {
+    New-CountdownNoteRecord -Id 'invalid-reminder-note' -Text '无效提醒' -Date '2026-07-19' -TagIds @() -ReminderIntervalMinutes 0 -ReminderStartUtc $reminderStart | Out-Null
+}
+catch {
+    $invalidReminderIntervalRejected = $true
+}
+Assert-Equal $true $invalidReminderIntervalRejected 'Note records reject reminder intervals below one minute'
 $leapDayNote = New-CountdownNoteRecord -Id 'leap-day-note' -Text '闰日便签' -Date '2028-02-29' -TagIds @()
 Assert-Equal '2028-02-29' $leapDayNote.date 'Note records accept a valid leap day'
 $invalidNoteDateRejected = $false

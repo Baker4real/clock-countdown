@@ -18,19 +18,27 @@ $staging = $PSScriptRoot
 $install = 'D:\敏敏子倒计时'
 $taskName = 'Minmin Countdown'
 $legacyTaskName = '敏敏子倒计时'
+$officialCharacterAssets = @(
+    'sanrio-official-mymelody.png',
+    'sanrio-official-cinnamoroll.png',
+    'sanrio-official-kuromi.png'
+)
 $expected = @{
-    'Countdown.App.psm1' = '2D4A07FB541F88DE63A527BF1DC91EABC460C30A81F0A28023ABD7EE9F7F17F6'
+    'Countdown.App.psm1' = 'AA16C4EABBD25752FA692FF0B329AF4E93B301A1DB6B5890AA7F85A7F997A49A'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = 'B5454DDC6F37187A40DB4C4A327D3CC48EA481711BB577A9B2F5F445A749B69B'
-    'Countdown.Notes.psm1' = '5277210265DF7B66742585B1724A8DDF66ABAA2F996451E2625462C1F1D480A9'
+    'Countdown.Notes.psm1' = '02D65016C7E39BDF40007994A35394AB38A8461AF324C4E17C15EF8F7B5C790C'
     'Countdown.Runtime.psm1' = '716EF71A830717DD2CA651118D3D99465657481FF164DCE2EA9AA0F305AEF1C2'
-    'Countdown.Settings.psm1' = '836A09AAECE21EDDCDF8B112FBB5F33A73D1DC735A2D071E81B3C4EE6A8FF319'
+    'Countdown.Settings.psm1' = '554027EFB10429C883BFA52C28C0636682D53F592CE36A3CDF18A95623FA6A12'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = 'D9EB20FC05A13180E66E954841EF39174EAA44123F63D1B0F89CF6681A9B373C'
-    'Countdown.Ui.Tests.ps1' = '780BBD0E8F0800DB146575186138BE50D1A0E07CE4B4FA0D67354F019A41C1D7'
+    'Countdown.Core.Tests.ps1' = '26B038143A0BDAA0E4A89EB805CD920381EC028F2B2B0210CBDBF6F87E1F31F8'
+    'Countdown.Ui.Tests.ps1' = 'FEB741108D97FB5C070153732935C587271037FA6CB6ACC025A982B72304ED7F'
     '敏敏子倒计时.ps1' = '50EDF51C775239D09CC42A218B2952E5115705759CE091DD477EE9E3B54A2B14'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
+    'sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
+    'sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
+    'sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
 }
 $applicationFiles = @(
     'Countdown.App.psm1',
@@ -42,7 +50,10 @@ $applicationFiles = @(
     'Countdown.Tags.psm1',
     '敏敏子倒计时.ps1',
     'CountdownLauncher.exe',
-    'countdown-icon.ico'
+    'countdown-icon.ico',
+    'sanrio-official-mymelody.png',
+    'sanrio-official-cinnamoroll.png',
+    'sanrio-official-kuromi.png'
 )
 
 foreach ($entry in $expected.GetEnumerator()) {
@@ -61,6 +72,7 @@ if ($ValidateOnly) {
         Valid = $true
         SourceRoot = $staging
         VerifiedFiles = $expected.Count
+        OfficialCharacterAssets = $officialCharacterAssets
         Transactional = $true
         DeferredCommitSupported = $true
     } | ConvertTo-Json

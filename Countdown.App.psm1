@@ -121,6 +121,8 @@ $script:holidayCalendarDeadline = $null
 $script:holidayCalendarYear = $null
 $script:holidayCalendarTaskFactory = $HolidayCalendarTaskFactory
 $script:testCloseTimer = $null
+$script:lastNoteReminderCycles = @{}
+$script:noteReminderWindows = @{}
 
 [xml] $xaml = @'
   <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -295,7 +297,8 @@ $script:testCloseTimer = $null
               <Popup x:Name="PART_Popup" Grid.ColumnSpan="2" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                 <Border Margin="0,6,0,0" Padding="8" Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" CornerRadius="12">
                   <Border.Effect><DropShadowEffect Color="{StaticResource ShadowColor}" BlurRadius="16" ShadowDepth="3" Opacity="0.14"/></Border.Effect>
-                  <Calendar x:Name="PART_Calendar" Style="{StaticResource {x:Type Calendar}}">
+                  <Calendar x:Name="PART_Calendar" Style="{StaticResource {x:Type Calendar}}"
+                            SelectedDate="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                     <Calendar.Resources>
                       <Style TargetType="CalendarItem" BasedOn="{StaticResource {x:Type CalendarItem}}"/>
                       <Style TargetType="CalendarDayButton" BasedOn="{StaticResource {x:Type CalendarDayButton}}"/>
@@ -458,10 +461,10 @@ $script:testCloseTimer = $null
     </Style>
     <Style TargetType="Calendar">
       <Setter Property="Background" Value="{StaticResource CanvasBrush}"/><Setter Property="Foreground" Value="{StaticResource InkBrush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Calendar">
         <Grid x:Name="PART_Root">
-          <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12" Padding="2">
+          <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12" Padding="6">
             <Border.Effect><DropShadowEffect Color="{StaticResource ShadowColor}" BlurRadius="16" ShadowDepth="3" Opacity="0.14"/></Border.Effect>
             <CalendarItem x:Name="PART_CalendarItem" Style="{StaticResource {x:Type CalendarItem}}"/>
           </Border>
@@ -472,8 +475,9 @@ $script:testCloseTimer = $null
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CalendarItem">
         <Grid x:Name="PART_Root" Background="{StaticResource CanvasBrush}">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-          <Grid x:Name="PART_Header" Margin="2,0,2,8">
+          <Grid x:Name="PART_Header" Margin="2,0,2,8" Background="{StaticResource CardBrush}">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Border Grid.ColumnSpan="3" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" CornerRadius="8"/>
             <Button x:Name="PART_PreviousButton" Style="{StaticResource CalendarNavigationButton}" ToolTip="上一个月">
               <Path Width="8" Height="12" Fill="{StaticResource SelectedTextBrush}" Stretch="Fill" Data="M 7,0 L 1,6 L 7,12 Z"/>
             </Button>
@@ -521,8 +525,14 @@ $script:testCloseTimer = $null
     </Style>
   </Window.Resources>
 
-  <Grid Margin="24,20,24,18">
+  <Grid x:Name="MainRoot" Margin="24,20,24,18" Background="{DynamicResource BackgroundBrush}">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid x:Name="CharacterBackground" Grid.RowSpan="6" Opacity="0.12" IsHitTestVisible="False">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Image x:Name="MyMelodyBackground" Grid.Column="0" Margin="0,96,0,76" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+      <Image x:Name="CinnamorollBackground" Grid.Column="1" Margin="0,96,0,76" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+      <Image x:Name="KuromiBackground" Grid.Column="2" Margin="0,96,0,76" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+    </Grid>
     <Grid Grid.Row="0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <StackPanel>
@@ -586,14 +596,14 @@ $script:testCloseTimer = $null
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid>
-          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-          <StackPanel><TextBlock Text="悬浮窗显示精度" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="DisplayPrecision" MinWidth="180" MaxWidth="220" ToolTip="选择悬浮窗倒计时显示到哪一位"/></StackPanel>
-          <StackPanel Grid.Column="1" Margin="12,0,0,0"><TextBlock Text="月薪（元）" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="MonthlySalary" ToolTip="用于计算本工作日截至此刻已赚收入"/></StackPanel>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="悬浮窗显示精度" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="DisplayPrecision" Width="148" ToolTip="选择悬浮窗倒计时显示到哪一位"/></StackPanel>
+          <StackPanel Grid.Column="1" Margin="12,0,0,0"><TextBlock Text="月薪（元）" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="MonthlySalary" Width="176" ToolTip="用于计算本工作日截至此刻已赚收入"/></StackPanel>
         </Grid>
         <Grid Grid.Row="1" Margin="0,12,0,0">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <StackPanel><TextBlock Text="上班时间" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="WorkStart" ToolTip="输入 09:00 这样的 24 小时制时间"/></StackPanel>
-          <StackPanel Grid.Column="1" Margin="12,0,0,0"><TextBlock Text="下班时间" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="WorkEnd" ToolTip="输入 18:00 这样的 24 小时制时间"/></StackPanel>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="上班时间" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="WorkStart" Width="136" ToolTip="输入 09:00 这样的 24 小时制时间"/></StackPanel>
+          <StackPanel Grid.Column="1" Margin="12,0,0,0"><TextBlock Text="下班时间" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="WorkEnd" Width="136" ToolTip="输入 18:00 这样的 24 小时制时间"/></StackPanel>
           <Button x:Name="SavePreferencesButton" Grid.Column="2" Width="104" Margin="12,18,0,0" Style="{StaticResource PrimaryButton}" Content="保存设置" ToolTip="保存显示和收入计算设置"/>
         </Grid>
         <TextBlock x:Name="PreferencesMessageText" Grid.Row="2" Margin="2,8,2,0" MinHeight="18" FontSize="12" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap"/>
@@ -611,7 +621,7 @@ $script:testCloseTimer = $null
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <Grid x:Name="NoteEditorWorkspace" Margin="0,0,0,12">
           <Grid x:Name="NoteEditorGrid">
-            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <TextBox x:Name="NoteInput" MaxLength="140" ToolTip="写下一件要做的事，最多 140 个字符"/>
@@ -622,7 +632,15 @@ $script:testCloseTimer = $null
               <Button x:Name="AddNoteButton" Grid.Column="2" Width="76" Margin="8,0,0,0" Style="{StaticResource PrimaryButton}" Content="添加" ToolTip="添加便签"/>
               <Button x:Name="CancelNoteEditButton" Grid.Column="3" Width="64" Margin="8,0,0,0" Style="{StaticResource SecondaryButton}" Content="取消" ToolTip="取消编辑便签" Visibility="Collapsed"/>
             </Grid>
-            <TextBlock x:Name="NoteMessageText" Grid.Row="1" Margin="2,8,2,0" MinHeight="18" FontSize="12" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap"/>
+            <StackPanel Grid.Row="1" Margin="2,8,2,0" Orientation="Horizontal">
+              <TextBlock Text="提醒" Margin="0,0,8,0" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource NoteInkBrush}" VerticalAlignment="Center"/>
+              <ComboBox x:Name="NoteReminderInterval" Width="144" Height="34" ToolTip="选择便签内容的循环提醒间隔"/>
+              <StackPanel x:Name="NoteCustomReminderPanel" Margin="8,0,0,0" Orientation="Horizontal" Visibility="Collapsed">
+                <TextBox x:Name="NoteCustomReminderMinutes" Width="68" Height="34" MaxLength="4" ToolTip="输入 1 到 1440 分钟"/>
+                <TextBlock Text="分钟" Margin="6,0,0,0" FontSize="12" Foreground="{StaticResource NoteInkBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </StackPanel>
+            <TextBlock x:Name="NoteMessageText" Grid.Row="2" Margin="2,8,2,0" MinHeight="18" FontSize="12" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap"/>
           </Grid>
         </Grid>
         <Grid Grid.Row="1" Margin="0,0,0,0">
@@ -655,6 +673,26 @@ if ($ExerciseFatalDiagnostic) {
 }
 $iconPath = Join-Path $PSScriptRoot 'countdown-icon.ico'
 if (Test-Path -LiteralPath $iconPath) { $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create((New-Object System.Uri($iconPath))) }
+$characterBackground = $window.FindName('CharacterBackground')
+$characterBackgroundAssets = @(
+    [pscustomobject]@{ Character = 'My Melody'; Control = $window.FindName('MyMelodyBackground'); FileName = 'sanrio-official-mymelody.png'; PixelWidth = 560; PixelHeight = 560 }
+    [pscustomobject]@{ Character = 'Cinnamoroll'; Control = $window.FindName('CinnamorollBackground'); FileName = 'sanrio-official-cinnamoroll.png'; PixelWidth = 1004; PixelHeight = 560 }
+    [pscustomobject]@{ Character = 'Kuromi'; Control = $window.FindName('KuromiBackground'); FileName = 'sanrio-official-kuromi.png'; PixelWidth = 560; PixelHeight = 560 }
+)
+foreach ($asset in $characterBackgroundAssets) {
+    $assetPath = Join-Path $PSScriptRoot $asset.FileName
+    if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
+        throw "缺少 $($asset.Character) 官方角色背景：$assetPath"
+    }
+    $bitmap = [System.Windows.Media.Imaging.BitmapImage]::new()
+    $bitmap.BeginInit()
+    $bitmap.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+    $bitmap.CreateOptions = [System.Windows.Media.Imaging.BitmapCreateOptions]::IgnoreImageCache
+    $bitmap.UriSource = [System.Uri]::new($assetPath, [System.UriKind]::Absolute)
+    $bitmap.EndInit()
+    $bitmap.Freeze()
+    $asset.Control.Source = $bitmap
+}
 
 function Copy-CountdownThemeResources {
     param([Parameter(Mandatory)] [System.Windows.FrameworkElement] $Target)
@@ -754,6 +792,9 @@ $emptyState = $window.FindName('EmptyState')
 $noteInput = $window.FindName('NoteInput')
 $noteDate = $window.FindName('NoteDate')
 Initialize-ThemedDatePicker -DatePicker $noteDate
+$noteReminderInterval = $window.FindName('NoteReminderInterval')
+$noteCustomReminderPanel = $window.FindName('NoteCustomReminderPanel')
+$noteCustomReminderMinutes = $window.FindName('NoteCustomReminderMinutes')
 $noteSearchGroup = $window.FindName('NoteSearchGroup')
 $script:noteSearchInput = $window.FindName('NoteSearchInput')
 $addNoteButton = $window.FindName('AddNoteButton')
@@ -822,9 +863,19 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
           <TextBox x:Name="FloatingNoteInput" Height="36" Padding="10,0" VerticalContentAlignment="Center" FontSize="13" Foreground="{DynamicResource InkBrush}" Background="{DynamicResource CanvasBrush}" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1" MaxLength="140" ToolTip="写下待办，按回车或点击添加"/>
           <Button x:Name="FloatingAddNoteButton" Grid.Column="1" Width="58" Height="36" Margin="8,0,0,0" Style="{DynamicResource PrimaryButton}" Content="添加" FontSize="12" FontWeight="SemiBold" Cursor="Hand" ToolTip="添加便签"/>
         </Grid>
-        <StackPanel Grid.Row="1" Margin="2,8,2,0" Orientation="Horizontal">
-          <TextBlock Text="便签日期" Margin="0,0,8,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource NoteInkBrush}" VerticalAlignment="Center"/>
-          <DatePicker x:Name="FloatingNoteDate" Width="190" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
+        <StackPanel Grid.Row="1" Margin="2,8,2,0">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="便签日期" Margin="0,0,8,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource NoteInkBrush}" VerticalAlignment="Center"/>
+            <DatePicker x:Name="FloatingNoteDate" Width="190" SelectedDateFormat="Long" ToolTip="选择便签日期，精确到年月日"/>
+          </StackPanel>
+          <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+            <TextBlock Text="提醒" Margin="0,0,8,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource NoteInkBrush}" VerticalAlignment="Center"/>
+            <ComboBox x:Name="FloatingNoteReminderInterval" Width="132" Height="34" ToolTip="选择便签内容的循环提醒间隔"/>
+            <StackPanel x:Name="FloatingNoteCustomReminderPanel" Margin="8,0,0,0" Orientation="Horizontal" Visibility="Collapsed">
+              <TextBox x:Name="FloatingNoteCustomReminderMinutes" Width="58" Height="34" MaxLength="4" ToolTip="输入 1 到 1440 分钟"/>
+              <TextBlock Text="分钟" Margin="5,0,0,0" FontSize="11" Foreground="{DynamicResource NoteInkBrush}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </StackPanel>
         </StackPanel>
         <TextBlock x:Name="FloatingNoteMessage" Grid.Row="2" Margin="2,6,2,0" MinHeight="16" FontSize="11" Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap"/>
       </Grid>
@@ -856,6 +907,9 @@ $floatingList = $floatingWindow.FindName('FloatingList')
 $floatingNoteInput = $floatingWindow.FindName('FloatingNoteInput')
 $floatingNoteDate = $floatingWindow.FindName('FloatingNoteDate')
 Initialize-ThemedDatePicker -DatePicker $floatingNoteDate
+$floatingNoteReminderInterval = $floatingWindow.FindName('FloatingNoteReminderInterval')
+$floatingNoteCustomReminderPanel = $floatingWindow.FindName('FloatingNoteCustomReminderPanel')
+$floatingNoteCustomReminderMinutes = $floatingWindow.FindName('FloatingNoteCustomReminderMinutes')
 $floatingAddNoteButton = $floatingWindow.FindName('FloatingAddNoteButton')
 $floatingNoteMessage = $floatingWindow.FindName('FloatingNoteMessage')
 $openManagerButton = $floatingWindow.FindName('OpenManagerButton')
@@ -902,6 +956,252 @@ foreach ($item in @(
     [pscustomobject]@{ Value = 'Second'; Label = '精确到秒' }
 )) { [void] $displayPrecisionInput.Items.Add($item) }
 
+$noteReminderOptions = @(
+    [pscustomobject]@{ Value = 0; Label = '不提醒' },
+    [pscustomobject]@{ Value = 15; Label = '每 15 分钟' },
+    [pscustomobject]@{ Value = 30; Label = '每 30 分钟' },
+    [pscustomobject]@{ Value = 60; Label = '每 1 小时' },
+    [pscustomobject]@{ Value = 120; Label = '每 2 小时' },
+    [pscustomobject]@{ Value = 240; Label = '每 4 小时' },
+    [pscustomobject]@{ Value = -1; Label = '自定义分钟' }
+)
+foreach ($selector in @($noteReminderInterval, $floatingNoteReminderInterval)) {
+    $selector.DisplayMemberPath = 'Label'
+    $selector.SelectedValuePath = 'Value'
+    foreach ($item in $noteReminderOptions) { [void] $selector.Items.Add($item) }
+}
+
+function Get-NoteReminderControlSet {
+    param([Parameter(Mandatory)] [ValidateSet('NoteEditor', 'FloatingNoteEditor')] [string] $Context)
+
+    if ($Context -eq 'NoteEditor') {
+        return [pscustomobject]@{
+            Selector = $noteReminderInterval
+            CustomPanel = $noteCustomReminderPanel
+            CustomMinutes = $noteCustomReminderMinutes
+        }
+    }
+    [pscustomobject]@{
+        Selector = $floatingNoteReminderInterval
+        CustomPanel = $floatingNoteCustomReminderPanel
+        CustomMinutes = $floatingNoteCustomReminderMinutes
+    }
+}
+
+function Update-NoteReminderControlVisibility {
+    param([Parameter(Mandatory)] [ValidateSet('NoteEditor', 'FloatingNoteEditor')] [string] $Context)
+
+    $controls = Get-NoteReminderControlSet -Context $Context
+    $controls.CustomPanel.Visibility = if ([int] $controls.Selector.SelectedValue -eq -1) { 'Visible' } else { 'Collapsed' }
+}
+
+function Set-NoteReminderIntervalSelection {
+    param(
+        [Parameter(Mandatory)] [ValidateSet('NoteEditor', 'FloatingNoteEditor')] [string] $Context,
+        [AllowNull()] [object] $Minutes
+    )
+
+    $controls = Get-NoteReminderControlSet -Context $Context
+    if ($null -eq $Minutes) {
+        $controls.Selector.SelectedValue = 0
+        $controls.CustomMinutes.Text = ''
+    }
+    elseif ([int] $Minutes -in @(15, 30, 60, 120, 240)) {
+        $controls.Selector.SelectedValue = [int] $Minutes
+        $controls.CustomMinutes.Text = ''
+    }
+    else {
+        $controls.Selector.SelectedValue = -1
+        $controls.CustomMinutes.Text = [string] ([int] $Minutes)
+    }
+    Update-NoteReminderControlVisibility -Context $Context
+}
+
+function Get-NoteReminderIntervalFromControls {
+    param([Parameter(Mandatory)] [ValidateSet('NoteEditor', 'FloatingNoteEditor')] [string] $Context)
+
+    $controls = Get-NoteReminderControlSet -Context $Context
+    $selectedValue = [int] $controls.Selector.SelectedValue
+    if ($selectedValue -eq 0) { return $null }
+    if ($selectedValue -gt 0) { return $selectedValue }
+    [int] $customMinutes = 0
+    if (
+        -not [int]::TryParse(
+            $controls.CustomMinutes.Text.Trim(),
+            [System.Globalization.NumberStyles]::None,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [ref] $customMinutes
+        ) -or
+        $customMinutes -lt 1 -or
+        $customMinutes -gt 1440
+    ) {
+        throw '自定义提醒间隔请输入 1 到 1440 之间的整数分钟。'
+    }
+    $customMinutes
+}
+
+function Format-NoteReminderInterval {
+    param([AllowNull()] [object] $Minutes)
+
+    if ($null -eq $Minutes) { return '' }
+    switch ([int] $Minutes) {
+        60 { '每 1 小时'; break }
+        120 { '每 2 小时'; break }
+        240 { '每 4 小时'; break }
+        default { '每 {0} 分钟' -f ([int] $Minutes) }
+    }
+}
+
+function New-NoteReminderWindow {
+    param([Parameter(Mandatory)] [object] $Note)
+
+    $reminderWindow = New-Object System.Windows.Window
+    $reminderWindow.Title = '便签提醒'
+    $reminderWindow.Width = 380
+    $reminderWindow.SizeToContent = 'Height'
+    $reminderWindow.WindowStyle = 'None'
+    $reminderWindow.ResizeMode = 'NoResize'
+    $reminderWindow.AllowsTransparency = $true
+    $reminderWindow.Background = [System.Windows.Media.Brushes]::Transparent
+    $reminderWindow.Topmost = $true
+    $reminderWindow.ShowInTaskbar = $false
+    $reminderWindow.ShowActivated = $false
+    $reminderWindow.FontFamily = $window.FontFamily
+    $reminderWindow.Tag = [string] $Note.id
+    Copy-CountdownThemeResources -Target $reminderWindow
+
+    $surface = New-Object System.Windows.Controls.Border
+    $surface.Uid = 'NoteReminderSurface'
+    $surface.Margin = 12
+    $surface.Padding = 18
+    $surface.CornerRadius = 16
+    $surface.Background = $noteSurfaceBrush
+    $surface.BorderBrush = $noteLineBrush
+    $surface.BorderThickness = 1
+
+    $content = New-Object System.Windows.Controls.StackPanel
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = '便签提醒'
+    $title.FontSize = 16
+    $title.FontWeight = 'SemiBold'
+    $title.Foreground = $noteInkBrush
+    [void] $content.Children.Add($title)
+
+    $body = New-Object System.Windows.Controls.TextBlock
+    $body.Uid = 'NoteReminderBody'
+    $body.Text = [string] $Note.text
+    $body.Margin = '0,10,0,0'
+    $body.FontSize = 14
+    $body.Foreground = $noteInkBrush
+    $body.TextWrapping = 'Wrap'
+    $body.MaxWidth = 330
+    Set-AccessibleName -Control $body -Name ('提醒内容：{0}' -f $Note.text)
+    [void] $content.Children.Add($body)
+
+    $interval = New-Object System.Windows.Controls.TextBlock
+    $interval.Uid = 'NoteReminderIntervalSummary'
+    $interval.Text = '循环提醒 · {0}' -f (Format-NoteReminderInterval -Minutes $Note.reminderIntervalMinutes)
+    $interval.Margin = '0,8,0,0'
+    $interval.FontSize = 11
+    $interval.Foreground = $noteInkBrush
+    $interval.Opacity = 0.74
+    [void] $content.Children.Add($interval)
+
+    $dismiss = New-Object System.Windows.Controls.Button
+    $dismiss.Uid = 'NoteReminderDismiss'
+    $dismiss.Content = '知道啦'
+    $dismiss.Width = 88
+    $dismiss.Height = 36
+    $dismiss.Margin = '0,14,0,0'
+    $dismiss.HorizontalAlignment = 'Right'
+    $dismiss.Style = $window.FindResource('PrimaryButton')
+    $dismiss.Tag = $reminderWindow
+    $dismiss.ToolTip = '关闭这次便签提醒'
+    Set-AccessibleName -Control $dismiss -Name '关闭这次便签提醒'
+    $dismiss.Add_Click({ param($sender, $eventArgs) ([System.Windows.Window] $sender.Tag).Close() })
+    [void] $content.Children.Add($dismiss)
+
+    $surface.Child = $content
+    $reminderWindow.Content = $surface
+    $reminderWindow
+}
+
+function Close-NoteReminderWindow {
+    param([Parameter(Mandatory)] [string] $Id)
+
+    if (-not $script:noteReminderWindows.ContainsKey($Id)) { return }
+    $reminderWindow = $script:noteReminderWindows[$Id]
+    [void] $script:noteReminderWindows.Remove($Id)
+    $reminderWindow.Close()
+}
+
+function Close-AllNoteReminderWindows {
+    $openWindows = @($script:noteReminderWindows.Values)
+    $script:noteReminderWindows.Clear()
+    foreach ($reminderWindow in $openWindows) { $reminderWindow.Close() }
+}
+
+function Show-NoteReminderWindow {
+    param([Parameter(Mandatory)] [object] $Note)
+
+    $noteId = [string] $Note.id
+    Close-NoteReminderWindow -Id $noteId
+    $reminderWindow = New-NoteReminderWindow -Note $Note
+    $reminderWindow.Add_Closed({
+            param($sender, $eventArgs)
+            $closedId = [string] $sender.Tag
+            if (
+                $script:noteReminderWindows.ContainsKey($closedId) -and
+                [object]::ReferenceEquals($script:noteReminderWindows[$closedId], $sender)
+            ) {
+                [void] $script:noteReminderWindows.Remove($closedId)
+            }
+        })
+    $script:noteReminderWindows[$noteId] = $reminderWindow
+    $reminderWindow.Show()
+    $reminderWindow.UpdateLayout()
+    $workArea = [System.Windows.SystemParameters]::WorkArea
+    $cascadeOffset = 16 * [Math]::Max(0, $script:noteReminderWindows.Count - 1)
+    $reminderWindow.Left = $workArea.Right - $reminderWindow.ActualWidth - 24 - $cascadeOffset
+    $reminderWindow.Top = $workArea.Bottom - $reminderWindow.ActualHeight - 24 - $cascadeOffset
+}
+
+function Initialize-NoteReminderCycles {
+    param(
+        [Parameter(Mandatory)] [System.Collections.IEnumerable] $Notes,
+        [Parameter(Mandatory)] [DateTimeOffset] $BeijingTime,
+        [System.Collections.IDictionary] $LastShownCycles = $script:lastNoteReminderCycles
+    )
+
+    $emptyCycles = @{}
+    foreach ($dueReminder in @(Get-DueCountdownNoteReminders -Notes $Notes -BeijingTime $BeijingTime -LastShownCycles $emptyCycles)) {
+        $LastShownCycles[$dueReminder.NoteId] = $dueReminder.Cycle
+    }
+}
+
+function Invoke-DueNoteReminders {
+    param(
+        [Parameter(Mandatory)] [DateTimeOffset] $BeijingTime,
+        [AllowNull()] [scriptblock] $ShowReminder,
+        [System.Collections.IDictionary] $LastShownCycles = $script:lastNoteReminderCycles
+    )
+
+    foreach ($dueReminder in @(Get-DueCountdownNoteReminders -Notes $script:notes -BeijingTime $BeijingTime -LastShownCycles $LastShownCycles)) {
+        if ($null -eq $ShowReminder) {
+            Show-NoteReminderWindow -Note $dueReminder.Note
+        }
+        else {
+            & $ShowReminder $dueReminder.Note $dueReminder
+        }
+        $LastShownCycles[$dueReminder.NoteId] = $dueReminder.Cycle
+    }
+}
+
+$noteReminderInterval.Add_SelectionChanged({ Update-NoteReminderControlVisibility -Context 'NoteEditor' })
+$floatingNoteReminderInterval.Add_SelectionChanged({ Update-NoteReminderControlVisibility -Context 'FloatingNoteEditor' })
+Set-NoteReminderIntervalSelection -Context 'NoteEditor' -Minutes $null
+Set-NoteReminderIntervalSelection -Context 'FloatingNoteEditor' -Minutes $null
+
 function Set-AccessibleName {
     param(
         [Parameter(Mandatory)] [System.Windows.DependencyObject] $Control,
@@ -913,6 +1213,10 @@ function Set-AccessibleName {
 
 Set-AccessibleName -Control $noteDate -Name '便签日期'
 Set-AccessibleName -Control $floatingNoteDate -Name '悬浮便签日期'
+Set-AccessibleName -Control $noteReminderInterval -Name '便签提醒间隔'
+Set-AccessibleName -Control $noteCustomReminderMinutes -Name '便签自定义提醒分钟'
+Set-AccessibleName -Control $floatingNoteReminderInterval -Name '悬浮便签提醒间隔'
+Set-AccessibleName -Control $floatingNoteCustomReminderMinutes -Name '悬浮便签自定义提醒分钟'
 
 function Show-ThemedConfirmation {
     param(
@@ -1394,10 +1698,10 @@ function Initialize-TagInterface {
     $script:countdownTagEditorMessage = $countdownTagEditor.Message
 
     $noteEditorGrid.RowDefinitions.Add((New-Object System.Windows.Controls.RowDefinition -Property @{ Height = 'Auto' })) | Out-Null
-    [System.Windows.Controls.Grid]::SetRow($noteMessageText, 2)
+    [System.Windows.Controls.Grid]::SetRow($noteMessageText, 3)
     $noteTagEditor = New-TagEditorPanel -Label '标签' -ToolTip '便签标签'
     $noteTagEditor.Panel.Margin = '0,10,0,0'
-    [System.Windows.Controls.Grid]::SetRow($noteTagEditor.Panel, 1)
+    [System.Windows.Controls.Grid]::SetRow($noteTagEditor.Panel, 2)
     $noteEditorGrid.Children.Add($noteTagEditor.Panel) | Out-Null
     $script:noteTagSelectorPanel = $noteTagEditor.Selector
     $script:noteTagSearchLabel = $noteTagEditor.SearchLabel
@@ -2652,6 +2956,18 @@ function New-NoteRow {
     $dateText.Opacity = 0.78
     Set-AccessibleName -Control $dateText -Name ('便签日期：{0}' -f (Format-NoteDateForDisplay -Date $dateValue))
     [void] $content.Children.Add($dateText)
+    $reminderIntervalMinutes = if ($null -eq $Record.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $Record.reminderIntervalMinutes }
+    if ($null -ne $reminderIntervalMinutes) {
+        $reminderText = New-Object System.Windows.Controls.TextBlock
+        $reminderText.Text = '提醒 · {0}' -f (Format-NoteReminderInterval -Minutes $reminderIntervalMinutes)
+        $reminderText.Uid = 'NoteReminder'
+        $reminderText.Margin = '0,3,0,0'
+        $reminderText.FontSize = if ($Compact) { 10 } else { 11 }
+        $reminderText.Foreground = if ($isCompleted) { $completedNoteBrush } else { $noteInkBrush }
+        $reminderText.Opacity = 0.78
+        Set-AccessibleName -Control $reminderText -Name ('便签提醒：{0}' -f (Format-NoteReminderInterval -Minutes $reminderIntervalMinutes))
+        [void] $content.Children.Add($reminderText)
+    }
     if (@(Get-RecordTagIds -Record $Record).Count -gt 0) { [void] $content.Children.Add((New-TagChipPanel -TagIds $Record.tagIds -Compact:$Compact)) }
     [System.Windows.Controls.Grid]::SetColumn($content, 1)
     $status = New-Object System.Windows.Controls.TextBlock
@@ -2773,7 +3089,9 @@ function Invoke-NoteMutationFromUi {
         [AllowNull()] [AllowEmptyString()] [string] $Date,
         [string] $Id,
         [bool] $IsCompleted,
-        [System.Collections.IEnumerable] $TagIds
+        [System.Collections.IEnumerable] $TagIds,
+        [AllowNull()] [object] $ReminderIntervalMinutes,
+        [AllowNull()] [object] $ReminderStartUtc
     )
 
     $arguments = @{
@@ -2788,6 +3106,8 @@ function Invoke-NoteMutationFromUi {
         $arguments.Text = $Text
         $arguments.Date = $Date
         $arguments.TagIds = $TagIds
+        $arguments.ReminderIntervalMinutes = $ReminderIntervalMinutes
+        $arguments.ReminderStartUtc = $ReminderStartUtc
     }
     if ($Action -eq 'Update') { $arguments.Id = $Id }
     if ($Action -eq 'SetCompletion') {
@@ -2806,7 +3126,39 @@ function Invoke-NoteMutationFromUi {
     }
 
     if (-not $result.Changed) { return $result }
+    $previousReminderStartUtc = if (
+        $Action -eq 'Update' -and
+        -not [string]::IsNullOrWhiteSpace($Id)
+    ) {
+        $previousNote = @($script:notes | Where-Object { $_.id -eq $Id })[0]
+        if ($null -eq $previousNote -or $null -eq $previousNote.PSObject.Properties['reminderStartUtc']) { $null } else { $previousNote.reminderStartUtc }
+    }
+    else {
+        $null
+    }
     $script:notes = $result.Notes
+    if ($Action -eq 'Add') {
+        [void] $script:lastNoteReminderCycles.Remove([string] $result.Note.id)
+    }
+    elseif ($Action -eq 'Update') {
+        Close-NoteReminderWindow -Id $Id
+        if ($previousReminderStartUtc -ne $result.Note.reminderStartUtc) {
+            [void] $script:lastNoteReminderCycles.Remove($Id)
+        }
+    }
+    elseif ($Action -eq 'SetCompletion') {
+        if ($IsCompleted) {
+            Close-NoteReminderWindow -Id $Id
+        }
+        else {
+            [void] $script:lastNoteReminderCycles.Remove($Id)
+            Initialize-NoteReminderCycles -Notes @($result.Note) -BeijingTime (Get-BeijingNow)
+        }
+    }
+    elseif ($Action -eq 'Remove') {
+        Close-NoteReminderWindow -Id $Id
+        [void] $script:lastNoteReminderCycles.Remove($Id)
+    }
     try {
         Set-NoteMessage -Text $result.Message
         Render-Notes; Render-FloatingContent
@@ -2832,11 +3184,34 @@ function Add-NoteFromInput {
     }
     $dateText = ConvertTo-CountdownDateText -SelectedDate $datePicker.SelectedDate
     $isNoteEdit = $Context -eq 'NoteEditor' -and -not [string]::IsNullOrWhiteSpace($script:editingNoteId)
+    try {
+        $reminderIntervalMinutes = Get-NoteReminderIntervalFromControls -Context $Context
+    }
+    catch {
+        Set-NoteMessage -Text $_.Exception.Message -IsError
+        return
+    }
+    $reminderStartUtc = $null
+    if ($null -ne $reminderIntervalMinutes) {
+        if ($isNoteEdit) {
+            $existingNote = @($script:notes | Where-Object { $_.id -eq $script:editingNoteId })[0]
+            if (
+                $null -ne $existingNote -and
+                $null -ne $existingNote.reminderStartUtc -and
+                [int] $existingNote.reminderIntervalMinutes -eq [int] $reminderIntervalMinutes
+            ) {
+                $reminderStartUtc = ([DateTimeOffset] $existingNote.reminderStartUtc).ToUniversalTime()
+            }
+        }
+        if ($null -eq $reminderStartUtc) {
+            $reminderStartUtc = (Get-BeijingNow).ToUniversalTime()
+        }
+    }
     $result = if ($isNoteEdit) {
-        Invoke-NoteMutationFromUi -Action Update -Id $script:editingNoteId -Text $TextBox.Text -Date $dateText -TagIds $tagIds
+        Invoke-NoteMutationFromUi -Action Update -Id $script:editingNoteId -Text $TextBox.Text -Date $dateText -TagIds $tagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc
     }
     else {
-        Invoke-NoteMutationFromUi -Action Add -Text $TextBox.Text -Date $dateText -TagIds $tagIds
+        Invoke-NoteMutationFromUi -Action Add -Text $TextBox.Text -Date $dateText -TagIds $tagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc
     }
     if ($null -ne $result -and $result.Changed) {
         if ($isNoteEdit) {
@@ -2845,6 +3220,7 @@ function Add-NoteFromInput {
         else {
             $TextBox.Text = ''
             Set-NoteDateSelection -Context $Context -Date (Get-BeijingNow).Date -UseDefault
+            Set-NoteReminderIntervalSelection -Context $Context -Minutes $null
             [void] $TextBox.Focus()
         }
     }
@@ -2854,6 +3230,7 @@ function Reset-NoteEditor {
     $script:editingNoteId = $null
     $noteInput.Text = ''
     Set-NoteDateSelection -Context 'NoteEditor' -Date (Get-BeijingNow).Date -UseDefault
+    Set-NoteReminderIntervalSelection -Context 'NoteEditor' -Minutes $null
     $addNoteButton.Content = '添加'
     $addNoteButton.ToolTip = '添加便签'
     $cancelNoteEditButton.Visibility = 'Collapsed'
@@ -2885,6 +3262,8 @@ function Start-NoteEditing {
         [DateTime]::ParseExact([string] $note.date, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
     }
     Set-NoteDateSelection -Context 'NoteEditor' -Date $selectedNoteDate
+    $selectedReminderInterval = if ($null -eq $note.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $note.reminderIntervalMinutes }
+    Set-NoteReminderIntervalSelection -Context 'NoteEditor' -Minutes $selectedReminderInterval
     $addNoteButton.Content = '保存'
     $addNoteButton.ToolTip = '保存便签修改'
     $cancelNoteEditButton.Visibility = 'Visible'
@@ -3033,6 +3412,7 @@ if (Test-Path -LiteralPath $settingsPath) {
     }
     catch { Set-CountdownMessage -Text "已有设置无法读取：$($_.Exception.Message)" -IsError }
 }
+Initialize-NoteReminderCycles -Notes $script:notes -BeijingTime (Get-BeijingNow)
 
 $setNowButton.Add_Click({ Set-TimeControls -BeijingTime (Get-BeijingNow); Set-CountdownMessage -Text '' })
 $cancelButton.Add_Click({ Reset-Editor })
@@ -3193,6 +3573,7 @@ $floatingWindow.Add_ContentRendered({
 $window.Add_Closing({ param($sender, $eventArgs) if (-not $ValidateOnly) { $eventArgs.Cancel = $true; $window.Hide() } })
 $floatingWindow.Add_Closed({
     if ($null -ne $script:testCloseTimer) { $script:testCloseTimer.Stop(); $script:testCloseTimer = $null }
+    Close-AllNoteReminderWindows
     Stop-ChinaHolidayCalendarRequest
     if ($null -ne $script:singleInstanceMutex) { $script:singleInstanceMutex.ReleaseMutex(); $script:singleInstanceMutex.Dispose() }
     [Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
@@ -3670,6 +4051,9 @@ if ($ValidateOnly) {
             TargetMinute = [Math]::Round($targetMinute.ActualWidth, 2)
             TargetSecond = [Math]::Round($targetSecond.ActualWidth, 2)
             DisplayPrecision = [Math]::Round($displayPrecisionInput.ActualWidth, 2)
+            MonthlySalary = [Math]::Round($monthlySalary.ActualWidth, 2)
+            WorkStart = [Math]::Round($workStartInput.ActualWidth, 2)
+            WorkEnd = [Math]::Round($workEndInput.ActualWidth, 2)
         }
     }
     function Test-ThemedComboBoxDropDown {
@@ -3731,7 +4115,7 @@ if ($ValidateOnly) {
         (Test-ThemeStyleTemplate -Resources $window.Resources -Key 'TagToggleButton')
     $toolTipTemplateMaterializes = Test-ThemedToolTipTemplate
     $floatingThemeResourcesCopied = @($themeTemplateKeys | Where-Object { -not (Test-ThemeStyleTemplate -Resources $floatingWindow.Resources -Key $_) }).Count -eq 0
-    foreach ($control in @($countdownName, $noteInput, $script:noteSearchInput, $floatingNoteInput, $targetHour, $targetMinute, $targetSecond, $displayPrecisionInput, $targetDate, $noteDate, $floatingNoteDate, $script:noteDateFilterPicker, $topmostCheck, $filterToggleButton, $minimizeWindowButton, $closeWindowButton, $floatingAddNoteButton, $closeFloatingButton)) { [void] $control.ApplyTemplate() }
+    foreach ($control in @($countdownName, $noteInput, $script:noteSearchInput, $floatingNoteInput, $noteCustomReminderMinutes, $floatingNoteCustomReminderMinutes, $targetHour, $targetMinute, $targetSecond, $displayPrecisionInput, $noteReminderInterval, $floatingNoteReminderInterval, $targetDate, $noteDate, $floatingNoteDate, $script:noteDateFilterPicker, $topmostCheck, $filterToggleButton, $minimizeWindowButton, $closeWindowButton, $floatingAddNoteButton, $closeFloatingButton)) { [void] $control.ApplyTemplate() }
     $noteDatePickers = @($noteDate, $floatingNoteDate, $script:noteDateFilterPicker)
     $hasNoteDateControls =
         @($noteDatePickers | Where-Object {
@@ -3741,6 +4125,156 @@ if ($ValidateOnly) {
                 $_.Template.FindName('PART_TextBox', $_).Style -ne $window.FindResource('DatePickerTextBoxStyle') -or
                 $_.Template.FindName('PART_Button', $_).Style -ne $window.FindResource('DatePickerToggleButton')
             }).Count -eq 0
+    $hasNoteReminderControls =
+        $noteReminderInterval -is [System.Windows.Controls.ComboBox] -and
+        $noteCustomReminderMinutes -is [System.Windows.Controls.TextBox] -and
+        $floatingNoteReminderInterval -is [System.Windows.Controls.ComboBox] -and
+        $floatingNoteCustomReminderMinutes -is [System.Windows.Controls.TextBox] -and
+        $noteReminderInterval.Items.Count -eq 7 -and
+        $floatingNoteReminderInterval.Items.Count -eq 7 -and
+        [int] $noteReminderInterval.SelectedValue -eq 0 -and
+        [int] $floatingNoteReminderInterval.SelectedValue -eq 0 -and
+        $noteCustomReminderPanel.Visibility -eq 'Collapsed' -and
+        $floatingNoteCustomReminderPanel.Visibility -eq 'Collapsed'
+    $noteReminderControlsWork = $false
+    if ($hasNoteReminderControls) {
+        try {
+            Set-NoteReminderIntervalSelection -Context 'NoteEditor' -Minutes 45
+            $customIntervalWorks =
+                $noteCustomReminderPanel.Visibility -eq 'Visible' -and
+                (Get-NoteReminderIntervalFromControls -Context 'NoteEditor') -eq 45
+            Set-NoteReminderIntervalSelection -Context 'FloatingNoteEditor' -Minutes 30
+            $presetIntervalWorks =
+                $floatingNoteCustomReminderPanel.Visibility -eq 'Collapsed' -and
+                (Get-NoteReminderIntervalFromControls -Context 'FloatingNoteEditor') -eq 30
+            Set-NoteReminderIntervalSelection -Context 'NoteEditor' -Minutes $null
+            $disabledIntervalWorks =
+                $noteCustomReminderPanel.Visibility -eq 'Collapsed' -and
+                $null -eq (Get-NoteReminderIntervalFromControls -Context 'NoteEditor')
+            $noteReminderControlsWork = $customIntervalWorks -and $presetIntervalWorks -and $disabledIntervalWorks
+        }
+        finally {
+            Set-NoteReminderIntervalSelection -Context 'NoteEditor' -Minutes $null
+            Set-NoteReminderIntervalSelection -Context 'FloatingNoteEditor' -Minutes $null
+        }
+    }
+    $reminderProbe = New-CountdownNoteRecord `
+        -Id '__reminder_probe__' `
+        -Text '半小时后记得喝水' `
+        -Date '2026-07-19' `
+        -ReminderIntervalMinutes 30 `
+        -ReminderStartUtc ([DateTimeOffset]'2026-07-19T00:00:00Z')
+    $originalReminderNotes = $script:notes
+    $reminderProbeNotes = [System.Collections.ArrayList]::new()
+    [void] $reminderProbeNotes.Add($reminderProbe)
+    $script:notes = $reminderProbeNotes
+    $validationReminderCycles = @{}
+    $dispatchedReminderCycles = [System.Collections.ArrayList]::new()
+    $captureReminder = {
+        param($note, $dueReminder)
+        [void] $dispatchedReminderCycles.Add([long] $dueReminder.Cycle)
+    }
+    try {
+        Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T08:29:59+08:00') -ShowReminder $captureReminder -LastShownCycles $validationReminderCycles
+        Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T08:30:00+08:00') -ShowReminder $captureReminder -LastShownCycles $validationReminderCycles
+        Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T08:30:00+08:00') -ShowReminder $captureReminder -LastShownCycles $validationReminderCycles
+        Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T09:00:00+08:00') -ShowReminder $captureReminder -LastShownCycles $validationReminderCycles
+    }
+    finally {
+        $script:notes = $originalReminderNotes
+    }
+    $noteReminderDispatchWorks =
+        $dispatchedReminderCycles.Count -eq 2 -and
+        [long] $dispatchedReminderCycles[0] -eq 1 -and
+        [long] $dispatchedReminderCycles[1] -eq 2 -and
+        [long] $validationReminderCycles['__reminder_probe__'] -eq 2
+    $script:notes = $reminderProbeNotes
+    try {
+        $failedReminderCycles = @{}
+        $failedReminderState = [pscustomobject]@{ Attempts = 0 }
+        $failReminderOnce = {
+            param($note, $dueReminder)
+            $failedReminderState.Attempts++
+            if ($failedReminderState.Attempts -eq 1) { throw 'Synthetic reminder display failure.' }
+        }
+        $reminderDisplayFailureObserved = $false
+        try {
+            Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T08:30:00+08:00') -ShowReminder $failReminderOnce -LastShownCycles $failedReminderCycles
+        }
+        catch {
+            $reminderDisplayFailureObserved = $_.Exception.Message -eq 'Synthetic reminder display failure.'
+        }
+        $reminderCycleUnmarkedAfterFailure = -not $failedReminderCycles.Contains('__reminder_probe__')
+        Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T08:30:00+08:00') -ShowReminder $failReminderOnce -LastShownCycles $failedReminderCycles
+        $reminderDisplayRetries =
+            $reminderDisplayFailureObserved -and
+            $reminderCycleUnmarkedAfterFailure -and
+            $failedReminderState.Attempts -eq 2 -and
+            [long] $failedReminderCycles['__reminder_probe__'] -eq 1
+        $restartReminderCycles = @{}
+        Initialize-NoteReminderCycles -Notes @($reminderProbe) -BeijingTime ([DateTimeOffset]'2026-07-19T08:35:00+08:00') -LastShownCycles $restartReminderCycles
+        $restartDispatches = [System.Collections.ArrayList]::new()
+        $captureRestartReminder = {
+            param($note, $dueReminder)
+            [void] $restartDispatches.Add([long] $dueReminder.Cycle)
+        }
+        Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T08:35:00+08:00') -ShowReminder $captureRestartReminder -LastShownCycles $restartReminderCycles
+        Invoke-DueNoteReminders -BeijingTime ([DateTimeOffset]'2026-07-19T09:00:00+08:00') -ShowReminder $captureRestartReminder -LastShownCycles $restartReminderCycles
+        $restartContinuesAtNextCycle =
+            $restartDispatches.Count -eq 1 -and
+            [long] $restartDispatches[0] -eq 2
+        $noteReminderDispatchWorks =
+            $noteReminderDispatchWorks -and
+            $reminderDisplayRetries -and
+            $restartContinuesAtNextCycle
+    }
+    finally {
+        $script:notes = $originalReminderNotes
+    }
+    $reminderWindowProbe = New-NoteReminderWindow -Note $reminderProbe
+    try {
+        $reminderWindowProbeControls = @(Get-LogicalDescendantControls -Root $reminderWindowProbe)
+        $reminderSurfaceProbe = @($reminderWindowProbeControls | Where-Object { $_ -is [System.Windows.Controls.Border] -and $_.Uid -eq 'NoteReminderSurface' })[0]
+        $reminderBodyProbe = @($reminderWindowProbeControls | Where-Object { $_ -is [System.Windows.Controls.TextBlock] -and $_.Uid -eq 'NoteReminderBody' })[0]
+        $reminderDismissProbe = @($reminderWindowProbeControls | Where-Object { $_ -is [System.Windows.Controls.Button] -and $_.Uid -eq 'NoteReminderDismiss' })[0]
+    $noteReminderWindowIsThemed =
+            $reminderWindowProbe.WindowStyle -eq [System.Windows.WindowStyle]::None -and
+            $reminderWindowProbe.AllowsTransparency -and
+            $reminderWindowProbe.Topmost -and
+            -not $reminderWindowProbe.ShowInTaskbar -and
+            -not $reminderWindowProbe.ShowActivated -and
+            $null -ne $reminderSurfaceProbe -and
+            $reminderSurfaceProbe.Background -eq $noteSurfaceBrush -and
+            $reminderSurfaceProbe.BorderBrush -eq $noteLineBrush -and
+            $null -ne $reminderBodyProbe -and
+            $reminderBodyProbe.Text -eq '半小时后记得喝水' -and
+            $null -ne $reminderDismissProbe -and
+            $reminderDismissProbe.Style -eq $window.FindResource('PrimaryButton')
+    }
+    finally {
+        $reminderWindowProbe.Close()
+    }
+    $officialCharacterBackgroundImages = @($characterBackgroundAssets | ForEach-Object { $_.Control })
+    $officialCharacterBackgroundLoaded =
+        $characterBackground -is [System.Windows.Controls.Grid] -and
+        $officialCharacterBackgroundImages.Count -eq 3 -and
+        @(
+            $characterBackgroundAssets | Where-Object {
+                $_.Control -isnot [System.Windows.Controls.Image] -or
+                $_.Control.Source -isnot [System.Windows.Media.Imaging.BitmapSource] -or
+                $_.Control.Source.PixelWidth -ne $_.PixelWidth -or
+                $_.Control.Source.PixelHeight -ne $_.PixelHeight
+            }
+        ).Count -eq 0
+    $officialCharacterBackgroundCharactersExclusive =
+        $characterBackground.Children.Count -eq 3 -and
+        @($characterBackground.Children | Where-Object { $_ -notin $officialCharacterBackgroundImages }).Count -eq 0 -and
+        (@($characterBackgroundAssets.Character) -join ',') -eq 'My Melody,Cinnamoroll,Kuromi'
+    $officialCharacterBackgroundLowContrast =
+        $characterBackground.Opacity -ge 0.08 -and
+        $characterBackground.Opacity -le 0.16 -and
+        -not $characterBackground.IsHitTestVisible -and
+        @($officialCharacterBackgroundImages | Where-Object { $_.Stretch -ne [System.Windows.Media.Stretch]::Uniform }).Count -eq 0
     $originalNoteDateSelections = [System.Collections.Generic.List[object]]::new()
     foreach ($picker in $noteDatePickers) {
         [void] $originalNoteDateSelections.Add($picker.SelectedDate)
@@ -3793,7 +4327,7 @@ if ($ValidateOnly) {
         $floatingScrollViewers.Count -eq 1 -and
         @($floatingScrollViewers | Where-Object { -not (Test-ThemedScrollViewer -ScrollViewer $_) }).Count -eq 0
     $comboBoxStyle = $window.Resources[[System.Windows.Controls.ComboBox]]
-    $themedComboBoxes = @($targetHour, $targetMinute, $targetSecond, $displayPrecisionInput)
+    $themedComboBoxes = @($targetHour, $targetMinute, $targetSecond, $displayPrecisionInput, $noteReminderInterval, $floatingNoteReminderInterval)
     $comboBoxThemeChecks = @(
         $null -ne $comboBoxStyle
         @($themedComboBoxes | Where-Object { $null -eq $_.Style -or $null -eq $_.Template.FindName('PART_Popup', $_) }).Count -eq 0
@@ -3863,7 +4397,7 @@ if ($ValidateOnly) {
     $liveDatePicker.Height = 40
     $liveDatePicker.SelectedDateFormat = [System.Windows.Controls.DatePickerFormat]::Long
     $liveDatePicker.Style = $window.Resources[[System.Windows.Controls.DatePicker]]
-    $liveDatePicker.SelectedDate = [DateTime]'2026-07-19'
+    $liveDatePicker.SelectedDate = [DateTime]'2026-07-20'
     $liveProbeWindow.Content = $liveDatePicker
     Initialize-ThemedDatePicker -DatePicker $liveDatePicker
     $livePopupWasOpen = $false
@@ -3871,6 +4405,12 @@ if ($ValidateOnly) {
     $liveCalendarStyleMismatches = 0
     $liveCalendarTemplateMismatches = 0
     $liveCalendarStyleContractsBound = $false
+    $liveCalendarHeaderUsesThemeTokens = $false
+    $liveSelectedDayUsesThemeTokens = $false
+    $liveCalendarSurfaceUsesThemeTokens = $false
+    $liveSelectedDayCount = 0
+    $liveSelectedDayBackground = $null
+    $liveSelectedDayForeground = $null
     try {
         $liveProbeWindow.Show()
         $liveProbeWindow.UpdateLayout()
@@ -3901,6 +4441,33 @@ if ($ValidateOnly) {
         $liveCalendarTemplateMismatches = @($liveCalendarDayButtons | Where-Object {
                 -not (Test-ThemedControlTemplatePart -Control $_ -PartName 'Surface')
             }).Count
+        $liveCalendarSurface = $liveCalendar.Template.FindName('Surface', $liveCalendar)
+        $liveCalendarSurfaceUsesThemeTokens =
+            $liveCalendarSurface -is [System.Windows.Controls.Border] -and
+            $liveCalendarSurface.Background -eq $canvasBrush -and
+            $liveCalendarSurface.BorderBrush -eq $hairlineBrush -and
+            $liveCalendarSurface.BorderThickness.Left -ge 1 -and
+            $liveCalendarSurface.CornerRadius.TopLeft -ge 12
+        $liveCalendarHeader = if ($liveCalendarItem -is [System.Windows.Controls.Primitives.CalendarItem]) {
+            $liveCalendarItem.Template.FindName('PART_Header', $liveCalendarItem)
+        }
+        else { $null }
+        $liveCalendarHeaderUsesThemeTokens =
+            $liveCalendarHeader -is [System.Windows.Controls.Grid] -and
+            $liveCalendarHeader.Background -eq $window.FindResource('CardBrush')
+        $liveSelectedDayButtons = @($liveCalendarDayButtons | Where-Object { $_.IsSelected })
+        $liveSelectedDayCount = $liveSelectedDayButtons.Count
+        if ($liveSelectedDayButtons.Count -eq 1) {
+            $liveSelectedDayButton = $liveSelectedDayButtons[0]
+            [void] $liveSelectedDayButton.ApplyTemplate()
+            $liveSelectedDaySurface = $liveSelectedDayButton.Template.FindName('Surface', $liveSelectedDayButton)
+            $liveSelectedDayBackground = $liveSelectedDaySurface.Background
+            $liveSelectedDayForeground = $liveSelectedDayButton.Foreground
+            $liveSelectedDayUsesThemeTokens =
+                $liveSelectedDaySurface -is [System.Windows.Controls.Border] -and
+                $liveSelectedDaySurface.Background -eq $activeBrush -and
+                $liveSelectedDayButton.Foreground -eq $canvasBrush
+        }
         $livePopupWasOpen = $livePopup.IsOpen
     }
     finally {
@@ -3913,6 +4480,11 @@ if ($ValidateOnly) {
         $liveCalendarDayButtons.Count -gt 0 -and
         $liveCalendarStyleMismatches -eq 0 -and
         $liveCalendarTemplateMismatches -eq 0
+    $liveDatePickerPopupVisuallyUnified =
+        $liveDatePickerPopupIsThemed -and
+        $liveCalendarSurfaceUsesThemeTokens -and
+        $liveCalendarHeaderUsesThemeTokens -and
+        $liveSelectedDayUsesThemeTokens
     if (-not $liveDatePickerPopupIsThemed) {
         throw "Live DatePicker popup fell back to system calendar styles: popupOpen=$livePopupWasOpen, contractsBound=$liveCalendarStyleContractsBound, dayButtons=$($liveCalendarDayButtons.Count), styleMismatches=$liveCalendarStyleMismatches, templateMismatches=$liveCalendarTemplateMismatches."
     }
@@ -4125,13 +4697,14 @@ if ($ValidateOnly) {
     $tagPersistenceRoundTrip = $false
     if (-not [string]::IsNullOrWhiteSpace($SettingsFile)) {
         $roundTrip = ConvertTo-CountdownSettingsJson -State (Get-CurrentSettingsState) | ConvertFrom-Json
-        $persistenceRoundTrip = $roundTrip.schemaVersion -eq 6 -and $roundTrip.displayPrecision -eq $script:displayPrecision -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
-        $notePersistenceRoundTrip = $roundTrip.schemaVersion -eq 6 -and @($roundTrip.notes).Count -eq $script:notes.Count
-        $tagPersistenceRoundTrip = $roundTrip.schemaVersion -eq 6 -and @($roundTrip.tags).Count -eq $script:tags.Count
+        $persistenceRoundTrip = $roundTrip.schemaVersion -eq 7 -and $roundTrip.displayPrecision -eq $script:displayPrecision -and @($roundTrip.countdowns).Count -eq $script:countdowns.Count
+        $notePersistenceRoundTrip = $roundTrip.schemaVersion -eq 7 -and @($roundTrip.notes).Count -eq $script:notes.Count
+        $tagPersistenceRoundTrip = $roundTrip.schemaVersion -eq 7 -and @($roundTrip.tags).Count -eq $script:tags.Count
     }
     $noteAddViaClick = $false
     $noteDateRequired = $false
     $noteDateViaPicker = $false
+    $noteReminderViaSelector = $false
     $noteStatusViaCheckbox = $false
     if ($ExerciseNoteAdd) {
         if ([string]::IsNullOrWhiteSpace($SettingsFile)) { throw '-ExerciseNoteAdd requires -SettingsFile.' }
@@ -4149,11 +4722,15 @@ if ($ValidateOnly) {
         $addedNoteText = '验证点击添加便签'
         $noteInput.Text = $addedNoteText
         $noteDate.SelectedDate = [DateTime]'2031-04-05'
+        Set-NoteReminderIntervalSelection -Context 'NoteEditor' -Minutes 30
         $addNoteButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
         $noteAddViaClick = $noteEditorWorkspace.Visibility -eq 'Visible' -and $script:notes.Count -eq ($notesBeforeAdd + 1) -and $noteInput.Text -eq '' -and @($script:notes | Where-Object { $_.text -eq $addedNoteText -and -not $_.isCompleted }).Count -eq 1
         if ($noteAddViaClick) {
             $addedNote = @($script:notes | Where-Object { $_.text -eq $addedNoteText })[0]
             $noteDateViaPicker = $addedNote.date -eq '2031-04-05'
+            $noteReminderViaSelector =
+                [int] $addedNote.reminderIntervalMinutes -eq 30 -and
+                $null -ne $addedNote.reminderStartUtc
             $activeRow = New-NoteRow -Record $addedNote
             $activeCheckBox = @($activeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -and [string] $_.Tag -eq $addedNote.id })[0]
             if ($null -ne $activeCheckBox) {
@@ -4415,26 +4992,42 @@ if ($ValidateOnly) {
         $defaultSelectionFieldWidths.TargetHour -ge 120 -and $defaultSelectionFieldWidths.TargetHour -le 140 -and
         $defaultSelectionFieldWidths.TargetMinute -ge 120 -and $defaultSelectionFieldWidths.TargetMinute -le 140 -and
         $defaultSelectionFieldWidths.TargetSecond -ge 120 -and $defaultSelectionFieldWidths.TargetSecond -le 140 -and
-        $defaultSelectionFieldWidths.DisplayPrecision -ge 180 -and $defaultSelectionFieldWidths.DisplayPrecision -le 220 -and
+        $defaultSelectionFieldWidths.DisplayPrecision -ge 140 -and $defaultSelectionFieldWidths.DisplayPrecision -le 156 -and
         $expandedSelectionFieldWidths.TargetDate -le 280 -and
         $expandedSelectionFieldWidths.TargetHour -le 140 -and
         $expandedSelectionFieldWidths.TargetMinute -le 140 -and
         $expandedSelectionFieldWidths.TargetSecond -le 140 -and
-        $expandedSelectionFieldWidths.DisplayPrecision -le 220
+        $expandedSelectionFieldWidths.DisplayPrecision -le 156
+    $compactPreferenceFieldLayout =
+        $defaultSelectionFieldWidths.DisplayPrecision -ge 140 -and $defaultSelectionFieldWidths.DisplayPrecision -le 156 -and
+        $defaultSelectionFieldWidths.MonthlySalary -ge 160 -and $defaultSelectionFieldWidths.MonthlySalary -le 180 -and
+        $defaultSelectionFieldWidths.WorkStart -ge 120 -and $defaultSelectionFieldWidths.WorkStart -le 140 -and
+        $defaultSelectionFieldWidths.WorkEnd -ge 120 -and $defaultSelectionFieldWidths.WorkEnd -le 140 -and
+        $expandedSelectionFieldWidths.DisplayPrecision -eq $defaultSelectionFieldWidths.DisplayPrecision -and
+        $expandedSelectionFieldWidths.MonthlySalary -eq $defaultSelectionFieldWidths.MonthlySalary -and
+        $expandedSelectionFieldWidths.WorkStart -eq $defaultSelectionFieldWidths.WorkStart -and
+        $expandedSelectionFieldWidths.WorkEnd -eq $defaultSelectionFieldWidths.WorkEnd
     [pscustomobject]@{
         Valid = $true; Title = $window.Title; Width = $window.Width; Height = $window.Height
         CompactSelectionFieldLayout = $compactSelectionFieldLayout
+        CompactPreferenceFieldLayout = $compactPreferenceFieldLayout
         CountdownNameWidth = $defaultSelectionFieldWidths.CountdownName
         TargetDateWidth = $defaultSelectionFieldWidths.TargetDate
         TargetHourWidth = $defaultSelectionFieldWidths.TargetHour
         TargetMinuteWidth = $defaultSelectionFieldWidths.TargetMinute
         TargetSecondWidth = $defaultSelectionFieldWidths.TargetSecond
         DisplayPrecisionWidth = $defaultSelectionFieldWidths.DisplayPrecision
+        MonthlySalaryWidth = $defaultSelectionFieldWidths.MonthlySalary
+        WorkStartWidth = $defaultSelectionFieldWidths.WorkStart
+        WorkEndWidth = $defaultSelectionFieldWidths.WorkEnd
         ExpandedTargetDateWidth = $expandedSelectionFieldWidths.TargetDate
         ExpandedTargetHourWidth = $expandedSelectionFieldWidths.TargetHour
         ExpandedTargetMinuteWidth = $expandedSelectionFieldWidths.TargetMinute
         ExpandedTargetSecondWidth = $expandedSelectionFieldWidths.TargetSecond
         ExpandedDisplayPrecisionWidth = $expandedSelectionFieldWidths.DisplayPrecision
+        ExpandedMonthlySalaryWidth = $expandedSelectionFieldWidths.MonthlySalary
+        ExpandedWorkStartWidth = $expandedSelectionFieldWidths.WorkStart
+        ExpandedWorkEndWidth = $expandedSelectionFieldWidths.WorkEnd
         ThemeControlInventoryCovered = $themeControlInventoryCovered
         ToolTipTemplateMaterializes = $toolTipTemplateMaterializes
         ThemedControlTemplatesApplied = $themedControlTemplatesApplied
@@ -4444,6 +5037,13 @@ if ($ValidateOnly) {
         DatePickerTextAvailableWidth = $datePickerTextAvailableWidth
         DatePickerTextRequiredWidth = $datePickerTextRequiredWidth
         LiveDatePickerPopupIsThemed = $liveDatePickerPopupIsThemed
+        LiveDatePickerPopupVisuallyUnified = $liveDatePickerPopupVisuallyUnified
+        LiveCalendarSurfaceUsesThemeTokens = $liveCalendarSurfaceUsesThemeTokens
+        LiveCalendarHeaderUsesThemeTokens = $liveCalendarHeaderUsesThemeTokens
+        LiveSelectedDayUsesThemeTokens = $liveSelectedDayUsesThemeTokens
+        LiveSelectedDayCount = $liveSelectedDayCount
+        LiveSelectedDayBackground = [string] $liveSelectedDayBackground
+        LiveSelectedDayForeground = [string] $liveSelectedDayForeground
         CalendarHeaderTextFits = $calendarHeaderTextFit.Fits
         CalendarHeaderTextAvailableWidth = $calendarHeaderTextFit.AvailableWidth
         CalendarHeaderTextRequiredWidth = $calendarHeaderTextFit.RequiredWidth
@@ -4458,6 +5058,13 @@ if ($ValidateOnly) {
         TimeDropDowns = @($targetHour, $targetMinute, $targetSecond).Count
         TimeOptionCounts = @($targetHour.Items.Count, $targetMinute.Items.Count, $targetSecond.Items.Count)
         HasSetNowButton = $null -ne $setNowButton; HasCountdownList = $null -ne $countdownList; HasNameEditor = $null -ne $countdownName
+        HasNoteReminderControls = $hasNoteReminderControls
+        NoteReminderControlsWork = $noteReminderControlsWork
+        NoteReminderDispatchWorks = $noteReminderDispatchWorks
+        NoteReminderWindowIsThemed = $noteReminderWindowIsThemed
+        OfficialCharacterBackgroundLoaded = $officialCharacterBackgroundLoaded
+        OfficialCharacterBackgroundCharactersExclusive = $officialCharacterBackgroundCharactersExclusive
+        OfficialCharacterBackgroundLowContrast = $officialCharacterBackgroundLowContrast
         LegacyMigrationSupported = $migration.Migrated -and $migration.Records.Count -eq 1 -and $migration.Records[0].name -eq '我的倒计时' -and $migration.Notes.Count -eq 0
         DuplicateSettingsRejected = $duplicateSettingsRejected
         InvalidNotesRejected = $invalidNotesRejected
@@ -4486,6 +5093,7 @@ if ($ValidateOnly) {
         NoteAddViaClick = $noteAddViaClick
         NoteDateRequired = $noteDateRequired
         NoteDateViaPicker = $noteDateViaPicker
+        NoteReminderViaSelector = $noteReminderViaSelector
         NoteDateDefaultsTrackBeijingDay = $noteDateDefaultsTrackBeijingDay
         NoteDateChoicesSurviveBeijingDayChange = $noteDateChoicesSurviveBeijingDayChange
         NoteStatusViaCheckbox = $noteStatusViaCheckbox
@@ -4552,6 +5160,13 @@ $timer.Interval = [TimeSpan]::FromMilliseconds(250)
 $timer.Add_Tick({
     $now = Get-BeijingNow
     Refresh-DefaultNoteDates -BeijingTime $now
+    try {
+        Invoke-DueNoteReminders -BeijingTime $now
+    }
+    catch {
+        Write-CountdownApplicationDiagnostic -Level Error -Event 'NoteReminderFailed' -Exception $_.Exception -ScriptStackTrace $_.ScriptStackTrace
+        $workspaceMessageText.Text = '便签提醒显示失败，请查看应用日志。'
+    }
     $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
     $sortSignature = @((Get-SortedCountdowns) | ForEach-Object { $_.id }) -join '|'
     $workdayEnd = Get-WorkdayEndCountdown

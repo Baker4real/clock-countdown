@@ -556,21 +556,21 @@ $script:testCloseTimer = $null
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <TextBlock x:Name="EditorTitle" Text="新增倒计时" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}"/>
         <Grid Grid.Row="1" Margin="0,14,0,0">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel>
             <TextBlock Text="名称" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/>
             <TextBox x:Name="CountdownName" MaxLength="30" ToolTip="输入唯一名称，最多 30 个字符"/>
           </StackPanel>
           <StackPanel Grid.Column="1" Margin="12,0,0,0">
             <TextBlock Text="截止日期" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/>
-            <DatePicker x:Name="TargetDate" SelectedDateFormat="Long" ToolTip="点击选择北京时间日期"/>
+            <DatePicker x:Name="TargetDate" MinWidth="240" MaxWidth="280" SelectedDateFormat="Long" ToolTip="点击选择北京时间日期"/>
           </StackPanel>
         </Grid>
         <Grid Grid.Row="2" Margin="0,12,0,0">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <StackPanel><TextBlock Text="时" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetHour"/></StackPanel>
-          <StackPanel Grid.Column="1" Margin="8,0,0,0"><TextBlock Text="分" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetMinute"/></StackPanel>
-          <StackPanel Grid.Column="2" Margin="8,0,0,0"><TextBlock Text="秒" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetSecond"/></StackPanel>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="时" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetHour" MinWidth="120" MaxWidth="140"/></StackPanel>
+          <StackPanel Grid.Column="1" Margin="8,0,0,0"><TextBlock Text="分" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetMinute" MinWidth="120" MaxWidth="140"/></StackPanel>
+          <StackPanel Grid.Column="2" Margin="8,0,0,0"><TextBlock Text="秒" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="TargetSecond" MinWidth="120" MaxWidth="140"/></StackPanel>
           <Button x:Name="SetNowButton" Grid.Column="3" Width="94" Margin="12,18,0,0" Style="{StaticResource SecondaryButton}" Content="设为现在" ToolTip="使用当前北京时间"/>
         </Grid>
         <Grid Grid.Row="3" Margin="0,14,0,0">
@@ -586,8 +586,8 @@ $script:testCloseTimer = $null
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid>
-          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-          <StackPanel><TextBlock Text="悬浮窗显示精度" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="DisplayPrecision" ToolTip="选择悬浮窗倒计时显示到哪一位"/></StackPanel>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="悬浮窗显示精度" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><ComboBox x:Name="DisplayPrecision" MinWidth="180" MaxWidth="220" ToolTip="选择悬浮窗倒计时显示到哪一位"/></StackPanel>
           <StackPanel Grid.Column="1" Margin="12,0,0,0"><TextBlock Text="月薪（元）" Margin="1,0,0,6" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource BodyBrush}"/><TextBox x:Name="MonthlySalary" ToolTip="用于计算本工作日截至此刻已赚收入"/></StackPanel>
         </Grid>
         <Grid Grid.Row="1" Margin="0,12,0,0">
@@ -3656,6 +3656,22 @@ if ($ValidateOnly) {
             Text = [string] $textBox.Text
         }
     }
+    function Measure-SelectionFieldWidths {
+        param([Parameter(Mandatory)] [double] $WindowWidth)
+
+        $window.Width = $WindowWidth
+        $window.Content.Measure([System.Windows.Size]::new($WindowWidth, $window.Height))
+        $window.Content.Arrange([System.Windows.Rect]::new(0, 0, $WindowWidth, $window.Height))
+        $window.Content.UpdateLayout()
+        [pscustomobject]@{
+            CountdownName = [Math]::Round($countdownName.ActualWidth, 2)
+            TargetDate = [Math]::Round($targetDate.ActualWidth, 2)
+            TargetHour = [Math]::Round($targetHour.ActualWidth, 2)
+            TargetMinute = [Math]::Round($targetMinute.ActualWidth, 2)
+            TargetSecond = [Math]::Round($targetSecond.ActualWidth, 2)
+            DisplayPrecision = [Math]::Round($displayPrecisionInput.ActualWidth, 2)
+        }
+    }
     function Test-ThemedComboBoxDropDown {
         param([Parameter(Mandatory)] [System.Windows.Controls.ComboBox] $ComboBox)
 
@@ -4385,8 +4401,40 @@ if ($ValidateOnly) {
     [void] ($unifiedWorkspaceSwitches = $notesWorkspace.Visibility -eq 'Visible' -and $countdownWorkspace.Visibility -eq 'Collapsed' -and $floatingNotesEditor.Visibility -eq 'Visible' -and $floatingCountdownSummary.Visibility -eq 'Collapsed')
     Set-Workspace -Workspace 'Countdowns'
     $workspaceSwitcherBeforeEditors = [System.Windows.Controls.Grid]::GetRow($workspaceSwitcher) -lt [System.Windows.Controls.Grid]::GetRow($countdownEditorWorkspace)
+    $defaultWindowWidth = $window.Width
+    try {
+        $defaultSelectionFieldWidths = Measure-SelectionFieldWidths -WindowWidth $defaultWindowWidth
+        $expandedSelectionFieldWidths = Measure-SelectionFieldWidths -WindowWidth ([Math]::Max(960, $defaultWindowWidth + 240))
+    }
+    finally {
+        [void] (Measure-SelectionFieldWidths -WindowWidth $defaultWindowWidth)
+    }
+    $compactSelectionFieldLayout =
+        $defaultSelectionFieldWidths.CountdownName -gt $defaultSelectionFieldWidths.TargetDate -and
+        $defaultSelectionFieldWidths.TargetDate -ge 240 -and $defaultSelectionFieldWidths.TargetDate -le 280 -and
+        $defaultSelectionFieldWidths.TargetHour -ge 120 -and $defaultSelectionFieldWidths.TargetHour -le 140 -and
+        $defaultSelectionFieldWidths.TargetMinute -ge 120 -and $defaultSelectionFieldWidths.TargetMinute -le 140 -and
+        $defaultSelectionFieldWidths.TargetSecond -ge 120 -and $defaultSelectionFieldWidths.TargetSecond -le 140 -and
+        $defaultSelectionFieldWidths.DisplayPrecision -ge 180 -and $defaultSelectionFieldWidths.DisplayPrecision -le 220 -and
+        $expandedSelectionFieldWidths.TargetDate -le 280 -and
+        $expandedSelectionFieldWidths.TargetHour -le 140 -and
+        $expandedSelectionFieldWidths.TargetMinute -le 140 -and
+        $expandedSelectionFieldWidths.TargetSecond -le 140 -and
+        $expandedSelectionFieldWidths.DisplayPrecision -le 220
     [pscustomobject]@{
         Valid = $true; Title = $window.Title; Width = $window.Width; Height = $window.Height
+        CompactSelectionFieldLayout = $compactSelectionFieldLayout
+        CountdownNameWidth = $defaultSelectionFieldWidths.CountdownName
+        TargetDateWidth = $defaultSelectionFieldWidths.TargetDate
+        TargetHourWidth = $defaultSelectionFieldWidths.TargetHour
+        TargetMinuteWidth = $defaultSelectionFieldWidths.TargetMinute
+        TargetSecondWidth = $defaultSelectionFieldWidths.TargetSecond
+        DisplayPrecisionWidth = $defaultSelectionFieldWidths.DisplayPrecision
+        ExpandedTargetDateWidth = $expandedSelectionFieldWidths.TargetDate
+        ExpandedTargetHourWidth = $expandedSelectionFieldWidths.TargetHour
+        ExpandedTargetMinuteWidth = $expandedSelectionFieldWidths.TargetMinute
+        ExpandedTargetSecondWidth = $expandedSelectionFieldWidths.TargetSecond
+        ExpandedDisplayPrecisionWidth = $expandedSelectionFieldWidths.DisplayPrecision
         ThemeControlInventoryCovered = $themeControlInventoryCovered
         ToolTipTemplateMaterializes = $toolTipTemplateMaterializes
         ThemedControlTemplatesApplied = $themedControlTemplatesApplied

@@ -116,6 +116,9 @@ finally {
 if (-not $validation.DateInputReadOnly) { throw 'Date selection still accepts free-text input.' }
 if (-not $validation.DatePickerButtonOpensCalendar) { throw 'Date picker calendar closes immediately after the drop-down button is clicked.' }
 if ($validation.TimeDropDowns -ne 3) { throw "Expected three time drop-downs, got $($validation.TimeDropDowns)." }
+if (-not $validation.CompactSelectionFieldLayout) {
+    throw "Short selection fields should stay content-sized at default and expanded window widths: default(name=$($validation.CountdownNameWidth), date=$($validation.TargetDateWidth), hour=$($validation.TargetHourWidth), minute=$($validation.TargetMinuteWidth), second=$($validation.TargetSecondWidth), precision=$($validation.DisplayPrecisionWidth)); expanded(date=$($validation.ExpandedTargetDateWidth), hour=$($validation.ExpandedTargetHourWidth), minute=$($validation.ExpandedTargetMinuteWidth), second=$($validation.ExpandedTargetSecondWidth), precision=$($validation.ExpandedDisplayPrecisionWidth))."
+}
 if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
 if (-not $validation.HasNameEditor) { throw 'Countdown name editor is missing.' }

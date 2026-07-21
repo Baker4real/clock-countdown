@@ -294,10 +294,12 @@ $script:noteReminderWindows = @{}
               <Button x:Name="PART_Button" Grid.Column="1" Style="{StaticResource DatePickerToggleButton}" Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" Cursor="Hand" ToolTip="打开日历">
                 <Path Width="10" Height="6" Fill="{StaticResource BodyBrush}" Stretch="Fill" Data="M 0,0 L 10,0 L 5,6 Z"/>
               </Button>
-              <Popup x:Name="PART_Popup" Grid.ColumnSpan="2" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
-                <Border Margin="0,6,0,0" Padding="8" Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" CornerRadius="12">
-                  <Border.Effect><DropShadowEffect Color="{StaticResource ShadowColor}" BlurRadius="16" ShadowDepth="3" Opacity="0.14"/></Border.Effect>
-                  <Calendar x:Name="PART_Calendar" Style="{StaticResource {x:Type Calendar}}"
+              <Popup x:Name="PART_Popup" Grid.ColumnSpan="2" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
+                     IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                  <Calendar x:Name="PART_Calendar" Margin="0,6,0,0" Style="{StaticResource {x:Type Calendar}}"
+                            CalendarItemStyle="{StaticResource {x:Type CalendarItem}}"
+                            CalendarDayButtonStyle="{StaticResource {x:Type CalendarDayButton}}"
+                            CalendarButtonStyle="{StaticResource {x:Type CalendarButton}}"
                             SelectedDate="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                     <Calendar.Resources>
                       <Style TargetType="CalendarItem" BasedOn="{StaticResource {x:Type CalendarItem}}"/>
@@ -305,7 +307,6 @@ $script:noteReminderWindows = @{}
                       <Style TargetType="CalendarButton" BasedOn="{StaticResource {x:Type CalendarButton}}"/>
                     </Calendar.Resources>
                   </Calendar>
-                </Border>
               </Popup>
             </Grid>
           </ControlTemplate>
@@ -770,17 +771,13 @@ function Initialize-ThemedDatePicker {
     if ($textBox -isnot [System.Windows.Controls.Primitives.DatePickerTextBox]) {
         throw 'DatePicker template is missing PART_TextBox.'
     }
-    $textBox.Add_PreviewMouseLeftButtonDown({
+    $textBox.Add_PreviewMouseLeftButtonUp({
             param($sender, $eventArgs)
             $picker = $sender.TemplatedParent
             if ($picker -is [System.Windows.Controls.DatePicker] -and $picker.IsEnabled) {
                 $picker.IsDropDownOpen = $true
                 $eventArgs.Handled = $true
             }
-        })
-    $DatePicker.Add_CalendarOpened({
-            param($sender, $eventArgs)
-            Set-DatePickerCalendarTheme -DatePicker $sender
         })
 }
 
@@ -4061,13 +4058,18 @@ if ($ValidateOnly) {
             [pscustomobject]@{ OpensCalendar = $false; UsesTheme = $false }
             continue
         }
-        $textBoxClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
-        $textBoxClick.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
-        $textBox.RaiseEvent($textBoxClick)
-        $opened = $picker.IsDropDownOpen
+        $textBoxMouseDown = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
+        $textBoxMouseDown.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+        $textBox.RaiseEvent($textBoxMouseDown)
+        $openedDuringPointerDown = $picker.IsDropDownOpen
+        $textBoxMouseUp = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
+        $textBoxMouseUp.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonUpEvent
+        $textBox.RaiseEvent($textBoxMouseUp)
+        $openedAfterPointerRelease = $picker.IsDropDownOpen
         $picker.IsDropDownOpen = $false
         [pscustomobject]@{
-            OpensCalendar = $opened
+            OpensCalendar = $openedAfterPointerRelease
+            DefersCalendarUntilPointerRelease = -not $openedDuringPointerDown
             UsesTheme =
                 $textBox.Style -eq $window.FindResource('DatePickerTextBoxStyle') -and
                 $button -is [System.Windows.Controls.Button] -and
@@ -4080,6 +4082,7 @@ if ($ValidateOnly) {
         }
     }
     $datePickerTextOpensCalendar = @($datePickerTextClickResults | Where-Object { -not $_.OpensCalendar }).Count -eq 0
+    $datePickerTextDefersCalendarUntilPointerRelease = @($datePickerTextClickResults | Where-Object { -not $_.DefersCalendarUntilPointerRelease }).Count -eq 0
     $datePickerTextClicksUseTheme = @($datePickerTextClickResults | Where-Object { -not $_.UsesTheme }).Count -eq 0
     $targetDate.IsDropDownOpen = $false
     $previewClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
@@ -4642,6 +4645,7 @@ if ($ValidateOnly) {
     $livePopupOpenedProbe = [pscustomobject]@{ HasOpened = $false }
     $livePopupIsOpen = $false
     $liveTextClickOpened = $false
+    $liveTextClickDefersCalendarUntilPointerRelease = $false
     try {
         $liveProbeWindow.Show()
         $liveProbeWindow.UpdateLayout()
@@ -4659,10 +4663,15 @@ if ($ValidateOnly) {
         if ($liveTextBox -isnot [System.Windows.Controls.Primitives.DatePickerTextBox]) {
             throw 'Live DatePicker text box is missing.'
         }
-        $liveTextBoxClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
-        $liveTextBoxClick.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
-        $liveTextBox.RaiseEvent($liveTextBoxClick)
+        $liveTextBoxMouseDown = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
+        $liveTextBoxMouseDown.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+        $liveTextBox.RaiseEvent($liveTextBoxMouseDown)
+        $liveTextClickOpenedDuringPointerDown = $liveDatePicker.IsDropDownOpen
+        $liveTextBoxMouseUp = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
+        $liveTextBoxMouseUp.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonUpEvent
+        $liveTextBox.RaiseEvent($liveTextBoxMouseUp)
         $liveTextClickOpened = $liveDatePicker.IsDropDownOpen
+        $liveTextClickDefersCalendarUntilPointerRelease = -not $liveTextClickOpenedDuringPointerDown
         $liveDatePicker.UpdateLayout()
         $liveProbeWindow.Dispatcher.Invoke([System.Action] { $liveProbeWindow.UpdateLayout() }, [System.Windows.Threading.DispatcherPriority]::ApplicationIdle)
         $liveCalendarStyleContractsBound =
@@ -4729,7 +4738,7 @@ if ($ValidateOnly) {
         $liveCalendarSurfaceUsesThemeTokens -and
         $liveCalendarHeaderUsesThemeTokens -and
         $liveSelectedDayUsesThemeTokens
-    $datePickerTextOpensThemedPopup = $liveTextClickOpened -and $liveDatePickerPopupIsThemed
+    $datePickerTextOpensThemedPopup = $liveTextClickDefersCalendarUntilPointerRelease -and $liveTextClickOpened -and $liveDatePickerPopupIsThemed
     if (-not $liveDatePickerPopupIsThemed) {
         throw "Live DatePicker popup fell back to system calendar styles: popupOpened=$livePopupWasOpen, popupIsOpen=$livePopupIsOpen, contractsBound=$liveCalendarStyleContractsBound, dayButtons=$($liveCalendarDayButtons.Count), styleMismatches=$liveCalendarStyleMismatches, templateMismatches=$liveCalendarTemplateMismatches."
     }
@@ -4768,16 +4777,15 @@ if ($ValidateOnly) {
         $themedPopupControls.Count -gt 0 -and
         @($controlTemplateChecks | Where-Object { -not [bool] $_ }).Count -eq 0
     }
-    $datePickerCalendarSurface = $calendar.Template.FindName('Surface', $calendar)
+    $datePickerPopupCalendar = if ($datePickerParts[2].Child -is [System.Windows.Controls.Calendar]) {
+        [System.Windows.Controls.Calendar] $datePickerParts[2].Child
+    }
+    else { $null }
     $datePickerPopupUsesThemeTokens =
-        $datePickerParts[2].Child -is [System.Windows.Controls.Calendar] -and
+        $datePickerPopupCalendar -is [System.Windows.Controls.Calendar] -and
         $datePickerParts[2].AllowsTransparency -and
         $datePickerParts[2].PopupAnimation -eq [System.Windows.Controls.Primitives.PopupAnimation]::Fade -and
-        $datePickerCalendarSurface -is [System.Windows.Controls.Border] -and
-        $datePickerCalendarSurface.Background -eq $canvasBrush -and
-        $datePickerCalendarSurface.BorderBrush -eq $hairlineBrush -and
-        $datePickerCalendarSurface.Effect -is [System.Windows.Media.Effects.DropShadowEffect] -and
-        $datePickerCalendarSurface.Effect.Color -eq $shadowColor
+        $liveDatePickerPopupVisuallyUnified
     $popupSurfacesUseThemeTokens =
         @($themedPopups | Where-Object { -not (Test-ThemedPopupSurface -Popup $_) }).Count -eq 0 -and
         $datePickerPopupUsesThemeTokens
@@ -5566,6 +5574,7 @@ if ($ValidateOnly) {
         RequiredControls = @($countdownName, $targetDate, $targetHour, $targetMinute, $targetSecond, $setNowButton, $saveButton, $cancelButton, $countdownList, $messageText, $nowText, $topmostCheck).Count
         DatePickerTemplateParts = $datePickerParts.Count; DatePickerText = $datePickerParts[0].Text
         DateInputReadOnly = $datePickerParts[0].IsReadOnly; DatePickerButtonOpensCalendar = $datePickerButtonOpensCalendar; DatePickerTextOpensCalendar = $datePickerTextOpensCalendar
+        DatePickerTextDefersCalendarUntilPointerRelease = $datePickerTextDefersCalendarUntilPointerRelease
         DatePickerTextClicksUseTheme = $datePickerTextClicksUseTheme; DatePickerTextOpensThemedPopup = $datePickerTextOpensThemedPopup
         TimeDropDowns = @($targetHour, $targetMinute, $targetSecond).Count
         TimeOptionCounts = @($targetHour.Items.Count, $targetMinute.Items.Count, $targetSecond.Items.Count)

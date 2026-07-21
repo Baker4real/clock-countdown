@@ -42,6 +42,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Application validation failed: $validationJson"
 }
 $validation = $validationJson | ConvertFrom-Json
+if (-not $validation.DatePickerTextDefersCalendarUntilPointerRelease) { throw 'Clicking the date text opens the calendar before the pointer is released.' }
 
 $applicationHostPath = Join-Path $PSScriptRoot 'Countdown.App.psm1'
 $applicationHostCommand = "Import-Module -Force -Name '$($applicationHostPath.Replace("'", "''"))'; Start-CountdownApplication -ValidateOnly"
@@ -373,7 +374,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 118
+    Passed = 119
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

@@ -118,6 +118,9 @@ finally {
 
 if (-not $validation.DateInputReadOnly) { throw 'Date selection still accepts free-text input.' }
 if (-not $validation.DatePickerButtonOpensCalendar) { throw 'Date picker calendar closes immediately after the drop-down button is clicked.' }
+if (-not $validation.DatePickerTextOpensCalendar) { throw 'Clicking the date text does not open every themed calendar.' }
+if (-not $validation.DatePickerTextClicksUseTheme) { throw 'Clicking the date text is not attached to every themed date picker.' }
+if (-not $validation.DatePickerTextOpensThemedPopup) { throw 'Clicking the date text did not open a real themed calendar popup.' }
 if ($validation.TimeDropDowns -ne 3) { throw "Expected three time drop-downs, got $($validation.TimeDropDowns)." }
 if (-not $validation.CompactSelectionFieldLayout) {
     throw "Short selection fields should stay content-sized at default and expanded window widths: default(name=$($validation.CountdownNameWidth), date=$($validation.TargetDateWidth), hour=$($validation.TargetHourWidth), minute=$($validation.TargetMinuteWidth), second=$($validation.TargetSecondWidth), precision=$($validation.DisplayPrecisionWidth)); expanded(date=$($validation.ExpandedTargetDateWidth), hour=$($validation.ExpandedTargetHourWidth), minute=$($validation.ExpandedTargetMinuteWidth), second=$($validation.ExpandedTargetSecondWidth), precision=$($validation.ExpandedDisplayPrecisionWidth))."
@@ -132,6 +135,10 @@ if (-not $validation.FloatingWindowPresent) { throw 'Desktop floating countdown 
 if (-not $validation.FloatingWindowStaysAboveWorkAreaBottom) {
     throw "Floating window overlaps the taskbar work area: countdown bottom margin=$($validation.FloatingCountdownBottomMargin), notes bottom margin=$($validation.FloatingNotesBottomMargin)."
 }
+if (-not $validation.FloatingWindowBottomAnchored) {
+    throw "Floating window does not return to the work-area bottom after content size changes: countdown bottom margin=$($validation.FloatingCountdownBottomMargin), notes bottom margin=$($validation.FloatingNotesBottomMargin)."
+}
+if (-not $validation.FloatingWindowReanchorsAfterContentChanges) { throw 'Floating window did not stay bottom-anchored while note content was added and removed.' }
 if (-not $validation.FloatingCountdownButtonTextFits) {
     throw "Floating countdown switch label is clipped: available=$($validation.FloatingCountdownButtonTextAvailableWidth), required=$($validation.FloatingCountdownButtonTextRequiredWidth)."
 }
@@ -240,6 +247,7 @@ try {
     if (-not $listValidation.NoteStatusLabelsPresent) { throw 'Sticky-note status labels are missing from rendered rows.' }
     if (-not $listValidation.HasNoteDateControls) { throw 'The manager or floating sticky-note date picker is missing.' }
     if (-not $listValidation.NoteDatesRendered) { throw 'Sticky-note calendar dates are missing from rendered rows.' }
+    if (-not $listValidation.NotesGroupedByDay) { throw 'Sticky-note rows are not grouped by calendar day.' }
     if (-not $listValidation.NoteDateDefaultsTrackBeijingDay) { throw 'Default sticky-note dates did not advance at Beijing midnight.' }
     if (-not $listValidation.NoteDateChoicesSurviveBeijingDayChange) { throw 'A selected sticky-note date or in-progress draft was overwritten at Beijing midnight.' }
     if (-not $listValidation.CompletedNotesCollapsed) { throw 'Completed sticky notes should be collapsed by default.' }
@@ -365,7 +373,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 112
+    Passed = 118
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

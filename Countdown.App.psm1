@@ -766,6 +766,18 @@ function Initialize-ThemedDatePicker {
     param([Parameter(Mandatory)] [System.Windows.Controls.DatePicker] $DatePicker)
 
     Set-DatePickerCalendarTheme -DatePicker $DatePicker
+    $textBox = $DatePicker.Template.FindName('PART_TextBox', $DatePicker)
+    if ($textBox -isnot [System.Windows.Controls.Primitives.DatePickerTextBox]) {
+        throw 'DatePicker template is missing PART_TextBox.'
+    }
+    $textBox.Add_PreviewMouseLeftButtonDown({
+            param($sender, $eventArgs)
+            $picker = $sender.TemplatedParent
+            if ($picker -is [System.Windows.Controls.DatePicker] -and $picker.IsEnabled) {
+                $picker.IsDropDownOpen = $true
+                $eventArgs.Handled = $true
+            }
+        })
     $DatePicker.Add_CalendarOpened({
             param($sender, $eventArgs)
             Set-DatePickerCalendarTheme -DatePicker $sender
@@ -3131,6 +3143,29 @@ function New-CompletedNotesToggle {
     $button
 }
 
+function Add-NoteRowsGroupedByDay {
+    param(
+        [Parameter(Mandatory)] [System.Windows.Controls.ItemsControl] $Target,
+        [Parameter(Mandatory)] [System.Collections.IEnumerable] $Records
+    )
+
+    $groups = @($Records | Group-Object -Property {
+            if ([string]::IsNullOrWhiteSpace([string] $_.date)) { '' } else { [string] $_.date }
+        } | Sort-Object @{ Expression = { if ([string]::IsNullOrWhiteSpace([string] $_.Name)) { 1 } else { 0 } } }, @{ Expression = { [string] $_.Name } })
+    foreach ($group in $groups) {
+        $heading = New-Object System.Windows.Controls.TextBlock
+        $heading.Text = '{0}（{1}）' -f (Format-NoteDateForDisplay -Date ([string] $group.Name)), $group.Count
+        $heading.Uid = 'NoteDateGroup'
+        $heading.Margin = '2,8,0,6'
+        $heading.FontSize = 12
+        $heading.FontWeight = 'SemiBold'
+        $heading.Foreground = $noteInkBrush
+        Set-AccessibleName -Control $heading -Name ('便签日期分组：{0}' -f $heading.Text)
+        [void] $Target.Items.Add($heading)
+        foreach ($record in $group.Group) { [void] $Target.Items.Add((New-NoteRow -Record $record)) }
+    }
+}
+
 function Render-Notes {
     $noteList.Items.Clear(); $completedNoteList.Items.Clear()
     $filtered = @(Get-FilteredNotes)
@@ -3140,12 +3175,12 @@ function Render-Notes {
     $noteEmptyState.Visibility = if ($filtered.Count -eq 0) { 'Visible' } else { 'Collapsed' }
     $activeNotesHeading.Visibility = if ($active.Count -gt 0) { 'Visible' } else { 'Collapsed' }
     $activeNotesHeading.Text = "待完成（$($active.Count)）"
-    foreach ($record in $active) { [void] $noteList.Items.Add((New-NoteRow -Record $record)) }
+    Add-NoteRowsGroupedByDay -Target $noteList -Records $active
     $toggleCompletedNotesButton.Visibility = if ($completed.Count -eq 0) { 'Collapsed' } else { 'Visible' }
     $toggleCompletedNotesButton.Content = if ($script:showCompletedNotes) { "已完成（$($completed.Count)）⌃" } else { "已完成（$($completed.Count)）⌄" }
     $completedNoteList.Visibility = if ($script:showCompletedNotes -and $completed.Count -gt 0) { 'Visible' } else { 'Collapsed' }
     if ($script:showCompletedNotes) {
-        foreach ($record in $completed) { [void] $completedNoteList.Items.Add((New-NoteRow -Record $record)) }
+        Add-NoteRowsGroupedByDay -Target $completedNoteList -Records $completed
     }
     if ($script:activeWorkspace -eq 'Notes') { $countdownCount.Text = "$($filtered.Count) 条" }
 }
@@ -3673,14 +3708,16 @@ function Set-FloatingWindowWithinWorkArea {
     if ($floatingWindow.ActualWidth -le 0 -or $floatingWindow.ActualHeight -le 0) { return }
 
     $workArea = [System.Windows.SystemParameters]::WorkArea
+    $horizontalMargin = 24
+    $bottomMargin = 26
     if ($AnchorBottomRight -or [double]::IsNaN($floatingWindow.Left) -or [double]::IsNaN($floatingWindow.Top)) {
-        $floatingWindow.Left = $workArea.Right - $floatingWindow.ActualWidth - 24
-        $floatingWindow.Top = $workArea.Bottom - $floatingWindow.ActualHeight - 48
+        $floatingWindow.Left = [Math]::Max($workArea.Left, $workArea.Right - $floatingWindow.ActualWidth - $horizontalMargin)
+        $floatingWindow.Top = [Math]::Max($workArea.Top, $workArea.Bottom - $floatingWindow.ActualHeight - $bottomMargin)
         return
     }
 
-    $maximumLeft = [Math]::Max($workArea.Left, $workArea.Right - $floatingWindow.ActualWidth)
-    $maximumTop = [Math]::Max($workArea.Top, $workArea.Bottom - $floatingWindow.ActualHeight - 26)
+    $maximumLeft = [Math]::Max($workArea.Left, $workArea.Right - $floatingWindow.ActualWidth - $horizontalMargin)
+    $maximumTop = [Math]::Max($workArea.Top, $workArea.Bottom - $floatingWindow.ActualHeight - $bottomMargin)
     $floatingWindow.Left = [Math]::Max($workArea.Left, [Math]::Min($floatingWindow.Left, $maximumLeft))
     $floatingWindow.Top = [Math]::Max($workArea.Top, [Math]::Min($floatingWindow.Top, $maximumTop))
 }
@@ -3688,7 +3725,7 @@ $floatingWindow.Add_Loaded({
     Set-FloatingWindowWithinWorkArea -AnchorBottomRight
 })
 $floatingWindow.Add_SizeChanged({
-    if ($floatingWindow.IsLoaded) { Set-FloatingWindowWithinWorkArea }
+    if ($floatingWindow.IsLoaded) { Set-FloatingWindowWithinWorkArea -AnchorBottomRight }
 })
 $floatingWindow.Add_ContentRendered({
     if ($script:runtimeReceiptWritten) { return }
@@ -3840,6 +3877,7 @@ function Invoke-TagInteractionValidation {
     $script:noteSearchInput.Text = $noteBothText
     $searchMatches = $noteBoth.id -in @(Get-FilteredNotes | ForEach-Object { $_.id })
     $noteRow = @($noteList.Items | Where-Object {
+            $_ -is [System.Windows.Controls.Border] -and
             $_.Child.Children[1] -is [System.Windows.Controls.StackPanel] -and $_.Child.Children[1].Children[0].Text -eq $noteBothText
         })[0]
     if ($null -eq $noteRow) { throw '未找到待完成便签的可操作行。' }
@@ -3919,6 +3957,7 @@ function Invoke-TagInteractionValidation {
     $floatingPopupOnDemand = $floatingPopupStartsClosed -and $floatingPopupOpened -and $floatingPopupReopenedForClear -and $floatingPopupCloses
 
     $noteEditRow = @($noteList.Items | Where-Object {
+            $_ -is [System.Windows.Controls.Border] -and
             $_.Child.Children[1] -is [System.Windows.Controls.StackPanel] -and $_.Child.Children[1].Children[0].Text -eq $floatingOverrideText
         })[0]
     if ($null -eq $noteEditRow) { throw '未找到可编辑便签行。' }
@@ -4012,6 +4051,36 @@ if ($ValidateOnly) {
     $datePickerParts = @($targetDate.Template.FindName('PART_TextBox', $targetDate), $targetDate.Template.FindName('PART_Button', $targetDate), $targetDate.Template.FindName('PART_Popup', $targetDate), $targetDate.Template.FindName('PART_Calendar', $targetDate))
     if (@($datePickerParts | Where-Object { $null -eq $_ }).Count -gt 0) { throw 'DatePicker template is missing one or more required PART_* controls.' }
     if ($datePickerParts[0].Text -ne '2026年8月30日') { throw "DatePicker did not render the complete selected date. Actual: $($datePickerParts[0].Text)" }
+    $datePickerTextClickResults = foreach ($picker in @($targetDate, $noteDate, $floatingNoteDate, $script:noteDateFilterPicker)) {
+        [void] $picker.ApplyTemplate()
+        $textBox = $picker.Template.FindName('PART_TextBox', $picker)
+        $button = $picker.Template.FindName('PART_Button', $picker)
+        $calendar = $picker.Template.FindName('PART_Calendar', $picker)
+        $picker.IsDropDownOpen = $false
+        if ($textBox -isnot [System.Windows.Controls.Primitives.DatePickerTextBox]) {
+            [pscustomobject]@{ OpensCalendar = $false; UsesTheme = $false }
+            continue
+        }
+        $textBoxClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
+        $textBoxClick.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+        $textBox.RaiseEvent($textBoxClick)
+        $opened = $picker.IsDropDownOpen
+        $picker.IsDropDownOpen = $false
+        [pscustomobject]@{
+            OpensCalendar = $opened
+            UsesTheme =
+                $textBox.Style -eq $window.FindResource('DatePickerTextBoxStyle') -and
+                $button -is [System.Windows.Controls.Button] -and
+                $button.Style -eq $window.FindResource('DatePickerToggleButton') -and
+                $calendar -is [System.Windows.Controls.Calendar] -and
+                $calendar.Style -eq $window.Resources[[System.Windows.Controls.Calendar]] -and
+                $calendar.CalendarItemStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarItem]] -and
+                $calendar.CalendarDayButtonStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarDayButton]] -and
+                $calendar.CalendarButtonStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarButton]]
+        }
+    }
+    $datePickerTextOpensCalendar = @($datePickerTextClickResults | Where-Object { -not $_.OpensCalendar }).Count -eq 0
+    $datePickerTextClicksUseTheme = @($datePickerTextClickResults | Where-Object { -not $_.UsesTheme }).Count -eq 0
     $targetDate.IsDropDownOpen = $false
     $previewClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
     $previewClick.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
@@ -4572,6 +4641,7 @@ if ($ValidateOnly) {
     $liveSelectedDayForeground = $null
     $livePopupOpenedProbe = [pscustomobject]@{ HasOpened = $false }
     $livePopupIsOpen = $false
+    $liveTextClickOpened = $false
     try {
         $liveProbeWindow.Show()
         $liveProbeWindow.UpdateLayout()
@@ -4585,7 +4655,14 @@ if ($ValidateOnly) {
                 param($sender, $eventArgs)
                 $sender.Tag.HasOpened = $true
             })
-        $liveDatePicker.IsDropDownOpen = $true
+        $liveTextBox = $liveDatePicker.Template.FindName('PART_TextBox', $liveDatePicker)
+        if ($liveTextBox -isnot [System.Windows.Controls.Primitives.DatePickerTextBox]) {
+            throw 'Live DatePicker text box is missing.'
+        }
+        $liveTextBoxClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
+        $liveTextBoxClick.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+        $liveTextBox.RaiseEvent($liveTextBoxClick)
+        $liveTextClickOpened = $liveDatePicker.IsDropDownOpen
         $liveDatePicker.UpdateLayout()
         $liveProbeWindow.Dispatcher.Invoke([System.Action] { $liveProbeWindow.UpdateLayout() }, [System.Windows.Threading.DispatcherPriority]::ApplicationIdle)
         $liveCalendarStyleContractsBound =
@@ -4652,6 +4729,7 @@ if ($ValidateOnly) {
         $liveCalendarSurfaceUsesThemeTokens -and
         $liveCalendarHeaderUsesThemeTokens -and
         $liveSelectedDayUsesThemeTokens
+    $datePickerTextOpensThemedPopup = $liveTextClickOpened -and $liveDatePickerPopupIsThemed
     if (-not $liveDatePickerPopupIsThemed) {
         throw "Live DatePicker popup fell back to system calendar styles: popupOpened=$livePopupWasOpen, popupIsOpen=$livePopupIsOpen, contractsBound=$liveCalendarStyleContractsBound, dayButtons=$($liveCalendarDayButtons.Count), styleMismatches=$liveCalendarStyleMismatches, templateMismatches=$liveCalendarTemplateMismatches."
     }
@@ -5207,19 +5285,24 @@ if ($ValidateOnly) {
     $noteActionsBoundByTag = $true
     $script:showCompletedNotes = $true
     Render-Notes
-    $renderedNoteCards = @($noteList.Items) + @($completedNoteList.Items)
+    $renderedNoteCards = @((@($noteList.Items) + @($completedNoteList.Items)) | Where-Object { $_ -is [System.Windows.Controls.Border] })
     $notesForValidation = @()
     $notesForValidation += @(Get-ActiveNotes)
     $notesForValidation += @(Get-CompletedNotes)
     if ($renderedNoteCards.Count -ne $notesForValidation.Count) { $noteActionsBoundByTag = $false }
     else {
+        $renderedNoteIds = @()
         for ($index = 0; $index -lt $notesForValidation.Count; $index++) {
             $noteCard = $renderedNoteCards[$index]
             $tags = @($noteCard.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -or $_ -is [System.Windows.Controls.Button] } | ForEach-Object { [string] $_.Tag })
-            if ($tags.Count -ne 3 -or @($tags | Where-Object { $_ -ne $notesForValidation[$index].id }).Count -gt 0) {
+            if ($tags.Count -ne 3 -or @($tags | Select-Object -Unique).Count -ne 1) {
                 $noteActionsBoundByTag = $false
                 break
             }
+            $renderedNoteIds += $tags[0]
+        }
+        if ($noteActionsBoundByTag -and (($renderedNoteIds | Sort-Object) -join '|') -ne (($notesForValidation | ForEach-Object { $_.id } | Sort-Object) -join '|')) {
+            $noteActionsBoundByTag = $false
         }
     }
     $renderedNoteTexts = @($renderedNoteCards | ForEach-Object {
@@ -5235,6 +5318,61 @@ if ($ValidateOnly) {
         @($renderedNoteDateTexts | Where-Object { $_ -notmatch '^日期 · (?:未设置日期|\d{4}年\d{1,2}月\d{1,2}日)$' }).Count -eq 0
     $script:showCompletedNotes = $false
     Render-Notes
+    $notesGroupedByDay = $false
+    $notesBeforeDayGrouping = $script:notes
+    $tagFilterModeBeforeDayGrouping = $script:tagFilterMode
+    $selectedTagIdsBeforeDayGrouping = @($script:selectedTagIds)
+    $tagMatchModeBeforeDayGrouping = $script:tagMatchMode
+    $noteStatusFilterBeforeDayGrouping = $script:noteStatusFilter
+    $noteDateFilterModeBeforeDayGrouping = $script:noteDateFilterMode
+    $noteDateFilterDateBeforeDayGrouping = $script:noteDateFilterDate
+    $noteSearchTextBeforeDayGrouping = $script:noteSearchText
+    $showCompletedNotesBeforeDayGrouping = $script:showCompletedNotes
+    try {
+        $script:notes = [System.Collections.ArrayList]::new()
+        foreach ($record in @(
+                [pscustomobject]@{ id = 'day-active-later'; text = '稍后日期'; date = '2034-02-09'; isCompleted = $false; tagIds = @() },
+                [pscustomobject]@{ id = 'day-active-first'; text = '同日第一项'; date = '2034-02-08'; isCompleted = $false; tagIds = @() },
+                [pscustomobject]@{ id = 'day-active-second'; text = '同日第二项'; date = '2034-02-08'; isCompleted = $false; tagIds = @() },
+                [pscustomobject]@{ id = 'day-active-undated'; text = '历史未设日期'; date = $null; isCompleted = $false; tagIds = @() },
+                [pscustomobject]@{ id = 'day-completed-later'; text = '完成较晚日期'; date = '2034-02-09'; isCompleted = $true; tagIds = @() },
+                [pscustomobject]@{ id = 'day-completed-first'; text = '完成较早日期'; date = '2034-02-08'; isCompleted = $true; tagIds = @() }
+            )) {
+            [void] $script:notes.Add($record)
+        }
+        $script:tagFilterMode = 'All'
+        $script:selectedTagIds.Clear()
+        $script:tagMatchMode = 'Any'
+        $script:noteStatusFilter = 'All'
+        $script:noteDateFilterMode = 'All'
+        $script:noteDateFilterDate = $null
+        $script:noteSearchText = ''
+        $script:showCompletedNotes = $true
+        Render-Notes
+        $activeDayHeadings = @($noteList.Items | Where-Object { $_ -is [System.Windows.Controls.TextBlock] -and [string] $_.Uid -eq 'NoteDateGroup' })
+        $completedDayHeadings = @($completedNoteList.Items | Where-Object { $_ -is [System.Windows.Controls.TextBlock] -and [string] $_.Uid -eq 'NoteDateGroup' })
+        $activeDayRows = @($noteList.Items | Where-Object { $_ -is [System.Windows.Controls.Border] })
+        $completedDayRows = @($completedNoteList.Items | Where-Object { $_ -is [System.Windows.Controls.Border] })
+        $activeDayIds = @($activeDayRows | ForEach-Object { @($_.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] } | ForEach-Object { [string] $_.Tag }) })
+        $completedDayIds = @($completedDayRows | ForEach-Object { @($_.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] } | ForEach-Object { [string] $_.Tag }) })
+        $notesGroupedByDay =
+            (@($activeDayHeadings | ForEach-Object { $_.Text }) -join '|') -eq '2034年2月8日（2）|2034年2月9日（1）|未设置日期（1）' -and
+            (@($completedDayHeadings | ForEach-Object { $_.Text }) -join '|') -eq '2034年2月8日（1）|2034年2月9日（1）' -and
+            ($activeDayIds -join '|') -eq 'day-active-first|day-active-second|day-active-later|day-active-undated' -and
+            ($completedDayIds -join '|') -eq 'day-completed-first|day-completed-later'
+    }
+    finally {
+        $script:notes = $notesBeforeDayGrouping
+        $script:tagFilterMode = $tagFilterModeBeforeDayGrouping
+        Set-TagSelectionValues -Context 'Filter' -TagIds $selectedTagIdsBeforeDayGrouping
+        $script:tagMatchMode = $tagMatchModeBeforeDayGrouping
+        $script:noteStatusFilter = $noteStatusFilterBeforeDayGrouping
+        $script:noteDateFilterMode = $noteDateFilterModeBeforeDayGrouping
+        $script:noteDateFilterDate = $noteDateFilterDateBeforeDayGrouping
+        $script:noteSearchText = $noteSearchTextBeforeDayGrouping
+        $script:showCompletedNotes = $showCompletedNotesBeforeDayGrouping
+        Render-Notes
+    }
     Reset-NoteEditor
     $floatingNoteInput.Text = ''
     $dayBeforeBeijingMidnight = [DateTime] '2030-12-31'
@@ -5261,6 +5399,12 @@ if ($ValidateOnly) {
     $floatingWorkArea = [System.Windows.SystemParameters]::WorkArea
     $floatingCountdownBottomMargin = [double]::NaN
     $floatingNotesBottomMargin = [double]::NaN
+    $floatingExpandedBottomMargin = [double]::NaN
+    $floatingShrunkBottomMargin = [double]::NaN
+    $floatingNotesHeight = [double]::NaN
+    $floatingExpandedHeight = [double]::NaN
+    $floatingShrunkHeight = [double]::NaN
+    $floatingValidationNoteIds = [System.Collections.Generic.List[string]]::new()
     $validationRuntimeReceiptWritten = $script:runtimeReceiptWritten
     $validationFloatingOpacity = $floatingWindow.Opacity
     $validationFloatingShowActivated = $floatingWindow.ShowActivated
@@ -5281,8 +5425,46 @@ if ($ValidateOnly) {
             [System.Windows.Threading.DispatcherPriority]::ApplicationIdle
         )
         $floatingNotesBottomMargin = $floatingWorkArea.Bottom - ($floatingWindow.Top + $floatingWindow.ActualHeight)
+        $floatingNotesHeight = $floatingWindow.ActualHeight
+
+        $floatingValidationToken = [guid]::NewGuid().ToString('N').Substring(0, 8)
+        foreach ($index in 1..4) {
+            $record = [pscustomobject]@{
+                id = "floating-size-$floatingValidationToken-$index"
+                text = "悬浮尺寸验证 $index"
+                date = '2034-02-08'
+                isCompleted = $false
+                tagIds = @()
+            }
+            [void] $script:notes.Add($record)
+            [void] $floatingValidationNoteIds.Add($record.id)
+        }
+        Render-FloatingContent
+        $floatingWindow.Dispatcher.Invoke(
+            [System.Action] { $floatingWindow.UpdateLayout() },
+            [System.Windows.Threading.DispatcherPriority]::ApplicationIdle
+        )
+        $floatingExpandedBottomMargin = $floatingWorkArea.Bottom - ($floatingWindow.Top + $floatingWindow.ActualHeight)
+        $floatingExpandedHeight = $floatingWindow.ActualHeight
+
+        foreach ($id in @($floatingValidationNoteIds)) {
+            $record = @($script:notes | Where-Object { $_.id -eq $id })[0]
+            if ($null -ne $record) { [void] $script:notes.Remove($record) }
+        }
+        $floatingValidationNoteIds.Clear()
+        Render-FloatingContent
+        $floatingWindow.Dispatcher.Invoke(
+            [System.Action] { $floatingWindow.UpdateLayout() },
+            [System.Windows.Threading.DispatcherPriority]::ApplicationIdle
+        )
+        $floatingShrunkBottomMargin = $floatingWorkArea.Bottom - ($floatingWindow.Top + $floatingWindow.ActualHeight)
+        $floatingShrunkHeight = $floatingWindow.ActualHeight
     }
     finally {
+        foreach ($id in @($floatingValidationNoteIds)) {
+            $record = @($script:notes | Where-Object { $_.id -eq $id })[0]
+            if ($null -ne $record) { [void] $script:notes.Remove($record) }
+        }
         if ($floatingWindow.IsVisible) { $floatingWindow.Hide() }
         $floatingWindow.Opacity = $validationFloatingOpacity
         $floatingWindow.ShowActivated = $validationFloatingShowActivated
@@ -5292,6 +5474,14 @@ if ($ValidateOnly) {
     $floatingWindowStaysAboveWorkAreaBottom =
         $floatingCountdownBottomMargin -ge 24 -and
         $floatingNotesBottomMargin -ge 24
+    $floatingWindowBottomAnchored =
+        [Math]::Abs($floatingCountdownBottomMargin - 26) -le 2 -and
+        [Math]::Abs($floatingNotesBottomMargin - 26) -le 2
+    $floatingWindowReanchorsAfterContentChanges =
+        $floatingExpandedHeight -gt ($floatingNotesHeight + 1) -and
+        $floatingShrunkHeight -lt ($floatingExpandedHeight - 1) -and
+        [Math]::Abs($floatingExpandedBottomMargin - 26) -le 2 -and
+        [Math]::Abs($floatingShrunkBottomMargin - 26) -le 2
     $workspaceSwitcherBeforeEditors = [System.Windows.Controls.Grid]::GetRow($workspaceSwitcher) -lt [System.Windows.Controls.Grid]::GetRow($countdownEditorWorkspace)
     $defaultWindowWidth = $window.Width
     try {
@@ -5375,7 +5565,8 @@ if ($ValidateOnly) {
         CompactActionTargetsAreUsable = $compactActionTargetsAreUsable
         RequiredControls = @($countdownName, $targetDate, $targetHour, $targetMinute, $targetSecond, $setNowButton, $saveButton, $cancelButton, $countdownList, $messageText, $nowText, $topmostCheck).Count
         DatePickerTemplateParts = $datePickerParts.Count; DatePickerText = $datePickerParts[0].Text
-        DateInputReadOnly = $datePickerParts[0].IsReadOnly; DatePickerButtonOpensCalendar = $datePickerButtonOpensCalendar
+        DateInputReadOnly = $datePickerParts[0].IsReadOnly; DatePickerButtonOpensCalendar = $datePickerButtonOpensCalendar; DatePickerTextOpensCalendar = $datePickerTextOpensCalendar
+        DatePickerTextClicksUseTheme = $datePickerTextClicksUseTheme; DatePickerTextOpensThemedPopup = $datePickerTextOpensThemedPopup
         TimeDropDowns = @($targetHour, $targetMinute, $targetSecond).Count
         TimeOptionCounts = @($targetHour.Items.Count, $targetMinute.Items.Count, $targetSecond.Items.Count)
         HasSetNowButton = $null -ne $setNowButton; HasCountdownList = $null -ne $countdownList; HasNameEditor = $null -ne $countdownName
@@ -5447,9 +5638,12 @@ if ($ValidateOnly) {
         NoteActionsBoundByTag = $noteActionsBoundByTag
         NoteStatusLabelsPresent = $noteStatusLabelsPresent
         NoteDatesRendered = $noteDatesRendered
+        NotesGroupedByDay = $notesGroupedByDay
         CompletedNotesCollapsed = $completedNotesCollapsed
         FloatingWindowPresent = $null -ne $floatingWindow
         FloatingWindowStaysAboveWorkAreaBottom = $floatingWindowStaysAboveWorkAreaBottom
+        FloatingWindowBottomAnchored = $floatingWindowBottomAnchored
+        FloatingWindowReanchorsAfterContentChanges = $floatingWindowReanchorsAfterContentChanges
         FloatingCountdownBottomMargin = [Math]::Round($floatingCountdownBottomMargin, 2)
         FloatingNotesBottomMargin = [Math]::Round($floatingNotesBottomMargin, 2)
         FloatingCountdownButtonTextFits = $floatingCountdownButtonTextFit.Fits

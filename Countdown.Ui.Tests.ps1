@@ -188,6 +188,13 @@ if (-not $validation.NoDefaultSystemSurfaces) { throw 'A system window frame or 
 if (-not $validation.NoRawFloatingThemeBypass) { throw 'The floating window bypasses shared theme tokens with raw colors.' }
 if (-not $validation.ThemedInteractiveStates) { throw 'A themed interactive control is missing visual state feedback.' }
 if (-not $validation.ThemeTextContrast) { throw 'The warm theme does not meet the required text-contrast pairs.' }
+if (-not $validation.DangerButtonContrast) { throw 'The destructive confirmation button loses required text contrast when hovered or pressed.' }
+if (-not $validation.DestructiveConfirmationIsSafe) { throw 'A destructive confirmation still makes deletion the Enter default action.' }
+if (-not $validation.EffectiveThemeTextContrast) { throw 'Muted note or calendar text falls below the required effective contrast.' }
+if (-not $validation.FormControlsHaveAccessibleNames) { throw 'A core form control is missing an explicit accessible name.' }
+if (-not $validation.StatusMessagesUseLiveRegions) { throw 'Dynamic status messages are not announced through live regions.' }
+if (-not $validation.ReminderWindowSupportsKeyboardDismissal) { throw 'The non-activating reminder window cannot be dismissed with Escape.' }
+if (-not $validation.CompactActionTargetsAreUsable) { throw 'Compact tag and note actions are smaller than the desktop interaction target.' }
 
 $testSettingsPath = Join-Path $PSScriptRoot 'ui-test.settings.json'
 $noteAddSettingsPath = Join-Path $PSScriptRoot 'ui-note-add-test.settings.json'

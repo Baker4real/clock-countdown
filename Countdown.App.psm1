@@ -160,7 +160,7 @@ $script:noteReminderWindows = @{}
     <SolidColorBrush x:Key="SuccessSurfaceBrush" Color="#FFE3C7"/>
     <SolidColorBrush x:Key="ExpiredTextBrush" Color="#87434B"/>
     <SolidColorBrush x:Key="ExpiredSurfaceBrush" Color="#F9DFDB"/>
-    <SolidColorBrush x:Key="DangerTextBrush" Color="#B45447"/>
+    <SolidColorBrush x:Key="DangerTextBrush" Color="#A24438"/>
     <Color x:Key="ShadowColor">#8A5240</Color>
     <Style TargetType="TextBox">
       <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="12,0"/>
@@ -213,7 +213,7 @@ $script:noteReminderWindows = @{}
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="TitleBarButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="MinWidth" Value="30"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="MinWidth" Value="32"/><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="0"/>
       <Setter Property="FontSize" Value="16"/><Setter Property="FontWeight" Value="Normal"/>
     </Style>
     <Style TargetType="CheckBox">
@@ -346,8 +346,22 @@ $script:noteReminderWindows = @{}
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+      <Setter Property="Foreground" Value="{StaticResource DangerTextBrush}"/><Setter Property="BorderBrush" Value="{StaticResource DangerTextBrush}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource SelectedSurfaceBrush}"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource ExpiredSurfaceBrush}"/></Trigger>
+          <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource FocusBrush}"/><Setter TargetName="Surface" Property="BorderThickness" Value="2"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.5"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="WorkspaceTabButton" TargetType="ToggleButton">
-      <Setter Property="Height" Value="30"/><Setter Property="Padding" Value="14,0"/>
+      <Setter Property="Height" Value="32"/><Setter Property="Padding" Value="14,0"/>
       <Setter Property="Foreground" Value="{StaticResource BodyBrush}"/><Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/><Setter Property="FontSize" Value="13"/>
       <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
@@ -366,7 +380,7 @@ $script:noteReminderWindows = @{}
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="FilterOptionButton" TargetType="ToggleButton">
-      <Setter Property="Height" Value="28"/><Setter Property="Padding" Value="9,0"/>
+      <Setter Property="Height" Value="32"/><Setter Property="Padding" Value="9,0"/>
       <Setter Property="Foreground" Value="{StaticResource InkBrush}"/><Setter Property="Background" Value="{StaticResource CanvasBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontSize" Value="12"/><Setter Property="Cursor" Value="Hand"/>
@@ -382,7 +396,7 @@ $script:noteReminderWindows = @{}
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="TagToggleButton" TargetType="ToggleButton">
-      <Setter Property="Height" Value="28"/><Setter Property="MinWidth" Value="48"/><Setter Property="Padding" Value="9,0"/>
+      <Setter Property="Height" Value="32"/><Setter Property="MinWidth" Value="48"/><Setter Property="Padding" Value="9,0"/>
       <Setter Property="Foreground" Value="{StaticResource InkBrush}"/><Setter Property="Background" Value="{StaticResource CanvasBrush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource HairlineBrush}"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontSize" Value="12"/><Setter Property="Cursor" Value="Hand"/>
@@ -446,7 +460,7 @@ $script:noteReminderWindows = @{}
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style x:Key="CalendarNavigationButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="MinWidth" Value="30"/><Setter Property="Padding" Value="0"/>
+      <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="MinWidth" Value="32"/><Setter Property="MinHeight" Value="32"/><Setter Property="Padding" Value="0"/>
       <Setter Property="Foreground" Value="{StaticResource SelectedTextBrush}"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
@@ -502,7 +516,7 @@ $script:noteReminderWindows = @{}
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource SelectedSurfaceBrush}"/></Trigger>
           <Trigger Property="IsToday" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource ActiveBrush}"/><Setter TargetName="Surface" Property="BorderThickness" Value="1"/></Trigger>
           <Trigger Property="IsSelected" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource ActiveBrush}"/><Setter Property="Foreground" Value="{StaticResource CanvasBrush}"/></Trigger>
-          <Trigger Property="IsInactive" Value="True"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter TargetName="Surface" Property="Opacity" Value="0.58"/></Trigger>
+          <Trigger Property="IsInactive" Value="True"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/></Trigger>
           <Trigger Property="IsBlackedOut" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.3"/></Trigger>
           <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource FocusBrush}"/><Setter TargetName="Surface" Property="BorderThickness" Value="2"/></Trigger>
         </ControlTemplate.Triggers>
@@ -518,7 +532,7 @@ $script:noteReminderWindows = @{}
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource SelectedSurfaceBrush}"/></Trigger>
           <Trigger Property="HasSelectedDays" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource ActiveBrush}"/><Setter Property="Foreground" Value="{StaticResource CanvasBrush}"/></Trigger>
-          <Trigger Property="IsInactive" Value="True"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter TargetName="Surface" Property="Opacity" Value="0.58"/></Trigger>
+          <Trigger Property="IsInactive" Value="True"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/></Trigger>
           <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource FocusBrush}"/><Setter TargetName="Surface" Property="BorderThickness" Value="2"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
@@ -850,8 +864,8 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
           <TextBlock Text="今天也在闪闪发光" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource InkBrush}" TextTrimming="CharacterEllipsis"/>
           <TextBlock x:Name="FloatingCount" Grid.Column="1" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
         </Grid>
-        <Button x:Name="ShowFloatingCountdownsButton" Grid.Column="1" Width="52" Height="28" Margin="8,0,0,0" Padding="6,0" Content="倒计时" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource SelectedSurfaceBrush}" Foreground="{DynamicResource SelectedTextBrush}" BorderBrush="{DynamicResource TagLineBrush}" ToolTip="显示进行中的倒计时"/>
-        <Button x:Name="ShowFloatingNotesButton" Grid.Column="2" Width="44" Height="28" Margin="6,0,0,0" Padding="6,0" Content="便签" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}" BorderBrush="{DynamicResource HairlineBrush}" ToolTip="显示桌面便签"/>
+        <Button x:Name="ShowFloatingCountdownsButton" Grid.Column="1" Width="52" Height="32" Margin="8,0,0,0" Padding="6,0" Content="倒计时" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource SelectedSurfaceBrush}" Foreground="{DynamicResource SelectedTextBrush}" BorderBrush="{DynamicResource TagLineBrush}" ToolTip="显示进行中的倒计时"/>
+        <Button x:Name="ShowFloatingNotesButton" Grid.Column="2" Width="44" Height="32" Margin="6,0,0,0" Padding="6,0" Content="便签" FontSize="11" FontWeight="SemiBold" Cursor="Hand" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}" BorderBrush="{DynamicResource HairlineBrush}" ToolTip="显示桌面便签"/>
       </Grid>
       <Border x:Name="FloatingCountdownSummary" Grid.Row="1" Margin="0,10,0,10" Padding="12,8" Background="{DynamicResource SuccessSurfaceBrush}" CornerRadius="12">
         <TextBlock x:Name="FloatingIncome" Text="今日已赚 ￥0.00" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SuccessTextBrush}"/>
@@ -885,8 +899,8 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
       <Grid Grid.Row="3" Margin="0,10,0,0">
         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
         <TextBlock Text="北京时间 UTC+8" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
-        <Button x:Name="OpenManagerButton" Grid.Column="1" Width="62" Height="30" Margin="8,0,0,0" Content="管理" FontSize="12" Cursor="Hand" ToolTip="打开管理窗口" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource SelectedTextBrush}" BorderBrush="{DynamicResource TagLineBrush}"/>
-        <Button x:Name="CloseFloatingButton" Grid.Column="2" Width="30" Height="30" Margin="6,0,0,0" Content="×" FontSize="16" Cursor="Hand" ToolTip="退出应用" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource DangerTextBrush}" BorderBrush="{DynamicResource HairlineBrush}"/>
+        <Button x:Name="OpenManagerButton" Grid.Column="1" Width="62" Height="32" Margin="8,0,0,0" Content="管理" FontSize="12" Cursor="Hand" ToolTip="打开管理窗口" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource SelectedTextBrush}" BorderBrush="{DynamicResource TagLineBrush}"/>
+        <Button x:Name="CloseFloatingButton" Grid.Column="2" Width="32" Height="32" Margin="6,0,0,0" Content="×" FontSize="16" Cursor="Hand" ToolTip="退出应用" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource DangerTextBrush}" BorderBrush="{DynamicResource HairlineBrush}"/>
       </Grid>
     </Grid>
   </Border>
@@ -1104,7 +1118,6 @@ function New-NoteReminderWindow {
     $interval.Margin = '0,8,0,0'
     $interval.FontSize = 11
     $interval.Foreground = $noteInkBrush
-    $interval.Opacity = 0.74
     [void] $content.Children.Add($interval)
 
     $dismiss = New-Object System.Windows.Controls.Button
@@ -1114,6 +1127,7 @@ function New-NoteReminderWindow {
     $dismiss.Height = 36
     $dismiss.Margin = '0,14,0,0'
     $dismiss.HorizontalAlignment = 'Right'
+    $dismiss.IsCancel = $true
     $dismiss.Style = $window.FindResource('PrimaryButton')
     $dismiss.Tag = $reminderWindow
     $dismiss.ToolTip = '关闭这次便签提醒'
@@ -1123,6 +1137,13 @@ function New-NoteReminderWindow {
 
     $surface.Child = $content
     $reminderWindow.Content = $surface
+    $reminderWindow.Add_PreviewKeyDown({
+            param($sender, $eventArgs)
+            if ($eventArgs.Key -eq [System.Windows.Input.Key]::Escape) {
+                $sender.Close()
+                $eventArgs.Handled = $true
+            }
+        })
     $reminderWindow
 }
 
@@ -1139,6 +1160,27 @@ function Close-AllNoteReminderWindows {
     $openWindows = @($script:noteReminderWindows.Values)
     $script:noteReminderWindows.Clear()
     foreach ($reminderWindow in $openWindows) { $reminderWindow.Close() }
+}
+
+function Invoke-ApplicationEscape {
+    param([Parameter(Mandatory)] [System.Windows.Input.Key] $Key)
+
+    if ($Key -ne [System.Windows.Input.Key]::Escape) { return $false }
+    $hasOpenTransientPanel =
+        [bool] $script:tagManagerVisible -or
+        @($script:filterPopup, $script:countdownTagPopup, $script:noteTagPopup, $script:floatingTagPopup, $script:tagManagerPopup | Where-Object {
+                $null -ne $_ -and $_.IsOpen
+            }).Count -gt 0
+    if ($hasOpenTransientPanel) {
+        Close-TransientPanels
+    }
+    elseif ($script:noteReminderWindows.Count -gt 0) {
+        Close-AllNoteReminderWindows
+    }
+    else {
+        Close-TransientPanels
+    }
+    $true
 }
 
 function Show-NoteReminderWindow {
@@ -1211,18 +1253,74 @@ function Set-AccessibleName {
     [System.Windows.Automation.AutomationProperties]::SetName($Control, $Name)
 }
 
+function Set-AccessibleStatusMessage {
+    param(
+        [Parameter(Mandatory)] [System.Windows.DependencyObject] $Control,
+        [string] $Text,
+        [switch] $IsError
+    )
+
+    $isEmpty = [string]::IsNullOrWhiteSpace($Text)
+    Set-AccessibleName -Control $Control -Name $(if ($isEmpty) { '操作状态' } else { $Text })
+    $liveSetting = if ($isEmpty) {
+        [System.Windows.Automation.AutomationLiveSetting]::Off
+    }
+    elseif ($IsError) {
+        [System.Windows.Automation.AutomationLiveSetting]::Assertive
+    }
+    else {
+        [System.Windows.Automation.AutomationLiveSetting]::Polite
+    }
+    [System.Windows.Automation.AutomationProperties]::SetLiveSetting($Control, $liveSetting)
+}
+
+Set-AccessibleName -Control $countdownName -Name '倒计时名称'
+Set-AccessibleName -Control $targetDate -Name '倒计时截止日期'
+Set-AccessibleName -Control $targetHour -Name '截止小时'
+Set-AccessibleName -Control $targetMinute -Name '截止分钟'
+Set-AccessibleName -Control $targetSecond -Name '截止秒'
+Set-AccessibleName -Control $displayPrecisionInput -Name '悬浮窗显示精度'
+Set-AccessibleName -Control $monthlySalary -Name '月薪（元）'
+Set-AccessibleName -Control $workStartInput -Name '上班时间'
+Set-AccessibleName -Control $workEndInput -Name '下班时间'
+Set-AccessibleName -Control $noteInput -Name '便签内容'
+Set-AccessibleName -Control $floatingNoteInput -Name '悬浮便签内容'
 Set-AccessibleName -Control $noteDate -Name '便签日期'
 Set-AccessibleName -Control $floatingNoteDate -Name '悬浮便签日期'
 Set-AccessibleName -Control $noteReminderInterval -Name '便签提醒间隔'
 Set-AccessibleName -Control $noteCustomReminderMinutes -Name '便签自定义提醒分钟'
 Set-AccessibleName -Control $floatingNoteReminderInterval -Name '悬浮便签提醒间隔'
 Set-AccessibleName -Control $floatingNoteCustomReminderMinutes -Name '悬浮便签自定义提醒分钟'
+$formControlsHaveAccessibleNames = @(
+    @(
+        [pscustomobject]@{ Control = $countdownName; Name = '倒计时名称' }
+        [pscustomobject]@{ Control = $targetDate; Name = '倒计时截止日期' }
+        [pscustomobject]@{ Control = $targetHour; Name = '截止小时' }
+        [pscustomobject]@{ Control = $targetMinute; Name = '截止分钟' }
+        [pscustomobject]@{ Control = $targetSecond; Name = '截止秒' }
+        [pscustomobject]@{ Control = $displayPrecisionInput; Name = '悬浮窗显示精度' }
+        [pscustomobject]@{ Control = $monthlySalary; Name = '月薪（元）' }
+        [pscustomobject]@{ Control = $workStartInput; Name = '上班时间' }
+        [pscustomobject]@{ Control = $workEndInput; Name = '下班时间' }
+        [pscustomobject]@{ Control = $noteInput; Name = '便签内容' }
+        [pscustomobject]@{ Control = $noteDate; Name = '便签日期' }
+        [pscustomobject]@{ Control = $noteReminderInterval; Name = '便签提醒间隔' }
+        [pscustomobject]@{ Control = $noteCustomReminderMinutes; Name = '便签自定义提醒分钟' }
+        [pscustomobject]@{ Control = $floatingNoteInput; Name = '悬浮便签内容' }
+        [pscustomobject]@{ Control = $floatingNoteDate; Name = '悬浮便签日期' }
+        [pscustomobject]@{ Control = $floatingNoteReminderInterval; Name = '悬浮便签提醒间隔' }
+        [pscustomobject]@{ Control = $floatingNoteCustomReminderMinutes; Name = '悬浮便签自定义提醒分钟' }
+    ) | Where-Object {
+        [string] [System.Windows.Automation.AutomationProperties]::GetName($_.Control) -ne $_.Name
+    }
+).Count -eq 0
 
-function Show-ThemedConfirmation {
+function New-ThemedConfirmation {
     param(
         [Parameter(Mandatory)] [string] $Title,
         [Parameter(Mandatory)] [string] $Message,
-        [string] $ConfirmText = '确定'
+        [string] $ConfirmText = '确定',
+        [switch] $IsDestructive
     )
 
     [xml] $confirmationXaml = @'
@@ -1239,7 +1337,7 @@ function Show-ThemedConfirmation {
       <TextBlock x:Name="DialogMessage" Grid.Row="1" Margin="0,10,0,0" FontSize="13" Foreground="{DynamicResource BodyBrush}" TextWrapping="Wrap"/>
       <StackPanel Grid.Row="2" Margin="0,18,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
         <Button x:Name="CancelButton" Width="72" Style="{DynamicResource SecondaryButton}" Content="取消" IsCancel="True" ToolTip="取消本次操作"/>
-        <Button x:Name="ConfirmButton" Width="76" Margin="8,0,0,0" Style="{DynamicResource PrimaryButton}" IsDefault="True" ToolTip="确认本次操作"/>
+        <Button x:Name="ConfirmButton" Width="76" Margin="8,0,0,0" Style="{DynamicResource PrimaryButton}" ToolTip="确认本次操作"/>
       </StackPanel>
     </Grid>
   </Border>
@@ -1252,9 +1350,13 @@ function Show-ThemedConfirmation {
     $dialog.Tag = $false
     $dialog.FindName('DialogTitle').Text = $Title
     $dialog.FindName('DialogMessage').Text = $Message
+    $cancelButton = $dialog.FindName('CancelButton')
     $confirmButton = $dialog.FindName('ConfirmButton')
     $confirmButton.Content = $ConfirmText
-    Set-AccessibleName -Control $dialog.FindName('CancelButton') -Name '取消本次操作'
+    $confirmButton.Style = if ($IsDestructive) { $window.FindResource('DangerButton') } else { $window.FindResource('PrimaryButton') }
+    $confirmButton.IsDefault = -not $IsDestructive
+    $cancelButton.IsDefault = $IsDestructive
+    Set-AccessibleName -Control $cancelButton -Name '取消本次操作'
     Set-AccessibleName -Control $confirmButton -Name "$ConfirmText 本次操作"
     $confirmButton.Tag = $dialog
     $confirmButton.Add_Click({
@@ -1271,6 +1373,18 @@ function Show-ThemedConfirmation {
         }
     })
     if ($null -ne $window -and $window.IsLoaded) { $dialog.Owner = $window }
+    $dialog
+}
+
+function Show-ThemedConfirmation {
+    param(
+        [Parameter(Mandatory)] [string] $Title,
+        [Parameter(Mandatory)] [string] $Message,
+        [string] $ConfirmText = '确定',
+        [switch] $IsDestructive
+    )
+
+    $dialog = New-ThemedConfirmation @PSBoundParameters
     [void] $dialog.ShowDialog()
     [bool] $dialog.Tag
 }
@@ -1285,7 +1399,7 @@ function Set-WorkspaceMessage {
     $workspaceMessageText.Text = $Text
     $workspaceMessageText.ToolTip = if ([string]::IsNullOrWhiteSpace($Text)) { '操作状态' } else { $Text }
     $workspaceMessageText.Foreground = if ($IsError) { $errorBrush } elseif ($IsSuccess) { $successTextBrush } else { $mutedBrush }
-    Set-AccessibleName -Control $workspaceMessageText -Name $workspaceMessageText.ToolTip
+    Set-AccessibleStatusMessage -Control $workspaceMessageText -Text $Text -IsError:$IsError
 }
 
 function Set-CountdownMessage {
@@ -1297,6 +1411,7 @@ function Set-CountdownMessage {
 
     $messageText.Text = $Text
     $messageText.Foreground = if ($IsError) { $errorBrush } elseif ($IsSuccess) { $successTextBrush } else { $mutedBrush }
+    Set-AccessibleStatusMessage -Control $messageText -Text $Text -IsError:$IsError
     Set-WorkspaceMessage -Text $Text -IsError:$IsError -IsSuccess:$IsSuccess
 }
 
@@ -1309,6 +1424,7 @@ function Set-PreferencesMessage {
 
     $preferencesMessageText.Text = $Text
     $preferencesMessageText.Foreground = if ($IsError) { $errorBrush } elseif ($IsSuccess) { $successTextBrush } else { $mutedBrush }
+    Set-AccessibleStatusMessage -Control $preferencesMessageText -Text $Text -IsError:$IsError
     Set-WorkspaceMessage -Text $Text -IsError:$IsError -IsSuccess:$IsSuccess
 }
 
@@ -1322,7 +1438,7 @@ function New-TagActionButton {
     $button = New-Object System.Windows.Controls.Button
     $button.Content = $Content
     $button.ToolTip = $ToolTip
-    $button.Height = 28
+    $button.Height = 32
     if ($Width -gt 0) { $button.Width = $Width }
     else { $button.MinWidth = 58 }
     $button.Margin = '0,0,4,4'
@@ -1343,7 +1459,7 @@ function New-TagFilterOption {
     $button = New-Object System.Windows.Controls.Primitives.ToggleButton
     $button.Content = $Content
     $button.ToolTip = $ToolTip
-    $button.Height = 28
+    $button.Height = 32
     if ($Width -gt 0) { $button.Width = $Width }
     else { $button.MinWidth = 54 }
     $button.Margin = '0,0,4,4'
@@ -1422,12 +1538,12 @@ function New-TagEditorPanel {
     Set-AccessibleName -Control $heading -Name $ToolTip
     $popupHeader.Children.Add($heading) | Out-Null
     $manage = New-TagActionButton -Content '管理' -ToolTip '创建、改名或删除标签' -Width 54
-    $manage.Height = 28
+    $manage.Height = 32
     $manage.Margin = '8,0,0,6'
     [System.Windows.Controls.DockPanel]::SetDock($manage, [System.Windows.Controls.Dock]::Right)
     $popupHeader.Children.Add($manage) | Out-Null
     $close = New-TagActionButton -Content '完成' -ToolTip "完成${Label}选择" -Width 54
-    $close.Height = 28
+    $close.Height = 32
     $close.Margin = '8,0,0,6'
     $close.DataContext = $popup
     [System.Windows.Controls.DockPanel]::SetDock($close, [System.Windows.Controls.Dock]::Right)
@@ -1459,7 +1575,7 @@ function New-TagEditorPanel {
     $selectorScroll.Content = $selector
     $popupStack.Children.Add($selectorScroll) | Out-Null
     $create = New-TagActionButton -Content '创建新标签' -ToolTip "创建搜索框中的标签并用于$Label" -Width 94
-    $create.Height = 30
+    $create.Height = 32
     $create.Margin = '0,8,0,0'
     $create.Visibility = 'Collapsed'
     $popupStack.Children.Add($create) | Out-Null
@@ -1488,13 +1604,13 @@ function Initialize-TagInterface {
     $filterHeading.Margin = '0,0,0,8'
     $filterHeader.Children.Add($filterHeading) | Out-Null
     $filterClose = New-TagActionButton -Content '完成' -ToolTip '关闭筛选' -Width 54
-    $filterClose.Height = 28
+    $filterClose.Height = 32
     $filterClose.Margin = '8,0,0,8'
     [System.Windows.Controls.DockPanel]::SetDock($filterClose, [System.Windows.Controls.Dock]::Right)
     $filterClose.Add_Click({ $script:filterPopup.IsOpen = $false })
     $filterHeader.Children.Add($filterClose) | Out-Null
     $script:tagManagerToggleButton = New-TagActionButton -Content '管理' -ToolTip '创建、改名或删除共享标签' -Width 54
-    $script:tagManagerToggleButton.Height = 28
+    $script:tagManagerToggleButton.Height = 32
     $script:tagManagerToggleButton.Margin = '8,0,0,8'
     [System.Windows.Controls.DockPanel]::SetDock($script:tagManagerToggleButton, [System.Windows.Controls.Dock]::Right)
     $filterHeader.Children.Add($script:tagManagerToggleButton) | Out-Null
@@ -1674,7 +1790,7 @@ function Initialize-TagInterface {
     $script:tagManagerPopup.StaysOpen = $true
     $script:tagManagerPopup.Child = $script:tagManagerPanel
     $managerCloseButton = New-TagActionButton -Content '关闭' -ToolTip '关闭标签管理' -Width 54
-    $managerCloseButton.Height = 28
+    $managerCloseButton.Height = 32
     $managerCloseButton.Margin = '8,0,0,6'
     [System.Windows.Controls.DockPanel]::SetDock($managerCloseButton, [System.Windows.Controls.Dock]::Right)
     $managerCloseButton.Add_Click({ $script:tagManagerVisible = $false; Render-TagManager })
@@ -1719,7 +1835,7 @@ function Initialize-TagInterface {
     $floatingTagSummary.Orientation = 'Horizontal'
     $floatingTagSummary.Margin = '2,2,2,0'
     $script:floatingTagSelectorButton = New-TagActionButton -Content '标签（0）' -ToolTip '选择本次新增便签的标签' -Width 64
-    $script:floatingTagSelectorButton.Height = 24
+    $script:floatingTagSelectorButton.Height = 32
     $script:floatingTagSelectorButton.FontSize = 10
     $script:floatingTagSelectorButton.Margin = '0,0,0,0'
     $floatingTagSummary.Children.Add($script:floatingTagSelectorButton) | Out-Null
@@ -1759,7 +1875,7 @@ function Initialize-TagInterface {
     $floatingTagPopupHeading.VerticalAlignment = 'Center'
     $floatingTagPopupHeader.Children.Add($floatingTagPopupHeading) | Out-Null
     $script:floatingClearTagButton = New-TagActionButton -Content '清空' -ToolTip '清空悬浮便签的已选标签' -Width 48
-    $script:floatingClearTagButton.Height = 24
+    $script:floatingClearTagButton.Height = 32
     $script:floatingClearTagButton.FontSize = 10
     $script:floatingClearTagButton.Margin = '8,0,0,4'
     [System.Windows.Controls.DockPanel]::SetDock($script:floatingClearTagButton, [System.Windows.Controls.Dock]::Right)
@@ -1986,7 +2102,7 @@ function New-TagToggleButton {
     $button.Uid = [string] $TagRecord.id
     $button.DataContext = $Context
     $button.IsChecked = $Selected
-    $button.Height = 28
+    $button.Height = 32
     $button.MinWidth = 48
     $button.Margin = '0,0,6,6'
     $button.Padding = '9,0'
@@ -2112,8 +2228,8 @@ function New-TagChipPanel {
     foreach ($tag in $visible) {
         $chip = New-TagActionButton -Content $tag.name -ToolTip "按标签 [$($tag.name)] 筛选" -Width 0
         $chip.Uid = [string] $tag.id
-        $chip.Height = 22
-        $chip.MinWidth = 0
+        $chip.Height = 32
+        $chip.MinWidth = 32
         $chip.Margin = '0,0,5,0'
         $chip.Padding = '7,0'
         $chip.FontSize = if ($Compact) { 10 } else { 11 }
@@ -2349,6 +2465,7 @@ function Set-TagManagerMessage {
     $script:tagManagerMessage.Text = $Text
     $script:tagManagerMessage.Foreground = if ($IsError) { $errorBrush } else { $noteInkBrush }
     $script:tagManagerMessage.Visibility = if ([string]::IsNullOrWhiteSpace($Text)) { 'Collapsed' } else { 'Visible' }
+    Set-AccessibleStatusMessage -Control $script:tagManagerMessage -Text $Text -IsError:$IsError
     Set-WorkspaceMessage -Text $Text -IsError:$IsError -IsSuccess:(-not $IsError -and -not [string]::IsNullOrWhiteSpace($Text))
 }
 
@@ -2368,6 +2485,7 @@ function Set-TagEditorMessage {
     $target.Text = $Text
     $target.Foreground = if ($IsError) { $errorBrush } else { $successTextBrush }
     $target.Visibility = if ([string]::IsNullOrWhiteSpace($Text)) { 'Collapsed' } else { 'Visible' }
+    Set-AccessibleStatusMessage -Control $target -Text $Text -IsError:$IsError
     Set-WorkspaceMessage -Text $Text -IsError:$IsError -IsSuccess:(-not $IsError -and -not [string]::IsNullOrWhiteSpace($Text))
 }
 
@@ -2547,7 +2665,7 @@ function Remove-TagFromLibrary {
         if ($null -eq $currentTag) { throw '未找到要删除的标签。' }
         $currentImpact = Get-TagAssociationCount -Id $Id
         if (-not $SkipConfirmation) {
-            $confirmed = Show-ThemedConfirmation -Title '删除标签' -Message ('删除“{0}”会解除 {1} 条倒计时或便签关联，记录本身不会删除。是否继续？' -f $currentTag.name, $currentImpact) -ConfirmText '删除'
+            $confirmed = Show-ThemedConfirmation -Title '删除标签' -Message ('删除“{0}”会解除 {1} 条倒计时或便签关联，记录本身不会删除。是否继续？' -f $currentTag.name, $currentImpact) -ConfirmText '删除' -IsDestructive
             if (-not $confirmed) { return }
         }
         $candidate = New-CurrentSettingsCandidate
@@ -2597,7 +2715,7 @@ function Reset-Editor {
     Set-TimeControls -BeijingTime ((Get-BeijingNow).Date.AddDays(1).AddHours(18))
     $saveButton.Content = '添加倒计时'
     $cancelButton.Visibility = 'Collapsed'
-    $messageText.Text = ''
+    Set-CountdownMessage -Text ''
     Set-TagEditorMessage -Context 'CountdownEditor' -Text ''
     Render-TagEditorSelectors
     $script:countdownTagPopup.IsOpen = $false
@@ -2883,6 +3001,7 @@ function Set-NoteMessage {
     foreach ($target in @($noteMessageText, $floatingNoteMessage)) {
         $target.Foreground = $brush
         $target.Text = $Text
+        Set-AccessibleStatusMessage -Control $target -Text $Text -IsError:$IsError
     }
     Set-WorkspaceMessage -Text $Text -IsError:$IsError -IsSuccess:(-not $IsError -and -not [string]::IsNullOrWhiteSpace($Text))
 }
@@ -2934,7 +3053,7 @@ function New-NoteRow {
     [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = 'Auto' }))
     [void] $grid.ColumnDefinitions.Add((New-Object System.Windows.Controls.ColumnDefinition -Property @{ Width = 'Auto' }))
     $check = New-Object System.Windows.Controls.CheckBox
-    $check.Width = 22; $check.Height = 22; $check.Margin = '0,1,9,0'; $check.VerticalAlignment = 'Top'; $check.Cursor = 'Hand'
+    $check.Width = 32; $check.Height = 32; $check.Margin = '0,0,9,0'; $check.VerticalAlignment = 'Top'; $check.Cursor = 'Hand'
     $check.Style = $window.FindResource([System.Windows.Controls.CheckBox])
     $check.ToolTip = if ($isCompleted) { '标记为未完成' } else { '标记为已完成' }
     Set-AccessibleName -Control $check -Name $check.ToolTip
@@ -2953,7 +3072,6 @@ function New-NoteRow {
     $dateText.Margin = '0,4,0,0'
     $dateText.FontSize = if ($Compact) { 10 } else { 11 }
     $dateText.Foreground = if ($isCompleted) { $completedNoteBrush } else { $noteInkBrush }
-    $dateText.Opacity = 0.78
     Set-AccessibleName -Control $dateText -Name ('便签日期：{0}' -f (Format-NoteDateForDisplay -Date $dateValue))
     [void] $content.Children.Add($dateText)
     $reminderIntervalMinutes = if ($null -eq $Record.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $Record.reminderIntervalMinutes }
@@ -2964,7 +3082,6 @@ function New-NoteRow {
         $reminderText.Margin = '0,3,0,0'
         $reminderText.FontSize = if ($Compact) { 10 } else { 11 }
         $reminderText.Foreground = if ($isCompleted) { $completedNoteBrush } else { $noteInkBrush }
-        $reminderText.Opacity = 0.78
         Set-AccessibleName -Control $reminderText -Name ('便签提醒：{0}' -f (Format-NoteReminderInterval -Minutes $reminderIntervalMinutes))
         [void] $content.Children.Add($reminderText)
     }
@@ -2978,7 +3095,7 @@ function New-NoteRow {
     $edit = $null
     if (-not $Compact) {
         $edit = New-Object System.Windows.Controls.Button
-        $edit.Content = '编辑'; $edit.Width = 44; $edit.Height = 28; $edit.Margin = '8,0,0,0'; $edit.Padding = 0
+        $edit.Content = '编辑'; $edit.Width = 44; $edit.Height = 32; $edit.Margin = '8,0,0,0'; $edit.Padding = 0
         $edit.Cursor = 'Hand'; $edit.ToolTip = '编辑便签'; $edit.Background = $canvasBrush; $edit.Foreground = $noteInkBrush; $edit.BorderBrush = $noteLineBrush; $edit.BorderThickness = 1
         $edit.Style = $window.FindResource('SecondaryButton')
         Set-AccessibleName -Control $edit -Name $edit.ToolTip
@@ -2986,7 +3103,7 @@ function New-NoteRow {
         [System.Windows.Controls.Grid]::SetColumn($edit, 3)
     }
     $delete = New-Object System.Windows.Controls.Button
-    $delete.Content = '×'; $delete.Width = 28; $delete.Height = 28; $delete.Margin = '8,0,0,0'; $delete.Padding = 0
+    $delete.Content = '×'; $delete.Width = 32; $delete.Height = 32; $delete.Margin = '8,0,0,0'; $delete.Padding = 0
     $delete.Cursor = 'Hand'; $delete.ToolTip = '删除便签'; $delete.Background = $canvasBrush; $delete.Foreground = $dangerTextBrush; $delete.BorderBrush = $noteLineBrush; $delete.BorderThickness = 1
     $delete.Style = $window.FindResource('SecondaryButton')
     Set-AccessibleName -Control $delete -Name $delete.ToolTip
@@ -3284,7 +3401,7 @@ function Remove-Note {
 
     $note = @($script:notes | Where-Object { $_.id -eq $Id })[0]
     if ($null -eq $note) { return }
-    $confirmed = Show-ThemedConfirmation -Title '删除便签' -Message ('确定永久删除“{0}”吗？' -f $note.text) -ConfirmText '删除'
+    $confirmed = Show-ThemedConfirmation -Title '删除便签' -Message ('确定永久删除“{0}”吗？' -f $note.text) -ConfirmText '删除' -IsDestructive
     if (-not $confirmed) { return }
     $result = Invoke-NoteMutationFromUi -Action Remove -Id $Id
     if ($null -ne $result -and $result.Changed -and $script:editingNoteId -eq $Id) { Reset-NoteEditor }
@@ -3368,12 +3485,12 @@ function Render-Cards {
             $script:countdownEditorTagIds.Clear()
             foreach ($tagId in @(Get-RecordTagIds -Record $item)) { [void] $script:countdownEditorTagIds.Add($tagId) }
             Render-TagEditorSelectors
-            $saveButton.Content = '保存修改'; $cancelButton.Visibility = 'Visible'; $messageText.Text = ''; $script:countdownTagEditorMessage.Text = ''; $countdownName.Focus()
+            $saveButton.Content = '保存修改'; $cancelButton.Visibility = 'Visible'; Set-CountdownMessage -Text ''; Set-TagEditorMessage -Context 'CountdownEditor' -Text ''; $countdownName.Focus()
         })
         $delete.Add_Click({ param($sender, $eventArgs)
             $actionId = [string] $sender.Tag
             $item = @($script:countdowns | Where-Object { $_.id -eq $actionId })[0]
-            $confirmed = Show-ThemedConfirmation -Title '删除倒计时' -Message ('确定永久删除“{0}”吗？' -f $item.name) -ConfirmText '删除'
+            $confirmed = Show-ThemedConfirmation -Title '删除倒计时' -Message ('确定永久删除“{0}”吗？' -f $item.name) -ConfirmText '删除' -IsDestructive
             if ($confirmed) {
                 try {
                     $candidate = New-CurrentSettingsCandidate
@@ -3531,13 +3648,14 @@ $floatingNoteInput.Add_KeyDown({
     if ($eventArgs.Key -eq [System.Windows.Input.Key]::Enter) { Add-NoteFromInput -TextBox $floatingNoteInput -Context 'FloatingNoteEditor'; $eventArgs.Handled = $true }
 })
 $toggleCompletedNotesButton.Add_Click({ Toggle-CompletedNotes })
-$window.Add_KeyDown({
+$handleApplicationEscape = {
     param($sender, $eventArgs)
-    if ($eventArgs.Key -eq [System.Windows.Input.Key]::Escape) {
-        Close-TransientPanels
+    if (Invoke-ApplicationEscape -Key $eventArgs.Key) {
         $eventArgs.Handled = $true
     }
-})
+}
+$window.Add_KeyDown($handleApplicationEscape)
+$floatingWindow.Add_KeyDown($handleApplicationEscape)
 $floatingDragArea.Add_MouseLeftButtonDown({
     param($sender, $eventArgs)
     if ($eventArgs.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $floatingWindow.DragMove() }
@@ -3562,7 +3680,7 @@ function Set-FloatingWindowWithinWorkArea {
     }
 
     $maximumLeft = [Math]::Max($workArea.Left, $workArea.Right - $floatingWindow.ActualWidth)
-    $maximumTop = [Math]::Max($workArea.Top, $workArea.Bottom - $floatingWindow.ActualHeight - 24)
+    $maximumTop = [Math]::Max($workArea.Top, $workArea.Bottom - $floatingWindow.ActualHeight - 26)
     $floatingWindow.Left = [Math]::Max($workArea.Left, [Math]::Min($floatingWindow.Left, $maximumLeft))
     $floatingWindow.Top = [Math]::Max($workArea.Top, [Math]::Min($floatingWindow.Top, $maximumTop))
 }
@@ -4268,9 +4386,31 @@ if ($ValidateOnly) {
             $reminderBodyProbe.Text -eq '半小时后记得喝水' -and
             $null -ne $reminderDismissProbe -and
             $reminderDismissProbe.Style -eq $window.FindResource('PrimaryButton')
+        $script:noteReminderWindows[[string] $reminderProbe.id] = $reminderWindowProbe
+        $reminderWindowProbe.Opacity = 0
+        $reminderWindowProbe.Show()
+        $reminderWindowProbe.Dispatcher.Invoke(
+            [System.Action] { $reminderWindowProbe.UpdateLayout() },
+            [System.Windows.Threading.DispatcherPriority]::ApplicationIdle
+        )
+        $script:filterPopup.IsOpen = $true
+        $transientEscapeWasRouted = Invoke-ApplicationEscape -Key ([System.Windows.Input.Key]::Escape)
+        $transientPanelsCloseBeforeReminder =
+            $transientEscapeWasRouted -and
+            -not $script:filterPopup.IsOpen -and
+            $reminderWindowProbe.IsVisible -and
+            $script:noteReminderWindows.Count -eq 1
+        $reminderEscapeWasRouted = Invoke-ApplicationEscape -Key ([System.Windows.Input.Key]::Escape)
+        $reminderWindowSupportsKeyboardDismissal =
+            [bool] $reminderDismissProbe.IsCancel -and
+            $transientPanelsCloseBeforeReminder -and
+            $reminderEscapeWasRouted -and
+            -not $reminderWindowProbe.IsVisible -and
+            $script:noteReminderWindows.Count -eq 0
     }
     finally {
-        $reminderWindowProbe.Close()
+        Close-TransientPanels
+        if ($reminderWindowProbe.IsVisible) { $reminderWindowProbe.Close() }
     }
     $officialCharacterBackgroundImages = @($characterBackgroundAssets | ForEach-Object { $_.Control })
     $officialCharacterBackgroundLoaded =
@@ -4316,10 +4456,11 @@ if ($ValidateOnly) {
     if (-not $datePickerTextFits) {
         throw "DatePicker selected date is clipped: available=$datePickerTextAvailableWidth, required=$datePickerTextRequiredWidth."
     }
-    $themeProbeNote = [pscustomobject]@{ id = '__theme_probe__'; text = '主题控件检查'; date = '2026-07-18'; isCompleted = $false; tagIds = @() }
+    $themeProbeNote = [pscustomobject]@{ id = '__theme_probe__'; text = '主题控件检查'; date = '2026-07-18'; isCompleted = $false; reminderIntervalMinutes = 30; tagIds = @() }
     $themeProbeRow = New-NoteRow -Record $themeProbeNote
     $themeProbeControls = @($themeProbeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.CheckBox] -or $_ -is [System.Windows.Controls.Button] })
     foreach ($control in $themeProbeControls) { [void] $control.ApplyTemplate() }
+    $themeProbeTagAction = New-TagActionButton -Content '主题操作' -ToolTip '主题操作控件'
     $themeProbeFilterOption = New-TagFilterOption -Content '主题筛选' -ToolTip '主题筛选控件'
     $themeProbeTagToggle = New-TagToggleButton -TagRecord ([pscustomobject]@{ id = '__theme_tag__'; name = '主题标签' }) -Selected $false -Context 'Filter'
     $themeProbeToggleControls = @($themeProbeFilterOption, $themeProbeTagToggle)
@@ -4429,17 +4570,24 @@ if ($ValidateOnly) {
     $liveSelectedDayCount = 0
     $liveSelectedDayBackground = $null
     $liveSelectedDayForeground = $null
+    $livePopupOpenedProbe = [pscustomobject]@{ HasOpened = $false }
+    $livePopupIsOpen = $false
     try {
         $liveProbeWindow.Show()
         $liveProbeWindow.UpdateLayout()
-        $liveDatePicker.IsDropDownOpen = $true
-        $liveDatePicker.UpdateLayout()
-        $liveProbeWindow.Dispatcher.Invoke([System.Action] { $liveProbeWindow.UpdateLayout() }, [System.Windows.Threading.DispatcherPriority]::ApplicationIdle)
         $livePopup = $liveDatePicker.Template.FindName('PART_Popup', $liveDatePicker)
         $liveCalendar = $liveDatePicker.Template.FindName('PART_Calendar', $liveDatePicker)
         if ($livePopup -isnot [System.Windows.Controls.Primitives.Popup] -or $liveCalendar -isnot [System.Windows.Controls.Calendar]) {
             throw 'Live DatePicker popup parts are missing.'
         }
+        $livePopup.Tag = $livePopupOpenedProbe
+        $livePopup.Add_Opened({
+                param($sender, $eventArgs)
+                $sender.Tag.HasOpened = $true
+            })
+        $liveDatePicker.IsDropDownOpen = $true
+        $liveDatePicker.UpdateLayout()
+        $liveProbeWindow.Dispatcher.Invoke([System.Action] { $liveProbeWindow.UpdateLayout() }, [System.Windows.Threading.DispatcherPriority]::ApplicationIdle)
         $liveCalendarStyleContractsBound =
             $liveCalendar.CalendarItemStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarItem]] -and
             $liveCalendar.CalendarDayButtonStyle -eq $window.Resources[[System.Windows.Controls.Primitives.CalendarDayButton]] -and
@@ -4486,7 +4634,8 @@ if ($ValidateOnly) {
                 $liveSelectedDaySurface.Background -eq $activeBrush -and
                 $liveSelectedDayButton.Foreground -eq $canvasBrush
         }
-        $livePopupWasOpen = $livePopup.IsOpen
+        $livePopupWasOpen = [bool] $livePopupOpenedProbe.HasOpened
+        $livePopupIsOpen = [bool] $livePopup.IsOpen
     }
     finally {
         $liveDatePicker.IsDropDownOpen = $false
@@ -4504,7 +4653,7 @@ if ($ValidateOnly) {
         $liveCalendarHeaderUsesThemeTokens -and
         $liveSelectedDayUsesThemeTokens
     if (-not $liveDatePickerPopupIsThemed) {
-        throw "Live DatePicker popup fell back to system calendar styles: popupOpen=$livePopupWasOpen, contractsBound=$liveCalendarStyleContractsBound, dayButtons=$($liveCalendarDayButtons.Count), styleMismatches=$liveCalendarStyleMismatches, templateMismatches=$liveCalendarTemplateMismatches."
+        throw "Live DatePicker popup fell back to system calendar styles: popupOpened=$livePopupWasOpen, popupIsOpen=$livePopupIsOpen, contractsBound=$liveCalendarStyleContractsBound, dayButtons=$($liveCalendarDayButtons.Count), styleMismatches=$liveCalendarStyleMismatches, templateMismatches=$liveCalendarTemplateMismatches."
     }
     $themedPopups = @($script:filterPopup, $script:tagManagerPopup, $script:countdownTagPopup, $script:noteTagPopup, $script:floatingTagPopup)
     function Test-ThemedPopupSurface {
@@ -4591,6 +4740,7 @@ if ($ValidateOnly) {
         [pscustomobject]@{ Foreground = [System.Windows.Media.SolidColorBrush] $mutedBrush; Background = [System.Windows.Media.SolidColorBrush] $canvasBrush; Minimum = 4.5 }
         [pscustomobject]@{ Foreground = [System.Windows.Media.SolidColorBrush] $errorBrush; Background = [System.Windows.Media.SolidColorBrush] $canvasBrush; Minimum = 4.5 }
         [pscustomobject]@{ Foreground = [System.Windows.Media.SolidColorBrush] $dangerTextBrush; Background = [System.Windows.Media.SolidColorBrush] $canvasBrush; Minimum = 4.5 }
+        [pscustomobject]@{ Foreground = [System.Windows.Media.SolidColorBrush] $noteInkBrush; Background = [System.Windows.Media.SolidColorBrush] $noteSurfaceBrush; Minimum = 4.5 }
         [pscustomobject]@{ Foreground = [System.Windows.Media.SolidColorBrush] $completedNoteBrush; Background = [System.Windows.Media.SolidColorBrush] $noteSurfaceBrush; Minimum = 4.5 }
         [pscustomobject]@{ Foreground = [System.Windows.Media.SolidColorBrush] $expiredTextBrush; Background = [System.Windows.Media.SolidColorBrush] $expiredSurfaceBrush; Minimum = 4.5 }
         [pscustomobject]@{ Foreground = [System.Windows.Media.SolidColorBrush] $successTextBrush; Background = [System.Windows.Media.SolidColorBrush] $successSurfaceBrush; Minimum = 4.5 }
@@ -4600,6 +4750,52 @@ if ($ValidateOnly) {
     $themeTextContrast = @($themeTextContrastPairs | Where-Object {
             (Get-ThemeContrastRatio -Foreground $_.Foreground -Background $_.Background) -lt $_.Minimum
         }).Count -eq 0
+    $dangerButtonTemplate = Get-ThemeStyleTemplate -Resources $window.Resources -Key 'DangerButton'
+    $dangerPressedTriggers = @($dangerButtonTemplate.Triggers | Where-Object { $_.Property.Name -eq 'IsPressed' })
+    $dangerPressedSetters = @($dangerPressedTriggers | ForEach-Object { $_.Setters })
+    $dangerButtonContrast =
+        (Get-ThemeContrastRatio -Foreground ([System.Windows.Media.SolidColorBrush] $dangerTextBrush) -Background ([System.Windows.Media.SolidColorBrush] $canvasBrush)) -ge 4.5 -and
+        (Get-ThemeContrastRatio -Foreground ([System.Windows.Media.SolidColorBrush] $dangerTextBrush) -Background ([System.Windows.Media.SolidColorBrush] $selectedSurfaceBrush)) -ge 4.5 -and
+        (Get-ThemeContrastRatio -Foreground ([System.Windows.Media.SolidColorBrush] $dangerTextBrush) -Background ([System.Windows.Media.SolidColorBrush] $expiredSurfaceBrush)) -ge 4.5 -and
+        $dangerPressedTriggers.Count -eq 1 -and
+        @($dangerPressedSetters | Where-Object { $_.Property.Name -eq 'Background' -and $_.Value -eq $expiredSurfaceBrush }).Count -eq 1 -and
+        @($dangerPressedSetters | Where-Object { $_.Property.Name -eq 'Opacity' }).Count -eq 0
+    $reminderIntervalSummary = @($reminderWindowProbeControls | Where-Object { $_ -is [System.Windows.Controls.TextBlock] -and $_.Uid -eq 'NoteReminderIntervalSummary' })[0]
+    $themeProbeContent = @($themeProbeRow.Child.Children | Where-Object { $_ -is [System.Windows.Controls.StackPanel] -and [System.Windows.Controls.Grid]::GetColumn($_) -eq 1 })[0]
+    $themeProbeMetadata = @($themeProbeContent.Children | Where-Object {
+            $_ -is [System.Windows.Controls.TextBlock] -and [string] $_.Uid -in @('NoteDate', 'NoteReminder')
+        })
+    $calendarInactiveTextUsesOpaqueMutedBrush = @(
+        [System.Windows.Controls.Primitives.CalendarDayButton],
+        [System.Windows.Controls.Primitives.CalendarButton] | ForEach-Object {
+            $inactiveTriggers = @((Get-ThemeStyleTemplate -Resources $window.Resources -Key $_).Triggers | Where-Object { $_.Property.Name -eq 'IsInactive' })
+            $inactiveSetters = @($inactiveTriggers | ForEach-Object { $_.Setters })
+            $inactiveTriggers.Count -eq 1 -and
+            @($inactiveSetters | Where-Object { $_.Property.Name -eq 'Foreground' -and $_.Value -eq $mutedBrush }).Count -eq 1 -and
+            @($inactiveSetters | Where-Object { $_.Property.Name -eq 'Opacity' }).Count -eq 0
+        }
+    ).Count -eq 2
+    $effectiveThemeTextContrast =
+        $themeTextContrast -and
+        $null -ne $reminderIntervalSummary -and $reminderIntervalSummary.Opacity -eq 1 -and
+        $themeProbeMetadata.Count -eq 2 -and
+        @($themeProbeMetadata | Where-Object { $_.Opacity -ne 1 }).Count -eq 0 -and
+        $calendarInactiveTextUsesOpaqueMutedBrush
+    $standardConfirmationProbe = New-ThemedConfirmation -Title '验证确认' -Message '验证普通确认。'
+    $destructiveConfirmationProbe = New-ThemedConfirmation -Title '验证删除' -Message '验证删除确认。' -ConfirmText '删除' -IsDestructive
+    $standardConfirmButton = $standardConfirmationProbe.FindName('ConfirmButton')
+    $standardCancelButton = $standardConfirmationProbe.FindName('CancelButton')
+    $destructiveConfirmButton = $destructiveConfirmationProbe.FindName('ConfirmButton')
+    $destructiveCancelButton = $destructiveConfirmationProbe.FindName('CancelButton')
+    $destructiveConfirmationIsSafe =
+        $standardConfirmButton.Style -eq $window.FindResource('PrimaryButton') -and
+        [bool] $standardConfirmButton.IsDefault -and
+        -not [bool] $standardCancelButton.IsDefault -and
+        [bool] $standardCancelButton.IsCancel -and
+        $destructiveConfirmButton.Style -eq $window.FindResource('DangerButton') -and
+        -not [bool] $destructiveConfirmButton.IsDefault -and
+        [bool] $destructiveCancelButton.IsDefault -and
+        [bool] $destructiveCancelButton.IsCancel
     function Test-ThemeTemplateTriggerSet {
         param(
             [Parameter(Mandatory)] [System.Windows.ResourceDictionary] $Resources,
@@ -4690,6 +4886,46 @@ if ($ValidateOnly) {
         [string] [System.Windows.Automation.AutomationProperties]::GetName($script:countdownTagSummaryButton) -eq '打开标签选择器。未选择标签' -and
         [string] [System.Windows.Automation.AutomationProperties]::GetName($closeFloatingButton) -eq '退出应用' -and
         [string] [System.Windows.Automation.AutomationProperties]::GetName($filterToggleButton) -eq '筛选条件：全部'
+    $statusMessageControls = @(
+        $workspaceMessageText,
+        $messageText,
+        $preferencesMessageText,
+        $noteMessageText,
+        $floatingNoteMessage,
+        $script:tagManagerMessage,
+        $script:countdownTagEditorMessage,
+        $script:noteTagEditorMessage
+    )
+    Set-CountdownMessage -Text '验证普通状态。' -IsSuccess
+    Set-PreferencesMessage -Text '验证设置状态。' -IsSuccess
+    Set-NoteMessage -Text '验证便签状态。'
+    Set-TagManagerMessage -Text '验证标签管理状态。'
+    Set-TagEditorMessage -Context 'CountdownEditor' -Text '验证倒计时标签状态。'
+    Set-TagEditorMessage -Context 'NoteEditor' -Text '验证便签标签状态。'
+    $statusMessagesArePolite = @($statusMessageControls | Where-Object {
+            [System.Windows.Automation.AutomationProperties]::GetLiveSetting($_) -ne [System.Windows.Automation.AutomationLiveSetting]::Polite
+        }).Count -eq 0
+    Set-CountdownMessage -Text '验证错误状态。' -IsError
+    Set-PreferencesMessage -Text '验证设置错误状态。' -IsError
+    Set-NoteMessage -Text '验证便签错误状态。' -IsError
+    Set-TagManagerMessage -Text '验证标签管理错误状态。' -IsError
+    Set-TagEditorMessage -Context 'CountdownEditor' -Text '验证倒计时标签错误状态。' -IsError
+    Set-TagEditorMessage -Context 'NoteEditor' -Text '验证便签标签错误状态。' -IsError
+    $statusMessagesAreAssertive = @($statusMessageControls | Where-Object {
+            [System.Windows.Automation.AutomationProperties]::GetLiveSetting($_) -ne [System.Windows.Automation.AutomationLiveSetting]::Assertive
+        }).Count -eq 0
+    Set-CountdownMessage -Text ''
+    Set-PreferencesMessage -Text ''
+    Set-NoteMessage -Text ''
+    Set-TagManagerMessage -Text ''
+    Set-TagEditorMessage -Context 'CountdownEditor' -Text ''
+    Set-TagEditorMessage -Context 'NoteEditor' -Text ''
+    $statusMessagesUseLiveRegions =
+        $statusMessagesArePolite -and
+        $statusMessagesAreAssertive -and
+        @($statusMessageControls | Where-Object {
+            [System.Windows.Automation.AutomationProperties]::GetLiveSetting($_) -ne [System.Windows.Automation.AutomationLiveSetting]::Off
+        }).Count -eq 0
     $filterOptionsUseSelectionSemantics =
         @($script:tagFilterAllButton, $script:tagFilterUntaggedButton, $script:tagMatchAnyButton, $script:tagMatchAllButton, $script:countdownStatusAllButton, $script:countdownStatusActiveButton, $script:countdownStatusExpiredButton, $script:noteStatusAllButton, $script:noteStatusActiveButton, $script:noteStatusCompletedButton | Where-Object { $_ -is [System.Windows.Controls.Primitives.ToggleButton] }).Count -eq 10 -and
         [bool] $script:tagFilterAllButton.IsChecked -and
@@ -4924,7 +5160,34 @@ if ($ValidateOnly) {
     try {
         $chipValidationPanel = New-TagChipPanel -TagIds @($chipValidationTag.id)
         $chipValidationControl = @($chipValidationPanel.Children | Where-Object { $_ -is [System.Windows.Controls.Button] })[0]
+        $calendarNavigationProbe = New-Object System.Windows.Controls.Button
+        $calendarNavigationProbe.Style = $window.FindResource('CalendarNavigationButton')
         $tagChipsUseUid = $null -ne $chipValidationControl -and [string] $chipValidationControl.Uid -eq $chipValidationTag.id -and $null -eq $chipValidationControl.Tag
+        $compactActionTargets = @(
+            $themeProbeTagAction,
+            $themeProbeFilterOption,
+            $themeProbeTagToggle,
+            $minimizeWindowButton,
+            $closeWindowButton,
+            $showCountdownsButton,
+            $showNotesButton,
+            $calendarNavigationProbe,
+            $script:countdownCreateTagButton,
+            $script:noteCreateTagButton,
+            $script:tagManagerToggleButton,
+            $script:floatingTagSelectorButton,
+            $script:floatingClearTagButton,
+            $showFloatingCountdownsButton,
+            $showFloatingNotesButton,
+            $openManagerButton,
+            $closeFloatingButton,
+            $chipValidationControl
+        ) + @($themeProbeControls)
+        $compactActionTargetsAreUsable = @($compactActionTargets | Where-Object {
+                $width = if ([double]::IsNaN([double] $_.Width)) { [double] $_.MinWidth } else { [double] $_.Width }
+                $height = if ([double]::IsNaN([double] $_.Height)) { [double] $_.MinHeight } else { [double] $_.Height }
+                $width -lt 32 -or $height -lt 32
+            }).Count -eq 0
     }
     finally {
         $script:tags = $tagsBeforeChipValidation
@@ -5104,6 +5367,12 @@ if ($ValidateOnly) {
         NoRawFloatingThemeBypass = $noRawFloatingThemeBypass
         ThemedInteractiveStates = $themedInteractiveStates
         ThemeTextContrast = $themeTextContrast
+        DangerButtonContrast = $dangerButtonContrast
+        EffectiveThemeTextContrast = $effectiveThemeTextContrast
+        DestructiveConfirmationIsSafe = $destructiveConfirmationIsSafe
+        FormControlsHaveAccessibleNames = $formControlsHaveAccessibleNames
+        StatusMessagesUseLiveRegions = $statusMessagesUseLiveRegions
+        CompactActionTargetsAreUsable = $compactActionTargetsAreUsable
         RequiredControls = @($countdownName, $targetDate, $targetHour, $targetMinute, $targetSecond, $setNowButton, $saveButton, $cancelButton, $countdownList, $messageText, $nowText, $topmostCheck).Count
         DatePickerTemplateParts = $datePickerParts.Count; DatePickerText = $datePickerParts[0].Text
         DateInputReadOnly = $datePickerParts[0].IsReadOnly; DatePickerButtonOpensCalendar = $datePickerButtonOpensCalendar
@@ -5114,6 +5383,7 @@ if ($ValidateOnly) {
         NoteReminderControlsWork = $noteReminderControlsWork
         NoteReminderDispatchWorks = $noteReminderDispatchWorks
         NoteReminderWindowIsThemed = $noteReminderWindowIsThemed
+        ReminderWindowSupportsKeyboardDismissal = $reminderWindowSupportsKeyboardDismissal
         OfficialCharacterBackgroundLoaded = $officialCharacterBackgroundLoaded
         OfficialCharacterBackgroundCharactersExclusive = $officialCharacterBackgroundCharactersExclusive
         OfficialCharacterBackgroundLowContrast = $officialCharacterBackgroundLowContrast
@@ -5220,7 +5490,7 @@ $timer.Add_Tick({
     }
     catch {
         Write-CountdownApplicationDiagnostic -Level Error -Event 'NoteReminderFailed' -Exception $_.Exception -ScriptStackTrace $_.ScriptStackTrace
-        $workspaceMessageText.Text = '便签提醒显示失败，请查看应用日志。'
+        Set-WorkspaceMessage -Text '便签提醒显示失败，请查看应用日志。' -IsError
     }
     $nowText.Text = "当前北京时间：$($now.ToString('yyyy年MM月dd日 HH:mm:ss'))"
     $sortSignature = @((Get-SortedCountdowns) | ForEach-Object { $_.id }) -join '|'

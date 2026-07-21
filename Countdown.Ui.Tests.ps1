@@ -129,6 +129,9 @@ if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
 if (-not $validation.HasNameEditor) { throw 'Countdown name editor is missing.' }
 if (-not $validation.FloatingWindowPresent) { throw 'Desktop floating countdown window is missing.' }
+if (-not $validation.FloatingWindowStaysAboveWorkAreaBottom) {
+    throw "Floating window overlaps the taskbar work area: countdown bottom margin=$($validation.FloatingCountdownBottomMargin), notes bottom margin=$($validation.FloatingNotesBottomMargin)."
+}
 if (-not $validation.FloatingCountdownButtonTextFits) {
     throw "Floating countdown switch label is clipped: available=$($validation.FloatingCountdownButtonTextAvailableWidth), required=$($validation.FloatingCountdownButtonTextRequiredWidth)."
 }
@@ -355,7 +358,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 111
+    Passed = 112
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

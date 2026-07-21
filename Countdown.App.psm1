@@ -3549,10 +3549,28 @@ $openManagerButton.Add_Click({
     $window.Activate()
 })
 $closeFloatingButton.Add_Click({ $floatingWindow.Close() })
-$floatingWindow.Add_Loaded({
+function Set-FloatingWindowWithinWorkArea {
+    param([switch] $AnchorBottomRight)
+
+    if ($floatingWindow.ActualWidth -le 0 -or $floatingWindow.ActualHeight -le 0) { return }
+
     $workArea = [System.Windows.SystemParameters]::WorkArea
-    $floatingWindow.Left = $workArea.Right - $floatingWindow.ActualWidth - 24
-    $floatingWindow.Top = $workArea.Bottom - $floatingWindow.ActualHeight - 48
+    if ($AnchorBottomRight -or [double]::IsNaN($floatingWindow.Left) -or [double]::IsNaN($floatingWindow.Top)) {
+        $floatingWindow.Left = $workArea.Right - $floatingWindow.ActualWidth - 24
+        $floatingWindow.Top = $workArea.Bottom - $floatingWindow.ActualHeight - 48
+        return
+    }
+
+    $maximumLeft = [Math]::Max($workArea.Left, $workArea.Right - $floatingWindow.ActualWidth)
+    $maximumTop = [Math]::Max($workArea.Top, $workArea.Bottom - $floatingWindow.ActualHeight - 24)
+    $floatingWindow.Left = [Math]::Max($workArea.Left, [Math]::Min($floatingWindow.Left, $maximumLeft))
+    $floatingWindow.Top = [Math]::Max($workArea.Top, [Math]::Min($floatingWindow.Top, $maximumTop))
+}
+$floatingWindow.Add_Loaded({
+    Set-FloatingWindowWithinWorkArea -AnchorBottomRight
+})
+$floatingWindow.Add_SizeChanged({
+    if ($floatingWindow.IsLoaded) { Set-FloatingWindowWithinWorkArea }
 })
 $floatingWindow.Add_ContentRendered({
     if ($script:runtimeReceiptWritten) { return }
@@ -4977,6 +4995,40 @@ if ($ValidateOnly) {
     Set-Workspace -Workspace 'Notes'
     [void] ($unifiedWorkspaceSwitches = $notesWorkspace.Visibility -eq 'Visible' -and $countdownWorkspace.Visibility -eq 'Collapsed' -and $floatingNotesEditor.Visibility -eq 'Visible' -and $floatingCountdownSummary.Visibility -eq 'Collapsed')
     Set-Workspace -Workspace 'Countdowns'
+    $floatingWorkArea = [System.Windows.SystemParameters]::WorkArea
+    $floatingCountdownBottomMargin = [double]::NaN
+    $floatingNotesBottomMargin = [double]::NaN
+    $validationRuntimeReceiptWritten = $script:runtimeReceiptWritten
+    $validationFloatingOpacity = $floatingWindow.Opacity
+    $validationFloatingShowActivated = $floatingWindow.ShowActivated
+    try {
+        $script:runtimeReceiptWritten = $true
+        $floatingWindow.Opacity = 0
+        $floatingWindow.ShowActivated = $false
+        $floatingWindow.Show()
+        $floatingWindow.Dispatcher.Invoke(
+            [System.Action] { $floatingWindow.UpdateLayout() },
+            [System.Windows.Threading.DispatcherPriority]::ApplicationIdle
+        )
+        $floatingCountdownBottomMargin = $floatingWorkArea.Bottom - ($floatingWindow.Top + $floatingWindow.ActualHeight)
+
+        Set-Workspace -Workspace 'Notes'
+        $floatingWindow.Dispatcher.Invoke(
+            [System.Action] { $floatingWindow.UpdateLayout() },
+            [System.Windows.Threading.DispatcherPriority]::ApplicationIdle
+        )
+        $floatingNotesBottomMargin = $floatingWorkArea.Bottom - ($floatingWindow.Top + $floatingWindow.ActualHeight)
+    }
+    finally {
+        if ($floatingWindow.IsVisible) { $floatingWindow.Hide() }
+        $floatingWindow.Opacity = $validationFloatingOpacity
+        $floatingWindow.ShowActivated = $validationFloatingShowActivated
+        $script:runtimeReceiptWritten = $validationRuntimeReceiptWritten
+        Set-Workspace -Workspace 'Countdowns'
+    }
+    $floatingWindowStaysAboveWorkAreaBottom =
+        $floatingCountdownBottomMargin -ge 24 -and
+        $floatingNotesBottomMargin -ge 24
     $workspaceSwitcherBeforeEditors = [System.Windows.Controls.Grid]::GetRow($workspaceSwitcher) -lt [System.Windows.Controls.Grid]::GetRow($countdownEditorWorkspace)
     $defaultWindowWidth = $window.Width
     try {
@@ -5127,6 +5179,9 @@ if ($ValidateOnly) {
         NoteDatesRendered = $noteDatesRendered
         CompletedNotesCollapsed = $completedNotesCollapsed
         FloatingWindowPresent = $null -ne $floatingWindow
+        FloatingWindowStaysAboveWorkAreaBottom = $floatingWindowStaysAboveWorkAreaBottom
+        FloatingCountdownBottomMargin = [Math]::Round($floatingCountdownBottomMargin, 2)
+        FloatingNotesBottomMargin = [Math]::Round($floatingNotesBottomMargin, 2)
         FloatingCountdownButtonTextFits = $floatingCountdownButtonTextFit.Fits
         FloatingCountdownButtonTextAvailableWidth = $floatingCountdownButtonTextFit.AvailableWidth
         FloatingCountdownButtonTextRequiredWidth = $floatingCountdownButtonTextFit.RequiredWidth

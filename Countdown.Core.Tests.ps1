@@ -538,7 +538,7 @@ $installerCommitContextCheckIndex = $installerSource.LastIndexOf('Assert-Countdo
 $installerCompleteIndex = $installerSource.LastIndexOf('Complete-CountdownInstallTransaction')
 Assert-Equal $true ($installerStartupRemovalIndex -ge 0 -and $installerCommitContextCheckIndex -gt $installerStartupRemovalIndex -and $installerCompleteIndex -gt $installerCommitContextCheckIndex) 'Installer rechecks the interactive desktop context immediately before committing'
 $deploySource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
-Assert-Equal $true ($deploySource.Contains('& tailscale.exe ping --until-direct=false --c 1 --timeout 10s $officeHost')) 'Office connectivity probe accepts encrypted Tailscale relay reachability instead of requiring a direct path'
+Assert-Equal $true ($deploySource.Contains('& tailscale.exe ping --until-direct=false --c 3 --timeout 10s $officeHost')) 'Office connectivity probe retries encrypted Tailscale reachability without requiring a direct path'
 Assert-Equal $true ($deploySource.Contains('-PreserveUnmanagedLaunchers')) 'Office acceptance rollback preserves user-replaced launcher files while restoring system state'
 Assert-Equal $true ($deploySource.Contains('UnresolvedLauncherOwnershipConflicts')) 'Office acceptance reports an unresolved pre-receipt launcher conflict'
 Assert-Equal $true ($deploySource.Contains('已恢复应用、任务和时间服务')) 'Office acceptance reports a partial conflict recovery accurately'

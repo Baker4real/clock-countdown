@@ -153,12 +153,14 @@ if (-not $validation.FloatingWindowBottomAnchored) {
     throw "Floating window does not return to the work-area bottom after content size changes: countdown bottom margin=$($validation.FloatingCountdownBottomMargin), notes bottom margin=$($validation.FloatingNotesBottomMargin)."
 }
 if (-not $validation.FloatingWindowReanchorsAfterContentChanges) { throw 'Floating window did not stay bottom-anchored while note content was added and removed.' }
-if (-not $validation.FloatingPlushBorderLoaded) { throw 'The three-sided floating plush border did not load.' }
-if (-not $validation.FloatingPlushBorderUsesTopLeftRightOnly) { throw 'Floating plush characters must surround only the top, left, and right sides; the bottom stays empty.' }
-if ($validation.FloatingPlushCount -ne 12) { throw "Expected twelve floating plush characters, got $($validation.FloatingPlushCount)." }
+if (-not $validation.FloatingWindowHeightConstrainedToWorkArea) { throw 'Floating window height can exceed the desktop work area after content changes.' }
+if (-not $validation.FloatingPlushTaskWrapLoaded) { throw 'The three floating plush task-wrap anchors did not load.' }
+if (-not $validation.FloatingPlushUsesThreeTaskAnchors) { throw 'Floating plush characters must attach at the task card top-left, top-right, and bottom-right anchors.' }
+if ($validation.FloatingPlushCount -ne 3) { throw "Expected three floating plush characters, got $($validation.FloatingPlushCount)." }
 if (-not $validation.FloatingPlushDecorationsAreNonInteractive) { throw 'Floating plush characters must remain mouse-transparent decoration.' }
 if (-not $validation.FloatingPlushCardIsUnobscured) { throw 'Floating plush characters overlap the countdown card.' }
-if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The three-sided floating plush group exceeds the desktop work area.' }
+if (-not $validation.FloatingPlushVisibleEdgesMeetCard) { throw 'Floating plush visible edges do not meet the task card.' }
+if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The floating plush task-wrap group exceeds the desktop work area.' }
 if (-not $validation.FloatingCountdownButtonTextFits) {
     throw "Floating countdown switch label is clipped: available=$($validation.FloatingCountdownButtonTextAvailableWidth), required=$($validation.FloatingCountdownButtonTextRequiredWidth)."
 }

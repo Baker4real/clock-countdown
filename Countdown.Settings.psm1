@@ -296,6 +296,80 @@ function Copy-CountdownSettingsState {
     ConvertFrom-CountdownSettingsObject -Settings ($canonicalJson | ConvertFrom-Json)
 }
 
+function Get-CountdownSettingsWriteMutexName {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path).ToUpperInvariant()
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $pathHash = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($normalizedPath))
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    "Global\MinminCountdownSettings-$([System.BitConverter]::ToString($pathHash).Replace('-', ''))"
+}
+
+function Enter-CountdownSettingsWriteMutex {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [ValidateRange(1, 60)] [int] $TimeoutSeconds = 5
+    )
+
+    $security = [System.Security.AccessControl.MutexSecurity]::new()
+    $authenticatedUsers = [System.Security.Principal.SecurityIdentifier]::new(
+        [System.Security.Principal.WellKnownSidType]::AuthenticatedUserSid,
+        $null
+    )
+    $rights = [System.Security.AccessControl.MutexRights]::Synchronize -bor [System.Security.AccessControl.MutexRights]::Modify
+    $rule = [System.Security.AccessControl.MutexAccessRule]::new(
+        $authenticatedUsers,
+        $rights,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )
+    $security.AddAccessRule($rule)
+
+    $mutexName = Get-CountdownSettingsWriteMutexName -Path $Path
+    $mutex = $null
+    if (-not [System.Threading.MutexAcl]::TryOpenExisting($mutexName, $rights, [ref] $mutex)) {
+        $createdNew = $false
+        try {
+            $mutex = [System.Threading.MutexAcl]::Create($false, $mutexName, [ref] $createdNew, $security)
+        }
+        catch {
+            $creationError = $_
+            try { $mutex = [System.Threading.MutexAcl]::OpenExisting($mutexName, $rights) }
+            catch { throw $creationError }
+        }
+    }
+    try {
+        $acquired = $false
+        try {
+            $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($TimeoutSeconds))
+        }
+        catch [System.Threading.AbandonedMutexException] {
+            $acquired = $true
+        }
+        if (-not $acquired) {
+            throw "等待设置写入锁超时（$TimeoutSeconds 秒）。"
+        }
+        $mutex
+    }
+    catch {
+        $mutex.Dispose()
+        throw
+    }
+}
+
+function Exit-CountdownSettingsWriteMutex {
+    param([AllowNull()] [System.Threading.Mutex] $Mutex)
+
+    if ($null -eq $Mutex) { return }
+    try { $Mutex.ReleaseMutex() } catch [System.ApplicationException] { }
+    finally { $Mutex.Dispose() }
+}
+
 function Save-CountdownSettings {
     [CmdletBinding()]
     param(
@@ -305,8 +379,15 @@ function Save-CountdownSettings {
 
     $payload = ConvertTo-CountdownSettingsJson -State $State
     $temporaryPath = "$Path.tmp"
-    [System.IO.File]::WriteAllText($temporaryPath, $payload, (New-Object System.Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $temporaryPath -Destination $Path -Force
+    $settingsMutex = $null
+    try {
+        $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $Path
+        [System.IO.File]::WriteAllText($temporaryPath, $payload, (New-Object System.Text.UTF8Encoding($false)))
+        Move-Item -LiteralPath $temporaryPath -Destination $Path -Force
+    }
+    finally {
+        Exit-CountdownSettingsWriteMutex -Mutex $settingsMutex
+    }
 }
 
 function Get-CountdownUtcTicks {
@@ -387,4 +468,4 @@ function Test-CountdownSettingsDeploymentTransition {
     $true
 }
 
-Export-ModuleMember -Function New-CountdownPreferences, ConvertFrom-CountdownSettingsObject, ConvertTo-CountdownSettingsJson, Copy-CountdownSettingsState, Save-CountdownSettings, Test-CountdownSettingsDeploymentTransition
+Export-ModuleMember -Function New-CountdownPreferences, ConvertFrom-CountdownSettingsObject, ConvertTo-CountdownSettingsJson, Copy-CountdownSettingsState, Enter-CountdownSettingsWriteMutex, Exit-CountdownSettingsWriteMutex, Save-CountdownSettings, Test-CountdownSettingsDeploymentTransition

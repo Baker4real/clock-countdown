@@ -137,6 +137,7 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath `$archive).Hash -ne '$archiveHa
 `$rollbackPreservedUnmanagedLaunchers = `$false
 `$transactionCommitted = `$false
 `$installMutex = `$null
+`$settingsWriteMutex = `$null
 `$transactionModuleImported = `$false
 try {
   Expand-Archive -LiteralPath `$archive -DestinationPath `$source -Force
@@ -149,8 +150,6 @@ try {
   `$installMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 120
   `$deferredReceiptPath = Join-Path '$remoteRoot' 'deferred-install-receipt.json'
   `$settingsPath = Join-Path `$install 'settings.json'
-  `$settingsJsonBefore = if (Test-Path -LiteralPath `$settingsPath) { Get-Content -LiteralPath `$settingsPath -Raw } else { `$null }
-  `$settingsHashBefore = if (Test-Path -LiteralPath `$settingsPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath `$settingsPath).Hash } else { `$null }
   # 与验收阶段共用同一 pwsh 进程和同一把 mutex；SSH/父进程退出不会留下仍在修改文件的脱离子安装器。
   `$installerOutput = & (Join-Path `$source 'Install-Countdown.ps1') -DeferCommit -DeferredReceiptPath `$deferredReceiptPath -ParentTransactionMutexHeld -ExpectedInteractiveUser ([string] `$interactiveContext.User) -ExpectedInteractiveSessionId ([int] `$interactiveContext.SessionId) -ExpectedDesktopPath ([string] `$interactiveContext.Desktop) | Out-String
   `$deferredReceipt = Read-CountdownDeferredInstallReceipt -Path `$deferredReceiptPath
@@ -161,6 +160,10 @@ try {
   if (-not [string]::Equals([System.IO.Path]::GetFullPath([string] `$installer.TransactionPath), [System.IO.Path]::GetFullPath(`$rollbackTransactionPath), [System.StringComparison]::OrdinalIgnoreCase)) { throw '安装器输出与独立事务回执不一致。' }
   if (-not [string]::Equals([string] `$installer.LaunchToken, [string] `$deferredReceipt.launchToken, [System.StringComparison]::Ordinal)) { throw '安装器输出与独立事务回执的启动令牌不一致。' }
   if ([int] `$installer.InteractiveSessionId -ne [int] `$deferredReceipt.interactiveSessionId) { throw '安装器输出与独立事务回执的交互会话不一致。' }
+  # 远端测试与校时期间旧应用仍可保存用户操作；设置基线必须取自旧进程静止后的事务快照。
+  `$settingsSnapshotPath = Join-Path `$rollbackTransactionPath 'install-backup\settings.json'
+  `$settingsJsonBefore = if (Test-Path -LiteralPath `$settingsSnapshotPath) { Get-Content -LiteralPath `$settingsSnapshotPath -Raw } else { `$null }
+  `$settingsHashBefore = if (Test-Path -LiteralPath `$settingsSnapshotPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath `$settingsSnapshotPath).Hash } else { `$null }
   `$coreTests = `$installer.TestOutput | ConvertFrom-Json
   `$uiTests = `$installer.UiTestOutput | ConvertFrom-Json
   `$uiValidation = `$installer.UiValidationOutput | ConvertFrom-Json
@@ -174,14 +177,16 @@ $remoteExpectedHashes
   Import-Module (Join-Path `$install 'Countdown.Settings.psm1') -Force
   Import-Module (Join-Path `$source 'Countdown.Runtime.psm1') -Force
   `$validation = & `$powerShell7 -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path `$install '敏敏子倒计时.ps1') -ValidateOnly | Out-String | ConvertFrom-Json
-  `$settingsJsonAfter = if (Test-Path -LiteralPath `$settingsPath) { Get-Content -LiteralPath `$settingsPath -Raw } else { `$null }
-  `$settingsHashAfter = if (Test-Path -LiteralPath `$settingsPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath `$settingsPath).Hash } else { `$null }
   `$task = Get-ScheduledTask -TaskName `$taskName
   `$runtimeStatus = Wait-CountdownWindowReady -Path (Join-Path `$install 'runtime-status.json') -LaunchToken ([string] `$deferredReceipt.launchToken) -ExpectedSessionId ([int] `$deferredReceipt.interactiveSessionId) -ExpectedApplicationPath (Join-Path `$install '敏敏子倒计时.ps1') -TimeoutSeconds 5 -PollMilliseconds 250
-  if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash `$settingsHashBefore -AfterHash `$settingsHashAfter -BeforeJson `$settingsJsonBefore -AfterJson `$settingsJsonAfter)) { throw '部署修改了 settings.json（非预期迁移）。' }
   if ([string]`$task.State -ne 'Running') { throw "计划任务未运行：`$(`$task.State)" }
   if (-not [string]::Equals([System.IO.Path]::GetFullPath([string]`$task.Actions.Execute), [System.IO.Path]::GetFullPath(`$powerShell7), [System.StringComparison]::OrdinalIgnoreCase)) { throw '计划任务未使用当前 PowerShell 7。' }
   if (-not (`$validation.FloatingWindowPresent -and `$validation.FloatingManagerButtonPresent)) { throw '悬浮框验证失败。' }
+  # 持锁完成最终设置读取与事务提交；应用保存要么先完成并被检测，要么等待提交后再继续。
+  `$settingsWriteMutex = Enter-CountdownSettingsWriteMutex -Path `$settingsPath -TimeoutSeconds 10
+  `$settingsJsonAfter = if (Test-Path -LiteralPath `$settingsPath) { Get-Content -LiteralPath `$settingsPath -Raw } else { `$null }
+  `$settingsHashAfter = if (Test-Path -LiteralPath `$settingsPath) { (Get-FileHash -Algorithm SHA256 -LiteralPath `$settingsPath).Hash } else { `$null }
+  if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash `$settingsHashBefore -AfterHash `$settingsHashAfter -BeforeJson `$settingsJsonBefore -AfterJson `$settingsJsonAfter)) { throw '部署修改了 settings.json（非预期迁移）。' }
   [void] (Remove-CountdownStartupRequest -Path (Join-Path `$install 'startup-request.json') -LaunchToken ([string] `$deferredReceipt.launchToken))
   `$commitInteractiveContext = Get-CountdownInteractiveDesktopContext
   if (-not [string]::Equals([string] `$commitInteractiveContext.User, [string] `$interactiveContext.User, [System.StringComparison]::OrdinalIgnoreCase) -or
@@ -224,6 +229,7 @@ catch {
   throw "部署失败，已回滚：`$failure"
 }
 finally {
+  if (`$null -ne `$settingsWriteMutex) { Exit-CountdownSettingsWriteMutex -Mutex `$settingsWriteMutex }
   if (`$null -ne `$installMutex) { Exit-CountdownInstallTransactionMutex -Mutex `$installMutex }
 }
 "@

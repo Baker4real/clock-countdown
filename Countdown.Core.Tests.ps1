@@ -270,6 +270,25 @@ else {
         Exit-CountdownInstallTransactionMutex -Mutex $transactionMutex
     }
 }
+$settingsMutexEnterCommand = Get-Command Enter-CountdownSettingsWriteMutex -Module Countdown.Settings -ErrorAction SilentlyContinue
+$settingsMutexExitCommand = Get-Command Exit-CountdownSettingsWriteMutex -Module Countdown.Settings -ErrorAction SilentlyContinue
+Assert-Equal $true ($null -ne $settingsMutexEnterCommand -and $null -ne $settingsMutexExitCommand) 'Settings module exposes a cross-process write mutex'
+$settingsModuleSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Raw
+Assert-Equal $false ($settingsModuleSource.Contains('[System.Security.Cryptography.SHA256]::HashData') -or $settingsModuleSource.Contains('[Convert]::ToHexString')) 'Settings mutex hashing remains compatible with PowerShell 7.0 and .NET Core 3.1'
+if ($null -ne $settingsMutexEnterCommand -and $null -ne $settingsMutexExitCommand) {
+    $settingsMutexProbePath = Join-Path $PSScriptRoot ("settings-mutex-probe-" + [guid]::NewGuid().ToString('N') + '.json')
+    $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $settingsMutexProbePath -TimeoutSeconds 1
+    try {
+        $settingsMutexModulePath = (Join-Path $PSScriptRoot 'Countdown.Settings.psm1').Replace("'", "''")
+        $escapedSettingsMutexProbePath = $settingsMutexProbePath.Replace("'", "''")
+        $settingsMutexProbeCommand = "Import-Module -Name '$settingsMutexModulePath' -Force; try { `$childMutex = Enter-CountdownSettingsWriteMutex -Path '$escapedSettingsMutexProbePath' -TimeoutSeconds 1; Exit-CountdownSettingsWriteMutex -Mutex `$childMutex; 'unexpected acquisition' } catch { `$_.Exception.Message }"
+        $settingsMutexProbeOutput = & $mutexProbeEngine -NoLogo -NoProfile -NonInteractive -Command $settingsMutexProbeCommand | Out-String
+        Assert-Equal $true ($settingsMutexProbeOutput -match '超时') 'Settings write mutex excludes a second PowerShell process'
+    }
+    finally {
+        Exit-CountdownSettingsWriteMutex -Mutex $settingsMutex
+    }
+}
 
 $transactionTestRoot = Join-Path $PSScriptRoot ("transaction-test-" + [guid]::NewGuid().ToString('N'))
 $recoveryConflictRoot = Join-Path $PSScriptRoot ("recovery-conflict-" + [guid]::NewGuid().ToString('N'))
@@ -526,6 +545,15 @@ $deployStartupRemovalIndex = $deploySource.LastIndexOf('Remove-CountdownStartupR
 $deployCommitContextCheckIndex = $deploySource.IndexOf('办公室验收提交前交互用户、会话或桌面路径已变化；拒绝提交事务。')
 $deployCompleteIndex = $deploySource.LastIndexOf('Complete-CountdownInstallTransaction')
 Assert-Equal $true ($deployStartupRemovalIndex -ge 0 -and $deployCommitContextCheckIndex -gt $deployStartupRemovalIndex -and $deployCompleteIndex -gt $deployCommitContextCheckIndex) 'Office acceptance rechecks the interactive desktop context immediately before committing'
+$deployInstallerIndex = $deploySource.IndexOf('`$installerOutput = &')
+$deploySettingsSnapshotIndex = $deploySource.IndexOf('`$settingsSnapshotPath = Join-Path `$rollbackTransactionPath ''install-backup\settings.json''')
+$deploySettingsMutexIndex = $deploySource.IndexOf('`$settingsWriteMutex = Enter-CountdownSettingsWriteMutex')
+$deploySettingsAfterIndex = $deploySource.IndexOf('`$settingsJsonAfter = if (Test-Path -LiteralPath `$settingsPath)')
+$deploySettingsTransitionIndex = $deploySource.IndexOf('Test-CountdownSettingsDeploymentTransition')
+$deploySettingsMutexReleaseIndex = $deploySource.LastIndexOf('Exit-CountdownSettingsWriteMutex')
+Assert-Equal $true ($deploySettingsSnapshotIndex -gt $deployInstallerIndex -and $deploySettingsTransitionIndex -gt $deploySettingsSnapshotIndex) 'Office acceptance compares settings against the post-freeze transaction snapshot'
+Assert-Equal $false ($deploySource.Contains('`$settingsJsonBefore = if (Test-Path -LiteralPath `$settingsPath)')) 'Office acceptance does not capture mutable settings before the installer freezes the old application'
+Assert-Equal $true ($deploySettingsMutexIndex -gt $deploySettingsSnapshotIndex -and $deploySettingsAfterIndex -gt $deploySettingsMutexIndex -and $deploySettingsTransitionIndex -gt $deploySettingsAfterIndex -and $deployCompleteIndex -gt $deploySettingsTransitionIndex -and $deploySettingsMutexReleaseIndex -gt $deployCompleteIndex) 'Office acceptance holds the settings write mutex from the final read through transaction commit'
 
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
 [System.IO.File]::WriteAllText($clearTestPath, '{}')
@@ -681,6 +709,12 @@ Assert-Equal ([DateTimeOffset]'2026-07-19T00:00:00Z') $loadedV7.Notes[0].reminde
 $canonicalV7 = ConvertTo-CountdownSettingsJson -State $loadedV7 | ConvertFrom-Json
 Assert-Equal 30 $canonicalV7.notes[0].reminderIntervalMinutes 'Schema v7 round-trips a reminder interval'
 Assert-Equal ([DateTimeOffset]'2026-07-19T00:00:00Z') ([DateTimeOffset] $canonicalV7.notes[0].reminderStartUtc).ToUniversalTime() 'Schema v7 round-trips a canonical UTC reminder start'
+$preFreezeV7 = $canonicalV7 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$preFreezeV7.monthlySalary = 100
+$postFreezeV7 = $canonicalV7 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$postFreezeV7.monthlySalary = 200
+Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'pre-freeze' -AfterHash 'post-freeze' -BeforeJson ($preFreezeV7 | ConvertTo-Json -Depth 5) -AfterJson ($postFreezeV7 | ConvertTo-Json -Depth 5)) 'Schema v7 changes after the selected deployment baseline are rejected'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'post-freeze' -AfterHash 'post-freeze' -BeforeJson ($postFreezeV7 | ConvertTo-Json -Depth 5) -AfterJson ($postFreezeV7 | ConvertTo-Json -Depth 5)) 'A pre-freeze save preserved in the transaction snapshot remains deployable'
 $reloadedCanonicalV7 = ConvertFrom-CountdownSettingsObject -Settings $canonicalV7
 Assert-Equal 2 $reloadedCanonicalV7.Tags.Count 'Schema v7 reloads tags without optional colors'
 Assert-Equal $null $reloadedCanonicalV7.Tags[1].color 'Schema v7 reload preserves an unspecified tag color'

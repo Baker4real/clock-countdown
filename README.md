@@ -42,6 +42,7 @@ Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
 - `countdown-icon.ico`：窗口和桌面启动器图标
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口使用的三张官方透明角色立绘
+- `assets/floating-plush/*.png`：桌面悬浮窗上、左、右三边使用的三维玩偶素材；来源与非生成式处理说明见 `assets/floating-plush/SOURCES.md`
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.Ui.Tests.ps1`：回归测试

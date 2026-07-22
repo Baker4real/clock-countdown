@@ -859,10 +859,28 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
 [xml] $floatingXaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="敏敏子倒计时悬浮窗" Width="368" SizeToContent="Height" ResizeMode="NoResize"
+        Title="敏敏子倒计时悬浮窗" Width="568" SizeToContent="Height" ResizeMode="NoResize"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True"
         ShowInTaskbar="False" FontFamily="Microsoft YaHei UI">
-  <Border Background="{DynamicResource CanvasBrush}" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1" CornerRadius="18" Padding="16">
+  <Grid x:Name="FloatingPlushFrame">
+    <Grid.RowDefinitions><RowDefinition Height="88"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid x:Name="FloatingPlushTop" Grid.Row="0" IsHitTestVisible="False">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Image x:Name="FloatingPlushTopMyMelodyFront" Width="76" Height="76" Margin="0,4,0,0" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"/>
+      <Image x:Name="FloatingPlushTopCinnamorollPose" Grid.Column="1" Width="76" Height="76" Margin="0,4,0,0" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="-1"/></Image.RenderTransform></Image>
+      <Image x:Name="FloatingPlushTopKuromiFront" Grid.Column="2" Width="76" Height="76" Margin="0,4,0,0" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality"/>
+      <Image x:Name="FloatingPlushTopMyMelodyPose" Grid.Column="3" Width="76" Height="76" Margin="0,4,0,0" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top" RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="-1"/></Image.RenderTransform></Image>
+    </Grid>
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="368"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+      <Grid x:Name="FloatingPlushLeft" Grid.Column="0" MinHeight="240" IsHitTestVisible="False">
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Image x:Name="FloatingPlushLeftKuromiPose" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <Image x:Name="FloatingPlushLeftCinnamorollFront" Grid.Row="1" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="-1"/></Image.RenderTransform></Image>
+        <Image x:Name="FloatingPlushLeftMyMelodyFront" Grid.Row="2" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <Image x:Name="FloatingPlushLeftKuromiFront" Grid.Row="3" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="-1"/></Image.RenderTransform></Image>
+      </Grid>
+      <Border x:Name="FloatingCard" Grid.Column="1" Background="{DynamicResource CanvasBrush}" BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1" CornerRadius="18" Padding="16">
     <Border.Effect><DropShadowEffect Color="{DynamicResource ShadowColor}" BlurRadius="20" ShadowDepth="5" Opacity="0.16"/></Border.Effect>
     <Grid>
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -911,8 +929,17 @@ $tagTextBrush = $window.FindResource('TagTextBrush')
         <Button x:Name="OpenManagerButton" Grid.Column="1" Width="62" Height="32" Margin="8,0,0,0" Content="管理" FontSize="12" Cursor="Hand" ToolTip="打开管理窗口" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource SelectedTextBrush}" BorderBrush="{DynamicResource TagLineBrush}"/>
         <Button x:Name="CloseFloatingButton" Grid.Column="2" Width="32" Height="32" Margin="6,0,0,0" Content="×" FontSize="16" Cursor="Hand" ToolTip="退出应用" Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource DangerTextBrush}" BorderBrush="{DynamicResource HairlineBrush}"/>
       </Grid>
+      </Grid>
+      </Border>
+      <Grid x:Name="FloatingPlushRight" Grid.Column="2" MinHeight="240" IsHitTestVisible="False">
+        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Image x:Name="FloatingPlushRightCinnamorollPose" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <Image x:Name="FloatingPlushRightMyMelodyPose" Grid.Row="1" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="-1"/></Image.RenderTransform></Image>
+        <Image x:Name="FloatingPlushRightKuromiPose" Grid.Row="2" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+        <Image x:Name="FloatingPlushRightCinnamorollFront" Grid.Row="3" Width="76" Height="54" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" RenderTransformOrigin="0.5,0.5"><Image.RenderTransform><ScaleTransform ScaleX="-1"/></Image.RenderTransform></Image>
+      </Grid>
     </Grid>
-  </Border>
+  </Grid>
 </Window>
 '@
 $floatingReader = New-Object System.Xml.XmlNodeReader $floatingXaml
@@ -937,6 +964,43 @@ $floatingAddNoteButton = $floatingWindow.FindName('FloatingAddNoteButton')
 $floatingNoteMessage = $floatingWindow.FindName('FloatingNoteMessage')
 $openManagerButton = $floatingWindow.FindName('OpenManagerButton')
 $closeFloatingButton = $floatingWindow.FindName('CloseFloatingButton')
+$floatingPlushFrame = $floatingWindow.FindName('FloatingPlushFrame')
+$floatingPlushTop = $floatingWindow.FindName('FloatingPlushTop')
+$floatingPlushLeft = $floatingWindow.FindName('FloatingPlushLeft')
+$floatingPlushRight = $floatingWindow.FindName('FloatingPlushRight')
+$floatingCard = $floatingWindow.FindName('FloatingCard')
+$floatingPlushAssets = @(
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushTopMyMelodyFront'); FileName = 'floating-plush-mymelody-front.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushTopCinnamorollPose'); FileName = 'floating-plush-cinnamoroll-pose.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushTopKuromiFront'); FileName = 'floating-plush-kuromi-front.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushTopMyMelodyPose'); FileName = 'floating-plush-mymelody-pose.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushLeftKuromiPose'); FileName = 'floating-plush-kuromi-pose.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushLeftCinnamorollFront'); FileName = 'floating-plush-cinnamoroll-front.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushLeftMyMelodyFront'); FileName = 'floating-plush-mymelody-front.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushLeftKuromiFront'); FileName = 'floating-plush-kuromi-front.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushRightCinnamorollPose'); FileName = 'floating-plush-cinnamoroll-pose.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushRightMyMelodyPose'); FileName = 'floating-plush-mymelody-pose.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushRightKuromiPose'); FileName = 'floating-plush-kuromi-pose.png' }
+    [pscustomobject]@{ Control = $floatingWindow.FindName('FloatingPlushRightCinnamorollFront'); FileName = 'floating-plush-cinnamoroll-front.png' }
+)
+$floatingPlushBitmaps = @{}
+foreach ($asset in $floatingPlushAssets) {
+    $assetPath = Join-Path $PSScriptRoot "assets\floating-plush\$($asset.FileName)"
+    if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
+        throw "缺少悬浮窗玩偶素材：$assetPath"
+    }
+    if (-not $floatingPlushBitmaps.ContainsKey($asset.FileName)) {
+        $bitmap = [System.Windows.Media.Imaging.BitmapImage]::new()
+        $bitmap.BeginInit()
+        $bitmap.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+        $bitmap.CreateOptions = [System.Windows.Media.Imaging.BitmapCreateOptions]::IgnoreImageCache
+        $bitmap.UriSource = [System.Uri]::new($assetPath, [System.UriKind]::Absolute)
+        $bitmap.EndInit()
+        $bitmap.Freeze()
+        $floatingPlushBitmaps[$asset.FileName] = $bitmap
+    }
+    $asset.Control.Source = $floatingPlushBitmaps[$asset.FileName]
+}
 
 function Set-NoteDateSelection {
     param(
@@ -5416,6 +5480,40 @@ if ($ValidateOnly) {
     $validationRuntimeReceiptWritten = $script:runtimeReceiptWritten
     $validationFloatingOpacity = $floatingWindow.Opacity
     $validationFloatingShowActivated = $floatingWindow.ShowActivated
+    $floatingPlushCount = $floatingPlushAssets.Count
+    $floatingPlushBorderLoaded =
+        $floatingPlushFrame -is [System.Windows.Controls.Grid] -and
+        $floatingCard -is [System.Windows.Controls.Border] -and
+        $floatingPlushCount -eq 12 -and
+        @($floatingPlushAssets | Where-Object {
+                $_.Control -isnot [System.Windows.Controls.Image] -or
+                $_.Control.Source -isnot [System.Windows.Media.Imaging.BitmapSource] -or
+                $_.Control.Source.PixelWidth -ne 256 -or
+                $_.Control.Source.PixelHeight -ne 256
+            }).Count -eq 0
+    $floatingPlushBorderUsesTopLeftRightOnly =
+        $floatingPlushTop -is [System.Windows.Controls.Grid] -and
+        $floatingPlushLeft -is [System.Windows.Controls.Grid] -and
+        $floatingPlushRight -is [System.Windows.Controls.Grid] -and
+        $floatingPlushTop.Children.Count -eq 4 -and
+        $floatingPlushLeft.Children.Count -eq 4 -and
+        $floatingPlushRight.Children.Count -eq 4 -and
+        $null -eq $floatingWindow.FindName('FloatingPlushBottom')
+    $floatingPlushDecorationsAreNonInteractive =
+        -not $floatingPlushTop.IsHitTestVisible -and
+        -not $floatingPlushLeft.IsHitTestVisible -and
+        -not $floatingPlushRight.IsHitTestVisible
+    $floatingPlushCardIsUnobscured =
+        $floatingPlushTop.Parent -eq $floatingPlushFrame -and
+        [System.Windows.Controls.Grid]::GetRow($floatingPlushTop) -eq 0 -and
+        $floatingCard.Parent -is [System.Windows.Controls.Grid] -and
+        [System.Windows.Controls.Grid]::GetRow($floatingCard.Parent) -eq 1 -and
+        $floatingPlushLeft.Parent -eq $floatingCard.Parent -and
+        $floatingPlushRight.Parent -eq $floatingCard.Parent -and
+        [System.Windows.Controls.Grid]::GetColumn($floatingPlushLeft) -eq 0 -and
+        [System.Windows.Controls.Grid]::GetColumn($floatingCard) -eq 1 -and
+        [System.Windows.Controls.Grid]::GetColumn($floatingPlushRight) -eq 2
+    $floatingPlushGroupWithinWorkArea = $false
     try {
         $script:runtimeReceiptWritten = $true
         $floatingWindow.Opacity = 0
@@ -5426,6 +5524,11 @@ if ($ValidateOnly) {
             [System.Windows.Threading.DispatcherPriority]::ApplicationIdle
         )
         $floatingCountdownBottomMargin = $floatingWorkArea.Bottom - ($floatingWindow.Top + $floatingWindow.ActualHeight)
+        $floatingPlushGroupWithinWorkArea =
+            $floatingWindow.Left -ge ($floatingWorkArea.Left - 0.5) -and
+            $floatingWindow.Top -ge ($floatingWorkArea.Top - 0.5) -and
+            ($floatingWindow.Left + $floatingWindow.ActualWidth) -le ($floatingWorkArea.Right + 0.5) -and
+            ($floatingWindow.Top + $floatingWindow.ActualHeight) -le ($floatingWorkArea.Bottom + 0.5)
 
         Set-Workspace -Workspace 'Notes'
         $floatingWindow.Dispatcher.Invoke(
@@ -5653,6 +5756,12 @@ if ($ValidateOnly) {
         FloatingWindowStaysAboveWorkAreaBottom = $floatingWindowStaysAboveWorkAreaBottom
         FloatingWindowBottomAnchored = $floatingWindowBottomAnchored
         FloatingWindowReanchorsAfterContentChanges = $floatingWindowReanchorsAfterContentChanges
+        FloatingPlushBorderLoaded = $floatingPlushBorderLoaded
+        FloatingPlushBorderUsesTopLeftRightOnly = $floatingPlushBorderUsesTopLeftRightOnly
+        FloatingPlushCount = $floatingPlushCount
+        FloatingPlushDecorationsAreNonInteractive = $floatingPlushDecorationsAreNonInteractive
+        FloatingPlushCardIsUnobscured = $floatingPlushCardIsUnobscured
+        FloatingPlushGroupWithinWorkArea = $floatingPlushGroupWithinWorkArea
         FloatingCountdownBottomMargin = [Math]::Round($floatingCountdownBottomMargin, 2)
         FloatingNotesBottomMargin = [Math]::Round($floatingNotesBottomMargin, 2)
         FloatingCountdownButtonTextFits = $floatingCountdownButtonTextFit.Fits

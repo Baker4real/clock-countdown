@@ -31,3 +31,4 @@ launcher-state.json.tmp
 .local/
 *.local.md
 .env.local
+assets/floating-plush/source/

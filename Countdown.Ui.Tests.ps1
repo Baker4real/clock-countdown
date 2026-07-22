@@ -57,10 +57,23 @@ if (-not $applicationHostValidation.Valid) { throw 'Application host did not pre
 $runtimeIntegrationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-ui-tests'
 $runtimeIntegrationRoot = Join-Path $runtimeIntegrationEvidenceRoot ("ui-runtime-integration-" + [guid]::NewGuid().ToString('N'))
 $runtimeIntegrationProcess = $null
+$floatingPlushAssetFiles = @(
+    'floating-plush-mymelody-front.png',
+    'floating-plush-mymelody-pose.png',
+    'floating-plush-cinnamoroll-front.png',
+    'floating-plush-cinnamoroll-pose.png',
+    'floating-plush-kuromi-front.png',
+    'floating-plush-kuromi-pose.png'
+)
 try {
     New-Item -ItemType Directory -Path $runtimeIntegrationRoot -Force | Out-Null
     foreach ($file in @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'countdown-icon.ico', 'sanrio-official-mymelody.png', 'sanrio-official-cinnamoroll.png', 'sanrio-official-kuromi.png')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $runtimeIntegrationRoot $file) -Force
+    }
+    $runtimeFloatingPlushRoot = Join-Path $runtimeIntegrationRoot 'assets\floating-plush'
+    New-Item -ItemType Directory -Path $runtimeFloatingPlushRoot -Force | Out-Null
+    foreach ($file in $floatingPlushAssetFiles) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot "assets\floating-plush\$file") -Destination (Join-Path $runtimeFloatingPlushRoot $file) -Force
     }
     $runtimeIntegrationHostPath = Join-Path $runtimeIntegrationRoot 'Countdown.App.psm1'
     $runtimeIntegrationEntry = Join-Path $runtimeIntegrationRoot 'runtime-harness.ps1'
@@ -140,6 +153,12 @@ if (-not $validation.FloatingWindowBottomAnchored) {
     throw "Floating window does not return to the work-area bottom after content size changes: countdown bottom margin=$($validation.FloatingCountdownBottomMargin), notes bottom margin=$($validation.FloatingNotesBottomMargin)."
 }
 if (-not $validation.FloatingWindowReanchorsAfterContentChanges) { throw 'Floating window did not stay bottom-anchored while note content was added and removed.' }
+if (-not $validation.FloatingPlushBorderLoaded) { throw 'The three-sided floating plush border did not load.' }
+if (-not $validation.FloatingPlushBorderUsesTopLeftRightOnly) { throw 'Floating plush characters must surround only the top, left, and right sides; the bottom stays empty.' }
+if ($validation.FloatingPlushCount -ne 12) { throw "Expected twelve floating plush characters, got $($validation.FloatingPlushCount)." }
+if (-not $validation.FloatingPlushDecorationsAreNonInteractive) { throw 'Floating plush characters must remain mouse-transparent decoration.' }
+if (-not $validation.FloatingPlushCardIsUnobscured) { throw 'Floating plush characters overlap the countdown card.' }
+if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The three-sided floating plush group exceeds the desktop work area.' }
 if (-not $validation.FloatingCountdownButtonTextFits) {
     throw "Floating countdown switch label is clipped: available=$($validation.FloatingCountdownButtonTextAvailableWidth), required=$($validation.FloatingCountdownButtonTextRequiredWidth)."
 }

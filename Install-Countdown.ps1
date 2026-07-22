@@ -24,7 +24,7 @@ $officialCharacterAssets = @(
     'sanrio-official-kuromi.png'
 )
 $expected = @{
-    'Countdown.App.psm1' = 'F665D374B514239678B969A4506E7C63FE6C3324BE47DF05DABE1FBA47D922BB'
+    'Countdown.App.psm1' = '58F4DFF7A98EDC8A1C295ABFF6EEB5C57C6E15FDC95015E718764186EA0E958E'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = 'B5454DDC6F37187A40DB4C4A327D3CC48EA481711BB577A9B2F5F445A749B69B'
     'Countdown.Notes.psm1' = '02D65016C7E39BDF40007994A35394AB38A8461AF324C4E17C15EF8F7B5C790C'
@@ -32,13 +32,19 @@ $expected = @{
     'Countdown.Settings.psm1' = '554027EFB10429C883BFA52C28C0636682D53F592CE36A3CDF18A95623FA6A12'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
     'Countdown.Core.Tests.ps1' = '26B038143A0BDAA0E4A89EB805CD920381EC028F2B2B0210CBDBF6F87E1F31F8'
-    'Countdown.Ui.Tests.ps1' = '17DFA2152CE41DEF8E538224215F99F00260E17F5F5334869601046A6D32EFBC'
+    'Countdown.Ui.Tests.ps1' = '7E8FAB88302FB1F25CB458B8AC97D589FE2B10B1BB1277D4C6BE7229207EA51C'
     '敏敏子倒计时.ps1' = '50EDF51C775239D09CC42A218B2952E5115705759CE091DD477EE9E3B54A2B14'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
     'sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
     'sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
+    'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
+    'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
+    'assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
+    'assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
+    'assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
+    'assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
 }
 $applicationFiles = @(
     'Countdown.App.psm1',
@@ -53,7 +59,13 @@ $applicationFiles = @(
     'countdown-icon.ico',
     'sanrio-official-mymelody.png',
     'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png'
+    'sanrio-official-kuromi.png',
+    'assets\floating-plush\floating-plush-mymelody-front.png',
+    'assets\floating-plush\floating-plush-mymelody-pose.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'assets\floating-plush\floating-plush-kuromi-front.png',
+    'assets\floating-plush\floating-plush-kuromi-pose.png'
 )
 
 foreach ($entry in $expected.GetEnumerator()) {
@@ -256,7 +268,9 @@ try {
         $startupRequest = New-CountdownStartupRequest -Path $startupRequestPath
 
         foreach ($file in $applicationFiles) {
-            Copy-Item -LiteralPath (Join-Path $staging $file) -Destination (Join-Path $install $file) -Force
+            $destination = Join-Path $install $file
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $staging $file) -Destination $destination -Force
         }
 
         $appPath = Join-Path $install '敏敏子倒计时.ps1'
@@ -324,7 +338,7 @@ try {
             TestOutput = $testOutput.Trim()
             UiTestOutput = $uiTestOutput.Trim()
             UiValidationOutput = $uiValidationOutput.Trim()
-            InstalledFiles = @(Get-ChildItem -LiteralPath $install -File | Select-Object Name, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
+            InstalledFiles = @(Get-ChildItem -LiteralPath $install -File -Recurse | Select-Object FullName, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
             Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
             Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}
             TaskInfo = Get-ScheduledTaskInfo -TaskName $taskName | Select-Object LastRunTime, LastTaskResult, NextRunTime

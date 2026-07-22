@@ -26,6 +26,12 @@ $requiredFiles = @(
     'sanrio-official-mymelody.png',
     'sanrio-official-cinnamoroll.png',
     'sanrio-official-kuromi.png',
+    'assets\floating-plush\floating-plush-mymelody-front.png',
+    'assets\floating-plush\floating-plush-mymelody-pose.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'assets\floating-plush\floating-plush-kuromi-front.png',
+    'assets\floating-plush\floating-plush-kuromi-pose.png',
     'Install-Countdown.ps1'
 )
 
@@ -35,7 +41,7 @@ function Get-InstallerHashes {
     $hashes = @{}
     $matches = (Get-Content -Raw -LiteralPath $InstallerPath | Select-String -Pattern "'([^']+)'\s*=\s*'([A-F0-9]{64})'" -AllMatches).Matches
     foreach ($match in $matches) { $hashes[$match.Groups[1].Value] = $match.Groups[2].Value }
-    if ($hashes.Count -ne 15) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
+    if ($hashes.Count -ne 21) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
     $hashes
 }
 
@@ -68,7 +74,11 @@ $packageRoot = Join-Path $evidenceRoot 'windows-package'
 $extractRoot = Join-Path $evidenceRoot 'package-check'
 $archive = Join-Path $evidenceRoot 'clock-countdown-windows.zip'
 New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-foreach ($file in $requiredFiles) { Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination (Join-Path $packageRoot $file) -Force }
+foreach ($file in $requiredFiles) {
+    $destination = Join-Path $packageRoot $file
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot $file) -Destination $destination -Force
+}
 Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $archive -CompressionLevel Optimal
 Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot -Force
 foreach ($file in $requiredFiles) {
@@ -106,7 +116,7 @@ Invoke-OfficeEncodedCommand -ScriptText "`$ErrorActionPreference='Stop'; if (Tes
 & scp.exe @script:sshOptions $archive "$($env:REPLICATOR_OFFICE_SSH_DESTINATION):D:/Codex/deploy/clock-countdown-$shortCommit-$runId/clock-countdown.zip"
 if ($LASTEXITCODE -ne 0) { throw '无法上传办公室部署包。' }
 
-$installedFiles = @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.InstallTransaction.psm1', 'Countdown.Notes.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'Countdown.Tags.psm1', '敏敏子倒计时.ps1', 'CountdownLauncher.exe', 'countdown-icon.ico', 'sanrio-official-mymelody.png', 'sanrio-official-cinnamoroll.png', 'sanrio-official-kuromi.png')
+$installedFiles = @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.InstallTransaction.psm1', 'Countdown.Notes.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'Countdown.Tags.psm1', '敏敏子倒计时.ps1', 'CountdownLauncher.exe', 'countdown-icon.ico', 'sanrio-official-mymelody.png', 'sanrio-official-cinnamoroll.png', 'sanrio-official-kuromi.png', 'assets\floating-plush\floating-plush-mymelody-front.png', 'assets\floating-plush\floating-plush-mymelody-pose.png', 'assets\floating-plush\floating-plush-cinnamoroll-front.png', 'assets\floating-plush\floating-plush-cinnamoroll-pose.png', 'assets\floating-plush\floating-plush-kuromi-front.png', 'assets\floating-plush\floating-plush-kuromi-pose.png')
 $remoteExpectedHashes = ($installedFiles | ForEach-Object { "  '$($_)' = '$($expectedHashes[$_])'" }) -join "`r`n"
 
 $remoteInstall = @"

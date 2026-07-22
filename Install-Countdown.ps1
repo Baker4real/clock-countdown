@@ -23,6 +23,14 @@ $officialCharacterAssets = @(
     'sanrio-official-cinnamoroll.png',
     'sanrio-official-kuromi.png'
 )
+$floatingPlushAssets = @(
+    'assets\floating-plush\floating-plush-mymelody-front.png',
+    'assets\floating-plush\floating-plush-mymelody-pose.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'assets\floating-plush\floating-plush-kuromi-front.png',
+    'assets\floating-plush\floating-plush-kuromi-pose.png'
+)
 $expected = @{
     'Countdown.App.psm1' = '58F4DFF7A98EDC8A1C295ABFF6EEB5C57C6E15FDC95015E718764186EA0E958E'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
@@ -31,7 +39,7 @@ $expected = @{
     'Countdown.Runtime.psm1' = '716EF71A830717DD2CA651118D3D99465657481FF164DCE2EA9AA0F305AEF1C2'
     'Countdown.Settings.psm1' = '554027EFB10429C883BFA52C28C0636682D53F592CE36A3CDF18A95623FA6A12'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '26B038143A0BDAA0E4A89EB805CD920381EC028F2B2B0210CBDBF6F87E1F31F8'
+    'Countdown.Core.Tests.ps1' = 'DA0556C66F98375F9CDD689A45FAE948AF413915F31AC706745BA7D77FC06862'
     'Countdown.Ui.Tests.ps1' = '7E8FAB88302FB1F25CB458B8AC97D589FE2B10B1BB1277D4C6BE7229207EA51C'
     '敏敏子倒计时.ps1' = '50EDF51C775239D09CC42A218B2952E5115705759CE091DD477EE9E3B54A2B14'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
@@ -85,6 +93,7 @@ if ($ValidateOnly) {
         SourceRoot = $staging
         VerifiedFiles = $expected.Count
         OfficialCharacterAssets = $officialCharacterAssets
+        FloatingPlushAssets = $floatingPlushAssets
         Transactional = $true
         DeferredCommitSupported = $true
     } | ConvertTo-Json

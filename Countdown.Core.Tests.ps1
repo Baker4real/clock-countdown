@@ -486,8 +486,9 @@ $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonI
 if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
 $installerValidation = $installerValidationJson | ConvertFrom-Json
 Assert-Equal $true $installerValidation.Valid 'Installer package validation succeeds'
-Assert-Equal 15 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, application host, transaction, tag modules and exactly three official character backgrounds'
+Assert-Equal 21 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, application host, transaction, tag modules, three official character backgrounds, and six floating plush assets'
 Assert-Equal 'sanrio-official-mymelody.png,sanrio-official-cinnamoroll.png,sanrio-official-kuromi.png' (@($installerValidation.OfficialCharacterAssets) -join ',') 'Installer includes only the requested official Sanrio character backgrounds'
+Assert-Equal 'assets\floating-plush\floating-plush-mymelody-front.png,assets\floating-plush\floating-plush-mymelody-pose.png,assets\floating-plush\floating-plush-cinnamoroll-front.png,assets\floating-plush\floating-plush-cinnamoroll-pose.png,assets\floating-plush\floating-plush-kuromi-front.png,assets\floating-plush\floating-plush-kuromi-pose.png' (@($installerValidation.FloatingPlushAssets) -join ',') 'Installer includes all six floating plush assets'
 Assert-Equal $true $installerValidation.Transactional 'Installer exposes transactional install boundary'
 Assert-Equal $true $installerValidation.DeferredCommitSupported 'Installer exposes deferred commit for office acceptance'
 $installerCommand = Get-Command (Join-Path $PSScriptRoot 'Install-Countdown.ps1')

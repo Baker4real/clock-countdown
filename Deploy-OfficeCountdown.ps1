@@ -320,4 +320,15 @@ finally {
   if (`$null -ne `$installMutex) { Exit-CountdownInstallTransactionMutex -Mutex `$installMutex }
 }
 "@
-Invoke-OfficeEncodedCommand -ScriptText $remoteInstall
+$remoteInstallScript = Join-Path $evidenceRoot 'remote-install.ps1'
+[System.IO.File]::WriteAllText(
+    $remoteInstallScript,
+    $remoteInstall,
+    [System.Text.UTF8Encoding]::new($false)
+)
+$remoteInstallHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $remoteInstallScript).Hash
+$remoteInstallDestination = "D:/Codex/deploy/clock-countdown-$shortCommit-$runId/remote-install.ps1"
+& scp.exe @script:sshOptions $remoteInstallScript "$($env:REPLICATOR_OFFICE_SSH_DESTINATION):$remoteInstallDestination"
+if ($LASTEXITCODE -ne 0) { throw '无法上传办公室远端安装脚本。' }
+$remoteInstallPath = "$remoteRoot\remote-install.ps1"
+Invoke-OfficeEncodedCommand -ScriptText "if ((Get-FileHash -Algorithm SHA256 -LiteralPath '$remoteInstallPath').Hash -ne '$remoteInstallHash') { throw '远端安装脚本哈希不匹配。' }; & (Join-Path `$PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File '$remoteInstallPath'; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }"

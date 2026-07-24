@@ -753,6 +753,10 @@ $deploySource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-O
 $installerBuildHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1')).Hash
 Assert-Equal $true $installerSource.Contains("'Build-CountdownApplication.ps1' = '$installerBuildHash'") 'Installer integrity manifest covers the build script required by remote core tests'
 Assert-Equal $true $deploySource.Contains("'Build-CountdownApplication.ps1',") 'Office package includes the build script required by remote core tests'
+Assert-Equal $false $deploySource.Contains('Invoke-OfficeEncodedCommand -ScriptText $remoteInstall') 'Office deploy does not exceed the Windows command-line limit by embedding the full remote install script'
+Assert-Equal $true $deploySource.Contains('$remoteInstallScript = Join-Path $evidenceRoot ''remote-install.ps1''') 'Office deploy materializes the long remote install script as a transfer artifact'
+Assert-Equal $true $deploySource.Contains('& scp.exe @script:sshOptions $remoteInstallScript') 'Office deploy transfers the remote install script through the strict SSH channel'
+Assert-Equal $true $deploySource.Contains("throw '远端安装脚本哈希不匹配。'") 'Office deploy verifies the transferred remote install script before execution'
 $deployCommitGateIndex = $deploySource.IndexOf('本地 HEAD 与 origin/main 不一致，拒绝部署。')
 $deployBuildIndex = $deploySource.IndexOf('& $powerShell7 -NoLogo -NoProfile -NonInteractive -File $buildScript -Clean')
 $deployManifestReadIndex = $deploySource.IndexOf('$expectedHashes = Get-InstallerHashes')

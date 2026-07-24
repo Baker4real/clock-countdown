@@ -1,6 +1,6 @@
 # 敏敏子倒计时
 
-Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设置截止时刻，程序统一按北京时间（UTC+8）计算、排序和显示。
+基于 C# / .NET 10 WPF 的 Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设置截止时刻，程序统一按北京时间（UTC+8）计算、排序和显示；PowerShell 7 继续负责安装、计划任务和办公室部署。
 
 ## 功能
 
@@ -30,8 +30,14 @@ Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设
 
 ## 文件说明
 
-- `敏敏子倒计时.ps1`：WPF 桌面程序
-- `Countdown.App.psm1`：应用宿主；收拢 WPF 生命周期与保持兼容的 `-ValidateOnly` 验证入口
+- `敏敏子倒计时.ps1`：C# 应用的薄启动 adapter；映射既有参数并传播真实退出码，不回退旧 PowerShell WPF
+- `src/MinminCountdown`：C# WPF 应用宿主源码
+- `src/MinminCountdown.Core`：设置 schema、校验、原子写入与跨进程 mutex
+- `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序
+- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个应用资产
+- `app/MinminCountdown.exe`：生成的 C# WPF 应用
+- `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
+- `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归基线；生产入口不再调用
 - `Countdown.Core.psm1`：北京时间换算与倒计时核心逻辑
 - `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
@@ -45,15 +51,19 @@ Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设
 - `assets/floating-plush/*.png`：桌面悬浮窗左上、右上、右下贴边使用的三维玩偶素材；来源与非生成式处理说明见 `assets/floating-plush/SOURCES.md`
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
-- `Countdown.Core.Tests.ps1`、`Countdown.Ui.Tests.ps1`：回归测试
+- `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
+迁移决策、module/seam 划分和候选语言比较见 [架构与语言迁移](docs/架构与语言迁移.md)。
 
 ## 本机验证
 
-硬约束：本项目的应用、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF 入口仍必须使用 `-STA`。
+硬约束：本项目的 PowerShell adapter、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF adapter 入口仍必须使用 `-STA`。
 
 ```powershell
+pwsh.exe -NoLogo -NoProfile -File .\Build-CountdownApplication.ps1 -Clean
+.\verification\MinminCountdown.Verification.exe
+pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.Ui.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1 -ValidateOnly
@@ -69,7 +79,7 @@ pwsh.exe -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1
 
 ## 安装
 
-安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、创建启动器并注册登录任务。新任务必须用本次启动令牌写出“窗口首帧已渲染”的回执，安装器最多等待 30 秒；正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
+安装前先运行 `Build-CountdownApplication.ps1 -Clean` 并按发布产物更新 `Install-Countdown.ps1` 的 SHA-256 清单。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、创建启动器并注册登录任务。新任务必须用本次启动令牌写出“窗口首帧已渲染”的回执，安装器最多等待 30 秒；正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1

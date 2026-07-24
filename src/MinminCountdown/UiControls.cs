@@ -1,0 +1,365 @@
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using MinminCountdown.Core;
+
+namespace MinminCountdown;
+
+internal static class UiAccessibility
+{
+    public static T Name<T>(T element, string name)
+        where T : FrameworkElement
+    {
+        AutomationProperties.SetName(element, name);
+        return element;
+    }
+
+    public static void MarkLive(TextBlock textBlock)
+    {
+        AutomationProperties.SetLiveSetting(textBlock, AutomationLiveSetting.Polite);
+    }
+}
+
+internal sealed class TagSelector : Grid
+{
+    private readonly Button _trigger;
+    private readonly Popup _popup;
+    private readonly TextBox _search;
+    private readonly Button _create;
+    private readonly StackPanel _items;
+    private IReadOnlyList<TagRecord> _tags = Array.Empty<TagRecord>();
+    private bool _rendering;
+
+    public TagSelector()
+    {
+        _trigger = UiAccessibility.Name(
+            new Button
+            {
+                Content = "选择标签",
+                MinWidth = 116,
+                Style = (Style)FindResource("SecondaryButton")
+            },
+            "选择标签");
+        Children.Add(_trigger);
+
+        _search = UiAccessibility.Name(
+            new TextBox { MaxLength = 30, Margin = new Thickness(0, 0, 0, 8) },
+            "搜索或新建标签");
+        _search.TextChanged += (_, _) => RenderItems();
+
+        _create = UiAccessibility.Name(
+            new Button
+            {
+                Content = "新建标签",
+                IsDefault = false,
+                Visibility = Visibility.Collapsed,
+                Style = (Style)FindResource("PrimaryButton"),
+                Margin = new Thickness(0, 8, 0, 0)
+            },
+            "新建当前搜索标签");
+        _create.Click += (_, _) =>
+        {
+            var name = _search.Text.Trim();
+            if (name.Length > 0)
+            {
+                CreateRequested?.Invoke(this, name);
+            }
+        };
+
+        _items = new StackPanel();
+        var panel = new StackPanel { Margin = new Thickness(10) };
+        panel.Children.Add(_search);
+        panel.Children.Add(new ScrollViewer
+        {
+            Content = _items,
+            MaxHeight = 220,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        });
+        panel.Children.Add(_create);
+
+        var surface = new Border
+        {
+            Background = (Brush)FindResource("CanvasBrush"),
+            BorderBrush = (Brush)FindResource("PeachLineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Child = panel,
+            MinWidth = 230
+        };
+        _popup = new Popup
+        {
+            PlacementTarget = _trigger,
+            Placement = PlacementMode.Bottom,
+            AllowsTransparency = true,
+            StaysOpen = false,
+            PopupAnimation = PopupAnimation.Fade,
+            Child = surface
+        };
+        _trigger.Click += (_, _) => _popup.IsOpen = !_popup.IsOpen;
+        Children.Add(_popup);
+    }
+
+    public event EventHandler? SelectionChanged;
+
+    public event Action<object?, string>? CreateRequested;
+
+    public HashSet<string> SelectedTagIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool IsPopupOpen
+    {
+        get => _popup.IsOpen;
+        set => _popup.IsOpen = value;
+    }
+
+    public bool CreateActionVisible => _create.Visibility == Visibility.Visible;
+
+    public string SummaryText => _trigger.Content?.ToString() ?? string.Empty;
+
+    public bool CreateButtonIsDefault => _create.IsDefault;
+
+    public bool ProbeCreateAction(string query)
+    {
+        _search.Text = query;
+        return _create.Visibility == Visibility.Visible;
+    }
+
+    public void SetTags(IReadOnlyList<TagRecord> tags)
+    {
+        _tags = tags;
+        SelectedTagIds.RemoveWhere(id => !_tags.Any(
+            tag => string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase)));
+        RenderItems();
+        UpdateSummary();
+    }
+
+    public void SetSelection(IEnumerable<string> tagIds)
+    {
+        SelectedTagIds.Clear();
+        foreach (var id in tagIds)
+        {
+            SelectedTagIds.Add(id);
+        }
+
+        RenderItems();
+        UpdateSummary();
+    }
+
+    private void RenderItems()
+    {
+        if (_rendering)
+        {
+            return;
+        }
+
+        _rendering = true;
+        try
+        {
+            _items.Children.Clear();
+            var query = _search.Text.Trim();
+            var visibleTags = _tags.Where(tag =>
+                query.Length == 0 ||
+                tag.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase));
+            foreach (var tag in visibleTags)
+            {
+                var checkBox = UiAccessibility.Name(
+                    new CheckBox
+                    {
+                        Content = tag.Name,
+                        IsChecked = SelectedTagIds.Contains(tag.Id),
+                        Tag = tag.Id,
+                        Uid = tag.Id,
+                        Margin = new Thickness(2, 3, 2, 3)
+                    },
+                    $"标签 {tag.Name}");
+                checkBox.Checked += OnTagChecked;
+                checkBox.Unchecked += OnTagChecked;
+                _items.Children.Add(checkBox);
+            }
+
+            _create.Visibility =
+                query.Length > 0 &&
+                !_tags.Any(tag => string.Equals(tag.Name, query, StringComparison.OrdinalIgnoreCase))
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
+        finally
+        {
+            _rendering = false;
+        }
+    }
+
+    private void OnTagChecked(object sender, RoutedEventArgs eventArgs)
+    {
+        if (_rendering || sender is not CheckBox { Tag: string id } checkBox)
+        {
+            return;
+        }
+
+        if (checkBox.IsChecked == true)
+        {
+            SelectedTagIds.Add(id);
+        }
+        else
+        {
+            SelectedTagIds.Remove(id);
+        }
+
+        UpdateSummary();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UpdateSummary()
+    {
+        var names = _tags
+            .Where(tag => SelectedTagIds.Contains(tag.Id))
+            .Select(tag => tag.Name)
+            .ToArray();
+        var text = names.Length switch
+        {
+            0 => "选择标签",
+            1 => names[0],
+            2 => $"{names[0]}、{names[1]}",
+            _ => $"{names[0]} +{names.Length - 1}"
+        };
+        if (text.Length > 18)
+        {
+            text = text[..15] + "...";
+        }
+
+        _trigger.Content = text;
+        AutomationProperties.SetName(_trigger, names.Length == 0 ? "选择标签" : $"已选标签：{string.Join("、", names)}");
+    }
+}
+
+internal static class ThemedDatePickerBehavior
+{
+    private static readonly HashSet<DatePicker> Attached = new();
+    private static readonly HashSet<DatePicker> PointerPressedOnText = new();
+
+    public static void Attach(DatePicker picker)
+    {
+        if (!Attached.Add(picker))
+        {
+            return;
+        }
+
+        picker.PreviewMouseLeftButtonDown += (_, eventArgs) =>
+        {
+            if (IsDateTextSource(eventArgs.OriginalSource as DependencyObject))
+            {
+                PointerPressedOnText.Add(picker);
+            }
+        };
+        picker.PreviewMouseLeftButtonUp += (_, eventArgs) =>
+        {
+            if (PointerPressedOnText.Remove(picker) &&
+                IsDateTextSource(eventArgs.OriginalSource as DependencyObject))
+            {
+                picker.IsDropDownOpen = true;
+                eventArgs.Handled = true;
+            }
+        };
+        picker.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(picker);
+    }
+
+    public static bool IsAttached(DatePicker picker) => Attached.Contains(picker);
+
+    private static bool IsDateTextSource(DependencyObject? source)
+    {
+        var cursor = source;
+        while (cursor is not null)
+        {
+            if (cursor is DatePickerTextBox)
+            {
+                return true;
+            }
+
+            cursor = VisualTreeHelper.GetParent(cursor);
+        }
+
+        return false;
+    }
+}
+
+internal sealed class ConfirmationDialog : Window
+{
+    public ConfirmationDialog(Window owner, string title, string message)
+    {
+        Owner = owner;
+        Title = title;
+        Width = 390;
+        Height = 210;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        WindowStyle = WindowStyle.None;
+        ResizeMode = ResizeMode.NoResize;
+        ShowInTaskbar = false;
+        Background = (Brush)FindResource("BackgroundBrush");
+
+        var cancel = UiAccessibility.Name(
+            new Button
+            {
+                Content = "取消",
+                IsDefault = true,
+                IsCancel = true,
+                MinWidth = 82,
+                Style = (Style)FindResource("SecondaryButton")
+            },
+            "取消");
+        var confirm = UiAccessibility.Name(
+            new Button
+            {
+                Content = "确认删除",
+                IsDefault = false,
+                MinWidth = 96,
+                Margin = new Thickness(8, 0, 0, 0),
+                Style = (Style)FindResource("DangerButton")
+            },
+            "确认删除");
+        confirm.Click += (_, _) =>
+        {
+            DialogResult = true;
+            Close();
+        };
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        actions.Children.Add(cancel);
+        actions.Children.Add(confirm);
+
+        var layout = new Grid { Margin = new Thickness(24) };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition());
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var heading = new TextBlock
+        {
+            Text = title,
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold
+        };
+        var body = new TextBlock
+        {
+            Text = message,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 14, 0, 18),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetRow(body, 1);
+        Grid.SetRow(actions, 2);
+        layout.Children.Add(heading);
+        layout.Children.Add(body);
+        layout.Children.Add(actions);
+        Content = new Border
+        {
+            Child = layout,
+            BorderBrush = (Brush)FindResource("PeachLineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8)
+        };
+    }
+}

@@ -14,44 +14,72 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 
-$resolvedDiagnosticLogPath = if ([string]::IsNullOrWhiteSpace($DiagnosticLogPath)) {
-    Join-Path $PSScriptRoot 'logs\application.jsonl'
+$applicationPath = [System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot 'app\MinminCountdown.exe')
+)
+if (-not (Test-Path -LiteralPath $applicationPath -PathType Leaf)) {
+    throw [System.IO.FileNotFoundException]::new(
+        "未找到 C# 应用宿主：$applicationPath。入口不允许回退到旧 PowerShell WPF。",
+        $applicationPath
+    )
+}
+
+$applicationArguments = [System.Collections.Generic.List[string]]::new()
+if ($ValidateOnly.IsPresent) {
+    $applicationArguments.Add('--validate-only')
 }
 else {
-    [System.IO.Path]::GetFullPath($DiagnosticLogPath)
+    # 生产 adapter 启动必须绑定安装器写出的请求；缺失或损坏时由 C# 宿主 fail-closed。
+    $applicationArguments.Add('--require-startup-request')
 }
-$diagnosticsEnabled = -not $ValidateOnly -or $PSBoundParameters.ContainsKey('DiagnosticLogPath')
+if ($ExerciseNoteAdd.IsPresent) {
+    $applicationArguments.Add('--exercise-note-add')
+}
+if ($ExercisePersistenceFailures.IsPresent) {
+    $applicationArguments.Add('--exercise-persistence-failures')
+}
+if ($ExerciseTagInteractions.IsPresent) {
+    $applicationArguments.Add('--exercise-tag-interactions')
+}
+if ($ExerciseFatalDiagnostic.IsPresent) {
+    $applicationArguments.Add('--exercise-fatal-diagnostic')
+}
+if ($ExitAfterReadyForTest.IsPresent) {
+    $applicationArguments.Add('--exit-after-ready-for-test')
+}
+if ($PSBoundParameters.ContainsKey('SettingsFile')) {
+    $applicationArguments.Add('--settings-file')
+    $applicationArguments.Add($SettingsFile)
+}
+if ($PSBoundParameters.ContainsKey('DiagnosticLogPath')) {
+    $applicationArguments.Add('--diagnostic-log-path')
+    $applicationArguments.Add($DiagnosticLogPath)
+}
 
-Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
-function Write-CountdownEntryDiagnostic {
-    param(
-        [Parameter(Mandatory)] [ValidateSet('Info', 'Warning', 'Error')] [string] $Level,
-        [Parameter(Mandatory)] [string] $Event,
-        [AllowNull()] [System.Exception] $Exception,
-        [AllowNull()] [AllowEmptyString()] [string] $ScriptStackTrace
-    )
+$startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$startInfo.FileName = $applicationPath
+$startInfo.UseShellExecute = $false
+$startInfo.WorkingDirectory = $PSScriptRoot
+$startInfo.RedirectStandardOutput = $false
+$startInfo.RedirectStandardError = $false
+foreach ($argument in $applicationArguments) {
+    $startInfo.ArgumentList.Add($argument)
+}
 
-    try {
-        Countdown.Runtime\Write-CountdownDiagnosticEvent -Path $resolvedDiagnosticLogPath -Level $Level -Event $Event -Exception $Exception -ScriptStackTrace $ScriptStackTrace | Out-Null
-    }
-    catch {
-        # 诊断写入失败不能覆盖应用原始异常或改变正常退出语义。
-    }
-}
-if ($diagnosticsEnabled) {
-    Write-CountdownEntryDiagnostic -Level Info -Event 'ProcessStarted'
-}
+$process = [System.Diagnostics.Process]::new()
 try {
-    Import-Module (Join-Path $PSScriptRoot 'Countdown.App.psm1') -Force
-    Start-CountdownApplication @PSBoundParameters -ApplicationPath $PSCommandPath
-    if ($diagnosticsEnabled) {
-        Write-CountdownEntryDiagnostic -Level Info -Event 'ProcessExited'
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) {
+        throw "无法启动 C# 应用宿主：$applicationPath"
     }
+
+    $process.WaitForExit()
+    $exitCode = $process.ExitCode
 }
-catch {
-    if ($diagnosticsEnabled) {
-        Write-CountdownEntryDiagnostic -Level Error -Event 'FatalUnhandledException' -Exception $_.Exception -ScriptStackTrace $_.ScriptStackTrace
-    }
-    throw
+finally {
+    $process.Dispose()
 }
+
+exit $exitCode

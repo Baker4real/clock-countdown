@@ -106,15 +106,42 @@ Assert-Equal $true $invalidRejected 'Invalid date rejected'
 
 $runtimeTestRoot = Join-Path $PSScriptRoot ("runtime-test-" + [guid]::NewGuid().ToString('N'))
 $runtimeStatusTestPath = Join-Path $runtimeTestRoot 'runtime-status.json'
+$acceptanceStatusTestPath = Join-Path $runtimeTestRoot 'acceptance-status.json'
 $startupRequestTestPath = Join-Path $runtimeTestRoot 'startup-request.json'
 $runtimeApplicationPath = Join-Path $runtimeTestRoot '敏敏子倒计时.ps1'
+$runtimeExecutablePath = Join-Path $runtimeTestRoot 'app\MinminCountdown.exe'
 $diagnosticLogTestPath = Join-Path $runtimeTestRoot 'logs\application.jsonl'
 try {
     New-Item -ItemType Directory -Path $runtimeTestRoot -Force | Out-Null
     [System.IO.File]::WriteAllText($runtimeApplicationPath, '# test application', (New-Object System.Text.UTF8Encoding($false)))
-    $startupRequest = New-CountdownStartupRequest -Path $startupRequestTestPath
+    $startupRequest = New-CountdownStartupRequest -Path $startupRequestTestPath -AcceptanceReadOnly
     Assert-Equal 1 $startupRequest.schemaVersion 'Startup request schema'
     Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $startupRequest.launchToken)) 'Startup request has token'
+    Assert-Equal $true ([bool] $startupRequest.acceptanceReadOnly) 'Startup request can hold the candidate application in acceptance read-only mode'
+    Assert-Equal 'active' ([string] $startupRequest.acceptanceState) 'Startup request begins in active acceptance state'
+    Assert-Equal $false (Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken 'wrong-token') 'Startup request rejects release with a different token'
+    Assert-Equal $true (Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken $startupRequest.launchToken) 'Startup request releases acceptance mode with the same token'
+    $releasedStartupRequest = Get-Content -LiteralPath $startupRequestTestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 'released' ([string] $releasedStartupRequest.acceptanceState) 'Startup request persists explicit released acceptance state'
+    Assert-Equal $true ([bool] $releasedStartupRequest.acceptanceReadOnly) 'Released startup request keeps the UI read-only until C# confirms migration'
+    Assert-Equal 'released' ([string] (Wait-CountdownStartupRequestState -Path $startupRequestTestPath -LaunchToken $startupRequest.launchToken -ExpectedState released -TimeoutSeconds 0).acceptanceState) 'Startup request state wait validates token and state'
+    $releasedStartupRequest.acceptanceState = 'ready'
+    [System.IO.File]::WriteAllText($startupRequestTestPath, ($releasedStartupRequest | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
+    Assert-Equal $true (Set-CountdownStartupRequestFinalized -Path $startupRequestTestPath -LaunchToken $startupRequest.launchToken) 'Startup request finalizes only after C# reports ready'
+    $finalizedStartupRequest = Get-Content -LiteralPath $startupRequestTestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 'finalized' ([string] $finalizedStartupRequest.acceptanceState) 'Startup request persists explicit finalized state'
+    Assert-Equal $false ([bool] $finalizedStartupRequest.acceptanceReadOnly) 'Finalized startup request permits UI editing'
+    [System.IO.File]::WriteAllText($startupRequestTestPath, '{broken-json', [System.Text.UTF8Encoding]::new($false))
+    $corruptReleaseRejected = $false
+    try { Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken $startupRequest.launchToken | Out-Null }
+    catch { $corruptReleaseRejected = $true }
+    Assert-Equal $true $corruptReleaseRejected 'Startup request release preserves JSON and IO failures as exceptions'
+    [System.IO.File]::WriteAllText($startupRequestTestPath, '{"schemaVersion":999,"launchToken":"unknown","acceptanceState":"active"}', [System.Text.UTF8Encoding]::new($false))
+    $unknownSchemaRejected = $false
+    try { Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken 'unknown' | Out-Null }
+    catch { $unknownSchemaRejected = $_.Exception.Message -match 'schemaVersion' }
+    Assert-Equal $true $unknownSchemaRejected 'Startup request rejects unknown schema versions'
+    $startupRequest = New-CountdownStartupRequest -Path $startupRequestTestPath -AcceptanceReadOnly
     Assert-Equal $false (Test-Path -LiteralPath "$startupRequestTestPath.tmp") 'Startup request leaves no fixed temporary file'
     $receipt = Write-CountdownWindowReadyReceipt -Path $runtimeStatusTestPath -LaunchToken $startupRequest.launchToken -ProcessId 4242 -SessionId 7 -ApplicationPath $runtimeApplicationPath -CalendarState Pending
     $processProbe = {
@@ -123,9 +150,36 @@ try {
             [pscustomobject]@{ ProcessId = 4242; SessionId = 7; CommandLine = "pwsh.exe -STA -File `"$runtimeApplicationPath`"" }
         }
     }
-    $ready = Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -ProcessProbe $processProbe
-    Assert-Equal $true $ready.Ready 'Window-ready receipt accepts current token, process, session and path'
-    Assert-Equal 'Pending' $ready.Receipt.calendarState 'Window-ready does not wait for calendar'
+    $defaultAdapterEvaluation = Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -ProcessProbe $processProbe
+    Assert-Equal $false $defaultAdapterEvaluation.Ready 'Window-ready receipt rejects the legacy PowerShell adapter by default'
+    $legacyAdapterEvaluation = Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -ProcessProbe $processProbe -AllowLegacyPowerShellAdapter
+    Assert-Equal $true $legacyAdapterEvaluation.Ready 'Window-ready receipt accepts the legacy PowerShell adapter only in explicit compatibility mode'
+    Assert-Equal 'Pending' $legacyAdapterEvaluation.Receipt.calendarState 'Window-ready does not wait for calendar'
+    $managedExecutableProbe = {
+        param([int] $ProcessId)
+        if ($ProcessId -eq 4242) {
+            [pscustomobject]@{ ProcessId = 4242; SessionId = 7; ExecutablePath = $runtimeExecutablePath; CommandLine = "`"$runtimeExecutablePath`"" }
+        }
+    }
+    Assert-Equal $true (Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -ProcessProbe $managedExecutableProbe).Ready 'Window-ready receipt accepts the managed C# application host'
+    $acceptanceReceipt = [ordered]@{
+        schemaVersion = 1
+        stage = 'finalized-ready'
+        launchToken = $startupRequest.launchToken
+        processId = 4242
+        sessionId = 7
+        applicationPath = $runtimeApplicationPath
+        readyAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+    [System.IO.File]::WriteAllText($acceptanceStatusTestPath, ($acceptanceReceipt | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+    Assert-Equal 'finalized-ready' ([string] (Wait-CountdownAcceptanceReadyReceipt -Path $acceptanceStatusTestPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -TimeoutSeconds 0 -ProcessProbe $managedExecutableProbe).stage) 'Acceptance-ready receipt validates token, C# PID, session and adapter path'
+    $unmanagedExecutableProbe = {
+        param([int] $ProcessId)
+        if ($ProcessId -eq 4242) {
+            [pscustomobject]@{ ProcessId = 4242; SessionId = 7; ExecutablePath = (Join-Path $runtimeTestRoot 'other\MinminCountdown.exe'); CommandLine = '"MinminCountdown.exe"' }
+        }
+    }
+    Assert-Equal $false (Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -ProcessProbe $unmanagedExecutableProbe).Ready 'Window-ready receipt rejects an unmanaged executable with the expected process name'
     Assert-Equal $false (Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken 'old-token' -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -ProcessProbe $processProbe).Ready 'Old startup token is rejected'
     Assert-Equal $false (Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $startupRequest.launchToken -ExpectedSessionId 8 -ExpectedApplicationPath $runtimeApplicationPath -ProcessProbe $processProbe).Ready 'Wrong interactive session is rejected'
     Assert-Equal $false (Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath (Join-Path $runtimeTestRoot 'other.ps1') -ProcessProbe $processProbe).Ready 'Wrong application path is rejected'
@@ -249,6 +303,41 @@ $taskStillQueued = Test-CountdownManagedApplicationStopped -ProcessIds @() -Task
 Assert-Equal $false $taskStillQueued.Ready 'Managed application stop waits for a queued scheduled task even without a process'
 $taskStateUnknown = Test-CountdownManagedApplicationStopped -ProcessIds @() -TaskStates @{ 'Minmin Countdown' = 'Unknown'; '敏敏子倒计时' = 'Ready' }
 Assert-Equal $false $taskStateUnknown.Ready 'Managed application stop treats an unknown scheduled-task state as still active'
+$processQueryFailureRejected = $false
+try {
+    & $transactionModule {
+        param($ApplicationPath)
+        Get-CountdownManagedApplicationProcesses -ApplicationPath $ApplicationPath -ProcessQueryAction { throw 'injected process query failure' }
+    } $runtimeApplicationPath | Out-Null
+}
+catch {
+    $processQueryFailureRejected = $_.Exception.Message -match 'injected process query failure'
+}
+Assert-Equal $true $processQueryFailureRejected 'Managed process probe fails closed when CIM enumeration fails'
+$taskQueryFailureRejected = $false
+try {
+    & $transactionModule {
+        Get-CountdownManagedTaskStates -TaskName 'Minmin Countdown' -LegacyTaskName '敏敏子倒计时' -TaskQueryAction { throw 'injected task query failure' }
+    } | Out-Null
+}
+catch {
+    $taskQueryFailureRejected = $_.Exception.Message -match 'injected task query failure'
+}
+Assert-Equal $true $taskQueryFailureRejected 'Managed task probe fails closed when scheduled-task enumeration fails'
+$legacyRemovalQueryFailureRejected = $false
+try {
+    Remove-CountdownScheduledTaskIfPresent -TaskName '敏敏子倒计时' -TaskQueryAction { throw 'injected legacy task query failure' } | Out-Null
+}
+catch {
+    $legacyRemovalQueryFailureRejected = $_.Exception.Message -match 'injected legacy task query failure'
+}
+Assert-Equal $true $legacyRemovalQueryFailureRejected 'Legacy task removal fails closed when scheduled-task enumeration fails'
+$exactTaskStates = & $transactionModule {
+    Get-CountdownManagedTaskStates -TaskName 'Minmin Countdown' -LegacyTaskName '敏敏子倒计时' -TaskQueryAction {
+        [pscustomobject]@{ TaskName = 'Minmin Countdown Extra'; State = 'Running' }
+    }
+}
+Assert-Equal 'Missing' $exactTaskStates['Minmin Countdown'] 'Managed task probe requires an exact task-name match'
 $stopCommand = Get-Command Stop-CountdownManagedApplication -Module Countdown.InstallTransaction
 Assert-Equal $true $stopCommand.Parameters.ContainsKey('FreezeFutureStarts') 'Managed application stop can freeze future scheduled-task starts'
 $mutexProbeModulePath = (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1').Replace("'", "''")
@@ -292,6 +381,10 @@ if ($null -ne $settingsMutexEnterCommand -and $null -ne $settingsMutexExitComman
 
 $transactionTestRoot = Join-Path $PSScriptRoot ("transaction-test-" + [guid]::NewGuid().ToString('N'))
 $recoveryConflictRoot = Join-Path $PSScriptRoot ("recovery-conflict-" + [guid]::NewGuid().ToString('N'))
+$committedCleanupRoot = Join-Path $PSScriptRoot ("committed-cleanup-" + [guid]::NewGuid().ToString('N'))
+$reparseSafetyRoot = Join-Path $PSScriptRoot ("reparse-safety-" + [guid]::NewGuid().ToString('N'))
+$reparseDirectLinkPath = $null
+$reparseNestedLinkPath = $null
 $transactionInstallPath = Join-Path $transactionTestRoot 'install'
 $transactionDesktopPath = Join-Path $transactionTestRoot 'desktop'
 $transactionLauncherPath = Join-Path $transactionDesktopPath '敏敏子倒计时.exe'
@@ -300,6 +393,23 @@ $transactionLegacyLauncherPath = Join-Path $transactionDesktopPath '敏敏子倒
 $transactionSuffix = [guid]::NewGuid().ToString('N')
 try {
     New-Item -ItemType Directory -Path $transactionInstallPath, $transactionDesktopPath -Force | Out-Null
+    $reparseTargetPath = Join-Path $reparseSafetyRoot 'protected-target'
+    $reparseDirectLinkPath = Join-Path $reparseSafetyRoot 'direct-link'
+    $reparseTreePath = Join-Path $reparseSafetyRoot 'transaction-tree'
+    $reparseNestedLinkPath = Join-Path $reparseTreePath 'nested-link'
+    New-Item -ItemType Directory -Path $reparseTargetPath, $reparseTreePath -Force | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $reparseTargetPath 'protected.txt'), 'must survive', (New-Object System.Text.UTF8Encoding($false)))
+    New-Item -ItemType Junction -Path $reparseDirectLinkPath -Target $reparseTargetPath | Out-Null
+    New-Item -ItemType Junction -Path $reparseNestedLinkPath -Target $reparseTargetPath | Out-Null
+    $directReparseRejected = $false
+    try { [void] (Assert-CountdownInstallPathOnDDrive -Path (Join-Path $reparseDirectLinkPath 'protected.txt')) }
+    catch { $directReparseRejected = $_.Exception.Message -match 'reparse point' }
+    Assert-Equal $true $directReparseRejected 'Install path validation rejects an ancestor junction before file operations'
+    $nestedReparseRejected = $false
+    try { & (Get-Module Countdown.InstallTransaction) { param($path) [void] (Assert-CountdownInstallTreeHasNoReparsePoints -Path $path) } $reparseTreePath }
+    catch { $nestedReparseRejected = $_.Exception.Message -match 'reparse point' }
+    Assert-Equal $true $nestedReparseRejected 'Recursive transaction operations reject nested junctions before deletion or copy'
+    Assert-Equal 'must survive' ([System.IO.File]::ReadAllText((Join-Path $reparseTargetPath 'protected.txt'), [System.Text.Encoding]::UTF8)) 'Reparse point rejection leaves the external target untouched'
     [System.IO.File]::WriteAllText((Join-Path $transactionInstallPath 'settings.json'), '{"before":true}', (New-Object System.Text.UTF8Encoding($false)))
     [System.IO.File]::WriteAllText((Join-Path $transactionInstallPath '敏敏子倒计时.ps1'), '# old app', (New-Object System.Text.UTF8Encoding($false)))
     [System.IO.File]::WriteAllText($transactionLauncherPath, 'old launcher', (New-Object System.Text.UTF8Encoding($false)))
@@ -464,7 +574,67 @@ try {
     $commitTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $commitTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Commit $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Commit $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
     Copy-Item -LiteralPath $candidateLauncherSourcePath -Destination $transactionLauncherPath -Force
     Complete-CountdownInstallTransaction -TransactionPath $commitTransaction.transactionPath -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Commit $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Commit $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
-    Assert-Equal $false (Test-Path -LiteralPath $commitTransaction.transactionPath) 'Transaction commit clears deferred backup only after acceptance'
+    Assert-Equal $true (Test-Path -LiteralPath $commitTransaction.transactionPath) 'Transaction commit retains rollback evidence until application acceptance acknowledgement'
+    $committedJournal = Get-Content -LiteralPath (Join-Path $commitTransaction.transactionPath 'journal.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 'accepted' ([string] $committedJournal.phase) 'Transaction remains rollbackable while waiting for application acknowledgement'
+    Remove-CountdownCommittedInstallTransaction -TransactionPath $commitTransaction.transactionPath -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Commit $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Commit $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
+    Assert-Equal $false (Test-Path -LiteralPath $commitTransaction.transactionPath) 'Committed transaction cleanup removes backup only after acknowledgement'
+    $committedCleanupInstallPath = Join-Path $committedCleanupRoot 'install'
+    $committedCleanupDesktopPath = Join-Path $committedCleanupRoot 'desktop'
+    $committedCleanupLauncherPath = Join-Path $committedCleanupDesktopPath '敏敏子倒计时.exe'
+    $committedCleanupLauncherTempPath = "$committedCleanupLauncherPath.new"
+    $committedCleanupLegacyLauncherPath = Join-Path $committedCleanupDesktopPath '敏敏子倒计时.cmd'
+    New-Item -ItemType Directory -Path $committedCleanupInstallPath, $committedCleanupDesktopPath -Force | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $committedCleanupInstallPath 'settings.json'), '{"committed-before":true}', (New-Object System.Text.UTF8Encoding($false)))
+    [System.IO.File]::WriteAllText($committedCleanupLauncherPath, 'committed old launcher', (New-Object System.Text.UTF8Encoding($false)))
+    $committedCleanupTransaction = Start-CountdownInstallTransaction -InstallPath $committedCleanupInstallPath -LauncherPath $committedCleanupLauncherPath -LegacyLauncherPath $committedCleanupLegacyLauncherPath -TaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -LegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix"
+    $committedCleanupTransaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $committedCleanupTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+    $committedCleanupTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $committedCleanupTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+    Copy-Item -LiteralPath $candidateLauncherSourcePath -Destination $committedCleanupLauncherPath -Force
+    [System.IO.File]::WriteAllText((Join-Path $committedCleanupInstallPath 'settings.json'), '{"committed-new":true}', (New-Object System.Text.UTF8Encoding($false)))
+    Complete-CountdownInstallTransaction -TransactionPath $committedCleanupTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+    $committedTransactionLeaf = Split-Path -Leaf $committedCleanupTransaction.transactionPath
+    $committedTransactionParent = Split-Path -Parent $committedCleanupTransaction.transactionPath
+    Remove-CountdownCommittedInstallTransaction -TransactionPath $committedCleanupTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -CleanupAction { param($path) Remove-Item -LiteralPath (Join-Path $path 'journal.json') -Force; throw "模拟 journal 已删除后的 committed tombstone 清理失败：$path" }
+    Assert-Equal $false (Test-Path -LiteralPath $committedCleanupTransaction.transactionPath) 'Committed cleanup atomically renames the transaction before recursive deletion'
+    $committedTombstones = @(Get-ChildItem -LiteralPath $committedTransactionParent -Directory -Force | Where-Object { $_.Name -like "$committedTransactionLeaf.committed-*" })
+    Assert-Equal 1 $committedTombstones.Count 'Committed cleanup failure retains one tombstone directory'
+    Assert-Equal $false (Test-Path -LiteralPath (Join-Path $committedTombstones[0].FullName 'journal.json')) 'Committed cleanup test reproduces a partial deletion that already removed journal.json'
+    $committedMarkers = @(Get-ChildItem -LiteralPath $committedTransactionParent -File -Filter "$committedTransactionLeaf.committed-*.marker.json" -Force)
+    Assert-Equal 1 $committedMarkers.Count 'External committed cleanup marker survives partial tombstone deletion'
+    if (-not $ParentTransactionMutexHeld) {
+        $committedRecoveryStatus = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -CommittedCleanupAction { param($path) throw "模拟 committed tombstone 重试仍失败：$path" }
+        Assert-Equal 0 @($committedRecoveryStatus.RecoveredTransactionPaths).Count 'Recovery never rolls back a committed tombstone'
+        Assert-Equal 1 @($committedRecoveryStatus.UnresolvedCommittedTransactions).Count 'Recovery reports a committed tombstone while cleanup remains blocked'
+        Assert-Equal '{"committed-new":true}' ([System.IO.File]::ReadAllText((Join-Path $committedCleanupInstallPath 'settings.json'), [System.Text.Encoding]::UTF8)) 'Recovery preserves the accepted install after committed cleanup failure'
+        $committedRetryStatus = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+        Assert-Equal 0 @($committedRetryStatus.UnresolvedCommittedTransactions).Count 'Recovery automatically clears a committed tombstone after the transient cleanup failure ends'
+        Assert-Equal $false (Test-Path -LiteralPath $committedTombstones[0].FullName) 'Committed tombstone retry removes stale transaction evidence without rollback'
+        Assert-Equal $false (Test-Path -LiteralPath $committedMarkers[0].FullName) 'Committed tombstone retry removes the external marker only after cleanup succeeds'
+
+        $moveFailureTransaction = Start-CountdownInstallTransaction -InstallPath $committedCleanupInstallPath -LauncherPath $committedCleanupLauncherPath -LegacyLauncherPath $committedCleanupLegacyLauncherPath -TaskName "Minmin Countdown Move Failure $transactionSuffix" -LegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix"
+        $moveFailureTransaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+        $moveFailureTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $moveFailureTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+        Copy-Item -LiteralPath $candidateLauncherSourcePath -Destination $committedCleanupLauncherPath -Force
+        Complete-CountdownInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+        Remove-CountdownCommittedInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -MoveAction { param($source, $destination) throw "模拟 committed 后目录重命名失败：$source -> $destination" }
+        $moveFailureJournal = [System.IO.File]::ReadAllText((Join-Path $moveFailureTransaction.transactionPath 'journal.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        Assert-Equal 'committed' ([string] $moveFailureJournal.phase) 'Move failure after commit leaves the original transaction permanently committed'
+        $committedUndoRejected = $false
+        try { Undo-CountdownInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -PowerShell7Path $transactionPowerShell -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -RestoreWindowsTimeAction { param($snapshot) } }
+        catch { $committedUndoRejected = $_.Exception.Message -match '禁止重新进入回滚' }
+        Assert-Equal $true $committedUndoRejected 'Undo rejects a committed transaction even when tombstone rename failed'
+        $moveFailureCleanupAttempts = [System.Collections.Generic.List[string]]::new()
+        $moveFailureRecovery = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -CommittedCleanupAction {
+            param($path)
+            [void] $moveFailureCleanupAttempts.Add($path)
+            if ($moveFailureCleanupAttempts.Count -eq 1) { throw "模拟同一次 recovery 的首次清理失败：$path" }
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+        }
+        Assert-Equal 2 $moveFailureCleanupAttempts.Count 'Recovery retries the same committed transaction through its sidecar after a transient first failure'
+        Assert-Equal 0 @($moveFailureRecovery.UnresolvedCommittedTransactions).Count 'Recovery cleans a committed transaction left at its original path after move failure'
+        Assert-Equal $false (Test-Path -LiteralPath $moveFailureTransaction.transactionPath) 'Move-failed committed transaction is cleanup-only and never rolled back'
+    }
     $commitReplacementTransaction = Start-CountdownInstallTransaction -InstallPath $transactionInstallPath -LauncherPath $transactionLauncherPath -LegacyLauncherPath $transactionLegacyLauncherPath -TaskName "Minmin Countdown Commit Replacement $transactionSuffix" -LegacyTaskName "敏敏子倒计时 Commit Replacement $transactionSuffix"
     $commitReplacementTransaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $commitReplacementTransaction.transactionPath -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Commit Replacement $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Commit Replacement $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
     $commitReplacementTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $commitReplacementTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Commit Replacement $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Commit Replacement $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
@@ -496,8 +666,15 @@ try {
     Assert-Equal $true $tamperedJournalRejected 'Transaction rollback rejects backup paths outside its journal directory'
 }
 finally {
+    foreach ($junctionPath in @($reparseDirectLinkPath, $reparseNestedLinkPath)) {
+        if (-not [string]::IsNullOrWhiteSpace([string] $junctionPath) -and (Test-Path -LiteralPath $junctionPath)) {
+            Remove-Item -LiteralPath $junctionPath -Force -ErrorAction SilentlyContinue
+        }
+    }
     Remove-Item -LiteralPath $transactionTestRoot -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $recoveryConflictRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $committedCleanupRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $reparseSafetyRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 $installerValidationEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
@@ -505,7 +682,7 @@ $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonI
 if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
 $installerValidation = $installerValidationJson | ConvertFrom-Json
 Assert-Equal $true $installerValidation.Valid 'Installer package validation succeeds'
-Assert-Equal 21 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, application host, transaction, tag modules, three official character backgrounds, and six floating plush assets'
+Assert-Equal 33 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, C# application and verification hosts, transaction and tag modules, C# regression tests, and both legacy-root and C# app asset sets'
 Assert-Equal 'sanrio-official-mymelody.png,sanrio-official-cinnamoroll.png,sanrio-official-kuromi.png' (@($installerValidation.OfficialCharacterAssets) -join ',') 'Installer includes only the requested official Sanrio character backgrounds'
 Assert-Equal 'assets\floating-plush\floating-plush-mymelody-front.png,assets\floating-plush\floating-plush-mymelody-pose.png,assets\floating-plush\floating-plush-cinnamoroll-front.png,assets\floating-plush\floating-plush-cinnamoroll-pose.png,assets\floating-plush\floating-plush-kuromi-front.png,assets\floating-plush\floating-plush-kuromi-pose.png' (@($installerValidation.FloatingPlushAssets) -join ',') 'Installer includes all six floating plush assets'
 Assert-Equal $true $installerValidation.Transactional 'Installer exposes transactional install boundary'
@@ -521,40 +698,74 @@ Assert-Equal $false $recoveryCommand.Parameters.ContainsKey('TransactionMutexHel
 $candidateCommand = Get-Command Set-CountdownInstallTransactionCandidateLauncherHash -Module Countdown.InstallTransaction
 Assert-Equal $true $candidateCommand.Parameters.ContainsKey('CandidateLauncherSha256') 'Transaction persists a candidate launcher hash before replacement'
 $installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Install-Countdown.ps1'), [System.Text.Encoding]::UTF8)
+$installerCommittedRecoveryMessageIndex = $installerSource.IndexOf('检测到已提交但未完成应用解锁确认的事务')
+$installerOwnershipRecoveryMessageIndex = $installerSource.IndexOf('检测到用户替换的桌面启动器：应用、任务和时间服务已恢复')
+Assert-Equal $true ($installerCommittedRecoveryMessageIndex -ge 0 -and $installerCommittedRecoveryMessageIndex -lt $installerOwnershipRecoveryMessageIndex) 'Installer prioritizes committed recovery evidence over a simultaneous launcher conflict'
 $timeSourceWaitDefinitionIndex = $installerSource.IndexOf('function Wait-CountdownNetworkTimeSource')
 $timeSourceWaitCallIndex = $installerSource.IndexOf('$timeSource = Wait-CountdownNetworkTimeSource')
 Assert-Equal $true ($timeSourceWaitDefinitionIndex -ge 0 -and $timeSourceWaitCallIndex -gt $timeSourceWaitDefinitionIndex) 'Installer waits with a bounded network-time source probe'
 Assert-Equal $true ($installerSource -notmatch 'Start-Sleep -Seconds 3') 'Installer does not rely on a fixed three-second time-service sleep'
 $payloadCaptureIndex = $installerSource.IndexOf('$transaction = Capture-CountdownInstallPayloadSnapshot')
-$candidatePathIndex = $installerSource.IndexOf("`$candidateLauncherPath = Join-Path `$transaction.transactionPath 'candidate-launcher.exe'")
+$candidatePathIndex = $installerSource.IndexOf("`$candidateLauncherPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path `$transaction.transactionPath 'candidate-launcher.exe')")
 $candidatePersistIndex = $installerSource.IndexOf('$transaction = Set-CountdownInstallTransactionCandidateLauncherHash')
 $preparedLauncherGuardIndex = $installerSource.IndexOf('changed while installation was preparing')
 $candidateHashCheckIndex = $installerSource.IndexOf('Transaction launcher candidate changed before desktop replacement.')
 $launcherMoveIndex = $installerSource.IndexOf('Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force')
 $installedLauncherHashCheckIndex = $installerSource.IndexOf('Desktop launcher hash mismatch after replacement.')
 Assert-Equal $true ($payloadCaptureIndex -ge 0 -and $candidatePathIndex -gt $payloadCaptureIndex -and $candidatePersistIndex -gt $candidatePathIndex -and $preparedLauncherGuardIndex -gt $candidatePersistIndex -and $candidateHashCheckIndex -gt $preparedLauncherGuardIndex -and $launcherMoveIndex -gt $candidateHashCheckIndex -and $installedLauncherHashCheckIndex -gt $launcherMoveIndex) 'Installer keeps candidate under the transaction and verifies both candidate and replaced launcher immediately around the move'
-$installerStartupRemovalIndex = $installerSource.LastIndexOf('Remove-CountdownStartupRequest')
-$installerCommitContextCheckIndex = $installerSource.LastIndexOf('Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext')
+$installTreeGuardIndex = $installerSource.IndexOf('Assert-CountdownInstallTreeHasNoReparsePoints -Path $install', $payloadCaptureIndex)
+$payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force', $installTreeGuardIndex)
+Assert-Equal $true ($installTreeGuardIndex -gt $payloadCaptureIndex -and $payloadCopyIndex -gt $installTreeGuardIndex) 'Installer rechecks the install tree after the stable snapshot and before writing payload files'
+$installerStartupReleaseIndex = $installerSource.LastIndexOf('Complete-CountdownStartupRequest')
+$installerStartupReadyIndex = $installerSource.LastIndexOf('Wait-CountdownStartupRequestState')
+$installerStartupFinalizeIndex = $installerSource.LastIndexOf('Set-CountdownStartupRequestFinalized')
+$installerAcceptanceReadyIndex = $installerSource.LastIndexOf('Wait-CountdownAcceptanceReadyReceipt')
+$installerTransactionCleanupIndex = $installerSource.LastIndexOf('Remove-CountdownCommittedInstallTransaction')
 $installerCompleteIndex = $installerSource.LastIndexOf('Complete-CountdownInstallTransaction')
-Assert-Equal $true ($installerStartupRemovalIndex -ge 0 -and $installerCommitContextCheckIndex -gt $installerStartupRemovalIndex -and $installerCompleteIndex -gt $installerCommitContextCheckIndex) 'Installer rechecks the interactive desktop context immediately before committing'
+$installerAcceptanceRequestIndex = $installerSource.IndexOf('New-CountdownStartupRequest -Path $startupRequestPath -AcceptanceReadOnly')
+$installerCommitContextCheckIndex = $installerSource.LastIndexOf('Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext', $installerStartupReleaseIndex)
+$installerReadyContextCheckIndex = $installerSource.LastIndexOf('Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext', $installerCompleteIndex)
+$installerCommitRuntimeIndex = $installerSource.LastIndexOf('$commitRuntimeStatus = Wait-CountdownWindowReady')
+$installerCommitPidIndex = $installerSource.LastIndexOf('$commitRuntimeStatus.processId -ne [int] $runtimeStatus.processId')
+$installerCommitTaskIndex = $installerSource.LastIndexOf('$commitTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop')
+$installerReadyRuntimeIndex = $installerSource.LastIndexOf('$readyRuntimeStatus = Wait-CountdownWindowReady')
+$installerReadyPidIndex = $installerSource.LastIndexOf('$readyRuntimeStatus.processId -ne [int] $runtimeStatus.processId')
+$installerReadyTaskIndex = $installerSource.LastIndexOf('$readyTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop')
+Assert-Equal $true ($installerAcceptanceRequestIndex -ge 0 -and $installerCommitContextCheckIndex -gt $installerAcceptanceRequestIndex -and $installerCommitRuntimeIndex -gt $installerCommitContextCheckIndex -and $installerCommitPidIndex -gt $installerCommitRuntimeIndex -and $installerCommitTaskIndex -gt $installerCommitPidIndex -and $installerStartupReleaseIndex -gt $installerCommitTaskIndex -and $installerStartupReadyIndex -gt $installerStartupReleaseIndex -and $installerReadyContextCheckIndex -gt $installerStartupReadyIndex -and $installerReadyRuntimeIndex -gt $installerReadyContextCheckIndex -and $installerReadyPidIndex -gt $installerReadyRuntimeIndex -and $installerReadyTaskIndex -gt $installerReadyPidIndex -and $installerCompleteIndex -gt $installerReadyTaskIndex -and $installerStartupFinalizeIndex -gt $installerCompleteIndex -and $installerAcceptanceReadyIndex -gt $installerStartupFinalizeIndex -and $installerTransactionCleanupIndex -gt $installerAcceptanceReadyIndex) 'Installer retains rollback evidence until the same C# PID confirms finalized-ready'
 $deploySource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
+$deployCommitGateIndex = $deploySource.IndexOf('本地 HEAD 与 origin/main 不一致，拒绝部署。')
+$deployBuildIndex = $deploySource.IndexOf('& $powerShell7 -NoLogo -NoProfile -NonInteractive -File $buildScript -Clean')
+$deployManifestReadIndex = $deploySource.IndexOf('$expectedHashes = Get-InstallerHashes')
+Assert-Equal $true ($deployCommitGateIndex -ge 0 -and $deployBuildIndex -gt $deployCommitGateIndex -and $deployManifestReadIndex -gt $deployBuildIndex) 'Office deploy clean-builds C# artifacts from the fixed main commit before reading the integrity manifest'
 Assert-Equal $true ($deploySource.Contains('& tailscale.exe ping --until-direct=false --c 3 --timeout 10s $officeHost')) 'Office connectivity probe retries encrypted Tailscale reachability without requiring a direct path'
 Assert-Equal $true ($deploySource.Contains('-PreserveUnmanagedLaunchers')) 'Office acceptance rollback preserves user-replaced launcher files while restoring system state'
 Assert-Equal $true ($deploySource.Contains('UnresolvedLauncherOwnershipConflicts')) 'Office acceptance reports an unresolved pre-receipt launcher conflict'
 Assert-Equal $true ($deploySource.Contains('已恢复应用、任务和时间服务')) 'Office acceptance reports a partial conflict recovery accurately'
-$deployStartupRemovalIndex = $deploySource.LastIndexOf('Remove-CountdownStartupRequest')
+$deployCommittedRecoveryMessageIndex = $deploySource.IndexOf('检测到已提交但未完成解锁确认的事务，未声称回滚')
+$deployOwnershipRecoveryMessageIndex = $deploySource.IndexOf('已恢复应用、任务和时间服务；为保护用户替换的桌面启动器')
+Assert-Equal $true ($deployCommittedRecoveryMessageIndex -ge 0 -and $deployCommittedRecoveryMessageIndex -lt $deployOwnershipRecoveryMessageIndex) 'Office acceptance prioritizes committed recovery evidence over a simultaneous launcher conflict'
+$deployStartupReleaseIndex = $deploySource.LastIndexOf('Complete-CountdownStartupRequest')
+$deployStartupReadyIndex = $deploySource.LastIndexOf('Wait-CountdownStartupRequestState')
+$deployStartupFinalizeIndex = $deploySource.LastIndexOf('Set-CountdownStartupRequestFinalized')
+$deployAcceptanceReadyIndex = $deploySource.LastIndexOf('Wait-CountdownAcceptanceReadyReceipt')
+$deployTransactionCleanupIndex = $deploySource.LastIndexOf('Remove-CountdownCommittedInstallTransaction')
 $deployCommitContextCheckIndex = $deploySource.IndexOf('办公室验收提交前交互用户、会话或桌面路径已变化；拒绝提交事务。')
+$deployCommitRuntimeIndex = $deploySource.LastIndexOf('`$commitRuntimeStatus = Wait-CountdownWindowReady')
+$deployCommitPidIndex = $deploySource.LastIndexOf('`$commitRuntimeStatus.processId -ne [int] `$runtimeStatus.processId')
+$deployCommitTaskIndex = $deploySource.LastIndexOf('`$commitTask = Get-ScheduledTask -TaskName `$taskName -ErrorAction Stop')
 $deployCompleteIndex = $deploySource.LastIndexOf('Complete-CountdownInstallTransaction')
-Assert-Equal $true ($deployStartupRemovalIndex -ge 0 -and $deployCommitContextCheckIndex -gt $deployStartupRemovalIndex -and $deployCompleteIndex -gt $deployCommitContextCheckIndex) 'Office acceptance rechecks the interactive desktop context immediately before committing'
+Assert-Equal $true ($deployCommitContextCheckIndex -ge 0 -and $deployCommitRuntimeIndex -gt $deployCommitContextCheckIndex -and $deployCommitPidIndex -gt $deployCommitRuntimeIndex -and $deployCommitTaskIndex -gt $deployCommitPidIndex -and $deployStartupReleaseIndex -gt $deployCommitTaskIndex -and $deployStartupReadyIndex -gt $deployStartupReleaseIndex -and $deployCompleteIndex -gt $deployStartupReadyIndex -and $deployStartupFinalizeIndex -gt $deployCompleteIndex -and $deployAcceptanceReadyIndex -gt $deployStartupFinalizeIndex -and $deployTransactionCleanupIndex -gt $deployAcceptanceReadyIndex) 'Office acceptance retains rollback evidence until the same C# PID confirms finalized-ready'
 $deployInstallerIndex = $deploySource.IndexOf('`$installerOutput = &')
 $deploySettingsSnapshotIndex = $deploySource.IndexOf('`$settingsSnapshotPath = Join-Path `$rollbackTransactionPath ''install-backup\settings.json''')
 $deploySettingsMutexIndex = $deploySource.IndexOf('`$settingsWriteMutex = Enter-CountdownSettingsWriteMutex')
 $deploySettingsAfterIndex = $deploySource.IndexOf('`$settingsJsonAfter = if (Test-Path -LiteralPath `$settingsPath)')
 $deploySettingsTransitionIndex = $deploySource.IndexOf('Test-CountdownSettingsDeploymentTransition')
-$deploySettingsMutexReleaseIndex = $deploySource.LastIndexOf('Exit-CountdownSettingsWriteMutex')
+$deploySettingsMutexReleaseIndex = $deploySource.IndexOf('Exit-CountdownSettingsWriteMutex')
+$deploySettingsReadyIndex = $deploySource.IndexOf('`$settingsJsonReady = if (Test-Path -LiteralPath `$settingsPath)')
+$deploySettingsReadyTransitionIndex = $deploySource.IndexOf('C# schema 迁移超出允许的数据等价范围。')
 Assert-Equal $true ($deploySettingsSnapshotIndex -gt $deployInstallerIndex -and $deploySettingsTransitionIndex -gt $deploySettingsSnapshotIndex) 'Office acceptance compares settings against the post-freeze transaction snapshot'
 Assert-Equal $false ($deploySource.Contains('`$settingsJsonBefore = if (Test-Path -LiteralPath `$settingsPath)')) 'Office acceptance does not capture mutable settings before the installer freezes the old application'
-Assert-Equal $true ($deploySettingsMutexIndex -gt $deploySettingsSnapshotIndex -and $deploySettingsAfterIndex -gt $deploySettingsMutexIndex -and $deploySettingsTransitionIndex -gt $deploySettingsAfterIndex -and $deployCompleteIndex -gt $deploySettingsTransitionIndex -and $deploySettingsMutexReleaseIndex -gt $deployCompleteIndex) 'Office acceptance holds the settings write mutex from the final read through transaction commit'
+Assert-Equal $true ($deploySettingsMutexIndex -gt $deploySettingsSnapshotIndex -and $deploySettingsAfterIndex -gt $deploySettingsMutexIndex -and $deploySettingsTransitionIndex -gt $deploySettingsAfterIndex -and $deploySettingsMutexReleaseIndex -gt $deploySettingsTransitionIndex -and $deployStartupReleaseIndex -gt $deploySettingsMutexReleaseIndex -and $deploySettingsReadyIndex -gt $deployStartupReadyIndex -and $deploySettingsReadyTransitionIndex -gt $deploySettingsReadyIndex -and $deployCompleteIndex -gt $deploySettingsReadyTransitionIndex) 'Office acceptance releases the mutex for C# migration, then re-locks and validates migrated settings before commit'
 
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
 [System.IO.File]::WriteAllText($clearTestPath, '{}')

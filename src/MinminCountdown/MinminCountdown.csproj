@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>..\..\countdown-icon.ico</ApplicationIcon>
+    <AssemblyName>MinminCountdown</AssemblyName>
+    <RootNamespace>MinminCountdown</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MinminCountdown.Core\MinminCountdown.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\sanrio-official-mymelody.png" Link="assets\sanrio-official-mymelody.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\sanrio-official-cinnamoroll.png" Link="assets\sanrio-official-cinnamoroll.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\sanrio-official-kuromi.png" Link="assets\sanrio-official-kuromi.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\*.png" Link="assets\floating-plush\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

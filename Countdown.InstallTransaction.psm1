@@ -18,6 +18,35 @@ function Assert-CountdownInstallPathOnDDrive {
     if (-not $resolved.StartsWith('D:\', [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "安装事务只允许操作 D 盘路径：$resolved"
     }
+    $root = [System.IO.Path]::GetPathRoot($resolved)
+    $current = $root
+    foreach ($segment in $resolved.Substring($root.Length).Split([char[]] @('\', '/'), [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $current = Join-Path $current $segment
+        if (-not (Test-Path -LiteralPath $current)) { break }
+        $attributes = [System.IO.File]::GetAttributes($current)
+        if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "安装事务拒绝 reparse point 路径：$current"
+        }
+    }
+    $resolved
+}
+
+function Assert-CountdownInstallTreeHasNoReparsePoints {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $resolved = Assert-CountdownInstallPathOnDDrive -Path $Path
+    if (-not (Test-Path -LiteralPath $resolved -PathType Container)) { return $resolved }
+    $pending = [System.Collections.Generic.Stack[string]]::new()
+    $pending.Push($resolved)
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Pop()
+        foreach ($item in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "安装事务目录树包含 reparse point：$($item.FullName)"
+            }
+            if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+        }
+    }
     $resolved
 }
 
@@ -133,9 +162,9 @@ function Get-CountdownSingleInteractiveExplorerContext {
 }
 
 function Get-CountdownInteractiveDesktopContext {
-    $explorerContext = Get-CountdownSingleInteractiveExplorerContext -ExplorerProcesses @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'") -OwnerResolver {
+    $explorerContext = Get-CountdownSingleInteractiveExplorerContext -ExplorerProcesses @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -OperationTimeoutSec 2 -ErrorAction Stop) -OwnerResolver {
         param($process)
-        Invoke-CimMethod -InputObject $process -MethodName GetOwner
+        Invoke-CimMethod -InputObject $process -MethodName GetOwner -OperationTimeoutSec 2 -ErrorAction Stop
     }
     $explorer = $explorerContext.Process
     $owner = $explorerContext.Owner
@@ -175,8 +204,8 @@ function Test-CountdownInstallChildPath {
         [Parameter(Mandatory)] [string] $ParentPath
     )
 
-    $child = ConvertTo-CountdownInstallFullPath -Path $Path
-    $parent = (ConvertTo-CountdownInstallFullPath -Path $ParentPath).TrimEnd('\') + '\'
+    $child = Assert-CountdownInstallPathOnDDrive -Path $Path
+    $parent = (Assert-CountdownInstallPathOnDDrive -Path $ParentPath).TrimEnd('\') + '\'
     $child.StartsWith($parent, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
@@ -184,7 +213,7 @@ function Get-CountdownTransactionBasePath {
     param([Parameter(Mandatory)] [string] $InstallPath)
 
     $install = Assert-CountdownInstallPathOnDDrive -Path $InstallPath
-    Join-Path (Split-Path -Parent $install) '.minmin-countdown-transactions'
+    Assert-CountdownInstallPathOnDDrive -Path (Join-Path (Split-Path -Parent $install) '.minmin-countdown-transactions')
 }
 
 function Enter-CountdownInstallTransactionMutex {
@@ -224,8 +253,9 @@ function Remove-CountdownEmptyTransactionBase {
 
     # 事务目录已删除后，清理空父目录只是卫生动作，绝不能把已提交事务误报为失败。
     try {
-        if ((Test-Path -LiteralPath $BasePath -PathType Container) -and @((Get-ChildItem -LiteralPath $BasePath -Force -ErrorAction Stop)).Count -eq 0) {
-            Remove-Item -LiteralPath $BasePath -Force -ErrorAction Stop
+        $base = Assert-CountdownInstallPathOnDDrive -Path $BasePath
+        if ((Test-Path -LiteralPath $base -PathType Container) -and @((Get-ChildItem -LiteralPath $base -Force -ErrorAction Stop)).Count -eq 0) {
+            Remove-Item -LiteralPath $base -Force -ErrorAction Stop
         }
     }
     catch {
@@ -258,7 +288,7 @@ function Write-CountdownInstallTransactionJournal {
         [Parameter(Mandatory)] [object] $Journal
     )
 
-    $transaction = ConvertTo-CountdownInstallFullPath -Path $TransactionPath
+    $transaction = Assert-CountdownInstallPathOnDDrive -Path $TransactionPath
     Write-CountdownInstallJsonAtomically -Path (Join-Path $transaction 'journal.json') -Value $Journal
 }
 
@@ -408,8 +438,8 @@ function Get-CountdownInstallTransactionJournal {
         [hashtable] $ValidatedTaskXml
     )
 
-    $transaction = ConvertTo-CountdownInstallFullPath -Path $TransactionPath
-    $journalPath = Join-Path $transaction 'journal.json'
+    $transaction = Assert-CountdownInstallPathOnDDrive -Path $TransactionPath
+    $journalPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $transaction 'journal.json')
     if (-not (Test-Path -LiteralPath $journalPath -PathType Leaf)) { throw "安装事务缺少 journal：$transaction" }
     $journal = [System.IO.File]::ReadAllText($journalPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     if ($null -eq $journal) { throw "安装事务 journal 为空：$transaction" }
@@ -428,12 +458,24 @@ function Get-CountdownInstallTransactionJournal {
     if (-not (Test-CountdownInstallChildPath -Path $transaction -ParentPath $basePath)) {
         throw "拒绝读取不受管的事务目录：$transaction"
     }
-    if (-not [string]::Equals((ConvertTo-CountdownInstallFullPath -Path $journalTransactionPath), $transaction, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "安装事务 journal 路径不匹配：$transaction"
-    }
     foreach ($name in @('launcherPath', 'legacyLauncherPath', 'taskName', 'legacyTaskName', 'windowsTime', 'currentTask', 'legacyTask', 'phase', 'installExisted', 'launcherExisted', 'legacyLauncherExisted')) {
         if ($null -eq (Get-CountdownJournalProperty -Journal $journal -Name $name)) {
             throw "安装事务 journal 缺少 $name：$transaction"
+        }
+    }
+    $phase = Get-CountdownRequiredStringProperty -Object $journal -Name 'phase' -Context \"安装事务 journal：$transaction\"
+    if ($phase -notin @('prepared', 'payload-snapshot-failed', 'payload-snapshotted', 'launcher-candidate-staged', 'rolling-back', 'rollback-failed', 'launcher-ownership-conflict', 'accepted', 'committed', 'rolled-back')) {
+        throw \"安装事务 journal phase 不受支持：$phase\"
+    }
+    $originalTransaction = ConvertTo-CountdownInstallFullPath -Path $journalTransactionPath
+    if (-not (Test-CountdownInstallChildPath -Path $originalTransaction -ParentPath $basePath)) {
+        throw "安装事务 journal 原始路径不受管：$originalTransaction"
+    }
+    $isCommittedTombstone = -not [string]::Equals($originalTransaction, $transaction, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($isCommittedTombstone) {
+        $expectedTombstonePattern = '^' + [regex]::Escape($originalTransaction) + '\.committed-[0-9a-fA-F]{32}$'
+        if ($phase -ne 'committed' -or $transaction -notmatch $expectedTombstonePattern) {
+            throw "安装事务 journal 路径不匹配：$transaction"
         }
     }
 
@@ -455,16 +497,40 @@ function Get-CountdownInstallTransactionJournal {
     if ($null -eq $journal.PSObject.Properties['candidateLauncherSha256']) {
         $journal | Add-Member -NotePropertyName candidateLauncherSha256 -NotePropertyValue $null
     }
+    if ($isCommittedTombstone) {
+        foreach ($name in @('transactionPath', 'backupInstallPath', 'backupLauncherPath', 'backupLegacyLauncherPath', 'backupLauncherTempPath')) {
+            if ($null -eq $journal.PSObject.Properties[$name] -or [string]::IsNullOrWhiteSpace([string] $journal.$name)) { continue }
+            $path = ConvertTo-CountdownInstallFullPath -Path ([string] $journal.$name)
+            if ([string]::Equals($path, $originalTransaction, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $journal.$name = $transaction
+            }
+            elseif (Test-CountdownInstallChildPath -Path $path -ParentPath $originalTransaction) {
+                $journal.$name = $transaction + $path.Substring($originalTransaction.Length)
+            }
+        }
+        foreach ($snapshotName in @('currentTask', 'legacyTask')) {
+            $snapshot = $journal.$snapshotName
+            if ($null -eq $snapshot -or $null -eq $snapshot.PSObject.Properties['XmlPath'] -or [string]::IsNullOrWhiteSpace([string] $snapshot.XmlPath)) { continue }
+            $xmlPath = ConvertTo-CountdownInstallFullPath -Path ([string] $snapshot.XmlPath)
+            if (Test-CountdownInstallChildPath -Path $xmlPath -ParentPath $originalTransaction) {
+                $snapshot.XmlPath = $transaction + $xmlPath.Substring($originalTransaction.Length)
+            }
+        }
+    }
     foreach ($name in @('installExisted', 'launcherExisted', 'legacyLauncherExisted', 'launcherTempExisted', 'payloadSnapshotReady')) {
         [void] (Get-CountdownStrictBooleanProperty -Object $journal -Name $name -Context \"安装事务 journal：$transaction\")
-    }
-    $phase = Get-CountdownRequiredStringProperty -Object $journal -Name 'phase' -Context \"安装事务 journal：$transaction\"
-    if ($phase -notin @('prepared', 'payload-snapshot-failed', 'payload-snapshotted', 'launcher-candidate-staged', 'rolling-back', 'rollback-failed', 'launcher-ownership-conflict', 'committed', 'rolled-back')) {
-        throw \"安装事务 journal phase 不受支持：$phase\"
     }
     $candidateLauncherHash = Get-CountdownJournalProperty -Journal $journal -Name 'candidateLauncherSha256'
     if ($null -ne $candidateLauncherHash -and ($candidateLauncherHash -isnot [string] -or $candidateLauncherHash -notmatch '^[A-Fa-f0-9]{64}$')) {
         throw \"安装事务 journal 的 candidateLauncherSha256 非法：$transaction\"
+    }
+    if ($phase -eq 'committed') {
+        foreach ($path in @([string] $journal.launcherPath, [string] $journal.legacyLauncherPath, [string] $journal.launcherTempPath)) {
+            [void] (Assert-CountdownInstallPathOnDDrive -Path $path)
+        }
+        # committed 已永久退出回滚状态；清理重试只需保留 journal 结构和所有内部路径约束。
+        Assert-CountdownJournalBackupPaths -Journal $journal -TransactionPath $transaction
+        return $journal
     }
     $currentTaskXml = Assert-CountdownJournalTaskSnapshot -Journal $journal -Name 'currentTask' -TransactionPath $transaction
     $legacyTaskXml = Assert-CountdownJournalTaskSnapshot -Journal $journal -Name 'legacyTask' -TransactionPath $transaction
@@ -582,10 +648,12 @@ function Copy-CountdownInstallDirectoryContents {
         [Parameter(Mandatory)] [string] $Destination
     )
 
-    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { return }
-    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
-    foreach ($item in @(Get-ChildItem -LiteralPath $Source -Force)) {
-        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
+    $sourcePath = Assert-CountdownInstallTreeHasNoReparsePoints -Path $Source
+    $destinationPath = Assert-CountdownInstallTreeHasNoReparsePoints -Path $Destination
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Container)) { return }
+    New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
+    foreach ($item in @(Get-ChildItem -LiteralPath $sourcePath -Force)) {
+        Copy-Item -LiteralPath $item.FullName -Destination $destinationPath -Recurse -Force
     }
 }
 
@@ -595,10 +663,41 @@ function Save-CountdownInstallFileSnapshot {
         [Parameter(Mandatory)] [string] $BackupPath
     )
 
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
-    $parent = Split-Path -Parent $BackupPath
+    $sourcePath = Assert-CountdownInstallPathOnDDrive -Path $Path
+    $backup = Assert-CountdownInstallPathOnDDrive -Path $BackupPath
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { return $false }
+    $parent = Split-Path -Parent $backup
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
-    Copy-Item -LiteralPath $Path -Destination $BackupPath -Force
+    Copy-Item -LiteralPath $sourcePath -Destination $backup -Force
+    $true
+}
+
+function Get-CountdownScheduledTaskOrNull {
+    param(
+        [Parameter(Mandatory)] [string] $TaskName,
+        [scriptblock] $TaskQueryAction = { @(Get-ScheduledTask -ErrorAction Stop) }
+    )
+
+    $matches = @(
+        & $TaskQueryAction |
+            Where-Object { [string]::Equals([string] $_.TaskName, $TaskName, [System.StringComparison]::OrdinalIgnoreCase) }
+    )
+    if ($matches.Count -gt 1) {
+        throw "计划任务查询返回多个同名结果：$TaskName"
+    }
+    if ($matches.Count -eq 1) { return $matches[0] }
+    $null
+}
+
+function Remove-CountdownScheduledTaskIfPresent {
+    param(
+        [Parameter(Mandatory)] [string] $TaskName,
+        [scriptblock] $TaskQueryAction = { @(Get-ScheduledTask -ErrorAction Stop) }
+    )
+
+    $task = Get-CountdownScheduledTaskOrNull -TaskName $TaskName -TaskQueryAction $TaskQueryAction
+    if ($null -eq $task) { return $false }
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop
     $true
 }
 
@@ -608,7 +707,7 @@ function Get-CountdownScheduledTaskSnapshot {
         [Parameter(Mandatory)] [string] $XmlPath
     )
 
-    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $task = Get-CountdownScheduledTaskOrNull -TaskName $TaskName
     if ($null -eq $task) {
         return [pscustomobject]@{ Exists = $false; State = $null; XmlPath = $XmlPath }
     }
@@ -617,7 +716,7 @@ function Get-CountdownScheduledTaskSnapshot {
 }
 
 function Get-CountdownWindowsTimeSnapshot {
-    $service = Get-CimInstance Win32_Service -Filter "Name='W32Time'" -ErrorAction Stop
+    $service = Get-CimInstance Win32_Service -Filter "Name='W32Time'" -OperationTimeoutSec 2 -ErrorAction Stop
     [pscustomobject]@{ StartMode = [string] $service.StartMode; State = [string] $service.State }
 }
 
@@ -709,12 +808,26 @@ function Get-CountdownManagedApplicationFileArgument {
 }
 
 function Get-CountdownManagedApplicationProcesses {
-    param([Parameter(Mandatory)] [string] $ApplicationPath)
+    param(
+        [Parameter(Mandatory)] [string] $ApplicationPath,
+        [scriptblock] $ProcessQueryAction = {
+            Get-CimInstance Win32_Process -Filter "Name='pwsh.exe' OR Name='powershell.exe' OR Name='MinminCountdown.exe'" -OperationTimeoutSec 2 -ErrorAction Stop
+        }
+    )
 
     $resolvedPath = ConvertTo-CountdownInstallFullPath -Path $ApplicationPath
+    $managedExecutablePath = Join-Path (Split-Path -Parent $resolvedPath) 'app\MinminCountdown.exe'
     @(
-        Get-CimInstance Win32_Process -Filter "Name='pwsh.exe' OR Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        & $ProcessQueryAction |
             Where-Object {
+                if ([string]::Equals([string] $_.Name, 'MinminCountdown.exe', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    return -not [string]::IsNullOrWhiteSpace([string] $_.ExecutablePath) -and
+                        [string]::Equals(
+                            (ConvertTo-CountdownInstallFullPath -Path ([string] $_.ExecutablePath)),
+                            $managedExecutablePath,
+                            [System.StringComparison]::OrdinalIgnoreCase
+                        )
+                }
                 $fileArgument = Get-CountdownManagedApplicationFileArgument -CommandLine ([string] $_.CommandLine)
                 -not [string]::IsNullOrWhiteSpace($fileArgument) -and [string]::Equals($fileArgument, $resolvedPath, [System.StringComparison]::OrdinalIgnoreCase)
             }
@@ -724,12 +837,13 @@ function Get-CountdownManagedApplicationProcesses {
 function Get-CountdownManagedTaskStates {
     param(
         [Parameter(Mandatory)] [string] $TaskName,
-        [Parameter(Mandatory)] [string] $LegacyTaskName
+        [Parameter(Mandatory)] [string] $LegacyTaskName,
+        [scriptblock] $TaskQueryAction = { @(Get-ScheduledTask -ErrorAction Stop) }
     )
 
     $states = @{}
     foreach ($name in @($TaskName, $LegacyTaskName)) {
-        $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+        $task = Get-CountdownScheduledTaskOrNull -TaskName $name -TaskQueryAction $TaskQueryAction
         $states[$name] = if ($null -eq $task) { 'Missing' } else { [string] $task.State }
     }
     $states
@@ -764,7 +878,7 @@ function Stop-CountdownManagedApplication {
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
         foreach ($name in @($TaskName, $LegacyTaskName)) {
-            $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+            $task = Get-CountdownScheduledTaskOrNull -TaskName $name
             if ($null -ne $task) {
                 if ($FreezeFutureStarts) {
                     # journal 已在调用前捕获；禁用任务阻断桌面启动器/手工 schtasks 在静止窗口内重新拉起旧版本。
@@ -792,7 +906,7 @@ function Stop-CountdownManagedApplication {
     $details = @()
     if ($stopped.ProcessIds.Count -gt 0) { $details += "进程=$($stopped.ProcessIds -join ',')" }
     if ($stopped.RunningTasks.Count -gt 0) { $details += "计划任务=$($stopped.RunningTasks -join ',')" }
-    throw "旧版倒计时未在 $TimeoutSeconds 秒内退出：$($details -join '；')"
+    throw "倒计时应用未在 $TimeoutSeconds 秒内退出：$($details -join '；')"
 }
 
 function Restore-CountdownScheduledTaskSnapshot {
@@ -806,7 +920,7 @@ function Restore-CountdownScheduledTaskSnapshot {
     if ([bool] $Snapshot.Exists -and $null -eq $ValidatedTaskXml) {
         throw "安装事务缺少已预检的计划任务 XML：$TaskName"
     }
-    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $existing = Get-CountdownScheduledTaskOrNull -TaskName $TaskName
     if ($null -ne $existing -and [string] $existing.State -notin @('Ready', 'Disabled', 'Missing')) {
         Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     }
@@ -882,7 +996,7 @@ function Start-CountdownInstallTransaction {
         [pscustomobject] $journal
     }
     catch {
-        Remove-Item -LiteralPath $transactionPath -Recurse -Force -ErrorAction SilentlyContinue
+        try { Remove-CountdownTransactionDirectorySafely -Path $transactionPath } catch { }
         throw
     }
 }
@@ -964,15 +1078,16 @@ function Test-CountdownInstallFileRestoreOwnership {
     )
 
     $resolved = Assert-CountdownInstallPathOnDDrive -Path $Path
-    if ($Existed -and -not (Test-Path -LiteralPath $BackupPath -PathType Leaf)) {
-        throw "安装事务备份文件缺失：$BackupPath"
+    $backup = Assert-CountdownInstallPathOnDDrive -Path $BackupPath
+    if ($Existed -and -not (Test-Path -LiteralPath $backup -PathType Leaf)) {
+        throw "安装事务备份文件缺失：$backup"
     }
     if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
         return [pscustomobject]@{ Label = $Label; Path = $resolved; Owned = $true }
     }
     $allowedHashes = [System.Collections.Generic.List[string]]::new()
     if ($Existed) {
-        [void] $allowedHashes.Add((Get-FileHash -Algorithm SHA256 -LiteralPath $BackupPath).Hash)
+        [void] $allowedHashes.Add((Get-FileHash -Algorithm SHA256 -LiteralPath $backup).Hash)
     }
     if (-not [string]::IsNullOrWhiteSpace($CandidateSha256)) {
         [void] $allowedHashes.Add($CandidateSha256)
@@ -1030,15 +1145,19 @@ function Restore-CountdownInstallTree {
     param([Parameter(Mandatory)] [object] $Journal)
 
     $install = Assert-CountdownInstallPathOnDDrive -Path ([string] $Journal.installPath)
+    $backupInstall = Assert-CountdownInstallTreeHasNoReparsePoints -Path ([string] $Journal.backupInstallPath)
     if ([bool] $Journal.installExisted) {
-        if (-not (Test-Path -LiteralPath ([string] $Journal.backupInstallPath) -PathType Container)) {
-            throw "安装事务缺少安装目录备份：$($Journal.backupInstallPath)"
+        if (-not (Test-Path -LiteralPath $backupInstall -PathType Container)) {
+            throw "安装事务缺少安装目录备份：$backupInstall"
         }
     }
-    if (Test-Path -LiteralPath $install) { Remove-Item -LiteralPath $install -Recurse -Force }
+    if (Test-Path -LiteralPath $install) {
+        [void] (Assert-CountdownInstallTreeHasNoReparsePoints -Path $install)
+        Remove-Item -LiteralPath $install -Recurse -Force
+    }
     if ([bool] $Journal.installExisted) {
         New-Item -ItemType Directory -Path $install -Force | Out-Null
-        Copy-CountdownInstallDirectoryContents -Source ([string] $Journal.backupInstallPath) -Destination $install
+        Copy-CountdownInstallDirectoryContents -Source $backupInstall -Destination $install
     }
 }
 
@@ -1050,12 +1169,13 @@ function Restore-CountdownInstallFile {
     )
 
     $resolved = Assert-CountdownInstallPathOnDDrive -Path $Path
+    $backup = Assert-CountdownInstallPathOnDDrive -Path $BackupPath
     if ($Existed) {
-        if (-not (Test-Path -LiteralPath $BackupPath -PathType Leaf)) { throw "安装事务备份文件缺失：$BackupPath" }
+        if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) { throw "安装事务备份文件缺失：$backup" }
     }
     if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Force }
     if ($Existed) {
-        Copy-Item -LiteralPath $BackupPath -Destination $resolved -Force
+        Copy-Item -LiteralPath $backup -Destination $resolved -Force
     }
 }
 
@@ -1077,6 +1197,9 @@ function Undo-CountdownInstallTransaction {
     $validatedTaskXml = @{}
     $journal = Get-CountdownInstallTransactionJournal -TransactionPath $TransactionPath -ValidatedTaskXml $validatedTaskXml
     Assert-CountdownInstallTransactionIdentity -Journal $journal -ExpectedInstallPath $ExpectedInstallPath -ExpectedTaskName $ExpectedTaskName -ExpectedLegacyTaskName $ExpectedLegacyTaskName -ExpectedLauncherPath $ExpectedLauncherPath -ExpectedLegacyLauncherPath $ExpectedLegacyLauncherPath -ExpectedLauncherTempPath $ExpectedLauncherTempPath
+    if ([string] $journal.phase -eq 'committed') {
+        throw '安装事务已经 committed，禁止重新进入回滚。'
+    }
     $basePath = Get-CountdownTransactionBasePath -InstallPath ([string] $journal.installPath)
     $ownershipConflicts = @(Get-CountdownInstallPayloadRestoreOwnershipConflicts -Journal $journal)
     if ($ownershipConflicts.Count -gt 0 -and -not $PreserveUnmanagedLaunchers) {
@@ -1114,7 +1237,7 @@ function Undo-CountdownInstallTransaction {
         }
         Set-CountdownInstallTransactionPhase -TransactionPath $TransactionPath -Phase 'rolled-back' | Out-Null
         # 回滚已经完成后，删除备份只是卫生动作；保留 rolled-back journal 供下次安全清理，不能把成功回滚误报为失败。
-        try { Remove-Item -LiteralPath $TransactionPath -Recurse -Force -ErrorAction Stop } catch { }
+        try { Remove-CountdownTransactionDirectorySafely -Path $TransactionPath } catch { }
         Remove-CountdownEmptyTransactionBase -BasePath $basePath
     }
     catch {
@@ -1149,11 +1272,81 @@ function Complete-CountdownInstallTransaction {
     if (-not [string]::Equals($actualLauncherHash, $candidateLauncherHash, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw '候选桌面启动器在提交前已被替换，拒绝提交。'
     }
+    Set-CountdownInstallTransactionPhase -TransactionPath $TransactionPath -Phase 'accepted' | Out-Null
+    # 保留备份，直到应用以同 token/PID 回报 finalized-ready；此后才允许清理事务证据。
+}
+
+function Remove-CountdownTransactionDirectorySafely {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $transaction = Assert-CountdownInstallTreeHasNoReparsePoints -Path $Path
+    if (-not (Test-Path -LiteralPath $transaction -PathType Container)) { return }
+    # PowerShell 7 / Windows 11 的根级递归删除移除 junction 本身而不跟随目标；前置树扫描仍拒绝静态 reparse point。
+    Remove-Item -LiteralPath $transaction -Recurse -Force -ErrorAction Stop
+}
+
+function Remove-CountdownCommittedInstallTransaction {
+    param(
+        [Parameter(Mandatory)] [string] $TransactionPath,
+        [string] $ExpectedInstallPath,
+        [string] $ExpectedTaskName,
+        [string] $ExpectedLegacyTaskName,
+        [string] $ExpectedLauncherPath,
+        [string] $ExpectedLegacyLauncherPath,
+        [string] $ExpectedLauncherTempPath,
+        [scriptblock] $MoveAction = { param([string] $Source, [string] $Destination) Move-Item -LiteralPath $Source -Destination $Destination -ErrorAction Stop },
+        [scriptblock] $CleanupAction = { param([string] $Path) Remove-CountdownTransactionDirectorySafely -Path $Path }
+    )
+
+    $journal = Get-CountdownInstallTransactionJournal -TransactionPath $TransactionPath
+    Assert-CountdownInstallTransactionIdentity -Journal $journal -ExpectedInstallPath $ExpectedInstallPath -ExpectedTaskName $ExpectedTaskName -ExpectedLegacyTaskName $ExpectedLegacyTaskName -ExpectedLauncherPath $ExpectedLauncherPath -ExpectedLegacyLauncherPath $ExpectedLegacyLauncherPath -ExpectedLauncherTempPath $ExpectedLauncherTempPath
+    if ([string] $journal.phase -ne 'accepted') {
+        throw "安装事务尚未提交，拒绝清理回滚证据：$($journal.phase)"
+    }
     $basePath = Get-CountdownTransactionBasePath -InstallPath ([string] $journal.installPath)
+    $transactionParent = Split-Path -Parent $TransactionPath
+    $transactionLeaf = Split-Path -Leaf $TransactionPath
+    $committedTombstonePath = Join-Path $transactionParent ("$transactionLeaf.committed-$([guid]::NewGuid().ToString('N'))")
+    $committedMarkerPath = "$committedTombstonePath.marker.json"
+    [void] (Assert-CountdownInstallTreeHasNoReparsePoints -Path $TransactionPath)
+    [void] (Assert-CountdownInstallPathOnDDrive -Path $committedTombstonePath)
+    Write-CountdownInstallJsonAtomically -Path $committedMarkerPath -Value ([ordered]@{
+            schemaVersion = 1
+            phase = 'committed-cleanup'
+            installPath = [string] $journal.installPath
+            originalTransactionPath = ConvertTo-CountdownInstallFullPath -Path $TransactionPath
+            tombstonePath = ConvertTo-CountdownInstallFullPath -Path $committedTombstonePath
+        })
     Set-CountdownInstallTransactionPhase -TransactionPath $TransactionPath -Phase 'committed' | Out-Null
-    # committed 是不可逆状态；清理失败必须留给后续恢复清扫，不能重新进入回滚路径。
-    try { Remove-Item -LiteralPath $TransactionPath -Recurse -Force -ErrorAction Stop } catch { }
-    Remove-CountdownEmptyTransactionBase -BasePath $basePath
+    # committed 已是不可回滚点；sidecar 在事务目录外保留清理身份，即使 journal 被部分删除仍可重试。
+    try { & $MoveAction $TransactionPath $committedTombstonePath } catch { return }
+    try { & $CleanupAction $committedTombstonePath } catch { }
+    if (-not (Test-Path -LiteralPath $committedTombstonePath -PathType Container)) {
+        Remove-Item -LiteralPath (Assert-CountdownInstallPathOnDDrive -Path $committedMarkerPath) -Force -ErrorAction SilentlyContinue
+        Remove-CountdownEmptyTransactionBase -BasePath $basePath
+    }
+}
+
+function Get-CountdownCommittedCleanupMarker {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $markerPath = Assert-CountdownInstallPathOnDDrive -Path $Path
+    $marker = [System.IO.File]::ReadAllText($markerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ($null -eq $marker -or $marker.schemaVersion -ne 1 -or [string] $marker.phase -ne 'committed-cleanup') {
+        throw "committed cleanup marker 非法：$markerPath"
+    }
+    $install = Assert-CountdownInstallPathOnDDrive -Path (Get-CountdownRequiredStringProperty -Object $marker -Name 'installPath' -Context "committed cleanup marker：$markerPath")
+    $original = Assert-CountdownInstallPathOnDDrive -Path (Get-CountdownRequiredStringProperty -Object $marker -Name 'originalTransactionPath' -Context "committed cleanup marker：$markerPath")
+    $tombstone = Assert-CountdownInstallPathOnDDrive -Path (Get-CountdownRequiredStringProperty -Object $marker -Name 'tombstonePath' -Context "committed cleanup marker：$markerPath")
+    $basePath = Get-CountdownTransactionBasePath -InstallPath $install
+    if (-not (Test-CountdownInstallChildPath -Path $original -ParentPath $basePath) -or -not (Test-CountdownInstallChildPath -Path $tombstone -ParentPath $basePath)) {
+        throw "committed cleanup marker 路径不受管：$markerPath"
+    }
+    $expectedTombstonePattern = '^' + [regex]::Escape($original) + '\.committed-[0-9a-fA-F]{32}$'
+    if ($tombstone -notmatch $expectedTombstonePattern -or -not [string]::Equals($markerPath, "$tombstone.marker.json", [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "committed cleanup marker 路径不匹配：$markerPath"
+    }
+    [pscustomobject]@{ MarkerPath = $markerPath; InstallPath = $install; OriginalTransactionPath = $original; TombstonePath = $tombstone }
 }
 
 function Recover-CountdownInstallTransactions {
@@ -1164,7 +1357,8 @@ function Recover-CountdownInstallTransactions {
         [string] $ExpectedLegacyTaskName,
         [string] $ExpectedLauncherPath,
         [string] $ExpectedLegacyLauncherPath,
-        [string] $ExpectedLauncherTempPath
+        [string] $ExpectedLauncherTempPath,
+        [scriptblock] $CommittedCleanupAction = { param([string] $Path) Remove-CountdownTransactionDirectorySafely -Path $Path }
     )
 
     $recoveryMutex = $null
@@ -1175,19 +1369,28 @@ function Recover-CountdownInstallTransactions {
         $basePath = Get-CountdownTransactionBasePath -InstallPath $install
         $recovered = [System.Collections.Generic.List[string]]::new()
         $unresolvedLauncherOwnershipConflicts = [System.Collections.Generic.List[object]]::new()
+        $unresolvedCommittedTransactions = [System.Collections.Generic.List[string]]::new()
         if (-not (Test-Path -LiteralPath $basePath -PathType Container)) {
             return [pscustomobject]@{
                 RecoveredTransactionPaths = @()
                 UnresolvedLauncherOwnershipConflicts = @()
+                UnresolvedCommittedTransactions = @()
             }
         }
         foreach ($directory in @(Get-ChildItem -LiteralPath $basePath -Directory -Force)) {
-            $journalPath = Join-Path $directory.FullName 'journal.json'
+            $journalPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $directory.FullName 'journal.json')
             if (-not (Test-Path -LiteralPath $journalPath -PathType Leaf)) { continue }
             $journal = Get-CountdownInstallTransactionJournal -TransactionPath $directory.FullName
-            if (-not [string]::Equals((ConvertTo-CountdownInstallFullPath -Path ([string] $journal.installPath)), $install, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
-            if ([string] $journal.phase -in @('committed', 'rolled-back')) {
-                try { Remove-Item -LiteralPath $directory.FullName -Recurse -Force -ErrorAction Stop } catch { }
+            if (-not [string]::Equals((Assert-CountdownInstallPathOnDDrive -Path ([string] $journal.installPath)), $install, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+            if ([string] $journal.phase -eq 'rolled-back') {
+                try { Remove-CountdownTransactionDirectorySafely -Path $directory.FullName } catch { }
+                continue
+            }
+            if ([string] $journal.phase -eq 'committed') {
+                try { & $CommittedCleanupAction $directory.FullName } catch { }
+                if (Test-Path -LiteralPath $directory.FullName -PathType Container) {
+                    [void] $unresolvedCommittedTransactions.Add($directory.FullName)
+                }
                 continue
             }
             if ([string] $journal.phase -eq 'launcher-ownership-conflict') {
@@ -1204,10 +1407,44 @@ function Recover-CountdownInstallTransactions {
             Undo-CountdownInstallTransaction -TransactionPath $directory.FullName -PowerShell7Path $PowerShell7Path -ExpectedInstallPath $install -ExpectedTaskName $ExpectedTaskName -ExpectedLegacyTaskName $ExpectedLegacyTaskName -ExpectedLauncherPath $ExpectedLauncherPath -ExpectedLegacyLauncherPath $ExpectedLegacyLauncherPath -ExpectedLauncherTempPath $ExpectedLauncherTempPath
             [void] $recovered.Add($directory.FullName)
         }
+        foreach ($markerFile in @(Get-ChildItem -LiteralPath $basePath -File -Filter '*.committed-*.marker.json' -Force)) {
+            $marker = Get-CountdownCommittedCleanupMarker -Path $markerFile.FullName
+            if (-not [string]::Equals($marker.InstallPath, $install, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+            $cleanupPath = $null
+            if (Test-Path -LiteralPath $marker.TombstonePath -PathType Container) {
+                $cleanupPath = $marker.TombstonePath
+            }
+            elseif (Test-Path -LiteralPath $marker.OriginalTransactionPath -PathType Container) {
+                $originalJournalPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $marker.OriginalTransactionPath 'journal.json')
+                if (-not (Test-Path -LiteralPath $originalJournalPath -PathType Leaf)) {
+                    $cleanupPath = $marker.OriginalTransactionPath
+                    if (-not $unresolvedCommittedTransactions.Contains($cleanupPath)) { [void] $unresolvedCommittedTransactions.Add($cleanupPath) }
+                    continue
+                }
+                $originalJournal = Get-CountdownInstallTransactionJournal -TransactionPath $marker.OriginalTransactionPath
+                if ([string] $originalJournal.phase -ne 'committed') { continue }
+                $cleanupPath = $marker.OriginalTransactionPath
+            }
+            if ($null -ne $cleanupPath) {
+                try { & $CommittedCleanupAction $cleanupPath } catch { }
+                if ((Test-Path -LiteralPath $cleanupPath -PathType Container) -and -not $unresolvedCommittedTransactions.Contains($cleanupPath)) {
+                    [void] $unresolvedCommittedTransactions.Add($cleanupPath)
+                }
+            }
+            if (-not (Test-Path -LiteralPath $marker.TombstonePath -PathType Container) -and -not (Test-Path -LiteralPath $marker.OriginalTransactionPath -PathType Container)) {
+                Remove-Item -LiteralPath $marker.MarkerPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        for ($index = $unresolvedCommittedTransactions.Count - 1; $index -ge 0; $index--) {
+            if (-not (Test-Path -LiteralPath $unresolvedCommittedTransactions[$index] -PathType Container)) {
+                $unresolvedCommittedTransactions.RemoveAt($index)
+            }
+        }
         Remove-CountdownEmptyTransactionBase -BasePath $basePath
         [pscustomobject]@{
             RecoveredTransactionPaths = $recovered.ToArray()
             UnresolvedLauncherOwnershipConflicts = $unresolvedLauncherOwnershipConflicts.ToArray()
+            UnresolvedCommittedTransactions = $unresolvedCommittedTransactions.ToArray()
         }
     }
     finally {
@@ -1217,4 +1454,4 @@ function Recover-CountdownInstallTransactions {
     }
 }
 
-Export-ModuleMember -Function Assert-CountdownInstallPathOnDDrive, Enter-CountdownInstallTransactionMutex, Exit-CountdownInstallTransactionMutex, Get-CountdownInteractiveDesktopContext, Write-CountdownDeferredInstallReceipt, Read-CountdownDeferredInstallReceipt, Start-CountdownInstallTransaction, Capture-CountdownInstallPayloadSnapshot, Set-CountdownInstallTransactionCandidateLauncherHash, Complete-CountdownInstallTransaction, Undo-CountdownInstallTransaction, Recover-CountdownInstallTransactions, Stop-CountdownManagedApplication, Test-CountdownManagedApplicationStopped
+Export-ModuleMember -Function Assert-CountdownInstallPathOnDDrive, Assert-CountdownInstallTreeHasNoReparsePoints, Enter-CountdownInstallTransactionMutex, Exit-CountdownInstallTransactionMutex, Get-CountdownInteractiveDesktopContext, Write-CountdownDeferredInstallReceipt, Read-CountdownDeferredInstallReceipt, Start-CountdownInstallTransaction, Capture-CountdownInstallPayloadSnapshot, Set-CountdownInstallTransactionCandidateLauncherHash, Complete-CountdownInstallTransaction, Remove-CountdownCommittedInstallTransaction, Undo-CountdownInstallTransaction, Recover-CountdownInstallTransactions, Stop-CountdownManagedApplication, Test-CountdownManagedApplicationStopped, Remove-CountdownScheduledTaskIfPresent

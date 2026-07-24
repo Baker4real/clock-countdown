@@ -190,12 +190,17 @@ function Write-CountdownDiagnosticEvent {
 }
 
 function New-CountdownStartupRequest {
-    param([Parameter(Mandatory)] [string] $Path)
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [switch] $AcceptanceReadOnly
+    )
 
     $request = [ordered]@{
         schemaVersion = 1
         launchToken = [guid]::NewGuid().ToString('N')
         requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        acceptanceReadOnly = [bool] $AcceptanceReadOnly
+        acceptanceState = if ($AcceptanceReadOnly) { 'active' } else { 'none' }
     }
     Write-CountdownRuntimeJsonAtomically -Path $Path -Value $request
     [pscustomobject] $request
@@ -217,6 +222,25 @@ function Get-CountdownStartupLaunchToken {
     [guid]::NewGuid().ToString('N')
 }
 
+function Read-CountdownStartupRequestStrict {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw [System.IO.FileNotFoundException]::new('启动请求不存在。', $Path)
+    }
+    $request = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $schemaVersion = Get-CountdownRuntimeProperty -Object $request -Name 'schemaVersion'
+    $token = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'launchToken')
+    $state = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'acceptanceState')
+    if ($null -eq $schemaVersion -or [int] $schemaVersion -ne 1) {
+        throw "不支持的启动请求 schemaVersion：$schemaVersion"
+    }
+    if ([string]::IsNullOrWhiteSpace($token) -or $state -notin @('active', 'released', 'ready', 'finalized', 'none')) {
+        throw '启动请求的 token 或 acceptanceState 无效。'
+    }
+    $request
+}
+
 function Remove-CountdownStartupRequest {
     param(
         [Parameter(Mandatory)] [string] $Path,
@@ -234,6 +258,79 @@ function Remove-CountdownStartupRequest {
     catch {
         $false
     }
+}
+
+function Complete-CountdownStartupRequest {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $LaunchToken
+    )
+
+    $request = Read-CountdownStartupRequestStrict -Path $Path
+    $requestToken = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'launchToken')
+    $acceptanceState = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'acceptanceState')
+    if (-not [string]::Equals($requestToken, $LaunchToken, [System.StringComparison]::Ordinal) -or $acceptanceState -ne 'active') {
+        return $false
+    }
+    $request.acceptanceReadOnly = $true
+    $request.acceptanceState = 'released'
+    $request | Add-Member -NotePropertyName releasedAtUtc -NotePropertyValue ([DateTimeOffset]::UtcNow.ToString('o')) -Force
+    Write-CountdownRuntimeJsonAtomically -Path $Path -Value $request
+    $true
+}
+
+function Wait-CountdownStartupRequestState {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $LaunchToken,
+        [Parameter(Mandatory)] [ValidateSet('released', 'ready', 'finalized')] [string] $ExpectedState,
+        [ValidateRange(0, 300)] [int] $TimeoutSeconds = 30,
+        [ValidateRange(1, 5000)] [int] $PollMilliseconds = 100
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastReason = '尚未读取到有效启动请求。'
+    do {
+        try {
+            $request = Read-CountdownStartupRequestStrict -Path $Path
+            $requestToken = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'launchToken')
+            $state = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'acceptanceState')
+            if (-not [string]::Equals($requestToken, $LaunchToken, [System.StringComparison]::Ordinal)) {
+                $lastReason = '启动请求 token 已变化。'
+            }
+            elseif ($state -eq $ExpectedState) {
+                return $request
+            }
+            else {
+                $lastReason = "当前状态为 $state。"
+            }
+        }
+        catch {
+            $lastReason = $_.Exception.Message
+        }
+        if ([DateTimeOffset]::UtcNow -ge $deadline) { break }
+        Start-Sleep -Milliseconds $PollMilliseconds
+    } while ($true)
+    throw "启动请求未进入 $ExpectedState 状态（$TimeoutSeconds 秒）：$lastReason"
+}
+
+function Set-CountdownStartupRequestFinalized {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $LaunchToken
+    )
+
+    $request = Read-CountdownStartupRequestStrict -Path $Path
+    $requestToken = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'launchToken')
+    $acceptanceState = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'acceptanceState')
+    if (-not [string]::Equals($requestToken, $LaunchToken, [System.StringComparison]::Ordinal) -or $acceptanceState -ne 'ready') {
+        return $false
+    }
+    $request.acceptanceReadOnly = $false
+    $request.acceptanceState = 'finalized'
+    $request | Add-Member -NotePropertyName finalizedAtUtc -NotePropertyValue ([DateTimeOffset]::UtcNow.ToString('o')) -Force
+    Write-CountdownRuntimeJsonAtomically -Path $Path -Value $request
+    $true
 }
 
 function Write-CountdownWindowReadyReceipt {
@@ -281,7 +378,8 @@ function Test-CountdownWindowReadyReceipt {
         [Parameter(Mandatory)] [string] $ExpectedLaunchToken,
         [Parameter(Mandatory)] [ValidateRange(0, 2147483647)] [int] $ExpectedSessionId,
         [Parameter(Mandatory)] [string] $ExpectedApplicationPath,
-        [scriptblock] $ProcessProbe
+        [scriptblock] $ProcessProbe,
+        [switch] $AllowLegacyPowerShellAdapter
     )
 
     $result = [ordered]@{ Ready = $false; Reason = ''; Receipt = $Receipt }
@@ -300,17 +398,38 @@ function Test-CountdownWindowReadyReceipt {
     if ($null -eq $ProcessProbe) {
         $ProcessProbe = {
             param([int] $Id)
-            Get-CimInstance Win32_Process -Filter "ProcessId=$Id" -ErrorAction SilentlyContinue | Select-Object -First 1
+            Get-CimInstance Win32_Process -Filter "ProcessId=$Id" -OperationTimeoutSec 2 -ErrorAction SilentlyContinue | Select-Object -First 1
         }
     }
     $process = & $ProcessProbe ([int] $processId)
     if ($null -eq $process) { $result.Reason = '运行状态回执对应的进程不存在。'; return [pscustomobject] $result }
     if ((Get-CountdownRuntimeProperty -Object $process -Name 'ProcessId') -ne [int] $processId) { $result.Reason = '进程探针返回的进程号与回执不一致。'; return [pscustomobject] $result }
     if ((Get-CountdownRuntimeProperty -Object $process -Name 'SessionId') -ne $ExpectedSessionId) { $result.Reason = '应用进程不属于交互会话。'; return [pscustomobject] $result }
-    $commandLine = [string] (Get-CountdownRuntimeProperty -Object $process -Name 'CommandLine')
-    $fileArgument = Get-CountdownRuntimeFileArgument -CommandLine $commandLine
-    if ([string]::IsNullOrWhiteSpace($fileArgument) -or -not [string]::Equals($fileArgument, (ConvertTo-CountdownRuntimeFullPath -Path $ExpectedApplicationPath), [System.StringComparison]::OrdinalIgnoreCase)) {
-        $result.Reason = '应用进程命令行未指向受安装器管理的脚本。'
+    $expectedAdapterPath = ConvertTo-CountdownRuntimeFullPath -Path $ExpectedApplicationPath
+    $expectedExecutablePath = ConvertTo-CountdownRuntimeFullPath -Path (Join-Path (Split-Path -Parent $expectedAdapterPath) 'app\MinminCountdown.exe')
+    $processExecutablePath = [string] (Get-CountdownRuntimeProperty -Object $process -Name 'ExecutablePath')
+    $isManagedExecutable =
+        -not [string]::IsNullOrWhiteSpace($processExecutablePath) -and
+        [string]::Equals(
+            (ConvertTo-CountdownRuntimeFullPath -Path $processExecutablePath),
+            $expectedExecutablePath,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    $isManagedAdapter = $false
+    if ($AllowLegacyPowerShellAdapter) {
+        $commandLine = [string] (Get-CountdownRuntimeProperty -Object $process -Name 'CommandLine')
+        $fileArgument = Get-CountdownRuntimeFileArgument -CommandLine $commandLine
+        $isManagedAdapter =
+            -not [string]::IsNullOrWhiteSpace($fileArgument) -and
+            [string]::Equals($fileArgument, $expectedAdapterPath, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    if (-not $isManagedExecutable -and -not $isManagedAdapter) {
+        $result.Reason = if ($AllowLegacyPowerShellAdapter) {
+            '应用进程既不是受安装器管理的 C# EXE，也未指向受管 PowerShell 适配脚本。'
+        }
+        else {
+            '应用进程不是受安装器管理的 C# EXE。'
+        }
         return [pscustomobject] $result
     }
     $calendarState = [string] (Get-CountdownRuntimeProperty -Object $Receipt -Name 'calendarState')
@@ -328,14 +447,15 @@ function Wait-CountdownWindowReady {
         [Parameter(Mandatory)] [string] $ExpectedApplicationPath,
         [ValidateRange(0, 300)] [int] $TimeoutSeconds = 30,
         [ValidateRange(1, 5000)] [int] $PollMilliseconds = 250,
-        [scriptblock] $ProcessProbe
+        [scriptblock] $ProcessProbe,
+        [switch] $AllowLegacyPowerShellAdapter
     )
 
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
     $lastReason = '运行状态回执尚未出现。'
     do {
         $receipt = Read-CountdownRuntimeReceipt -Path $Path
-        $evaluation = Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $LaunchToken -ExpectedSessionId $ExpectedSessionId -ExpectedApplicationPath $ExpectedApplicationPath -ProcessProbe $ProcessProbe
+        $evaluation = Test-CountdownWindowReadyReceipt -Receipt $receipt -ExpectedLaunchToken $LaunchToken -ExpectedSessionId $ExpectedSessionId -ExpectedApplicationPath $ExpectedApplicationPath -ProcessProbe $ProcessProbe -AllowLegacyPowerShellAdapter:$AllowLegacyPowerShellAdapter
         if ($evaluation.Ready) { return $evaluation.Receipt }
         $lastReason = $evaluation.Reason
         if ([DateTimeOffset]::UtcNow -ge $deadline) { break }
@@ -344,4 +464,48 @@ function Wait-CountdownWindowReady {
     throw "启动就绪回执超时（$TimeoutSeconds 秒）：$lastReason"
 }
 
-Export-ModuleMember -Function New-CountdownStartupRequest, Get-CountdownStartupLaunchToken, Remove-CountdownStartupRequest, Write-CountdownWindowReadyReceipt, Read-CountdownRuntimeReceipt, Test-CountdownWindowReadyReceipt, Wait-CountdownWindowReady, Write-CountdownDiagnosticEvent
+function Wait-CountdownAcceptanceReadyReceipt {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $LaunchToken,
+        [Parameter(Mandatory)] [ValidateRange(0, 2147483647)] [int] $ExpectedSessionId,
+        [Parameter(Mandatory)] [string] $ExpectedApplicationPath,
+        [ValidateRange(0, 300)] [int] $TimeoutSeconds = 30,
+        [ValidateRange(1, 5000)] [int] $PollMilliseconds = 100,
+        [scriptblock] $ProcessProbe
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastReason = '尚未读取到 finalized-ready 回执。'
+    do {
+        $receipt = Read-CountdownRuntimeReceipt -Path $Path
+        if ($null -eq $receipt) {
+            $lastReason = '回执不存在、损坏或不可读。'
+        }
+        elseif ([int] (Get-CountdownRuntimeProperty -Object $receipt -Name 'schemaVersion') -ne 1 -or
+            [string] (Get-CountdownRuntimeProperty -Object $receipt -Name 'stage') -ne 'finalized-ready') {
+            $lastReason = '回执 schema 或 stage 无效。'
+        }
+        else {
+            $shadowReceipt = [pscustomobject]@{
+                schemaVersion = 4
+                stage = 'window-ready'
+                launchToken = Get-CountdownRuntimeProperty -Object $receipt -Name 'launchToken'
+                processId = Get-CountdownRuntimeProperty -Object $receipt -Name 'processId'
+                sessionId = Get-CountdownRuntimeProperty -Object $receipt -Name 'sessionId'
+                applicationPath = Get-CountdownRuntimeProperty -Object $receipt -Name 'applicationPath'
+                readyAtUtc = Get-CountdownRuntimeProperty -Object $receipt -Name 'readyAtUtc'
+                calendarState = 'Pending'
+                timeZoneId = 'China Standard Time'
+            }
+            $evaluation = Test-CountdownWindowReadyReceipt -Receipt $shadowReceipt -ExpectedLaunchToken $LaunchToken -ExpectedSessionId $ExpectedSessionId -ExpectedApplicationPath $ExpectedApplicationPath -ProcessProbe $ProcessProbe
+            if ($evaluation.Ready) { return $receipt }
+            $lastReason = $evaluation.Reason
+        }
+        if ([DateTimeOffset]::UtcNow -ge $deadline) { break }
+        Start-Sleep -Milliseconds $PollMilliseconds
+    } while ($true)
+    throw "应用未确认 finalized-ready（$TimeoutSeconds 秒）：$lastReason"
+}
+
+Export-ModuleMember -Function New-CountdownStartupRequest, Get-CountdownStartupLaunchToken, Remove-CountdownStartupRequest, Complete-CountdownStartupRequest, Wait-CountdownStartupRequestState, Set-CountdownStartupRequestFinalized, Write-CountdownWindowReadyReceipt, Read-CountdownRuntimeReceipt, Test-CountdownWindowReadyReceipt, Wait-CountdownWindowReady, Wait-CountdownAcceptanceReadyReceipt, Write-CountdownDiagnosticEvent

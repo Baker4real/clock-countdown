@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 7,
+  "timeZoneId": "China Standard Time",
+  "displayPrecision": "Minute",
+  "monthlySalary": 16888.88,
+  "workStart": "08:45",
+  "workEnd": "18:15",
+  "tags": [
+    {
+      "id": "ps-tag-work",
+      "name": "工作",
+      "color": "#FF8A70"
+    },
+    {
+      "id": "ps-tag-life",
+      "name": "生活",
+      "color": null
+    }
+  ],
+  "countdowns": [
+    {
+      "id": "ps-countdown-release",
+      "name": "发布迁移版本",
+      "targetUtc": "2031-08-09T10:11:12.0000000+00:00",
+      "tagIds": [
+        "ps-tag-work"
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "ps-note-verify",
+      "text": "核对跨语言数据",
+      "date": "2031-08-09",
+      "isCompleted": false,
+      "tagIds": [
+        "ps-tag-work",
+        "ps-tag-life"
+      ],
+      "reminderIntervalMinutes": 45,
+      "reminderStartUtc": "2031-08-09T02:00:00.0000000+00:00"
+    },
+    {
+      "id": "ps-note-history",
+      "text": "保留历史便签",
+      "date": null,
+      "isCompleted": true,
+      "tagIds": [],
+      "reminderIntervalMinutes": null,
+      "reminderStartUtc": null
+    }
+  ]
+}

@@ -34,16 +34,19 @@ $floatingPlushAssets = @(
 $expected = @{
     'Countdown.App.psm1' = '2143E85FBBD9B3346E72BD609119A348586F24DCDEE007AF894773EB5DA51A0B'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
-    'Countdown.InstallTransaction.psm1' = 'B5454DDC6F37187A40DB4C4A327D3CC48EA481711BB577A9B2F5F445A749B69B'
+    'Countdown.InstallTransaction.psm1' = '89E7E2E7EE9255F6583D7E6421F8F7924B7E2543956EF502FB7136E6FBCD0590'
     'Countdown.Notes.psm1' = '02D65016C7E39BDF40007994A35394AB38A8461AF324C4E17C15EF8F7B5C790C'
-    'Countdown.Runtime.psm1' = '716EF71A830717DD2CA651118D3D99465657481FF164DCE2EA9AA0F305AEF1C2'
+    'Countdown.Runtime.psm1' = 'EE71577AF288212BC7A4031A64E3C9379A5F92A8091FB965E28BC871A42C1B19'
     'Countdown.Settings.psm1' = '47CBDE41E71380161127116C881A19DCDDF994CEB3811B03EFAE6007267ADD7A'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '8D270A6C02018837C3BF1C24F75154E996F638668FDF93A38711CF927C324BE1'
-    'Countdown.Ui.Tests.ps1' = '85A88EB7252D0161FB2670EAC17A0E8BD18FE40DCC1BF49DE12233E30F948D14'
-    '敏敏子倒计时.ps1' = '50EDF51C775239D09CC42A218B2952E5115705759CE091DD477EE9E3B54A2B14'
+    'Countdown.Core.Tests.ps1' = '72125C43B853C53575F60F4F53D193A35D92E47121637F187DA12F2FFCF2DE80'
+    'Countdown.Ui.Tests.ps1' = '69C5FA6E579E0B4B9A6075A0A8F2317222662310F3172D40FE1DB480A810F64D'
+    'Countdown.CSharp.Tests.ps1' = 'AE3179A1F0280737C90143BAF7C98FDA97A7D60AC44934096426AFA2508683AF'
+    '敏敏子倒计时.ps1' = '2729F74658E74E1F2A655E706E9F5A47F34699B1D0BD0492D5A6079930FF64D5'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
+    'verification\MinminCountdown.Verification.exe' = '71393A9E882C4781243F8215DD98FABA589913045D408188E15E7E14444338A1'
+    'app\MinminCountdown.exe' = '1BB2A2003BA02072683F5E13C1F26596D6C829B77CD02CFB167274F26692F775'
     'sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
     'sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
     'sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
@@ -53,6 +56,15 @@ $expected = @{
     'assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
     'assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
     'assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
+    'app\assets\sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
+    'app\assets\sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
+    'app\assets\sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
+    'app\assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
+    'app\assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
+    'app\assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
+    'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
+    'app\assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
+    'app\assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
 }
 $applicationFiles = @(
     'Countdown.App.psm1',
@@ -63,6 +75,16 @@ $applicationFiles = @(
     'Countdown.Settings.psm1',
     'Countdown.Tags.psm1',
     '敏敏子倒计时.ps1',
+    'app\MinminCountdown.exe',
+    'app\assets\sanrio-official-mymelody.png',
+    'app\assets\sanrio-official-cinnamoroll.png',
+    'app\assets\sanrio-official-kuromi.png',
+    'app\assets\floating-plush\floating-plush-mymelody-front.png',
+    'app\assets\floating-plush\floating-plush-mymelody-pose.png',
+    'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'app\assets\floating-plush\floating-plush-kuromi-front.png',
+    'app\assets\floating-plush\floating-plush-kuromi-pose.png',
     'CountdownLauncher.exe',
     'countdown-icon.ico',
     'sanrio-official-mymelody.png',
@@ -212,6 +234,11 @@ $testOutput = & $powerShellEngine @coreTestArguments | Out-String
 if ($LASTEXITCODE -ne 0) {
     throw "Remote tests failed: $testOutput"
 }
+$cSharpTestOutput = & $powerShellEngine `
+    -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $staging 'Countdown.CSharp.Tests.ps1') | Out-String
+if ($LASTEXITCODE -ne 0) {
+    throw "Remote C# regression test failed: $cSharpTestOutput"
+}
 $uiTestOutput = & $powerShellEngine `
     -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $staging 'Countdown.Ui.Tests.ps1') | Out-String
 if ($LASTEXITCODE -ne 0) {
@@ -229,7 +256,9 @@ $legacyLauncherPath = Join-Path $desktop '敏敏子倒计时.cmd'
 $launcherTempPath = "$launcherPath.new"
 
 Import-Module (Join-Path $staging 'Countdown.Runtime.psm1') -Force
+Import-Module (Join-Path $staging 'Countdown.Settings.psm1') -Force
 $installMutex = $null
+$settingsWriteMutex = $null
 try {
     # 即使父验收已持锁也再次获取同线程可重入 mutex；公开参数不能跳过真实安装锁。
     $installMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 120
@@ -237,6 +266,9 @@ try {
     # 先按 journal 恢复崩溃留下的候选启动器；否则候选 exe 与旧 launcher-state 的哈希不一致，会永久阻断恢复。
     $recoveryResult = Recover-CountdownInstallTransactions -InstallPath $install -PowerShell7Path $powerShellEngine -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
     $recoveredTransactions = @($recoveryResult.RecoveredTransactionPaths)
+    if (@($recoveryResult.UnresolvedCommittedTransactions).Count -gt 0) {
+        throw '检测到已提交但未完成应用解锁确认的事务；已保留回滚证据，拒绝继续安装。'
+    }
     if (@($recoveryResult.UnresolvedLauncherOwnershipConflicts).Count -gt 0) {
         throw '检测到用户替换的桌面启动器：应用、任务和时间服务已恢复，但事务证据被保留，拒绝继续安装。'
     }
@@ -264,29 +296,34 @@ try {
         Stop-CountdownManagedApplication -InstallPath $install -TaskName $taskName -LegacyTaskName $legacyTaskName -FreezeFutureStarts
         # 旧进程已经静止后才捕获可变 settings/runtime 与桌面文件；任务原状态仍取自 prepared journal。
         $transaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
-        $legacyTask = Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
-        if ($null -ne $legacyTask) {
-            Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false
-        }
+        [void] (Remove-CountdownScheduledTaskIfPresent -TaskName $legacyTaskName)
+        $install = Assert-CountdownInstallPathOnDDrive -Path $install
+        [void] (Assert-CountdownInstallTreeHasNoReparsePoints -Path $install)
         if (-not (Test-Path -LiteralPath $install -PathType Container)) {
             New-Item -ItemType Directory -Path $install -Force | Out-Null
         }
-        $runtimeStatusPath = Join-Path $install 'runtime-status.json'
-        $startupRequestPath = Join-Path $install 'startup-request.json'
+        $runtimeStatusPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $install 'runtime-status.json')
+        $acceptanceStatusPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $install 'acceptance-status.json')
+        $startupRequestPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $install 'startup-request.json')
         Remove-Item -LiteralPath $runtimeStatusPath -Force -ErrorAction SilentlyContinue
-        $startupRequest = New-CountdownStartupRequest -Path $startupRequestPath
+        Remove-Item -LiteralPath $acceptanceStatusPath -Force -ErrorAction SilentlyContinue
+        $startupRequest = New-CountdownStartupRequest -Path $startupRequestPath -AcceptanceReadOnly
 
         foreach ($file in $applicationFiles) {
-            $destination = Join-Path $install $file
-            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-            Copy-Item -LiteralPath (Join-Path $staging $file) -Destination $destination -Force
+            $source = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $staging $file)
+            $destination = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $install $file)
+            $destinationParent = Assert-CountdownInstallPathOnDDrive -Path (Split-Path -Parent $destination)
+            New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+            [void] (Assert-CountdownInstallPathOnDDrive -Path $destination)
+            Copy-Item -LiteralPath $source -Destination $destination -Force
         }
 
         $appPath = Join-Path $install '敏敏子倒计时.ps1'
         $arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$appPath`""
         # 候选启动器放在受管事务目录，桌面上的 .new 仅作为用户已有文件的快照目标，绝不作为安装候选。
-        $candidateLauncherPath = Join-Path $transaction.transactionPath 'candidate-launcher.exe'
-        Copy-Item -LiteralPath (Join-Path $install 'CountdownLauncher.exe') -Destination $candidateLauncherPath -Force
+        $candidateLauncherPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $transaction.transactionPath 'candidate-launcher.exe')
+        $installedLauncherSourcePath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $install 'CountdownLauncher.exe')
+        Copy-Item -LiteralPath $installedLauncherSourcePath -Destination $candidateLauncherPath -Force
         $candidateLauncherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidateLauncherPath).Hash
         if ($candidateLauncherHash -ne $expected['CountdownLauncher.exe']) {
             Remove-Item -LiteralPath $candidateLauncherPath -Force
@@ -305,6 +342,8 @@ try {
         if ($candidateLauncherHashBeforeMove -ne $candidateLauncherHash) {
             throw 'Transaction launcher candidate changed before desktop replacement.'
         }
+        $candidateLauncherPath = Assert-CountdownInstallPathOnDDrive -Path $candidateLauncherPath
+        $launcherPath = Assert-CountdownInstallPathOnDDrive -Path $launcherPath
         Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force
         if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
             throw 'Desktop launcher was not created.'
@@ -314,8 +353,11 @@ try {
             throw 'Desktop launcher hash mismatch after replacement.'
         }
         $launcherState = [ordered]@{ schemaVersion = 1; desktopPath = $launcherPath; desktopSha256 = $candidateLauncherHash } | ConvertTo-Json
-        [System.IO.File]::WriteAllText("$launcherStatePath.tmp", $launcherState, (New-Object System.Text.UTF8Encoding($false)))
-        Move-Item -LiteralPath "$launcherStatePath.tmp" -Destination $launcherStatePath -Force
+        $launcherStatePath = Assert-CountdownInstallPathOnDDrive -Path $launcherStatePath
+        $launcherStateTempPath = Assert-CountdownInstallPathOnDDrive -Path "$launcherStatePath.tmp"
+        [System.IO.File]::WriteAllText($launcherStateTempPath, $launcherState, (New-Object System.Text.UTF8Encoding($false)))
+        Move-Item -LiteralPath $launcherStateTempPath -Destination $launcherStatePath -Force
+        $legacyLauncherPath = Assert-CountdownInstallPathOnDDrive -Path $legacyLauncherPath
         if (Test-Path -LiteralPath $legacyLauncherPath -PathType Leaf) {
             $legacyExpected = "@echo off`r`nC:\Windows\System32\schtasks.exe /Run /TN `"$taskName`" >nul 2>&1`r`nexit /b %errorlevel%`r`n"
             $legacyActual = [System.IO.File]::ReadAllText($legacyLauncherPath, [System.Text.Encoding]::ASCII)
@@ -345,6 +387,7 @@ try {
         $runtimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 30 -PollMilliseconds 250
         $result = [ordered]@{
             TestOutput = $testOutput.Trim()
+            CSharpTestOutput = $cSharpTestOutput.Trim()
             UiTestOutput = $uiTestOutput.Trim()
             UiValidationOutput = $uiValidationOutput.Trim()
             InstalledFiles = @(Get-ChildItem -LiteralPath $install -File -Recurse | Select-Object FullName, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
@@ -367,10 +410,53 @@ try {
             return
         }
 
-        [void] (Remove-CountdownStartupRequest -Path $startupRequestPath -LaunchToken $startupRequest.launchToken)
         [void] (Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext)
-        Complete-CountdownInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
-        $transactionCompleted = $true
+        $commitRuntimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 0 -PollMilliseconds 1
+        if ([int] $commitRuntimeStatus.processId -ne [int] $runtimeStatus.processId) {
+            throw '安装提交前受管应用进程已变化；拒绝提交事务。'
+        }
+        $commitTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+        if ([string] $commitTask.State -ne 'Running') {
+            throw "安装提交前计划任务未运行：$($commitTask.State)"
+        }
+        if (-not (Complete-CountdownStartupRequest -Path $startupRequestPath -LaunchToken $startupRequest.launchToken)) {
+            throw '安装事务仍可回滚，但无法授权应用持久化 schema 迁移。'
+        }
+        [void] (Wait-CountdownStartupRequestState -Path $startupRequestPath -LaunchToken $startupRequest.launchToken -ExpectedState ready -TimeoutSeconds 30 -PollMilliseconds 100)
+        [void] (Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext)
+        $readyRuntimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 0 -PollMilliseconds 1
+        if ([int] $readyRuntimeStatus.processId -ne [int] $runtimeStatus.processId) {
+            throw 'schema 迁移确认后受管应用进程已变化；拒绝提交事务。'
+        }
+        $readyTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+        if ([string] $readyTask.State -ne 'Running') {
+            throw "schema 迁移确认后计划任务未运行：$($readyTask.State)"
+        }
+        $settingsSnapshotPath = Join-Path $transaction.transactionPath 'install-backup\settings.json'
+        $settingsJsonBefore = if (Test-Path -LiteralPath $settingsSnapshotPath -PathType Leaf) { Get-Content -LiteralPath $settingsSnapshotPath -Raw -Encoding UTF8 } else { $null }
+        $settingsHashBefore = if (Test-Path -LiteralPath $settingsSnapshotPath -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsSnapshotPath).Hash } else { $null }
+        $settingsPath = Join-Path $install 'settings.json'
+        $settingsWriteMutex = Enter-CountdownSettingsWriteMutex -Path $settingsPath -TimeoutSeconds 10
+            $settingsJsonAfter = if (Test-Path -LiteralPath $settingsPath -PathType Leaf) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 } else { $null }
+            $settingsHashAfter = if (Test-Path -LiteralPath $settingsPath -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsPath).Hash } else { $null }
+            if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsHashBefore -AfterHash $settingsHashAfter -BeforeJson $settingsJsonBefore -AfterJson $settingsJsonAfter)) {
+                throw 'C# schema 迁移超出允许的数据等价范围。'
+            }
+            Complete-CountdownInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
+            if (-not (Set-CountdownStartupRequestFinalized -Path $startupRequestPath -LaunchToken $startupRequest.launchToken)) {
+                throw '安装已接受且仍可回滚，但无法最终启用应用窗口。'
+            }
+            $acceptanceStatus = Wait-CountdownAcceptanceReadyReceipt -Path $acceptanceStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 30 -PollMilliseconds 100
+            if ([int] $acceptanceStatus.processId -ne [int] $runtimeStatus.processId) {
+                throw '应用解锁确认的进程与 window-ready 进程不一致。'
+            }
+            [void] (Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext)
+            $finalTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+            if ([string] $finalTask.State -ne 'Running') {
+                throw "应用解锁确认后计划任务未运行：$($finalTask.State)"
+            }
+            Remove-CountdownCommittedInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
+            $transactionCompleted = $true
         & "$env:SystemRoot\System32\ie4uinit.exe" -show 2>$null
         $result | ConvertTo-Json -Depth 8
     }
@@ -396,6 +482,9 @@ try {
     }
 }
 finally {
+    if ($null -ne $settingsWriteMutex) {
+        Exit-CountdownSettingsWriteMutex -Mutex $settingsWriteMutex
+    }
     if ($null -ne $installMutex) {
         Exit-CountdownInstallTransactionMutex -Mutex $installMutex
     }

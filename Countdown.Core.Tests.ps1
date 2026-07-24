@@ -682,7 +682,7 @@ $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonI
 if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
 $installerValidation = $installerValidationJson | ConvertFrom-Json
 Assert-Equal $true $installerValidation.Valid 'Installer package validation succeeds'
-Assert-Equal 33 $installerValidation.VerifiedFiles 'Installer manifest includes runtime, C# application and verification hosts, transaction and tag modules, C# regression tests, and both legacy-root and C# app asset sets'
+Assert-Equal 34 $installerValidation.VerifiedFiles 'Installer manifest includes the remote-test build dependency, runtime, C# application and verification hosts, transaction and tag modules, C# regression tests, and both legacy-root and C# app asset sets'
 Assert-Equal 'sanrio-official-mymelody.png,sanrio-official-cinnamoroll.png,sanrio-official-kuromi.png' (@($installerValidation.OfficialCharacterAssets) -join ',') 'Installer includes only the requested official Sanrio character backgrounds'
 Assert-Equal 'assets\floating-plush\floating-plush-mymelody-front.png,assets\floating-plush\floating-plush-mymelody-pose.png,assets\floating-plush\floating-plush-cinnamoroll-front.png,assets\floating-plush\floating-plush-cinnamoroll-pose.png,assets\floating-plush\floating-plush-kuromi-front.png,assets\floating-plush\floating-plush-kuromi-pose.png' (@($installerValidation.FloatingPlushAssets) -join ',') 'Installer includes all six floating plush assets'
 Assert-Equal $true $installerValidation.Transactional 'Installer exposes transactional install boundary'
@@ -698,6 +698,23 @@ Assert-Equal $false $recoveryCommand.Parameters.ContainsKey('TransactionMutexHel
 $candidateCommand = Get-Command Set-CountdownInstallTransactionCandidateLauncherHash -Module Countdown.InstallTransaction
 Assert-Equal $true $candidateCommand.Parameters.ContainsKey('CandidateLauncherSha256') 'Transaction persists a candidate launcher hash before replacement'
 $installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Install-Countdown.ps1'), [System.Text.Encoding]::UTF8)
+$buildSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1'), [System.Text.Encoding]::UTF8)
+Assert-Equal 2 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'Both self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
+$managedBuildIntermediates = @(
+    'src\MinminCountdown.Core\bin',
+    'src\MinminCountdown.Core\obj',
+    'src\MinminCountdown\bin',
+    'src\MinminCountdown\obj',
+    'src\MinminCountdown.Verification\bin',
+    'src\MinminCountdown.Verification\obj'
+)
+foreach ($relativePath in $managedBuildIntermediates) {
+    Assert-Equal $true $buildSource.Contains("'$relativePath'") "Clean build removes managed intermediate directory $relativePath"
+}
+Assert-Equal $true $buildSource.Contains('$managedCleanCandidates = @($applicationOutput, $verificationOutput)') 'Clean build derives removal candidates from actual output paths independently of the allowlist'
+Assert-Equal $true $buildSource.Contains('$projectDirectories = @($coreProject, $applicationProject, $verificationProject)') 'Clean build derives intermediate candidates from all actual C# project paths'
+Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build rejects absolute removal targets outside the repository root'
+Assert-Equal $true $buildSource.Contains('$resolvedCleanPath -notin $expectedCleanPaths') 'Clean build validates every absolute removal target against its exact allowlist'
 $installerCommittedRecoveryMessageIndex = $installerSource.IndexOf('检测到已提交但未完成应用解锁确认的事务')
 $installerOwnershipRecoveryMessageIndex = $installerSource.IndexOf('检测到用户替换的桌面启动器：应用、任务和时间服务已恢复')
 Assert-Equal $true ($installerCommittedRecoveryMessageIndex -ge 0 -and $installerCommittedRecoveryMessageIndex -lt $installerOwnershipRecoveryMessageIndex) 'Installer prioritizes committed recovery evidence over a simultaneous launcher conflict'
@@ -733,6 +750,9 @@ $installerReadyPidIndex = $installerSource.LastIndexOf('$readyRuntimeStatus.proc
 $installerReadyTaskIndex = $installerSource.LastIndexOf('$readyTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop')
 Assert-Equal $true ($installerAcceptanceRequestIndex -ge 0 -and $installerCommitContextCheckIndex -gt $installerAcceptanceRequestIndex -and $installerCommitRuntimeIndex -gt $installerCommitContextCheckIndex -and $installerCommitPidIndex -gt $installerCommitRuntimeIndex -and $installerCommitTaskIndex -gt $installerCommitPidIndex -and $installerStartupReleaseIndex -gt $installerCommitTaskIndex -and $installerStartupReadyIndex -gt $installerStartupReleaseIndex -and $installerReadyContextCheckIndex -gt $installerStartupReadyIndex -and $installerReadyRuntimeIndex -gt $installerReadyContextCheckIndex -and $installerReadyPidIndex -gt $installerReadyRuntimeIndex -and $installerReadyTaskIndex -gt $installerReadyPidIndex -and $installerCompleteIndex -gt $installerReadyTaskIndex -and $installerStartupFinalizeIndex -gt $installerCompleteIndex -and $installerAcceptanceReadyIndex -gt $installerStartupFinalizeIndex -and $installerTransactionCleanupIndex -gt $installerAcceptanceReadyIndex) 'Installer retains rollback evidence until the same C# PID confirms finalized-ready'
 $deploySource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
+$installerBuildHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1')).Hash
+Assert-Equal $true $installerSource.Contains("'Build-CountdownApplication.ps1' = '$installerBuildHash'") 'Installer integrity manifest covers the build script required by remote core tests'
+Assert-Equal $true $deploySource.Contains("'Build-CountdownApplication.ps1',") 'Office package includes the build script required by remote core tests'
 $deployCommitGateIndex = $deploySource.IndexOf('本地 HEAD 与 origin/main 不一致，拒绝部署。')
 $deployBuildIndex = $deploySource.IndexOf('& $powerShell7 -NoLogo -NoProfile -NonInteractive -File $buildScript -Clean')
 $deployManifestReadIndex = $deploySource.IndexOf('$expectedHashes = Get-InstallerHashes')

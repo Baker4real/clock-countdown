@@ -17,6 +17,7 @@ if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
 $env:DOTNET_ROOT = $dotnetRoot
 $env:DOTNET_CLI_HOME = 'D:\Codex\.dotnet-cli'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+$coreProject = Join-Path $PSScriptRoot 'src\MinminCountdown.Core\MinminCountdown.Core.csproj'
 $applicationProject = Join-Path $PSScriptRoot 'src\MinminCountdown\MinminCountdown.csproj'
 $verificationProject = Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\MinminCountdown.Verification.csproj'
 $applicationOutput = Join-Path $PSScriptRoot 'app'
@@ -74,23 +75,41 @@ foreach ($asset in $assetManifest) {
 }
 
 if ($Clean) {
-    foreach ($output in @($applicationOutput, $verificationOutput)) {
-        if (-not (Test-Path -LiteralPath $output -PathType Container)) { continue }
-        $resolvedOutput = [System.IO.Path]::GetFullPath($output)
-        $expectedOutputs = @(
-            [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'app')),
-            [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'verification'))
-        )
-        if ($resolvedOutput -notin $expectedOutputs) {
-            throw "拒绝清理非受管发布目录：$resolvedOutput"
+    $expectedCleanPaths = @(
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'app')),
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'verification')),
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Core\bin')),
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Core\obj')),
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown\bin')),
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown\obj')),
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\bin')),
+        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\obj'))
+    )
+    $projectDirectories = @($coreProject, $applicationProject, $verificationProject) |
+        ForEach-Object { Split-Path -Parent $_ }
+    $managedCleanCandidates = @($applicationOutput, $verificationOutput)
+    foreach ($projectDirectory in $projectDirectories) {
+        $managedCleanCandidates += Join-Path $projectDirectory 'bin'
+        $managedCleanCandidates += Join-Path $projectDirectory 'obj'
+    }
+    $repositoryRootPrefix = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') + '\'
+    foreach ($cleanPath in $managedCleanCandidates) {
+        if (-not (Test-Path -LiteralPath $cleanPath -PathType Container)) { continue }
+        $resolvedCleanPath = [System.IO.Path]::GetFullPath($cleanPath)
+        if (-not $resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "拒绝清理仓库外构建目录：$resolvedCleanPath"
         }
-        Remove-Item -LiteralPath $resolvedOutput -Recurse -Force
+        if ($resolvedCleanPath -notin $expectedCleanPaths) {
+            throw "拒绝清理非受管构建目录：$resolvedCleanPath"
+        }
+        Remove-Item -LiteralPath $resolvedCleanPath -Recurse -Force
     }
 }
 
 & $dotnet publish $applicationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:IncludeSourceRevisionInInformationalVersion=false `
     -p:DebugType=None `
     -p:DebugSymbols=false `
     -o $applicationOutput
@@ -162,6 +181,7 @@ if (Test-Path -LiteralPath $sourcesMetadata) {
 & $dotnet publish $verificationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:IncludeSourceRevisionInInformationalVersion=false `
     -p:DebugType=None `
     -p:DebugSymbols=false `
     -o $verificationOutput

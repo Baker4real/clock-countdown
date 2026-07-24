@@ -11,6 +11,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = $PSScriptRoot
 $requiredFiles = @(
     'Deploy-OfficeCountdown.ps1',
+    'Build-CountdownApplication.ps1',
     'Countdown.App.psm1',
     'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',
@@ -53,7 +54,7 @@ function Get-InstallerHashes {
     $hashes = @{}
     $matches = (Get-Content -Raw -LiteralPath $InstallerPath | Select-String -Pattern "'([^']+)'\s*=\s*'([A-F0-9]{64})'" -AllMatches).Matches
     foreach ($match in $matches) { $hashes[$match.Groups[1].Value] = $match.Groups[2].Value }
-    if ($hashes.Count -ne 33) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
+    if ($hashes.Count -ne 34) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
     $hashes
 }
 

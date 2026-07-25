@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private string? _editingCountdownId;
     private string? _editingNoteId;
+    private bool _activeNotesExpanded = true;
     private bool _completedNotesExpanded;
     private bool _settingDefaultDate;
     private bool _noteDateDirty;
@@ -303,6 +304,13 @@ public sealed partial class MainWindow : Window
                 _noteDateDirty = true;
             }
         };
+        ToggleActiveNotes.Click += (_, _) =>
+        {
+            _activeNotesExpanded = !_activeNotesExpanded;
+            ActiveNoteRows.Visibility =
+                _activeNotesExpanded ? Visibility.Visible : Visibility.Collapsed;
+            ToggleActiveNotes.Content = _activeNotesExpanded ? "收起未完成" : "未完成";
+        };
         ToggleCompletedNotes.Click += (_, _) =>
         {
             _completedNotesExpanded = !_completedNotesExpanded;
@@ -477,6 +485,10 @@ public sealed partial class MainWindow : Window
         RecordCountText.Text = $"{active.Length} 个待办";
         AddNotesGroupedByDay(ActiveNoteRows, active);
         AddNotesGroupedByDay(CompletedNoteRows, completed);
+        ToggleActiveNotes.Content = _activeNotesExpanded ? "收起未完成" : "未完成";
+        ToggleActiveNotes.Visibility = active.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ActiveNoteRows.Visibility =
+            active.Length == 0 || _activeNotesExpanded ? Visibility.Visible : Visibility.Collapsed;
         ToggleCompletedNotes.Visibility = completed.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         CompletedNoteRows.Visibility =
             _completedNotesExpanded && completed.Length > 0 ? Visibility.Visible : Visibility.Collapsed;

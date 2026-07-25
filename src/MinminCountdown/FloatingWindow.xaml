@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:MinminCountdown"
         Title="敏敏子悬浮窗"
-        Width="410"
+        Width="480"
         SizeToContent="Height"
         WindowStyle="None"
         ResizeMode="NoResize"
@@ -14,7 +14,7 @@
         WindowStartupLocation="Manual">
   <Grid x:Name="TaskWrap" Margin="0">
     <Border x:Name="TaskCard"
-            Margin="36,34,30,36"
+            Margin="68"
             Padding="16"
             Background="{DynamicResource CanvasBrush}"
             BorderBrush="{DynamicResource PeachLineBrush}"
@@ -129,22 +129,22 @@
     </Border>
 
     <Image x:Name="PlushTopLeft"
-           Width="86"
-           Height="86"
+           Width="64"
+           Height="64"
            HorizontalAlignment="Left"
            VerticalAlignment="Top"
            IsHitTestVisible="False"
            Stretch="Uniform" />
     <Image x:Name="PlushTopRight"
-           Width="82"
-           Height="82"
+           Width="64"
+           Height="64"
            HorizontalAlignment="Right"
            VerticalAlignment="Top"
            IsHitTestVisible="False"
            Stretch="Uniform" />
     <Image x:Name="PlushBottomRight"
-           Width="88"
-           Height="88"
+           Width="64"
+           Height="64"
            HorizontalAlignment="Right"
            VerticalAlignment="Bottom"
            IsHitTestVisible="False"

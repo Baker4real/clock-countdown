@@ -153,6 +153,32 @@ internal static class ValidationReport
             .Where(note => note.Date is not null)
             .All(note => noteTextValues.Any(text => text.Contains(note.Date!, StringComparison.Ordinal)));
         var notesGroupedByDay = AreNotesGroupedByDay(session.GetSortedNotes(applyFilter: false));
+        var activeNotesToggle = main.FindName("ToggleActiveNotes") as Button;
+        var activeNotesGrouped =
+            activeNotesToggle is not null &&
+            activeNoteRows.Parent is StackPanel noteSections &&
+            noteSections.Children.IndexOf(activeNotesToggle) >= 0 &&
+            noteSections.Children.IndexOf(activeNoteRows) == noteSections.Children.IndexOf(activeNotesToggle) + 1;
+        var expectedActiveDateOrder = session.GetSortedNotes()
+            .Where(note => !note.IsCompleted)
+            .Select(note => note.Date ?? "未设置日期")
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var renderedActiveDateOrder = activeNoteRows.Children
+            .OfType<TextBlock>()
+            .Select(text => text.Text)
+            .Where(text =>
+                string.Equals(text, "未设置日期", StringComparison.Ordinal) ||
+                DateTime.TryParseExact(
+                    text,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out _))
+            .ToArray();
+        var activeNotesKeepDateOrder = expectedActiveDateOrder.SequenceEqual(
+            renderedActiveDateOrder,
+            StringComparer.Ordinal);
         var tagChips = Descendants<Border>(countdownRows)
             .Concat(Descendants<Border>(activeNoteRows))
             .Where(border => !string.IsNullOrWhiteSpace(border.Uid))
@@ -163,9 +189,43 @@ internal static class ValidationReport
         var floatingNotesButton = Required<ToggleButton>(floating, "FloatingNotesButton");
         var countdownButtonFit = MeasureButtonFit(floatingCountdownButton);
         var notesButtonFit = MeasureButtonFit(floatingNotesButton);
+        var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
+        var savePreferencesButtonFit = MeasureButtonFit(savePreferencesButton);
+        var savePreferencesButtonRight = savePreferencesButton
+            .TranslatePoint(new Point(savePreferencesButton.ActualWidth, 0), main)
+            .X;
+        var savePreferencesButtonIsVisible =
+            savePreferencesButton.TranslatePoint(new Point(0, 0), main).X >= 0 &&
+            savePreferencesButtonRight <= main.ActualWidth;
+        var originalMainWidth = main.Width;
+        main.Width = main.MinWidth;
+        main.UpdateLayout();
+        var savePreferencesButtonIsVisibleAtMinimumWidth =
+            savePreferencesButton.TranslatePoint(new Point(0, 0), main).X >= 0 &&
+            savePreferencesButton.TranslatePoint(
+                new Point(savePreferencesButton.ActualWidth, 0),
+                main).X <= main.ActualWidth;
+        main.Width = originalMainWidth;
+        main.UpdateLayout();
         var workArea = SystemParameters.WorkArea;
         var floatingBottomMargin = Math.Round(workArea.Bottom - (floating.Top + floating.ActualHeight), 2);
         var taskCard = Required<Border>(floating, "TaskCard");
+        var taskCardBounds = taskCard
+            .TransformToAncestor(floating)
+            .TransformBounds(new Rect(new Point(0, 0), taskCard.RenderSize));
+        var plushDecorations = new[]
+        {
+            Required<Image>(floating, "PlushTopLeft"),
+            Required<Image>(floating, "PlushTopRight"),
+            Required<Image>(floating, "PlushBottomRight")
+        };
+        var plushDoesNotOverlapTaskCard = plushDecorations.All(image =>
+        {
+            var bounds = image
+                .TransformToAncestor(floating)
+                .TransformBounds(new Rect(new Point(0, 0), image.RenderSize));
+            return !bounds.IntersectsWith(taskCardBounds);
+        });
         var plushGroupWithinWorkArea =
             floating.ActualHeight <= workArea.Height &&
             floating.ActualWidth <= workArea.Width &&
@@ -198,12 +258,12 @@ internal static class ValidationReport
             Required<ComboBox>(main, "CountdownHour").Width is >= 120 and <= 140 &&
             Required<ComboBox>(main, "CountdownMinute").Width is >= 120 and <= 140 &&
             Required<ComboBox>(main, "CountdownSecond").Width is >= 120 and <= 140 &&
-            Required<ComboBox>(main, "DisplayPrecision").Width is >= 140 and <= 156;
+            Required<ComboBox>(main, "DisplayPrecision").ActualWidth is >= 96 and <= 156;
         var compactPreferences =
-            Required<ComboBox>(main, "DisplayPrecision").Width is >= 140 and <= 156 &&
-            Required<TextBox>(main, "MonthlySalary").Width is >= 160 and <= 180 &&
-            Required<TextBox>(main, "WorkStart").Width is >= 120 and <= 140 &&
-            Required<TextBox>(main, "WorkEnd").Width is >= 120 and <= 140;
+            Required<ComboBox>(main, "DisplayPrecision").ActualWidth >= 96 &&
+            Required<TextBox>(main, "MonthlySalary").ActualWidth >= 112 &&
+            Required<TextBox>(main, "WorkStart").ActualWidth >= 96 &&
+            Required<TextBox>(main, "WorkEnd").ActualWidth >= 96;
 
         var report = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -218,18 +278,18 @@ internal static class ValidationReport
             ["TargetHourWidth"] = Required<ComboBox>(main, "CountdownHour").Width,
             ["TargetMinuteWidth"] = Required<ComboBox>(main, "CountdownMinute").Width,
             ["TargetSecondWidth"] = Required<ComboBox>(main, "CountdownSecond").Width,
-            ["DisplayPrecisionWidth"] = Required<ComboBox>(main, "DisplayPrecision").Width,
-            ["MonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").Width,
-            ["WorkStartWidth"] = Required<TextBox>(main, "WorkStart").Width,
-            ["WorkEndWidth"] = Required<TextBox>(main, "WorkEnd").Width,
+            ["DisplayPrecisionWidth"] = Required<ComboBox>(main, "DisplayPrecision").ActualWidth,
+            ["MonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").ActualWidth,
+            ["WorkStartWidth"] = Required<TextBox>(main, "WorkStart").ActualWidth,
+            ["WorkEndWidth"] = Required<TextBox>(main, "WorkEnd").ActualWidth,
             ["ExpandedTargetDateWidth"] = Required<DatePicker>(main, "CountdownDate").Width,
             ["ExpandedTargetHourWidth"] = Required<ComboBox>(main, "CountdownHour").Width,
             ["ExpandedTargetMinuteWidth"] = Required<ComboBox>(main, "CountdownMinute").Width,
             ["ExpandedTargetSecondWidth"] = Required<ComboBox>(main, "CountdownSecond").Width,
-            ["ExpandedDisplayPrecisionWidth"] = Required<ComboBox>(main, "DisplayPrecision").Width,
-            ["ExpandedMonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").Width,
-            ["ExpandedWorkStartWidth"] = Required<TextBox>(main, "WorkStart").Width,
-            ["ExpandedWorkEndWidth"] = Required<TextBox>(main, "WorkEnd").Width,
+            ["ExpandedDisplayPrecisionWidth"] = Required<ComboBox>(main, "DisplayPrecision").ActualWidth,
+            ["ExpandedMonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").ActualWidth,
+            ["ExpandedWorkStartWidth"] = Required<TextBox>(main, "WorkStart").ActualWidth,
+            ["ExpandedWorkEndWidth"] = Required<TextBox>(main, "WorkEnd").ActualWidth,
             ["ThemeControlInventoryCovered"] = themeInventory,
             ["ToolTipTemplateMaterializes"] = toolTipMaterializes,
             ["ThemedControlTemplatesApplied"] = mainThemeTemplate,
@@ -364,6 +424,10 @@ internal static class ValidationReport
             ["NoteStatusLabelsPresent"] = noteStatusLabels || session.Current.Notes.Count == 0,
             ["NoteDatesRendered"] = noteDatesRendered,
             ["NotesGroupedByDay"] = notesGroupedByDay,
+            ["ActiveNotesGrouped"] = activeNotesGrouped,
+            ["ActiveNotesExpandedByDefault"] =
+                activeNotesToggle is not null && activeNoteRows.Visibility == Visibility.Visible,
+            ["ActiveNotesKeepDateOrder"] = activeNotesKeepDateOrder,
             ["CompletedNotesCollapsed"] = main.CompletedNotesAreCollapsed,
             ["FloatingWindowPresent"] = floating is not null,
             ["FloatingWindowStaysAboveWorkAreaBottom"] = floatingBottomMargin >= 0,
@@ -378,6 +442,7 @@ internal static class ValidationReport
             ["FloatingPlushCount"] = floating.PlushCount,
             ["FloatingPlushDecorationsAreNonInteractive"] = floating.PlushDecorationsAreNonInteractive,
             ["FloatingPlushCardIsUnobscured"] = taskCard.Margin.Left >= 30 && taskCard.Margin.Right >= 30,
+            ["FloatingPlushDoesNotOverlapTaskCard"] = plushDoesNotOverlapTaskCard,
             ["FloatingPlushVisibleEdgesMeetCard"] = floating.PlushCount == 3 && taskCard.Margin.Top >= 30,
             ["FloatingPlushGroupWithinWorkArea"] = plushGroupWithinWorkArea,
             ["FloatingCountdownBottomMargin"] = floatingBottomMargin,
@@ -388,6 +453,12 @@ internal static class ValidationReport
             ["FloatingNotesButtonTextFits"] = notesButtonFit.Fits,
             ["FloatingNotesButtonTextAvailableWidth"] = notesButtonFit.Available,
             ["FloatingNotesButtonTextRequiredWidth"] = notesButtonFit.Required,
+            ["SavePreferencesButtonTextFits"] = savePreferencesButtonFit.Fits,
+            ["SavePreferencesButtonIsFullyVisible"] = savePreferencesButtonIsVisible,
+            ["SavePreferencesButtonIsFullyVisibleAtMinimumWidth"] =
+                savePreferencesButtonIsVisibleAtMinimumWidth,
+            ["SavePreferencesButtonRight"] = Math.Round(savePreferencesButtonRight, 2),
+            ["MainWindowActualWidth"] = Math.Round(main.ActualWidth, 2),
             ["FloatingCountdownCount"] = floating.FloatingCountdownCount,
             ["HasWorkdayEndCountdown"] =
                 false,

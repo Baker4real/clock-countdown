@@ -329,31 +329,30 @@
                 CornerRadius="8">
           <Grid>
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="1.1*" />
+              <ColumnDefinition Width="1.25*" />
+              <ColumnDefinition Width="*" />
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
               <TextBlock Text="显示精度" Style="{DynamicResource FieldLabel}" />
-              <ComboBox x:Name="DisplayPrecision" Width="148" />
+              <ComboBox x:Name="DisplayPrecision" MinWidth="96" />
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="10,0,0,0">
               <TextBlock Text="月薪（元）" Style="{DynamicResource FieldLabel}" />
-              <TextBox x:Name="MonthlySalary" Width="176" />
+              <TextBox x:Name="MonthlySalary" MinWidth="112" />
             </StackPanel>
             <StackPanel Grid.Column="2" Margin="10,0,0,0">
               <TextBlock Text="上班时间" Style="{DynamicResource FieldLabel}" />
-              <TextBox x:Name="WorkStart" Width="136" />
+              <TextBox x:Name="WorkStart" MinWidth="96" />
             </StackPanel>
             <StackPanel Grid.Column="3" Margin="10,0,0,0">
               <TextBlock Text="下班时间" Style="{DynamicResource FieldLabel}" />
-              <TextBox x:Name="WorkEnd" Width="136" />
+              <TextBox x:Name="WorkEnd" MinWidth="96" />
             </StackPanel>
             <Button x:Name="SavePreferencesButton"
-                    Grid.Column="5"
+                    Grid.Column="4"
                     Width="92"
                     Margin="10,18,0,0"
                     Content="保存设置"
@@ -444,6 +443,10 @@
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
           <StackPanel>
+            <Button x:Name="ToggleActiveNotes"
+                    Content="未完成"
+                    Visibility="Collapsed"
+                    Style="{DynamicResource SecondaryButton}" />
             <StackPanel x:Name="ActiveNoteRows" />
             <Button x:Name="ToggleCompletedNotes"
                     Margin="0,8,0,0"

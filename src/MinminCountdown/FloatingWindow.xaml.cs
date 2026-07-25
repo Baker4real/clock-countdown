@@ -10,6 +10,7 @@ namespace MinminCountdown;
 public sealed partial class FloatingWindow : Window
 {
     private readonly ApplicationSession _session;
+    private readonly DesktopWorkspace _workspaceModule;
     private readonly HolidayCalendar _calendar;
     private readonly MainWindow _manager;
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
@@ -23,6 +24,7 @@ public sealed partial class FloatingWindow : Window
         string assetRoot)
     {
         _session = session;
+        _workspaceModule = new DesktopWorkspace(session);
         _calendar = calendar;
         _manager = manager;
         InitializeComponent();
@@ -69,7 +71,7 @@ public sealed partial class FloatingWindow : Window
             workspace == WorkspaceKind.Notes ? Visibility.Visible : Visibility.Collapsed;
         if (workspace == WorkspaceKind.Notes)
         {
-            FloatingTags.SetSelection(_session.Filter.SelectedTagIds);
+            FloatingTags.SetSelection(_workspaceModule.SelectedTagIds);
             if (!_dateDirty)
             {
                 _settingDefaultDate = true;
@@ -147,7 +149,7 @@ public sealed partial class FloatingWindow : Window
         FloatingAddNote.Click += (_, _) => AddNote();
         FloatingTags.CreateRequested += (_, name) =>
         {
-            if (_session.TryCreateTag(
+            if (_workspaceModule.TryCreateTag(
                     name,
                     "#F4B6A6",
                     out var tag,
@@ -178,10 +180,10 @@ public sealed partial class FloatingWindow : Window
         FloatingRows.Children.Clear();
         if (_workspace == WorkspaceKind.Countdowns)
         {
-            var records = _session.GetSortedCountdowns()
+            var records = _workspaceModule.GetVisibleCountdowns()
                 .Where(record => record.TargetUtc > nowUtc)
                 .ToList();
-            if (!_session.Filter.HasConstraints &&
+            if (!_workspaceModule.HasFilterConstraints &&
                 _calendar.GetWorkdayEndCountdown(nowUtc, _session.Current.Preferences) is { } workdayEnd)
             {
                 records.Add(workdayEnd);
@@ -207,13 +209,13 @@ public sealed partial class FloatingWindow : Window
         }
         else
         {
-            var notes = _session.GetSortedNotes().Where(note => !note.IsCompleted).ToArray();
+            var notes = _workspaceModule.GetVisibleActiveNotes();
             foreach (var note in notes)
             {
                 FloatingRows.Children.Add(FloatingNoteCard(note));
             }
 
-            if (notes.Length == 0)
+            if (notes.Count == 0)
             {
                 FloatingRows.Children.Add(EmptyText("今天还没有待办便签。"));
             }
@@ -259,7 +261,7 @@ public sealed partial class FloatingWindow : Window
             $"完成便签 {note.Text}");
         check.Checked += (_, _) =>
         {
-            if (!_session.TrySetNoteCompletion(note.Id, true, out var error))
+            if (!_workspaceModule.TrySetNoteCompletion(note.Id, true, out var error))
             {
                 check.IsChecked = false;
                 SetNoteMessage(error);
@@ -318,11 +320,9 @@ public sealed partial class FloatingWindow : Window
             3 => 60,
             _ => (int?)null
         };
-        if (!_session.TrySaveNote(
-                null,
+        if (!_workspaceModule.TrySaveQuickNote(
                 FloatingNoteText.Text,
                 FloatingNoteDate.SelectedDate,
-                false,
                 FloatingTags.SelectedTagIds.ToArray(),
                 interval,
                 out var error))

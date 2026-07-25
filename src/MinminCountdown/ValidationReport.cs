@@ -294,7 +294,9 @@ internal static class ValidationReport
             Required<TextBox>(main, "WorkStart").ActualWidth >= 96 &&
             Required<TextBox>(main, "WorkEnd").ActualWidth >= 96;
 
-        var report = new Dictionary<string, object?>(StringComparer.Ordinal)
+        var report = new ValidationScenarioReport();
+        report.AddRange(ArchitectureValidationScenario.Create());
+        report.AddRange(new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["Valid"] = true,
             ["Title"] = main.Title,
@@ -531,13 +533,13 @@ internal static class ValidationReport
             ["CompletedNoteCount"] = session.Current.Notes.Count(note => note.IsCompleted),
             ["SortedNames"] = session.GetSortedCountdowns(applyFilter: false).Select(record => record.Name).ToArray(),
             ["WindowIconLoaded"] = main.Icon is not null
-        };
+        });
 
         datePicker.IsDropDownOpen = false;
         reminderWindow.Close();
         floating.Hide();
         main.Hide();
-        return report;
+        return report.ToDictionary();
     }
 
     private static Rect? VisibleImageBounds(Image image, UIElement ancestor)

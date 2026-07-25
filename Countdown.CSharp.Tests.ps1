@@ -323,6 +323,10 @@ try {
     )
     $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
+    Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '桌面工作区 deep module 验收'
+    Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolModuleDeep) '启动验收 protocol deep module 验收'
+    Assert-Equal $true ([bool] $adapterValidation.WorkdayCalendarModuleDeep) '工作日历 deep module 验收'
+    Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '验证报告 deep module 验收'
     Assert-Equal $true ([bool] $adapterValidation.ThemeControlInventoryCovered) 'adapter 验证主题控件资产清单'
     Assert-Equal $true ([bool] $adapterValidation.ThemedControlTemplatesApplied) 'adapter 验证真实 WPF 主题模板'
     Assert-Equal $true ([bool] $adapterValidation.LiveDatePickerPopupIsThemed) 'adapter 验证真实 DatePicker Popup 主题'

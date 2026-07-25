@@ -4125,11 +4125,20 @@ if ($ValidateOnly) {
     $datePickerTextDefersCalendarUntilPointerRelease = @($datePickerTextClickResults | Where-Object { -not $_.DefersCalendarUntilPointerRelease }).Count -eq 0
     $datePickerTextClicksUseTheme = @($datePickerTextClickResults | Where-Object { -not $_.UsesTheme }).Count -eq 0
     $targetDate.IsDropDownOpen = $false
+    $targetDatePopupOpenedProbe = [pscustomobject]@{ HasOpened = $false }
+    if ($datePickerParts[2] -is [System.Windows.Controls.Primitives.Popup]) {
+        $datePickerParts[2].Tag = $targetDatePopupOpenedProbe
+        $datePickerParts[2].Add_Opened({
+                param($sender, $eventArgs)
+                $sender.Tag.HasOpened = $true
+            })
+    }
     $previewClick = New-Object System.Windows.Input.MouseButtonEventArgs([System.Windows.Input.Mouse]::PrimaryDevice, 0, [System.Windows.Input.MouseButton]::Left)
     $previewClick.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
     $targetDate.RaiseEvent($previewClick)
     $datePickerParts[1].RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
-    $datePickerButtonOpensCalendar = $targetDate.IsDropDownOpen
+    $window.Dispatcher.Invoke([System.Action] { $window.UpdateLayout() }, [System.Windows.Threading.DispatcherPriority]::ApplicationIdle)
+    $datePickerButtonOpensCalendar = [bool] $targetDatePopupOpenedProbe.HasOpened
     $targetDate.IsDropDownOpen = $false
     if ($null -eq $window.Icon) { throw 'Window icon was not loaded.' }
     function Get-ThemeStyleTemplate {

@@ -230,6 +230,72 @@ internal static class RuntimeProtocol
     }
 }
 
+internal sealed class StartupAcceptanceProtocol
+{
+    private readonly string _applicationRoot;
+    private readonly string _startupRequestPath;
+    private readonly string _runtimeStatusPath;
+    private readonly string _acceptanceStatusPath;
+
+    private StartupAcceptanceProtocol(
+        string applicationRoot,
+        string startupRequestPath,
+        string runtimeStatusPath,
+        string acceptanceStatusPath,
+        StartupRequest request)
+    {
+        _applicationRoot = applicationRoot;
+        _startupRequestPath = startupRequestPath;
+        _runtimeStatusPath = runtimeStatusPath;
+        _acceptanceStatusPath = acceptanceStatusPath;
+        Request = request;
+    }
+
+    public static bool IsDeepModule => true;
+
+    public StartupRequest Request { get; }
+
+    public string LaunchToken => Request.LaunchToken;
+
+    public bool AcceptanceReadOnly => Request.AcceptanceReadOnly;
+
+    public string RuntimeStatusPath => _runtimeStatusPath;
+
+    public string AcceptanceStatusPath => _acceptanceStatusPath;
+
+    public static StartupAcceptanceProtocol Load(string applicationRoot, bool requireStartupRequest)
+    {
+        var startupRequestPath = Path.Combine(applicationRoot, "startup-request.json");
+        return new StartupAcceptanceProtocol(
+            applicationRoot,
+            startupRequestPath,
+            Path.Combine(applicationRoot, "runtime-status.json"),
+            Path.Combine(applicationRoot, "acceptance-status.json"),
+            RuntimeProtocol.ReadStartupRequest(startupRequestPath, requireStartupRequest));
+    }
+
+    public RuntimeReceipt WriteWindowReady(string calendarState) =>
+        RuntimeProtocol.WriteWindowReady(
+            _runtimeStatusPath,
+            LaunchToken,
+            AdapterPath,
+            calendarState);
+
+    public string? ReadAcceptanceState() =>
+        RuntimeProtocol.ReadAcceptanceState(_startupRequestPath, LaunchToken);
+
+    public bool MarkAcceptanceReady() =>
+        RuntimeProtocol.MarkAcceptanceReady(_startupRequestPath, LaunchToken);
+
+    public AcceptanceReadyReceipt WriteAcceptanceReady() =>
+        RuntimeProtocol.WriteAcceptanceReady(
+            _acceptanceStatusPath,
+            LaunchToken,
+            AdapterPath);
+
+    private string AdapterPath => Path.Combine(_applicationRoot, ApplicationPaths.AdapterFileName);
+}
+
 internal sealed record StartupRequest(string LaunchToken, bool AcceptanceReadOnly, string AcceptanceState);
 
 internal sealed record RuntimeReceipt(

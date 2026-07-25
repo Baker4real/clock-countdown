@@ -18,13 +18,10 @@ public sealed partial class App : Application
     private MainWindow? _mainWindow;
     private FloatingWindow? _floatingWindow;
     private SingleInstanceMutexLease? _singleInstanceLease;
+    private StartupAcceptanceProtocol? _startupProtocol;
     private DispatcherTimer? _clockTimer;
     private DispatcherTimer? _testExitTimer;
     private string? _applicationRoot;
-    private string? _startupRequestPath;
-    private string? _runtimeStatusPath;
-    private string? _acceptanceStatusPath;
-    private string? _launchToken;
     private bool _acceptanceReadOnly;
     private bool _runtimeReceiptWritten;
     private bool _shuttingDown;
@@ -40,12 +37,8 @@ public sealed partial class App : Application
         {
             _options = HostOptions.Parse(eventArgs.Args);
             _applicationRoot = ApplicationPaths.ResolveApplicationRoot();
-            _startupRequestPath = Path.Combine(_applicationRoot, "startup-request.json");
-            var startupRequest = RuntimeProtocol.ReadStartupRequest(
-                _startupRequestPath,
-                _options.RequireStartupRequest);
-            _launchToken = startupRequest.LaunchToken;
-            _acceptanceReadOnly = startupRequest.AcceptanceReadOnly;
+            _startupProtocol = StartupAcceptanceProtocol.Load(_applicationRoot, _options.RequireStartupRequest);
+            _acceptanceReadOnly = _startupProtocol.AcceptanceReadOnly;
             var settingsPath = _options.SettingsFile ??
                                Path.Combine(_applicationRoot, "settings.json");
             var diagnosticPath = _options.DiagnosticLogPath ??
@@ -115,13 +108,11 @@ public sealed partial class App : Application
             _floatingWindow is null ||
             _session is null ||
             _calendar is null ||
-            _applicationRoot is null)
+            _startupProtocol is null)
         {
             throw new InvalidOperationException("应用宿主尚未初始化。");
         }
 
-        _runtimeStatusPath = Path.Combine(_applicationRoot, "runtime-status.json");
-        _acceptanceStatusPath = Path.Combine(_applicationRoot, "acceptance-status.json");
         _mainWindow.CloseRequested += (_, _) => _mainWindow.Hide();
         _mainWindow.Closing += (_, eventArgs) =>
         {
@@ -162,21 +153,14 @@ public sealed partial class App : Application
     private void OnFloatingContentRendered(object? sender, EventArgs eventArgs)
     {
         if (_runtimeReceiptWritten ||
-            _applicationRoot is null ||
-            _runtimeStatusPath is null ||
-            _launchToken is null ||
+            _startupProtocol is null ||
             _options is null ||
             _session is null)
         {
             return;
         }
 
-        var adapterPath = Path.Combine(_applicationRoot, ApplicationPaths.AdapterFileName);
-        RuntimeProtocol.WriteWindowReady(
-            _runtimeStatusPath,
-            _launchToken,
-            adapterPath,
-            "Pending");
+        _startupProtocol.WriteWindowReady("Pending");
         _runtimeReceiptWritten = true;
         _logger?.Info("WindowReady");
 
@@ -200,9 +184,7 @@ public sealed partial class App : Application
     private async Task InitializeHolidayCalendarAsync(int year)
     {
         if (_calendar is null ||
-            _runtimeStatusPath is null ||
-            _launchToken is null ||
-            _applicationRoot is null)
+            _startupProtocol is null)
         {
             return;
         }
@@ -215,11 +197,7 @@ public sealed partial class App : Application
 
         try
         {
-            RuntimeProtocol.WriteWindowReady(
-                _runtimeStatusPath,
-                _launchToken,
-                Path.Combine(_applicationRoot, ApplicationPaths.AdapterFileName),
-                _calendar.State);
+            _startupProtocol.WriteWindowReady(_calendar.State);
         }
         catch (Exception exception)
         {
@@ -272,22 +250,19 @@ public sealed partial class App : Application
     private void AdvanceAcceptanceState()
     {
         if (!_acceptanceReadOnly ||
-            _startupRequestPath is null ||
-            _launchToken is null ||
             _session is null ||
             _mainWindow is null ||
             _floatingWindow is null ||
-            _applicationRoot is null ||
-            _acceptanceStatusPath is null)
+            _startupProtocol is null)
         {
             return;
         }
 
-        var acceptanceState = RuntimeProtocol.ReadAcceptanceState(_startupRequestPath, _launchToken);
+        var acceptanceState = _startupProtocol.ReadAcceptanceState();
         if (string.Equals(acceptanceState, "released", StringComparison.Ordinal))
         {
             _session.PersistMigrationIfNeeded();
-            if (!RuntimeProtocol.MarkAcceptanceReady(_startupRequestPath, _launchToken))
+            if (!_startupProtocol.MarkAcceptanceReady())
             {
                 throw new InvalidOperationException("验收迁移完成后无法确认 ready 状态。");
             }
@@ -305,10 +280,7 @@ public sealed partial class App : Application
         _floatingWindow.IsEnabled = true;
         try
         {
-            RuntimeProtocol.WriteAcceptanceReady(
-                _acceptanceStatusPath,
-                _launchToken,
-                Path.Combine(_applicationRoot, ApplicationPaths.AdapterFileName));
+            _startupProtocol.WriteAcceptanceReady();
         }
         catch
         {

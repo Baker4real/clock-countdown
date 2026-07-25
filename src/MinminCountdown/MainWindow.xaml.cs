@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     };
 
     private readonly ApplicationSession _session;
+    private readonly DesktopWorkspace _workspaceModule;
     private readonly HolidayCalendar _calendar;
     private readonly DiagnosticLogger _logger;
     private readonly Dictionary<string, CheckBox> _noteCompletionBoxes =
@@ -41,6 +42,7 @@ public sealed partial class MainWindow : Window
         string assetRoot)
     {
         _session = session;
+        _workspaceModule = new DesktopWorkspace(session);
         _calendar = calendar;
         _logger = logger;
         InitializeComponent();
@@ -293,7 +295,7 @@ public sealed partial class MainWindow : Window
                 NoteReminder.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
         NoteSearch.TextChanged += (_, _) =>
         {
-            _session.Filter.NoteSearch = NoteSearch.Text;
+            _workspaceModule.SetNoteSearch(NoteSearch.Text);
             RenderNotes();
             UpdateFilterSummary();
         };
@@ -324,21 +326,21 @@ public sealed partial class MainWindow : Window
 
         AnyTagMode.Click += (_, _) =>
         {
-            _session.Filter.MatchMode = TagMatchMode.Any;
+            _workspaceModule.SetTagMatchMode(TagMatchMode.Any);
             AnyTagMode.IsChecked = true;
             AllTagMode.IsChecked = false;
             RenderVisibleWorkspace();
         };
         AllTagMode.Click += (_, _) =>
         {
-            _session.Filter.MatchMode = TagMatchMode.All;
+            _workspaceModule.SetTagMatchMode(TagMatchMode.All);
             AnyTagMode.IsChecked = false;
             AllTagMode.IsChecked = true;
             RenderVisibleWorkspace();
         };
         UntaggedOnly.Click += (_, _) =>
         {
-            _session.Filter.UntaggedOnly = UntaggedOnly.IsChecked == true;
+            _workspaceModule.SetUntaggedOnly(UntaggedOnly.IsChecked == true);
             RenderVisibleWorkspace();
         };
         CountdownAllFilter.Click += (_, _) => SetCountdownFilter(CountdownStatusFilter.All);
@@ -349,10 +351,9 @@ public sealed partial class MainWindow : Window
         NoteCompletedFilter.Click += (_, _) => SetNoteFilter(NoteStatusFilter.Completed);
         NoteUndatedFilter.Click += (_, _) =>
         {
-            _session.Filter.UndatedNotesOnly = NoteUndatedFilter.IsChecked == true;
-            if (_session.Filter.UndatedNotesOnly)
+            _workspaceModule.SetUndatedNotesOnly(NoteUndatedFilter.IsChecked == true);
+            if (_workspaceModule.Filter.UndatedNotesOnly)
             {
-                _session.Filter.NoteDate = null;
                 NoteDateFilter.SelectedDate = null;
             }
 
@@ -361,12 +362,11 @@ public sealed partial class MainWindow : Window
         };
         NoteDateFilter.SelectedDateChanged += (_, _) =>
         {
-            _session.Filter.NoteDate = NoteDateFilter.SelectedDate?.ToString(
+            _workspaceModule.SetNoteDateFilter(NoteDateFilter.SelectedDate?.ToString(
                 "yyyy-MM-dd",
-                CultureInfo.InvariantCulture);
-            if (_session.Filter.NoteDate is not null)
+                CultureInfo.InvariantCulture));
+            if (_workspaceModule.Filter.NoteDate is not null)
             {
-                _session.Filter.UndatedNotesOnly = false;
                 NoteUndatedFilter.IsChecked = false;
             }
 
@@ -376,8 +376,8 @@ public sealed partial class MainWindow : Window
         ClearNoteDateFilter.Click += (_, _) =>
         {
             NoteDateFilter.SelectedDate = null;
-            _session.Filter.NoteDate = null;
-            _session.Filter.UndatedNotesOnly = false;
+            _workspaceModule.SetNoteDateFilter(null);
+            _workspaceModule.SetUndatedNotesOnly(false);
             NoteUndatedFilter.IsChecked = false;
             RenderNotes();
             UpdateFilterSummary();
@@ -417,7 +417,7 @@ public sealed partial class MainWindow : Window
     private void RenderCountdowns()
     {
         CountdownRows.Children.Clear();
-        var records = _session.GetSortedCountdowns();
+        var records = _workspaceModule.GetVisibleCountdowns();
         RecordCountText.Text = $"{records.Count} 个倒计时";
         if (records.Count == 0)
         {
@@ -479,7 +479,7 @@ public sealed partial class MainWindow : Window
         ActiveNoteRows.Children.Clear();
         CompletedNoteRows.Children.Clear();
         _noteCompletionBoxes.Clear();
-        var records = _session.GetSortedNotes();
+        var records = _workspaceModule.GetVisibleNotes();
         var active = records.Where(note => !note.IsCompleted).ToArray();
         var completed = records.Where(note => note.IsCompleted).ToArray();
         RecordCountText.Text = $"{active.Length} 个待办";
@@ -595,7 +595,7 @@ public sealed partial class MainWindow : Window
             CountdownHour.SelectedIndex,
             CountdownMinute.SelectedIndex,
             CountdownSecond.SelectedIndex);
-        if (!_session.TrySaveCountdown(
+        if (!_workspaceModule.TrySaveCountdown(
                 _editingCountdownId,
                 CountdownName.Text,
                 target,
@@ -633,7 +633,7 @@ public sealed partial class MainWindow : Window
         var existing = _editingNoteId is null
             ? null
             : _session.Current.Notes.FirstOrDefault(note => note.Id == _editingNoteId);
-        if (!_session.TrySaveNote(
+        if (!_workspaceModule.TrySaveNote(
                 _editingNoteId,
                 NoteText.Text,
                 NoteDate.SelectedDate,
@@ -673,7 +673,7 @@ public sealed partial class MainWindow : Window
             2 => "Minute",
             _ => "Second"
         };
-        if (!_session.TrySavePreferences(precision, salary, workStart, workEnd, out var error))
+        if (!_workspaceModule.TrySavePreferences(precision, salary, workStart, workEnd, out var error))
         {
             SetMessage(StatusText, $"设置保存失败：{error}", true);
             return;
@@ -716,7 +716,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!_session.TryDeleteCountdown(id, out var error))
+        if (!_workspaceModule.TryDeleteCountdown(id, out var error))
         {
             SetMessage(StatusText, $"删除失败：{error}", true);
         }
@@ -757,7 +757,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!_session.TryDeleteNote(id, out var error))
+        if (!_workspaceModule.TryDeleteNote(id, out var error))
         {
             SetMessage(StatusText, $"删除失败：{error}", true);
         }
@@ -777,7 +777,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!_session.TrySetNoteCompletion(id, desired, out var error))
+        if (!_workspaceModule.TrySetNoteCompletion(id, desired, out var error))
         {
             SetMessage(StatusText, $"便签状态保存失败：{error}", true);
             checkBox.IsChecked = current.IsCompleted;
@@ -804,7 +804,7 @@ public sealed partial class MainWindow : Window
         NoteDate.SelectedDate = _session.BeijingNow.Date;
         _settingDefaultDate = false;
         _noteDateDirty = false;
-        NoteTags.SetSelection(_session.Filter.SelectedTagIds);
+        NoteTags.SetSelection(_workspaceModule.SelectedTagIds);
         NoteReminder.SelectedIndex = 0;
         CustomReminderMinutes.Clear();
         CustomReminderMinutes.Visibility = Visibility.Collapsed;
@@ -887,7 +887,7 @@ public sealed partial class MainWindow : Window
             var option = new ToggleButton
             {
                 Content = tag.Name,
-                IsChecked = _session.Filter.SelectedTagIds.Contains(tag.Id),
+                IsChecked = _workspaceModule.SelectedTagIds.Contains(tag.Id),
                 Tag = tag.Id,
                 Uid = tag.Id,
                 Margin = new Thickness(0, 0, 6, 6),
@@ -898,11 +898,11 @@ public sealed partial class MainWindow : Window
             {
                 if (option.IsChecked == true)
                 {
-                    _session.Filter.SelectedTagIds.Add(tag.Id);
+                    _workspaceModule.SelectTag(tag.Id, true);
                 }
                 else
                 {
-                    _session.Filter.SelectedTagIds.Remove(tag.Id);
+                    _workspaceModule.SelectTag(tag.Id, false);
                 }
 
                 RenderVisibleWorkspace();
@@ -924,7 +924,7 @@ public sealed partial class MainWindow : Window
             delete.Style = (Style)FindResource("DangerButton");
             save.Click += (_, _) =>
             {
-                if (!_session.TryRenameTag(tag.Id, name.Text, tag.Color, out var error))
+                if (!_workspaceModule.TryRenameTag(tag.Id, name.Text, tag.Color, out var error))
                 {
                     SetMessage(TagManagerMessage, error, true);
                 }
@@ -936,7 +936,7 @@ public sealed partial class MainWindow : Window
                     return;
                 }
 
-                if (!_session.TryDeleteTag(tag.Id, out var error))
+                if (!_workspaceModule.TryDeleteTag(tag.Id, out var error))
                 {
                     SetMessage(TagManagerMessage, error, true);
                 }
@@ -973,7 +973,7 @@ public sealed partial class MainWindow : Window
         }
 
         var color = TagColors[_session.Current.Tags.Count % TagColors.Length];
-        if (!_session.TryCreateTag(normalized, color, out var tag, out var error))
+        if (!_workspaceModule.TryCreateTag(normalized, color, out var tag, out var error))
         {
             SetMessage(TagManagerMessage, error, true);
             return null;
@@ -986,7 +986,7 @@ public sealed partial class MainWindow : Window
 
     private void SetCountdownFilter(CountdownStatusFilter filter)
     {
-        _session.Filter.CountdownStatus = filter;
+        _workspaceModule.SetCountdownStatus(filter);
         CountdownAllFilter.IsChecked = filter == CountdownStatusFilter.All;
         CountdownActiveFilter.IsChecked = filter == CountdownStatusFilter.Active;
         CountdownExpiredFilter.IsChecked = filter == CountdownStatusFilter.Expired;
@@ -996,7 +996,7 @@ public sealed partial class MainWindow : Window
 
     private void SetNoteFilter(NoteStatusFilter filter)
     {
-        _session.Filter.NoteStatus = filter;
+        _workspaceModule.SetNoteStatus(filter);
         NoteAllFilter.IsChecked = filter == NoteStatusFilter.All;
         NoteActiveFilter.IsChecked = filter == NoteStatusFilter.Active;
         NoteCompletedFilter.IsChecked = filter == NoteStatusFilter.Completed;
@@ -1006,14 +1006,7 @@ public sealed partial class MainWindow : Window
 
     private void ClearFilters()
     {
-        _session.Filter.SelectedTagIds.Clear();
-        _session.Filter.MatchMode = TagMatchMode.Any;
-        _session.Filter.UntaggedOnly = false;
-        _session.Filter.CountdownStatus = CountdownStatusFilter.All;
-        _session.Filter.NoteStatus = NoteStatusFilter.All;
-        _session.Filter.NoteSearch = string.Empty;
-        _session.Filter.NoteDate = null;
-        _session.Filter.UndatedNotesOnly = false;
+        _workspaceModule.ClearFilters();
         AnyTagMode.IsChecked = true;
         AllTagMode.IsChecked = false;
         UntaggedOnly.IsChecked = false;
@@ -1032,13 +1025,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdateFilterSummary()
     {
-        var count =
-            _session.Filter.SelectedTagIds.Count +
-            (_session.Filter.UntaggedOnly ? 1 : 0) +
-            (_session.Filter.CountdownStatus != CountdownStatusFilter.All ? 1 : 0) +
-            (_session.Filter.NoteStatus != NoteStatusFilter.All ? 1 : 0) +
-            (!string.IsNullOrWhiteSpace(_session.Filter.NoteSearch) ? 1 : 0) +
-            (_session.Filter.NoteDate is not null || _session.Filter.UndatedNotesOnly ? 1 : 0);
+        var count = _workspaceModule.AppliedFilterCount;
         FilterButton.Content = count == 0 ? "筛选" : $"筛选 · {count}";
         AutomationProperties.SetName(FilterButton, count == 0 ? "打开筛选" : $"打开筛选，已应用 {count} 项");
     }

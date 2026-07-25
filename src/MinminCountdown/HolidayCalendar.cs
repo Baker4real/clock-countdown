@@ -8,15 +8,20 @@ namespace MinminCountdown;
 
 internal sealed class HolidayCalendar : IDisposable
 {
-    private static readonly UTF8Encoding Utf8NoBom = new(false);
-    private readonly string _applicationRoot;
-    private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private readonly HolidayCalendarSource _source;
     private IReadOnlyDictionary<string, bool>? _workdayMap;
 
     public HolidayCalendar(string applicationRoot)
+        : this(new HolidayCalendarSource(applicationRoot))
     {
-        _applicationRoot = applicationRoot;
     }
+
+    private HolidayCalendar(HolidayCalendarSource source)
+    {
+        _source = source;
+    }
+
+    public static bool IsDeepModule => true;
 
     public event EventHandler? StateChanged;
 
@@ -26,12 +31,9 @@ internal sealed class HolidayCalendar : IDisposable
 
     public async Task InitializeAsync(int year, CancellationToken cancellationToken)
     {
-        var cachePath = Path.Combine(_applicationRoot, "holiday-cache", $"{year}.json");
         try
         {
-            IReadOnlyDictionary<string, bool>? cached = null;
-            if (File.Exists(cachePath) &&
-                TryParse(File.ReadAllText(cachePath, Utf8NoBom), out cached))
+            if (_source.TryReadCached(year, out var cached))
             {
                 SetReady(cached, year);
                 return;
@@ -39,18 +41,14 @@ internal sealed class HolidayCalendar : IDisposable
 
             StatusText = "节假日日历正在加载";
             StateChanged?.Invoke(this, EventArgs.Empty);
-            var uri =
-                $"https://uapis.cn/api/v1/misc/holiday-calendar?year={year}&holiday_type=legal&timezone=Asia%2FShanghai";
-            var payload = await _client.GetStringAsync(uri, cancellationToken).ConfigureAwait(false);
+            var payload = await _source.DownloadAsync(year, cancellationToken).ConfigureAwait(false);
             if (!TryParse(payload, out var downloaded))
             {
                 SetUnavailable();
                 return;
             }
 
-            var directory = Path.GetDirectoryName(cachePath)!;
-            Directory.CreateDirectory(directory);
-            File.WriteAllText(cachePath, payload, Utf8NoBom);
+            _source.WriteCache(year, payload);
             SetReady(downloaded, year);
         }
         catch (Exception exception) when (
@@ -132,9 +130,9 @@ internal sealed class HolidayCalendar : IDisposable
         return Math.Round(daySalary * progress, 2, MidpointRounding.AwayFromZero);
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose() => _source.Dispose();
 
-    private static bool TryParse(string json, out IReadOnlyDictionary<string, bool> workdayMap)
+    internal static bool TryParse(string json, out IReadOnlyDictionary<string, bool> workdayMap)
     {
         workdayMap = new Dictionary<string, bool>();
         using var document = JsonDocument.Parse(json);
@@ -178,4 +176,43 @@ internal sealed class HolidayCalendar : IDisposable
         StatusText = "节假日日历未就绪";
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
+}
+
+internal sealed class HolidayCalendarSource : IDisposable
+{
+    private static readonly UTF8Encoding Utf8NoBom = new(false);
+    private readonly string _applicationRoot;
+    private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(10) };
+
+    public HolidayCalendarSource(string applicationRoot)
+    {
+        _applicationRoot = applicationRoot;
+    }
+
+    public bool TryReadCached(int year, out IReadOnlyDictionary<string, bool> workdayMap)
+    {
+        workdayMap = new Dictionary<string, bool>();
+        var cachePath = GetCachePath(year);
+        return File.Exists(cachePath) &&
+               HolidayCalendar.TryParse(File.ReadAllText(cachePath, Utf8NoBom), out workdayMap);
+    }
+
+    public async Task<string> DownloadAsync(int year, CancellationToken cancellationToken)
+    {
+        var uri =
+            $"https://uapis.cn/api/v1/misc/holiday-calendar?year={year}&holiday_type=legal&timezone=Asia%2FShanghai";
+        return await _client.GetStringAsync(uri, cancellationToken).ConfigureAwait(false);
+    }
+
+    public void WriteCache(int year, string payload)
+    {
+        var cachePath = GetCachePath(year);
+        var directory = Path.GetDirectoryName(cachePath)!;
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(cachePath, payload, Utf8NoBom);
+    }
+
+    public void Dispose() => _client.Dispose();
+
+    private string GetCachePath(int year) => Path.Combine(_applicationRoot, "holiday-cache", $"{year}.json");
 }

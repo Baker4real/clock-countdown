@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using MinminCountdown.Core;
 using WpfCalendar = System.Windows.Controls.Calendar;
@@ -213,18 +214,46 @@ internal static class ValidationReport
         var taskCardBounds = taskCard
             .TransformToAncestor(floating)
             .TransformBounds(new Rect(new Point(0, 0), taskCard.RenderSize));
+        var taskCardContent = taskCard.Child as FrameworkElement ??
+                              throw new InvalidOperationException("悬浮窗卡片缺少内容容器。");
+        var taskCardContentBounds = taskCardContent
+            .TransformToAncestor(floating)
+            .TransformBounds(new Rect(new Point(0, 0), taskCardContent.RenderSize));
         var plushDecorations = new[]
         {
             Required<Image>(floating, "PlushTopLeft"),
             Required<Image>(floating, "PlushTopRight"),
             Required<Image>(floating, "PlushBottomRight")
         };
-        var plushDoesNotOverlapTaskCard = plushDecorations.All(image =>
-        {
-            var bounds = image
+        var plushBounds = plushDecorations
+            .Select(image => image
                 .TransformToAncestor(floating)
-                .TransformBounds(new Rect(new Point(0, 0), image.RenderSize));
-            return !bounds.IntersectsWith(taskCardBounds);
+                .TransformBounds(new Rect(new Point(0, 0), image.RenderSize)))
+            .ToArray();
+        var visiblePlushBounds = plushDecorations
+            .Select(image => VisibleImageBounds(image, floating))
+            .ToArray();
+        var plushBridgesTaskCardEdges = plushBounds.All(bounds =>
+        {
+            var overlap = Rect.Intersect(bounds, taskCardBounds);
+            return overlap.Width >= 12 &&
+                   overlap.Height >= 12 &&
+                   overlap.Width < bounds.Width &&
+                   overlap.Height < bounds.Height;
+        });
+        var plushDoesNotObscureTaskCardContent = plushBounds.All(bounds =>
+            !bounds.IntersectsWith(taskCardContentBounds));
+        var visiblePlushDoesNotObscureTaskCardContent = visiblePlushBounds.All(bounds =>
+            bounds is { } visible && !visible.IntersectsWith(taskCardContentBounds));
+        var visiblePlushEdgesMeetTaskCard = visiblePlushBounds.All(bounds =>
+        {
+            if (bounds is not { } visible)
+            {
+                return false;
+            }
+
+            var overlap = Rect.Intersect(visible, taskCardBounds);
+            return Math.Min(overlap.Width, overlap.Height) >= 6;
         });
         var plushGroupWithinWorkArea =
             floating.ActualHeight <= workArea.Height &&
@@ -441,9 +470,11 @@ internal static class ValidationReport
                 Required<Image>(floating, "PlushBottomRight").VerticalAlignment == VerticalAlignment.Bottom,
             ["FloatingPlushCount"] = floating.PlushCount,
             ["FloatingPlushDecorationsAreNonInteractive"] = floating.PlushDecorationsAreNonInteractive,
-            ["FloatingPlushCardIsUnobscured"] = taskCard.Margin.Left >= 30 && taskCard.Margin.Right >= 30,
-            ["FloatingPlushDoesNotOverlapTaskCard"] = plushDoesNotOverlapTaskCard,
-            ["FloatingPlushVisibleEdgesMeetCard"] = floating.PlushCount == 3 && taskCard.Margin.Top >= 30,
+            ["FloatingPlushCardIsUnobscured"] = visiblePlushDoesNotObscureTaskCardContent,
+            ["FloatingPlushTouchesTaskCard"] = plushBridgesTaskCardEdges,
+            ["FloatingPlushDoesNotObscureTaskCardContent"] = plushDoesNotObscureTaskCardContent,
+            ["FloatingPlushVisibleEdgesMeetCard"] =
+                floating.PlushCount == 3 && visiblePlushEdgesMeetTaskCard,
             ["FloatingPlushGroupWithinWorkArea"] = plushGroupWithinWorkArea,
             ["FloatingCountdownBottomMargin"] = floatingBottomMargin,
             ["FloatingNotesBottomMargin"] = floatingBottomMargin,
@@ -507,6 +538,59 @@ internal static class ValidationReport
         floating.Hide();
         main.Hide();
         return report;
+    }
+
+    private static Rect? VisibleImageBounds(Image image, UIElement ancestor)
+    {
+        if (image.Source is not BitmapSource source ||
+            source.PixelWidth <= 0 ||
+            source.PixelHeight <= 0 ||
+            image.ActualWidth <= 0 ||
+            image.ActualHeight <= 0)
+        {
+            return null;
+        }
+
+        var pixelsSource = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var stride = pixelsSource.PixelWidth * 4;
+        var pixels = new byte[stride * pixelsSource.PixelHeight];
+        pixelsSource.CopyPixels(pixels, stride, 0);
+        var minX = pixelsSource.PixelWidth;
+        var minY = pixelsSource.PixelHeight;
+        var maxX = -1;
+        var maxY = -1;
+
+        for (var y = 0; y < pixelsSource.PixelHeight; y++)
+        {
+            for (var x = 0; x < pixelsSource.PixelWidth; x++)
+            {
+                if (pixels[(y * stride) + (x * 4) + 3] <= 16)
+                {
+                    continue;
+                }
+
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+            }
+        }
+
+        if (maxX < 0)
+        {
+            return null;
+        }
+
+        var origin = image.TranslatePoint(new Point(0, 0), ancestor);
+        var scaleX = image.ActualWidth / pixelsSource.PixelWidth;
+        var scaleY = image.ActualHeight / pixelsSource.PixelHeight;
+        return new Rect(
+            origin.X + (minX * scaleX),
+            origin.Y + (minY * scaleY),
+            (maxX - minX + 1) * scaleX,
+            (maxY - minY + 1) * scaleY);
     }
 
     private static bool ValidateRoundTrip(CountdownSettings settings)

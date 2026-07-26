@@ -16,6 +16,12 @@ public sealed partial class FloatingWindow : Window
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private bool _settingDefaultDate;
     private bool _dateDirty;
+    private FloatingThemePalette? _activeTheme;
+    private Brush _floatingPrimaryBrush = Brushes.Black;
+    private Brush _floatingMutedBrush = Brushes.Gray;
+    private Brush _floatingSurfaceBrush = Brushes.White;
+    private Brush _floatingNoteCardBrush = Brushes.White;
+    private Brush _floatingBorderBrush = Brushes.Transparent;
 
     internal FloatingWindow(
         ApplicationSession session,
@@ -31,6 +37,7 @@ public sealed partial class FloatingWindow : Window
         LoadAssets(assetRoot);
         ConfigureControls();
         WireEvents();
+        ApplyTheme(_session.UtcNow);
         _session.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         _calendar.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         Refresh();
@@ -43,6 +50,60 @@ public sealed partial class FloatingWindow : Window
         !PlushTopLeft.IsHitTestVisible &&
         !PlushTopRight.IsHitTestVisible &&
         !PlushBottomRight.IsHitTestVisible;
+
+    internal bool UsesDedicatedThemePalette =>
+        _activeTheme is not null &&
+        ReferenceEquals(TaskCard.Background, FindResource(_activeTheme.PanelBrushKey)) &&
+        ReferenceEquals(FloatingHeaderSurface.Background, FindResource(_activeTheme.HeaderBrushKey)) &&
+        ReferenceEquals(FloatingThemeBackdrop.Background, FindResource(_activeTheme.BackdropBrushKey)) &&
+        ReferenceEquals(FloatingTitle.Foreground, FindResource(_activeTheme.HeaderTextBrushKey)) &&
+        ReferenceEquals(FloatingReminderLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
+        ReferenceEquals(FloatingReminderIntervalLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
+        ReferenceEquals(FloatingReminderSeparator.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
+        ReferenceEquals(FloatingNoteMessage.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
+        ReferenceEquals(FloatingCountdownsButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
+        ReferenceEquals(FloatingNotesButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
+        ReferenceEquals(OpenManagerButton.Style, FindResource("FloatingHeaderIconButton")) &&
+        ReferenceEquals(CloseFloatingButton.Style, FindResource("FloatingHeaderIconButton"));
+
+    internal bool PlushDocksUseActiveTheme =>
+        _activeTheme is not null &&
+        ReferenceEquals(MyMelodyPlushDock.Background, FindResource(_activeTheme.MyMelodyDockBrushKey)) &&
+        ReferenceEquals(CinnamorollPlushDock.Background, FindResource(_activeTheme.CinnamorollDockBrushKey)) &&
+        ReferenceEquals(KuromiPlushDock.Background, FindResource(_activeTheme.KuromiDockBrushKey));
+
+    internal bool HasAccessibleThemeTextContrast
+    {
+        get
+        {
+            if (_activeTheme is null)
+            {
+                return false;
+            }
+
+            var header = ThemeBrush(_activeTheme.HeaderBrushKey);
+            var headerText = ThemeBrush(_activeTheme.HeaderTextBrushKey);
+            var headerDanger = ThemeBrush(_activeTheme.HeaderDangerBrushKey);
+            var headerHover = ThemeBrush(_activeTheme.HeaderHoverBrushKey);
+            var headerSelected = ThemeBrush(_activeTheme.HeaderSelectedBrushKey);
+            var headerSelectedText = ThemeBrush(_activeTheme.HeaderSelectedTextBrushKey);
+            return
+                ApplicationTheme.MeetsContrast(header, headerText, 4.5) &&
+                ApplicationTheme.MeetsContrast(headerHover, headerText, 4.5) &&
+                ApplicationTheme.MeetsContrast(headerSelected, headerSelectedText, 4.5) &&
+                ApplicationTheme.MeetsContrast(header, headerDanger, 4.5) &&
+                ApplicationTheme.MeetsContrast(headerHover, headerDanger, 4.5) &&
+                ApplicationTheme.MeetsContrast(
+                    ThemeBrush(_activeTheme.NoteInputBrushKey),
+                    ThemeBrush(_activeTheme.NoteInputTextBrushKey),
+                    4.5) &&
+                ApplicationTheme.MeetsContrast(
+                    ThemeBrush(_activeTheme.NoteInputBrushKey),
+                    ThemeBrush(_activeTheme.ErrorBrushKey),
+                    4.5) &&
+                HeaderControlsHaveAccessibleStates();
+        }
+    }
 
     internal bool IsBottomAnchored
     {
@@ -162,6 +223,7 @@ public sealed partial class FloatingWindow : Window
 
     internal void UpdateTime(DateTimeOffset nowUtc)
     {
+        ApplyTheme(nowUtc);
         if (!_dateDirty)
         {
             _settingDefaultDate = true;
@@ -172,6 +234,48 @@ public sealed partial class FloatingWindow : Window
         RenderRows(nowUtc);
     }
 
+    internal FloatingThemeExerciseResult RunThemeBoundaryExercise()
+    {
+        var checkpoints = new[]
+        {
+            new DateTimeOffset(2030, 1, 15, 6, 59, 0, TimeSpan.FromHours(8)),
+            new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+            new DateTimeOffset(2030, 1, 15, 18, 59, 0, TimeSpan.FromHours(8)),
+            new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+        };
+        var modes = new List<string>();
+        var dayPanelColor = string.Empty;
+        var nightPanelColor = string.Empty;
+        var docksFollowTheme = true;
+        var textContrast = true;
+
+        foreach (var checkpoint in checkpoints)
+        {
+            UpdateTime(checkpoint.ToUniversalTime());
+            modes.Add(_activeTheme?.Mode.ToString() ?? string.Empty);
+            if (_activeTheme?.Mode == ApplicationThemeMode.Day)
+            {
+                dayPanelColor = BrushColor(TaskCard.Background);
+            }
+            else
+            {
+                nightPanelColor = BrushColor(TaskCard.Background);
+            }
+
+            docksFollowTheme &= PlushDocksUseActiveTheme;
+            textContrast &= HasAccessibleThemeTextContrast;
+        }
+
+        UpdateTime(_session.UtcNow);
+        var expectedModes = new[] { "Night", "Day", "Day", "Night" };
+        return new FloatingThemeExerciseResult(
+            modes,
+            new[] { dayPanelColor, nightPanelColor },
+            modes.SequenceEqual(expectedModes, StringComparer.Ordinal),
+            docksFollowTheme,
+            textContrast);
+    }
+
     internal void Reanchor()
     {
         var workArea = SystemParameters.WorkArea;
@@ -179,6 +283,97 @@ public sealed partial class FloatingWindow : Window
         Left = Math.Max(workArea.Left + 12, workArea.Right - ActualWidth - 12);
         Top = Math.Max(workArea.Top + 12, workArea.Bottom - ActualHeight - 12);
     }
+
+    private void ApplyTheme(DateTimeOffset nowUtc)
+    {
+        var nextTheme = FloatingThemePalette.For(nowUtc);
+        if (ReferenceEquals(_activeTheme, nextTheme))
+        {
+            return;
+        }
+
+        _activeTheme = nextTheme;
+        SetActiveThemeBrush("FloatingHeaderTextBrush", nextTheme.HeaderTextBrushKey);
+        SetActiveThemeBrush("FloatingHeaderDangerBrush", nextTheme.HeaderDangerBrushKey);
+        SetActiveThemeBrush("FloatingHeaderHoverBrush", nextTheme.HeaderHoverBrushKey);
+        SetActiveThemeBrush("FloatingHeaderSelectedBrush", nextTheme.HeaderSelectedBrushKey);
+        SetActiveThemeBrush("FloatingHeaderSelectedTextBrush", nextTheme.HeaderSelectedTextBrushKey);
+        SetActiveThemeBrush("FloatingNoteInputTextBrush", nextTheme.NoteInputTextBrushKey);
+        SetActiveThemeBrush("FloatingErrorBrush", nextTheme.ErrorBrushKey);
+        SetActiveThemeBrush("FloatingMutedBrush", nextTheme.MutedBrushKey);
+        TaskCard.Background = ThemeBrush(nextTheme.PanelBrushKey);
+        TaskCard.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        FloatingThemeBackdrop.Background = ThemeBrush(nextTheme.BackdropBrushKey);
+        FloatingThemeBackdrop.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        FloatingHeaderSurface.Background = ThemeBrush(nextTheme.HeaderBrushKey);
+        FloatingHeaderSurface.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        FloatingNoteEntry.Background = ThemeBrush(nextTheme.NoteInputBrushKey);
+        FloatingNoteEntry.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        MyMelodyPlushDock.Background = ThemeBrush(nextTheme.MyMelodyDockBrushKey);
+        CinnamorollPlushDock.Background = ThemeBrush(nextTheme.CinnamorollDockBrushKey);
+        KuromiPlushDock.Background = ThemeBrush(nextTheme.KuromiDockBrushKey);
+        MyMelodyPlushDock.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        CinnamorollPlushDock.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        KuromiPlushDock.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        _floatingPrimaryBrush = ThemeBrush(nextTheme.TextBrushKey);
+        _floatingMutedBrush = ThemeBrush(nextTheme.MutedBrushKey);
+        _floatingSurfaceBrush = ThemeBrush(nextTheme.SurfaceBrushKey);
+        _floatingNoteCardBrush = ThemeBrush(nextTheme.NoteCardBrushKey);
+        _floatingBorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+    }
+
+    private Brush ThemeBrush(string resourceKey) =>
+        FindResource(resourceKey) as Brush ??
+        throw new InvalidOperationException($"找不到悬浮窗主题资源：{resourceKey}");
+
+    private void SetActiveThemeBrush(string activeResourceKey, string sourceResourceKey) =>
+        Application.Current.Resources[activeResourceKey] = ThemeBrush(sourceResourceKey);
+
+    private bool HeaderControlsHaveAccessibleStates()
+    {
+        var originalCountdownsChecked = FloatingCountdownsButton.IsChecked;
+        var originalNotesChecked = FloatingNotesButton.IsChecked;
+        try
+        {
+            // Avoid Refresh here: it reapplies the live clock theme and would hide a boundary regression.
+            FloatingCountdownsButton.IsChecked = true;
+            FloatingNotesButton.IsChecked = false;
+            var countdownState = HeaderControlHasAccessibleContrast(FloatingCountdownsButton);
+            var noteState = HeaderControlHasAccessibleContrast(FloatingNotesButton);
+            var openManagerState = HeaderControlHasAccessibleContrast(OpenManagerButton);
+            var closeState = HeaderControlHasAccessibleContrast(CloseFloatingButton);
+
+            FloatingCountdownsButton.IsChecked = false;
+            FloatingNotesButton.IsChecked = true;
+            return
+                countdownState &&
+                noteState &&
+                openManagerState &&
+                closeState &&
+                HeaderControlHasAccessibleContrast(FloatingCountdownsButton) &&
+                HeaderControlHasAccessibleContrast(FloatingNotesButton);
+        }
+        finally
+        {
+            FloatingCountdownsButton.IsChecked = originalCountdownsChecked;
+            FloatingNotesButton.IsChecked = originalNotesChecked;
+        }
+    }
+
+    private bool HeaderControlHasAccessibleContrast(Control control)
+    {
+        control.ApplyTemplate();
+        var surface = control.Template?.FindName("Surface", control) as Border;
+        var background = surface?.Background is SolidColorBrush solidColorBrush && solidColorBrush.Color.A > 0
+            ? solidColorBrush
+            : FloatingHeaderSurface.Background;
+        return ApplicationTheme.MeetsContrast(background, control.Foreground, 4.5);
+    }
+
+    private static string BrushColor(Brush brush) =>
+        brush is SolidColorBrush solidColorBrush
+            ? solidColorBrush.Color.ToString()
+            : string.Empty;
 
     private void ConfigureControls()
     {
@@ -270,6 +465,7 @@ public sealed partial class FloatingWindow : Window
 
     private void Refresh()
     {
+        ApplyTheme(_session.UtcNow);
         FloatingTags.SetTags(_session.Current.Tags);
         RenderRows(_session.UtcNow);
         Reanchor();
@@ -335,7 +531,8 @@ public sealed partial class FloatingWindow : Window
         {
             Text = record.Name,
             FontWeight = FontWeights.SemiBold,
-            TextTrimming = TextTrimming.CharacterEllipsis
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _floatingPrimaryBrush
         });
         stack.Children.Add(new TextBlock
         {
@@ -344,9 +541,9 @@ public sealed partial class FloatingWindow : Window
                 nowUtc,
                 _session.Current.Preferences.DisplayPrecision),
             Margin = new Thickness(0, 4, 0, 0),
-            Foreground = (Brush)FindResource("BodyBrush")
+            Foreground = _floatingMutedBrush
         });
-        return FloatingCard(stack, "CardBrush");
+        return FloatingCard(stack, _floatingSurfaceBrush);
     }
 
     private FrameworkElement FloatingNoteCard(NoteRecord note)
@@ -356,7 +553,8 @@ public sealed partial class FloatingWindow : Window
             {
                 Tag = note.Id,
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 2, 8, 0)
+                Margin = new Thickness(0, 2, 8, 0),
+                Foreground = _floatingPrimaryBrush
             },
             $"完成便签 {note.Text}");
         check.Checked += (_, _) =>
@@ -368,7 +566,12 @@ public sealed partial class FloatingWindow : Window
             }
         };
         var body = new StackPanel();
-        body.Children.Add(new TextBlock { Text = note.Text, TextWrapping = TextWrapping.Wrap });
+        body.Children.Add(new TextBlock
+        {
+            Text = note.Text,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _floatingPrimaryBrush
+        });
         var nextReminder = ReminderSchedule.GetNextDueUtc(note, _session.UtcNow);
         if (nextReminder is not null)
         {
@@ -377,7 +580,7 @@ public sealed partial class FloatingWindow : Window
                 Text = $"下次提醒：{ChinaStandardTime.ToBeijingTime(nextReminder.Value):M月d日 HH:mm}",
                 Margin = new Thickness(0, 4, 0, 0),
                 FontSize = 11,
-                Foreground = (Brush)FindResource("MutedBrush")
+                Foreground = _floatingMutedBrush
             });
         }
 
@@ -387,10 +590,10 @@ public sealed partial class FloatingWindow : Window
         Grid.SetColumn(body, 1);
         grid.Children.Add(check);
         grid.Children.Add(body);
-        return FloatingCard(grid, "NoteBrush");
+        return FloatingCard(grid, _floatingNoteCardBrush);
     }
 
-    private Border FloatingCard(UIElement child, string background)
+    private Border FloatingCard(UIElement child, Brush background)
     {
         return new Border
         {
@@ -398,8 +601,8 @@ public sealed partial class FloatingWindow : Window
             Margin = new Thickness(0, 0, 0, 7),
             Padding = new Thickness(10),
             CornerRadius = new CornerRadius(8),
-            Background = (Brush)FindResource(background),
-            BorderBrush = (Brush)FindResource("PeachLineBrush"),
+            Background = background,
+            BorderBrush = _floatingBorderBrush,
             BorderThickness = new Thickness(1)
         };
     }
@@ -409,7 +612,7 @@ public sealed partial class FloatingWindow : Window
         Text = text,
         Margin = new Thickness(2, 8, 2, 8),
         HorizontalAlignment = HorizontalAlignment.Center,
-        Foreground = (Brush)FindResource("MutedBrush")
+        Foreground = _floatingMutedBrush
     };
 
     private void AddNote()
@@ -591,5 +794,84 @@ public sealed partial class FloatingWindow : Window
             Path.Combine(plushRoot, "floating-plush-cinnamoroll-front.png"));
         PlushBottomRight.Source = MainWindow.LoadImage(
             Path.Combine(plushRoot, "floating-plush-kuromi-pose.png"));
+    }
+}
+
+internal sealed record FloatingThemeExerciseResult(
+    IReadOnlyList<string> BoundaryModes,
+    IReadOnlyList<string> PanelColors,
+    bool UsesChinaStandardTime,
+    bool PlushDocksFollowTheme,
+    bool TextContrast);
+
+internal sealed record FloatingThemePalette(
+    ApplicationThemeMode Mode,
+    string PanelBrushKey,
+    string BackdropBrushKey,
+    string BorderBrushKey,
+    string HeaderBrushKey,
+    string HeaderTextBrushKey,
+    string HeaderDangerBrushKey,
+    string HeaderHoverBrushKey,
+    string HeaderSelectedBrushKey,
+    string HeaderSelectedTextBrushKey,
+    string SurfaceBrushKey,
+    string NoteCardBrushKey,
+    string NoteInputBrushKey,
+    string NoteInputTextBrushKey,
+    string ErrorBrushKey,
+    string TextBrushKey,
+    string MutedBrushKey,
+    string MyMelodyDockBrushKey,
+    string CinnamorollDockBrushKey,
+    string KuromiDockBrushKey)
+{
+    private static readonly FloatingThemePalette Daylight = new(
+        ApplicationThemeMode.Day,
+        "FloatingDayPanelBrush",
+        "FloatingDayBackdropBrush",
+        "FloatingDayBorderBrush",
+        "FloatingDayHeaderBrush",
+        "FloatingDayHeaderTextBrush",
+        "FloatingDayHeaderDangerBrush",
+        "FloatingDayHeaderHoverBrush",
+        "FloatingDayHeaderSelectedBrush",
+        "FloatingDayHeaderSelectedTextBrush",
+        "FloatingDaySurfaceBrush",
+        "FloatingDayNoteCardBrush",
+        "FloatingDayNoteInputBrush",
+        "FloatingDayNoteInputTextBrush",
+        "FloatingDayErrorBrush",
+        "FloatingDayTextBrush",
+        "FloatingDayMutedBrush",
+        "FloatingDayMyMelodyDockBrush",
+        "FloatingDayCinnamorollDockBrush",
+        "FloatingDayKuromiDockBrush");
+
+    private static readonly FloatingThemePalette Nighttime = new(
+        ApplicationThemeMode.Night,
+        "FloatingNightPanelBrush",
+        "FloatingNightBackdropBrush",
+        "FloatingNightBorderBrush",
+        "FloatingNightHeaderBrush",
+        "FloatingNightHeaderTextBrush",
+        "FloatingNightHeaderDangerBrush",
+        "FloatingNightHeaderHoverBrush",
+        "FloatingNightHeaderSelectedBrush",
+        "FloatingNightHeaderSelectedTextBrush",
+        "FloatingNightSurfaceBrush",
+        "FloatingNightNoteCardBrush",
+        "FloatingNightNoteInputBrush",
+        "FloatingNightNoteInputTextBrush",
+        "FloatingNightErrorBrush",
+        "FloatingNightTextBrush",
+        "FloatingNightMutedBrush",
+        "FloatingNightMyMelodyDockBrush",
+        "FloatingNightCinnamorollDockBrush",
+        "FloatingNightKuromiDockBrush");
+
+    public static FloatingThemePalette For(DateTimeOffset nowUtc)
+    {
+        return ApplicationTheme.Resolve(nowUtc) == ApplicationThemeMode.Day ? Daylight : Nighttime;
     }
 }

@@ -14,6 +14,7 @@ public sealed partial class App : Application
     private HostOptions? _options;
     private DiagnosticLogger? _logger;
     private ApplicationSession? _session;
+    private ApplicationTheme? _theme;
     private HolidayCalendar? _calendar;
     private MainWindow? _mainWindow;
     private FloatingWindow? _floatingWindow;
@@ -52,8 +53,11 @@ public sealed partial class App : Application
             }
 
             _session = ApplicationSession.Load(settingsPath);
+            _theme = new ApplicationTheme(Resources);
+            _theme.Apply(_session.UtcNow);
             _calendar = new HolidayCalendar(_applicationRoot);
             _mainWindow = new MainWindow(_session, _calendar, _logger, AppContext.BaseDirectory);
+            _mainWindow.ApplyTheme(_theme.ActiveMode);
             _floatingWindow = new FloatingWindow(
                 _session,
                 _calendar,
@@ -66,6 +70,7 @@ public sealed partial class App : Application
                     _mainWindow,
                     _floatingWindow,
                     _session,
+                    _theme,
                     _options,
                     AppContext.BaseDirectory);
                 CliOutput.WriteJson(report);
@@ -108,6 +113,7 @@ public sealed partial class App : Application
             _floatingWindow is null ||
             _session is null ||
             _calendar is null ||
+            _theme is null ||
             _startupProtocol is null)
         {
             throw new InvalidOperationException("应用宿主尚未初始化。");
@@ -216,13 +222,14 @@ public sealed partial class App : Application
 
     private void UpdateInteractiveState()
     {
-        if (_session is null || _mainWindow is null || _floatingWindow is null)
+        if (_session is null || _mainWindow is null || _floatingWindow is null || _theme is null)
         {
             return;
         }
 
         AdvanceAcceptanceState();
         var nowUtc = _session.UtcNow;
+        _mainWindow.ApplyTheme(_theme.Apply(nowUtc));
         _mainWindow.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
         _floatingWindow.UpdateTime(nowUtc);
         if (_acceptanceReadOnly)

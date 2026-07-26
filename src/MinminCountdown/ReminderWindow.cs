@@ -36,30 +36,33 @@ internal sealed class ReminderWindow : Window
         dismiss.Click += (_, _) => Close();
 
         var stack = new StackPanel { Margin = new Thickness(20) };
-        stack.Children.Add(new TextBlock
+        var heading = new TextBlock
         {
             Text = "便签提醒",
             FontSize = 17,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)FindResource("InkBrush")
-        });
-        stack.Children.Add(new TextBlock
+            FontWeight = FontWeights.SemiBold
+        };
+        heading.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+        stack.Children.Add(heading);
+        var body = new TextBlock
         {
             Text = note.Text,
             Margin = new Thickness(0, 10, 0, 16),
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 14,
-            Foreground = (Brush)FindResource("BodyBrush")
-        });
+            FontSize = 14
+        };
+        body.SetResourceReference(TextBlock.ForegroundProperty, "BodyBrush");
+        stack.Children.Add(body);
         stack.Children.Add(dismiss);
-        Content = new Border
+        var surface = new Border
         {
             Child = stack,
-            Background = (Brush)FindResource("NoteBrush"),
-            BorderBrush = (Brush)FindResource("NoteLineBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8)
         };
+        surface.SetResourceReference(Border.BackgroundProperty, "NoteBrush");
+        surface.SetResourceReference(Border.BorderBrushProperty, "NoteLineBrush");
+        Content = surface;
         AutomationProperties.SetName(this, $"便签提醒：{note.Text}");
         PreviewKeyDown += (_, args) =>
         {

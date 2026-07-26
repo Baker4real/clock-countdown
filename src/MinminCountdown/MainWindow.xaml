@@ -28,7 +28,10 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
 
-    <Grid Grid.RowSpan="4" Opacity="0.10" IsHitTestVisible="False">
+    <Grid x:Name="CharacterBackgroundLayer"
+          Grid.RowSpan="4"
+          Opacity="0.10"
+          IsHitTestVisible="False">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="*" />
@@ -450,9 +453,10 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
-              <TextBlock Margin="2,0,8,0"
+              <TextBlock x:Name="NoteReminderLabel"
+                         Margin="2,0,8,0"
                          VerticalAlignment="Center"
-                         Foreground="{DynamicResource NoteInkBrush}"
+                         Foreground="{DynamicResource InkBrush}"
                          Text="首次提醒" />
               <DatePicker x:Name="NoteReminderDate" Grid.Column="1" Width="190" />
               <ComboBox x:Name="NoteReminderHour" Grid.Column="2" Width="70" Margin="8,0,0,0" />

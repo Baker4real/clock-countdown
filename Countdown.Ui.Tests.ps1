@@ -155,9 +155,11 @@ if (-not $validation.FloatingWindowBottomAnchored) {
 if (-not $validation.FloatingWindowReanchorsAfterContentChanges) { throw 'Floating window did not stay bottom-anchored while note content was added and removed.' }
 if (-not $validation.FloatingWindowHeightConstrainedToWorkArea) { throw 'Floating window height can exceed the desktop work area after content changes.' }
 if (-not $validation.FloatingPlushTaskWrapLoaded) { throw 'The three floating plush task-wrap anchors did not load.' }
-if (-not $validation.FloatingPlushUsesThreeTaskAnchors) { throw 'Floating plush characters must attach at the task card top-left, top-right, and bottom-right anchors.' }
+if (-not $validation.FloatingPlushUsesThreePanelDocks) { throw 'Floating plush characters must sit in three rounded panel docks.' }
 if ($validation.FloatingPlushCount -ne 3) { throw "Expected three floating plush characters, got $($validation.FloatingPlushCount)." }
 if (-not $validation.FloatingPlushDecorationsAreNonInteractive) { throw 'Floating plush characters must remain mouse-transparent decoration.' }
+if (-not $validation.FloatingPlushDocksIntegrateWithPanel) { throw 'Floating plush docks are not integrated with the task panel.' }
+if (-not $validation.FloatingPlushDocksFollowDayNightTheme) { throw 'Floating plush docks do not follow the day/night theme.' }
 if (-not $validation.FloatingPlushCardIsUnobscured) { throw 'Floating plush characters overlap the countdown card.' }
 if (-not $validation.FloatingPlushVisibleEdgesMeetCard) { throw 'Floating plush visible edges do not meet the task card.' }
 if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The floating plush task-wrap group exceeds the desktop work area.' }
@@ -215,6 +217,16 @@ if (-not $validation.CalendarHeaderTextFits) {
 if (-not $validation.PopupSurfacesUseThemeTokens) { throw 'A popup surface is missing the shared themed background, border, or motion treatment.' }
 if (-not $validation.NoDefaultSystemSurfaces) { throw 'A system window frame or MessageBox remains in the application flow.' }
 if (-not $validation.NoRawFloatingThemeBypass) { throw 'The floating window bypasses shared theme tokens with raw colors.' }
+if ((@($validation.MainThemeBoundaryModes) -join ',') -ne 'Night,Day,Day,Night') { throw 'The main window does not switch themes at the expected Beijing-time boundaries.' }
+if ((@($validation.MainThemeBackgroundColors) -join ',') -ne '#FFFFF6EF,#FF251F27') { throw 'The main window day/night background palette is incorrect.' }
+if ((@($validation.MainThemeCharacterOpacities) -join ',') -ne '10,16') { throw 'The main-window character layer does not adapt across day and night.' }
+if (-not $validation.MainThemeUsesChinaStandardTime) { throw 'The main window theme does not use China Standard Time.' }
+if ((@($validation.FloatingThemeBoundaryModes) -join ',') -ne 'Night,Day,Day,Night') { throw 'The floating panel does not switch themes at the expected Beijing-time boundaries.' }
+if ((@($validation.FloatingThemePanelColors) -join ',') -ne '#FFFFF8FA,#FF342C35') { throw 'The floating panel day/night palette is incorrect.' }
+if (-not $validation.FloatingThemeUsesChinaStandardTime) { throw 'The floating panel theme does not use China Standard Time.' }
+if (-not $validation.FloatingThemeTextContrast) { throw 'Floating header and validation text do not maintain sufficient contrast across day and night.' }
+if (-not $validation.TagPopupFollowsDayNightTheme) { throw 'An open tag popup does not follow the day/night theme transition.' }
+if (-not $validation.MainThemeReminderLabelFollowsTheme) { throw 'The main-window reminder label does not follow the day/night theme.' }
 if (-not $validation.ThemedInteractiveStates) { throw 'A themed interactive control is missing visual state feedback.' }
 if (-not $validation.ThemeTextContrast) { throw 'The warm theme does not meet the required text-contrast pairs.' }
 if (-not $validation.DangerButtonContrast) { throw 'The destructive confirmation button loses required text contrast when hovered or pressed.' }

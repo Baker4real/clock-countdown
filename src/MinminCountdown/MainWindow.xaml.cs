@@ -418,6 +418,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    internal void ApplyTheme(ApplicationThemeMode mode)
+    {
+        CharacterBackgroundLayer.Opacity = mode == ApplicationThemeMode.Night ? 0.16 : 0.10;
+    }
+
+    internal bool CharacterBackgroundRemainsSubtle =>
+        CharacterBackgroundLayer.Opacity is > 0 and <= 0.16;
+
+    internal double CharacterBackgroundOpacity => CharacterBackgroundLayer.Opacity;
+
     private void ConfigureControls()
     {
         for (var hour = 0; hour < 24; hour++)
@@ -1556,7 +1566,9 @@ public sealed partial class MainWindow : Window
     private void SetMessage(TextBlock target, string text, bool isError)
     {
         target.Text = text;
-        target.Foreground = (Brush)FindResource(isError ? "DangerBrush" : "SuccessBrush");
+        target.SetResourceReference(
+            TextBlock.ForegroundProperty,
+            isError ? "DangerBrush" : "SuccessBrush");
     }
 
     private void LoadCharacterAssets(string assetRoot)

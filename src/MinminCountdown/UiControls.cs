@@ -27,6 +27,7 @@ internal sealed class TagSelector : Grid
 {
     private readonly Button _trigger;
     private readonly Popup _popup;
+    private readonly Border _surface;
     private readonly TextBox _search;
     private readonly Button _create;
     private readonly StackPanel _items;
@@ -80,15 +81,15 @@ internal sealed class TagSelector : Grid
         });
         panel.Children.Add(_create);
 
-        var surface = new Border
+        _surface = new Border
         {
-            Background = (Brush)FindResource("CanvasBrush"),
-            BorderBrush = (Brush)FindResource("PeachLineBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Child = panel,
             MinWidth = 230
         };
+        _surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
+        _surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         _popup = new Popup
         {
             PlacementTarget = _trigger,
@@ -96,7 +97,7 @@ internal sealed class TagSelector : Grid
             AllowsTransparency = true,
             StaysOpen = false,
             PopupAnimation = PopupAnimation.Fade,
-            Child = surface
+            Child = _surface
         };
         _trigger.Click += (_, _) => _popup.IsOpen = !_popup.IsOpen;
         Children.Add(_popup);
@@ -119,6 +120,10 @@ internal sealed class TagSelector : Grid
     public string SummaryText => _trigger.Content?.ToString() ?? string.Empty;
 
     public bool CreateButtonIsDefault => _create.IsDefault;
+
+    internal bool PopupSurfaceFollowsActiveTheme =>
+        ReferenceEquals(_surface.Background, Application.Current.FindResource("CanvasBrush")) &&
+        ReferenceEquals(_surface.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
 
     public bool ProbeCreateAction(string query)
     {
@@ -296,7 +301,7 @@ internal sealed class ConfirmationDialog : Window
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
-        Background = (Brush)FindResource("BackgroundBrush");
+        SetResourceReference(BackgroundProperty, "BackgroundBrush");
 
         var cancel = UiAccessibility.Name(
             new Button
@@ -354,12 +359,13 @@ internal sealed class ConfirmationDialog : Window
         layout.Children.Add(heading);
         layout.Children.Add(body);
         layout.Children.Add(actions);
-        Content = new Border
+        var surface = new Border
         {
             Child = layout,
-            BorderBrush = (Brush)FindResource("PeachLineBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8)
         };
+        surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
+        Content = surface;
     }
 }

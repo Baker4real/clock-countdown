@@ -17,6 +17,7 @@ internal static class ValidationReport
         MainWindow main,
         FloatingWindow floating,
         ApplicationSession session,
+        ApplicationTheme theme,
         HostOptions options,
         string assetRoot)
     {
@@ -235,6 +236,12 @@ internal static class ValidationReport
             Required<Image>(floating, "PlushTopRight"),
             Required<Image>(floating, "PlushBottomRight")
         };
+        var plushDocks = new[]
+        {
+            (Dock: Required<Border>(floating, "MyMelodyPlushDock"), Image: plushDecorations[0]),
+            (Dock: Required<Border>(floating, "CinnamorollPlushDock"), Image: plushDecorations[1]),
+            (Dock: Required<Border>(floating, "KuromiPlushDock"), Image: plushDecorations[2])
+        };
         var plushBounds = plushDecorations
             .Select(image => image
                 .TransformToAncestor(floating)
@@ -265,12 +272,28 @@ internal static class ValidationReport
             var overlap = Rect.Intersect(visible, taskCardBounds);
             return Math.Min(overlap.Width, overlap.Height) >= 6;
         });
+        var plushDocksIntegrateWithPanel = plushDocks.All(pair =>
+        {
+            var dockBounds = pair.Dock
+                .TransformToAncestor(floating)
+                .TransformBounds(new Rect(new Point(0, 0), pair.Dock.RenderSize));
+            var overlap = Rect.Intersect(dockBounds, taskCardBounds);
+            return
+                ReferenceEquals(pair.Dock.Child, pair.Image) &&
+                Panel.GetZIndex(pair.Dock) > Panel.GetZIndex(taskCard) &&
+                pair.Dock.CornerRadius.TopLeft >= 20 &&
+                overlap.Width >= 12 &&
+                overlap.Height >= 12;
+        });
         var plushGroupWithinWorkArea =
             floating.ActualHeight <= workArea.Height &&
             floating.ActualWidth <= workArea.Width &&
             floating.Left >= workArea.Left &&
             floating.Top >= workArea.Top;
         var floatingHeightConstrained = floating.MaxHeight <= workArea.Height;
+        var mainThemeExercise = RunMainThemeExercise(theme, main, session.UtcNow);
+        var floatingThemeExercise = floating.RunThemeBoundaryExercise();
+        var tagPopupFollowsDayNightTheme = ValidateTagPopupThemeTransition(theme, selector, session.UtcNow);
 
         var reminderWindow = new ReminderWindow(new NoteRecord(
             "validation-reminder",
@@ -352,8 +375,18 @@ internal static class ValidationReport
             ["CalendarHeaderTextRequiredWidth"] = calendarHeaderMetrics.Required,
             ["PopupSurfacesUseThemeTokens"] = comboThemed && dateFamilyThemed,
             ["NoDefaultSystemSurfaces"] = confirmationThemed,
-            ["NoRawFloatingThemeBypass"] =
-                Equals(taskCard.Background, Application.Current.FindResource("CanvasBrush")),
+            ["NoRawFloatingThemeBypass"] = floating.UsesDedicatedThemePalette,
+            ["MainThemeBoundaryModes"] = mainThemeExercise.BoundaryModes,
+            ["MainThemeBackgroundColors"] = mainThemeExercise.BackgroundColors,
+            ["MainThemeCharacterOpacities"] = mainThemeExercise.CharacterOpacities,
+            ["MainThemeUsesChinaStandardTime"] = mainThemeExercise.UsesChinaStandardTime,
+            ["MainThemeReminderLabelFollowsTheme"] = mainThemeExercise.ReminderLabelFollowsTheme,
+            ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
+            ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
+            ["FloatingThemeUsesChinaStandardTime"] = floatingThemeExercise.UsesChinaStandardTime,
+            ["FloatingPlushDocksFollowDayNightTheme"] = floatingThemeExercise.PlushDocksFollowTheme,
+            ["FloatingThemeTextContrast"] = floatingThemeExercise.TextContrast,
+            ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
             ["ThemedInteractiveStates"] = mainThemeTemplate && comboThemed && dateFamilyThemed,
             ["ThemeTextContrast"] = contrast,
             ["DangerButtonContrast"] = dangerContrast,
@@ -411,7 +444,7 @@ internal static class ValidationReport
                 Required<Image>(main, "CinnamorollBackground").Source is not null &&
                 Required<Image>(main, "KuromiBackground").Source is not null,
             ["OfficialCharacterBackgroundCharactersExclusive"] = true,
-            ["OfficialCharacterBackgroundLowContrast"] = true,
+            ["OfficialCharacterBackgroundLowContrast"] = main.CharacterBackgroundRemainsSubtle,
             ["LegacyMigrationSupported"] = legacyMigration,
             ["DuplicateSettingsRejected"] = duplicateRejected,
             ["InvalidNotesRejected"] = invalidNotesRejected,
@@ -506,12 +539,10 @@ internal static class ValidationReport
             ["FloatingWindowReanchorsAfterContentChanges"] = floating.IsBottomAnchored,
             ["FloatingWindowHeightConstrainedToWorkArea"] = floatingHeightConstrained,
             ["FloatingPlushTaskWrapLoaded"] = floating.PlushCount == 3,
-            ["FloatingPlushUsesThreeTaskAnchors"] =
-                Required<Image>(floating, "PlushTopLeft").HorizontalAlignment == HorizontalAlignment.Left &&
-                Required<Image>(floating, "PlushTopRight").HorizontalAlignment == HorizontalAlignment.Right &&
-                Required<Image>(floating, "PlushBottomRight").VerticalAlignment == VerticalAlignment.Bottom,
+            ["FloatingPlushUsesThreePanelDocks"] = plushDocksIntegrateWithPanel,
             ["FloatingPlushCount"] = floating.PlushCount,
             ["FloatingPlushDecorationsAreNonInteractive"] = floating.PlushDecorationsAreNonInteractive,
+            ["FloatingPlushDocksIntegrateWithPanel"] = plushDocksIntegrateWithPanel,
             ["FloatingPlushCardIsUnobscured"] = visiblePlushDoesNotObscureTaskCardContent,
             ["FloatingPlushTouchesTaskCard"] = plushBridgesTaskCardEdges,
             ["FloatingPlushDoesNotObscureTaskCardContent"] = plushDoesNotObscureTaskCardContent,
@@ -831,6 +862,97 @@ internal static class ValidationReport
         return control.Template is not null;
     }
 
+    private static MainThemeExerciseResult RunMainThemeExercise(
+        ApplicationTheme theme,
+        MainWindow main,
+        DateTimeOffset restoreUtc)
+    {
+        var checkpoints = new[]
+        {
+            new DateTimeOffset(2030, 1, 15, 6, 59, 0, TimeSpan.FromHours(8)),
+            new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+            new DateTimeOffset(2030, 1, 15, 18, 59, 0, TimeSpan.FromHours(8)),
+            new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+        };
+        var modes = new List<string>();
+        var dayBackgroundColor = string.Empty;
+        var nightBackgroundColor = string.Empty;
+        var dayCharacterOpacity = 0;
+        var nightCharacterOpacity = 0;
+        var reminderLabelFollowsTheme = true;
+        var reminderLabel = Required<TextBlock>(main, "NoteReminderLabel");
+
+        foreach (var checkpoint in checkpoints)
+        {
+            var mode = theme.Apply(checkpoint.ToUniversalTime());
+            main.ApplyTheme(mode);
+            PumpDispatcher();
+            main.UpdateLayout();
+            modes.Add(mode.ToString());
+            reminderLabelFollowsTheme &=
+                ReferenceEquals(reminderLabel.Foreground, Application.Current.FindResource("InkBrush"));
+            if (mode == ApplicationThemeMode.Day)
+            {
+                dayBackgroundColor = BrushColor(main.Background);
+                dayCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
+            }
+            else
+            {
+                nightBackgroundColor = BrushColor(main.Background);
+                nightCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
+            }
+        }
+
+        main.ApplyTheme(theme.Apply(restoreUtc));
+        PumpDispatcher();
+        main.UpdateLayout();
+        var expectedModes = new[] { "Night", "Day", "Day", "Night" };
+        return new MainThemeExerciseResult(
+            modes,
+            new[] { dayBackgroundColor, nightBackgroundColor },
+            new[] { dayCharacterOpacity, nightCharacterOpacity },
+            modes.SequenceEqual(expectedModes, StringComparer.Ordinal),
+            reminderLabelFollowsTheme);
+    }
+
+    private static bool ValidateTagPopupThemeTransition(
+        ApplicationTheme theme,
+        TagSelector selector,
+        DateTimeOffset restoreUtc)
+    {
+        var wasOpen = selector.IsPopupOpen;
+        selector.IsPopupOpen = true;
+        try
+        {
+            foreach (var checkpoint in new[]
+            {
+                new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+                new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+            })
+            {
+                theme.Apply(checkpoint.ToUniversalTime());
+                PumpDispatcher();
+                if (!selector.PopupSurfaceFollowsActiveTheme)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            selector.IsPopupOpen = wasOpen;
+            theme.Apply(restoreUtc);
+            PumpDispatcher();
+        }
+    }
+
+    private static string BrushColor(Brush? brush) =>
+        brush is SolidColorBrush solidColorBrush
+            ? solidColorBrush.Color.ToString()
+            : string.Empty;
+
     private static bool ValidateThemeContrast()
     {
         var canvas = (Color)Application.Current.FindResource("CanvasColor");
@@ -936,6 +1058,13 @@ internal static class ValidationReport
     }
 
     private sealed record TextFit(bool Fits, double Available, double Required);
+
+    private sealed record MainThemeExerciseResult(
+        IReadOnlyList<string> BoundaryModes,
+        IReadOnlyList<string> BackgroundColors,
+        IReadOnlyList<int> CharacterOpacities,
+        bool UsesChinaStandardTime,
+        bool ReminderLabelFollowsTheme);
 
     private sealed class ValidationClock : IClock
     {

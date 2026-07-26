@@ -34,6 +34,9 @@ public sealed partial class MainWindow : Window
     private bool _completedNotesExpanded;
     private bool _settingDefaultDate;
     private bool _noteDateDirty;
+    private bool _settingReminderSchedule;
+    private bool _noteReminderScheduleDirty;
+    private long _lastRenderedNoteMinuteUtc = -1;
 
     internal MainWindow(
         ApplicationSession session,
@@ -86,27 +89,40 @@ public sealed partial class MainWindow : Window
     {
         ShowWorkspace(WorkspaceKind.Notes);
         var countBefore = _session.Current.Notes.Count;
+        var noteDate = _session.BeijingNow.AddDays(2).Date;
+        var firstDueDay = _session.BeijingNow.AddDays(3);
+        var firstDue = new DateTimeOffset(
+            firstDueDay.Year,
+            firstDueDay.Month,
+            firstDueDay.Day,
+            9,
+            30,
+            0,
+            firstDueDay.Offset);
         NoteText.Text = "验证点击添加便签";
         _settingDefaultDate = true;
         NoteDate.SelectedDate = null;
         _settingDefaultDate = false;
         NoteReminder.SelectedIndex = 2;
+        NoteReminderInterval.SelectedIndex = 1;
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var dateRequired =
             _session.Current.Notes.Count == countBefore &&
             string.Equals(NoteText.Text, "验证点击添加便签", StringComparison.Ordinal) &&
             NoteMessage.Text.Contains("日期", StringComparison.Ordinal);
 
-        NoteDate.SelectedDate = new DateTime(2031, 4, 5);
+        NoteDate.SelectedDate = noteDate;
         NoteReminder.SelectedIndex = 2;
+        NoteReminderInterval.SelectedIndex = 1;
+        SetReminderFirstDue(firstDue);
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var added = _session.Current.Notes.LastOrDefault(
             note => string.Equals(note.Text, "验证点击添加便签", StringComparison.Ordinal));
         var addViaClick = added is not null && _session.Current.Notes.Count == countBefore + 1;
-        var dateViaPicker = added?.Date == "2031-04-05";
+        var dateViaPicker = added?.Date == noteDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var reminderViaSelector =
             added?.ReminderIntervalMinutes == 30 &&
-            added.ReminderStartUtc is not null;
+            added.ReminderStartUtc == firstDue.ToUniversalTime().Subtract(TimeSpan.FromMinutes(30));
 
         var completionViaCheckbox = false;
         if (added is not null && _noteCompletionBoxes.TryGetValue(added.Id, out var checkBox))
@@ -128,6 +144,54 @@ public sealed partial class MainWindow : Window
             dateViaPicker,
             reminderViaSelector,
             completionViaCheckbox);
+    }
+
+    internal ReminderModeClickResult RunReminderModeClickExercises()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        var noteDate = _session.BeijingNow.AddDays(2).Date;
+        var onceDue = _session.BeijingNow.AddDays(3);
+        onceDue = new DateTimeOffset(
+            onceDue.Year,
+            onceDue.Month,
+            onceDue.Day,
+            9,
+            10,
+            0,
+            onceDue.Offset);
+        var repeatDue = onceDue.AddDays(1).AddMinutes(20);
+
+        NoteText.Text = "验证主窗不提醒";
+        NoteDate.SelectedDate = noteDate;
+        NoteReminder.SelectedIndex = 0;
+        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var noReminderWorks = _session.Current.Notes.LastOrDefault(
+            note => note.Text == "验证主窗不提醒")?.Reminder is NoReminder;
+
+        NoteText.Text = "验证主窗仅一次";
+        NoteDate.SelectedDate = noteDate;
+        NoteReminder.SelectedIndex = 1;
+        SetReminderFirstDue(onceDue);
+        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var onceWorks = _session.Current.Notes.LastOrDefault(
+            note => note.Text == "验证主窗仅一次")?.Reminder is OnceReminder
+            {
+                Delivery: OnceDeliveryState.Pending
+            } once &&
+            once.FirstDueUtc == onceDue.ToUniversalTime();
+
+        NoteText.Text = "验证主窗重复提醒";
+        NoteDate.SelectedDate = noteDate;
+        NoteReminder.SelectedIndex = 2;
+        NoteReminderInterval.SelectedIndex = 1;
+        SetReminderFirstDue(repeatDue);
+        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var repeatWorks = _session.Current.Notes.LastOrDefault(
+            note => note.Text == "验证主窗重复提醒")?.Reminder is RepeatingReminder repeating &&
+            repeating.FirstDueUtc == repeatDue.ToUniversalTime() &&
+            repeating.Interval.Minutes == 30;
+
+        return new ReminderModeClickResult(noReminderWorks, onceWorks, repeatWorks);
     }
 
     internal (bool TracksBeijingDay, bool PreservesChosenDate) ProbeNoteDateBehavior()
@@ -188,6 +252,140 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    internal bool ProbeCrossDayReminderBehavior()
+    {
+        var originalDate = NoteReminderDate.SelectedDate;
+        var originalHour = NoteReminderHour.SelectedIndex;
+        var originalMinute = NoteReminderMinute.SelectedIndex;
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-cross-day-{Guid.NewGuid():N}.settings.json");
+        try
+        {
+            SetReminderFirstDue(new DateTimeOffset(2031, 4, 6, 9, 30, 0, TimeSpan.FromHours(8)));
+            var nowUtc = new DateTimeOffset(2031, 4, 5, 15, 59, 0, TimeSpan.Zero);
+            if (!ReminderSchedule.TryCreateFirstDueUtc(
+                    NoteReminderDate.SelectedDate,
+                    NoteReminderHour.SelectedIndex,
+                    NoteReminderMinute.SelectedIndex,
+                    nowUtc,
+                    out var firstDueUtc,
+                    out _) ||
+                firstDueUtc != new DateTimeOffset(2031, 4, 6, 1, 30, 0, TimeSpan.Zero))
+            {
+                return false;
+            }
+
+            var clock = new FixedClock(nowUtc);
+            var store = new SettingsStore(clock: clock);
+            var session = ApplicationSession.Load(settingsPath, store);
+            var workspace = new DesktopWorkspace(session);
+            if (!workspace.TrySaveNote(
+                    null,
+                    "跨天提醒探针",
+                    new DateTime(2031, 4, 5),
+                    false,
+                    Array.Empty<string>(),
+                    30,
+                    firstDueUtc,
+                    out _) ||
+                !workspace.TrySaveQuickNote(
+                    "快速跨天提醒探针",
+                    new DateTime(2031, 4, 5),
+                    Array.Empty<string>(),
+                    60,
+                    firstDueUtc.Value.AddDays(1),
+                    out _))
+            {
+                return false;
+            }
+
+            var saved = session.Current.Notes.Single(note => note.Text == "跨天提醒探针");
+            var originalStart = saved.ReminderStartUtc;
+            var liveEarly = session.Reminders.GetDue(session.Current, firstDueUtc.Value.AddSeconds(-1));
+            var liveDue = session.Reminders.GetDue(session.Current, firstDueUtc.Value);
+            session.Reminders.ConfirmDisplayed(saved, firstDueUtc.Value);
+            if (!workspace.TrySaveNote(
+                    saved.Id,
+                    "已编辑的跨天提醒探针",
+                    new DateTime(2031, 4, 5),
+                    false,
+                    Array.Empty<string>(),
+                    30,
+                    null,
+                    out _))
+            {
+                return false;
+            }
+
+            var reloaded = ApplicationSession.Load(settingsPath, store);
+            var persistedNote = reloaded.Current.Notes.Single(note => note.Id == saved.Id);
+            var quickNote = reloaded.Current.Notes.Single(note => note.Text == "快速跨天提醒探针");
+            var early = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value.AddSeconds(-1));
+            var due = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value);
+            reloaded.Reminders.ConfirmDisplayed(persistedNote, firstDueUtc.Value);
+            var duplicate = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value);
+            var nextCycle = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value.AddMinutes(30));
+            var completionRestarted =
+                reloaded.TrySetNoteCompletion(persistedNote.Id, true, out _) &&
+                reloaded.TrySetNoteCompletion(persistedNote.Id, false, out _) &&
+                reloaded.Current.Notes.Single(note => note.Id == persistedNote.Id).ReminderStartUtc == nowUtc;
+            return
+                originalStart == new DateTimeOffset(2031, 4, 6, 1, 0, 0, TimeSpan.Zero) &&
+                persistedNote.ReminderStartUtc == originalStart &&
+                quickNote.ReminderStartUtc == new DateTimeOffset(2031, 4, 7, 0, 30, 0, TimeSpan.Zero) &&
+                liveEarly.Count == 0 &&
+                liveDue.Count == 1 &&
+                early.Count == 0 &&
+                due.Count == 1 &&
+                duplicate.Count == 0 &&
+                nextCycle.Count == 1 &&
+                completionRestarted;
+        }
+        finally
+        {
+            _settingReminderSchedule = true;
+            NoteReminderDate.SelectedDate = originalDate;
+            NoteReminderHour.SelectedIndex = originalHour;
+            NoteReminderMinute.SelectedIndex = originalMinute;
+            _settingReminderSchedule = false;
+            File.Delete(settingsPath);
+            File.Delete(settingsPath + ".tmp");
+        }
+    }
+
+    internal bool ProbeReminderSummaryAdvancesAfterFirstDue()
+    {
+        var originalWorkspace = _workspace;
+        var firstDueUtc = new DateTimeOffset(2031, 4, 6, 1, 30, 0, TimeSpan.Zero);
+        var note = new NoteRecord(
+            "reminder-summary-probe",
+            "提醒摘要探针",
+            "2031-04-06",
+            false,
+            Array.Empty<string>(),
+            30,
+            firstDueUtc.Subtract(TimeSpan.FromMinutes(30)));
+        try
+        {
+            var before = FormatNoteDetails(note, firstDueUtc.AddSeconds(-1));
+            var after = FormatNoteDetails(note, firstDueUtc);
+            ShowWorkspace(WorkspaceKind.Notes);
+            RenderNotes(firstDueUtc.AddSeconds(-1));
+            var sentinel = new Border();
+            ActiveNoteRows.Children.Add(sentinel);
+            UpdateTime(ChinaStandardTime.ToBeijingTime(firstDueUtc));
+            return
+                before.Contains("下次 4月6日 09:30", StringComparison.Ordinal) &&
+                after.Contains("下次 4月6日 10:00", StringComparison.Ordinal) &&
+                !ActiveNoteRows.Children.Contains(sentinel);
+        }
+        finally
+        {
+            ShowWorkspace(originalWorkspace);
+        }
+    }
+
     internal void ShowWorkspace(WorkspaceKind workspace)
     {
         _workspace = workspace;
@@ -206,14 +404,27 @@ public sealed partial class MainWindow : Window
     {
         NowText.Text = $"当前北京时间：{beijingNow:yyyy年MM月dd日 HH:mm:ss}";
         RefreshDefaultNoteDate(beijingNow);
-        RenderCountdowns();
+        if (_workspace == WorkspaceKind.Countdowns)
+        {
+            RenderCountdowns();
+            return;
+        }
+
+        var nowUtc = beijingNow.ToUniversalTime();
+        var currentMinuteUtc = nowUtc.UtcDateTime.Ticks / TimeSpan.TicksPerMinute;
+        if (_lastRenderedNoteMinuteUtc != currentMinuteUtc)
+        {
+            RenderNotes(nowUtc);
+        }
     }
 
     private void ConfigureControls()
     {
         for (var hour = 0; hour < 24; hour++)
         {
-            CountdownHour.Items.Add(hour.ToString("D2", CultureInfo.InvariantCulture));
+            var text = hour.ToString("D2", CultureInfo.InvariantCulture);
+            CountdownHour.Items.Add(text);
+            NoteReminderHour.Items.Add(text);
         }
 
         for (var value = 0; value < 60; value++)
@@ -221,17 +432,20 @@ public sealed partial class MainWindow : Window
             var text = value.ToString("D2", CultureInfo.InvariantCulture);
             CountdownMinute.Items.Add(text);
             CountdownSecond.Items.Add(text);
+            NoteReminderMinute.Items.Add(text);
         }
 
         DisplayPrecision.Items.Add("天");
         DisplayPrecision.Items.Add("小时");
         DisplayPrecision.Items.Add("分钟");
         DisplayPrecision.Items.Add("秒");
-        NoteReminder.Items.Add("关闭提醒");
-        NoteReminder.Items.Add("15 分钟");
-        NoteReminder.Items.Add("30 分钟");
-        NoteReminder.Items.Add("60 分钟");
-        NoteReminder.Items.Add("自定义");
+        NoteReminder.Items.Add("不提醒");
+        NoteReminder.Items.Add("仅一次");
+        NoteReminder.Items.Add("重复提醒");
+        NoteReminderInterval.Items.Add("15 分钟");
+        NoteReminderInterval.Items.Add("30 分钟");
+        NoteReminderInterval.Items.Add("60 分钟");
+        NoteReminderInterval.Items.Add("自定义");
         AnyTagMode.IsChecked = true;
         CountdownAllFilter.IsChecked = true;
         NoteAllFilter.IsChecked = true;
@@ -250,8 +464,12 @@ public sealed partial class MainWindow : Window
         NameControl(SavePreferencesButton, "保存偏好");
         NameControl(NoteText, "便签内容");
         NameControl(NoteDate, "便签日期");
-        NameControl(NoteReminder, "便签提醒间隔");
+        NameControl(NoteReminder, "便签提醒模式");
+        NameControl(NoteReminderInterval, "便签重复提醒间隔");
         NameControl(CustomReminderMinutes, "自定义提醒分钟");
+        NameControl(NoteReminderDate, "首次提醒日期");
+        NameControl(NoteReminderHour, "首次提醒小时");
+        NameControl(NoteReminderMinute, "首次提醒分钟");
         NameControl(NoteSearch, "搜索便签");
         NameControl(SaveNoteButton, "保存便签");
         NameControl(CountdownTab, "倒计时工作区");
@@ -263,6 +481,7 @@ public sealed partial class MainWindow : Window
         NameControl(NoteDateFilter, "按便签日期筛选");
         ThemedDatePickerBehavior.Attach(CountdownDate);
         ThemedDatePickerBehavior.Attach(NoteDate);
+        ThemedDatePickerBehavior.Attach(NoteReminderDate);
         ThemedDatePickerBehavior.Attach(NoteDateFilter);
         UiAccessibility.MarkLive(StatusText);
         UiAccessibility.MarkLive(CountdownMessage);
@@ -290,9 +509,12 @@ public sealed partial class MainWindow : Window
         SavePreferencesButton.Click += (_, _) => SavePreferences();
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
-        NoteReminder.SelectionChanged += (_, _) =>
-            CustomReminderMinutes.Visibility =
-                NoteReminder.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
+        NoteReminder.SelectionChanged += (_, _) => UpdateReminderScheduleControls();
+        NoteReminderInterval.SelectionChanged += (_, _) => UpdateReminderIntervalControls();
+        CustomReminderMinutes.TextChanged += (_, _) => SetDefaultReminderFirstDue();
+        NoteReminderDate.SelectedDateChanged += (_, _) => MarkReminderScheduleDirty();
+        NoteReminderHour.SelectionChanged += (_, _) => MarkReminderScheduleDirty();
+        NoteReminderMinute.SelectionChanged += (_, _) => MarkReminderScheduleDirty();
         NoteSearch.TextChanged += (_, _) =>
         {
             _workspaceModule.SetNoteSearch(NoteSearch.Text);
@@ -474,8 +696,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void RenderNotes()
+    private void RenderNotes(DateTimeOffset? nowUtc = null)
     {
+        var effectiveNowUtc = (nowUtc ?? _session.UtcNow).ToUniversalTime();
+        _lastRenderedNoteMinuteUtc = effectiveNowUtc.UtcDateTime.Ticks / TimeSpan.TicksPerMinute;
         ActiveNoteRows.Children.Clear();
         CompletedNoteRows.Children.Clear();
         _noteCompletionBoxes.Clear();
@@ -483,8 +707,8 @@ public sealed partial class MainWindow : Window
         var active = records.Where(note => !note.IsCompleted).ToArray();
         var completed = records.Where(note => note.IsCompleted).ToArray();
         RecordCountText.Text = $"{active.Length} 个待办";
-        AddNotesGroupedByDay(ActiveNoteRows, active);
-        AddNotesGroupedByDay(CompletedNoteRows, completed);
+        AddNotesGroupedByDay(ActiveNoteRows, active, effectiveNowUtc);
+        AddNotesGroupedByDay(CompletedNoteRows, completed, effectiveNowUtc);
         ToggleActiveNotes.Content = _activeNotesExpanded ? "收起未完成" : "未完成";
         ToggleActiveNotes.Visibility = active.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         ActiveNoteRows.Visibility =
@@ -504,7 +728,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void AddNotesGroupedByDay(Panel target, IReadOnlyList<NoteRecord> notes)
+    private void AddNotesGroupedByDay(
+        Panel target,
+        IReadOnlyList<NoteRecord> notes,
+        DateTimeOffset nowUtc)
     {
         string? previousDate = null;
         foreach (var note in notes)
@@ -521,11 +748,11 @@ public sealed partial class MainWindow : Window
                 previousDate = note.Date;
             }
 
-            target.Children.Add(CreateNoteRow(note));
+            target.Children.Add(CreateNoteRow(note, nowUtc));
         }
     }
 
-    private FrameworkElement CreateNoteRow(NoteRecord note)
+    private FrameworkElement CreateNoteRow(NoteRecord note, DateTimeOffset nowUtc)
     {
         var completion = UiAccessibility.Name(
             new CheckBox
@@ -557,10 +784,7 @@ public sealed partial class MainWindow : Window
             TextDecorations = note.IsCompleted ? TextDecorations.Strikethrough : null,
             Foreground = note.IsCompleted ? (Brush)FindResource("MutedBrush") : (Brush)FindResource("InkBrush")
         });
-        var status = note.IsCompleted ? "已完成" : "未完成";
-        var details = note.ReminderIntervalMinutes is null
-            ? $"{note.Date ?? "未设置日期"} · {status}"
-            : $"{note.Date ?? "未设置日期"} · {status} · 每 {note.ReminderIntervalMinutes} 分钟提醒";
+        var details = FormatNoteDetails(note, nowUtc);
         body.Children.Add(new TextBlock
         {
             Text = details,
@@ -580,6 +804,36 @@ public sealed partial class MainWindow : Window
         grid.Children.Add(body);
         grid.Children.Add(actions);
         return Card(grid, "NoteBrush");
+    }
+
+    private static string FormatNoteDetails(NoteRecord note, DateTimeOffset nowUtc)
+    {
+        var status = note.IsCompleted ? "已完成" : "未完成";
+        if (note.Reminder is NoReminder)
+        {
+            return $"{note.Date ?? "未设置日期"} · {status}";
+        }
+
+        if (note.Reminder is OnceReminder once)
+        {
+            if (once.Delivery == OnceDeliveryState.Delivered)
+            {
+                return $"{note.Date ?? "未设置日期"} · {status} · 已提醒";
+            }
+
+            var due = ChinaStandardTime.ToBeijingTime(once.FirstDueUtc);
+            var suffix = note.IsCompleted ? "（已暂停）" : string.Empty;
+            return $"{note.Date ?? "未设置日期"} · {status} · 一次提醒 {due:M月d日 HH:mm}{suffix}";
+        }
+
+        var repeating = (RepeatingReminder)note.Reminder;
+        var nextReminder = ReminderSchedule.GetNextDueUtc(note, nowUtc);
+        if (note.IsCompleted)
+        {
+            return $"{note.Date ?? "未设置日期"} · {status} · 每 {repeating.Interval.Minutes} 分钟（已暂停）";
+        }
+
+        return $"{note.Date ?? "未设置日期"} · {status} · 下次 {ChinaStandardTime.ToBeijingTime(nextReminder!.Value):M月d日 HH:mm} · 每 {repeating.Interval.Minutes} 分钟";
     }
 
     private void SaveCountdown()
@@ -624,22 +878,22 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (!TryGetReminderInterval(out var interval, out var intervalError))
-        {
-            SetMessage(NoteMessage, intervalError, true);
-            return;
-        }
-
         var existing = _editingNoteId is null
             ? null
             : _session.Current.Notes.FirstOrDefault(note => note.Id == _editingNoteId);
+        if (!TryBuildReminder(existing, out var reminder, out var reminderError))
+        {
+            SetMessage(NoteMessage, reminderError, true);
+            return;
+        }
+
         if (!_workspaceModule.TrySaveNote(
                 _editingNoteId,
                 NoteText.Text,
                 NoteDate.SelectedDate,
                 existing?.IsCompleted ?? false,
                 NoteTags.SelectedTagIds.ToArray(),
-                interval,
+                reminder,
                 out var error))
         {
             SetMessage(NoteMessage, $"保存失败：{error}", true);
@@ -739,7 +993,17 @@ public sealed partial class MainWindow : Window
         _settingDefaultDate = false;
         _noteDateDirty = true;
         NoteTags.SetSelection(note.TagIds);
-        SetReminderSelection(note.ReminderIntervalMinutes);
+        SetReminderSelection(note.Reminder);
+        var displayedDueUtc = note.Reminder switch
+        {
+            OnceReminder once => once.FirstDueUtc,
+            RepeatingReminder => ReminderSchedule.GetNextDueUtc(note, _session.UtcNow),
+            _ => null
+        };
+        SetReminderFirstDue(displayedDueUtc is null
+            ? null
+            : ChinaStandardTime.ToBeijingTime(displayedDueUtc.Value));
+        _noteReminderScheduleDirty = false;
         SaveNoteButton.Content = "保存";
         CancelNoteEdit.Visibility = Visibility.Visible;
     }
@@ -806,8 +1070,12 @@ public sealed partial class MainWindow : Window
         _noteDateDirty = false;
         NoteTags.SetSelection(_workspaceModule.SelectedTagIds);
         NoteReminder.SelectedIndex = 0;
+        NoteReminderInterval.SelectedIndex = 1;
         CustomReminderMinutes.Clear();
+        NoteReminderInterval.Visibility = Visibility.Collapsed;
         CustomReminderMinutes.Visibility = Visibility.Collapsed;
+        SetReminderFirstDue(null);
+        _noteReminderScheduleDirty = false;
         SaveNoteButton.Content = "添加";
         CancelNoteEdit.Visibility = Visibility.Collapsed;
         NoteMessage.Text = string.Empty;
@@ -836,29 +1104,111 @@ public sealed partial class MainWindow : Window
         WorkEnd.Text = CountdownFormatting.FormatWorkTime(preferences.WorkEnd);
     }
 
-    private void SetReminderSelection(int? interval)
+    private void SetReminderSelection(NoteReminder reminder)
     {
-        NoteReminder.SelectedIndex = interval switch
+        NoteReminder.SelectedIndex = reminder switch
         {
-            null => 0,
-            15 => 1,
-            30 => 2,
-            60 => 3,
-            _ => 4
+            NoReminder => 0,
+            OnceReminder => 1,
+            RepeatingReminder => 2,
+            _ => throw new InvalidOperationException("未知便签提醒模式。")
         };
-        CustomReminderMinutes.Text = interval is null or 15 or 30 or 60
+        var interval = reminder is RepeatingReminder repeating
+            ? repeating.Interval.Minutes
+            : 30;
+        NoteReminderInterval.SelectedIndex = interval switch
+        {
+            15 => 0,
+            30 => 1,
+            60 => 2,
+            _ => 3
+        };
+        CustomReminderMinutes.Text = interval is 15 or 30 or 60
             ? string.Empty
-            : interval.Value.ToString(CultureInfo.InvariantCulture);
+            : interval.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void UpdateReminderScheduleControls()
+    {
+        var enabled = NoteReminder.SelectedIndex > 0;
+        var repeating = NoteReminder.SelectedIndex == 2;
+        NoteReminderInterval.Visibility = repeating ? Visibility.Visible : Visibility.Collapsed;
+        CustomReminderMinutes.Visibility =
+            repeating && NoteReminderInterval.SelectedIndex == 3
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        NoteReminderSchedule.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        if (enabled)
+        {
+            _noteReminderScheduleDirty = true;
+            SetDefaultReminderFirstDue();
+        }
+        else
+        {
+            SetReminderFirstDue(null);
+            _noteReminderScheduleDirty = false;
+        }
+    }
+
+    private void UpdateReminderIntervalControls()
+    {
+        CustomReminderMinutes.Visibility =
+            NoteReminder.SelectedIndex == 2 && NoteReminderInterval.SelectedIndex == 3
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        if (NoteReminder.SelectedIndex == 2)
+        {
+            _noteReminderScheduleDirty = true;
+            SetDefaultReminderFirstDue();
+        }
+    }
+
+    private void SetDefaultReminderFirstDue()
+    {
+        if (NoteReminder.SelectedIndex == 0)
+        {
+            return;
+        }
+
+        var offsetMinutes = 15;
+        if (NoteReminder.SelectedIndex == 2)
+        {
+            if (!TryGetReminderInterval(out var interval, out _) || interval is null)
+            {
+                return;
+            }
+
+            offsetMinutes = interval.Value;
+        }
+
+        SetReminderFirstDue(
+            ReminderSchedule.GetDefaultFirstDueBeijing(_session.BeijingNow, offsetMinutes));
+    }
+
+    private void SetReminderFirstDue(DateTimeOffset? beijing)
+    {
+        _settingReminderSchedule = true;
+        NoteReminderDate.SelectedDate = beijing?.Date;
+        NoteReminderHour.SelectedIndex = beijing?.Hour ?? -1;
+        NoteReminderMinute.SelectedIndex = beijing?.Minute ?? -1;
+        _settingReminderSchedule = false;
+    }
+
+    private void MarkReminderScheduleDirty()
+    {
+        if (!_settingReminderSchedule)
+        {
+            _noteReminderScheduleDirty = true;
+        }
     }
 
     private bool TryGetReminderInterval(out int? interval, out string error)
     {
-        interval = NoteReminder.SelectedIndex switch
+        interval = NoteReminderInterval.SelectedIndex switch
         {
-            0 => null,
-            1 => 15,
-            2 => 30,
-            3 => 60,
+            0 => 15,
+            1 => 30,
+            2 => 60,
             _ => -1
         };
         if (interval != -1)
@@ -876,6 +1226,70 @@ public sealed partial class MainWindow : Window
 
         interval = custom;
         error = string.Empty;
+        return true;
+    }
+
+    private bool TryBuildReminder(
+        NoteRecord? existing,
+        out NoteReminder reminder,
+        out string error)
+    {
+        if (NoteReminder.SelectedIndex == 0)
+        {
+            reminder = NoReminder.Instance;
+            error = string.Empty;
+            return true;
+        }
+
+        if (NoteReminder.SelectedIndex == 1 &&
+            existing?.Reminder is OnceReminder once &&
+            !_noteReminderScheduleDirty)
+        {
+            reminder = once;
+            error = string.Empty;
+            return true;
+        }
+
+        int? interval = null;
+        if (NoteReminder.SelectedIndex == 2 &&
+            !TryGetReminderInterval(out interval, out error))
+        {
+            reminder = NoReminder.Instance;
+            return false;
+        }
+
+        if (NoteReminder.SelectedIndex == 2 &&
+            existing?.Reminder is RepeatingReminder repeating &&
+            repeating.Interval.Minutes == interval &&
+            !_noteReminderScheduleDirty)
+        {
+            reminder = repeating;
+            error = string.Empty;
+            return true;
+        }
+
+        if (NoteReminder.SelectedIndex is not 1 and not 2)
+        {
+            reminder = NoReminder.Instance;
+            error = "请选择有效的提醒模式。";
+            return false;
+        }
+
+        if (!ReminderSchedule.TryCreateFirstDueUtc(
+                NoteReminderDate.SelectedDate,
+                NoteReminderHour.SelectedIndex,
+                NoteReminderMinute.SelectedIndex,
+                _session.UtcNow,
+                out var firstDueUtc,
+                out error))
+        {
+            reminder = NoReminder.Instance;
+            return false;
+        }
+
+        reminder = NoteReminder.SelectedIndex == 1
+            ? ReminderSchedule.CreateOnce(firstDueUtc!.Value)
+            : ReminderSchedule.CreateRepeating(firstDueUtc!.Value, interval!.Value);
         return true;
     }
 
@@ -1126,6 +1540,10 @@ public sealed partial class MainWindow : Window
         yield return NoteText;
         yield return NoteDate;
         yield return NoteReminder;
+        yield return NoteReminderInterval;
+        yield return NoteReminderDate;
+        yield return NoteReminderHour;
+        yield return NoteReminderMinute;
         yield return SaveNoteButton;
         yield return NoteSearch;
         yield return FilterButton;
@@ -1164,6 +1582,16 @@ public sealed partial class MainWindow : Window
         image.Freeze();
         return image;
     }
+
+    private sealed class FixedClock : IClock
+    {
+        public FixedClock(DateTimeOffset utcNow)
+        {
+            UtcNow = utcNow;
+        }
+
+        public DateTimeOffset UtcNow { get; }
+    }
 }
 
 internal sealed record NoteExerciseResult(
@@ -1172,3 +1600,11 @@ internal sealed record NoteExerciseResult(
     bool DateViaPicker,
     bool ReminderViaSelector,
     bool CompletionViaCheckbox);
+
+internal sealed record ReminderModeClickResult(
+    bool NoReminder,
+    bool OnceReminder,
+    bool RepeatingReminder)
+{
+    public static ReminderModeClickResult NotRun { get; } = new(false, false, false);
+}

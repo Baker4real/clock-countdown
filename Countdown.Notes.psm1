@@ -63,6 +63,105 @@ function ConvertTo-CountdownNoteReminderIntervalMinutes {
     $parsed
 }
 
+function ConvertTo-CountdownNoteReminderUtc {
+    param(
+        [Parameter(Mandatory)] [object] $Value,
+        [Parameter(Mandatory)] [string] $Subject
+    )
+
+    if ($Value -is [DateTimeOffset]) {
+        return ([DateTimeOffset] $Value).ToUniversalTime()
+    }
+    if ($Value -is [DateTime] -and ([DateTime] $Value).Kind -ne [DateTimeKind]::Unspecified) {
+        return ([DateTimeOffset] ([DateTime] $Value)).ToUniversalTime()
+    }
+    $parsed = [DateTimeOffset]::MinValue
+    if (
+        $Value -isnot [string] -or
+        -not [DateTimeOffset]::TryParseExact(
+            [string] $Value,
+            'o',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None,
+            [ref] $parsed
+        )
+    ) {
+        throw "$Subject 必须是带时区的有效时间。"
+    }
+    $parsed.ToUniversalTime()
+}
+
+function Assert-CountdownNoteReminderProperties {
+    param(
+        [Parameter(Mandatory)] [object] $Reminder,
+        [Parameter(Mandatory)] [string[]] $Expected
+    )
+
+    $actual = @($Reminder.PSObject.Properties.Name)
+    if ($actual.Count -ne $Expected.Count) { throw '便签提醒包含不适用于当前类型的字段。' }
+    foreach ($name in $Expected) {
+        if ($name -notin $actual) { throw "便签提醒缺少 $name 字段。" }
+    }
+}
+
+function ConvertTo-CountdownNoteReminder {
+    param(
+        [AllowNull()] [object] $Reminder,
+        [AllowNull()] [object] $ReminderIntervalMinutes,
+        [AllowNull()] [object] $ReminderStartUtc,
+        [switch] $UseReminder
+    )
+
+    if (-not $UseReminder) {
+        $interval = ConvertTo-CountdownNoteReminderIntervalMinutes -Minutes $ReminderIntervalMinutes
+        if (($null -eq $interval) -ne ($null -eq $ReminderStartUtc)) {
+            throw '便签提醒间隔和开始时间必须同时设置或同时关闭。'
+        }
+        if ($null -eq $interval) {
+            return [pscustomobject][ordered]@{ type = 'none' }
+        }
+        $startUtc = ConvertTo-CountdownNoteReminderUtc -Value $ReminderStartUtc -Subject '便签提醒开始时间'
+        return [pscustomobject][ordered]@{
+            type = 'repeat'
+            firstDueUtc = $startUtc.AddMinutes($interval)
+            intervalMinutes = $interval
+        }
+    }
+
+    if ($null -eq $Reminder -or $null -eq $Reminder.PSObject.Properties['type']) {
+        throw '便签缺少提醒对象。'
+    }
+    $type = [string] $Reminder.type
+    switch ($type) {
+        'none' {
+            Assert-CountdownNoteReminderProperties -Reminder $Reminder -Expected @('type')
+            return [pscustomobject][ordered]@{ type = 'none' }
+        }
+        'once' {
+            Assert-CountdownNoteReminderProperties -Reminder $Reminder -Expected @('type', 'firstDueUtc', 'delivery')
+            $delivery = [string] $Reminder.delivery
+            if ($delivery -notin @('pending', 'delivered')) {
+                throw '设置中包含无效的一次性提醒送达状态。'
+            }
+            return [pscustomobject][ordered]@{
+                type = 'once'
+                firstDueUtc = ConvertTo-CountdownNoteReminderUtc -Value $Reminder.firstDueUtc -Subject '便签首次提醒时间'
+                delivery = $delivery
+            }
+        }
+        'repeat' {
+            Assert-CountdownNoteReminderProperties -Reminder $Reminder -Expected @('type', 'firstDueUtc', 'intervalMinutes')
+            $interval = ConvertTo-CountdownNoteReminderIntervalMinutes -Minutes $Reminder.intervalMinutes
+            return [pscustomobject][ordered]@{
+                type = 'repeat'
+                firstDueUtc = ConvertTo-CountdownNoteReminderUtc -Value $Reminder.firstDueUtc -Subject '便签首次提醒时间'
+                intervalMinutes = $interval
+            }
+        }
+        default { throw '设置中包含无效的便签提醒类型。' }
+    }
+}
+
 function New-CountdownNoteRecord {
     [CmdletBinding()]
     param(
@@ -72,7 +171,8 @@ function New-CountdownNoteRecord {
         [bool] $IsCompleted = $false,
         [AllowNull()] [System.Collections.IEnumerable] $TagIds,
         [AllowNull()] [object] $ReminderIntervalMinutes,
-        [AllowNull()] [object] $ReminderStartUtc
+        [AllowNull()] [object] $ReminderStartUtc,
+        [AllowNull()] [object] $Reminder
     )
 
     $normalizedId = $Id.Trim()
@@ -82,19 +182,19 @@ function New-CountdownNoteRecord {
     if ($normalizedText.Length -gt 140) { throw '便签内容不能超过 140 个字符。' }
     $normalizedDate = ConvertTo-CountdownNoteDate -Date $Date
     $normalizedTagIds = ConvertTo-CountdownNoteTagIds -TagIds $TagIds
-    $normalizedReminderIntervalMinutes = ConvertTo-CountdownNoteReminderIntervalMinutes -Minutes $ReminderIntervalMinutes
-    $normalizedReminderStartUtc = if ($null -eq $ReminderStartUtc) {
-        $null
+    $normalizedReminder = ConvertTo-CountdownNoteReminder `
+        -Reminder $Reminder `
+        -ReminderIntervalMinutes $ReminderIntervalMinutes `
+        -ReminderStartUtc $ReminderStartUtc `
+        -UseReminder:($PSBoundParameters.ContainsKey('Reminder'))
+    $normalizedReminderIntervalMinutes = if ($normalizedReminder.type -eq 'repeat') {
+        [int] $normalizedReminder.intervalMinutes
     }
-    elseif ($ReminderStartUtc -is [DateTimeOffset]) {
-        ([DateTimeOffset] $ReminderStartUtc).ToUniversalTime()
+    else { $null }
+    $normalizedReminderStartUtc = if ($normalizedReminder.type -eq 'repeat') {
+        ([DateTimeOffset] $normalizedReminder.firstDueUtc).AddMinutes(-$normalizedReminderIntervalMinutes)
     }
-    else {
-        throw '便签提醒开始时间必须是带时区的时间。'
-    }
-    if (($null -eq $normalizedReminderIntervalMinutes) -ne ($null -eq $normalizedReminderStartUtc)) {
-        throw '便签提醒间隔和开始时间必须同时设置或同时关闭。'
-    }
+    else { $null }
 
     [pscustomobject]@{
         id = $normalizedId
@@ -102,6 +202,7 @@ function New-CountdownNoteRecord {
         date = $normalizedDate
         isCompleted = [bool] $IsCompleted
         tagIds = $normalizedTagIds
+        reminder = $normalizedReminder
         reminderIntervalMinutes = $normalizedReminderIntervalMinutes
         reminderStartUtc = $normalizedReminderStartUtc
     }
@@ -114,9 +215,14 @@ function Copy-CountdownNotes {
     foreach ($note in @($Notes)) {
         $date = if ($null -eq $note.PSObject.Properties['date']) { $null } else { $note.date }
         $tagIds = if ($null -eq $note.PSObject.Properties['tagIds']) { @() } else { $note.tagIds }
-        $reminderIntervalMinutes = if ($null -eq $note.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $note.reminderIntervalMinutes }
-        $reminderStartUtc = if ($null -eq $note.PSObject.Properties['reminderStartUtc']) { $null } else { $note.reminderStartUtc }
-        [void] $copy.Add((New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $date -IsCompleted ([bool] $note.isCompleted) -TagIds $tagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc))
+        if ($null -ne $note.PSObject.Properties['reminder']) {
+            [void] $copy.Add((New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $date -IsCompleted ([bool] $note.isCompleted) -TagIds $tagIds -Reminder $note.reminder))
+        }
+        else {
+            $reminderIntervalMinutes = if ($null -eq $note.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $note.reminderIntervalMinutes }
+            $reminderStartUtc = if ($null -eq $note.PSObject.Properties['reminderStartUtc']) { $null } else { $note.reminderStartUtc }
+            [void] $copy.Add((New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $date -IsCompleted ([bool] $note.isCompleted) -TagIds $tagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc))
+        }
     }
     return ,$copy
 }
@@ -132,15 +238,32 @@ function Get-DueCountdownNoteReminders {
     $nowUtc = $BeijingTime.ToUniversalTime()
     foreach ($note in @($Notes)) {
         if ([bool] $note.isCompleted) { continue }
-        $intervalMinutes = if ($null -eq $note.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $note.reminderIntervalMinutes }
-        $startUtc = if ($null -eq $note.PSObject.Properties['reminderStartUtc']) { $null } else { $note.reminderStartUtc }
-        if ($null -eq $intervalMinutes -or $null -eq $startUtc) { continue }
+        $reminder = if ($null -eq $note.PSObject.Properties['reminder']) {
+            ConvertTo-CountdownNoteReminder -ReminderIntervalMinutes $note.reminderIntervalMinutes -ReminderStartUtc $note.reminderStartUtc
+        }
+        else { $note.reminder }
+        if ($reminder.type -eq 'none' -or ($reminder.type -eq 'once' -and $reminder.delivery -eq 'delivered')) { continue }
 
-        $intervalTicks = [TimeSpan]::FromMinutes([int] $intervalMinutes).Ticks
-        $elapsedTicks = $nowUtc.Ticks - ([DateTimeOffset] $startUtc).ToUniversalTime().Ticks
-        if ($elapsedTicks -lt $intervalTicks) { continue }
-        $cycle = [long] [Math]::Floor($elapsedTicks / $intervalTicks)
         $noteId = [string] $note.id
+        if ($reminder.type -eq 'once') {
+            if ($nowUtc -lt ([DateTimeOffset] $reminder.firstDueUtc).ToUniversalTime()) { continue }
+            $lastShownCycle = if ($LastShownCycles.Contains($noteId)) { [long] $LastShownCycles[$noteId] } else { 0L }
+            if ($lastShownCycle -ge 1) { continue }
+            [pscustomobject]@{
+                Note = $note
+                NoteId = $noteId
+                Cycle = 1L
+                IntervalMinutes = $null
+            }
+            continue
+        }
+
+        $intervalMinutes = [int] $reminder.intervalMinutes
+        $firstDueUtc = ([DateTimeOffset] $reminder.firstDueUtc).ToUniversalTime()
+        $intervalTicks = [TimeSpan]::FromMinutes([int] $intervalMinutes).Ticks
+        $elapsedTicks = $nowUtc.Ticks - $firstDueUtc.Ticks
+        if ($elapsedTicks -lt 0) { continue }
+        $cycle = 1L + [long] [Math]::Floor($elapsedTicks / $intervalTicks)
         $lastShownCycle = if ($LastShownCycles.Contains($noteId)) { [long] $LastShownCycles[$noteId] } else { 0L }
         if ($cycle -le $lastShownCycle) { continue }
 

@@ -109,7 +109,7 @@ internal static class ValidationExercises
             new DateTime(2032, 2, 4),
             false,
             Array.Empty<string>(),
-            null,
+            (int?)null,
             out error), error);
         var untaggedNote = session.Current.Notes.Last(note => note.Text == "浮窗清空标签便签");
 

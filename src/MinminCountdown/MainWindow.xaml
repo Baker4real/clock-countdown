@@ -383,6 +383,7 @@
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid>
               <Grid.ColumnDefinitions>
@@ -411,28 +412,60 @@
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <ComboBox x:Name="NoteReminder" Width="144" />
+              <ComboBox x:Name="NoteReminder" Width="124" />
+              <ComboBox x:Name="NoteReminderInterval"
+                        Grid.Column="1"
+                        Width="116"
+                        Margin="8,0,0,0"
+                        Visibility="Collapsed" />
               <TextBox x:Name="CustomReminderMinutes"
-                       Grid.Column="1"
+                       Grid.Column="2"
                        Width="72"
                        Margin="8,0,0,0"
                        MaxLength="4"
                        Visibility="Collapsed" />
               <local:TagSelector x:Name="NoteTags"
-                                 Grid.Column="2"
+                                 Grid.Column="3"
                                  Margin="8,0,0,0"
                                  HorizontalAlignment="Left" />
               <TextBox x:Name="NoteSearch"
-                       Grid.Column="3"
+                       Grid.Column="4"
                        Width="156"
                        Margin="8,0,0,0"
                        MaxLength="140" />
             </Grid>
+            <Grid x:Name="NoteReminderSchedule"
+                  Grid.Row="2"
+                  Margin="0,9,0,0"
+                  Visibility="Collapsed">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Margin="2,0,8,0"
+                         VerticalAlignment="Center"
+                         Foreground="{DynamicResource NoteInkBrush}"
+                         Text="首次提醒" />
+              <DatePicker x:Name="NoteReminderDate" Grid.Column="1" Width="190" />
+              <ComboBox x:Name="NoteReminderHour" Grid.Column="2" Width="70" Margin="8,0,0,0" />
+              <TextBlock Grid.Column="3" Margin="5,0" VerticalAlignment="Center" Text=":" />
+              <ComboBox x:Name="NoteReminderMinute" Grid.Column="4" Width="70" />
+              <TextBlock Grid.Column="5"
+                         Margin="8,0,0,0"
+                         VerticalAlignment="Center"
+                         Foreground="{DynamicResource MutedBrush}"
+                         Text="北京时间" />
+            </Grid>
             <TextBlock x:Name="NoteMessage"
-                       Grid.Row="2"
+                       Grid.Row="3"
                        Margin="2,8,2,0"
                        Foreground="{DynamicResource DangerBrush}"
                        TextWrapping="Wrap" />

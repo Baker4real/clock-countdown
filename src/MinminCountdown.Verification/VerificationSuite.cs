@@ -13,14 +13,17 @@ internal static class VerificationSuite
         {
             Run(
                 results,
-                $"schema-v{fixture.Version}-migrates-to-canonical-v7",
+                $"schema-v{fixture.Version}-migrates-to-canonical-v8",
                 () => VerifySchemaMigration(fixture.Version, fixture.Json));
         }
 
-        Run(results, "canonical-v7-is-stable", VerifyCanonicalVersionSevenIsStable);
+        Run(results, "canonical-v8-is-stable", VerifyCanonicalVersionSevenIsStable);
+        Run(results, "schema-v7-reminder-migrates-to-v8-repeat", VerifyVersionSevenReminderMigration);
+        Run(results, "schema-v8-reminder-branches-reject-foreign-fields", VerifyVersionEightReminderBranchesAreStrict);
+        Run(results, "invalid-once-delivery-state-is-rejected", VerifyInvalidOnceDeliveryStateIsRejected);
         Run(results, "legacy-case-insensitive-values-are-canonicalized", VerifyLegacyCaseInsensitiveValuesAreCanonicalized);
         Run(results, "invalid-settings-are-rejected", VerifyInvalidSettingsAreRejected);
-        Run(results, "save-writes-canonical-v7-as-utf8-no-bom", VerifySaveWritesUtf8NoBom);
+        Run(results, "save-writes-canonical-v8-as-utf8-no-bom", VerifySaveWritesUtf8NoBom);
         Run(results, "failed-write-preserves-existing-settings", VerifyFailedWritePreservesExistingSettings);
         Run(results, "replacement-failure-preserves-existing-settings", VerifyReplacementFailurePreservesExistingSettings);
         Run(results, "settings-mutex-name-matches-powershell-contract", VerifySettingsMutexName);
@@ -44,7 +47,7 @@ internal static class VerificationSuite
         Equal(version != SettingsSchema.CurrentVersion, result.Migrated, "迁移标志");
         var canonicalJson = SettingsContract.SerializeCanonical(result.Settings);
         using var canonical = JsonDocument.Parse(canonicalJson);
-        Equal(7, canonical.RootElement.GetProperty("schemaVersion").GetInt32(), "规范 schema 版本");
+        Equal(8, canonical.RootElement.GetProperty("schemaVersion").GetInt32(), "规范 schema 版本");
         Equal(
             SettingsSchema.ChinaStandardTimeZoneId,
             canonical.RootElement.GetProperty("timeZoneId").GetString(),
@@ -94,7 +97,7 @@ internal static class VerificationSuite
         VerifyNotesAndTags(result.Settings, version);
 
         var canonicalReload = SettingsContract.Deserialize(canonicalJson);
-        Equal(7, canonicalReload.SourceSchemaVersion, $"v{version} canonical reload schema");
+        Equal(8, canonicalReload.SourceSchemaVersion, $"v{version} canonical reload schema");
         Equal(false, canonicalReload.Migrated, $"v{version} canonical reload 迁移标志");
         VerifyCountdown(canonicalReload.Settings.Countdowns.Single(), expectedCountdown, version);
         VerifyPreferences(canonicalReload.Settings.Preferences, version);
@@ -207,10 +210,65 @@ internal static class VerificationSuite
 
         using var document = JsonDocument.Parse(first);
         var root = document.RootElement;
-        Equal(7, root.GetProperty("schemaVersion").GetInt32(), "schemaVersion");
+        Equal(8, root.GetProperty("schemaVersion").GetInt32(), "schemaVersion");
         Equal(1, root.GetProperty("tags").GetArrayLength(), "标签数量");
         Equal(1, root.GetProperty("countdowns").GetArrayLength(), "倒计时数量");
         Equal(1, root.GetProperty("notes").GetArrayLength(), "便签数量");
+    }
+
+    private static void VerifyVersionSevenReminderMigration()
+    {
+        var loaded = SettingsContract.Deserialize(SettingsFixtures.VersionSeven);
+        using var canonical = JsonDocument.Parse(SettingsContract.SerializeCanonical(loaded.Settings));
+        var root = canonical.RootElement;
+        Equal(8, root.GetProperty("schemaVersion").GetInt32(), "v7 提醒迁移后的 schemaVersion");
+        var note = root.GetProperty("notes")[0];
+        var reminder = note.GetProperty("reminder");
+        Equal("repeat", reminder.GetProperty("type").GetString(), "v7 提醒迁移后的模式");
+        Equal(
+            "2030-07-08T01:30:00.0000000+00:00",
+            reminder.GetProperty("firstDueUtc").GetString(),
+            "v7 提醒迁移后的首次时间");
+        Equal(30, reminder.GetProperty("intervalMinutes").GetInt32(), "v7 提醒迁移后的间隔");
+        Equal("版本七便签", note.GetProperty("text").GetString(), "v7 提醒迁移后的正文");
+        Equal("2030-07-08", note.GetProperty("date").GetString(), "v7 提醒迁移后的日期");
+        Equal("tag-focus", note.GetProperty("tagIds")[0].GetString(), "v7 提醒迁移后的标签");
+    }
+
+    private static void VerifyVersionEightReminderBranchesAreStrict()
+    {
+        const string invalid =
+            """
+            {
+              "schemaVersion": 8,
+              "timeZoneId": "China Standard Time",
+              "displayPrecision": "Second",
+              "monthlySalary": 0,
+              "workStart": "09:00",
+              "workEnd": "18:00",
+              "tags": [],
+              "countdowns": [],
+              "notes": [
+                {
+                  "id": "invalid-once",
+                  "text": "不应携带重复间隔",
+                  "date": "2031-04-06",
+                  "isCompleted": false,
+                  "tagIds": [],
+                  "reminder": {
+                    "type": "once",
+                    "firstDueUtc": "2031-04-06T01:30:00.0000000+00:00",
+                    "delivery": "pending",
+                    "intervalMinutes": 30
+                  }
+                }
+              ]
+            }
+            """;
+
+        Throws<SettingsValidationException>(
+            () => SettingsContract.Deserialize(invalid),
+            "一次性提醒不能携带重复间隔");
     }
 
     private static void VerifyLegacyCaseInsensitiveValuesAreCanonicalized()
@@ -238,7 +296,7 @@ internal static class VerificationSuite
         var invalidCases = new[]
         {
             ("malformed-json", "{"),
-            ("unsupported-schema", """{"schemaVersion":8,"timeZoneId":"China Standard Time"}"""),
+            ("unsupported-schema", """{"schemaVersion":9,"timeZoneId":"China Standard Time"}"""),
             ("wrong-time-zone", """{"schemaVersion":1,"timeZoneId":"UTC","targetUtc":"2030-01-02T03:04:05.0000000+00:00"}"""),
             (
                 "duplicate-countdown-id",
@@ -283,9 +341,33 @@ internal static class VerificationSuite
             Equal(false, HasUtf8Bom(content), "UTF-8 BOM");
             Equal(false, File.Exists(settingsPath + ".tmp"), "临时文件残留");
             using var document = JsonDocument.Parse(content);
-            Equal(7, document.RootElement.GetProperty("schemaVersion").GetInt32(), "保存后的 schemaVersion");
+            Equal(8, document.RootElement.GetProperty("schemaVersion").GetInt32(), "保存后的 schemaVersion");
             Equal("版本七便签", document.RootElement.GetProperty("notes")[0].GetProperty("text").GetString(), "便签正文");
         });
+    }
+
+    private static void VerifyInvalidOnceDeliveryStateIsRejected()
+    {
+        var invalidReminder = new OnceReminder(
+            new DateTimeOffset(2030, 1, 2, 3, 4, 0, TimeSpan.Zero),
+            (OnceDeliveryState)999);
+        var settings = CountdownSettings.Empty with
+        {
+            Notes =
+            [
+                new NoteRecord(
+                    "invalid-once-delivery",
+                    "无效一次性提醒",
+                    "2030-01-02",
+                    false,
+                    Array.Empty<string>(),
+                    invalidReminder)
+            ]
+        };
+
+        Throws<SettingsValidationException>(
+            () => SettingsContract.SerializeCanonical(settings),
+            "未知一次性提醒送达状态");
     }
 
     private static void VerifyFailedWritePreservesExistingSettings()

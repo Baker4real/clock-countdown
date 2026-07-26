@@ -2,7 +2,7 @@ namespace MinminCountdown.Core;
 
 public static class SettingsSchema
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
     public const string ChinaStandardTimeZoneId = "China Standard Time";
 }
 
@@ -18,14 +18,100 @@ public sealed record CountdownRecord(
     DateTimeOffset TargetUtc,
     IReadOnlyList<string> TagIds);
 
+public abstract record NoteReminder;
+
+public sealed record NoReminder : NoteReminder
+{
+    public static NoReminder Instance { get; } = new();
+
+    private NoReminder()
+    {
+    }
+}
+
+public enum OnceDeliveryState
+{
+    Pending,
+    Delivered
+}
+
+public sealed record OnceReminder(
+    DateTimeOffset FirstDueUtc,
+    OnceDeliveryState Delivery) : NoteReminder;
+
+public readonly record struct ReminderInterval
+{
+    public ReminderInterval(int minutes)
+    {
+        if (minutes is < 1 or > 1440)
+        {
+            throw new ArgumentOutOfRangeException(nameof(minutes));
+        }
+
+        Minutes = minutes;
+    }
+
+    public int Minutes { get; }
+}
+
+public sealed record RepeatingReminder(
+    DateTimeOffset FirstDueUtc,
+    ReminderInterval Interval) : NoteReminder;
+
 public sealed record NoteRecord(
     string Id,
     string Text,
     string? Date,
     bool IsCompleted,
     IReadOnlyList<string> TagIds,
-    int? ReminderIntervalMinutes,
-    DateTimeOffset? ReminderStartUtc);
+    NoteReminder Reminder)
+{
+    public NoteRecord(
+        string id,
+        string text,
+        string? date,
+        bool isCompleted,
+        IReadOnlyList<string> tagIds,
+        int? reminderIntervalMinutes,
+        DateTimeOffset? reminderStartUtc)
+        : this(
+            id,
+            text,
+            date,
+            isCompleted,
+            tagIds,
+            FromVersionSeven(reminderIntervalMinutes, reminderStartUtc))
+    {
+    }
+
+    public int? ReminderIntervalMinutes =>
+        Reminder is RepeatingReminder repeating ? repeating.Interval.Minutes : null;
+
+    public DateTimeOffset? ReminderStartUtc =>
+        Reminder is RepeatingReminder repeating
+            ? repeating.FirstDueUtc.Subtract(TimeSpan.FromMinutes(repeating.Interval.Minutes))
+            : null;
+
+    private static NoteReminder FromVersionSeven(
+        int? intervalMinutes,
+        DateTimeOffset? startUtc)
+    {
+        if (intervalMinutes is null && startUtc is null)
+        {
+            return NoReminder.Instance;
+        }
+
+        if (intervalMinutes is null || startUtc is null)
+        {
+            throw new SettingsValidationException("便签提醒间隔和开始时间必须同时设置或同时关闭。");
+        }
+
+        var interval = new ReminderInterval(intervalMinutes.Value);
+        return new RepeatingReminder(
+            startUtc.Value.ToUniversalTime().AddMinutes(interval.Minutes),
+            interval);
+    }
+}
 
 public sealed record TagRecord(
     string Id,

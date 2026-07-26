@@ -239,6 +239,13 @@ public sealed partial class App : Application
                 window.Show();
                 _reminderWindows.Add(window);
                 _session.Reminders.ConfirmDisplayed(note, nowUtc);
+                if (note.Reminder is OnceReminder once &&
+                    !_session.TryMarkOnceReminderDelivered(note.Id, once.FirstDueUtc, out var error))
+                {
+                    _logger?.Error(
+                        "OneTimeReminderDeliveryPersistFailed",
+                        new IOException(error));
+                }
             }
         }
         catch (Exception exception)

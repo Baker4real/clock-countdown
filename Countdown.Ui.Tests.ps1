@@ -281,6 +281,10 @@ try {
     if ($listValidation.FloatingIncomeText -notmatch '今日已赚 ￥|节假日日历未就绪') { throw "Floating income text is missing: $($listValidation.FloatingIncomeText)" }
 
     Copy-Item -LiteralPath $testSettingsPath -Destination $noteAddSettingsPath -Force
+    $noteExerciseDateBefore = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
+        [DateTimeOffset]::UtcNow,
+        'China Standard Time'
+    ).AddDays(2).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
     $noteAddValidationJson = & $powerShellEngine `
         -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
         -ValidateOnly -ExerciseNoteAdd -SettingsFile $noteAddSettingsPath | Out-String
@@ -291,8 +295,15 @@ try {
     if (-not $noteAddValidation.NoteDateViaPicker) { throw 'Clicking Add did not preserve the selected sticky-note calendar date.' }
     if (-not $noteAddValidation.NoteReminderViaSelector) { throw 'Clicking Add did not preserve the selected sticky-note reminder interval and start time.' }
     if (-not $noteAddValidation.NoteStatusViaCheckbox) { throw 'Sticky-note completion status did not change through its checkbox.' }
+    $noteExerciseDateAfter = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
+        [DateTimeOffset]::UtcNow,
+        'China Standard Time'
+    ).AddDays(2).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+    $expectedNoteExerciseDates = @($noteExerciseDateBefore, $noteExerciseDateAfter) | Select-Object -Unique
     $noteAddSettings = [System.IO.File]::ReadAllText($noteAddSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and $_.date -eq '2031-04-05' -and -not $_.isCompleted -and $_.reminderIntervalMinutes -eq 30 -and $null -ne $_.reminderStartUtc }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note with its selected date and reminder.' }
+    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and $_.date -in $expectedNoteExerciseDates -and -not $_.isCompleted -and $_.reminder.type -eq 'repeat' -and $_.reminder.intervalMinutes -eq 30 -and $null -ne $_.reminder.firstDueUtc }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note with its selected date and reminder.' }
+    if (-not $noteAddValidation.MainNoReminderViaClick -or -not $noteAddValidation.MainOnceReminderViaClick -or -not $noteAddValidation.MainRepeatingReminderViaClick) { throw 'Main window reminder mode click paths did not all pass.' }
+    if (-not $noteAddValidation.FloatingNoReminderViaClick -or -not $noteAddValidation.FloatingOnceReminderViaClick -or -not $noteAddValidation.FloatingRepeatingReminderViaClick) { throw 'Floating window reminder mode click paths did not all pass.' }
 
     Copy-Item -LiteralPath $testSettingsPath -Destination $tagInteractionSettingsPath -Force
     $tagInteractionValidationJson = & $powerShellEngine `
@@ -317,7 +328,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if (-not $tagInteractionValidation.TagNoteEditingPersistsDate) { throw 'Editing a sticky note did not persist its selected calendar date.' }
     if (-not $tagInteractionValidation.TagRenameAndDeleteDetachOnly) { throw 'Tag rename or delete-detach behavior failed.' }
     $tagInteractionSettings = [System.IO.File]::ReadAllText($tagInteractionSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if ($tagInteractionSettings.schemaVersion -ne 7) { throw 'Tag interaction exercise did not persist schema v7.' }
+    if ($tagInteractionSettings.schemaVersion -ne 8) { throw 'Tag interaction exercise did not persist schema v8.' }
     if (@($tagInteractionSettings.tags).Count -lt 2) { throw 'Tag interaction exercise did not preserve the shared tag library after deletion.' }
     if (@($tagInteractionSettings.countdowns).Count -lt 5 -or @($tagInteractionSettings.notes).Count -lt 4) { throw 'Tag interaction exercise did not preserve the records while managing tags.' }
 
@@ -370,7 +381,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if (-not $legacyV3Validation.SettingsWereMigrated) { throw 'Schema-v3 settings were not marked for migration.' }
     if ($legacyV3Validation.LoadedCountdowns -ne 1 -or (@($legacyV3Validation.SortedNames) -join ',') -ne '旧版倒计时') { throw 'Schema-v3 countdowns were not preserved.' }
     if ($legacyV3Validation.LoadedNotes -ne 0) { throw 'Schema-v3 migration should initialize an empty sticky-note list.' }
-    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v7.' }
+    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v8.' }
     if ($legacyV3Validation.LoadedDisplayPrecision -ne 'Minute' -or ([decimal] $legacyV3Validation.LoadedMonthlySalary) -ne [decimal]12345 -or $legacyV3Validation.LoadedWorkStart -ne '08:30' -or $legacyV3Validation.LoadedWorkEnd -ne '17:30') { throw 'Schema-v3 preferences were not preserved.' }
     $legacyV3HashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SettingsPath).Hash
     if ($legacyV3HashAfterValidation -ne $legacyV3HashBeforeValidation) { throw 'ValidateOnly modified the supplied schema-v3 settings file.' }

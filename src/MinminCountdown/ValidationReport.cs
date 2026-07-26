@@ -23,6 +23,13 @@ internal static class ValidationReport
         var noteExercise = options.ExerciseNoteAdd
             ? main.RunNoteAddExercise()
             : new NoteExerciseResult(false, false, false, false, false);
+        var floatingNoteExercise = options.ExerciseNoteAdd && floating.RunCrossDayReminderAddExercise();
+        var mainReminderModeExercise = options.ExerciseNoteAdd
+            ? main.RunReminderModeClickExercises()
+            : ReminderModeClickResult.NotRun;
+        var floatingReminderModeExercise = options.ExerciseNoteAdd
+            ? floating.RunReminderModeClickExercises()
+            : ReminderModeClickResult.NotRun;
         var tagExercise = options.ExerciseTagInteractions
             ? ValidationExercises.RunTagInteractions(session)
             : TagInteractionExerciseResult.NotRun;
@@ -90,6 +97,9 @@ internal static class ValidationReport
         var createCollapsed = !selector.ProbeCreateAction(string.Empty);
         var tagSearchDoesNotSubmit = !selector.CreateButtonIsDefault;
         var reminderBehavior = ValidateReminderDispatch();
+        var oneTimeReminderBehavior = ValidateOneTimeReminderLifecycle();
+        var crossDayReminderBehavior = main.ProbeCrossDayReminderBehavior();
+        var reminderSummaryAdvances = main.ProbeReminderSummaryAdvancesAfterFirstDue();
         var roundTrip = ValidateRoundTrip(session.Current);
         var legacyMigration = ValidateLegacyMigration();
         var duplicateRejected = RejectsDuplicateCountdowns(session.Current);
@@ -368,8 +378,31 @@ internal static class ValidationReport
             ["HasNameEditor"] = main.FindName("CountdownName") is TextBox,
             ["HasNoteReminderControls"] =
                 main.FindName("NoteReminder") is ComboBox &&
-                main.FindName("CustomReminderMinutes") is TextBox,
-            ["NoteReminderControlsWork"] = Required<ComboBox>(main, "NoteReminder").Items.Count == 5,
+                main.FindName("NoteReminderInterval") is ComboBox &&
+                main.FindName("CustomReminderMinutes") is TextBox &&
+                main.FindName("NoteReminderDate") is DatePicker &&
+                main.FindName("NoteReminderHour") is ComboBox &&
+                main.FindName("NoteReminderMinute") is ComboBox &&
+                floating.FindName("FloatingReminderDate") is DatePicker &&
+                floating.FindName("FloatingReminderHour") is ComboBox &&
+                floating.FindName("FloatingReminderMinute") is ComboBox &&
+                floating.FindName("FloatingReminderInterval") is ComboBox &&
+                floating.FindName("FloatingCustomReminderMinutes") is TextBox,
+            ["NoteReminderControlsWork"] =
+                Required<ComboBox>(main, "NoteReminder").Items.Count == 3 &&
+                Required<ComboBox>(main, "NoteReminderInterval").Items.Count == 4 &&
+                Required<ComboBox>(floating, "FloatingReminder").Items.Count == 3 &&
+                Required<ComboBox>(floating, "FloatingReminderInterval").Items.Count == 4,
+            ["NoteReminderTimeOptionCounts"] = new[]
+            {
+                Required<ComboBox>(main, "NoteReminderHour").Items.Count,
+                Required<ComboBox>(main, "NoteReminderMinute").Items.Count,
+                Required<ComboBox>(floating, "FloatingReminderHour").Items.Count,
+                Required<ComboBox>(floating, "FloatingReminderMinute").Items.Count
+            },
+            ["CrossDayReminderSelectionWorks"] = crossDayReminderBehavior,
+            ["ReminderSummaryAdvancesAfterFirstDue"] = reminderSummaryAdvances,
+            ["OneTimeReminderLifecycleWorks"] = oneTimeReminderBehavior,
             ["NoteReminderDispatchWorks"] = reminderBehavior,
             ["NoteReminderWindowIsThemed"] = reminderThemed,
             ["ReminderWindowSupportsKeyboardDismissal"] = reminderWindow.SupportsKeyboardDismissal,
@@ -419,6 +452,13 @@ internal static class ValidationReport
             ["NoteDateRequired"] = noteExercise.DateRequired,
             ["NoteDateViaPicker"] = noteExercise.DateViaPicker,
             ["NoteReminderViaSelector"] = noteExercise.ReminderViaSelector,
+            ["FloatingCrossDayReminderViaClick"] = floatingNoteExercise,
+            ["MainNoReminderViaClick"] = mainReminderModeExercise.NoReminder,
+            ["MainOnceReminderViaClick"] = mainReminderModeExercise.OnceReminder,
+            ["MainRepeatingReminderViaClick"] = mainReminderModeExercise.RepeatingReminder,
+            ["FloatingNoReminderViaClick"] = floatingReminderModeExercise.NoReminder,
+            ["FloatingOnceReminderViaClick"] = floatingReminderModeExercise.OnceReminder,
+            ["FloatingRepeatingReminderViaClick"] = floatingReminderModeExercise.RepeatingReminder,
             ["NoteDateDefaultsTrackBeijingDay"] = noteDateBehavior.TracksBeijingDay,
             ["NoteDateChoicesSurviveBeijingDayChange"] = noteDateBehavior.PreservesChosenDate,
             ["NoteStatusViaCheckbox"] = noteExercise.CompletionViaCheckbox,
@@ -698,6 +738,69 @@ internal static class ValidationReport
         return first.Count == 1 && pendingRetry.Count == 1 && duplicate.Count == 0;
     }
 
+    private static bool ValidateOneTimeReminderLifecycle()
+    {
+        var firstDueUtc = new DateTimeOffset(2031, 4, 6, 1, 30, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-once-{Guid.NewGuid():N}.settings.json");
+        try
+        {
+            var beforeStore = new SettingsStore(
+                clock: new ValidationClock(firstDueUtc.AddSeconds(-1)));
+            var before = ApplicationSession.Load(settingsPath, beforeStore);
+            var workspace = new DesktopWorkspace(before);
+            if (!workspace.TrySaveNote(
+                    null,
+                    "一次性提醒生命周期探针",
+                    new DateTime(2031, 4, 6),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(firstDueUtc),
+                    out _))
+            {
+                return false;
+            }
+
+            var early = before.Reminders.GetDue(before.Current, firstDueUtc.AddSeconds(-1));
+            var afterStore = new SettingsStore(
+                clock: new ValidationClock(firstDueUtc.AddMinutes(5)));
+            var after = ApplicationSession.Load(settingsPath, afterStore);
+            var overdue = after.Reminders.GetDue(after.Current, firstDueUtc.AddMinutes(5));
+            var dueNote = overdue.SingleOrDefault();
+            if (dueNote?.Reminder is not OnceReminder once)
+            {
+                return false;
+            }
+
+            after.Reminders.ConfirmDisplayed(dueNote, firstDueUtc.AddMinutes(5));
+            var duplicateInProcess = after.Reminders.GetDue(after.Current, firstDueUtc.AddMinutes(5));
+            if (!after.TryMarkOnceReminderDelivered(dueNote.Id, once.FirstDueUtc, out _))
+            {
+                return false;
+            }
+
+            var reloaded = ApplicationSession.Load(settingsPath, afterStore);
+            var duplicateAfterRestart = reloaded.Reminders.GetDue(
+                reloaded.Current,
+                firstDueUtc.AddMinutes(5));
+            return
+                early.Count == 0 &&
+                overdue.Count == 1 &&
+                duplicateInProcess.Count == 0 &&
+                duplicateAfterRestart.Count == 0 &&
+                reloaded.Current.Notes.Single().Reminder is OnceReminder
+                {
+                    Delivery: OnceDeliveryState.Delivered
+                };
+        }
+        finally
+        {
+            File.Delete(settingsPath);
+            File.Delete(settingsPath + ".tmp");
+        }
+    }
+
     private static bool AreNotesGroupedByDay(IReadOnlyList<NoteRecord> notes)
     {
         var seen = new HashSet<string?>(StringComparer.Ordinal);
@@ -833,4 +936,14 @@ internal static class ValidationReport
     }
 
     private sealed record TextFit(bool Fits, double Available, double Required);
+
+    private sealed class ValidationClock : IClock
+    {
+        public ValidationClock(DateTimeOffset utcNow)
+        {
+            UtcNow = utcNow;
+        }
+
+        public DateTimeOffset UtcNow { get; }
+    }
 }

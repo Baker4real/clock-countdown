@@ -68,6 +68,7 @@ public static class SettingsContract
                 case 5:
                 case 6:
                 case 7:
+                case 8:
                     var tags = ReadTags(root);
                     var knownTagIds = tags.Select(static tag => tag.Id).ToArray();
                     settings = new CountdownSettings(
@@ -174,23 +175,7 @@ public static class SettingsContract
 
             writer.WriteBoolean("isCompleted", note.IsCompleted);
             WriteTagIds(writer, note.TagIds);
-            if (note.ReminderIntervalMinutes is null)
-            {
-                writer.WriteNull("reminderIntervalMinutes");
-            }
-            else
-            {
-                writer.WriteNumber("reminderIntervalMinutes", note.ReminderIntervalMinutes.Value);
-            }
-
-            if (note.ReminderStartUtc is null)
-            {
-                writer.WriteNull("reminderStartUtc");
-            }
-            else
-            {
-                writer.WriteString("reminderStartUtc", FormatUtc(note.ReminderStartUtc.Value));
-            }
+            WriteReminder(writer, note.Reminder);
 
             writer.WriteEndObject();
         }
@@ -350,22 +335,25 @@ public static class SettingsContract
             var date = schemaVersion >= 6
                 ? NormalizeDate(properties.Require("date"))
                 : null;
-            var (intervalMinutes, reminderStartUtc) = schemaVersion >= 7
-                ? ReadReminder(properties)
-                : (null, null);
-            notes.Add(new NoteRecord(id, text, date, isCompleted, tagIds, intervalMinutes, reminderStartUtc));
+            var reminder = schemaVersion switch
+            {
+                >= 8 => ReadReminder(properties),
+                7 => ReadVersionSevenReminder(properties),
+                _ => NoReminder.Instance
+            };
+            notes.Add(new NoteRecord(id, text, date, isCompleted, tagIds, reminder));
         }
 
         return notes;
     }
 
-    private static (int? IntervalMinutes, DateTimeOffset? ReminderStartUtc) ReadReminder(JsonObjectProperties properties)
+    private static NoteReminder ReadVersionSevenReminder(JsonObjectProperties properties)
     {
         var intervalElement = properties.Require("reminderIntervalMinutes");
         var startElement = properties.Require("reminderStartUtc");
         if (intervalElement.ValueKind == JsonValueKind.Null && startElement.ValueKind == JsonValueKind.Null)
         {
-            return (null, null);
+            return NoReminder.Instance;
         }
 
         if (intervalElement.ValueKind == JsonValueKind.Null || startElement.ValueKind == JsonValueKind.Null)
@@ -389,7 +377,93 @@ public static class SettingsContract
             throw new SettingsValidationException("设置中的便签提醒开始时间必须是带时区的有效时间。");
         }
 
-        return (interval, reminderStart.ToUniversalTime());
+        var normalizedInterval = new ReminderInterval(interval);
+        return new RepeatingReminder(
+            reminderStart.ToUniversalTime().AddMinutes(normalizedInterval.Minutes),
+            normalizedInterval);
+    }
+
+    private static NoteReminder ReadReminder(JsonObjectProperties properties)
+    {
+        var reminder = new JsonObjectProperties(properties.Require("reminder"), "便签提醒");
+        var type = ReadRequiredString(reminder.Require("type"), "便签提醒类型");
+        if (string.Equals(type, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            reminder.EnsureOnly("type");
+            return NoReminder.Instance;
+        }
+
+        var firstDueUtc = ReadReminderUtc(reminder.Require("firstDueUtc"), "便签首次提醒时间");
+        if (string.Equals(type, "once", StringComparison.OrdinalIgnoreCase))
+        {
+            reminder.EnsureOnly("type", "firstDueUtc", "delivery");
+            var deliveryText = ReadRequiredString(reminder.Require("delivery"), "一次性提醒送达状态");
+            var delivery = deliveryText.ToLowerInvariant() switch
+            {
+                "pending" => OnceDeliveryState.Pending,
+                "delivered" => OnceDeliveryState.Delivered,
+                _ => throw new SettingsValidationException("设置中包含无效的一次性提醒送达状态。")
+            };
+            return new OnceReminder(firstDueUtc, delivery);
+        }
+
+        if (string.Equals(type, "repeat", StringComparison.OrdinalIgnoreCase))
+        {
+            reminder.EnsureOnly("type", "firstDueUtc", "intervalMinutes");
+            var intervalElement = reminder.Require("intervalMinutes");
+            if (!IsJsonInteger(intervalElement, out var interval) || interval is < 1 or > 1440)
+            {
+                throw new SettingsValidationException("设置中的便签提醒间隔必须在 1 到 1440 分钟之间。");
+            }
+
+            return new RepeatingReminder(firstDueUtc, new ReminderInterval(interval));
+        }
+
+        throw new SettingsValidationException("设置中包含无效的便签提醒类型。");
+    }
+
+    private static DateTimeOffset ReadReminderUtc(JsonElement element, string subject)
+    {
+        if (element.ValueKind != JsonValueKind.String ||
+            !DateTimeOffset.TryParseExact(
+                element.GetString(),
+                "O",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var value))
+        {
+            throw new SettingsValidationException($"设置中的{subject}必须是带时区的有效时间。");
+        }
+
+        return value.ToUniversalTime();
+    }
+
+    private static void WriteReminder(Utf8JsonWriter writer, NoteReminder reminder)
+    {
+        writer.WritePropertyName("reminder");
+        writer.WriteStartObject();
+        switch (reminder)
+        {
+            case NoReminder:
+                writer.WriteString("type", "none");
+                break;
+            case OnceReminder once:
+                writer.WriteString("type", "once");
+                writer.WriteString("firstDueUtc", FormatUtc(once.FirstDueUtc));
+                writer.WriteString(
+                    "delivery",
+                    once.Delivery == OnceDeliveryState.Pending ? "pending" : "delivered");
+                break;
+            case RepeatingReminder repeating:
+                writer.WriteString("type", "repeat");
+                writer.WriteString("firstDueUtc", FormatUtc(repeating.FirstDueUtc));
+                writer.WriteNumber("intervalMinutes", repeating.Interval.Minutes);
+                break;
+            default:
+                throw new SettingsValidationException("设置中包含无效的便签提醒。");
+        }
+
+        writer.WriteEndObject();
     }
 
     private static CountdownPreferences NormalizePreferences(CountdownPreferences? preferences)
@@ -536,24 +610,36 @@ public static class SettingsContract
                 throw new SettingsValidationException("设置中包含重复的便签 ID。");
             }
 
-            var intervalMinutes = NormalizeReminderInterval(note.ReminderIntervalMinutes);
-            var reminderStartUtc = note.ReminderStartUtc?.ToUniversalTime();
-            if ((intervalMinutes is null) != (reminderStartUtc is null))
-            {
-                throw new SettingsValidationException("便签提醒间隔和开始时间必须同时设置或同时关闭。");
-            }
-
             normalized.Add(new NoteRecord(
                 id,
                 NormalizeNoteText(note.Text),
                 NormalizeDate(note.Date),
                 note.IsCompleted,
                 CanonicalizeTagIds(note.TagIds, knownTagIds, "便签"),
-                intervalMinutes,
-                reminderStartUtc));
+                NormalizeReminder(note.Reminder)));
         }
 
         return normalized;
+    }
+
+    private static NoteReminder NormalizeReminder(NoteReminder? reminder) => reminder switch
+    {
+        NoReminder => NoReminder.Instance,
+        OnceReminder once => NormalizeOnceReminder(once),
+        RepeatingReminder repeating => new RepeatingReminder(
+            repeating.FirstDueUtc.ToUniversalTime(),
+            new ReminderInterval(repeating.Interval.Minutes)),
+        _ => throw new SettingsValidationException("设置中包含无效的便签提醒。")
+    };
+
+    private static OnceReminder NormalizeOnceReminder(OnceReminder reminder)
+    {
+        if (reminder.Delivery is not OnceDeliveryState.Pending and not OnceDeliveryState.Delivered)
+        {
+            throw new SettingsValidationException("设置中包含无效的一次性提醒送达状态。");
+        }
+
+        return new OnceReminder(reminder.FirstDueUtc.ToUniversalTime(), reminder.Delivery);
     }
 
     private static IReadOnlyList<string> CanonicalizeTagIds(
@@ -855,6 +941,15 @@ public static class SettingsContract
         public bool TryGet(string name, out JsonElement value)
         {
             return _properties.TryGetValue(name, out value);
+        }
+
+        public void EnsureOnly(params string[] names)
+        {
+            var allowed = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+            if (_properties.Keys.Any(name => !allowed.Contains(name)))
+            {
+                throw new SettingsValidationException($"{_subject}包含不适用于当前类型的字段。");
+            }
         }
     }
 }

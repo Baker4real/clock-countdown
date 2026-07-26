@@ -107,6 +107,8 @@ $mutexHolderOutputPath = Join-Path $testRoot 'mutex-holder.stdout.txt'
 $mutexHolderErrorPath = Join-Path $testRoot 'mutex-holder.stderr.txt'
 $directDiagnosticPath = Join-Path $testRoot 'direct-application.jsonl'
 $adapterDiagnosticPath = Join-Path $testRoot 'adapter-application.jsonl'
+$noteExercisePath = Join-Path $testRoot 'note-exercise.settings.json'
+$noteExerciseDiagnosticPath = Join-Path $testRoot 'note-exercise-application.jsonl'
 $interactiveRoot = Join-Path $testRoot 'interactive-application-root'
 $interactiveApplicationDirectory = Join-Path $interactiveRoot 'app'
 $interactiveApplicationPath = Join-Path $interactiveApplicationDirectory 'MinminCountdown.exe'
@@ -207,7 +209,7 @@ try {
         throw "C# round-trip 未生成显式输出：$roundTripPath"
     }
     $canonicalSettings = Get-Content -LiteralPath $roundTripPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    Assert-Equal 7 $canonicalSettings.schemaVersion 'C# round-trip 输出 schemaVersion'
+    Assert-Equal 8 $canonicalSettings.schemaVersion 'C# round-trip 输出 schemaVersion'
     Assert-Equal 'China Standard Time' $canonicalSettings.timeZoneId 'C# round-trip 输出时区'
     $powerShellReloadedState = ConvertFrom-CountdownSettingsObject -Settings $canonicalSettings
     $powerShellReloadedCanonical = ConvertTo-CountdownSettingsJson -State $powerShellReloadedState
@@ -340,7 +342,38 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.ActiveNotesGrouped) '未完成便签收拢在独立分组中'
     Assert-Equal $true ([bool] $adapterValidation.ActiveNotesExpandedByDefault) '未完成便签分组默认展开'
     Assert-Equal $true ([bool] $adapterValidation.ActiveNotesKeepDateOrder) '未完成便签组内保持现有日期顺序'
+    Assert-Equal '24,60,24,60' ([string]::Join(',', @($adapterValidation.NoteReminderTimeOptionCounts))) '主窗口和悬浮窗的便签提醒时间选项完整'
+    Assert-Equal $true ([bool] $adapterValidation.CrossDayReminderSelectionWorks) '便签提醒支持跨天选择并按北京时间触发'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderSummaryAdvancesAfterFirstDue) '首次提醒到期后主窗口摘要显示下一循环时间'
+    Assert-Equal $true ([bool] $adapterValidation.OneTimeReminderLifecycleWorks) '一次性提醒支持离线补发并在送达后跨重启去重'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'adapter validate-only 保持设置不变'
+
+    [System.IO.File]::Copy($roundTripPath, $noteExercisePath)
+    $noteExerciseOutput = Invoke-CheckedNativeCommand -FilePath $pwsh -Operation '经真实 UI 点击验证跨天便签提醒' -ArgumentList @(
+        '-NoLogo',
+        '-NoProfile',
+        '-STA',
+        '-File',
+        $adapter,
+        '-ValidateOnly',
+        '-ExerciseNoteAdd',
+        '-SettingsFile',
+        $noteExercisePath,
+        '-DiagnosticLogPath',
+        $noteExerciseDiagnosticPath
+    )
+    $noteExercise = $noteExerciseOutput | ConvertFrom-Json
+    Assert-Equal $true ([bool] $noteExercise.NoteAddViaClick) '主窗口真实点击添加便签'
+    Assert-Equal $true ([bool] $noteExercise.NoteReminderViaSelector) '主窗口真实点击保存跨天提醒时间'
+    Assert-Equal $true ([bool] $noteExercise.FloatingCrossDayReminderViaClick) '悬浮窗真实点击保存跨天提醒时间'
+    Assert-Equal $true ([bool] $noteExercise.MainNoReminderViaClick) '主窗口真实点击保存不提醒'
+    Assert-Equal $true ([bool] $noteExercise.MainOnceReminderViaClick) '主窗口真实点击保存一次性提醒'
+    Assert-Equal $true ([bool] $noteExercise.MainRepeatingReminderViaClick) '主窗口真实点击保存重复提醒'
+    Assert-Equal $true ([bool] $noteExercise.FloatingNoReminderViaClick) '悬浮窗真实点击保存不提醒'
+    Assert-Equal $true ([bool] $noteExercise.FloatingOnceReminderViaClick) '悬浮窗真实点击保存一次性提醒'
+    Assert-Equal $true ([bool] $noteExercise.FloatingRepeatingReminderViaClick) '悬浮窗真实点击保存重复提醒'
+    $noteExerciseSettings = Get-Content -LiteralPath $noteExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal $true (@($noteExerciseSettings.notes | Where-Object text -eq '验证快速跨天提醒').Count -eq 1) '悬浮跨天提醒真实写入隔离设置'
 
     New-Item -ItemType Directory -Path $interactiveApplicationDirectory | Out-Null
     Copy-Item -LiteralPath $application -Destination $interactiveApplicationPath
@@ -497,7 +530,7 @@ try {
     $interactiveMigratedJson = Get-Content -LiteralPath $interactiveSettingsPath -Raw -Encoding UTF8
     $interactiveMigratedHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
     $interactiveMigratedSettings = $interactiveMigratedJson | ConvertFrom-Json
-    Assert-Equal 7 ([int] $interactiveMigratedSettings.schemaVersion) 'released 阶段把 schema v6 写回 canonical v7'
+    Assert-Equal 8 ([int] $interactiveMigratedSettings.schemaVersion) 'released 阶段把 schema v6 写回 canonical v8'
     Assert-Equal $false ($interactiveLegacyHash -eq $interactiveMigratedHash) 'released 阶段实际写回迁移后的设置'
     Assert-Equal $true (
         Test-CountdownSettingsDeploymentTransition `

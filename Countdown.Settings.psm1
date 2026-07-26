@@ -85,7 +85,7 @@ function ConvertFrom-CountdownSettingsObject {
         [void] $records.Add((New-CountdownRecordFromSettings -Id ([guid]::NewGuid().ToString('N')) -Name '我的倒计时' -TargetUtc (ConvertTo-CountdownSettingsTargetUtc -Value $Settings.targetUtc)))
         return [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $true }
     }
-    if ($Settings.schemaVersion -notin @(2, 3, 4, 5, 6, 7)) { throw '设置文件版本无效。' }
+    if ($Settings.schemaVersion -notin @(2, 3, 4, 5, 6, 7, 8)) { throw '设置文件版本无效。' }
 
     if ($Settings.schemaVersion -ge 5) {
         if ($null -eq $Settings.PSObject.Properties['tags'] -or $null -eq $Settings.tags) { throw '设置中缺少标签库。' }
@@ -146,9 +146,17 @@ function ConvertFrom-CountdownSettingsObject {
                 if ($null -eq $item.PSObject.Properties['date']) { throw '设置中的便签缺少日期字段。' }
                 $noteDate = $item.date
             }
+            if ($Settings.schemaVersion -ge 8) {
+                if ($null -eq $item.PSObject.Properties['reminder']) {
+                    throw '设置中的便签缺少提醒字段。'
+                }
+                [void] $notes.Add((New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -Date $noteDate -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds -Reminder $item.reminder))
+                continue
+            }
+
             $reminderIntervalMinutes = $null
             $reminderStartUtc = $null
-            if ($Settings.schemaVersion -ge 7) {
+            if ($Settings.schemaVersion -eq 7) {
                 if (
                     $null -eq $item.PSObject.Properties['reminderIntervalMinutes'] -or
                     $null -eq $item.PSObject.Properties['reminderStartUtc']
@@ -203,7 +211,7 @@ function ConvertFrom-CountdownSettingsObject {
         }
     }
 
-    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 7 }
+    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 8 }
 }
 
 function ConvertTo-CountdownSettingsJson {
@@ -255,28 +263,50 @@ function ConvertTo-CountdownSettingsJson {
         if ($null -eq $note.PSObject.Properties['tagIds'] -or $null -eq $note.tagIds) { throw '设置中的便签缺少标签 ID 列表。' }
         $noteTagIds = ConvertTo-CountdownTagIds -TagIds $note.tagIds -KnownTagIds $knownTagIds
         $noteDate = if ($null -eq $note.PSObject.Properties['date']) { $null } else { $note.date }
-        $reminderIntervalMinutes = if ($null -eq $note.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $note.reminderIntervalMinutes }
-        $reminderStartUtc = if ($null -eq $note.PSObject.Properties['reminderStartUtc']) { $null } else { $note.reminderStartUtc }
-        $validNote = New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $noteDate -IsCompleted ([bool] $note.isCompleted) -TagIds $noteTagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc
+        $validNote = if ($null -ne $note.PSObject.Properties['reminder']) {
+            New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $noteDate -IsCompleted ([bool] $note.isCompleted) -TagIds $noteTagIds -Reminder $note.reminder
+        }
+        else {
+            $reminderIntervalMinutes = if ($null -eq $note.PSObject.Properties['reminderIntervalMinutes']) { $null } else { $note.reminderIntervalMinutes }
+            $reminderStartUtc = if ($null -eq $note.PSObject.Properties['reminderStartUtc']) { $null } else { $note.reminderStartUtc }
+            New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $noteDate -IsCompleted ([bool] $note.isCompleted) -TagIds $noteTagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc
+        }
         if (-not $noteIds.Add($validNote.id)) { throw '设置中包含重复的便签 ID。' }
+        $serializedReminder = switch ($validNote.reminder.type) {
+            'none' {
+                [ordered]@{ type = 'none' }
+                break
+            }
+            'once' {
+                [ordered]@{
+                    type = 'once'
+                    firstDueUtc = ([DateTimeOffset] $validNote.reminder.firstDueUtc).ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+                    delivery = [string] $validNote.reminder.delivery
+                }
+                break
+            }
+            'repeat' {
+                [ordered]@{
+                    type = 'repeat'
+                    firstDueUtc = ([DateTimeOffset] $validNote.reminder.firstDueUtc).ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+                    intervalMinutes = [int] $validNote.reminder.intervalMinutes
+                }
+                break
+            }
+            default { throw '设置中包含无效的便签提醒类型。' }
+        }
         $notes += [ordered]@{
             id = $validNote.id
             text = $validNote.text
             date = $validNote.date
             isCompleted = [bool] $validNote.isCompleted
             tagIds = @($validNote.tagIds | ForEach-Object { [string] $_ })
-            reminderIntervalMinutes = $validNote.reminderIntervalMinutes
-            reminderStartUtc = if ($null -eq $validNote.reminderStartUtc) {
-                $null
-            }
-            else {
-                ([DateTimeOffset] $validNote.reminderStartUtc).ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
-            }
+            reminder = $serializedReminder
         }
     }
 
     [ordered]@{
-        schemaVersion = 7
+        schemaVersion = 8
         timeZoneId = 'China Standard Time'
         displayPrecision = $preferences.Precision
         monthlySalary = $preferences.MonthlySalary
@@ -456,7 +486,7 @@ function Test-CountdownSettingsDeploymentTransition {
     try {
         $before = $BeforeJson | ConvertFrom-Json
         $after = $AfterJson | ConvertFrom-Json
-        if ($before.schemaVersion -notin @(3, 4, 5, 6) -or $after.schemaVersion -ne 7) { return $false }
+        if ($before.schemaVersion -notin @(3, 4, 5, 6, 7) -or $after.schemaVersion -ne 8) { return $false }
         $expectedMigration = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $before) | ConvertFrom-Json
         $null = ConvertFrom-CountdownSettingsObject -Settings $after
         if (-not (Test-CountdownSettingsJsonEquivalent -Expected $expectedMigration -Actual $after)) { return $false }

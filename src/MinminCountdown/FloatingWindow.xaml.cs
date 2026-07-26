@@ -61,6 +61,83 @@ public sealed partial class FloatingWindow : Window
 
     internal event EventHandler? ExitRequested;
 
+    internal bool RunCrossDayReminderAddExercise()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        var countBefore = _session.Current.Notes.Count;
+        var noteDate = _session.BeijingNow.AddDays(2).Date;
+        var firstDueDay = _session.BeijingNow.AddDays(3);
+        var firstDue = new DateTimeOffset(
+            firstDueDay.Year,
+            firstDueDay.Month,
+            firstDueDay.Day,
+            10,
+            15,
+            0,
+            firstDueDay.Offset);
+        FloatingNoteText.Text = "验证快速跨天提醒";
+        FloatingNoteDate.SelectedDate = noteDate;
+        FloatingReminder.SelectedIndex = 2;
+        FloatingReminderInterval.SelectedIndex = 1;
+        SetReminderSchedule(firstDue);
+        FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var added = _session.Current.Notes.LastOrDefault(note => note.Text == "验证快速跨天提醒");
+        return
+            added is not null &&
+            _session.Current.Notes.Count == countBefore + 1 &&
+            added.Date == noteDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) &&
+            added.ReminderIntervalMinutes == 30 &&
+            added.ReminderStartUtc == firstDue.ToUniversalTime().Subtract(TimeSpan.FromMinutes(30));
+    }
+
+    internal ReminderModeClickResult RunReminderModeClickExercises()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        var noteDate = _session.BeijingNow.AddDays(2).Date;
+        var onceDue = _session.BeijingNow.AddDays(3);
+        onceDue = new DateTimeOffset(
+            onceDue.Year,
+            onceDue.Month,
+            onceDue.Day,
+            10,
+            10,
+            0,
+            onceDue.Offset);
+        var repeatDue = onceDue.AddDays(1).AddMinutes(20);
+
+        FloatingNoteText.Text = "验证悬浮窗不提醒";
+        FloatingNoteDate.SelectedDate = noteDate;
+        FloatingReminder.SelectedIndex = 0;
+        FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var noReminderWorks = _session.Current.Notes.LastOrDefault(
+            note => note.Text == "验证悬浮窗不提醒")?.Reminder is NoReminder;
+
+        FloatingNoteText.Text = "验证悬浮窗仅一次";
+        FloatingNoteDate.SelectedDate = noteDate;
+        FloatingReminder.SelectedIndex = 1;
+        SetReminderSchedule(onceDue);
+        FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var onceWorks = _session.Current.Notes.LastOrDefault(
+            note => note.Text == "验证悬浮窗仅一次")?.Reminder is OnceReminder
+            {
+                Delivery: OnceDeliveryState.Pending
+            } once &&
+            once.FirstDueUtc == onceDue.ToUniversalTime();
+
+        FloatingNoteText.Text = "验证悬浮窗重复提醒";
+        FloatingNoteDate.SelectedDate = noteDate;
+        FloatingReminder.SelectedIndex = 2;
+        FloatingReminderInterval.SelectedIndex = 1;
+        SetReminderSchedule(repeatDue);
+        FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var repeatWorks = _session.Current.Notes.LastOrDefault(
+            note => note.Text == "验证悬浮窗重复提醒")?.Reminder is RepeatingReminder repeating &&
+            repeating.FirstDueUtc == repeatDue.ToUniversalTime() &&
+            repeating.Interval.Minutes == 30;
+
+        return new ReminderModeClickResult(noReminderWorks, onceWorks, repeatWorks);
+    }
+
     internal void ShowWorkspace(WorkspaceKind workspace)
     {
         _workspace = workspace;
@@ -105,11 +182,25 @@ public sealed partial class FloatingWindow : Window
 
     private void ConfigureControls()
     {
-        FloatingReminder.Items.Add("关闭提醒");
-        FloatingReminder.Items.Add("15 分钟");
-        FloatingReminder.Items.Add("30 分钟");
-        FloatingReminder.Items.Add("60 分钟");
+        for (var hour = 0; hour < 24; hour++)
+        {
+            FloatingReminderHour.Items.Add(hour.ToString("D2", CultureInfo.InvariantCulture));
+        }
+
+        for (var minute = 0; minute < 60; minute++)
+        {
+            FloatingReminderMinute.Items.Add(minute.ToString("D2", CultureInfo.InvariantCulture));
+        }
+
+        FloatingReminder.Items.Add("不提醒");
+        FloatingReminder.Items.Add("仅一次");
+        FloatingReminder.Items.Add("重复提醒");
+        FloatingReminderInterval.Items.Add("15 分钟");
+        FloatingReminderInterval.Items.Add("30 分钟");
+        FloatingReminderInterval.Items.Add("60 分钟");
+        FloatingReminderInterval.Items.Add("自定义");
         FloatingReminder.SelectedIndex = 0;
+        FloatingReminderInterval.SelectedIndex = 1;
         FloatingTags.SetTags(_session.Current.Tags);
         AutomationProperties.SetName(FloatingCountdownsButton, "显示悬浮倒计时");
         AutomationProperties.SetName(FloatingNotesButton, "显示悬浮便签");
@@ -117,9 +208,15 @@ public sealed partial class FloatingWindow : Window
         AutomationProperties.SetName(CloseFloatingButton, "退出应用");
         AutomationProperties.SetName(FloatingNoteText, "快速便签内容");
         AutomationProperties.SetName(FloatingNoteDate, "快速便签日期");
-        AutomationProperties.SetName(FloatingReminder, "快速便签提醒");
+        AutomationProperties.SetName(FloatingReminder, "快速便签提醒模式");
+        AutomationProperties.SetName(FloatingReminderInterval, "快速便签重复提醒间隔");
+        AutomationProperties.SetName(FloatingCustomReminderMinutes, "快速便签自定义提醒分钟");
+        AutomationProperties.SetName(FloatingReminderDate, "快速便签首次提醒日期");
+        AutomationProperties.SetName(FloatingReminderHour, "快速便签首次提醒小时");
+        AutomationProperties.SetName(FloatingReminderMinute, "快速便签首次提醒分钟");
         AutomationProperties.SetName(FloatingAddNote, "添加快速便签");
         ThemedDatePickerBehavior.Attach(FloatingNoteDate);
+        ThemedDatePickerBehavior.Attach(FloatingReminderDate);
         UiAccessibility.MarkLive(FloatingNoteMessage);
     }
 
@@ -146,6 +243,9 @@ public sealed partial class FloatingWindow : Window
                 _dateDirty = true;
             }
         };
+        FloatingReminder.SelectionChanged += (_, _) => UpdateReminderSchedule();
+        FloatingReminderInterval.SelectionChanged += (_, _) => UpdateReminderInterval();
+        FloatingCustomReminderMinutes.TextChanged += (_, _) => SetDefaultReminderSchedule();
         FloatingAddNote.Click += (_, _) => AddNote();
         FloatingTags.CreateRequested += (_, name) =>
         {
@@ -267,13 +367,26 @@ public sealed partial class FloatingWindow : Window
                 SetNoteMessage(error);
             }
         };
-        var text = new TextBlock { Text = note.Text, TextWrapping = TextWrapping.Wrap };
+        var body = new StackPanel();
+        body.Children.Add(new TextBlock { Text = note.Text, TextWrapping = TextWrapping.Wrap });
+        var nextReminder = ReminderSchedule.GetNextDueUtc(note, _session.UtcNow);
+        if (nextReminder is not null)
+        {
+            body.Children.Add(new TextBlock
+            {
+                Text = $"下次提醒：{ChinaStandardTime.ToBeijingTime(nextReminder.Value):M月d日 HH:mm}",
+                Margin = new Thickness(0, 4, 0, 0),
+                FontSize = 11,
+                Foreground = (Brush)FindResource("MutedBrush")
+            });
+        }
+
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
-        Grid.SetColumn(text, 1);
+        Grid.SetColumn(body, 1);
         grid.Children.Add(check);
-        grid.Children.Add(text);
+        grid.Children.Add(body);
         return FloatingCard(grid, "NoteBrush");
     }
 
@@ -313,18 +426,50 @@ public sealed partial class FloatingWindow : Window
             return;
         }
 
-        var interval = FloatingReminder.SelectedIndex switch
+        DateTimeOffset? firstReminderUtc = null;
+        if (FloatingReminder.SelectedIndex > 0 &&
+            !ReminderSchedule.TryCreateFirstDueUtc(
+                FloatingReminderDate.SelectedDate,
+                FloatingReminderHour.SelectedIndex,
+                FloatingReminderMinute.SelectedIndex,
+                _session.UtcNow,
+                out firstReminderUtc,
+                out var reminderError))
         {
-            1 => 15,
-            2 => 30,
-            3 => 60,
-            _ => (int?)null
-        };
+            SetNoteMessage(reminderError);
+            return;
+        }
+
+        NoteReminder reminder;
+        if (FloatingReminder.SelectedIndex == 0)
+        {
+            reminder = NoReminder.Instance;
+        }
+        else if (FloatingReminder.SelectedIndex == 1)
+        {
+            reminder = ReminderSchedule.CreateOnce(firstReminderUtc!.Value);
+        }
+        else if (FloatingReminder.SelectedIndex == 2)
+        {
+            if (!TryGetReminderInterval(out var interval, out var intervalError))
+            {
+                SetNoteMessage(intervalError);
+                return;
+            }
+
+            reminder = ReminderSchedule.CreateRepeating(firstReminderUtc!.Value, interval);
+        }
+        else
+        {
+            SetNoteMessage("请选择有效的提醒模式。");
+            return;
+        }
+
         if (!_workspaceModule.TrySaveQuickNote(
                 FloatingNoteText.Text,
                 FloatingNoteDate.SelectedDate,
                 FloatingTags.SelectedTagIds.ToArray(),
-                interval,
+                reminder,
                 out var error))
         {
             SetNoteMessage($"保存失败：{error}");
@@ -336,7 +481,100 @@ public sealed partial class FloatingWindow : Window
         _settingDefaultDate = true;
         FloatingNoteDate.SelectedDate = _session.BeijingNow.Date;
         _settingDefaultDate = false;
+        SetDefaultReminderSchedule();
         SetNoteMessage(string.Empty);
+    }
+
+    private void UpdateReminderSchedule()
+    {
+        var enabled = FloatingReminder.SelectedIndex > 0;
+        var repeating = FloatingReminder.SelectedIndex == 2;
+        FloatingReminderSchedule.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        FloatingReminderIntervalPanel.Visibility =
+            repeating ? Visibility.Visible : Visibility.Collapsed;
+        FloatingCustomReminderMinutes.Visibility =
+            repeating && FloatingReminderInterval.SelectedIndex == 3
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        if (enabled)
+        {
+            SetDefaultReminderSchedule();
+        }
+        else
+        {
+            SetReminderSchedule(null);
+        }
+    }
+
+    private void UpdateReminderInterval()
+    {
+        FloatingCustomReminderMinutes.Visibility =
+            FloatingReminder.SelectedIndex == 2 && FloatingReminderInterval.SelectedIndex == 3
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        if (FloatingReminder.SelectedIndex == 2)
+        {
+            SetDefaultReminderSchedule();
+        }
+    }
+
+    private void SetDefaultReminderSchedule()
+    {
+        if (FloatingReminder.SelectedIndex == 0)
+        {
+            return;
+        }
+
+        var offsetMinutes = 15;
+        if (FloatingReminder.SelectedIndex == 2)
+        {
+            if (!TryGetReminderInterval(out var interval, out _))
+            {
+                return;
+            }
+
+            offsetMinutes = interval;
+        }
+
+        SetReminderSchedule(
+            ReminderSchedule.GetDefaultFirstDueBeijing(_session.BeijingNow, offsetMinutes));
+    }
+
+    private void SetReminderSchedule(DateTimeOffset? beijing)
+    {
+        FloatingReminderDate.SelectedDate = beijing?.Date;
+        FloatingReminderHour.SelectedIndex = beijing?.Hour ?? -1;
+        FloatingReminderMinute.SelectedIndex = beijing?.Minute ?? -1;
+    }
+
+    private bool TryGetReminderInterval(out int interval, out string error)
+    {
+        interval = FloatingReminderInterval.SelectedIndex switch
+        {
+            0 => 15,
+            1 => 30,
+            2 => 60,
+            _ => -1
+        };
+        if (interval != -1)
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        if (!int.TryParse(
+                FloatingCustomReminderMinutes.Text,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out interval) ||
+            interval is < 1 or > 1440)
+        {
+            error = "自定义提醒必须是 1 到 1440 分钟。";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
     }
 
     private void SetNoteMessage(string text)

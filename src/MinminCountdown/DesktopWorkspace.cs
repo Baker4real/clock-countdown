@@ -54,8 +54,84 @@ internal sealed class DesktopWorkspace
         bool isCompleted,
         IReadOnlyList<string> tagIds,
         int? reminderIntervalMinutes,
+        DateTimeOffset? firstReminderUtc,
         out string error) =>
-        _session.TrySaveNote(existingId, text, date, isCompleted, tagIds, reminderIntervalMinutes, out error);
+        _session.TrySaveNote(
+            existingId,
+            text,
+            date,
+            isCompleted,
+            tagIds,
+            reminderIntervalMinutes,
+            firstReminderUtc,
+            out error);
+
+    public bool TrySaveNote(
+        string? existingId,
+        string text,
+        DateTime? date,
+        bool isCompleted,
+        IReadOnlyList<string> tagIds,
+        NoteReminder reminder,
+        out string error) =>
+        _session.TrySaveNote(
+            existingId,
+            text,
+            date,
+            isCompleted,
+            tagIds,
+            reminder,
+            out error);
+
+    public bool TrySaveNote(
+        string? existingId,
+        string text,
+        DateTime? date,
+        bool isCompleted,
+        IReadOnlyList<string> tagIds,
+        int? reminderIntervalMinutes,
+        out string error) =>
+        TrySaveNote(
+            existingId,
+            text,
+            date,
+            isCompleted,
+            tagIds,
+            reminderIntervalMinutes,
+            null,
+            out error);
+
+    public bool TrySaveQuickNote(
+        string text,
+        DateTime? date,
+        IReadOnlyList<string> tagIds,
+        int? reminderIntervalMinutes,
+        DateTimeOffset? firstReminderUtc,
+        out string error) =>
+        _session.TrySaveNote(
+            null,
+            text,
+            date,
+            false,
+            tagIds,
+            reminderIntervalMinutes,
+            firstReminderUtc,
+            out error);
+
+    public bool TrySaveQuickNote(
+        string text,
+        DateTime? date,
+        IReadOnlyList<string> tagIds,
+        NoteReminder reminder,
+        out string error) =>
+        _session.TrySaveNote(
+            null,
+            text,
+            date,
+            false,
+            tagIds,
+            reminder,
+            out error);
 
     public bool TrySaveQuickNote(
         string text,
@@ -63,7 +139,7 @@ internal sealed class DesktopWorkspace
         IReadOnlyList<string> tagIds,
         int? reminderIntervalMinutes,
         out string error) =>
-        _session.TrySaveNote(null, text, date, false, tagIds, reminderIntervalMinutes, out error);
+        TrySaveQuickNote(text, date, tagIds, reminderIntervalMinutes, null, out error);
 
     public bool TrySetNoteCompletion(string id, bool completed, out string error) =>
         _session.TrySetNoteCompletion(id, completed, out error);

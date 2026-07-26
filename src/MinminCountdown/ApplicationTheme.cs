@@ -29,7 +29,7 @@ internal sealed class ApplicationTheme
         Token("SuccessColor", "SuccessBrush", "#8F5A2D", "#E2C38A"),
         Token("TagColor", "TagBrush", "#FCE8DE", "#3A2F39"),
         Token("ExpiredColor", "ExpiredBrush", "#F9DFDB", "#4E3940"),
-        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#B8533D", "#E7CFD7")
+        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#4A2D24", "#E7CFD7")
     ];
 
     private readonly ResourceDictionary _resources;

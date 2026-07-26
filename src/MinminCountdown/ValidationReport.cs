@@ -381,6 +381,7 @@ internal static class ValidationReport
             ["MainThemeCharacterOpacities"] = mainThemeExercise.CharacterOpacities,
             ["MainThemeUsesChinaStandardTime"] = mainThemeExercise.UsesChinaStandardTime,
             ["MainThemeReminderLabelFollowsTheme"] = mainThemeExercise.ReminderLabelFollowsTheme,
+            ["MainThemeSegmentSelectedTextContrast"] = mainThemeExercise.SegmentSelectedTextContrast,
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
             ["FloatingThemeUsesChinaStandardTime"] = floatingThemeExercise.UsesChinaStandardTime,
@@ -880,17 +881,20 @@ internal static class ValidationReport
         var dayCharacterOpacity = 0;
         var nightCharacterOpacity = 0;
         var reminderLabelFollowsTheme = true;
+        var segmentSelectedTextContrast = true;
         var reminderLabel = Required<TextBlock>(main, "NoteReminderLabel");
 
         foreach (var checkpoint in checkpoints)
         {
             var mode = theme.Apply(checkpoint.ToUniversalTime());
             main.ApplyTheme(mode);
+            main.UpdateTime(checkpoint);
             PumpDispatcher();
             main.UpdateLayout();
             modes.Add(mode.ToString());
             reminderLabelFollowsTheme &=
                 ReferenceEquals(reminderLabel.Foreground, Application.Current.FindResource("InkBrush"));
+            segmentSelectedTextContrast &= MainSegmentButtonsHaveAccessibleSelectedStates(main);
             if (mode == ApplicationThemeMode.Day)
             {
                 dayBackgroundColor = BrushColor(main.Background);
@@ -912,7 +916,8 @@ internal static class ValidationReport
             new[] { dayBackgroundColor, nightBackgroundColor },
             new[] { dayCharacterOpacity, nightCharacterOpacity },
             modes.SequenceEqual(expectedModes, StringComparer.Ordinal),
-            reminderLabelFollowsTheme);
+            reminderLabelFollowsTheme,
+            segmentSelectedTextContrast);
     }
 
     private static bool ValidateTagPopupThemeTransition(
@@ -959,10 +964,47 @@ internal static class ValidationReport
         var ink = (Color)Application.Current.FindResource("InkColor");
         var body = (Color)Application.Current.FindResource("BodyColor");
         var muted = (Color)Application.Current.FindResource("MutedColor");
+        var tag = (Color)Application.Current.FindResource("TagColor");
+        var segmentSelectedForeground =
+            (Color)Application.Current.FindResource("SegmentSelectedForegroundColor");
         return
             ContrastRatio(canvas, ink) >= 7 &&
             ContrastRatio(canvas, body) >= 4.5 &&
-            ContrastRatio(canvas, muted) >= 4.5;
+            ContrastRatio(canvas, muted) >= 4.5 &&
+            ContrastRatio(tag, segmentSelectedForeground) >= 4.5;
+    }
+
+    private static bool MainSegmentButtonsHaveAccessibleSelectedStates(MainWindow main)
+    {
+        var countdownTab = Required<ToggleButton>(main, "CountdownTab");
+        var notesTab = Required<ToggleButton>(main, "NotesTab");
+        var originalCountdownChecked = countdownTab.IsChecked;
+        var originalNotesChecked = notesTab.IsChecked;
+        try
+        {
+            countdownTab.IsChecked = true;
+            notesTab.IsChecked = false;
+            var countdownContrast = HasSelectedSegmentContrast(main, countdownTab);
+
+            countdownTab.IsChecked = false;
+            notesTab.IsChecked = true;
+            return countdownContrast && HasSelectedSegmentContrast(main, notesTab);
+        }
+        finally
+        {
+            countdownTab.IsChecked = originalCountdownChecked;
+            notesTab.IsChecked = originalNotesChecked;
+        }
+    }
+
+    private static bool HasSelectedSegmentContrast(MainWindow main, ToggleButton button)
+    {
+        main.UpdateLayout();
+        button.ApplyTemplate();
+        var surface = button.Template?.FindName("Surface", button) as Border;
+        return surface?.Background is Brush background &&
+            button.Foreground is Brush foreground &&
+            ApplicationTheme.MeetsContrast(background, foreground, 4.5);
     }
 
     private static double ContrastRatio(Color first, Color second)
@@ -1064,7 +1106,8 @@ internal static class ValidationReport
         IReadOnlyList<string> BackgroundColors,
         IReadOnlyList<int> CharacterOpacities,
         bool UsesChinaStandardTime,
-        bool ReminderLabelFollowsTheme);
+        bool ReminderLabelFollowsTheme,
+        bool SegmentSelectedTextContrast);
 
     private sealed class ValidationClock : IClock
     {

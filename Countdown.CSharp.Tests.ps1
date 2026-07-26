@@ -350,6 +350,7 @@ try {
     Assert-Equal '10,16' ([string]::Join(',', @($adapterValidation.MainThemeCharacterOpacities))) '主窗口三位角色在夜间保持可见但不遮挡内容'
     Assert-Equal $true ([bool] $adapterValidation.MainThemeUsesChinaStandardTime) '主窗口日夜主题以北京时间为准'
     Assert-Equal $true ([bool] $adapterValidation.MainThemeReminderLabelFollowsTheme) '主窗口提醒标签随日夜主题切换前景色'
+    Assert-Equal $true ([bool] $adapterValidation.MainThemeSegmentSelectedTextContrast) '主窗口工作区选中态在日夜主题下保持可读对比度'
     Assert-Equal $true ([bool] $adapterValidation.ActiveNotesGrouped) '未完成便签收拢在独立分组中'
     Assert-Equal $true ([bool] $adapterValidation.ActiveNotesExpandedByDefault) '未完成便签分组默认展开'
     Assert-Equal $true ([bool] $adapterValidation.ActiveNotesKeepDateOrder) '未完成便签组内保持现有日期顺序'

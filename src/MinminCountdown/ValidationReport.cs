@@ -219,6 +219,29 @@ internal static class ValidationReport
                 main).X <= main.ActualWidth;
         main.Width = originalMainWidth;
         main.UpdateLayout();
+        var mainCharacterPanelSurface = Required<Border>(main, "CharacterPanelSurface");
+        var mainCharacterPanelBounds = mainCharacterPanelSurface
+            .TransformToAncestor(main)
+            .TransformBounds(new Rect(new Point(0, 0), mainCharacterPanelSurface.RenderSize));
+        var mainCharacterDocks = new[]
+        {
+            (Dock: Required<Border>(main, "MyMelodyCharacterDock"), Image: Required<Image>(main, "MyMelodyPanelCharacter")),
+            (Dock: Required<Border>(main, "CinnamorollCharacterDock"), Image: Required<Image>(main, "CinnamorollPanelCharacter")),
+            (Dock: Required<Border>(main, "KuromiCharacterDock"), Image: Required<Image>(main, "KuromiPanelCharacter"))
+        };
+        var mainCharacterDocksIntegrateWithPanel = mainCharacterDocks.All(pair =>
+        {
+            var dockBounds = pair.Dock
+                .TransformToAncestor(main)
+                .TransformBounds(new Rect(new Point(0, 0), pair.Dock.RenderSize));
+            var overlap = Rect.Intersect(dockBounds, mainCharacterPanelBounds);
+            return
+                ReferenceEquals(pair.Dock.Child, pair.Image) &&
+                Panel.GetZIndex(pair.Dock) > Panel.GetZIndex(mainCharacterPanelSurface) &&
+                pair.Dock.CornerRadius.TopLeft >= 16 &&
+                overlap.Width >= 8 &&
+                overlap.Height >= 8;
+        });
         var workArea = SystemParameters.WorkArea;
         var floatingBottomMargin = Math.Round(workArea.Bottom - (floating.Top + floating.ActualHeight), 2);
         var taskCard = Required<Border>(floating, "TaskCard");
@@ -294,6 +317,10 @@ internal static class ValidationReport
         var mainThemeExercise = RunMainThemeExercise(theme, main, session.UtcNow);
         var floatingThemeExercise = floating.RunThemeBoundaryExercise();
         var tagPopupFollowsDayNightTheme = ValidateTagPopupThemeTransition(theme, selector, session.UtcNow);
+        var warmYellowPaletteMatchesLegacy = ValidateWarmYellowPalette(theme, session.UtcNow);
+        var primaryButtonHoverTextContrast = ValidatePrimaryButtonHoverTextContrast(theme, session.UtcNow);
+        var toolTipThemeTextContrast = ValidateToolTipThemeTextContrast(theme, session.UtcNow);
+        var tagChipTextContrast = ValidateTagChipTextContrast(theme, main, session.UtcNow);
 
         var reminderWindow = new ReminderWindow(new NoteRecord(
             "validation-reminder",
@@ -379,15 +406,21 @@ internal static class ValidationReport
             ["MainThemeBoundaryModes"] = mainThemeExercise.BoundaryModes,
             ["MainThemeBackgroundColors"] = mainThemeExercise.BackgroundColors,
             ["MainThemeCharacterOpacities"] = mainThemeExercise.CharacterOpacities,
+            ["MainThemeCharacterPanelColors"] = mainThemeExercise.CharacterPanelColors,
             ["MainThemeUsesChinaStandardTime"] = mainThemeExercise.UsesChinaStandardTime,
             ["MainThemeReminderLabelFollowsTheme"] = mainThemeExercise.ReminderLabelFollowsTheme,
             ["MainThemeSegmentSelectedTextContrast"] = mainThemeExercise.SegmentSelectedTextContrast,
+            ["MainCharacterPanelDocksFollowDayNightTheme"] = mainThemeExercise.CharacterPanelDocksFollowTheme,
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
             ["FloatingThemeUsesChinaStandardTime"] = floatingThemeExercise.UsesChinaStandardTime,
             ["FloatingPlushDocksFollowDayNightTheme"] = floatingThemeExercise.PlushDocksFollowTheme,
             ["FloatingThemeTextContrast"] = floatingThemeExercise.TextContrast,
             ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
+            ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
+            ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
+            ["ToolTipThemeTextContrast"] = toolTipThemeTextContrast,
+            ["TagChipTextContrast"] = tagChipTextContrast,
             ["ThemedInteractiveStates"] = mainThemeTemplate && comboThemed && dateFamilyThemed,
             ["ThemeTextContrast"] = contrast,
             ["DangerButtonContrast"] = dangerContrast,
@@ -446,6 +479,9 @@ internal static class ValidationReport
                 Required<Image>(main, "KuromiBackground").Source is not null,
             ["OfficialCharacterBackgroundCharactersExclusive"] = true,
             ["OfficialCharacterBackgroundLowContrast"] = main.CharacterBackgroundRemainsSubtle,
+            ["MainCharacterPanelDockCount"] = mainCharacterDocks.Length,
+            ["MainCharacterPanelDocksIntegrateWithPanel"] = mainCharacterDocksIntegrateWithPanel,
+            ["MainCharacterPanelDecorationsAreNonInteractive"] = main.CharacterPanelDecorationsAreNonInteractive,
             ["LegacyMigrationSupported"] = legacyMigration,
             ["DuplicateSettingsRejected"] = duplicateRejected,
             ["InvalidNotesRejected"] = invalidNotesRejected,
@@ -880,9 +916,13 @@ internal static class ValidationReport
         var nightBackgroundColor = string.Empty;
         var dayCharacterOpacity = 0;
         var nightCharacterOpacity = 0;
+        var dayCharacterPanelColor = string.Empty;
+        var nightCharacterPanelColor = string.Empty;
         var reminderLabelFollowsTheme = true;
         var segmentSelectedTextContrast = true;
+        var characterPanelDocksFollowTheme = true;
         var reminderLabel = Required<TextBlock>(main, "NoteReminderLabel");
+        var characterPanel = Required<Border>(main, "CharacterPanelSurface");
 
         foreach (var checkpoint in checkpoints)
         {
@@ -895,15 +935,18 @@ internal static class ValidationReport
             reminderLabelFollowsTheme &=
                 ReferenceEquals(reminderLabel.Foreground, Application.Current.FindResource("InkBrush"));
             segmentSelectedTextContrast &= MainSegmentButtonsHaveAccessibleSelectedStates(main);
+            characterPanelDocksFollowTheme &= main.CharacterPanelDocksFollowActiveTheme;
             if (mode == ApplicationThemeMode.Day)
             {
                 dayBackgroundColor = BrushColor(main.Background);
                 dayCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
+                dayCharacterPanelColor = BrushColor(characterPanel.Background);
             }
             else
             {
                 nightBackgroundColor = BrushColor(main.Background);
                 nightCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
+                nightCharacterPanelColor = BrushColor(characterPanel.Background);
             }
         }
 
@@ -915,9 +958,11 @@ internal static class ValidationReport
             modes,
             new[] { dayBackgroundColor, nightBackgroundColor },
             new[] { dayCharacterOpacity, nightCharacterOpacity },
+            new[] { dayCharacterPanelColor, nightCharacterPanelColor },
             modes.SequenceEqual(expectedModes, StringComparer.Ordinal),
             reminderLabelFollowsTheme,
-            segmentSelectedTextContrast);
+            segmentSelectedTextContrast,
+            characterPanelDocksFollowTheme);
     }
 
     private static bool ValidateTagPopupThemeTransition(
@@ -949,6 +994,182 @@ internal static class ValidationReport
         {
             selector.IsPopupOpen = wasOpen;
             theme.Apply(restoreUtc);
+            PumpDispatcher();
+        }
+    }
+
+    private static bool ValidateWarmYellowPalette(ApplicationTheme theme, DateTimeOffset restoreUtc)
+    {
+        static bool HasExpectedColor(string key, string expected)
+        {
+            if (ColorConverter.ConvertFromString(expected) is not Color expectedColor)
+            {
+                return false;
+            }
+
+            return Application.Current.FindResource(key) switch
+            {
+                Color color => color == expectedColor,
+                SolidColorBrush brush => brush.Color == expectedColor,
+                _ => false
+            };
+        }
+
+        var day = new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8));
+        var night = new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8));
+        var defaultTagColorsMatch = MainWindow.DefaultTagColors.SequenceEqual(
+            new[] { "#F4B6A6", "#F4D58D", "#F1D5C5", "#F9DFDB", "#FFF0E4", "#E8B4C8" },
+            StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            theme.Apply(day.ToUniversalTime());
+            var dayMatches = new[]
+            {
+                ("CanvasColor", "#FFFDFC"),
+                ("BackgroundColor", "#FFF6EF"),
+                ("CardColor", "#FFF0E4"),
+                ("NoteColor", "#FFF6D9"),
+                ("NoteLineColor", "#E7C781"),
+                ("ActiveHoverColor", "#B34B36"),
+                ("PeachLineColor", "#F1D5C5"),
+                ("TagColor", "#FFF7E8"),
+                ("TagChipTextColor", "#4A2D24"),
+                ("SegmentSelectedForegroundColor", "#725326"),
+                ("FloatingDayPanelBrush", "#FFFDFC"),
+                ("FloatingDayHeaderBrush", "#FFF6D9"),
+                ("FloatingDayNoteInputBrush", "#FFF6D9"),
+                ("FloatingDayCinnamorollDockBrush", "#FFF0D2")
+            }.All(pair => HasExpectedColor(pair.Item1, pair.Item2));
+
+            theme.Apply(night.ToUniversalTime());
+            var nightMatches = new[]
+            {
+                ("CanvasColor", "#33291E"),
+                ("BackgroundColor", "#2B2118"),
+                ("CardColor", "#423125"),
+                ("NoteColor", "#4E3827"),
+                ("InkColor", "#FFF4D8"),
+                ("ActiveColor", "#9A523B"),
+                ("TagColor", "#4B3522"),
+                ("TagChipTextColor", "#4A2D24"),
+                ("SegmentSelectedForegroundColor", "#FFF0CC"),
+                ("FloatingNightPanelBrush", "#3A2B1E"),
+                ("FloatingNightHeaderBrush", "#4A3524"),
+                ("FloatingNightNoteInputBrush", "#F7E1B3"),
+                ("FloatingNightCinnamorollDockBrush", "#55452A")
+            }.All(pair => HasExpectedColor(pair.Item1, pair.Item2));
+
+            return dayMatches && nightMatches && defaultTagColorsMatch;
+        }
+        finally
+        {
+            theme.Apply(restoreUtc);
+        }
+    }
+
+    private static bool ValidatePrimaryButtonHoverTextContrast(
+        ApplicationTheme theme,
+        DateTimeOffset restoreUtc)
+    {
+        var primaryStyle = Application.Current.FindResource("PrimaryButton") as Style;
+        var template = primaryStyle?.Setters
+            .OfType<Setter>()
+            .FirstOrDefault(setter => setter.Property == Control.TemplateProperty)
+            ?.Value as ControlTemplate;
+        var hasDedicatedHoverState = template?.Triggers
+            .OfType<Trigger>()
+            .Any(trigger =>
+                trigger.Property == UIElement.IsMouseOverProperty &&
+                trigger.Value is bool isMouseOver &&
+                isMouseOver &&
+                trigger.Setters.OfType<Setter>().Any(setter =>
+                    setter.TargetName == "Surface" &&
+                    setter.Property == Border.BackgroundProperty)) == true;
+        try
+        {
+            foreach (var checkpoint in new[]
+            {
+                new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+                new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+            })
+            {
+                theme.Apply(checkpoint.ToUniversalTime());
+                if (Application.Current.FindResource("ActiveHoverBrush") is not Brush hover ||
+                    !ApplicationTheme.MeetsContrast(hover, Brushes.White, 4.5))
+                {
+                    return false;
+                }
+            }
+
+            return hasDedicatedHoverState;
+        }
+        finally
+        {
+            theme.Apply(restoreUtc);
+        }
+    }
+
+    private static bool ValidateToolTipThemeTextContrast(
+        ApplicationTheme theme,
+        DateTimeOffset restoreUtc)
+    {
+        try
+        {
+            foreach (var checkpoint in new[]
+            {
+                new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+                new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+            })
+            {
+                theme.Apply(checkpoint.ToUniversalTime());
+                var toolTip = new ToolTip { Content = "主题提示" };
+                toolTip.ApplyTemplate();
+                if (toolTip.Background is not Brush background ||
+                    toolTip.Foreground is not Brush foreground ||
+                    !ApplicationTheme.MeetsContrast(background, foreground, 4.5))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            theme.Apply(restoreUtc);
+        }
+    }
+
+    private static bool ValidateTagChipTextContrast(
+        ApplicationTheme theme,
+        MainWindow main,
+        DateTimeOffset restoreUtc)
+    {
+        try
+        {
+            foreach (var checkpoint in new[]
+            {
+                new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+                new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+            })
+            {
+                var mode = theme.Apply(checkpoint.ToUniversalTime());
+                main.ApplyTheme(mode);
+                main.UpdateTime(checkpoint);
+                PumpDispatcher();
+                if (!main.TagChipsHaveAccessibleThemeText)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            var restoreMode = theme.Apply(restoreUtc);
+            main.ApplyTheme(restoreMode);
+            main.UpdateTime(ChinaStandardTime.ToBeijingTime(restoreUtc));
             PumpDispatcher();
         }
     }
@@ -1105,9 +1326,11 @@ internal static class ValidationReport
         IReadOnlyList<string> BoundaryModes,
         IReadOnlyList<string> BackgroundColors,
         IReadOnlyList<int> CharacterOpacities,
+        IReadOnlyList<string> CharacterPanelColors,
         bool UsesChinaStandardTime,
         bool ReminderLabelFollowsTheme,
-        bool SegmentSelectedTextContrast);
+        bool SegmentSelectedTextContrast,
+        bool CharacterPanelDocksFollowTheme);
 
     private sealed class ValidationClock : IClock
     {

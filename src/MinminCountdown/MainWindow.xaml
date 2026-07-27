@@ -232,6 +232,69 @@
     </Grid>
 
     <Grid Grid.Row="2">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="78" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <Grid x:Name="CharacterPanelLayer"
+            Grid.Row="0"
+            Margin="0,0,0,8"
+            ClipToBounds="False"
+            IsHitTestVisible="False">
+        <Border x:Name="CharacterPanelSurface"
+                Margin="20,16,20,4"
+                Background="{DynamicResource CharacterPanelBrush}"
+                BorderBrush="{DynamicResource CharacterLineBrush}"
+                BorderThickness="1"
+                CornerRadius="8" />
+        <Border x:Name="MyMelodyCharacterDock"
+                Width="82"
+                Height="72"
+                Margin="12,0,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Panel.ZIndex="1"
+                Background="{DynamicResource CharacterMyMelodyDockBrush}"
+                BorderBrush="{DynamicResource CharacterLineBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+          <Image x:Name="MyMelodyPanelCharacter"
+                 Margin="0,-8,0,0"
+                 Stretch="Uniform" />
+        </Border>
+        <Border x:Name="CinnamorollCharacterDock"
+                Width="132"
+                Height="62"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Panel.ZIndex="1"
+                Background="{DynamicResource CharacterCinnamorollDockBrush}"
+                BorderBrush="{DynamicResource CharacterLineBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+          <Image x:Name="CinnamorollPanelCharacter"
+                 Margin="-8,-10,-8,2"
+                 Stretch="Uniform" />
+        </Border>
+        <Border x:Name="KuromiCharacterDock"
+                Width="82"
+                Height="72"
+                Margin="0,0,12,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Panel.ZIndex="1"
+                Background="{DynamicResource CharacterKuromiDockBrush}"
+                BorderBrush="{DynamicResource CharacterLineBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+          <Image x:Name="KuromiPanelCharacter"
+                 Margin="0,-8,0,0"
+                 Stretch="Uniform" />
+        </Border>
+      </Grid>
+
+      <Grid Grid.Row="1">
       <Grid x:Name="CountdownWorkspace">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
@@ -493,6 +556,7 @@
             <StackPanel x:Name="CompletedNoteRows" Visibility="Collapsed" />
           </StackPanel>
         </ScrollViewer>
+      </Grid>
       </Grid>
     </Grid>
 

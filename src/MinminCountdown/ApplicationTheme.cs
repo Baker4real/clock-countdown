@@ -14,22 +14,28 @@ internal sealed class ApplicationTheme
 {
     private static readonly ThemeToken[] Tokens =
     [
-        Token("CanvasColor", "CanvasBrush", "#FFFDFC", "#2D2630"),
-        Token("BackgroundColor", "BackgroundBrush", "#FFF6EF", "#251F27"),
-        Token("CardColor", "CardBrush", "#FFF0E4", "#40333E"),
-        Token("NoteColor", "NoteBrush", "#FFF6D9", "#4C4039"),
-        Token("NoteLineColor", "NoteLineBrush", "#E7C781", "#B89B62"),
-        Token("InkColor", "InkBrush", "#4A2D24", "#FFF7FA"),
-        Token("BodyColor", "BodyBrush", "#765247", "#E7CFD7"),
-        Token("MutedColor", "MutedBrush", "#87665A", "#D8BBC8"),
-        Token("ActiveColor", "ActiveBrush", "#B8533D", "#B55770"),
-        Token("ActiveHoverColor", "ActiveHoverBrush", "#A84432", "#9B4660"),
-        Token("PeachLineColor", "PeachLineBrush", "#EFC9A7", "#8A6A7F"),
-        Token("DangerColor", "DangerBrush", "#A24438", "#FFB6AD"),
-        Token("SuccessColor", "SuccessBrush", "#8F5A2D", "#E2C38A"),
-        Token("TagColor", "TagBrush", "#FCE8DE", "#3A2F39"),
-        Token("ExpiredColor", "ExpiredBrush", "#F9DFDB", "#4E3940"),
-        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#4A2D24", "#E7CFD7")
+        Token("CanvasColor", "CanvasBrush", "#FFFDFC", "#33291E"),
+        Token("BackgroundColor", "BackgroundBrush", "#FFF6EF", "#2B2118"),
+        Token("CardColor", "CardBrush", "#FFF0E4", "#423125"),
+        Token("NoteColor", "NoteBrush", "#FFF6D9", "#4E3827"),
+        Token("NoteLineColor", "NoteLineBrush", "#E7C781", "#A77B4B"),
+        Token("InkColor", "InkBrush", "#4A2D24", "#FFF4D8"),
+        Token("BodyColor", "BodyBrush", "#765247", "#E7C99B"),
+        Token("MutedColor", "MutedBrush", "#87665A", "#D7B88C"),
+        Token("ActiveColor", "ActiveBrush", "#B8533D", "#9A523B"),
+        Token("ActiveHoverColor", "ActiveHoverBrush", "#B34B36", "#86442F"),
+        Token("PeachLineColor", "PeachLineBrush", "#F1D5C5", "#8B6845"),
+        Token("DangerColor", "DangerBrush", "#A24438", "#FFC0AD"),
+        Token("SuccessColor", "SuccessBrush", "#92522E", "#E2C38A"),
+        Token("TagColor", "TagBrush", "#FFF7E8", "#4B3522"),
+        Token("TagChipTextColor", "TagChipTextBrush", "#4A2D24", "#4A2D24"),
+        Token("ExpiredColor", "ExpiredBrush", "#F9DFDB", "#59392E"),
+        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#725326", "#FFF0CC"),
+        Token("CharacterPanelColor", "CharacterPanelBrush", "#FFF7E8", "#3B2B1D"),
+        Token("CharacterLineColor", "CharacterLineBrush", "#EFC9A7", "#987644"),
+        Token("CharacterMyMelodyDockColor", "CharacterMyMelodyDockBrush", "#FFE3C7", "#5A3D2B"),
+        Token("CharacterCinnamorollDockColor", "CharacterCinnamorollDockBrush", "#FFF0D2", "#55452A"),
+        Token("CharacterKuromiDockColor", "CharacterKuromiDockBrush", "#F5DEC5", "#51362C")
     ];
 
     private readonly ResourceDictionary _resources;

@@ -15,11 +15,13 @@ public sealed partial class MainWindow : Window
     {
         "#F4B6A6",
         "#F4D58D",
-        "#A8D5BA",
-        "#A8C7E8",
-        "#D4B5E8",
+        "#F1D5C5",
+        "#F9DFDB",
+        "#FFF0E4",
         "#E8B4C8"
     };
+
+    internal static IReadOnlyList<string> DefaultTagColors => TagColors;
 
     private readonly ApplicationSession _session;
     private readonly DesktopWorkspace _workspaceModule;
@@ -427,6 +429,40 @@ public sealed partial class MainWindow : Window
         CharacterBackgroundLayer.Opacity is > 0 and <= 0.16;
 
     internal double CharacterBackgroundOpacity => CharacterBackgroundLayer.Opacity;
+
+    internal bool CharacterPanelDocksFollowActiveTheme =>
+        ReferenceEquals(CharacterPanelSurface.Background, FindResource("CharacterPanelBrush")) &&
+        ReferenceEquals(CharacterPanelSurface.BorderBrush, FindResource("CharacterLineBrush")) &&
+        ReferenceEquals(MyMelodyCharacterDock.Background, FindResource("CharacterMyMelodyDockBrush")) &&
+        ReferenceEquals(CinnamorollCharacterDock.Background, FindResource("CharacterCinnamorollDockBrush")) &&
+        ReferenceEquals(KuromiCharacterDock.Background, FindResource("CharacterKuromiDockBrush")) &&
+        ReferenceEquals(MyMelodyCharacterDock.BorderBrush, FindResource("CharacterLineBrush")) &&
+        ReferenceEquals(CinnamorollCharacterDock.BorderBrush, FindResource("CharacterLineBrush")) &&
+        ReferenceEquals(KuromiCharacterDock.BorderBrush, FindResource("CharacterLineBrush"));
+
+    internal bool CharacterPanelDecorationsAreNonInteractive =>
+        !CharacterPanelLayer.IsHitTestVisible &&
+        !MyMelodyCharacterDock.IsHitTestVisible &&
+        !CinnamorollCharacterDock.IsHitTestVisible &&
+        !KuromiCharacterDock.IsHitTestVisible &&
+        !MyMelodyPanelCharacter.IsHitTestVisible &&
+        !CinnamorollPanelCharacter.IsHitTestVisible &&
+        !KuromiPanelCharacter.IsHitTestVisible;
+
+    internal bool TagChipsHaveAccessibleThemeText
+    {
+        get
+        {
+            if (FindResource("TagChipTextBrush") is not SolidColorBrush foreground)
+            {
+                return false;
+            }
+
+            return TagColors.All(color =>
+                ParseBrush(color) is SolidColorBrush background &&
+                ApplicationTheme.MeetsContrast(background, foreground, 4.5));
+        }
+    }
 
     private void ConfigureControls()
     {
@@ -1480,7 +1516,12 @@ public sealed partial class MainWindow : Window
                 Padding = new Thickness(7, 3, 7, 3),
                 CornerRadius = new CornerRadius(8),
                 Background = ParseBrush(tag.Color) ?? (Brush)FindResource("TagBrush"),
-                Child = new TextBlock { Text = tag.Name, FontSize = 11 }
+                Child = new TextBlock
+                {
+                    Text = tag.Name,
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("TagChipTextBrush")
+                }
             };
             panel.Children.Add(chip);
         }
@@ -1574,9 +1615,15 @@ public sealed partial class MainWindow : Window
     private void LoadCharacterAssets(string assetRoot)
     {
         var characterRoot = Path.Combine(assetRoot, "assets");
-        MyMelodyBackground.Source = LoadImage(Path.Combine(characterRoot, "sanrio-official-mymelody.png"));
-        CinnamorollBackground.Source = LoadImage(Path.Combine(characterRoot, "sanrio-official-cinnamoroll.png"));
-        KuromiBackground.Source = LoadImage(Path.Combine(characterRoot, "sanrio-official-kuromi.png"));
+        var myMelody = LoadImage(Path.Combine(characterRoot, "sanrio-official-mymelody.png"));
+        var cinnamoroll = LoadImage(Path.Combine(characterRoot, "sanrio-official-cinnamoroll.png"));
+        var kuromi = LoadImage(Path.Combine(characterRoot, "sanrio-official-kuromi.png"));
+        MyMelodyBackground.Source = myMelody;
+        CinnamorollBackground.Source = cinnamoroll;
+        KuromiBackground.Source = kuromi;
+        MyMelodyPanelCharacter.Source = myMelody;
+        CinnamorollPanelCharacter.Source = cinnamoroll;
+        KuromiPanelCharacter.Source = kuromi;
     }
 
     internal static BitmapImage? LoadImage(string path)

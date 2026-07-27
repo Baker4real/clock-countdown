@@ -218,15 +218,24 @@ if (-not $validation.PopupSurfacesUseThemeTokens) { throw 'A popup surface is mi
 if (-not $validation.NoDefaultSystemSurfaces) { throw 'A system window frame or MessageBox remains in the application flow.' }
 if (-not $validation.NoRawFloatingThemeBypass) { throw 'The floating window bypasses shared theme tokens with raw colors.' }
 if ((@($validation.MainThemeBoundaryModes) -join ',') -ne 'Night,Day,Day,Night') { throw 'The main window does not switch themes at the expected Beijing-time boundaries.' }
-if ((@($validation.MainThemeBackgroundColors) -join ',') -ne '#FFFFF6EF,#FF251F27') { throw 'The main window day/night background palette is incorrect.' }
+if ((@($validation.MainThemeBackgroundColors) -join ',') -ne '#FFFFF6EF,#FF2B2118') { throw 'The main window day/night background palette is incorrect.' }
 if ((@($validation.MainThemeCharacterOpacities) -join ',') -ne '10,16') { throw 'The main-window character layer does not adapt across day and night.' }
+if ($validation.MainCharacterPanelDockCount -ne 3) { throw 'The main-window character scene must contain three docks.' }
+if (-not $validation.MainCharacterPanelDocksIntegrateWithPanel) { throw 'The main-window character docks are not integrated with the workspace panel.' }
+if (-not $validation.MainCharacterPanelDecorationsAreNonInteractive) { throw 'The main-window character scene blocks workspace interaction.' }
+if ((@($validation.MainThemeCharacterPanelColors) -join ',') -ne '#FFFFF7E8,#FF3B2B1D') { throw 'The main-window character scene does not switch to the expected day/night palette.' }
+if (-not $validation.MainCharacterPanelDocksFollowDayNightTheme) { throw 'The main-window character docks do not follow the day/night theme.' }
 if (-not $validation.MainThemeUsesChinaStandardTime) { throw 'The main window theme does not use China Standard Time.' }
 if ((@($validation.FloatingThemeBoundaryModes) -join ',') -ne 'Night,Day,Day,Night') { throw 'The floating panel does not switch themes at the expected Beijing-time boundaries.' }
-if ((@($validation.FloatingThemePanelColors) -join ',') -ne '#FFFFF8FA,#FF342C35') { throw 'The floating panel day/night palette is incorrect.' }
+if ((@($validation.FloatingThemePanelColors) -join ',') -ne '#FFFFFDFC,#FF3A2B1E') { throw 'The floating panel day/night palette is incorrect.' }
 if (-not $validation.FloatingThemeUsesChinaStandardTime) { throw 'The floating panel theme does not use China Standard Time.' }
 if (-not $validation.FloatingThemeTextContrast) { throw 'Floating header and validation text do not maintain sufficient contrast across day and night.' }
 if (-not $validation.TagPopupFollowsDayNightTheme) { throw 'An open tag popup does not follow the day/night theme transition.' }
 if (-not $validation.MainThemeReminderLabelFollowsTheme) { throw 'The main-window reminder label does not follow the day/night theme.' }
+if (-not $validation.WarmYellowPaletteMatchesLegacy) { throw 'The application no longer matches the legacy warm-yellow palette.' }
+if (-not $validation.PrimaryButtonHoverTextContrast) { throw 'The primary action loses readable coral-on-white contrast while hovered.' }
+if (-not $validation.ToolTipThemeTextContrast) { throw 'The themed tooltip loses readable contrast across the day/night transition.' }
+if (-not $validation.TagChipTextContrast) { throw 'Tag chips lose readable warm-ink text contrast across the day/night transition.' }
 if (-not $validation.ThemedInteractiveStates) { throw 'A themed interactive control is missing visual state feedback.' }
 if (-not $validation.ThemeTextContrast) { throw 'The warm theme does not meet the required text-contrast pairs.' }
 if (-not $validation.DangerButtonContrast) { throw 'The destructive confirmation button loses required text contrast when hovered or pressed.' }

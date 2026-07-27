@@ -15,13 +15,19 @@
     <Color x:Key="BodyColor">#765247</Color>
     <Color x:Key="MutedColor">#87665A</Color>
     <Color x:Key="ActiveColor">#B8533D</Color>
-    <Color x:Key="ActiveHoverColor">#A84432</Color>
-    <Color x:Key="PeachLineColor">#EFC9A7</Color>
+    <Color x:Key="ActiveHoverColor">#B34B36</Color>
+    <Color x:Key="PeachLineColor">#F1D5C5</Color>
     <Color x:Key="DangerColor">#A24438</Color>
-    <Color x:Key="SuccessColor">#8F5A2D</Color>
-    <Color x:Key="TagColor">#FCE8DE</Color>
+    <Color x:Key="SuccessColor">#92522E</Color>
+    <Color x:Key="TagColor">#FFF7E8</Color>
+    <Color x:Key="TagChipTextColor">#4A2D24</Color>
     <Color x:Key="ExpiredColor">#F9DFDB</Color>
-    <Color x:Key="SegmentSelectedForegroundColor">#4A2D24</Color>
+    <Color x:Key="SegmentSelectedForegroundColor">#725326</Color>
+    <Color x:Key="CharacterPanelColor">#FFF7E8</Color>
+    <Color x:Key="CharacterLineColor">#EFC9A7</Color>
+    <Color x:Key="CharacterMyMelodyDockColor">#FFE3C7</Color>
+    <Color x:Key="CharacterCinnamorollDockColor">#FFF0D2</Color>
+    <Color x:Key="CharacterKuromiDockColor">#F5DEC5</Color>
 
     <SolidColorBrush x:Key="CanvasBrush" Color="{DynamicResource CanvasColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="BackgroundBrush" Color="{DynamicResource BackgroundColor}" po:Freeze="False" />
@@ -37,57 +43,63 @@
     <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="TagBrush" Color="{DynamicResource TagColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="TagChipTextBrush" Color="{DynamicResource TagChipTextColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="ExpiredBrush" Color="{DynamicResource ExpiredColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="SegmentSelectedForegroundBrush" Color="{DynamicResource SegmentSelectedForegroundColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CharacterPanelBrush" Color="{DynamicResource CharacterPanelColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CharacterLineBrush" Color="{DynamicResource CharacterLineColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CharacterMyMelodyDockBrush" Color="{DynamicResource CharacterMyMelodyDockColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CharacterCinnamorollDockBrush" Color="{DynamicResource CharacterCinnamorollDockColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CharacterKuromiDockBrush" Color="{DynamicResource CharacterKuromiDockColor}" po:Freeze="False" />
 
-    <SolidColorBrush x:Key="FloatingDayPanelBrush" Color="#FFF8FA" />
-    <SolidColorBrush x:Key="FloatingDayBackdropBrush" Color="#F4DCE4" />
-    <SolidColorBrush x:Key="FloatingDayBorderBrush" Color="#E4AAB9" />
-    <SolidColorBrush x:Key="FloatingDayHeaderBrush" Color="#FCE8EE" />
-    <SolidColorBrush x:Key="FloatingDayHeaderTextBrush" Color="#4A2D3A" />
+    <SolidColorBrush x:Key="FloatingDayPanelBrush" Color="#FFFDFC" />
+    <SolidColorBrush x:Key="FloatingDayBackdropBrush" Color="#FFF0E4" />
+    <SolidColorBrush x:Key="FloatingDayBorderBrush" Color="#E7C781" />
+    <SolidColorBrush x:Key="FloatingDayHeaderBrush" Color="#FFF6D9" />
+    <SolidColorBrush x:Key="FloatingDayHeaderTextBrush" Color="#725326" />
     <SolidColorBrush x:Key="FloatingDayHeaderDangerBrush" Color="#A24438" />
-    <SolidColorBrush x:Key="FloatingDayHeaderHoverBrush" Color="#F4DCE4" />
-    <SolidColorBrush x:Key="FloatingDayHeaderSelectedBrush" Color="#E0A4B7" />
-    <SolidColorBrush x:Key="FloatingDayHeaderSelectedTextBrush" Color="#4A2D3A" />
-    <SolidColorBrush x:Key="FloatingDaySurfaceBrush" Color="#FFFDFD" />
-    <SolidColorBrush x:Key="FloatingDayNoteCardBrush" Color="#FFF3DC" />
-    <SolidColorBrush x:Key="FloatingDayNoteInputBrush" Color="#FFF5DB" />
-    <SolidColorBrush x:Key="FloatingDayNoteInputTextBrush" Color="#4A2D3A" />
-    <SolidColorBrush x:Key="FloatingDayErrorBrush" Color="#A24438" />
-    <SolidColorBrush x:Key="FloatingDayTextBrush" Color="#4A2D3A" />
-    <SolidColorBrush x:Key="FloatingDayMutedBrush" Color="#795866" />
-    <SolidColorBrush x:Key="FloatingDayMyMelodyDockBrush" Color="#FADDE5" />
-    <SolidColorBrush x:Key="FloatingDayCinnamorollDockBrush" Color="#E0F2F2" />
-    <SolidColorBrush x:Key="FloatingDayKuromiDockBrush" Color="#E9E0EE" />
+    <SolidColorBrush x:Key="FloatingDayHeaderHoverBrush" Color="#FFF0E4" />
+    <SolidColorBrush x:Key="FloatingDayHeaderSelectedBrush" Color="#FCE8DE" />
+    <SolidColorBrush x:Key="FloatingDayHeaderSelectedTextBrush" Color="#725326" />
+    <SolidColorBrush x:Key="FloatingDaySurfaceBrush" Color="#FFFDFC" />
+    <SolidColorBrush x:Key="FloatingDayNoteCardBrush" Color="#FFF6D9" />
+    <SolidColorBrush x:Key="FloatingDayNoteInputBrush" Color="#FFF6D9" />
+    <SolidColorBrush x:Key="FloatingDayNoteInputTextBrush" Color="#725326" />
+    <SolidColorBrush x:Key="FloatingDayErrorBrush" Color="#B34B36" />
+    <SolidColorBrush x:Key="FloatingDayTextBrush" Color="#4A2D24" />
+    <SolidColorBrush x:Key="FloatingDayMutedBrush" Color="#87665A" />
+    <SolidColorBrush x:Key="FloatingDayMyMelodyDockBrush" Color="#FFE3C7" />
+    <SolidColorBrush x:Key="FloatingDayCinnamorollDockBrush" Color="#FFF0D2" />
+    <SolidColorBrush x:Key="FloatingDayKuromiDockBrush" Color="#F5DEC5" />
 
-    <SolidColorBrush x:Key="FloatingNightPanelBrush" Color="#342C35" />
-    <SolidColorBrush x:Key="FloatingNightBackdropBrush" Color="#241E26" />
-    <SolidColorBrush x:Key="FloatingNightBorderBrush" Color="#A27B92" />
-    <SolidColorBrush x:Key="FloatingNightHeaderBrush" Color="#E8D2DB" />
-    <SolidColorBrush x:Key="FloatingNightHeaderTextBrush" Color="#4A2D3A" />
-    <SolidColorBrush x:Key="FloatingNightHeaderDangerBrush" Color="#7A3042" />
-    <SolidColorBrush x:Key="FloatingNightHeaderHoverBrush" Color="#D6BBC8" />
-    <SolidColorBrush x:Key="FloatingNightHeaderSelectedBrush" Color="#503B49" />
-    <SolidColorBrush x:Key="FloatingNightHeaderSelectedTextBrush" Color="#FFF7FA" />
-    <SolidColorBrush x:Key="FloatingNightSurfaceBrush" Color="#493D48" />
-    <SolidColorBrush x:Key="FloatingNightNoteCardBrush" Color="#51434A" />
-    <SolidColorBrush x:Key="FloatingNightNoteInputBrush" Color="#F6E5D1" />
-    <SolidColorBrush x:Key="FloatingNightNoteInputTextBrush" Color="#4A2D3A" />
-    <SolidColorBrush x:Key="FloatingNightErrorBrush" Color="#8C3036" />
-    <SolidColorBrush x:Key="FloatingNightTextBrush" Color="#FFF7FA" />
-    <SolidColorBrush x:Key="FloatingNightMutedBrush" Color="#E6CDD7" />
-    <SolidColorBrush x:Key="FloatingNightMyMelodyDockBrush" Color="#5C3E4D" />
-    <SolidColorBrush x:Key="FloatingNightCinnamorollDockBrush" Color="#355256" />
-    <SolidColorBrush x:Key="FloatingNightKuromiDockBrush" Color="#4D4056" />
+    <SolidColorBrush x:Key="FloatingNightPanelBrush" Color="#3A2B1E" />
+    <SolidColorBrush x:Key="FloatingNightBackdropBrush" Color="#241A12" />
+    <SolidColorBrush x:Key="FloatingNightBorderBrush" Color="#9B744A" />
+    <SolidColorBrush x:Key="FloatingNightHeaderBrush" Color="#4A3524" />
+    <SolidColorBrush x:Key="FloatingNightHeaderTextBrush" Color="#FFF4D8" />
+    <SolidColorBrush x:Key="FloatingNightHeaderDangerBrush" Color="#FFC0AD" />
+    <SolidColorBrush x:Key="FloatingNightHeaderHoverBrush" Color="#5A412B" />
+    <SolidColorBrush x:Key="FloatingNightHeaderSelectedBrush" Color="#6E492E" />
+    <SolidColorBrush x:Key="FloatingNightHeaderSelectedTextBrush" Color="#FFF8E8" />
+    <SolidColorBrush x:Key="FloatingNightSurfaceBrush" Color="#473323" />
+    <SolidColorBrush x:Key="FloatingNightNoteCardBrush" Color="#4E3827" />
+    <SolidColorBrush x:Key="FloatingNightNoteInputBrush" Color="#F7E1B3" />
+    <SolidColorBrush x:Key="FloatingNightNoteInputTextBrush" Color="#4A2D24" />
+    <SolidColorBrush x:Key="FloatingNightErrorBrush" Color="#8F342B" />
+    <SolidColorBrush x:Key="FloatingNightTextBrush" Color="#FFF4D8" />
+    <SolidColorBrush x:Key="FloatingNightMutedBrush" Color="#E9CAA0" />
+    <SolidColorBrush x:Key="FloatingNightMyMelodyDockBrush" Color="#5A3D2B" />
+    <SolidColorBrush x:Key="FloatingNightCinnamorollDockBrush" Color="#55452A" />
+    <SolidColorBrush x:Key="FloatingNightKuromiDockBrush" Color="#51362C" />
 
-    <SolidColorBrush x:Key="FloatingHeaderTextBrush" Color="#4A2D3A" />
+    <SolidColorBrush x:Key="FloatingHeaderTextBrush" Color="#725326" />
     <SolidColorBrush x:Key="FloatingHeaderDangerBrush" Color="#A24438" />
-    <SolidColorBrush x:Key="FloatingHeaderHoverBrush" Color="#F4DCE4" />
-    <SolidColorBrush x:Key="FloatingHeaderSelectedBrush" Color="#E0A4B7" />
-    <SolidColorBrush x:Key="FloatingHeaderSelectedTextBrush" Color="#4A2D3A" />
-    <SolidColorBrush x:Key="FloatingNoteInputTextBrush" Color="#4A2D3A" />
-    <SolidColorBrush x:Key="FloatingErrorBrush" Color="#A24438" />
-    <SolidColorBrush x:Key="FloatingMutedBrush" Color="#795866" />
+    <SolidColorBrush x:Key="FloatingHeaderHoverBrush" Color="#FFF0E4" />
+    <SolidColorBrush x:Key="FloatingHeaderSelectedBrush" Color="#FCE8DE" />
+    <SolidColorBrush x:Key="FloatingHeaderSelectedTextBrush" Color="#725326" />
+    <SolidColorBrush x:Key="FloatingNoteInputTextBrush" Color="#725326" />
+    <SolidColorBrush x:Key="FloatingErrorBrush" Color="#B34B36" />
+    <SolidColorBrush x:Key="FloatingMutedBrush" Color="#87665A" />
 
     <Style TargetType="{x:Type Window}">
       <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
@@ -129,7 +141,8 @@
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="Surface" Property="Opacity" Value="0.78" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
@@ -151,6 +164,40 @@
       <Setter Property="Background" Value="{DynamicResource ActiveBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="Surface"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveHoverBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveHoverBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style x:Key="SecondaryButton"
@@ -833,7 +880,7 @@
 
     <Style TargetType="{x:Type ToolTip}">
       <Setter Property="Background" Value="{DynamicResource InkBrush}" />
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="Padding" Value="8,5" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Template">

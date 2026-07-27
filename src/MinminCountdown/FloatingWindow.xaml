@@ -56,8 +56,11 @@
                        Text="倒计时"
                        Margin="72,0,0,0"
                        MinWidth="76"
+                       MinHeight="28"
                        FontSize="18"
                        FontWeight="Bold"
+                       LineHeight="26"
+                       LineStackingStrategy="BlockLineHeight"
                        Foreground="{DynamicResource FloatingHeaderTextBrush}"
                        VerticalAlignment="Center" />
             <ToggleButton x:Name="FloatingCountdownsButton"

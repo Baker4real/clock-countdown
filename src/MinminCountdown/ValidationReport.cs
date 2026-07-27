@@ -60,11 +60,16 @@ internal static class ValidationReport
         var datePopup = datePicker.Template.FindName("PART_Popup", datePicker) as Popup;
         var dateCalendar = datePicker.Template.FindName("PART_Calendar", datePicker) as WpfCalendar;
         var dateParts = new object?[] { dateTextBox, dateButton, datePopup, dateCalendar };
+        var dateButtonOpenedPopup = false;
+        if (datePopup is not null)
+        {
+            datePopup.Opened += (_, _) => dateButtonOpenedPopup = true;
+        }
 
         datePicker.IsDropDownOpen = false;
         dateButton?.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         PumpDispatcher();
-        var dateButtonOpens = datePicker.IsDropDownOpen;
+        var dateButtonOpens = dateButtonOpenedPopup;
         datePicker.IsDropDownOpen = true;
         PumpDispatcher();
         dateCalendar?.ApplyTemplate();
@@ -164,33 +169,35 @@ internal static class ValidationReport
         var noteDatesRendered = session.Current.Notes
             .Where(note => note.Date is not null)
             .All(note => noteTextValues.Any(text => text.Contains(note.Date!, StringComparison.Ordinal)));
-        var notesGroupedByDay = AreNotesGroupedByDay(session.GetSortedNotes(applyFilter: false));
+        var expectedManagerNoteIds = session.GetSortedManagerNotes()
+            .Select(note => note.Id)
+            .ToArray();
+        var renderedManagerNoteIds = GetRenderedNoteIds(activeNoteRows)
+            .Concat(GetRenderedNoteIds(completedNoteRows))
+            .ToArray();
+        var managerNoteRowsFollowSortOrder = expectedManagerNoteIds.SequenceEqual(
+            renderedManagerNoteIds,
+            StringComparer.Ordinal);
+        var notesGroupedByDay = AreNotesGroupedByDay(session.GetSortedManagerNotes(applyFilter: false));
         var activeNotesToggle = main.FindName("ToggleActiveNotes") as Button;
         var activeNotesGrouped =
             activeNotesToggle is not null &&
             activeNoteRows.Parent is StackPanel noteSections &&
             noteSections.Children.IndexOf(activeNotesToggle) >= 0 &&
             noteSections.Children.IndexOf(activeNoteRows) == noteSections.Children.IndexOf(activeNotesToggle) + 1;
-        var expectedActiveDateOrder = session.GetSortedNotes()
+        var expectedActiveDateOrder = session.GetSortedManagerNotes()
             .Where(note => !note.IsCompleted)
             .Select(note => note.Date ?? "未设置日期")
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        var renderedActiveDateOrder = activeNoteRows.Children
-            .OfType<TextBlock>()
-            .Select(text => text.Text)
-            .Where(text =>
-                string.Equals(text, "未设置日期", StringComparison.Ordinal) ||
-                DateTime.TryParseExact(
-                    text,
-                    "yyyy-MM-dd",
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.None,
-                    out _))
-            .ToArray();
+        var renderedActiveDateOrder = GetRenderedNoteDateOrder(activeNoteRows);
         var activeNotesKeepDateOrder = expectedActiveDateOrder.SequenceEqual(
             renderedActiveDateOrder,
             StringComparer.Ordinal);
+        var noteSectionExercise = ExerciseNoteSections(
+            main,
+            activeNoteRows,
+            completedNoteRows);
         var tagChips = Descendants<Border>(countdownRows)
             .Concat(Descendants<Border>(activeNoteRows))
             .Where(border => !string.IsNullOrWhiteSpace(border.Uid))
@@ -206,8 +213,18 @@ internal static class ValidationReport
             : WorkspaceKind.Countdowns;
         floating.ShowWorkspace(WorkspaceKind.Notes);
         floating.UpdateLayout();
+        var floatingRows = Required<StackPanel>(floating, "FloatingRows");
+        var renderedFloatingNoteIds = GetRenderedNoteIds(floatingRows);
+        var expectedFloatingNoteIds = session.GetSortedNotes()
+            .Where(note => !note.IsCompleted)
+            .Select(note => note.Id)
+            .ToArray();
+        var floatingNotesKeepExistingSortOrder = expectedFloatingNoteIds.SequenceEqual(
+            renderedFloatingNoteIds,
+            StringComparer.Ordinal);
         var floatingTitle = Required<TextBlock>(floating, "FloatingTitle");
         var floatingTitleFit = MeasureTextFit(floatingTitle);
+        var floatingTitleHeightFit = MeasureTextHeightFit(floatingTitle);
         var floatingTitleBounds = floatingTitle
             .TransformToAncestor(floating)
             .TransformBounds(new Rect(new Point(0, 0), floatingTitle.RenderSize));
@@ -644,6 +661,11 @@ internal static class ValidationReport
             ["ActiveNotesExpandedByDefault"] =
                 activeNotesToggle is not null && activeNoteRows.Visibility == Visibility.Visible,
             ["ActiveNotesKeepDateOrder"] = activeNotesKeepDateOrder,
+            ["ManagerNoteRowsFollowSortOrder"] = managerNoteRowsFollowSortOrder,
+            ["NoteDateSectionsCanCollapse"] = noteSectionExercise.DateSectionsCanCollapse,
+            ["NoteDateSectionsAreIndependent"] = noteSectionExercise.DateSectionsAreIndependent,
+            ["NoteDateSectionStateSurvivesRefresh"] = noteSectionExercise.DateSectionStateSurvivesRefresh,
+            ["NoteStatusSectionsAreIndependent"] = noteSectionExercise.StatusSectionsAreIndependent,
             ["CompletedNotesCollapsed"] = main.CompletedNotesAreCollapsed,
             ["FloatingWindowPresent"] = floating is not null,
             ["FloatingWindowStaysAboveWorkAreaBottom"] = floatingBottomMargin >= 0,
@@ -672,9 +694,13 @@ internal static class ValidationReport
             ["FloatingNotesButtonTextFits"] = notesButtonFit.Fits,
             ["FloatingNotesButtonTextAvailableWidth"] = notesButtonFit.Available,
             ["FloatingNotesButtonTextRequiredWidth"] = notesButtonFit.Required,
+            ["FloatingNotesKeepExistingSortOrder"] = floatingNotesKeepExistingSortOrder,
             ["FloatingTitleTextFits"] = floatingTitleFit.Fits,
             ["FloatingTitleTextAvailableWidth"] = floatingTitleFit.Available,
             ["FloatingTitleTextRequiredWidth"] = floatingTitleFit.Required,
+            ["FloatingTitleTextHasVerticalClearance"] = floatingTitleHeightFit.Fits,
+            ["FloatingTitleTextAvailableHeight"] = floatingTitleHeightFit.Available,
+            ["FloatingTitleTextRequiredHeight"] = floatingTitleHeightFit.Required,
             ["SavePreferencesButtonTextFits"] = savePreferencesButtonFit.Fits,
             ["SavePreferencesButtonIsFullyVisible"] = savePreferencesButtonIsVisible,
             ["SavePreferencesButtonIsFullyVisibleAtMinimumWidth"] =
@@ -720,6 +746,11 @@ internal static class ValidationReport
             ["LoadedWorkEnd"] = CountdownFormatting.FormatWorkTime(session.Current.Preferences.WorkEnd),
             ["ActiveNoteCount"] = session.Current.Notes.Count(note => !note.IsCompleted),
             ["CompletedNoteCount"] = session.Current.Notes.Count(note => note.IsCompleted),
+            ["SortedNoteTexts"] = session.GetSortedManagerNotes(applyFilter: false)
+                .Select(note => note.Text)
+                .ToArray(),
+            ["RenderedManagerNoteIds"] = renderedManagerNoteIds,
+            ["RenderedFloatingNoteIds"] = renderedFloatingNoteIds,
             ["SortedNames"] = session.GetSortedCountdowns(applyFilter: false).Select(record => record.Name).ToArray(),
             ["WindowIconLoaded"] = main.Icon is not null
         });
@@ -952,23 +983,226 @@ internal static class ValidationReport
 
     private static bool AreNotesGroupedByDay(IReadOnlyList<NoteRecord> notes)
     {
-        var seen = new HashSet<string?>(StringComparer.Ordinal);
-        string? current = null;
+        var seen = new HashSet<(bool IsCompleted, string? Date)>();
+        bool? currentCompletion = null;
+        string? currentDate = null;
         foreach (var note in notes)
         {
-            if (string.Equals(current, note.Date, StringComparison.Ordinal))
+            if (
+                currentCompletion == note.IsCompleted &&
+                string.Equals(currentDate, note.Date, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            current = note.Date;
-            if (!seen.Add(current))
+            currentCompletion = note.IsCompleted;
+            currentDate = note.Date;
+            if (!seen.Add((note.IsCompleted, note.Date)))
             {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private static IReadOnlyList<string> GetRenderedNoteDateOrder(Panel rows)
+    {
+        return rows.Children
+            .OfType<StackPanel>()
+            .Select(section => section.Children.OfType<Button>().FirstOrDefault()?.Tag as string)
+            .Where(date => date is not null)
+            .Select(date => date!.Length == 0 ? "未设置日期" : date)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> GetRenderedNoteIds(DependencyObject root) =>
+        Descendants<CheckBox>(root)
+            .Where(checkBox => checkBox.Tag is string)
+            .Select(checkBox => (string)checkBox.Tag)
+            .ToArray();
+
+    private static NoteSectionExerciseResult ExerciseNoteSections(
+        MainWindow main,
+        StackPanel activeRows,
+        StackPanel completedRows)
+    {
+        var activeStatusToggle = Required<Button>(main, "ToggleActiveNotes");
+        var completedStatusToggle = Required<Button>(main, "ToggleCompletedNotes");
+        var originalWorkspace = main.CurrentWorkspace;
+        var activeStatusWasVisible = activeRows.Visibility == Visibility.Visible;
+        var completedStatusWasVisible = completedRows.Visibility == Visibility.Visible;
+
+        try
+        {
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            ExpandStatusSection(activeRows, activeStatusToggle);
+            ExpandStatusSection(completedRows, completedStatusToggle);
+
+            var statusSectionsAreIndependent = ExerciseNoteStatusSections(
+                main,
+                activeRows,
+                completedRows,
+                activeStatusToggle,
+                completedStatusToggle);
+
+            var activeSections = GetNoteDateSections(activeRows);
+            var completedSections = GetNoteDateSections(completedRows);
+            var activeKey = activeSections.FirstOrDefault()?.Key;
+            var completedKey = completedSections.FirstOrDefault()?.Key;
+            var dateSectionsCanCollapse = true;
+            var dateSectionsAreIndependent = true;
+            var dateSectionStateSurvivesRefresh = true;
+
+            if (activeKey is not null)
+            {
+                var activeSection = FindNoteDateSection(activeRows, activeKey)!;
+                activeSection.Toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                dateSectionsCanCollapse &=
+                    activeSection.Rows.Visibility == Visibility.Collapsed &&
+                    activeSection.Toggle.Content.ToString()!.StartsWith("展开 ", StringComparison.Ordinal);
+                dateSectionsAreIndependent &=
+                    OtherNoteDateSectionsAreVisible(activeRows, activeKey) &&
+                    GetNoteDateSections(completedRows).All(section => section.Rows.Visibility == Visibility.Visible);
+
+                main.ShowWorkspace(WorkspaceKind.Notes);
+                activeSection = FindNoteDateSection(activeRows, activeKey)!;
+                dateSectionStateSurvivesRefresh &= activeSection.Rows.Visibility == Visibility.Collapsed;
+                dateSectionsAreIndependent &=
+                    OtherNoteDateSectionsAreVisible(activeRows, activeKey) &&
+                    GetNoteDateSections(completedRows).All(section => section.Rows.Visibility == Visibility.Visible);
+            }
+
+            if (completedKey is not null)
+            {
+                var completedSection = FindNoteDateSection(completedRows, completedKey)!;
+                completedSection.Toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                dateSectionsCanCollapse &=
+                    completedSection.Rows.Visibility == Visibility.Collapsed &&
+                    completedSection.Toggle.Content.ToString()!.StartsWith("展开 ", StringComparison.Ordinal);
+                dateSectionsAreIndependent &=
+                    OtherNoteDateSectionsAreVisible(completedRows, completedKey) &&
+                    (activeKey is null ||
+                     FindNoteDateSection(activeRows, activeKey)!.Rows.Visibility == Visibility.Collapsed);
+
+                main.ShowWorkspace(WorkspaceKind.Notes);
+                completedSection = FindNoteDateSection(completedRows, completedKey)!;
+                dateSectionStateSurvivesRefresh &= completedSection.Rows.Visibility == Visibility.Collapsed;
+                dateSectionsAreIndependent &=
+                    OtherNoteDateSectionsAreVisible(completedRows, completedKey) &&
+                    (activeKey is null ||
+                     FindNoteDateSection(activeRows, activeKey)!.Rows.Visibility == Visibility.Collapsed);
+            }
+
+            if (activeKey is not null && completedKey is not null)
+            {
+                FindNoteDateSection(activeRows, activeKey)!.Toggle.RaiseEvent(
+                    new RoutedEventArgs(Button.ClickEvent));
+                dateSectionsAreIndependent &=
+                    FindNoteDateSection(activeRows, activeKey)!.Rows.Visibility == Visibility.Visible &&
+                    FindNoteDateSection(completedRows, completedKey)!.Rows.Visibility == Visibility.Collapsed;
+            }
+
+            return new NoteSectionExerciseResult(
+                dateSectionsCanCollapse,
+                dateSectionsAreIndependent,
+                dateSectionStateSurvivesRefresh,
+                statusSectionsAreIndependent);
+        }
+        finally
+        {
+            ExpandAllNoteDateSections(activeRows);
+            ExpandAllNoteDateSections(completedRows);
+            RestoreStatusSection(activeRows, activeStatusToggle, activeStatusWasVisible);
+            RestoreStatusSection(completedRows, completedStatusToggle, completedStatusWasVisible);
+            main.ShowWorkspace(originalWorkspace);
+        }
+    }
+
+    private static bool ExerciseNoteStatusSections(
+        MainWindow main,
+        StackPanel activeRows,
+        StackPanel completedRows,
+        Button activeToggle,
+        Button completedToggle)
+    {
+        if (activeToggle.Visibility != Visibility.Visible || completedToggle.Visibility != Visibility.Visible)
+        {
+            return true;
+        }
+
+        activeToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var independent =
+            activeRows.Visibility == Visibility.Collapsed &&
+            completedRows.Visibility == Visibility.Visible;
+        main.ShowWorkspace(WorkspaceKind.Notes);
+        independent &=
+            activeRows.Visibility == Visibility.Collapsed &&
+            completedRows.Visibility == Visibility.Visible;
+        activeToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        completedToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        independent &=
+            activeRows.Visibility == Visibility.Visible &&
+            completedRows.Visibility == Visibility.Collapsed;
+        main.ShowWorkspace(WorkspaceKind.Notes);
+        independent &=
+            activeRows.Visibility == Visibility.Visible &&
+            completedRows.Visibility == Visibility.Collapsed;
+        completedToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        return independent;
+    }
+
+    private static IReadOnlyList<NoteDateSection> GetNoteDateSections(StackPanel rows)
+    {
+        var result = new List<NoteDateSection>();
+        foreach (var section in rows.Children.OfType<StackPanel>())
+        {
+            var toggle = section.Children.OfType<Button>().FirstOrDefault();
+            var sectionRows = section.Children.OfType<StackPanel>().FirstOrDefault();
+            if (toggle is not null && sectionRows is not null)
+            {
+                result.Add(new NoteDateSection(toggle.Tag as string ?? string.Empty, toggle, sectionRows));
+            }
+        }
+
+        return result;
+    }
+
+    private static NoteDateSection? FindNoteDateSection(StackPanel rows, string key) =>
+        GetNoteDateSections(rows).FirstOrDefault(section =>
+            string.Equals(section.Key, key, StringComparison.Ordinal));
+
+    private static bool OtherNoteDateSectionsAreVisible(StackPanel rows, string exceptKey) =>
+        GetNoteDateSections(rows)
+            .Where(section => !string.Equals(section.Key, exceptKey, StringComparison.Ordinal))
+            .All(section => section.Rows.Visibility == Visibility.Visible);
+
+    private static void ExpandAllNoteDateSections(StackPanel rows)
+    {
+        foreach (var section in GetNoteDateSections(rows).Where(section =>
+                     section.Rows.Visibility == Visibility.Collapsed))
+        {
+            section.Toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
+    }
+
+    private static void ExpandStatusSection(StackPanel rows, Button toggle)
+    {
+        if (rows.Visibility == Visibility.Collapsed && toggle.Visibility == Visibility.Visible)
+        {
+            toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
+    }
+
+    private static void RestoreStatusSection(StackPanel rows, Button toggle, bool shouldBeVisible)
+    {
+        if (
+            toggle.Visibility == Visibility.Visible &&
+            (rows.Visibility == Visibility.Visible) != shouldBeVisible)
+        {
+            toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
     }
 
     private static bool HasApplicationStyle(Type key) =>
@@ -1372,7 +1606,29 @@ internal static class ValidationReport
     private static TextFit MeasureTextFit(TextBlock textBlock)
     {
         var dpi = VisualTreeHelper.GetDpi(textBlock);
-        var formatted = new FormattedText(
+        var formatted = FormatText(textBlock, dpi);
+        var available = Math.Max(0, textBlock.ActualWidth);
+        var required =
+            formatted.WidthIncludingTrailingWhitespace +
+            Math.Max(0, formatted.OverhangTrailing) +
+            (2 / dpi.DpiScaleX);
+        return new TextFit(available >= required, available, required);
+    }
+
+    private static TextFit MeasureTextHeightFit(TextBlock textBlock)
+    {
+        var dpi = VisualTreeHelper.GetDpi(textBlock);
+        var formatted = FormatText(textBlock, dpi);
+        var available = Math.Max(0, textBlock.ActualHeight);
+        var required =
+            formatted.Height +
+            Math.Max(0, formatted.OverhangAfter) +
+            (4 / dpi.DpiScaleY);
+        return new TextFit(available >= required, available, required);
+    }
+
+    private static FormattedText FormatText(TextBlock textBlock, DpiScale dpi) =>
+        new(
             textBlock.Text,
             CultureInfo.CurrentCulture,
             textBlock.FlowDirection,
@@ -1384,13 +1640,6 @@ internal static class ValidationReport
             textBlock.FontSize,
             Brushes.Black,
             dpi.PixelsPerDip);
-        var available = Math.Max(0, textBlock.ActualWidth);
-        var required =
-            formatted.WidthIncludingTrailingWhitespace +
-            Math.Max(0, formatted.OverhangTrailing) +
-            (2 / dpi.DpiScaleX);
-        return new TextFit(available >= required, available, required);
-    }
 
     private static T Required<T>(FrameworkElement root, string name)
         where T : class
@@ -1427,6 +1676,14 @@ internal static class ValidationReport
     }
 
     private sealed record TextFit(bool Fits, double Available, double Required);
+
+    private sealed record NoteDateSection(string Key, Button Toggle, StackPanel Rows);
+
+    private sealed record NoteSectionExerciseResult(
+        bool DateSectionsCanCollapse,
+        bool DateSectionsAreIndependent,
+        bool DateSectionStateSurvivesRefresh,
+        bool StatusSectionsAreIndependent);
 
     private sealed record MainThemeExerciseResult(
         IReadOnlyList<string> BoundaryModes,

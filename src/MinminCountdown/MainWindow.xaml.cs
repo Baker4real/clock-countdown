@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly DiagnosticLogger _logger;
     private readonly Dictionary<string, CheckBox> _noteCompletionBoxes =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private string? _editingCountdownId;
     private string? _editingNoteId;
@@ -753,8 +754,8 @@ public sealed partial class MainWindow : Window
         var active = records.Where(note => !note.IsCompleted).ToArray();
         var completed = records.Where(note => note.IsCompleted).ToArray();
         RecordCountText.Text = $"{active.Length} 个待办";
-        AddNotesGroupedByDay(ActiveNoteRows, active, effectiveNowUtc);
-        AddNotesGroupedByDay(CompletedNoteRows, completed, effectiveNowUtc);
+        AddNotesGroupedByDay(ActiveNoteRows, active, isCompleted: false, effectiveNowUtc);
+        AddNotesGroupedByDay(CompletedNoteRows, completed, isCompleted: true, effectiveNowUtc);
         ToggleActiveNotes.Content = _activeNotesExpanded ? "收起未完成" : "未完成";
         ToggleActiveNotes.Visibility = active.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         ActiveNoteRows.Visibility =
@@ -777,25 +778,79 @@ public sealed partial class MainWindow : Window
     private void AddNotesGroupedByDay(
         Panel target,
         IReadOnlyList<NoteRecord> notes,
+        bool isCompleted,
         DateTimeOffset nowUtc)
     {
-        string? previousDate = null;
-        foreach (var note in notes)
+        foreach (var group in notes.GroupBy(note => note.Date, StringComparer.Ordinal))
         {
-            if (!string.Equals(previousDate, note.Date, StringComparison.Ordinal))
+            var groupedNotes = group.ToArray();
+            var dateLabel = group.Key ?? "未设置日期";
+            var sectionKey = (IsCompleted: isCompleted, Date: group.Key);
+            var sectionRows = new StackPanel();
+            foreach (var note in groupedNotes)
             {
-                target.Children.Add(new TextBlock
-                {
-                    Text = note.Date is null ? "未设置日期" : note.Date,
-                    Margin = new Thickness(2, previousDate is null ? 0 : 10, 0, 6),
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = (Brush)FindResource("MutedBrush")
-                });
-                previousDate = note.Date;
+                sectionRows.Children.Add(CreateNoteRow(note, nowUtc));
             }
 
-            target.Children.Add(CreateNoteRow(note, nowUtc));
+            var sectionToggle = UiAccessibility.Name(
+                new Button
+                {
+                    Tag = group.Key ?? string.Empty,
+                    Margin = new Thickness(0, 0, 0, 6),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    FontWeight = FontWeights.SemiBold,
+                    Style = (Style)FindResource("SecondaryButton")
+                },
+                string.Empty);
+            var isExpanded = !_collapsedNoteDateSections.Contains(sectionKey);
+            SetNoteDateSectionState(
+                sectionToggle,
+                sectionRows,
+                dateLabel,
+                groupedNotes.Length,
+                isCompleted,
+                isExpanded);
+            sectionToggle.Click += (_, _) =>
+            {
+                var expand = _collapsedNoteDateSections.Remove(sectionKey);
+                if (!expand)
+                {
+                    _collapsedNoteDateSections.Add(sectionKey);
+                }
+
+                SetNoteDateSectionState(
+                    sectionToggle,
+                    sectionRows,
+                    dateLabel,
+                    groupedNotes.Length,
+                    isCompleted,
+                    expand);
+            };
+
+            var section = new StackPanel
+            {
+                Margin = new Thickness(0, target.Children.Count == 0 ? 0 : 10, 0, 0)
+            };
+            section.Children.Add(sectionToggle);
+            section.Children.Add(sectionRows);
+            target.Children.Add(section);
         }
+    }
+
+    private static void SetNoteDateSectionState(
+        Button toggle,
+        Panel rows,
+        string dateLabel,
+        int noteCount,
+        bool isCompleted,
+        bool isExpanded)
+    {
+        var action = isExpanded ? "收起" : "展开";
+        var status = isCompleted ? "已完成" : "未完成";
+        toggle.Content = $"{action} {dateLabel} · {noteCount} 条";
+        toggle.ToolTip = $"{action}{dateLabel}的{status}便签";
+        AutomationProperties.SetName(toggle, $"{action}{dateLabel}的{status}便签");
+        rows.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private FrameworkElement CreateNoteRow(NoteRecord note, DateTimeOffset nowUtc)

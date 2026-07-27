@@ -131,7 +131,7 @@ finally {
 }
 
 if (-not $validation.DateInputReadOnly) { throw 'Date selection still accepts free-text input.' }
-if (-not $validation.DatePickerButtonOpensCalendar) { throw 'Date picker calendar closes immediately after the drop-down button is clicked.' }
+if (-not $validation.DatePickerButtonOpensCalendar) { throw 'Clicking the date picker drop-down button did not open a calendar popup.' }
 if (-not $validation.DatePickerTextOpensCalendar) { throw 'Clicking the date text does not open every themed calendar.' }
 if (-not $validation.DatePickerTextClicksUseTheme) { throw 'Clicking the date text is not attached to every themed date picker.' }
 if (-not $validation.DatePickerTextOpensThemedPopup) { throw 'Clicking the date text did not open a real themed calendar popup.' }
@@ -167,6 +167,9 @@ if (-not $validation.FloatingPlushVisibleEdgesMeetCard) { throw 'Floating plush 
 if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The floating plush task-wrap group exceeds the desktop work area.' }
 if (-not $validation.FloatingTitleTextFits) {
     throw "Floating sticky-note title is clipped: available=$($validation.FloatingTitleTextAvailableWidth), required=$($validation.FloatingTitleTextRequiredWidth)."
+}
+if (-not $validation.FloatingTitleTextHasVerticalClearance) {
+    throw "Floating sticky-note title lacks vertical clearance: available=$($validation.FloatingTitleTextAvailableHeight), required=$($validation.FloatingTitleTextRequiredHeight)."
 }
 if (-not $validation.FloatingCountdownButtonTextFits) {
     throw "Floating countdown switch label is clipped: available=$($validation.FloatingCountdownButtonTextAvailableWidth), required=$($validation.FloatingCountdownButtonTextRequiredWidth)."
@@ -275,8 +278,11 @@ try {
             @{ id = 'future'; name = '未来项目'; targetUtc = '2099-01-01T00:00:00Z'; tagIds = @('seed-tag') }
         )
         notes = @(
-            @{ id = 'note-active'; text = '整理本周安排'; date = '2026-07-18'; isCompleted = $false; tagIds = @('seed-tag') }
-            @{ id = 'note-completed'; text = '确认已完成事项'; date = $null; isCompleted = $true; tagIds = @() }
+            @{ id = 'note-active-old'; text = '未完成旧日期'; date = '2026-07-18'; isCompleted = $false; tagIds = @('seed-tag') }
+            @{ id = 'note-active-new-first'; text = '未完成新日期甲'; date = '2026-07-22'; isCompleted = $false; tagIds = @() }
+            @{ id = 'note-active-new-second'; text = '未完成新日期乙'; date = '2026-07-22'; isCompleted = $false; tagIds = @() }
+            @{ id = 'note-completed-old'; text = '已完成旧日期'; date = '2026-07-18'; isCompleted = $true; tagIds = @() }
+            @{ id = 'note-completed-new'; text = '已完成新日期'; date = '2026-07-22'; isCompleted = $true; tagIds = @() }
         )
     } | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
     $settingsHashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $testSettingsPath).Hash
@@ -290,14 +296,29 @@ try {
     if (-not $listValidation.PersistenceRoundTrip) { throw 'Countdown persistence round-trip failed.' }
     if ($listValidation.LoadedTags -ne 1) { throw "Expected one loaded shared tag, got $($listValidation.LoadedTags)." }
     if (-not $listValidation.TagPersistenceRoundTrip) { throw 'Shared tag persistence round-trip failed.' }
-    if ($listValidation.LoadedNotes -ne 2) { throw "Expected two loaded sticky notes, got $($listValidation.LoadedNotes)." }
-    if ($listValidation.ActiveNoteCount -ne 1 -or $listValidation.CompletedNoteCount -ne 1) { throw "Unexpected sticky-note grouping: active=$($listValidation.ActiveNoteCount), completed=$($listValidation.CompletedNoteCount)." }
+    if ($listValidation.LoadedNotes -ne 5) { throw "Expected five loaded sticky notes, got $($listValidation.LoadedNotes)." }
+    if ($listValidation.ActiveNoteCount -ne 3 -or $listValidation.CompletedNoteCount -ne 2) { throw "Unexpected sticky-note grouping: active=$($listValidation.ActiveNoteCount), completed=$($listValidation.CompletedNoteCount)." }
     if (-not $listValidation.NotePersistenceRoundTrip) { throw 'Sticky-note persistence round-trip failed.' }
     if (-not $listValidation.NoteActionsBoundByTag) { throw 'Sticky-note actions are not bound to their note ID.' }
     if (-not $listValidation.NoteStatusLabelsPresent) { throw 'Sticky-note status labels are missing from rendered rows.' }
     if (-not $listValidation.HasNoteDateControls) { throw 'The manager or floating sticky-note date picker is missing.' }
     if (-not $listValidation.NoteDatesRendered) { throw 'Sticky-note calendar dates are missing from rendered rows.' }
     if (-not $listValidation.NotesGroupedByDay) { throw 'Sticky-note rows are not grouped by calendar day.' }
+    if (@($listValidation.SortedNoteTexts) -join ',' -ne '未完成新日期乙,未完成新日期甲,未完成旧日期,已完成新日期,已完成旧日期') {
+        throw "Sticky-note rows are not sorted by newest date and entry order: $(@($listValidation.SortedNoteTexts) -join ',')."
+    }
+    if (-not $listValidation.ManagerNoteRowsFollowSortOrder -or
+        @($listValidation.RenderedManagerNoteIds) -join ',' -ne 'note-active-new-second,note-active-new-first,note-active-old,note-completed-new,note-completed-old') {
+        throw "Rendered manager note order is incorrect: $(@($listValidation.RenderedManagerNoteIds) -join ',')."
+    }
+    if (-not $listValidation.FloatingNotesKeepExistingSortOrder -or
+        @($listValidation.RenderedFloatingNoteIds) -join ',' -ne 'note-active-old,note-active-new-first,note-active-new-second') {
+        throw "Floating note order changed unexpectedly: $(@($listValidation.RenderedFloatingNoteIds) -join ',')."
+    }
+    if (-not $listValidation.NoteDateSectionsCanCollapse) { throw 'Sticky-note date sections cannot be expanded and collapsed independently.' }
+    if (-not $listValidation.NoteDateSectionsAreIndependent) { throw 'Active and completed date sections do not retain independent collapse state.' }
+    if (-not $listValidation.NoteDateSectionStateSurvivesRefresh) { throw 'Sticky-note date collapse state did not survive a manager refresh.' }
+    if (-not $listValidation.NoteStatusSectionsAreIndependent) { throw 'Active and completed status sections are not independent across refresh.' }
     if (-not $listValidation.NoteDateDefaultsTrackBeijingDay) { throw 'Default sticky-note dates did not advance at Beijing midnight.' }
     if (-not $listValidation.NoteDateChoicesSurviveBeijingDayChange) { throw 'A selected sticky-note date or in-progress draft was overwritten at Beijing midnight.' }
     if (-not $listValidation.CompletedNotesCollapsed) { throw 'Completed sticky notes should be collapsed by default.' }

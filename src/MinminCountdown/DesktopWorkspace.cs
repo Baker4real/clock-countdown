@@ -29,9 +29,9 @@ internal sealed class DesktopWorkspace
 
     public IReadOnlyList<CountdownRecord> GetAllCountdowns() => _session.GetSortedCountdowns(applyFilter: false);
 
-    public IReadOnlyList<NoteRecord> GetVisibleNotes() => _session.GetSortedNotes();
+    public IReadOnlyList<NoteRecord> GetVisibleNotes() => _session.GetSortedManagerNotes();
 
-    public IReadOnlyList<NoteRecord> GetAllNotes() => _session.GetSortedNotes(applyFilter: false);
+    public IReadOnlyList<NoteRecord> GetAllNotes() => _session.GetSortedManagerNotes(applyFilter: false);
 
     public IReadOnlyList<NoteRecord> GetVisibleActiveNotes() =>
         _session.GetSortedNotes().Where(note => !note.IsCompleted).ToArray();

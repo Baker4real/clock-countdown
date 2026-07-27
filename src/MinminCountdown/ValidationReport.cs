@@ -201,6 +201,18 @@ internal static class ValidationReport
         var floatingNotesButton = Required<ToggleButton>(floating, "FloatingNotesButton");
         var countdownButtonFit = MeasureButtonFit(floatingCountdownButton);
         var notesButtonFit = MeasureButtonFit(floatingNotesButton);
+        var originalFloatingWorkspace = floatingNotesButton.IsChecked == true
+            ? WorkspaceKind.Notes
+            : WorkspaceKind.Countdowns;
+        floating.ShowWorkspace(WorkspaceKind.Notes);
+        floating.UpdateLayout();
+        var floatingTitle = Required<TextBlock>(floating, "FloatingTitle");
+        var floatingTitleFit = MeasureTextFit(floatingTitle);
+        var floatingTitleBounds = floatingTitle
+            .TransformToAncestor(floating)
+            .TransformBounds(new Rect(new Point(0, 0), floatingTitle.RenderSize));
+        floating.ShowWorkspace(originalFloatingWorkspace);
+        floating.UpdateLayout();
         var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
         var savePreferencesButtonFit = MeasureButtonFit(savePreferencesButton);
         var savePreferencesButtonRight = savePreferencesButton
@@ -252,9 +264,9 @@ internal static class ValidationReport
         var floatingHeaderBounds = floatingHeaderSurface
             .TransformToAncestor(floating)
             .TransformBounds(new Rect(new Point(0, 0), floatingHeaderSurface.RenderSize));
-        var floatingHeaderForegroundBounds = new FrameworkElement[]
+        var floatingHeaderForegroundBounds = new[] { floatingTitleBounds }
+            .Concat(new FrameworkElement[]
             {
-                Required<TextBlock>(floating, "FloatingTitle"),
                 Required<ToggleButton>(floating, "FloatingCountdownsButton"),
                 Required<ToggleButton>(floating, "FloatingNotesButton"),
                 Required<Button>(floating, "OpenManagerButton"),
@@ -265,7 +277,7 @@ internal static class ValidationReport
                               element.ActualHeight > 0)
             .Select(element => element
                 .TransformToAncestor(floating)
-                .TransformBounds(new Rect(new Point(0, 0), element.RenderSize)))
+                .TransformBounds(new Rect(new Point(0, 0), element.RenderSize))))
             .ToArray();
         var floatingContentBounds = new FrameworkElement[]
             {
@@ -660,6 +672,9 @@ internal static class ValidationReport
             ["FloatingNotesButtonTextFits"] = notesButtonFit.Fits,
             ["FloatingNotesButtonTextAvailableWidth"] = notesButtonFit.Available,
             ["FloatingNotesButtonTextRequiredWidth"] = notesButtonFit.Required,
+            ["FloatingTitleTextFits"] = floatingTitleFit.Fits,
+            ["FloatingTitleTextAvailableWidth"] = floatingTitleFit.Available,
+            ["FloatingTitleTextRequiredWidth"] = floatingTitleFit.Required,
             ["SavePreferencesButtonTextFits"] = savePreferencesButtonFit.Fits,
             ["SavePreferencesButtonIsFullyVisible"] = savePreferencesButtonIsVisible,
             ["SavePreferencesButtonIsFullyVisibleAtMinimumWidth"] =
@@ -1352,6 +1367,29 @@ internal static class ValidationReport
             button.BorderThickness.Left -
             button.BorderThickness.Right);
         return new TextFit(available >= formatted.Width, available, formatted.Width);
+    }
+
+    private static TextFit MeasureTextFit(TextBlock textBlock)
+    {
+        var dpi = VisualTreeHelper.GetDpi(textBlock);
+        var formatted = new FormattedText(
+            textBlock.Text,
+            CultureInfo.CurrentCulture,
+            textBlock.FlowDirection,
+            new Typeface(
+                textBlock.FontFamily,
+                textBlock.FontStyle,
+                textBlock.FontWeight,
+                textBlock.FontStretch),
+            textBlock.FontSize,
+            Brushes.Black,
+            dpi.PixelsPerDip);
+        var available = Math.Max(0, textBlock.ActualWidth);
+        var required =
+            formatted.WidthIncludingTrailingWhitespace +
+            Math.Max(0, formatted.OverhangTrailing) +
+            (2 / dpi.DpiScaleX);
+        return new TextFit(available >= required, available, required);
     }
 
     private static T Required<T>(FrameworkElement root, string name)

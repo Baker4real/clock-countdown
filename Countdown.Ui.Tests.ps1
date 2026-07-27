@@ -165,6 +165,9 @@ if (-not $validation.FloatingPlushHeaderIntegration) { throw 'Top floating plush
 if (-not $validation.FloatingPlushCardIsUnobscured) { throw 'Floating plush characters overlap the countdown card.' }
 if (-not $validation.FloatingPlushVisibleEdgesMeetCard) { throw 'Floating plush visible edges do not meet the task card.' }
 if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The floating plush task-wrap group exceeds the desktop work area.' }
+if (-not $validation.FloatingTitleTextFits) {
+    throw "Floating sticky-note title is clipped: available=$($validation.FloatingTitleTextAvailableWidth), required=$($validation.FloatingTitleTextRequiredWidth)."
+}
 if (-not $validation.FloatingCountdownButtonTextFits) {
     throw "Floating countdown switch label is clipped: available=$($validation.FloatingCountdownButtonTextAvailableWidth), required=$($validation.FloatingCountdownButtonTextRequiredWidth)."
 }
@@ -431,7 +434,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 122
+    Passed = 123
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

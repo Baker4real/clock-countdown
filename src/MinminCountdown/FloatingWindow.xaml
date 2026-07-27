@@ -54,7 +54,8 @@
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="FloatingTitle"
                        Text="倒计时"
-                       Margin="76,0,0,0"
+                       Margin="72,0,0,0"
+                       MinWidth="76"
                        FontSize="18"
                        FontWeight="Bold"
                        Foreground="{DynamicResource FloatingHeaderTextBrush}"

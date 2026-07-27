@@ -1514,7 +1514,7 @@ public sealed partial class MainWindow : Window
                 Uid = tag.Id,
                 Margin = new Thickness(0, 0, 5, 0),
                 Padding = new Thickness(7, 3, 7, 3),
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new CornerRadius(10),
                 Background = ParseBrush(tag.Color) ?? (Brush)FindResource("TagBrush"),
                 Child = new TextBlock
                 {
@@ -1553,7 +1553,7 @@ public sealed partial class MainWindow : Window
             Child = content,
             Margin = new Thickness(0, 0, 0, 8),
             Padding = new Thickness(14),
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(12),
             Background = (Brush)FindResource(backgroundResource),
             BorderBrush = (Brush)FindResource("PeachLineBrush"),
             BorderThickness = new Thickness(1)

@@ -654,8 +654,8 @@ public sealed partial class FloatingWindow : Window
         {
             Child = child,
             Margin = new Thickness(0, 0, 0, 7),
-            Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12),
+            CornerRadius = new CornerRadius(12),
             Background = background,
             BorderBrush = _floatingBorderBrush,
             BorderThickness = new Thickness(1)

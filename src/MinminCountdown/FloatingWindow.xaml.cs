@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -64,13 +66,39 @@ public sealed partial class FloatingWindow : Window
         ReferenceEquals(FloatingCountdownsButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
         ReferenceEquals(FloatingNotesButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
         ReferenceEquals(OpenManagerButton.Style, FindResource("FloatingHeaderIconButton")) &&
-        ReferenceEquals(CloseFloatingButton.Style, FindResource("FloatingHeaderIconButton"));
+        ReferenceEquals(CloseFloatingButton.Style, FindResource("FloatingHeaderIconButton")) &&
+        PlushSceneFollowsActiveTheme;
 
-    internal bool PlushDocksUseActiveTheme =>
-        _activeTheme is not null &&
-        ReferenceEquals(MyMelodyPlushDock.Background, FindResource(_activeTheme.MyMelodyDockBrushKey)) &&
-        ReferenceEquals(CinnamorollPlushDock.Background, FindResource(_activeTheme.CinnamorollDockBrushKey)) &&
-        ReferenceEquals(KuromiPlushDock.Background, FindResource(_activeTheme.KuromiDockBrushKey));
+    internal bool UsesReferencePlushPoses =>
+        UsesAsset(PlushTopLeft, "floating-plush-mymelody-pose.png") &&
+        UsesAsset(PlushTopRight, "floating-plush-cinnamoroll-pose.png") &&
+        UsesAsset(PlushBottomRight, "floating-plush-kuromi-pose.png");
+
+    private IEnumerable<Image> PlushImages => new[]
+    {
+        PlushTopLeft,
+        PlushTopRight,
+        PlushBottomRight
+    };
+
+    private bool PlushSceneFollowsActiveTheme
+    {
+        get
+        {
+            if (_activeTheme is null)
+            {
+                return false;
+            }
+
+            var glowColor = ThemeColor(_activeTheme.PlushGlowBrushKey);
+            return PlushImages.All(image =>
+                image.Effect is DropShadowEffect glow &&
+                glow.Color.Equals(glowColor) &&
+                Math.Abs(glow.BlurRadius - _activeTheme.PlushGlowBlurRadius) < 0.01 &&
+                Math.Abs(glow.ShadowDepth - _activeTheme.PlushGlowDepth) < 0.01 &&
+                Math.Abs(glow.Opacity - _activeTheme.PlushGlowOpacity) < 0.01);
+        }
+    }
 
     internal bool HasAccessibleThemeTextContrast
     {
@@ -246,8 +274,10 @@ public sealed partial class FloatingWindow : Window
         var modes = new List<string>();
         var dayPanelColor = string.Empty;
         var nightPanelColor = string.Empty;
-        var docksFollowTheme = true;
+        var dayPlushGlowColor = string.Empty;
+        var nightPlushGlowColor = string.Empty;
         var textContrast = true;
+        var plushSceneFollowsDayNightTheme = true;
 
         foreach (var checkpoint in checkpoints)
         {
@@ -256,14 +286,16 @@ public sealed partial class FloatingWindow : Window
             if (_activeTheme?.Mode == ApplicationThemeMode.Day)
             {
                 dayPanelColor = BrushColor(TaskCard.Background);
+                dayPlushGlowColor = PlushGlowColor();
             }
             else
             {
                 nightPanelColor = BrushColor(TaskCard.Background);
+                nightPlushGlowColor = PlushGlowColor();
             }
 
-            docksFollowTheme &= PlushDocksUseActiveTheme;
             textContrast &= HasAccessibleThemeTextContrast;
+            plushSceneFollowsDayNightTheme &= PlushSceneFollowsActiveTheme;
         }
 
         UpdateTime(_session.UtcNow);
@@ -271,9 +303,10 @@ public sealed partial class FloatingWindow : Window
         return new FloatingThemeExerciseResult(
             modes,
             new[] { dayPanelColor, nightPanelColor },
+            new[] { dayPlushGlowColor, nightPlushGlowColor },
             modes.SequenceEqual(expectedModes, StringComparer.Ordinal),
-            docksFollowTheme,
-            textContrast);
+            textContrast,
+            plushSceneFollowsDayNightTheme);
     }
 
     internal void Reanchor()
@@ -309,22 +342,44 @@ public sealed partial class FloatingWindow : Window
         FloatingHeaderSurface.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
         FloatingNoteEntry.Background = ThemeBrush(nextTheme.NoteInputBrushKey);
         FloatingNoteEntry.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
-        MyMelodyPlushDock.Background = ThemeBrush(nextTheme.MyMelodyDockBrushKey);
-        CinnamorollPlushDock.Background = ThemeBrush(nextTheme.CinnamorollDockBrushKey);
-        KuromiPlushDock.Background = ThemeBrush(nextTheme.KuromiDockBrushKey);
-        MyMelodyPlushDock.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
-        CinnamorollPlushDock.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
-        KuromiPlushDock.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
         _floatingPrimaryBrush = ThemeBrush(nextTheme.TextBrushKey);
         _floatingMutedBrush = ThemeBrush(nextTheme.MutedBrushKey);
         _floatingSurfaceBrush = ThemeBrush(nextTheme.SurfaceBrushKey);
         _floatingNoteCardBrush = ThemeBrush(nextTheme.NoteCardBrushKey);
         _floatingBorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        ApplyPlushSceneTheme(nextTheme);
     }
 
     private Brush ThemeBrush(string resourceKey) =>
         FindResource(resourceKey) as Brush ??
         throw new InvalidOperationException($"找不到悬浮窗主题资源：{resourceKey}");
+
+    private Color ThemeColor(string resourceKey) =>
+        ThemeBrush(resourceKey) is SolidColorBrush brush
+            ? brush.Color
+            : throw new InvalidOperationException($"悬浮窗主题资源不是纯色画刷：{resourceKey}");
+
+    private void ApplyPlushSceneTheme(FloatingThemePalette theme)
+    {
+        var glowColor = ThemeColor(theme.PlushGlowBrushKey);
+        foreach (var image in PlushImages)
+        {
+            image.Effect = new DropShadowEffect
+            {
+                Color = glowColor,
+                BlurRadius = theme.PlushGlowBlurRadius,
+                ShadowDepth = theme.PlushGlowDepth,
+                Direction = 90,
+                Opacity = theme.PlushGlowOpacity,
+                RenderingBias = RenderingBias.Quality
+            };
+        }
+    }
+
+    private string PlushGlowColor() =>
+        PlushTopLeft.Effect is DropShadowEffect glow
+            ? glow.Color.ToString()
+            : string.Empty;
 
     private void SetActiveThemeBrush(string activeResourceKey, string sourceResourceKey) =>
         Application.Current.Resources[activeResourceKey] = ThemeBrush(sourceResourceKey);
@@ -789,20 +844,25 @@ public sealed partial class FloatingWindow : Window
     {
         var plushRoot = Path.Combine(assetRoot, "assets", "floating-plush");
         PlushTopLeft.Source = MainWindow.LoadImage(
-            Path.Combine(plushRoot, "floating-plush-mymelody-front.png"));
+            Path.Combine(plushRoot, "floating-plush-mymelody-pose.png"));
         PlushTopRight.Source = MainWindow.LoadImage(
-            Path.Combine(plushRoot, "floating-plush-cinnamoroll-front.png"));
+            Path.Combine(plushRoot, "floating-plush-cinnamoroll-pose.png"));
         PlushBottomRight.Source = MainWindow.LoadImage(
             Path.Combine(plushRoot, "floating-plush-kuromi-pose.png"));
     }
+
+    private static bool UsesAsset(Image image, string expectedFileName) =>
+        image.Source is BitmapImage { UriSource: { } source } &&
+        string.Equals(Path.GetFileName(source.LocalPath), expectedFileName, StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed record FloatingThemeExerciseResult(
     IReadOnlyList<string> BoundaryModes,
     IReadOnlyList<string> PanelColors,
+    IReadOnlyList<string> PlushGlowColors,
     bool UsesChinaStandardTime,
-    bool PlushDocksFollowTheme,
-    bool TextContrast);
+    bool TextContrast,
+    bool PlushSceneFollowsDayNightTheme);
 
 internal sealed record FloatingThemePalette(
     ApplicationThemeMode Mode,
@@ -822,9 +882,10 @@ internal sealed record FloatingThemePalette(
     string ErrorBrushKey,
     string TextBrushKey,
     string MutedBrushKey,
-    string MyMelodyDockBrushKey,
-    string CinnamorollDockBrushKey,
-    string KuromiDockBrushKey)
+    string PlushGlowBrushKey,
+    double PlushGlowBlurRadius,
+    double PlushGlowOpacity,
+    double PlushGlowDepth)
 {
     private static readonly FloatingThemePalette Daylight = new(
         ApplicationThemeMode.Day,
@@ -844,9 +905,10 @@ internal sealed record FloatingThemePalette(
         "FloatingDayErrorBrush",
         "FloatingDayTextBrush",
         "FloatingDayMutedBrush",
-        "FloatingDayMyMelodyDockBrush",
-        "FloatingDayCinnamorollDockBrush",
-        "FloatingDayKuromiDockBrush");
+        "FloatingDayPlushGlowBrush",
+        13,
+        0.22,
+        1);
 
     private static readonly FloatingThemePalette Nighttime = new(
         ApplicationThemeMode.Night,
@@ -866,9 +928,10 @@ internal sealed record FloatingThemePalette(
         "FloatingNightErrorBrush",
         "FloatingNightTextBrush",
         "FloatingNightMutedBrush",
-        "FloatingNightMyMelodyDockBrush",
-        "FloatingNightCinnamorollDockBrush",
-        "FloatingNightKuromiDockBrush");
+        "FloatingNightPlushGlowBrush",
+        16,
+        0.34,
+        0);
 
     public static FloatingThemePalette For(DateTimeOffset nowUtc)
     {

@@ -248,23 +248,51 @@ internal static class ValidationReport
         var taskCardBounds = taskCard
             .TransformToAncestor(floating)
             .TransformBounds(new Rect(new Point(0, 0), taskCard.RenderSize));
-        var taskCardContent = taskCard.Child as FrameworkElement ??
-                              throw new InvalidOperationException("悬浮窗卡片缺少内容容器。");
-        var taskCardContentBounds = taskCardContent
+        var floatingHeaderSurface = Required<Border>(floating, "FloatingHeaderSurface");
+        var floatingHeaderBounds = floatingHeaderSurface
             .TransformToAncestor(floating)
-            .TransformBounds(new Rect(new Point(0, 0), taskCardContent.RenderSize));
+            .TransformBounds(new Rect(new Point(0, 0), floatingHeaderSurface.RenderSize));
+        var floatingHeaderForegroundBounds = new FrameworkElement[]
+            {
+                Required<TextBlock>(floating, "FloatingTitle"),
+                Required<ToggleButton>(floating, "FloatingCountdownsButton"),
+                Required<ToggleButton>(floating, "FloatingNotesButton"),
+                Required<Button>(floating, "OpenManagerButton"),
+                Required<Button>(floating, "CloseFloatingButton")
+            }
+            .Where(element => element.Visibility == Visibility.Visible &&
+                              element.ActualWidth > 0 &&
+                              element.ActualHeight > 0)
+            .Select(element => element
+                .TransformToAncestor(floating)
+                .TransformBounds(new Rect(new Point(0, 0), element.RenderSize)))
+            .ToArray();
+        var floatingContentBounds = new FrameworkElement[]
+            {
+                Required<ScrollViewer>(floating, "FloatingRowsScroller"),
+                Required<Border>(floating, "FloatingNoteEntry"),
+                Required<TextBlock>(floating, "FloatingIncome")
+            }
+            .Where(element => element.Visibility == Visibility.Visible &&
+                              element.ActualWidth > 0 &&
+                              element.ActualHeight > 0)
+            .Select(element => element
+                .TransformToAncestor(floating)
+                .TransformBounds(new Rect(new Point(0, 0), element.RenderSize)))
+            .ToArray();
         var plushDecorations = new[]
         {
             Required<Image>(floating, "PlushTopLeft"),
             Required<Image>(floating, "PlushTopRight"),
             Required<Image>(floating, "PlushBottomRight")
         };
-        var plushDocks = new[]
+        var plushAnchors = new[]
         {
-            (Dock: Required<Border>(floating, "MyMelodyPlushDock"), Image: plushDecorations[0]),
-            (Dock: Required<Border>(floating, "CinnamorollPlushDock"), Image: plushDecorations[1]),
-            (Dock: Required<Border>(floating, "KuromiPlushDock"), Image: plushDecorations[2])
+            (Anchor: Required<Border>(floating, "MyMelodyPlushAnchor"), Image: plushDecorations[0]),
+            (Anchor: Required<Border>(floating, "CinnamorollPlushAnchor"), Image: plushDecorations[1]),
+            (Anchor: Required<Border>(floating, "KuromiPlushAnchor"), Image: plushDecorations[2])
         };
+        var floatingPlushScene = Required<Canvas>(floating, "FloatingPlushScene");
         var plushBounds = plushDecorations
             .Select(image => image
                 .TransformToAncestor(floating)
@@ -273,6 +301,7 @@ internal static class ValidationReport
         var visiblePlushBounds = plushDecorations
             .Select(image => VisibleImageBounds(image, floating))
             .ToArray();
+        var topPlushBounds = visiblePlushBounds.Take(2).ToArray();
         var plushBridgesTaskCardEdges = plushBounds.All(bounds =>
         {
             var overlap = Rect.Intersect(bounds, taskCardBounds);
@@ -281,10 +310,9 @@ internal static class ValidationReport
                    overlap.Width < bounds.Width &&
                    overlap.Height < bounds.Height;
         });
-        var plushDoesNotObscureTaskCardContent = plushBounds.All(bounds =>
-            !bounds.IntersectsWith(taskCardContentBounds));
         var visiblePlushDoesNotObscureTaskCardContent = visiblePlushBounds.All(bounds =>
-            bounds is { } visible && !visible.IntersectsWith(taskCardContentBounds));
+            bounds is { } visible && !floatingContentBounds.Any(visible.IntersectsWith));
+        var plushDoesNotObscureTaskCardContent = visiblePlushDoesNotObscureTaskCardContent;
         var visiblePlushEdgesMeetTaskCard = visiblePlushBounds.All(bounds =>
         {
             if (bounds is not { } visible)
@@ -295,19 +323,52 @@ internal static class ValidationReport
             var overlap = Rect.Intersect(visible, taskCardBounds);
             return Math.Min(overlap.Width, overlap.Height) >= 6;
         });
-        var plushDocksIntegrateWithPanel = plushDocks.All(pair =>
+        var plushAnchorsIntegrateWithPanel =
+            Panel.GetZIndex(floatingPlushScene) > Panel.GetZIndex(taskCard) &&
+            plushAnchors.All(pair =>
+                ReferenceEquals(pair.Anchor.Child, pair.Image) &&
+                !pair.Anchor.IsHitTestVisible &&
+                pair.Anchor.BorderThickness.Equals(new Thickness(0)));
+        var plushCharactersAreProminent = visiblePlushBounds.All(bounds =>
+            bounds is { } visible && Math.Min(visible.Width, visible.Height) >= 84);
+        var topPlushPressIntoHeaderBackground = topPlushBounds.All(bounds =>
         {
-            var dockBounds = pair.Dock
-                .TransformToAncestor(floating)
-                .TransformBounds(new Rect(new Point(0, 0), pair.Dock.RenderSize));
-            var overlap = Rect.Intersect(dockBounds, taskCardBounds);
-            return
-                ReferenceEquals(pair.Dock.Child, pair.Image) &&
-                Panel.GetZIndex(pair.Dock) > Panel.GetZIndex(taskCard) &&
-                pair.Dock.CornerRadius.TopLeft >= 20 &&
-                overlap.Width >= 12 &&
-                overlap.Height >= 12;
+            if (bounds is not { } visible)
+            {
+                return false;
+            }
+
+            var overlap = Rect.Intersect(visible, floatingHeaderBounds);
+            return overlap.Width >= 16 && overlap.Height >= 6;
         });
+        var topPlushKeepHeaderForegroundClear = topPlushBounds.All(bounds =>
+            bounds is { } visible &&
+            !floatingHeaderForegroundBounds.Any(visible.IntersectsWith));
+        var plushHeaderIntegration =
+            topPlushPressIntoHeaderBackground &&
+            topPlushKeepHeaderForegroundClear;
+        var plushPositionsMatchReference =
+            visiblePlushBounds[0] is { } topLeft &&
+            visiblePlushBounds[1] is { } topRight &&
+            visiblePlushBounds[2] is { } bottomRight &&
+            topLeft.Left <= taskCardBounds.Left + 8 &&
+            topLeft.Top < taskCardBounds.Top &&
+            topLeft.Bottom >= taskCardBounds.Top + 4 &&
+            topRight.Right >= taskCardBounds.Right - 8 &&
+            topRight.Top < taskCardBounds.Top &&
+            topRight.Bottom >= taskCardBounds.Top + 4 &&
+            bottomRight.Right >= taskCardBounds.Right - 8 &&
+            bottomRight.Bottom >= taskCardBounds.Bottom - 8 &&
+            bottomRight.Left <= taskCardBounds.Right - 4 &&
+            bottomRight.Top <= taskCardBounds.Bottom - 4;
+        var plushReferenceComposition =
+            floating.UsesReferencePlushPoses &&
+            plushAnchorsIntegrateWithPanel &&
+            plushCharactersAreProminent &&
+            plushPositionsMatchReference &&
+            plushHeaderIntegration &&
+            visiblePlushDoesNotObscureTaskCardContent &&
+            visiblePlushEdgesMeetTaskCard;
         var plushGroupWithinWorkArea =
             floating.ActualHeight <= workArea.Height &&
             floating.ActualWidth <= workArea.Width &&
@@ -413,9 +474,11 @@ internal static class ValidationReport
             ["MainCharacterPanelDocksFollowDayNightTheme"] = mainThemeExercise.CharacterPanelDocksFollowTheme,
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
+            ["FloatingThemePlushGlowColors"] = floatingThemeExercise.PlushGlowColors,
             ["FloatingThemeUsesChinaStandardTime"] = floatingThemeExercise.UsesChinaStandardTime,
-            ["FloatingPlushDocksFollowDayNightTheme"] = floatingThemeExercise.PlushDocksFollowTheme,
             ["FloatingThemeTextContrast"] = floatingThemeExercise.TextContrast,
+            ["FloatingPlushSceneFollowsDayNightTheme"] =
+                floatingThemeExercise.PlushSceneFollowsDayNightTheme,
             ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
             ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
             ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
@@ -576,10 +639,13 @@ internal static class ValidationReport
             ["FloatingWindowReanchorsAfterContentChanges"] = floating.IsBottomAnchored,
             ["FloatingWindowHeightConstrainedToWorkArea"] = floatingHeightConstrained,
             ["FloatingPlushTaskWrapLoaded"] = floating.PlushCount == 3,
-            ["FloatingPlushUsesThreePanelDocks"] = plushDocksIntegrateWithPanel,
+            ["FloatingPlushUsesThreeAnchors"] = plushAnchors.Length == 3,
             ["FloatingPlushCount"] = floating.PlushCount,
             ["FloatingPlushDecorationsAreNonInteractive"] = floating.PlushDecorationsAreNonInteractive,
-            ["FloatingPlushDocksIntegrateWithPanel"] = plushDocksIntegrateWithPanel,
+            ["FloatingPlushUsesReferencePoses"] = floating.UsesReferencePlushPoses,
+            ["FloatingPlushAnchorsIntegrateWithPanel"] = plushAnchorsIntegrateWithPanel,
+            ["FloatingPlushReferenceComposition"] = plushReferenceComposition,
+            ["FloatingPlushHeaderIntegration"] = plushHeaderIntegration,
             ["FloatingPlushCardIsUnobscured"] = visiblePlushDoesNotObscureTaskCardContent,
             ["FloatingPlushTouchesTaskCard"] = plushBridgesTaskCardEdges,
             ["FloatingPlushDoesNotObscureTaskCardContent"] = plushDoesNotObscureTaskCardContent,
@@ -1038,6 +1104,7 @@ internal static class ValidationReport
                 ("FloatingDayPanelBrush", "#FFFDFC"),
                 ("FloatingDayHeaderBrush", "#FFF6D9"),
                 ("FloatingDayNoteInputBrush", "#FFF6D9"),
+                ("FloatingDayPlushGlowBrush", "#B9794E"),
                 ("FloatingDayCinnamorollDockBrush", "#FFF0D2")
             }.All(pair => HasExpectedColor(pair.Item1, pair.Item2));
 
@@ -1056,6 +1123,7 @@ internal static class ValidationReport
                 ("FloatingNightPanelBrush", "#3A2B1E"),
                 ("FloatingNightHeaderBrush", "#4A3524"),
                 ("FloatingNightNoteInputBrush", "#F7E1B3"),
+                ("FloatingNightPlushGlowBrush", "#E9B36D"),
                 ("FloatingNightCinnamorollDockBrush", "#55452A")
             }.All(pair => HasExpectedColor(pair.Item1, pair.Item2));
 

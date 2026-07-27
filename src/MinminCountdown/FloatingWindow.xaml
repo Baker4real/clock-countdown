@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:MinminCountdown"
         Title="敏敏子悬浮窗"
-        Width="480"
+        Width="520"
         SizeToContent="Height"
         WindowStyle="None"
         ResizeMode="NoResize"
@@ -14,21 +14,21 @@
         WindowStartupLocation="Manual">
   <Grid x:Name="TaskWrap" Margin="0">
     <Border x:Name="FloatingThemeBackdrop"
-            Margin="20,24"
+            Margin="18,58,18,22"
             Background="{DynamicResource FloatingDayBackdropBrush}"
             BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-            BorderThickness="1"
-            CornerRadius="20"
+            BorderThickness="2"
+            CornerRadius="28"
             IsHitTestVisible="False" />
     <Border x:Name="TaskCard"
-            Margin="36,38"
-            Padding="16,34"
+            Margin="32,112,32,42"
+            Padding="18,20"
             Background="{DynamicResource FloatingDayPanelBrush}"
             BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-            BorderThickness="1"
-            CornerRadius="14">
+            BorderThickness="2"
+            CornerRadius="22">
       <Border.Effect>
-        <DropShadowEffect Color="#6F4A3C" BlurRadius="18" ShadowDepth="3" Opacity="0.16" />
+        <DropShadowEffect Color="#6F4A3C" BlurRadius="22" ShadowDepth="5" Opacity="0.18" />
       </Border.Effect>
       <Grid>
         <Grid.RowDefinitions>
@@ -39,11 +39,11 @@
         </Grid.RowDefinitions>
         <Border x:Name="FloatingHeaderSurface"
                 Grid.Row="0"
-                Padding="8,7"
+                Padding="12,8"
                 Background="{DynamicResource FloatingDayHeaderBrush}"
                 BorderBrush="{DynamicResource FloatingDayBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="9">
+                CornerRadius="14">
           <Grid>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
@@ -54,8 +54,9 @@
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="FloatingTitle"
                        Text="倒计时"
-                       FontSize="16"
-                       FontWeight="SemiBold"
+                       Margin="76,0,0,0"
+                       FontSize="18"
+                       FontWeight="Bold"
                        Foreground="{DynamicResource FloatingHeaderTextBrush}"
                        VerticalAlignment="Center" />
             <ToggleButton x:Name="FloatingCountdownsButton"
@@ -87,8 +88,9 @@
           </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1"
-                      Margin="0,12,0,0"
+        <ScrollViewer x:Name="FloatingRowsScroller"
+                      Grid.Row="1"
+                      Margin="0,12,90,0"
                       MaxHeight="410"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
@@ -97,7 +99,7 @@
 
         <Border x:Name="FloatingNoteEntry"
                 Grid.Row="2"
-                Margin="0,10,0,0"
+                Margin="0,10,90,0"
                 Padding="10"
                 Background="{DynamicResource FloatingDayNoteInputBrush}"
                 BorderBrush="{DynamicResource FloatingDayBorderBrush}"
@@ -199,64 +201,56 @@
 
         <TextBlock x:Name="FloatingIncome"
                    Grid.Row="3"
-                   Margin="0,10,0,0"
+                   Margin="0,10,90,0"
                    Foreground="{DynamicResource FloatingMutedBrush}" />
       </Grid>
     </Border>
 
-    <Border x:Name="MyMelodyPlushDock"
-            Width="76"
-            Height="76"
-            Margin="6,-2,0,0"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Top"
-            Panel.ZIndex="2"
-            Background="{DynamicResource FloatingDayMyMelodyDockBrush}"
-            BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-            BorderThickness="1"
-            CornerRadius="22"
+    <Canvas x:Name="FloatingPlushScene"
+            Panel.ZIndex="3"
             IsHitTestVisible="False">
-      <Image x:Name="PlushTopLeft"
-             Width="72"
-             Height="72"
-             IsHitTestVisible="False"
-             Stretch="Uniform" />
-    </Border>
-    <Border x:Name="CinnamorollPlushDock"
-            Width="76"
-            Height="76"
-            Margin="0,-2,6,0"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Top"
-            Panel.ZIndex="2"
-            Background="{DynamicResource FloatingDayCinnamorollDockBrush}"
-            BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-            BorderThickness="1"
-            CornerRadius="22"
-            IsHitTestVisible="False">
-      <Image x:Name="PlushTopRight"
-             Width="72"
-             Height="72"
-             IsHitTestVisible="False"
-             Stretch="Uniform" />
-    </Border>
-    <Border x:Name="KuromiPlushDock"
-            Width="76"
-            Height="76"
-            Margin="0,0,6,-2"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Bottom"
-            Panel.ZIndex="2"
-            Background="{DynamicResource FloatingDayKuromiDockBrush}"
-            BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-            BorderThickness="1"
-            CornerRadius="22"
-            IsHitTestVisible="False">
-      <Image x:Name="PlushBottomRight"
-             Width="72"
-             Height="72"
-             IsHitTestVisible="False"
-             Stretch="Uniform" />
-    </Border>
+      <Border x:Name="MyMelodyPlushAnchor"
+              Canvas.Left="0"
+              Canvas.Top="32"
+              Width="128"
+              Height="128"
+              Background="Transparent"
+              BorderThickness="0"
+              IsHitTestVisible="False">
+        <Image x:Name="PlushTopLeft"
+               Width="128"
+               Height="128"
+               IsHitTestVisible="False"
+               Stretch="Uniform" />
+      </Border>
+      <Border x:Name="CinnamorollPlushAnchor"
+              Canvas.Right="0"
+              Canvas.Top="32"
+              Width="128"
+              Height="128"
+              Background="Transparent"
+              BorderThickness="0"
+              IsHitTestVisible="False">
+        <Image x:Name="PlushTopRight"
+               Width="128"
+               Height="128"
+               IsHitTestVisible="False"
+               Stretch="Uniform" />
+      </Border>
+      <Border x:Name="KuromiPlushAnchor"
+              Canvas.Right="0"
+              Canvas.Bottom="0"
+              Width="132"
+              Height="132"
+              Background="Transparent"
+              BorderThickness="0"
+              IsHitTestVisible="False">
+        <Image x:Name="PlushBottomRight"
+               Width="132"
+               Height="132"
+               IsHitTestVisible="False"
+               Stretch="Uniform" />
+      </Border>
+    </Canvas>
   </Grid>
 </Window>

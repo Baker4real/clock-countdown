@@ -6,7 +6,7 @@
 
 - 悬浮窗可选择精确到天、小时、分钟或秒，统一显示“天 / 小时 / 分钟 / 秒”单位
 - 截止时间统一按 `China Standard Time` 处理
-- 主窗口和桌面悬浮窗使用统一的自动暖黄日夜主题：北京时间 07:00（含）至 19:00（不含）为旧版暖白、蜜桃与便签黄色，其他时段为同一体系的深琥珀/暖棕；日间悬浮窗使用参考图派生的无文字外框、标题栏、卡片与三角色 raster 层，夜间恢复同一布局下的矢量表面与独立角色锚点，工作区、弹层和提醒前景同步切换并保持可读对比度
+- 主窗口和桌面悬浮窗使用统一的自动暖黄日夜主题：北京时间 07:00（含）至 19:00（不含）为暖白、蜜桃与便签黄色，其他时段为同一体系的深琥珀/暖棕；悬浮窗唯一视觉基线是 `520 x 390` 参考图复刻版，日间使用无文字外框、标题栏、卡片与三角色 raster 层，夜间使用同一构图的暖棕主题变体与独立角色锚点，工作区、弹层和提醒前景同步切换并保持可读对比度
 - 同时保存和展示多个具名倒计时
 - 倒计时与便签共用同一管理窗口和桌面悬浮入口；便签可新增、编辑正文、年月日日期和标签、勾选完成、删除。完整管理窗口把未完成与已完成项目各自收拢为独立分组，组内按较新日期和同日较新添加项优先显示；状态分组及每个日期分组都可独立收起、展开，未完成默认展开，已完成默认折叠
 - 每条便签可选择“不提醒 / 仅一次 / 重复提醒”，首次提醒日期可跨天；重复提醒支持常用间隔或自定义 1 到 1440 分钟，一次性提醒错过后会在下次启动补发
@@ -37,10 +37,10 @@
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入与跨进程 mutex
 - `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序
-- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 16 个应用资产
+- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 10 个现役应用资产
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
-- `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归基线；生产入口不再调用
+- `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归夹具；只保留在仓库和部署验证包中，不安装到运行目录，生产入口不调用
 - `Countdown.Core.psm1`：北京时间换算与倒计时核心逻辑
 - `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
@@ -51,7 +51,7 @@
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
 - `countdown-icon.ico`：窗口和桌面启动器图标
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口使用的三张官方透明角色立绘
-- `assets/floating-plush/*.png`：桌面悬浮窗使用的官方商品玩偶、参考图派生角色姿态及日间无文字 raster 组件；来源、处理边界、哈希与视觉证据见 `assets/floating-plush/SOURCES.md`
+- `assets/floating-plush/*.png`：复刻版使用的三张参考图派生角色姿态和四张日间无文字 raster 组件，以及仅供旧 PowerShell 回归的商品姿态夹具；正式 `app` 只发布前七项，来源、处理边界、哈希与视觉证据见 `assets/floating-plush/SOURCES.md`
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试

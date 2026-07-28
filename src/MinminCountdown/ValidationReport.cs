@@ -908,8 +908,6 @@ internal static class ValidationReport
             referenceWindow.Left = -20_000;
             referenceWindow.Top = -20_000;
             referenceWindow.UpdateTime(referenceUtc);
-            referenceWindow.UpdateLayout();
-            PumpDispatcher();
 
             var root = Required<Grid>(referenceWindow, "TaskWrap");
             var backdrop = Required<Border>(referenceWindow, "FloatingThemeBackdrop");
@@ -918,6 +916,7 @@ internal static class ValidationReport
             var rows = Required<StackPanel>(referenceWindow, "FloatingRows");
             var income = Required<TextBlock>(referenceWindow, "FloatingIncome");
             var plushScene = Required<Canvas>(referenceWindow, "FloatingPlushScene");
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             var actualWidth = root.ActualWidth;
             var actualHeight = root.ActualHeight;
             var actualBackdrop = Normalize(BoundsIn(backdrop, root), actualWidth, actualHeight);
@@ -1002,35 +1001,30 @@ internal static class ValidationReport
             var userCountdownDeleted = referenceSession.TryDeleteCountdown(
                 "reference-july",
                 out _);
-            PumpDispatcher();
-            referenceWindow.UpdateLayout();
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             viewportStates.Add(
                 CaptureFloatingViewportState("one-countdown", referenceWindow, root, rows));
 
             referenceWindow.UpdateTime(referenceUtc.AddHours(8));
-            PumpDispatcher();
-            referenceWindow.UpdateLayout();
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             viewportStates.Add(
                 CaptureFloatingViewportState("zero-countdowns", referenceWindow, root, rows));
 
             referenceWindow.UpdateTime(referenceUtc);
             Required<ToggleButton>(referenceWindow, "FloatingNotesButton")
                 .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            PumpDispatcher();
-            referenceWindow.UpdateLayout();
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             viewportStates.Add(
                 CaptureFloatingViewportState("six-multiline-notes", referenceWindow, root, rows));
 
             Required<ComboBox>(referenceWindow, "FloatingReminder").SelectedIndex = 2;
-            PumpDispatcher();
-            referenceWindow.UpdateLayout();
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             viewportStates.Add(
                 CaptureFloatingViewportState("repeating-reminder", referenceWindow, root, rows));
 
             var bodyScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
             bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
-            PumpDispatcher();
-            referenceWindow.UpdateLayout();
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             viewportStates.Add(
                 CaptureFloatingViewportState("scrolled-notes", referenceWindow, root, rows));
 
@@ -1196,6 +1190,89 @@ internal static class ValidationReport
     private static Rect BoundsIn(FrameworkElement element, Visual ancestor) =>
         element.TransformToAncestor(ancestor)
             .TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
+
+    private static void WaitForStableFloatingReferenceLayout(
+        FloatingWindow window,
+        Grid root,
+        StackPanel rows,
+        int expectedRowCount)
+    {
+        const int maximumPasses = 10;
+        const int requiredStablePasses = 2;
+        const double layoutTolerance = 0.01;
+        double[]? previous = null;
+        var stablePasses = 0;
+
+        for (var pass = 0; pass < maximumPasses; pass++)
+        {
+            PumpDispatcher();
+            window.UpdateLayout();
+            PumpDispatcher();
+
+            var fixedTargets = new FrameworkElement[]
+            {
+                Required<Border>(window, "FloatingThemeBackdrop"),
+                Required<Border>(window, "TaskCard"),
+                Required<Border>(window, "FloatingHeaderSurface"),
+                Required<Canvas>(window, "FloatingPlushScene")
+            };
+            var rowTargets = rows.Children.OfType<FrameworkElement>().ToArray();
+            var renderedCardCount = rows.Children.OfType<Border>().Count();
+            var targets = fixedTargets.Concat(rowTargets).ToArray();
+            var visibleImages = Descendants<Image>(root)
+                .Where(image => image.IsVisible)
+                .ToArray();
+            var ready =
+                renderedCardCount == expectedRowCount &&
+                root.ActualWidth > 0 &&
+                root.ActualHeight > 0 &&
+                root.IsMeasureValid &&
+                root.IsArrangeValid &&
+                targets.All(target =>
+                    target.ActualWidth > 0 &&
+                    target.ActualHeight > 0 &&
+                    target.IsMeasureValid &&
+                    target.IsArrangeValid) &&
+                visibleImages.Length > 0 &&
+                visibleImages.All(image =>
+                    image.ActualWidth > 0 &&
+                    image.ActualHeight > 0 &&
+                    image.Source is BitmapSource source &&
+                    source.PixelWidth > 0 &&
+                    source.PixelHeight > 0);
+            var current = new List<double>
+            {
+                root.ActualWidth,
+                root.ActualHeight
+            };
+            foreach (var target in targets)
+            {
+                var bounds = BoundsIn(target, root);
+                current.Add(bounds.X);
+                current.Add(bounds.Y);
+                current.Add(bounds.Width);
+                current.Add(bounds.Height);
+            }
+
+            var currentVector = current.ToArray();
+            var unchanged =
+                previous is not null &&
+                previous.Length == currentVector.Length &&
+                previous.Zip(currentVector)
+                    .All(pair => Math.Abs(pair.First - pair.Second) <= layoutTolerance);
+            stablePasses = ready && unchanged ? stablePasses + 1 : 0;
+            if (stablePasses >= requiredStablePasses)
+            {
+                return;
+            }
+
+            previous = currentVector;
+        }
+
+        throw new InvalidOperationException(
+            $"悬浮窗固定参考场景在 {maximumPasses} 轮调度后仍未稳定：" +
+            $"期望卡片 {expectedRowCount}，实际卡片 {rows.Children.OfType<Border>().Count()}。");
+    }
 
     private static FloatingViewportState CaptureFloatingViewportState(
         string name,

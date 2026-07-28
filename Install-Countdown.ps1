@@ -38,8 +38,33 @@ $floatingPlushAssets = @(
     'assets\floating-plush\component-day-card-blank.png',
     'assets\floating-plush\component-day-mascots.png'
 )
+$currentFloatingRuntimeAssets = @(
+    'app\assets\floating-plush\floating-plush-mymelody-reference.png',
+    'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+    'app\assets\floating-plush\floating-plush-kuromi-reference.png',
+    'app\assets\floating-plush\component-day-outer-shell.png',
+    'app\assets\floating-plush\component-day-header-blank.png',
+    'app\assets\floating-plush\component-day-card-blank.png',
+    'app\assets\floating-plush\component-day-mascots.png'
+)
+$legacyFloatingRegressionAssets = @(
+    'assets\floating-plush\floating-plush-mymelody-front.png',
+    'assets\floating-plush\floating-plush-mymelody-pose.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'assets\floating-plush\floating-plush-kuromi-front.png',
+    'assets\floating-plush\floating-plush-kuromi-pose.png'
+)
+$retiredRuntimeFiles = @('Countdown.App.psm1') + $floatingPlushAssets + @(
+    'app\assets\floating-plush\floating-plush-mymelody-front.png',
+    'app\assets\floating-plush\floating-plush-mymelody-pose.png',
+    'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'app\assets\floating-plush\floating-plush-kuromi-front.png',
+    'app\assets\floating-plush\floating-plush-kuromi-pose.png'
+)
 $expected = @{
-    'Build-CountdownApplication.ps1' = 'B7085A9D093576D9067DADEED6490A3A1ABA8C96EFA7E4B691064A63F738DFCE'
+    'Build-CountdownApplication.ps1' = 'D9F7A2F5C4F502358BDEC97D87F0B7D9A868CECC988B6150F2D43A3273BC611E'
     'Countdown.App.psm1' = '6F40387744A2DF43A41A6A95B3DD02AF748CE7C3B00F532FC1588FB33B5994AF'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = '89E7E2E7EE9255F6583D7E6421F8F7924B7E2543956EF502FB7136E6FBCD0590'
@@ -47,14 +72,14 @@ $expected = @{
     'Countdown.Runtime.psm1' = 'EE71577AF288212BC7A4031A64E3C9379A5F92A8091FB965E28BC871A42C1B19'
     'Countdown.Settings.psm1' = 'A502C003D155A95D529766777F6B68763D421B6056F76C32E556C0EC79DEA736'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '4BF0C61BAC7C1BB3AC9FB503F59035364835E36F2084F88A1C8E56B09D47B251'
-    'Countdown.Ui.Tests.ps1' = '37E14AB7E240F0C2330497E90FB89A7AF22F9A35194E133707A8906C3F17310A'
-    'Countdown.CSharp.Tests.ps1' = '296BBD045D5A992ECE0A49EA05498148EC108EB4A11B7D24A686F14EB6C2DE0C'
+    'Countdown.Core.Tests.ps1' = '80AFEBF36E4CD9EB45940F12F9029DA46F456DEE27041AD853D35B280D8F81E0'
+    'Countdown.Ui.Tests.ps1' = '910550F8F94E39B2845F9C07AC088E7D5476684F5053509553C1D599434CCFB3'
+    'Countdown.CSharp.Tests.ps1' = '2667E7E647CC7E0396DFC52E0691C6C1019750146E0746DF370852B4494ED154'
     '敏敏子倒计时.ps1' = '2729F74658E74E1F2A655E706E9F5A47F34699B1D0BD0492D5A6079930FF64D5'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'verification\MinminCountdown.Verification.exe' = 'A95D71C30D8E8E598B20B1A0EF1BB04ED7CB2AFF493D27E43783A0104BBD04AA'
-    'app\MinminCountdown.exe' = '692E774E6FA63E2BAA09E1FA071213A5DEF0AF2383882121FF465C699A8D30F1'
+    'app\MinminCountdown.exe' = '50835B829FC7074592965A93710345B163A7DCEFBD5BA74FC90648F38AAB293D'
     'sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
     'sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
     'sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
@@ -74,14 +99,8 @@ $expected = @{
     'app\assets\sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
     'app\assets\sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
     'app\assets\sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
-    'app\assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
-    'app\assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
     'app\assets\floating-plush\floating-plush-mymelody-reference.png' = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
-    'app\assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
-    'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
     'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png' = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
-    'app\assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
-    'app\assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
     'app\assets\floating-plush\floating-plush-kuromi-reference.png' = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
     'app\assets\floating-plush\component-day-outer-shell.png' = 'A4F2F78163F8AA5217C4161F0EE2BFB924686E8BED5768C527F3B5C7D6CC4924'
     'app\assets\floating-plush\component-day-header-blank.png' = '857B570F1CD47C29F1C2744251DE1B1C7B4D9D921944BB79E974B0B60B26C1B1'
@@ -89,7 +108,6 @@ $expected = @{
     'app\assets\floating-plush\component-day-mascots.png' = 'D000285BFFC2CBCF3411C11407FF691E531A8602E9D3E8F3FD68EBFC4ADC0726'
 }
 $applicationFiles = @(
-    'Countdown.App.psm1',
     'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',
     'Countdown.Notes.psm1',
@@ -101,14 +119,8 @@ $applicationFiles = @(
     'app\assets\sanrio-official-mymelody.png',
     'app\assets\sanrio-official-cinnamoroll.png',
     'app\assets\sanrio-official-kuromi.png',
-    'app\assets\floating-plush\floating-plush-mymelody-front.png',
-    'app\assets\floating-plush\floating-plush-mymelody-pose.png',
     'app\assets\floating-plush\floating-plush-mymelody-reference.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
     'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
-    'app\assets\floating-plush\floating-plush-kuromi-front.png',
-    'app\assets\floating-plush\floating-plush-kuromi-pose.png',
     'app\assets\floating-plush\floating-plush-kuromi-reference.png',
     'app\assets\floating-plush\component-day-outer-shell.png',
     'app\assets\floating-plush\component-day-header-blank.png',
@@ -118,20 +130,7 @@ $applicationFiles = @(
     'countdown-icon.ico',
     'sanrio-official-mymelody.png',
     'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png',
-    'assets\floating-plush\floating-plush-mymelody-front.png',
-    'assets\floating-plush\floating-plush-mymelody-pose.png',
-    'assets\floating-plush\floating-plush-mymelody-reference.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
-    'assets\floating-plush\floating-plush-kuromi-front.png',
-    'assets\floating-plush\floating-plush-kuromi-pose.png',
-    'assets\floating-plush\floating-plush-kuromi-reference.png',
-    'assets\floating-plush\component-day-outer-shell.png',
-    'assets\floating-plush\component-day-header-blank.png',
-    'assets\floating-plush\component-day-card-blank.png',
-    'assets\floating-plush\component-day-mascots.png'
+    'sanrio-official-kuromi.png'
 )
 
 foreach ($entry in $expected.GetEnumerator()) {
@@ -152,6 +151,9 @@ if ($ValidateOnly) {
         VerifiedFiles = $expected.Count
         OfficialCharacterAssets = $officialCharacterAssets
         FloatingPlushAssets = $floatingPlushAssets
+        CurrentFloatingRuntimeAssets = $currentFloatingRuntimeAssets
+        LegacyFloatingRegressionAssets = $legacyFloatingRegressionAssets
+        RetiredRuntimeFiles = $retiredRuntimeFiles
         Transactional = $true
         DeferredCommitSupported = $true
     } | ConvertTo-Json
@@ -352,6 +354,12 @@ try {
             New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
             [void] (Assert-CountdownInstallPathOnDDrive -Path $destination)
             Copy-Item -LiteralPath $source -Destination $destination -Force
+        }
+        foreach ($file in $retiredRuntimeFiles) {
+            $retiredPath = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $install $file)
+            if (Test-Path -LiteralPath $retiredPath -PathType Leaf) {
+                Remove-Item -LiteralPath $retiredPath -Force
+            }
         }
 
         $appPath = Join-Path $install '敏敏子倒计时.ps1'

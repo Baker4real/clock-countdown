@@ -9,7 +9,9 @@
 - 大耳狗可摆姿势玩偶：<https://www.sanrio.com/products/cinnamoroll-posable-standing-display-plush-medium>
 - 库洛米可摆姿势玩偶：<https://www.sanrio.com/products/kuromi-posable-standing-display-plush-medium>
 
-## 本地文件
+## 旧 PowerShell 回归夹具
+
+以下六张商品素材只供 `Countdown.App.psm1` 的兼容回归使用，不属于现役悬浮窗视觉基线，不复制到正式 `app`，也不安装到运行目录。
 
 | 文件 | 官方原图 |
 | --- | --- |
@@ -20,9 +22,11 @@
 | `floating-plush-kuromi-front.png` | `zz-2506411531_KU_--1_1600x.jpg` |
 | `floating-plush-kuromi-pose.png` | `zz-2506411531_KU_--6_1600x.jpg` |
 
-以上六张商品素材都由对应官方商品图做了非生成式的连通白底去除、裁切与 256 x 256 缩放；未使用生图或重绘。
+以上六张商品素材都由对应官方商品图做了非生成式的连通白底去除、裁切与 256 x 256 缩放；未使用生图或重绘。它们留在部署验证包中只为保持旧 PowerShell 回归可执行，不能作为后续视觉实现的参考目标。
 
 ## 参考图派生姿态
+
+以下三张角色姿态与后述四张无文字组件共同组成现役 `520 x 390` 复刻版，也是悬浮窗后续修改的唯一视觉基线。
 
 - 参考图：`D:\Codex\.codex\run-evidence\nodesek-image-generation\20260727\floating-window-three-mascots-integration.png`
 - 参考图生成方式：Nodesek `gpt-image-2` 图片编辑接口；请求元数据保存在同目录的 `floating-window-three-mascots-integration.metadata.json`。

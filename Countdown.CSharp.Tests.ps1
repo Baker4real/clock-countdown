@@ -56,6 +56,35 @@ function Assert-Equal {
     }
 }
 
+if (-not ('MinminCountdown.Tests.BundleAssetProbe' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace MinminCountdown.Tests;
+
+public static class BundleAssetProbe
+{
+    public static string[] FindExactPayloads(string bundlePath, string[] payloadPaths)
+    {
+        var bundle = File.ReadAllBytes(bundlePath);
+        var matches = new List<string>();
+        foreach (var payloadPath in payloadPaths)
+        {
+            var payload = File.ReadAllBytes(payloadPath);
+            if (bundle.AsSpan().IndexOf(payload) >= 0)
+            {
+                matches.Add(Path.GetFileName(payloadPath));
+            }
+        }
+
+        return matches.ToArray();
+    }
+}
+'@
+}
+
 $verificationRunner = Join-Path $PSScriptRoot 'verification\MinminCountdown.Verification.exe'
 $application = Join-Path $PSScriptRoot 'app\MinminCountdown.exe'
 $adapter = Join-Path $PSScriptRoot '敏敏子倒计时.ps1'
@@ -75,12 +104,41 @@ $dayRasterComponentFiles = @(
     'component-day-card-blank.png',
     'component-day-mascots.png'
 )
-foreach ($file in $dayRasterComponentFiles) {
+$currentFloatingRuntimeAssetFiles = @(
+    'floating-plush-mymelody-reference.png',
+    'floating-plush-cinnamoroll-reference.png',
+    'floating-plush-kuromi-reference.png'
+) + $dayRasterComponentFiles
+foreach ($file in $currentFloatingRuntimeAssetFiles) {
     $publishedComponent = Join-Path $PSScriptRoot "app\assets\floating-plush\$file"
     if (-not (Test-Path -LiteralPath $publishedComponent -PathType Leaf)) {
-        throw "C# 发布缺少日间 raster 组件：$publishedComponent"
+        throw "C# 发布缺少复刻版悬浮窗资产：$publishedComponent"
     }
 }
+$retiredFloatingRuntimeAssetFiles = @(
+    'floating-plush-mymelody-front.png',
+    'floating-plush-mymelody-pose.png',
+    'floating-plush-cinnamoroll-front.png',
+    'floating-plush-cinnamoroll-pose.png',
+    'floating-plush-kuromi-front.png',
+    'floating-plush-kuromi-pose.png'
+)
+foreach ($file in $retiredFloatingRuntimeAssetFiles) {
+    $retiredPublishedAsset = Join-Path $PSScriptRoot "app\assets\floating-plush\$file"
+    if (Test-Path -LiteralPath $retiredPublishedAsset -PathType Leaf) {
+        throw "C# 发布仍包含已淘汰的旧悬浮窗资产：$retiredPublishedAsset"
+    }
+}
+$retiredSourceAssetPaths = @(
+    $retiredFloatingRuntimeAssetFiles | ForEach-Object {
+        Join-Path $PSScriptRoot "assets\floating-plush\$_"
+    }
+)
+$embeddedRetiredAssets = [MinminCountdown.Tests.BundleAssetProbe]::FindExactPayloads(
+    $application,
+    [string[]] $retiredSourceAssetPaths
+)
+Assert-Equal '' ($embeddedRetiredAssets -join ',') 'C# 单文件 EXE 不嵌入已淘汰的旧悬浮窗 PNG'
 if (-not (Test-Path -LiteralPath $adapter -PathType Leaf)) {
     throw "未找到 PowerShell 薄 adapter：$adapter"
 }
@@ -351,12 +409,7 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonTextFits) '设置保存按钮文字完整显示'
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisible) '设置保存按钮完整位于主窗口内'
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisibleAtMinimumWidth) '最小主窗口宽度下设置保存按钮仍完整可见'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushTouchesTaskCard) '悬浮窗三个角色都贴合卡片边缘'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushDoesNotObscureTaskCardContent) '悬浮窗角色不遮挡卡片内容'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushVisibleEdgesMeetCard) '悬浮窗角色可见像素贴合卡片边缘'
     Assert-Equal $true ([bool] $adapterValidation.FloatingPlushUsesReferencePoses) '悬浮窗使用原始三位角色的姿势素材'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushReferenceComposition) '悬浮窗三只原始角色按效果图形成角落融合场景'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushHeaderIntegration) '顶部两只角色压入标题栏空白边缘且不遮挡标题或操作'
     Assert-Equal $true ([bool] $adapterValidation.FloatingPlushAnchorsIntegrateWithPanel) '三个玩偶锚点在面板上方形成不拦截交互的场景层'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceAspectMatches) '悬浮窗参考场景保持 520×390 的 4:3 比例'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferencePanelGeometryMatches) '悬浮窗外框、内容面板与标题栏匹配参考图构图'

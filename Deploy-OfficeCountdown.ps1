@@ -36,15 +36,23 @@ $requiredFiles = @(
     'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
     'assets\floating-plush\floating-plush-kuromi-front.png',
     'assets\floating-plush\floating-plush-kuromi-pose.png',
+    'assets\floating-plush\floating-plush-mymelody-reference.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+    'assets\floating-plush\floating-plush-kuromi-reference.png',
+    'assets\floating-plush\component-day-outer-shell.png',
+    'assets\floating-plush\component-day-header-blank.png',
+    'assets\floating-plush\component-day-card-blank.png',
+    'assets\floating-plush\component-day-mascots.png',
     'app\assets\sanrio-official-mymelody.png',
     'app\assets\sanrio-official-cinnamoroll.png',
     'app\assets\sanrio-official-kuromi.png',
-    'app\assets\floating-plush\floating-plush-mymelody-front.png',
-    'app\assets\floating-plush\floating-plush-mymelody-pose.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'app\assets\floating-plush\floating-plush-kuromi-front.png',
-    'app\assets\floating-plush\floating-plush-kuromi-pose.png',
+    'app\assets\floating-plush\floating-plush-mymelody-reference.png',
+    'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+    'app\assets\floating-plush\floating-plush-kuromi-reference.png',
+    'app\assets\floating-plush\component-day-outer-shell.png',
+    'app\assets\floating-plush\component-day-header-blank.png',
+    'app\assets\floating-plush\component-day-card-blank.png',
+    'app\assets\floating-plush\component-day-mascots.png',
     'Install-Countdown.ps1'
 )
 
@@ -54,7 +62,7 @@ function Get-InstallerHashes {
     $hashes = @{}
     $matches = (Get-Content -Raw -LiteralPath $InstallerPath | Select-String -Pattern "'([^']+)'\s*=\s*'([A-F0-9]{64})'" -AllMatches).Matches
     foreach ($match in $matches) { $hashes[$match.Groups[1].Value] = $match.Groups[2].Value }
-    if ($hashes.Count -ne 34) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
+    if ($hashes.Count -ne 42) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
     $hashes
 }
 
@@ -81,6 +89,10 @@ if ($LASTEXITCODE -ne 0) { throw '无法从当前 main 提交重建 C# 部署产
 
 $installerPath = Join-Path $repoRoot 'Install-Countdown.ps1'
 $expectedHashes = Get-InstallerHashes -InstallerPath $installerPath
+$missingManifestFiles = @($expectedHashes.Keys | Where-Object { $_ -notin $requiredFiles })
+if ($missingManifestFiles.Count -ne 0) {
+    throw "部署文件清单缺少安装器完整性项：$($missingManifestFiles -join ', ')"
+}
 foreach ($file in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $file) -PathType Leaf)) { throw "缺少部署文件：$file" }
 }
@@ -135,7 +147,6 @@ Invoke-OfficeEncodedCommand -ScriptText "`$ErrorActionPreference='Stop'; if (Tes
 if ($LASTEXITCODE -ne 0) { throw '无法上传办公室部署包。' }
 
 $installedFiles = @(
-    'Countdown.App.psm1',
     'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',
     'Countdown.Notes.psm1',
@@ -147,25 +158,43 @@ $installedFiles = @(
     'app\assets\sanrio-official-mymelody.png',
     'app\assets\sanrio-official-cinnamoroll.png',
     'app\assets\sanrio-official-kuromi.png',
+    'app\assets\floating-plush\floating-plush-mymelody-reference.png',
+    'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+    'app\assets\floating-plush\floating-plush-kuromi-reference.png',
+    'app\assets\floating-plush\component-day-outer-shell.png',
+    'app\assets\floating-plush\component-day-header-blank.png',
+    'app\assets\floating-plush\component-day-card-blank.png',
+    'app\assets\floating-plush\component-day-mascots.png',
+    'CountdownLauncher.exe',
+    'countdown-icon.ico',
+    'sanrio-official-mymelody.png',
+    'sanrio-official-cinnamoroll.png',
+    'sanrio-official-kuromi.png'
+)
+$retiredRuntimeFiles = @(
+    'Countdown.App.psm1',
+    'assets\floating-plush\floating-plush-mymelody-front.png',
+    'assets\floating-plush\floating-plush-mymelody-pose.png',
+    'assets\floating-plush\floating-plush-mymelody-reference.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+    'assets\floating-plush\floating-plush-kuromi-front.png',
+    'assets\floating-plush\floating-plush-kuromi-pose.png',
+    'assets\floating-plush\floating-plush-kuromi-reference.png',
+    'assets\floating-plush\component-day-outer-shell.png',
+    'assets\floating-plush\component-day-header-blank.png',
+    'assets\floating-plush\component-day-card-blank.png',
+    'assets\floating-plush\component-day-mascots.png',
     'app\assets\floating-plush\floating-plush-mymelody-front.png',
     'app\assets\floating-plush\floating-plush-mymelody-pose.png',
     'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
     'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
     'app\assets\floating-plush\floating-plush-kuromi-front.png',
-    'app\assets\floating-plush\floating-plush-kuromi-pose.png',
-    'CountdownLauncher.exe',
-    'countdown-icon.ico',
-    'sanrio-official-mymelody.png',
-    'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png',
-    'assets\floating-plush\floating-plush-mymelody-front.png',
-    'assets\floating-plush\floating-plush-mymelody-pose.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'assets\floating-plush\floating-plush-kuromi-front.png',
-    'assets\floating-plush\floating-plush-kuromi-pose.png'
+    'app\assets\floating-plush\floating-plush-kuromi-pose.png'
 )
 $remoteExpectedHashes = ($installedFiles | ForEach-Object { "  '$($_)' = '$($expectedHashes[$_])'" }) -join "`r`n"
+$remoteRetiredRuntimeFiles = ($retiredRuntimeFiles | ForEach-Object { "    '$($_)'" }) -join ",`r`n"
 
 $remoteInstall = @"
 `$ErrorActionPreference = 'Stop'
@@ -223,6 +252,12 @@ $remoteExpectedHashes
   }
   foreach (`$entry in `$expected.GetEnumerator()) {
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path `$install `$entry.Key)).Hash -ne `$entry.Value) { throw "安装后哈希不匹配：`$(`$entry.Key)" }
+  }
+  `$retiredRuntimeFiles = @(
+$remoteRetiredRuntimeFiles
+  )
+  foreach (`$file in `$retiredRuntimeFiles) {
+    if (Test-Path -LiteralPath (Join-Path `$install `$file)) { throw "安装目录仍包含已淘汰悬浮窗文件：`$file" }
   }
   Import-Module (Join-Path `$install 'Countdown.Settings.psm1') -Force
   Import-Module (Join-Path `$source 'Countdown.Runtime.psm1') -Force

@@ -171,8 +171,6 @@ if ((@($validation.FloatingPlushAssetNames) -join ',') -ne ($expectedFloatingRef
     throw "Floating plush characters did not load the three extracted reference assets: $(@($validation.FloatingPlushAssetNames) -join ',')."
 }
 if (-not $validation.FloatingPlushAnchorsIntegrateWithPanel) { throw 'Floating plush scene anchors are not layered above the task panel.' }
-if (-not $validation.FloatingPlushReferenceComposition) { throw 'Floating plush characters do not form the requested three-character reference composition.' }
-if (-not $validation.FloatingPlushHeaderIntegration) { throw 'Top floating plush characters do not press into the header background while keeping title actions clear.' }
 if (-not $validation.FloatingReferenceAspectMatches) { throw 'The floating reference scene is not rendered at the required 520x390 4:3 format.' }
 if (-not $validation.FloatingReferencePanelGeometryMatches) { throw 'The floating frame, content panel, header, or countdown cards do not match the frozen reference geometry.' }
 if (-not $validation.FloatingReferenceMascotGeometryMatches) { throw 'The rendered mascot alpha bounds do not match the frozen reference geometry.' }
@@ -197,8 +195,6 @@ if (-not $validation.FloatingDynamicCardContentRemainsWpf) { throw 'Floating car
 if (-not $validation.FloatingDynamicHeaderControlsRemainWpf) { throw 'Floating title, tabs, or command icons are no longer real WPF controls.' }
 if (-not $validation.FloatingHeaderIconAccessibility) { throw 'The floating icon buttons lost their tooltips or accessible names.' }
 if (-not $validation.FloatingHeaderIconClickCommandsWork) { throw 'The floating open-manager or exit icon button no longer executes its click command.' }
-if (-not $validation.FloatingPlushCardIsUnobscured) { throw 'Floating plush characters overlap the countdown card.' }
-if (-not $validation.FloatingPlushVisibleEdgesMeetCard) { throw 'Floating plush visible edges do not meet the task card.' }
 if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The floating plush task-wrap group exceeds the desktop work area.' }
 if (-not $validation.FloatingTitleTextFits) {
     throw "Floating sticky-note title is clipped: available=$($validation.FloatingTitleTextAvailableWidth), required=$($validation.FloatingTitleTextRequiredWidth)."

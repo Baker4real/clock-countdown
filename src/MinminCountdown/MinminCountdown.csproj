@@ -18,6 +18,12 @@
     <Content Include="..\..\sanrio-official-mymelody.png" Link="assets\sanrio-official-mymelody.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\sanrio-official-cinnamoroll.png" Link="assets\sanrio-official-cinnamoroll.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\sanrio-official-kuromi.png" Link="assets\sanrio-official-kuromi.png" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\assets\floating-plush\*.png" Link="assets\floating-plush\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\floating-plush-mymelody-reference.png" Link="assets\floating-plush\floating-plush-mymelody-reference.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\floating-plush-cinnamoroll-reference.png" Link="assets\floating-plush\floating-plush-cinnamoroll-reference.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\floating-plush-kuromi-reference.png" Link="assets\floating-plush\floating-plush-kuromi-reference.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\component-day-outer-shell.png" Link="assets\floating-plush\component-day-outer-shell.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\component-day-header-blank.png" Link="assets\floating-plush\component-day-header-blank.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\component-day-card-blank.png" Link="assets\floating-plush\component-day-card-blank.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\floating-plush\component-day-mascots.png" Link="assets\floating-plush\component-day-mascots.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

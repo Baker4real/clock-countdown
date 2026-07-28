@@ -37,36 +37,12 @@ $assetManifest = @(
         RelativePath = 'sanrio-official-kuromi.png'
     },
     [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-mymelody-front.png'
-        RelativePath = 'floating-plush\floating-plush-mymelody-front.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-mymelody-pose.png'
-        RelativePath = 'floating-plush\floating-plush-mymelody-pose.png'
-    },
-    [pscustomobject]@{
         Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-mymelody-reference.png'
         RelativePath = 'floating-plush\floating-plush-mymelody-reference.png'
     },
     [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-cinnamoroll-front.png'
-        RelativePath = 'floating-plush\floating-plush-cinnamoroll-front.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-cinnamoroll-pose.png'
-        RelativePath = 'floating-plush\floating-plush-cinnamoroll-pose.png'
-    },
-    [pscustomobject]@{
         Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-cinnamoroll-reference.png'
         RelativePath = 'floating-plush\floating-plush-cinnamoroll-reference.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-kuromi-front.png'
-        RelativePath = 'floating-plush\floating-plush-kuromi-front.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-kuromi-pose.png'
-        RelativePath = 'floating-plush\floating-plush-kuromi-pose.png'
     },
     [pscustomobject]@{
         Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-kuromi-reference.png'
@@ -101,8 +77,26 @@ foreach ($asset in $assetManifest) {
         throw "未找到发布资产：$($asset.Source)"
     }
 }
+$applicationProjectXml = [xml] (Get-Content -Raw -LiteralPath $applicationProject)
+$projectFloatingAssetFiles = @(
+    $applicationProjectXml.SelectNodes('/Project/ItemGroup/Content') |
+        Where-Object { [string] $_.Include -like '*assets\floating-plush*' } |
+        ForEach-Object { [System.IO.Path]::GetFileName([string] $_.Include) }
+)
+$manifestFloatingAssetFiles = @(
+    $assetManifest |
+        Where-Object { $_.RelativePath -like 'floating-plush\*' } |
+        ForEach-Object { Split-Path -Leaf $_.RelativePath }
+)
+if (($projectFloatingAssetFiles -join ',') -ne ($manifestFloatingAssetFiles -join ',')) {
+    throw 'C# 项目必须显式打包七个现役悬浮窗资产，且不得使用通配。'
+}
 
 if ($Clean) {
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
+        throw "未找到受管构建目录清理入口：$safeTreeDelete"
+    }
     $expectedCleanPaths = @(
         [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'app')),
         [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'verification')),
@@ -130,7 +124,20 @@ if ($Clean) {
         if ($resolvedCleanPath -notin $expectedCleanPaths) {
             throw "拒绝清理非受管构建目录：$resolvedCleanPath"
         }
-        Remove-Item -LiteralPath $resolvedCleanPath -Recurse -Force
+        $cleanupJson = & $safeTreeDelete `
+            -Mode BatchPurge `
+            -TargetPaths $resolvedCleanPath `
+            -CapabilityRoot $resolvedCleanPath `
+            -ConfirmApply `
+            -ConfirmPurge `
+            -Json | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            throw "受管构建目录清理失败：$resolvedCleanPath"
+        }
+        $cleanup = $cleanupJson | ConvertFrom-Json
+        if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
+            throw "受管构建目录未完成清理：$resolvedCleanPath"
+        }
     }
 }
 

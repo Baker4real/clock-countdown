@@ -1,5 +1,7 @@
 # 悬浮窗视觉复刻 GitHub 方案调研
 
+> 文档状态：这是 2026-07-28 的方案决策记录。推荐的 raster 静态层与 WPF 动态层路线已经接入，并已通过用户真实运行验收；现役悬浮窗的唯一视觉基线和发布边界以 `AGENTS.md`、`README.md` 为准。下文“推荐落地顺序”保留用于解释当时决策，不是待办清单。
+
 ## 结论先行
 
 截至 2026-07-28，没有找到一个可信的高热度 GitHub 项目或 agent skill，能够把单张参考截图直接生成可维护的 C# WPF/XAML 悬浮窗，并同时保证像素级一致、透明窗行为和现有交互完整。GitHub 上高热度的 screenshot-to-code 项目主要输出 HTML/CSS、Tailwind、React 或 Vue；微软相邻的 Reactor skill 面向实验性的 WinUI 3，而且其 WPF host 仍标为 `coming soon`。两者都不能直接解决当前 WPF 窗口。

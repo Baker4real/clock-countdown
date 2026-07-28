@@ -45,6 +45,10 @@ $assetManifest = @(
         RelativePath = 'floating-plush\floating-plush-mymelody-pose.png'
     },
     [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-mymelody-reference.png'
+        RelativePath = 'floating-plush\floating-plush-mymelody-reference.png'
+    },
+    [pscustomobject]@{
         Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-cinnamoroll-front.png'
         RelativePath = 'floating-plush\floating-plush-cinnamoroll-front.png'
     },
@@ -53,12 +57,36 @@ $assetManifest = @(
         RelativePath = 'floating-plush\floating-plush-cinnamoroll-pose.png'
     },
     [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-cinnamoroll-reference.png'
+        RelativePath = 'floating-plush\floating-plush-cinnamoroll-reference.png'
+    },
+    [pscustomobject]@{
         Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-kuromi-front.png'
         RelativePath = 'floating-plush\floating-plush-kuromi-front.png'
     },
     [pscustomobject]@{
         Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-kuromi-pose.png'
         RelativePath = 'floating-plush\floating-plush-kuromi-pose.png'
+    },
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-kuromi-reference.png'
+        RelativePath = 'floating-plush\floating-plush-kuromi-reference.png'
+    },
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-outer-shell.png'
+        RelativePath = 'floating-plush\component-day-outer-shell.png'
+    },
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-header-blank.png'
+        RelativePath = 'floating-plush\component-day-header-blank.png'
+    },
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-card-blank.png'
+        RelativePath = 'floating-plush\component-day-card-blank.png'
+    },
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-mascots.png'
+        RelativePath = 'floating-plush\component-day-mascots.png'
     }
 )
 

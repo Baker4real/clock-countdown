@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -52,6 +54,31 @@ internal static class ValidationReport
         floating.UpdateLayout();
         floating.Reanchor();
         PumpDispatcher();
+
+        var openManagerButton = Required<Button>(floating, "OpenManagerButton");
+        var closeFloatingButton = Required<Button>(floating, "CloseFloatingButton");
+        var floatingHeaderIconAccessibility =
+            string.Equals(openManagerButton.ToolTip as string, "打开管理窗口", StringComparison.Ordinal) &&
+            string.Equals(closeFloatingButton.ToolTip as string, "退出应用", StringComparison.Ordinal) &&
+            string.Equals(
+                AutomationProperties.GetName(openManagerButton),
+                "打开管理窗口",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                AutomationProperties.GetName(closeFloatingButton),
+                "退出应用",
+                StringComparison.Ordinal);
+        var exitRequested = false;
+        EventHandler exitHandler = (_, _) => exitRequested = true;
+        floating.ExitRequested += exitHandler;
+        main.Hide();
+        openManagerButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        PumpDispatcher();
+        var managerOpenedViaClick = main.IsVisible && main.WindowState == WindowState.Normal;
+        closeFloatingButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        PumpDispatcher();
+        floating.ExitRequested -= exitHandler;
+        var floatingHeaderIconClickCommandsWork = managerOpenedViaClick && exitRequested;
 
         var datePicker = Required<DatePicker>(main, "CountdownDate");
         datePicker.ApplyTemplate();
@@ -225,9 +252,6 @@ internal static class ValidationReport
         var floatingTitle = Required<TextBlock>(floating, "FloatingTitle");
         var floatingTitleFit = MeasureTextFit(floatingTitle);
         var floatingTitleHeightFit = MeasureTextHeightFit(floatingTitle);
-        var floatingTitleBounds = floatingTitle
-            .TransformToAncestor(floating)
-            .TransformBounds(new Rect(new Point(0, 0), floatingTitle.RenderSize));
         floating.ShowWorkspace(originalFloatingWorkspace);
         floating.UpdateLayout();
         var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
@@ -281,7 +305,7 @@ internal static class ValidationReport
         var floatingHeaderBounds = floatingHeaderSurface
             .TransformToAncestor(floating)
             .TransformBounds(new Rect(new Point(0, 0), floatingHeaderSurface.RenderSize));
-        var floatingHeaderForegroundBounds = new[] { floatingTitleBounds }
+        var floatingHeaderForegroundBounds = new[] { TextContentBounds(floatingTitle, floating) }
             .Concat(new FrameworkElement[]
             {
                 Required<ToggleButton>(floating, "FloatingCountdownsButton"),
@@ -292,23 +316,24 @@ internal static class ValidationReport
             .Where(element => element.Visibility == Visibility.Visible &&
                               element.ActualWidth > 0 &&
                               element.ActualHeight > 0)
-            .Select(element => element
-                .TransformToAncestor(floating)
-                .TransformBounds(new Rect(new Point(0, 0), element.RenderSize))))
+            .Select(element => ControlContentBounds((ContentControl)element, floating)))
             .ToArray();
-        var floatingContentBounds = new FrameworkElement[]
-            {
-                Required<ScrollViewer>(floating, "FloatingRowsScroller"),
-                Required<Border>(floating, "FloatingNoteEntry"),
-                Required<TextBlock>(floating, "FloatingIncome")
-            }
-            .Where(element => element.Visibility == Visibility.Visible &&
+        var floatingRowsForContent = Required<StackPanel>(floating, "FloatingRows");
+        var floatingNoteEntryForContent = Required<Border>(floating, "FloatingNoteEntry");
+        var floatingTextBounds = Descendants<TextBlock>(floatingRowsForContent)
+            .Concat(Descendants<TextBlock>(floatingNoteEntryForContent))
+            .Append(Required<TextBlock>(floating, "FloatingIncome"))
+            .Where(element => element.IsVisible &&
                               element.ActualWidth > 0 &&
                               element.ActualHeight > 0)
-            .Select(element => element
-                .TransformToAncestor(floating)
-                .TransformBounds(new Rect(new Point(0, 0), element.RenderSize)))
-            .ToArray();
+            .Select(element => TextContentBounds(element, floating));
+        var floatingControlBounds = Descendants<Control>(floatingRowsForContent)
+            .Concat(Descendants<Control>(floatingNoteEntryForContent))
+            .Where(element => element.IsVisible &&
+                              element.ActualWidth > 0 &&
+                              element.ActualHeight > 0)
+            .Select(element => BoundsIn(element, floating));
+        var floatingContentBounds = floatingTextBounds.Concat(floatingControlBounds).ToArray();
         var plushDecorations = new[]
         {
             Required<Image>(floating, "PlushTopLeft"),
@@ -322,22 +347,21 @@ internal static class ValidationReport
             (Anchor: Required<Border>(floating, "KuromiPlushAnchor"), Image: plushDecorations[2])
         };
         var floatingPlushScene = Required<Canvas>(floating, "FloatingPlushScene");
-        var plushBounds = plushDecorations
-            .Select(image => image
-                .TransformToAncestor(floating)
-                .TransformBounds(new Rect(new Point(0, 0), image.RenderSize)))
-            .ToArray();
-        var visiblePlushBounds = plushDecorations
-            .Select(image => VisibleImageBounds(image, floating))
-            .ToArray();
+        var renderedPlushScene = CapturePlushScene(floatingPlushScene);
+        var visiblePlushBounds = renderedPlushScene.Bounds;
         var topPlushBounds = visiblePlushBounds.Take(2).ToArray();
-        var plushBridgesTaskCardEdges = plushBounds.All(bounds =>
+        var plushBridgesTaskCardEdges = visiblePlushBounds.All(bounds =>
         {
-            var overlap = Rect.Intersect(bounds, taskCardBounds);
+            if (bounds is not { } visible)
+            {
+                return false;
+            }
+
+            var overlap = Rect.Intersect(visible, taskCardBounds);
             return overlap.Width >= 12 &&
                    overlap.Height >= 12 &&
-                   overlap.Width < bounds.Width &&
-                   overlap.Height < bounds.Height;
+                   (overlap.Width < visible.Width ||
+                    overlap.Height < visible.Height);
         });
         var visiblePlushDoesNotObscureTaskCardContent = visiblePlushBounds.All(bounds =>
             bounds is { } visible && !floatingContentBounds.Any(visible.IntersectsWith));
@@ -359,7 +383,7 @@ internal static class ValidationReport
                 !pair.Anchor.IsHitTestVisible &&
                 pair.Anchor.BorderThickness.Equals(new Thickness(0)));
         var plushCharactersAreProminent = visiblePlushBounds.All(bounds =>
-            bounds is { } visible && Math.Min(visible.Width, visible.Height) >= 84);
+            bounds is { } visible && visible.Width >= 96 && visible.Height >= 72);
         var topPlushPressIntoHeaderBackground = topPlushBounds.All(bounds =>
         {
             if (bounds is not { } visible)
@@ -370,9 +394,9 @@ internal static class ValidationReport
             var overlap = Rect.Intersect(visible, floatingHeaderBounds);
             return overlap.Width >= 16 && overlap.Height >= 6;
         });
-        var topPlushKeepHeaderForegroundClear = topPlushBounds.All(bounds =>
-            bounds is { } visible &&
-            !floatingHeaderForegroundBounds.Any(visible.IntersectsWith));
+        var topPlushKeepHeaderForegroundClear =
+            topPlushBounds.All(bounds => bounds is not null) &&
+            AlphaAvoids(renderedPlushScene, floatingHeaderForegroundBounds, 32);
         var plushHeaderIntegration =
             topPlushPressIntoHeaderBackground &&
             topPlushKeepHeaderForegroundClear;
@@ -387,9 +411,9 @@ internal static class ValidationReport
             topRight.Top < taskCardBounds.Top &&
             topRight.Bottom >= taskCardBounds.Top + 4 &&
             bottomRight.Right >= taskCardBounds.Right - 8 &&
-            bottomRight.Bottom >= taskCardBounds.Bottom - 8 &&
             bottomRight.Left <= taskCardBounds.Right - 4 &&
-            bottomRight.Top <= taskCardBounds.Bottom - 4;
+            bottomRight.Top <= taskCardBounds.Top + (taskCardBounds.Height * 0.55) &&
+            bottomRight.Bottom < taskCardBounds.Bottom - 16;
         var plushReferenceComposition =
             floating.UsesReferencePlushPoses &&
             plushAnchorsIntegrateWithPanel &&
@@ -404,6 +428,7 @@ internal static class ValidationReport
             floating.Left >= workArea.Left &&
             floating.Top >= workArea.Top;
         var floatingHeightConstrained = floating.MaxHeight <= workArea.Height;
+        var floatingReferenceExercise = RunFloatingReferenceExercise(main, assetRoot);
         var mainThemeExercise = RunMainThemeExercise(theme, main, session.UtcNow);
         var floatingThemeExercise = floating.RunThemeBoundaryExercise();
         var tagPopupFollowsDayNightTheme = ValidateTagPopupThemeTransition(theme, selector, session.UtcNow);
@@ -504,7 +529,10 @@ internal static class ValidationReport
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
             ["FloatingThemePlushGlowColors"] = floatingThemeExercise.PlushGlowColors,
+            ["FloatingMascotPresentationModes"] = floatingThemeExercise.MascotPresentationModes,
             ["FloatingThemeUsesChinaStandardTime"] = floatingThemeExercise.UsesChinaStandardTime,
+            ["FloatingRasterMascotBoundaryStatesMatch"] =
+                floatingThemeExercise.RasterMascotBoundaryStatesMatch,
             ["FloatingThemeTextContrast"] = floatingThemeExercise.TextContrast,
             ["FloatingPlushSceneFollowsDayNightTheme"] =
                 floatingThemeExercise.PlushSceneFollowsDayNightTheme,
@@ -677,9 +705,31 @@ internal static class ValidationReport
             ["FloatingPlushCount"] = floating.PlushCount,
             ["FloatingPlushDecorationsAreNonInteractive"] = floating.PlushDecorationsAreNonInteractive,
             ["FloatingPlushUsesReferencePoses"] = floating.UsesReferencePlushPoses,
+            ["FloatingPlushAssetNames"] = floating.PlushAssetNames,
             ["FloatingPlushAnchorsIntegrateWithPanel"] = plushAnchorsIntegrateWithPanel,
             ["FloatingPlushReferenceComposition"] = plushReferenceComposition,
             ["FloatingPlushHeaderIntegration"] = plushHeaderIntegration,
+            ["FloatingReferenceAspectMatches"] = floatingReferenceExercise.AspectMatches,
+            ["FloatingReferencePanelGeometryMatches"] = floatingReferenceExercise.PanelGeometryMatches,
+            ["FloatingReferenceMascotGeometryMatches"] = floatingReferenceExercise.MascotGeometryMatches,
+            ["FloatingReferenceContentSafeAreaMatches"] = floatingReferenceExercise.ContentSafeAreaMatches,
+            ["FloatingReferenceContentOverlapCount"] = floatingReferenceExercise.ContentOverlapCount,
+            ["FloatingReferenceContentOverlapTargets"] = floatingReferenceExercise.ContentOverlapTargets,
+            ["FloatingReferenceCaptureWritten"] = floatingReferenceExercise.CaptureWritten,
+            ["FloatingReferenceScenarioMatches"] = floatingReferenceExercise.ScenarioMatches,
+            ["FloatingReferenceViewportStatesMatch"] = floatingReferenceExercise.ViewportStatesMatch,
+            ["FloatingDayRasterComponentAssetNames"] = floating.DayRasterComponentAssetNames,
+            ["FloatingDayRasterShellAndHeaderLoaded"] = floating.DayRasterShellAndHeaderLoaded,
+            ["FloatingRasterSurfacesFollowDayNightTheme"] =
+                floatingThemeExercise.SurfacesFollowDayNightTheme,
+            ["FloatingDayRasterDecorationsAreNonInteractive"] = floating.DayRasterDecorationsAreNonInteractive,
+            ["FloatingDayRasterCardStatesMatch"] = floatingReferenceExercise.RasterCardStatesMatch,
+            ["FloatingDynamicCardContentRemainsWpf"] = floatingReferenceExercise.DynamicCardContentRemainsWpf,
+            ["FloatingDynamicHeaderControlsRemainWpf"] = floating.DynamicHeaderControlsRemainWpf,
+            ["FloatingHeaderIconAccessibility"] = floatingHeaderIconAccessibility,
+            ["FloatingHeaderIconClickCommandsWork"] = floatingHeaderIconClickCommandsWork,
+            ["FloatingReferenceActualSize"] = floatingReferenceExercise.ActualSize,
+            ["FloatingReferenceCapturePath"] = floatingReferenceExercise.CapturePath,
             ["FloatingPlushCardIsUnobscured"] = visiblePlushDoesNotObscureTaskCardContent,
             ["FloatingPlushTouchesTaskCard"] = plushBridgesTaskCardEdges,
             ["FloatingPlushDoesNotObscureTaskCardContent"] = plushDoesNotObscureTaskCardContent,
@@ -760,6 +810,711 @@ internal static class ValidationReport
         floating.Hide();
         main.Hide();
         return report.ToDictionary();
+    }
+
+    private static FloatingReferenceExerciseResult RunFloatingReferenceExercise(
+        MainWindow manager,
+        string assetRoot)
+    {
+        const int referenceWidth = 1448;
+        const int referenceHeight = 1086;
+        const int captureWidth = 520;
+        const int captureHeight = 390;
+        const string referenceSha256 =
+            "7B28C015B28E8FCAB3BBA6D88E61ACFECC8A9B1B0252AA56431C8C2DCF30CB95";
+        var expectedBackdrop = new NormalizedRect(0.0511, 0.1381, 0.8867, 0.7947);
+        var expectedPanel = new NormalizedRect(0.0863, 0.1851, 0.8232, 0.7053);
+        var expectedHeader = new NormalizedRect(0.0994, 0.1851, 0.8101, 0.1593);
+        var expectedCards = new[]
+        {
+            new NormalizedRect(0.1153, 0.3775, 0.7728, 0.1611),
+            new NormalizedRect(0.1153, 0.5608, 0.7728, 0.1593)
+        };
+        var expectedMascots = new[]
+        {
+            new NormalizedRect(0.0138, 0.0157, 0.2617, 0.2413),
+            new NormalizedRect(0.7100, 0.0387, 0.2666, 0.1980),
+            new NormalizedRect(0.7845, 0.5295, 0.2155, 0.2845)
+        };
+        var referenceBeijing = new DateTimeOffset(2030, 7, 15, 11, 11, 0, TimeSpan.FromHours(8));
+        var referenceUtc = referenceBeijing.ToUniversalTime();
+        var temporaryRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-floating-reference-{Guid.NewGuid():N}");
+        var settingsPath = Path.Combine(temporaryRoot, "settings.json");
+        var holidayDirectory = Path.Combine(temporaryRoot, "holiday-cache");
+        var holidayPath = Path.Combine(holidayDirectory, "2030.json");
+        FloatingWindow? referenceWindow = null;
+
+        try
+        {
+            Directory.CreateDirectory(holidayDirectory);
+            var notes = Enumerable.Range(1, 6)
+                .Select(index => new NoteRecord(
+                    $"reference-note-{index}",
+                    $"固定视口便签 {index}\n第二行用于验证多行内容和滚动",
+                    "2030-07-15",
+                    false,
+                    Array.Empty<string>(),
+                    index == 1
+                        ? new RepeatingReminder(
+                            referenceUtc.AddHours(1),
+                            new ReminderInterval(30))
+                        : NoReminder.Instance))
+                .ToArray();
+            var settings = new CountdownSettings(
+                new[]
+                {
+                    new CountdownRecord(
+                        "reference-july",
+                        "七月倒计时",
+                        referenceUtc.AddDays(4).AddHours(13).AddMinutes(18).AddSeconds(59),
+                        Array.Empty<string>())
+                },
+                notes,
+                Array.Empty<TagRecord>(),
+                new CountdownPreferences(
+                    "Second",
+                    5255.85m,
+                    new TimeSpan(9, 0, 0),
+                    new TimeSpan(18, 0, 0)));
+            File.WriteAllText(settingsPath, SettingsContract.SerializeCanonical(settings));
+            var days = Enumerable.Range(0, 365)
+                .Select(offset => new
+                {
+                    date = new DateTime(2030, 1, 1).AddDays(offset)
+                        .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    is_workday = true
+                })
+                .ToArray();
+            File.WriteAllText(holidayPath, JsonSerializer.Serialize(new { days }));
+
+            var referenceSession = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: new ValidationClock(referenceUtc)));
+            using var referenceCalendar = new HolidayCalendar(temporaryRoot);
+            referenceCalendar.InitializeAsync(2030, CancellationToken.None).GetAwaiter().GetResult();
+            referenceWindow = new FloatingWindow(referenceSession, referenceCalendar, manager, assetRoot)
+            {
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0.01
+            };
+            referenceWindow.Show();
+            PumpDispatcher();
+            referenceWindow.Left = -20_000;
+            referenceWindow.Top = -20_000;
+            referenceWindow.UpdateTime(referenceUtc);
+            referenceWindow.UpdateLayout();
+            PumpDispatcher();
+
+            var root = Required<Grid>(referenceWindow, "TaskWrap");
+            var backdrop = Required<Border>(referenceWindow, "FloatingThemeBackdrop");
+            var panel = Required<Border>(referenceWindow, "TaskCard");
+            var header = Required<Border>(referenceWindow, "FloatingHeaderSurface");
+            var rows = Required<StackPanel>(referenceWindow, "FloatingRows");
+            var income = Required<TextBlock>(referenceWindow, "FloatingIncome");
+            var plushScene = Required<Canvas>(referenceWindow, "FloatingPlushScene");
+            var actualWidth = root.ActualWidth;
+            var actualHeight = root.ActualHeight;
+            var actualBackdrop = Normalize(BoundsIn(backdrop, root), actualWidth, actualHeight);
+            var actualPanel = Normalize(BoundsIn(panel, root), actualWidth, actualHeight);
+            var actualHeader = Normalize(BoundsIn(header, root), actualWidth, actualHeight);
+            var actualCards = rows.Children.OfType<Border>()
+                .Select(card => Normalize(BoundsIn(card, root), actualWidth, actualHeight))
+                .ToArray();
+            var referencePlushScene = CapturePlushScene(plushScene);
+            var actualMascots = referencePlushScene.Bounds
+                .Select(bounds => bounds is null
+                    ? NormalizedRect.Empty
+                    : Normalize(bounds.Value, actualWidth, actualHeight))
+                .ToArray();
+            var protectedTextBounds = new[]
+                {
+                    new NamedBounds(
+                        "Title",
+                        TextContentBounds(Required<TextBlock>(referenceWindow, "FloatingTitle"), root)),
+                    new NamedBounds("Income", TextContentBounds(income, root))
+                }
+                .Concat(Descendants<TextBlock>(rows)
+                    .Where(element => element.IsVisible &&
+                                      element.ActualWidth > 0 &&
+                                      element.ActualHeight > 0)
+                    .Select((element, index) => new NamedBounds(
+                        $"RowText{index + 1}",
+                        TextContentBounds(element, root))));
+            var protectedControlBounds = new (string Name, ContentControl Control)[]
+                {
+                    ("CountdownsButton", Required<ToggleButton>(referenceWindow, "FloatingCountdownsButton")),
+                    ("NotesButton", Required<ToggleButton>(referenceWindow, "FloatingNotesButton")),
+                    ("OpenManagerButton", Required<Button>(referenceWindow, "OpenManagerButton")),
+                    ("CloseButton", Required<Button>(referenceWindow, "CloseFloatingButton"))
+                }
+                .Where(pair => pair.Control.IsVisible &&
+                               pair.Control.ActualWidth > 0 &&
+                               pair.Control.ActualHeight > 0)
+                .Select(pair => new NamedBounds(
+                    pair.Name,
+                    ControlContentBounds(pair.Control, root)));
+            var protectedContent = protectedTextBounds
+                .Concat(protectedControlBounds)
+                .ToArray();
+            var aspectMatches =
+                actualWidth > 0 &&
+                actualHeight > 0 &&
+                Math.Abs((actualWidth / actualHeight) - (4d / 3d)) <= 0.01;
+            var panelGeometryMatches =
+                Matches(actualBackdrop, expectedBackdrop, 0.007) &&
+                Matches(actualPanel, expectedPanel, 0.007) &&
+                Matches(actualHeader, expectedHeader, 0.007) &&
+                actualCards.Length == expectedCards.Length &&
+                actualCards.Zip(expectedCards)
+                    .All(pair => Matches(pair.First, pair.Second, 0.007));
+            var mascotGeometryMatches =
+                actualMascots.Length == expectedMascots.Length &&
+                actualMascots.Zip(expectedMascots)
+                    .All(pair => Matches(pair.First, pair.Second, 0.011));
+            var contentOverlapTargets = protectedContent
+                .Where(target => !AlphaAvoids(referencePlushScene, new[] { target.Bounds }, 32))
+                .Select(target => target.Name)
+                .ToArray();
+            var contentOverlapCount = contentOverlapTargets.Length;
+            var contentSafeAreaMatches =
+                referencePlushScene.Bounds.Count(bounds => bounds is not null) == 3 &&
+                contentOverlapCount == 0;
+            var scenarioMatches =
+                rows.Children.Count == 2 &&
+                referenceWindow.FloatingCountdownCount == 1 &&
+                referenceWindow.FloatingCountdownTexts.Count == 1 &&
+                string.Equals(referenceWindow.IncomeText, "今日已赚 ￥41.13", StringComparison.Ordinal);
+            var actualCapture = CaptureVisual(root);
+            var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
+            var captureBytes = EncodePng(framedCapture);
+            var captureWritten = captureBytes.Length > 0;
+            var viewportStates = new List<FloatingViewportState>
+            {
+                CaptureFloatingViewportState("two-countdowns", referenceWindow, root, rows)
+            };
+
+            var userCountdownDeleted = referenceSession.TryDeleteCountdown(
+                "reference-july",
+                out _);
+            PumpDispatcher();
+            referenceWindow.UpdateLayout();
+            viewportStates.Add(
+                CaptureFloatingViewportState("one-countdown", referenceWindow, root, rows));
+
+            referenceWindow.UpdateTime(referenceUtc.AddHours(8));
+            PumpDispatcher();
+            referenceWindow.UpdateLayout();
+            viewportStates.Add(
+                CaptureFloatingViewportState("zero-countdowns", referenceWindow, root, rows));
+
+            referenceWindow.UpdateTime(referenceUtc);
+            Required<ToggleButton>(referenceWindow, "FloatingNotesButton")
+                .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            PumpDispatcher();
+            referenceWindow.UpdateLayout();
+            viewportStates.Add(
+                CaptureFloatingViewportState("six-multiline-notes", referenceWindow, root, rows));
+
+            Required<ComboBox>(referenceWindow, "FloatingReminder").SelectedIndex = 2;
+            PumpDispatcher();
+            referenceWindow.UpdateLayout();
+            viewportStates.Add(
+                CaptureFloatingViewportState("repeating-reminder", referenceWindow, root, rows));
+
+            var bodyScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
+            bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
+            PumpDispatcher();
+            referenceWindow.UpdateLayout();
+            viewportStates.Add(
+                CaptureFloatingViewportState("scrolled-notes", referenceWindow, root, rows));
+
+            var viewportStatesMatch =
+                userCountdownDeleted &&
+                viewportStates.Count == 6 &&
+                viewportStates.All(state => state.WindowSizeMatches) &&
+                viewportStates.All(state => state.ContentSafeAreaMatches) &&
+                viewportStates[0].RenderedCardCount == 2 &&
+                viewportStates[1].RenderedCardCount == 1 &&
+                viewportStates[2].RenderedCardCount == 0 &&
+                viewportStates[3].RenderedCardCount == 6 &&
+                viewportStates[3].RenderedMultilineNoteCount == 6 &&
+                viewportStates[4].RepeatingReminderPanelVisible &&
+                viewportStates[4].ScrollableHeight > 0 &&
+                viewportStates[5].ScrollableHeight > 0 &&
+                viewportStates[5].VerticalOffset > 0;
+            var rasterCardStatesMatch =
+                viewportStates[0].RasterCardCount == 2 &&
+                viewportStates[0].RasterCardsShareSource &&
+                viewportStates[1].RasterCardCount == 1 &&
+                viewportStates[1].RasterCardsShareSource &&
+                viewportStates[2].RasterCardCount == 0 &&
+                viewportStates[3].RasterCardCount == 6 &&
+                viewportStates[3].RasterCardsShareSource &&
+                viewportStates[4].RasterCardCount == 6 &&
+                viewportStates[4].RasterCardsShareSource &&
+                viewportStates[5].RasterCardCount == 6 &&
+                viewportStates[5].RasterCardsShareSource;
+            var dynamicCardContentRemainsWpf =
+                viewportStates[0].DynamicTextElementCount >= 4 &&
+                viewportStates[1].DynamicTextElementCount >= 2 &&
+                viewportStates[2].DynamicTextElementCount >= 1 &&
+                viewportStates[3].DynamicTextElementCount >= 6 &&
+                viewportStates[3].DynamicCheckBoxCount == 6;
+            var capturePath = string.Empty;
+            var evidenceDirectory = Environment.GetEnvironmentVariable(
+                "MINMIN_COUNTDOWN_VISUAL_EVIDENCE_DIR");
+            if (!string.IsNullOrWhiteSpace(evidenceDirectory))
+            {
+                Directory.CreateDirectory(evidenceDirectory);
+                var captureName = Environment.GetEnvironmentVariable(
+                    "MINMIN_COUNTDOWN_VISUAL_CAPTURE_NAME");
+                captureName = string.Equals(captureName, "after", StringComparison.OrdinalIgnoreCase)
+                    ? "after"
+                    : "before";
+                capturePath = Path.Combine(evidenceDirectory, $"{captureName}.png");
+                File.WriteAllBytes(capturePath, captureBytes);
+                var referenceImagePath = Environment.GetEnvironmentVariable(
+                    "MINMIN_COUNTDOWN_REFERENCE_IMAGE");
+                if (!string.IsNullOrWhiteSpace(referenceImagePath) &&
+                    File.Exists(referenceImagePath) &&
+                    string.Equals(
+                        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(referenceImagePath))),
+                        referenceSha256,
+                        StringComparison.Ordinal))
+                {
+                    var referenceImage = LoadBitmap(referenceImagePath);
+                    var scaledReference = ScaleToFrame(referenceImage, captureWidth, captureHeight);
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, "reference-scaled.png"),
+                        EncodePng(scaledReference));
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, $"overlay-{captureName}.png"),
+                        EncodePng(Overlay(scaledReference, framedCapture)));
+                    var geometryPath = Path.Combine(evidenceDirectory, "reference-geometry.json");
+                    if (!File.Exists(geometryPath))
+                    {
+                        File.WriteAllText(
+                            geometryPath,
+                            JsonSerializer.Serialize(
+                                new
+                                {
+                                    reference = new
+                                    {
+                                        width = referenceWidth,
+                                        height = referenceHeight,
+                                        sha256 = referenceSha256
+                                    },
+                                    capture = new { width = captureWidth, height = captureHeight },
+                                    normalized = new
+                                    {
+                                        backdrop = expectedBackdrop,
+                                        panel = expectedPanel,
+                                        header = expectedHeader,
+                                        cards = expectedCards,
+                                        mascots = expectedMascots
+                                    },
+                                    tolerances = new { panel = 0.007, mascot = 0.011 }
+                                },
+                                new JsonSerializerOptions { WriteIndented = true }));
+                    }
+
+                    File.WriteAllText(
+                        Path.Combine(evidenceDirectory, $"{captureName}-geometry.json"),
+                        JsonSerializer.Serialize(
+                            new
+                            {
+                                actual = new
+                                {
+                                    width = Math.Round(actualWidth, 2),
+                                    height = Math.Round(actualHeight, 2),
+                                    backdrop = actualBackdrop,
+                                    panel = actualPanel,
+                                    header = actualHeader,
+                                    cards = actualCards,
+                                    mascots = actualMascots
+                                },
+                                checks = new
+                                {
+                                    aspectMatches,
+                                    panelGeometryMatches,
+                                    mascotGeometryMatches,
+                                    contentSafeAreaMatches,
+                                    contentOverlapCount,
+                                    contentOverlapTargets,
+                                    scenarioMatches,
+                                    viewportStatesMatch,
+                                    captureWritten
+                                },
+                                viewportStates
+                            },
+                            new JsonSerializerOptions { WriteIndented = true }));
+                }
+
+                captureWritten =
+                    File.Exists(capturePath) &&
+                    new FileInfo(capturePath).Length > 0;
+            }
+
+            return new FloatingReferenceExerciseResult(
+                aspectMatches,
+                panelGeometryMatches,
+                mascotGeometryMatches,
+                contentSafeAreaMatches,
+                contentOverlapCount,
+                contentOverlapTargets,
+                captureWritten,
+                scenarioMatches,
+                viewportStatesMatch,
+                rasterCardStatesMatch,
+                dynamicCardContentRemainsWpf,
+                new[] { Math.Round(actualWidth, 2), Math.Round(actualHeight, 2) },
+                capturePath);
+        }
+        finally
+        {
+            referenceWindow?.Close();
+            TryDeleteFile(settingsPath);
+            TryDeleteFile(holidayPath);
+            if (Directory.Exists(holidayDirectory))
+            {
+                Directory.Delete(holidayDirectory);
+            }
+
+            if (Directory.Exists(temporaryRoot))
+            {
+                Directory.Delete(temporaryRoot);
+            }
+        }
+    }
+
+    private static Rect BoundsIn(FrameworkElement element, Visual ancestor) =>
+        element.TransformToAncestor(ancestor)
+            .TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
+
+    private static FloatingViewportState CaptureFloatingViewportState(
+        string name,
+        FloatingWindow window,
+        Grid root,
+        StackPanel rows)
+    {
+        var bodyScroller = Required<ScrollViewer>(window, "FloatingBodyScroller");
+        var repeatingReminderPanel = Required<StackPanel>(window, "FloatingReminderIntervalPanel");
+        var bodyViewport = BoundsIn(bodyScroller, root);
+        var protectedHeaderContent = new[]
+            {
+                new NamedBounds(
+                    "Title",
+                    TextContentBounds(Required<TextBlock>(window, "FloatingTitle"), root))
+            }
+            .Concat(new (string Name, ContentControl Control)[]
+            {
+                ("CountdownsButton", Required<ToggleButton>(window, "FloatingCountdownsButton")),
+                ("NotesButton", Required<ToggleButton>(window, "FloatingNotesButton")),
+                ("OpenManagerButton", Required<Button>(window, "OpenManagerButton")),
+                ("CloseButton", Required<Button>(window, "CloseFloatingButton"))
+            }
+            .Select(pair => new NamedBounds(
+                pair.Name,
+                ControlContentBounds(pair.Control, root))));
+        var protectedBodyText = Descendants<TextBlock>(bodyScroller)
+            .Where(element => element.IsVisible &&
+                              element.ActualWidth > 0 &&
+                              element.ActualHeight > 0)
+            .Select((element, index) => new NamedBounds(
+                $"BodyText{index + 1}",
+                Rect.Intersect(TextContentBounds(element, root), bodyViewport)));
+        var protectedBodyControls = Descendants<Control>(bodyScroller)
+            .Where(element => element.IsVisible &&
+                              element.ActualWidth > 0 &&
+                              element.ActualHeight > 0)
+            .Select((element, index) => new NamedBounds(
+                string.IsNullOrWhiteSpace(element.Name)
+                    ? $"BodyControl{index + 1}:{element.GetType().Name}"
+                    : element.Name,
+                Rect.Intersect(BoundsIn(element, root), bodyViewport)));
+        var protectedContent = protectedHeaderContent
+            .Concat(protectedBodyText)
+            .Concat(protectedBodyControls)
+            .Where(target => !target.Bounds.IsEmpty &&
+                             target.Bounds.Width > 0 &&
+                             target.Bounds.Height > 0)
+            .ToArray();
+        var plushScene = CapturePlushScene(
+            Required<Canvas>(window, "FloatingPlushScene"));
+        var contentOverlapTargets = protectedContent
+            .Where(target => !AlphaAvoids(plushScene, new[] { target.Bounds }, 32))
+            .Select(target => target.Name)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var renderedCards = rows.Children.OfType<Border>().ToArray();
+        var rasterSources = renderedCards
+            .Select(card => (card.Background as ImageBrush)?.ImageSource)
+            .ToArray();
+        var rasterCardCount = rasterSources.Count(source =>
+            source is BitmapImage { UriSource: { } uri } &&
+            string.Equals(
+                Path.GetFileName(uri.LocalPath),
+                "component-day-card-blank.png",
+                StringComparison.OrdinalIgnoreCase));
+        var rasterCardsShareSource =
+            rasterSources.Length > 0 &&
+            rasterSources[0] is not null &&
+            rasterSources.All(source => ReferenceEquals(source, rasterSources[0]));
+        return new FloatingViewportState(
+            name,
+            Math.Round(window.ActualWidth, 2),
+            Math.Round(window.ActualHeight, 2),
+            Math.Round(root.ActualWidth, 2),
+            Math.Round(root.ActualHeight, 2),
+            renderedCards.Length,
+            rasterCardCount,
+            rasterCardsShareSource,
+            Descendants<TextBlock>(rows).Count(element => element.IsVisible),
+            Descendants<CheckBox>(rows).Count(element => element.IsVisible),
+            Descendants<TextBlock>(rows).Count(text => text.Text.Contains('\n')),
+            repeatingReminderPanel.IsVisible && repeatingReminderPanel.ActualHeight > 0,
+            Math.Round(bodyScroller.ScrollableHeight, 2),
+            Math.Round(bodyScroller.VerticalOffset, 2),
+            contentOverlapTargets);
+    }
+
+    private static Rect TextContentBounds(TextBlock textBlock, UIElement ancestor)
+    {
+        var origin = textBlock.TranslatePoint(new Point(0, 0), ancestor);
+        var formatted = FormatText(textBlock, VisualTreeHelper.GetDpi(textBlock));
+        var width = Math.Min(
+            textBlock.ActualWidth,
+            formatted.WidthIncludingTrailingWhitespace + Math.Max(0, formatted.OverhangTrailing));
+        var height = Math.Min(
+            textBlock.ActualHeight,
+            formatted.Height + Math.Max(0, formatted.OverhangAfter));
+        return new Rect(
+            Math.Max(0, origin.X - 2),
+            Math.Max(0, origin.Y - 2),
+            width + 4,
+            height + 4);
+    }
+
+    private static Rect ControlContentBounds(ContentControl control, UIElement ancestor)
+    {
+        if (control.Content is FrameworkElement contentElement &&
+            contentElement.IsVisible &&
+            contentElement.ActualWidth > 0 &&
+            contentElement.ActualHeight > 0)
+        {
+            return BoundsIn(contentElement, ancestor);
+        }
+
+        var origin = control.TranslatePoint(new Point(0, 0), ancestor);
+        var text = control.Content?.ToString() ?? string.Empty;
+        var formatted = new FormattedText(
+            text,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            new Typeface(control.FontFamily, control.FontStyle, control.FontWeight, control.FontStretch),
+            control.FontSize,
+            Brushes.Black,
+            VisualTreeHelper.GetDpi(control).PixelsPerDip);
+        var width = Math.Min(control.ActualWidth, formatted.WidthIncludingTrailingWhitespace);
+        var height = Math.Min(control.ActualHeight, formatted.Height);
+        return new Rect(
+            origin.X + Math.Max(0, (control.ActualWidth - width) / 2) - 2,
+            origin.Y + Math.Max(0, (control.ActualHeight - height) / 2) - 2,
+            width + 4,
+            height + 4);
+    }
+
+    private static NormalizedRect Normalize(Rect bounds, double width, double height) =>
+        width <= 0 || height <= 0
+            ? NormalizedRect.Empty
+            : new NormalizedRect(
+                Math.Round(bounds.X / width, 4),
+                Math.Round(bounds.Y / height, 4),
+                Math.Round(bounds.Width / width, 4),
+                Math.Round(bounds.Height / height, 4));
+
+    private static bool Matches(NormalizedRect actual, NormalizedRect expected, double tolerance) =>
+        Math.Abs(actual.X - expected.X) <= tolerance &&
+        Math.Abs(actual.Y - expected.Y) <= tolerance &&
+        Math.Abs(actual.Right - expected.Right) <= tolerance &&
+        Math.Abs(actual.Bottom - expected.Bottom) <= tolerance;
+
+    private static PlushSceneCapture CapturePlushScene(Canvas scene)
+    {
+        var bitmap = CaptureVisual(scene);
+        var stride = bitmap.PixelWidth * 4;
+        var pixels = new byte[stride * bitmap.PixelHeight];
+        bitmap.CopyPixels(pixels, stride, 0);
+        var rightRoiWidth = Math.Min(190, bitmap.PixelWidth);
+        var bottomRoiWidth = Math.Min(180, bitmap.PixelWidth);
+        var topRoiHeight = Math.Min(160, bitmap.PixelHeight);
+        var bottomRoiTop = Math.Min(150, bitmap.PixelHeight);
+        var regions = new[]
+        {
+            new Int32Rect(0, 0, Math.Min(190, bitmap.PixelWidth), topRoiHeight),
+            new Int32Rect(
+                bitmap.PixelWidth - rightRoiWidth,
+                0,
+                rightRoiWidth,
+                topRoiHeight),
+            new Int32Rect(
+                bitmap.PixelWidth - bottomRoiWidth,
+                bottomRoiTop,
+                bottomRoiWidth,
+                bitmap.PixelHeight - bottomRoiTop)
+        };
+        var bounds = regions
+            .Select(region => FindAlphaBounds(pixels, stride, region, 32))
+            .ToArray();
+        return new PlushSceneCapture(bitmap.PixelWidth, bitmap.PixelHeight, pixels, stride, bounds);
+    }
+
+    private static Rect? FindAlphaBounds(
+        byte[] pixels,
+        int stride,
+        Int32Rect region,
+        byte threshold)
+    {
+        var minX = region.X + region.Width;
+        var minY = region.Y + region.Height;
+        var maxX = -1;
+        var maxY = -1;
+        for (var y = region.Y; y < region.Y + region.Height; y++)
+        {
+            for (var x = region.X; x < region.X + region.Width; x++)
+            {
+                if (pixels[(y * stride) + (x * 4) + 3] <= threshold)
+                {
+                    continue;
+                }
+
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+            }
+        }
+
+        return maxX < 0
+            ? null
+            : new Rect(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
+
+    private static bool AlphaAvoids(
+        PlushSceneCapture scene,
+        IEnumerable<Rect> protectedBounds,
+        byte threshold)
+    {
+        foreach (var bounds in protectedBounds)
+        {
+            var left = Math.Clamp((int)Math.Floor(bounds.Left), 0, scene.Width);
+            var top = Math.Clamp((int)Math.Floor(bounds.Top), 0, scene.Height);
+            var right = Math.Clamp((int)Math.Ceiling(bounds.Right), 0, scene.Width);
+            var bottom = Math.Clamp((int)Math.Ceiling(bounds.Bottom), 0, scene.Height);
+            for (var y = top; y < bottom; y++)
+            {
+                for (var x = left; x < right; x++)
+                {
+                    if (scene.Pixels[(y * scene.Stride) + (x * 4) + 3] > threshold)
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static RenderTargetBitmap CaptureVisual(FrameworkElement visual)
+    {
+        var width = Math.Max(1, (int)Math.Ceiling(visual.ActualWidth));
+        var height = Math.Max(1, (int)Math.Ceiling(visual.ActualHeight));
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static RenderTargetBitmap ScaleToFrame(BitmapSource source, int width, int height)
+    {
+        var scale = Math.Min((double)width / source.PixelWidth, (double)height / source.PixelHeight);
+        var targetWidth = source.PixelWidth * scale;
+        var targetHeight = source.PixelHeight * scale;
+        var visual = new DrawingVisual();
+        using (var drawing = visual.RenderOpen())
+        {
+            drawing.DrawImage(
+                source,
+                new Rect(
+                    (width - targetWidth) / 2,
+                    (height - targetHeight) / 2,
+                    targetWidth,
+                    targetHeight));
+        }
+
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static RenderTargetBitmap Overlay(BitmapSource reference, BitmapSource actual)
+    {
+        var visual = new DrawingVisual();
+        using (var drawing = visual.RenderOpen())
+        {
+            var bounds = new Rect(0, 0, reference.PixelWidth, reference.PixelHeight);
+            drawing.DrawImage(reference, bounds);
+            drawing.PushOpacity(0.5);
+            drawing.DrawImage(actual, bounds);
+            drawing.Pop();
+        }
+
+        var bitmap = new RenderTargetBitmap(
+            reference.PixelWidth,
+            reference.PixelHeight,
+            96,
+            96,
+            PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static BitmapSource LoadBitmap(string path)
+    {
+        using var stream = File.OpenRead(path);
+        var decoder = BitmapDecoder.Create(
+            stream,
+            BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+        var bitmap = decoder.Frames[0];
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static byte[] EncodePng(BitmapSource source)
+    {
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
     }
 
     private static Rect? VisibleImageBounds(Image image, UIElement ancestor)
@@ -1694,6 +2449,65 @@ internal static class ValidationReport
         bool ReminderLabelFollowsTheme,
         bool SegmentSelectedTextContrast,
         bool CharacterPanelDocksFollowTheme);
+
+    private sealed record FloatingReferenceExerciseResult(
+        bool AspectMatches,
+        bool PanelGeometryMatches,
+        bool MascotGeometryMatches,
+        bool ContentSafeAreaMatches,
+        int ContentOverlapCount,
+        IReadOnlyList<string> ContentOverlapTargets,
+        bool CaptureWritten,
+        bool ScenarioMatches,
+        bool ViewportStatesMatch,
+        bool RasterCardStatesMatch,
+        bool DynamicCardContentRemainsWpf,
+        IReadOnlyList<double> ActualSize,
+        string CapturePath);
+
+    private sealed record FloatingViewportState(
+        string Name,
+        double WindowWidth,
+        double WindowHeight,
+        double RootWidth,
+        double RootHeight,
+        int RenderedCardCount,
+        int RasterCardCount,
+        bool RasterCardsShareSource,
+        int DynamicTextElementCount,
+        int DynamicCheckBoxCount,
+        int RenderedMultilineNoteCount,
+        bool RepeatingReminderPanelVisible,
+        double ScrollableHeight,
+        double VerticalOffset,
+        IReadOnlyList<string> ContentOverlapTargets)
+    {
+        public bool WindowSizeMatches =>
+            Math.Abs(WindowWidth - 520) <= 0.5 &&
+            Math.Abs(WindowHeight - 390) <= 0.5 &&
+            Math.Abs(RootWidth - 520) <= 0.5 &&
+            Math.Abs(RootHeight - 390) <= 0.5;
+
+        public bool ContentSafeAreaMatches => ContentOverlapTargets.Count == 0;
+    }
+
+    private sealed record NormalizedRect(double X, double Y, double Width, double Height)
+    {
+        public static NormalizedRect Empty { get; } = new(0, 0, 0, 0);
+
+        public double Right => X + Width;
+
+        public double Bottom => Y + Height;
+    }
+
+    private sealed record PlushSceneCapture(
+        int Width,
+        int Height,
+        byte[] Pixels,
+        int Stride,
+        IReadOnlyList<Rect?> Bounds);
+
+    private sealed record NamedBounds(string Name, Rect Bounds);
 
     private sealed class ValidationClock : IClock
     {

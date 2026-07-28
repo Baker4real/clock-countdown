@@ -6,7 +6,7 @@
 
 - 悬浮窗可选择精确到天、小时、分钟或秒，统一显示“天 / 小时 / 分钟 / 秒”单位
 - 截止时间统一按 `China Standard Time` 处理
-- 主窗口和桌面悬浮窗使用统一的自动暖黄日夜主题：北京时间 07:00（含）至 19:00（不含）为旧版暖白、蜜桃与便签黄色，其他时段为同一体系的深琥珀/暖棕；工作区、弹层、提醒前景与悬浮面板会同步切换并保持可读对比度
+- 主窗口和桌面悬浮窗使用统一的自动暖黄日夜主题：北京时间 07:00（含）至 19:00（不含）为旧版暖白、蜜桃与便签黄色，其他时段为同一体系的深琥珀/暖棕；日间悬浮窗使用参考图派生的无文字外框、标题栏、卡片与三角色 raster 层，夜间恢复同一布局下的矢量表面与独立角色锚点，工作区、弹层和提醒前景同步切换并保持可读对比度
 - 同时保存和展示多个具名倒计时
 - 倒计时与便签共用同一管理窗口和桌面悬浮入口；便签可新增、编辑正文、年月日日期和标签、勾选完成、删除。完整管理窗口把未完成与已完成项目各自收拢为独立分组，组内按较新日期和同日较新添加项优先显示；状态分组及每个日期分组都可独立收起、展开，未完成默认展开，已完成默认折叠
 - 每条便签可选择“不提醒 / 仅一次 / 重复提醒”，首次提醒日期可跨天；重复提醒支持常用间隔或自定义 1 到 1440 分钟，一次性提醒错过后会在下次启动补发
@@ -27,7 +27,7 @@
 - 悬浮框高度会随显示内容自动收紧；每次内容增减都会重新贴齐工作区右下方并保留任务栏安全间距；倒计时较多时，列表会滚动显示
 - 单实例运行，避免重复窗口
 - 主窗口以低透明度并列显示 Sanrio 官方角色页中的美乐蒂、玉桂狗和库洛米立绘，不混入其他角色；夜间适度提高角色可见度但不遮挡内容
-- 悬浮窗将三只玩偶作为透明、非交互场景层嵌入左上、右上和右下：顶部两只压入标题栏背景而不遮住标题和操作控件，右下玩偶与卡片边缘融合；场景层随日夜主题切换暖色光晕
+- 悬浮窗的参考图静态层全部不参与命中测试；标题、操作控件、动态文字、便签勾选框、滚动和点击区域继续由真实 WPF 控件负责，日间 raster 场景不会把参考图中的示例文字或数值带入运行界面
 - 主窗口立绘的来源与私人使用边界见 [三丽鸥官方背景素材](docs/三丽鸥官方背景素材.md)；悬浮窗玩偶的来源与非生成式处理说明见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
 - 本机滚动诊断日志记录启动、正常退出、窗口就绪、节假日日历状态和致命异常，便于定位隐藏窗口闪退
 
@@ -37,7 +37,7 @@
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入与跨进程 mutex
 - `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序
-- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个应用资产
+- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 16 个应用资产
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归基线；生产入口不再调用
@@ -51,13 +51,14 @@
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
 - `countdown-icon.ico`：窗口和桌面启动器图标
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口使用的三张官方透明角色立绘
-- `assets/floating-plush/*.png`：桌面悬浮窗左上、右上、右下贴边使用的三维玩偶素材；来源与非生成式处理说明见 `assets/floating-plush/SOURCES.md`
+- `assets/floating-plush/*.png`：桌面悬浮窗使用的官方商品玩偶、参考图派生角色姿态及日间无文字 raster 组件；来源、处理边界、哈希与视觉证据见 `assets/floating-plush/SOURCES.md`
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
 迁移决策、module/seam 划分和候选语言比较见 [架构与语言迁移](docs/架构与语言迁移.md)。
+悬浮窗参考图复刻的 GitHub 候选、采用路线、数值边界和明确不采用项见 [悬浮窗视觉复刻 GitHub 方案调研](docs/悬浮窗视觉复刻%20GitHub%20方案调研.md)。
 
 ## 本机验证
 

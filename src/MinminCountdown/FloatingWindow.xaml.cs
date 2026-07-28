@@ -24,6 +24,8 @@ public sealed partial class FloatingWindow : Window
     private Brush _floatingSurfaceBrush = Brushes.White;
     private Brush _floatingNoteCardBrush = Brushes.White;
     private Brush _floatingBorderBrush = Brushes.Transparent;
+    private BitmapImage? _dayCardRaster;
+    private readonly Effect? _vectorTaskCardEffect;
 
     internal FloatingWindow(
         ApplicationSession session,
@@ -36,6 +38,7 @@ public sealed partial class FloatingWindow : Window
         _calendar = calendar;
         _manager = manager;
         InitializeComponent();
+        _vectorTaskCardEffect = TaskCard.Effect;
         LoadAssets(assetRoot);
         ConfigureControls();
         WireEvents();
@@ -55,9 +58,7 @@ public sealed partial class FloatingWindow : Window
 
     internal bool UsesDedicatedThemePalette =>
         _activeTheme is not null &&
-        ReferenceEquals(TaskCard.Background, FindResource(_activeTheme.PanelBrushKey)) &&
-        ReferenceEquals(FloatingHeaderSurface.Background, FindResource(_activeTheme.HeaderBrushKey)) &&
-        ReferenceEquals(FloatingThemeBackdrop.Background, FindResource(_activeTheme.BackdropBrushKey)) &&
+        SurfacesFollowActiveTheme &&
         ReferenceEquals(FloatingTitle.Foreground, FindResource(_activeTheme.HeaderTextBrushKey)) &&
         ReferenceEquals(FloatingReminderLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
         ReferenceEquals(FloatingReminderIntervalLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
@@ -69,10 +70,54 @@ public sealed partial class FloatingWindow : Window
         ReferenceEquals(CloseFloatingButton.Style, FindResource("FloatingHeaderIconButton")) &&
         PlushSceneFollowsActiveTheme;
 
+    private bool SurfacesFollowActiveTheme => _activeTheme?.Mode == ApplicationThemeMode.Day
+        ? FloatingDayRasterScene.Visibility == Visibility.Visible &&
+          IsTransparent(TaskCard.Background) &&
+          IsTransparent(TaskCard.BorderBrush) &&
+          IsTransparent(FloatingHeaderSurface.Background) &&
+          IsTransparent(FloatingHeaderSurface.BorderBrush) &&
+          IsTransparent(FloatingThemeBackdrop.Background) &&
+          IsTransparent(FloatingThemeBackdrop.BorderBrush) &&
+          FloatingRows.Margin.Equals(new Thickness(9, 13, 10, 0))
+        : _activeTheme is not null &&
+          ReferenceEquals(TaskCard.Background, FindResource(_activeTheme.PanelBrushKey)) &&
+          ReferenceEquals(FloatingHeaderSurface.Background, FindResource(_activeTheme.HeaderBrushKey)) &&
+          ReferenceEquals(FloatingThemeBackdrop.Background, FindResource(_activeTheme.BackdropBrushKey)) &&
+          FloatingRows.Margin.Equals(new Thickness(8, 13, 11, 0));
+
+    internal IReadOnlyList<string> DayRasterComponentAssetNames =>
+    [
+        AssetName(DayOuterShellImage.Source),
+        AssetName(DayHeaderImage.Source),
+        AssetName(_dayCardRaster),
+        AssetName(DayMascotsImage.Source)
+    ];
+
+    internal bool DayRasterShellAndHeaderLoaded =>
+        DayOuterShellImage.Source is not null &&
+        DayHeaderImage.Source is not null;
+
+    internal bool DayRasterDecorationsAreNonInteractive =>
+        !FloatingDayRasterScene.IsHitTestVisible &&
+        !DayOuterShellImage.IsHitTestVisible &&
+        !DayHeaderImage.IsHitTestVisible &&
+        !DayMascotsImage.IsHitTestVisible;
+
+    internal bool DynamicHeaderControlsRemainWpf =>
+        VisualTreeHelper.GetParent(FloatingTitle) is Grid &&
+        VisualTreeHelper.GetParent(FloatingCountdownsButton) is Grid &&
+        VisualTreeHelper.GetParent(FloatingNotesButton) is Grid &&
+        VisualTreeHelper.GetParent(OpenManagerButton) is Grid &&
+        VisualTreeHelper.GetParent(CloseFloatingButton) is Grid &&
+        FloatingCountdownsButton.IsHitTestVisible &&
+        FloatingNotesButton.IsHitTestVisible &&
+        OpenManagerButton.IsHitTestVisible &&
+        CloseFloatingButton.IsHitTestVisible;
+
     internal bool UsesReferencePlushPoses =>
-        UsesAsset(PlushTopLeft, "floating-plush-mymelody-pose.png") &&
-        UsesAsset(PlushTopRight, "floating-plush-cinnamoroll-pose.png") &&
-        UsesAsset(PlushBottomRight, "floating-plush-kuromi-pose.png");
+        UsesAsset(PlushTopLeft, "floating-plush-mymelody-reference.png") &&
+        UsesAsset(PlushTopRight, "floating-plush-cinnamoroll-reference.png") &&
+        UsesAsset(PlushBottomRight, "floating-plush-kuromi-reference.png");
 
     private IEnumerable<Image> PlushImages => new[]
     {
@@ -80,6 +125,19 @@ public sealed partial class FloatingWindow : Window
         PlushTopRight,
         PlushBottomRight
     };
+
+    private IEnumerable<Border> PlushAnchors => new[]
+    {
+        MyMelodyPlushAnchor,
+        CinnamorollPlushAnchor,
+        KuromiPlushAnchor
+    };
+
+    internal IReadOnlyList<string> PlushAssetNames => PlushImages
+        .Select(image => image.Source is BitmapImage { UriSource: { } source }
+            ? Path.GetFileName(source.LocalPath)
+            : string.Empty)
+        .ToArray();
 
     private bool PlushSceneFollowsActiveTheme
     {
@@ -91,7 +149,12 @@ public sealed partial class FloatingWindow : Window
             }
 
             var glowColor = ThemeColor(_activeTheme.PlushGlowBrushKey);
-            return PlushImages.All(image =>
+            var expectedPresentation = _activeTheme.Mode == ApplicationThemeMode.Day
+                ? "DayRaster"
+                : "NightAnchors";
+            return string.Equals(MascotPresentationMode(), expectedPresentation, StringComparison.Ordinal) &&
+                   DayMascotsImage.Source is not null &&
+                   PlushImages.All(image =>
                 image.Effect is DropShadowEffect glow &&
                 glow.Color.Equals(glowColor) &&
                 Math.Abs(glow.BlurRadius - _activeTheme.PlushGlowBlurRadius) < 0.01 &&
@@ -233,6 +296,9 @@ public sealed partial class FloatingWindow : Window
         FloatingCountdownsButton.IsChecked = workspace == WorkspaceKind.Countdowns;
         FloatingNotesButton.IsChecked = workspace == WorkspaceKind.Notes;
         FloatingTitle.Text = workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签";
+        FloatingBodyScroller.Margin = workspace == WorkspaceKind.Notes
+            ? new Thickness(0, 0, 76, 0)
+            : new Thickness(0);
         FloatingNoteEntry.Visibility =
             workspace == WorkspaceKind.Notes ? Visibility.Visible : Visibility.Collapsed;
         if (workspace == WorkspaceKind.Notes)
@@ -276,36 +342,53 @@ public sealed partial class FloatingWindow : Window
         var nightPanelColor = string.Empty;
         var dayPlushGlowColor = string.Empty;
         var nightPlushGlowColor = string.Empty;
+        var mascotPresentationModes = new List<string>();
         var textContrast = true;
+        var surfacesFollowDayNightTheme = true;
         var plushSceneFollowsDayNightTheme = true;
 
         foreach (var checkpoint in checkpoints)
         {
             UpdateTime(checkpoint.ToUniversalTime());
-            modes.Add(_activeTheme?.Mode.ToString() ?? string.Empty);
-            if (_activeTheme?.Mode == ApplicationThemeMode.Day)
+            var activeTheme = _activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。");
+            modes.Add(activeTheme.Mode.ToString());
+            mascotPresentationModes.Add(MascotPresentationMode());
+            if (activeTheme.Mode == ApplicationThemeMode.Day)
             {
-                dayPanelColor = BrushColor(TaskCard.Background);
+                dayPanelColor = ThemeColor(activeTheme.PanelBrushKey).ToString();
                 dayPlushGlowColor = PlushGlowColor();
             }
             else
             {
-                nightPanelColor = BrushColor(TaskCard.Background);
+                nightPanelColor = ThemeColor(activeTheme.PanelBrushKey).ToString();
                 nightPlushGlowColor = PlushGlowColor();
             }
 
             textContrast &= HasAccessibleThemeTextContrast;
+            surfacesFollowDayNightTheme &= SurfacesFollowActiveTheme;
             plushSceneFollowsDayNightTheme &= PlushSceneFollowsActiveTheme;
         }
 
         UpdateTime(_session.UtcNow);
         var expectedModes = new[] { "Night", "Day", "Day", "Night" };
+        var expectedMascotPresentationModes = new[]
+        {
+            "NightAnchors",
+            "DayRaster",
+            "DayRaster",
+            "NightAnchors"
+        };
         return new FloatingThemeExerciseResult(
             modes,
             new[] { dayPanelColor, nightPanelColor },
             new[] { dayPlushGlowColor, nightPlushGlowColor },
+            mascotPresentationModes,
             modes.SequenceEqual(expectedModes, StringComparer.Ordinal),
+            mascotPresentationModes.SequenceEqual(
+                expectedMascotPresentationModes,
+                StringComparer.Ordinal),
             textContrast,
+            surfacesFollowDayNightTheme,
             plushSceneFollowsDayNightTheme);
     }
 
@@ -334,12 +417,24 @@ public sealed partial class FloatingWindow : Window
         SetActiveThemeBrush("FloatingNoteInputTextBrush", nextTheme.NoteInputTextBrushKey);
         SetActiveThemeBrush("FloatingErrorBrush", nextTheme.ErrorBrushKey);
         SetActiveThemeBrush("FloatingMutedBrush", nextTheme.MutedBrushKey);
-        TaskCard.Background = ThemeBrush(nextTheme.PanelBrushKey);
-        TaskCard.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
-        FloatingThemeBackdrop.Background = ThemeBrush(nextTheme.BackdropBrushKey);
-        FloatingThemeBackdrop.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
-        FloatingHeaderSurface.Background = ThemeBrush(nextTheme.HeaderBrushKey);
-        FloatingHeaderSurface.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        var useDayRaster = nextTheme.Mode == ApplicationThemeMode.Day;
+        FloatingDayRasterScene.Visibility = useDayRaster ? Visibility.Visible : Visibility.Collapsed;
+        TaskCard.Background = useDayRaster ? Brushes.Transparent : ThemeBrush(nextTheme.PanelBrushKey);
+        TaskCard.BorderBrush = useDayRaster ? Brushes.Transparent : ThemeBrush(nextTheme.BorderBrushKey);
+        TaskCard.Effect = useDayRaster ? null : _vectorTaskCardEffect;
+        FloatingThemeBackdrop.Background = useDayRaster ? Brushes.Transparent : ThemeBrush(nextTheme.BackdropBrushKey);
+        FloatingThemeBackdrop.BorderBrush = useDayRaster ? Brushes.Transparent : ThemeBrush(nextTheme.BorderBrushKey);
+        FloatingHeaderSurface.Background = useDayRaster ? Brushes.Transparent : ThemeBrush(nextTheme.HeaderBrushKey);
+        FloatingHeaderSurface.BorderBrush = useDayRaster ? Brushes.Transparent : ThemeBrush(nextTheme.BorderBrushKey);
+        FloatingRows.Margin = useDayRaster
+            ? new Thickness(9, 13, 10, 0)
+            : new Thickness(8, 13, 11, 0);
+        SetRasterTranslation(FloatingTitle, useDayRaster, -1, -1);
+        SetRasterTranslation(FloatingCountdownsButton, useDayRaster, 0, 1);
+        SetRasterTranslation(FloatingNotesButton, useDayRaster, 0, 1);
+        SetRasterTranslation(OpenManagerButton, useDayRaster, -1, -1);
+        SetRasterTranslation(CloseFloatingButton, useDayRaster, 0, 0);
+        SetRasterTranslation(FloatingIncome, useDayRaster, 2, 3);
         FloatingNoteEntry.Background = ThemeBrush(nextTheme.NoteInputBrushKey);
         FloatingNoteEntry.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
         _floatingPrimaryBrush = ThemeBrush(nextTheme.TextBrushKey);
@@ -354,6 +449,15 @@ public sealed partial class FloatingWindow : Window
         FindResource(resourceKey) as Brush ??
         throw new InvalidOperationException($"找不到悬浮窗主题资源：{resourceKey}");
 
+    private static void SetRasterTranslation(
+        UIElement element,
+        bool useDayRaster,
+        double offsetX,
+        double offsetY) =>
+        element.RenderTransform = useDayRaster
+            ? new TranslateTransform(offsetX, offsetY)
+            : Transform.Identity;
+
     private Color ThemeColor(string resourceKey) =>
         ThemeBrush(resourceKey) is SolidColorBrush brush
             ? brush.Color
@@ -361,6 +465,13 @@ public sealed partial class FloatingWindow : Window
 
     private void ApplyPlushSceneTheme(FloatingThemePalette theme)
     {
+        var useDayRaster = theme.Mode == ApplicationThemeMode.Day;
+        DayMascotsImage.Visibility = useDayRaster ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var anchor in PlushAnchors)
+        {
+            anchor.Visibility = useDayRaster ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         var glowColor = ThemeColor(theme.PlushGlowBrushKey);
         foreach (var image in PlushImages)
         {
@@ -381,8 +492,26 @@ public sealed partial class FloatingWindow : Window
             ? glow.Color.ToString()
             : string.Empty;
 
+    private string MascotPresentationMode()
+    {
+        var anchors = PlushAnchors.ToArray();
+        if (DayMascotsImage.Visibility == Visibility.Visible &&
+            anchors.All(anchor => anchor.Visibility == Visibility.Collapsed))
+        {
+            return "DayRaster";
+        }
+
+        if (DayMascotsImage.Visibility == Visibility.Collapsed &&
+            anchors.All(anchor => anchor.Visibility == Visibility.Visible))
+        {
+            return "NightAnchors";
+        }
+
+        return "Mixed";
+    }
+
     private void SetActiveThemeBrush(string activeResourceKey, string sourceResourceKey) =>
-        Application.Current.Resources[activeResourceKey] = ThemeBrush(sourceResourceKey);
+        Resources[activeResourceKey] = ThemeBrush(sourceResourceKey);
 
     private bool HeaderControlsHaveAccessibleStates()
     {
@@ -429,6 +558,9 @@ public sealed partial class FloatingWindow : Window
         brush is SolidColorBrush solidColorBrush
             ? solidColorBrush.Color.ToString()
             : string.Empty;
+
+    private static bool IsTransparent(Brush brush) =>
+        brush is SolidColorBrush solidColorBrush && solidColorBrush.Color.A == 0;
 
     private void ConfigureControls()
     {
@@ -650,15 +782,26 @@ public sealed partial class FloatingWindow : Window
 
     private Border FloatingCard(UIElement child, Brush background)
     {
+        var useDayRaster = _activeTheme?.Mode == ApplicationThemeMode.Day &&
+                           _dayCardRaster is not null;
+        child.RenderTransform = useDayRaster
+            ? new TranslateTransform(-1, 1)
+            : Transform.Identity;
         return new Border
         {
             Child = child,
-            Margin = new Thickness(0, 0, 0, 7),
-            Padding = new Thickness(12),
-            CornerRadius = new CornerRadius(12),
-            Background = background,
-            BorderBrush = _floatingBorderBrush,
-            BorderThickness = new Thickness(1)
+            MinHeight = 63,
+            Margin = new Thickness(0, 0, 0, 8),
+            Padding = useDayRaster ? new Thickness(13) : new Thickness(12),
+            CornerRadius = useDayRaster ? new CornerRadius(0) : new CornerRadius(12),
+            Background = useDayRaster
+                ? new ImageBrush(_dayCardRaster)
+                {
+                    Stretch = Stretch.Fill
+                }
+                : background,
+            BorderBrush = useDayRaster ? Brushes.Transparent : _floatingBorderBrush,
+            BorderThickness = useDayRaster ? new Thickness(0) : new Thickness(1)
         };
     }
 
@@ -843,25 +986,41 @@ public sealed partial class FloatingWindow : Window
     private void LoadAssets(string assetRoot)
     {
         var plushRoot = Path.Combine(assetRoot, "assets", "floating-plush");
+        DayOuterShellImage.Source = MainWindow.LoadImage(
+            Path.Combine(plushRoot, "component-day-outer-shell.png"));
+        DayHeaderImage.Source = MainWindow.LoadImage(
+            Path.Combine(plushRoot, "component-day-header-blank.png"));
+        _dayCardRaster = MainWindow.LoadImage(
+            Path.Combine(plushRoot, "component-day-card-blank.png"));
+        DayMascotsImage.Source = MainWindow.LoadImage(
+            Path.Combine(plushRoot, "component-day-mascots.png"));
         PlushTopLeft.Source = MainWindow.LoadImage(
-            Path.Combine(plushRoot, "floating-plush-mymelody-pose.png"));
+            Path.Combine(plushRoot, "floating-plush-mymelody-reference.png"));
         PlushTopRight.Source = MainWindow.LoadImage(
-            Path.Combine(plushRoot, "floating-plush-cinnamoroll-pose.png"));
+            Path.Combine(plushRoot, "floating-plush-cinnamoroll-reference.png"));
         PlushBottomRight.Source = MainWindow.LoadImage(
-            Path.Combine(plushRoot, "floating-plush-kuromi-pose.png"));
+            Path.Combine(plushRoot, "floating-plush-kuromi-reference.png"));
     }
 
     private static bool UsesAsset(Image image, string expectedFileName) =>
         image.Source is BitmapImage { UriSource: { } source } &&
         string.Equals(Path.GetFileName(source.LocalPath), expectedFileName, StringComparison.OrdinalIgnoreCase);
+
+    private static string AssetName(ImageSource? source) =>
+        source is BitmapImage { UriSource: { } uri }
+            ? Path.GetFileName(uri.LocalPath)
+            : string.Empty;
 }
 
 internal sealed record FloatingThemeExerciseResult(
     IReadOnlyList<string> BoundaryModes,
     IReadOnlyList<string> PanelColors,
     IReadOnlyList<string> PlushGlowColors,
+    IReadOnlyList<string> MascotPresentationModes,
     bool UsesChinaStandardTime,
+    bool RasterMascotBoundaryStatesMatch,
     bool TextContrast,
+    bool SurfacesFollowDayNightTheme,
     bool PlushSceneFollowsDayNightTheme);
 
 internal sealed record FloatingThemePalette(
@@ -906,9 +1065,9 @@ internal sealed record FloatingThemePalette(
         "FloatingDayTextBrush",
         "FloatingDayMutedBrush",
         "FloatingDayPlushGlowBrush",
-        13,
-        0.22,
-        1);
+        8,
+        0.08,
+        0);
 
     private static readonly FloatingThemePalette Nighttime = new(
         ApplicationThemeMode.Night,

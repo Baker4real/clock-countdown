@@ -4,7 +4,8 @@
         xmlns:local="clr-namespace:MinminCountdown"
         Title="敏敏子悬浮窗"
         Width="520"
-        SizeToContent="Height"
+        Height="390"
+        SizeToContent="Manual"
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -13,19 +14,37 @@
         Topmost="True"
         WindowStartupLocation="Manual">
   <Grid x:Name="TaskWrap" Margin="0">
+    <Canvas x:Name="FloatingDayRasterScene"
+            Panel.ZIndex="0"
+            IsHitTestVisible="False">
+      <Image x:Name="DayOuterShellImage"
+             Width="520"
+             Height="390"
+             IsHitTestVisible="False"
+             Stretch="Fill" />
+      <Image x:Name="DayHeaderImage"
+             Canvas.Left="51"
+             Canvas.Top="72"
+             Width="422"
+             Height="63"
+             IsHitTestVisible="False"
+             Stretch="Fill" />
+    </Canvas>
     <Border x:Name="FloatingThemeBackdrop"
-            Margin="18,58,18,22"
+            Panel.ZIndex="1"
+            Margin="27,54,32,26"
             Background="{DynamicResource FloatingDayBackdropBrush}"
             BorderBrush="{DynamicResource FloatingDayBorderBrush}"
             BorderThickness="2"
             CornerRadius="28"
             IsHitTestVisible="False" />
     <Border x:Name="TaskCard"
-            Margin="32,112,32,42"
-            Padding="18,20"
+            Panel.ZIndex="1"
+            Margin="45,72,47,43"
+            Padding="5,0,0,0"
             Background="{DynamicResource FloatingDayPanelBrush}"
             BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-            BorderThickness="2"
+            BorderThickness="1"
             CornerRadius="24">
       <Border.Effect>
         <DropShadowEffect Color="#6F4A3C" BlurRadius="24" ShadowDepth="4" Opacity="0.16" />
@@ -34,12 +53,11 @@
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Border x:Name="FloatingHeaderSurface"
                 Grid.Row="0"
-                Padding="12,8"
+                Height="62"
+                Padding="12,8,16.5,8"
                 Background="{DynamicResource FloatingDayHeaderBrush}"
                 BorderBrush="{DynamicResource FloatingDayBorderBrush}"
                 BorderThickness="1"
@@ -54,206 +72,239 @@
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="FloatingTitle"
                        Text="倒计时"
-                       Margin="72,0,0,0"
-                       MinWidth="76"
-                       MinHeight="28"
-                       FontSize="18"
+                       Margin="16,0,0,0"
+                       MinWidth="92"
+                       MinHeight="34"
+                       FontSize="22"
                        FontWeight="Bold"
-                       LineHeight="26"
+                       LineHeight="32"
                        LineStackingStrategy="BlockLineHeight"
                        Foreground="{DynamicResource FloatingHeaderTextBrush}"
                        VerticalAlignment="Center" />
             <ToggleButton x:Name="FloatingCountdownsButton"
                           Grid.Column="1"
-                          Width="88"
+                          Width="85"
                           Content="倒计时"
                           Style="{DynamicResource FloatingHeaderSegmentButton}" />
             <ToggleButton x:Name="FloatingNotesButton"
                           Grid.Column="2"
                           Width="72"
-                          Margin="5,0,0,0"
+                          Margin="8,0,0,0"
                           Content="便签"
                           Style="{DynamicResource FloatingHeaderSegmentButton}" />
             <Button x:Name="OpenManagerButton"
                     Grid.Column="3"
                     Width="38"
-                    Margin="5,0,0,0"
-                    Content="⌂"
+                    Margin="9,0,0,0"
+                    VerticalAlignment="Center"
                     ToolTip="打开管理窗口"
-                    Style="{DynamicResource FloatingHeaderIconButton}" />
+                    Style="{DynamicResource FloatingHeaderIconButton}">
+              <Viewbox Width="16" Height="16" Margin="0,1,0,0">
+                <Path Data="M 2,8 L 9,2 L 16,8 L 16,16 L 2,16 Z"
+                      Fill="Transparent"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                      StrokeThickness="1.8"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round" />
+              </Viewbox>
+            </Button>
             <Button x:Name="CloseFloatingButton"
                     Grid.Column="4"
                     Width="38"
-                    Margin="5,0,0,0"
-                    Content="×"
+                    Margin="9,0,0,0"
+                    VerticalAlignment="Center"
                     Foreground="{DynamicResource FloatingHeaderDangerBrush}"
                     ToolTip="退出应用"
-                    Style="{DynamicResource FloatingHeaderIconButton}" />
+                    Style="{DynamicResource FloatingHeaderIconButton}">
+              <Viewbox Width="12" Height="12" Margin="0,2,0,0">
+                <Path Data="M 2,2 L 12,12 M 12,2 L 2,12"
+                      Fill="Transparent"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                      StrokeThickness="2"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round" />
+              </Viewbox>
+            </Button>
           </Grid>
         </Border>
 
-        <ScrollViewer x:Name="FloatingRowsScroller"
+        <ScrollViewer x:Name="FloatingBodyScroller"
                       Grid.Row="1"
-                      Margin="0,12,90,0"
-                      MaxHeight="410"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-          <StackPanel x:Name="FloatingRows" />
-        </ScrollViewer>
-
-        <Border x:Name="FloatingNoteEntry"
-                Grid.Row="2"
-                Margin="0,10,90,0"
-                Padding="12"
-                Background="{DynamicResource FloatingDayNoteInputBrush}"
-                BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-                BorderThickness="1"
-                CornerRadius="12"
-                Visibility="Collapsed">
           <StackPanel>
-            <TextBox x:Name="FloatingNoteText" MaxLength="140" />
-            <Grid Margin="0,8,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <DatePicker x:Name="FloatingNoteDate" />
-              <ComboBox x:Name="FloatingReminder"
-                        Grid.Column="1"
-                        Width="116"
-                        Margin="8,0,0,0" />
-            </Grid>
-            <Grid x:Name="FloatingReminderSchedule"
-                  Margin="0,8,0,0"
-                  Visibility="Collapsed">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-              </Grid.RowDefinitions>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <TextBlock x:Name="FloatingReminderLabel"
-                         Grid.ColumnSpan="4"
-                         Margin="0,0,0,5"
-                         VerticalAlignment="Center"
-                         Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                         Text="首次提醒（北京时间）" />
-              <DatePicker x:Name="FloatingReminderDate"
-                          Grid.Row="1"
-                          ToolTip="首次提醒日期（北京时间）" />
-              <ComboBox x:Name="FloatingReminderHour"
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Width="64"
-                        Margin="8,0,0,0"
-                        ToolTip="首次提醒小时" />
-              <TextBlock x:Name="FloatingReminderSeparator"
-                         Grid.Row="1"
-                         Grid.Column="2"
-                         Margin="4,0"
-                         VerticalAlignment="Center"
-                         Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                         Text=":" />
-              <ComboBox x:Name="FloatingReminderMinute"
-                         Grid.Row="1"
-                         Grid.Column="3"
-                         Width="64"
-                         ToolTip="首次提醒分钟" />
-              <StackPanel x:Name="FloatingReminderIntervalPanel"
-                          Grid.Row="2"
-                          Grid.ColumnSpan="4"
-                          Margin="0,8,0,0"
-                          Orientation="Horizontal"
-                          Visibility="Collapsed">
-                <TextBlock x:Name="FloatingReminderIntervalLabel"
-                           Margin="0,0,8,0"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                           Text="重复间隔" />
-                <ComboBox x:Name="FloatingReminderInterval" Width="116" />
-                <TextBox x:Name="FloatingCustomReminderMinutes"
-                         Width="70"
-                         Margin="8,0,0,0"
-                         MaxLength="4"
-                         Visibility="Collapsed" />
-              </StackPanel>
-            </Grid>
-            <Grid Margin="0,8,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <local:TagSelector x:Name="FloatingTags" HorizontalAlignment="Stretch" />
-              <Button x:Name="FloatingAddNote"
-                      Grid.Column="1"
-                      Width="68"
-                      Margin="8,0,0,0"
-                      Content="添加"
-                      Style="{DynamicResource PrimaryButton}" />
-            </Grid>
-            <TextBlock x:Name="FloatingNoteMessage"
-                       Margin="2,6,2,0"
-                       Foreground="{DynamicResource FloatingErrorBrush}"
-                       TextWrapping="Wrap" />
-          </StackPanel>
-        </Border>
+            <StackPanel x:Name="FloatingRows"
+                        Margin="8,13,11,0" />
 
-        <TextBlock x:Name="FloatingIncome"
-                   Grid.Row="3"
-                   Margin="0,10,90,0"
-                   Foreground="{DynamicResource FloatingMutedBrush}" />
+            <Border x:Name="FloatingNoteEntry"
+                    Margin="8,10,72,0"
+                    Padding="12"
+                    Background="{DynamicResource FloatingDayNoteInputBrush}"
+                    BorderBrush="{DynamicResource FloatingDayBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Visibility="Collapsed">
+              <StackPanel>
+                <TextBox x:Name="FloatingNoteText" MaxLength="140" />
+                <Grid Margin="0,8,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <DatePicker x:Name="FloatingNoteDate" />
+                  <ComboBox x:Name="FloatingReminder"
+                            Grid.Column="1"
+                            Width="116"
+                            Margin="8,0,0,0" />
+                </Grid>
+                <Grid x:Name="FloatingReminderSchedule"
+                      Margin="0,8,0,0"
+                      Visibility="Collapsed">
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock x:Name="FloatingReminderLabel"
+                             Grid.ColumnSpan="4"
+                             Margin="0,0,0,5"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource FloatingNoteInputTextBrush}"
+                             Text="首次提醒（北京时间）" />
+                  <DatePicker x:Name="FloatingReminderDate"
+                              Grid.Row="1"
+                              ToolTip="首次提醒日期（北京时间）" />
+                  <ComboBox x:Name="FloatingReminderHour"
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Width="64"
+                            Margin="8,0,0,0"
+                            ToolTip="首次提醒小时" />
+                  <TextBlock x:Name="FloatingReminderSeparator"
+                             Grid.Row="1"
+                             Grid.Column="2"
+                             Margin="4,0"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource FloatingNoteInputTextBrush}"
+                             Text=":" />
+                  <ComboBox x:Name="FloatingReminderMinute"
+                             Grid.Row="1"
+                             Grid.Column="3"
+                             Width="64"
+                             ToolTip="首次提醒分钟" />
+                  <StackPanel x:Name="FloatingReminderIntervalPanel"
+                              Grid.Row="2"
+                              Grid.ColumnSpan="4"
+                              Margin="0,8,0,0"
+                              Orientation="Horizontal"
+                              Visibility="Collapsed">
+                    <TextBlock x:Name="FloatingReminderIntervalLabel"
+                               Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource FloatingNoteInputTextBrush}"
+                               Text="重复间隔" />
+                    <ComboBox x:Name="FloatingReminderInterval" Width="116" />
+                    <TextBox x:Name="FloatingCustomReminderMinutes"
+                             Width="70"
+                             Margin="8,0,0,0"
+                             MaxLength="4"
+                             Visibility="Collapsed" />
+                  </StackPanel>
+                </Grid>
+                <Grid Margin="0,8,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <local:TagSelector x:Name="FloatingTags" HorizontalAlignment="Stretch" />
+                  <Button x:Name="FloatingAddNote"
+                          Grid.Column="1"
+                          Width="68"
+                          Margin="8,0,0,0"
+                          Content="添加"
+                          Style="{DynamicResource PrimaryButton}" />
+                </Grid>
+                <TextBlock x:Name="FloatingNoteMessage"
+                           Margin="2,6,2,0"
+                           Foreground="{DynamicResource FloatingErrorBrush}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="FloatingIncome"
+                       Margin="12,10,0,29"
+                       Foreground="{DynamicResource FloatingMutedBrush}" />
+          </StackPanel>
+        </ScrollViewer>
       </Grid>
     </Border>
 
     <Canvas x:Name="FloatingPlushScene"
             Panel.ZIndex="3"
             IsHitTestVisible="False">
+      <Image x:Name="DayMascotsImage"
+             Width="520"
+             Height="390"
+             IsHitTestVisible="False"
+             Stretch="Fill"
+             Visibility="Collapsed" />
       <Border x:Name="MyMelodyPlushAnchor"
-              Canvas.Left="0"
-              Canvas.Top="32"
-              Width="128"
-              Height="128"
+              Canvas.Left="5.75"
+              Canvas.Top="2.87"
+              Width="139.70"
+              Height="99.12"
               Background="Transparent"
               BorderThickness="0"
+              ClipToBounds="True"
               IsHitTestVisible="False">
         <Image x:Name="PlushTopLeft"
-               Width="128"
-               Height="128"
+               Width="139.70"
+               Height="99.12"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top"
                IsHitTestVisible="False"
-               Stretch="Uniform" />
+               Stretch="Fill" />
       </Border>
       <Border x:Name="CinnamorollPlushAnchor"
-              Canvas.Right="0"
-              Canvas.Top="32"
-              Width="128"
-              Height="128"
+              Canvas.Left="369.17"
+              Canvas.Top="13.29"
+              Width="140.41"
+              Height="80.08"
               Background="Transparent"
               BorderThickness="0"
+              ClipToBounds="True"
               IsHitTestVisible="False">
         <Image x:Name="PlushTopRight"
-               Width="128"
-               Height="128"
+               Width="140.41"
+               Height="80.08"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top"
                IsHitTestVisible="False"
-               Stretch="Uniform" />
+               Stretch="Fill" />
       </Border>
       <Border x:Name="KuromiPlushAnchor"
-              Canvas.Right="0"
-              Canvas.Bottom="0"
-              Width="132"
-              Height="132"
+              Canvas.Left="405.44"
+              Canvas.Top="205.41"
+              Width="114.56"
+              Height="112.40"
               Background="Transparent"
               BorderThickness="0"
+              ClipToBounds="True"
               IsHitTestVisible="False">
         <Image x:Name="PlushBottomRight"
-               Width="132"
-               Height="132"
+               Width="114.56"
+               Height="112.40"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top"
                IsHitTestVisible="False"
-               Stretch="Uniform" />
+               Stretch="Fill" />
       </Border>
     </Canvas>
   </Grid>

@@ -59,9 +59,20 @@ internal static class ValidationReport
             ? RunThemePreferenceButtonExercise(main, floating, session)
             : ThemePreferenceButtonExerciseResult.NotRun;
 
+        var minimizeToTrayButton = Required<Button>(floating, "MinimizeToTrayButton");
         var openManagerButton = Required<Button>(floating, "OpenManagerButton");
         var closeFloatingButton = Required<Button>(floating, "CloseFloatingButton");
+        var floatingTrayButtonAccessibility =
+            string.Equals(
+                minimizeToTrayButton.ToolTip as string,
+                "缩小到系统托盘",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                AutomationProperties.GetName(minimizeToTrayButton),
+                "缩小到系统托盘",
+                StringComparison.Ordinal);
         var floatingHeaderIconAccessibility =
+            floatingTrayButtonAccessibility &&
             string.Equals(openManagerButton.ToolTip as string, "打开管理窗口", StringComparison.Ordinal) &&
             string.Equals(closeFloatingButton.ToolTip as string, "退出应用", StringComparison.Ordinal) &&
             string.Equals(
@@ -83,6 +94,9 @@ internal static class ValidationReport
         PumpDispatcher();
         floating.ExitRequested -= exitHandler;
         var floatingHeaderIconClickCommandsWork = managerOpenedViaClick && exitRequested;
+        var floatingTrayInteraction = RunFloatingTrayInteractionExercise(
+            floating,
+            minimizeToTrayButton);
         var floatingDragInteraction = floating.RunDragInteractionExercise();
 
         var datePicker = Required<DatePicker>(main, "CountdownDate");
@@ -747,6 +761,8 @@ internal static class ValidationReport
             ["FloatingWindowBottomAnchored"] = floatingBottomAnchored,
             ["FloatingWindowReanchorsAfterContentChanges"] = floatingReanchorsAfterContentChanges,
             ["FloatingWindowHeightConstrainedToWorkArea"] = floatingHeightConstrained,
+            ["FloatingDragSurfaceCoversWindowBackground"] =
+                floatingDragInteraction.CoversWindowBackground,
             ["FloatingDragHandleReceivesPointerGestures"] =
                 floatingDragInteraction.ReceivesPointerGesture,
             ["FloatingDragHandleRequestsNativeWindowDrag"] =
@@ -789,6 +805,13 @@ internal static class ValidationReport
             ["FloatingDynamicHeaderControlsRemainWpf"] = floating.DynamicHeaderControlsRemainWpf,
             ["FloatingHeaderIconAccessibility"] = floatingHeaderIconAccessibility,
             ["FloatingHeaderIconClickCommandsWork"] = floatingHeaderIconClickCommandsWork,
+            ["FloatingTrayButtonAccessibility"] = floatingTrayButtonAccessibility,
+            ["FloatingTrayMinimizeHidesWindowAndShowsIcon"] =
+                floatingTrayInteraction.MinimizeHidesWindowAndShowsIcon,
+            ["FloatingTrayRestoreShowsWindowAndHidesIcon"] =
+                floatingTrayInteraction.RestoreShowsWindowAndHidesIcon,
+            ["FloatingTrayExitRequestsApplicationExit"] =
+                floatingTrayInteraction.ExitRequestsApplicationExit,
             ["FloatingReferenceActualSize"] = floatingReferenceExercise.ActualSize,
             ["FloatingReferenceCapturePath"] = floatingReferenceExercise.CapturePath,
             ["FloatingPlushCardIsUnobscured"] = visiblePlushDoesNotObscureTaskCardContent,
@@ -3268,6 +3291,71 @@ internal static class ValidationReport
             Brushes.Black,
             dpi.PixelsPerDip);
 
+    private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(
+        FloatingWindow floating,
+        Button minimizeButton)
+    {
+        var wasVisible = floating.IsVisible;
+        var minimizeRequested = false;
+        var exitRequested = false;
+        TrayIconHost? trayIcon = null;
+        EventHandler minimizeHandler = (_, _) =>
+        {
+            minimizeRequested = true;
+            trayIcon!.Show();
+            floating.Hide();
+        };
+
+        trayIcon = new TrayIconHost(
+            Path.Combine(ApplicationPaths.ResolveApplicationRoot(), "countdown-icon.ico"),
+            floating.Dispatcher,
+            () =>
+            {
+                if (!floating.IsVisible)
+                {
+                    floating.Show();
+                }
+
+                floating.WindowState = WindowState.Normal;
+                trayIcon!.Hide();
+            },
+            () => exitRequested = true);
+        floating.MinimizeToTrayRequested += minimizeHandler;
+        try
+        {
+            minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher();
+            var minimizeWorks =
+                minimizeRequested &&
+                !floating.IsVisible &&
+                trayIcon.IsVisible;
+
+            trayIcon.InvokeRestoreForValidation();
+            PumpDispatcher();
+            var restoreWorks =
+                floating.IsVisible &&
+                floating.WindowState == WindowState.Normal &&
+                !trayIcon.IsVisible;
+
+            trayIcon.Show();
+            trayIcon.InvokeExitForValidation();
+            PumpDispatcher();
+            return new FloatingTrayInteractionExerciseResult(
+                minimizeWorks,
+                restoreWorks,
+                exitRequested);
+        }
+        finally
+        {
+            floating.MinimizeToTrayRequested -= minimizeHandler;
+            trayIcon.Dispose();
+            if (wasVisible && !floating.IsVisible)
+            {
+                floating.Show();
+            }
+        }
+    }
+
     private static T Required<T>(FrameworkElement root, string name)
         where T : class
     {
@@ -3303,6 +3391,11 @@ internal static class ValidationReport
     }
 
     private sealed record TextFit(bool Fits, double Available, double Required);
+
+    private sealed record FloatingTrayInteractionExerciseResult(
+        bool MinimizeHidesWindowAndShowsIcon,
+        bool RestoreShowsWindowAndHidesIcon,
+        bool ExitRequestsApplicationExit);
 
     private sealed record AlphaMetrics(bool IsFullyOpaque, int NonOpaquePixels, byte MinimumAlpha);
 

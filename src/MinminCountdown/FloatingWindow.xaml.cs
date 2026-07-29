@@ -78,6 +78,7 @@ public sealed partial class FloatingWindow : Window
         ReferenceEquals(FloatingNoteMessage.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
         ReferenceEquals(FloatingCountdownsButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
         ReferenceEquals(FloatingNotesButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
+        ReferenceEquals(MinimizeToTrayButton.Style, FindResource("FloatingHeaderIconButton")) &&
         ReferenceEquals(OpenManagerButton.Style, FindResource("FloatingHeaderIconButton")) &&
         ReferenceEquals(CloseFloatingButton.Style, FindResource("FloatingHeaderIconButton")) &&
         PlushSceneFollowsActiveTheme;
@@ -122,10 +123,12 @@ public sealed partial class FloatingWindow : Window
         FloatingDragHandle.IsHitTestVisible &&
         VisualTreeHelper.GetParent(FloatingCountdownsButton) is Grid &&
         VisualTreeHelper.GetParent(FloatingNotesButton) is Grid &&
+        VisualTreeHelper.GetParent(MinimizeToTrayButton) is Grid &&
         VisualTreeHelper.GetParent(OpenManagerButton) is Grid &&
         VisualTreeHelper.GetParent(CloseFloatingButton) is Grid &&
         FloatingCountdownsButton.IsHitTestVisible &&
         FloatingNotesButton.IsHitTestVisible &&
+        MinimizeToTrayButton.IsHitTestVisible &&
         OpenManagerButton.IsHitTestVisible &&
         CloseFloatingButton.IsHitTestVisible;
 
@@ -243,10 +246,14 @@ public sealed partial class FloatingWindow : Window
             Left = workArea.Right + 24;
             Top = workArea.Bottom + 24;
 
+            var backgroundGesture = CreateMouseLeftButtonDownGesture();
+            TaskWrap.RaiseEvent(backgroundGesture);
+            var backgroundRequestsNativeWindowDrag =
+                _nativeWindowDragRequestCount == nativeDragRequestsBefore + 1;
             var pointerGesture = CreateMouseLeftButtonDownGesture();
             FloatingDragHandle.RaiseEvent(pointerGesture);
             var titleRequestsNativeWindowDrag =
-                _nativeWindowDragRequestCount == nativeDragRequestsBefore + 1;
+                _nativeWindowDragRequestCount == nativeDragRequestsBefore + 2;
             var syntheticGestureDoesNotClaimPhysicalCompletion =
                 _nativeWindowDragCompletionCount == nativeDragCompletionsBefore;
             var dragAttemptClampsToWorkArea =
@@ -259,11 +266,10 @@ public sealed partial class FloatingWindow : Window
             {
                 FloatingCountdownsButton,
                 FloatingNotesButton,
+                MinimizeToTrayButton,
                 OpenManagerButton,
                 CloseFloatingButton,
                 FloatingBodyScroller,
-                FloatingRows,
-                FloatingNoteEntry,
                 FloatingNoteText,
                 FloatingNoteDate,
                 FloatingReminder,
@@ -276,6 +282,10 @@ public sealed partial class FloatingWindow : Window
             }
 
             return new FloatingDragInteractionExerciseResult(
+                TaskWrap.Background is not null &&
+                ReferenceEquals(TaskWrap.InputHitTest(new Point(260, 20)), TaskWrap) &&
+                backgroundGesture.Handled &&
+                backgroundRequestsNativeWindowDrag,
                 FloatingDragHandle.IsHitTestVisible &&
                 FloatingDragHandle.Background is not null &&
                 FloatingDragHandle.Cursor == Cursors.SizeAll &&
@@ -283,7 +293,7 @@ public sealed partial class FloatingWindow : Window
                 titleRequestsNativeWindowDrag,
                 syntheticGestureDoesNotClaimPhysicalCompletion,
                 dragAttemptClampsToWorkArea,
-                _nativeWindowDragRequestCount == nativeDragRequestsBefore + 1,
+                _nativeWindowDragRequestCount == nativeDragRequestsBefore + 2,
                 interactiveControls.All(control => !IsVisualDescendantOf(control, FloatingDragHandle)));
         }
         finally
@@ -349,6 +359,8 @@ public sealed partial class FloatingWindow : Window
     internal string IncomeText => FloatingIncome.Text;
 
     internal event EventHandler? ExitRequested;
+
+    internal event EventHandler? MinimizeToTrayRequested;
 
     internal bool RunCrossDayReminderAddExercise()
     {
@@ -749,6 +761,7 @@ public sealed partial class FloatingWindow : Window
         FloatingTags.SetTags(_session.Current.Tags);
         AutomationProperties.SetName(FloatingCountdownsButton, "显示悬浮倒计时");
         AutomationProperties.SetName(FloatingNotesButton, "显示悬浮便签");
+        AutomationProperties.SetName(MinimizeToTrayButton, "缩小到系统托盘");
         AutomationProperties.SetName(OpenManagerButton, "打开管理窗口");
         AutomationProperties.SetName(CloseFloatingButton, "退出应用");
         AutomationProperties.SetName(FloatingNoteText, "快速便签内容");
@@ -769,6 +782,7 @@ public sealed partial class FloatingWindow : Window
     {
         FloatingCountdownsButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Countdowns);
         FloatingNotesButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Notes);
+        MinimizeToTrayButton.Click += (_, _) => MinimizeToTrayRequested?.Invoke(this, EventArgs.Empty);
         OpenManagerButton.Click += (_, _) =>
         {
             _manager.ShowWorkspace(_workspace);
@@ -830,9 +844,14 @@ public sealed partial class FloatingWindow : Window
         };
     }
 
-    private void OnFloatingDragHandleMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)
+    private void OnFloatingDragSurfaceMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)
     {
         if (eventArgs.ChangedButton != MouseButton.Left)
+        {
+            return;
+        }
+
+        if (eventArgs.OriginalSource is DependencyObject source && IsInteractiveDragSource(source))
         {
             return;
         }
@@ -1234,17 +1253,40 @@ public sealed partial class FloatingWindow : Window
         return false;
     }
 
+    private bool IsInteractiveDragSource(DependencyObject source)
+    {
+        for (DependencyObject? current = source;
+             current is not null && !ReferenceEquals(current, TaskWrap);
+             current = InputParent(current))
+        {
+            if (current is Control)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static DependencyObject? InputParent(DependencyObject current) => current switch
+    {
+        Visual => VisualTreeHelper.GetParent(current),
+        FrameworkContentElement content => content.Parent,
+        _ => LogicalTreeHelper.GetParent(current)
+    };
+
     private static MouseButtonEventArgs CreateMouseLeftButtonDownGesture() =>
         new MouseButtonEventArgs(
             Mouse.PrimaryDevice,
             Environment.TickCount,
             MouseButton.Left)
         {
-            RoutedEvent = UIElement.MouseLeftButtonDownEvent
+            RoutedEvent = Mouse.PreviewMouseDownEvent
         };
 }
 
 internal sealed record FloatingDragInteractionExerciseResult(
+    bool CoversWindowBackground,
     bool ReceivesPointerGesture,
     bool RequestsNativeWindowDrag,
     bool SyntheticGestureDoesNotClaimPhysicalCompletion,

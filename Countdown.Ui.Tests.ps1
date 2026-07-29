@@ -195,6 +195,11 @@ if (-not $validation.FloatingDynamicCardContentRemainsWpf) { throw 'Floating car
 if (-not $validation.FloatingDynamicHeaderControlsRemainWpf) { throw 'Floating title, tabs, or command icons are no longer real WPF controls.' }
 if (-not $validation.FloatingHeaderIconAccessibility) { throw 'The floating icon buttons lost their tooltips or accessible names.' }
 if (-not $validation.FloatingHeaderIconClickCommandsWork) { throw 'The floating open-manager or exit icon button no longer executes its click command.' }
+if (-not $validation.FloatingDragSurfaceCoversWindowBackground) { throw 'The non-interactive floating-window background does not receive drag gestures.' }
+if (-not $validation.FloatingTrayButtonAccessibility) { throw 'The floating tray button lost its tooltip or accessible name.' }
+if (-not $validation.FloatingTrayMinimizeHidesWindowAndShowsIcon) { throw 'The floating tray button does not hide the window and show the notification-area icon.' }
+if (-not $validation.FloatingTrayRestoreShowsWindowAndHidesIcon) { throw 'The notification-area restore command does not show the floating window and hide the icon.' }
+if (-not $validation.FloatingTrayExitRequestsApplicationExit) { throw 'The notification-area exit command does not request application shutdown.' }
 if (-not $validation.FloatingDragHandleReceivesPointerGestures) { throw 'The floating drag handle does not receive a routed left-button gesture.' }
 if (-not $validation.FloatingDragHandleRequestsNativeWindowDrag) { throw 'The floating drag handle does not route input to WPF DragMove.' }
 if (-not $validation.FloatingSyntheticDragDoesNotClaimPhysicalCompletion) { throw 'A rejected synthetic DragMove is being reported as a completed physical drag.' }

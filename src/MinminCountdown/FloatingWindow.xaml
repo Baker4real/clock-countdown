@@ -13,7 +13,10 @@
         Background="Transparent"
         Topmost="True"
         WindowStartupLocation="Manual">
-  <Grid x:Name="TaskWrap" Margin="0">
+  <Grid x:Name="TaskWrap"
+        Margin="0"
+        Background="Transparent"
+        PreviewMouseDown="OnFloatingDragSurfaceMouseLeftButtonDown">
     <Canvas x:Name="FloatingDayRasterScene"
             Panel.ZIndex="0"
             IsHitTestVisible="False">
@@ -69,12 +72,12 @@
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Border x:Name="FloatingDragHandle"
                     Grid.Column="0"
                     Background="Transparent"
-                    Cursor="SizeAll"
-                    MouseLeftButtonDown="OnFloatingDragHandleMouseLeftButtonDown">
+                    Cursor="SizeAll">
               <TextBlock x:Name="FloatingTitle"
                          Text="倒计时"
                          Margin="16,0,0,0"
@@ -98,8 +101,24 @@
                           Margin="8,0,0,0"
                           Content="便签"
                           Style="{DynamicResource FloatingHeaderSegmentButton}" />
-            <Button x:Name="OpenManagerButton"
+            <Button x:Name="MinimizeToTrayButton"
                     Grid.Column="3"
+                    Width="36"
+                    Margin="3,0,0,0"
+                    VerticalAlignment="Center"
+                    ToolTip="缩小到系统托盘"
+                    Style="{DynamicResource FloatingHeaderIconButton}">
+              <Viewbox Width="12" Height="12" Margin="0,1,0,0">
+                <Path Data="M 2,10 L 12,10"
+                      Fill="Transparent"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                      StrokeThickness="2"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round" />
+              </Viewbox>
+            </Button>
+            <Button x:Name="OpenManagerButton"
+                    Grid.Column="4"
                     Width="38"
                     Margin="9,0,0,0"
                     VerticalAlignment="Center"
@@ -116,7 +135,7 @@
               </Viewbox>
             </Button>
             <Button x:Name="CloseFloatingButton"
-                    Grid.Column="4"
+                    Grid.Column="5"
                     Width="38"
                     Margin="9,0,0,0"
                     VerticalAlignment="Center"

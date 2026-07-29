@@ -52,6 +52,7 @@
 - `countdown-icon.ico`：窗口和桌面启动器图标
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口使用的三张官方透明角色立绘
 - `assets/floating-plush/*.png`：复刻版使用的三张参考图派生角色姿态和四张日间无文字 raster 组件，以及仅供旧 PowerShell 回归的商品姿态夹具；正式 `app` 只发布前七项，来源、处理边界、哈希与视觉证据见 `assets/floating-plush/SOURCES.md`
+- `assets/ui-references/*.png`：用户生成的页面与悬浮窗参考图固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试

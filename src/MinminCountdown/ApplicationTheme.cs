@@ -51,7 +51,11 @@ internal sealed class ApplicationTheme
 
     public ApplicationThemeMode Apply(DateTimeOffset nowUtc)
     {
-        var nextMode = Resolve(nowUtc);
+        return Apply(Resolve(nowUtc));
+    }
+
+    internal ApplicationThemeMode Apply(ApplicationThemeMode nextMode)
+    {
         if (_activeMode == nextMode)
         {
             return nextMode;

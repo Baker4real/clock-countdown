@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using MinminCountdown.Core;
@@ -31,6 +32,7 @@ public sealed partial class MainWindow : Window
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
+    private ApplicationThemeMode _themeMode = ApplicationThemeMode.Day;
     private string? _editingCountdownId;
     private string? _editingNoteId;
     private bool _activeNotesExpanded = true;
@@ -68,6 +70,8 @@ public sealed partial class MainWindow : Window
     internal ApplicationSession Session => _session;
 
     internal WorkspaceKind CurrentWorkspace => _workspace;
+
+    internal ApplicationThemeMode CurrentThemeMode => _themeMode;
 
     internal IReadOnlyList<int> TimeOptionCounts =>
         new[] { CountdownHour.Items.Count, CountdownMinute.Items.Count, CountdownSecond.Items.Count };
@@ -400,6 +404,7 @@ public sealed partial class MainWindow : Window
         CountdownFilterOptions.Visibility = showCountdowns ? Visibility.Visible : Visibility.Collapsed;
         NoteFilterOptions.Visibility = showCountdowns ? Visibility.Collapsed : Visibility.Visible;
         SaveCountdownButton.IsEnabled = showCountdowns;
+        UpdateReferenceDecorationVisibility();
         RenderVisibleWorkspace();
     }
 
@@ -423,23 +428,78 @@ public sealed partial class MainWindow : Window
 
     internal void ApplyTheme(ApplicationThemeMode mode)
     {
-        CharacterBackgroundLayer.Opacity = mode == ApplicationThemeMode.Night ? 0.16 : 0.10;
+        _themeMode = mode;
+        CharacterBackgroundLayer.Opacity = mode == ApplicationThemeMode.Night ? 0.16 : 0.075;
+        UpdateReferenceDecorationVisibility();
     }
 
     internal bool CharacterBackgroundRemainsSubtle =>
-        CharacterBackgroundLayer.Opacity is > 0 and <= 0.16;
+        CharacterBackgroundLayer.Visibility == Visibility.Collapsed
+            ? MainReferenceDecorationsLoaded
+            : CharacterBackgroundLayer.Opacity is > 0 and <= 0.16;
 
     internal double CharacterBackgroundOpacity => CharacterBackgroundLayer.Opacity;
 
-    internal bool CharacterPanelDocksFollowActiveTheme =>
-        ReferenceEquals(CharacterPanelSurface.Background, FindResource("CharacterPanelBrush")) &&
-        ReferenceEquals(CharacterPanelSurface.BorderBrush, FindResource("CharacterLineBrush")) &&
-        ReferenceEquals(MyMelodyCharacterDock.Background, FindResource("CharacterMyMelodyDockBrush")) &&
-        ReferenceEquals(CinnamorollCharacterDock.Background, FindResource("CharacterCinnamorollDockBrush")) &&
-        ReferenceEquals(KuromiCharacterDock.Background, FindResource("CharacterKuromiDockBrush")) &&
-        ReferenceEquals(MyMelodyCharacterDock.BorderBrush, FindResource("CharacterLineBrush")) &&
-        ReferenceEquals(CinnamorollCharacterDock.BorderBrush, FindResource("CharacterLineBrush")) &&
-        ReferenceEquals(KuromiCharacterDock.BorderBrush, FindResource("CharacterLineBrush"));
+    internal bool MainReferenceDecorationsLoaded =>
+        CountdownReferenceDecoration.Source is not null &&
+        NotesReferenceDecoration.Source is not null &&
+        NightCountdownTopDecoration.Source is not null &&
+        NightNotesTopDecoration.Source is not null;
+
+    internal bool MainNightReferenceDecorationsLoaded =>
+        NightCountdownTopDecoration.Source is not null &&
+        NightNotesTopDecoration.Source is not null;
+
+    internal bool MainReferenceDecorationsAreNonInteractive =>
+        !MainReferenceDecorationLayer.IsHitTestVisible &&
+        !CountdownReferenceDecoration.IsHitTestVisible &&
+        !NotesReferenceDecoration.IsHitTestVisible &&
+        !NightCountdownTopDecoration.IsHitTestVisible &&
+        !NightNotesTopDecoration.IsHitTestVisible;
+
+    internal bool MainReferenceDecorationsFollowActiveTheme
+    {
+        get
+        {
+            var referencesVisible = MainReferenceDecorationsLoaded;
+            var countdownVisible = _workspace == WorkspaceKind.Countdowns
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            var notesVisible = _workspace == WorkspaceKind.Notes
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            return referencesVisible &&
+                CharacterBackgroundLayer.Visibility == Visibility.Collapsed &&
+                CharacterPanelLayer.Visibility == Visibility.Collapsed &&
+                CountdownReferenceDecoration.Visibility ==
+                    (_themeMode == ApplicationThemeMode.Day ? countdownVisible : Visibility.Collapsed) &&
+                NotesReferenceDecoration.Visibility ==
+                    (_themeMode == ApplicationThemeMode.Day ? notesVisible : Visibility.Collapsed) &&
+                NightCountdownTopDecoration.Visibility ==
+                    (_themeMode == ApplicationThemeMode.Night ? countdownVisible : Visibility.Collapsed) &&
+                NightNotesTopDecoration.Visibility ==
+                    (_themeMode == ApplicationThemeMode.Night ? notesVisible : Visibility.Collapsed);
+        }
+    }
+
+    internal bool CharacterPanelDocksFollowActiveTheme
+    {
+        get
+        {
+            var showingNotes = _workspace == WorkspaceKind.Notes;
+            var panelBrush = showingNotes ? "NoteBrush" : "CharacterPanelBrush";
+            var lineBrush = showingNotes ? "NoteLineBrush" : "CharacterLineBrush";
+            return
+                ReferenceEquals(CharacterPanelSurface.Background, FindResource(panelBrush)) &&
+                ReferenceEquals(CharacterPanelSurface.BorderBrush, FindResource(lineBrush)) &&
+        MyMelodyCharacterDock.Background is null &&
+        CinnamorollCharacterDock.Background is null &&
+        KuromiCharacterDock.Background is null &&
+                ReferenceEquals(MyMelodyCharacterDock.BorderBrush, FindResource("CharacterLineBrush")) &&
+                ReferenceEquals(CinnamorollCharacterDock.BorderBrush, FindResource("CharacterLineBrush")) &&
+                ReferenceEquals(KuromiCharacterDock.BorderBrush, FindResource("CharacterLineBrush"));
+        }
+    }
 
     internal bool CharacterPanelDecorationsAreNonInteractive =>
         !CharacterPanelLayer.IsHitTestVisible &&
@@ -530,6 +590,7 @@ public sealed partial class MainWindow : Window
         ThemedDatePickerBehavior.Attach(NoteDate);
         ThemedDatePickerBehavior.Attach(NoteReminderDate);
         ThemedDatePickerBehavior.Attach(NoteDateFilter);
+        UseShortDateText(NoteDate);
         UiAccessibility.MarkLive(StatusText);
         UiAccessibility.MarkLive(CountdownMessage);
         UiAccessibility.MarkLive(NoteMessage);
@@ -690,13 +751,6 @@ public sealed partial class MainWindow : Window
         RecordCountText.Text = $"{records.Count} 个倒计时";
         if (records.Count == 0)
         {
-            CountdownRows.Children.Add(new TextBlock
-            {
-                Text = "还没有符合条件的倒计时。",
-                Margin = new Thickness(0, 22, 0, 0),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Foreground = (Brush)FindResource("MutedBrush")
-            });
             return;
         }
 
@@ -723,7 +777,7 @@ public sealed partial class MainWindow : Window
             text.Children.Add(new TextBlock
             {
                 Text = record.Name,
-                FontSize = 16,
+                FontSize = 25,
                 FontWeight = FontWeights.SemiBold
             });
             text.Children.Add(new TextBlock
@@ -768,7 +822,8 @@ public sealed partial class MainWindow : Window
             ActiveNoteRows.Children.Add(new TextBlock
             {
                 Text = "还没有符合条件的便签。",
-                Margin = new Thickness(0, 22, 0, 0),
+                Margin = new Thickness(0, 40, 0, 0),
+                FontSize = 20,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Foreground = (Brush)FindResource("MutedBrush")
             });
@@ -890,7 +945,7 @@ public sealed partial class MainWindow : Window
         {
             Text = details,
             Margin = new Thickness(0, 5, 0, 0),
-            FontSize = 12,
+            FontSize = 18,
             Foreground = (Brush)FindResource("MutedBrush")
         });
         body.Children.Add(CreateTagChips(note.TagIds));
@@ -1574,7 +1629,7 @@ public sealed partial class MainWindow : Window
                 Child = new TextBlock
                 {
                     Text = tag.Name,
-                    FontSize = 11,
+                    FontSize = 16,
                     Foreground = (Brush)FindResource("TagChipTextBrush")
                 }
             };
@@ -1606,9 +1661,9 @@ public sealed partial class MainWindow : Window
         return new Border
         {
             Child = content,
-            Margin = new Thickness(0, 0, 0, 8),
-            Padding = new Thickness(14),
-            CornerRadius = new CornerRadius(12),
+            Margin = new Thickness(0, 0, 0, 12),
+            Padding = new Thickness(21),
+            CornerRadius = new CornerRadius(18),
             Background = (Brush)FindResource(backgroundResource),
             BorderBrush = (Brush)FindResource("PeachLineBrush"),
             BorderThickness = new Thickness(1)
@@ -1622,8 +1677,10 @@ public sealed partial class MainWindow : Window
             {
                 Content = content,
                 Tag = id,
-                MinWidth = 58,
-                Margin = new Thickness(6, 0, 0, 0),
+                MinWidth = 88,
+                MinHeight = 52,
+                FontSize = 18,
+                Margin = new Thickness(9, 0, 0, 0),
                 Style = (Style)FindResource("SecondaryButton")
             },
             accessibleName);
@@ -1659,6 +1716,24 @@ public sealed partial class MainWindow : Window
     private static void NameControl(FrameworkElement control, string name) =>
         AutomationProperties.SetName(control, name);
 
+    private static void UseShortDateText(DatePicker datePicker)
+    {
+        datePicker.ApplyTemplate();
+        if (datePicker.Template.FindName("PART_TextBox", datePicker) is not DatePickerTextBox textBox)
+        {
+            throw new InvalidOperationException("便签日期模板缺少 PART_TextBox。");
+        }
+
+        BindingOperations.SetBinding(
+            textBox,
+            TextBox.TextProperty,
+            new Binding(nameof(DatePicker.SelectedDate))
+            {
+                Source = datePicker,
+                StringFormat = "{0:yyyy/M/d}"
+            });
+    }
+
     private void SetMessage(TextBlock target, string text, bool isError)
     {
         target.Text = text;
@@ -1679,6 +1754,53 @@ public sealed partial class MainWindow : Window
         MyMelodyPanelCharacter.Source = myMelody;
         CinnamorollPanelCharacter.Source = cinnamoroll;
         KuromiPanelCharacter.Source = kuromi;
+        CountdownReferenceDecoration.Source = LoadImage(Path.Combine(
+            characterRoot,
+            "main-decorations",
+            "main-countdown-scene-day.png"));
+        NotesReferenceDecoration.Source = LoadImage(Path.Combine(
+            characterRoot,
+            "main-decorations",
+            "main-notes-scene-day.png"));
+        NightCountdownTopDecoration.Source = LoadImage(Path.Combine(
+            characterRoot,
+            "main-decorations",
+            "main-countdown-top-night.png"));
+        NightNotesTopDecoration.Source = LoadImage(Path.Combine(
+            characterRoot,
+            "main-decorations",
+            "main-notes-top-night.png"));
+    }
+
+    private void UpdateReferenceDecorationVisibility()
+    {
+        var useDayReferences = _themeMode == ApplicationThemeMode.Day &&
+            MainReferenceDecorationsLoaded;
+        var useNightReferences = _themeMode == ApplicationThemeMode.Night &&
+            MainNightReferenceDecorationsLoaded;
+        var useReferenceDecorations = useDayReferences || useNightReferences;
+        CharacterBackgroundLayer.Visibility = useReferenceDecorations
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        CharacterPanelLayer.Visibility = useReferenceDecorations
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        CountdownReferenceDecoration.Visibility = useDayReferences &&
+            _workspace == WorkspaceKind.Countdowns
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        NotesReferenceDecoration.Visibility = useDayReferences &&
+            _workspace == WorkspaceKind.Notes
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        NightCountdownTopDecoration.Visibility = useNightReferences &&
+            _workspace == WorkspaceKind.Countdowns
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        NightNotesTopDecoration.Visibility = useNightReferences &&
+            _workspace == WorkspaceKind.Notes
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     internal static BitmapImage? LoadImage(string path)

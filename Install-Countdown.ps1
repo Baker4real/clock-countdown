@@ -64,7 +64,7 @@ $retiredRuntimeFiles = @('Countdown.App.psm1') + $floatingPlushAssets + @(
     'app\assets\floating-plush\floating-plush-kuromi-pose.png'
 )
 $expected = @{
-    'Build-CountdownApplication.ps1' = 'D9F7A2F5C4F502358BDEC97D87F0B7D9A868CECC988B6150F2D43A3273BC611E'
+    'Build-CountdownApplication.ps1' = '65E96ADC6F3E26391A72C2DA766343D3050A26A84F1EE2D7824062102564B8AE'
     'Countdown.App.psm1' = '6F40387744A2DF43A41A6A95B3DD02AF748CE7C3B00F532FC1588FB33B5994AF'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = '89E7E2E7EE9255F6583D7E6421F8F7924B7E2543956EF502FB7136E6FBCD0590'
@@ -72,14 +72,14 @@ $expected = @{
     'Countdown.Runtime.psm1' = 'EE71577AF288212BC7A4031A64E3C9379A5F92A8091FB965E28BC871A42C1B19'
     'Countdown.Settings.psm1' = 'A502C003D155A95D529766777F6B68763D421B6056F76C32E556C0EC79DEA736'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '80AFEBF36E4CD9EB45940F12F9029DA46F456DEE27041AD853D35B280D8F81E0'
-    'Countdown.Ui.Tests.ps1' = '910550F8F94E39B2845F9C07AC088E7D5476684F5053509553C1D599434CCFB3'
-    'Countdown.CSharp.Tests.ps1' = '2667E7E647CC7E0396DFC52E0691C6C1019750146E0746DF370852B4494ED154'
+    'Countdown.Core.Tests.ps1' = '8D3E5A210AD052F35B3E9E6541CC34513FFE45689AD92920A89CE0CBC6E59208'
+    'Countdown.Ui.Tests.ps1' = '57BBD6A19640910CCC054A6F6C500D380C99FC9A83B541751B1731B8FEB1C50D'
+    'Countdown.CSharp.Tests.ps1' = '5B8ED49732750A9631EA7B83F96554E4BD2F324BA365DABD90B6876D9BB498C5'
     '敏敏子倒计时.ps1' = '2729F74658E74E1F2A655E706E9F5A47F34699B1D0BD0492D5A6079930FF64D5'
     'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'verification\MinminCountdown.Verification.exe' = 'A95D71C30D8E8E598B20B1A0EF1BB04ED7CB2AFF493D27E43783A0104BBD04AA'
-    'app\MinminCountdown.exe' = '50835B829FC7074592965A93710345B163A7DCEFBD5BA74FC90648F38AAB293D'
+    'app\MinminCountdown.exe' = 'B1B645883991998AD7413F5DD29F6612F0BBE56EA092AEFC096A4BFD08D6118C'
     'sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
     'sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
     'sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
@@ -106,6 +106,10 @@ $expected = @{
     'app\assets\floating-plush\component-day-header-blank.png' = '857B570F1CD47C29F1C2744251DE1B1C7B4D9D921944BB79E974B0B60B26C1B1'
     'app\assets\floating-plush\component-day-card-blank.png' = '253EF68502B1F798E37DDF02BF17F9BEE08D818B8AEE76EA287A4403226FB1C8'
     'app\assets\floating-plush\component-day-mascots.png' = 'D000285BFFC2CBCF3411C11407FF691E531A8602E9D3E8F3FD68EBFC4ADC0726'
+    'app\assets\main-decorations\main-countdown-scene-day.png' = '4A9CC38CD3AE989B1ABC2ED2BD3228080C189826DD285AAFA4D96E9DB01AC131'
+    'app\assets\main-decorations\main-notes-scene-day.png' = '6EE9D22E5CD4EF5941B089378E775DCDE0FF49107A15B22E893068473B1195E3'
+    'app\assets\main-decorations\main-countdown-top-night.png' = 'AB362CB38DDD09119DFB0D3B25799BD67C89D728BDAD2BD69B5C9D7A00CE6323'
+    'app\assets\main-decorations\main-notes-top-night.png' = 'CDE8C7E4EB8714E9E7427E1B6E07E36FFDE1F04B8337C0DDD64E3F3E18D161E6'
 }
 $applicationFiles = @(
     'Countdown.Core.psm1',
@@ -126,6 +130,10 @@ $applicationFiles = @(
     'app\assets\floating-plush\component-day-header-blank.png',
     'app\assets\floating-plush\component-day-card-blank.png',
     'app\assets\floating-plush\component-day-mascots.png',
+    'app\assets\main-decorations\main-countdown-scene-day.png',
+    'app\assets\main-decorations\main-notes-scene-day.png',
+    'app\assets\main-decorations\main-countdown-top-night.png',
+    'app\assets\main-decorations\main-notes-top-night.png',
     'CountdownLauncher.exe',
     'countdown-icon.ico',
     'sanrio-official-mymelody.png',

@@ -25,5 +25,9 @@
     <Content Include="..\..\assets\floating-plush\component-day-header-blank.png" Link="assets\floating-plush\component-day-header-blank.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\floating-plush\component-day-card-blank.png" Link="assets\floating-plush\component-day-card-blank.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\floating-plush\component-day-mascots.png" Link="assets\floating-plush\component-day-mascots.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\main-decorations\main-countdown-scene-day.png" Link="assets\main-decorations\main-countdown-scene-day.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\main-decorations\main-notes-scene-day.png" Link="assets\main-decorations\main-notes-scene-day.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\main-decorations\main-countdown-top-night.png" Link="assets\main-decorations\main-countdown-top-night.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\main-decorations\main-notes-top-night.png" Link="assets\main-decorations\main-notes-top-night.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

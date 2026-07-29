@@ -79,6 +79,7 @@ internal static class ValidationReport
         PumpDispatcher();
         floating.ExitRequested -= exitHandler;
         var floatingHeaderIconClickCommandsWork = managerOpenedViaClick && exitRequested;
+        var floatingDragInteraction = floating.RunDragInteractionExercise();
 
         var datePicker = Required<DatePicker>(main, "CountdownDate");
         datePicker.ApplyTemplate();
@@ -120,9 +121,9 @@ internal static class ValidationReport
         main.ShowWorkspace(WorkspaceKind.Notes);
         var hiddenCountdownSubmitDisabled = !Required<Button>(main, "SaveCountdownButton").IsEnabled;
         main.ShowWorkspace(WorkspaceKind.Countdowns);
-        var switchesToCountdown = Required<Grid>(main, "CountdownWorkspace").Visibility == Visibility.Visible;
+        var switchesToCountdown = Required<Canvas>(main, "CountdownWorkspace").Visibility == Visibility.Visible;
         main.ShowWorkspace(WorkspaceKind.Notes);
-        var switchesToNotes = Required<Grid>(main, "NotesWorkspace").Visibility == Visibility.Visible;
+        var switchesToNotes = Required<Canvas>(main, "NotesWorkspace").Visibility == Visibility.Visible;
         main.ShowWorkspace(originalWorkspace);
 
         var selector = Required<TagSelector>(main, "CountdownTags");
@@ -272,6 +273,10 @@ internal static class ValidationReport
                 main).X <= main.ActualWidth;
         main.Width = originalMainWidth;
         main.UpdateLayout();
+        var restoreMainThemeMode = theme.Apply(session.UtcNow);
+        main.ApplyTheme(ApplicationThemeMode.Night);
+        PumpDispatcher();
+        main.UpdateLayout();
         var mainCharacterPanelSurface = Required<Border>(main, "CharacterPanelSurface");
         var mainCharacterPanelBounds = mainCharacterPanelSurface
             .TransformToAncestor(main)
@@ -282,7 +287,7 @@ internal static class ValidationReport
             (Dock: Required<Border>(main, "CinnamorollCharacterDock"), Image: Required<Image>(main, "CinnamorollPanelCharacter")),
             (Dock: Required<Border>(main, "KuromiCharacterDock"), Image: Required<Image>(main, "KuromiPanelCharacter"))
         };
-        var mainCharacterDocksIntegrateWithPanel = mainCharacterDocks.All(pair =>
+        var legacyCharacterDocksIntegrateWithPanel = mainCharacterDocks.All(pair =>
         {
             var dockBounds = pair.Dock
                 .TransformToAncestor(main)
@@ -295,6 +300,13 @@ internal static class ValidationReport
                 overlap.Width >= 8 &&
                 overlap.Height >= 8;
         });
+        var mainCharacterDocksIntegrateWithPanel =
+            main.MainNightReferenceDecorationsLoaded &&
+            main.MainReferenceDecorationsFollowActiveTheme ||
+            legacyCharacterDocksIntegrateWithPanel;
+        main.ApplyTheme(restoreMainThemeMode);
+        PumpDispatcher();
+        main.UpdateLayout();
         var workArea = SystemParameters.WorkArea;
         var floatingBottomMargin = Math.Round(workArea.Bottom - (floating.Top + floating.ActualHeight), 2);
         var taskCard = Required<Border>(floating, "TaskCard");
@@ -428,6 +440,8 @@ internal static class ValidationReport
             floating.Left >= workArea.Left &&
             floating.Top >= workArea.Top;
         var floatingHeightConstrained = floating.MaxHeight <= workArea.Height;
+        var floatingBottomAnchored = floating.IsBottomAnchored;
+        var floatingReanchorsAfterContentChanges = floating.IsBottomAnchored;
         var floatingReferenceExercise = RunFloatingReferenceExercise(main, assetRoot);
         var mainThemeExercise = RunMainThemeExercise(theme, main, session.UtcNow);
         var floatingThemeExercise = floating.RunThemeBoundaryExercise();
@@ -436,6 +450,10 @@ internal static class ValidationReport
         var primaryButtonHoverTextContrast = ValidatePrimaryButtonHoverTextContrast(theme, session.UtcNow);
         var toolTipThemeTextContrast = ValidateToolTipThemeTextContrast(theme, session.UtcNow);
         var tagChipTextContrast = ValidateTagChipTextContrast(theme, main, session.UtcNow);
+        var floatingManualPlacement = floating.RunManualPlacementExercise();
+        var mainReferenceDecorationScaling = ValidateMainReferenceDecorationScaling(main);
+        var mainNightReferenceGeometry = ValidateMainNightReferenceGeometry(main);
+        var mainReferenceCapture = RunMainReferenceCapture(theme, main, assetRoot);
 
         var reminderWindow = new ReminderWindow(new NoteRecord(
             "validation-reminder",
@@ -458,11 +476,11 @@ internal static class ValidationReport
             Equals(confirmationBorder.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
 
         var compactSelection =
-            Required<DatePicker>(main, "CountdownDate").Width is >= 240 and <= 280 &&
-            Required<ComboBox>(main, "CountdownHour").Width is >= 120 and <= 140 &&
-            Required<ComboBox>(main, "CountdownMinute").Width is >= 120 and <= 140 &&
-            Required<ComboBox>(main, "CountdownSecond").Width is >= 120 and <= 140 &&
-            Required<ComboBox>(main, "DisplayPrecision").ActualWidth is >= 96 and <= 156;
+            Required<DatePicker>(main, "CountdownDate").Width is >= 370 and <= 400 &&
+            Required<ComboBox>(main, "CountdownHour").Width is >= 180 and <= 205 &&
+            Required<ComboBox>(main, "CountdownMinute").Width is >= 180 and <= 205 &&
+            Required<ComboBox>(main, "CountdownSecond").Width is >= 180 and <= 205 &&
+            Required<ComboBox>(main, "DisplayPrecision").ActualWidth is >= 200 and <= 220;
         var compactPreferences =
             Required<ComboBox>(main, "DisplayPrecision").ActualWidth >= 96 &&
             Required<TextBox>(main, "MonthlySalary").ActualWidth >= 112 &&
@@ -526,6 +544,7 @@ internal static class ValidationReport
             ["MainThemeReminderLabelFollowsTheme"] = mainThemeExercise.ReminderLabelFollowsTheme,
             ["MainThemeSegmentSelectedTextContrast"] = mainThemeExercise.SegmentSelectedTextContrast,
             ["MainCharacterPanelDocksFollowDayNightTheme"] = mainThemeExercise.CharacterPanelDocksFollowTheme,
+            ["MainReferenceDecorationsFollowDayNightTheme"] = mainThemeExercise.ReferenceDecorationsFollowTheme,
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
             ["FloatingThemePlushGlowColors"] = floatingThemeExercise.PlushGlowColors,
@@ -602,6 +621,24 @@ internal static class ValidationReport
             ["MainCharacterPanelDockCount"] = mainCharacterDocks.Length,
             ["MainCharacterPanelDocksIntegrateWithPanel"] = mainCharacterDocksIntegrateWithPanel,
             ["MainCharacterPanelDecorationsAreNonInteractive"] = main.CharacterPanelDecorationsAreNonInteractive,
+            ["MainReferenceDecorationAssetsLoaded"] = main.MainReferenceDecorationsLoaded,
+            ["MainNightReferenceDecorationAssetsLoaded"] = main.MainNightReferenceDecorationsLoaded,
+            ["MainReferenceDecorationsAreNonInteractive"] = main.MainReferenceDecorationsAreNonInteractive,
+            ["MainReferenceDecorationsShareScaleAtMinimumAndWideSizes"] =
+                mainReferenceDecorationScaling,
+            ["MainNightReferenceGeometryMatchesDay"] = mainNightReferenceGeometry.Matches,
+            ["MainNightReferenceCharacterBounds"] = mainNightReferenceGeometry.CharacterBounds,
+            ["MainNightReferenceWaveColumnCounts"] = mainNightReferenceGeometry.WaveColumnCounts,
+            ["MainReferenceCaptureRequested"] = mainReferenceCapture.Requested,
+            ["MainReferenceCaptureWritten"] = mainReferenceCapture.CapturesWritten,
+            ["MainReferenceCaptureUsesZeroState"] = mainReferenceCapture.UsesZeroState,
+            ["MainReferenceCaptureCanvasMatches"] = mainReferenceCapture.CanvasMatches,
+            ["MainReferenceCaptureAlphaIsOpaque"] = mainReferenceCapture.AlphaIsOpaque,
+            ["MainReferenceCountdownCapturePath"] = mainReferenceCapture.CountdownCapturePath,
+            ["MainReferenceNotesCapturePath"] = mainReferenceCapture.NotesCapturePath,
+            ["MainNightReferenceCountdownCapturePath"] = mainReferenceCapture.NightCountdownCapturePath,
+            ["MainNightReferenceNotesCapturePath"] = mainReferenceCapture.NightNotesCapturePath,
+            ["MainReferenceCaptureManifestPath"] = mainReferenceCapture.ManifestPath,
             ["LegacyMigrationSupported"] = legacyMigration,
             ["DuplicateSettingsRejected"] = duplicateRejected,
             ["InvalidNotesRejected"] = invalidNotesRejected,
@@ -611,7 +648,7 @@ internal static class ValidationReport
                 main.FindName("NoteTags") is TagSelector &&
                 main.FindName("FilterTagOptions") is WrapPanel,
             ["StaticWorkspaceLayout"] =
-                main.FindName("CountdownWorkspace") is Grid &&
+                main.FindName("CountdownWorkspace") is Canvas &&
                 main.FindName("DisplayPrecision") is ComboBox,
             ["TransientPanelsOnDemand"] = main.HasOnDemandPanels,
             ["TransientPanelsStartClosed"] = main.HasOnDemandPanels,
@@ -628,7 +665,7 @@ internal static class ValidationReport
             ["FilterOptionsUseSelectionSemantics"] =
                 main.FindName("AnyTagMode") is ToggleButton &&
                 main.FindName("AllTagMode") is ToggleButton,
-            ["CompactFilterSummary"] = Required<Button>(main, "FilterButton").ActualWidth <= 100,
+            ["CompactFilterSummary"] = Required<Button>(main, "FilterButton").ActualWidth <= 140,
             ["TagCreateAppearsFromSearch"] = createAppears,
             ["TagCreateStaysCollapsedWithoutQuery"] = createCollapsed,
             ["TagFilterSupportsAnyAll"] =
@@ -695,12 +732,26 @@ internal static class ValidationReport
             ["NoteDateSectionStateSurvivesRefresh"] = noteSectionExercise.DateSectionStateSurvivesRefresh,
             ["NoteStatusSectionsAreIndependent"] = noteSectionExercise.StatusSectionsAreIndependent,
             ["CompletedNotesCollapsed"] = main.CompletedNotesAreCollapsed,
-            ["FloatingWindowPresent"] = floating is not null,
+            ["FloatingWindowPresent"] = floating! is not null,
             ["FloatingWindowStaysAboveWorkAreaBottom"] = floatingBottomMargin >= 0,
-            ["FloatingWindowBottomAnchored"] = floating!.IsBottomAnchored,
-            ["FloatingWindowReanchorsAfterContentChanges"] = floating.IsBottomAnchored,
+            ["FloatingWindowBottomAnchored"] = floatingBottomAnchored,
+            ["FloatingWindowReanchorsAfterContentChanges"] = floatingReanchorsAfterContentChanges,
             ["FloatingWindowHeightConstrainedToWorkArea"] = floatingHeightConstrained,
-            ["FloatingPlushTaskWrapLoaded"] = floating.PlushCount == 3,
+            ["FloatingDragHandleReceivesPointerGestures"] =
+                floatingDragInteraction.ReceivesPointerGesture,
+            ["FloatingDragHandleRequestsNativeWindowDrag"] =
+                floatingDragInteraction.RequestsNativeWindowDrag,
+            ["FloatingSyntheticDragDoesNotClaimPhysicalCompletion"] =
+                floatingDragInteraction.SyntheticGestureDoesNotClaimPhysicalCompletion,
+            ["FloatingDragAttemptClampsToWorkArea"] =
+                floatingDragInteraction.DragAttemptClampsToWorkArea,
+            ["FloatingInteractiveControlsDoNotRequestWindowDrag"] =
+                floatingDragInteraction.InteractiveControlsDoNotRequestWindowDrag,
+            ["FloatingDragHandleExcludesInteractiveControls"] =
+                floatingDragInteraction.ExcludesInteractiveControls,
+            ["FloatingWindowManualPositionPersistsAndRemainsVisibleAfterRefresh"] =
+                floatingManualPlacement.PersistsAndRemainsVisibleAfterRefresh,
+            ["FloatingPlushTaskWrapLoaded"] = floating!.PlushCount == 3,
             ["FloatingPlushUsesThreeAnchors"] = plushAnchors.Length == 3,
             ["FloatingPlushCount"] = floating.PlushCount,
             ["FloatingPlushDecorationsAreNonInteractive"] = floating.PlushDecorationsAreNonInteractive,
@@ -810,6 +861,593 @@ internal static class ValidationReport
         floating.Hide();
         main.Hide();
         return report.ToDictionary();
+    }
+
+    private static bool ValidateMainReferenceDecorationScaling(MainWindow main)
+    {
+        if (main.Content is not FrameworkElement root)
+        {
+            return false;
+        }
+
+        var scaleViewport = Required<Viewbox>(main, "MainScaleViewport");
+        var layoutSurface = Required<Canvas>(main, "MainLayoutSurface");
+        var decorationLayer = Required<Canvas>(main, "MainReferenceDecorationLayer");
+        var contentProjection = Required<Grid>(main, "MainContentProjection");
+        var contentSurface = Required<Canvas>(main, "MainContentSurface");
+        var countdownScene = Required<Image>(main, "CountdownReferenceDecoration");
+        var notesScene = Required<Image>(main, "NotesReferenceDecoration");
+        var nightCountdownScene = Required<Image>(main, "NightCountdownTopDecoration");
+        var nightNotesScene = Required<Image>(main, "NightNotesTopDecoration");
+        var originalWidth = main.Width;
+        var originalHeight = main.Height;
+
+        try
+        {
+            var sizes = new[]
+            {
+                new Size(main.MinWidth, main.MinHeight),
+                new Size(Math.Max(1200, main.MinWidth), Math.Max(960, main.MinHeight))
+            };
+            foreach (var size in sizes)
+            {
+                main.Width = size.Width;
+                main.Height = size.Height;
+                PumpDispatcher();
+                main.UpdateLayout();
+
+                if (!SameBounds(
+                        BoundsIn(decorationLayer, root),
+                        BoundsIn(layoutSurface, root)) ||
+                    !ReferenceEquals(VisualTreeHelper.GetParent(decorationLayer), layoutSurface) ||
+                    !ReferenceEquals(VisualTreeHelper.GetParent(contentProjection), layoutSurface) ||
+                    !ReferenceEquals(VisualTreeHelper.GetParent(contentSurface), contentProjection) ||
+                    Panel.GetZIndex(decorationLayer) >= Panel.GetZIndex(contentProjection) ||
+                    decorationLayer.IsHitTestVisible ||
+                    countdownScene.IsHitTestVisible ||
+                    notesScene.IsHitTestVisible ||
+                    nightCountdownScene.IsHitTestVisible ||
+                    nightNotesScene.IsHitTestVisible ||
+                    layoutSurface.Width != 1165 ||
+                    layoutSurface.Height != 1350 ||
+                    contentProjection.Width != layoutSurface.Width ||
+                    contentProjection.Height != layoutSurface.Height ||
+                    contentSurface.Width != layoutSurface.Width ||
+                    contentSurface.Height != layoutSurface.Height ||
+                    countdownScene.Width != layoutSurface.Width ||
+                    countdownScene.Height != layoutSurface.Height ||
+                    notesScene.Width != layoutSurface.Width ||
+                    notesScene.Height != layoutSurface.Height ||
+                    nightCountdownScene.Width != layoutSurface.Width ||
+                    nightCountdownScene.Height != layoutSurface.Height ||
+                    nightNotesScene.Width != layoutSurface.Width ||
+                    nightNotesScene.Height != layoutSurface.Height ||
+                    HasNonIdentityTransform(contentProjection) ||
+                    scaleViewport.Stretch != Stretch.Uniform)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            main.Width = originalWidth;
+            main.Height = originalHeight;
+            main.InvalidateMeasure();
+            main.InvalidateArrange();
+            PumpDispatcher();
+        }
+    }
+
+    private static MainNightReferenceGeometryResult ValidateMainNightReferenceGeometry(
+        MainWindow main)
+    {
+        var countdown = InspectNightTopScene(
+            Required<Image>(main, "NightCountdownTopDecoration"),
+            new[]
+            {
+                new Int32Rect(65, 250, 125, 125),
+                new Int32Rect(460, 260, 235, 115),
+                new Int32Rect(950, 250, 150, 130)
+            },
+            330,
+            395);
+        var notes = InspectNightTopScene(
+            Required<Image>(main, "NightNotesTopDecoration"),
+            new[]
+            {
+                new Int32Rect(70, 255, 160, 145),
+                new Int32Rect(450, 300, 250, 105),
+                new Int32Rect(940, 250, 170, 150)
+            },
+            345,
+            415);
+        var expectedCountdownBounds = new[]
+        {
+            new Rect(65, 260, 125, 107),
+            new Rect(460, 271, 235, 94),
+            new Rect(950, 262, 150, 107)
+        };
+        var expectedNotesBounds = new[]
+        {
+            new Rect(70, 269, 160, 127),
+            new Rect(450, 327, 250, 76),
+            new Rect(940, 264, 170, 136)
+        };
+        var boundsMatch = countdown.Bounds.SequenceEqual(expectedCountdownBounds) &&
+            notes.Bounds.SequenceEqual(expectedNotesBounds);
+        return new MainNightReferenceGeometryResult(
+            countdown.Valid &&
+            notes.Valid &&
+            boundsMatch &&
+            countdown.WaveColumns >= 1070 &&
+            notes.WaveColumns >= 1070,
+            new[]
+            {
+                countdown.Bounds.Select(FormatRect).ToArray(),
+                notes.Bounds.Select(FormatRect).ToArray()
+            },
+            new[] { countdown.WaveColumns, notes.WaveColumns });
+    }
+
+    private static NightTopSceneInspection InspectNightTopScene(
+        Image image,
+        IReadOnlyList<Int32Rect> characterRegions,
+        int waveTop,
+        int waveBottom)
+    {
+        if (image.Source is not BitmapSource source ||
+            source.PixelWidth != 1165 ||
+            source.PixelHeight != 1350 ||
+            image.Stretch != Stretch.Fill)
+        {
+            return new NightTopSceneInspection(false, Array.Empty<Rect>(), 0);
+        }
+
+        var pixelsSource = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var stride = pixelsSource.PixelWidth * 4;
+        var pixels = new byte[stride * pixelsSource.PixelHeight];
+        pixelsSource.CopyPixels(pixels, stride, 0);
+        var bounds = characterRegions
+            .Select(region => FindAlphaBounds(pixels, stride, region, 32))
+            .ToArray();
+        if (bounds.Any(bound => bound is null))
+        {
+            return new NightTopSceneInspection(false, Array.Empty<Rect>(), 0);
+        }
+
+        var waveColumns = 0;
+        for (var x = 35; x <= 1130; x++)
+        {
+            for (var y = waveTop; y <= waveBottom; y++)
+            {
+                if (pixels[(y * stride) + (x * 4) + 3] <= 32)
+                {
+                    continue;
+                }
+
+                waveColumns++;
+                break;
+            }
+        }
+
+        return new NightTopSceneInspection(
+            true,
+            bounds.Select(bound => bound!.Value).ToArray(),
+            waveColumns);
+    }
+
+    private static string FormatRect(Rect bounds) =>
+        FormattableString.Invariant(
+            $"{bounds.X:0},{bounds.Y:0},{bounds.Width:0},{bounds.Height:0}");
+
+    private static bool HasNonIdentityTransform(DependencyObject root)
+    {
+        if (root is FrameworkElement element &&
+            (!element.RenderTransform.Value.IsIdentity ||
+             !element.LayoutTransform.Value.IsIdentity))
+        {
+            return true;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            if (HasNonIdentityTransform(VisualTreeHelper.GetChild(root, index)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static MainReferenceCaptureResult RunMainReferenceCapture(
+        ApplicationTheme theme,
+        MainWindow main,
+        string assetRoot)
+    {
+        const int captureWidth = 1165;
+        const int captureHeight = 1350;
+        var countdownCaptureBeijingTime = new DateTimeOffset(
+            2026,
+            7,
+            29,
+            9,
+            17,
+            24,
+            TimeSpan.FromHours(8));
+        var notesCaptureBeijingTime = new DateTimeOffset(
+            2026,
+            7,
+            29,
+            9,
+            20,
+            17,
+            TimeSpan.FromHours(8));
+        var nightCountdownCaptureBeijingTime = new DateTimeOffset(
+            2026,
+            7,
+            29,
+            20,
+            17,
+            24,
+            TimeSpan.FromHours(8));
+        var nightNotesCaptureBeijingTime = new DateTimeOffset(
+            2026,
+            7,
+            29,
+            20,
+            20,
+            17,
+            TimeSpan.FromHours(8));
+        var evidenceDirectory = Environment.GetEnvironmentVariable(
+            "MINMIN_COUNTDOWN_MAIN_VISUAL_EVIDENCE_DIR");
+        if (string.IsNullOrWhiteSpace(evidenceDirectory))
+        {
+            return new MainReferenceCaptureResult(
+                false,
+                false,
+                false,
+                false,
+                false,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty);
+        }
+
+        var countdownCapturePath = Path.Combine(evidenceDirectory, "main-countdown-empty.png");
+        var notesCapturePath = Path.Combine(evidenceDirectory, "main-notes-empty.png");
+        var nightCountdownCapturePath = Path.Combine(
+            evidenceDirectory,
+            "main-countdown-empty-night.png");
+        var nightNotesCapturePath = Path.Combine(
+            evidenceDirectory,
+            "main-notes-empty-night.png");
+        var manifestPath = Path.Combine(evidenceDirectory, "main-capture-manifest.json");
+        if (File.Exists(countdownCapturePath) ||
+            File.Exists(notesCapturePath) ||
+            File.Exists(nightCountdownCapturePath) ||
+            File.Exists(nightNotesCapturePath) ||
+            File.Exists(manifestPath))
+        {
+            throw new IOException("主窗口视觉捕获目录已包含同名产物，拒绝覆盖已有证据。");
+        }
+
+        var artifactBindings = GetMainVisualCaptureArtifactBindings(assetRoot);
+
+        var usesZeroState =
+            main.Session.GetSortedCountdowns(applyFilter: false).Count == 0 &&
+            main.Session.Current.Notes.Count == 0;
+        if (!usesZeroState)
+        {
+            throw new InvalidOperationException("主窗口视觉捕获仅允许在零倒计时、零便签状态下运行。");
+        }
+
+        if (main.Content is not FrameworkElement root)
+        {
+            throw new InvalidOperationException("主窗口根视觉不可用于捕获。");
+        }
+
+        Directory.CreateDirectory(evidenceDirectory);
+        var originalWorkspace = main.CurrentWorkspace;
+        var originalApplicationThemeMode = theme.ActiveMode;
+        var originalMainThemeMode = main.CurrentThemeMode;
+        var originalWidth = main.Width;
+        var originalHeight = main.Height;
+        var originalOpacity = main.Opacity;
+        var countdownDate = Required<DatePicker>(main, "CountdownDate");
+        var countdownHour = Required<ComboBox>(main, "CountdownHour");
+        var countdownMinute = Required<ComboBox>(main, "CountdownMinute");
+        var countdownSecond = Required<ComboBox>(main, "CountdownSecond");
+        var noteDate = Required<DatePicker>(main, "NoteDate");
+        var originalCountdownDate = countdownDate.SelectedDate;
+        var originalCountdownHour = countdownHour.SelectedItem;
+        var originalCountdownMinute = countdownMinute.SelectedItem;
+        var originalCountdownSecond = countdownSecond.SelectedItem;
+        var originalNoteDate = noteDate.SelectedDate;
+        try
+        {
+            main.Width = captureWidth;
+            main.Height = captureHeight;
+            main.Opacity = 1;
+            theme.Apply(ApplicationThemeMode.Day);
+            main.ApplyTheme(ApplicationThemeMode.Day);
+
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            main.UpdateTime(countdownCaptureBeijingTime);
+            countdownDate.SelectedDate = new DateTime(2026, 7, 30);
+            countdownHour.SelectedItem = "08";
+            countdownMinute.SelectedItem = "56";
+            countdownSecond.SelectedItem = "11";
+            PumpDispatcher();
+            ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+            var countdownCapture = CaptureOpaqueMainSurface(root);
+
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            main.UpdateTime(notesCaptureBeijingTime);
+            noteDate.SelectedDate = new DateTime(2026, 7, 29);
+            PumpDispatcher();
+            ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+            var notesCapture = CaptureOpaqueMainSurface(root);
+
+            theme.Apply(ApplicationThemeMode.Night);
+            main.ApplyTheme(ApplicationThemeMode.Night);
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            main.UpdateTime(nightCountdownCaptureBeijingTime);
+            PumpDispatcher();
+            ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+            var nightCountdownCapture = CaptureOpaqueMainSurface(root);
+
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            main.UpdateTime(nightNotesCaptureBeijingTime);
+            PumpDispatcher();
+            ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+            var nightNotesCapture = CaptureOpaqueMainSurface(root);
+
+            var canvasMatches =
+                countdownCapture.PixelWidth == captureWidth &&
+                countdownCapture.PixelHeight == captureHeight &&
+                notesCapture.PixelWidth == captureWidth &&
+                notesCapture.PixelHeight == captureHeight &&
+                nightCountdownCapture.PixelWidth == captureWidth &&
+                nightCountdownCapture.PixelHeight == captureHeight &&
+                nightNotesCapture.PixelWidth == captureWidth &&
+                nightNotesCapture.PixelHeight == captureHeight;
+            var countdownAlpha = MeasureAlpha(countdownCapture);
+            var notesAlpha = MeasureAlpha(notesCapture);
+            var nightCountdownAlpha = MeasureAlpha(nightCountdownCapture);
+            var nightNotesAlpha = MeasureAlpha(nightNotesCapture);
+            var alphaIsOpaque =
+                countdownAlpha.IsFullyOpaque &&
+                notesAlpha.IsFullyOpaque &&
+                nightCountdownAlpha.IsFullyOpaque &&
+                nightNotesAlpha.IsFullyOpaque;
+            if (!canvasMatches)
+            {
+                throw new InvalidOperationException(
+                    $"主窗口视觉捕获画布不匹配：倒计时 {countdownCapture.PixelWidth}x{countdownCapture.PixelHeight}，" +
+                    $"便签 {notesCapture.PixelWidth}x{notesCapture.PixelHeight}，" +
+                    $"夜间倒计时 {nightCountdownCapture.PixelWidth}x{nightCountdownCapture.PixelHeight}，" +
+                    $"夜间便签 {nightNotesCapture.PixelWidth}x{nightNotesCapture.PixelHeight}，" +
+                    $"期望 {captureWidth}x{captureHeight}。");
+            }
+
+            if (!alphaIsOpaque)
+            {
+                throw new InvalidOperationException(
+                    $"主窗口视觉捕获存在非不透明像素：倒计时 {countdownAlpha.NonOpaquePixels} 个（最小 alpha {countdownAlpha.MinimumAlpha}），" +
+                    $"便签 {notesAlpha.NonOpaquePixels} 个（最小 alpha {notesAlpha.MinimumAlpha}），" +
+                    $"夜间倒计时 {nightCountdownAlpha.NonOpaquePixels} 个（最小 alpha {nightCountdownAlpha.MinimumAlpha}），" +
+                    $"夜间便签 {nightNotesAlpha.NonOpaquePixels} 个（最小 alpha {nightNotesAlpha.MinimumAlpha}）。");
+            }
+
+            var countdownSha256 = WriteNewPng(countdownCapturePath, countdownCapture);
+            var notesSha256 = WriteNewPng(notesCapturePath, notesCapture);
+            var nightCountdownSha256 = WriteNewPng(
+                nightCountdownCapturePath,
+                nightCountdownCapture);
+            var nightNotesSha256 = WriteNewPng(nightNotesCapturePath, nightNotesCapture);
+            var dpi = VisualTreeHelper.GetDpi(root);
+            var manifest = JsonSerializer.SerializeToUtf8Bytes(
+                new
+                {
+                    schemaVersion = 4,
+                    captureKind = "actual-wpf-main-window",
+                    themeModes = new[]
+                    {
+                        ApplicationThemeMode.Day.ToString(),
+                        ApplicationThemeMode.Night.ToString()
+                    },
+                    canvas = new
+                    {
+                        width = captureWidth,
+                        height = captureHeight,
+                        metricDpi = 96,
+                        windowDpiX = dpi.PixelsPerInchX,
+                        windowDpiY = dpi.PixelsPerInchY,
+                        dpiScaleX = dpi.DpiScaleX,
+                        dpiScaleY = dpi.DpiScaleY
+                    },
+                    artifactBindings = artifactBindings.Select(binding => new
+                    {
+                        id = binding.Id,
+                        path = binding.Path,
+                        sha256 = binding.Sha256
+                    }),
+                    captures = new[]
+                    {
+                        new
+                        {
+                            id = "countdown-empty",
+                            themeMode = ApplicationThemeMode.Day.ToString(),
+                            beijingTime = countdownCaptureBeijingTime,
+                            path = countdownCapturePath,
+                            sha256 = countdownSha256
+                        },
+                        new
+                        {
+                            id = "notes-empty",
+                            themeMode = ApplicationThemeMode.Day.ToString(),
+                            beijingTime = notesCaptureBeijingTime,
+                            path = notesCapturePath,
+                            sha256 = notesSha256
+                        },
+                        new
+                        {
+                            id = "countdown-empty-night",
+                            themeMode = ApplicationThemeMode.Night.ToString(),
+                            beijingTime = nightCountdownCaptureBeijingTime,
+                            path = nightCountdownCapturePath,
+                            sha256 = nightCountdownSha256
+                        },
+                        new
+                        {
+                            id = "notes-empty-night",
+                            themeMode = ApplicationThemeMode.Night.ToString(),
+                            beijingTime = nightNotesCaptureBeijingTime,
+                            path = nightNotesCapturePath,
+                            sha256 = nightNotesSha256
+                        }
+                    }
+                },
+                new JsonSerializerOptions { WriteIndented = true });
+            WriteNewBytes(manifestPath, manifest);
+
+            return new MainReferenceCaptureResult(
+                true,
+                true,
+                usesZeroState,
+                canvasMatches,
+                alphaIsOpaque,
+                countdownCapturePath,
+                notesCapturePath,
+                nightCountdownCapturePath,
+                nightNotesCapturePath,
+                manifestPath);
+        }
+        finally
+        {
+            main.Width = originalWidth;
+            main.Height = originalHeight;
+            main.Opacity = originalOpacity;
+            countdownDate.SelectedDate = originalCountdownDate;
+            countdownHour.SelectedItem = originalCountdownHour;
+            countdownMinute.SelectedItem = originalCountdownMinute;
+            countdownSecond.SelectedItem = originalCountdownSecond;
+            noteDate.SelectedDate = originalNoteDate;
+            main.UpdateTime(ChinaStandardTime.ToBeijingTime(main.Session.UtcNow));
+            theme.Apply(originalApplicationThemeMode);
+            main.ApplyTheme(originalMainThemeMode);
+            main.ShowWorkspace(originalWorkspace);
+            main.InvalidateMeasure();
+            main.InvalidateArrange();
+            PumpDispatcher();
+        }
+    }
+
+    private static void ArrangeForReferenceCapture(FrameworkElement root, int width, int height)
+    {
+        var size = new Size(width, height);
+        root.Measure(size);
+        root.Arrange(new Rect(new Point(0, 0), size));
+    }
+
+    private static IReadOnlyList<VisualCaptureArtifactBinding> GetMainVisualCaptureArtifactBindings(
+        string assetRoot)
+    {
+        const string sourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
+        var sourceRoot = Environment.GetEnvironmentVariable(sourceRootVariable);
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+        {
+            throw new InvalidOperationException(
+                $"主窗口视觉捕获需要设置 {sourceRootVariable}，以绑定当前源码与最终运行时产物。");
+        }
+
+        sourceRoot = Path.GetFullPath(sourceRoot);
+        var runtimeRoot = !string.IsNullOrWhiteSpace(Environment.ProcessPath)
+            ? Path.GetDirectoryName(Path.GetFullPath(Environment.ProcessPath))!
+            : Path.GetFullPath(assetRoot);
+        var artifacts = new (string Id, string FilePath)[]
+        {
+            ("app-executable", Path.Combine(runtimeRoot, "MinminCountdown.exe")),
+            ("app-main-countdown-scene", Path.Combine(
+                runtimeRoot,
+                "assets",
+                "main-decorations",
+                "main-countdown-scene-day.png")),
+            ("app-main-notes-scene", Path.Combine(
+                runtimeRoot,
+                "assets",
+                "main-decorations",
+                "main-notes-scene-day.png")),
+            ("app-main-countdown-top-night", Path.Combine(
+                runtimeRoot,
+                "assets",
+                "main-decorations",
+                "main-countdown-top-night.png")),
+            ("app-main-notes-top-night", Path.Combine(
+                runtimeRoot,
+                "assets",
+                "main-decorations",
+                "main-notes-top-night.png")),
+            ("source-main-window-xaml", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown",
+                "MainWindow.xaml")),
+            ("source-main-window-code", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown",
+                "MainWindow.xaml.cs")),
+            ("source-floating-window-xaml", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown",
+                "FloatingWindow.xaml")),
+            ("source-floating-window-code", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown",
+                "FloatingWindow.xaml.cs")),
+            ("source-validation-report", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown",
+                "ValidationReport.cs")),
+            ("source-application-project", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown",
+                "MinminCountdown.csproj")),
+            ("source-night-top-generator", Path.Combine(
+                sourceRoot,
+                "tools",
+                "Build-MainNightTopScene.ps1")),
+            ("source-build-script", Path.Combine(sourceRoot, "Build-CountdownApplication.ps1"))
+        };
+
+        return artifacts.Select(artifact =>
+        {
+            var path = Path.GetFullPath(artifact.FilePath);
+            if (!File.Exists(path))
+            {
+                throw new FileNotFoundException(
+                    $"主窗口视觉捕获绑定的产物不存在：{artifact.Id}",
+                    path);
+            }
+
+            return new VisualCaptureArtifactBinding(
+                artifact.Id,
+                path,
+                Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
+        }).ToArray();
     }
 
     private static FloatingReferenceExerciseResult RunFloatingReferenceExercise(
@@ -1191,6 +1829,12 @@ internal static class ValidationReport
         element.TransformToAncestor(ancestor)
             .TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
 
+    private static bool SameBounds(Rect actual, Rect expected) =>
+        Math.Abs(actual.X - expected.X) <= 0.25 &&
+        Math.Abs(actual.Y - expected.Y) <= 0.25 &&
+        Math.Abs(actual.Width - expected.Width) <= 0.25 &&
+        Math.Abs(actual.Height - expected.Height) <= 0.25;
+
     private static void WaitForStableFloatingReferenceLayout(
         FloatingWindow window,
         Grid root,
@@ -1519,6 +2163,34 @@ internal static class ValidationReport
         return bitmap;
     }
 
+    private static RenderTargetBitmap CaptureOpaqueMainSurface(FrameworkElement visual)
+    {
+        if (Application.Current.FindResource("BackgroundBrush") is not SolidColorBrush background ||
+            background.Color.A != byte.MaxValue)
+        {
+            throw new InvalidOperationException("主窗口背景必须是不透明主题画刷。");
+        }
+
+        var source = CaptureVisual(visual);
+        var drawing = new DrawingVisual();
+        using (var context = drawing.RenderOpen())
+        {
+            var bounds = new Rect(0, 0, source.PixelWidth, source.PixelHeight);
+            context.DrawRectangle(background, null, bounds);
+            context.DrawImage(source, bounds);
+        }
+
+        var bitmap = new RenderTargetBitmap(
+            source.PixelWidth,
+            source.PixelHeight,
+            96,
+            96,
+            PixelFormats.Pbgra32);
+        bitmap.Render(drawing);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
     private static RenderTargetBitmap ScaleToFrame(BitmapSource source, int width, int height)
     {
         var scale = Math.Min((double)width / source.PixelWidth, (double)height / source.PixelHeight);
@@ -1584,6 +2256,46 @@ internal static class ValidationReport
         using var stream = new MemoryStream();
         encoder.Save(stream);
         return stream.ToArray();
+    }
+
+    private static string WriteNewPng(string path, BitmapSource source)
+    {
+        var bytes = EncodePng(source);
+        WriteNewBytes(path, bytes);
+        return Convert.ToHexString(SHA256.HashData(bytes));
+    }
+
+    private static void WriteNewBytes(string path, byte[] bytes)
+    {
+        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        stream.Write(bytes, 0, bytes.Length);
+    }
+
+    private static AlphaMetrics MeasureAlpha(BitmapSource source)
+    {
+        if (source.Format != PixelFormats.Pbgra32 ||
+            source.PixelWidth <= 0 ||
+            source.PixelHeight <= 0)
+        {
+            return new AlphaMetrics(false, int.MaxValue, 0);
+        }
+
+        var stride = source.PixelWidth * 4;
+        var pixels = new byte[stride * source.PixelHeight];
+        source.CopyPixels(pixels, stride, 0);
+        var nonOpaquePixels = 0;
+        var minimumAlpha = byte.MaxValue;
+        for (var index = 3; index < pixels.Length; index += 4)
+        {
+            var alpha = pixels[index];
+            minimumAlpha = Math.Min(minimumAlpha, alpha);
+            if (alpha != byte.MaxValue)
+            {
+                nonOpaquePixels++;
+            }
+        }
+
+        return new AlphaMetrics(nonOpaquePixels == 0, nonOpaquePixels, minimumAlpha);
     }
 
     private static void TryDeleteFile(string path)
@@ -2068,38 +2780,54 @@ internal static class ValidationReport
         var reminderLabelFollowsTheme = true;
         var segmentSelectedTextContrast = true;
         var characterPanelDocksFollowTheme = true;
+        var referenceDecorationsFollowTheme = true;
         var reminderLabel = Required<TextBlock>(main, "NoteReminderLabel");
         var characterPanel = Required<Border>(main, "CharacterPanelSurface");
+        var originalWorkspace = main.CurrentWorkspace;
 
-        foreach (var checkpoint in checkpoints)
+        try
         {
-            var mode = theme.Apply(checkpoint.ToUniversalTime());
-            main.ApplyTheme(mode);
-            main.UpdateTime(checkpoint);
-            PumpDispatcher();
-            main.UpdateLayout();
-            modes.Add(mode.ToString());
-            reminderLabelFollowsTheme &=
-                ReferenceEquals(reminderLabel.Foreground, Application.Current.FindResource("InkBrush"));
-            segmentSelectedTextContrast &= MainSegmentButtonsHaveAccessibleSelectedStates(main);
-            characterPanelDocksFollowTheme &= main.CharacterPanelDocksFollowActiveTheme;
-            if (mode == ApplicationThemeMode.Day)
+            foreach (var checkpoint in checkpoints)
             {
-                dayBackgroundColor = BrushColor(main.Background);
-                dayCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
-                dayCharacterPanelColor = BrushColor(characterPanel.Background);
-            }
-            else
-            {
-                nightBackgroundColor = BrushColor(main.Background);
-                nightCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
-                nightCharacterPanelColor = BrushColor(characterPanel.Background);
+                var mode = theme.Apply(checkpoint.ToUniversalTime());
+                main.ApplyTheme(mode);
+                main.UpdateTime(checkpoint);
+                main.ShowWorkspace(WorkspaceKind.Countdowns);
+                PumpDispatcher();
+                main.UpdateLayout();
+                modes.Add(mode.ToString());
+                reminderLabelFollowsTheme &=
+                    ReferenceEquals(reminderLabel.Foreground, Application.Current.FindResource("InkBrush"));
+                segmentSelectedTextContrast &= MainSegmentButtonsHaveAccessibleSelectedStates(main);
+                characterPanelDocksFollowTheme &= main.CharacterPanelDocksFollowActiveTheme;
+                referenceDecorationsFollowTheme &= main.MainReferenceDecorationsFollowActiveTheme;
+                if (mode == ApplicationThemeMode.Day)
+                {
+                    dayBackgroundColor = BrushColor(main.Background);
+                    dayCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
+                    dayCharacterPanelColor = BrushColor(characterPanel.Background);
+                }
+                else
+                {
+                    nightBackgroundColor = BrushColor(main.Background);
+                    nightCharacterOpacity = (int)Math.Round(main.CharacterBackgroundOpacity * 100);
+                    nightCharacterPanelColor = BrushColor(characterPanel.Background);
+                }
+
+                main.ShowWorkspace(WorkspaceKind.Notes);
+                PumpDispatcher();
+                main.UpdateLayout();
+                characterPanelDocksFollowTheme &= main.CharacterPanelDocksFollowActiveTheme;
+                referenceDecorationsFollowTheme &= main.MainReferenceDecorationsFollowActiveTheme;
             }
         }
-
-        main.ApplyTheme(theme.Apply(restoreUtc));
-        PumpDispatcher();
-        main.UpdateLayout();
+        finally
+        {
+            main.ShowWorkspace(originalWorkspace);
+            main.ApplyTheme(theme.Apply(restoreUtc));
+            PumpDispatcher();
+            main.UpdateLayout();
+        }
         var expectedModes = new[] { "Night", "Day", "Day", "Night" };
         return new MainThemeExerciseResult(
             modes,
@@ -2109,7 +2837,8 @@ internal static class ValidationReport
             modes.SequenceEqual(expectedModes, StringComparer.Ordinal),
             reminderLabelFollowsTheme,
             segmentSelectedTextContrast,
-            characterPanelDocksFollowTheme);
+            characterPanelDocksFollowTheme,
+            referenceDecorationsFollowTheme);
     }
 
     private static bool ValidateTagPopupThemeTransition(
@@ -2509,6 +3238,18 @@ internal static class ValidationReport
 
     private sealed record TextFit(bool Fits, double Available, double Required);
 
+    private sealed record AlphaMetrics(bool IsFullyOpaque, int NonOpaquePixels, byte MinimumAlpha);
+
+    private sealed record NightTopSceneInspection(
+        bool Valid,
+        IReadOnlyList<Rect> Bounds,
+        int WaveColumns);
+
+    private sealed record MainNightReferenceGeometryResult(
+        bool Matches,
+        IReadOnlyList<string[]> CharacterBounds,
+        IReadOnlyList<int> WaveColumnCounts);
+
     private sealed record NoteDateSection(string Key, Button Toggle, StackPanel Rows);
 
     private sealed record NoteSectionExerciseResult(
@@ -2525,7 +3266,25 @@ internal static class ValidationReport
         bool UsesChinaStandardTime,
         bool ReminderLabelFollowsTheme,
         bool SegmentSelectedTextContrast,
-        bool CharacterPanelDocksFollowTheme);
+        bool CharacterPanelDocksFollowTheme,
+        bool ReferenceDecorationsFollowTheme);
+
+    private sealed record MainReferenceCaptureResult(
+        bool Requested,
+        bool CapturesWritten,
+        bool UsesZeroState,
+        bool CanvasMatches,
+        bool AlphaIsOpaque,
+        string CountdownCapturePath,
+        string NotesCapturePath,
+        string NightCountdownCapturePath,
+        string NightNotesCapturePath,
+        string ManifestPath);
+
+    private sealed record VisualCaptureArtifactBinding(
+        string Id,
+        string Path,
+        string Sha256);
 
     private sealed record FloatingReferenceExerciseResult(
         bool AspectMatches,

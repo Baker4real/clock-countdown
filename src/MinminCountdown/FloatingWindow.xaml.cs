@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
@@ -26,6 +27,12 @@ public sealed partial class FloatingWindow : Window
     private Brush _floatingBorderBrush = Brushes.Transparent;
     private BitmapImage? _dayCardRaster;
     private readonly Effect? _vectorTaskCardEffect;
+    private bool _isApplyingBottomAnchor;
+    private bool _trackManualWindowPlacement;
+    private bool _hasManualWindowPlacement;
+    private Point? _bottomAnchorPosition;
+    private int _nativeWindowDragRequestCount;
+    private int _nativeWindowDragCompletionCount;
 
     internal FloatingWindow(
         ApplicationSession session,
@@ -104,7 +111,10 @@ public sealed partial class FloatingWindow : Window
         !DayMascotsImage.IsHitTestVisible;
 
     internal bool DynamicHeaderControlsRemainWpf =>
-        VisualTreeHelper.GetParent(FloatingTitle) is Grid &&
+        VisualTreeHelper.GetParent(FloatingTitle) is Border dragHandle &&
+        ReferenceEquals(dragHandle, FloatingDragHandle) &&
+        VisualTreeHelper.GetParent(FloatingDragHandle) is Grid &&
+        FloatingDragHandle.IsHitTestVisible &&
         VisualTreeHelper.GetParent(FloatingCountdownsButton) is Grid &&
         VisualTreeHelper.GetParent(FloatingNotesButton) is Grid &&
         VisualTreeHelper.GetParent(OpenManagerButton) is Grid &&
@@ -203,6 +213,128 @@ public sealed partial class FloatingWindow : Window
             var workArea = SystemParameters.WorkArea;
             return Math.Abs((Top + ActualHeight) - (workArea.Bottom - 12)) <= 2.5;
         }
+    }
+
+    internal FloatingDragInteractionExerciseResult RunDragInteractionExercise()
+    {
+        var originalWorkspace = _workspace;
+        var originalLeft = Left;
+        var originalTop = Top;
+        var originallyManual = _hasManualWindowPlacement;
+        var originalBottomAnchorPosition = _bottomAnchorPosition;
+        var nativeDragRequestsBefore = _nativeWindowDragRequestCount;
+        var nativeDragCompletionsBefore = _nativeWindowDragCompletionCount;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Notes);
+            UpdateLayout();
+
+            var workArea = SystemParameters.WorkArea;
+            var minimumLeft = workArea.Left + 12;
+            var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
+            var minimumTop = workArea.Top + 12;
+            var maximumTop = Math.Max(minimumTop, workArea.Bottom - ActualHeight - 12);
+            _hasManualWindowPlacement = true;
+            Left = workArea.Right + 24;
+            Top = workArea.Bottom + 24;
+
+            var pointerGesture = CreateMouseLeftButtonDownGesture();
+            FloatingDragHandle.RaiseEvent(pointerGesture);
+            var titleRequestsNativeWindowDrag =
+                _nativeWindowDragRequestCount == nativeDragRequestsBefore + 1;
+            var syntheticGestureDoesNotClaimPhysicalCompletion =
+                _nativeWindowDragCompletionCount == nativeDragCompletionsBefore;
+            var dragAttemptClampsToWorkArea =
+                Left >= minimumLeft - 0.5 &&
+                Left <= maximumLeft + 0.5 &&
+                Top >= minimumTop - 0.5 &&
+                Top <= maximumTop + 0.5;
+
+            var interactiveControls = new UIElement[]
+            {
+                FloatingCountdownsButton,
+                FloatingNotesButton,
+                OpenManagerButton,
+                CloseFloatingButton,
+                FloatingBodyScroller,
+                FloatingRows,
+                FloatingNoteEntry,
+                FloatingNoteText,
+                FloatingNoteDate,
+                FloatingReminder,
+                FloatingTags,
+                FloatingAddNote
+            };
+            foreach (var control in interactiveControls)
+            {
+                control.RaiseEvent(CreateMouseLeftButtonDownGesture());
+            }
+
+            return new FloatingDragInteractionExerciseResult(
+                FloatingDragHandle.IsHitTestVisible &&
+                FloatingDragHandle.Background is not null &&
+                FloatingDragHandle.Cursor == Cursors.SizeAll &&
+                pointerGesture.Handled,
+                titleRequestsNativeWindowDrag,
+                syntheticGestureDoesNotClaimPhysicalCompletion,
+                dragAttemptClampsToWorkArea,
+                _nativeWindowDragRequestCount == nativeDragRequestsBefore + 1,
+                interactiveControls.All(control => !IsVisualDescendantOf(control, FloatingDragHandle)));
+        }
+        finally
+        {
+            _isApplyingBottomAnchor = true;
+            try
+            {
+                _hasManualWindowPlacement = originallyManual;
+                _bottomAnchorPosition = originalBottomAnchorPosition;
+                Left = originalLeft;
+                Top = originalTop;
+            }
+            finally
+            {
+                _isApplyingBottomAnchor = false;
+            }
+
+            ShowWorkspace(originalWorkspace);
+        }
+    }
+
+    internal FloatingManualPlacementExerciseResult RunManualPlacementExercise()
+    {
+        var workArea = SystemParameters.WorkArea;
+        var minimumLeft = workArea.Left + 12;
+        var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
+        var minimumTop = workArea.Top + 12;
+        var maximumTop = Math.Max(minimumTop, workArea.Bottom - ActualHeight - 12);
+        var manualLeft = maximumLeft > minimumLeft
+            ? minimumLeft + Math.Min(24, maximumLeft - minimumLeft)
+            : minimumLeft;
+        var manualTop = maximumTop > minimumTop
+            ? minimumTop + Math.Min(24, maximumTop - minimumTop)
+            : minimumTop;
+
+        Left = manualLeft;
+        Top = manualTop;
+        Refresh();
+
+        var manualPositionPersists =
+            _hasManualWindowPlacement &&
+            Math.Abs(Left - manualLeft) <= 0.5 &&
+            Math.Abs(Top - manualTop) <= 0.5;
+
+        Left = workArea.Right + 24;
+        Top = workArea.Bottom + 24;
+        Refresh();
+
+        var remainsWithinWorkArea =
+            Left >= minimumLeft - 0.5 &&
+            Left <= maximumLeft + 0.5 &&
+            Top >= minimumTop - 0.5 &&
+            Top <= maximumTop + 0.5;
+
+        return new FloatingManualPlacementExerciseResult(
+            manualPositionPersists && remainsWithinWorkArea);
     }
 
     internal IReadOnlyList<string> FloatingCountdownTexts { get; private set; } = Array.Empty<string>();
@@ -395,9 +527,32 @@ public sealed partial class FloatingWindow : Window
     internal void Reanchor()
     {
         var workArea = SystemParameters.WorkArea;
-        MaxHeight = Math.Max(280, workArea.Height - 24);
-        Left = Math.Max(workArea.Left + 12, workArea.Right - ActualWidth - 12);
-        Top = Math.Max(workArea.Top + 12, workArea.Bottom - ActualHeight - 12);
+        var minimumLeft = workArea.Left + 12;
+        var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
+        var minimumTop = workArea.Top + 12;
+        var maximumTop = Math.Max(minimumTop, workArea.Bottom - ActualHeight - 12);
+
+        _isApplyingBottomAnchor = true;
+        try
+        {
+            MaxHeight = Math.Max(280, workArea.Height - 24);
+            if (_hasManualWindowPlacement)
+            {
+                Left = Math.Clamp(Left, minimumLeft, maximumLeft);
+                Top = Math.Clamp(Top, minimumTop, maximumTop);
+                return;
+            }
+
+            var left = maximumLeft;
+            var top = maximumTop;
+            _bottomAnchorPosition = new Point(left, top);
+            Left = left;
+            Top = top;
+        }
+        finally
+        {
+            _isApplyingBottomAnchor = false;
+        }
     }
 
     private void ApplyTheme(DateTimeOffset nowUtc)
@@ -647,7 +802,55 @@ public sealed partial class FloatingWindow : Window
             }
         };
         SizeChanged += (_, _) => Reanchor();
-        Loaded += (_, _) => Reanchor();
+        Loaded += (_, _) =>
+        {
+            Reanchor();
+            _trackManualWindowPlacement = true;
+        };
+        LocationChanged += (_, _) =>
+        {
+            if (!_trackManualWindowPlacement || _isApplyingBottomAnchor ||
+                _bottomAnchorPosition is not { } bottomAnchor)
+            {
+                return;
+            }
+
+            if (Math.Abs(Left - bottomAnchor.X) > 0.5 || Math.Abs(Top - bottomAnchor.Y) > 0.5)
+            {
+                _hasManualWindowPlacement = true;
+            }
+        };
+    }
+
+    private void OnFloatingDragHandleMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)
+    {
+        if (eventArgs.ChangedButton != MouseButton.Left)
+        {
+            return;
+        }
+
+        eventArgs.Handled = true;
+        var leftBeforeDrag = Left;
+        var topBeforeDrag = Top;
+        try
+        {
+            _nativeWindowDragRequestCount++;
+            DragMove();
+            _nativeWindowDragCompletionCount++;
+        }
+        catch (InvalidOperationException)
+        {
+            // Synthetic or canceled gestures cannot establish a completed physical drag.
+        }
+        finally
+        {
+            if (Math.Abs(Left - leftBeforeDrag) > 0.5 || Math.Abs(Top - topBeforeDrag) > 0.5)
+            {
+                _hasManualWindowPlacement = true;
+            }
+
+            Reanchor();
+        }
     }
 
     private void Refresh()
@@ -1010,7 +1213,40 @@ public sealed partial class FloatingWindow : Window
         source is BitmapImage { UriSource: { } uri }
             ? Path.GetFileName(uri.LocalPath)
             : string.Empty;
+
+    private static bool IsVisualDescendantOf(DependencyObject control, DependencyObject ancestor)
+    {
+        for (DependencyObject? current = control; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static MouseButtonEventArgs CreateMouseLeftButtonDownGesture() =>
+        new MouseButtonEventArgs(
+            Mouse.PrimaryDevice,
+            Environment.TickCount,
+            MouseButton.Left)
+        {
+            RoutedEvent = UIElement.MouseLeftButtonDownEvent
+        };
 }
+
+internal sealed record FloatingDragInteractionExerciseResult(
+    bool ReceivesPointerGesture,
+    bool RequestsNativeWindowDrag,
+    bool SyntheticGestureDoesNotClaimPhysicalCompletion,
+    bool DragAttemptClampsToWorkArea,
+    bool InteractiveControlsDoNotRequestWindowDrag,
+    bool ExcludesInteractiveControls);
+
+internal sealed record FloatingManualPlacementExerciseResult(
+    bool PersistsAndRemainsVisibleAfterRefresh);
 
 internal sealed record FloatingThemeExerciseResult(
     IReadOnlyList<string> BoundaryModes,

@@ -53,6 +53,10 @@ $requiredFiles = @(
     'app\assets\floating-plush\component-day-header-blank.png',
     'app\assets\floating-plush\component-day-card-blank.png',
     'app\assets\floating-plush\component-day-mascots.png',
+    'app\assets\main-decorations\main-countdown-scene-day.png',
+    'app\assets\main-decorations\main-notes-scene-day.png',
+    'app\assets\main-decorations\main-countdown-top-night.png',
+    'app\assets\main-decorations\main-notes-top-night.png',
     'Install-Countdown.ps1'
 )
 
@@ -62,7 +66,7 @@ function Get-InstallerHashes {
     $hashes = @{}
     $matches = (Get-Content -Raw -LiteralPath $InstallerPath | Select-String -Pattern "'([^']+)'\s*=\s*'([A-F0-9]{64})'" -AllMatches).Matches
     foreach ($match in $matches) { $hashes[$match.Groups[1].Value] = $match.Groups[2].Value }
-    if ($hashes.Count -ne 42) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
+    if ($hashes.Count -ne 46) { throw "无法从安装器读取完整性清单，实际读取到 $($hashes.Count) 项。" }
     $hashes
 }
 
@@ -165,6 +169,10 @@ $installedFiles = @(
     'app\assets\floating-plush\component-day-header-blank.png',
     'app\assets\floating-plush\component-day-card-blank.png',
     'app\assets\floating-plush\component-day-mascots.png',
+    'app\assets\main-decorations\main-countdown-scene-day.png',
+    'app\assets\main-decorations\main-notes-scene-day.png',
+    'app\assets\main-decorations\main-countdown-top-night.png',
+    'app\assets\main-decorations\main-notes-top-night.png',
     'CountdownLauncher.exe',
     'countdown-icon.ico',
     'sanrio-official-mymelody.png',

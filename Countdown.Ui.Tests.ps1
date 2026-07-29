@@ -195,6 +195,13 @@ if (-not $validation.FloatingDynamicCardContentRemainsWpf) { throw 'Floating car
 if (-not $validation.FloatingDynamicHeaderControlsRemainWpf) { throw 'Floating title, tabs, or command icons are no longer real WPF controls.' }
 if (-not $validation.FloatingHeaderIconAccessibility) { throw 'The floating icon buttons lost their tooltips or accessible names.' }
 if (-not $validation.FloatingHeaderIconClickCommandsWork) { throw 'The floating open-manager or exit icon button no longer executes its click command.' }
+if (-not $validation.FloatingDragHandleReceivesPointerGestures) { throw 'The floating drag handle does not receive a routed left-button gesture.' }
+if (-not $validation.FloatingDragHandleRequestsNativeWindowDrag) { throw 'The floating drag handle does not route input to WPF DragMove.' }
+if (-not $validation.FloatingSyntheticDragDoesNotClaimPhysicalCompletion) { throw 'A rejected synthetic DragMove is being reported as a completed physical drag.' }
+if (-not $validation.FloatingDragAttemptClampsToWorkArea) { throw 'A floating drag attempt does not immediately clamp to the work area.' }
+if (-not $validation.FloatingInteractiveControlsDoNotRequestWindowDrag) { throw 'An interactive floating control incorrectly routes input to WPF DragMove.' }
+if (-not $validation.FloatingDragHandleExcludesInteractiveControls) { throw 'The floating drag handle overlaps an interactive control.' }
+if (-not $validation.FloatingWindowManualPositionPersistsAndRemainsVisibleAfterRefresh) { throw 'A manual floating-window position does not persist within the work area after content refresh.' }
 if (-not $validation.FloatingPlushGroupWithinWorkArea) { throw 'The floating plush task-wrap group exceeds the desktop work area.' }
 if (-not $validation.FloatingTitleTextFits) {
     throw "Floating sticky-note title is clipped: available=$($validation.FloatingTitleTextAvailableWidth), required=$($validation.FloatingTitleTextRequiredWidth)."
@@ -258,10 +265,17 @@ if (-not $validation.NoDefaultSystemSurfaces) { throw 'A system window frame or 
 if (-not $validation.NoRawFloatingThemeBypass) { throw 'The floating window bypasses shared theme tokens with raw colors.' }
 if ((@($validation.MainThemeBoundaryModes) -join ',') -ne 'Night,Day,Day,Night') { throw 'The main window does not switch themes at the expected Beijing-time boundaries.' }
 if ((@($validation.MainThemeBackgroundColors) -join ',') -ne '#FFFFF6EF,#FF2B2118') { throw 'The main window day/night background palette is incorrect.' }
-if ((@($validation.MainThemeCharacterOpacities) -join ',') -ne '10,16') { throw 'The main-window character layer does not adapt across day and night.' }
+if ((@($validation.MainThemeCharacterOpacities) -join ',') -ne '8,16') { throw 'The main-window character layer does not adapt across day and night.' }
 if ($validation.MainCharacterPanelDockCount -ne 3) { throw 'The main-window character scene must contain three docks.' }
 if (-not $validation.MainCharacterPanelDocksIntegrateWithPanel) { throw 'The main-window character docks are not integrated with the workspace panel.' }
 if (-not $validation.MainCharacterPanelDecorationsAreNonInteractive) { throw 'The main-window character scene blocks workspace interaction.' }
+if (-not $validation.MainReferenceDecorationAssetsLoaded) { throw 'The main-window day reference decoration assets did not load.' }
+if (-not $validation.MainNightReferenceDecorationAssetsLoaded) { throw 'The main-window night character and wave assets did not load.' }
+if (-not $validation.MainReferenceDecorationsAreNonInteractive) { throw 'The main-window day reference decorations block workspace interaction.' }
+if (-not $validation.MainReferenceDecorationsFollowDayNightTheme) { throw 'The main-window day reference decorations do not follow the active theme.' }
+if (-not $validation.MainNightReferenceGeometryMatchesDay) { throw 'The main-window night character and wave geometry no longer matches the day reference.' }
+if ((@($validation.MainNightReferenceWaveColumnCounts) -join ',') -ne '1093,1079') { throw 'The main-window night wave contour is not continuous across the reference width.' }
+if (-not $validation.MainReferenceDecorationsShareScaleAtMinimumAndWideSizes) { throw 'The main-window day reference decorations do not share the content scaling coordinate system at minimum and wide sizes.' }
 if ((@($validation.MainThemeCharacterPanelColors) -join ',') -ne '#FFFFF7E8,#FF3B2B1D') { throw 'The main-window character scene does not switch to the expected day/night palette.' }
 if (-not $validation.MainCharacterPanelDocksFollowDayNightTheme) { throw 'The main-window character docks do not follow the day/night theme.' }
 if (-not $validation.MainThemeUsesChinaStandardTime) { throw 'The main window theme does not use China Standard Time.' }

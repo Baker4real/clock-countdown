@@ -70,17 +70,23 @@
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="FloatingTitle"
-                       Text="倒计时"
-                       Margin="16,0,0,0"
-                       MinWidth="92"
-                       MinHeight="34"
-                       FontSize="22"
-                       FontWeight="Bold"
-                       LineHeight="32"
-                       LineStackingStrategy="BlockLineHeight"
-                       Foreground="{DynamicResource FloatingHeaderTextBrush}"
-                       VerticalAlignment="Center" />
+            <Border x:Name="FloatingDragHandle"
+                    Grid.Column="0"
+                    Background="Transparent"
+                    Cursor="SizeAll"
+                    MouseLeftButtonDown="OnFloatingDragHandleMouseLeftButtonDown">
+              <TextBlock x:Name="FloatingTitle"
+                         Text="倒计时"
+                         Margin="16,0,0,0"
+                         MinWidth="92"
+                         MinHeight="34"
+                         FontSize="22"
+                         FontWeight="Bold"
+                         LineHeight="32"
+                         LineStackingStrategy="BlockLineHeight"
+                         Foreground="{DynamicResource FloatingHeaderTextBrush}"
+                         VerticalAlignment="Center" />
+            </Border>
             <ToggleButton x:Name="FloatingCountdownsButton"
                           Grid.Column="1"
                           Width="85"

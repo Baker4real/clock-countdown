@@ -23,10 +23,10 @@
 - 工资按当月实际工作日计算，并同步法定带薪休假和调休补班日历；日历未就绪时不会显示估算金额
 - 节假日日历已就绪时，悬浮窗会在实际工作日、下班前默认显示“距离下班”倒计时，并使用设置的下班时间
 - 登录 Windows 后自动启动，默认以小型悬浮框显示所有进行中的倒计时
-- 悬浮框可临时拖动到桌面任意位置；内容增减后会重新贴齐工作区右下方，点击“管理”打开完整编辑窗口，关闭管理窗口不会停止悬浮显示
-- 悬浮框固定为 `520 x 390`；每次内容增减都会重新贴齐工作区右下方并保留任务栏安全间距；倒计时较多时，列表会滚动显示
+- 悬浮框可临时拖动到桌面任意位置；手动位置在内容刷新后保留，并按当前工作区边界收紧，点击“管理”打开完整编辑窗口，关闭管理窗口不会停止悬浮显示
+- 悬浮框固定为 `520 x 390`；首次显示自动贴齐工作区右下方并保留任务栏安全间距；手动移动后会继续保持可见，倒计时较多时列表滚动显示
 - 单实例运行，避免重复窗口
-- 主窗口以低透明度并列显示 Sanrio 官方角色页中的美乐蒂、玉桂狗和库洛米立绘，不混入其他角色；夜间适度提高角色可见度但不遮挡内容
+- 主窗口日间使用参考图派生的完整角色姿态、波浪边框和底部场景，夜间使用相同姿态与构图的暖琥珀角色和波浪层；倒计时、便签和操作控件仍由真实 WPF 动态渲染
 - 悬浮窗的参考图静态层全部不参与命中测试；标题、操作控件、动态文字、便签勾选框、滚动和点击区域继续由真实 WPF 控件负责，日间 raster 场景不会把参考图中的示例文字或数值带入运行界面
 - 主窗口立绘的来源与私人使用边界见 [三丽鸥官方背景素材](docs/三丽鸥官方背景素材.md)；悬浮窗玩偶的来源与非生成式处理说明见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
 - 本机滚动诊断日志记录启动、正常退出、窗口就绪、节假日日历状态和致命异常，便于定位隐藏窗口闪退
@@ -37,7 +37,7 @@
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入与跨进程 mutex
 - `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序
-- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 10 个现役应用资产
+- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 14 个现役应用资产
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归夹具；只保留在仓库和部署验证包中，不安装到运行目录，生产入口不调用
@@ -50,9 +50,11 @@
 - `CountdownLauncher.cs`：无控制台桌面启动器源码
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
 - `countdown-icon.ico`：窗口和桌面启动器图标
-- `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口使用的三张官方透明角色立绘
+- `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口兼容回退与来源校验使用的三张官方透明角色立绘
 - `assets/floating-plush/*.png`：复刻版使用的三张参考图派生角色姿态和四张日间无文字 raster 组件，以及仅供旧 PowerShell 回归的商品姿态夹具；正式 `app` 只发布前七项，来源、处理边界、哈希与视觉证据见 `assets/floating-plush/SOURCES.md`
+- `assets/main-decorations/*.png`：主窗口日间完整角色与底部场景，以及夜间同姿态暖琥珀顶部角色和波浪层；四项均进入正式 `app`
 - `assets/ui-references/*.png`：用户生成的页面与悬浮窗参考图固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
+- `tools/Build-MainNightTopScene.ps1`：从日间参考构图生成主窗口夜间暖琥珀顶部场景的维护脚本
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试

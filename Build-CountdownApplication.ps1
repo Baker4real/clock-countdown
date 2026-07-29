@@ -64,6 +64,22 @@ $assetManifest = @(
         Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-mascots.png'
         RelativePath = 'floating-plush\component-day-mascots.png'
     }
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-countdown-scene-day.png'
+        RelativePath = 'main-decorations\main-countdown-scene-day.png'
+    }
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-notes-scene-day.png'
+        RelativePath = 'main-decorations\main-notes-scene-day.png'
+    }
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-countdown-top-night.png'
+        RelativePath = 'main-decorations\main-countdown-top-night.png'
+    }
+    [pscustomobject]@{
+        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-notes-top-night.png'
+        RelativePath = 'main-decorations\main-notes-top-night.png'
+    }
 )
 
 if (-not (Test-Path -LiteralPath $applicationProject -PathType Leaf)) {

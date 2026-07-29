@@ -11,7 +11,8 @@ function New-CountdownPreferences {
         [ValidateSet('Day', 'Hour', 'Minute', 'Second')] [string] $Precision = 'Second',
         [decimal] $MonthlySalary = 0,
         [string] $WorkStartText = '09:00',
-        [string] $WorkEndText = '18:00'
+        [string] $WorkEndText = '18:00',
+        [ValidateSet('Auto', 'Day', 'Night')] [string] $ThemePreference = 'Auto'
     )
 
     if ($MonthlySalary -lt 0) { throw '月薪不能小于 0。' }
@@ -30,6 +31,7 @@ function New-CountdownPreferences {
         MonthlySalary = $MonthlySalary
         WorkStart = $workStart
         WorkEnd = $workEnd
+        ThemePreference = $ThemePreference
     }
 }
 
@@ -85,7 +87,7 @@ function ConvertFrom-CountdownSettingsObject {
         [void] $records.Add((New-CountdownRecordFromSettings -Id ([guid]::NewGuid().ToString('N')) -Name '我的倒计时' -TargetUtc (ConvertTo-CountdownSettingsTargetUtc -Value $Settings.targetUtc)))
         return [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $true }
     }
-    if ($Settings.schemaVersion -notin @(2, 3, 4, 5, 6, 7, 8)) { throw '设置文件版本无效。' }
+    if ($Settings.schemaVersion -notin @(2, 3, 4, 5, 6, 7, 8, 9)) { throw '设置文件版本无效。' }
 
     if ($Settings.schemaVersion -ge 5) {
         if ($null -eq $Settings.PSObject.Properties['tags'] -or $null -eq $Settings.tags) { throw '设置中缺少标签库。' }
@@ -126,7 +128,14 @@ function ConvertFrom-CountdownSettingsObject {
         if (-not [decimal]::TryParse(([string] $Settings.monthlySalary), [System.Globalization.NumberStyles]::Number, [System.Globalization.CultureInfo]::InvariantCulture, [ref] $salary)) {
             throw '设置中包含无效的月薪。'
         }
-        $preferences = New-CountdownPreferences -Precision $precision -MonthlySalary $salary -WorkStartText ([string] $Settings.workStart) -WorkEndText ([string] $Settings.workEnd)
+        $themePreference = 'Auto'
+        if ($Settings.schemaVersion -ge 9) {
+            if ($null -eq $Settings.PSObject.Properties['themePreference']) {
+                throw '设置中缺少主题偏好。'
+            }
+            $themePreference = [string] $Settings.themePreference
+        }
+        $preferences = New-CountdownPreferences -Precision $precision -MonthlySalary $salary -WorkStartText ([string] $Settings.workStart) -WorkEndText ([string] $Settings.workEnd) -ThemePreference $themePreference
     }
 
     if ($Settings.schemaVersion -ge 4) {
@@ -211,14 +220,20 @@ function ConvertFrom-CountdownSettingsObject {
         }
     }
 
-    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 8 }
+    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 9 }
 }
 
 function ConvertTo-CountdownSettingsJson {
     [CmdletBinding()]
     param([Parameter(Mandatory)] [object] $State)
 
-    $preferences = New-CountdownPreferences -Precision ([string] $State.Preferences.Precision) -MonthlySalary ([decimal] $State.Preferences.MonthlySalary) -WorkStartText (Format-CountdownWorkTime -Value ([TimeSpan] $State.Preferences.WorkStart)) -WorkEndText (Format-CountdownWorkTime -Value ([TimeSpan] $State.Preferences.WorkEnd))
+    $themePreference = if ($null -eq $State.Preferences.PSObject.Properties['ThemePreference']) {
+        'Auto'
+    }
+    else {
+        [string] $State.Preferences.ThemePreference
+    }
+    $preferences = New-CountdownPreferences -Precision ([string] $State.Preferences.Precision) -MonthlySalary ([decimal] $State.Preferences.MonthlySalary) -WorkStartText (Format-CountdownWorkTime -Value ([TimeSpan] $State.Preferences.WorkStart)) -WorkEndText (Format-CountdownWorkTime -Value ([TimeSpan] $State.Preferences.WorkEnd)) -ThemePreference $themePreference
 
     if ($null -eq $State.PSObject.Properties['Tags']) { throw '设置状态缺少标签库。' }
     $tagIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -306,12 +321,13 @@ function ConvertTo-CountdownSettingsJson {
     }
 
     [ordered]@{
-        schemaVersion = 8
+        schemaVersion = 9
         timeZoneId = 'China Standard Time'
         displayPrecision = $preferences.Precision
         monthlySalary = $preferences.MonthlySalary
         workStart = Format-CountdownWorkTime -Value $preferences.WorkStart
         workEnd = Format-CountdownWorkTime -Value $preferences.WorkEnd
+        themePreference = $preferences.ThemePreference
         tags = $tags
         countdowns = $records
         notes = $notes
@@ -486,7 +502,7 @@ function Test-CountdownSettingsDeploymentTransition {
     try {
         $before = $BeforeJson | ConvertFrom-Json
         $after = $AfterJson | ConvertFrom-Json
-        if ($before.schemaVersion -notin @(3, 4, 5, 6, 7) -or $after.schemaVersion -ne 8) { return $false }
+        if ($before.schemaVersion -notin @(3, 4, 5, 6, 7, 8) -or $after.schemaVersion -ne 9) { return $false }
         $expectedMigration = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $before) | ConvertFrom-Json
         $null = ConvertFrom-CountdownSettingsObject -Settings $after
         if (-not (Test-CountdownSettingsJsonEquivalent -Expected $expectedMigration -Actual $after)) { return $false }

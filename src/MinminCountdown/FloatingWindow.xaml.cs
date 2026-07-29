@@ -49,7 +49,9 @@ public sealed partial class FloatingWindow : Window
         LoadAssets(assetRoot);
         ConfigureControls();
         WireEvents();
-        ApplyTheme(_session.UtcNow);
+        ApplyTheme(ApplicationTheme.Resolve(
+            _session.UtcNow,
+            _session.Current.Preferences.ThemePreference));
         _session.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         _calendar.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         Refresh();
@@ -57,6 +59,9 @@ public sealed partial class FloatingWindow : Window
 
     internal int PlushCount => new[] { PlushTopLeft.Source, PlushTopRight.Source, PlushBottomRight.Source }
         .Count(source => source is not null);
+
+    internal ApplicationThemeMode CurrentThemeMode =>
+        (_activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。")).Mode;
 
     internal bool PlushDecorationsAreNonInteractive =>
         !PlushTopLeft.IsHitTestVisible &&
@@ -449,7 +454,6 @@ public sealed partial class FloatingWindow : Window
 
     internal void UpdateTime(DateTimeOffset nowUtc)
     {
-        ApplyTheme(nowUtc);
         if (!_dateDirty)
         {
             _settingDefaultDate = true;
@@ -481,6 +485,7 @@ public sealed partial class FloatingWindow : Window
 
         foreach (var checkpoint in checkpoints)
         {
+            ApplyTheme(ApplicationTheme.Resolve(checkpoint.ToUniversalTime()));
             UpdateTime(checkpoint.ToUniversalTime());
             var activeTheme = _activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。");
             modes.Add(activeTheme.Mode.ToString());
@@ -501,6 +506,9 @@ public sealed partial class FloatingWindow : Window
             plushSceneFollowsDayNightTheme &= PlushSceneFollowsActiveTheme;
         }
 
+        ApplyTheme(ApplicationTheme.Resolve(
+            _session.UtcNow,
+            _session.Current.Preferences.ThemePreference));
         UpdateTime(_session.UtcNow);
         var expectedModes = new[] { "Night", "Day", "Day", "Night" };
         var expectedMascotPresentationModes = new[]
@@ -555,9 +563,9 @@ public sealed partial class FloatingWindow : Window
         }
     }
 
-    private void ApplyTheme(DateTimeOffset nowUtc)
+    internal void ApplyTheme(ApplicationThemeMode mode)
     {
-        var nextTheme = FloatingThemePalette.For(nowUtc);
+        var nextTheme = FloatingThemePalette.For(mode);
         if (ReferenceEquals(_activeTheme, nextTheme))
         {
             return;
@@ -855,7 +863,6 @@ public sealed partial class FloatingWindow : Window
 
     private void Refresh()
     {
-        ApplyTheme(_session.UtcNow);
         FloatingTags.SetTags(_session.Current.Tags);
         RenderRows(_session.UtcNow);
         Reanchor();
@@ -1330,6 +1337,9 @@ internal sealed record FloatingThemePalette(
 
     public static FloatingThemePalette For(DateTimeOffset nowUtc)
     {
-        return ApplicationTheme.Resolve(nowUtc) == ApplicationThemeMode.Day ? Daylight : Nighttime;
+        return For(ApplicationTheme.Resolve(nowUtc));
     }
+
+    public static FloatingThemePalette For(ApplicationThemeMode mode) =>
+        mode == ApplicationThemeMode.Day ? Daylight : Nighttime;
 }

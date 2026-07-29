@@ -17,6 +17,12 @@ public static class SettingsContract
         "Minute",
         "Second"
     };
+    private static readonly HashSet<string> ValidThemePreferences = new(StringComparer.OrdinalIgnoreCase)
+    {
+        nameof(ThemePreferenceMode.Auto),
+        nameof(ThemePreferenceMode.Day),
+        nameof(ThemePreferenceMode.Night)
+    };
 
     public static SettingsLoadResult Deserialize(string json, IGuidSource? guidSource = null)
     {
@@ -56,26 +62,27 @@ public static class SettingsContract
                         ReadCountdowns(root, 3, Array.Empty<string>()),
                         Array.Empty<NoteRecord>(),
                         Array.Empty<TagRecord>(),
-                        ReadPreferences(root));
+                        ReadPreferences(root, schemaVersion));
                     break;
                 case 4:
                     settings = new CountdownSettings(
                         ReadCountdowns(root, 4, Array.Empty<string>()),
                         ReadNotes(root, 4, Array.Empty<string>()),
                         Array.Empty<TagRecord>(),
-                        ReadPreferences(root));
+                        ReadPreferences(root, schemaVersion));
                     break;
                 case 5:
                 case 6:
                 case 7:
                 case 8:
+                case 9:
                     var tags = ReadTags(root);
                     var knownTagIds = tags.Select(static tag => tag.Id).ToArray();
                     settings = new CountdownSettings(
                         ReadCountdowns(root, schemaVersion, knownTagIds),
                         ReadNotes(root, schemaVersion, knownTagIds),
                         tags,
-                        ReadPreferences(root));
+                        ReadPreferences(root, schemaVersion));
                     break;
                 default:
                     throw new SettingsValidationException("设置文件版本无效。");
@@ -127,6 +134,7 @@ public static class SettingsContract
         writer.WriteNumber("monthlySalary", canonical.Preferences.MonthlySalary);
         writer.WriteString("workStart", FormatWorkTime(canonical.Preferences.WorkStart));
         writer.WriteString("workEnd", FormatWorkTime(canonical.Preferences.WorkEnd));
+        writer.WriteString("themePreference", canonical.Preferences.ThemePreference.ToString());
 
         writer.WritePropertyName("tags");
         writer.WriteStartArray();
@@ -230,13 +238,32 @@ public static class SettingsContract
         return new CountdownPreferences("Second", 0m, TimeSpan.FromHours(9), TimeSpan.FromHours(18));
     }
 
-    private static CountdownPreferences ReadPreferences(JsonObjectProperties root)
+    private static CountdownPreferences ReadPreferences(JsonObjectProperties root, int schemaVersion)
     {
         var precision = ReadRequiredString(root.Require("displayPrecision"), "悬浮窗显示精度");
         var salary = ReadDecimal(root.Require("monthlySalary"));
         var workStart = ParseWorkTime(ReadRequiredString(root.Require("workStart"), "上班时间"));
         var workEnd = ParseWorkTime(ReadRequiredString(root.Require("workEnd"), "下班时间"));
-        return NormalizePreferences(new CountdownPreferences(precision, salary, workStart, workEnd));
+        var themePreference = schemaVersion >= 9
+            ? ParseThemePreference(ReadRequiredString(root.Require("themePreference"), "主题偏好"))
+            : ThemePreferenceMode.Auto;
+        return NormalizePreferences(new CountdownPreferences(
+            precision,
+            salary,
+            workStart,
+            workEnd,
+            themePreference));
+    }
+
+    private static ThemePreferenceMode ParseThemePreference(string value)
+    {
+        if (!ValidThemePreferences.TryGetValue(value, out var canonical) ||
+            !Enum.TryParse<ThemePreferenceMode>(canonical, out var preference))
+        {
+            throw new SettingsValidationException("设置中包含无效的主题偏好。");
+        }
+
+        return preference;
     }
 
     private static IReadOnlyList<TagRecord> ReadTags(JsonObjectProperties root)
@@ -490,7 +517,17 @@ public static class SettingsContract
             throw new SettingsValidationException("下班时间必须晚于上班时间。");
         }
 
-        return new CountdownPreferences(displayPrecision, preferences.MonthlySalary, workStart, workEnd);
+        if (!Enum.IsDefined(preferences.ThemePreference))
+        {
+            throw new SettingsValidationException("设置中包含无效的主题偏好。");
+        }
+
+        return new CountdownPreferences(
+            displayPrecision,
+            preferences.MonthlySalary,
+            workStart,
+            workEnd,
+            preferences.ThemePreference);
     }
 
     private static IReadOnlyList<TagRecord> NormalizeTags(IReadOnlyList<TagRecord>? tags)

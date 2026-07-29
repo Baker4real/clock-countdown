@@ -111,7 +111,7 @@ internal static class CliApplication
 
         if (!string.Equals(canonical, Encoding.UTF8.GetString(written), StringComparison.Ordinal))
         {
-            throw new VerificationException("round-trip 输出不是稳定的 canonical v7 JSON。");
+            throw new VerificationException("round-trip 输出不是稳定的 canonical v9 JSON。");
         }
 
         var summary = new RoundTripSummary(

@@ -54,6 +54,11 @@ internal sealed class ApplicationTheme
         return Apply(Resolve(nowUtc));
     }
 
+    public ApplicationThemeMode Apply(DateTimeOffset nowUtc, ThemePreferenceMode preference)
+    {
+        return Apply(Resolve(nowUtc, preference));
+    }
+
     internal ApplicationThemeMode Apply(ApplicationThemeMode nextMode)
     {
         if (_activeMode == nextMode)
@@ -74,8 +79,12 @@ internal sealed class ApplicationTheme
 
     public static ApplicationThemeMode Resolve(DateTimeOffset nowUtc)
     {
-        var beijing = ChinaStandardTime.ToBeijingTime(nowUtc);
-        return beijing.Hour is >= 7 and < 19
+        return Resolve(nowUtc, ThemePreferenceMode.Auto);
+    }
+
+    public static ApplicationThemeMode Resolve(DateTimeOffset nowUtc, ThemePreferenceMode preference)
+    {
+        return ThemePreferenceResolver.Resolve(nowUtc, preference) == EffectiveThemeMode.Day
             ? ApplicationThemeMode.Day
             : ApplicationThemeMode.Night;
     }

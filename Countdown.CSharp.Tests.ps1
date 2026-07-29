@@ -279,8 +279,9 @@ try {
         throw "C# round-trip 未生成显式输出：$roundTripPath"
     }
     $canonicalSettings = Get-Content -LiteralPath $roundTripPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    Assert-Equal 8 $canonicalSettings.schemaVersion 'C# round-trip 输出 schemaVersion'
+    Assert-Equal 9 $canonicalSettings.schemaVersion 'C# round-trip 输出 schemaVersion'
     Assert-Equal 'China Standard Time' $canonicalSettings.timeZoneId 'C# round-trip 输出时区'
+    Assert-Equal 'Auto' $canonicalSettings.themePreference 'C# round-trip 为旧设置补齐自动主题偏好'
     $powerShellReloadedState = ConvertFrom-CountdownSettingsObject -Settings $canonicalSettings
     $powerShellReloadedCanonical = ConvertTo-CountdownSettingsJson -State $powerShellReloadedState
     Assert-Equal $powerShellCanonical $powerShellReloadedCanonical 'PowerShell/C# 双向领域值等价'
@@ -388,18 +389,25 @@ try {
         '-File',
         $adapter,
         '-ValidateOnly',
+        '-ExerciseThemePreference',
         '-SettingsFile',
         $roundTripPath,
         '-DiagnosticLogPath',
         $adapterDiagnosticPath
     )
     $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
+    Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash '主题点击验收循环回 Auto 且不改变等价设置'
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '桌面工作区 deep module 验收'
     Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolModuleDeep) '启动验收 protocol deep module 验收'
     Assert-Equal $true ([bool] $adapterValidation.WorkdayCalendarModuleDeep) '工作日历 deep module 验收'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '验证报告 deep module 验收'
     Assert-Equal $true ([bool] $adapterValidation.ThemeControlInventoryCovered) 'adapter 验证主题控件资产清单'
+    Assert-Equal $true ([bool] $adapterValidation.ThemePreferenceButtonCyclesViaClick) '主题按钮通过真实 WPF 点击按自动、日间、夜间循环'
+    Assert-Equal $true ([bool] $adapterValidation.ThemePreferenceButtonPersistsEachMode) '主题按钮每次选择都写入设置'
+    Assert-Equal $true ([bool] $adapterValidation.ThemePreferenceButtonIsAccessible) '主题按钮每个状态都有 ToolTip 和可访问名称'
+    Assert-Equal $true ([bool] $adapterValidation.ThemePreferenceButtonUsesProjectTheme) '主题按钮保持紧凑并使用项目主题模板'
+    Assert-Equal $true ([bool] $adapterValidation.ThemePreferenceWindowsStaySynchronized) '主题按钮切换后主窗口与悬浮窗保持同一生效主题'
     Assert-Equal $true ([bool] $adapterValidation.ThemedControlTemplatesApplied) 'adapter 验证真实 WPF 主题模板'
     Assert-Equal $true ([bool] $adapterValidation.LiveDatePickerPopupIsThemed) 'adapter 验证真实 DatePicker Popup 主题'
     Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLoaded) 'adapter 验证角色图片资产已加载'
@@ -669,7 +677,8 @@ try {
     $interactiveMigratedJson = Get-Content -LiteralPath $interactiveSettingsPath -Raw -Encoding UTF8
     $interactiveMigratedHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
     $interactiveMigratedSettings = $interactiveMigratedJson | ConvertFrom-Json
-    Assert-Equal 8 ([int] $interactiveMigratedSettings.schemaVersion) 'released 阶段把 schema v6 写回 canonical v8'
+    Assert-Equal 9 ([int] $interactiveMigratedSettings.schemaVersion) 'released 阶段把 schema v6 写回 canonical v9'
+    Assert-Equal 'Auto' ([string] $interactiveMigratedSettings.themePreference) 'released 阶段为 schema v6 补齐自动主题偏好'
     Assert-Equal $false ($interactiveLegacyHash -eq $interactiveMigratedHash) 'released 阶段实际写回迁移后的设置'
     Assert-Equal $true (
         Test-CountdownSettingsDeploymentTransition `

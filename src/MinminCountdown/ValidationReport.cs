@@ -55,6 +55,10 @@ internal static class ValidationReport
         floating.Reanchor();
         PumpDispatcher();
 
+        var themePreferenceExercise = options.ExerciseThemePreference
+            ? RunThemePreferenceButtonExercise(main, floating, session)
+            : ThemePreferenceButtonExerciseResult.NotRun;
+
         var openManagerButton = Required<Button>(floating, "OpenManagerButton");
         var closeFloatingButton = Required<Button>(floating, "CloseFloatingButton");
         var floatingHeaderIconAccessibility =
@@ -515,6 +519,12 @@ internal static class ValidationReport
             ["ExpandedWorkStartWidth"] = Required<TextBox>(main, "WorkStart").ActualWidth,
             ["ExpandedWorkEndWidth"] = Required<TextBox>(main, "WorkEnd").ActualWidth,
             ["ThemeControlInventoryCovered"] = themeInventory,
+            ["ThemePreferenceButtonCyclesViaClick"] =
+                themePreferenceExercise.CyclesViaClick && themePreferenceExercise.LabelsFollowPreference,
+            ["ThemePreferenceButtonPersistsEachMode"] = themePreferenceExercise.PersistsEachMode,
+            ["ThemePreferenceButtonIsAccessible"] = themePreferenceExercise.IsAccessible,
+            ["ThemePreferenceButtonUsesProjectTheme"] = themePreferenceExercise.UsesProjectTheme,
+            ["ThemePreferenceWindowsStaySynchronized"] = themePreferenceExercise.WindowsStaySynchronized,
             ["ToolTipTemplateMaterializes"] = toolTipMaterializes,
             ["ThemedControlTemplatesApplied"] = mainThemeTemplate,
             ["ComboBoxesUseThemedDropDowns"] = comboThemed,
@@ -2758,6 +2768,62 @@ internal static class ValidationReport
         return control.Template is not null;
     }
 
+    private static ThemePreferenceButtonExerciseResult RunThemePreferenceButtonExercise(
+        MainWindow main,
+        FloatingWindow floating,
+        ApplicationSession session)
+    {
+        var button = Required<Button>(main, "ThemeModeButton");
+        var expectedPreferences = new[]
+        {
+            ThemePreferenceMode.Day,
+            ThemePreferenceMode.Night,
+            ThemePreferenceMode.Auto
+        };
+        var expectedLabels = new[] { "☀ 日间", "☾ 夜间", "◐ 自动" };
+        var observedPreferences = new List<ThemePreferenceMode>();
+        var observedLabels = new List<string>();
+        var persistedEachMode = true;
+        var accessibleEachMode = true;
+        var synchronizedEachMode = true;
+
+        foreach (var expectedPreference in expectedPreferences)
+        {
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher();
+            observedPreferences.Add(session.Current.Preferences.ThemePreference);
+            observedLabels.Add(button.Content?.ToString() ?? string.Empty);
+            var persisted = SettingsContract.Deserialize(File.ReadAllText(session.SettingsPath));
+            persistedEachMode &= persisted.Settings.Preferences.ThemePreference == expectedPreference;
+            accessibleEachMode &=
+                button.ToolTip is string toolTip && toolTip.Contains("主题模式", StringComparison.Ordinal) &&
+                AutomationProperties.GetName(button) is string accessibleName &&
+                accessibleName.Contains("主题模式", StringComparison.Ordinal);
+            synchronizedEachMode &=
+                string.Equals(
+                    main.CurrentThemeMode.ToString(),
+                    floating.GetType()
+                        .GetProperty(
+                            "CurrentThemeMode",
+                            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                        ?.GetValue(floating)
+                        ?.ToString(),
+                    StringComparison.Ordinal);
+        }
+
+        return new ThemePreferenceButtonExerciseResult(
+            observedPreferences.SequenceEqual(expectedPreferences),
+            observedLabels.SequenceEqual(expectedLabels, StringComparer.Ordinal),
+            persistedEachMode,
+            accessibleEachMode,
+            button.Width is >= 120 and <= 150 &&
+            button.Height is >= 44 and <= 52 &&
+            ReferenceEquals(
+                button.Style,
+                Required<Grid>(main, "MainContentProjection").Resources["MainSecondaryButton"]),
+            synchronizedEachMode);
+    }
+
     private static MainThemeExerciseResult RunMainThemeExercise(
         ApplicationTheme theme,
         MainWindow main,
@@ -3268,6 +3334,18 @@ internal static class ValidationReport
         bool SegmentSelectedTextContrast,
         bool CharacterPanelDocksFollowTheme,
         bool ReferenceDecorationsFollowTheme);
+
+    private sealed record ThemePreferenceButtonExerciseResult(
+        bool CyclesViaClick,
+        bool LabelsFollowPreference,
+        bool PersistsEachMode,
+        bool IsAccessible,
+        bool UsesProjectTheme,
+        bool WindowsStaySynchronized)
+    {
+        public static ThemePreferenceButtonExerciseResult NotRun { get; } =
+            new(false, false, false, false, false, false);
+    }
 
     private sealed record MainReferenceCaptureResult(
         bool Requested,

@@ -4,6 +4,7 @@
 param(
     [switch] $ValidateOnly,
     [switch] $ExerciseNoteAdd,
+    [switch] $ExerciseThemePreference,
     [switch] $ExercisePersistenceFailures,
     [switch] $ExerciseTagInteractions,
     [switch] $ExerciseFatalDiagnostic,
@@ -36,6 +37,9 @@ else {
 }
 if ($ExerciseNoteAdd.IsPresent) {
     $applicationArguments.Add('--exercise-note-add')
+}
+if ($ExerciseThemePreference.IsPresent) {
+    $applicationArguments.Add('--exercise-theme-preference')
 }
 if ($ExercisePersistenceFailures.IsPresent) {
     $applicationArguments.Add('--exercise-persistence-failures')

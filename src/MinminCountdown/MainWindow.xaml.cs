@@ -67,6 +67,8 @@ public sealed partial class MainWindow : Window
 
     public event EventHandler? CloseRequested;
 
+    internal event EventHandler? ThemePreferenceChanged;
+
     internal ApplicationSession Session => _session;
 
     internal WorkspaceKind CurrentWorkspace => _workspace;
@@ -569,6 +571,7 @@ public sealed partial class MainWindow : Window
         NameControl(WorkStart, "上班时间");
         NameControl(WorkEnd, "下班时间");
         NameControl(SavePreferencesButton, "保存偏好");
+        NameControl(ThemeModeButton, "主题模式：自动；点击切换为日间");
         NameControl(NoteText, "便签内容");
         NameControl(NoteDate, "便签日期");
         NameControl(NoteReminder, "便签提醒模式");
@@ -615,6 +618,7 @@ public sealed partial class MainWindow : Window
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
+        ThemeModeButton.Click += (_, _) => CycleThemePreference();
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
         NoteReminder.SelectionChanged += (_, _) => UpdateReminderScheduleControls();
@@ -1258,6 +1262,41 @@ public sealed partial class MainWindow : Window
         MonthlySalary.Text = preferences.MonthlySalary.ToString(CultureInfo.CurrentCulture);
         WorkStart.Text = CountdownFormatting.FormatWorkTime(preferences.WorkStart);
         WorkEnd.Text = CountdownFormatting.FormatWorkTime(preferences.WorkEnd);
+        UpdateThemePreferenceButton(preferences.ThemePreference);
+    }
+
+    private void CycleThemePreference()
+    {
+        var nextPreference = _session.Current.Preferences.ThemePreference switch
+        {
+            ThemePreferenceMode.Auto => ThemePreferenceMode.Day,
+            ThemePreferenceMode.Day => ThemePreferenceMode.Night,
+            ThemePreferenceMode.Night => ThemePreferenceMode.Auto,
+            _ => throw new InvalidOperationException("未知的主题偏好。")
+        };
+        if (!_session.TrySaveThemePreference(nextPreference, out var error))
+        {
+            SetMessage(StatusText, $"主题设置保存失败：{error}", true);
+            return;
+        }
+
+        UpdateThemePreferenceButton(nextPreference);
+        ThemePreferenceChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UpdateThemePreferenceButton(ThemePreferenceMode preference)
+    {
+        var (label, nextLabel) = preference switch
+        {
+            ThemePreferenceMode.Auto => ("◐ 自动", "日间"),
+            ThemePreferenceMode.Day => ("☀ 日间", "夜间"),
+            ThemePreferenceMode.Night => ("☾ 夜间", "自动"),
+            _ => throw new InvalidOperationException("未知的主题偏好。")
+        };
+        var description = $"主题模式：{label[2..]}；点击切换为{nextLabel}";
+        ThemeModeButton.Content = label;
+        ThemeModeButton.ToolTip = description;
+        AutomationProperties.SetName(ThemeModeButton, description);
     }
 
     private void SetReminderSelection(NoteReminder reminder)
@@ -1700,6 +1739,7 @@ public sealed partial class MainWindow : Window
         yield return WorkStart;
         yield return WorkEnd;
         yield return SavePreferencesButton;
+        yield return ThemeModeButton;
         yield return NoteText;
         yield return NoteDate;
         yield return NoteReminder;

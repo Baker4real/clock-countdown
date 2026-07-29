@@ -13,17 +13,19 @@ internal static class VerificationSuite
         {
             Run(
                 results,
-                $"schema-v{fixture.Version}-migrates-to-canonical-v8",
+                $"schema-v{fixture.Version}-migrates-to-canonical-v9",
                 () => VerifySchemaMigration(fixture.Version, fixture.Json));
         }
 
-        Run(results, "canonical-v8-is-stable", VerifyCanonicalVersionSevenIsStable);
-        Run(results, "schema-v7-reminder-migrates-to-v8-repeat", VerifyVersionSevenReminderMigration);
+        Run(results, "legacy-theme-preference-defaults-to-auto", VerifyLegacyThemePreferenceDefaultsToAuto);
+        Run(results, "theme-preference-resolves-auto-boundaries-and-manual-overrides", VerifyThemePreferenceResolution);
+        Run(results, "canonical-v9-is-stable", VerifyCanonicalVersionSevenIsStable);
+        Run(results, "schema-v7-reminder-migrates-to-v9-repeat", VerifyVersionSevenReminderMigration);
         Run(results, "schema-v8-reminder-branches-reject-foreign-fields", VerifyVersionEightReminderBranchesAreStrict);
         Run(results, "invalid-once-delivery-state-is-rejected", VerifyInvalidOnceDeliveryStateIsRejected);
         Run(results, "legacy-case-insensitive-values-are-canonicalized", VerifyLegacyCaseInsensitiveValuesAreCanonicalized);
         Run(results, "invalid-settings-are-rejected", VerifyInvalidSettingsAreRejected);
-        Run(results, "save-writes-canonical-v8-as-utf8-no-bom", VerifySaveWritesUtf8NoBom);
+        Run(results, "save-writes-canonical-v9-as-utf8-no-bom", VerifySaveWritesUtf8NoBom);
         Run(results, "failed-write-preserves-existing-settings", VerifyFailedWritePreservesExistingSettings);
         Run(results, "replacement-failure-preserves-existing-settings", VerifyReplacementFailurePreservesExistingSettings);
         Run(results, "settings-mutex-name-matches-powershell-contract", VerifySettingsMutexName);
@@ -47,7 +49,7 @@ internal static class VerificationSuite
         Equal(version != SettingsSchema.CurrentVersion, result.Migrated, "迁移标志");
         var canonicalJson = SettingsContract.SerializeCanonical(result.Settings);
         using var canonical = JsonDocument.Parse(canonicalJson);
-        Equal(8, canonical.RootElement.GetProperty("schemaVersion").GetInt32(), "规范 schema 版本");
+        Equal(9, canonical.RootElement.GetProperty("schemaVersion").GetInt32(), "规范 schema 版本");
         Equal(
             SettingsSchema.ChinaStandardTimeZoneId,
             canonical.RootElement.GetProperty("timeZoneId").GetString(),
@@ -90,6 +92,11 @@ internal static class VerificationSuite
                 "版本七倒计时",
                 "2030-07-08T09:10:11.0000000+00:00",
                 ["tag-focus"]),
+            8 => new ExpectedCountdown(
+                "countdown-v8",
+                "版本八倒计时",
+                "2030-08-09T10:11:12.0000000+00:00",
+                ["tag-focus"]),
             _ => throw new VerificationException($"测试不支持 schema v{version}。")
         };
         VerifyCountdown(result.Settings.Countdowns.Single(), expectedCountdown, version);
@@ -97,7 +104,7 @@ internal static class VerificationSuite
         VerifyNotesAndTags(result.Settings, version);
 
         var canonicalReload = SettingsContract.Deserialize(canonicalJson);
-        Equal(8, canonicalReload.SourceSchemaVersion, $"v{version} canonical reload schema");
+        Equal(9, canonicalReload.SourceSchemaVersion, $"v{version} canonical reload schema");
         Equal(false, canonicalReload.Migrated, $"v{version} canonical reload 迁移标志");
         VerifyCountdown(canonicalReload.Settings.Countdowns.Single(), expectedCountdown, version);
         VerifyPreferences(canonicalReload.Settings.Preferences, version);
@@ -128,6 +135,7 @@ internal static class VerificationSuite
             5 => new ExpectedPreferences("Second", 10000m, "09:15", "18:15"),
             6 => new ExpectedPreferences("Day", 15000m, "08:00", "17:00"),
             7 => new ExpectedPreferences("Second", 20000.50m, "09:00", "18:30"),
+            8 => new ExpectedPreferences("Second", 20000.50m, "09:00", "18:30"),
             _ => throw new VerificationException($"测试不支持 schema v{version}。")
         };
         Equal(expected.DisplayPrecision, actual.DisplayPrecision, $"v{version} 显示精度");
@@ -152,13 +160,14 @@ internal static class VerificationSuite
             {
                 6 => "2030-06-07",
                 7 => "2030-07-08",
+                8 => "2030-08-09",
                 _ => null
             }, note.Date, $"v{version} 便签日期");
             SequenceEqual(version switch
             {
                 5 => ["tag-work"],
                 6 => ["tag-life"],
-                7 => ["tag-focus"],
+                7 or 8 => ["tag-focus"],
                 _ => []
             }, note.TagIds, $"v{version} 便签标签关联");
             Equal(version == 7 ? 30 : null, note.ReminderIntervalMinutes, $"v{version} 提醒间隔");
@@ -181,7 +190,7 @@ internal static class VerificationSuite
         {
             5 => new TagRecord("tag-work", "工作", "#FF8A70"),
             6 => new TagRecord("tag-life", "生活", null),
-            7 => new TagRecord("tag-focus", "专注", "#FFD36B"),
+            7 or 8 => new TagRecord("tag-focus", "专注", "#FFD36B"),
             _ => throw new VerificationException($"测试不支持 schema v{version}。")
         };
         Equal(expectedTag.Id, tag.Id, $"v{version} 标签 ID");
@@ -197,8 +206,36 @@ internal static class VerificationSuite
             5 => "五",
             6 => "六",
             7 => "七",
+            8 => "八",
             _ => throw new VerificationException($"没有 schema v{version} 的中文名称。")
         };
+    }
+
+    private static void VerifyLegacyThemePreferenceDefaultsToAuto()
+    {
+        foreach (var fixture in SettingsFixtures.AllVersions)
+        {
+            var loaded = SettingsContract.Deserialize(fixture.Json);
+            Equal(ThemePreferenceMode.Auto, loaded.Settings.Preferences.ThemePreference, $"v{fixture.Version} 主题偏好");
+            using var canonical = JsonDocument.Parse(SettingsContract.SerializeCanonical(loaded.Settings));
+            Equal(9, canonical.RootElement.GetProperty("schemaVersion").GetInt32(), $"v{fixture.Version} 规范 schema");
+            Equal("Auto", canonical.RootElement.GetProperty("themePreference").GetString(), $"v{fixture.Version} 规范主题偏好");
+        }
+    }
+
+    private static void VerifyThemePreferenceResolution()
+    {
+        var beforeDay = new DateTimeOffset(2030, 1, 14, 22, 59, 59, TimeSpan.Zero);
+        var dayStart = new DateTimeOffset(2030, 1, 14, 23, 0, 0, TimeSpan.Zero);
+        var beforeNight = new DateTimeOffset(2030, 1, 15, 10, 59, 59, TimeSpan.Zero);
+        var nightStart = new DateTimeOffset(2030, 1, 15, 11, 0, 0, TimeSpan.Zero);
+
+        Equal(EffectiveThemeMode.Night, ThemePreferenceResolver.Resolve(beforeDay, ThemePreferenceMode.Auto), "07:00 前自动夜间");
+        Equal(EffectiveThemeMode.Day, ThemePreferenceResolver.Resolve(dayStart, ThemePreferenceMode.Auto), "07:00 起自动日间");
+        Equal(EffectiveThemeMode.Day, ThemePreferenceResolver.Resolve(beforeNight, ThemePreferenceMode.Auto), "19:00 前自动日间");
+        Equal(EffectiveThemeMode.Night, ThemePreferenceResolver.Resolve(nightStart, ThemePreferenceMode.Auto), "19:00 起自动夜间");
+        Equal(EffectiveThemeMode.Day, ThemePreferenceResolver.Resolve(nightStart, ThemePreferenceMode.Day), "手动日间覆盖时间");
+        Equal(EffectiveThemeMode.Night, ThemePreferenceResolver.Resolve(dayStart, ThemePreferenceMode.Night), "手动夜间覆盖时间");
     }
 
     private static void VerifyCanonicalVersionSevenIsStable()
@@ -210,7 +247,7 @@ internal static class VerificationSuite
 
         using var document = JsonDocument.Parse(first);
         var root = document.RootElement;
-        Equal(8, root.GetProperty("schemaVersion").GetInt32(), "schemaVersion");
+        Equal(9, root.GetProperty("schemaVersion").GetInt32(), "schemaVersion");
         Equal(1, root.GetProperty("tags").GetArrayLength(), "标签数量");
         Equal(1, root.GetProperty("countdowns").GetArrayLength(), "倒计时数量");
         Equal(1, root.GetProperty("notes").GetArrayLength(), "便签数量");
@@ -221,7 +258,7 @@ internal static class VerificationSuite
         var loaded = SettingsContract.Deserialize(SettingsFixtures.VersionSeven);
         using var canonical = JsonDocument.Parse(SettingsContract.SerializeCanonical(loaded.Settings));
         var root = canonical.RootElement;
-        Equal(8, root.GetProperty("schemaVersion").GetInt32(), "v7 提醒迁移后的 schemaVersion");
+        Equal(9, root.GetProperty("schemaVersion").GetInt32(), "v7 提醒迁移后的 schemaVersion");
         var note = root.GetProperty("notes")[0];
         var reminder = note.GetProperty("reminder");
         Equal("repeat", reminder.GetProperty("type").GetString(), "v7 提醒迁移后的模式");
@@ -341,7 +378,7 @@ internal static class VerificationSuite
             Equal(false, HasUtf8Bom(content), "UTF-8 BOM");
             Equal(false, File.Exists(settingsPath + ".tmp"), "临时文件残留");
             using var document = JsonDocument.Parse(content);
-            Equal(8, document.RootElement.GetProperty("schemaVersion").GetInt32(), "保存后的 schemaVersion");
+            Equal(9, document.RootElement.GetProperty("schemaVersion").GetInt32(), "保存后的 schemaVersion");
             Equal("版本七便签", document.RootElement.GetProperty("notes")[0].GetProperty("text").GetString(), "便签正文");
         });
     }

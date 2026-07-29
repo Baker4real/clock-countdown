@@ -172,6 +172,44 @@ internal static class SettingsFixtures
         }
         """;
 
+    public const string VersionEight = """
+        {
+          "schemaVersion": 8,
+          "timeZoneId": "China Standard Time",
+          "displayPrecision": "Second",
+          "monthlySalary": 20000.50,
+          "workStart": "09:00",
+          "workEnd": "18:30",
+          "tags": [
+            {
+              "id": "tag-focus",
+              "name": "专注",
+              "color": "#FFD36B"
+            }
+          ],
+          "countdowns": [
+            {
+              "id": "countdown-v8",
+              "name": "版本八倒计时",
+              "targetUtc": "2030-08-09T10:11:12.0000000+00:00",
+              "tagIds": ["tag-focus"]
+            }
+          ],
+          "notes": [
+            {
+              "id": "note-v8",
+              "text": "版本八便签",
+              "date": "2030-08-09",
+              "isCompleted": false,
+              "tagIds": ["tag-focus"],
+              "reminder": {
+                "type": "none"
+              }
+            }
+          ]
+        }
+        """;
+
     public static IReadOnlyList<(int Version, string Json)> AllVersions { get; } =
     [
         (1, VersionOne),
@@ -180,6 +218,7 @@ internal static class SettingsFixtures
         (4, VersionFour),
         (5, VersionFive),
         (6, VersionSix),
-        (7, VersionSeven)
+        (7, VersionSeven),
+        (8, VersionEight)
     ];
 }

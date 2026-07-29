@@ -231,6 +231,16 @@
                        FontSize="20"
                        Foreground="{DynamicResource MutedBrush}" />
 
+            <Button x:Name="ThemeModeButton"
+                    Canvas.Left="714"
+                    Canvas.Top="59"
+                    Width="142"
+                    Height="48"
+                    Content="◐ 自动"
+                    FontSize="20"
+                    Style="{StaticResource MainSecondaryButton}"
+                    ToolTip="主题模式：自动；点击切换为日间"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True" />
             <CheckBox x:Name="TopmostCheck"
                       Canvas.Left="872"
                       Canvas.Top="59"

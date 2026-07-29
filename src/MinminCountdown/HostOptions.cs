@@ -3,6 +3,7 @@ namespace MinminCountdown;
 internal sealed record HostOptions(
     bool ValidateOnly,
     bool ExerciseNoteAdd,
+    bool ExerciseThemePreference,
     bool ExercisePersistenceFailures,
     bool ExerciseTagInteractions,
     bool ExerciseFatalDiagnostic,
@@ -15,6 +16,7 @@ internal sealed record HostOptions(
     {
         var validateOnly = false;
         var exerciseNoteAdd = false;
+        var exerciseThemePreference = false;
         var exercisePersistenceFailures = false;
         var exerciseTagInteractions = false;
         var exerciseFatalDiagnostic = false;
@@ -33,6 +35,9 @@ internal sealed record HostOptions(
                     break;
                 case "exercisenoteadd":
                     exerciseNoteAdd = true;
+                    break;
+                case "exercisethemepreference":
+                    exerciseThemePreference = true;
                     break;
                 case "exercisepersistencefailures":
                     exercisePersistenceFailures = true;
@@ -60,7 +65,7 @@ internal sealed record HostOptions(
             }
         }
 
-        if ((exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic) &&
+        if ((exerciseNoteAdd || exerciseThemePreference || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic) &&
             !validateOnly)
         {
             throw new ArgumentException("exercise 参数只能与 --validate-only 一起使用。");
@@ -69,6 +74,7 @@ internal sealed record HostOptions(
         return new HostOptions(
             validateOnly,
             exerciseNoteAdd,
+            exerciseThemePreference,
             exercisePersistenceFailures,
             exerciseTagInteractions,
             exerciseFatalDiagnostic,

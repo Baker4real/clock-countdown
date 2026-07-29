@@ -373,8 +373,21 @@ internal sealed class ApplicationSession
         TimeSpan workEnd,
         out string error)
     {
-        var preferences = new CountdownPreferences(displayPrecision, monthlySalary, workStart, workEnd);
+        var preferences = new CountdownPreferences(
+            displayPrecision,
+            monthlySalary,
+            workStart,
+            workEnd,
+            Current.Preferences.ThemePreference);
         return TryCommit(Current with { Preferences = preferences }, out error);
+    }
+
+    public bool TrySaveThemePreference(ThemePreferenceMode themePreference, out string error)
+    {
+        return TryCommit(Current with
+        {
+            Preferences = Current.Preferences with { ThemePreference = themePreference }
+        }, out error);
     }
 
     public bool TryCommit(CountdownSettings candidate, out string error)

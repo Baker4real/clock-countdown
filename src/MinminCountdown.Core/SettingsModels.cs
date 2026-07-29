@@ -2,15 +2,55 @@ namespace MinminCountdown.Core;
 
 public static class SettingsSchema
 {
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
     public const string ChinaStandardTimeZoneId = "China Standard Time";
+}
+
+public enum ThemePreferenceMode
+{
+    Auto,
+    Day,
+    Night
+}
+
+public enum EffectiveThemeMode
+{
+    Day,
+    Night
+}
+
+public static class ThemePreferenceResolver
+{
+    public static EffectiveThemeMode Resolve(DateTimeOffset nowUtc, ThemePreferenceMode preference)
+    {
+        return preference switch
+        {
+            ThemePreferenceMode.Day => EffectiveThemeMode.Day,
+            ThemePreferenceMode.Night => EffectiveThemeMode.Night,
+            ThemePreferenceMode.Auto => ChinaStandardTime.ToBeijingTime(nowUtc).Hour is >= 7 and < 19
+                ? EffectiveThemeMode.Day
+                : EffectiveThemeMode.Night,
+            _ => throw new SettingsValidationException("设置中包含无效的主题偏好。")
+        };
+    }
 }
 
 public sealed record CountdownPreferences(
     string DisplayPrecision,
     decimal MonthlySalary,
     TimeSpan WorkStart,
-    TimeSpan WorkEnd);
+    TimeSpan WorkEnd,
+    ThemePreferenceMode ThemePreference)
+{
+    public CountdownPreferences(
+        string displayPrecision,
+        decimal monthlySalary,
+        TimeSpan workStart,
+        TimeSpan workEnd)
+        : this(displayPrecision, monthlySalary, workStart, workEnd, ThemePreferenceMode.Auto)
+    {
+    }
+}
 
 public sealed record CountdownRecord(
     string Id,

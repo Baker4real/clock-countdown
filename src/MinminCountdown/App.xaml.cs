@@ -54,7 +54,7 @@ public sealed partial class App : Application
 
             _session = ApplicationSession.Load(settingsPath);
             _theme = new ApplicationTheme(Resources);
-            _theme.Apply(_session.UtcNow);
+            _theme.Apply(_session.UtcNow, _session.Current.Preferences.ThemePreference);
             _calendar = new HolidayCalendar(_applicationRoot);
             _mainWindow = new MainWindow(_session, _calendar, _logger, AppContext.BaseDirectory);
             _mainWindow.ApplyTheme(_theme.ActiveMode);
@@ -63,6 +63,8 @@ public sealed partial class App : Application
                 _calendar,
                 _mainWindow,
                 AppContext.BaseDirectory);
+            _mainWindow.ThemePreferenceChanged += (_, _) => ApplyCurrentTheme(_session.UtcNow);
+            ApplyCurrentTheme(_session.UtcNow);
 
             if (_options.ValidateOnly)
             {
@@ -229,7 +231,7 @@ public sealed partial class App : Application
 
         AdvanceAcceptanceState();
         var nowUtc = _session.UtcNow;
-        _mainWindow.ApplyTheme(_theme.Apply(nowUtc));
+        ApplyCurrentTheme(nowUtc);
         _mainWindow.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
         _floatingWindow.UpdateTime(nowUtc);
         if (_acceptanceReadOnly)
@@ -259,6 +261,18 @@ public sealed partial class App : Application
         {
             _logger?.Error("NoteReminderFailed", exception);
         }
+    }
+
+    private void ApplyCurrentTheme(DateTimeOffset nowUtc)
+    {
+        if (_session is null || _mainWindow is null || _floatingWindow is null || _theme is null)
+        {
+            return;
+        }
+
+        var mode = _theme.Apply(nowUtc, _session.Current.Preferences.ThemePreference);
+        _mainWindow.ApplyTheme(mode);
+        _floatingWindow.ApplyTheme(mode);
     }
 
     private void AdvanceAcceptanceState()

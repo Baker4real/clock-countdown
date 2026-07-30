@@ -273,7 +273,9 @@ internal static class ValidationReport
             renderedFloatingNoteIds,
             StringComparer.Ordinal);
         var floatingTitle = Required<TextBlock>(floating, "FloatingTitle");
-        var floatingTitleFit = MeasureTextFit(floatingTitle);
+        var floatingTitleFit = MeasureTextFit(
+            floatingTitle,
+            Required<Border>(floating, "FloatingDragHandle"));
         var floatingTitleHeightFit = MeasureTextHeightFit(floatingTitle);
         floating.ShowWorkspace(originalFloatingWorkspace);
         floating.UpdateLayout();
@@ -3296,11 +3298,17 @@ internal static class ValidationReport
         return new TextFit(available >= formatted.Width, available, formatted.Width);
     }
 
-    private static TextFit MeasureTextFit(TextBlock textBlock)
+    private static TextFit MeasureTextFit(
+        TextBlock textBlock,
+        FrameworkElement visibleAncestor)
     {
         var dpi = VisualTreeHelper.GetDpi(textBlock);
         var formatted = FormatText(textBlock, dpi);
-        var available = Math.Max(0, textBlock.ActualWidth);
+        var origin = textBlock.TranslatePoint(new Point(0, 0), visibleAncestor);
+        var visibleBounds = Rect.Intersect(
+            new Rect(origin, textBlock.RenderSize),
+            new Rect(new Point(0, 0), visibleAncestor.RenderSize));
+        var available = visibleBounds.IsEmpty ? 0 : visibleBounds.Width;
         var required =
             formatted.WidthIncludingTrailingWhitespace +
             Math.Max(0, formatted.OverhangTrailing) +

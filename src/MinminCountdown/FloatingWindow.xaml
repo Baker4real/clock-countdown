@@ -119,8 +119,8 @@
             </Button>
             <Button x:Name="OpenManagerButton"
                     Grid.Column="4"
-                    Width="38"
-                    Margin="9,0,0,0"
+                    Width="36"
+                    Margin="3,0,0,0"
                     VerticalAlignment="Center"
                     ToolTip="打开管理窗口"
                     Style="{DynamicResource FloatingHeaderIconButton}">
@@ -136,8 +136,8 @@
             </Button>
             <Button x:Name="CloseFloatingButton"
                     Grid.Column="5"
-                    Width="38"
-                    Margin="9,0,0,0"
+                    Width="36"
+                    Margin="3,0,0,0"
                     VerticalAlignment="Center"
                     Foreground="{DynamicResource FloatingHeaderDangerBrush}"
                     ToolTip="退出应用"

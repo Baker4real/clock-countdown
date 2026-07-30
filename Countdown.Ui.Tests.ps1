@@ -509,7 +509,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 123
+    Passed = 124
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

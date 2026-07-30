@@ -396,6 +396,15 @@ try {
         $adapterDiagnosticPath
     )
     $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
+    $adapterDiagnosticEvents = @(
+        Get-Content -LiteralPath $adapterDiagnosticPath |
+            ForEach-Object { ($_ | ConvertFrom-Json).event }
+    )
+    $syntheticTrayLogCount = @(
+        $adapterDiagnosticEvents |
+            Where-Object { $_ -in @('FloatingWindowMinimizedToTray', 'FloatingWindowRestoredFromTray') }
+    ).Count
+    Assert-Equal 0 $syntheticTrayLogCount 'validate-only 托盘演练不伪造用户操作日志'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash '主题点击验收循环回 Auto 且不改变等价设置'
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '桌面工作区 deep module 验收'

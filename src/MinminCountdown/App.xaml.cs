@@ -68,10 +68,6 @@ public sealed partial class App : Application
                 _floatingWindow,
                 Path.Combine(_applicationRoot, "countdown-icon.ico"),
                 () => !_shuttingDown);
-            _floatingTrayController.Minimized +=
-                (_, _) => _logger?.Info("FloatingWindowMinimizedToTray");
-            _floatingTrayController.Restored +=
-                (_, _) => _logger?.Info("FloatingWindowRestoredFromTray");
             _mainWindow.ThemePreferenceChanged += (_, _) => ApplyCurrentTheme(_session.UtcNow);
             ApplyCurrentTheme(_session.UtcNow);
 
@@ -146,6 +142,10 @@ public sealed partial class App : Application
             eventArgs.Cancel = true;
             _mainWindow.Hide();
         };
+        _floatingTrayController.Minimized +=
+            (_, _) => _logger?.Info("FloatingWindowMinimizedToTray");
+        _floatingTrayController.Restored +=
+            (_, _) => _logger?.Info("FloatingWindowRestoredFromTray");
         _floatingTrayController.ExitRequested += (_, _) => ShutdownInteractiveHost();
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
         _floatingWindow.Closed += (_, _) =>

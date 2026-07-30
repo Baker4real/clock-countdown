@@ -8,9 +8,10 @@
 - **硬约束：项目的 PowerShell 脚本入口、测试、安装和办公室部署必须使用 `pwsh.exe`（PowerShell 7+）；不得以 `powershell.exe` 或 Windows PowerShell 5.1 作为 fallback。** C# WPF 应用宿主使用受管的 `MinminCountdown.exe`；计划任务使用 `pwsh.exe -STA` 的薄 adapter 启动它。除非明确改变这条兼容 seam 并通过同等验收，不要把任务直接改为启动 EXE。
 - 所有日期计算统一使用 `China Standard Time`，不要依赖设备当前时区推断北京时间。
 - 修改倒计时逻辑后运行 `Countdown.Core.Tests.ps1` 与 `Countdown.CSharp.Tests.ps1`；修改界面后同时运行 C# 验证 module、应用的 `--validate-only` 检查，并保留 PowerShell 回归测试作为兼容性基线。
-- 修改安装包中的受校验文件或重新编译启动器后，同步更新 `Install-Countdown.ps1` 的 SHA-256 清单，并运行安装器的 `-ValidateOnly` 检查。
+- 修改发布契约中的受校验文件或重新编译启动器后，同步更新 `Countdown.ReleaseContract.psm1` 的静态 SHA-256，并运行安装器的 `-ValidateOnly` 检查。
+- 办公室部署的每次 SCP 都必须把 bytes、完整命令墙钟耗时、MiB/s、Mbps、状态和退出码写入本次 `run-evidence`；缺少完整命令计时即视为传输证据未通过，远端文件创建/写入时间戳不能替代该数据。
 - 动态倒计时卡片的事件处理器通过控件 `Tag` 传递记录 ID；不要用 `GetNewClosure()` 捕获会被写入的 `$script:` 状态。
-- 不提交 `settings.json`、`runtime-status.json`、`launcher-state.json`、本机登录状态或设备凭据。
+- 不提交 `settings.json`、`startup-request.json`、`runtime-status.json`、`acceptance-status.json`、`launcher-state.json`、本机登录状态或设备凭据。
 - 普通发布只提交并推送到用户拥有远端的 `main`，不创建 `patch-stack/*`。
 
 ## Agent skills

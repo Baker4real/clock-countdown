@@ -24,6 +24,9 @@ runtime-status.json.tmp
 runtime-status.json.*.tmp
 startup-request.json
 startup-request.json.*.tmp
+acceptance-status.json
+acceptance-status.json.tmp
+acceptance-status.json.*.tmp
 launcher-state.json
 launcher-state.json.tmp
 *.new

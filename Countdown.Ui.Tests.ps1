@@ -197,6 +197,7 @@ if (-not $validation.FloatingHeaderIconAccessibility) { throw 'The floating icon
 if (-not $validation.FloatingHeaderIconClickCommandsWork) { throw 'The floating open-manager or exit icon button no longer executes its click command.' }
 if (-not $validation.FloatingDragSurfaceCoversWindowBackground) { throw 'The non-interactive floating-window background does not receive drag gestures.' }
 if (-not $validation.FloatingTrayButtonAccessibility) { throw 'The floating tray button lost its tooltip or accessible name.' }
+if (-not $validation.FloatingTrayProductionControllerActive) { throw 'The application host and tray validation do not share the production transition controller.' }
 if (-not $validation.FloatingTrayMinimizeHidesWindowAndShowsIcon) { throw 'The floating tray button does not hide the window and show the notification-area icon.' }
 if (-not $validation.FloatingTrayRestoreShowsWindowAndHidesIcon) { throw 'The notification-area restore command does not show the floating window and hide the icon.' }
 if (-not $validation.FloatingTrayExitRequestsApplicationExit) { throw 'The notification-area exit command does not request application shutdown.' }

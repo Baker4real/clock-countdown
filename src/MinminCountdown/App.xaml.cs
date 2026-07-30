@@ -18,7 +18,7 @@ public sealed partial class App : Application
     private HolidayCalendar? _calendar;
     private MainWindow? _mainWindow;
     private FloatingWindow? _floatingWindow;
-    private TrayIconHost? _trayIcon;
+    private FloatingTrayController? _floatingTrayController;
     private SingleInstanceMutexLease? _singleInstanceLease;
     private StartupAcceptanceProtocol? _startupProtocol;
     private DispatcherTimer? _clockTimer;
@@ -64,6 +64,14 @@ public sealed partial class App : Application
                 _calendar,
                 _mainWindow,
                 AppContext.BaseDirectory);
+            _floatingTrayController = new FloatingTrayController(
+                _floatingWindow,
+                Path.Combine(_applicationRoot, "countdown-icon.ico"),
+                () => !_shuttingDown);
+            _floatingTrayController.Minimized +=
+                (_, _) => _logger?.Info("FloatingWindowMinimizedToTray");
+            _floatingTrayController.Restored +=
+                (_, _) => _logger?.Info("FloatingWindowRestoredFromTray");
             _mainWindow.ThemePreferenceChanged += (_, _) => ApplyCurrentTheme(_session.UtcNow);
             ApplyCurrentTheme(_session.UtcNow);
 
@@ -72,12 +80,15 @@ public sealed partial class App : Application
                 var report = ValidationReport.Create(
                     _mainWindow,
                     _floatingWindow,
+                    _floatingTrayController,
                     _session,
                     _theme,
                     _options,
                     AppContext.BaseDirectory);
                 CliOutput.WriteJson(report);
                 _logger.Info("ValidationCompleted");
+                _floatingTrayController.Dispose();
+                _floatingTrayController = null;
                 _floatingWindow.Close();
                 _mainWindow.Close();
                 _calendar.Dispose();
@@ -118,7 +129,8 @@ public sealed partial class App : Application
             _calendar is null ||
             _theme is null ||
             _startupProtocol is null ||
-            _applicationRoot is null)
+            _applicationRoot is null ||
+            _floatingTrayController is null)
         {
             throw new InvalidOperationException("应用宿主尚未初始化。");
         }
@@ -134,12 +146,7 @@ public sealed partial class App : Application
             eventArgs.Cancel = true;
             _mainWindow.Hide();
         };
-        _trayIcon = new TrayIconHost(
-            Path.Combine(_applicationRoot, "countdown-icon.ico"),
-            Dispatcher,
-            RestoreFloatingWindowFromTray,
-            ShutdownInteractiveHost);
-        _floatingWindow.MinimizeToTrayRequested += (_, _) => MinimizeFloatingWindowToTray();
+        _floatingTrayController.ExitRequested += (_, _) => ShutdownInteractiveHost();
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
         _floatingWindow.Closed += (_, _) =>
         {
@@ -164,36 +171,6 @@ public sealed partial class App : Application
         _clockTimer.Start();
         UpdateInteractiveState();
         _floatingWindow.Show();
-    }
-
-    private void MinimizeFloatingWindowToTray()
-    {
-        if (_shuttingDown || _floatingWindow is null || _trayIcon is null)
-        {
-            return;
-        }
-
-        _trayIcon.Show();
-        _floatingWindow.Hide();
-        _logger?.Info("FloatingWindowMinimizedToTray");
-    }
-
-    private void RestoreFloatingWindowFromTray()
-    {
-        if (_shuttingDown || _floatingWindow is null || _trayIcon is null)
-        {
-            return;
-        }
-
-        if (!_floatingWindow.IsVisible)
-        {
-            _floatingWindow.Show();
-        }
-
-        _floatingWindow.WindowState = WindowState.Normal;
-        _floatingWindow.Activate();
-        _trayIcon.Hide();
-        _logger?.Info("FloatingWindowRestoredFromTray");
     }
 
     private void OnFloatingContentRendered(object? sender, EventArgs eventArgs)
@@ -375,8 +352,8 @@ public sealed partial class App : Application
             reminder.Close();
         }
 
-        _trayIcon?.Dispose();
-        _trayIcon = null;
+        _floatingTrayController?.Dispose();
+        _floatingTrayController = null;
         _floatingWindow?.Close();
         _mainWindow?.Close();
         _calendar?.Dispose();
@@ -388,8 +365,8 @@ public sealed partial class App : Application
 
     protected override void OnExit(ExitEventArgs eventArgs)
     {
-        _trayIcon?.Dispose();
-        _trayIcon = null;
+        _floatingTrayController?.Dispose();
+        _floatingTrayController = null;
         base.OnExit(eventArgs);
     }
 

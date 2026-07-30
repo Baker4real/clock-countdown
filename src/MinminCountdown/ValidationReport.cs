@@ -18,6 +18,7 @@ internal static class ValidationReport
     public static IReadOnlyDictionary<string, object?> Create(
         MainWindow main,
         FloatingWindow floating,
+        FloatingTrayController floatingTrayController,
         ApplicationSession session,
         ApplicationTheme theme,
         HostOptions options,
@@ -96,7 +97,8 @@ internal static class ValidationReport
         var floatingHeaderIconClickCommandsWork = managerOpenedViaClick && exitRequested;
         var floatingTrayInteraction = RunFloatingTrayInteractionExercise(
             floating,
-            minimizeToTrayButton);
+            minimizeToTrayButton,
+            floatingTrayController);
         var floatingDragInteraction = floating.RunDragInteractionExercise();
 
         var datePicker = Required<DatePicker>(main, "CountdownDate");
@@ -806,6 +808,8 @@ internal static class ValidationReport
             ["FloatingHeaderIconAccessibility"] = floatingHeaderIconAccessibility,
             ["FloatingHeaderIconClickCommandsWork"] = floatingHeaderIconClickCommandsWork,
             ["FloatingTrayButtonAccessibility"] = floatingTrayButtonAccessibility,
+            ["FloatingTrayProductionControllerActive"] =
+                floatingTrayInteraction.ProductionControllerActive,
             ["FloatingTrayMinimizeHidesWindowAndShowsIcon"] =
                 floatingTrayInteraction.MinimizeHidesWindowAndShowsIcon,
             ["FloatingTrayRestoreShowsWindowAndHidesIcon"] =
@@ -3293,62 +3297,47 @@ internal static class ValidationReport
 
     private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(
         FloatingWindow floating,
-        Button minimizeButton)
+        Button minimizeButton,
+        FloatingTrayController trayController)
     {
         var wasVisible = floating.IsVisible;
-        var minimizeRequested = false;
         var exitRequested = false;
-        TrayIconHost? trayIcon = null;
-        EventHandler minimizeHandler = (_, _) =>
-        {
-            minimizeRequested = true;
-            trayIcon!.Show();
-            floating.Hide();
-        };
-
-        trayIcon = new TrayIconHost(
-            Path.Combine(ApplicationPaths.ResolveApplicationRoot(), "countdown-icon.ico"),
-            floating.Dispatcher,
-            () =>
-            {
-                if (!floating.IsVisible)
-                {
-                    floating.Show();
-                }
-
-                floating.WindowState = WindowState.Normal;
-                trayIcon!.Hide();
-            },
-            () => exitRequested = true);
-        floating.MinimizeToTrayRequested += minimizeHandler;
+        EventHandler exitHandler = (_, _) => exitRequested = true;
+        trayController.ExitRequested += exitHandler;
         try
         {
             minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             PumpDispatcher();
             var minimizeWorks =
-                minimizeRequested &&
                 !floating.IsVisible &&
-                trayIcon.IsVisible;
+                trayController.IsTrayIconVisible;
 
-            trayIcon.InvokeRestoreForValidation();
+            trayController.InvokeRestoreForValidation();
             PumpDispatcher();
             var restoreWorks =
                 floating.IsVisible &&
                 floating.WindowState == WindowState.Normal &&
-                !trayIcon.IsVisible;
+                !trayController.IsTrayIconVisible;
 
-            trayIcon.Show();
-            trayIcon.InvokeExitForValidation();
+            minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher();
+            trayController.InvokeExitForValidation();
             PumpDispatcher();
             return new FloatingTrayInteractionExerciseResult(
+                trayController.IsActive,
                 minimizeWorks,
                 restoreWorks,
                 exitRequested);
         }
         finally
         {
-            floating.MinimizeToTrayRequested -= minimizeHandler;
-            trayIcon.Dispose();
+            trayController.ExitRequested -= exitHandler;
+            if (trayController.IsTrayIconVisible)
+            {
+                trayController.InvokeRestoreForValidation();
+                PumpDispatcher();
+            }
+
             if (wasVisible && !floating.IsVisible)
             {
                 floating.Show();
@@ -3393,6 +3382,7 @@ internal static class ValidationReport
     private sealed record TextFit(bool Fits, double Available, double Required);
 
     private sealed record FloatingTrayInteractionExerciseResult(
+        bool ProductionControllerActive,
         bool MinimizeHidesWindowAndShowsIcon,
         bool RestoreShowsWindowAndHidesIcon,
         bool ExitRequestsApplicationExit);

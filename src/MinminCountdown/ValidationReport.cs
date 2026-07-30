@@ -19,7 +19,7 @@ internal static class ValidationReport
         MainWindow main,
         FloatingWindow floating,
         FloatingTrayController floatingTrayController,
-        ApplicationSession session,
+        DesktopWorkspace desktopWorkspace,
         ApplicationTheme theme,
         HostOptions options,
         string assetRoot)
@@ -35,10 +35,12 @@ internal static class ValidationReport
             ? floating.RunReminderModeClickExercises()
             : ReminderModeClickResult.NotRun;
         var tagExercise = options.ExerciseTagInteractions
-            ? ValidationExercises.RunTagInteractions(session)
+            ? ValidationExercises.RunTagInteractions(desktopWorkspace)
             : TagInteractionExerciseResult.NotRun;
         var persistenceExercise = options.ExercisePersistenceFailures
-            ? ValidationExercises.RunPersistenceFailures(session)
+            ? ValidationExercises.RunPersistenceFailures(
+                desktopWorkspace,
+                desktopWorkspace.Snapshot.SettingsPath)
             : PersistenceFailureExerciseResult.NotRun;
 
         main.ShowInTaskbar = false;
@@ -57,8 +59,9 @@ internal static class ValidationReport
         PumpDispatcher();
 
         var themePreferenceExercise = options.ExerciseThemePreference
-            ? RunThemePreferenceButtonExercise(main, floating, session)
+            ? RunThemePreferenceButtonExercise(main, floating, desktopWorkspace)
             : ThemePreferenceButtonExerciseResult.NotRun;
+        var workspaceSnapshot = desktopWorkspace.Snapshot;
 
         var minimizeToTrayButton = Required<Button>(floating, "MinimizeToTrayButton");
         var openManagerButton = Required<Button>(floating, "OpenManagerButton");
@@ -154,11 +157,11 @@ internal static class ValidationReport
         var oneTimeReminderBehavior = ValidateOneTimeReminderLifecycle();
         var crossDayReminderBehavior = main.ProbeCrossDayReminderBehavior();
         var reminderSummaryAdvances = main.ProbeReminderSummaryAdvancesAfterFirstDue();
-        var roundTrip = ValidateRoundTrip(session.Current);
+        var roundTrip = ValidateRoundTrip(workspaceSnapshot.Settings);
         var legacyMigration = ValidateLegacyMigration();
-        var duplicateRejected = RejectsDuplicateCountdowns(session.Current);
-        var invalidNotesRejected = RejectsInvalidNotes(session.Current);
-        var invalidTagReferencesRejected = RejectsDanglingTag(session.Current);
+        var duplicateRejected = RejectsDuplicateCountdowns(workspaceSnapshot.Settings);
+        var invalidNotesRejected = RejectsInvalidNotes(workspaceSnapshot.Settings);
+        var invalidTagReferencesRejected = RejectsDanglingTag(workspaceSnapshot.Settings);
 
         var mainThemeTemplate =
             HasTemplate(Required<Button>(main, "SaveCountdownButton")) &&
@@ -214,10 +217,10 @@ internal static class ValidationReport
         var noteStatusLabels = noteTextValues.Any(text =>
             text.Contains("未完成", StringComparison.Ordinal) ||
             text.Contains("已完成", StringComparison.Ordinal));
-        var noteDatesRendered = session.Current.Notes
+        var noteDatesRendered = workspaceSnapshot.Settings.Notes
             .Where(note => note.Date is not null)
             .All(note => noteTextValues.Any(text => text.Contains(note.Date!, StringComparison.Ordinal)));
-        var expectedManagerNoteIds = session.GetSortedManagerNotes()
+        var expectedManagerNoteIds = workspaceSnapshot.VisibleNotes
             .Select(note => note.Id)
             .ToArray();
         var renderedManagerNoteIds = GetRenderedNoteIds(activeNoteRows)
@@ -226,14 +229,14 @@ internal static class ValidationReport
         var managerNoteRowsFollowSortOrder = expectedManagerNoteIds.SequenceEqual(
             renderedManagerNoteIds,
             StringComparer.Ordinal);
-        var notesGroupedByDay = AreNotesGroupedByDay(session.GetSortedManagerNotes(applyFilter: false));
+        var notesGroupedByDay = AreNotesGroupedByDay(workspaceSnapshot.AllNotes);
         var activeNotesToggle = main.FindName("ToggleActiveNotes") as Button;
         var activeNotesGrouped =
             activeNotesToggle is not null &&
             activeNoteRows.Parent is StackPanel noteSections &&
             noteSections.Children.IndexOf(activeNotesToggle) >= 0 &&
             noteSections.Children.IndexOf(activeNoteRows) == noteSections.Children.IndexOf(activeNotesToggle) + 1;
-        var expectedActiveDateOrder = session.GetSortedManagerNotes()
+        var expectedActiveDateOrder = workspaceSnapshot.VisibleNotes
             .Where(note => !note.IsCompleted)
             .Select(note => note.Date ?? "未设置日期")
             .Distinct(StringComparer.Ordinal)
@@ -263,8 +266,7 @@ internal static class ValidationReport
         floating.UpdateLayout();
         var floatingRows = Required<StackPanel>(floating, "FloatingRows");
         var renderedFloatingNoteIds = GetRenderedNoteIds(floatingRows);
-        var expectedFloatingNoteIds = session.GetSortedNotes()
-            .Where(note => !note.IsCompleted)
+        var expectedFloatingNoteIds = workspaceSnapshot.VisibleActiveNotes
             .Select(note => note.Id)
             .ToArray();
         var floatingNotesKeepExistingSortOrder = expectedFloatingNoteIds.SequenceEqual(
@@ -293,7 +295,7 @@ internal static class ValidationReport
                 main).X <= main.ActualWidth;
         main.Width = originalMainWidth;
         main.UpdateLayout();
-        var restoreMainThemeMode = theme.Apply(session.UtcNow);
+        var restoreMainThemeMode = theme.Apply(workspaceSnapshot.UtcNow);
         main.ApplyTheme(ApplicationThemeMode.Night);
         PumpDispatcher();
         main.UpdateLayout();
@@ -463,17 +465,23 @@ internal static class ValidationReport
         var floatingBottomAnchored = floating.IsBottomAnchored;
         var floatingReanchorsAfterContentChanges = floating.IsBottomAnchored;
         var floatingReferenceExercise = RunFloatingReferenceExercise(main, assetRoot);
-        var mainThemeExercise = RunMainThemeExercise(theme, main, session.UtcNow);
+        var mainThemeExercise = RunMainThemeExercise(theme, main, workspaceSnapshot.UtcNow);
         var floatingThemeExercise = floating.RunThemeBoundaryExercise();
-        var tagPopupFollowsDayNightTheme = ValidateTagPopupThemeTransition(theme, selector, session.UtcNow);
-        var warmYellowPaletteMatchesLegacy = ValidateWarmYellowPalette(theme, session.UtcNow);
-        var primaryButtonHoverTextContrast = ValidatePrimaryButtonHoverTextContrast(theme, session.UtcNow);
-        var toolTipThemeTextContrast = ValidateToolTipThemeTextContrast(theme, session.UtcNow);
-        var tagChipTextContrast = ValidateTagChipTextContrast(theme, main, session.UtcNow);
+        var tagPopupFollowsDayNightTheme =
+            ValidateTagPopupThemeTransition(theme, selector, workspaceSnapshot.UtcNow);
+        var warmYellowPaletteMatchesLegacy =
+            ValidateWarmYellowPalette(theme, workspaceSnapshot.UtcNow);
+        var primaryButtonHoverTextContrast =
+            ValidatePrimaryButtonHoverTextContrast(theme, workspaceSnapshot.UtcNow);
+        var toolTipThemeTextContrast =
+            ValidateToolTipThemeTextContrast(theme, workspaceSnapshot.UtcNow);
+        var tagChipTextContrast =
+            ValidateTagChipTextContrast(theme, main, workspaceSnapshot.UtcNow);
         var floatingManualPlacement = floating.RunManualPlacementExercise();
         var mainReferenceDecorationScaling = ValidateMainReferenceDecorationScaling(main);
         var mainNightReferenceGeometry = ValidateMainNightReferenceGeometry(main);
-        var mainReferenceCapture = RunMainReferenceCapture(theme, main, assetRoot);
+        var mainReferenceCapture =
+            RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
 
         var reminderWindow = new ReminderWindow(new NoteRecord(
             "validation-reminder",
@@ -506,12 +514,27 @@ internal static class ValidationReport
             Required<TextBox>(main, "MonthlySalary").ActualWidth >= 112 &&
             Required<TextBox>(main, "WorkStart").ActualWidth >= 96 &&
             Required<TextBox>(main, "WorkEnd").ActualWidth >= 96;
+        var desktopWorkspaceInterfaceBehavior =
+            ValidationExercises.RunDesktopWorkspaceInterfaceBehavior();
+        var reminderEditingInterfaceBehavior =
+            ValidationExercises.RunReminderEditingInterfaceBehavior();
+        var startupAcceptanceProtocolInterfaceBehavior =
+            ValidationExercises.RunStartupAcceptanceProtocolInterfaceBehavior();
+        var holidayCalendarInterfaceBehavior =
+            ValidationExercises.RunHolidayCalendarInterfaceBehavior();
 
-        var report = new ValidationScenarioReport();
-        report.AddRange(ArchitectureValidationScenario.Create());
-        report.AddRange(new Dictionary<string, object?>(StringComparer.Ordinal)
+        var report = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
+            ["DesktopWorkspaceModuleDeep"] = desktopWorkspaceInterfaceBehavior,
+            ["StartupAcceptanceProtocolModuleDeep"] =
+                startupAcceptanceProtocolInterfaceBehavior,
+            ["WorkdayCalendarModuleDeep"] = holidayCalendarInterfaceBehavior,
             ["Valid"] = true,
+            ["DesktopWorkspaceInterfaceBehavior"] = desktopWorkspaceInterfaceBehavior,
+            ["ReminderEditingInterfaceBehavior"] = reminderEditingInterfaceBehavior,
+            ["StartupAcceptanceProtocolInterfaceBehavior"] =
+                startupAcceptanceProtocolInterfaceBehavior,
+            ["HolidayCalendarInterfaceBehavior"] = holidayCalendarInterfaceBehavior,
             ["Title"] = main.Title,
             ["Width"] = main.Width,
             ["Height"] = main.Height,
@@ -745,7 +768,8 @@ internal static class ValidationReport
             ["PersistenceFailureTempPathRemainsDirectory"] = persistenceExercise.TemporaryPathRemainsDirectory,
             ["CardActionsBoundByTag"] = cardActionsBound,
             ["NoteActionsBoundByTag"] = noteActionsBound,
-            ["NoteStatusLabelsPresent"] = noteStatusLabels || session.Current.Notes.Count == 0,
+            ["NoteStatusLabelsPresent"] =
+                noteStatusLabels || workspaceSnapshot.Settings.Notes.Count == 0,
             ["NoteDatesRendered"] = noteDatesRendered,
             ["NotesGroupedByDay"] = notesGroupedByDay,
             ["ActiveNotesGrouped"] = activeNotesGrouped,
@@ -874,30 +898,40 @@ internal static class ValidationReport
                 main.FindName("WorkStart") is TextBox &&
                 main.FindName("WorkEnd") is TextBox &&
                 main.FindName("SavePreferencesButton") is Button,
-            ["LoadedCountdowns"] = session.Current.Countdowns.Count,
-            ["LoadedNotes"] = session.Current.Notes.Count,
-            ["LoadedTags"] = session.Current.Tags.Count,
-            ["SettingsWereMigrated"] = session.SettingsWereMigrated,
-            ["LoadedDisplayPrecision"] = session.Current.Preferences.DisplayPrecision,
-            ["LoadedMonthlySalary"] = session.Current.Preferences.MonthlySalary,
-            ["LoadedWorkStart"] = CountdownFormatting.FormatWorkTime(session.Current.Preferences.WorkStart),
-            ["LoadedWorkEnd"] = CountdownFormatting.FormatWorkTime(session.Current.Preferences.WorkEnd),
-            ["ActiveNoteCount"] = session.Current.Notes.Count(note => !note.IsCompleted),
-            ["CompletedNoteCount"] = session.Current.Notes.Count(note => note.IsCompleted),
-            ["SortedNoteTexts"] = session.GetSortedManagerNotes(applyFilter: false)
+            ["LoadedCountdowns"] = workspaceSnapshot.Settings.Countdowns.Count,
+            ["LoadedNotes"] = workspaceSnapshot.Settings.Notes.Count,
+            ["LoadedTags"] = workspaceSnapshot.Settings.Tags.Count,
+            ["SettingsWereMigrated"] = workspaceSnapshot.SettingsWereMigrated,
+            ["LoadedDisplayPrecision"] = workspaceSnapshot.Settings.Preferences.DisplayPrecision,
+            ["LoadedMonthlySalary"] = workspaceSnapshot.Settings.Preferences.MonthlySalary,
+            ["LoadedWorkStart"] = CountdownFormatting.FormatWorkTime(
+                workspaceSnapshot.Settings.Preferences.WorkStart),
+            ["LoadedWorkEnd"] = CountdownFormatting.FormatWorkTime(
+                workspaceSnapshot.Settings.Preferences.WorkEnd),
+            ["ActiveNoteCount"] = workspaceSnapshot.Settings.Notes.Count(note => !note.IsCompleted),
+            ["CompletedNoteCount"] = workspaceSnapshot.Settings.Notes.Count(note => note.IsCompleted),
+            ["SortedNoteTexts"] = workspaceSnapshot.AllNotes
                 .Select(note => note.Text)
                 .ToArray(),
             ["RenderedManagerNoteIds"] = renderedManagerNoteIds,
             ["RenderedFloatingNoteIds"] = renderedFloatingNoteIds,
-            ["SortedNames"] = session.GetSortedCountdowns(applyFilter: false).Select(record => record.Name).ToArray(),
+            ["SortedNames"] = workspaceSnapshot.AllCountdowns
+                .Select(record => record.Name)
+                .ToArray(),
             ["WindowIconLoaded"] = main.Icon is not null
-        });
+        };
+
+        var validationReportContractBehavior =
+            ValidationExercises.RunValidationReportContractBehavior(report);
+        report["ValidationReportContractBehavior"] = validationReportContractBehavior;
+        report["ValidationReportModuleDeep"] = validationReportContractBehavior;
+        ValidationExercises.RunValidationReportContractBehavior(report);
 
         datePicker.IsDropDownOpen = false;
         reminderWindow.Close();
         floating.Hide();
         main.Hide();
-        return report.ToDictionary();
+        return report;
     }
 
     private static bool ValidateMainReferenceDecorationScaling(MainWindow main)
@@ -1105,6 +1139,7 @@ internal static class ValidationReport
     private static MainReferenceCaptureResult RunMainReferenceCapture(
         ApplicationTheme theme,
         MainWindow main,
+        DesktopWorkspaceSnapshot workspaceSnapshot,
         string assetRoot)
     {
         const int captureWidth = 1165;
@@ -1179,8 +1214,8 @@ internal static class ValidationReport
         var artifactBindings = GetMainVisualCaptureArtifactBindings(assetRoot);
 
         var usesZeroState =
-            main.Session.GetSortedCountdowns(applyFilter: false).Count == 0 &&
-            main.Session.Current.Notes.Count == 0;
+            workspaceSnapshot.AllCountdowns.Count == 0 &&
+            workspaceSnapshot.Settings.Notes.Count == 0;
         if (!usesZeroState)
         {
             throw new InvalidOperationException("主窗口视觉捕获仅允许在零倒计时、零便签状态下运行。");
@@ -1378,7 +1413,7 @@ internal static class ValidationReport
             countdownMinute.SelectedItem = originalCountdownMinute;
             countdownSecond.SelectedItem = originalCountdownSecond;
             noteDate.SelectedDate = originalNoteDate;
-            main.UpdateTime(ChinaStandardTime.ToBeijingTime(main.Session.UtcNow));
+            main.UpdateTime(ChinaStandardTime.ToBeijingTime(workspaceSnapshot.UtcNow));
             theme.Apply(originalApplicationThemeMode);
             main.ApplyTheme(originalMainThemeMode);
             main.ShowWorkspace(originalWorkspace);
@@ -1569,7 +1604,11 @@ internal static class ValidationReport
                 new SettingsStore(clock: new ValidationClock(referenceUtc)));
             using var referenceCalendar = new HolidayCalendar(temporaryRoot);
             referenceCalendar.InitializeAsync(2030, CancellationToken.None).GetAwaiter().GetResult();
-            referenceWindow = new FloatingWindow(referenceSession, referenceCalendar, manager, assetRoot)
+            referenceWindow = new FloatingWindow(
+                new DesktopWorkspace(referenceSession),
+                referenceCalendar,
+                manager,
+                assetRoot)
             {
                 ShowActivated = false,
                 ShowInTaskbar = false,
@@ -2509,48 +2548,46 @@ internal static class ValidationReport
         {
             var beforeStore = new SettingsStore(
                 clock: new ValidationClock(firstDueUtc.AddSeconds(-1)));
-            var before = ApplicationSession.Load(settingsPath, beforeStore);
-            var workspace = new DesktopWorkspace(before);
-            if (!workspace.TrySaveNote(
+            var before = DesktopWorkspace.Load(settingsPath, beforeStore);
+            if (!before.Apply(new SaveNoteChange(
                     null,
                     "一次性提醒生命周期探针",
                     new DateTime(2031, 4, 6),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(firstDueUtc),
-                    out _))
+                    ReminderSchedule.CreateOnce(firstDueUtc))).Succeeded)
             {
                 return false;
             }
 
-            var early = before.Reminders.GetDue(before.Current, firstDueUtc.AddSeconds(-1));
+            var early = before.GetDueReminders(firstDueUtc.AddSeconds(-1));
             var afterStore = new SettingsStore(
                 clock: new ValidationClock(firstDueUtc.AddMinutes(5)));
-            var after = ApplicationSession.Load(settingsPath, afterStore);
-            var overdue = after.Reminders.GetDue(after.Current, firstDueUtc.AddMinutes(5));
+            var after = DesktopWorkspace.Load(settingsPath, afterStore);
+            var overdue = after.GetDueReminders(firstDueUtc.AddMinutes(5));
             var dueNote = overdue.SingleOrDefault();
-            if (dueNote?.Reminder is not OnceReminder once)
+            if (dueNote?.Reminder is not OnceReminder)
             {
                 return false;
             }
 
-            after.Reminders.ConfirmDisplayed(dueNote, firstDueUtc.AddMinutes(5));
-            var duplicateInProcess = after.Reminders.GetDue(after.Current, firstDueUtc.AddMinutes(5));
-            if (!after.TryMarkOnceReminderDelivered(dueNote.Id, once.FirstDueUtc, out _))
-            {
-                return false;
-            }
-
-            var reloaded = ApplicationSession.Load(settingsPath, afterStore);
-            var duplicateAfterRestart = reloaded.Reminders.GetDue(
-                reloaded.Current,
+            var confirmation = after.ConfirmReminderDisplayed(
+                dueNote,
                 firstDueUtc.AddMinutes(5));
+            if (!confirmation.Succeeded)
+            {
+                return false;
+            }
+
+            var duplicateInProcess = after.GetDueReminders(firstDueUtc.AddMinutes(5));
+            var reloaded = DesktopWorkspace.Load(settingsPath, afterStore);
+            var duplicateAfterRestart = reloaded.GetDueReminders(firstDueUtc.AddMinutes(5));
             return
                 early.Count == 0 &&
                 overdue.Count == 1 &&
                 duplicateInProcess.Count == 0 &&
                 duplicateAfterRestart.Count == 0 &&
-                reloaded.Current.Notes.Single().Reminder is OnceReminder
+                reloaded.Snapshot.Settings.Notes.Single().Reminder is OnceReminder
                 {
                     Delivery: OnceDeliveryState.Delivered
                 };
@@ -2798,7 +2835,7 @@ internal static class ValidationReport
     private static ThemePreferenceButtonExerciseResult RunThemePreferenceButtonExercise(
         MainWindow main,
         FloatingWindow floating,
-        ApplicationSession session)
+        DesktopWorkspace desktopWorkspace)
     {
         var button = Required<Button>(main, "ThemeModeButton");
         var expectedPreferences = new[]
@@ -2818,10 +2855,12 @@ internal static class ValidationReport
         {
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             PumpDispatcher();
-            observedPreferences.Add(session.Current.Preferences.ThemePreference);
+            var workspaceSnapshot = desktopWorkspace.Snapshot;
+            observedPreferences.Add(workspaceSnapshot.Settings.Preferences.ThemePreference);
             observedLabels.Add(button.Content?.ToString() ?? string.Empty);
-            var persisted = SettingsContract.Deserialize(File.ReadAllText(session.SettingsPath));
-            persistedEachMode &= persisted.Settings.Preferences.ThemePreference == expectedPreference;
+            var persisted = DesktopWorkspace.Load(workspaceSnapshot.SettingsPath).Snapshot;
+            persistedEachMode &=
+                persisted.Settings.Preferences.ThemePreference == expectedPreference;
             accessibleEachMode &=
                 button.ToolTip is string toolTip && toolTip.Contains("主题模式", StringComparison.Ordinal) &&
                 AutomationProperties.GetName(button) is string accessibleName &&

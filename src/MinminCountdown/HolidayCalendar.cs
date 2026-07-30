@@ -21,8 +21,6 @@ internal sealed class HolidayCalendar : IDisposable
         _source = source;
     }
 
-    public static bool IsDeepModule => true;
-
     public event EventHandler? StateChanged;
 
     public string State { get; private set; } = "Pending";

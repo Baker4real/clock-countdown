@@ -18,149 +18,27 @@ $staging = $PSScriptRoot
 $install = 'D:\敏敏子倒计时'
 $taskName = 'Minmin Countdown'
 $legacyTaskName = '敏敏子倒计时'
-$officialCharacterAssets = @(
-    'sanrio-official-mymelody.png',
-    'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png'
-)
-$floatingPlushAssets = @(
-    'assets\floating-plush\floating-plush-mymelody-front.png',
-    'assets\floating-plush\floating-plush-mymelody-pose.png',
-    'assets\floating-plush\floating-plush-mymelody-reference.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
-    'assets\floating-plush\floating-plush-kuromi-front.png',
-    'assets\floating-plush\floating-plush-kuromi-pose.png',
-    'assets\floating-plush\floating-plush-kuromi-reference.png',
-    'assets\floating-plush\component-day-outer-shell.png',
-    'assets\floating-plush\component-day-header-blank.png',
-    'assets\floating-plush\component-day-card-blank.png',
-    'assets\floating-plush\component-day-mascots.png'
-)
-$currentFloatingRuntimeAssets = @(
-    'app\assets\floating-plush\floating-plush-mymelody-reference.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
-    'app\assets\floating-plush\floating-plush-kuromi-reference.png',
-    'app\assets\floating-plush\component-day-outer-shell.png',
-    'app\assets\floating-plush\component-day-header-blank.png',
-    'app\assets\floating-plush\component-day-card-blank.png',
-    'app\assets\floating-plush\component-day-mascots.png'
-)
-$legacyFloatingRegressionAssets = @(
-    'assets\floating-plush\floating-plush-mymelody-front.png',
-    'assets\floating-plush\floating-plush-mymelody-pose.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'assets\floating-plush\floating-plush-kuromi-front.png',
-    'assets\floating-plush\floating-plush-kuromi-pose.png'
-)
-$retiredRuntimeFiles = @('Countdown.App.psm1') + $floatingPlushAssets + @(
-    'app\assets\floating-plush\floating-plush-mymelody-front.png',
-    'app\assets\floating-plush\floating-plush-mymelody-pose.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'app\assets\floating-plush\floating-plush-kuromi-front.png',
-    'app\assets\floating-plush\floating-plush-kuromi-pose.png'
-)
-$expected = @{
-    'Build-CountdownApplication.ps1' = '65E96ADC6F3E26391A72C2DA766343D3050A26A84F1EE2D7824062102564B8AE'
-    'Countdown.App.psm1' = '6F40387744A2DF43A41A6A95B3DD02AF748CE7C3B00F532FC1588FB33B5994AF'
-    'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
-    'Countdown.InstallTransaction.psm1' = '89E7E2E7EE9255F6583D7E6421F8F7924B7E2543956EF502FB7136E6FBCD0590'
-    'Countdown.Notes.psm1' = '4C278A7937174A7205C4BF6F48EDF27A70C899683788C677FC6A70422272B10F'
-    'Countdown.Runtime.psm1' = 'EE71577AF288212BC7A4031A64E3C9379A5F92A8091FB965E28BC871A42C1B19'
-    'Countdown.Settings.psm1' = 'E6921CF358847DF15C37325733F7C91E13FE6A58E4254D80C60D99691C50C8E4'
-    'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = 'C2892E3DEE18A83321645A57A01C4DBFCA990CE8B8133CB0D762C97C238A578A'
-    'Countdown.Ui.Tests.ps1' = '5771913B47B87C6DAAB3B0F040BA42B7C2596161360068AB6CFF5709CEE4DBE8'
-    'Countdown.CSharp.Tests.ps1' = '3E6E9C07E050373D4906BF55278A4331DA4319D646877E0854D2F8DAAA288597'
-    '敏敏子倒计时.ps1' = 'A4BFD4ECE350D74F2B10F65E5D627755951B053F00B99BAC8BF29D371E10E26D'
-    'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
-    'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
-    'verification\MinminCountdown.Verification.exe' = 'C4D682ADB80C6F28B2089346691B9677B2B88DF8BE378F784B19417AE8AEE351'
-    'app\MinminCountdown.exe' = 'D5032FE85C7DFC6C2675D316BEB0096EB46487DC8F3466B19AF36759DE35D6CF'
-    'sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
-    'sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
-    'sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
-    'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
-    'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
-    'assets\floating-plush\floating-plush-mymelody-reference.png' = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
-    'assets\floating-plush\floating-plush-cinnamoroll-reference.png' = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
-    'assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
-    'assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
-    'assets\floating-plush\floating-plush-kuromi-reference.png' = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
-    'assets\floating-plush\component-day-outer-shell.png' = 'A4F2F78163F8AA5217C4161F0EE2BFB924686E8BED5768C527F3B5C7D6CC4924'
-    'assets\floating-plush\component-day-header-blank.png' = '857B570F1CD47C29F1C2744251DE1B1C7B4D9D921944BB79E974B0B60B26C1B1'
-    'assets\floating-plush\component-day-card-blank.png' = '253EF68502B1F798E37DDF02BF17F9BEE08D818B8AEE76EA287A4403226FB1C8'
-    'assets\floating-plush\component-day-mascots.png' = 'D000285BFFC2CBCF3411C11407FF691E531A8602E9D3E8F3FD68EBFC4ADC0726'
-    'app\assets\sanrio-official-mymelody.png' = '6C53BD64E8F601C0709C69DAEE863F282EAA763AFFA2F4F96CE77B5AA2B0B41C'
-    'app\assets\sanrio-official-cinnamoroll.png' = '9344D335E7591C8599E7CC32730B315401037D58E15C14DCF23853DE74867520'
-    'app\assets\sanrio-official-kuromi.png' = '3DC52AAC57897374436C3394C434DE26090482A8C11E6BDF4BD7F3DCE581D4D0'
-    'app\assets\floating-plush\floating-plush-mymelody-reference.png' = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
-    'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png' = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
-    'app\assets\floating-plush\floating-plush-kuromi-reference.png' = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
-    'app\assets\floating-plush\component-day-outer-shell.png' = 'A4F2F78163F8AA5217C4161F0EE2BFB924686E8BED5768C527F3B5C7D6CC4924'
-    'app\assets\floating-plush\component-day-header-blank.png' = '857B570F1CD47C29F1C2744251DE1B1C7B4D9D921944BB79E974B0B60B26C1B1'
-    'app\assets\floating-plush\component-day-card-blank.png' = '253EF68502B1F798E37DDF02BF17F9BEE08D818B8AEE76EA287A4403226FB1C8'
-    'app\assets\floating-plush\component-day-mascots.png' = 'D000285BFFC2CBCF3411C11407FF691E531A8602E9D3E8F3FD68EBFC4ADC0726'
-    'app\assets\main-decorations\main-countdown-scene-day.png' = '4A9CC38CD3AE989B1ABC2ED2BD3228080C189826DD285AAFA4D96E9DB01AC131'
-    'app\assets\main-decorations\main-notes-scene-day.png' = '6EE9D22E5CD4EF5941B089378E775DCDE0FF49107A15B22E893068473B1195E3'
-    'app\assets\main-decorations\main-countdown-top-night.png' = 'AB362CB38DDD09119DFB0D3B25799BD67C89D728BDAD2BD69B5C9D7A00CE6323'
-    'app\assets\main-decorations\main-notes-top-night.png' = 'CDE8C7E4EB8714E9E7427E1B6E07E36FFDE1F04B8337C0DDD64E3F3E18D161E6'
-}
-$applicationFiles = @(
-    'Countdown.Core.psm1',
-    'Countdown.InstallTransaction.psm1',
-    'Countdown.Notes.psm1',
-    'Countdown.Runtime.psm1',
-    'Countdown.Settings.psm1',
-    'Countdown.Tags.psm1',
-    '敏敏子倒计时.ps1',
-    'app\MinminCountdown.exe',
-    'app\assets\sanrio-official-mymelody.png',
-    'app\assets\sanrio-official-cinnamoroll.png',
-    'app\assets\sanrio-official-kuromi.png',
-    'app\assets\floating-plush\floating-plush-mymelody-reference.png',
-    'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
-    'app\assets\floating-plush\floating-plush-kuromi-reference.png',
-    'app\assets\floating-plush\component-day-outer-shell.png',
-    'app\assets\floating-plush\component-day-header-blank.png',
-    'app\assets\floating-plush\component-day-card-blank.png',
-    'app\assets\floating-plush\component-day-mascots.png',
-    'app\assets\main-decorations\main-countdown-scene-day.png',
-    'app\assets\main-decorations\main-notes-scene-day.png',
-    'app\assets\main-decorations\main-countdown-top-night.png',
-    'app\assets\main-decorations\main-notes-top-night.png',
-    'CountdownLauncher.exe',
-    'countdown-icon.ico',
-    'sanrio-official-mymelody.png',
-    'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png'
-)
-
-foreach ($entry in $expected.GetEnumerator()) {
-    $path = Join-Path $staging $entry.Key
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw "Missing staging file: $($entry.Key)"
-    }
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash
-    if ($actual -ne $entry.Value) {
-        throw "Hash mismatch: $($entry.Key)"
-    }
-}
+Import-Module (Join-Path $staging 'Countdown.ReleaseContract.psm1') -Force
+$releaseContract = Get-CountdownReleaseContract
+$expected = $releaseContract.IntegrityHashes
+$applicationFiles = @($releaseContract.InstalledFiles)
+$officialCharacterAssets = @($releaseContract.OfficialCharacterAssets)
+$floatingPlushAssets = @($releaseContract.FloatingPlushAssets)
+$currentFloatingRuntimeAssets = @($releaseContract.CurrentFloatingRuntimeAssets)
+$legacyFloatingRegressionAssets = @($releaseContract.LegacyFloatingRegressionAssets)
+$retiredRuntimeFiles = @($releaseContract.RetiredRuntimeFiles)
+$packageValidation = Assert-CountdownReleasePackage -Root $staging
 
 if ($ValidateOnly) {
     [pscustomobject]@{
         Valid = $true
         SourceRoot = $staging
-        VerifiedFiles = $expected.Count
+        VerifiedFiles = $packageValidation.VerifiedFiles
         OfficialCharacterAssets = $officialCharacterAssets
         FloatingPlushAssets = $floatingPlushAssets
         CurrentFloatingRuntimeAssets = $currentFloatingRuntimeAssets
         LegacyFloatingRegressionAssets = $legacyFloatingRegressionAssets
+        CompatibilityFixtureFiles = @($releaseContract.CompatibilityFixtureFiles)
         RetiredRuntimeFiles = $retiredRuntimeFiles
         Transactional = $true
         DeferredCommitSupported = $true
@@ -223,7 +101,7 @@ function Get-CountdownManagedDesktopLauncherOwnership {
     param(
         [Parameter(Mandatory)] [string] $LauncherPath,
         [Parameter(Mandatory)] [string] $LauncherStatePath,
-        [Parameter(Mandatory)] [hashtable] $Expected,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Expected,
         [Parameter(Mandatory)] [string] $LegacyManagedLauncherHash
     )
 
@@ -303,8 +181,8 @@ $launcherTempPath = "$launcherPath.new"
 
 Import-Module (Join-Path $staging 'Countdown.Runtime.psm1') -Force
 Import-Module (Join-Path $staging 'Countdown.Settings.psm1') -Force
+Import-Module (Join-Path $staging 'Countdown.TransactionAcceptance.psm1') -Force
 $installMutex = $null
-$settingsWriteMutex = $null
 try {
     # 即使父验收已持锁也再次获取同线程可重入 mutex；公开参数不能跳过真实安装锁。
     $installMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 120
@@ -434,6 +312,7 @@ try {
             )) {
             throw "计划任务未使用 PowerShell 7：$($registeredTask.Actions.Execute)"
         }
+        $expectedScheduledTaskIdentity = [string] (Export-ScheduledTask -InputObject $registeredTask -ErrorAction Stop)
 
         Start-ScheduledTask -TaskName $taskName
         $runtimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 30 -PollMilliseconds 250
@@ -462,53 +341,42 @@ try {
             return
         }
 
-        [void] (Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext)
-        $commitRuntimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 0 -PollMilliseconds 1
-        if ([int] $commitRuntimeStatus.processId -ne [int] $runtimeStatus.processId) {
-            throw '安装提交前受管应用进程已变化；拒绝提交事务。'
-        }
-        $commitTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-        if ([string] $commitTask.State -ne 'Running') {
-            throw "安装提交前计划任务未运行：$($commitTask.State)"
-        }
-        if (-not (Complete-CountdownStartupRequest -Path $startupRequestPath -LaunchToken $startupRequest.launchToken)) {
-            throw '安装事务仍可回滚，但无法授权应用持久化 schema 迁移。'
-        }
-        [void] (Wait-CountdownStartupRequestState -Path $startupRequestPath -LaunchToken $startupRequest.launchToken -ExpectedState ready -TimeoutSeconds 30 -PollMilliseconds 100)
-        [void] (Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext)
-        $readyRuntimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 0 -PollMilliseconds 1
-        if ([int] $readyRuntimeStatus.processId -ne [int] $runtimeStatus.processId) {
-            throw 'schema 迁移确认后受管应用进程已变化；拒绝提交事务。'
-        }
-        $readyTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-        if ([string] $readyTask.State -ne 'Running') {
-            throw "schema 迁移确认后计划任务未运行：$($readyTask.State)"
-        }
         $settingsSnapshotPath = Join-Path $transaction.transactionPath 'install-backup\settings.json'
-        $settingsJsonBefore = if (Test-Path -LiteralPath $settingsSnapshotPath -PathType Leaf) { Get-Content -LiteralPath $settingsSnapshotPath -Raw -Encoding UTF8 } else { $null }
-        $settingsHashBefore = if (Test-Path -LiteralPath $settingsSnapshotPath -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsSnapshotPath).Hash } else { $null }
         $settingsPath = Join-Path $install 'settings.json'
-        $settingsWriteMutex = Enter-CountdownSettingsWriteMutex -Path $settingsPath -TimeoutSeconds 10
-            $settingsJsonAfter = if (Test-Path -LiteralPath $settingsPath -PathType Leaf) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 } else { $null }
-            $settingsHashAfter = if (Test-Path -LiteralPath $settingsPath -PathType Leaf) { (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsPath).Hash } else { $null }
-            if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsHashBefore -AfterHash $settingsHashAfter -BeforeJson $settingsJsonBefore -AfterJson $settingsJsonAfter)) {
-                throw 'C# schema 迁移超出允许的数据等价范围。'
-            }
+        $getAcceptanceInteractiveContext = { Get-CountdownInteractiveDesktopContext }
+        $getAcceptanceScheduledTask = {
+            param([string] $ExpectedTaskName)
+            Get-ScheduledTask -TaskName $ExpectedTaskName -ErrorAction Stop
+        }
+        $getAcceptanceScheduledTaskIdentity = {
+            param([object] $ScheduledTask)
+            [string] (Export-ScheduledTask -InputObject $ScheduledTask -ErrorAction Stop)
+        }
+        $completeAcceptanceTransaction = {
             Complete-CountdownInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
-            if (-not (Set-CountdownStartupRequestFinalized -Path $startupRequestPath -LaunchToken $startupRequest.launchToken)) {
-                throw '安装已接受且仍可回滚，但无法最终启用应用窗口。'
-            }
-            $acceptanceStatus = Wait-CountdownAcceptanceReadyReceipt -Path $acceptanceStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 30 -PollMilliseconds 100
-            if ([int] $acceptanceStatus.processId -ne [int] $runtimeStatus.processId) {
-                throw '应用解锁确认的进程与 window-ready 进程不一致。'
-            }
-            [void] (Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext)
-            $finalTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-            if ([string] $finalTask.State -ne 'Running') {
-                throw "应用解锁确认后计划任务未运行：$($finalTask.State)"
-            }
+        }
+        $removeAcceptedTransaction = {
             Remove-CountdownCommittedInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
-            $transactionCompleted = $true
+        }
+        [void] (Invoke-CountdownTransactionAcceptance `
+                -StartupRequestPath $startupRequestPath `
+                -RuntimeStatusPath $runtimeStatusPath `
+                -AcceptanceStatusPath $acceptanceStatusPath `
+                -LaunchToken $startupRequest.launchToken `
+                -ExpectedInteractiveContext $interactiveContext `
+                -ExpectedProcessId ([int] $runtimeStatus.processId) `
+                -ExpectedSessionId ([int] $interactiveContext.SessionId) `
+                -ExpectedApplicationPath $appPath `
+                -TaskName $taskName `
+                -ExpectedScheduledTaskIdentity $expectedScheduledTaskIdentity `
+                -SettingsSnapshotPath $settingsSnapshotPath `
+                -SettingsPath $settingsPath `
+                -GetInteractiveContext $getAcceptanceInteractiveContext `
+                -GetScheduledTask $getAcceptanceScheduledTask `
+                -GetScheduledTaskIdentity $getAcceptanceScheduledTaskIdentity `
+                -CompleteTransaction $completeAcceptanceTransaction `
+                -RemoveCommittedTransaction $removeAcceptedTransaction)
+        $transactionCompleted = $true
         & "$env:SystemRoot\System32\ie4uinit.exe" -show 2>$null
         $result | ConvertTo-Json -Depth 8
     }
@@ -534,9 +402,6 @@ try {
     }
 }
 finally {
-    if ($null -ne $settingsWriteMutex) {
-        Exit-CountdownSettingsWriteMutex -Mutex $settingsWriteMutex
-    }
     if ($null -ne $installMutex) {
         Exit-CountdownInstallTransactionMutex -Mutex $installMutex
     }

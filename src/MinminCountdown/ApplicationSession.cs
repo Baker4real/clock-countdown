@@ -73,12 +73,16 @@ internal sealed class ApplicationSession
         SettingsWereMigrated = false;
     }
 
-    public IReadOnlyList<CountdownRecord> GetSortedCountdowns(bool applyFilter = true)
+    public IReadOnlyList<CountdownRecord> GetSortedCountdowns(bool applyFilter = true) =>
+        GetSortedCountdowns(UtcNow, applyFilter);
+
+    internal IReadOnlyList<CountdownRecord> GetSortedCountdowns(
+        DateTimeOffset nowUtc,
+        bool applyFilter = true)
     {
-        var now = UtcNow;
         return Current.Countdowns
-            .Where(record => !applyFilter || Filter.Matches(record, now))
-            .OrderBy(record => record.TargetUtc > now ? 0 : 1)
+            .Where(record => !applyFilter || Filter.Matches(record, nowUtc))
+            .OrderBy(record => record.TargetUtc > nowUtc ? 0 : 1)
             .ThenBy(record => record.TargetUtc)
             .ToArray();
     }
@@ -392,16 +396,13 @@ internal sealed class ApplicationSession
 
     public bool TryCommit(CountdownSettings candidate, out string error)
     {
+        CountdownSettings previous;
+        CountdownSettings canonical;
         try
         {
-            var previous = Current;
-            var canonical = _store.Copy(candidate);
+            previous = Current;
+            canonical = _store.Copy(candidate);
             _store.Save(SettingsPath, canonical);
-            Current = canonical;
-            Reminders.Synchronize(previous, canonical, _store.Clock.UtcNow);
-            StateChanged?.Invoke(this, EventArgs.Empty);
-            error = string.Empty;
-            return true;
         }
         catch (Exception exception) when (
             exception is SettingsValidationException or IOException or UnauthorizedAccessException or TimeoutException)
@@ -409,6 +410,12 @@ internal sealed class ApplicationSession
             error = exception.Message;
             return false;
         }
+
+        Current = canonical;
+        Reminders.Synchronize(previous, canonical, _store.Clock.UtcNow);
+        error = string.Empty;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public string SerializeCurrent() => _store.Serialize(Current);

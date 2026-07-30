@@ -251,8 +251,6 @@ internal sealed class StartupAcceptanceProtocol
         Request = request;
     }
 
-    public static bool IsDeepModule => true;
-
     public StartupRequest Request { get; }
 
     public string LaunchToken => Request.LaunchToken;

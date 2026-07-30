@@ -12,10 +12,10 @@ namespace MinminCountdown;
 
 public sealed partial class FloatingWindow : Window
 {
-    private readonly ApplicationSession _session;
-    private readonly DesktopWorkspace _workspaceModule;
+    private readonly DesktopWorkspace _desktopWorkspace;
     private readonly HolidayCalendar _calendar;
     private readonly MainWindow _manager;
+    private readonly ReminderEditing _reminderEditing = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private bool _settingDefaultDate;
     private bool _dateDirty;
@@ -35,13 +35,12 @@ public sealed partial class FloatingWindow : Window
     private int _nativeWindowDragCompletionCount;
 
     internal FloatingWindow(
-        ApplicationSession session,
+        DesktopWorkspace desktopWorkspace,
         HolidayCalendar calendar,
         MainWindow manager,
         string assetRoot)
     {
-        _session = session;
-        _workspaceModule = new DesktopWorkspace(session);
+        _desktopWorkspace = desktopWorkspace;
         _calendar = calendar;
         _manager = manager;
         InitializeComponent();
@@ -49,10 +48,11 @@ public sealed partial class FloatingWindow : Window
         LoadAssets(assetRoot);
         ConfigureControls();
         WireEvents();
+        var snapshot = _desktopWorkspace.Snapshot;
         ApplyTheme(ApplicationTheme.Resolve(
-            _session.UtcNow,
-            _session.Current.Preferences.ThemePreference));
-        _session.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
+            snapshot.UtcNow,
+            snapshot.Settings.Preferences.ThemePreference));
+        _desktopWorkspace.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         _calendar.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         Refresh();
     }
@@ -365,9 +365,10 @@ public sealed partial class FloatingWindow : Window
     internal bool RunCrossDayReminderAddExercise()
     {
         ShowWorkspace(WorkspaceKind.Notes);
-        var countBefore = _session.Current.Notes.Count;
-        var noteDate = _session.BeijingNow.AddDays(2).Date;
-        var firstDueDay = _session.BeijingNow.AddDays(3);
+        var initial = _desktopWorkspace.Snapshot;
+        var countBefore = initial.Settings.Notes.Count;
+        var noteDate = initial.BeijingNow.AddDays(2).Date;
+        var firstDueDay = initial.BeijingNow.AddDays(3);
         var firstDue = new DateTimeOffset(
             firstDueDay.Year,
             firstDueDay.Month,
@@ -382,10 +383,11 @@ public sealed partial class FloatingWindow : Window
         FloatingReminderInterval.SelectedIndex = 1;
         SetReminderSchedule(firstDue);
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var added = _session.Current.Notes.LastOrDefault(note => note.Text == "验证快速跨天提醒");
+        var afterAdd = _desktopWorkspace.Snapshot.Settings;
+        var added = afterAdd.Notes.LastOrDefault(note => note.Text == "验证快速跨天提醒");
         return
             added is not null &&
-            _session.Current.Notes.Count == countBefore + 1 &&
+            afterAdd.Notes.Count == countBefore + 1 &&
             added.Date == noteDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) &&
             added.ReminderIntervalMinutes == 30 &&
             added.ReminderStartUtc == firstDue.ToUniversalTime().Subtract(TimeSpan.FromMinutes(30));
@@ -394,8 +396,9 @@ public sealed partial class FloatingWindow : Window
     internal ReminderModeClickResult RunReminderModeClickExercises()
     {
         ShowWorkspace(WorkspaceKind.Notes);
-        var noteDate = _session.BeijingNow.AddDays(2).Date;
-        var onceDue = _session.BeijingNow.AddDays(3);
+        var initial = _desktopWorkspace.Snapshot;
+        var noteDate = initial.BeijingNow.AddDays(2).Date;
+        var onceDue = initial.BeijingNow.AddDays(3);
         onceDue = new DateTimeOffset(
             onceDue.Year,
             onceDue.Month,
@@ -410,7 +413,7 @@ public sealed partial class FloatingWindow : Window
         FloatingNoteDate.SelectedDate = noteDate;
         FloatingReminder.SelectedIndex = 0;
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var noReminderWorks = _session.Current.Notes.LastOrDefault(
+        var noReminderWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证悬浮窗不提醒")?.Reminder is NoReminder;
 
         FloatingNoteText.Text = "验证悬浮窗仅一次";
@@ -418,7 +421,7 @@ public sealed partial class FloatingWindow : Window
         FloatingReminder.SelectedIndex = 1;
         SetReminderSchedule(onceDue);
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var onceWorks = _session.Current.Notes.LastOrDefault(
+        var onceWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证悬浮窗仅一次")?.Reminder is OnceReminder
             {
                 Delivery: OnceDeliveryState.Pending
@@ -431,7 +434,7 @@ public sealed partial class FloatingWindow : Window
         FloatingReminderInterval.SelectedIndex = 1;
         SetReminderSchedule(repeatDue);
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var repeatWorks = _session.Current.Notes.LastOrDefault(
+        var repeatWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证悬浮窗重复提醒")?.Reminder is RepeatingReminder repeating &&
             repeating.FirstDueUtc == repeatDue.ToUniversalTime() &&
             repeating.Interval.Minutes == 30;
@@ -452,11 +455,12 @@ public sealed partial class FloatingWindow : Window
             workspace == WorkspaceKind.Notes ? Visibility.Visible : Visibility.Collapsed;
         if (workspace == WorkspaceKind.Notes)
         {
-            FloatingTags.SetSelection(_workspaceModule.SelectedTagIds);
+            var snapshot = _desktopWorkspace.Snapshot;
+            FloatingTags.SetSelection(snapshot.Filter.SelectedTagIds);
             if (!_dateDirty)
             {
                 _settingDefaultDate = true;
-                FloatingNoteDate.SelectedDate = _session.BeijingNow.Date;
+                FloatingNoteDate.SelectedDate = snapshot.BeijingNow.Date;
                 _settingDefaultDate = false;
             }
         }
@@ -518,10 +522,11 @@ public sealed partial class FloatingWindow : Window
             plushSceneFollowsDayNightTheme &= PlushSceneFollowsActiveTheme;
         }
 
+        var snapshot = _desktopWorkspace.Snapshot;
         ApplyTheme(ApplicationTheme.Resolve(
-            _session.UtcNow,
-            _session.Current.Preferences.ThemePreference));
-        UpdateTime(_session.UtcNow);
+            snapshot.UtcNow,
+            snapshot.Settings.Preferences.ThemePreference));
+        UpdateTime(snapshot.UtcNow);
         var expectedModes = new[] { "Night", "Day", "Day", "Night" };
         var expectedMascotPresentationModes = new[]
         {
@@ -758,7 +763,7 @@ public sealed partial class FloatingWindow : Window
         FloatingReminderInterval.Items.Add("自定义");
         FloatingReminder.SelectedIndex = 0;
         FloatingReminderInterval.SelectedIndex = 1;
-        FloatingTags.SetTags(_session.Current.Tags);
+        FloatingTags.SetTags(_desktopWorkspace.Snapshot.Settings.Tags);
         AutomationProperties.SetName(FloatingCountdownsButton, "显示悬浮倒计时");
         AutomationProperties.SetName(FloatingNotesButton, "显示悬浮便签");
         AutomationProperties.SetName(MinimizeToTrayButton, "缩小到系统托盘");
@@ -808,19 +813,15 @@ public sealed partial class FloatingWindow : Window
         FloatingAddNote.Click += (_, _) => AddNote();
         FloatingTags.CreateRequested += (_, name) =>
         {
-            if (_workspaceModule.TryCreateTag(
-                    name,
-                    "#F4B6A6",
-                    out var tag,
-                    out var error) &&
-                tag is not null)
+            var result = _desktopWorkspace.Apply(new CreateTagChange(name, "#F4B6A6"));
+            if (result is { Succeeded: true, CreatedTag: { } tag })
             {
                 FloatingTags.SelectedTagIds.Add(tag.Id);
                 FloatingTags.SetSelection(FloatingTags.SelectedTagIds);
             }
             else
             {
-                SetNoteMessage(error);
+                SetNoteMessage(result.Error);
             }
         };
         SizeChanged += (_, _) => Reanchor();
@@ -882,21 +883,23 @@ public sealed partial class FloatingWindow : Window
 
     private void Refresh()
     {
-        FloatingTags.SetTags(_session.Current.Tags);
-        RenderRows(_session.UtcNow);
+        var snapshot = _desktopWorkspace.Snapshot;
+        FloatingTags.SetTags(snapshot.Settings.Tags);
+        RenderRows(snapshot.UtcNow);
         Reanchor();
     }
 
     private void RenderRows(DateTimeOffset nowUtc)
     {
         FloatingRows.Children.Clear();
+        var snapshot = _desktopWorkspace.Snapshot;
         if (_workspace == WorkspaceKind.Countdowns)
         {
-            var records = _workspaceModule.GetVisibleCountdowns()
+            var records = snapshot.VisibleCountdowns
                 .Where(record => record.TargetUtc > nowUtc)
                 .ToList();
-            if (!_workspaceModule.HasFilterConstraints &&
-                _calendar.GetWorkdayEndCountdown(nowUtc, _session.Current.Preferences) is { } workdayEnd)
+            if (!snapshot.HasFilterConstraints &&
+                _calendar.GetWorkdayEndCountdown(nowUtc, snapshot.Settings.Preferences) is { } workdayEnd)
             {
                 records.Add(workdayEnd);
             }
@@ -907,11 +910,14 @@ public sealed partial class FloatingWindow : Window
                 .Select(record => CountdownFormatting.FormatRemaining(
                     record.TargetUtc,
                     nowUtc,
-                    _session.Current.Preferences.DisplayPrecision))
+                    snapshot.Settings.Preferences.DisplayPrecision))
                 .ToArray();
             foreach (var record in records)
             {
-                FloatingRows.Children.Add(FloatingCountdownCard(record, nowUtc));
+                FloatingRows.Children.Add(FloatingCountdownCard(
+                    record,
+                    nowUtc,
+                    snapshot.Settings.Preferences.DisplayPrecision));
             }
 
             if (records.Count == 0)
@@ -921,7 +927,7 @@ public sealed partial class FloatingWindow : Window
         }
         else
         {
-            var notes = _workspaceModule.GetVisibleActiveNotes();
+            var notes = snapshot.VisibleActiveNotes;
             foreach (var note in notes)
             {
                 FloatingRows.Children.Add(FloatingNoteCard(note));
@@ -933,14 +939,17 @@ public sealed partial class FloatingWindow : Window
             }
         }
 
-        var earnings = _calendar.GetEarnings(nowUtc, _session.Current.Preferences);
+        var earnings = _calendar.GetEarnings(nowUtc, snapshot.Settings.Preferences);
         FloatingIncome.Text = earnings is null
             ? _calendar.StatusText
             : $"今日已赚 ￥{earnings.Value:N2}";
         Dispatcher.BeginInvoke(Reanchor);
     }
 
-    private FrameworkElement FloatingCountdownCard(CountdownRecord record, DateTimeOffset nowUtc)
+    private FrameworkElement FloatingCountdownCard(
+        CountdownRecord record,
+        DateTimeOffset nowUtc,
+        string displayPrecision)
     {
         var stack = new StackPanel();
         stack.Children.Add(new TextBlock
@@ -955,7 +964,7 @@ public sealed partial class FloatingWindow : Window
             Text = CountdownFormatting.FormatRemaining(
                 record.TargetUtc,
                 nowUtc,
-                _session.Current.Preferences.DisplayPrecision),
+                displayPrecision),
             Margin = new Thickness(0, 4, 0, 0),
             Foreground = _floatingMutedBrush
         });
@@ -975,10 +984,11 @@ public sealed partial class FloatingWindow : Window
             $"完成便签 {note.Text}");
         check.Checked += (_, _) =>
         {
-            if (!_workspaceModule.TrySetNoteCompletion(note.Id, true, out var error))
+            var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(note.Id, true));
+            if (!result.Succeeded)
             {
                 check.IsChecked = false;
-                SetNoteMessage(error);
+                SetNoteMessage(result.Error);
             }
         };
         var body = new StackPanel();
@@ -988,7 +998,7 @@ public sealed partial class FloatingWindow : Window
             TextWrapping = TextWrapping.Wrap,
             Foreground = _floatingPrimaryBrush
         });
-        var nextReminder = ReminderSchedule.GetNextDueUtc(note, _session.UtcNow);
+        var nextReminder = ReminderSchedule.GetNextDueUtc(note, _desktopWorkspace.Snapshot.UtcNow);
         if (nextReminder is not null)
         {
             body.Children.Add(new TextBlock
@@ -1056,60 +1066,39 @@ public sealed partial class FloatingWindow : Window
             return;
         }
 
-        DateTimeOffset? firstReminderUtc = null;
-        if (FloatingReminder.SelectedIndex > 0 &&
-            !ReminderSchedule.TryCreateFirstDueUtc(
-                FloatingReminderDate.SelectedDate,
-                FloatingReminderHour.SelectedIndex,
-                FloatingReminderMinute.SelectedIndex,
-                _session.UtcNow,
-                out firstReminderUtc,
-                out var reminderError))
+        var reminderResult = _reminderEditing.Build(new ReminderEditingRequest(
+            SelectedReminderMode(),
+            FloatingReminderDate.SelectedDate,
+            FloatingReminderHour.SelectedIndex,
+            FloatingReminderMinute.SelectedIndex,
+            SelectedReminderInterval(),
+            FloatingCustomReminderMinutes.Text,
+            _desktopWorkspace.Snapshot.UtcNow,
+            null,
+            true));
+        if (!reminderResult.Succeeded)
         {
-            SetNoteMessage(reminderError);
+            SetNoteMessage(reminderResult.Error);
             return;
         }
 
-        NoteReminder reminder;
-        if (FloatingReminder.SelectedIndex == 0)
+        var result = _desktopWorkspace.Apply(new SaveNoteChange(
+            null,
+            FloatingNoteText.Text,
+            FloatingNoteDate.SelectedDate,
+            false,
+            FloatingTags.SelectedTagIds.ToArray(),
+            reminderResult.Reminder));
+        if (!result.Succeeded)
         {
-            reminder = NoReminder.Instance;
-        }
-        else if (FloatingReminder.SelectedIndex == 1)
-        {
-            reminder = ReminderSchedule.CreateOnce(firstReminderUtc!.Value);
-        }
-        else if (FloatingReminder.SelectedIndex == 2)
-        {
-            if (!TryGetReminderInterval(out var interval, out var intervalError))
-            {
-                SetNoteMessage(intervalError);
-                return;
-            }
-
-            reminder = ReminderSchedule.CreateRepeating(firstReminderUtc!.Value, interval);
-        }
-        else
-        {
-            SetNoteMessage("请选择有效的提醒模式。");
-            return;
-        }
-
-        if (!_workspaceModule.TrySaveQuickNote(
-                FloatingNoteText.Text,
-                FloatingNoteDate.SelectedDate,
-                FloatingTags.SelectedTagIds.ToArray(),
-                reminder,
-                out var error))
-        {
-            SetNoteMessage($"保存失败：{error}");
+            SetNoteMessage($"保存失败：{result.Error}");
             return;
         }
 
         FloatingNoteText.Clear();
         _dateDirty = false;
         _settingDefaultDate = true;
-        FloatingNoteDate.SelectedDate = _session.BeijingNow.Date;
+        FloatingNoteDate.SelectedDate = _desktopWorkspace.Snapshot.BeijingNow.Date;
         _settingDefaultDate = false;
         SetDefaultReminderSchedule();
         SetNoteMessage(string.Empty);
@@ -1155,19 +1144,15 @@ public sealed partial class FloatingWindow : Window
             return;
         }
 
-        var offsetMinutes = 15;
-        if (FloatingReminder.SelectedIndex == 2)
+        var result = _reminderEditing.GetDefaultFirstDueBeijing(
+            SelectedReminderMode(),
+            SelectedReminderInterval(),
+            FloatingCustomReminderMinutes.Text,
+            _desktopWorkspace.Snapshot.UtcNow);
+        if (result.Succeeded)
         {
-            if (!TryGetReminderInterval(out var interval, out _))
-            {
-                return;
-            }
-
-            offsetMinutes = interval;
+            SetReminderSchedule(result.FirstDueBeijing);
         }
-
-        SetReminderSchedule(
-            ReminderSchedule.GetDefaultFirstDueBeijing(_session.BeijingNow, offsetMinutes));
     }
 
     private void SetReminderSchedule(DateTimeOffset? beijing)
@@ -1177,35 +1162,22 @@ public sealed partial class FloatingWindow : Window
         FloatingReminderMinute.SelectedIndex = beijing?.Minute ?? -1;
     }
 
-    private bool TryGetReminderInterval(out int interval, out string error)
+    private ReminderEditingMode SelectedReminderMode() => FloatingReminder.SelectedIndex switch
     {
-        interval = FloatingReminderInterval.SelectedIndex switch
+        0 => ReminderEditingMode.None,
+        1 => ReminderEditingMode.Once,
+        2 => ReminderEditingMode.Repeating,
+        _ => (ReminderEditingMode)(-1)
+    };
+
+    private ReminderIntervalSelection SelectedReminderInterval() =>
+        FloatingReminderInterval.SelectedIndex switch
         {
-            0 => 15,
-            1 => 30,
-            2 => 60,
-            _ => -1
+            0 => ReminderIntervalSelection.FifteenMinutes,
+            1 => ReminderIntervalSelection.ThirtyMinutes,
+            2 => ReminderIntervalSelection.SixtyMinutes,
+            _ => ReminderIntervalSelection.Custom
         };
-        if (interval != -1)
-        {
-            error = string.Empty;
-            return true;
-        }
-
-        if (!int.TryParse(
-                FloatingCustomReminderMinutes.Text,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out interval) ||
-            interval is < 1 or > 1440)
-        {
-            error = "自定义提醒必须是 1 到 1440 分钟。";
-            return false;
-        }
-
-        error = string.Empty;
-        return true;
-    }
 
     private void SetNoteMessage(string text)
     {

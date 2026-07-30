@@ -395,6 +395,17 @@ try {
         '-DiagnosticLogPath',
         $adapterDiagnosticPath
     )
+    $adapterValidationDocument = [System.Text.Json.JsonDocument]::Parse($adapterValidationOutput)
+    try {
+        $adapterValidationPropertyNames = @(
+            foreach ($property in $adapterValidationDocument.RootElement.EnumerateObject()) {
+                $property.Name
+            }
+        )
+    }
+    finally {
+        $adapterValidationDocument.Dispose()
+    }
     $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
     $adapterDiagnosticEvents = @(
         Get-Content -LiteralPath $adapterDiagnosticPath |
@@ -407,10 +418,17 @@ try {
     Assert-Equal 0 $syntheticTrayLogCount 'validate-only 托盘演练不伪造用户操作日志'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash '主题点击验收循环回 Auto 且不改变等价设置'
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
-    Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '桌面工作区 deep module 验收'
-    Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolModuleDeep) '启动验收 protocol deep module 验收'
-    Assert-Equal $true ([bool] $adapterValidation.WorkdayCalendarModuleDeep) '工作日历 deep module 验收'
-    Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '验证报告 deep module 验收'
+    Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceInterfaceBehavior) '桌面工作区 interface 统一持久化、状态变更与筛选行为'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderEditingInterfaceBehavior) '提醒编辑 interface 统一模式、时间、间隔与既有提醒保留行为'
+    Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolInterfaceBehavior) '启动验收 protocol interface 覆盖请求、回执、状态推进与拒绝路径'
+    Assert-Equal $true ([bool] $adapterValidation.HolidayCalendarInterfaceBehavior) '工作日历 interface 覆盖缓存初始化、派生结果与失败状态'
+    Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
+    Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
+    Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
+    Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '兼容字段由桌面工作区真实 interface 行为计算'
+    Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolModuleDeep) '兼容字段由启动验收真实 interface 行为计算'
+    Assert-Equal $true ([bool] $adapterValidation.WorkdayCalendarModuleDeep) '兼容字段由工作日历真实 interface 行为计算'
+    Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '兼容字段由验证报告真实 JSON 契约计算'
     Assert-Equal $true ([bool] $adapterValidation.ThemeControlInventoryCovered) 'adapter 验证主题控件资产清单'
     Assert-Equal $true ([bool] $adapterValidation.ThemePreferenceButtonCyclesViaClick) '主题按钮通过真实 WPF 点击按自动、日间、夜间循环'
     Assert-Equal $true ([bool] $adapterValidation.ThemePreferenceButtonPersistsEachMode) '主题按钮每次选择都写入设置'

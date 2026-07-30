@@ -1,7 +1,11 @@
 ﻿#requires -Version 7.0
 
 [CmdletBinding()]
-param([switch] $ParentTransactionMutexHeld)
+param(
+    [switch] $ParentTransactionMutexHeld,
+    [switch] $AcceptanceOnly,
+    [switch] $ReleaseContractOnly
+)
 
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
@@ -10,6 +14,8 @@ Import-Module (Join-Path $PSScriptRoot 'Countdown.Tags.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'Countdown.TransactionAcceptance.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
 
 $failures = [System.Collections.Generic.List[string]]::new()
 $script:assertions = 0
@@ -18,6 +24,415 @@ function Assert-Equal($Expected, $Actual, [string] $Name) {
     if ($Expected -ne $Actual) {
         $failures.Add("$Name expected=[$Expected] actual=[$Actual]")
     }
+}
+
+function Remove-CountdownReleaseContractTestTree {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+    $expectedParent = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
+    if (-not [string]::Equals(
+            [System.IO.Path]::GetDirectoryName($resolvedPath),
+            $expectedParent,
+            [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [System.IO.Path]::GetFileName($resolvedPath).StartsWith(
+            'release-contract-test-',
+            [System.StringComparison]::Ordinal)) {
+        throw "拒绝清理未受管的发布契约测试目录：$resolvedPath"
+    }
+    if (-not (Test-Path -LiteralPath $resolvedPath -PathType Container)) {
+        return
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath $resolvedPath -File -Recurse) {
+        Remove-Item -LiteralPath $file.FullName -Force
+    }
+    foreach ($directory in @(
+            Get-ChildItem -LiteralPath $resolvedPath -Directory -Recurse |
+                Sort-Object { $_.FullName.Length } -Descending
+        )) {
+        Remove-Item -LiteralPath $directory.FullName -Force
+    }
+    Remove-Item -LiteralPath $resolvedPath -Force
+}
+
+if (-not $AcceptanceOnly) {
+$releaseContract = Get-CountdownReleaseContract
+$expectedBuildAssets = @(
+    'sanrio-official-mymelody.png=>app\assets\sanrio-official-mymelody.png',
+    'sanrio-official-cinnamoroll.png=>app\assets\sanrio-official-cinnamoroll.png',
+    'sanrio-official-kuromi.png=>app\assets\sanrio-official-kuromi.png',
+    'assets\floating-plush\floating-plush-mymelody-reference.png=>app\assets\floating-plush\floating-plush-mymelody-reference.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-reference.png=>app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+    'assets\floating-plush\floating-plush-kuromi-reference.png=>app\assets\floating-plush\floating-plush-kuromi-reference.png',
+    'assets\floating-plush\component-day-outer-shell.png=>app\assets\floating-plush\component-day-outer-shell.png',
+    'assets\floating-plush\component-day-header-blank.png=>app\assets\floating-plush\component-day-header-blank.png',
+    'assets\floating-plush\component-day-card-blank.png=>app\assets\floating-plush\component-day-card-blank.png',
+    'assets\floating-plush\component-day-mascots.png=>app\assets\floating-plush\component-day-mascots.png',
+    'assets\main-decorations\main-countdown-scene-day.png=>app\assets\main-decorations\main-countdown-scene-day.png',
+    'assets\main-decorations\main-notes-scene-day.png=>app\assets\main-decorations\main-notes-scene-day.png',
+    'assets\main-decorations\main-countdown-top-night.png=>app\assets\main-decorations\main-countdown-top-night.png',
+    'assets\main-decorations\main-notes-top-night.png=>app\assets\main-decorations\main-notes-top-night.png'
+)
+$actualBuildAssets = @($releaseContract.BuildAssets | ForEach-Object { "$($_.SourcePath)=>$($_.PublishedPath)" })
+$expectedCompatibilityFixtures = @(
+    'Countdown.App.psm1',
+    'sanrio-official-mymelody.png',
+    'sanrio-official-cinnamoroll.png',
+    'sanrio-official-kuromi.png',
+    'assets\floating-plush\floating-plush-mymelody-front.png',
+    'assets\floating-plush\floating-plush-mymelody-pose.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+    'assets\floating-plush\floating-plush-kuromi-front.png',
+    'assets\floating-plush\floating-plush-kuromi-pose.png'
+)
+
+Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
+Assert-Equal 50 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including its trust roots'
+Assert-Equal 47 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including transaction acceptance'
+Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
+Assert-Equal 27 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'
+Assert-Equal 20 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
+Assert-Equal ($expectedBuildAssets -join ',') ($actualBuildAssets -join ',') 'Release contract exposes the exact build asset mappings'
+Assert-Equal ($expectedCompatibilityFixtures -join ',') (@($releaseContract.CompatibilityFixtureFiles) -join ',') 'Release contract exposes the exact compatibility fixtures'
+Assert-Equal $true ('Countdown.TransactionAcceptance.psm1' -in @($releaseContract.PackageFiles)) 'Transaction acceptance is packaged'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Countdown.TransactionAcceptance.psm1') 'Transaction acceptance is integrity protected'
+Assert-Equal $false ('Countdown.TransactionAcceptance.psm1' -in @($releaseContract.InstalledFiles)) 'Transaction acceptance is not installed as runtime'
+foreach ($trustRoot in @('Deploy-OfficeCountdown.ps1', 'Install-Countdown.ps1', 'Countdown.ReleaseContract.psm1')) {
+    Assert-Equal $true ($trustRoot -in @($releaseContract.PackageTrustRoots)) "Release contract declares trust root $trustRoot"
+    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($trustRoot) "Release contract does not self-hash trust root $trustRoot"
+}
+Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
+Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'
+Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath -like '*ui-references*' }).Count 'UI references stay outside build targets'
+
+$mutableReleaseContract = Get-CountdownReleaseContract
+$mutableReleaseContract.PackageFiles[0] = 'mutated-package-file'
+$mutableReleaseContract.BuildAssets[0].SourcePath = 'mutated-build-source'
+$mutableReleaseContract.IntegrityHashes['Build-CountdownApplication.ps1'] = ('0' * 64)
+$freshReleaseContract = Get-CountdownReleaseContract
+Assert-Equal $false ('mutated-package-file' -in @($freshReleaseContract.PackageFiles)) 'Release contract returns a fresh package list'
+Assert-Equal $false ('mutated-build-source' -in @($freshReleaseContract.BuildAssets.SourcePath)) 'Release contract returns fresh build asset records'
+Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Build-CountdownApplication.ps1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
+
+$releaseContractTestRoot = Join-Path $PSScriptRoot ("release-contract-test-" + [guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $releaseContractTestRoot -Force | Out-Null
+    $missingPackageRejected = $false
+    try {
+        Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null
+    }
+    catch {
+        $missingPackageRejected = $_.Exception.Message -match '缺少发布包文件'
+    }
+    Assert-Equal $true $missingPackageRejected 'Release package assertion rejects missing files'
+
+    foreach ($relativePath in $releaseContract.PackageFiles) {
+        $testPath = Join-Path $releaseContractTestRoot $relativePath
+        $testParent = Split-Path -Parent $testPath
+        if (-not (Test-Path -LiteralPath $testParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $testParent -Force | Out-Null
+        }
+        [System.IO.File]::WriteAllText($testPath, 'invalid release content', [System.Text.UTF8Encoding]::new($false))
+    }
+    $invalidHashRejected = $false
+    try {
+        Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null
+    }
+    catch {
+        $invalidHashRejected = $_.Exception.Message -match '发布包哈希不匹配'
+    }
+    Assert-Equal $true $invalidHashRejected 'Release package assertion rejects invalid content'
+}
+finally {
+    Remove-CountdownReleaseContractTestTree -Path $releaseContractTestRoot
+}
+
+if ($ReleaseContractOnly) {
+    if ($failures.Count -gt 0) {
+        $failures | ForEach-Object { Write-Error $_ }
+        exit 1
+    }
+    [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'ReleaseContract' } | ConvertTo-Json
+    exit 0
+}
+}
+
+$acceptanceTestRoot = Join-Path $PSScriptRoot ("acceptance-test-" + [guid]::NewGuid().ToString('N'))
+$acceptanceStartupRequestPath = Join-Path $acceptanceTestRoot 'startup-request.json'
+$acceptanceRuntimeStatusPath = Join-Path $acceptanceTestRoot 'runtime-status.json'
+$acceptanceStatusPath = Join-Path $acceptanceTestRoot 'acceptance-status.json'
+$acceptanceSettingsSnapshotPath = Join-Path $acceptanceTestRoot 'settings-snapshot.json'
+$acceptanceSettingsPath = Join-Path $acceptanceTestRoot 'settings.json'
+$acceptanceApplicationPath = Join-Path $acceptanceTestRoot '敏敏子倒计时.ps1'
+$acceptanceExpectedContext = [pscustomobject]@{
+    User = 'MINMIN\AcceptanceUser'
+    SessionId = 7
+    Desktop = 'D:\AcceptanceDesktop'
+}
+$acceptanceAdapterState = [pscustomobject]@{ Completed = 0; Removed = 0 }
+$acceptanceTaskState = 'Running'
+$acceptanceTaskIdentity = 'scheduled-task-v1'
+$acceptanceJobs = [System.Collections.ArrayList]::new()
+function Reset-CountdownAcceptanceTestCase {
+    param([int] $RuntimeProcessId = 4242)
+
+    Remove-Item -LiteralPath $acceptanceStatusPath -Force -ErrorAction SilentlyContinue
+    Copy-Item -LiteralPath $acceptanceSettingsSnapshotPath -Destination $acceptanceSettingsPath -Force
+    $acceptanceAdapterState.Completed = 0
+    $acceptanceAdapterState.Removed = 0
+    $script:acceptanceTaskState = 'Running'
+    $script:acceptanceTaskIdentity = 'scheduled-task-v1'
+    $request = New-CountdownStartupRequest -Path $acceptanceStartupRequestPath -AcceptanceReadOnly
+    [void] (Write-CountdownWindowReadyReceipt -Path $acceptanceRuntimeStatusPath -LaunchToken $request.launchToken -ProcessId $RuntimeProcessId -SessionId 7 -ApplicationPath $acceptanceApplicationPath -CalendarState Ready)
+    $request
+}
+
+function Start-CountdownAcceptanceTestApplication {
+    param(
+        [Parameter(Mandatory)] [object] $StartupRequest,
+        [switch] $ChangeSettings,
+        [switch] $SkipFinalizedReady
+    )
+
+    $job = Start-Job -ArgumentList $acceptanceStartupRequestPath, $acceptanceStatusPath, $StartupRequest.launchToken, $acceptanceApplicationPath, $acceptanceSettingsPath, ([bool] $ChangeSettings), ([bool] $SkipFinalizedReady) -ScriptBlock {
+        param($StartupRequestPath, $AcceptanceStatusPath, $LaunchToken, $ApplicationPath, $SettingsPath, $ChangeSettings, $SkipFinalizedReady)
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        do {
+            try {
+                $request = [System.IO.File]::ReadAllText($StartupRequestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+                if ([string] $request.acceptanceState -eq 'released') {
+                    if ($ChangeSettings) {
+                        [System.IO.File]::WriteAllText($SettingsPath, '{"schemaVersion":9,"unexpected":true}', [System.Text.UTF8Encoding]::new($false))
+                    }
+                    $request.acceptanceState = 'ready'
+                    [System.IO.File]::WriteAllText($StartupRequestPath, ($request | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
+                    break
+                }
+            }
+            catch {}
+            Start-Sleep -Milliseconds 20
+        } while ([DateTimeOffset]::UtcNow -lt $deadline)
+        if ($SkipFinalizedReady) { return }
+
+        do {
+            try {
+                $request = [System.IO.File]::ReadAllText($StartupRequestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+                if ([string] $request.acceptanceState -eq 'finalized') {
+                    $receipt = [ordered]@{
+                        schemaVersion = 1
+                        stage = 'finalized-ready'
+                        launchToken = $LaunchToken
+                        processId = 4242
+                        sessionId = 7
+                        applicationPath = $ApplicationPath
+                        readyAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+                    }
+                    [System.IO.File]::WriteAllText($AcceptanceStatusPath, ($receipt | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+                    return
+                }
+            }
+            catch {}
+            Start-Sleep -Milliseconds 20
+        } while ([DateTimeOffset]::UtcNow -lt $deadline)
+        throw 'Acceptance test application did not observe the full release/finalize protocol.'
+    }
+    [void] $acceptanceJobs.Add($job)
+    $job
+}
+
+function Invoke-CountdownAcceptanceTestCase {
+    param(
+        [Parameter(Mandatory)] [object] $StartupRequest,
+        [int] $ExpectedProcessId = 4242,
+        [int] $ReadyTimeoutSeconds = 5
+    )
+
+    Invoke-CountdownTransactionAcceptance `
+        -StartupRequestPath $acceptanceStartupRequestPath `
+        -RuntimeStatusPath $acceptanceRuntimeStatusPath `
+        -AcceptanceStatusPath $acceptanceStatusPath `
+        -LaunchToken $StartupRequest.launchToken `
+        -ExpectedInteractiveContext $acceptanceExpectedContext `
+        -ExpectedProcessId $ExpectedProcessId `
+        -ExpectedSessionId 7 `
+        -ExpectedApplicationPath $acceptanceApplicationPath `
+        -TaskName 'Minmin Countdown Acceptance Test' `
+        -ExpectedScheduledTaskIdentity 'scheduled-task-v1' `
+        -SettingsSnapshotPath $acceptanceSettingsSnapshotPath `
+        -SettingsPath $acceptanceSettingsPath `
+        -GetInteractiveContext { $acceptanceExpectedContext } `
+        -GetScheduledTask {
+            param([string] $TaskName)
+            $reportedTaskState = $acceptanceTaskState
+            if ($reportedTaskState -eq 'StopAfterReady') {
+                $startupState = [string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)
+                $reportedTaskState = if ($startupState -in @('ready', 'finalized')) { 'Ready' } else { 'Running' }
+            }
+            $reportedTaskIdentity = $acceptanceTaskIdentity
+            if ($reportedTaskIdentity -eq 'DriftAfterReady') {
+                $startupState = [string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)
+                $reportedTaskIdentity = if ($startupState -in @('ready', 'finalized')) { 'scheduled-task-v2' } else { 'scheduled-task-v1' }
+            }
+            [pscustomobject]@{ TaskName = $TaskName; State = $reportedTaskState; Identity = $reportedTaskIdentity }
+        } `
+        -GetScheduledTaskIdentity {
+            param([object] $ScheduledTask)
+            [string] $ScheduledTask.Identity
+        } `
+        -CompleteTransaction {
+            $acceptanceAdapterState.Completed++
+            [pscustomobject]@{ Internal = 'accepted-journal' }
+        } `
+        -RemoveCommittedTransaction {
+            $acceptanceAdapterState.Removed++
+            [pscustomobject]@{ Internal = 'cleanup-result' }
+        } `
+        -ProcessProbe {
+            param([int] $ProcessId)
+            [pscustomobject]@{
+                ProcessId = $ProcessId
+                SessionId = 7
+                ExecutablePath = Join-Path $acceptanceTestRoot 'app\MinminCountdown.exe'
+                CommandLine = '"MinminCountdown.exe"'
+            }
+        } `
+        -ReadyTimeoutSeconds $ReadyTimeoutSeconds
+}
+
+try {
+    New-Item -ItemType Directory -Path $acceptanceTestRoot -Force | Out-Null
+    [System.IO.File]::WriteAllText($acceptanceApplicationPath, '# acceptance application', [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText($acceptanceSettingsSnapshotPath, '{"schemaVersion":9}', [System.Text.UTF8Encoding]::new($false))
+    $acceptanceStartupRequest = Reset-CountdownAcceptanceTestCase
+    $acceptanceReadyJob = Start-CountdownAcceptanceTestApplication -StartupRequest $acceptanceStartupRequest
+    $acceptanceResult = @(Invoke-CountdownAcceptanceTestCase -StartupRequest $acceptanceStartupRequest)
+
+    Assert-Equal 1 $acceptanceResult.Count 'Transaction acceptance returns one stable result object'
+    Assert-Equal 'finalized-ready' ([string] $acceptanceResult[0].AcceptanceState) 'Transaction acceptance returns finalized-ready only after application unlock confirmation'
+    Assert-Equal 4242 ([int] $acceptanceResult[0].RuntimeProcessId) 'Transaction acceptance retains the original managed process identity'
+    Assert-Equal 1 $acceptanceAdapterState.Completed 'Transaction acceptance commits the transaction once'
+    Assert-Equal 1 $acceptanceAdapterState.Removed 'Transaction acceptance removes rollback evidence only after finalized-ready'
+    Assert-Equal 'finalized' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'Transaction acceptance leaves the startup request finalized'
+    Wait-Job -Job $acceptanceReadyJob -Timeout 5 | Out-Null
+    Assert-Equal 'Completed' ([string] $acceptanceReadyJob.State) 'Acceptance test application observed release before finalize'
+
+    $pidDriftRequest = Reset-CountdownAcceptanceTestCase -RuntimeProcessId 5252
+    $pidDriftRejected = $false
+    $pidDriftMessage = $null
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $pidDriftRequest -ExpectedProcessId 4242 | Out-Null
+    }
+    catch {
+        $pidDriftMessage = $_.Exception.Message
+        $pidDriftRejected = $pidDriftMessage -match '验收提交前受管应用进程已变化'
+    }
+    Assert-Equal $true $pidDriftRejected "Managed PID drift blocks transaction acceptance before release: $pidDriftMessage"
+    Assert-Equal 0 $acceptanceAdapterState.Completed 'PID drift does not commit the transaction'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'PID drift preserves rollback evidence'
+    Assert-Equal 'active' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'PID drift leaves the candidate application read-only and unreleased'
+
+    $taskStoppedRequest = Reset-CountdownAcceptanceTestCase
+    $acceptanceTaskState = 'Ready'
+    $taskStoppedRejected = $false
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $taskStoppedRequest | Out-Null
+    }
+    catch {
+        $taskStoppedRejected = $_.Exception.Message -match '验收提交前计划任务未运行：Ready'
+    }
+    Assert-Equal $true $taskStoppedRejected 'A non-running scheduled task blocks transaction acceptance before release'
+    Assert-Equal 0 $acceptanceAdapterState.Completed 'A non-running scheduled task does not commit the transaction'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'A non-running scheduled task preserves rollback evidence'
+    Assert-Equal 'active' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'A non-running scheduled task leaves the candidate application read-only and unreleased'
+
+    $taskDriftRequest = Reset-CountdownAcceptanceTestCase
+    $acceptanceTaskState = 'StopAfterReady'
+    $taskDriftJob = Start-CountdownAcceptanceTestApplication -StartupRequest $taskDriftRequest -SkipFinalizedReady
+    $taskDriftRejected = $false
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $taskDriftRequest | Out-Null
+    }
+    catch {
+        $taskDriftRejected = $_.Exception.Message -match 'schema 迁移确认后计划任务未运行：Ready'
+    }
+    Wait-Job -Job $taskDriftJob -Timeout 5 | Out-Null
+    Assert-Equal $true $taskDriftRejected 'Scheduled task drift after release blocks transaction acceptance'
+    Assert-Equal 0 $acceptanceAdapterState.Completed 'Scheduled task drift after release does not commit the transaction'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'Scheduled task drift after release preserves rollback evidence'
+    $taskDriftStartupState = Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 'ready' ([string] $taskDriftStartupState.acceptanceState) 'Scheduled task drift does not finalize the startup request'
+    Assert-Equal $true ([bool] $taskDriftStartupState.acceptanceReadOnly) 'Scheduled task drift leaves the candidate application read-only'
+
+    $taskIdentityDriftRequest = Reset-CountdownAcceptanceTestCase
+    $acceptanceTaskIdentity = 'DriftAfterReady'
+    $taskIdentityDriftJob = Start-CountdownAcceptanceTestApplication -StartupRequest $taskIdentityDriftRequest -SkipFinalizedReady
+    $taskIdentityDriftRejected = $false
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $taskIdentityDriftRequest | Out-Null
+    }
+    catch {
+        $taskIdentityDriftRejected = $_.Exception.Message -match 'schema 迁移确认后计划任务定义已变化'
+    }
+    Wait-Job -Job $taskIdentityDriftJob -Timeout 5 | Out-Null
+    Assert-Equal $true $taskIdentityDriftRejected 'Scheduled task identity drift after release blocks transaction acceptance'
+    Assert-Equal 0 $acceptanceAdapterState.Completed 'Scheduled task identity drift does not commit the transaction'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'Scheduled task identity drift preserves rollback evidence'
+    $taskIdentityDriftStartupState = Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 'ready' ([string] $taskIdentityDriftStartupState.acceptanceState) 'Scheduled task identity drift does not finalize the startup request'
+    Assert-Equal $true ([bool] $taskIdentityDriftStartupState.acceptanceReadOnly) 'Scheduled task identity drift leaves the candidate application read-only'
+
+    $settingsDriftRequest = Reset-CountdownAcceptanceTestCase
+    $settingsDriftJob = Start-CountdownAcceptanceTestApplication -StartupRequest $settingsDriftRequest -ChangeSettings -SkipFinalizedReady
+    $settingsDriftRejected = $false
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $settingsDriftRequest | Out-Null
+    }
+    catch {
+        $settingsDriftRejected = $_.Exception.Message -match 'C# schema 迁移超出允许的数据等价范围'
+    }
+    Wait-Job -Job $settingsDriftJob -Timeout 5 | Out-Null
+    Assert-Equal $true $settingsDriftRejected 'Non-equivalent settings after release block transaction acceptance'
+    Assert-Equal 0 $acceptanceAdapterState.Completed 'Non-equivalent settings do not commit the transaction'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'Non-equivalent settings preserve rollback evidence'
+    $settingsDriftStartupState = Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 'ready' ([string] $settingsDriftStartupState.acceptanceState) 'Settings rejection does not finalize the startup request'
+    Assert-Equal $true ([bool] $settingsDriftStartupState.acceptanceReadOnly) 'Settings rejection leaves the candidate application read-only'
+
+    $finalTimeoutRequest = Reset-CountdownAcceptanceTestCase
+    $finalTimeoutJob = Start-CountdownAcceptanceTestApplication -StartupRequest $finalTimeoutRequest -SkipFinalizedReady
+    $finalTimeoutRejected = $false
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $finalTimeoutRequest -ReadyTimeoutSeconds 1 | Out-Null
+    }
+    catch {
+        $finalTimeoutRejected = $_.Exception.Message -match '应用未确认 finalized-ready'
+    }
+    Wait-Job -Job $finalTimeoutJob -Timeout 5 | Out-Null
+    Assert-Equal $true $finalTimeoutRejected 'Finalized-ready timeout remains observable after transaction acceptance'
+    Assert-Equal 1 $acceptanceAdapterState.Completed 'Finalized-ready timeout occurs after transaction acceptance'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'Finalized-ready timeout preserves rollback evidence'
+    Assert-Equal 'finalized' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'Finalized-ready timeout preserves the finalized startup state for recovery'
+}
+finally {
+    foreach ($job in $acceptanceJobs) {
+        Stop-Job -Job $job -ErrorAction SilentlyContinue
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($path in @($acceptanceStartupRequestPath, $acceptanceRuntimeStatusPath, $acceptanceStatusPath, $acceptanceSettingsSnapshotPath, $acceptanceSettingsPath, $acceptanceApplicationPath)) {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -LiteralPath $acceptanceTestRoot -Force -ErrorAction SilentlyContinue
+}
+
+if ($AcceptanceOnly) {
+    if ($failures.Count -gt 0) {
+        $failures | ForEach-Object { Write-Error $_ }
+        exit 1
+    }
+    [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'TransactionAcceptance' } | ConvertTo-Json
+    exit 0
 }
 
 $firstTag = New-CountdownTagRecord -Id ' work ' -Name ' 工作 ' -Color ' #6B8E23 '
@@ -682,12 +1097,13 @@ $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonI
 if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
 $installerValidation = $installerValidationJson | ConvertFrom-Json
 Assert-Equal $true $installerValidation.Valid 'Installer package validation succeeds'
-Assert-Equal 46 $installerValidation.VerifiedFiles 'Installer manifest includes the remote-test compatibility fixtures, replicated floating-window assets, and the day/night main reference decorations'
-Assert-Equal 'sanrio-official-mymelody.png,sanrio-official-cinnamoroll.png,sanrio-official-kuromi.png' (@($installerValidation.OfficialCharacterAssets) -join ',') 'Installer includes only the requested official Sanrio character backgrounds'
-Assert-Equal 'assets\floating-plush\floating-plush-mymelody-front.png,assets\floating-plush\floating-plush-mymelody-pose.png,assets\floating-plush\floating-plush-mymelody-reference.png,assets\floating-plush\floating-plush-cinnamoroll-front.png,assets\floating-plush\floating-plush-cinnamoroll-pose.png,assets\floating-plush\floating-plush-cinnamoroll-reference.png,assets\floating-plush\floating-plush-kuromi-front.png,assets\floating-plush\floating-plush-kuromi-pose.png,assets\floating-plush\floating-plush-kuromi-reference.png,assets\floating-plush\component-day-outer-shell.png,assets\floating-plush\component-day-header-blank.png,assets\floating-plush\component-day-card-blank.png,assets\floating-plush\component-day-mascots.png' (@($installerValidation.FloatingPlushAssets) -join ',') 'Installer includes all thirteen floating plush and day raster assets'
-Assert-Equal 'app\assets\floating-plush\floating-plush-mymelody-reference.png,app\assets\floating-plush\floating-plush-cinnamoroll-reference.png,app\assets\floating-plush\floating-plush-kuromi-reference.png,app\assets\floating-plush\component-day-outer-shell.png,app\assets\floating-plush\component-day-header-blank.png,app\assets\floating-plush\component-day-card-blank.png,app\assets\floating-plush\component-day-mascots.png' (@($installerValidation.CurrentFloatingRuntimeAssets) -join ',') 'Installer exposes only the replicated floating-window assets as current runtime assets'
-Assert-Equal 'assets\floating-plush\floating-plush-mymelody-front.png,assets\floating-plush\floating-plush-mymelody-pose.png,assets\floating-plush\floating-plush-cinnamoroll-front.png,assets\floating-plush\floating-plush-cinnamoroll-pose.png,assets\floating-plush\floating-plush-kuromi-front.png,assets\floating-plush\floating-plush-kuromi-pose.png' (@($installerValidation.LegacyFloatingRegressionAssets) -join ',') 'Installer labels the previous floating-window assets as compatibility-test fixtures only'
-Assert-Equal 'Countdown.App.psm1,assets\floating-plush\floating-plush-mymelody-front.png,assets\floating-plush\floating-plush-mymelody-pose.png,assets\floating-plush\floating-plush-mymelody-reference.png,assets\floating-plush\floating-plush-cinnamoroll-front.png,assets\floating-plush\floating-plush-cinnamoroll-pose.png,assets\floating-plush\floating-plush-cinnamoroll-reference.png,assets\floating-plush\floating-plush-kuromi-front.png,assets\floating-plush\floating-plush-kuromi-pose.png,assets\floating-plush\floating-plush-kuromi-reference.png,assets\floating-plush\component-day-outer-shell.png,assets\floating-plush\component-day-header-blank.png,assets\floating-plush\component-day-card-blank.png,assets\floating-plush\component-day-mascots.png,app\assets\floating-plush\floating-plush-mymelody-front.png,app\assets\floating-plush\floating-plush-mymelody-pose.png,app\assets\floating-plush\floating-plush-cinnamoroll-front.png,app\assets\floating-plush\floating-plush-cinnamoroll-pose.png,app\assets\floating-plush\floating-plush-kuromi-front.png,app\assets\floating-plush\floating-plush-kuromi-pose.png' (@($installerValidation.RetiredRuntimeFiles) -join ',') 'Installer removes the previous floating-window host and duplicate test-only assets from installed runtime state'
+Assert-Equal $releaseContract.IntegrityHashes.Count $installerValidation.VerifiedFiles 'Installer reports the canonical integrity count'
+Assert-Equal (@($releaseContract.OfficialCharacterAssets) -join ',') (@($installerValidation.OfficialCharacterAssets) -join ',') 'Installer exposes canonical official character assets'
+Assert-Equal (@($releaseContract.FloatingPlushAssets) -join ',') (@($installerValidation.FloatingPlushAssets) -join ',') 'Installer exposes canonical floating plush assets'
+Assert-Equal (@($releaseContract.CurrentFloatingRuntimeAssets) -join ',') (@($installerValidation.CurrentFloatingRuntimeAssets) -join ',') 'Installer exposes canonical current floating runtime assets'
+Assert-Equal (@($releaseContract.LegacyFloatingRegressionAssets) -join ',') (@($installerValidation.LegacyFloatingRegressionAssets) -join ',') 'Installer exposes canonical floating regression fixtures'
+Assert-Equal (@($releaseContract.CompatibilityFixtureFiles) -join ',') (@($installerValidation.CompatibilityFixtureFiles) -join ',') 'Installer exposes canonical compatibility fixtures'
+Assert-Equal (@($releaseContract.RetiredRuntimeFiles) -join ',') (@($installerValidation.RetiredRuntimeFiles) -join ',') 'Installer exposes canonical retired runtime files'
 Assert-Equal $true $installerValidation.Transactional 'Installer exposes transactional install boundary'
 Assert-Equal $true $installerValidation.DeferredCommitSupported 'Installer exposes deferred commit for office acceptance'
 $installerCommand = Get-Command (Join-Path $PSScriptRoot 'Install-Countdown.ps1')
@@ -736,34 +1152,17 @@ Assert-Equal $true ($payloadCaptureIndex -ge 0 -and $candidatePathIndex -gt $pay
 $installTreeGuardIndex = $installerSource.IndexOf('Assert-CountdownInstallTreeHasNoReparsePoints -Path $install', $payloadCaptureIndex)
 $payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force', $installTreeGuardIndex)
 Assert-Equal $true ($installTreeGuardIndex -gt $payloadCaptureIndex -and $payloadCopyIndex -gt $installTreeGuardIndex) 'Installer rechecks the install tree after the stable snapshot and before writing payload files'
-$installerStartupReleaseIndex = $installerSource.LastIndexOf('Complete-CountdownStartupRequest')
-$installerStartupReadyIndex = $installerSource.LastIndexOf('Wait-CountdownStartupRequestState')
-$installerStartupFinalizeIndex = $installerSource.LastIndexOf('Set-CountdownStartupRequestFinalized')
-$installerAcceptanceReadyIndex = $installerSource.LastIndexOf('Wait-CountdownAcceptanceReadyReceipt')
-$installerTransactionCleanupIndex = $installerSource.LastIndexOf('Remove-CountdownCommittedInstallTransaction')
-$installerCompleteIndex = $installerSource.LastIndexOf('Complete-CountdownInstallTransaction')
-$installerAcceptanceRequestIndex = $installerSource.IndexOf('New-CountdownStartupRequest -Path $startupRequestPath -AcceptanceReadOnly')
-$installerCommitContextCheckIndex = $installerSource.LastIndexOf('Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext', $installerStartupReleaseIndex)
-$installerReadyContextCheckIndex = $installerSource.LastIndexOf('Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext', $installerCompleteIndex)
-$installerCommitRuntimeIndex = $installerSource.LastIndexOf('$commitRuntimeStatus = Wait-CountdownWindowReady')
-$installerCommitPidIndex = $installerSource.LastIndexOf('$commitRuntimeStatus.processId -ne [int] $runtimeStatus.processId')
-$installerCommitTaskIndex = $installerSource.LastIndexOf('$commitTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop')
-$installerReadyRuntimeIndex = $installerSource.LastIndexOf('$readyRuntimeStatus = Wait-CountdownWindowReady')
-$installerReadyPidIndex = $installerSource.LastIndexOf('$readyRuntimeStatus.processId -ne [int] $runtimeStatus.processId')
-$installerReadyTaskIndex = $installerSource.LastIndexOf('$readyTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop')
-Assert-Equal $true ($installerAcceptanceRequestIndex -ge 0 -and $installerCommitContextCheckIndex -gt $installerAcceptanceRequestIndex -and $installerCommitRuntimeIndex -gt $installerCommitContextCheckIndex -and $installerCommitPidIndex -gt $installerCommitRuntimeIndex -and $installerCommitTaskIndex -gt $installerCommitPidIndex -and $installerStartupReleaseIndex -gt $installerCommitTaskIndex -and $installerStartupReadyIndex -gt $installerStartupReleaseIndex -and $installerReadyContextCheckIndex -gt $installerStartupReadyIndex -and $installerReadyRuntimeIndex -gt $installerReadyContextCheckIndex -and $installerReadyPidIndex -gt $installerReadyRuntimeIndex -and $installerReadyTaskIndex -gt $installerReadyPidIndex -and $installerCompleteIndex -gt $installerReadyTaskIndex -and $installerStartupFinalizeIndex -gt $installerCompleteIndex -and $installerAcceptanceReadyIndex -gt $installerStartupFinalizeIndex -and $installerTransactionCleanupIndex -gt $installerAcceptanceReadyIndex) 'Installer retains rollback evidence until the same C# PID confirms finalized-ready'
 $deploySource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
-$installerBuildHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1')).Hash
-Assert-Equal $true $installerSource.Contains("'Build-CountdownApplication.ps1' = '$installerBuildHash'") 'Installer integrity manifest covers the build script required by remote core tests'
-Assert-Equal $true $deploySource.Contains("'Build-CountdownApplication.ps1',") 'Office package includes the build script required by remote core tests'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script required by remote core tests'
+Assert-Equal $true ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the build script required by remote core tests'
 Assert-Equal $false $deploySource.Contains('Invoke-OfficeEncodedCommand -ScriptText $remoteInstall') 'Office deploy does not exceed the Windows command-line limit by embedding the full remote install script'
 Assert-Equal $true $deploySource.Contains('$remoteInstallScript = Join-Path $evidenceRoot ''remote-install.ps1''') 'Office deploy materializes the long remote install script as a transfer artifact'
 Assert-Equal $true $deploySource.Contains('& scp.exe @script:sshOptions $remoteInstallScript') 'Office deploy transfers the remote install script through the strict SSH channel'
 Assert-Equal $true $deploySource.Contains("throw '远端安装脚本哈希不匹配。'") 'Office deploy verifies the transferred remote install script before execution'
 $deployCommitGateIndex = $deploySource.IndexOf('本地 HEAD 与 origin/main 不一致，拒绝部署。')
 $deployBuildIndex = $deploySource.IndexOf('& $powerShell7 -NoLogo -NoProfile -NonInteractive -File $buildScript -Clean')
-$deployManifestReadIndex = $deploySource.IndexOf('$expectedHashes = Get-InstallerHashes')
-Assert-Equal $true ($deployCommitGateIndex -ge 0 -and $deployBuildIndex -gt $deployCommitGateIndex -and $deployManifestReadIndex -gt $deployBuildIndex) 'Office deploy clean-builds C# artifacts from the fixed main commit before reading the integrity manifest'
+$deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $repoRoot')
+Assert-Equal $true ($deployCommitGateIndex -ge 0 -and $deployBuildIndex -gt $deployCommitGateIndex -and $deployPackageAssertionIndex -gt $deployBuildIndex) 'Office deploy clean-builds C# artifacts from the fixed main commit before asserting the release package'
 Assert-Equal $true ($deploySource.Contains('& tailscale.exe ping --until-direct=false --c 3 --timeout 10s $officeHost')) 'Office connectivity probe retries encrypted Tailscale reachability without requiring a direct path'
 Assert-Equal $true ($deploySource.Contains('-PreserveUnmanagedLaunchers')) 'Office acceptance rollback preserves user-replaced launcher files while restoring system state'
 Assert-Equal $true ($deploySource.Contains('UnresolvedLauncherOwnershipConflicts')) 'Office acceptance reports an unresolved pre-receipt launcher conflict'
@@ -771,29 +1170,6 @@ Assert-Equal $true ($deploySource.Contains('已恢复应用、任务和时间服
 $deployCommittedRecoveryMessageIndex = $deploySource.IndexOf('检测到已提交但未完成解锁确认的事务，未声称回滚')
 $deployOwnershipRecoveryMessageIndex = $deploySource.IndexOf('已恢复应用、任务和时间服务；为保护用户替换的桌面启动器')
 Assert-Equal $true ($deployCommittedRecoveryMessageIndex -ge 0 -and $deployCommittedRecoveryMessageIndex -lt $deployOwnershipRecoveryMessageIndex) 'Office acceptance prioritizes committed recovery evidence over a simultaneous launcher conflict'
-$deployStartupReleaseIndex = $deploySource.LastIndexOf('Complete-CountdownStartupRequest')
-$deployStartupReadyIndex = $deploySource.LastIndexOf('Wait-CountdownStartupRequestState')
-$deployStartupFinalizeIndex = $deploySource.LastIndexOf('Set-CountdownStartupRequestFinalized')
-$deployAcceptanceReadyIndex = $deploySource.LastIndexOf('Wait-CountdownAcceptanceReadyReceipt')
-$deployTransactionCleanupIndex = $deploySource.LastIndexOf('Remove-CountdownCommittedInstallTransaction')
-$deployCommitContextCheckIndex = $deploySource.IndexOf('办公室验收提交前交互用户、会话或桌面路径已变化；拒绝提交事务。')
-$deployCommitRuntimeIndex = $deploySource.LastIndexOf('`$commitRuntimeStatus = Wait-CountdownWindowReady')
-$deployCommitPidIndex = $deploySource.LastIndexOf('`$commitRuntimeStatus.processId -ne [int] `$runtimeStatus.processId')
-$deployCommitTaskIndex = $deploySource.LastIndexOf('`$commitTask = Get-ScheduledTask -TaskName `$taskName -ErrorAction Stop')
-$deployCompleteIndex = $deploySource.LastIndexOf('Complete-CountdownInstallTransaction')
-Assert-Equal $true ($deployCommitContextCheckIndex -ge 0 -and $deployCommitRuntimeIndex -gt $deployCommitContextCheckIndex -and $deployCommitPidIndex -gt $deployCommitRuntimeIndex -and $deployCommitTaskIndex -gt $deployCommitPidIndex -and $deployStartupReleaseIndex -gt $deployCommitTaskIndex -and $deployStartupReadyIndex -gt $deployStartupReleaseIndex -and $deployCompleteIndex -gt $deployStartupReadyIndex -and $deployStartupFinalizeIndex -gt $deployCompleteIndex -and $deployAcceptanceReadyIndex -gt $deployStartupFinalizeIndex -and $deployTransactionCleanupIndex -gt $deployAcceptanceReadyIndex) 'Office acceptance retains rollback evidence until the same C# PID confirms finalized-ready'
-$deployInstallerIndex = $deploySource.IndexOf('`$installerOutput = &')
-$deploySettingsSnapshotIndex = $deploySource.IndexOf('`$settingsSnapshotPath = Join-Path `$rollbackTransactionPath ''install-backup\settings.json''')
-$deploySettingsMutexIndex = $deploySource.IndexOf('`$settingsWriteMutex = Enter-CountdownSettingsWriteMutex')
-$deploySettingsAfterIndex = $deploySource.IndexOf('`$settingsJsonAfter = if (Test-Path -LiteralPath `$settingsPath)')
-$deploySettingsTransitionIndex = $deploySource.IndexOf('Test-CountdownSettingsDeploymentTransition')
-$deploySettingsMutexReleaseIndex = $deploySource.IndexOf('Exit-CountdownSettingsWriteMutex')
-$deploySettingsReadyIndex = $deploySource.IndexOf('`$settingsJsonReady = if (Test-Path -LiteralPath `$settingsPath)')
-$deploySettingsReadyTransitionIndex = $deploySource.IndexOf('C# schema 迁移超出允许的数据等价范围。')
-Assert-Equal $true ($deploySettingsSnapshotIndex -gt $deployInstallerIndex -and $deploySettingsTransitionIndex -gt $deploySettingsSnapshotIndex) 'Office acceptance compares settings against the post-freeze transaction snapshot'
-Assert-Equal $false ($deploySource.Contains('`$settingsJsonBefore = if (Test-Path -LiteralPath `$settingsPath)')) 'Office acceptance does not capture mutable settings before the installer freezes the old application'
-Assert-Equal $true ($deploySettingsMutexIndex -gt $deploySettingsSnapshotIndex -and $deploySettingsAfterIndex -gt $deploySettingsMutexIndex -and $deploySettingsTransitionIndex -gt $deploySettingsAfterIndex -and $deploySettingsMutexReleaseIndex -gt $deploySettingsTransitionIndex -and $deployStartupReleaseIndex -gt $deploySettingsMutexReleaseIndex -and $deploySettingsReadyIndex -gt $deployStartupReadyIndex -and $deploySettingsReadyTransitionIndex -gt $deploySettingsReadyIndex -and $deployCompleteIndex -gt $deploySettingsReadyTransitionIndex) 'Office acceptance releases the mutex for C# migration, then re-locks and validates migrated settings before commit'
-
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
 [System.IO.File]::WriteAllText($clearTestPath, '{}')
 [System.IO.File]::WriteAllText("$clearTestPath.tmp", '{}')

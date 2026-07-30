@@ -23,62 +23,18 @@ $verificationProject = Join-Path $PSScriptRoot 'src\MinminCountdown.Verification
 $applicationOutput = Join-Path $PSScriptRoot 'app'
 $verificationOutput = Join-Path $PSScriptRoot 'verification'
 $applicationAssetsOutput = Join-Path $applicationOutput 'assets'
+Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
+$releaseContract = Get-CountdownReleaseContract
 $assetManifest = @(
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'sanrio-official-mymelody.png'
-        RelativePath = 'sanrio-official-mymelody.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'sanrio-official-cinnamoroll.png'
-        RelativePath = 'sanrio-official-cinnamoroll.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'sanrio-official-kuromi.png'
-        RelativePath = 'sanrio-official-kuromi.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-mymelody-reference.png'
-        RelativePath = 'floating-plush\floating-plush-mymelody-reference.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-cinnamoroll-reference.png'
-        RelativePath = 'floating-plush\floating-plush-cinnamoroll-reference.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\floating-plush-kuromi-reference.png'
-        RelativePath = 'floating-plush\floating-plush-kuromi-reference.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-outer-shell.png'
-        RelativePath = 'floating-plush\component-day-outer-shell.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-header-blank.png'
-        RelativePath = 'floating-plush\component-day-header-blank.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-card-blank.png'
-        RelativePath = 'floating-plush\component-day-card-blank.png'
-    },
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\floating-plush\component-day-mascots.png'
-        RelativePath = 'floating-plush\component-day-mascots.png'
-    }
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-countdown-scene-day.png'
-        RelativePath = 'main-decorations\main-countdown-scene-day.png'
-    }
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-notes-scene-day.png'
-        RelativePath = 'main-decorations\main-notes-scene-day.png'
-    }
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-countdown-top-night.png'
-        RelativePath = 'main-decorations\main-countdown-top-night.png'
-    }
-    [pscustomobject]@{
-        Source = Join-Path $PSScriptRoot 'assets\main-decorations\main-notes-top-night.png'
-        RelativePath = 'main-decorations\main-notes-top-night.png'
+    foreach ($asset in $releaseContract.BuildAssets) {
+        $source = Join-Path $PSScriptRoot $asset.SourcePath
+        $target = Join-Path $PSScriptRoot $asset.PublishedPath
+        [pscustomobject]@{
+            Source = $source
+            Target = $target
+            RelativePath = [System.IO.Path]::GetRelativePath($applicationAssetsOutput, $target)
+            SHA256 = [string] $asset.SHA256
+        }
     }
 )
 
@@ -94,18 +50,24 @@ foreach ($asset in $assetManifest) {
     }
 }
 $applicationProjectXml = [xml] (Get-Content -Raw -LiteralPath $applicationProject)
-$projectFloatingAssetFiles = @(
+$applicationProjectDirectory = Split-Path -Parent $applicationProject
+$projectAssetMappings = @(
     $applicationProjectXml.SelectNodes('/Project/ItemGroup/Content') |
-        Where-Object { [string] $_.Include -like '*assets\floating-plush*' } |
-        ForEach-Object { [System.IO.Path]::GetFileName([string] $_.Include) }
+        ForEach-Object {
+            $sourcePath = [System.IO.Path]::GetFullPath((Join-Path $applicationProjectDirectory ([string] $_.Include)))
+            $sourceRelativePath = [System.IO.Path]::GetRelativePath($PSScriptRoot, $sourcePath)
+            $publishedRelativePath = Join-Path 'app' ([string] $_.Link)
+            "$sourceRelativePath=>$publishedRelativePath"
+        } |
+        Sort-Object
 )
-$manifestFloatingAssetFiles = @(
-    $assetManifest |
-        Where-Object { $_.RelativePath -like 'floating-plush\*' } |
-        ForEach-Object { Split-Path -Leaf $_.RelativePath }
+$contractAssetMappings = @(
+    $releaseContract.BuildAssets |
+        ForEach-Object { "$($_.SourcePath)=>$($_.PublishedPath)" } |
+        Sort-Object
 )
-if (($projectFloatingAssetFiles -join ',') -ne ($manifestFloatingAssetFiles -join ',')) {
-    throw 'C# 项目必须显式打包七个现役悬浮窗资产，且不得使用通配。'
+if (($projectAssetMappings -join ',') -ne ($contractAssetMappings -join ',')) {
+    throw 'C# 项目必须显式打包发布契约声明的十四个应用资产，且不得使用通配。'
 }
 
 if ($Clean) {
@@ -174,7 +136,7 @@ if (-not (Test-Path -LiteralPath $application -PathType Leaf)) {
 }
 
 foreach ($asset in $assetManifest) {
-    $target = Join-Path $applicationAssetsOutput $asset.RelativePath
+    $target = $asset.Target
     $targetDirectory = Split-Path -Parent $target
     if (-not (Test-Path -LiteralPath $targetDirectory -PathType Container)) {
         New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
@@ -197,12 +159,15 @@ if ($publishedAssets.Count -ne $assetManifest.Count) {
 }
 
 $assetResults = foreach ($asset in $assetManifest) {
-    $target = Join-Path $applicationAssetsOutput $asset.RelativePath
+    $target = $asset.Target
     if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
         throw "发布缺少资产：$target"
     }
     $sourceHash = (Get-FileHash -LiteralPath $asset.Source -Algorithm SHA256).Hash
     $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+    if ($sourceHash -ne $asset.SHA256) {
+        throw "发布源资产不符合发布契约：$($asset.Source)"
+    }
     if ($sourceHash -ne $targetHash) {
         throw "发布资产校验失败：$target"
     }

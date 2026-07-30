@@ -48,6 +48,8 @@
 - `Countdown.Runtime.psm1`：每次启动的令牌、窗口首帧就绪回执、有界等待与滚动诊断日志
 - `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
 - `Countdown.InstallTransaction.psm1`：带全机互斥锁的可回滚安装事务；覆盖安装目录、启动器、两份计划任务与 Windows 时间服务状态，并为办公室验收原子写出独立回执
+- `Countdown.TransactionAcceptance.psm1`：安装与办公室部署共用的事务验收状态机
+- `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
 - `CountdownLauncher.cs`：无控制台桌面启动器源码
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
 - `countdown-icon.ico`：窗口和桌面启动器图标
@@ -87,7 +89,7 @@ pwsh.exe -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1
 
 ## 安装
 
-安装前先运行 `Build-CountdownApplication.ps1 -Clean` 并按发布产物更新 `Install-Countdown.ps1` 的 SHA-256 清单。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、创建启动器并注册登录任务。新任务必须用本次启动令牌写出“窗口首帧已渲染”的回执，安装器最多等待 30 秒；正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
+安装前先运行 `Build-CountdownApplication.ps1 -Clean`，并按最终发布产物更新 `Countdown.ReleaseContract.psm1` 的静态 SHA-256。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、创建启动器并注册登录任务。新任务必须用本次启动令牌写出“窗口首帧已渲染”的回执，安装器最多等待 30 秒；正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1
@@ -103,7 +105,7 @@ pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1
 pwsh.exe -NoLogo -NoProfile -File .\Build-Launcher.ps1
 ```
 
-重新生成 `CountdownLauncher.exe` 后，需要同步更新 `Install-Countdown.ps1` 中对应的 SHA-256 清单值。
+重新生成 `CountdownLauncher.exe` 后，需要同步更新 `Countdown.ReleaseContract.psm1` 中对应的 SHA-256。
 
 重新生成图标需要 Python 和 Pillow：
 

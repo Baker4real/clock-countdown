@@ -24,10 +24,10 @@ public sealed partial class MainWindow : Window
 
     internal static IReadOnlyList<string> DefaultTagColors => TagColors;
 
-    private readonly ApplicationSession _session;
-    private readonly DesktopWorkspace _workspaceModule;
+    private readonly DesktopWorkspace _desktopWorkspace;
     private readonly HolidayCalendar _calendar;
     private readonly DiagnosticLogger _logger;
+    private readonly ReminderEditing _reminderEditing = new();
     private readonly Dictionary<string, CheckBox> _noteCompletionBoxes =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
@@ -44,20 +44,19 @@ public sealed partial class MainWindow : Window
     private long _lastRenderedNoteMinuteUtc = -1;
 
     internal MainWindow(
-        ApplicationSession session,
+        DesktopWorkspace desktopWorkspace,
         HolidayCalendar calendar,
         DiagnosticLogger logger,
         string assetRoot)
     {
-        _session = session;
-        _workspaceModule = new DesktopWorkspace(session);
+        _desktopWorkspace = desktopWorkspace;
         _calendar = calendar;
         _logger = logger;
         InitializeComponent();
         LoadCharacterAssets(assetRoot);
         ConfigureControls();
         WireEvents();
-        _session.StateChanged += OnSessionStateChanged;
+        _desktopWorkspace.StateChanged += OnWorkspaceStateChanged;
         ResetCountdownEditor();
         ResetNoteEditor();
         LoadPreferences();
@@ -68,8 +67,6 @@ public sealed partial class MainWindow : Window
     public event EventHandler? CloseRequested;
 
     internal event EventHandler? ThemePreferenceChanged;
-
-    internal ApplicationSession Session => _session;
 
     internal WorkspaceKind CurrentWorkspace => _workspace;
 
@@ -97,9 +94,10 @@ public sealed partial class MainWindow : Window
     internal NoteExerciseResult RunNoteAddExercise()
     {
         ShowWorkspace(WorkspaceKind.Notes);
-        var countBefore = _session.Current.Notes.Count;
-        var noteDate = _session.BeijingNow.AddDays(2).Date;
-        var firstDueDay = _session.BeijingNow.AddDays(3);
+        var initial = _desktopWorkspace.Snapshot;
+        var countBefore = initial.Settings.Notes.Count;
+        var noteDate = initial.BeijingNow.AddDays(2).Date;
+        var firstDueDay = initial.BeijingNow.AddDays(3);
         var firstDue = new DateTimeOffset(
             firstDueDay.Year,
             firstDueDay.Month,
@@ -116,7 +114,7 @@ public sealed partial class MainWindow : Window
         NoteReminderInterval.SelectedIndex = 1;
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var dateRequired =
-            _session.Current.Notes.Count == countBefore &&
+            _desktopWorkspace.Snapshot.Settings.Notes.Count == countBefore &&
             string.Equals(NoteText.Text, "验证点击添加便签", StringComparison.Ordinal) &&
             NoteMessage.Text.Contains("日期", StringComparison.Ordinal);
 
@@ -125,9 +123,10 @@ public sealed partial class MainWindow : Window
         NoteReminderInterval.SelectedIndex = 1;
         SetReminderFirstDue(firstDue);
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var added = _session.Current.Notes.LastOrDefault(
+        var afterAdd = _desktopWorkspace.Snapshot.Settings;
+        var added = afterAdd.Notes.LastOrDefault(
             note => string.Equals(note.Text, "验证点击添加便签", StringComparison.Ordinal));
-        var addViaClick = added is not null && _session.Current.Notes.Count == countBefore + 1;
+        var addViaClick = added is not null && afterAdd.Notes.Count == countBefore + 1;
         var dateViaPicker = added?.Date == noteDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var reminderViaSelector =
             added?.ReminderIntervalMinutes == 30 &&
@@ -137,13 +136,15 @@ public sealed partial class MainWindow : Window
         if (added is not null && _noteCompletionBoxes.TryGetValue(added.Id, out var checkBox))
         {
             checkBox.IsChecked = true;
-            var completed = _session.Current.Notes.First(note => note.Id == added.Id).IsCompleted;
+            var completed = _desktopWorkspace.Snapshot.Settings.Notes
+                .First(note => note.Id == added.Id).IsCompleted;
             if (_noteCompletionBoxes.TryGetValue(added.Id, out var refreshedCheckBox))
             {
                 refreshedCheckBox.IsChecked = false;
             }
 
-            var activeAgain = !_session.Current.Notes.First(note => note.Id == added.Id).IsCompleted;
+            var activeAgain = !_desktopWorkspace.Snapshot.Settings.Notes
+                .First(note => note.Id == added.Id).IsCompleted;
             completionViaCheckbox = completed && activeAgain;
         }
 
@@ -158,8 +159,9 @@ public sealed partial class MainWindow : Window
     internal ReminderModeClickResult RunReminderModeClickExercises()
     {
         ShowWorkspace(WorkspaceKind.Notes);
-        var noteDate = _session.BeijingNow.AddDays(2).Date;
-        var onceDue = _session.BeijingNow.AddDays(3);
+        var initial = _desktopWorkspace.Snapshot;
+        var noteDate = initial.BeijingNow.AddDays(2).Date;
+        var onceDue = initial.BeijingNow.AddDays(3);
         onceDue = new DateTimeOffset(
             onceDue.Year,
             onceDue.Month,
@@ -174,7 +176,7 @@ public sealed partial class MainWindow : Window
         NoteDate.SelectedDate = noteDate;
         NoteReminder.SelectedIndex = 0;
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var noReminderWorks = _session.Current.Notes.LastOrDefault(
+        var noReminderWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证主窗不提醒")?.Reminder is NoReminder;
 
         NoteText.Text = "验证主窗仅一次";
@@ -182,7 +184,7 @@ public sealed partial class MainWindow : Window
         NoteReminder.SelectedIndex = 1;
         SetReminderFirstDue(onceDue);
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var onceWorks = _session.Current.Notes.LastOrDefault(
+        var onceWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证主窗仅一次")?.Reminder is OnceReminder
             {
                 Delivery: OnceDeliveryState.Pending
@@ -195,7 +197,7 @@ public sealed partial class MainWindow : Window
         NoteReminderInterval.SelectedIndex = 1;
         SetReminderFirstDue(repeatDue);
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var repeatWorks = _session.Current.Notes.LastOrDefault(
+        var repeatWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证主窗重复提醒")?.Reminder is RepeatingReminder repeating &&
             repeating.FirstDueUtc == repeatDue.ToUniversalTime() &&
             repeating.Interval.Minutes == 30;
@@ -287,58 +289,56 @@ public sealed partial class MainWindow : Window
 
             var clock = new FixedClock(nowUtc);
             var store = new SettingsStore(clock: clock);
-            var session = ApplicationSession.Load(settingsPath, store);
-            var workspace = new DesktopWorkspace(session);
-            if (!workspace.TrySaveNote(
-                    null,
-                    "跨天提醒探针",
-                    new DateTime(2031, 4, 5),
-                    false,
-                    Array.Empty<string>(),
-                    30,
-                    firstDueUtc,
-                    out _) ||
-                !workspace.TrySaveQuickNote(
-                    "快速跨天提醒探针",
-                    new DateTime(2031, 4, 5),
-                    Array.Empty<string>(),
-                    60,
-                    firstDueUtc.Value.AddDays(1),
-                    out _))
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            var savedProbe = workspace.Apply(new SaveNoteChange(
+                null,
+                "跨天提醒探针",
+                new DateTime(2031, 4, 5),
+                false,
+                Array.Empty<string>(),
+                ReminderSchedule.CreateRepeating(firstDueUtc.Value, 30)));
+            var savedQuickProbe = workspace.Apply(new SaveNoteChange(
+                null,
+                "快速跨天提醒探针",
+                new DateTime(2031, 4, 5),
+                false,
+                Array.Empty<string>(),
+                ReminderSchedule.CreateRepeating(firstDueUtc.Value.AddDays(1), 60)));
+            if (!savedProbe.Succeeded || !savedQuickProbe.Succeeded)
             {
                 return false;
             }
 
-            var saved = session.Current.Notes.Single(note => note.Text == "跨天提醒探针");
+            var saved = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "跨天提醒探针");
             var originalStart = saved.ReminderStartUtc;
-            var liveEarly = session.Reminders.GetDue(session.Current, firstDueUtc.Value.AddSeconds(-1));
-            var liveDue = session.Reminders.GetDue(session.Current, firstDueUtc.Value);
-            session.Reminders.ConfirmDisplayed(saved, firstDueUtc.Value);
-            if (!workspace.TrySaveNote(
+            var liveEarly = workspace.GetDueReminders(firstDueUtc.Value.AddSeconds(-1));
+            var liveDue = workspace.GetDueReminders(firstDueUtc.Value);
+            workspace.ConfirmReminderDisplayed(saved, firstDueUtc.Value);
+            if (!workspace.Apply(new SaveNoteChange(
                     saved.Id,
                     "已编辑的跨天提醒探针",
                     new DateTime(2031, 4, 5),
                     false,
                     Array.Empty<string>(),
-                    30,
-                    null,
-                    out _))
+                    saved.Reminder)).Succeeded)
             {
                 return false;
             }
 
-            var reloaded = ApplicationSession.Load(settingsPath, store);
-            var persistedNote = reloaded.Current.Notes.Single(note => note.Id == saved.Id);
-            var quickNote = reloaded.Current.Notes.Single(note => note.Text == "快速跨天提醒探针");
-            var early = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value.AddSeconds(-1));
-            var due = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value);
-            reloaded.Reminders.ConfirmDisplayed(persistedNote, firstDueUtc.Value);
-            var duplicate = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value);
-            var nextCycle = reloaded.Reminders.GetDue(reloaded.Current, firstDueUtc.Value.AddMinutes(30));
+            var reloaded = DesktopWorkspace.Load(settingsPath, store);
+            var reloadedSettings = reloaded.Snapshot.Settings;
+            var persistedNote = reloadedSettings.Notes.Single(note => note.Id == saved.Id);
+            var quickNote = reloadedSettings.Notes.Single(note => note.Text == "快速跨天提醒探针");
+            var early = reloaded.GetDueReminders(firstDueUtc.Value.AddSeconds(-1));
+            var due = reloaded.GetDueReminders(firstDueUtc.Value);
+            reloaded.ConfirmReminderDisplayed(persistedNote, firstDueUtc.Value);
+            var duplicate = reloaded.GetDueReminders(firstDueUtc.Value);
+            var nextCycle = reloaded.GetDueReminders(firstDueUtc.Value.AddMinutes(30));
             var completionRestarted =
-                reloaded.TrySetNoteCompletion(persistedNote.Id, true, out _) &&
-                reloaded.TrySetNoteCompletion(persistedNote.Id, false, out _) &&
-                reloaded.Current.Notes.Single(note => note.Id == persistedNote.Id).ReminderStartUtc == nowUtc;
+                reloaded.Apply(new SetNoteCompletionChange(persistedNote.Id, true)).Succeeded &&
+                reloaded.Apply(new SetNoteCompletionChange(persistedNote.Id, false)).Succeeded &&
+                reloaded.Snapshot.Settings.Notes
+                    .Single(note => note.Id == persistedNote.Id).ReminderStartUtc == nowUtc;
             return
                 originalStart == new DateTimeOffset(2031, 4, 6, 1, 0, 0, TimeSpan.Zero) &&
                 persistedNote.ReminderStartUtc == originalStart &&
@@ -614,7 +614,7 @@ public sealed partial class MainWindow : Window
             RenderTagManager();
             TagManagerPopup.IsOpen = !TagManagerPopup.IsOpen;
         };
-        SetNowButton.Click += (_, _) => SetCountdownTarget(_session.BeijingNow);
+        SetNowButton.Click += (_, _) => SetCountdownTarget(_desktopWorkspace.Snapshot.BeijingNow);
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
@@ -629,7 +629,7 @@ public sealed partial class MainWindow : Window
         NoteReminderMinute.SelectionChanged += (_, _) => MarkReminderScheduleDirty();
         NoteSearch.TextChanged += (_, _) =>
         {
-            _workspaceModule.SetNoteSearch(NoteSearch.Text);
+            UpdateFilter(filter => filter with { NoteSearch = NoteSearch.Text });
             RenderNotes();
             UpdateFilterSummary();
         };
@@ -660,21 +660,21 @@ public sealed partial class MainWindow : Window
 
         AnyTagMode.Click += (_, _) =>
         {
-            _workspaceModule.SetTagMatchMode(TagMatchMode.Any);
+            UpdateFilter(filter => filter with { MatchMode = TagMatchMode.Any });
             AnyTagMode.IsChecked = true;
             AllTagMode.IsChecked = false;
             RenderVisibleWorkspace();
         };
         AllTagMode.Click += (_, _) =>
         {
-            _workspaceModule.SetTagMatchMode(TagMatchMode.All);
+            UpdateFilter(filter => filter with { MatchMode = TagMatchMode.All });
             AnyTagMode.IsChecked = false;
             AllTagMode.IsChecked = true;
             RenderVisibleWorkspace();
         };
         UntaggedOnly.Click += (_, _) =>
         {
-            _workspaceModule.SetUntaggedOnly(UntaggedOnly.IsChecked == true);
+            UpdateFilter(filter => filter with { UntaggedOnly = UntaggedOnly.IsChecked == true });
             RenderVisibleWorkspace();
         };
         CountdownAllFilter.Click += (_, _) => SetCountdownFilter(CountdownStatusFilter.All);
@@ -685,8 +685,13 @@ public sealed partial class MainWindow : Window
         NoteCompletedFilter.Click += (_, _) => SetNoteFilter(NoteStatusFilter.Completed);
         NoteUndatedFilter.Click += (_, _) =>
         {
-            _workspaceModule.SetUndatedNotesOnly(NoteUndatedFilter.IsChecked == true);
-            if (_workspaceModule.Filter.UndatedNotesOnly)
+            var undatedOnly = NoteUndatedFilter.IsChecked == true;
+            UpdateFilter(filter => filter with
+            {
+                UndatedNotesOnly = undatedOnly,
+                NoteDate = undatedOnly ? null : filter.NoteDate
+            });
+            if (_desktopWorkspace.Snapshot.Filter.UndatedNotesOnly)
             {
                 NoteDateFilter.SelectedDate = null;
             }
@@ -696,10 +701,15 @@ public sealed partial class MainWindow : Window
         };
         NoteDateFilter.SelectedDateChanged += (_, _) =>
         {
-            _workspaceModule.SetNoteDateFilter(NoteDateFilter.SelectedDate?.ToString(
+            var noteDate = NoteDateFilter.SelectedDate?.ToString(
                 "yyyy-MM-dd",
-                CultureInfo.InvariantCulture));
-            if (_workspaceModule.Filter.NoteDate is not null)
+                CultureInfo.InvariantCulture);
+            UpdateFilter(filter => filter with
+            {
+                NoteDate = noteDate,
+                UndatedNotesOnly = noteDate is null && filter.UndatedNotesOnly
+            });
+            if (_desktopWorkspace.Snapshot.Filter.NoteDate is not null)
             {
                 NoteUndatedFilter.IsChecked = false;
             }
@@ -710,8 +720,7 @@ public sealed partial class MainWindow : Window
         ClearNoteDateFilter.Click += (_, _) =>
         {
             NoteDateFilter.SelectedDate = null;
-            _workspaceModule.SetNoteDateFilter(null);
-            _workspaceModule.SetUndatedNotesOnly(false);
+            UpdateFilter(filter => filter with { NoteDate = null, UndatedNotesOnly = false });
             NoteUndatedFilter.IsChecked = false;
             RenderNotes();
             UpdateFilterSummary();
@@ -719,15 +728,16 @@ public sealed partial class MainWindow : Window
         ClearFilterButton.Click += (_, _) => ClearFilters();
     }
 
-    private void OnSessionStateChanged(object? sender, EventArgs eventArgs)
+    private void OnWorkspaceStateChanged(object? sender, EventArgs eventArgs)
     {
         Dispatcher.Invoke(RefreshAll);
     }
 
     private void RefreshAll()
     {
-        CountdownTags.SetTags(_session.Current.Tags);
-        NoteTags.SetTags(_session.Current.Tags);
+        var snapshot = _desktopWorkspace.Snapshot;
+        CountdownTags.SetTags(snapshot.Settings.Tags);
+        NoteTags.SetTags(snapshot.Settings.Tags);
         RenderFilterTags();
         RenderTagManager();
         RenderVisibleWorkspace();
@@ -751,7 +761,8 @@ public sealed partial class MainWindow : Window
     private void RenderCountdowns()
     {
         CountdownRows.Children.Clear();
-        var records = _workspaceModule.GetVisibleCountdowns();
+        var snapshot = _desktopWorkspace.Snapshot;
+        var records = snapshot.VisibleCountdowns;
         RecordCountText.Text = $"{records.Count} 个倒计时";
         if (records.Count == 0)
         {
@@ -760,7 +771,7 @@ public sealed partial class MainWindow : Window
 
         foreach (var record in records)
         {
-            var active = record.TargetUtc > _session.UtcNow;
+            var active = record.TargetUtc > snapshot.UtcNow;
             var edit = ActionButton("编辑", record.Id, "编辑倒计时");
             edit.Click += OnEditCountdown;
             var delete = ActionButton("删除", record.Id, "删除倒计时");
@@ -788,8 +799,8 @@ public sealed partial class MainWindow : Window
             {
                 Text = CountdownFormatting.FormatRemaining(
                     record.TargetUtc,
-                    _session.UtcNow,
-                    _session.Current.Preferences.DisplayPrecision),
+                    snapshot.UtcNow,
+                    snapshot.Settings.Preferences.DisplayPrecision),
                 Margin = new Thickness(0, 5, 0, 0),
                 Foreground = active ? (Brush)FindResource("BodyBrush") : (Brush)FindResource("DangerBrush")
             });
@@ -803,12 +814,13 @@ public sealed partial class MainWindow : Window
 
     private void RenderNotes(DateTimeOffset? nowUtc = null)
     {
-        var effectiveNowUtc = (nowUtc ?? _session.UtcNow).ToUniversalTime();
+        var snapshot = _desktopWorkspace.Snapshot;
+        var effectiveNowUtc = (nowUtc ?? snapshot.UtcNow).ToUniversalTime();
         _lastRenderedNoteMinuteUtc = effectiveNowUtc.UtcDateTime.Ticks / TimeSpan.TicksPerMinute;
         ActiveNoteRows.Children.Clear();
         CompletedNoteRows.Children.Clear();
         _noteCompletionBoxes.Clear();
-        var records = _workspaceModule.GetVisibleNotes();
+        var records = snapshot.VisibleNotes;
         var active = records.Where(note => !note.IsCompleted).ToArray();
         var completed = records.Where(note => note.IsCompleted).ToArray();
         RecordCountText.Text = $"{active.Length} 个待办";
@@ -1009,14 +1021,14 @@ public sealed partial class MainWindow : Window
             CountdownHour.SelectedIndex,
             CountdownMinute.SelectedIndex,
             CountdownSecond.SelectedIndex);
-        if (!_workspaceModule.TrySaveCountdown(
-                _editingCountdownId,
-                CountdownName.Text,
-                target,
-                CountdownTags.SelectedTagIds.ToArray(),
-                out var error))
+        var result = _desktopWorkspace.Apply(new SaveCountdownChange(
+            _editingCountdownId,
+            CountdownName.Text,
+            target,
+            CountdownTags.SelectedTagIds.ToArray()));
+        if (!result.Succeeded)
         {
-            SetMessage(CountdownMessage, $"保存失败：{error}", true);
+            SetMessage(CountdownMessage, $"保存失败：{result.Error}", true);
             return;
         }
 
@@ -1040,23 +1052,25 @@ public sealed partial class MainWindow : Window
 
         var existing = _editingNoteId is null
             ? null
-            : _session.Current.Notes.FirstOrDefault(note => note.Id == _editingNoteId);
-        if (!TryBuildReminder(existing, out var reminder, out var reminderError))
+            : _desktopWorkspace.Snapshot.Settings.Notes
+                .FirstOrDefault(note => note.Id == _editingNoteId);
+        var reminderResult = _reminderEditing.Build(CreateReminderEditingRequest(existing));
+        if (!reminderResult.Succeeded)
         {
-            SetMessage(NoteMessage, reminderError, true);
+            SetMessage(NoteMessage, reminderResult.Error, true);
             return;
         }
 
-        if (!_workspaceModule.TrySaveNote(
-                _editingNoteId,
-                NoteText.Text,
-                NoteDate.SelectedDate,
-                existing?.IsCompleted ?? false,
-                NoteTags.SelectedTagIds.ToArray(),
-                reminder,
-                out var error))
+        var result = _desktopWorkspace.Apply(new SaveNoteChange(
+            _editingNoteId,
+            NoteText.Text,
+            NoteDate.SelectedDate,
+            existing?.IsCompleted ?? false,
+            NoteTags.SelectedTagIds.ToArray(),
+            reminderResult.Reminder));
+        if (!result.Succeeded)
         {
-            SetMessage(NoteMessage, $"保存失败：{error}", true);
+            SetMessage(NoteMessage, $"保存失败：{result.Error}", true);
             return;
         }
 
@@ -1087,9 +1101,14 @@ public sealed partial class MainWindow : Window
             2 => "Minute",
             _ => "Second"
         };
-        if (!_workspaceModule.TrySavePreferences(precision, salary, workStart, workEnd, out var error))
+        var result = _desktopWorkspace.Apply(new SavePreferencesChange(
+            precision,
+            salary,
+            workStart,
+            workEnd));
+        if (!result.Succeeded)
         {
-            SetMessage(StatusText, $"设置保存失败：{error}", true);
+            SetMessage(StatusText, $"设置保存失败：{result.Error}", true);
             return;
         }
 
@@ -1103,7 +1122,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var record = _session.Current.Countdowns.First(item => item.Id == id);
+        var record = _desktopWorkspace.Snapshot.Settings.Countdowns.First(item => item.Id == id);
         var beijing = ChinaStandardTime.ToBeijingTime(record.TargetUtc);
         _editingCountdownId = record.Id;
         CountdownName.Text = record.Name;
@@ -1124,15 +1143,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var record = _session.Current.Countdowns.First(item => item.Id == id);
+        var record = _desktopWorkspace.Snapshot.Settings.Countdowns.First(item => item.Id == id);
         if (new ConfirmationDialog(this, "删除倒计时", $"确定删除“{record.Name}”吗？").ShowDialog() != true)
         {
             return;
         }
 
-        if (!_workspaceModule.TryDeleteCountdown(id, out var error))
+        var result = _desktopWorkspace.Apply(new DeleteCountdownChange(id));
+        if (!result.Succeeded)
         {
-            SetMessage(StatusText, $"删除失败：{error}", true);
+            SetMessage(StatusText, $"删除失败：{result.Error}", true);
         }
     }
 
@@ -1143,7 +1163,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var note = _session.Current.Notes.First(item => item.Id == id);
+        var note = _desktopWorkspace.Snapshot.Settings.Notes.First(item => item.Id == id);
         _editingNoteId = id;
         NoteText.Text = note.Text;
         _settingDefaultDate = true;
@@ -1157,7 +1177,7 @@ public sealed partial class MainWindow : Window
         var displayedDueUtc = note.Reminder switch
         {
             OnceReminder once => once.FirstDueUtc,
-            RepeatingReminder => ReminderSchedule.GetNextDueUtc(note, _session.UtcNow),
+            RepeatingReminder => ReminderSchedule.GetNextDueUtc(note, _desktopWorkspace.Snapshot.UtcNow),
             _ => null
         };
         SetReminderFirstDue(displayedDueUtc is null
@@ -1175,15 +1195,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var note = _session.Current.Notes.First(item => item.Id == id);
+        var note = _desktopWorkspace.Snapshot.Settings.Notes.First(item => item.Id == id);
         if (new ConfirmationDialog(this, "删除便签", $"确定删除“{note.Text}”吗？").ShowDialog() != true)
         {
             return;
         }
 
-        if (!_workspaceModule.TryDeleteNote(id, out var error))
+        var result = _desktopWorkspace.Apply(new DeleteNoteChange(id));
+        if (!result.Succeeded)
         {
-            SetMessage(StatusText, $"删除失败：{error}", true);
+            SetMessage(StatusText, $"删除失败：{result.Error}", true);
         }
     }
 
@@ -1195,15 +1216,16 @@ public sealed partial class MainWindow : Window
         }
 
         var desired = checkBox.IsChecked == true;
-        var current = _session.Current.Notes.FirstOrDefault(note => note.Id == id);
+        var current = _desktopWorkspace.Snapshot.Settings.Notes.FirstOrDefault(note => note.Id == id);
         if (current is null || current.IsCompleted == desired)
         {
             return;
         }
 
-        if (!_workspaceModule.TrySetNoteCompletion(id, desired, out var error))
+        var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(id, desired));
+        if (!result.Succeeded)
         {
-            SetMessage(StatusText, $"便签状态保存失败：{error}", true);
+            SetMessage(StatusText, $"便签状态保存失败：{result.Error}", true);
             checkBox.IsChecked = current.IsCompleted;
         }
     }
@@ -1212,7 +1234,7 @@ public sealed partial class MainWindow : Window
     {
         _editingCountdownId = null;
         CountdownName.Clear();
-        SetCountdownTarget(_session.BeijingNow.AddDays(1));
+        SetCountdownTarget(_desktopWorkspace.Snapshot.BeijingNow.AddDays(1));
         CountdownTags.SetSelection(Array.Empty<string>());
         CountdownEditorTitle.Text = "新增倒计时";
         SaveCountdownButton.Content = "添加倒计时";
@@ -1225,10 +1247,11 @@ public sealed partial class MainWindow : Window
         _editingNoteId = null;
         NoteText.Clear();
         _settingDefaultDate = true;
-        NoteDate.SelectedDate = _session.BeijingNow.Date;
+        var snapshot = _desktopWorkspace.Snapshot;
+        NoteDate.SelectedDate = snapshot.BeijingNow.Date;
         _settingDefaultDate = false;
         _noteDateDirty = false;
-        NoteTags.SetSelection(_workspaceModule.SelectedTagIds);
+        NoteTags.SetSelection(snapshot.Filter.SelectedTagIds);
         NoteReminder.SelectedIndex = 0;
         NoteReminderInterval.SelectedIndex = 1;
         CustomReminderMinutes.Clear();
@@ -1251,7 +1274,7 @@ public sealed partial class MainWindow : Window
 
     private void LoadPreferences()
     {
-        var preferences = _session.Current.Preferences;
+        var preferences = _desktopWorkspace.Snapshot.Settings.Preferences;
         DisplayPrecision.SelectedIndex = preferences.DisplayPrecision switch
         {
             "Day" => 0,
@@ -1267,16 +1290,17 @@ public sealed partial class MainWindow : Window
 
     private void CycleThemePreference()
     {
-        var nextPreference = _session.Current.Preferences.ThemePreference switch
+        var nextPreference = _desktopWorkspace.Snapshot.Settings.Preferences.ThemePreference switch
         {
             ThemePreferenceMode.Auto => ThemePreferenceMode.Day,
             ThemePreferenceMode.Day => ThemePreferenceMode.Night,
             ThemePreferenceMode.Night => ThemePreferenceMode.Auto,
             _ => throw new InvalidOperationException("未知的主题偏好。")
         };
-        if (!_session.TrySaveThemePreference(nextPreference, out var error))
+        var result = _desktopWorkspace.Apply(new SaveThemePreferenceChange(nextPreference));
+        if (!result.Succeeded)
         {
-            SetMessage(StatusText, $"主题设置保存失败：{error}", true);
+            SetMessage(StatusText, $"主题设置保存失败：{result.Error}", true);
             return;
         }
 
@@ -1365,19 +1389,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var offsetMinutes = 15;
-        if (NoteReminder.SelectedIndex == 2)
+        var result = _reminderEditing.GetDefaultFirstDueBeijing(
+            SelectedReminderMode(),
+            SelectedReminderInterval(),
+            CustomReminderMinutes.Text,
+            _desktopWorkspace.Snapshot.UtcNow);
+        if (result.Succeeded)
         {
-            if (!TryGetReminderInterval(out var interval, out _) || interval is null)
-            {
-                return;
-            }
-
-            offsetMinutes = interval.Value;
+            SetReminderFirstDue(result.FirstDueBeijing);
         }
-
-        SetReminderFirstDue(
-            ReminderSchedule.GetDefaultFirstDueBeijing(_session.BeijingNow, offsetMinutes));
     }
 
     private void SetReminderFirstDue(DateTimeOffset? beijing)
@@ -1397,106 +1417,44 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private bool TryGetReminderInterval(out int? interval, out string error)
+    private ReminderEditingRequest CreateReminderEditingRequest(NoteRecord? existing) => new(
+        SelectedReminderMode(),
+        NoteReminderDate.SelectedDate,
+        NoteReminderHour.SelectedIndex,
+        NoteReminderMinute.SelectedIndex,
+        SelectedReminderInterval(),
+        CustomReminderMinutes.Text,
+        _desktopWorkspace.Snapshot.UtcNow,
+        existing?.Reminder,
+        _noteReminderScheduleDirty);
+
+    private ReminderEditingMode SelectedReminderMode() => NoteReminder.SelectedIndex switch
     {
-        interval = NoteReminderInterval.SelectedIndex switch
+        0 => ReminderEditingMode.None,
+        1 => ReminderEditingMode.Once,
+        2 => ReminderEditingMode.Repeating,
+        _ => (ReminderEditingMode)(-1)
+    };
+
+    private ReminderIntervalSelection SelectedReminderInterval() =>
+        NoteReminderInterval.SelectedIndex switch
         {
-            0 => 15,
-            1 => 30,
-            2 => 60,
-            _ => -1
+            0 => ReminderIntervalSelection.FifteenMinutes,
+            1 => ReminderIntervalSelection.ThirtyMinutes,
+            2 => ReminderIntervalSelection.SixtyMinutes,
+            _ => ReminderIntervalSelection.Custom
         };
-        if (interval != -1)
-        {
-            error = string.Empty;
-            return true;
-        }
-
-        if (!int.TryParse(CustomReminderMinutes.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var custom) ||
-            custom is < 1 or > 1440)
-        {
-            error = "自定义提醒必须是 1 到 1440 分钟。";
-            return false;
-        }
-
-        interval = custom;
-        error = string.Empty;
-        return true;
-    }
-
-    private bool TryBuildReminder(
-        NoteRecord? existing,
-        out NoteReminder reminder,
-        out string error)
-    {
-        if (NoteReminder.SelectedIndex == 0)
-        {
-            reminder = NoReminder.Instance;
-            error = string.Empty;
-            return true;
-        }
-
-        if (NoteReminder.SelectedIndex == 1 &&
-            existing?.Reminder is OnceReminder once &&
-            !_noteReminderScheduleDirty)
-        {
-            reminder = once;
-            error = string.Empty;
-            return true;
-        }
-
-        int? interval = null;
-        if (NoteReminder.SelectedIndex == 2 &&
-            !TryGetReminderInterval(out interval, out error))
-        {
-            reminder = NoReminder.Instance;
-            return false;
-        }
-
-        if (NoteReminder.SelectedIndex == 2 &&
-            existing?.Reminder is RepeatingReminder repeating &&
-            repeating.Interval.Minutes == interval &&
-            !_noteReminderScheduleDirty)
-        {
-            reminder = repeating;
-            error = string.Empty;
-            return true;
-        }
-
-        if (NoteReminder.SelectedIndex is not 1 and not 2)
-        {
-            reminder = NoReminder.Instance;
-            error = "请选择有效的提醒模式。";
-            return false;
-        }
-
-        if (!ReminderSchedule.TryCreateFirstDueUtc(
-                NoteReminderDate.SelectedDate,
-                NoteReminderHour.SelectedIndex,
-                NoteReminderMinute.SelectedIndex,
-                _session.UtcNow,
-                out var firstDueUtc,
-                out error))
-        {
-            reminder = NoReminder.Instance;
-            return false;
-        }
-
-        reminder = NoteReminder.SelectedIndex == 1
-            ? ReminderSchedule.CreateOnce(firstDueUtc!.Value)
-            : ReminderSchedule.CreateRepeating(firstDueUtc!.Value, interval!.Value);
-        return true;
-    }
 
     private void RenderFilterTags()
     {
         FilterTagOptions.Children.Clear();
-        foreach (var tag in _session.Current.Tags)
+        var snapshot = _desktopWorkspace.Snapshot;
+        foreach (var tag in snapshot.Settings.Tags)
         {
             var option = new ToggleButton
             {
                 Content = tag.Name,
-                IsChecked = _workspaceModule.SelectedTagIds.Contains(tag.Id),
+                IsChecked = snapshot.Filter.SelectedTagIds.Contains(tag.Id),
                 Tag = tag.Id,
                 Uid = tag.Id,
                 Margin = new Thickness(0, 0, 6, 6),
@@ -1507,11 +1465,22 @@ public sealed partial class MainWindow : Window
             {
                 if (option.IsChecked == true)
                 {
-                    _workspaceModule.SelectTag(tag.Id, true);
+                    UpdateFilter(filter => filter with
+                    {
+                        SelectedTagIds = filter.SelectedTagIds
+                            .Append(tag.Id)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray()
+                    });
                 }
                 else
                 {
-                    _workspaceModule.SelectTag(tag.Id, false);
+                    UpdateFilter(filter => filter with
+                    {
+                        SelectedTagIds = filter.SelectedTagIds
+                            .Where(id => !string.Equals(id, tag.Id, StringComparison.OrdinalIgnoreCase))
+                            .ToArray()
+                    });
                 }
 
                 RenderVisibleWorkspace();
@@ -1523,7 +1492,7 @@ public sealed partial class MainWindow : Window
     private void RenderTagManager()
     {
         TagManagerRows.Children.Clear();
-        foreach (var tag in _session.Current.Tags)
+        foreach (var tag in _desktopWorkspace.Snapshot.Settings.Tags)
         {
             var name = UiAccessibility.Name(
                 new TextBox { Text = tag.Name, MaxLength = 30 },
@@ -1533,9 +1502,13 @@ public sealed partial class MainWindow : Window
             delete.Style = (Style)FindResource("DangerButton");
             save.Click += (_, _) =>
             {
-                if (!_workspaceModule.TryRenameTag(tag.Id, name.Text, tag.Color, out var error))
+                var result = _desktopWorkspace.Apply(new RenameTagChange(
+                    tag.Id,
+                    name.Text,
+                    tag.Color));
+                if (!result.Succeeded)
                 {
-                    SetMessage(TagManagerMessage, error, true);
+                    SetMessage(TagManagerMessage, result.Error, true);
                 }
             };
             delete.Click += (_, _) =>
@@ -1545,9 +1518,10 @@ public sealed partial class MainWindow : Window
                     return;
                 }
 
-                if (!_workspaceModule.TryDeleteTag(tag.Id, out var error))
+                var result = _desktopWorkspace.Apply(new DeleteTagChange(tag.Id));
+                if (!result.Succeeded)
                 {
-                    SetMessage(TagManagerMessage, error, true);
+                    SetMessage(TagManagerMessage, result.Error, true);
                 }
             };
             var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };
@@ -1581,21 +1555,27 @@ public sealed partial class MainWindow : Window
             return null;
         }
 
-        var color = TagColors[_session.Current.Tags.Count % TagColors.Length];
-        if (!_workspaceModule.TryCreateTag(normalized, color, out var tag, out var error))
+        var color = TagColors[_desktopWorkspace.Snapshot.Settings.Tags.Count % TagColors.Length];
+        var result = _desktopWorkspace.Apply(new CreateTagChange(normalized, color));
+        if (!result.Succeeded)
         {
-            SetMessage(TagManagerMessage, error, true);
+            SetMessage(TagManagerMessage, result.Error, true);
             return null;
         }
 
         NewTagInput.Clear();
         SetMessage(TagManagerMessage, "标签已创建。", false);
-        return tag;
+        return result.CreatedTag;
+    }
+
+    private void UpdateFilter(Func<DesktopWorkspaceFilter, DesktopWorkspaceFilter> update)
+    {
+        _desktopWorkspace.ApplyFilter(update(_desktopWorkspace.Snapshot.Filter));
     }
 
     private void SetCountdownFilter(CountdownStatusFilter filter)
     {
-        _workspaceModule.SetCountdownStatus(filter);
+        UpdateFilter(current => current with { CountdownStatus = filter });
         CountdownAllFilter.IsChecked = filter == CountdownStatusFilter.All;
         CountdownActiveFilter.IsChecked = filter == CountdownStatusFilter.Active;
         CountdownExpiredFilter.IsChecked = filter == CountdownStatusFilter.Expired;
@@ -1605,7 +1585,7 @@ public sealed partial class MainWindow : Window
 
     private void SetNoteFilter(NoteStatusFilter filter)
     {
-        _workspaceModule.SetNoteStatus(filter);
+        UpdateFilter(current => current with { NoteStatus = filter });
         NoteAllFilter.IsChecked = filter == NoteStatusFilter.All;
         NoteActiveFilter.IsChecked = filter == NoteStatusFilter.Active;
         NoteCompletedFilter.IsChecked = filter == NoteStatusFilter.Completed;
@@ -1615,7 +1595,7 @@ public sealed partial class MainWindow : Window
 
     private void ClearFilters()
     {
-        _workspaceModule.ClearFilters();
+        _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
         AnyTagMode.IsChecked = true;
         AllTagMode.IsChecked = false;
         UntaggedOnly.IsChecked = false;
@@ -1634,7 +1614,7 @@ public sealed partial class MainWindow : Window
 
     private void UpdateFilterSummary()
     {
-        var count = _workspaceModule.AppliedFilterCount;
+        var count = _desktopWorkspace.Snapshot.AppliedFilterCount;
         FilterButton.Content = count == 0 ? "筛选" : $"筛选 · {count}";
         AutomationProperties.SetName(FilterButton, count == 0 ? "打开筛选" : $"打开筛选，已应用 {count} 项");
     }
@@ -1654,7 +1634,7 @@ public sealed partial class MainWindow : Window
     private FrameworkElement CreateTagChips(IReadOnlyList<string> tagIds)
     {
         var panel = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
-        foreach (var tag in _session.Current.Tags.Where(tag => tagIds.Contains(
+        foreach (var tag in _desktopWorkspace.Snapshot.Settings.Tags.Where(tag => tagIds.Contains(
                      tag.Id,
                      StringComparer.OrdinalIgnoreCase)))
         {

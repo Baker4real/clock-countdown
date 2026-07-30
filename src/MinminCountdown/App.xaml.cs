@@ -13,7 +13,7 @@ public sealed partial class App : Application
     private readonly CancellationTokenSource _shutdownCancellation = new();
     private HostOptions? _options;
     private DiagnosticLogger? _logger;
-    private ApplicationSession? _session;
+    private DesktopWorkspace? _desktopWorkspace;
     private ApplicationTheme? _theme;
     private HolidayCalendar? _calendar;
     private MainWindow? _mainWindow;
@@ -53,14 +53,16 @@ public sealed partial class App : Application
                 throw new InvalidOperationException("Synthetic fatal diagnostic probe.");
             }
 
-            _session = ApplicationSession.Load(settingsPath);
+            _desktopWorkspace = DesktopWorkspace.Load(settingsPath);
+            var desktopWorkspace = _desktopWorkspace;
+            var initialSnapshot = desktopWorkspace.Snapshot;
             _theme = new ApplicationTheme(Resources);
-            _theme.Apply(_session.UtcNow, _session.Current.Preferences.ThemePreference);
+            _theme.Apply(initialSnapshot.UtcNow, initialSnapshot.Settings.Preferences.ThemePreference);
             _calendar = new HolidayCalendar(_applicationRoot);
-            _mainWindow = new MainWindow(_session, _calendar, _logger, AppContext.BaseDirectory);
+            _mainWindow = new MainWindow(desktopWorkspace, _calendar, _logger, AppContext.BaseDirectory);
             _mainWindow.ApplyTheme(_theme.ActiveMode);
             _floatingWindow = new FloatingWindow(
-                _session,
+                desktopWorkspace,
                 _calendar,
                 _mainWindow,
                 AppContext.BaseDirectory);
@@ -68,8 +70,9 @@ public sealed partial class App : Application
                 _floatingWindow,
                 Path.Combine(_applicationRoot, "countdown-icon.ico"),
                 () => !_shuttingDown);
-            _mainWindow.ThemePreferenceChanged += (_, _) => ApplyCurrentTheme(_session.UtcNow);
-            ApplyCurrentTheme(_session.UtcNow);
+            _mainWindow.ThemePreferenceChanged +=
+                (_, _) => ApplyCurrentTheme(desktopWorkspace.Snapshot.UtcNow);
+            ApplyCurrentTheme(initialSnapshot.UtcNow);
 
             if (_options.ValidateOnly)
             {
@@ -77,7 +80,7 @@ public sealed partial class App : Application
                     _mainWindow,
                     _floatingWindow,
                     _floatingTrayController,
-                    _session,
+                    desktopWorkspace,
                     _theme,
                     _options,
                     AppContext.BaseDirectory);
@@ -102,7 +105,7 @@ public sealed partial class App : Application
 
             if (!_acceptanceReadOnly)
             {
-                _session.PersistMigrationIfNeeded();
+                desktopWorkspace.PersistMigrationIfNeeded();
             }
             StartInteractiveHost();
             return;
@@ -121,7 +124,7 @@ public sealed partial class App : Application
     {
         if (_mainWindow is null ||
             _floatingWindow is null ||
-            _session is null ||
+            _desktopWorkspace is null ||
             _calendar is null ||
             _theme is null ||
             _startupProtocol is null ||
@@ -178,7 +181,7 @@ public sealed partial class App : Application
         if (_runtimeReceiptWritten ||
             _startupProtocol is null ||
             _options is null ||
-            _session is null)
+            _desktopWorkspace is null)
         {
             return;
         }
@@ -201,7 +204,7 @@ public sealed partial class App : Application
             _testExitTimer.Start();
         }
 
-        _ = InitializeHolidayCalendarAsync(_session.BeijingNow.Year);
+        _ = InitializeHolidayCalendarAsync(_desktopWorkspace.Snapshot.BeijingNow.Year);
     }
 
     private async Task InitializeHolidayCalendarAsync(int year)
@@ -239,13 +242,16 @@ public sealed partial class App : Application
 
     private void UpdateInteractiveState()
     {
-        if (_session is null || _mainWindow is null || _floatingWindow is null || _theme is null)
+        if (_desktopWorkspace is null ||
+            _mainWindow is null ||
+            _floatingWindow is null ||
+            _theme is null)
         {
             return;
         }
 
         AdvanceAcceptanceState();
-        var nowUtc = _session.UtcNow;
+        var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
         ApplyCurrentTheme(nowUtc);
         _mainWindow.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
         _floatingWindow.UpdateTime(nowUtc);
@@ -256,19 +262,18 @@ public sealed partial class App : Application
 
         try
         {
-            foreach (var note in _session.Reminders.GetDue(_session.Current, nowUtc))
+            foreach (var note in _desktopWorkspace.GetDueReminders(nowUtc))
             {
                 var window = new ReminderWindow(note);
                 window.Closed += (_, _) => _reminderWindows.Remove(window);
                 window.Show();
                 _reminderWindows.Add(window);
-                _session.Reminders.ConfirmDisplayed(note, nowUtc);
-                if (note.Reminder is OnceReminder once &&
-                    !_session.TryMarkOnceReminderDelivered(note.Id, once.FirstDueUtc, out var error))
+                var result = _desktopWorkspace.ConfirmReminderDisplayed(note, nowUtc);
+                if (!result.Succeeded)
                 {
                     _logger?.Error(
                         "OneTimeReminderDeliveryPersistFailed",
-                        new IOException(error));
+                        new IOException(result.Error));
                 }
             }
         }
@@ -280,12 +285,17 @@ public sealed partial class App : Application
 
     private void ApplyCurrentTheme(DateTimeOffset nowUtc)
     {
-        if (_session is null || _mainWindow is null || _floatingWindow is null || _theme is null)
+        if (_desktopWorkspace is null ||
+            _mainWindow is null ||
+            _floatingWindow is null ||
+            _theme is null)
         {
             return;
         }
 
-        var mode = _theme.Apply(nowUtc, _session.Current.Preferences.ThemePreference);
+        var mode = _theme.Apply(
+            nowUtc,
+            _desktopWorkspace.Snapshot.Settings.Preferences.ThemePreference);
         _mainWindow.ApplyTheme(mode);
         _floatingWindow.ApplyTheme(mode);
     }
@@ -293,7 +303,7 @@ public sealed partial class App : Application
     private void AdvanceAcceptanceState()
     {
         if (!_acceptanceReadOnly ||
-            _session is null ||
+            _desktopWorkspace is null ||
             _mainWindow is null ||
             _floatingWindow is null ||
             _startupProtocol is null)
@@ -304,7 +314,7 @@ public sealed partial class App : Application
         var acceptanceState = _startupProtocol.ReadAcceptanceState();
         if (string.Equals(acceptanceState, "released", StringComparison.Ordinal))
         {
-            _session.PersistMigrationIfNeeded();
+            _desktopWorkspace.PersistMigrationIfNeeded();
             if (!_startupProtocol.MarkAcceptanceReady())
             {
                 throw new InvalidOperationException("验收迁移完成后无法确认 ready 状态。");

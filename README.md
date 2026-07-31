@@ -67,6 +67,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `assets/floating-plush/*.png`：复刻版使用的三张参考图派生角色姿态和四张日间无文字 raster 组件，以及仅供旧 PowerShell 回归的商品姿态夹具；正式 `app` 只发布前七项，来源、处理边界、哈希与视觉证据见 `assets/floating-plush/SOURCES.md`
 - `assets/main-decorations/*.png`：主窗口日间完整角色与底部场景，以及夜间同姿态暖琥珀顶部角色和波浪层；四项均进入正式 `app`
 - `assets/ui-references/*.png`：用户生成的页面与悬浮窗参考图固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
+- [DESIGN.md](DESIGN.md)：便签“暖纸时间轴”方向 B 的现役视觉、交互和日夜主题合同
 - `tools/Build-MainNightTopScene.ps1`：从日间参考构图生成主窗口夜间暖琥珀顶部场景的维护脚本
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口

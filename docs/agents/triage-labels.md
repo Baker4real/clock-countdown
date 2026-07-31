@@ -1,3 +1,10 @@
+---
+type: reference
+title: Triage 标签
+tags: [agents, triage, labels]
+intent: 映射 Matt 标准 triage 角色与本仓库标签。
+---
+
 # Triage 标签
 
 | Matt 标准角色 | 本仓库标签 |

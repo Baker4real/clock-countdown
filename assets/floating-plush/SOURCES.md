@@ -1,3 +1,10 @@
+---
+type: reference
+title: 悬浮窗玩偶素材来源
+tags: [assets, plush, provenance]
+intent: 记录悬浮窗玩偶素材的官方来源、派生过程和校验值。
+---
+
 # 悬浮窗玩偶素材来源
 
 这些素材只用于本机、非商用的个人倒计时应用，不构成任何再发布或商用授权。

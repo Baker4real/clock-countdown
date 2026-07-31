@@ -1,3 +1,10 @@
+---
+type: reference
+title: Issue tracker：GitHub
+tags: [agents, issues, github]
+intent: 规定本仓库问题、PRD 和 ticket 的 GitHub Issues 操作方式。
+---
+
 # Issue tracker：GitHub
 
 本仓库的问题和 PRD 使用 GitHub Issues 管理，通过 `gh` CLI 操作。

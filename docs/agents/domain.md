@@ -1,3 +1,10 @@
+---
+type: reference
+title: 领域文档
+tags: [agents, domain]
+intent: 说明 Agent 探索本仓库领域知识时应读取的文档和术语边界。
+---
+
 # 领域文档
 
 本仓库采用 single-context 布局。

@@ -1,3 +1,10 @@
+---
+type: reference
+title: 时钟倒计时领域词汇
+tags: [domain, countdown]
+intent: 定义时钟倒计时项目的统一领域词汇和时间语义。
+---
+
 # 领域词汇
 
 ## 倒计时

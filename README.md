@@ -1,3 +1,10 @@
+---
+type: readme
+title: 敏敏子倒计时
+tags: [overview, wpf, countdown]
+intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
+---
+
 # 敏敏子倒计时
 
 基于 C# / .NET 10 WPF 的 Windows 桌面多倒计时工具。用户可以为不同目标命名并分别设置截止时刻，程序统一按北京时间（UTC+8）计算、排序和显示；PowerShell 7 继续负责安装、计划任务和办公室部署。

@@ -1,3 +1,10 @@
+---
+type: report
+title: 悬浮窗视觉复刻 GitHub 方案调研
+tags: [research, visual-parity, wpf]
+intent: 记录悬浮窗视觉复刻方案的证据、决策和现役落地边界。
+---
+
 # 悬浮窗视觉复刻 GitHub 方案调研
 
 > 文档状态：这是 2026-07-28 的方案决策记录。推荐的 raster 静态层与 WPF 动态层路线已经接入，并已通过用户真实运行验收；现役悬浮窗的唯一视觉基线和发布边界以 `AGENTS.md`、`README.md` 为准。下文“推荐落地顺序”保留用于解释当时决策，不是待办清单。

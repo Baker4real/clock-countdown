@@ -1908,6 +1908,9 @@ Assert-Equal $true $buildSource.Contains('$managedCleanCandidates = @($applicati
 Assert-Equal $true $buildSource.Contains('$projectDirectories = @($coreProject, $applicationProject, $verificationProject)') 'Clean build derives intermediate candidates from all actual C# project paths'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build rejects absolute removal targets outside the repository root'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath -notin $expectedCleanPaths') 'Clean build validates every absolute removal target against its exact allowlist'
+Assert-Equal $true $buildSource.Contains("`$runEvidenceCapabilityRoot = 'D:\Codex\.codex\run-evidence'") 'Clean build uses the governed run-evidence capability root for isolated release clones'
+Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($runEvidenceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build detects output paths inside the governed run-evidence tree'
+Assert-Equal $true $buildSource.Contains('-CapabilityRoot $cleanupCapabilityRoot') 'Clean build passes the resolved stable capability root to safe-delete'
 $installerCommittedRecoveryMessageIndex = $installerSource.IndexOf('检测到已提交但未完成应用解锁确认的事务')
 $installerOwnershipRecoveryMessageIndex = $installerSource.IndexOf('检测到用户替换的桌面启动器：应用、任务和时间服务已恢复')
 Assert-Equal $true ($installerCommittedRecoveryMessageIndex -ge 0 -and $installerCommittedRecoveryMessageIndex -lt $installerOwnershipRecoveryMessageIndex) 'Installer prioritizes committed recovery evidence over a simultaneous launcher conflict'

@@ -72,6 +72,7 @@ if (($projectAssetMappings -join ',') -ne ($contractAssetMappings -join ',')) {
 
 if ($Clean) {
     $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $runEvidenceCapabilityRoot = 'D:\Codex\.codex\run-evidence'
     if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
         throw "未找到受管构建目录清理入口：$safeTreeDelete"
     }
@@ -93,6 +94,7 @@ if ($Clean) {
         $managedCleanCandidates += Join-Path $projectDirectory 'obj'
     }
     $repositoryRootPrefix = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') + '\'
+    $runEvidenceRootPrefix = [System.IO.Path]::GetFullPath($runEvidenceCapabilityRoot).TrimEnd('\') + '\'
     foreach ($cleanPath in $managedCleanCandidates) {
         if (-not (Test-Path -LiteralPath $cleanPath -PathType Container)) { continue }
         $resolvedCleanPath = [System.IO.Path]::GetFullPath($cleanPath)
@@ -102,10 +104,16 @@ if ($Clean) {
         if ($resolvedCleanPath -notin $expectedCleanPaths) {
             throw "拒绝清理非受管构建目录：$resolvedCleanPath"
         }
+        $cleanupCapabilityRoot = if ($resolvedCleanPath.StartsWith($runEvidenceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $runEvidenceCapabilityRoot
+        }
+        else {
+            $resolvedCleanPath
+        }
         $cleanupJson = & $safeTreeDelete `
             -Mode BatchPurge `
             -TargetPaths $resolvedCleanPath `
-            -CapabilityRoot $resolvedCleanPath `
+            -CapabilityRoot $cleanupCapabilityRoot `
             -ConfirmApply `
             -ConfirmPurge `
             -Json | Out-String

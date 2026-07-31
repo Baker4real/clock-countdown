@@ -91,7 +91,7 @@ public sealed partial class MainWindow : Window
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen;
 
-    internal NoteExerciseResult RunNoteAddExercise()
+    private NoteExerciseResult RunNoteAddExercise()
     {
         ShowWorkspace(WorkspaceKind.Notes);
         var initial = _desktopWorkspace.Snapshot;
@@ -156,7 +156,7 @@ public sealed partial class MainWindow : Window
             completionViaCheckbox);
     }
 
-    internal ReminderModeClickResult RunReminderModeClickExercises()
+    private ReminderModeClickResult RunReminderModeClickExercises()
     {
         ShowWorkspace(WorkspaceKind.Notes);
         var initial = _desktopWorkspace.Snapshot;
@@ -205,7 +205,7 @@ public sealed partial class MainWindow : Window
         return new ReminderModeClickResult(noReminderWorks, onceWorks, repeatWorks);
     }
 
-    internal (bool TracksBeijingDay, bool PreservesChosenDate) ProbeNoteDateBehavior()
+    private (bool TracksBeijingDay, bool PreservesChosenDate) ProbeNoteDateBehavior()
     {
         var originalEditingId = _editingNoteId;
         var originalDirty = _noteDateDirty;
@@ -239,7 +239,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    internal bool ProbeWorkspaceDraftRetention()
+    private bool ProbeWorkspaceDraftRetention()
     {
         var originalWorkspace = _workspace;
         var originalCountdownDraft = CountdownName.Text;
@@ -263,7 +263,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    internal bool ProbeCrossDayReminderBehavior()
+    private bool ProbeCrossDayReminderBehavior()
     {
         var originalDate = NoteReminderDate.SelectedDate;
         var originalHour = NoteReminderHour.SelectedIndex;
@@ -363,7 +363,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    internal bool ProbeReminderSummaryAdvancesAfterFirstDue()
+    private bool ProbeReminderSummaryAdvancesAfterFirstDue()
     {
         var originalWorkspace = _workspace;
         var firstDueUtc = new DateTimeOffset(2031, 4, 6, 1, 30, 0, TimeSpan.Zero);

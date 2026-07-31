@@ -49,6 +49,9 @@
 - `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
 - `Countdown.InstallTransaction.psm1`：带全机互斥锁的可回滚安装事务；覆盖安装目录、启动器、两份计划任务与 Windows 时间服务状态，并为办公室验收原子写出独立回执
 - `Countdown.TransactionAcceptance.psm1`：安装与办公室部署共用的事务验收状态机
+- `Countdown.Validation.psm1`：安装器共用的 Core、C#、兼容 UI 与应用 validate-only 验证 module
+- `Countdown.RemoteDeployment.psm1`：办公室候选安装、验证门禁、事务验收、回滚与提交后收尾 module
+- `Countdown.TransferLedger.psm1`：办公室两次 SCP 共用的计时、吞吐与失败尝试账本 module
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
 - `CountdownLauncher.cs`：无控制台桌面启动器源码
 - `CountdownLauncher.exe`：安装器使用的已编译启动器

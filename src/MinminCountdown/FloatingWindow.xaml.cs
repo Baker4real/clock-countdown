@@ -223,7 +223,7 @@ public sealed partial class FloatingWindow : Window
         }
     }
 
-    internal FloatingDragInteractionExerciseResult RunDragInteractionExercise()
+    private FloatingDragInteractionExerciseResult RunDragInteractionExercise()
     {
         var originalWorkspace = _workspace;
         var originalLeft = Left;
@@ -315,8 +315,12 @@ public sealed partial class FloatingWindow : Window
         }
     }
 
-    internal FloatingManualPlacementExerciseResult RunManualPlacementExercise()
+    private FloatingManualPlacementExerciseResult RunManualPlacementExercise()
     {
+        var originallyManual = _hasManualWindowPlacement;
+        var originalBottomAnchorPosition = _bottomAnchorPosition;
+        var originalLeft = Left;
+        var originalTop = Top;
         var workArea = SystemParameters.WorkArea;
         var minimumLeft = workArea.Left + 12;
         var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
@@ -329,27 +333,45 @@ public sealed partial class FloatingWindow : Window
             ? minimumTop + Math.Min(24, maximumTop - minimumTop)
             : minimumTop;
 
-        Left = manualLeft;
-        Top = manualTop;
-        Refresh();
+        try
+        {
+            Left = manualLeft;
+            Top = manualTop;
+            Refresh();
 
-        var manualPositionPersists =
-            _hasManualWindowPlacement &&
-            Math.Abs(Left - manualLeft) <= 0.5 &&
-            Math.Abs(Top - manualTop) <= 0.5;
+            var manualPositionPersists =
+                _hasManualWindowPlacement &&
+                Math.Abs(Left - manualLeft) <= 0.5 &&
+                Math.Abs(Top - manualTop) <= 0.5;
 
-        Left = workArea.Right + 24;
-        Top = workArea.Bottom + 24;
-        Refresh();
+            Left = workArea.Right + 24;
+            Top = workArea.Bottom + 24;
+            Refresh();
 
-        var remainsWithinWorkArea =
-            Left >= minimumLeft - 0.5 &&
-            Left <= maximumLeft + 0.5 &&
-            Top >= minimumTop - 0.5 &&
-            Top <= maximumTop + 0.5;
+            var remainsWithinWorkArea =
+                Left >= minimumLeft - 0.5 &&
+                Left <= maximumLeft + 0.5 &&
+                Top >= minimumTop - 0.5 &&
+                Top <= maximumTop + 0.5;
 
-        return new FloatingManualPlacementExerciseResult(
-            manualPositionPersists && remainsWithinWorkArea);
+            return new FloatingManualPlacementExerciseResult(
+                manualPositionPersists && remainsWithinWorkArea);
+        }
+        finally
+        {
+            _isApplyingBottomAnchor = true;
+            try
+            {
+                _hasManualWindowPlacement = originallyManual;
+                _bottomAnchorPosition = originalBottomAnchorPosition;
+                Left = originalLeft;
+                Top = originalTop;
+            }
+            finally
+            {
+                _isApplyingBottomAnchor = false;
+            }
+        }
     }
 
     internal IReadOnlyList<string> FloatingCountdownTexts { get; private set; } = Array.Empty<string>();
@@ -362,7 +384,7 @@ public sealed partial class FloatingWindow : Window
 
     internal event EventHandler? MinimizeToTrayRequested;
 
-    internal bool RunCrossDayReminderAddExercise()
+    private bool RunCrossDayReminderAddExercise()
     {
         ShowWorkspace(WorkspaceKind.Notes);
         var initial = _desktopWorkspace.Snapshot;
@@ -393,7 +415,7 @@ public sealed partial class FloatingWindow : Window
             added.ReminderStartUtc == firstDue.ToUniversalTime().Subtract(TimeSpan.FromMinutes(30));
     }
 
-    internal ReminderModeClickResult RunReminderModeClickExercises()
+    private ReminderModeClickResult RunReminderModeClickExercises()
     {
         ShowWorkspace(WorkspaceKind.Notes);
         var initial = _desktopWorkspace.Snapshot;
@@ -480,7 +502,7 @@ public sealed partial class FloatingWindow : Window
         RenderRows(nowUtc);
     }
 
-    internal FloatingThemeExerciseResult RunThemeBoundaryExercise()
+    private FloatingThemeExerciseResult RunThemeBoundaryExercise()
     {
         var checkpoints = new[]
         {

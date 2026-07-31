@@ -24,25 +24,6 @@ internal static class ValidationReport
         HostOptions options,
         string assetRoot)
     {
-        var noteExercise = options.ExerciseNoteAdd
-            ? main.RunNoteAddExercise()
-            : new NoteExerciseResult(false, false, false, false, false);
-        var floatingNoteExercise = options.ExerciseNoteAdd && floating.RunCrossDayReminderAddExercise();
-        var mainReminderModeExercise = options.ExerciseNoteAdd
-            ? main.RunReminderModeClickExercises()
-            : ReminderModeClickResult.NotRun;
-        var floatingReminderModeExercise = options.ExerciseNoteAdd
-            ? floating.RunReminderModeClickExercises()
-            : ReminderModeClickResult.NotRun;
-        var tagExercise = options.ExerciseTagInteractions
-            ? ValidationExercises.RunTagInteractions(desktopWorkspace)
-            : TagInteractionExerciseResult.NotRun;
-        var persistenceExercise = options.ExercisePersistenceFailures
-            ? ValidationExercises.RunPersistenceFailures(
-                desktopWorkspace,
-                desktopWorkspace.Snapshot.SettingsPath)
-            : PersistenceFailureExerciseResult.NotRun;
-
         main.ShowInTaskbar = false;
         main.WindowStartupLocation = WindowStartupLocation.Manual;
         main.Left = -20_000;
@@ -57,6 +38,21 @@ internal static class ValidationReport
         floating.UpdateLayout();
         floating.Reanchor();
         PumpDispatcher();
+
+        var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd);
+        var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);
+        var noteExercise = mainWindowScenarios.NoteExercise;
+        var floatingNoteExercise = floatingWindowScenarios.CrossDayReminderAdded;
+        var mainReminderModeExercise = mainWindowScenarios.ReminderModes;
+        var floatingReminderModeExercise = floatingWindowScenarios.ReminderModes;
+        var tagExercise = options.ExerciseTagInteractions
+            ? ValidationExercises.RunTagInteractions(desktopWorkspace)
+            : TagInteractionExerciseResult.NotRun;
+        var persistenceExercise = options.ExercisePersistenceFailures
+            ? ValidationExercises.RunPersistenceFailures(
+                desktopWorkspace,
+                desktopWorkspace.Snapshot.SettingsPath)
+            : PersistenceFailureExerciseResult.NotRun;
 
         var themePreferenceExercise = options.ExerciseThemePreference
             ? RunThemePreferenceButtonExercise(main, floating, desktopWorkspace)
@@ -102,7 +98,7 @@ internal static class ValidationReport
             floating,
             minimizeToTrayButton,
             floatingTrayController);
-        var floatingDragInteraction = floating.RunDragInteractionExercise();
+        var floatingDragInteraction = floatingWindowScenarios.DragInteraction;
 
         var datePicker = Required<DatePicker>(main, "CountdownDate");
         datePicker.ApplyTemplate();
@@ -138,8 +134,8 @@ internal static class ValidationReport
         var dateBehaviorAttached = ThemedDatePickerBehavior.IsAttached(datePicker);
         var dateTextMetrics = MeasureTextFit(datePicker, "2031年12月31日");
         var calendarHeaderMetrics = MeasureTextFit(datePicker, "2031年12月");
-        var workspaceDraftsRetained = main.ProbeWorkspaceDraftRetention();
-        var noteDateBehavior = main.ProbeNoteDateBehavior();
+        var workspaceDraftsRetained = mainWindowScenarios.WorkspaceDraftsRetained;
+        var noteDateBehavior = mainWindowScenarios.NoteDateBehavior;
         var originalWorkspace = main.CurrentWorkspace;
         main.ShowWorkspace(WorkspaceKind.Notes);
         var hiddenCountdownSubmitDisabled = !Required<Button>(main, "SaveCountdownButton").IsEnabled;
@@ -155,8 +151,8 @@ internal static class ValidationReport
         var tagSearchDoesNotSubmit = !selector.CreateButtonIsDefault;
         var reminderBehavior = ValidateReminderDispatch();
         var oneTimeReminderBehavior = ValidateOneTimeReminderLifecycle();
-        var crossDayReminderBehavior = main.ProbeCrossDayReminderBehavior();
-        var reminderSummaryAdvances = main.ProbeReminderSummaryAdvancesAfterFirstDue();
+        var crossDayReminderBehavior = mainWindowScenarios.CrossDayReminderBehavior;
+        var reminderSummaryAdvances = mainWindowScenarios.ReminderSummaryAdvances;
         var roundTrip = ValidateRoundTrip(workspaceSnapshot.Settings);
         var legacyMigration = ValidateLegacyMigration();
         var duplicateRejected = RejectsDuplicateCountdowns(workspaceSnapshot.Settings);
@@ -468,7 +464,7 @@ internal static class ValidationReport
         var floatingReanchorsAfterContentChanges = floating.IsBottomAnchored;
         var floatingReferenceExercise = RunFloatingReferenceExercise(main, assetRoot);
         var mainThemeExercise = RunMainThemeExercise(theme, main, workspaceSnapshot.UtcNow);
-        var floatingThemeExercise = floating.RunThemeBoundaryExercise();
+        var floatingThemeExercise = floatingWindowScenarios.ThemeExercise;
         var tagPopupFollowsDayNightTheme =
             ValidateTagPopupThemeTransition(theme, selector, workspaceSnapshot.UtcNow);
         var warmYellowPaletteMatchesLegacy =
@@ -479,7 +475,7 @@ internal static class ValidationReport
             ValidateToolTipThemeTextContrast(theme, workspaceSnapshot.UtcNow);
         var tagChipTextContrast =
             ValidateTagChipTextContrast(theme, main, workspaceSnapshot.UtcNow);
-        var floatingManualPlacement = floating.RunManualPlacementExercise();
+        var floatingManualPlacement = floatingWindowScenarios.ManualPlacement;
         var mainReferenceDecorationScaling = ValidateMainReferenceDecorationScaling(main);
         var mainNightReferenceGeometry = ValidateMainNightReferenceGeometry(main);
         var mainReferenceCapture =
@@ -1605,7 +1601,7 @@ internal static class ValidationReport
                 settingsPath,
                 new SettingsStore(clock: new ValidationClock(referenceUtc)));
             using var referenceCalendar = new HolidayCalendar(temporaryRoot);
-            referenceCalendar.InitializeAsync(2030, CancellationToken.None).GetAwaiter().GetResult();
+            referenceCalendar.RefreshAsync(referenceUtc, CancellationToken.None).GetAwaiter().GetResult();
             referenceWindow = new FloatingWindow(
                 new DesktopWorkspace(referenceSession),
                 referenceCalendar,

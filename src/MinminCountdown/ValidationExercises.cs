@@ -417,6 +417,7 @@ internal static class ValidationExercises
     public static bool RunHolidayCalendarInterfaceBehavior()
     {
         const int year = 2034;
+        const int nextYear = year + 1;
         var readyRoot = Path.Combine(
             Path.GetTempPath(),
             $"MinminCountdown-holiday-ready-{Guid.NewGuid():N}");
@@ -426,14 +427,20 @@ internal static class ValidationExercises
         var readyCacheDirectory = Path.Combine(readyRoot, "holiday-cache");
         var unavailableCacheDirectory = Path.Combine(unavailableRoot, "holiday-cache");
         var readyCachePath = Path.Combine(readyCacheDirectory, $"{year}.json");
+        var nextYearCachePath = Path.Combine(readyCacheDirectory, $"{nextYear}.json");
         var unavailableCachePath = Path.Combine(unavailableCacheDirectory, $"{year}.json");
         var payload = CreateHolidayCalendarPayload(year);
+        var nextYearPayload = CreateHolidayCalendarPayload(nextYear);
 
         Directory.CreateDirectory(readyCacheDirectory);
         Directory.CreateDirectory(unavailableCacheDirectory);
         File.WriteAllText(
             readyCachePath,
             payload,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(
+            nextYearCachePath,
+            nextYearPayload,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         File.WriteAllText(
             unavailableCachePath,
@@ -446,7 +453,6 @@ internal static class ValidationExercises
             {
                 var stateChangedCount = 0;
                 calendar.StateChanged += (_, _) => stateChangedCount++;
-                calendar.InitializeAsync(year, CancellationToken.None).GetAwaiter().GetResult();
 
                 var preferences = new CountdownPreferences(
                     "Second",
@@ -455,11 +461,16 @@ internal static class ValidationExercises
                     TimeSpan.FromHours(18));
                 var workdayNowUtc = new DateTimeOffset(2034, 5, 6, 5, 30, 0, TimeSpan.Zero);
                 var nonWorkdayNowUtc = new DateTimeOffset(2034, 5, 8, 5, 30, 0, TimeSpan.Zero);
+                var initialRefresh = calendar
+                    .RefreshAsync(workdayNowUtc, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
                 var workdayCountdown = calendar.GetWorkdayEndCountdown(workdayNowUtc, preferences);
 
                 Must(
                     calendar.State == "Ready" &&
                     calendar.StatusText == "已同步 2034 年法定节假日与调休" &&
+                    initialRefresh &&
                     stateChangedCount == 1,
                     "工作日历 interface 未从本地缓存进入 Ready 状态。");
                 Must(
@@ -476,32 +487,105 @@ internal static class ValidationExercises
                     calendar.GetWorkdayEndCountdown(nonWorkdayNowUtc, preferences) is null &&
                     calendar.GetEarnings(nonWorkdayNowUtc, preferences) == 0m,
                     "工作日历 interface 未在非工作日停止派生结果。");
+
+                var sameYearRefresh = calendar
+                    .RefreshAsync(nonWorkdayNowUtc, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                var nextYearNowUtc = new DateTimeOffset(2035, 5, 6, 5, 30, 0, TimeSpan.Zero);
+                var nextYearRefresh = calendar
+                    .RefreshAsync(nextYearNowUtc, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                var nextYearCountdown = calendar.GetWorkdayEndCountdown(nextYearNowUtc, preferences);
+                Must(
+                    !sameYearRefresh &&
+                    nextYearRefresh &&
+                    calendar.State == "Ready" &&
+                    calendar.StatusText == "已同步 2035 年法定节假日与调休" &&
+                    stateChangedCount == 2 &&
+                    nextYearCountdown is { TargetUtc: var nextYearTargetUtc } &&
+                    nextYearTargetUtc == new DateTimeOffset(2035, 5, 6, 10, 0, 0, TimeSpan.Zero) &&
+                    calendar.GetEarnings(nextYearNowUtc, preferences) == 1550m,
+                    "工作日历 interface 未在北京时间跨年后刷新年份与派生结果。");
             }
 
-            using (var cacheLock = new FileStream(
-                       unavailableCachePath,
-                       FileMode.Open,
-                       FileAccess.ReadWrite,
-                       FileShare.None))
             using (var calendar = new HolidayCalendar(unavailableRoot))
             {
                 var stateChangedCount = 0;
                 calendar.StateChanged += (_, _) => stateChangedCount++;
-                calendar.InitializeAsync(year, CancellationToken.None).GetAwaiter().GetResult();
                 var preferences = new CountdownPreferences(
                     "Second",
                     6200m,
                     TimeSpan.FromHours(9),
                     TimeSpan.FromHours(18));
                 var nowUtc = new DateTimeOffset(2034, 5, 6, 5, 30, 0, TimeSpan.Zero);
+                bool failedRefresh;
+                bool immediateRetry;
+                using (var cacheLock = new FileStream(
+                           unavailableCachePath,
+                           FileMode.Open,
+                           FileAccess.ReadWrite,
+                           FileShare.None))
+                {
+                    failedRefresh = calendar
+                        .RefreshAsync(nowUtc, CancellationToken.None)
+                        .GetAwaiter()
+                        .GetResult();
+                    immediateRetry = calendar
+                        .RefreshAsync(nowUtc.AddMilliseconds(250), CancellationToken.None)
+                        .GetAwaiter()
+                        .GetResult();
+                }
 
                 Must(
+                    failedRefresh &&
+                    !immediateRetry &&
                     calendar.State == "Unavailable" &&
                     calendar.StatusText == "节假日日历未就绪" &&
                     stateChangedCount == 1 &&
                     calendar.GetWorkdayEndCountdown(nowUtc, preferences) is null &&
                     calendar.GetEarnings(nowUtc, preferences) is null,
                     "工作日历 interface 未把本地缓存读取失败收敛为 Unavailable 状态。");
+
+                var recoveredRefresh = calendar
+                    .RefreshAsync(nowUtc.AddMinutes(1), CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                Must(
+                    recoveredRefresh &&
+                    calendar.State == "Ready" &&
+                    calendar.StatusText == "已同步 2034 年法定节假日与调休" &&
+                    stateChangedCount == 2 &&
+                    calendar.GetWorkdayEndCountdown(nowUtc, preferences) is not null &&
+                    calendar.GetEarnings(nowUtc, preferences) == 1550m,
+                    "工作日历 interface 未在退避后恢复同年失败的刷新。");
+            }
+
+            Must(
+                !HolidayCalendar.TryParse(payload, nextYear, out _),
+                "工作日历 interface 接受了与请求年份不一致的缓存。");
+
+            using (var calendar = new HolidayCalendar(Path.Combine(
+                       Path.GetTempPath(),
+                       $"MinminCountdown-holiday-cancelled-{Guid.NewGuid():N}")))
+            using (var cancellation = new CancellationTokenSource())
+            {
+                cancellation.Cancel();
+                var stateChangedCount = 0;
+                calendar.StateChanged += (_, _) => stateChangedCount++;
+                var refreshed = calendar
+                    .RefreshAsync(
+                        new DateTimeOffset(2036, 5, 6, 5, 30, 0, TimeSpan.Zero),
+                        cancellation.Token)
+                    .GetAwaiter()
+                    .GetResult();
+                Must(
+                    refreshed &&
+                    calendar.State == "Unavailable" &&
+                    calendar.StatusText == "节假日日历未就绪" &&
+                    stateChangedCount == 2,
+                    "工作日历 interface 未把取消的年份刷新收敛为 Unavailable 状态。");
             }
 
             return true;
@@ -509,6 +593,7 @@ internal static class ValidationExercises
         finally
         {
             DeleteFileIfPresent(readyCachePath);
+            DeleteFileIfPresent(nextYearCachePath);
             DeleteFileIfPresent(unavailableCachePath);
             DeleteDirectoryIfEmpty(readyCacheDirectory);
             DeleteDirectoryIfEmpty(unavailableCacheDirectory);

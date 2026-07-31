@@ -177,6 +177,7 @@ $mutexHolderOutputPath = Join-Path $testRoot 'mutex-holder.stdout.txt'
 $mutexHolderErrorPath = Join-Path $testRoot 'mutex-holder.stderr.txt'
 $directDiagnosticPath = Join-Path $testRoot 'direct-application.jsonl'
 $adapterDiagnosticPath = Join-Path $testRoot 'adapter-application.jsonl'
+$failedValidationDiagnosticPath = Join-Path $testRoot 'failed-validation-application.jsonl'
 $noteExercisePath = Join-Path $testRoot 'note-exercise.settings.json'
 $noteExerciseDiagnosticPath = Join-Path $testRoot 'note-exercise-application.jsonl'
 $interactiveRoot = Join-Path $testRoot 'interactive-application-root'
@@ -415,7 +416,49 @@ try {
         $adapterDiagnosticEvents |
             Where-Object { $_ -in @('FloatingWindowMinimizedToTray', 'FloatingWindowRestoredFromTray') }
     ).Count
+    $validationResourcesReleasedIndex = [Array]::IndexOf(
+        [object[]] $adapterDiagnosticEvents,
+        'ValidationResourcesReleased'
+    )
+    $validationCompletedIndex = [Array]::IndexOf(
+        [object[]] $adapterDiagnosticEvents,
+        'ValidationCompleted'
+    )
     Assert-Equal 0 $syntheticTrayLogCount 'validate-only 托盘演练不伪造用户操作日志'
+    Assert-Equal $true (
+        $validationResourcesReleasedIndex -ge 0 -and
+        $validationCompletedIndex -gt $validationResourcesReleasedIndex
+    ) 'validate-only 在报告完成前释放真实 WPF 场景资源'
+    $failedValidationResult = Invoke-NativeCommandResult -FilePath $pwsh -ArgumentList @(
+        '-NoLogo',
+        '-NoProfile',
+        '-STA',
+        '-File',
+        $adapter,
+        '-ValidateOnly',
+        '-ExercisePersistenceFailures',
+        '-SettingsFile',
+        $roundTripPath,
+        '-DiagnosticLogPath',
+        $failedValidationDiagnosticPath
+    )
+    Assert-Equal 1 $failedValidationResult.ExitCode 'validate-only 受控场景失败退出码'
+    $failedValidationEvents = @(
+        Get-Content -LiteralPath $failedValidationDiagnosticPath |
+            ForEach-Object { ($_ | ConvertFrom-Json).event }
+    )
+    $failedResourcesReleasedIndex = [Array]::IndexOf(
+        [object[]] $failedValidationEvents,
+        'ValidationResourcesReleased'
+    )
+    $fatalValidationIndex = [Array]::IndexOf(
+        [object[]] $failedValidationEvents,
+        'FatalUnhandledException'
+    )
+    Assert-Equal $true (
+        $failedResourcesReleasedIndex -ge 0 -and
+        $fatalValidationIndex -gt $failedResourcesReleasedIndex
+    ) 'validate-only 场景失败仍先释放真实 WPF 资源'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash '主题点击验收循环回 Auto 且不改变等价设置'
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceInterfaceBehavior) '桌面工作区 interface 统一持久化、状态变更与筛选行为'
@@ -423,6 +466,7 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolInterfaceBehavior) '启动验收 protocol interface 覆盖请求、回执、状态推进与拒绝路径'
     Assert-Equal $true ([bool] $adapterValidation.HolidayCalendarInterfaceBehavior) '工作日历 interface 覆盖缓存初始化、派生结果与失败状态'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
+    Assert-Equal 311 $adapterValidationPropertyNames.Count 'validate-only 保留 311 个兼容顶层字段'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
     Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
     Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '兼容字段由桌面工作区真实 interface 行为计算'

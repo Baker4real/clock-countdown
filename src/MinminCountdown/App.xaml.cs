@@ -41,8 +41,6 @@ public sealed partial class App : Application
             _applicationRoot = ApplicationPaths.ResolveApplicationRoot();
             _startupProtocol = StartupAcceptanceProtocol.Load(_applicationRoot, _options.RequireStartupRequest);
             _acceptanceReadOnly = _startupProtocol.AcceptanceReadOnly;
-            var settingsPath = _options.SettingsFile ??
-                               Path.Combine(_applicationRoot, "settings.json");
             var diagnosticPath = _options.DiagnosticLogPath ??
                                  Path.Combine(_applicationRoot, "logs", "application.jsonl");
             _logger = new DiagnosticLogger(diagnosticPath);
@@ -53,6 +51,21 @@ public sealed partial class App : Application
                 throw new InvalidOperationException("Synthetic fatal diagnostic probe.");
             }
 
+            if (_options.ValidateOnly)
+            {
+                var validationReport = ApplicationValidation.Run(
+                    _options,
+                    _applicationRoot,
+                    _logger,
+                    Resources);
+                CliOutput.WriteJson(validationReport);
+                _logger.Info("ValidationCompleted");
+                Shutdown(0);
+                return;
+            }
+
+            var settingsPath = _options.SettingsFile ??
+                               Path.Combine(_applicationRoot, "settings.json");
             _desktopWorkspace = DesktopWorkspace.Load(settingsPath);
             var desktopWorkspace = _desktopWorkspace;
             var initialSnapshot = desktopWorkspace.Snapshot;
@@ -73,27 +86,6 @@ public sealed partial class App : Application
             _mainWindow.ThemePreferenceChanged +=
                 (_, _) => ApplyCurrentTheme(desktopWorkspace.Snapshot.UtcNow);
             ApplyCurrentTheme(initialSnapshot.UtcNow);
-
-            if (_options.ValidateOnly)
-            {
-                var report = ValidationReport.Create(
-                    _mainWindow,
-                    _floatingWindow,
-                    _floatingTrayController,
-                    desktopWorkspace,
-                    _theme,
-                    _options,
-                    AppContext.BaseDirectory);
-                CliOutput.WriteJson(report);
-                _logger.Info("ValidationCompleted");
-                _floatingTrayController.Dispose();
-                _floatingTrayController = null;
-                _floatingWindow.Close();
-                _mainWindow.Close();
-                _calendar.Dispose();
-                Shutdown(0);
-                return;
-            }
 
             _singleInstanceLease = SingleInstanceMutex.TryAcquire(_applicationRoot, settingsPath);
             if (_singleInstanceLease is null)
@@ -204,10 +196,10 @@ public sealed partial class App : Application
             _testExitTimer.Start();
         }
 
-        _ = InitializeHolidayCalendarAsync(_desktopWorkspace.Snapshot.BeijingNow.Year);
+        _ = RefreshHolidayCalendarAsync(_desktopWorkspace.Snapshot.UtcNow);
     }
 
-    private async Task InitializeHolidayCalendarAsync(int year)
+    private async Task RefreshHolidayCalendarAsync(DateTimeOffset nowUtc)
     {
         if (_calendar is null ||
             _startupProtocol is null)
@@ -215,8 +207,8 @@ public sealed partial class App : Application
             return;
         }
 
-        await _calendar.InitializeAsync(year, _shutdownCancellation.Token);
-        if (_shutdownCancellation.IsCancellationRequested)
+        var refreshed = await _calendar.RefreshAsync(nowUtc, _shutdownCancellation.Token);
+        if (!refreshed || _shutdownCancellation.IsCancellationRequested)
         {
             return;
         }
@@ -252,6 +244,10 @@ public sealed partial class App : Application
 
         AdvanceAcceptanceState();
         var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
+        if (_runtimeReceiptWritten)
+        {
+            _ = RefreshHolidayCalendarAsync(nowUtc);
+        }
         ApplyCurrentTheme(nowUtc);
         _mainWindow.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
         _floatingWindow.UpdateTime(nowUtc);

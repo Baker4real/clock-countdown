@@ -4,7 +4,9 @@
 param(
     [switch] $ParentTransactionMutexHeld,
     [switch] $AcceptanceOnly,
-    [switch] $ReleaseContractOnly
+    [switch] $ReleaseContractOnly,
+    [switch] $ValidationOnly,
+    [switch] $RemoteDeploymentOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,6 +18,8 @@ Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot 'Countdown.TransactionAcceptance.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Validation.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1') -Force
 
 $failures = [System.Collections.Generic.List[string]]::new()
 $script:assertions = 0
@@ -56,6 +60,751 @@ function Remove-CountdownReleaseContractTestTree {
     Remove-Item -LiteralPath $resolvedPath -Force
 }
 
+function Remove-CountdownIsolatedTestTree {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $AllowedRoot
+    )
+
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+    $resolvedRoot = [System.IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\') + '\'
+    if (-not $resolvedPath.StartsWith($resolvedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "拒绝清理隔离测试根目录之外的路径：$resolvedPath"
+    }
+    if (-not (Test-Path -LiteralPath $resolvedPath -PathType Container)) {
+        return
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath $resolvedPath -File -Recurse) {
+        Remove-Item -LiteralPath $file.FullName -Force
+    }
+    foreach ($directory in @(
+            Get-ChildItem -LiteralPath $resolvedPath -Directory -Recurse |
+                Sort-Object { $_.FullName.Length } -Descending
+        )) {
+        Remove-Item -LiteralPath $directory.FullName -Force
+    }
+    Remove-Item -LiteralPath $resolvedPath -Force
+}
+
+if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $RemoteDeploymentOnly)) {
+    $validationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-validation-tests'
+    $validationTestRoot = Join-Path $validationEvidenceRoot ([guid]::NewGuid().ToString('N'))
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    try {
+        New-Item -ItemType Directory -Path $validationTestRoot -Force | Out-Null
+        $validationFixtures = [ordered]@{
+            'Countdown.Core.Tests.ps1' = "param([switch] `$ParentTransactionMutexHeld)`r`n'{`"Passed`":11,`"Failed`":0}'"
+            'Countdown.CSharp.Tests.ps1' = "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'"
+            'Countdown.Ui.Tests.ps1' = "'{`"Passed`":17,`"Failed`":0}'"
+            '敏敏子倒计时.ps1' = "param([switch] `$ValidateOnly)`r`n'{`"Valid`":true,`"FloatingWindowPresent`":true}'"
+        }
+        foreach ($fixture in $validationFixtures.GetEnumerator()) {
+            [System.IO.File]::WriteAllText(
+                (Join-Path $validationTestRoot ([string] $fixture.Key)),
+                [string] $fixture.Value,
+                $utf8NoBom)
+        }
+
+        $validationPowerShell = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop |
+            Select-Object -First 1 -ExpandProperty Source)
+        $validationResult = Invoke-CountdownValidationSuite `
+            -Root $validationTestRoot `
+            -PowerShell7Path $validationPowerShell `
+            -ParentTransactionMutexHeld
+        Assert-Equal $true ([bool] $validationResult.Valid) 'Validation interface reports one stable success state'
+        Assert-Equal 11 ([int] $validationResult.CoreTestsPassed) 'Validation interface exposes Core assertion count'
+        Assert-Equal 13 ([int] $validationResult.CSharpTestsPassed) 'Validation interface exposes C# assertion count'
+        Assert-Equal 17 ([int] $validationResult.UiTestsPassed) 'Validation interface exposes compatibility UI assertion count'
+        Assert-Equal $true ([bool] $validationResult.UiValid) 'Validation interface exposes application validate-only state'
+        Assert-Equal $true ([bool] $validationResult.AdapterUiValidated) 'Validation interface preserves adapter UI evidence'
+        Assert-Equal '{"Passed":11,"Failed":0}' ([string] $validationResult.TestOutput) 'Validation interface preserves Core JSON compatibility'
+        Assert-Equal '{"Passed":13,"Failed":0,"AdapterUiValidated":true}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
+        Assert-Equal '{"Passed":17,"Failed":0}' ([string] $validationResult.UiTestOutput) 'Validation interface preserves UI JSON compatibility'
+        Assert-Equal '{"Valid":true,"FloatingWindowPresent":true}' ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
+
+        [System.IO.File]::WriteAllText(
+            (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
+            "[Console]::Error.WriteLine('expected diagnostic')`r`n'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'",
+            $utf8NoBom)
+        $successfulDiagnosticPreserved = $false
+        try {
+            $diagnosticValidationResult = Invoke-CountdownValidationSuite `
+                -Root $validationTestRoot `
+                -PowerShell7Path $validationPowerShell
+            $successfulDiagnosticPreserved =
+                [bool] $diagnosticValidationResult.Valid -and
+                [string] $diagnosticValidationResult.CSharpTestOutput -eq '{"Passed":13,"Failed":0,"AdapterUiValidated":true}'
+        }
+        catch {
+            $successfulDiagnosticPreserved = $false
+        }
+        Assert-Equal $true $successfulDiagnosticPreserved 'Validation interface parses stdout JSON without merging successful stderr diagnostics'
+
+        [System.IO.File]::WriteAllText(
+            (Join-Path $validationTestRoot 'Countdown.Ui.Tests.ps1'),
+            "'{`"Passed`":16,`"Failed`":1}'",
+            $utf8NoBom)
+        $reportedFailureRejected = $false
+        try {
+            Invoke-CountdownValidationSuite `
+                -Root $validationTestRoot `
+                -PowerShell7Path $validationPowerShell | Out-Null
+        }
+        catch {
+            $reportedFailureRejected = $_.Exception.Message -match '兼容 UI 回归报告包含 1 个失败'
+        }
+        Assert-Equal $true $reportedFailureRejected 'Validation interface rejects a failed report even when the process exits zero'
+
+        [System.IO.File]::WriteAllText(
+            (Join-Path $validationTestRoot 'Countdown.Ui.Tests.ps1'),
+            "'{`"Passed`":17,`"Failed`":0}'",
+            $utf8NoBom)
+        [System.IO.File]::WriteAllText(
+            (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
+            "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":false}'",
+            $utf8NoBom)
+        $adapterUiFailureRejected = $false
+        try {
+            Invoke-CountdownValidationSuite `
+                -Root $validationTestRoot `
+                -PowerShell7Path $validationPowerShell | Out-Null
+        }
+        catch {
+            $adapterUiFailureRejected = $_.Exception.Message -match 'C# 回归未确认 adapter UI 验证'
+        }
+        Assert-Equal $true $adapterUiFailureRejected 'Validation interface requires adapter UI evidence before reporting success'
+
+        [System.IO.File]::WriteAllText(
+            (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
+            "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'",
+            $utf8NoBom)
+        [System.IO.File]::WriteAllText(
+            (Join-Path $validationTestRoot '敏敏子倒计时.ps1'),
+            "param([switch] `$ValidateOnly)`r`n'{`"Valid`":`"false`",`"FloatingWindowPresent`":true}'",
+            $utf8NoBom)
+        $stringBooleanRejected = $false
+        try {
+            Invoke-CountdownValidationSuite `
+                -Root $validationTestRoot `
+                -PowerShell7Path $validationPowerShell | Out-Null
+        }
+        catch {
+            $stringBooleanRejected = $_.Exception.Message -match '应用 validate-only 报告未通过'
+        }
+        Assert-Equal $true $stringBooleanRejected 'Validation interface rejects string values that only coerce to true'
+    }
+    finally {
+        Remove-CountdownIsolatedTestTree -Path $validationTestRoot -AllowedRoot $validationEvidenceRoot
+    }
+
+    if ($ValidationOnly) {
+        if ($failures.Count -gt 0) {
+            $failures | ForEach-Object { Write-Error $_ }
+            exit 1
+        }
+        [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'Validation' } | ConvertTo-Json
+        exit 0
+    }
+}
+
+if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $ValidationOnly)) {
+    $remoteDeploymentEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-remote-deployment-tests'
+    $remoteDeploymentTestRoot = Join-Path $remoteDeploymentEvidenceRoot ([guid]::NewGuid().ToString('N'))
+    $remoteDeploymentSource = Join-Path $remoteDeploymentTestRoot 'source'
+    $remoteDeploymentInstall = Join-Path $remoteDeploymentTestRoot 'install'
+    $remoteDeploymentReceipt = Join-Path $remoteDeploymentTestRoot 'deferred-install-receipt.json'
+    $remoteDeploymentPowerShell = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop |
+        Select-Object -First 1 -ExpandProperty Source)
+
+    function New-CountdownRemoteDeploymentFixtureAdapter {
+        param([ValidateSet('Success', 'ValidationFailure', 'AdapterUiValidationFailure', 'ValidationSchemaFailure', 'AcceptanceFailure', 'CommitThenFail', 'RollbackFailure', 'FinalizeFailure', 'DisposeFailure', 'ValidationAndDisposeFailure')] [string] $Mode)
+
+        $state = [pscustomobject]@{
+            Mode = $Mode
+            Begun = $false
+            Accepted = $false
+            Committed = $false
+            RolledBack = $false
+            RollbackCount = 0
+            Disposed = $false
+        }
+        $adapter = [pscustomobject]@{
+            State = $state
+            Begin = {
+                param($AdapterState, $Context)
+                $AdapterState.Begun = $true
+                [pscustomobject]@{
+                    Validation = [pscustomobject]@{
+                        SchemaVersion = if ($AdapterState.Mode -eq 'ValidationSchemaFailure') { 999 } else { 1 }
+                        Valid = $AdapterState.Mode -notin @('ValidationFailure', 'RollbackFailure', 'ValidationAndDisposeFailure')
+                        CoreTestsPassed = 11
+                        CSharpTestsPassed = 13
+                        UiTestsPassed = 17
+                        UiValid = $true
+                        AdapterUiValidated = $AdapterState.Mode -ne 'AdapterUiValidationFailure'
+                    }
+                    RuntimeStatus = [pscustomobject]@{
+                        processId = 4242
+                        stage = 'window-ready'
+                        calendarState = 'Ready'
+                    }
+                }
+            }
+            Accept = {
+                param($AdapterState, $Context, $Candidate)
+                if ($AdapterState.Mode -eq 'AcceptanceFailure') {
+                    throw '模拟验收失败。'
+                }
+                $AdapterState.Accepted = $true
+                $AdapterState.Committed = $true
+                if ($AdapterState.Mode -eq 'CommitThenFail') {
+                    throw '模拟提交后验收失败。'
+                }
+                [pscustomobject]@{
+                    AcceptanceState = 'finalized-ready'
+                    RuntimeProcessId = 4242
+                    TaskState = 'Running'
+                    SettingsHashBefore = 'before-hash'
+                    SettingsHashAfter = 'after-hash'
+                }
+            }
+            Rollback = {
+                param($AdapterState, $Context, $Candidate)
+                $AdapterState.RolledBack = $true
+                $AdapterState.RollbackCount++
+                if ($AdapterState.Mode -eq 'RollbackFailure') {
+                    throw '模拟回滚失败。'
+                }
+                [pscustomobject]@{ PreservedUnmanagedLaunchers = $false }
+            }
+            Finalize = {
+                param($AdapterState, $Context)
+                if ($AdapterState.Mode -eq 'FinalizeFailure') {
+                    throw '模拟提交后收尾失败。'
+                }
+            }
+            Dispose = {
+                param($AdapterState, $Context)
+                $AdapterState.Disposed = $true
+                if ($AdapterState.Mode -in @('DisposeFailure', 'ValidationAndDisposeFailure')) {
+                    throw '模拟资源释放失败。'
+                }
+            }
+        }
+        [pscustomobject]@{ State = $state; Adapter = $adapter }
+    }
+
+    function New-CountdownRemoteDeploymentWindowsFixtureAdapter {
+        param(
+            [Parameter(Mandatory)]
+            [ValidateSet(
+                'AcceptedFinalizationFailure',
+                'AcceptedReceiptFailure',
+                'AcceptedEnvironmentFailure',
+                'CommitPreparationFailure',
+                'CommittedCleanupFailure',
+                'CommittedFinalizeFailure')]
+            [string] $Mode
+        )
+
+        $remoteDeploymentModule = Get-Module -Name Countdown.RemoteDeployment | Select-Object -First 1
+        $adapter = & $remoteDeploymentModule { New-CountdownRemoteDeploymentWindowsAdapter }
+        $transactionPath = Join-Path $remoteDeploymentTestRoot "$Mode-transaction"
+        New-Item -ItemType Directory -Path $transactionPath -Force | Out-Null
+        $adapter.State | Add-Member -NotePropertyName TestMode -NotePropertyValue $Mode
+        $adapter.State.RollbackTransactionPath = $transactionPath
+        $adapter.State.InteractiveContext = [pscustomobject]@{
+            User = 'MINMIN\RemoteDeploymentFixture'
+            SessionId = 7
+            Desktop = (Join-Path $remoteDeploymentTestRoot 'desktop')
+        }
+        $adapter.State.LauncherPath = Join-Path $remoteDeploymentTestRoot 'desktop\敏敏子倒计时.exe'
+        $adapter.State.LegacyLauncherPath = Join-Path $remoteDeploymentTestRoot 'desktop\敏敏子倒计时.cmd'
+        $adapter.State.LauncherTempPath = "$($adapter.State.LauncherPath).new"
+        $adapter.State.SettingsSnapshotPath = Join-Path $transactionPath 'install-backup\settings.json'
+        $adapter.State.SettingsPath = Join-Path $remoteDeploymentInstall 'settings.json'
+        $adapter.State.StartupRequestPath = Join-Path $remoteDeploymentInstall 'startup-request.json'
+        $adapter.State.RuntimeStatusPath = Join-Path $remoteDeploymentInstall 'runtime-status.json'
+        $adapter.State.AcceptanceStatusPath = Join-Path $remoteDeploymentInstall 'acceptance-status.json'
+        $adapter.State.LaunchToken = 'remote-deployment-fixture-token'
+        $adapter.State.ExpectedProcessId = 4242
+        $adapter.State.ExpectedScheduledTaskIdentity = '<Task />'
+        $adapter.State | Add-Member -NotePropertyName RollbackCount -NotePropertyValue 0
+        $adapter.State | Add-Member -NotePropertyName Disposed -NotePropertyValue $false
+
+        $adapter.Begin = {
+            param($AdapterState, $Context)
+            [pscustomobject]@{
+                Validation = [pscustomobject]@{
+                    SchemaVersion = 1
+                    Valid = $true
+                    CoreTestsPassed = 11
+                    CSharpTestsPassed = 13
+                    UiTestsPassed = 17
+                    UiValid = $true
+                    AdapterUiValidated = $true
+                }
+                RuntimeStatus = [pscustomobject]@{
+                    processId = 4242
+                    stage = 'window-ready'
+                    calendarState = 'Ready'
+                }
+            }
+        }
+        $adapter.Rollback = {
+            param($AdapterState, $Context, $Candidate)
+            $AdapterState.RollbackCount++
+            [pscustomobject]@{
+                PreservedUnmanagedLaunchers = $false
+                UnresolvedCommittedTransaction = $false
+            }
+        }
+        $adapter.Finalize = {
+            param($AdapterState, $Context)
+            if ($AdapterState.TestMode -eq 'CommittedFinalizeFailure') {
+                throw '模拟 committed 后 adapter 收尾失败。'
+            }
+        }
+        $adapter.Dispose = {
+            param($AdapterState, $Context)
+            $AdapterState.Disposed = $true
+        }
+        [pscustomobject]@{
+            Adapter = $adapter
+            State = $adapter.State
+            TransactionPath = $transactionPath
+        }
+    }
+
+    try {
+        New-Item -ItemType Directory -Path $remoteDeploymentSource -Force | Out-Null
+        New-Item -ItemType Directory -Path $remoteDeploymentInstall -Force | Out-Null
+        [System.IO.File]::WriteAllText(
+            (Join-Path $remoteDeploymentSource 'Countdown.InstallTransaction.psm1'),
+            @'
+Set-StrictMode -Version Latest
+
+function Complete-CountdownInstallTransaction {
+    param(
+        [string] $TransactionPath,
+        [string] $ExpectedInstallPath,
+        [string] $ExpectedTaskName,
+        [string] $ExpectedLegacyTaskName,
+        [string] $ExpectedLauncherPath,
+        [string] $ExpectedLegacyLauncherPath,
+        [string] $ExpectedLauncherTempPath
+    )
+    [System.IO.File]::WriteAllText(
+        (Join-Path $TransactionPath 'accepted.marker'),
+        'accepted',
+        [System.Text.UTF8Encoding]::new($false))
+}
+
+function Remove-CountdownCommittedInstallTransaction {
+    param(
+        [string] $TransactionPath,
+        [string] $ExpectedInstallPath,
+        [string] $ExpectedTaskName,
+        [string] $ExpectedLegacyTaskName,
+        [string] $ExpectedLauncherPath,
+        [string] $ExpectedLegacyLauncherPath,
+        [string] $ExpectedLauncherTempPath,
+        [scriptblock] $MoveAction
+    )
+    if ($TransactionPath -match 'CommitPreparationFailure') {
+        throw '模拟 committed 点前的清理准备失败。'
+    }
+
+    $destination = "$TransactionPath.committed-fixture"
+    if ($null -ne $MoveAction) {
+        & $MoveAction $TransactionPath $destination
+    }
+    else {
+        Move-Item -LiteralPath $TransactionPath -Destination $destination -ErrorAction Stop
+    }
+    if ($TransactionPath -match 'CommittedCleanupFailure') {
+        throw '模拟 committed 点后的事务清理失败。'
+    }
+}
+
+Export-ModuleMember -Function Complete-CountdownInstallTransaction, Remove-CountdownCommittedInstallTransaction
+'@,
+            [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText(
+            (Join-Path $remoteDeploymentSource 'Countdown.Runtime.psm1'),
+            "Set-StrictMode -Version Latest`r`n",
+            [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText(
+            (Join-Path $remoteDeploymentInstall 'Countdown.Settings.psm1'),
+            "Set-StrictMode -Version Latest`r`n",
+            [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText(
+            (Join-Path $remoteDeploymentSource 'Countdown.TransactionAcceptance.psm1'),
+            @'
+Set-StrictMode -Version Latest
+
+function Invoke-CountdownTransactionAcceptance {
+    param(
+        [string] $StartupRequestPath,
+        [string] $RuntimeStatusPath,
+        [string] $AcceptanceStatusPath,
+        [string] $LaunchToken,
+        [object] $ExpectedInteractiveContext,
+        [int] $ExpectedProcessId,
+        [int] $ExpectedSessionId,
+        [string] $ExpectedApplicationPath,
+        [string] $TaskName,
+        [string] $ExpectedScheduledTaskIdentity,
+        [string] $SettingsSnapshotPath,
+        [string] $SettingsPath,
+        [scriptblock] $GetInteractiveContext,
+        [scriptblock] $GetScheduledTask,
+        [scriptblock] $GetScheduledTaskIdentity,
+        [scriptblock] $CompleteTransaction,
+        [scriptblock] $RemoveCommittedTransaction
+    )
+
+    [void] (& $CompleteTransaction)
+    switch ($TaskName) {
+        'AcceptedFinalizationFailure' { throw '模拟 accepted 后 finalized 写入失败。' }
+        'AcceptedReceiptFailure' { throw '模拟 accepted 后 finalized-ready 回执失败。' }
+        'AcceptedEnvironmentFailure' { throw '模拟 accepted 后环境复验失败。' }
+    }
+
+    [void] (& $RemoveCommittedTransaction)
+    [pscustomobject]@{
+        AcceptanceState = 'finalized-ready'
+        RuntimeProcessId = 4242
+        TaskState = 'Running'
+        SettingsHashBefore = 'before-hash'
+        SettingsHashAfter = 'after-hash'
+    }
+}
+
+Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
+'@,
+            [System.Text.UTF8Encoding]::new($false))
+
+        $successFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode Success
+        $successResult = Invoke-CountdownRemoteDeployment `
+            -SourceRoot $remoteDeploymentSource `
+            -InstallPath $remoteDeploymentInstall `
+            -PowerShell7Path $remoteDeploymentPowerShell `
+            -DeferredReceiptPath $remoteDeploymentReceipt `
+            -TaskName 'Minmin Countdown Fixture' `
+            -LegacyTaskName '敏敏子倒计时 Fixture' `
+            -Adapter $successFixture.Adapter
+        Assert-Equal $true ([bool] $successResult.Valid) 'Remote deployment interface reports success only after acceptance'
+        Assert-Equal 'finalized-ready' ([string] $successResult.AcceptanceState) 'Remote deployment interface exposes finalized-ready'
+        Assert-Equal 11 ([int] $successResult.CoreTests) 'Remote deployment interface exposes stable Core evidence'
+        Assert-Equal 13 ([int] $successResult.CSharpTests) 'Remote deployment interface exposes stable C# evidence'
+        Assert-Equal 17 ([int] $successResult.UiTests) 'Remote deployment interface exposes stable compatibility UI evidence'
+        Assert-Equal $true ([bool] $successFixture.State.Accepted) 'Remote deployment success reaches acceptance'
+        Assert-Equal $false ([bool] $successFixture.State.RolledBack) 'Remote deployment success does not roll back'
+        Assert-Equal $true ([bool] $successFixture.State.Disposed) 'Remote deployment success releases its host adapter'
+
+        $validationFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode ValidationFailure
+        $validationFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $validationFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $validationFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($validationFailureMessage -match '安装器内置校验未通过') 'Remote deployment rejects a failed stable validation result'
+        Assert-Equal $false ([bool] $validationFailureFixture.State.Accepted) 'Validation failure does not enter acceptance'
+        Assert-Equal $true ([bool] $validationFailureFixture.State.RolledBack) 'Validation failure rolls back the candidate'
+        Assert-Equal $true ([bool] $validationFailureFixture.State.Disposed) 'Validation failure releases its host adapter'
+
+        $adapterUiValidationFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode AdapterUiValidationFailure
+        $adapterUiValidationFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $adapterUiValidationFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $adapterUiValidationFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($adapterUiValidationFailureMessage -match 'adapter UI 验证未通过') 'Remote deployment rejects missing adapter UI evidence before acceptance'
+        Assert-Equal $false ([bool] $adapterUiValidationFailureFixture.State.Accepted) 'Adapter UI validation failure does not enter acceptance'
+        Assert-Equal $true ([bool] $adapterUiValidationFailureFixture.State.RolledBack) 'Adapter UI validation failure rolls back the candidate'
+
+        $validationSchemaFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode ValidationSchemaFailure
+        $validationSchemaFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $validationSchemaFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $validationSchemaFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($validationSchemaFailureMessage -match 'validation interface schemaVersion 不受支持') 'Remote deployment rejects an unknown validation interface version'
+        Assert-Equal $false ([bool] $validationSchemaFailureFixture.State.Accepted) 'Validation schema failure does not enter acceptance'
+        Assert-Equal $true ([bool] $validationSchemaFailureFixture.State.RolledBack) 'Validation schema failure rolls back the candidate'
+
+        $acceptanceFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode AcceptanceFailure
+        $acceptanceFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $acceptanceFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $acceptanceFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($acceptanceFailureMessage -match '模拟验收失败') 'Remote deployment surfaces acceptance failure'
+        Assert-Equal $true ([bool] $acceptanceFailureFixture.State.RolledBack) 'Acceptance failure rolls back the candidate'
+        Assert-Equal $true ([bool] $acceptanceFailureFixture.State.Disposed) 'Acceptance failure releases its host adapter'
+
+        $commitThenFailFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode CommitThenFail
+        $commitThenFailMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $commitThenFailFixture.Adapter | Out-Null
+        }
+        catch {
+            $commitThenFailMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($commitThenFailMessage -match '部署已提交.*未回滚.*模拟提交后验收失败') 'Remote deployment reports an acceptance failure after the explicit commit boundary without claiming rollback'
+        Assert-Equal 0 ([int] $commitThenFailFixture.State.RollbackCount) 'Remote deployment never invokes rollback after the adapter crosses its explicit commit boundary'
+        Assert-Equal $true ([bool] $commitThenFailFixture.State.Disposed) 'Committed acceptance failure still releases its host adapter'
+
+        $acceptedFailureCases = @(
+            [pscustomobject]@{ Mode = 'AcceptedFinalizationFailure'; Failure = '模拟 accepted 后 finalized 写入失败' },
+            [pscustomobject]@{ Mode = 'AcceptedReceiptFailure'; Failure = '模拟 accepted 后 finalized-ready 回执失败' },
+            [pscustomobject]@{ Mode = 'AcceptedEnvironmentFailure'; Failure = '模拟 accepted 后环境复验失败' }
+        )
+        foreach ($acceptedFailureCase in $acceptedFailureCases) {
+            $acceptedFailureFixture = New-CountdownRemoteDeploymentWindowsFixtureAdapter -Mode $acceptedFailureCase.Mode
+            $acceptedFailureMessage = $null
+            try {
+                Invoke-CountdownRemoteDeployment `
+                    -SourceRoot $remoteDeploymentSource `
+                    -InstallPath $remoteDeploymentInstall `
+                    -PowerShell7Path $remoteDeploymentPowerShell `
+                    -DeferredReceiptPath $remoteDeploymentReceipt `
+                    -TaskName $acceptedFailureCase.Mode `
+                    -LegacyTaskName '敏敏子倒计时 Fixture' `
+                    -Adapter $acceptedFailureFixture.Adapter | Out-Null
+            }
+            catch {
+                $acceptedFailureMessage = $_.Exception.Message
+            }
+            Assert-Equal $true (Test-Path -LiteralPath (Join-Path $acceptedFailureFixture.TransactionPath 'accepted.marker') -PathType Leaf) "Remote deployment fixture reaches accepted before $($acceptedFailureCase.Mode)"
+            Assert-Equal $true ($acceptedFailureMessage -match "已回滚.*$([regex]::Escape($acceptedFailureCase.Failure))") "Remote deployment rolls back $($acceptedFailureCase.Mode)"
+            Assert-Equal 1 ([int] $acceptedFailureFixture.State.RollbackCount) "Remote deployment invokes rollback exactly once for $($acceptedFailureCase.Mode)"
+            Assert-Equal $false ([bool] $acceptedFailureFixture.State.Committed) "Accepted is not the committed boundary for $($acceptedFailureCase.Mode)"
+        }
+
+        $commitPreparationFailureFixture = New-CountdownRemoteDeploymentWindowsFixtureAdapter -Mode CommitPreparationFailure
+        $commitPreparationFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'CommitPreparationFailure' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $commitPreparationFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $commitPreparationFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($commitPreparationFailureMessage -match '已回滚.*模拟 committed 点前的清理准备失败') 'Remote deployment rolls back when committed cleanup fails before crossing the committed point'
+        Assert-Equal 1 ([int] $commitPreparationFailureFixture.State.RollbackCount) 'Remote deployment invokes rollback exactly once before the committed point'
+        Assert-Equal $false ([bool] $commitPreparationFailureFixture.State.Committed) 'Remote deployment keeps State.Committed false before the committed point'
+
+        $committedCleanupFailureFixture = New-CountdownRemoteDeploymentWindowsFixtureAdapter -Mode CommittedCleanupFailure
+        $committedCleanupFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'CommittedCleanupFailure' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $committedCleanupFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $committedCleanupFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($committedCleanupFailureMessage -match '部署已提交.*未回滚.*模拟 committed 点后的事务清理失败') 'Remote deployment reports cleanup failure after crossing the committed point without rollback'
+        Assert-Equal 0 ([int] $committedCleanupFailureFixture.State.RollbackCount) 'Remote deployment never rolls back when committed cleanup throws after the committed point'
+        Assert-Equal $true ([bool] $committedCleanupFailureFixture.State.Committed) 'Remote deployment observes the committed point even when committed cleanup later throws'
+
+        $committedFinalizeFailureFixture = New-CountdownRemoteDeploymentWindowsFixtureAdapter -Mode CommittedFinalizeFailure
+        $committedFinalizeFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'CommittedFinalizeFailure' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $committedFinalizeFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $committedFinalizeFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($committedFinalizeFailureMessage -match '部署已提交.*未回滚.*模拟 committed 后 adapter 收尾失败') 'Remote deployment reports adapter finalization failure after commit without rollback'
+        Assert-Equal 0 ([int] $committedFinalizeFailureFixture.State.RollbackCount) 'Remote deployment never rolls back an adapter finalization failure after commit'
+        Assert-Equal $true ([bool] $committedFinalizeFailureFixture.State.Committed) 'Remote deployment keeps committed state through adapter finalization failure'
+
+        $rollbackFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode RollbackFailure
+        $rollbackFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $rollbackFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $rollbackFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($rollbackFailureMessage -match '安装器内置校验未通过.*回滚也失败.*模拟回滚失败') 'Remote deployment preserves both primary and rollback failures'
+        Assert-Equal $true ([bool] $rollbackFailureFixture.State.RolledBack) 'Rollback failure records that rollback was attempted'
+        Assert-Equal $true ([bool] $rollbackFailureFixture.State.Disposed) 'Rollback failure still releases its host adapter'
+
+        $finalizeFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode FinalizeFailure
+        $finalizeFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $finalizeFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $finalizeFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($finalizeFailureMessage -match '部署已提交.*未回滚.*模拟提交后收尾失败') 'Remote deployment does not claim rollback after committed cleanup failure'
+        Assert-Equal $false ([bool] $finalizeFailureFixture.State.RolledBack) 'Committed cleanup failure does not roll back'
+        Assert-Equal $true ([bool] $finalizeFailureFixture.State.Disposed) 'Committed cleanup failure still releases its host adapter'
+
+        $validationAndDisposeFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode ValidationAndDisposeFailure
+        $validationAndDisposeFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $validationAndDisposeFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $validationAndDisposeFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($validationAndDisposeFailureMessage -match '已回滚.*安装器内置校验未通过.*资源释放也失败.*模拟资源释放失败') 'Remote deployment preserves its primary failure when adapter disposal also fails'
+        Assert-Equal $true ([bool] $validationAndDisposeFailureFixture.State.RolledBack) 'Validation and disposal failure still rolls back the candidate'
+        Assert-Equal $true ([bool] $validationAndDisposeFailureFixture.State.Disposed) 'Validation and disposal failure attempts adapter disposal'
+
+        $disposeFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode DisposeFailure
+        $disposeFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $disposeFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $disposeFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($disposeFailureMessage -match '部署已提交.*资源释放失败.*未回滚.*模拟资源释放失败') 'Remote deployment reports committed disposal failure without claiming rollback'
+        Assert-Equal $false ([bool] $disposeFailureFixture.State.RolledBack) 'Committed disposal failure does not roll back'
+        Assert-Equal $true ([bool] $disposeFailureFixture.State.Disposed) 'Committed disposal failure records the disposal attempt'
+
+        $knownTransactionPath = Join-Path $remoteDeploymentTestRoot 'known-transaction-without-journal'
+        New-Item -ItemType Directory -Path $knownTransactionPath -Force | Out-Null
+        $remoteDeploymentModule = Get-Module -Name Countdown.RemoteDeployment | Select-Object -First 1
+        $windowsAdapter = & $remoteDeploymentModule { New-CountdownRemoteDeploymentWindowsAdapter }
+        $windowsAdapter.State.TransactionModuleImported = $true
+        $windowsAdapter.State.InstallStarted = $true
+        $windowsAdapter.State.RollbackTransactionPath = $knownTransactionPath
+        $windowsAdapter.State.LauncherPath = Join-Path $remoteDeploymentTestRoot 'desktop-launcher.exe'
+        $windowsAdapter.State.LegacyLauncherPath = Join-Path $remoteDeploymentTestRoot 'legacy-launcher.cmd'
+        $windowsAdapter.State.LauncherTempPath = Join-Path $remoteDeploymentTestRoot 'desktop-launcher.exe.new'
+        $windowsAdapterContext = [pscustomobject]@{
+            SourceRoot = $remoteDeploymentSource
+            InstallPath = $remoteDeploymentInstall
+            PowerShell7Path = $remoteDeploymentPowerShell
+            DeferredReceiptPath = $remoteDeploymentReceipt
+            TaskName = 'Minmin Countdown Fixture'
+            LegacyTaskName = '敏敏子倒计时 Fixture'
+        }
+        $missingJournalMessage = $null
+        try {
+            & $windowsAdapter.Rollback $windowsAdapter.State $windowsAdapterContext $null | Out-Null
+        }
+        catch {
+            $missingJournalMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($missingJournalMessage -match '无法验证待回滚事务的 journal；拒绝声称已回滚') 'Known rollback transaction without a journal fails closed'
+    }
+    finally {
+        Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
+        Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
+        Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+        Import-Module (Join-Path $PSScriptRoot 'Countdown.TransactionAcceptance.psm1') -Force
+        Remove-CountdownIsolatedTestTree -Path $remoteDeploymentTestRoot -AllowedRoot $remoteDeploymentEvidenceRoot
+    }
+
+    if ($RemoteDeploymentOnly) {
+        if ($failures.Count -gt 0) {
+            $failures | ForEach-Object { Write-Error $_ }
+            exit 1
+        }
+        [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'RemoteDeployment' } | ConvertTo-Json
+        exit 0
+    }
+}
+
 if (-not $AcceptanceOnly) {
 $releaseContract = Get-CountdownReleaseContract
 $expectedBuildAssets = @(
@@ -89,8 +838,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 50 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including its trust roots'
-Assert-Equal 47 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including transaction acceptance'
+Assert-Equal 53 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including its trust roots'
+Assert-Equal 50 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including deployment modules'
 Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
 Assert-Equal 27 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'
 Assert-Equal 20 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
@@ -99,10 +848,35 @@ Assert-Equal ($expectedCompatibilityFixtures -join ',') (@($releaseContract.Comp
 Assert-Equal $true ('Countdown.TransactionAcceptance.psm1' -in @($releaseContract.PackageFiles)) 'Transaction acceptance is packaged'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Countdown.TransactionAcceptance.psm1') 'Transaction acceptance is integrity protected'
 Assert-Equal $false ('Countdown.TransactionAcceptance.psm1' -in @($releaseContract.InstalledFiles)) 'Transaction acceptance is not installed as runtime'
+foreach ($deploymentModule in @('Countdown.Validation.psm1', 'Countdown.RemoteDeployment.psm1', 'Countdown.TransferLedger.psm1')) {
+    Assert-Equal $true ($deploymentModule -in @($releaseContract.PackageFiles)) "Deployment module is packaged: $deploymentModule"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($deploymentModule) "Deployment module is integrity protected: $deploymentModule"
+    Assert-Equal $false ($deploymentModule -in @($releaseContract.InstalledFiles)) "Deployment module is not installed as runtime: $deploymentModule"
+}
 foreach ($trustRoot in @('Deploy-OfficeCountdown.ps1', 'Install-Countdown.ps1', 'Countdown.ReleaseContract.psm1')) {
     Assert-Equal $true ($trustRoot -in @($releaseContract.PackageTrustRoots)) "Release contract declares trust root $trustRoot"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($trustRoot) "Release contract does not self-hash trust root $trustRoot"
 }
+$deploySource = [System.IO.File]::ReadAllText(
+    (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'),
+    [System.Text.Encoding]::UTF8)
+$deployCommitGateIndex = $deploySource.IndexOf('本地 HEAD 与 origin/main 不一致，拒绝部署。')
+$deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $repoRoot')
+$deployValidationExitIndex = $deploySource.IndexOf('if ($ValidateOnly) {')
+$transferLedgerImportIndex = $deploySource.IndexOf("Import-Module (Join-Path `$repoRoot 'Countdown.TransferLedger.psm1') -Force")
+$credentialImportIndex = $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'")
+Assert-Equal $true (
+    $deployCommitGateIndex -ge 0 -and
+    $deployPackageAssertionIndex -gt $deployCommitGateIndex -and
+    $deployValidationExitIndex -gt $deployPackageAssertionIndex -and
+    $transferLedgerImportIndex -gt $deployValidationExitIndex -and
+    $credentialImportIndex -gt $transferLedgerImportIndex
+) 'Office deploy imports the transfer module only after Git, package hash, and validate-only gates'
+$recordedTransferCallCount = [regex]::Matches(
+    $deploySource,
+    '(?m)^\s*Invoke-CountdownRecordedScpTransfer\b').Count
+Assert-Equal 2 $recordedTransferCallCount 'Office deploy records both SCP commands through the transfer ledger interface'
+Assert-Equal $false $deploySource.Contains('& scp.exe') 'Office deploy has no direct SCP call that bypasses the transfer ledger'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'
 Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath -like '*ui-references*' }).Count 'UI references stay outside build targets'
@@ -1152,24 +1926,8 @@ Assert-Equal $true ($payloadCaptureIndex -ge 0 -and $candidatePathIndex -gt $pay
 $installTreeGuardIndex = $installerSource.IndexOf('Assert-CountdownInstallTreeHasNoReparsePoints -Path $install', $payloadCaptureIndex)
 $payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force', $installTreeGuardIndex)
 Assert-Equal $true ($installTreeGuardIndex -gt $payloadCaptureIndex -and $payloadCopyIndex -gt $installTreeGuardIndex) 'Installer rechecks the install tree after the stable snapshot and before writing payload files'
-$deploySource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script required by remote core tests'
 Assert-Equal $true ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the build script required by remote core tests'
-Assert-Equal $false $deploySource.Contains('Invoke-OfficeEncodedCommand -ScriptText $remoteInstall') 'Office deploy does not exceed the Windows command-line limit by embedding the full remote install script'
-Assert-Equal $true $deploySource.Contains('$remoteInstallScript = Join-Path $evidenceRoot ''remote-install.ps1''') 'Office deploy materializes the long remote install script as a transfer artifact'
-Assert-Equal $true $deploySource.Contains('& scp.exe @script:sshOptions $remoteInstallScript') 'Office deploy transfers the remote install script through the strict SSH channel'
-Assert-Equal $true $deploySource.Contains("throw '远端安装脚本哈希不匹配。'") 'Office deploy verifies the transferred remote install script before execution'
-$deployCommitGateIndex = $deploySource.IndexOf('本地 HEAD 与 origin/main 不一致，拒绝部署。')
-$deployBuildIndex = $deploySource.IndexOf('& $powerShell7 -NoLogo -NoProfile -NonInteractive -File $buildScript -Clean')
-$deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $repoRoot')
-Assert-Equal $true ($deployCommitGateIndex -ge 0 -and $deployBuildIndex -gt $deployCommitGateIndex -and $deployPackageAssertionIndex -gt $deployBuildIndex) 'Office deploy clean-builds C# artifacts from the fixed main commit before asserting the release package'
-Assert-Equal $true ($deploySource.Contains('& tailscale.exe ping --until-direct=false --c 3 --timeout 10s $officeHost')) 'Office connectivity probe retries encrypted Tailscale reachability without requiring a direct path'
-Assert-Equal $true ($deploySource.Contains('-PreserveUnmanagedLaunchers')) 'Office acceptance rollback preserves user-replaced launcher files while restoring system state'
-Assert-Equal $true ($deploySource.Contains('UnresolvedLauncherOwnershipConflicts')) 'Office acceptance reports an unresolved pre-receipt launcher conflict'
-Assert-Equal $true ($deploySource.Contains('已恢复应用、任务和时间服务')) 'Office acceptance reports a partial conflict recovery accurately'
-$deployCommittedRecoveryMessageIndex = $deploySource.IndexOf('检测到已提交但未完成解锁确认的事务，未声称回滚')
-$deployOwnershipRecoveryMessageIndex = $deploySource.IndexOf('已恢复应用、任务和时间服务；为保护用户替换的桌面启动器')
-Assert-Equal $true ($deployCommittedRecoveryMessageIndex -ge 0 -and $deployCommittedRecoveryMessageIndex -lt $deployOwnershipRecoveryMessageIndex) 'Office acceptance prioritizes committed recovery evidence over a simultaneous launcher conflict'
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
 [System.IO.File]::WriteAllText($clearTestPath, '{}')
 [System.IO.File]::WriteAllText("$clearTestPath.tmp", '{}')

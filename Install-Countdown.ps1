@@ -69,6 +69,7 @@ $powerShellProcessName = [System.IO.Path]::GetFileName($powerShellEngine)
 Get-Service -Name W32Time -ErrorAction Stop | Out-Null
 
 Import-Module (Join-Path $staging 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $staging 'Countdown.Validation.psm1') -Force
 $interactiveContext = Get-CountdownInteractiveDesktopContext
 $contextExpectationProvided = $PSBoundParameters.ContainsKey('ExpectedInteractiveUser') -or $PSBoundParameters.ContainsKey('ExpectedInteractiveSessionId') -or $PSBoundParameters.ContainsKey('ExpectedDesktopPath')
 if ($contextExpectationProvided) {
@@ -152,27 +153,14 @@ function Wait-CountdownNetworkTimeSource {
     throw "Windows Time did not report a network source within $TimeoutSeconds seconds: $lastResult"
 }
 
-$coreTestArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $staging 'Countdown.Core.Tests.ps1'))
-if ($ParentTransactionMutexHeld) { $coreTestArguments += '-ParentTransactionMutexHeld' }
-$testOutput = & $powerShellEngine @coreTestArguments | Out-String
-if ($LASTEXITCODE -ne 0) {
-    throw "Remote tests failed: $testOutput"
-}
-$cSharpTestOutput = & $powerShellEngine `
-    -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $staging 'Countdown.CSharp.Tests.ps1') | Out-String
-if ($LASTEXITCODE -ne 0) {
-    throw "Remote C# regression test failed: $cSharpTestOutput"
-}
-$uiTestOutput = & $powerShellEngine `
-    -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $staging 'Countdown.Ui.Tests.ps1') | Out-String
-if ($LASTEXITCODE -ne 0) {
-    throw "Remote UI regression test failed: $uiTestOutput"
-}
-$uiValidationOutput = & $powerShellEngine `
-    -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $staging '敏敏子倒计时.ps1') -ValidateOnly | Out-String
-if ($LASTEXITCODE -ne 0) {
-    throw "Remote WPF validation failed: $uiValidationOutput"
-}
+$validationSuite = Invoke-CountdownValidationSuite `
+    -Root $staging `
+    -PowerShell7Path $powerShellEngine `
+    -ParentTransactionMutexHeld:$ParentTransactionMutexHeld
+$testOutput = [string] $validationSuite.TestOutput
+$cSharpTestOutput = [string] $validationSuite.CSharpTestOutput
+$uiTestOutput = [string] $validationSuite.UiTestOutput
+$uiValidationOutput = [string] $validationSuite.UiValidationOutput
 
 $launcherPath = Join-Path $desktop '敏敏子倒计时.exe'
 $launcherStatePath = Join-Path $install 'launcher-state.json'
@@ -321,6 +309,15 @@ try {
             CSharpTestOutput = $cSharpTestOutput.Trim()
             UiTestOutput = $uiTestOutput.Trim()
             UiValidationOutput = $uiValidationOutput.Trim()
+            Validation = [ordered]@{
+                SchemaVersion = [int] $validationSuite.SchemaVersion
+                Valid = [bool] $validationSuite.Valid
+                CoreTestsPassed = [int] $validationSuite.CoreTestsPassed
+                CSharpTestsPassed = [int] $validationSuite.CSharpTestsPassed
+                UiTestsPassed = [int] $validationSuite.UiTestsPassed
+                UiValid = [bool] $validationSuite.UiValid
+                AdapterUiValidated = [bool] $validationSuite.AdapterUiValidated
+            }
             InstalledFiles = @(Get-ChildItem -LiteralPath $install -File -Recurse | Select-Object FullName, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
             Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
             Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}

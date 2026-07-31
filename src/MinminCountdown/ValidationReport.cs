@@ -1579,8 +1579,8 @@ internal static class ValidationReport
         var expectedHeader = new NormalizedRect(0.0994, 0.1851, 0.8101, 0.1593);
         var expectedCards = new[]
         {
-            new NormalizedRect(0.1153, 0.3775, 0.7728, 0.1611),
-            new NormalizedRect(0.1153, 0.5608, 0.7728, 0.1593)
+            new NormalizedRect(0.1154, 0.3791, 0.7723, 0.1742),
+            new NormalizedRect(0.1154, 0.5533, 0.7723, 0.1004)
         };
         var expectedMascots = new[]
         {
@@ -1749,6 +1749,21 @@ internal static class ValidationReport
             var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
             var captureBytes = EncodePng(framedCapture);
             var captureWritten = captureBytes.Length > 0;
+            byte[]? notesCaptureBytes = null;
+            byte[]? nightCountdownCaptureBytes = null;
+            byte[]? nightNotesCaptureBytes = null;
+            byte[]? scrolledCountdownsCaptureBytes = null;
+            byte[]? scrolledNotesCaptureBytes = null;
+            referenceWindow.ApplyTheme(ApplicationThemeMode.Night);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
+            nightCountdownCaptureBytes = EncodePng(ScaleToFrame(
+                CaptureVisual(root),
+                captureWidth,
+                captureHeight));
+            referenceWindow.ApplyTheme(ApplicationThemeMode.Day);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             var viewportStates = new List<FloatingViewportState>
             {
                 CaptureFloatingViewportState("two-countdowns", referenceWindow, root, rows)
@@ -1766,9 +1781,57 @@ internal static class ValidationReport
             viewportStates.Add(
                 CaptureFloatingViewportState("zero-countdowns", referenceWindow, root, rows));
 
+            var overflowCountdownIds = Enumerable.Range(1, 8)
+                .Select(index => $"reference-overflow-{index}")
+                .ToArray();
+            var overflowCountdownsAdded = true;
+            for (var index = 0; index < overflowCountdownIds.Length; index++)
+            {
+                overflowCountdownsAdded &= referenceSession.TrySaveCountdown(
+                    overflowCountdownIds[index],
+                    $"滚动倒计时 {index + 1}",
+                    referenceUtc.AddDays(index + 1),
+                    Array.Empty<string>(),
+                    out _);
+            }
+
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
+            var countdownScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
+            countdownScroller.ScrollToVerticalOffset(countdownScroller.ScrollableHeight);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
+            scrolledCountdownsCaptureBytes = EncodePng(ScaleToFrame(
+                CaptureVisual(root),
+                captureWidth,
+                captureHeight));
+            viewportStates.Add(
+                CaptureFloatingViewportState("nine-countdowns-scrolled", referenceWindow, root, rows));
+
+            var overflowCountdownsDeleted = true;
+            foreach (var id in overflowCountdownIds)
+            {
+                overflowCountdownsDeleted &= referenceSession.TryDeleteCountdown(id, out _);
+            }
+            countdownScroller.ScrollToTop();
+            PumpDispatcher();
+
             referenceWindow.UpdateTime(referenceUtc);
             Required<ToggleButton>(referenceWindow, "FloatingNotesButton")
                 .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+            notesCaptureBytes = EncodePng(ScaleToFrame(
+                CaptureVisual(root),
+                captureWidth,
+                captureHeight));
+            referenceWindow.ApplyTheme(ApplicationThemeMode.Night);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+            nightNotesCaptureBytes = EncodePng(ScaleToFrame(
+                CaptureVisual(root),
+                captureWidth,
+                captureHeight));
+            referenceWindow.ApplyTheme(ApplicationThemeMode.Day);
+            referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             viewportStates.Add(
                 CaptureFloatingViewportState("six-multiline-notes", referenceWindow, root, rows));
@@ -1781,41 +1844,81 @@ internal static class ValidationReport
             var bodyScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
             bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+            scrolledNotesCaptureBytes = EncodePng(ScaleToFrame(
+                CaptureVisual(root),
+                captureWidth,
+                captureHeight));
             viewportStates.Add(
                 CaptureFloatingViewportState("scrolled-notes", referenceWindow, root, rows));
 
+            var datedCard = rows.Children
+                .OfType<Border>()
+                .Single(card => Descendants<CheckBox>(card)
+                    .Any(check => string.Equals(
+                        check.Tag as string,
+                        "reference-note-1",
+                        StringComparison.Ordinal)));
+            var datedStampTexts = CalendarIndexStampTexts(datedCard);
+            var datedStampSemanticsMatch =
+                datedStampTexts.SequenceEqual(new[] { "7 月", "15", "周一" });
+            var undatedNoteSaved = referenceSession.TrySaveNote(
+                "reference-undated",
+                "无日期历史便签",
+                null,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance,
+                out _);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 7);
+            var undatedCard = rows.Children
+                .OfType<Border>()
+                .Single(card => Descendants<CheckBox>(card)
+                    .Any(check => string.Equals(
+                        check.Tag as string,
+                        "reference-undated",
+                        StringComparison.Ordinal)));
+            var undatedStampTexts = CalendarIndexStampTexts(undatedCard);
+            var undatedStampSemanticsMatch =
+                undatedStampTexts.SequenceEqual(new[] { "无日期", "--", " " });
+            var undatedNoteDeleted = referenceSession.TryDeleteNote("reference-undated", out _);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+
             var viewportStatesMatch =
                 userCountdownDeleted &&
-                viewportStates.Count == 6 &&
+                overflowCountdownsAdded &&
+                overflowCountdownsDeleted &&
+                datedStampSemanticsMatch &&
+                undatedNoteSaved &&
+                undatedStampSemanticsMatch &&
+                undatedNoteDeleted &&
+                viewportStates.Count == 7 &&
                 viewportStates.All(state => state.WindowSizeMatches) &&
                 viewportStates.All(state => state.ContentSafeAreaMatches) &&
+                viewportStates.All(state => state.WorkspaceSurfaceGeometryMatches) &&
+                viewportStates.All(state => state.VerticalScrollBarIsSafe) &&
                 viewportStates[0].RenderedCardCount == 2 &&
                 viewportStates[1].RenderedCardCount == 1 &&
                 viewportStates[2].RenderedCardCount == 0 &&
-                viewportStates[3].RenderedCardCount == 6 &&
-                viewportStates[3].RenderedMultilineNoteCount == 6 &&
-                viewportStates[4].RepeatingReminderPanelVisible &&
-                viewportStates[4].ScrollableHeight > 0 &&
+                viewportStates[3].RenderedCardCount == 9 &&
+                viewportStates[3].ScrollableHeight > 0 &&
+                viewportStates[3].VerticalOffset > 0 &&
+                viewportStates[3].VerticalScrollBarVisible &&
+                viewportStates[4].RenderedCardCount == 6 &&
+                viewportStates[4].RenderedMultilineNoteCount == 6 &&
+                viewportStates[5].RepeatingReminderPanelVisible &&
                 viewportStates[5].ScrollableHeight > 0 &&
-                viewportStates[5].VerticalOffset > 0;
+                viewportStates[6].ScrollableHeight > 0 &&
+                viewportStates[6].VerticalOffset > 0;
             var rasterCardStatesMatch =
-                viewportStates[0].RasterCardCount == 2 &&
-                viewportStates[0].RasterCardsShareSource &&
-                viewportStates[1].RasterCardCount == 1 &&
-                viewportStates[1].RasterCardsShareSource &&
-                viewportStates[2].RasterCardCount == 0 &&
-                viewportStates[3].RasterCardCount == 6 &&
-                viewportStates[3].RasterCardsShareSource &&
-                viewportStates[4].RasterCardCount == 6 &&
-                viewportStates[4].RasterCardsShareSource &&
-                viewportStates[5].RasterCardCount == 6 &&
-                viewportStates[5].RasterCardsShareSource;
+                viewportStates.All(state => state.RasterCardCount == 0) &&
+                viewportStates.All(state => !state.RasterCardsShareSource);
             var dynamicCardContentRemainsWpf =
                 viewportStates[0].DynamicTextElementCount >= 4 &&
                 viewportStates[1].DynamicTextElementCount >= 2 &&
                 viewportStates[2].DynamicTextElementCount >= 1 &&
-                viewportStates[3].DynamicTextElementCount >= 6 &&
-                viewportStates[3].DynamicCheckBoxCount == 6;
+                viewportStates[3].DynamicTextElementCount >= 18 &&
+                viewportStates[4].DynamicTextElementCount >= 6 &&
+                viewportStates[4].DynamicCheckBoxCount == 6;
             var capturePath = string.Empty;
             var evidenceDirectory = Environment.GetEnvironmentVariable(
                 "MINMIN_COUNTDOWN_VISUAL_EVIDENCE_DIR");
@@ -1829,6 +1932,36 @@ internal static class ValidationReport
                     : "before";
                 capturePath = Path.Combine(evidenceDirectory, $"{captureName}.png");
                 File.WriteAllBytes(capturePath, captureBytes);
+                if (notesCaptureBytes is not null)
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, $"{captureName}-notes.png"),
+                        notesCaptureBytes);
+                }
+                if (nightCountdownCaptureBytes is not null)
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, $"{captureName}-night-countdowns.png"),
+                        nightCountdownCaptureBytes);
+                }
+                if (nightNotesCaptureBytes is not null)
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, $"{captureName}-night-notes.png"),
+                        nightNotesCaptureBytes);
+                }
+                if (scrolledNotesCaptureBytes is not null)
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, $"{captureName}-notes-scrolled.png"),
+                        scrolledNotesCaptureBytes);
+                }
+                if (scrolledCountdownsCaptureBytes is not null)
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, $"{captureName}-countdowns-scrolled.png"),
+                        scrolledCountdownsCaptureBytes);
+                }
                 var referenceImagePath = Environment.GetEnvironmentVariable(
                     "MINMIN_COUNTDOWN_REFERENCE_IMAGE");
                 if (!string.IsNullOrWhiteSpace(referenceImagePath) &&
@@ -2043,8 +2176,16 @@ internal static class ValidationReport
         StackPanel rows)
     {
         var bodyScroller = Required<ScrollViewer>(window, "FloatingBodyScroller");
+        bodyScroller.ApplyTemplate();
+        var verticalScrollBar = bodyScroller.Template.FindName(
+            "PART_VerticalScrollBar",
+            bodyScroller) as ScrollBar;
+        var verticalScrollBarBounds = verticalScrollBar is null
+            ? Rect.Empty
+            : BoundsIn(verticalScrollBar, root);
         var repeatingReminderPanel = Required<StackPanel>(window, "FloatingReminderIntervalPanel");
         var bodyViewport = BoundsIn(bodyScroller, root);
+        var bodyContentRight = bodyViewport.X + bodyScroller.ViewportWidth;
         var protectedHeaderContent = new[]
             {
                 new NamedBounds(
@@ -2092,6 +2233,43 @@ internal static class ValidationReport
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         var renderedCards = rows.Children.OfType<Border>().ToArray();
+        var renderedCardBounds = renderedCards
+            .Select(card => BoundsIn(card, root))
+            .ToArray();
+        var noteEntry = Required<Border>(window, "FloatingNoteEntry");
+        var noteEntryBounds = BoundsIn(noteEntry, root);
+        var noteEntryFitsSafeArea =
+            !noteEntry.IsVisible ||
+            (noteEntryBounds.Right <= bodyContentRight + 0.25 &&
+             noteEntryBounds.Right <= 396.5);
+        var noteDateStamps = renderedCards
+            .SelectMany(Descendants<Border>)
+            .Where(border =>
+                Math.Abs(border.ActualWidth - 48) <= 0.5 &&
+                border.BorderThickness.Left >= 1.5)
+            .ToArray();
+        var noteDateStampBounds = noteDateStamps
+            .Select(stamp => BoundsIn(stamp, root))
+            .ToArray();
+        var isNoteWorkspace = renderedCards.Any(card => Descendants<CheckBox>(card).Any());
+        var workspaceSurfaceGeometryMatches =
+            !isNoteWorkspace ||
+            (renderedCardBounds.All(bounds =>
+                 Math.Abs(bounds.Width - 319) <= 0.5 &&
+                 bounds.Right <= bodyContentRight + 0.25 &&
+                 bounds.Right <= 396.5) &&
+             noteEntryFitsSafeArea &&
+             noteDateStamps.Length == renderedCards.Length &&
+             noteDateStampBounds.All(bounds => bounds.Right <= bodyContentRight + 0.25) &&
+             noteDateStamps.All(stamp =>
+                 !stamp.IsHitTestVisible &&
+                 !stamp.Focusable));
+        var maximumRenderedCardRight = renderedCardBounds.Length == 0
+            ? 0
+            : renderedCardBounds.Max(bounds => bounds.Right);
+        var minimumRenderedCardWidth = renderedCardBounds.Length == 0
+            ? 0
+            : renderedCardBounds.Min(bounds => bounds.Width);
         var rasterSources = renderedCards
             .Select(card => (card.Background as ImageBrush)?.ImageSource)
             .ToArray();
@@ -2120,8 +2298,32 @@ internal static class ValidationReport
             repeatingReminderPanel.IsVisible && repeatingReminderPanel.ActualHeight > 0,
             Math.Round(bodyScroller.ScrollableHeight, 2),
             Math.Round(bodyScroller.VerticalOffset, 2),
+            verticalScrollBar?.IsVisible == true,
+            Math.Round(verticalScrollBarBounds.Left, 2),
+            Math.Round(verticalScrollBarBounds.Right, 2),
+            verticalScrollBar?.IsHitTestVisible == true,
+            Math.Round(bodyContentRight, 2),
+            Math.Round(maximumRenderedCardRight, 2),
+            Math.Round(minimumRenderedCardWidth, 2),
+            noteDateStamps.Length,
+            Math.Round(noteDateStampBounds.Length == 0
+                ? 0
+                : noteDateStampBounds.Max(bounds => bounds.Right), 2),
+            Math.Round(noteEntryBounds.Width, 2),
+            Math.Round(noteEntryBounds.Right, 2),
+            noteEntryFitsSafeArea,
+            workspaceSurfaceGeometryMatches,
             contentOverlapTargets);
     }
+
+    private static string[] CalendarIndexStampTexts(Border card) =>
+        Descendants<Border>(card)
+            .Where(border =>
+                Math.Abs(border.ActualWidth - 48) <= 0.5 &&
+                border.BorderThickness.Left >= 1.5)
+            .SelectMany(Descendants<TextBlock>)
+            .Select(text => text.Text)
+            .ToArray();
 
     private static Rect TextContentBounds(TextBlock textBlock, UIElement ancestor)
     {
@@ -3705,6 +3907,19 @@ internal static class ValidationReport
         bool RepeatingReminderPanelVisible,
         double ScrollableHeight,
         double VerticalOffset,
+        bool VerticalScrollBarVisible,
+        double VerticalScrollBarLeft,
+        double VerticalScrollBarRight,
+        bool VerticalScrollBarIsHitTestVisible,
+        double BodyContentRight,
+        double MaximumRenderedCardRight,
+        double MinimumRenderedCardWidth,
+        int CalendarIndexDateStampCount,
+        double MaximumCalendarIndexDateStampRight,
+        double NoteEntryWidth,
+        double NoteEntryRight,
+        bool NoteEntryFitsSafeArea,
+        bool WorkspaceSurfaceGeometryMatches,
         IReadOnlyList<string> ContentOverlapTargets)
     {
         public bool WindowSizeMatches =>
@@ -3714,6 +3929,12 @@ internal static class ValidationReport
             Math.Abs(RootHeight - 390) <= 0.5;
 
         public bool ContentSafeAreaMatches => ContentOverlapTargets.Count == 0;
+
+        public bool VerticalScrollBarIsSafe =>
+            !VerticalScrollBarVisible ||
+            (VerticalScrollBarIsHitTestVisible &&
+             VerticalScrollBarLeft >= 0 &&
+             VerticalScrollBarRight <= 396.5);
     }
 
     private sealed record NormalizedRect(double X, double Y, double Width, double Height)

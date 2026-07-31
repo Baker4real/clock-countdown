@@ -1,0 +1,202 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using MinminCountdown.Core;
+
+namespace MinminCountdown;
+
+public sealed partial class FloatingWindow
+{
+    // Current row origins are x=59 by day and x=58 by night; 337 keeps the card at x <= 396.
+    private const double CalendarIndexNoteCardWidth = 319;
+    private const double CalendarIndexDateStampWidth = 48;
+    private const double CalendarIndexRuleSpacing = 24;
+
+    private FrameworkElement BuildCalendarIndexNoteCard(NoteRecord note, DateTimeOffset nowUtc)
+    {
+        var completion = UiAccessibility.Name(
+            new CheckBox
+            {
+                Tag = note.Id,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(12, 12, 6, 0),
+                Foreground = _floatingPrimaryBrush
+            },
+            $"完成便签 {note.Text}");
+        completion.Checked += (_, _) =>
+        {
+            var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(note.Id, true));
+            if (!result.Succeeded)
+            {
+                completion.IsChecked = false;
+                SetNoteMessage(result.Error);
+            }
+        };
+
+        var body = new StackPanel
+        {
+            Margin = new Thickness(0, 9, 8, 9)
+        };
+        body.Children.Add(new TextBlock
+        {
+            Text = note.Text,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _floatingPrimaryBrush
+        });
+
+        var nextReminder = ReminderSchedule.GetNextDueUtc(note, nowUtc);
+        if (nextReminder is not null)
+        {
+            body.Children.Add(new TextBlock
+            {
+                Text = $"下次提醒：{ChinaStandardTime.ToBeijingTime(nextReminder.Value):M月d日 HH:mm}",
+                Margin = new Thickness(0, 4, 0, 0),
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = _floatingMutedBrush
+            });
+        }
+
+        var layout = new Grid
+        {
+            Background = CreateCalendarIndexRuleBrush(_floatingBorderBrush),
+            ClipToBounds = true
+        };
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition());
+        layout.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(CalendarIndexDateStampWidth)
+        });
+
+        var dateStamp = CreateCalendarIndexDateStamp(note);
+        Grid.SetColumn(body, 1);
+        Grid.SetColumn(dateStamp, 2);
+        layout.Children.Add(completion);
+        layout.Children.Add(body);
+        layout.Children.Add(dateStamp);
+
+        return new Border
+        {
+            Child = layout,
+            Width = CalendarIndexNoteCardWidth,
+            MinHeight = 72,
+            Margin = new Thickness(0, 0, 0, 8),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = _floatingNoteCardBrush,
+            BorderBrush = _floatingBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            ClipToBounds = true,
+            SnapsToDevicePixels = true,
+            UseLayoutRounding = true
+        };
+    }
+
+    private Border CreateCalendarIndexDateStamp(NoteRecord note)
+    {
+        var date = CalendarIndexDate(note);
+        var culture = CultureInfo.GetCultureInfo("zh-CN");
+        var stamp = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        stamp.Children.Add(CalendarIndexStampText(
+            date is null ? "无日期" : $"{date.Value.Month} 月",
+            10,
+            FontWeights.Medium,
+            _floatingMutedBrush));
+        stamp.Children.Add(CalendarIndexStampText(
+            date is null ? "--" : date.Value.Day.ToString("D2", CultureInfo.InvariantCulture),
+            22,
+            FontWeights.SemiBold,
+            _floatingPrimaryBrush,
+            new FontFamily("Bahnschrift SemiCondensed")));
+        stamp.Children.Add(CalendarIndexStampText(
+            date is null
+                ? " "
+                : culture.DateTimeFormat.GetAbbreviatedDayName(date.Value.DayOfWeek),
+            10,
+            FontWeights.Medium,
+            _floatingMutedBrush));
+
+        var dateStamp = new Border
+        {
+            Child = stamp,
+            Background = _floatingSurfaceBrush,
+            BorderBrush = _floatingBorderBrush,
+            BorderThickness = new Thickness(2, 0, 0, 0),
+            Padding = new Thickness(4, 6, 4, 6),
+            IsHitTestVisible = false,
+            Focusable = false
+        };
+        return dateStamp;
+    }
+
+    private static TextBlock CalendarIndexStampText(
+        string text,
+        double fontSize,
+        FontWeight fontWeight,
+        Brush foreground,
+        FontFamily? fontFamily = null)
+    {
+        var label = new TextBlock
+        {
+            Text = text,
+            FontSize = fontSize,
+            FontWeight = fontWeight,
+            Foreground = foreground,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center
+        };
+        if (fontFamily is not null)
+        {
+            label.FontFamily = fontFamily;
+        }
+
+        return label;
+    }
+
+    private static DateTime? CalendarIndexDate(NoteRecord note)
+    {
+        if (note.Date is not null &&
+            DateTime.TryParseExact(
+                note.Date,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed))
+        {
+            return parsed.Date;
+        }
+
+        return null;
+    }
+
+    private static DrawingBrush CreateCalendarIndexRuleBrush(Brush lineBrush)
+    {
+        var tile = new Rect(
+            0,
+            0,
+            CalendarIndexNoteCardWidth,
+            CalendarIndexRuleSpacing);
+        var rule = new GeometryDrawing(
+            null,
+            new Pen(lineBrush, 1),
+            new LineGeometry(
+                new Point(0, CalendarIndexRuleSpacing - 0.5),
+                new Point(CalendarIndexNoteCardWidth, CalendarIndexRuleSpacing - 0.5)));
+        return new DrawingBrush(rule)
+        {
+            Viewbox = tile,
+            ViewboxUnits = BrushMappingMode.Absolute,
+            Viewport = tile,
+            ViewportUnits = BrushMappingMode.Absolute,
+            TileMode = TileMode.Tile,
+            Stretch = Stretch.Fill,
+            Opacity = 0.24
+        };
+    }
+}

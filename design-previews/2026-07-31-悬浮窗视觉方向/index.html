@@ -1,0 +1,2358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f3ef">
+  <title>悬浮窗视觉方向样机 · 倒计时 B + 便签 B</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --shell-bg: #f5f3ef;
+      --shell-surface: #fffefb;
+      --shell-surface-strong: #ffffff;
+      --shell-ink: #302a27;
+      --shell-muted: #6f6761;
+      --shell-line: #d9d4ce;
+      --shell-accent: #934f3d;
+      --shell-accent-soft: #f5e3dc;
+      --focus: #7d3f31;
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --font-ui: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+      --font-numeral: Bahnschrift, "Segoe UI Variable", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      letter-spacing: 0;
+    }
+
+    html {
+      min-width: 320px;
+      background: var(--shell-bg);
+    }
+
+    body {
+      min-height: 100dvh;
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--shell-bg);
+      color: var(--shell-ink);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    input[type="range"] {
+      accent-color: var(--shell-accent);
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    .direction-card:focus-within {
+      outline: 3px solid color-mix(in srgb, var(--focus) 36%, transparent);
+      outline-offset: 3px;
+    }
+
+    .topbar {
+      position: sticky;
+      z-index: 10;
+      top: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      min-height: 64px;
+      padding: 12px clamp(18px, 4vw, 48px);
+      border-bottom: 1px solid var(--shell-line);
+      background: rgb(245 243 239 / 94%);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar strong {
+      display: block;
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
+    .topbar p {
+      margin: 2px 0 0;
+      color: var(--shell-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .key-hint {
+      color: var(--shell-muted);
+      font-family: var(--font-numeral);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    main {
+      width: min(1240px, 100%);
+      margin: 0 auto;
+      padding: 28px clamp(16px, 3.5vw, 42px) 64px;
+    }
+
+    .readout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
+      gap: 32px;
+      align-items: end;
+      padding: 0 2px 26px;
+      border-bottom: 1px solid var(--shell-line);
+    }
+
+    .readout-copy h1 {
+      max-width: 17ch;
+      margin: 0;
+      font-size: clamp(26px, 3.4vw, 42px);
+      font-weight: 600;
+      line-height: 1.22;
+      text-wrap: balance;
+    }
+
+    .readout-copy p {
+      max-width: 64ch;
+      margin: 12px 0 0;
+      color: var(--shell-muted);
+      font-size: 15px;
+      line-height: 1.7;
+      text-wrap: pretty;
+    }
+
+    .readout-copy .locked-contract {
+      color: #633f34;
+      font-weight: 600;
+    }
+
+    .readout-copy strong {
+      font-weight: 600;
+    }
+
+    .dials {
+      display: grid;
+      gap: 12px;
+    }
+
+    .dial {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 34px;
+      gap: 5px 12px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .dial span {
+      color: var(--shell-muted);
+      font-size: 13px;
+    }
+
+    .dial output {
+      grid-column: 2;
+      grid-row: 1;
+      justify-self: end;
+      color: var(--shell-ink);
+      font-family: var(--font-numeral);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+
+    .dial input {
+      grid-column: 1 / -1;
+      width: 100%;
+      min-height: 24px;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .direction-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: dense;
+      gap: 22px;
+      padding-top: 28px;
+    }
+
+    .direction-card {
+      position: relative;
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--shell-line);
+      border-radius: 8px;
+      background: var(--shell-surface-strong);
+      box-shadow: 0 10px 30px rgb(47 39 33 / 5%);
+    }
+
+    .direction-card[data-recommended="true"] {
+      border-color: #b8755e;
+      box-shadow: 0 0 0 1px rgb(184 117 94 / 18%), 0 14px 32px rgb(93 55 41 / 9%);
+    }
+
+    .direction-card[data-selected] {
+      border-color: #754333;
+      box-shadow: 0 0 0 2px rgb(117 67 51 / 18%), 0 14px 32px rgb(69 43 33 / 11%);
+    }
+
+    .recommend-badge {
+      position: absolute;
+      z-index: 4;
+      top: 12px;
+      right: 12px;
+      padding: 5px 9px;
+      border: 1px solid rgb(255 255 255 / 72%);
+      border-radius: 999px;
+      background: #9a533f;
+      color: #fffaf5;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.25;
+      box-shadow: 0 4px 12px rgb(80 43 31 / 18%);
+    }
+
+    .mockup {
+      position: relative;
+      display: grid;
+      width: 100%;
+      aspect-ratio: 520 / 390;
+      min-height: 0;
+      place-items: center;
+      overflow: hidden;
+      border-bottom: 1px solid var(--shell-line);
+      background: #ebe7e2;
+      container-type: inline-size;
+    }
+
+    .stage {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      pointer-events: none;
+      isolation: isolate;
+    }
+
+    .stage button,
+    .stage input {
+      pointer-events: none;
+    }
+
+    .sample-mark {
+      position: absolute;
+      z-index: 8;
+      top: 10px;
+      left: 10px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      background: rgb(42 34 29 / 70%);
+      color: #fffaf3;
+      font-size: clamp(10px, 2.2cqw, 12px);
+      line-height: 1.3;
+    }
+
+    .card-meta {
+      display: grid;
+      gap: 4px;
+      width: 100%;
+      min-width: 0;
+      padding: 15px 18px 11px;
+    }
+
+    .card-meta h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .card-meta p {
+      display: -webkit-box;
+      width: 100%;
+      min-height: 47px;
+      margin: 0;
+      overflow: hidden;
+      color: var(--shell-muted);
+      font-size: 14px;
+      line-height: 1.65;
+      overflow-wrap: break-word;
+      text-wrap: pretty;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .qmdp-pick-button {
+      position: relative;
+      width: calc(100% - 36px);
+      min-height: 44px;
+      margin: 0 18px 18px;
+      padding: 9px 16px;
+      border: 1px solid #bdb6b0;
+      border-radius: 6px;
+      background: #fffefb;
+      color: var(--shell-ink);
+      cursor: pointer;
+      font-weight: 600;
+      white-space: normal;
+    }
+
+    .direction-card[data-recommended="true"] .qmdp-pick-button {
+      border-color: var(--shell-accent);
+      background: var(--shell-accent);
+      color: #fffaf5;
+    }
+
+    .qmdp-pick-button:active {
+      transform: scale(0.98);
+    }
+
+    .details {
+      margin-top: 30px;
+      padding-top: 25px;
+      border-top: 1px solid var(--shell-line);
+    }
+
+    .details > h2 {
+      margin: 0 0 16px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0 28px;
+    }
+
+    .direction-detail {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 12px;
+      padding: 16px 0;
+      border-top: 1px solid #e4e0db;
+    }
+
+    .direction-detail:nth-child(-n + 2) {
+      border-top: 0;
+    }
+
+    .direction-letter {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid #bcb5ae;
+      border-radius: 50%;
+      color: #544b45;
+      font-family: var(--font-numeral);
+      font-weight: 600;
+    }
+
+    .direction-detail h3 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .direction-detail p {
+      margin: 4px 0 0;
+      color: var(--shell-muted);
+      font-size: 13px;
+      line-height: 1.7;
+      text-wrap: pretty;
+    }
+
+    .direction-detail .direction-spec {
+      color: #54473f;
+      font-weight: 500;
+    }
+
+    .mix-note {
+      margin: 18px 0 0;
+      padding-top: 16px;
+      border-top: 1px solid var(--shell-line);
+      color: var(--shell-muted);
+      font-size: 13px;
+    }
+
+    /* Direction A: retain the current raster composition and polish hierarchy only. */
+    .dir-a {
+      background: #fffdf9;
+      color: #4a2d24;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .dir-a .a-shell {
+      position: absolute;
+      z-index: -2;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+    }
+
+    .dir-a .a-header {
+      position: absolute;
+      z-index: 1;
+      top: 18.5%;
+      left: 9.6%;
+      display: grid;
+      width: 81.2%;
+      height: 16%;
+      grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+      align-items: center;
+      gap: 1.15cqw;
+      padding: 0 2.4cqw 0 4.4cqw;
+      color: #725326;
+    }
+
+    .dir-a .a-title {
+      font-size: clamp(13px, 3.8cqw, 21px);
+      font-weight: 600;
+    }
+
+    .dir-a .a-switch {
+      display: flex;
+      align-items: center;
+      padding: 0.9cqw;
+      border-radius: 999px;
+      background: rgb(255 253 249 / 76%);
+      box-shadow: inset 0 0 0 1px #efd1b6;
+    }
+
+    .dir-a .a-switch span {
+      min-width: 7.8cqw;
+      padding: 0.75cqw 1.2cqw;
+      border-radius: 999px;
+      font-size: clamp(10px, 2.4cqw, 13px);
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .dir-a .a-switch .is-active {
+      background: #f5d9cf;
+      color: #7b392c;
+    }
+
+    .dir-a .a-icon {
+      display: grid;
+      width: clamp(20px, 6cqw, 32px);
+      aspect-ratio: 1;
+      place-items: center;
+      border-radius: 50%;
+      color: #725326;
+      font-family: "Segoe UI Symbol", sans-serif;
+      font-size: clamp(11px, 2.8cqw, 15px);
+      font-weight: 600;
+    }
+
+    .dir-a .a-body {
+      position: absolute;
+      z-index: 1;
+      top: 36.5%;
+      left: 11.4%;
+      display: grid;
+      width: 74%;
+      gap: 2.3cqw;
+    }
+
+    .dir-a .a-primary,
+    .dir-a .a-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2cqw;
+      padding: 2.3cqw 2.8cqw;
+      border: 1px solid #e9c98f;
+      border-radius: clamp(8px, 2.4cqw, 13px);
+      background: rgb(255 253 249 / 94%);
+      box-shadow: 0 4px 12px rgb(112 73 50 / 7%);
+    }
+
+    .dir-a .a-primary {
+      min-height: 13cqw;
+      border-color: #e4b782;
+      background: #fff6d9;
+    }
+
+    .dir-a .a-copy strong,
+    .dir-a .a-copy span {
+      display: block;
+      min-width: 0;
+    }
+
+    .dir-a .a-copy strong {
+      font-size: clamp(12px, 3.1cqw, 17px);
+      font-weight: 600;
+    }
+
+    .dir-a .a-copy span {
+      margin-top: 0.6cqw;
+      color: #87665a;
+      font-size: clamp(10px, 2.3cqw, 13px);
+    }
+
+    .dir-a .a-time {
+      color: #a34b37;
+      font-family: var(--font-numeral);
+      font-size: clamp(15px, 4.3cqw, 24px);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .dir-a .a-footer {
+      color: #87665a;
+      font-size: clamp(10px, 2.2cqw, 12px);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Direction B: one active workspace, reorganized as a compact editorial desk. */
+    .dir-b {
+      background: #f4e4d7;
+      color: #4c3027;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .dir-b::before {
+      position: absolute;
+      z-index: -3;
+      inset: 0;
+      background-image: repeating-linear-gradient(0deg, rgb(115 73 51 / 0%) 0 21px, rgb(159 102 72 / 7%) 22px 23px);
+      content: "";
+    }
+
+    .dir-b .b-character {
+      position: absolute;
+      z-index: 5;
+      top: -2%;
+      right: -1%;
+      width: 26%;
+      height: 27%;
+      object-fit: contain;
+    }
+
+    .dir-b .b-window {
+      position: absolute;
+      top: 7%;
+      right: 5.5%;
+      bottom: 7%;
+      left: 5.5%;
+      display: grid;
+      grid-template-columns: 19% minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #c98569;
+      border-radius: clamp(10px, 3.2cqw, 18px);
+      background: #fffaf2;
+      box-shadow: 0 1px 0 rgb(255 255 255 / 85%) inset, 0 8px 22px rgb(101 56 38 / 13%);
+    }
+
+    .dir-b .b-rail {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 4.6cqw 2.2cqw 2.8cqw;
+      border-right: 1px solid #edc9aa;
+      background: #f8d9ca;
+    }
+
+    .dir-b .b-brand {
+      font-family: "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif;
+      font-size: clamp(12px, 3.1cqw, 17px);
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    .dir-b .b-nav {
+      display: grid;
+      gap: 1.3cqw;
+    }
+
+    .dir-b .b-nav span {
+      display: block;
+      padding: 1.45cqw 1.2cqw;
+      border-radius: 5px;
+      color: #7e5d50;
+      font-size: clamp(10px, 2.35cqw, 13px);
+      text-align: center;
+    }
+
+    .dir-b .b-nav .is-active {
+      background: #fff8eb;
+      color: #823e30;
+      box-shadow: 0 0 0 1px #d99a7d inset;
+      font-weight: 600;
+    }
+
+    .dir-b .b-tools {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.6cqw;
+      color: #845f51;
+      font-family: "Segoe UI Symbol", sans-serif;
+      font-size: clamp(10px, 2.4cqw, 13px);
+      text-align: center;
+    }
+
+    .dir-b .b-main {
+      min-width: 0;
+      padding: 4.4cqw 4.2cqw 3.2cqw;
+    }
+
+    .dir-b .b-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 2cqw;
+      padding-bottom: 2.2cqw;
+      border-bottom: 1px solid #e8c49f;
+    }
+
+    .dir-b .b-head strong {
+      display: block;
+      font-family: "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif;
+      font-size: clamp(14px, 3.8cqw, 21px);
+      font-weight: 600;
+    }
+
+    .dir-b .b-head span {
+      color: #8b6657;
+      font-size: clamp(9px, 2.1cqw, 12px);
+      white-space: nowrap;
+    }
+
+    .dir-b .b-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 2cqw;
+      padding: 4cqw 0 3cqw;
+    }
+
+    .dir-b .b-hero small,
+    .dir-b .b-hero strong {
+      display: block;
+    }
+
+    .dir-b .b-hero small {
+      color: #8a6658;
+      font-size: clamp(10px, 2.3cqw, 13px);
+    }
+
+    .dir-b .b-hero strong {
+      margin-top: 0.7cqw;
+      font-size: clamp(13px, 3.5cqw, 19px);
+      font-weight: 600;
+    }
+
+    .dir-b .b-digits {
+      color: #9f4937;
+      font-family: Bahnschrift, sans-serif;
+      font-size: clamp(23px, 7.8cqw, 43px);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .dir-b .b-list {
+      display: grid;
+      gap: 1.4cqw;
+    }
+
+    .dir-b .b-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2cqw;
+      padding: 1.7cqw 0;
+      border-top: 1px solid #edcfb1;
+      font-size: clamp(10px, 2.45cqw, 13px);
+    }
+
+    .dir-b .b-line span:last-child {
+      color: #7f5e52;
+      font-family: var(--font-numeral);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    /* Direction C: low-density companionship with a single radial focal point. */
+    .dir-c {
+      background: #ffece4;
+      color: #512f2a;
+      font-family: "Yu Gothic UI", "Microsoft YaHei UI", sans-serif;
+    }
+
+    .dir-c .c-window {
+      position: absolute;
+      inset: 5.5% 5%;
+      overflow: hidden;
+      border: 1px solid #eab39f;
+      border-radius: 8% 4.5% 7% 5%;
+      background: #fffaf2;
+      box-shadow: 0 2px 0 #fff inset, 0 10px 24px rgb(140 72 54 / 12%);
+    }
+
+    .dir-c .c-character {
+      position: absolute;
+      z-index: 5;
+      right: -1%;
+      bottom: -1%;
+      width: 28%;
+      height: 31%;
+      object-fit: contain;
+    }
+
+    .dir-c .c-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      height: 18%;
+      padding: 0 4.5cqw;
+      border-bottom: 1px solid #f0cab8;
+    }
+
+    .dir-c .c-title {
+      font-size: clamp(13px, 3.3cqw, 18px);
+      font-weight: 600;
+    }
+
+    .dir-c .c-actions {
+      color: #85584c;
+      font-family: "Segoe UI Symbol", sans-serif;
+      font-size: clamp(11px, 2.7cqw, 15px);
+      word-spacing: 1.2cqw;
+    }
+
+    .dir-c .c-content {
+      display: grid;
+      height: 65%;
+      grid-template-columns: 47% minmax(0, 1fr);
+      align-items: center;
+      gap: 3cqw;
+      padding: 2.8cqw 5.2cqw 1cqw;
+    }
+
+    .dir-c .c-ring {
+      position: relative;
+      display: grid;
+      width: min(31cqw, 168px);
+      aspect-ratio: 1;
+      place-items: center;
+      border-radius: 50%;
+      background: conic-gradient(#d55c47 0 71%, #f6d6c9 71% 100%);
+      box-shadow: 0 10px 18px rgb(174 89 64 / 10%);
+    }
+
+    .dir-c .c-ring::after {
+      position: absolute;
+      inset: 7%;
+      border: 1px solid #efc5b2;
+      border-radius: 50%;
+      background: #fff8eb;
+      content: "";
+    }
+
+    .dir-c .c-ring-copy {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .dir-c .c-ring-copy strong,
+    .dir-c .c-ring-copy span {
+      display: block;
+    }
+
+    .dir-c .c-ring-copy strong {
+      color: #a24438;
+      font-family: "Segoe UI Variable Display", Bahnschrift, sans-serif;
+      font-size: clamp(20px, 6.7cqw, 36px);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      line-height: 1.05;
+    }
+
+    .dir-c .c-ring-copy span {
+      margin-top: 0.8cqw;
+      color: #8a6256;
+      font-size: clamp(9px, 2.25cqw, 12px);
+    }
+
+    .dir-c .c-story {
+      min-width: 0;
+      align-self: center;
+    }
+
+    .dir-c .c-story small {
+      color: #9b6c5f;
+      font-size: clamp(9px, 2.2cqw, 12px);
+    }
+
+    .dir-c .c-story h3 {
+      margin: 0.8cqw 0 0;
+      font-size: clamp(15px, 4.5cqw, 25px);
+      font-weight: 600;
+      line-height: 1.3;
+      text-wrap: balance;
+    }
+
+    .dir-c .c-story p {
+      margin: 1.4cqw 0 0;
+      color: #7f5d54;
+      font-size: clamp(10px, 2.4cqw, 13px);
+    }
+
+    .dir-c .c-bottom {
+      position: absolute;
+      right: 5cqw;
+      bottom: 3.3cqw;
+      left: 5cqw;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.2cqw;
+      padding: 0.9cqw;
+      border: 1px solid #efc6b2;
+      border-radius: 999px;
+      background: #fff3e5;
+    }
+
+    .dir-c .c-bottom span {
+      padding: 1.05cqw;
+      border-radius: 999px;
+      color: #875d51;
+      font-size: clamp(10px, 2.35cqw, 13px);
+      text-align: center;
+    }
+
+    .dir-c .c-bottom .is-active {
+      background: #b8533d;
+      color: #fffaf2;
+      font-weight: 600;
+    }
+
+    /* Direction D: warm night console, dense but still domestic rather than technical-blue. */
+    .dir-d {
+      background: #1f1711;
+      color: #fff4d8;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .dir-d .d-mascots {
+      position: absolute;
+      z-index: -1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      opacity: 0.23;
+      filter: sepia(0.42) saturate(0.72) brightness(0.68);
+    }
+
+    .dir-d .d-window {
+      position: absolute;
+      inset: 6% 5.5%;
+      display: grid;
+      grid-template-columns: 15% minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid #9b744a;
+      border-radius: clamp(7px, 2.2cqw, 12px);
+      background: rgb(47 34 24 / 96%);
+      box-shadow: 0 0 0 1px rgb(255 236 196 / 4%) inset, 0 12px 26px rgb(12 8 5 / 32%);
+    }
+
+    .dir-d .d-rail {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 3cqw;
+      padding: 3.5cqw 1.8cqw 2.8cqw;
+      border-right: 1px solid #705236;
+      background: #2a1f17;
+    }
+
+    .dir-d .d-brand {
+      color: #e9c98f;
+      font-family: Bahnschrift, sans-serif;
+      font-size: clamp(12px, 3.2cqw, 17px);
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .dir-d .d-nav {
+      display: grid;
+      align-content: start;
+      gap: 1.4cqw;
+    }
+
+    .dir-d .d-nav span {
+      display: grid;
+      min-height: 7cqw;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      color: #d7b88c;
+      font-size: clamp(9px, 2.25cqw, 12px);
+    }
+
+    .dir-d .d-nav .is-active {
+      border-color: #9b744a;
+      background: #4d3827;
+      color: #fff1c9;
+      font-weight: 600;
+    }
+
+    .dir-d .d-rail-tools {
+      color: #c6a17f;
+      font-family: "Segoe UI Symbol", sans-serif;
+      font-size: clamp(10px, 2.4cqw, 13px);
+      text-align: center;
+      word-spacing: 1cqw;
+    }
+
+    .dir-d .d-main {
+      min-width: 0;
+      padding: 3.4cqw 3.8cqw 2.7cqw;
+    }
+
+    .dir-d .d-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2cqw;
+      padding-bottom: 2.2cqw;
+      border-bottom: 1px solid #745536;
+    }
+
+    .dir-d .d-head strong {
+      font-size: clamp(13px, 3.3cqw, 18px);
+      font-weight: 600;
+    }
+
+    .dir-d .d-head span {
+      color: #d7b88c;
+      font-family: Bahnschrift, sans-serif;
+      font-size: clamp(9px, 2.2cqw, 12px);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .dir-d .d-primary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 2cqw;
+      padding: 3.3cqw 0 2.8cqw;
+    }
+
+    .dir-d .d-primary small,
+    .dir-d .d-primary strong {
+      display: block;
+    }
+
+    .dir-d .d-primary small {
+      color: #cdaa7d;
+      font-size: clamp(9px, 2.1cqw, 12px);
+    }
+
+    .dir-d .d-primary strong {
+      margin-top: 0.6cqw;
+      color: #fff4d8;
+      font-size: clamp(13px, 3.25cqw, 18px);
+      font-weight: 600;
+    }
+
+    .dir-d .d-digits {
+      color: #e9b36d;
+      font-family: Bahnschrift, sans-serif;
+      font-size: clamp(23px, 7.2cqw, 39px);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .dir-d .d-table {
+      border-top: 1px solid #745536;
+    }
+
+    .dir-d .d-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2cqw;
+      min-height: 7.6cqw;
+      border-bottom: 1px solid #5f442f;
+      font-size: clamp(10px, 2.4cqw, 13px);
+    }
+
+    .dir-d .d-row span:last-child {
+      color: #e2c38a;
+      font-family: Bahnschrift, sans-serif;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .dir-d .d-status {
+      display: flex;
+      justify-content: space-between;
+      gap: 2cqw;
+      padding-top: 2cqw;
+      color: #c8a679;
+      font-size: clamp(9px, 2.05cqw, 11px);
+      white-space: nowrap;
+    }
+
+    /* Locked production geometry: only the visual skin inside existing WPF regions may vary. */
+    .safe-a,
+    .safe-b,
+    .safe-c,
+    .safe-d {
+      color: #4a2d24;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .safe-shell,
+    .safe-mascots,
+    .safe-night-mascots {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+    }
+
+    .safe-shell {
+      z-index: -2;
+    }
+
+    .safe-mascots {
+      z-index: 5;
+    }
+
+    .safe-night-mascots {
+      z-index: 5;
+      opacity: 0.66;
+      filter: sepia(0.42) saturate(0.74) brightness(0.72);
+    }
+
+    .safe-night-shell {
+      position: absolute;
+      z-index: -2;
+      inset: 0;
+      background: #241a12;
+    }
+
+    .safe-night-shell::before,
+    .safe-night-shell::after {
+      position: absolute;
+      content: "";
+    }
+
+    .safe-night-shell::before {
+      inset: 13.846154% 6.153846% 6.666667% 5.192308%;
+      border: 2px solid #9b744a;
+      border-radius: 7.2cqw;
+      background: #2f2218;
+      box-shadow: 0 14px 24px rgb(12 8 5 / 34%);
+    }
+
+    .safe-night-shell::after {
+      top: 18.461538%;
+      left: 9.807692%;
+      width: 81.153846%;
+      height: 16.153846%;
+      border: 1px solid #9b744a;
+      border-radius: 3.1cqw;
+      background: #4a3524;
+    }
+
+    .safe-header {
+      position: absolute;
+      z-index: 6;
+      top: 18.461538%;
+      left: 9.807692%;
+      display: grid;
+      width: 81.153846%;
+      height: 16.153846%;
+      grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+      align-items: center;
+      gap: 0.6cqw;
+      padding: 0 2.8cqw 0 4.3cqw;
+      color: #725326;
+    }
+
+    .safe-title {
+      min-width: 0;
+      overflow: hidden;
+      font-size: clamp(13px, 4.2cqw, 22px);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .safe-switch {
+      display: grid;
+      width: 30.4cqw;
+      grid-template-columns: 1.18fr 1fr;
+      align-items: center;
+      gap: 1.15cqw;
+    }
+
+    .safe-switch span {
+      display: grid;
+      min-height: 6.5cqw;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      color: #725326;
+      font-size: clamp(10px, 2.45cqw, 13px);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .safe-switch .is-active {
+      border-color: #e5b9a6;
+      background: #fce8de;
+      color: #725326;
+    }
+
+    .safe-icon {
+      display: grid;
+      width: 6.9cqw;
+      height: 6.9cqw;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 50%;
+      color: inherit;
+      font-family: "Segoe UI Symbol", sans-serif;
+      font-size: clamp(11px, 2.8cqw, 15px);
+      font-weight: 600;
+    }
+
+    .safe-danger {
+      color: #a24438;
+    }
+
+    .safe-body {
+      position: absolute;
+      z-index: 2;
+      top: 37.692308%;
+      left: 11.153846%;
+      display: grid;
+      width: 77.692308%;
+      min-width: 0;
+      align-content: start;
+      gap: 2.1cqw;
+    }
+
+    .safe-copy,
+    .safe-copy strong,
+    .safe-copy span {
+      display: block;
+      min-width: 0;
+    }
+
+    .safe-copy strong {
+      overflow: hidden;
+      font-size: clamp(11px, 2.9cqw, 16px);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .safe-copy span {
+      margin-top: 0.45cqw;
+      overflow: hidden;
+      color: #87665a;
+      font-size: clamp(9px, 2.15cqw, 12px);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .safe-time {
+      color: #a24438;
+      font-family: Bahnschrift, "Segoe UI Variable", sans-serif;
+      font-size: clamp(14px, 4.25cqw, 23px);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .safe-footer {
+      overflow: hidden;
+      color: #87665a;
+      font-size: clamp(9px, 2.15cqw, 12px);
+      font-variant-numeric: tabular-nums;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .safe-primary,
+    .safe-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2cqw;
+      min-height: 12.8cqw;
+      padding: 2cqw 9.5cqw 2cqw 2.5cqw;
+      border: 1px solid #e9c98f;
+      border-radius: 2.3cqw;
+      background: #fff6d9;
+    }
+
+    .safe-row {
+      min-height: 11.7cqw;
+      background: rgb(255 253 249 / 94%);
+    }
+
+    .safe-a .safe-primary,
+    .safe-a .safe-row {
+      box-shadow: 0 0 0 1px rgb(112 73 50 / 2%), 0 4px 10px rgb(112 73 50 / 7%);
+    }
+
+    .safe-b {
+      color: #4c3027;
+    }
+
+    .safe-b .safe-header {
+      color: #744f30;
+    }
+
+    .safe-b-body {
+      gap: 0;
+      padding-top: 0.7cqw;
+      background-image: repeating-linear-gradient(0deg, transparent 0 5.6cqw, rgb(171 113 78 / 9%) 5.7cqw 5.9cqw);
+    }
+
+    .safe-b-lead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 2cqw;
+      padding: 2cqw 9.5cqw 2.4cqw 0;
+      border-bottom: 1px solid #dba881;
+    }
+
+    .safe-b-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2cqw;
+      min-height: 7cqw;
+      padding-right: 9.5cqw;
+      border-bottom: 1px solid #edcfb1;
+      font-size: clamp(9px, 2.3cqw, 13px);
+    }
+
+    .safe-b-line strong {
+      color: #7f5e52;
+      font-family: Bahnschrift, sans-serif;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .safe-b .safe-footer {
+      padding-top: 1.7cqw;
+    }
+
+    .safe-c-body {
+      grid-template-columns: 31% minmax(0, 1fr);
+      align-items: center;
+      gap: 3.3cqw;
+      padding: 1cqw 9.5cqw 0 0;
+    }
+
+    .safe-c-ring {
+      position: relative;
+      display: grid;
+      width: 20.5cqw;
+      aspect-ratio: 1;
+      place-items: center;
+      border-radius: 50%;
+      background: conic-gradient(#b8533d 0 71%, #f4d5c7 71% 100%);
+    }
+
+    .safe-c-ring::after {
+      position: absolute;
+      inset: 8%;
+      border: 1px solid #eac4ae;
+      border-radius: 50%;
+      background: #fff8eb;
+      content: "";
+    }
+
+    .safe-c-ring > span {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .safe-c-ring strong,
+    .safe-c-ring small,
+    .safe-c-copy strong,
+    .safe-c-copy small,
+    .safe-c-copy span {
+      display: block;
+    }
+
+    .safe-c-ring strong {
+      color: #a24438;
+      font-family: "Segoe UI Variable Display", Bahnschrift, sans-serif;
+      font-size: clamp(16px, 4.7cqw, 26px);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .safe-c-ring small,
+    .safe-c-copy small {
+      margin-top: 0.7cqw;
+      color: #8a6256;
+      font-size: clamp(8px, 1.95cqw, 11px);
+    }
+
+    .safe-c-copy strong {
+      margin-top: 0.6cqw;
+      font-size: clamp(13px, 3.6cqw, 20px);
+      font-weight: 600;
+    }
+
+    .safe-c-copy span {
+      margin-top: 0.8cqw;
+      color: #7f5d54;
+      font-size: clamp(9px, 2.2cqw, 12px);
+    }
+
+    .safe-c .safe-footer {
+      grid-column: 1 / -1;
+      padding-top: 0.4cqw;
+    }
+
+    .safe-d {
+      color: #fff4d8;
+    }
+
+    .safe-d .safe-header {
+      color: #fff4d8;
+    }
+
+    .safe-d .safe-switch span {
+      color: #e7c99b;
+    }
+
+    .safe-d .safe-switch .is-active {
+      border-color: #9b744a;
+      background: #6e492e;
+      color: #fff8e8;
+    }
+
+    .safe-d .safe-danger {
+      color: #ffc0ad;
+    }
+
+    .safe-d-body {
+      gap: 0;
+      padding-top: 0.6cqw;
+    }
+
+    .safe-d-lead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 2cqw;
+      padding: 1.6cqw 9.5cqw 2.2cqw 0;
+      border-bottom: 1px solid #745536;
+    }
+
+    .safe-d .safe-copy strong {
+      color: #fff4d8;
+    }
+
+    .safe-d .safe-copy span,
+    .safe-d .safe-footer {
+      color: #d7b88c;
+    }
+
+    .safe-d .safe-time {
+      color: #e9b36d;
+    }
+
+    .safe-d-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2cqw;
+      min-height: 6.4cqw;
+      padding-right: 9.5cqw;
+      border-bottom: 1px solid #5f442f;
+      color: #fff4d8;
+      font-size: clamp(9px, 2.2cqw, 12px);
+    }
+
+    .safe-d-line strong {
+      color: #e2c38a;
+      font-family: Bahnschrift, sans-serif;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .safe-d .safe-footer {
+      padding-top: 1.4cqw;
+    }
+
+    /* Note direction stages: the production shell, header and mascot layer stay fixed. */
+    .note-body {
+      position: absolute;
+      z-index: 2;
+      top: 37.7%;
+      left: 11.15%;
+      width: 77.7%;
+      height: 57%;
+      min-width: 0;
+      padding-right: 13cqw;
+      overflow: hidden;
+    }
+
+    .note-body,
+    .note-body * {
+      box-sizing: border-box;
+    }
+
+    .note-kicker,
+    .note-kicker strong,
+    .note-kicker span,
+    .note-row,
+    .note-row strong,
+    .note-row small,
+    .note-entry,
+    .note-entry span,
+    .note-entry strong,
+    .note-entry button {
+      min-width: 0;
+    }
+
+    .note-kicker {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 2cqw;
+      height: 6.6cqw;
+      border-bottom: 1px solid currentColor;
+      font-size: clamp(9px, 2.15cqw, 12px);
+      line-height: 1;
+    }
+
+    .note-kicker strong {
+      font-family: Bahnschrift, "Segoe UI Variable", sans-serif;
+      font-size: clamp(12px, 3cqw, 16px);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .note-list {
+      display: grid;
+      gap: 0;
+      margin-top: 1.2cqw;
+    }
+
+    .note-row {
+      display: grid;
+      grid-template-columns: 6cqw minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1.5cqw;
+      min-height: 9.1cqw;
+      border-bottom: 1px solid currentColor;
+      font-size: clamp(8px, 2.15cqw, 12px);
+    }
+
+    .note-check {
+      display: grid;
+      width: 5.2cqw;
+      height: 5.2cqw;
+      place-items: center;
+      border: 1px solid currentColor;
+      border-radius: 1.2cqw;
+      font-size: clamp(8px, 2.1cqw, 12px);
+      line-height: 1;
+    }
+
+    .note-row strong,
+    .note-row small {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-row strong {
+      font-size: clamp(9px, 2.35cqw, 13px);
+      font-weight: 600;
+    }
+
+    .note-row small {
+      margin-top: 0.45cqw;
+      color: currentColor;
+      font-size: clamp(7px, 1.8cqw, 10px);
+      opacity: 0.78;
+    }
+
+    .note-row em {
+      min-width: 0;
+      font-family: Bahnschrift, "Segoe UI Variable", sans-serif;
+      font-size: clamp(7px, 1.8cqw, 10px);
+      font-style: normal;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .note-entry {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1.5cqw;
+      min-height: 10.2cqw;
+      margin-top: 1.6cqw;
+      padding: 1.2cqw 1.8cqw;
+      border: 1px solid currentColor;
+      border-radius: 1.7cqw;
+      font-size: clamp(8px, 2.05cqw, 11px);
+    }
+
+    .note-entry strong {
+      display: block;
+      overflow: hidden;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-entry small {
+      display: block;
+      margin-top: 0.35cqw;
+      overflow: hidden;
+      opacity: 0.78;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-entry button {
+      min-width: 12cqw;
+      min-height: 6.8cqw;
+      padding: 0 1.8cqw;
+      border: 0;
+      border-radius: 1.2cqw;
+      background: currentColor;
+      color: #fffaf2;
+      font-size: clamp(8px, 2cqw, 11px);
+      font-weight: 600;
+    }
+
+    .note-controls {
+      display: flex;
+      align-items: center;
+      gap: 1.2cqw;
+      margin-top: 1.2cqw;
+      color: currentColor;
+      font-size: clamp(7px, 1.75cqw, 10px);
+      white-space: nowrap;
+    }
+
+    .note-controls span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* A: ruled notebook, flat hierarchy and the least visual noise. */
+    .note-a {
+      color: #62483d;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .note-a .note-body {
+      padding-top: 0.4cqw;
+    }
+
+    .note-a .note-kicker {
+      color: #9a5b47;
+      border-bottom-color: #e5b79f;
+    }
+
+    .note-a .note-row {
+      border-bottom-color: #ecd6c5;
+    }
+
+    .note-a .note-check {
+      color: #b85d48;
+      background: #fff8ee;
+    }
+
+    .note-a .note-row em {
+      color: #855341;
+    }
+
+    .note-a .note-entry {
+      border-color: #e6b99f;
+      background: rgb(255 246 217 / 72%);
+    }
+
+    .note-a .note-entry button {
+      background: #b85d48;
+    }
+
+    /* B: a desk-calendar index, with the date rail doing the navigation work. */
+    .note-b {
+      color: #5d3c2e;
+      font-family: Georgia, "Microsoft YaHei UI", sans-serif;
+    }
+
+    .note-b .note-body {
+      display: block;
+      padding-top: 0;
+    }
+
+    .note-b .note-kicker {
+      position: absolute;
+      z-index: 2;
+      top: 0.8cqw;
+      right: 13cqw;
+      display: grid;
+      width: 13.5cqw;
+      height: auto;
+      align-content: start;
+      gap: 0.8cqw;
+      border-bottom: 0;
+      border-top: 2px solid #a9523c;
+      padding: 1.1cqw 0.8cqw;
+      background: #f7d6bd;
+    }
+
+    .note-b .note-kicker span {
+      color: #744838;
+      font-size: clamp(8px, 1.9cqw, 11px);
+    }
+
+    .note-b .note-kicker strong {
+      color: #a9523c;
+      font-family: Bahnschrift, "Segoe UI Variable", sans-serif;
+      font-size: clamp(18px, 5.5cqw, 29px);
+      line-height: 0.9;
+    }
+
+    .note-b .note-list {
+      margin-top: 0;
+      padding-right: 15cqw;
+      border-top: 1px solid #d6a17e;
+      background: repeating-linear-gradient(to bottom, transparent 0 9.1cqw, rgb(169 82 60 / 12%) 9.2cqw 9.35cqw);
+    }
+
+    .note-b .note-row {
+      grid-template-columns: 5.5cqw minmax(0, 1fr) auto;
+      min-height: 9.2cqw;
+      border-bottom-color: #e9ccb7;
+    }
+
+    .note-b .note-check {
+      border-radius: 0;
+      color: #a9523c;
+      background: #fff5dd;
+    }
+
+    .note-b .note-entry {
+      margin-top: 0.8cqw;
+      border-style: dashed;
+      border-color: #d6a17e;
+      background: #fff5dd;
+    }
+
+    .note-b .note-entry button {
+      background: #a9523c;
+    }
+
+    /* C: stationery collage, with tag ribbons as the visual memory point. */
+    .note-c {
+      color: #5b3a30;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .note-c .note-body {
+      padding-top: 0;
+    }
+
+    .note-c .note-kicker {
+      height: 7cqw;
+      border-bottom-color: #e6bf75;
+      color: #9a5a37;
+    }
+
+    .note-c .note-list {
+      display: grid;
+      gap: 1cqw;
+      margin-top: 1cqw;
+    }
+
+    .note-c .note-row {
+      display: block;
+      min-height: 9cqw;
+      padding: 1cqw 1.5cqw;
+      border: 1px solid #efc77b;
+      border-radius: 1.4cqw;
+      background: #fff3c7;
+      box-shadow: 0.9cqw 0.9cqw 0 #f1dcae;
+    }
+
+    .note-c .note-row:nth-child(2) {
+      margin-right: 2.4cqw;
+      margin-left: 2.4cqw;
+      background: #ffe8d9;
+      box-shadow: -0.9cqw 0.9cqw 0 #f4cdbd;
+    }
+
+    .note-c .note-check {
+      display: inline-grid;
+      width: 4.8cqw;
+      height: 4.8cqw;
+      margin-right: 0.8cqw;
+      border-color: #d87950;
+      border-radius: 50%;
+      color: #d87950;
+    }
+
+    .note-c .note-row strong {
+      display: inline;
+      vertical-align: middle;
+    }
+
+    .note-c .note-row small {
+      margin-top: 0.45cqw;
+      padding-top: 0.4cqw;
+      border-top: 1px dashed #e4b664;
+    }
+
+    .note-c .note-row em {
+      display: inline-block;
+      margin-top: 0.45cqw;
+      padding: 0.35cqw 1.1cqw;
+      border-radius: 999px;
+      background: #f2b39f;
+      color: #6a3b31;
+    }
+
+    .note-c .note-entry {
+      min-height: 8.8cqw;
+      margin-top: 1.4cqw;
+      padding-top: 0.8cqw;
+      padding-bottom: 0.8cqw;
+      border-color: #d87950;
+      background: #fffaf0;
+    }
+
+    .note-c .note-entry button {
+      background: #d87950;
+    }
+
+    /* D: warm-brown logbook, dense enough for the night theme without becoming cold. */
+    .note-d {
+      color: #fff3d7;
+      font-family: "Segoe UI Variable", Bahnschrift, "Microsoft YaHei UI", sans-serif;
+    }
+
+    .note-d .note-body {
+      padding-top: 0.4cqw;
+    }
+
+    .note-d .note-kicker {
+      color: #e9b36d;
+      border-bottom-color: #765337;
+    }
+
+    .note-d .note-row {
+      min-height: 7cqw;
+      border-bottom-color: #624630;
+    }
+
+    .note-d .note-check {
+      border-color: #d39a5a;
+      color: #e9b36d;
+      background: #4e3827;
+    }
+
+    .note-d .note-row small,
+    .note-d .note-row em,
+    .note-d .note-controls {
+      color: #d7b88c;
+    }
+
+    .note-d .note-entry {
+      min-height: 8.2cqw;
+      margin-top: 1cqw;
+      padding-top: 0.75cqw;
+      padding-bottom: 0.75cqw;
+      border-color: #9b744a;
+      background: #4e3827;
+    }
+
+    .note-d .note-entry button {
+      background: #c86f54;
+      color: #fff8e8;
+    }
+
+    .note-d .note-controls {
+      border-top: 1px solid #624630;
+      padding-top: 1.1cqw;
+    }
+
+    .confirm-layer {
+      position: fixed;
+      z-index: 30;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 16px;
+      background: rgb(37 30 26 / 46%);
+    }
+
+    .confirm-layer.open {
+      display: grid;
+    }
+
+    .dialog {
+      width: min(520px, 100%);
+      padding: 22px;
+      border: 1px solid #cbc4bd;
+      border-radius: 8px;
+      background: #fffefb;
+      box-shadow: 0 24px 70px rgb(35 29 25 / 24%);
+    }
+
+    .dialog h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .dialog p {
+      margin: 8px 0 16px;
+      color: var(--shell-muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .dialog label {
+      display: grid;
+      gap: 7px;
+      color: #4e4641;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .dialog textarea {
+      width: 100%;
+      min-height: 88px;
+      resize: vertical;
+      padding: 10px 12px;
+      border: 1px solid #bfb7b0;
+      border-radius: 6px;
+      background: #fffdfa;
+      color: var(--shell-ink);
+      font-weight: 400;
+      line-height: 1.55;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .dialog-actions button {
+      min-height: 42px;
+      padding: 8px 16px;
+      border: 1px solid #bdb6b0;
+      border-radius: 6px;
+      background: #fffefb;
+      color: var(--shell-ink);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .dialog-actions .confirm-button {
+      border-color: var(--shell-accent);
+      background: var(--shell-accent);
+      color: #fffaf5;
+    }
+
+    .selection-bar {
+      position: fixed;
+      z-index: 40;
+      right: 16px;
+      bottom: 16px;
+      left: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      max-width: 820px;
+      min-height: 52px;
+      margin: 0 auto;
+      padding: 11px 14px;
+      border: 1px solid #6b5144;
+      border-radius: 8px;
+      background: #332820;
+      color: #fff5e8;
+      box-shadow: 0 14px 40px rgb(38 29 24 / 25%);
+      opacity: 0;
+      transform: translateY(calc(100% + 24px));
+      transition: transform 180ms var(--ease-out), opacity 140ms var(--ease-out);
+      pointer-events: none;
+    }
+
+    .selection-bar.show {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .selection-bar output {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .selection-bar button {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border: 1px solid #7f6658;
+      border-radius: 50%;
+      background: transparent;
+      color: #fff5e8;
+      cursor: pointer;
+      font-family: "Segoe UI Symbol", sans-serif;
+      font-size: 18px;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .qmdp-pick-button:hover,
+      .dialog-actions button:hover {
+        border-color: #8f6658;
+        box-shadow: 0 4px 12px rgb(69 49 40 / 9%);
+      }
+
+      .direction-card[data-recommended="true"] .qmdp-pick-button:hover,
+      .dialog-actions .confirm-button:hover {
+        background: #7f4132;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .topbar,
+      .readout {
+        grid-template-columns: 1fr;
+      }
+
+      .key-hint {
+        display: none;
+      }
+
+      .readout {
+        align-items: start;
+      }
+
+      .dials {
+        max-width: none;
+      }
+
+      .direction-grid,
+      .details-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .direction-detail:nth-child(2) {
+        border-top: 1px solid #e4e0db;
+      }
+    }
+
+    @media (max-width: 520px) {
+      main {
+        padding-right: 12px;
+        padding-left: 12px;
+      }
+
+      .topbar {
+        padding-right: 14px;
+        padding-left: 14px;
+      }
+
+      .readout-copy h1 {
+        max-width: none;
+        font-size: 27px;
+      }
+
+      .direction-grid {
+        gap: 16px;
+      }
+
+      .card-meta {
+        padding-right: 14px;
+        padding-left: 14px;
+      }
+
+      .qmdp-pick-button {
+        width: calc(100% - 28px);
+        margin-right: 14px;
+        margin-left: 14px;
+      }
+
+      .selection-bar {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>敏敏子悬浮窗 · 倒计时 B + 便签 B 已确认</strong>
+      <p>这是保留的设计方向样机；最终采用便签 B「台历索引」，生产实现以 DESIGN.md 为准。</p>
+    </div>
+    <span class="key-hint">键盘 1–4 选择方向</span>
+  </header>
+
+  <main>
+    <section class="readout" aria-labelledby="page-title">
+      <div class="readout-copy">
+        <h1 id="page-title">倒计时 B + 便签 B，生产骨架保持不动</h1>
+        <p>倒计时采用 B「暖纸层级」，便签采用 B「台历索引」；下面保留四个便签方向，记录本次选择依据。</p>
+        <p><strong>设计读取：</strong>桌面悬浮便签工作区，面向每天高频记录和勾选的人，用温暖可爱的纸品语言表达，工作效率优先于装饰。</p>
+        <p class="locked-contract">不可变层：520 × 390 外壳、标题栏五个入口、三只现有玩偶及其锚点、拖拽面、滚动、日期/提醒/标签/添加与完成动作都不被遮挡或改写。</p>
+      </div>
+      <div class="dials" data-qmdp-dials aria-label="设计拨盘">
+        <label class="dial" for="variance">
+          <span>视觉冒险度：便签可以换气质，生产骨架不动</span>
+          <output id="varianceOut" data-qmdp-output="variance" for="variance">6</output>
+          <input id="variance" data-qmdp-dial="variance" type="range" min="1" max="10" value="6">
+        </label>
+        <label class="dial" for="motion">
+          <span>动效强度：收放、勾选和添加只给即时反馈</span>
+          <output id="motionOut" data-qmdp-output="motion" for="motion">3</output>
+          <input id="motion" data-qmdp-dial="motion" type="range" min="1" max="10" value="3">
+        </label>
+        <label class="dial" for="density">
+          <span>信息密度：在 520 × 390 内少走一步</span>
+          <output id="densityOut" data-qmdp-output="density" for="density">7</output>
+          <input id="density" data-qmdp-dial="density" type="range" min="1" max="10" value="7">
+        </label>
+      </div>
+    </section>
+
+    <section class="direction-grid" aria-label="便签四个独立方向">
+      <article class="direction-card" data-direction="A" data-name="暖纸清单" data-recommended="true">
+        <span class="recommend-badge">推荐</span>
+        <div class="mockup">
+          <div class="stage safe-a note-a" aria-label="便签方向 A 暖纸清单样机">
+            <img class="safe-shell" src="../../assets/floating-plush/component-day-outer-shell.png" alt="" aria-hidden="true">
+            <img class="safe-mascots" src="../../assets/floating-plush/component-day-mascots.png" alt="" aria-hidden="true">
+            <div class="safe-header">
+              <span class="safe-title">便签</span>
+              <span class="safe-switch"><span>倒计时</span><span class="is-active">便签</span></span>
+              <span class="safe-icon" title="缩小到托盘">−</span>
+              <span class="safe-icon" title="打开管理窗口">⌂</span>
+              <span class="safe-icon safe-danger" title="退出应用">×</span>
+            </div>
+            <div class="note-body">
+              <div class="note-kicker"><span>未完成便签</span><strong>2</strong></div>
+              <div class="note-list">
+                <div class="note-row"><span class="note-check">□</span><span><strong>确认办公室倒计时发布</strong><small>今天 · 17:30</small></span><em>工作</em></div>
+                <div class="note-row"><span class="note-check">□</span><span><strong>给敏敏子补充夏日照片</strong><small>今天 · 生活</small></span><em>生活</em></div>
+              </div>
+              <div class="note-entry"><span><strong>写下今天要记住的事</strong><small>7 月 31 日 · 不提醒 · 选择标签</small></span><button type="button">添加</button></div>
+              <div class="note-controls"><span>完成勾选</span><span>日期</span><span>提醒</span><span>标签</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <h2>A · 暖纸清单</h2>
+          <p>像一张每天反复使用的暖白清单：珊瑚勾选是唯一焦点，提醒退到第二行，新增便签收在一条便签黄纸带里。</p>
+        </div>
+        <button class="qmdp-pick-button" data-qmdp-managed="page" type="button" aria-label="选择便签 A 暖纸清单">选择 A · 暖纸清单</button>
+      </article>
+
+      <article class="direction-card" data-direction="B" data-name="台历索引" data-selected>
+        <div class="mockup">
+          <div class="stage safe-b note-b" aria-label="便签方向 B 台历索引样机">
+            <img class="safe-shell" src="../../assets/floating-plush/component-day-outer-shell.png" alt="" aria-hidden="true">
+            <img class="safe-mascots" src="../../assets/floating-plush/component-day-mascots.png" alt="" aria-hidden="true">
+            <div class="safe-header">
+              <span class="safe-title">便签</span>
+              <span class="safe-switch"><span>倒计时</span><span class="is-active">便签</span></span>
+              <span class="safe-icon" title="缩小到托盘">−</span>
+              <span class="safe-icon" title="打开管理窗口">⌂</span>
+              <span class="safe-icon safe-danger" title="退出应用">×</span>
+            </div>
+            <div class="note-body">
+              <div class="note-kicker"><span>周五</span><strong>31</strong><span>七月 · 北京</span></div>
+              <div class="note-list">
+                <div class="note-row"><span class="note-check">□</span><span><strong>确认办公室倒计时发布</strong><small>17:30 · 重复提醒</small></span><em>工作</em></div>
+                <div class="note-row"><span class="note-check">□</span><span><strong>补充夏日照片</strong><small>今天 · 不提醒</small></span><em>生活</em></div>
+                <div class="note-row"><span class="note-check">□</span><span><strong>整理周末采购单</strong><small>明天 · 09:00</small></span><em>家</em></div>
+              </div>
+              <div class="note-entry"><span><strong>快速新增 · 选择日期和提醒</strong><small>标签可继续沿用已有颜色</small></span><button type="button">添加</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <h2>B · 台历索引</h2>
+          <p>把日期变成右侧不可点击的印刷索引，便签行只承担内容和提醒；适合经常跨天查找、又不想打开管理窗口的人。</p>
+        </div>
+        <button class="qmdp-pick-button" data-qmdp-managed="page" type="button" aria-label="选择便签 B 台历索引">选择 B · 台历索引</button>
+      </article>
+
+      <article class="direction-card" data-direction="C" data-name="糖纸标签">
+        <div class="mockup">
+          <div class="stage safe-c note-c" aria-label="便签方向 C 糖纸标签样机">
+            <img class="safe-shell" src="../../assets/floating-plush/component-day-outer-shell.png" alt="" aria-hidden="true">
+            <img class="safe-mascots" src="../../assets/floating-plush/component-day-mascots.png" alt="" aria-hidden="true">
+            <div class="safe-header">
+              <span class="safe-title">便签</span>
+              <span class="safe-switch"><span>倒计时</span><span class="is-active">便签</span></span>
+              <span class="safe-icon" title="缩小到托盘">−</span>
+              <span class="safe-icon" title="打开管理窗口">⌂</span>
+              <span class="safe-icon safe-danger" title="退出应用">×</span>
+            </div>
+            <div class="note-body">
+              <div class="note-kicker"><span>今天要记住的事</span><strong>2</strong></div>
+              <div class="note-list">
+                <div class="note-row"><span class="note-check">✓</span><span><strong>确认办公室倒计时发布</strong><small>提醒 · 17:30</small></span><em>工作</em></div>
+                <div class="note-row"><span class="note-check">□</span><span><strong>给敏敏子补充夏日照片</strong><small>生活 · 无提醒</small></span><em>生活</em></div>
+              </div>
+              <div class="note-entry"><span><strong>＋ 写一条便签</strong><small>日期　提醒　标签</small></span><button type="button">添加</button></div>
+              <div class="note-controls"><span>已完成可收起</span><span>标签色沿用</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <h2>C · 糖纸标签</h2>
+          <p>用两张小便签承载内容，用标签色做轻量定位；有玩具感但不把日期、提醒和完成动作藏进装饰。</p>
+        </div>
+        <button class="qmdp-pick-button" data-qmdp-managed="page" type="button" aria-label="选择便签 C 糖纸标签">选择 C · 糖纸标签</button>
+      </article>
+
+      <article class="direction-card" data-direction="D" data-name="夜灯日志">
+        <div class="mockup">
+          <div class="stage safe-d note-d" aria-label="便签方向 D 夜灯日志样机">
+            <div class="safe-night-shell" aria-hidden="true"></div>
+            <img class="safe-night-mascots" src="../../assets/floating-plush/component-day-mascots.png" alt="" aria-hidden="true">
+            <div class="safe-header">
+              <span class="safe-title">便签</span>
+              <span class="safe-switch"><span>倒计时</span><span class="is-active">便签</span></span>
+              <span class="safe-icon" title="缩小到托盘">−</span>
+              <span class="safe-icon" title="打开管理窗口">⌂</span>
+              <span class="safe-icon safe-danger" title="退出应用">×</span>
+            </div>
+            <div class="note-body">
+              <div class="note-kicker"><span>OPEN ITEMS / 北京时间</span><strong>02</strong></div>
+              <div class="note-list">
+                <div class="note-row"><span class="note-check">□</span><span><strong>确认办公室倒计时发布</strong><small>17:30 · repeat</small></span><em>WORK</em></div>
+                <div class="note-row"><span class="note-check">□</span><span><strong>给敏敏子补充夏日照片</strong><small>today · quiet</small></span><em>LIFE</em></div>
+                <div class="note-row"><span class="note-check">✓</span><span><strong>整理周末采购单</strong><small>done · hidden</small></span><em>HOME</em></div>
+              </div>
+              <div class="note-entry"><span><strong>NEW NOTE</strong><small>DATE / REMINDER / TAG</small></span><button type="button">添加</button></div>
+              <div class="note-controls"><span>完成</span><span>日期</span><span>提醒</span><span>标签</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-meta">
+          <h2>D · 夜灯日志</h2>
+          <p>暖棕夜间变体借用日志表的行距和等宽数字，密度最高；完成项、提醒和新增入口仍沿用同一组动作。</p>
+        </div>
+        <button class="qmdp-pick-button" data-qmdp-managed="page" type="button" aria-label="选择便签 D 夜灯日志">选择 D · 夜灯日志</button>
+      </article>
+    </section>
+
+    <section class="details" aria-labelledby="details-title">
+      <h2 id="details-title">怎么选</h2>
+      <div class="details-grid">
+        <article class="direction-detail"><span class="direction-letter">A</span><div><h3>暖纸清单 · 推荐</h3><p>最低认知成本：正文、提醒和标签分成三层，新增便签是一条稳定的暖黄纸带。适合全天高频打开。</p><p class="direction-spec">字体：系统无衬线 + Bahnschrift 数字｜表面：暖白规则线｜记忆点：单一珊瑚勾选</p></div></article>
+        <article class="direction-detail"><span class="direction-letter">B</span><div><h3>台历索引 · 日期优先</h3><p>右侧日期印记不承担导航，列表只读内容和提醒。适合跨天查找，但视觉密度和日期依赖更高。</p><p class="direction-spec">字体：Georgia 数字气质 + 中文系统栈｜表面：复古台历纸｜记忆点：右侧日期印记</p></div></article>
+        <article class="direction-detail"><span class="direction-letter">C</span><div><h3>糖纸标签 · 玩具感</h3><p>便签卡和标签色成为记忆点，完成勾选更有反馈。适合生活记录，长文本需要更谨慎地处理。</p><p class="direction-spec">字体：圆润系统无衬线｜表面：叠纸与暖色签｜记忆点：交替露出的标签纸边</p></div></article>
+        <article class="direction-detail"><span class="direction-letter">D</span><div><h3>夜灯日志 · 暖棕高密</h3><p>用暖棕夜间表面和等宽数字提升晚间扫读。信息最多，但不适合把所有内容都塞进浮窗。</p><p class="direction-spec">字体：Segoe UI Variable + 表格数字｜表面：深琥珀日志纸｜记忆点：暖金时间行</p></div></article>
+      </div>
+      <p class="mix-note">最终组合为倒计时 B「暖纸层级」与便签 B「台历索引」。玩偶、标题栏、滚动和日期/提醒/标签/完成热区始终不参与混搭。</p>
+      <p class="mix-note">组件判断：复选框继续表示完成；日期仍用 DatePicker；提醒和标签仍用现有选择器；“添加”仍是唯一提交命令。样机没有新增编辑、删除、筛选或第二套导航。</p>
+    </section>
+  </main>
+
+  <div class="confirm-layer" id="confirmLayer" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMeta">
+    <div class="dialog">
+      <h2 id="confirmTitle">确认设计方向</h2>
+      <p id="confirmMeta"></p>
+      <label for="adjustments">调整建议（可选）
+        <textarea id="adjustments" maxlength="240" placeholder="例如：要 A 的清单层级 + C 的标签纸边；所有玩偶和热区保持现状"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="cancelPick">取消</button>
+        <button class="confirm-button" type="button" id="confirmPick">确认选择</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="selection-bar" id="selectionBar" role="status" aria-live="polite">
+    <output id="selectionOutput"></output>
+    <button type="button" id="dismissSelection" aria-label="关闭选择提示" title="关闭">×</button>
+  </div>
+
+  <script>
+    const cards = [...document.querySelectorAll('.direction-card')];
+    const dialIds = ['variance', 'motion', 'density'];
+    const confirmLayer = document.getElementById('confirmLayer');
+    const confirmMeta = document.getElementById('confirmMeta');
+    const adjustments = document.getElementById('adjustments');
+    const selectionBar = document.getElementById('selectionBar');
+    const selectionOutput = document.getElementById('selectionOutput');
+    const cancelPick = document.getElementById('cancelPick');
+    const confirmPick = document.getElementById('confirmPick');
+    let pending = null;
+    let returnFocus = null;
+
+    function currentDials() {
+      return Object.fromEntries(dialIds.map((id) => [id, Number(document.getElementById(id).value)]));
+    }
+
+    dialIds.forEach((id) => {
+      const input = document.getElementById(id);
+      const output = document.getElementById(`${id}Out`);
+      input.addEventListener('input', () => {
+        output.value = input.value;
+        output.textContent = input.value;
+      });
+    });
+
+    function openConfirm(card) {
+      const dials = currentDials();
+      pending = { id: card.dataset.direction, name: card.dataset.name };
+      returnFocus = document.activeElement;
+      confirmMeta.textContent = `选 ${pending.id}：${pending.name} · 视觉冒险度 ${dials.variance} / 动效强度 ${dials.motion} / 信息密度 ${dials.density}`;
+      adjustments.value = '';
+      confirmLayer.classList.add('open');
+      adjustments.focus();
+    }
+
+    function closeConfirm() {
+      confirmLayer.classList.remove('open');
+      pending = null;
+      if (returnFocus instanceof HTMLElement) returnFocus.focus();
+    }
+
+    function selectionText(payload) {
+      const note = payload.adjustments ? `；建议：${payload.adjustments}` : '';
+      return `选 ${payload.id}：${payload.name}；拨盘：视觉冒险度 ${payload.dials.variance} / 动效强度 ${payload.dials.motion} / 信息密度 ${payload.dials.density}${note}`;
+    }
+
+    async function sendSelection(payload) {
+      if (location.protocol === 'file:') return { ok: false, fallback: true };
+      try {
+        const response = await fetch('/api/select', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) return { ok: false };
+        return await response.json();
+      } catch {
+        return { ok: false };
+      }
+    }
+
+    cards.forEach((card) => {
+      const button = card.querySelector('.qmdp-pick-button');
+      button.addEventListener('click', () => openConfirm(card));
+    });
+
+    cancelPick.addEventListener('click', closeConfirm);
+    confirmLayer.addEventListener('mousedown', (event) => {
+      if (event.target === confirmLayer) closeConfirm();
+    });
+
+    confirmPick.addEventListener('click', async () => {
+      if (!pending) return;
+      const payload = {
+        ...pending,
+        label: `选 ${pending.id}：${pending.name}`,
+        notes: '便签四方向视觉样机；倒计时 B 暖纸层级已锁定',
+        dials: currentDials(),
+        adjustments: adjustments.value.trim()
+      };
+      const result = await sendSelection(payload);
+      cards.forEach((card) => card.toggleAttribute('data-selected', card.dataset.direction === payload.id));
+      selectionOutput.textContent = result.ok
+        ? `已回传：${selectionText(payload)}`
+        : `当前为静态预览，请回到对话发送：${selectionText(payload)}`;
+      confirmLayer.classList.remove('open');
+      selectionBar.classList.add('show');
+      pending = null;
+      document.getElementById('dismissSelection').focus();
+    });
+
+    document.getElementById('dismissSelection').addEventListener('click', () => {
+      selectionBar.classList.remove('show');
+      if (returnFocus instanceof HTMLElement) returnFocus.focus();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && confirmLayer.classList.contains('open')) {
+        event.preventDefault();
+        closeConfirm();
+        return;
+      }
+
+      if (confirmLayer.classList.contains('open') && event.key === 'Tab') {
+        const focusable = [...confirmLayer.querySelectorAll('textarea, button')];
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+
+      if (!confirmLayer.classList.contains('open')) {
+        const index = ['1', '2', '3', '4'].indexOf(event.key);
+        if (index >= 0 && cards[index]) {
+          event.preventDefault();
+          openConfirm(cards[index]);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

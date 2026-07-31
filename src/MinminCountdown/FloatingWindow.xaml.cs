@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
@@ -12,6 +13,7 @@ namespace MinminCountdown;
 
 public sealed partial class FloatingWindow : Window
 {
+    private const double CountdownScrollBarSafeOffset = 76;
     private readonly DesktopWorkspace _desktopWorkspace;
     private readonly HolidayCalendar _calendar;
     private readonly MainWindow _manager;
@@ -473,6 +475,7 @@ public sealed partial class FloatingWindow : Window
         FloatingBodyScroller.Margin = workspace == WorkspaceKind.Notes
             ? new Thickness(0, 0, 76, 0)
             : new Thickness(0);
+        UpdateFloatingBodyScrollBarPlacement();
         FloatingNoteEntry.Visibility =
             workspace == WorkspaceKind.Notes ? Visibility.Visible : Visibility.Collapsed;
         if (workspace == WorkspaceKind.Notes)
@@ -849,6 +852,7 @@ public sealed partial class FloatingWindow : Window
         SizeChanged += (_, _) => Reanchor();
         Loaded += (_, _) =>
         {
+            UpdateFloatingBodyScrollBarPlacement();
             Reanchor();
             _trackManualWindowPlacement = true;
         };
@@ -865,6 +869,21 @@ public sealed partial class FloatingWindow : Window
                 _hasManualWindowPlacement = true;
             }
         };
+    }
+
+    private void UpdateFloatingBodyScrollBarPlacement()
+    {
+        FloatingBodyScroller.ApplyTemplate();
+        if (FloatingBodyScroller.Template.FindName(
+                "PART_VerticalScrollBar",
+                FloatingBodyScroller) is not ScrollBar verticalScrollBar)
+        {
+            return;
+        }
+
+        verticalScrollBar.RenderTransform = _workspace == WorkspaceKind.Countdowns
+            ? new TranslateTransform(-CountdownScrollBarSafeOffset, 0)
+            : Transform.Identity;
     }
 
     private void OnFloatingDragSurfaceMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)
@@ -934,12 +953,12 @@ public sealed partial class FloatingWindow : Window
                     nowUtc,
                     snapshot.Settings.Preferences.DisplayPrecision))
                 .ToArray();
-            foreach (var record in records)
+            foreach (var row in BuildWarmPaperCountdownRows(
+                         records,
+                         nowUtc,
+                         snapshot.Settings.Preferences.DisplayPrecision))
             {
-                FloatingRows.Children.Add(FloatingCountdownCard(
-                    record,
-                    nowUtc,
-                    snapshot.Settings.Preferences.DisplayPrecision));
+                FloatingRows.Children.Add(row);
             }
 
             if (records.Count == 0)
@@ -952,7 +971,7 @@ public sealed partial class FloatingWindow : Window
             var notes = snapshot.VisibleActiveNotes;
             foreach (var note in notes)
             {
-                FloatingRows.Children.Add(FloatingNoteCard(note));
+                FloatingRows.Children.Add(BuildCalendarIndexNoteCard(note, nowUtc));
             }
 
             if (notes.Count == 0)
@@ -966,104 +985,6 @@ public sealed partial class FloatingWindow : Window
             ? _calendar.StatusText
             : $"今日已赚 ￥{earnings.Value:N2}";
         Dispatcher.BeginInvoke(Reanchor);
-    }
-
-    private FrameworkElement FloatingCountdownCard(
-        CountdownRecord record,
-        DateTimeOffset nowUtc,
-        string displayPrecision)
-    {
-        var stack = new StackPanel();
-        stack.Children.Add(new TextBlock
-        {
-            Text = record.Name,
-            FontWeight = FontWeights.SemiBold,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = _floatingPrimaryBrush
-        });
-        stack.Children.Add(new TextBlock
-        {
-            Text = CountdownFormatting.FormatRemaining(
-                record.TargetUtc,
-                nowUtc,
-                displayPrecision),
-            Margin = new Thickness(0, 4, 0, 0),
-            Foreground = _floatingMutedBrush
-        });
-        return FloatingCard(stack, _floatingSurfaceBrush);
-    }
-
-    private FrameworkElement FloatingNoteCard(NoteRecord note)
-    {
-        var check = UiAccessibility.Name(
-            new CheckBox
-            {
-                Tag = note.Id,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 2, 8, 0),
-                Foreground = _floatingPrimaryBrush
-            },
-            $"完成便签 {note.Text}");
-        check.Checked += (_, _) =>
-        {
-            var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(note.Id, true));
-            if (!result.Succeeded)
-            {
-                check.IsChecked = false;
-                SetNoteMessage(result.Error);
-            }
-        };
-        var body = new StackPanel();
-        body.Children.Add(new TextBlock
-        {
-            Text = note.Text,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = _floatingPrimaryBrush
-        });
-        var nextReminder = ReminderSchedule.GetNextDueUtc(note, _desktopWorkspace.Snapshot.UtcNow);
-        if (nextReminder is not null)
-        {
-            body.Children.Add(new TextBlock
-            {
-                Text = $"下次提醒：{ChinaStandardTime.ToBeijingTime(nextReminder.Value):M月d日 HH:mm}",
-                Margin = new Thickness(0, 4, 0, 0),
-                FontSize = 11,
-                Foreground = _floatingMutedBrush
-            });
-        }
-
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition());
-        Grid.SetColumn(body, 1);
-        grid.Children.Add(check);
-        grid.Children.Add(body);
-        return FloatingCard(grid, _floatingNoteCardBrush);
-    }
-
-    private Border FloatingCard(UIElement child, Brush background)
-    {
-        var useDayRaster = _activeTheme?.Mode == ApplicationThemeMode.Day &&
-                           _dayCardRaster is not null;
-        child.RenderTransform = useDayRaster
-            ? new TranslateTransform(-1, 1)
-            : Transform.Identity;
-        return new Border
-        {
-            Child = child,
-            MinHeight = 63,
-            Margin = new Thickness(0, 0, 0, 8),
-            Padding = useDayRaster ? new Thickness(13) : new Thickness(12),
-            CornerRadius = useDayRaster ? new CornerRadius(0) : new CornerRadius(12),
-            Background = useDayRaster
-                ? new ImageBrush(_dayCardRaster)
-                {
-                    Stretch = Stretch.Fill
-                }
-                : background,
-            BorderBrush = useDayRaster ? Brushes.Transparent : _floatingBorderBrush,
-            BorderThickness = useDayRaster ? new Thickness(0) : new Thickness(1)
-        };
     }
 
     private TextBlock EmptyText(string text) => new()

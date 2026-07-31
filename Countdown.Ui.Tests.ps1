@@ -172,7 +172,7 @@ if ((@($validation.FloatingPlushAssetNames) -join ',') -ne ($expectedFloatingRef
 }
 if (-not $validation.FloatingPlushAnchorsIntegrateWithPanel) { throw 'Floating plush scene anchors are not layered above the task panel.' }
 if (-not $validation.FloatingReferenceAspectMatches) { throw 'The floating reference scene is not rendered at the required 520x390 4:3 format.' }
-if (-not $validation.FloatingReferencePanelGeometryMatches) { throw 'The floating frame, content panel, header, or countdown cards do not match the frozen reference geometry.' }
+if (-not $validation.FloatingReferencePanelGeometryMatches) { throw 'The floating frame, header, or selected warm-paper countdown hierarchy does not match its fixed geometry.' }
 if (-not $validation.FloatingReferenceMascotGeometryMatches) { throw 'The rendered mascot alpha bounds do not match the frozen reference geometry.' }
 if (-not $validation.FloatingReferenceContentSafeAreaMatches -or $validation.FloatingReferenceContentOverlapCount -ne 0) { throw "A rendered mascot overlaps protected floating content: $(@($validation.FloatingReferenceContentOverlapTargets) -join ',')." }
 if (-not $validation.FloatingReferenceCaptureWritten) { throw 'The floating reference scene did not produce a non-empty RenderTargetBitmap PNG.' }
@@ -190,7 +190,7 @@ if ((@($validation.FloatingDayRasterComponentAssetNames) -join ',') -ne ($expect
 if (-not $validation.FloatingDayRasterShellAndHeaderLoaded) { throw 'The day raster shell or blank header component did not load.' }
 if (-not $validation.FloatingRasterSurfacesFollowDayNightTheme) { throw 'The floating raster and vector surfaces do not switch at Beijing-time boundaries.' }
 if (-not $validation.FloatingDayRasterDecorationsAreNonInteractive) { throw 'A day raster decoration blocks pointer input.' }
-if (-not $validation.FloatingDayRasterCardStatesMatch) { throw 'Day raster cards do not follow the real zero, one, two-countdown, and note states.' }
+if (-not $validation.FloatingDayRasterCardStatesMatch) { throw 'Workspace-specific warm-paper rows fell back to the retired shared raster-card surface.' }
 if (-not $validation.FloatingDynamicCardContentRemainsWpf) { throw 'Floating card text or note checkboxes are no longer real WPF controls.' }
 if (-not $validation.FloatingDynamicHeaderControlsRemainWpf) { throw 'Floating title, tabs, or command icons are no longer real WPF controls.' }
 if (-not $validation.FloatingHeaderIconAccessibility) { throw 'The floating icon buttons lost their tooltips or accessible names.' }

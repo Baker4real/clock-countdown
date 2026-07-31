@@ -10,6 +10,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using MinminCountdown.Core;
 using WpfCalendar = System.Windows.Controls.Calendar;
+using WpfEllipse = System.Windows.Shapes.Ellipse;
+using WpfPath = System.Windows.Shapes.Path;
 
 namespace MinminCountdown;
 
@@ -197,6 +199,14 @@ internal static class ValidationReport
         var countdownRows = Required<StackPanel>(main, "CountdownRows");
         var activeNoteRows = Required<StackPanel>(main, "ActiveNoteRows");
         var completedNoteRows = Required<StackPanel>(main, "CompletedNoteRows");
+        var activeNotesToggle = Required<Button>(main, "ToggleActiveNotes");
+        var completedNotesToggle = Required<Button>(main, "ToggleCompletedNotes");
+        var activeNotesLabel = Required<TextBlock>(main, "ActiveNotesLabel");
+        var completedNotesLabel = Required<TextBlock>(main, "CompletedNotesLabel");
+        var activeNotesCount = Required<TextBlock>(main, "ActiveNotesCount");
+        var completedNotesCount = Required<TextBlock>(main, "CompletedNotesCount");
+        var activeNotesChevron = Required<WpfPath>(main, "ActiveNotesChevron");
+        var completedNotesChevron = Required<WpfPath>(main, "CompletedNotesChevron");
         var countdownActionButtons = Descendants<Button>(countdownRows)
             .Where(button => button.Content?.ToString() is "编辑" or "删除")
             .ToArray();
@@ -206,16 +216,9 @@ internal static class ValidationReport
             .ToArray();
         var cardActionsBound = countdownActionButtons.All(button => button.Tag is string);
         var noteActionsBound = noteActionButtons.All(button => button.Tag is string);
-        var noteTextValues = Descendants<TextBlock>(activeNoteRows)
-            .Concat(Descendants<TextBlock>(completedNoteRows))
-            .Select(text => text.Text)
-            .ToArray();
-        var noteStatusLabels = noteTextValues.Any(text =>
-            text.Contains("未完成", StringComparison.Ordinal) ||
-            text.Contains("已完成", StringComparison.Ordinal));
-        var noteDatesRendered = workspaceSnapshot.Settings.Notes
-            .Where(note => note.Date is not null)
-            .All(note => noteTextValues.Any(text => text.Contains(note.Date!, StringComparison.Ordinal)));
+        var noteStatusLabels =
+            string.Equals(activeNotesLabel.Text, "未完成", StringComparison.Ordinal) &&
+            string.Equals(completedNotesLabel.Text, "已完成", StringComparison.Ordinal);
         var expectedManagerNoteIds = workspaceSnapshot.VisibleNotes
             .Select(note => note.Id)
             .ToArray();
@@ -226,9 +229,44 @@ internal static class ValidationReport
             renderedManagerNoteIds,
             StringComparer.Ordinal);
         var notesGroupedByDay = AreNotesGroupedByDay(workspaceSnapshot.AllNotes);
-        var activeNotesToggle = main.FindName("ToggleActiveNotes") as Button;
+        var noteStatusDisclosureVisuals =
+            HasFixedNoteStatusDisclosure(
+                activeNotesToggle,
+                activeNotesLabel,
+                activeNotesCount,
+                activeNotesChevron,
+                "未完成",
+                workspaceSnapshot.VisibleNotes.Count(note => !note.IsCompleted),
+                workspaceSnapshot.VisibleNotes.Any(note => !note.IsCompleted)
+                    ? activeNoteRows.Visibility == Visibility.Visible
+                    : true) &&
+            HasFixedNoteStatusDisclosure(
+                completedNotesToggle,
+                completedNotesLabel,
+                completedNotesCount,
+                completedNotesChevron,
+                "已完成",
+                workspaceSnapshot.VisibleNotes.Count(note => note.IsCompleted),
+                workspaceSnapshot.VisibleNotes.Any(note => note.IsCompleted) &&
+                completedNoteRows.Visibility == Visibility.Visible);
+        var renderedDateSections = GetNoteDateSections(activeNoteRows)
+            .Concat(GetNoteDateSections(completedNoteRows))
+            .ToArray();
+        var noteDatesRendered = workspaceSnapshot.Settings.Notes
+            .Where(note => note.Date is not null)
+            .All(note => renderedDateSections.Any(section =>
+                string.Equals(section.Key, note.Date, StringComparison.Ordinal)));
+        var noteDateTimelineVisuals =
+            workspaceSnapshot.Settings.Notes.Count == 0 ||
+            renderedDateSections.Length > 0 && renderedDateSections.All(HasNoteDateTimelineVisual);
+        var noteDisclosureAccessibility =
+            HasNoteDisclosureAccessibleName(activeNotesToggle, "未完成") &&
+            HasNoteDisclosureAccessibleName(completedNotesToggle, "已完成") &&
+            renderedDateSections.All(section =>
+                HasNoteDisclosureAccessibleName(
+                    section.Toggle,
+                    GetNoteDateLabel(section.Toggle)?.Text ?? string.Empty));
         var activeNotesGrouped =
-            activeNotesToggle is not null &&
             activeNoteRows.Parent is StackPanel noteSections &&
             noteSections.Children.IndexOf(activeNotesToggle) >= 0 &&
             noteSections.Children.IndexOf(activeNoteRows) == noteSections.Children.IndexOf(activeNotesToggle) + 1;
@@ -469,6 +507,8 @@ internal static class ValidationReport
             ValidateTagPopupThemeTransition(theme, selector, workspaceSnapshot.UtcNow);
         var warmYellowPaletteMatchesLegacy =
             ValidateWarmYellowPalette(theme, workspaceSnapshot.UtcNow);
+        var noteDisclosureThemeTokens =
+            ValidateNoteDisclosureThemeTokens(theme, workspaceSnapshot.UtcNow);
         var primaryButtonHoverTextContrast =
             ValidatePrimaryButtonHoverTextContrast(theme, workspaceSnapshot.UtcNow);
         var toolTipThemeTextContrast =
@@ -768,11 +808,15 @@ internal static class ValidationReport
             ["NoteActionsBoundByTag"] = noteActionsBound,
             ["NoteStatusLabelsPresent"] =
                 noteStatusLabels || workspaceSnapshot.Settings.Notes.Count == 0,
+            ["NoteStatusDisclosureVisuals"] = noteStatusDisclosureVisuals,
+            ["NoteDateTimelineVisuals"] = noteDateTimelineVisuals,
+            ["NoteDisclosureAccessibility"] = noteDisclosureAccessibility,
+            ["NoteDisclosureThemeTokens"] = noteDisclosureThemeTokens,
             ["NoteDatesRendered"] = noteDatesRendered,
             ["NotesGroupedByDay"] = notesGroupedByDay,
             ["ActiveNotesGrouped"] = activeNotesGrouped,
             ["ActiveNotesExpandedByDefault"] =
-                activeNotesToggle is not null && activeNoteRows.Visibility == Visibility.Visible,
+                activeNoteRows.Visibility == Visibility.Visible,
             ["ActiveNotesKeepDateOrder"] = activeNotesKeepDateOrder,
             ["ManagerNoteRowsFollowSortOrder"] = managerNoteRowsFollowSortOrder,
             ["NoteDateSectionsCanCollapse"] = noteSectionExercise.DateSectionsCanCollapse,
@@ -1191,14 +1235,22 @@ internal static class ValidationReport
                 string.Empty);
         }
 
-        var countdownCapturePath = Path.Combine(evidenceDirectory, "main-countdown-empty.png");
-        var notesCapturePath = Path.Combine(evidenceDirectory, "main-notes-empty.png");
+        var usesZeroState =
+            workspaceSnapshot.AllCountdowns.Count == 0 &&
+            workspaceSnapshot.Settings.Notes.Count == 0;
+        var stateId = usesZeroState ? "empty" : "populated";
+        var countdownCapturePath = Path.Combine(
+            evidenceDirectory,
+            $"main-countdown-{stateId}.png");
+        var notesCapturePath = Path.Combine(
+            evidenceDirectory,
+            $"main-notes-{stateId}.png");
         var nightCountdownCapturePath = Path.Combine(
             evidenceDirectory,
-            "main-countdown-empty-night.png");
+            $"main-countdown-{stateId}-night.png");
         var nightNotesCapturePath = Path.Combine(
             evidenceDirectory,
-            "main-notes-empty-night.png");
+            $"main-notes-{stateId}-night.png");
         var manifestPath = Path.Combine(evidenceDirectory, "main-capture-manifest.json");
         if (File.Exists(countdownCapturePath) ||
             File.Exists(notesCapturePath) ||
@@ -1210,14 +1262,6 @@ internal static class ValidationReport
         }
 
         var artifactBindings = GetMainVisualCaptureArtifactBindings(assetRoot);
-
-        var usesZeroState =
-            workspaceSnapshot.AllCountdowns.Count == 0 &&
-            workspaceSnapshot.Settings.Notes.Count == 0;
-        if (!usesZeroState)
-        {
-            throw new InvalidOperationException("主窗口视觉捕获仅允许在零倒计时、零便签状态下运行。");
-        }
 
         if (main.Content is not FrameworkElement root)
         {
@@ -1354,7 +1398,7 @@ internal static class ValidationReport
                     {
                         new
                         {
-                            id = "countdown-empty",
+                            id = $"countdown-{stateId}",
                             themeMode = ApplicationThemeMode.Day.ToString(),
                             beijingTime = countdownCaptureBeijingTime,
                             path = countdownCapturePath,
@@ -1362,7 +1406,7 @@ internal static class ValidationReport
                         },
                         new
                         {
-                            id = "notes-empty",
+                            id = $"notes-{stateId}",
                             themeMode = ApplicationThemeMode.Day.ToString(),
                             beijingTime = notesCaptureBeijingTime,
                             path = notesCapturePath,
@@ -1370,7 +1414,7 @@ internal static class ValidationReport
                         },
                         new
                         {
-                            id = "countdown-empty-night",
+                            id = $"countdown-{stateId}-night",
                             themeMode = ApplicationThemeMode.Night.ToString(),
                             beijingTime = nightCountdownCaptureBeijingTime,
                             path = nightCountdownCapturePath,
@@ -1378,7 +1422,7 @@ internal static class ValidationReport
                         },
                         new
                         {
-                            id = "notes-empty-night",
+                            id = $"notes-{stateId}-night",
                             themeMode = ApplicationThemeMode.Night.ToString(),
                             beijingTime = nightNotesCaptureBeijingTime,
                             path = nightNotesCapturePath,
@@ -2624,12 +2668,99 @@ internal static class ValidationReport
 
     private static IReadOnlyList<string> GetRenderedNoteDateOrder(Panel rows)
     {
-        return rows.Children
-            .OfType<StackPanel>()
-            .Select(section => section.Children.OfType<Button>().FirstOrDefault()?.Tag as string)
-            .Where(date => date is not null)
-            .Select(date => date!.Length == 0 ? "未设置日期" : date)
+        return GetNoteDateSections(rows)
+            .Select(section => section.Key.Length == 0 ? "未设置日期" : section.Key)
             .ToArray();
+    }
+
+    private static bool HasFixedNoteStatusDisclosure(
+        Button toggle,
+        TextBlock label,
+        TextBlock count,
+        WpfPath chevron,
+        string status,
+        int expectedCount,
+        bool isExpanded)
+    {
+        return
+            ReferenceEquals(toggle.Content, label.Parent is StackPanel labelStack ? labelStack.Parent : null) &&
+            string.Equals(label.Text, status, StringComparison.Ordinal) &&
+            !label.Text.StartsWith("展开", StringComparison.Ordinal) &&
+            !label.Text.StartsWith("收起", StringComparison.Ordinal) &&
+            string.Equals(
+                count.Text,
+                expectedCount.ToString(CultureInfo.InvariantCulture),
+                StringComparison.Ordinal) &&
+            DisclosureChevronMatches(chevron, isExpanded);
+    }
+
+    private static bool HasNoteDateTimelineVisual(NoteDateSection section)
+    {
+        var content = section.Toggle.Content as Grid;
+        var label = GetNoteDateLabel(section.Toggle);
+        var count = content?.Children
+            .OfType<TextBlock>()
+            .FirstOrDefault(text => string.Equals(text.Uid, "NoteDateCount", StringComparison.Ordinal));
+        var timeline = (section.Root as Grid)?.Children
+            .OfType<Grid>()
+            .FirstOrDefault(grid => string.Equals(grid.Uid, "NoteDateTimeline", StringComparison.Ordinal));
+        var line = timeline?.Children
+            .OfType<Border>()
+            .Any(border => string.Equals(border.Uid, "NoteTimelineLine", StringComparison.Ordinal)) == true;
+        var node = timeline?.Children
+            .OfType<WpfEllipse>()
+            .Any(ellipse => string.Equals(ellipse.Uid, "NoteTimelineNode", StringComparison.Ordinal)) == true;
+        return
+            string.Equals(section.Root.Uid, "NoteDateTimelineSection", StringComparison.Ordinal) &&
+            line &&
+            node &&
+            label is not null &&
+            !string.IsNullOrWhiteSpace(label.Text) &&
+            !label.Text.StartsWith("展开", StringComparison.Ordinal) &&
+            !label.Text.StartsWith("收起", StringComparison.Ordinal) &&
+            count is not null &&
+            string.Equals(
+                count.Text,
+                $"{section.Rows.Children.Count} 条",
+                StringComparison.Ordinal) &&
+            DisclosureChevronMatches(
+                section.Toggle,
+                section.Rows.Visibility == Visibility.Visible);
+    }
+
+    private static TextBlock? GetNoteDateLabel(Button toggle)
+    {
+        return (toggle.Content as Grid)?.Children
+            .OfType<TextBlock>()
+            .FirstOrDefault(text => string.Equals(text.Uid, "NoteDateLabel", StringComparison.Ordinal));
+    }
+
+    private static bool HasNoteDisclosureAccessibleName(Button toggle, string expectedObject)
+    {
+        var name = AutomationProperties.GetName(toggle);
+        var helpText = AutomationProperties.GetHelpText(toggle);
+        return
+            !string.IsNullOrWhiteSpace(name) &&
+            (name.StartsWith("展开", StringComparison.Ordinal) ||
+             name.StartsWith("收起", StringComparison.Ordinal)) &&
+            name.Contains(expectedObject, StringComparison.Ordinal) &&
+            name.Contains("条", StringComparison.Ordinal) &&
+            helpText is "当前展开" or "当前收起";
+    }
+
+    private static bool DisclosureChevronMatches(Button toggle, bool isExpanded)
+    {
+        var chevron = (toggle.Content as Grid)?.Children
+            .OfType<WpfPath>()
+            .FirstOrDefault(path => string.Equals(path.Uid, "NoteDateChevron", StringComparison.Ordinal));
+        return chevron is not null && DisclosureChevronMatches(chevron, isExpanded);
+    }
+
+    private static bool DisclosureChevronMatches(WpfPath chevron, bool isExpanded)
+    {
+        return
+            chevron.RenderTransform is RotateTransform rotation &&
+            Math.Abs(rotation.Angle - (isExpanded ? 0 : -90)) < 0.01;
     }
 
     private static IReadOnlyList<string> GetRenderedNoteIds(DependencyObject root) =>
@@ -2676,7 +2807,7 @@ internal static class ValidationReport
                 activeSection.Toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 dateSectionsCanCollapse &=
                     activeSection.Rows.Visibility == Visibility.Collapsed &&
-                    activeSection.Toggle.Content.ToString()!.StartsWith("展开 ", StringComparison.Ordinal);
+                    DisclosureChevronMatches(activeSection.Toggle, isExpanded: false);
                 dateSectionsAreIndependent &=
                     OtherNoteDateSectionsAreVisible(activeRows, activeKey) &&
                     GetNoteDateSections(completedRows).All(section => section.Rows.Visibility == Visibility.Visible);
@@ -2695,7 +2826,7 @@ internal static class ValidationReport
                 completedSection.Toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 dateSectionsCanCollapse &=
                     completedSection.Rows.Visibility == Visibility.Collapsed &&
-                    completedSection.Toggle.Content.ToString()!.StartsWith("展开 ", StringComparison.Ordinal);
+                    DisclosureChevronMatches(completedSection.Toggle, isExpanded: false);
                 dateSectionsAreIndependent &=
                     OtherNoteDateSectionsAreVisible(completedRows, completedKey) &&
                     (activeKey is null ||
@@ -2769,16 +2900,24 @@ internal static class ValidationReport
         return independent;
     }
 
-    private static IReadOnlyList<NoteDateSection> GetNoteDateSections(StackPanel rows)
+    private static IReadOnlyList<NoteDateSection> GetNoteDateSections(Panel rows)
     {
         var result = new List<NoteDateSection>();
-        foreach (var section in rows.Children.OfType<StackPanel>())
+        foreach (var section in rows.Children.OfType<FrameworkElement>())
         {
-            var toggle = section.Children.OfType<Button>().FirstOrDefault();
-            var sectionRows = section.Children.OfType<StackPanel>().FirstOrDefault();
+            var toggle = Descendants<Button>(section)
+                .FirstOrDefault(button =>
+                    string.Equals(button.Uid, "NoteDateDisclosure", StringComparison.Ordinal));
+            var sectionRows = Descendants<StackPanel>(section)
+                .FirstOrDefault(panel =>
+                    string.Equals(panel.Uid, "NoteDateRows", StringComparison.Ordinal));
             if (toggle is not null && sectionRows is not null)
             {
-                result.Add(new NoteDateSection(toggle.Tag as string ?? string.Empty, toggle, sectionRows));
+                result.Add(new NoteDateSection(
+                    toggle.Tag as string ?? string.Empty,
+                    section,
+                    toggle,
+                    sectionRows));
             }
         }
 
@@ -3068,6 +3207,48 @@ internal static class ValidationReport
             }.All(pair => HasExpectedColor(pair.Item1, pair.Item2));
 
             return dayMatches && nightMatches && defaultTagColorsMatch;
+        }
+        finally
+        {
+            theme.Apply(restoreUtc);
+        }
+    }
+
+    private static bool ValidateNoteDisclosureThemeTokens(
+        ApplicationTheme theme,
+        DateTimeOffset restoreUtc)
+    {
+        static bool HasExpectedColor(string key, string expected)
+        {
+            return
+                ColorConverter.ConvertFromString(expected) is Color expectedColor &&
+                Application.Current.FindResource(key) is Color actualColor &&
+                actualColor == expectedColor;
+        }
+
+        try
+        {
+            theme.Apply(ApplicationThemeMode.Day);
+            var dayMatches = new[]
+            {
+                ("NoteStatusHeaderColor", "#FFF0E4"),
+                ("NoteCompletedHeaderColor", "#F7E9E2"),
+                ("NoteActiveRailColor", "#D55C47"),
+                ("NoteCompletedRailColor", "#B89E8E"),
+                ("NoteTimelineColor", "#E9C5B2")
+            }.All(pair => HasExpectedColor(pair.Item1, pair.Item2));
+
+            theme.Apply(ApplicationThemeMode.Night);
+            var nightMatches = new[]
+            {
+                ("NoteStatusHeaderColor", "#423125"),
+                ("NoteCompletedHeaderColor", "#493229"),
+                ("NoteActiveRailColor", "#C86F54"),
+                ("NoteCompletedRailColor", "#C6A17F"),
+                ("NoteTimelineColor", "#8B6845")
+            }.All(pair => HasExpectedColor(pair.Item1, pair.Item2));
+
+            return dayMatches && nightMatches;
         }
         finally
         {
@@ -3442,7 +3623,11 @@ internal static class ValidationReport
         IReadOnlyList<string[]> CharacterBounds,
         IReadOnlyList<int> WaveColumnCounts);
 
-    private sealed record NoteDateSection(string Key, Button Toggle, StackPanel Rows);
+    private sealed record NoteDateSection(
+        string Key,
+        FrameworkElement Root,
+        Button Toggle,
+        StackPanel Rows);
 
     private sealed record NoteSectionExerciseResult(
         bool DateSectionsCanCollapse,

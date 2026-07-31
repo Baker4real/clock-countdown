@@ -7,6 +7,8 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using MinminCountdown.Core;
+using WpfEllipse = System.Windows.Shapes.Ellipse;
+using WpfPath = System.Windows.Shapes.Path;
 
 namespace MinminCountdown;
 
@@ -385,8 +387,8 @@ public sealed partial class MainWindow : Window
             ActiveNoteRows.Children.Add(sentinel);
             UpdateTime(ChinaStandardTime.ToBeijingTime(firstDueUtc));
             return
-                before.Contains("下次 4月6日 09:30", StringComparison.Ordinal) &&
-                after.Contains("下次 4月6日 10:00", StringComparison.Ordinal) &&
+                before.Contains("下次 4 月 6 日 09:30", StringComparison.Ordinal) &&
+                after.Contains("下次 4 月 6 日 10:00", StringComparison.Ordinal) &&
                 !ActiveNoteRows.Children.Contains(sentinel);
         }
         finally
@@ -643,16 +645,24 @@ public sealed partial class MainWindow : Window
         ToggleActiveNotes.Click += (_, _) =>
         {
             _activeNotesExpanded = !_activeNotesExpanded;
-            ActiveNoteRows.Visibility =
-                _activeNotesExpanded ? Visibility.Visible : Visibility.Collapsed;
-            ToggleActiveNotes.Content = _activeNotesExpanded ? "收起未完成" : "未完成";
+            SetNoteStatusSectionState(
+                ToggleActiveNotes,
+                ActiveNoteRows,
+                ActiveNotesChevron,
+                "未完成",
+                ActiveNotesCount.Text,
+                _activeNotesExpanded);
         };
         ToggleCompletedNotes.Click += (_, _) =>
         {
             _completedNotesExpanded = !_completedNotesExpanded;
-            CompletedNoteRows.Visibility =
-                _completedNotesExpanded ? Visibility.Visible : Visibility.Collapsed;
-            ToggleCompletedNotes.Content = _completedNotesExpanded ? "收起已完成" : "已完成";
+            SetNoteStatusSectionState(
+                ToggleCompletedNotes,
+                CompletedNoteRows,
+                CompletedNotesChevron,
+                "已完成",
+                CompletedNotesCount.Text,
+                _completedNotesExpanded);
         };
         CountdownTags.CreateRequested += CreateTagFromSelector;
         NoteTags.CreateRequested += CreateTagFromSelector;
@@ -826,24 +836,57 @@ public sealed partial class MainWindow : Window
         RecordCountText.Text = $"{active.Length} 个待办";
         AddNotesGroupedByDay(ActiveNoteRows, active, isCompleted: false, effectiveNowUtc);
         AddNotesGroupedByDay(CompletedNoteRows, completed, isCompleted: true, effectiveNowUtc);
-        ToggleActiveNotes.Content = _activeNotesExpanded ? "收起未完成" : "未完成";
+        ActiveNotesCount.Text = active.Length.ToString(CultureInfo.InvariantCulture);
+        CompletedNotesCount.Text = completed.Length.ToString(CultureInfo.InvariantCulture);
         ToggleActiveNotes.Visibility = active.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        ActiveNoteRows.Visibility =
-            active.Length == 0 || _activeNotesExpanded ? Visibility.Visible : Visibility.Collapsed;
         ToggleCompletedNotes.Visibility = completed.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        CompletedNoteRows.Visibility =
-            _completedNotesExpanded && completed.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        if (records.Count == 0)
+        SetNoteStatusSectionState(
+            ToggleActiveNotes,
+            ActiveNoteRows,
+            ActiveNotesChevron,
+            "未完成",
+            ActiveNotesCount.Text,
+            _activeNotesExpanded);
+        SetNoteStatusSectionState(
+            ToggleCompletedNotes,
+            CompletedNoteRows,
+            CompletedNotesChevron,
+            "已完成",
+            CompletedNotesCount.Text,
+            _completedNotesExpanded);
+        if (active.Length == 0)
         {
-            ActiveNoteRows.Children.Add(new TextBlock
-            {
-                Text = "还没有符合条件的便签。",
-                Margin = new Thickness(0, 40, 0, 0),
-                FontSize = 20,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Foreground = (Brush)FindResource("MutedBrush")
-            });
+            ActiveNoteRows.Visibility = Visibility.Collapsed;
         }
+
+        if (completed.Length == 0)
+        {
+            CompletedNoteRows.Visibility = Visibility.Collapsed;
+        }
+
+        EmptyNotesMessage.Visibility = records.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private static void SetNoteStatusSectionState(
+        Button toggle,
+        Panel rows,
+        WpfPath chevron,
+        string status,
+        string count,
+        bool isExpanded)
+    {
+        if (chevron.RenderTransform is RotateTransform rotation)
+        {
+            rotation.Angle = isExpanded ? 0 : -90;
+        }
+
+        var action = isExpanded ? "收起" : "展开";
+        toggle.ToolTip = $"{action}{status}便签";
+        AutomationProperties.SetName(toggle, $"{action}{status}便签，共 {count} 条");
+        AutomationProperties.SetHelpText(toggle, isExpanded ? "当前展开" : "当前收起");
+        rows.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void AddNotesGroupedByDay(
@@ -854,29 +897,35 @@ public sealed partial class MainWindow : Window
     {
         foreach (var group in notes.GroupBy(note => note.Date, StringComparer.Ordinal))
         {
+            var isFirstSection = target.Children.Count == 0;
             var groupedNotes = group.ToArray();
-            var dateLabel = group.Key ?? "未设置日期";
+            var dateLabel = FormatNoteDateLabel(group.Key, nowUtc);
             var sectionKey = (IsCompleted: isCompleted, Date: group.Key);
-            var sectionRows = new StackPanel();
+            var sectionRows = new StackPanel { Uid = "NoteDateRows" };
             foreach (var note in groupedNotes)
             {
                 sectionRows.Children.Add(CreateNoteRow(note, nowUtc));
             }
 
-            var sectionToggle = UiAccessibility.Name(
-                new Button
-                {
-                    Tag = group.Key ?? string.Empty,
-                    Margin = new Thickness(0, 0, 0, 6),
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    FontWeight = FontWeights.SemiBold,
-                    Style = (Style)FindResource("SecondaryButton")
-                },
-                string.Empty);
             var isExpanded = !_collapsedNoteDateSections.Contains(sectionKey);
+            var chevronRotation = new RotateTransform(isExpanded ? 0 : -90);
+            var sectionToggle = new Button
+            {
+                Uid = "NoteDateDisclosure",
+                Tag = group.Key ?? string.Empty,
+                Margin = new Thickness(0, 0, 0, 2),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Style = (Style)MainContentProjection.FindResource("MainNoteDateDisclosureButton"),
+                Content = CreateNoteDateDisclosureContent(
+                    dateLabel,
+                    groupedNotes.Length,
+                    isCompleted,
+                    chevronRotation)
+            };
             SetNoteDateSectionState(
                 sectionToggle,
                 sectionRows,
+                chevronRotation,
                 dateLabel,
                 groupedNotes.Length,
                 isCompleted,
@@ -892,25 +941,165 @@ public sealed partial class MainWindow : Window
                 SetNoteDateSectionState(
                     sectionToggle,
                     sectionRows,
+                    chevronRotation,
                     dateLabel,
                     groupedNotes.Length,
                     isCompleted,
                     expand);
             };
 
-            var section = new StackPanel
+            var timeline = new Grid
             {
-                Margin = new Thickness(0, target.Children.Count == 0 ? 0 : 10, 0, 0)
+                Uid = "NoteDateTimeline",
+                Width = 24
             };
-            section.Children.Add(sectionToggle);
-            section.Children.Add(sectionRows);
+            var timelineLine = new Border
+            {
+                Uid = "NoteTimelineLine",
+                Width = 1,
+                Margin = new Thickness(0, isFirstSection ? 22 : 0, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            timelineLine.SetResourceReference(Border.BackgroundProperty, "NoteTimelineBrush");
+            var timelineNode = new WpfEllipse
+            {
+                Uid = "NoteTimelineNode",
+                Width = 10,
+                Height = 10,
+                Margin = new Thickness(0, 16, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                StrokeThickness = 2
+            };
+            timelineNode.SetResourceReference(
+                System.Windows.Shapes.Shape.FillProperty,
+                "CanvasBrush");
+            timelineNode.SetResourceReference(
+                System.Windows.Shapes.Shape.StrokeProperty,
+                isCompleted ? "NoteCompletedRailBrush" : "NoteActiveRailBrush");
+            timeline.Children.Add(timelineLine);
+            timeline.Children.Add(timelineNode);
+
+            var content = new StackPanel();
+            content.Children.Add(sectionToggle);
+            content.Children.Add(sectionRows);
+
+            var section = new Grid
+            {
+                Uid = "NoteDateTimelineSection",
+                Margin = new Thickness(0)
+            };
+            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+            section.ColumnDefinitions.Add(new ColumnDefinition());
+            Grid.SetColumn(content, 1);
+            section.Children.Add(timeline);
+            section.Children.Add(content);
             target.Children.Add(section);
         }
+    }
+
+    private Grid CreateNoteDateDisclosureContent(
+        string dateLabel,
+        int noteCount,
+        bool isCompleted,
+        RotateTransform chevronRotation)
+    {
+        var content = new Grid();
+        content.ColumnDefinitions.Add(new ColumnDefinition());
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var label = new TextBlock
+        {
+            Uid = "NoteDateLabel",
+            Text = dateLabel,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "BodyBrush");
+        var count = new TextBlock
+        {
+            Uid = "NoteDateCount",
+            Text = $"{noteCount} 条",
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 15,
+            Typography =
+            {
+                NumeralAlignment = FontNumeralAlignment.Tabular
+            }
+        };
+        count.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        var chevron = new WpfPath
+        {
+            Uid = "NoteDateChevron",
+            Width = 12,
+            Height = 8,
+            Margin = new Thickness(13, 0, 3, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Data = Geometry.Parse("M 1,1 L 6,6 L 11,1"),
+            RenderTransform = chevronRotation,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            Stretch = Stretch.Uniform,
+            StrokeThickness = 2,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round
+        };
+        chevron.SetResourceReference(
+            System.Windows.Shapes.Shape.StrokeProperty,
+            isCompleted ? "MutedBrush" : "BodyBrush");
+
+        Grid.SetColumn(count, 1);
+        Grid.SetColumn(chevron, 2);
+        content.Children.Add(label);
+        content.Children.Add(count);
+        content.Children.Add(chevron);
+        return content;
+    }
+
+    private static string FormatNoteDateLabel(string? dateValue, DateTimeOffset nowUtc)
+    {
+        if (dateValue is null)
+        {
+            return "未设置日期";
+        }
+
+        if (!DateTime.TryParseExact(
+                dateValue,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var date))
+        {
+            return dateValue;
+        }
+
+        var today = ChinaStandardTime.ToBeijingTime(nowUtc).Date;
+        var calendarDate = date.Year == today.Year
+            ? $"{date.Month} 月 {date.Day} 日"
+            : $"{date.Year} 年 {date.Month} 月 {date.Day} 日";
+        if (date.Date == today)
+        {
+            return $"今天 · {calendarDate}";
+        }
+
+        if (date.Date == today.AddDays(-1))
+        {
+            return $"昨天 · {calendarDate}";
+        }
+
+        var weekday = CultureInfo.GetCultureInfo("zh-CN")
+            .DateTimeFormat
+            .GetAbbreviatedDayName(date.DayOfWeek);
+        return $"{calendarDate} · {weekday}";
     }
 
     private static void SetNoteDateSectionState(
         Button toggle,
         Panel rows,
+        RotateTransform chevronRotation,
         string dateLabel,
         int noteCount,
         bool isCompleted,
@@ -918,9 +1107,10 @@ public sealed partial class MainWindow : Window
     {
         var action = isExpanded ? "收起" : "展开";
         var status = isCompleted ? "已完成" : "未完成";
-        toggle.Content = $"{action} {dateLabel} · {noteCount} 条";
+        chevronRotation.Angle = isExpanded ? 0 : -90;
         toggle.ToolTip = $"{action}{dateLabel}的{status}便签";
-        AutomationProperties.SetName(toggle, $"{action}{dateLabel}的{status}便签");
+        AutomationProperties.SetName(toggle, $"{action}{dateLabel}的{status}便签，共 {noteCount} 条");
+        AutomationProperties.SetHelpText(toggle, isExpanded ? "当前展开" : "当前收起");
         rows.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -932,19 +1122,23 @@ public sealed partial class MainWindow : Window
                 IsChecked = note.IsCompleted,
                 Tag = note.Id,
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 2, 10, 0)
+                Margin = new Thickness(0, 3, 10, 0)
             },
             note.IsCompleted ? $"恢复便签 {note.Text}" : $"完成便签 {note.Text}");
         completion.Checked += OnNoteCompletionChanged;
         completion.Unchecked += OnNoteCompletionChanged;
         _noteCompletionBoxes[note.Id] = completion;
 
-        var edit = ActionButton("编辑", note.Id, "编辑便签");
+        var edit = NoteActionButton("编辑", note.Id, "编辑便签");
         edit.Click += OnEditNote;
-        var delete = ActionButton("删除", note.Id, "删除便签");
+        var delete = NoteActionButton("删除", note.Id, "删除便签");
         delete.Style = (Style)FindResource("DangerButton");
         delete.Click += OnDeleteNote;
-        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
         actions.Children.Add(edit);
         actions.Children.Add(delete);
 
@@ -957,13 +1151,16 @@ public sealed partial class MainWindow : Window
             Foreground = note.IsCompleted ? (Brush)FindResource("MutedBrush") : (Brush)FindResource("InkBrush")
         });
         var details = FormatNoteDetails(note, nowUtc);
-        body.Children.Add(new TextBlock
+        if (!string.IsNullOrWhiteSpace(details))
         {
-            Text = details,
-            Margin = new Thickness(0, 5, 0, 0),
-            FontSize = 18,
-            Foreground = (Brush)FindResource("MutedBrush")
-        });
+            body.Children.Add(new TextBlock
+            {
+                Text = details,
+                Margin = new Thickness(0, 4, 0, 0),
+                FontSize = 17,
+                Foreground = (Brush)FindResource("MutedBrush")
+            });
+        }
         body.Children.Add(CreateTagChips(note.TagIds));
 
         var grid = new Grid();
@@ -975,37 +1172,36 @@ public sealed partial class MainWindow : Window
         grid.Children.Add(completion);
         grid.Children.Add(body);
         grid.Children.Add(actions);
-        return Card(grid, "NoteBrush");
+        return NoteCard(grid);
     }
 
     private static string FormatNoteDetails(NoteRecord note, DateTimeOffset nowUtc)
     {
-        var status = note.IsCompleted ? "已完成" : "未完成";
         if (note.Reminder is NoReminder)
         {
-            return $"{note.Date ?? "未设置日期"} · {status}";
+            return string.Empty;
         }
 
         if (note.Reminder is OnceReminder once)
         {
             if (once.Delivery == OnceDeliveryState.Delivered)
             {
-                return $"{note.Date ?? "未设置日期"} · {status} · 已提醒";
+                return "已提醒";
             }
 
             var due = ChinaStandardTime.ToBeijingTime(once.FirstDueUtc);
             var suffix = note.IsCompleted ? "（已暂停）" : string.Empty;
-            return $"{note.Date ?? "未设置日期"} · {status} · 一次提醒 {due:M月d日 HH:mm}{suffix}";
+            return $"一次提醒 {due:M 月 d 日 HH:mm}{suffix}";
         }
 
         var repeating = (RepeatingReminder)note.Reminder;
         var nextReminder = ReminderSchedule.GetNextDueUtc(note, nowUtc);
         if (note.IsCompleted)
         {
-            return $"{note.Date ?? "未设置日期"} · {status} · 每 {repeating.Interval.Minutes} 分钟（已暂停）";
+            return $"每 {repeating.Interval.Minutes} 分钟（已暂停）";
         }
 
-        return $"{note.Date ?? "未设置日期"} · {status} · 下次 {ChinaStandardTime.ToBeijingTime(nextReminder!.Value):M月d日 HH:mm} · 每 {repeating.Interval.Minutes} 分钟";
+        return $"下次 {ChinaStandardTime.ToBeijingTime(nextReminder!.Value):M 月 d 日 HH:mm} · 每 {repeating.Interval.Minutes} 分钟";
     }
 
     private void SaveCountdown()
@@ -1687,6 +1883,36 @@ public sealed partial class MainWindow : Window
             BorderBrush = (Brush)FindResource("PeachLineBrush"),
             BorderThickness = new Thickness(1)
         };
+    }
+
+    private Border NoteCard(UIElement content)
+    {
+        return new Border
+        {
+            Child = content,
+            Margin = new Thickness(0, 0, 0, 8),
+            Padding = new Thickness(14),
+            CornerRadius = new CornerRadius(8),
+            Background = (Brush)FindResource("NoteBrush"),
+            BorderBrush = (Brush)FindResource("NoteLineBrush"),
+            BorderThickness = new Thickness(1)
+        };
+    }
+
+    private Button NoteActionButton(string content, string id, string accessibleName)
+    {
+        return UiAccessibility.Name(
+            new Button
+            {
+                Content = content,
+                Tag = id,
+                MinWidth = 72,
+                MinHeight = 44,
+                FontSize = 16,
+                Margin = new Thickness(6, 0, 0, 0),
+                Style = (Style)FindResource("SecondaryButton")
+            },
+            accessibleName);
     }
 
     private Button ActionButton(string content, string id, string accessibleName)

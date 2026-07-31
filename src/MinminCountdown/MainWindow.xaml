@@ -80,6 +80,103 @@
               <Setter Property="FontSize" Value="20" />
               <Setter Property="Padding" Value="18,0" />
             </Style>
+            <Style x:Key="MainNoteStatusDisclosureButton" TargetType="{x:Type Button}">
+              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+              <Setter Property="Background" Value="{DynamicResource NoteStatusHeaderBrush}" />
+              <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
+              <Setter Property="BorderThickness" Value="1" />
+              <Setter Property="Padding" Value="12,9" />
+              <Setter Property="MinHeight" Value="66" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+              <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type Button}">
+                    <Grid x:Name="InteractionSurface">
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="2"
+                              CornerRadius="10">
+                        <Border x:Name="Surface"
+                                Margin="2"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                            VerticalAlignment="Center"
+                                            RecognizesAccessKey="True" />
+                        </Border>
+                      </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="Surface" Property="Opacity" Value="0.92" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+            <Style x:Key="MainNoteDateDisclosureButton" TargetType="{x:Type Button}">
+              <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderBrush" Value="Transparent" />
+              <Setter Property="BorderThickness" Value="1" />
+              <Setter Property="Padding" Value="6,4" />
+              <Setter Property="MinHeight" Value="42" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+              <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type Button}">
+                    <Grid x:Name="InteractionSurface">
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="2"
+                              CornerRadius="7">
+                        <Border x:Name="Surface"
+                                Margin="2"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                            VerticalAlignment="Center"
+                                            RecognizesAccessKey="True" />
+                        </Border>
+                      </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="Surface" Property="Opacity" Value="0.9" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
             <Style x:Key="MainPrimaryButton" TargetType="{x:Type Button}">
               <Setter Property="Foreground" Value="White" />
               <Setter Property="Background" Value="#EF604C" />
@@ -625,16 +722,126 @@
                             HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                   <Button x:Name="ToggleActiveNotes"
-                          Content="未完成"
                           Visibility="Collapsed"
-                          Style="{StaticResource MainSecondaryButton}" />
-                  <StackPanel x:Name="ActiveNoteRows" />
+                          Style="{StaticResource MainNoteStatusDisclosureButton}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="6" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Border Width="5"
+                              Height="34"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center"
+                              Background="{DynamicResource NoteActiveRailBrush}"
+                              CornerRadius="3" />
+                      <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="ActiveNotesLabel"
+                                   FontSize="22"
+                                   FontWeight="SemiBold"
+                                   Text="未完成" />
+                        <TextBlock Margin="0,2,0,0"
+                                   FontSize="16"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   Text="正在照顾的事情" />
+                      </StackPanel>
+                      <TextBlock x:Name="ActiveNotesCount"
+                                 Grid.Column="2"
+                                 MinWidth="40"
+                                 VerticalAlignment="Center"
+                                 FontSize="22"
+                                 Foreground="{DynamicResource BodyBrush}"
+                                 Text="0"
+                                 TextAlignment="Right"
+                                 Typography.NumeralAlignment="Tabular" />
+                      <Path x:Name="ActiveNotesChevron"
+                            Grid.Column="3"
+                            Width="14"
+                            Height="9"
+                            Margin="16,0,3,0"
+                            VerticalAlignment="Center"
+                            Data="M 1,1 L 7,7 L 13,1"
+                            RenderTransformOrigin="0.5,0.5"
+                            Stretch="Uniform"
+                            Stroke="{DynamicResource BodyBrush}"
+                            StrokeEndLineCap="Round"
+                            StrokeLineJoin="Round"
+                            StrokeStartLineCap="Round"
+                            StrokeThickness="2">
+                        <Path.RenderTransform>
+                          <RotateTransform Angle="0" />
+                        </Path.RenderTransform>
+                      </Path>
+                    </Grid>
+                  </Button>
+                  <StackPanel x:Name="ActiveNoteRows" Margin="26,6,0,0" />
                   <Button x:Name="ToggleCompletedNotes"
-                          Margin="0,8,0,0"
-                          Content="已完成"
+                          Margin="0,10,0,0"
+                          Background="{DynamicResource NoteCompletedHeaderBrush}"
                           Visibility="Collapsed"
-                          Style="{StaticResource MainSecondaryButton}" />
-                  <StackPanel x:Name="CompletedNoteRows" Visibility="Collapsed" />
+                          Style="{StaticResource MainNoteStatusDisclosureButton}">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="6" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Border Width="5"
+                              Height="34"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center"
+                              Background="{DynamicResource NoteCompletedRailBrush}"
+                              CornerRadius="3" />
+                      <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="CompletedNotesLabel"
+                                   FontSize="22"
+                                   FontWeight="SemiBold"
+                                   Text="已完成" />
+                        <TextBlock Margin="0,2,0,0"
+                                   FontSize="16"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   Text="收好，但随时能找回" />
+                      </StackPanel>
+                      <TextBlock x:Name="CompletedNotesCount"
+                                 Grid.Column="2"
+                                 MinWidth="40"
+                                 VerticalAlignment="Center"
+                                 FontSize="22"
+                                 Foreground="{DynamicResource MutedBrush}"
+                                 Text="0"
+                                 TextAlignment="Right"
+                                 Typography.NumeralAlignment="Tabular" />
+                      <Path x:Name="CompletedNotesChevron"
+                            Grid.Column="3"
+                            Width="14"
+                            Height="9"
+                            Margin="16,0,3,0"
+                            VerticalAlignment="Center"
+                            Data="M 1,1 L 7,7 L 13,1"
+                            RenderTransformOrigin="0.5,0.5"
+                            Stretch="Uniform"
+                            Stroke="{DynamicResource MutedBrush}"
+                            StrokeEndLineCap="Round"
+                            StrokeLineJoin="Round"
+                            StrokeStartLineCap="Round"
+                            StrokeThickness="2">
+                        <Path.RenderTransform>
+                          <RotateTransform Angle="-90" />
+                        </Path.RenderTransform>
+                      </Path>
+                    </Grid>
+                  </Button>
+                  <StackPanel x:Name="CompletedNoteRows" Margin="26,6,0,0" Visibility="Collapsed" />
+                  <TextBlock x:Name="EmptyNotesMessage"
+                             Margin="0,40,0,0"
+                             HorizontalAlignment="Center"
+                             FontSize="20"
+                             Foreground="{DynamicResource MutedBrush}"
+                             Text="还没有符合条件的便签。"
+                             Visibility="Collapsed" />
                 </StackPanel>
               </ScrollViewer>
             </Canvas>

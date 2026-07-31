@@ -354,6 +354,10 @@ try {
     if (-not $listValidation.NotePersistenceRoundTrip) { throw 'Sticky-note persistence round-trip failed.' }
     if (-not $listValidation.NoteActionsBoundByTag) { throw 'Sticky-note actions are not bound to their note ID.' }
     if (-not $listValidation.NoteStatusLabelsPresent) { throw 'Sticky-note status labels are missing from rendered rows.' }
+    if (-not $listValidation.NoteStatusDisclosureVisuals) { throw 'Sticky-note status disclosures are missing fixed labels, counts, or state arrows.' }
+    if (-not $listValidation.NoteDateTimelineVisuals) { throw 'Sticky-note date disclosures are missing the independent timeline visual.' }
+    if (-not $listValidation.NoteDisclosureAccessibility) { throw 'Sticky-note disclosure controls are missing stable accessible names.' }
+    if (-not $listValidation.NoteDisclosureThemeTokens) { throw 'Sticky-note disclosure theme tokens are missing day/night resources.' }
     if (-not $listValidation.HasNoteDateControls) { throw 'The manager or floating sticky-note date picker is missing.' }
     if (-not $listValidation.NoteDatesRendered) { throw 'Sticky-note calendar dates are missing from rendered rows.' }
     if (-not $listValidation.NotesGroupedByDay) { throw 'Sticky-note rows are not grouped by calendar day.' }

@@ -1,0 +1,1422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#efede9">
+  <title>便签分组收放 UI 方向样机</title>
+  <link rel="icon" type="image/png" href="data:image/png;base64,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">
+  <style>
+    :root {
+      --shell-bg: #efede9;
+      --shell-surface: #f8f7f4;
+      --shell-card: #fffefa;
+      --shell-line: #d8d2ca;
+      --shell-ink: #2f2925;
+      --shell-muted: #6f665f;
+      --shell-accent: #b8533d;
+      --shell-focus: #8e3e2d;
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+      color: var(--shell-ink);
+      background: var(--shell-bg);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { min-width: 320px; color-scheme: light; }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background: var(--shell-bg);
+      color: var(--shell-ink);
+      font-size: 15px;
+      line-height: 1.6;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea { font: inherit; }
+
+    button { touch-action: manipulation; }
+
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    [tabindex="0"]:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--shell-focus) 36%, transparent);
+      outline-offset: 2px;
+    }
+
+    .shell-bar {
+      position: sticky;
+      top: 0;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      min-height: 64px;
+      padding: 12px clamp(18px, 4vw, 48px);
+      background: rgb(248 247 244 / 94%);
+      border-bottom: 1px solid var(--shell-line);
+      backdrop-filter: blur(14px);
+    }
+
+    .shell-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .shell-title img {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      border-radius: 7px;
+    }
+
+    .shell-title strong {
+      display: block;
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
+    .shell-title span,
+    .shell-status {
+      color: var(--shell-muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .shell-status {
+      flex: 0 0 auto;
+      font-variant-numeric: tabular-nums;
+    }
+
+    main {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 34px clamp(16px, 4vw, 48px) 72px;
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+      gap: 32px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    .intro h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(25px, 3vw, 38px);
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }
+
+    .intro p {
+      max-width: 58ch;
+      margin: 10px 0 0;
+      color: var(--shell-muted);
+      line-height: 1.7;
+      text-wrap: pretty;
+    }
+
+    .contract {
+      margin: 0;
+      padding: 14px 16px;
+      background: #e7e1da;
+      border: 1px solid #d4cbc2;
+      border-radius: 7px;
+      color: #514943;
+      font-size: 13px;
+    }
+
+    .dials {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 26px;
+      padding: 14px 16px;
+      background: var(--shell-surface);
+      border-block: 1px solid var(--shell-line);
+    }
+
+    .dial {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 7px 12px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .dial label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .dial output {
+      min-width: 2ch;
+      color: var(--shell-accent);
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .dial input {
+      grid-column: 1 / -1;
+      width: 100%;
+      accent-color: var(--shell-accent);
+      cursor: pointer;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-flow: dense;
+      gap: 22px;
+    }
+
+    .direction-card {
+      min-width: 0;
+      overflow: hidden;
+      background: var(--shell-card);
+      border: 2px solid #ded8d0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 160ms var(--ease-out), transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
+    }
+
+    .direction-card.selected {
+      border-color: var(--shell-accent);
+      box-shadow: 0 0 0 3px rgb(184 83 61 / 14%);
+    }
+
+    .direction-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 58px;
+      padding: 10px 14px;
+      border-bottom: 1px solid #e6e1da;
+    }
+
+    .direction-name {
+      min-width: 0;
+    }
+
+    .direction-name strong {
+      display: block;
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .direction-name span {
+      display: block;
+      overflow: hidden;
+      color: var(--shell-muted);
+      font-size: 12px;
+      line-height: 1.45;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .recommend {
+      flex: 0 0 auto;
+      padding: 3px 8px;
+      background: #f4d58d;
+      border: 1px solid #d7ad54;
+      border-radius: 999px;
+      color: #5e401f;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .mock {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 370px;
+      overflow: hidden;
+      background: #ddd6ce;
+      container-type: inline-size;
+    }
+
+    .stage {
+      position: relative;
+      width: 680px;
+      height: 420px;
+      flex: 0 0 auto;
+      overflow: hidden;
+      transform: scale(0.84);
+      transform-origin: center;
+    }
+
+    .stage button {
+      min-height: 36px;
+      border: 0;
+      cursor: pointer;
+    }
+
+    .demo-region[hidden] { display: none !important; }
+
+    .chevron {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(45deg) translateY(-2px);
+      transform-origin: center;
+    }
+
+    [aria-expanded="false"] .chevron {
+      transform: rotate(-45deg) translate(-1px, -1px);
+    }
+
+    .pick-button {
+      width: calc(100% - 28px);
+      min-height: 44px;
+      margin: 14px;
+      padding: 10px 16px;
+      color: #fffdfa;
+      background: #3c3530;
+      border: 1px solid #3c3530;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background-color 140ms var(--ease-out), transform 140ms var(--ease-out);
+    }
+
+    .pick-button:active { transform: scale(0.98); }
+
+    /* Direction A: editorial chapter */
+    .dir-a .stage {
+      padding: 30px 34px;
+      background: #fffdf8;
+      color: #49382f;
+    }
+
+    .a-kicker {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding-bottom: 18px;
+      border-bottom: 1px solid #d9c7b9;
+    }
+
+    .a-kicker b {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .a-kicker span {
+      color: #8c6d5e;
+      font-size: 13px;
+    }
+
+    .a-status { margin-top: 16px; }
+
+    .a-status-toggle,
+    .a-date-toggle {
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 0;
+      color: inherit;
+      background: transparent;
+      text-align: left;
+    }
+
+    .a-status-toggle .a-mark {
+      width: 11px;
+      height: 11px;
+      background: #c55d47;
+      border-radius: 50%;
+    }
+
+    .a-status.completed .a-status-toggle .a-mark { background: #c9b6a8; }
+
+    .a-status-toggle strong {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .a-count {
+      color: #8b6b5e;
+      font-family: Georgia, "Times New Roman", serif;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .a-content { padding: 8px 0 0 23px; }
+
+    .a-date {
+      padding: 12px 0 0;
+      border-top: 1px solid #eadfd6;
+    }
+
+    .a-date + .a-date { margin-top: 12px; }
+
+    .a-date-toggle {
+      grid-template-columns: 1fr auto auto;
+      color: #755548;
+      font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
+    }
+
+    .a-date-toggle time {
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .a-date-toggle small {
+      font-family: "Microsoft YaHei", sans-serif;
+      font-size: 12px;
+    }
+
+    .a-note {
+      display: grid;
+      grid-template-columns: 20px 1fr auto;
+      gap: 10px;
+      align-items: start;
+      padding: 12px 0 6px;
+    }
+
+    .a-check,
+    .b-check,
+    .c-check,
+    .d-check {
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      border: 1px solid currentColor;
+      border-radius: 5px;
+      color: #b8533d;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .a-note p { margin: 0; line-height: 1.55; }
+
+    .a-note small { color: #94796d; font-size: 11px; }
+
+    /* Direction B: warm paper timeline */
+    .dir-b .stage {
+      padding: 24px 28px;
+      background: #fff6ef;
+      color: #4a2d24;
+      font-family: "Trebuchet MS", "Microsoft YaHei", sans-serif;
+    }
+
+    .b-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .b-toolbar strong { font-size: 22px; font-weight: 600; }
+
+    .b-toolbar span { color: #87665a; font-size: 12px; }
+
+    .b-group {
+      margin-top: 10px;
+      overflow: hidden;
+      background: #fffdfc;
+      border: 1px solid #efcdbb;
+      border-radius: 8px;
+      box-shadow: 0 8px 22px rgb(111 66 48 / 8%), 0 2px 6px rgb(111 66 48 / 5%);
+    }
+
+    .b-group-toggle {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 5px 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 14px;
+      background: #fff0e4;
+      color: inherit;
+      text-align: left;
+    }
+
+    .b-group.completed .b-group-toggle { background: #f7e9e2; }
+
+    .b-rail {
+      width: 5px;
+      height: 28px;
+      background: #d55c47;
+      border-radius: 3px;
+    }
+
+    .b-group.completed .b-rail { background: #b89e8e; }
+
+    .b-group-toggle strong { display: block; font-size: 17px; font-weight: 600; }
+
+    .b-group-toggle small { display: block; color: #87665a; font-size: 11px; }
+
+    .b-total {
+      min-width: 28px;
+      color: #7a4b3b;
+      font-family: "Trebuchet MS", sans-serif;
+      font-size: 17px;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+
+    .b-content { padding: 6px 14px 12px 31px; }
+
+    .b-day {
+      position: relative;
+      padding: 7px 0 4px 17px;
+      border-left: 1px solid #e9c5b2;
+    }
+
+    .b-day::before {
+      content: "";
+      position: absolute;
+      left: -5px;
+      top: 20px;
+      width: 9px;
+      height: 9px;
+      background: #fffdfc;
+      border: 2px solid #d98268;
+      border-radius: 50%;
+    }
+
+    .b-day-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 3px 0 8px;
+      background: transparent;
+      color: #6b493e;
+      text-align: left;
+    }
+
+    .b-day-toggle time { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .b-day-toggle span { color: #9b7768; font-size: 11px; }
+
+    .b-day-toggle span,
+    .d-date-toggle span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .b-note {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 9px;
+      align-items: center;
+      margin-bottom: 6px;
+      padding: 9px 10px;
+      background: #fff6d9;
+      border: 1px solid #e7c781;
+      border-radius: 6px;
+    }
+
+    .b-note p { margin: 0; font-size: 13px; line-height: 1.45; }
+
+    .b-note small { color: #8c6c5d; font-size: 10px; }
+
+    /* Direction C: night ledger */
+    .dir-c .stage {
+      padding: 24px 26px;
+      background: #2b2118;
+      color: rgb(255 244 216 / 92%);
+      font-family: "Cascadia Mono", Consolas, "Microsoft YaHei", monospace;
+    }
+
+    .c-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 13px;
+      border-bottom: 1px solid #6e5037;
+    }
+
+    .c-head strong { font-size: 19px; font-weight: 600; }
+
+    .c-head code {
+      color: #e9c389;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .c-switches {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 8px;
+      margin: 14px 0 10px;
+    }
+
+    .c-status-toggle {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 9px;
+      align-items: center;
+      padding: 10px 12px;
+      background: #423125;
+      border: 1px solid #826142 !important;
+      border-radius: 5px;
+      color: inherit;
+      text-align: left;
+    }
+
+    .c-status-toggle[aria-expanded="true"] {
+      background: #6c3f2f;
+      border-color: #b56d4c !important;
+    }
+
+    .c-status-toggle b {
+      min-width: 26px;
+      color: #f0c98e;
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .c-status-toggle span { font-family: "Microsoft YaHei", sans-serif; font-size: 12px; }
+
+    .c-ledger {
+      overflow: hidden;
+      border: 1px solid #6c5039;
+      border-radius: 5px;
+    }
+
+    .c-date-toggle {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 125px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      background: #3a2b1e;
+      border-bottom: 1px solid #6c5039 !important;
+      color: #f2c98e;
+      text-align: left;
+    }
+
+    .c-date-toggle time { font-variant-numeric: tabular-nums; }
+
+    .c-date-toggle small {
+      color: rgb(233 202 160 / 75%);
+      font-family: "Microsoft YaHei", sans-serif;
+    }
+
+    .c-row {
+      display: grid;
+      grid-template-columns: 19px 1fr 112px;
+      gap: 10px;
+      align-items: center;
+      min-height: 42px;
+      padding: 7px 12px;
+      background: #33271d;
+      border-bottom: 1px solid #4f3b2b;
+    }
+
+    .c-row:last-child { border-bottom: 0; }
+
+    .c-row p {
+      margin: 0;
+      overflow: hidden;
+      font-family: "Microsoft YaHei", sans-serif;
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .c-row small {
+      color: rgb(233 202 160 / 70%);
+      font-size: 10px;
+      text-align: right;
+    }
+
+    .c-check { color: #e9b36d; border-color: #a77b4b; border-radius: 3px; }
+
+    /* Direction D: two-page pinboard */
+    .dir-d .stage {
+      padding: 26px 28px;
+      background: #f5dec5;
+      color: #4a2d24;
+      font-family: "Segoe Print", "Microsoft YaHei", sans-serif;
+    }
+
+    .d-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 13px;
+    }
+
+    .d-title strong {
+      font-family: "Microsoft YaHei", sans-serif;
+      font-size: 21px;
+      font-weight: 600;
+    }
+
+    .d-title span { color: #8e654e; font-family: "Microsoft YaHei", sans-serif; font-size: 11px; }
+
+    .d-board {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .d-sheet {
+      overflow: hidden;
+      background: #fffdf7;
+      border: 1px solid #d8ab83;
+      border-radius: 6px;
+      box-shadow: 5px 7px 0 rgb(163 98 67 / 12%);
+    }
+
+    .d-sheet.completed { transform: translateY(16px) rotate(1deg); }
+
+    .d-status-toggle {
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 13px;
+      background: #f9dfdb;
+      border-bottom: 1px dashed #d99c83 !important;
+      color: inherit;
+      text-align: left;
+    }
+
+    .d-sheet.completed .d-status-toggle { background: #fff0d2; }
+
+    .d-pin {
+      width: 12px;
+      height: 12px;
+      background: #d25a42;
+      border: 2px solid #fff8ed;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgb(94 52 37 / 30%);
+    }
+
+    .d-status-toggle strong {
+      font-family: "Microsoft YaHei", sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .d-status-toggle small { color: #8e654e; font-size: 12px; }
+
+    .d-content { padding: 12px; }
+
+    .d-day + .d-day { margin-top: 10px; }
+
+    .d-date-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 5px 7px;
+      background: #fff0e4;
+      border: 1px dashed #d9a486 !important;
+      border-radius: 5px;
+      color: #704a3d;
+      text-align: left;
+    }
+
+    .d-date-toggle time { font-size: 14px; font-variant-numeric: tabular-nums; }
+
+    .d-date-toggle span { font-family: "Microsoft YaHei", sans-serif; font-size: 10px; }
+
+    .d-sticky-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding-top: 8px;
+    }
+
+    .d-note {
+      min-width: 0;
+      min-height: 72px;
+      padding: 9px;
+      background: #fff6d9;
+      border: 1px solid #e7c781;
+      border-radius: 4px;
+    }
+
+    .d-note:nth-child(2) { background: #ffe3c7; border-color: #e8b38d; transform: rotate(-1deg); }
+
+    .d-note p {
+      margin: 5px 0 0;
+      font-family: "Microsoft YaHei", sans-serif;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .d-check { width: 15px; height: 15px; border-radius: 4px; }
+
+    .direction-meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0;
+      padding: 14px;
+      background: #faf8f4;
+      border-top: 1px solid #e6e1da;
+    }
+
+    .direction-meta div { min-width: 0; }
+
+    .direction-meta dt {
+      margin: 0 0 3px;
+      color: #857b73;
+      font-size: 11px;
+    }
+
+    .direction-meta dd {
+      margin: 0;
+      color: #453d37;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .explanation {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 26px;
+      margin-top: 36px;
+      padding-top: 28px;
+      border-top: 1px solid var(--shell-line);
+    }
+
+    .explanation h2 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .diagnosis-list {
+      display: grid;
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .diagnosis-list li {
+      padding-bottom: 12px;
+      border-bottom: 1px solid #ddd7cf;
+    }
+
+    .diagnosis-list strong { display: block; margin-bottom: 3px; font-weight: 600; }
+
+    .diagnosis-list span { color: var(--shell-muted); font-size: 13px; }
+
+    .decision-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .decision-table th,
+    .decision-table td {
+      padding: 11px 10px;
+      border-bottom: 1px solid #ddd7cf;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .decision-table th {
+      color: #665d56;
+      font-weight: 600;
+    }
+
+    .recommendation-note {
+      margin: 16px 0 0;
+      padding: 12px 14px;
+      background: #fff0d2;
+      border: 1px solid #dfbf78;
+      border-radius: 6px;
+      color: #5f4428;
+      font-size: 13px;
+    }
+
+    .recommendation-note strong { font-weight: 600; }
+
+    .selection-dialog {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgb(47 41 37 / 42%);
+      overscroll-behavior: contain;
+    }
+
+    .selection-dialog.open { display: grid; }
+
+    .dialog-panel {
+      width: min(520px, 100%);
+      max-height: calc(100dvh - 40px);
+      overflow: auto;
+      padding: 22px;
+      background: #fffefa;
+      border: 1px solid #cfc7be;
+      border-radius: 8px;
+      box-shadow: 0 18px 48px rgb(47 41 37 / 22%), 0 4px 14px rgb(47 41 37 / 10%);
+    }
+
+    .dialog-panel h2 { margin: 0; font-size: 21px; font-weight: 600; }
+
+    .dialog-panel p { margin: 8px 0 16px; color: var(--shell-muted); font-size: 13px; }
+
+    .dialog-panel label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .dialog-panel textarea {
+      width: 100%;
+      min-height: 90px;
+      resize: vertical;
+      padding: 10px 12px;
+      color: var(--shell-ink);
+      background: #fbfaf7;
+      border: 1px solid #cfc7be;
+      border-radius: 6px;
+      line-height: 1.6;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .dialog-actions button {
+      min-height: 42px;
+      padding: 8px 16px;
+      border: 1px solid #bfb6ad;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .cancel-button { color: #49413b; background: #f4f1ec; }
+
+    .confirm-button { color: #fffdf9; background: var(--shell-accent); border-color: var(--shell-accent) !important; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      z-index: 40;
+      width: min(760px, calc(100vw - 32px));
+      padding: 12px 16px;
+      color: #fffdf9;
+      background: #3b332e;
+      border: 1px solid #564a42;
+      border-radius: 7px;
+      box-shadow: 0 10px 30px rgb(47 41 37 / 22%);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 12px);
+      transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (hover: hover) and (pointer: fine) {
+      .direction-card:hover { transform: translateY(-2px); border-color: #bdb3aa; }
+      .pick-button:hover { background: #554b44; }
+      .dialog-actions button:hover { filter: brightness(0.97); }
+      .stage button:hover { filter: brightness(0.98); }
+    }
+
+    @media (max-width: 1250px) {
+      .mock { height: 335px; }
+      .stage { transform: scale(0.76); }
+    }
+
+    @media (max-width: 1080px) {
+      .mock { height: 310px; }
+      .stage { transform: scale(0.69); }
+      .direction-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 1050px) {
+      .gallery { grid-template-columns: 1fr; }
+      .mock { height: 480px; }
+      .stage { transform: scale(1.12); }
+    }
+
+    @media (max-width: 850px) {
+      .mock { height: 430px; }
+      .stage { transform: scale(0.98); }
+    }
+
+    @media (max-width: 760px) {
+      .shell-bar { position: static; align-items: flex-start; padding: 12px 16px; }
+      .shell-status { max-width: 92px; text-align: right; }
+      main { padding: 24px 14px 64px; }
+      .intro,
+      .explanation { grid-template-columns: 1fr; gap: 18px; }
+      .intro h1 { font-size: 26px; }
+      .dials,
+      .gallery { grid-template-columns: 1fr; }
+      .dials { padding: 14px; }
+      .gallery { gap: 18px; }
+      .mock { height: 410px; }
+      .stage { transform: scale(0.94); }
+      .direction-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .decision-table { display: block; overflow-x: auto; }
+      .dialog-actions { flex-direction: column-reverse; }
+      .dialog-actions button { width: 100%; }
+    }
+
+    @media (max-width: 560px) {
+      .mock { height: 320px; }
+      .stage { transform: scale(0.72); }
+    }
+
+    @media (max-width: 390px) {
+      .shell-title span { display: none; }
+      .mock { height: 224px; }
+      .stage { transform: scale(0.49); }
+      .direction-meta { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 340px) {
+      .mock { height: 185px; }
+      .stage { transform: scale(0.4); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .direction-card,
+      .pick-button,
+      .toast { transition-duration: 1ms; }
+      .direction-card:hover { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="shell-bar">
+    <div class="shell-title">
+      <img alt="敏敏子倒计时图标" width="34" height="34" src="data:image/png;base64,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">
+      <div>
+        <strong>便签分组收放 · 四方向样机</strong>
+        <span>方向样机，不是最终 App；选择后才进入正式实现</span>
+      </div>
+    </div>
+    <div class="shell-status">静态预览 · 快捷键 1-4</div>
+  </header>
+
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <h1 id="page-title">让完成状态与日期层级一眼可辨</h1>
+        <p>保留“未完成默认展开、已完成默认收起、每个日期独立收放”的行为，只重新设计层级、密度与反馈。</p>
+      </div>
+      <p class="contract">功能契约：3 秒内看清当前状态、数量与展开状态；一次点击只改变当前分组；标签、提醒、编辑和完成操作保持原位。</p>
+    </section>
+
+    <section class="dials" aria-label="设计拨盘">
+      <div class="dial">
+        <label for="variance">视觉冒险度</label>
+        <output id="varianceOut" for="variance">5</output>
+        <input id="variance" type="range" min="1" max="10" value="5" aria-label="视觉冒险度">
+      </div>
+      <div class="dial">
+        <label for="motion">动效强度</label>
+        <output id="motionOut" for="motion">4</output>
+        <input id="motion" type="range" min="1" max="10" value="4" aria-label="动效强度">
+      </div>
+      <div class="dial">
+        <label for="density">信息密度</label>
+        <output id="densityOut" for="density">6</output>
+        <input id="density" type="range" min="1" max="10" value="6" aria-label="信息密度">
+      </div>
+    </section>
+
+    <section class="gallery" aria-label="四个设计方向">
+      <article class="direction-card dir-a" data-direction="A" data-name="编辑式目录" tabindex="0">
+        <header class="direction-head">
+          <div class="direction-name">
+            <strong>A · 编辑式目录</strong>
+            <span>章节标题 + 细分隔线，最克制</span>
+          </div>
+        </header>
+        <div class="mock">
+          <div class="stage">
+            <div class="a-kicker"><b>我的便签</b><span>今天还有 5 件事</span></div>
+            <section class="a-status">
+              <button class="a-status-toggle" type="button" aria-expanded="true" data-demo-toggle>
+                <span class="a-mark" aria-hidden="true"></span><strong>未完成</strong><span class="a-count">05</span><span class="chevron" aria-hidden="true"></span>
+              </button>
+              <div class="a-content demo-region">
+                <section class="a-date">
+                  <button class="a-date-toggle" type="button" aria-expanded="true" data-demo-toggle>
+                    <time datetime="2026-07-31">今天 · 7 月 31 日</time><small>3 条</small><span class="chevron" aria-hidden="true"></span>
+                  </button>
+                  <div class="demo-region">
+                    <div class="a-note"><span class="a-check" aria-hidden="true"></span><p>整理本周项目记录<br><small>09:30 提醒 · 工作</small></p><small>编辑</small></div>
+                    <div class="a-note"><span class="a-check" aria-hidden="true"></span><p>给办公室绿植浇水<br><small>生活</small></p><small>编辑</small></div>
+                  </div>
+                </section>
+                <section class="a-date">
+                  <button class="a-date-toggle" type="button" aria-expanded="false" data-demo-toggle>
+                    <time datetime="2026-07-30">昨天 · 7 月 30 日</time><small>2 条</small><span class="chevron" aria-hidden="true"></span>
+                  </button>
+                  <div class="demo-region" hidden><div class="a-note"><span class="a-check"></span><p>归档旧计划</p><small>编辑</small></div></div>
+                </section>
+              </div>
+            </section>
+            <section class="a-status completed">
+              <button class="a-status-toggle" type="button" aria-expanded="false" data-demo-toggle>
+                <span class="a-mark" aria-hidden="true"></span><strong>已完成</strong><span class="a-count">08</span><span class="chevron" aria-hidden="true"></span>
+              </button>
+              <div class="a-content demo-region" hidden></div>
+            </section>
+          </div>
+        </div>
+        <dl class="direction-meta">
+          <div><dt>气质</dt><dd>温暖编辑页</dd></div><div><dt>字体</dt><dd>衬线日期 + 中文黑体</dd></div><div><dt>记忆点</dt><dd>章节圆点与细线</dd></div><div><dt>代价</dt><dd>可爱感最克制</dd></div>
+        </dl>
+        <button class="pick-button qmdp-pick-button" type="button" data-qmdp-native-handler="true">选择 A · 编辑式目录</button>
+      </article>
+
+      <article class="direction-card dir-b" data-direction="B" data-name="暖纸时间轴" data-recommended="true" tabindex="0">
+        <header class="direction-head">
+          <div class="direction-name">
+            <strong>B · 暖纸时间轴</strong>
+            <span>状态抽屉 + 日期轨道，层级最清楚</span>
+          </div>
+          <span class="recommend">推荐</span>
+        </header>
+        <div class="mock">
+          <div class="stage">
+            <div class="b-toolbar"><strong>便签小屋</strong><span>按日期从新到旧</span></div>
+            <section class="b-group">
+              <button class="b-group-toggle" type="button" aria-expanded="true" data-demo-toggle>
+                <span class="b-rail" aria-hidden="true"></span><span><strong>未完成</strong><small>正在照顾的事情</small></span><span class="b-total">5</span><span class="chevron" aria-hidden="true"></span>
+              </button>
+              <div class="b-content demo-region">
+                <section class="b-day">
+                  <button class="b-day-toggle" type="button" aria-expanded="true" data-demo-toggle><time datetime="2026-07-31">今天 · 7 月 31 日</time><span><span>3 条</span><span class="chevron" aria-hidden="true"></span></span></button>
+                  <div class="demo-region">
+                    <div class="b-note"><span class="b-check" aria-hidden="true"></span><p>整理本周项目记录</p><small>09:30</small></div>
+                    <div class="b-note"><span class="b-check" aria-hidden="true"></span><p>给办公室绿植浇水</p><small>生活</small></div>
+                  </div>
+                </section>
+                <section class="b-day">
+                  <button class="b-day-toggle" type="button" aria-expanded="false" data-demo-toggle><time datetime="2026-07-30">昨天 · 7 月 30 日</time><span><span>2 条</span><span class="chevron" aria-hidden="true"></span></span></button>
+                  <div class="demo-region" hidden></div>
+                </section>
+              </div>
+            </section>
+            <section class="b-group completed">
+              <button class="b-group-toggle" type="button" aria-expanded="false" data-demo-toggle>
+                <span class="b-rail" aria-hidden="true"></span><span><strong>已完成</strong><small>收好，但随时能找回</small></span><span class="b-total">8</span><span class="chevron" aria-hidden="true"></span>
+              </button>
+              <div class="b-content demo-region" hidden></div>
+            </section>
+          </div>
+        </div>
+        <dl class="direction-meta">
+          <div><dt>气质</dt><dd>柔和纸张工具</dd></div><div><dt>字体</dt><dd>圆润无衬线</dd></div><div><dt>记忆点</dt><dd>日期轨道与状态色条</dd></div><div><dt>代价</dt><dd>多一层轻容器</dd></div>
+        </dl>
+        <button class="pick-button qmdp-pick-button" type="button" data-qmdp-native-handler="true">选择 B · 暖纸时间轴</button>
+      </article>
+
+      <article class="direction-card dir-c" data-direction="C" data-name="夜间台账" tabindex="0">
+        <header class="direction-head">
+          <div class="direction-name">
+            <strong>C · 夜间台账</strong>
+            <span>状态总览 + 紧凑行列表，效率优先</span>
+          </div>
+        </header>
+        <div class="mock">
+          <div class="stage">
+            <div class="c-head"><strong>便签台账</strong><code>2026-07-31 15:28</code></div>
+            <div class="c-switches">
+              <button class="c-status-toggle" type="button" aria-expanded="true" data-demo-toggle data-target="c-active"><b>05</b><span>未完成</span><span class="chevron" aria-hidden="true"></span></button>
+              <button class="c-status-toggle" type="button" aria-expanded="false" data-demo-toggle data-target="c-done"><b>08</b><span>已完成</span><span class="chevron" aria-hidden="true"></span></button>
+            </div>
+            <div class="c-ledger demo-region" id="c-active">
+              <button class="c-date-toggle" type="button" aria-expanded="true" data-demo-toggle><time datetime="2026-07-31">2026.07.31</time><small>今天 · 3 条</small><span class="chevron" aria-hidden="true"></span></button>
+              <div class="demo-region">
+                <div class="c-row"><span class="c-check" aria-hidden="true"></span><p>整理本周项目记录</p><small>09:30 / 工作</small></div>
+                <div class="c-row"><span class="c-check" aria-hidden="true"></span><p>给办公室绿植浇水</p><small>生活</small></div>
+              </div>
+              <button class="c-date-toggle" type="button" aria-expanded="false" data-demo-toggle><time datetime="2026-07-30">2026.07.30</time><small>昨天 · 2 条</small><span class="chevron" aria-hidden="true"></span></button>
+              <div class="demo-region" hidden></div>
+            </div>
+            <div class="c-ledger demo-region" id="c-done" hidden></div>
+          </div>
+        </div>
+        <dl class="direction-meta">
+          <div><dt>气质</dt><dd>暖棕专业台账</dd></div><div><dt>字体</dt><dd>等宽数字 + 中文黑体</dd></div><div><dt>记忆点</dt><dd>双状态总览条</dd></div><div><dt>代价</dt><dd>可爱感较弱</dd></div>
+        </dl>
+        <button class="pick-button qmdp-pick-button" type="button" data-qmdp-native-handler="true">选择 C · 夜间台账</button>
+      </article>
+
+      <article class="direction-card dir-d" data-direction="D" data-name="双页便签板" tabindex="0">
+        <header class="direction-head">
+          <div class="direction-name">
+            <strong>D · 双页便签板</strong>
+            <span>不对称双栏 + 日期贴纸，最有性格</span>
+          </div>
+        </header>
+        <div class="mock">
+          <div class="stage">
+            <div class="d-title"><strong>今天的小事情</strong><span>轻轻点开，慢慢完成</span></div>
+            <div class="d-board">
+              <section class="d-sheet">
+                <button class="d-status-toggle" type="button" aria-expanded="true" data-demo-toggle><span class="d-pin" aria-hidden="true"></span><strong>未完成</strong><small>5 件　⌄</small></button>
+                <div class="d-content demo-region">
+                  <section class="d-day">
+                    <button class="d-date-toggle" type="button" aria-expanded="true" data-demo-toggle><time datetime="2026-07-31">7 / 31 · 今天</time><span><span>3 条</span><span class="chevron" aria-hidden="true"></span></span></button>
+                    <div class="d-sticky-grid demo-region">
+                      <div class="d-note"><span class="d-check" aria-hidden="true"></span><p>整理本周项目记录</p></div>
+                      <div class="d-note"><span class="d-check" aria-hidden="true"></span><p>给办公室绿植浇水</p></div>
+                    </div>
+                  </section>
+                  <section class="d-day">
+                    <button class="d-date-toggle" type="button" aria-expanded="false" data-demo-toggle><time datetime="2026-07-30">7 / 30 · 昨天</time><span><span>2 条</span><span class="chevron" aria-hidden="true"></span></span></button>
+                    <div class="demo-region" hidden></div>
+                  </section>
+                </div>
+              </section>
+              <section class="d-sheet completed">
+                <button class="d-status-toggle" type="button" aria-expanded="false" data-demo-toggle><span class="d-pin" aria-hidden="true"></span><strong>已完成</strong><small>8 件　›</small></button>
+                <div class="d-content demo-region" hidden></div>
+              </section>
+            </div>
+          </div>
+        </div>
+        <dl class="direction-meta">
+          <div><dt>气质</dt><dd>复古手帐桌面</dd></div><div><dt>字体</dt><dd>手写数字 + 中文黑体</dd></div><div><dt>记忆点</dt><dd>双页与日期贴纸</dd></div><div><dt>代价</dt><dd>窄窗实现更复杂</dd></div>
+        </dl>
+        <button class="pick-button qmdp-pick-button" type="button" data-qmdp-native-handler="true">选择 D · 双页便签板</button>
+      </article>
+    </section>
+
+    <section class="explanation" aria-label="诊断与组件决策">
+      <div>
+        <h2>现状诊断</h2>
+        <ul class="diagnosis-list">
+          <li><strong>层级同形</strong><span>状态和日期都使用整行次级按钮，用户看不出谁是父级、谁是子级。</span></li>
+          <li><strong>标签与动作混写</strong><span>“未完成”会变成“收起未完成”，阅读对象在操作后改变，扫描节奏不稳定。</span></li>
+          <li><strong>容器密度过高</strong><span>状态按钮、日期按钮、18px 圆角便签卡连续堆叠，所有层都在争取同等注意力。</span></li>
+          <li><strong>保留基线</strong><span>沿用暖白、蜜桃、便签黄、珊瑚与夜间暖棕；结构参考 Notion 的轻分隔和 Airtable 的工作台层级，不复制其蓝色外观。</span></li>
+        </ul>
+      </div>
+      <div>
+        <h2>关键组件决策</h2>
+        <table class="decision-table">
+          <thead><tr><th>层级</th><th>采用</th><th>为什么</th><th>不采用</th></tr></thead>
+          <tbody>
+            <tr><td>完成状态</td><td>独立披露标题</td><td>控制自己拥有的内容，状态与数量持续可见</td><td>不用筛选分段器，它会误导为互斥显示</td></tr>
+            <tr><td>日期</td><td>次级披露行</td><td>保留日期、数量与箭头，点击只影响当前日期</td><td>不用同规格按钮，避免与状态争层级</td></tr>
+            <tr><td>展开反馈</td><td>固定标签 + 旋转箭头</td><td>对象名称不跳变，位置与阅读宽度稳定</td><td>不用“展开 / 收起 + 对象”整句切换</td></tr>
+            <tr><td>恢复路径</td><td>各实例独立状态</td><td>刷新后仍保持当前状态，未完成默认开、已完成默认关</td><td>不用一个全局布尔值联动所有日期</td></tr>
+          </tbody>
+        </table>
+        <p class="recommendation-note"><strong>推荐 B：</strong>它用状态抽屉建立父层级、用日期轨道建立子层级，保留当前单列工作流，也最容易同步到日间与夜间主题。</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="selection-dialog" id="selectionDialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogMeta">
+    <div class="dialog-panel">
+      <h2 id="dialogTitle">确认设计方向</h2>
+      <p id="dialogMeta"></p>
+      <label for="adjustments">调整建议（可选）</label>
+      <textarea id="adjustments" placeholder="例如：要 B 的层级 + A 的细线，整体再紧凑一点…"></textarea>
+      <div class="dialog-actions">
+        <button class="cancel-button" id="cancelPick" type="button">取消</button>
+        <button class="confirm-button" id="confirmPick" type="button">确认方向</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" aria-live="polite"></div>
+
+  <script>
+    const directions = [...document.querySelectorAll('.direction-card')];
+    const dialog = document.getElementById('selectionDialog');
+    const dialogMeta = document.getElementById('dialogMeta');
+    const adjustments = document.getElementById('adjustments');
+    const cancelPick = document.getElementById('cancelPick');
+    const confirmPick = document.getElementById('confirmPick');
+    const toast = document.getElementById('toast');
+    let pendingCard = null;
+    let returnFocus = null;
+
+    const dialIds = ['variance', 'motion', 'density'];
+    dialIds.forEach((id) => {
+      const input = document.getElementById(id);
+      const output = document.getElementById(`${id}Out`);
+      input.addEventListener('input', () => {
+        output.value = input.value;
+        output.textContent = input.value;
+      });
+    });
+
+    function getDials() {
+      return {
+        variance: Number(document.getElementById('variance').value),
+        motion: Number(document.getElementById('motion').value),
+        density: Number(document.getElementById('density').value)
+      };
+    }
+
+    function selectionText(payload) {
+      const advice = payload.adjustments ? `；建议：${payload.adjustments}` : '';
+      return `选 ${payload.id}：${payload.name}；拨盘：视觉冒险度 ${payload.dials.variance} / 动效强度 ${payload.dials.motion} / 信息密度 ${payload.dials.density}${advice}`;
+    }
+
+    function openSelection(card, trigger) {
+      pendingCard = card;
+      returnFocus = trigger || card;
+      const dials = getDials();
+      dialogMeta.textContent = `选 ${card.dataset.direction}：${card.dataset.name} · 视觉冒险度 ${dials.variance} / 动效强度 ${dials.motion} / 信息密度 ${dials.density}`;
+      adjustments.value = '';
+      dialog.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      adjustments.focus();
+    }
+
+    function closeSelection() {
+      dialog.classList.remove('open');
+      document.body.style.overflow = '';
+      pendingCard = null;
+      if (returnFocus) returnFocus.focus();
+    }
+
+    async function submitSelection() {
+      if (!pendingCard) return;
+      const payload = {
+        id: pendingCard.dataset.direction,
+        label: `选 ${pendingCard.dataset.direction}：${pendingCard.dataset.name}`,
+        name: pendingCard.dataset.name,
+        notes: '便签状态与日期分组收放 UI 方向选择',
+        dials: getDials(),
+        adjustments: adjustments.value.trim()
+      };
+      const message = selectionText(payload);
+      let sent = false;
+
+      if (location.protocol !== 'file:') {
+        try {
+          const response = await fetch('/api/select', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const result = await response.json();
+          sent = Boolean(result.ok);
+        } catch {
+          sent = false;
+        }
+      }
+
+      directions.forEach((card) => card.classList.toggle('selected', card === pendingCard));
+      dialog.classList.remove('open');
+      document.body.style.overflow = '';
+      toast.textContent = sent ? `${message}；已回传。` : `${message}。当前是静态预览，请把这句话发回对话。`;
+      toast.classList.add('show');
+      window.setTimeout(() => toast.classList.remove('show'), 8000);
+      returnFocus = pendingCard.querySelector('.pick-button');
+      pendingCard = null;
+      returnFocus.focus();
+    }
+
+    directions.forEach((card) => {
+      const pickButton = card.querySelector('.pick-button');
+      pickButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openSelection(card, pickButton);
+      });
+      card.addEventListener('click', (event) => {
+        if (event.target.closest('[data-demo-toggle]')) return;
+        openSelection(card, card);
+      });
+      card.addEventListener('keydown', (event) => {
+        if (event.target !== card) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openSelection(card, card);
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-demo-toggle]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const expanded = button.getAttribute('aria-expanded') === 'true';
+        button.setAttribute('aria-expanded', String(!expanded));
+        const targetId = button.dataset.target;
+        const region = targetId ? document.getElementById(targetId) : button.nextElementSibling;
+        if (region) region.hidden = expanded;
+      });
+    });
+
+    cancelPick.addEventListener('click', closeSelection);
+    confirmPick.addEventListener('click', submitSelection);
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) closeSelection();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (dialog.classList.contains('open')) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeSelection();
+          return;
+        }
+        if (event.key === 'Tab') {
+          const focusable = [adjustments, cancelPick, confirmPick];
+          const index = focusable.indexOf(document.activeElement);
+          if (event.shiftKey && index === 0) {
+            event.preventDefault();
+            confirmPick.focus();
+          } else if (!event.shiftKey && index === focusable.length - 1) {
+            event.preventDefault();
+            adjustments.focus();
+          }
+        }
+        return;
+      }
+
+      if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement.tagName)) return;
+      const index = ['1', '2', '3', '4'].indexOf(event.key);
+      if (index >= 0) openSelection(directions[index], directions[index]);
+    });
+  </script>
+</body>
+</html>

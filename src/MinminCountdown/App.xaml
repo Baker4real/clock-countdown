@@ -11,6 +11,11 @@
     <Color x:Key="CardColor">#FFF0E4</Color>
     <Color x:Key="NoteColor">#FFF6D9</Color>
     <Color x:Key="NoteLineColor">#E7C781</Color>
+    <Color x:Key="NoteStatusHeaderColor">#FFF0E4</Color>
+    <Color x:Key="NoteCompletedHeaderColor">#F7E9E2</Color>
+    <Color x:Key="NoteActiveRailColor">#D55C47</Color>
+    <Color x:Key="NoteCompletedRailColor">#B89E8E</Color>
+    <Color x:Key="NoteTimelineColor">#E9C5B2</Color>
     <Color x:Key="InkColor">#4A2D24</Color>
     <Color x:Key="BodyColor">#765247</Color>
     <Color x:Key="MutedColor">#87665A</Color>
@@ -34,6 +39,11 @@
     <SolidColorBrush x:Key="CardBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteLineBrush" Color="{DynamicResource NoteLineColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="NoteStatusHeaderBrush" Color="{DynamicResource NoteStatusHeaderColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="NoteCompletedHeaderBrush" Color="{DynamicResource NoteCompletedHeaderColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="NoteActiveRailBrush" Color="{DynamicResource NoteActiveRailColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="NoteCompletedRailBrush" Color="{DynamicResource NoteCompletedRailColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="NoteTimelineBrush" Color="{DynamicResource NoteTimelineColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="InkBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="BodyBrush" Color="{DynamicResource BodyColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="MutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />

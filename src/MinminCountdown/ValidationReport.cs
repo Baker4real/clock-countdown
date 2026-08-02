@@ -4020,7 +4020,8 @@ internal static class ValidationReport
                 var required =
                     formatted.WidthIncludingTrailingWhitespace +
                     Math.Max(0, formatted.OverhangTrailing);
-                return required <= textBlock.ActualWidth + 0.5;
+                const double minimumWidthReserve = 2;
+                return required + minimumWidthReserve <= textBlock.ActualWidth;
             });
     }
 

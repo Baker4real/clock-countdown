@@ -11,6 +11,7 @@ public sealed partial class FloatingWindow
 {
     private const string WorkdayEndCountdownId = "__workday_end__";
     private const double CountdownMascotSafeInset = 54;
+    private const double SecondaryRemainingMinimumWidth = 104;
 
     private IReadOnlyList<FrameworkElement> BuildWarmPaperCountdownRows(
         IReadOnlyList<CountdownRecord> records,
@@ -174,6 +175,7 @@ public sealed partial class FloatingWindow
             FormatSecondaryRemaining(remaining),
             13,
             FontWeights.SemiBold);
+        remainingText.MinWidth = SecondaryRemainingMinimumWidth;
         remainingText.MaxWidth = 138;
         remainingText.LineHeight = 15;
         remainingText.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;

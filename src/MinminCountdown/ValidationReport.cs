@@ -1778,6 +1778,7 @@ internal static class ValidationReport
                 rows.Children.Count == 2 &&
                 referenceWindow.FloatingCountdownCount == 1 &&
                 referenceWindow.FloatingCountdownTexts.Count == 1 &&
+                PrimaryRemainingTextFitsOnOneLine(rows, referenceUtc) &&
                 string.Equals(referenceWindow.IncomeText, "今日已赚 ￥41.13", StringComparison.Ordinal);
             var actualCapture = CaptureVisual(root);
             var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
@@ -4023,6 +4024,25 @@ internal static class ValidationReport
                 const double minimumWidthReserve = 2;
                 return required + minimumWidthReserve <= textBlock.ActualWidth;
             });
+    }
+
+    private static bool PrimaryRemainingTextFitsOnOneLine(
+        DependencyObject rows,
+        DateTimeOffset referenceUtc)
+    {
+        var expectedRemaining = CountdownFormatting.FormatRemaining(
+            referenceUtc.AddDays(4).AddHours(13).AddMinutes(18).AddSeconds(59),
+            referenceUtc,
+            "Second");
+        var text = Descendants<TextBlock>(rows).SingleOrDefault(candidate =>
+            string.Equals(candidate.Text, expectedRemaining, StringComparison.Ordinal));
+        return text is not null &&
+               text.TextWrapping == TextWrapping.NoWrap &&
+               text.TextTrimming == TextTrimming.None &&
+               !text.Text.Contains('\n') &&
+               text.LineHeight > 0 &&
+               text.ActualHeight <= text.LineHeight + 0.5 &&
+               TextBlockLinesFit(text);
     }
 
     private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(

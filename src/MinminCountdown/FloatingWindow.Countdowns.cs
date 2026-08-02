@@ -11,6 +11,7 @@ public sealed partial class FloatingWindow
 {
     private const string WorkdayEndCountdownId = "__workday_end__";
     private const double CountdownMascotSafeInset = 54;
+    private const double PrimaryRemainingWidth = 194;
     private const double SecondaryRemainingMinimumWidth = 104;
 
     private IReadOnlyList<FrameworkElement> BuildWarmPaperCountdownRows(
@@ -112,7 +113,7 @@ public sealed partial class FloatingWindow
         var copy = new StackPanel
         {
             MinWidth = 0,
-            Margin = new Thickness(0, 0, 10, 0),
+            Margin = new Thickness(0, 0, 4, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         copy.Children.Add(new TextBlock
@@ -135,13 +136,14 @@ public sealed partial class FloatingWindow
             Foreground = _floatingMutedBrush
         });
 
-        var remainingText = CountdownRemainingText(remaining, 20, FontWeights.SemiBold);
-        remainingText.MaxWidth = 150;
-        remainingText.MaxHeight = 48;
-        remainingText.Margin = new Thickness(6, 0, 0, 0);
-        remainingText.LineHeight = 22;
+        var remainingText = CountdownRemainingText(remaining, 16, FontWeights.SemiBold);
+        remainingText.Width = PrimaryRemainingWidth;
+        remainingText.MaxHeight = 20;
+        remainingText.Margin = new Thickness(4, 0, 0, 0);
+        remainingText.LineHeight = 20;
+        remainingText.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         remainingText.TextTrimming = TextTrimming.None;
-        remainingText.TextWrapping = TextWrapping.Wrap;
+        remainingText.TextWrapping = TextWrapping.NoWrap;
         remainingText.Foreground = WarmPaperAccentBrush(
             _activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。"));
 

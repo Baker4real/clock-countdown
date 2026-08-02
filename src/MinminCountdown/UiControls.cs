@@ -23,6 +23,74 @@ internal static class UiAccessibility
     }
 }
 
+internal static class PopupFocusLifecycle
+{
+    private static readonly HashSet<Popup> Attached = new();
+
+    public static void Attach(
+        Popup popup,
+        UIElement trigger,
+        Func<IInputElement?> initialFocus)
+    {
+        ArgumentNullException.ThrowIfNull(popup);
+        ArgumentNullException.ThrowIfNull(trigger);
+        ArgumentNullException.ThrowIfNull(initialFocus);
+
+        if (!Attached.Add(popup))
+        {
+            return;
+        }
+
+        if (popup.Child is not UIElement surface)
+        {
+            throw new InvalidOperationException("弹层必须先设置可聚焦的内容容器。");
+        }
+
+        popup.Opened += (_, _) =>
+        {
+            popup.Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                new Action(() =>
+                {
+                    if (popup.IsOpen && initialFocus() is { } target)
+                    {
+                        Keyboard.Focus(target);
+                    }
+                }));
+        };
+        surface.AddHandler(
+            Keyboard.PreviewKeyDownEvent,
+            new KeyEventHandler((_, eventArgs) =>
+            {
+                if (eventArgs.Key == Key.Escape && popup.IsOpen)
+                {
+                    popup.IsOpen = false;
+                    eventArgs.Handled = true;
+                    trigger.Dispatcher.BeginInvoke(
+                        System.Windows.Threading.DispatcherPriority.Input,
+                        new Action(() =>
+                        {
+                            if (!trigger.IsVisible || !trigger.IsEnabled)
+                            {
+                                return;
+                            }
+
+                            if (Window.GetWindow(trigger) is { } window)
+                            {
+                                window.Activate();
+                                FocusManager.SetFocusedElement(window, trigger);
+                            }
+
+                            Keyboard.Focus(trigger);
+                        }));
+                }
+            }),
+            true);
+    }
+
+    internal static bool IsAttached(Popup popup) => Attached.Contains(popup);
+}
+
 internal sealed class TagSelector : Grid
 {
     private readonly Button _trigger;
@@ -99,6 +167,7 @@ internal sealed class TagSelector : Grid
             PopupAnimation = PopupAnimation.Fade,
             Child = _surface
         };
+        PopupFocusLifecycle.Attach(_popup, _trigger, () => _search);
         _trigger.Click += (_, _) => _popup.IsOpen = !_popup.IsOpen;
         Children.Add(_popup);
     }
@@ -120,6 +189,12 @@ internal sealed class TagSelector : Grid
     public string SummaryText => _trigger.Content?.ToString() ?? string.Empty;
 
     public bool CreateButtonIsDefault => _create.IsDefault;
+
+    internal Popup Popup => _popup;
+
+    internal Button PopupTrigger => _trigger;
+
+    internal TextBox PopupInitialFocus => _search;
 
     internal bool PopupSurfaceFollowsActiveTheme =>
         ReferenceEquals(_surface.Background, Application.Current.FindResource("CanvasBrush")) &&
@@ -231,11 +306,13 @@ internal sealed class TagSelector : Grid
         };
         if (text.Length > 18)
         {
-            text = text[..15] + "...";
+            text = text[..15] + "…";
         }
 
+        var fullSelection = string.Join("、", names);
         _trigger.Content = text;
-        AutomationProperties.SetName(_trigger, names.Length == 0 ? "选择标签" : $"已选标签：{string.Join("、", names)}");
+        _trigger.ToolTip = names.Length == 0 ? "选择标签" : $"已选标签：{fullSelection}";
+        AutomationProperties.SetName(_trigger, names.Length == 0 ? "选择标签" : $"已选标签：{fullSelection}");
     }
 }
 
@@ -250,6 +327,50 @@ internal static class ThemedDatePickerBehavior
         {
             return;
         }
+
+        KeyEventHandler closeOnEscape = (_, eventArgs) =>
+        {
+            if (eventArgs.Key == Key.Escape && picker.IsDropDownOpen)
+            {
+                picker.IsDropDownOpen = false;
+                eventArgs.Handled = true;
+                picker.Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.ContextIdle,
+                    new Action(() =>
+                    {
+                        picker.ApplyTemplate();
+                        var focusTarget =
+                            picker.Template.FindName("PART_Button", picker) as IInputElement ?? picker;
+                        if (Window.GetWindow(picker) is { } window)
+                        {
+                            window.Activate();
+                            FocusManager.SetFocusedElement(window, focusTarget);
+                        }
+
+                        Keyboard.Focus(focusTarget);
+                    }));
+            }
+        };
+
+        picker.CalendarOpened += (_, _) =>
+        {
+            if (GetCalendar(picker) is not { } calendar)
+            {
+                return;
+            }
+
+            calendar.RemoveHandler(Keyboard.PreviewKeyDownEvent, closeOnEscape);
+            calendar.AddHandler(Keyboard.PreviewKeyDownEvent, closeOnEscape, true);
+            picker.Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.ContextIdle,
+                new Action(() =>
+                {
+                    if (picker.IsDropDownOpen)
+                    {
+                        Keyboard.Focus(calendar);
+                    }
+                }));
+        };
 
         picker.PreviewMouseLeftButtonDown += (_, eventArgs) =>
         {
@@ -271,6 +392,18 @@ internal static class ThemedDatePickerBehavior
     }
 
     public static bool IsAttached(DatePicker picker) => Attached.Contains(picker);
+
+    internal static Calendar? GetCalendar(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        if (picker.Template.FindName("PART_Popup", picker) is Popup popup &&
+            popup.Child is Calendar popupCalendar)
+        {
+            return popupCalendar;
+        }
+
+        return picker.Template.FindName("PART_Calendar", picker) as Calendar;
+    }
 
     private static bool IsDateTextSource(DependencyObject? source)
     {

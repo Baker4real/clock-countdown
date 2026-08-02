@@ -178,6 +178,11 @@
                         Background="{DynamicResource FloatingHeaderDangerBrush}"
                         IsHitTestVisible="False" />
                 <TextBox x:Name="FloatingNoteText" MaxLength="140" />
+                <TextBlock x:Name="FloatingNoteTextError"
+                           Margin="2,4,2,0"
+                           Foreground="{DynamicResource FloatingErrorBrush}"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed" />
                 <Grid Margin="0,8,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -189,6 +194,11 @@
                             Width="116"
                             Margin="8,0,0,0" />
                 </Grid>
+                <TextBlock x:Name="FloatingNoteDateError"
+                           Margin="2,4,2,0"
+                           Foreground="{DynamicResource FloatingErrorBrush}"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed" />
                 <Grid x:Name="FloatingReminderSchedule"
                       Margin="0,8,0,0"
                       Visibility="Collapsed">
@@ -246,9 +256,15 @@
                              Width="70"
                              Margin="8,0,0,0"
                              MaxLength="4"
+                             ToolTip="输入 1 到 1440 的分钟数"
                              Visibility="Collapsed" />
                   </StackPanel>
                 </Grid>
+                <TextBlock x:Name="FloatingReminderMessage"
+                           Margin="2,4,2,0"
+                           Foreground="{DynamicResource FloatingErrorBrush}"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed" />
                 <Grid Margin="0,8,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

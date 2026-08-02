@@ -21,6 +21,11 @@
     <Color x:Key="MutedColor">#87665A</Color>
     <Color x:Key="ActiveColor">#B8533D</Color>
     <Color x:Key="ActiveHoverColor">#B34B36</Color>
+    <Color x:Key="MainActionColor">#A24438</Color>
+    <Color x:Key="MainActionHoverColor">#8E392F</Color>
+    <Color x:Key="MainActionPressedColor">#762D25</Color>
+    <Color x:Key="MainActionFocusColor">#FFD49A</Color>
+    <Color x:Key="MainActionTextColor">#FFFDFC</Color>
     <Color x:Key="PeachLineColor">#F1D5C5</Color>
     <Color x:Key="DangerColor">#A24438</Color>
     <Color x:Key="SuccessColor">#92522E</Color>
@@ -49,6 +54,11 @@
     <SolidColorBrush x:Key="MutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="ActiveBrush" Color="{DynamicResource ActiveColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="ActiveHoverBrush" Color="{DynamicResource ActiveHoverColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="MainActionBrush" Color="{DynamicResource MainActionColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="MainActionHoverBrush" Color="{DynamicResource MainActionHoverColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="MainActionPressedBrush" Color="{DynamicResource MainActionPressedColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="MainActionFocusBrush" Color="{DynamicResource MainActionFocusColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="MainActionTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PeachLineBrush" Color="{DynamicResource PeachLineColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" po:Freeze="False" />
@@ -586,6 +596,7 @@
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
       <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CalendarStyle" Value="{DynamicResource {x:Type Calendar}}" />
       <Setter Property="MinHeight" Value="40" />
       <Setter Property="Template">
         <Setter.Value>
@@ -617,6 +628,7 @@
                      IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                 <Calendar x:Name="PART_Calendar"
                           Margin="0,5,0,0"
+                          Style="{TemplateBinding CalendarStyle}"
                           CalendarItemStyle="{StaticResource {x:Type primitives:CalendarItem}}"
                           CalendarDayButtonStyle="{StaticResource {x:Type primitives:CalendarDayButton}}"
                           CalendarButtonStyle="{StaticResource {x:Type primitives:CalendarButton}}"

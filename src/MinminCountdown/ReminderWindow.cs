@@ -19,7 +19,7 @@ internal sealed class ReminderWindow : Window
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
-        ShowActivated = false;
+        ShowActivated = true;
         Topmost = true;
         Background = Brushes.Transparent;
         AllowsTransparency = true;
@@ -28,12 +28,22 @@ internal sealed class ReminderWindow : Window
             new Button
             {
                 Content = "知道了",
+                IsDefault = true,
+                IsCancel = true,
                 MinWidth = 82,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Style = (Style)FindResource("PrimaryButton")
             },
             "关闭便签提醒");
-        dismiss.Click += (_, _) => Close();
+        void Dismiss()
+        {
+            if (IsVisible)
+            {
+                Close();
+            }
+        }
+
+        dismiss.Click += (_, _) => Dismiss();
 
         var stack = new StackPanel { Margin = new Thickness(20) };
         var heading = new TextBlock
@@ -66,9 +76,9 @@ internal sealed class ReminderWindow : Window
         AutomationProperties.SetName(this, $"便签提醒：{note.Text}");
         PreviewKeyDown += (_, args) =>
         {
-            if (args.Key == Key.Escape)
+            if (args.Key is Key.Escape or Key.Enter or Key.Space)
             {
-                Close();
+                Dismiss();
                 args.Handled = true;
             }
         };
@@ -77,6 +87,13 @@ internal sealed class ReminderWindow : Window
             var workArea = SystemParameters.WorkArea;
             Left = workArea.Right - ActualWidth - 18;
             Top = workArea.Top + 18;
+            Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input,
+                new Action(() =>
+                {
+                    Activate();
+                    Keyboard.Focus(dismiss);
+                }));
         };
     }
 }

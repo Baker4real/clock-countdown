@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using MinminCountdown.Core;
@@ -15,6 +16,16 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildCalendarIndexNoteCard(NoteRecord note, DateTimeOffset nowUtc)
     {
+        var noteError = new TextBlock
+        {
+            Margin = new Thickness(0, 5, 0, 0),
+            Foreground = ThemeBrush((_activeTheme ??
+                throw new InvalidOperationException("悬浮窗主题尚未初始化。")).ErrorBrushKey),
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed
+        };
+        UiAccessibility.MarkLive(noteError);
+
         var completion = UiAccessibility.Name(
             new CheckBox
             {
@@ -24,13 +35,31 @@ public sealed partial class FloatingWindow
                 Foreground = _floatingPrimaryBrush
             },
             $"完成便签 {note.Text}");
+        if (_noteCardErrors.TryGetValue(note.Id, out var savedError))
+        {
+            SetNoteCardError(noteError, completion, savedError);
+        }
+
         completion.Checked += (_, _) =>
         {
             var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(note.Id, true));
             if (!result.Succeeded)
             {
                 completion.IsChecked = false;
+                _noteCardErrors[note.Id] = result.Error;
+                SetNoteCardError(noteError, completion, result.Error);
                 SetNoteMessage(result.Error);
+                completion.Focus();
+            }
+            else
+            {
+                var previousError = noteError.Text;
+                _noteCardErrors.Remove(note.Id);
+                SetNoteCardError(noteError, completion, string.Empty);
+                if (string.Equals(FloatingNoteMessage.Text, previousError, StringComparison.Ordinal))
+                {
+                    SetNoteMessage(string.Empty);
+                }
             }
         };
 
@@ -57,6 +86,8 @@ public sealed partial class FloatingWindow
                 Foreground = _floatingMutedBrush
             });
         }
+
+        body.Children.Add(noteError);
 
         var layout = new Grid
         {
@@ -92,6 +123,17 @@ public sealed partial class FloatingWindow
             SnapsToDevicePixels = true,
             UseLayoutRounding = true
         };
+    }
+
+    private static void SetNoteCardError(TextBlock error, Control source, string message)
+    {
+        error.Text = message;
+        error.Visibility = string.IsNullOrWhiteSpace(message)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        AutomationProperties.SetName(error, message);
+        AutomationProperties.SetHelpText(error, message);
+        AutomationProperties.SetHelpText(source, message);
     }
 
     private Border CreateCalendarIndexDateStamp(NoteRecord note)

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -47,6 +48,8 @@ internal static class ValidationReport
         var floatingNoteExercise = floatingWindowScenarios.CrossDayReminderAdded;
         var mainReminderModeExercise = mainWindowScenarios.ReminderModes;
         var floatingReminderModeExercise = floatingWindowScenarios.ReminderModes;
+        var mainUiPolish = mainWindowScenarios.UiPolish;
+        var floatingUiPolish = floatingWindowScenarios.UiPolish;
         var tagExercise = options.ExerciseTagInteractions
             ? ValidationExercises.RunTagInteractions(desktopWorkspace)
             : TagInteractionExerciseResult.NotRun;
@@ -107,7 +110,7 @@ internal static class ValidationReport
         var dateTextBox = datePicker.Template.FindName("PART_TextBox", datePicker) as DatePickerTextBox;
         var dateButton = datePicker.Template.FindName("PART_Button", datePicker) as Button;
         var datePopup = datePicker.Template.FindName("PART_Popup", datePicker) as Popup;
-        var dateCalendar = datePicker.Template.FindName("PART_Calendar", datePicker) as WpfCalendar;
+        var dateCalendar = ThemedDatePickerBehavior.GetCalendar(datePicker);
         var dateParts = new object?[] { dateTextBox, dateButton, datePopup, dateCalendar };
         var dateButtonOpenedPopup = false;
         if (datePopup is not null)
@@ -126,7 +129,8 @@ internal static class ValidationReport
         var livePopupThemed =
             datePopup?.IsOpen == true &&
             datePopup.Child is WpfCalendar &&
-            dateCalendar?.Template is not null;
+            dateCalendar?.Template is not null &&
+            ReferenceEquals(dateCalendar.Style, datePicker.CalendarStyle);
         var livePopupUnified =
             dateCalendar is not null &&
             Equals(dateCalendar.Background, Application.Current.FindResource("CanvasBrush")) &&
@@ -380,6 +384,7 @@ internal static class ValidationReport
             {
                 Required<ToggleButton>(floating, "FloatingCountdownsButton"),
                 Required<ToggleButton>(floating, "FloatingNotesButton"),
+                Required<Button>(floating, "MinimizeToTrayButton"),
                 Required<Button>(floating, "OpenManagerButton"),
                 Required<Button>(floating, "CloseFloatingButton")
             }
@@ -511,6 +516,8 @@ internal static class ValidationReport
             ValidateNoteDisclosureThemeTokens(theme, workspaceSnapshot.UtcNow);
         var primaryButtonHoverTextContrast =
             ValidatePrimaryButtonHoverTextContrast(theme, workspaceSnapshot.UtcNow);
+        var mainActionTextContrast =
+            ValidateMainActionTextContrast(theme, main, workspaceSnapshot.UtcNow);
         var toolTipThemeTextContrast =
             ValidateToolTipThemeTextContrast(theme, workspaceSnapshot.UtcNow);
         var tagChipTextContrast =
@@ -533,6 +540,7 @@ internal static class ValidationReport
             reminderWindow.WindowStyle == WindowStyle.None &&
             reminderWindow.Content is Border reminderBorder &&
             Equals(reminderBorder.Background, Application.Current.FindResource("NoteBrush"));
+        var reminderKeyboardExercise = ValidateReminderWindowKeyboardDismissal();
         var confirmationDialog = new ConfirmationDialog(main, "验证确认", "确认窗口主题验证");
         var confirmationThemed =
             confirmationDialog.WindowStyle == WindowStyle.None &&
@@ -645,6 +653,7 @@ internal static class ValidationReport
             ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
             ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
             ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
+            ["MainActionTextContrast"] = mainActionTextContrast,
             ["ToolTipThemeTextContrast"] = toolTipThemeTextContrast,
             ["TagChipTextContrast"] = tagChipTextContrast,
             ["ThemedInteractiveStates"] = mainThemeTemplate && comboThemed && dateFamilyThemed,
@@ -698,7 +707,10 @@ internal static class ValidationReport
             ["OneTimeReminderLifecycleWorks"] = oneTimeReminderBehavior,
             ["NoteReminderDispatchWorks"] = reminderBehavior,
             ["NoteReminderWindowIsThemed"] = reminderThemed,
-            ["ReminderWindowSupportsKeyboardDismissal"] = reminderWindow.SupportsKeyboardDismissal,
+            ["ReminderWindowSupportsKeyboardDismissal"] =
+                reminderKeyboardExercise.AllKeysDismiss,
+            ["ReminderWindowFocusesDismissAction"] =
+                reminderKeyboardExercise.FocusesDismissAction,
             ["OfficialCharacterBackgroundLoaded"] =
                 Required<Image>(main, "MyMelodyBackground").Source is not null &&
                 Required<Image>(main, "CinnamorollBackground").Source is not null &&
@@ -737,6 +749,13 @@ internal static class ValidationReport
             ["StaticWorkspaceLayout"] =
                 main.FindName("CountdownWorkspace") is Canvas &&
                 main.FindName("DisplayPrecision") is ComboBox,
+            ["MainNoteEditorFieldsDoNotOverlap"] = mainUiPolish.NoteEditorFieldsDoNotOverlap,
+            ["MainNoteEditorLabelsVisible"] = mainUiPolish.NoteEditorLabelsVisible,
+            ["MainMinimumSizeMatchesDefault"] = mainUiPolish.MinimumSizeMatchesDefault,
+            ["PopupKeyboardLifecycleWorks"] = mainUiPolish.PopupKeyboardLifecycleWorks,
+            ["PopupOutsideFocusPreserved"] = mainUiPolish.PopupOutsideFocusPreserved,
+            ["NoteEmptyStatesDistinguished"] = mainUiPolish.EmptyStatesDistinguished,
+            ["NoteNoResultsResetWorks"] = mainUiPolish.NoResultsResetWorks,
             ["TransientPanelsOnDemand"] = main.HasOnDemandPanels,
             ["TransientPanelsStartClosed"] = main.HasOnDemandPanels,
             ["CountdownTagPickerOpensOnDemand"] = !selector.IsPopupOpen,
@@ -863,6 +882,14 @@ internal static class ValidationReport
             ["FloatingReferenceCaptureWritten"] = floatingReferenceExercise.CaptureWritten,
             ["FloatingReferenceScenarioMatches"] = floatingReferenceExercise.ScenarioMatches,
             ["FloatingReferenceViewportStatesMatch"] = floatingReferenceExercise.ViewportStatesMatch,
+            ["FloatingViewportScrollAndFocusRestored"] =
+                floatingReferenceExercise.ViewportScrollAndFocusRestored,
+            ["FloatingNoteFailureAppearsInSourceCard"] =
+                floatingReferenceExercise.NoteFailureAppearsInSourceCard,
+            ["FloatingResolvedNoteCardErrorDoesNotReturn"] =
+                floatingReferenceExercise.ResolvedNoteCardErrorDoesNotReturn,
+            ["FloatingSecondaryRemainingTextFullyVisible"] =
+                floatingReferenceExercise.SecondaryRemainingTextFullyVisible,
             ["FloatingDayRasterComponentAssetNames"] = floating.DayRasterComponentAssetNames,
             ["FloatingDayRasterShellAndHeaderLoaded"] = floating.DayRasterShellAndHeaderLoaded,
             ["FloatingRasterSurfacesFollowDayNightTheme"] =
@@ -870,6 +897,11 @@ internal static class ValidationReport
             ["FloatingDayRasterDecorationsAreNonInteractive"] = floating.DayRasterDecorationsAreNonInteractive,
             ["FloatingDayRasterCardStatesMatch"] = floatingReferenceExercise.RasterCardStatesMatch,
             ["FloatingDynamicCardContentRemainsWpf"] = floatingReferenceExercise.DynamicCardContentRemainsWpf,
+            ["FloatingDatePickerKeyboardLifecycleWorks"] =
+                floatingUiPolish.DatePickerKeyboardLifecycleWorks,
+            ["FloatingFieldErrorsAppearAtSource"] = floatingUiPolish.FieldErrorsAppearAtSource,
+            ["FloatingCorrectedFieldErrorsClearLiveMessage"] =
+                floatingUiPolish.CorrectedFieldErrorsClearLiveMessage,
             ["FloatingDynamicHeaderControlsRemainWpf"] = floating.DynamicHeaderControlsRemainWpf,
             ["FloatingHeaderIconAccessibility"] = floatingHeaderIconAccessibility,
             ["FloatingHeaderIconClickCommandsWork"] = floatingHeaderIconClickCommandsWork,
@@ -1705,6 +1737,7 @@ internal static class ValidationReport
                 {
                     ("CountdownsButton", Required<ToggleButton>(referenceWindow, "FloatingCountdownsButton")),
                     ("NotesButton", Required<ToggleButton>(referenceWindow, "FloatingNotesButton")),
+                    ("MinimizeToTrayButton", Required<Button>(referenceWindow, "MinimizeToTrayButton")),
                     ("OpenManagerButton", Required<Button>(referenceWindow, "OpenManagerButton")),
                     ("CloseButton", Required<Button>(referenceWindow, "CloseFloatingButton"))
                 }
@@ -1728,6 +1761,7 @@ internal static class ValidationReport
                 actualCards.Length == expectedCards.Length &&
                 actualCards.Zip(expectedCards)
                     .All(pair => Matches(pair.First, pair.Second, 0.007));
+            var secondaryRemainingTextFullyVisible = false;
             var mascotGeometryMatches =
                 actualMascots.Length == expectedMascots.Length &&
                 actualMascots.Zip(expectedMascots)
@@ -1749,6 +1783,56 @@ internal static class ValidationReport
             var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
             var captureBytes = EncodePng(framedCapture);
             var captureWritten = captureBytes.Length > 0;
+            var longSecondaryAdded = referenceSession.TrySaveCountdown(
+                "reference-long-secondary",
+                "长周期次级倒计时",
+                referenceUtc.AddDays(2_000_000),
+                Array.Empty<string>(),
+                out _);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 3);
+            var longSecondaryRemaining = Descendants<TextBlock>(rows).FirstOrDefault(text =>
+                text.Text.Contains("2000000天", StringComparison.Ordinal));
+            var longSecondaryFitsViewport = false;
+            if (longSecondaryRemaining is not null)
+            {
+                var referenceBodyScroller = Required<ScrollViewer>(
+                    referenceWindow,
+                    "FloatingBodyScroller");
+                referenceBodyScroller.ApplyTemplate();
+                if (referenceBodyScroller.Template.FindName(
+                        "PART_ScrollContentPresenter",
+                        referenceBodyScroller) is ScrollContentPresenter viewport)
+                {
+                    var remainingBounds = BoundsIn(longSecondaryRemaining, viewport);
+                    var viewportBounds = new Rect(
+                        new Point(0, 0),
+                        viewport.RenderSize);
+                    longSecondaryFitsViewport =
+                        remainingBounds.Left + 0.5 >= viewportBounds.Left &&
+                        remainingBounds.Top + 0.5 >= viewportBounds.Top &&
+                        remainingBounds.Right <= viewportBounds.Right + 0.5 &&
+                        remainingBounds.Bottom <= viewportBounds.Bottom + 0.5;
+                }
+            }
+
+            var longSecondaryTextFullyVisible =
+                longSecondaryRemaining is not null &&
+                longSecondaryRemaining.TextTrimming == TextTrimming.None &&
+                !longSecondaryRemaining.Text.Contains('…') &&
+                longSecondaryRemaining.LineHeight > 0 &&
+                longSecondaryRemaining.ActualHeight + 0.5 >= longSecondaryRemaining.LineHeight * 2 &&
+                TextBlockLinesFit(longSecondaryRemaining) &&
+                longSecondaryFitsViewport;
+            var longSecondaryDeleted = referenceSession.TryDeleteCountdown(
+                "reference-long-secondary",
+                out _);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
+            secondaryRemainingTextFullyVisible =
+                longSecondaryAdded &&
+                longSecondaryDeleted &&
+                longSecondaryTextFullyVisible;
             byte[]? notesCaptureBytes = null;
             byte[]? nightCountdownCaptureBytes = null;
             byte[]? nightNotesCaptureBytes = null;
@@ -1836,12 +1920,29 @@ internal static class ValidationReport
             viewportStates.Add(
                 CaptureFloatingViewportState("six-multiline-notes", referenceWindow, root, rows));
 
+            var bodyScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
+            bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
+            PumpDispatcher();
+            var focusedNote = Descendants<CheckBox>(rows).Last();
+            focusedNote.Focus();
+            PumpDispatcher();
+            var focusedNoteId = focusedNote.Tag as string;
+            var offsetBeforeRefresh = bodyScroller.VerticalOffset;
+            referenceWindow.UpdateTime(referenceUtc.AddSeconds(1));
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+            var restoredFocusedNote = Descendants<CheckBox>(rows).SingleOrDefault(checkBox =>
+                string.Equals(checkBox.Tag as string, focusedNoteId, StringComparison.Ordinal));
+            var viewportScrollAndFocusRestored =
+                offsetBeforeRefresh > 0 &&
+                Math.Abs(bodyScroller.VerticalOffset - offsetBeforeRefresh) <= 1 &&
+                restoredFocusedNote is not null &&
+                ReferenceEquals(Keyboard.FocusedElement, restoredFocusedNote);
+
             Required<ComboBox>(referenceWindow, "FloatingReminder").SelectedIndex = 2;
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             viewportStates.Add(
                 CaptureFloatingViewportState("repeating-reminder", referenceWindow, root, rows));
 
-            var bodyScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
             bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             scrolledNotesCaptureBytes = EncodePng(ScaleToFrame(
@@ -1882,6 +1983,83 @@ internal static class ValidationReport
                 undatedStampTexts.SequenceEqual(new[] { "无日期", "--", " " });
             var undatedNoteDeleted = referenceSession.TryDeleteNote("reference-undated", out _);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+
+            var noteFailureAppearsInSourceCard = false;
+            var resolvedNoteCardErrorDoesNotReturn = false;
+            string? failedNoteId = null;
+            string? failedNoteError = null;
+            var blockedTemporaryPath = settingsPath + ".tmp";
+            try
+            {
+                Directory.CreateDirectory(blockedTemporaryPath);
+                var completion = Descendants<CheckBox>(rows).First();
+                failedNoteId = completion.Tag as string;
+                completion.Focus();
+                completion.IsChecked = true;
+                PumpDispatcher();
+                var localError = Descendants<TextBlock>(rows).FirstOrDefault(text =>
+                    text.IsVisible &&
+                    !string.IsNullOrWhiteSpace(text.Text) &&
+                    string.Equals(
+                        AutomationProperties.GetName(text),
+                        text.Text,
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        AutomationProperties.GetHelpText(text),
+                        text.Text,
+                        StringComparison.Ordinal) &&
+                    AutomationProperties.GetLiveSetting(text) == AutomationLiveSetting.Polite);
+                failedNoteError = localError?.Text;
+                noteFailureAppearsInSourceCard =
+                    completion.IsChecked != true &&
+                    ReferenceEquals(Keyboard.FocusedElement, completion) &&
+                    localError is not null &&
+                    !string.IsNullOrWhiteSpace(localError.Text) &&
+                    string.Equals(
+                        AutomationProperties.GetHelpText(completion),
+                        localError.Text,
+                        StringComparison.Ordinal) &&
+                    referenceSession.Current.Notes.All(note => !note.IsCompleted);
+            }
+            finally
+            {
+                if (Directory.Exists(blockedTemporaryPath))
+                {
+                    Directory.Delete(blockedTemporaryPath);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(failedNoteId))
+            {
+                var noteCompleted = referenceSession.TrySetNoteCompletion(
+                    failedNoteId,
+                    true,
+                    out _);
+                WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 5);
+                var noteRestored = referenceSession.TrySetNoteCompletion(
+                    failedNoteId,
+                    false,
+                    out _);
+                WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+                var restoredCard = rows.Children
+                    .OfType<Border>()
+                    .SingleOrDefault(card => Descendants<CheckBox>(card).Any(checkBox =>
+                        string.Equals(
+                            checkBox.Tag as string,
+                            failedNoteId,
+                            StringComparison.Ordinal)));
+                resolvedNoteCardErrorDoesNotReturn =
+                    noteCompleted &&
+                    noteRestored &&
+                    restoredCard is not null &&
+                    !Descendants<TextBlock>(restoredCard).Any(text =>
+                        text.IsVisible &&
+                        AutomationProperties.GetLiveSetting(text) == AutomationLiveSetting.Polite) &&
+                    !string.Equals(
+                        Required<TextBlock>(referenceWindow, "FloatingNoteMessage").Text,
+                        failedNoteError,
+                        StringComparison.Ordinal);
+            }
 
             var viewportStatesMatch =
                 userCountdownDeleted &&
@@ -2056,6 +2234,10 @@ internal static class ValidationReport
                 viewportStatesMatch,
                 rasterCardStatesMatch,
                 dynamicCardContentRemainsWpf,
+                viewportScrollAndFocusRestored,
+                noteFailureAppearsInSourceCard,
+                resolvedNoteCardErrorDoesNotReturn,
+                secondaryRemainingTextFullyVisible,
                 new[] { Math.Round(actualWidth, 2), Math.Round(actualHeight, 2) },
                 capturePath);
         }
@@ -2196,6 +2378,7 @@ internal static class ValidationReport
             {
                 ("CountdownsButton", Required<ToggleButton>(window, "FloatingCountdownsButton")),
                 ("NotesButton", Required<ToggleButton>(window, "FloatingNotesButton")),
+                ("MinimizeToTrayButton", Required<Button>(window, "MinimizeToTrayButton")),
                 ("OpenManagerButton", Required<Button>(window, "OpenManagerButton")),
                 ("CloseButton", Required<Button>(window, "CloseFloatingButton"))
             }
@@ -3500,6 +3683,99 @@ internal static class ValidationReport
         }
     }
 
+    private static bool ValidateMainActionTextContrast(
+        ApplicationTheme theme,
+        MainWindow main,
+        DateTimeOffset restoreUtc)
+    {
+        var themedButtons = new[]
+        {
+            Required<Button>(main, "SaveCountdownButton"),
+            Required<Button>(main, "SaveNoteButton"),
+            Required<Button>(main, "SavePreferencesButton")
+        };
+        var style = themedButtons[0].Style;
+        if (style is null || themedButtons.Any(button => !ReferenceEquals(button.Style, style)))
+        {
+            return false;
+        }
+
+        try
+        {
+            foreach (var checkpoint in new[]
+            {
+                new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+                new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+            })
+            {
+                theme.Apply(checkpoint.ToUniversalTime());
+                if (Application.Current.FindResource("MainActionTextBrush") is not Brush foreground ||
+                    new[]
+                    {
+                        "MainActionBrush",
+                        "MainActionHoverBrush",
+                        "MainActionPressedBrush"
+                    }.Any(key =>
+                        Application.Current.FindResource(key) is not Brush background ||
+                        !ApplicationTheme.MeetsContrast(background, foreground, 4.5)))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            theme.Apply(restoreUtc);
+        }
+    }
+
+    private static ReminderKeyboardExerciseResult ValidateReminderWindowKeyboardDismissal()
+    {
+        var allKeysDismiss = true;
+        var focusesDismissAction = true;
+        foreach (var key in new[] { Key.Escape, Key.Enter, Key.Space })
+        {
+            var window = new ReminderWindow(new NoteRecord(
+                $"validation-reminder-{key}",
+                "键盘提醒验证",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance))
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            try
+            {
+                window.Show();
+                PumpDispatcher();
+                var dismiss = Descendants<Button>(window).Single(button =>
+                    string.Equals(button.Content?.ToString(), "知道了", StringComparison.Ordinal));
+                focusesDismissAction &=
+                    window.ShowActivated &&
+                    ReferenceEquals(Keyboard.FocusedElement, dismiss);
+                var handled = WindowValidationInput.RaisePreviewKey(dismiss, key);
+                PumpDispatcher();
+                allKeysDismiss &= handled && !window.IsVisible;
+            }
+            finally
+            {
+                if (window.IsVisible)
+                {
+                    window.Close();
+                }
+            }
+        }
+
+        return new ReminderKeyboardExerciseResult(allKeysDismiss, focusesDismissAction);
+    }
+
     private static bool ValidateToolTipThemeTextContrast(
         ApplicationTheme theme,
         DateTimeOffset restoreUtc)
@@ -3721,6 +3997,33 @@ internal static class ValidationReport
             Brushes.Black,
             dpi.PixelsPerDip);
 
+    private static bool TextBlockLinesFit(TextBlock textBlock)
+    {
+        var dpi = VisualTreeHelper.GetDpi(textBlock);
+        var typeface = new Typeface(
+            textBlock.FontFamily,
+            textBlock.FontStyle,
+            textBlock.FontWeight,
+            textBlock.FontStretch);
+        return textBlock.Text
+            .Split('\n')
+            .All(line =>
+            {
+                var formatted = new FormattedText(
+                    line,
+                    CultureInfo.CurrentCulture,
+                    textBlock.FlowDirection,
+                    typeface,
+                    textBlock.FontSize,
+                    Brushes.Black,
+                    dpi.PixelsPerDip);
+                var required =
+                    formatted.WidthIncludingTrailingWhitespace +
+                    Math.Max(0, formatted.OverhangTrailing);
+                return required <= textBlock.ActualWidth + 0.5;
+            });
+    }
+
     private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(
         FloatingWindow floating,
         Button minimizeButton,
@@ -3813,6 +4116,10 @@ internal static class ValidationReport
         bool RestoreShowsWindowAndHidesIcon,
         bool ExitRequestsApplicationExit);
 
+    private sealed record ReminderKeyboardExerciseResult(
+        bool AllKeysDismiss,
+        bool FocusesDismissAction);
+
     private sealed record AlphaMetrics(bool IsFullyOpaque, int NonOpaquePixels, byte MinimumAlpha);
 
     private sealed record NightTopSceneInspection(
@@ -3889,6 +4196,10 @@ internal static class ValidationReport
         bool ViewportStatesMatch,
         bool RasterCardStatesMatch,
         bool DynamicCardContentRemainsWpf,
+        bool ViewportScrollAndFocusRestored,
+        bool NoteFailureAppearsInSourceCard,
+        bool ResolvedNoteCardErrorDoesNotReturn,
+        bool SecondaryRemainingTextFullyVisible,
         IReadOnlyList<double> ActualSize,
         string CapturePath);
 

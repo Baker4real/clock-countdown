@@ -55,6 +55,8 @@ public sealed partial class MainWindow : Window
         _calendar = calendar;
         _logger = logger;
         InitializeComponent();
+        PopupFocusLifecycle.Attach(FilterPopup, FilterButton, () => AnyTagMode);
+        PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput);
         LoadCharacterAssets(assetRoot);
         ConfigureControls();
         WireEvents();
@@ -574,6 +576,8 @@ public sealed partial class MainWindow : Window
         NameControl(WorkEnd, "下班时间");
         NameControl(SavePreferencesButton, "保存偏好");
         NameControl(ThemeModeButton, "主题模式：自动；点击切换为日间");
+        NameControl(MinimizeButton, "最小化窗口");
+        NameControl(CloseButton, "关闭窗口");
         NameControl(NoteText, "便签内容");
         NameControl(NoteDate, "便签日期");
         NameControl(NoteReminder, "便签提醒模式");
@@ -584,6 +588,7 @@ public sealed partial class MainWindow : Window
         NameControl(NoteReminderMinute, "首次提醒分钟");
         NameControl(NoteSearch, "搜索便签");
         NameControl(SaveNoteButton, "保存便签");
+        NameControl(ResetEmptyNotesFiltersButton, "重置便签筛选");
         NameControl(CountdownTab, "倒计时工作区");
         NameControl(NotesTab, "便签工作区");
         NameControl(FilterButton, "打开筛选");
@@ -736,6 +741,7 @@ public sealed partial class MainWindow : Window
             UpdateFilterSummary();
         };
         ClearFilterButton.Click += (_, _) => ClearFilters();
+        ResetEmptyNotesFiltersButton.Click += (_, _) => ClearFilters();
     }
 
     private void OnWorkspaceStateChanged(object? sender, EventArgs eventArgs)
@@ -864,10 +870,21 @@ public sealed partial class MainWindow : Window
             CompletedNoteRows.Visibility = Visibility.Collapsed;
         }
 
-        EmptyNotesMessage.Visibility = records.Count == 0
+        var noVisibleNotes = records.Count == 0;
+        var emptyState = NoteEmptyStatePresentation(snapshot.Settings.Notes.Count > 0);
+        EmptyNotesMessage.Text = emptyState.Message;
+        EmptyNotesMessage.Visibility = noVisibleNotes
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        ResetEmptyNotesFiltersButton.Visibility = noVisibleNotes && emptyState.ShowReset
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
+
+    private static (string Message, bool ShowReset) NoteEmptyStatePresentation(bool hasSavedNotes) =>
+        hasSavedNotes
+            ? ("没有符合当前筛选条件的便签。", true)
+            : ("还没有便签，先写下一件想记住的事。", false);
 
     private static void SetNoteStatusSectionState(
         Button toggle,
@@ -1547,11 +1564,16 @@ public sealed partial class MainWindow : Window
     {
         var enabled = NoteReminder.SelectedIndex > 0;
         var repeating = NoteReminder.SelectedIndex == 2;
+        NoteReminderIntervalLabel.Visibility = repeating
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         NoteReminderInterval.Visibility = repeating ? Visibility.Visible : Visibility.Collapsed;
         CustomReminderMinutes.Visibility =
             repeating && NoteReminderInterval.SelectedIndex == 3
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        Canvas.SetLeft(NoteReminderSchedule, repeating ? 370 : 72);
+        NoteReminderSchedule.Width = repeating ? 700 : 790;
         NoteReminderSchedule.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         if (enabled)
         {
@@ -1946,6 +1968,8 @@ public sealed partial class MainWindow : Window
         yield return WorkEnd;
         yield return SavePreferencesButton;
         yield return ThemeModeButton;
+        yield return MinimizeButton;
+        yield return CloseButton;
         yield return NoteText;
         yield return NoteDate;
         yield return NoteReminder;

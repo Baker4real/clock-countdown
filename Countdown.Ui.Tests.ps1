@@ -178,6 +178,13 @@ if (-not $validation.FloatingReferenceContentSafeAreaMatches -or $validation.Flo
 if (-not $validation.FloatingReferenceCaptureWritten) { throw 'The floating reference scene did not produce a non-empty RenderTargetBitmap PNG.' }
 if (-not $validation.FloatingReferenceScenarioMatches) { throw 'The isolated floating reference scene is missing its deterministic two-card countdown and income state.' }
 if (-not $validation.FloatingReferenceViewportStatesMatch) { throw 'The fixed floating viewport does not preserve zero, one, multiple countdown, note reminder, or scrolling states.' }
+if (-not $validation.FloatingViewportScrollAndFocusRestored) { throw 'Floating refresh does not restore the current scroll position and sticky-note focus.' }
+if (-not $validation.FloatingNoteFailureAppearsInSourceCard) { throw 'A failed floating sticky-note completion does not expose an accessible error in its source card.' }
+if (-not $validation.FloatingResolvedNoteCardErrorDoesNotReturn) { throw 'A resolved floating sticky-note card error returns after the note is completed and restored.' }
+if (-not $validation.FloatingSecondaryRemainingTextFullyVisible) { throw 'A long secondary countdown is clipped inside the fixed floating viewport.' }
+if (-not $validation.FloatingDatePickerKeyboardLifecycleWorks) { throw 'A floating date picker does not focus its live calendar, close with Escape, and return focus to its trigger button.' }
+if (-not $validation.FloatingFieldErrorsAppearAtSource) { throw 'A floating quick-note validation error is not shown beside and associated with its invalid field.' }
+if (-not $validation.FloatingCorrectedFieldErrorsClearLiveMessage) { throw 'Correcting a floating quick-note field leaves stale local or live-region errors.' }
 $expectedDayRasterComponents = @(
     'component-day-outer-shell.png',
     'component-day-header-blank.png',
@@ -242,6 +249,13 @@ if (-not $validation.InvalidNotesRejected) { throw 'Invalid persisted sticky not
 if (-not $validation.InvalidTagReferencesRejected) { throw 'Persisted dangling tag references are not rejected.' }
 if (-not $validation.HasTagControls) { throw 'Shared tag selection, filter, and management controls are missing.' }
 if (-not $validation.StaticWorkspaceLayout) { throw 'Countdown editor and settings no longer preserve the established always-visible layout.' }
+if (-not $validation.MainNoteEditorFieldsDoNotOverlap) { throw 'Main-window repeating-reminder fields overlap the first-reminder schedule or error area.' }
+if (-not $validation.MainNoteEditorLabelsVisible) { throw 'A main-window sticky-note editor field is missing its visible label.' }
+if (-not $validation.MainMinimumSizeMatchesDefault) { throw 'The main-window default size is smaller than its supported minimum layout.' }
+if (-not $validation.PopupKeyboardLifecycleWorks) { throw 'A filter or tag popup cannot close with Escape and return focus to its trigger.' }
+if (-not $validation.PopupOutsideFocusPreserved) { throw 'Closing a popup after outside focus steals focus back to its trigger.' }
+if (-not $validation.NoteEmptyStatesDistinguished) { throw 'The first-use sticky-note empty state is indistinguishable from filtered no-results.' }
+if (-not $validation.NoteNoResultsResetWorks) { throw 'The filtered no-results state cannot reset all sticky-note filters.' }
 if (-not $validation.TransientPanelsOnDemand) { throw 'Filters, tag pickers, or tag management do not use the required on-demand interaction flow.' }
 if (-not $validation.WorkspaceDraftsRetained) { throw 'Switching workspaces discarded an unsaved countdown or sticky-note draft.' }
 if (-not $validation.HiddenCountdownSubmitDisabled) { throw 'A hidden countdown editor still exposes its default submit button.' }
@@ -297,6 +311,7 @@ if (-not $validation.TagPopupFollowsDayNightTheme) { throw 'An open tag popup do
 if (-not $validation.MainThemeReminderLabelFollowsTheme) { throw 'The main-window reminder label does not follow the day/night theme.' }
 if (-not $validation.WarmYellowPaletteMatchesLegacy) { throw 'The application no longer matches the legacy warm-yellow palette.' }
 if (-not $validation.PrimaryButtonHoverTextContrast) { throw 'The primary action loses readable coral-on-white contrast while hovered.' }
+if (-not $validation.MainActionTextContrast) { throw 'A main-window action loses readable contrast in a day/night default, hover, or pressed state.' }
 if (-not $validation.ToolTipThemeTextContrast) { throw 'The themed tooltip loses readable contrast across the day/night transition.' }
 if (-not $validation.TagChipTextContrast) { throw 'Tag chips lose readable warm-ink text contrast across the day/night transition.' }
 if (-not $validation.ThemedInteractiveStates) { throw 'A themed interactive control is missing visual state feedback.' }
@@ -306,7 +321,8 @@ if (-not $validation.DestructiveConfirmationIsSafe) { throw 'A destructive confi
 if (-not $validation.EffectiveThemeTextContrast) { throw 'Muted note or calendar text falls below the required effective contrast.' }
 if (-not $validation.FormControlsHaveAccessibleNames) { throw 'A core form control is missing an explicit accessible name.' }
 if (-not $validation.StatusMessagesUseLiveRegions) { throw 'Dynamic status messages are not announced through live regions.' }
-if (-not $validation.ReminderWindowSupportsKeyboardDismissal) { throw 'The non-activating reminder window cannot be dismissed with Escape.' }
+if (-not $validation.ReminderWindowSupportsKeyboardDismissal) { throw 'The reminder window cannot be dismissed with Escape, Enter, or Space.' }
+if (-not $validation.ReminderWindowFocusesDismissAction) { throw 'The reminder window does not focus its dismiss action when shown.' }
 if (-not $validation.CompactActionTargetsAreUsable) { throw 'Compact tag and note actions are smaller than the desktop interaction target.' }
 
 $testSettingsPath = Join-Path $PSScriptRoot 'ui-test.settings.json'
@@ -513,7 +529,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 124
+    Passed = 140
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

@@ -6,8 +6,8 @@
         Title="敏敏子倒计时"
         Width="760"
         Height="880"
-        MinWidth="680"
-        MinHeight="720"
+        MinWidth="760"
+        MinHeight="880"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize"
@@ -178,14 +178,15 @@
               </Setter>
             </Style>
             <Style x:Key="MainPrimaryButton" TargetType="{x:Type Button}">
-              <Setter Property="Foreground" Value="White" />
-              <Setter Property="Background" Value="#EF604C" />
-              <Setter Property="BorderBrush" Value="#D84E3D" />
+              <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+              <Setter Property="Background" Value="{DynamicResource MainActionBrush}" />
+              <Setter Property="BorderBrush" Value="{DynamicResource MainActionBrush}" />
               <Setter Property="BorderThickness" Value="1" />
               <Setter Property="FontSize" Value="20" />
               <Setter Property="FontWeight" Value="SemiBold" />
               <Setter Property="Padding" Value="18,0" />
               <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type Button}">
@@ -201,14 +202,14 @@
                     </Border>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
-                        <Setter TargetName="Surface" Property="Background" Value="#E85A48" />
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionHoverBrush}" />
                       </Trigger>
                       <Trigger Property="IsPressed" Value="True">
-                        <Setter TargetName="Surface" Property="Background" Value="#D84E3D" />
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionPressedBrush}" />
                         <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Surface" Property="BorderBrush" Value="#9E372D" />
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                         <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
                       </Trigger>
                       <Trigger Property="IsEnabled" Value="False">
@@ -237,6 +238,7 @@
             <Style x:Key="MainTopmostCheck" TargetType="{x:Type CheckBox}">
               <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
               <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type CheckBox}">
@@ -256,7 +258,7 @@
                         <Path x:Name="Tick"
                               Width="15"
                               Height="11"
-                              Stroke="White"
+                              Stroke="{DynamicResource MainActionTextBrush}"
                               StrokeThickness="3"
                               StrokeStartLineCap="Round"
                               StrokeEndLineCap="Round"
@@ -272,13 +274,13 @@
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsChecked" Value="True">
-                        <Setter TargetName="Box" Property="Background" Value="#D25A42" />
-                        <Setter TargetName="Box" Property="BorderBrush" Value="#D25A42" />
+                        <Setter TargetName="Box" Property="Background" Value="{DynamicResource MainActionBrush}" />
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionBrush}" />
                         <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="Box" Property="BorderThickness" Value="2" />
-                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -611,14 +613,25 @@
                     Width="1165"
                     Height="1350"
                     Visibility="Collapsed">
-              <Border Canvas.Left="46"
+              <Border x:Name="NoteEditorPanel"
+                      Canvas.Left="46"
                       Canvas.Top="368"
                       Width="1072"
-                      Height="333"
+                      Height="400"
                       Background="Transparent"
                       BorderBrush="Transparent"
                       BorderThickness="1"
                       CornerRadius="40" />
+              <TextBlock x:Name="NoteTextLabel"
+                         Canvas.Left="72"
+                         Canvas.Top="412"
+                         Text="便签内容"
+                         Style="{StaticResource MainFieldLabel}" />
+              <TextBlock x:Name="NoteDateLabel"
+                         Canvas.Left="675"
+                         Canvas.Top="412"
+                         Text="便签日期"
+                         Style="{StaticResource MainFieldLabel}" />
               <TextBox x:Name="NoteText"
                        Canvas.Left="72"
                        Canvas.Top="449"
@@ -646,38 +659,60 @@
                       Content="取消"
                       Visibility="Collapsed"
                       Style="{StaticResource MainSecondaryButton}" />
+              <TextBlock x:Name="NoteReminderModeLabel"
+                         Canvas.Left="72"
+                         Canvas.Top="526"
+                         Text="提醒方式"
+                         Style="{StaticResource MainFieldLabel}" />
+              <TextBlock x:Name="NoteTagsLabel"
+                         Canvas.Left="289"
+                         Canvas.Top="526"
+                         Text="标签"
+                         Style="{StaticResource MainFieldLabel}" />
+              <TextBlock x:Name="NoteSearchLabel"
+                         Canvas.Left="867"
+                         Canvas.Top="526"
+                         Text="搜索便签"
+                         Style="{StaticResource MainFieldLabel}" />
               <ComboBox x:Name="NoteReminder"
                         Canvas.Left="72"
-                        Canvas.Top="540"
+                        Canvas.Top="556"
                         Width="202"
                         Height="69" />
+              <TextBlock x:Name="NoteReminderIntervalLabel"
+                         Canvas.Left="72"
+                         Canvas.Top="630"
+                         Text="重复间隔"
+                         FontSize="16"
+                         Foreground="{DynamicResource MutedBrush}"
+                         Visibility="Collapsed" />
               <ComboBox x:Name="NoteReminderInterval"
                         Canvas.Left="72"
-                        Canvas.Top="620"
+                        Canvas.Top="653"
                         Width="180"
                         Height="58"
                         Visibility="Collapsed" />
               <TextBox x:Name="CustomReminderMinutes"
                        Canvas.Left="260"
-                       Canvas.Top="620"
+                       Canvas.Top="653"
                        Width="90"
                        Height="58"
                        MaxLength="4"
                        Visibility="Collapsed" />
               <local:TagSelector x:Name="NoteTags"
                                  Canvas.Left="289"
-                                 Canvas.Top="540"
+                                 Canvas.Top="556"
                                  Width="172"
                                  Height="69" />
               <TextBox x:Name="NoteSearch"
                        Canvas.Left="867"
-                       Canvas.Top="540"
+                       Canvas.Top="556"
                        Width="220"
                        Height="69"
                        MaxLength="140" />
               <Grid x:Name="NoteReminderSchedule"
                     Canvas.Left="72"
-                    Canvas.Top="620"
+                    Canvas.Top="653"
                     Width="790"
                     Height="58"
                     Visibility="Collapsed">
@@ -708,16 +743,16 @@
               </Grid>
               <TextBlock x:Name="NoteMessage"
                          Canvas.Left="72"
-                         Canvas.Top="626"
+                         Canvas.Top="720"
                          Width="790"
-                         Height="46"
+                         Height="42"
                          FontSize="18"
                          Foreground="{DynamicResource DangerBrush}"
                          TextWrapping="Wrap" />
               <ScrollViewer Canvas.Left="46"
-                            Canvas.Top="730"
+                            Canvas.Top="784"
                             Width="1072"
-                            Height="540"
+                            Height="486"
                             VerticalScrollBarVisibility="Auto"
                             HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
@@ -840,8 +875,14 @@
                              HorizontalAlignment="Center"
                              FontSize="20"
                              Foreground="{DynamicResource MutedBrush}"
-                             Text="还没有符合条件的便签。"
+                             Text="还没有便签，先写下一件想记住的事。"
                              Visibility="Collapsed" />
+                  <Button x:Name="ResetEmptyNotesFiltersButton"
+                          Margin="0,12,0,0"
+                          HorizontalAlignment="Center"
+                          Content="重置筛选"
+                          Visibility="Collapsed"
+                          Style="{StaticResource MainSecondaryButton}" />
                 </StackPanel>
               </ScrollViewer>
             </Canvas>
@@ -936,19 +977,26 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="NewTagInput" MaxLength="30" />
-                    <Button x:Name="CreateTagButton"
-                            Grid.Column="1"
-                            Width="80"
-                            Margin="8,0,0,0"
-                            Content="新建"
-                            Style="{DynamicResource PrimaryButton}" />
-                  </Grid>
+                  <StackPanel>
+                    <TextBlock x:Name="NewTagInputLabel"
+                               Text="新标签名称"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource InkBrush}" />
+                    <Grid Margin="0,6,0,0">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBox x:Name="NewTagInput" MaxLength="30" />
+                      <Button x:Name="CreateTagButton"
+                              Grid.Column="1"
+                              Width="80"
+                              Margin="8,0,0,0"
+                              Content="新建"
+                              Style="{DynamicResource PrimaryButton}" />
+                    </Grid>
+                  </StackPanel>
                   <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="TagManagerRows" />
                   </ScrollViewer>

@@ -156,7 +156,7 @@ public sealed partial class FloatingWindow
     {
         var layout = new Grid
         {
-            Margin = new Thickness(7, 6, CountdownMascotSafeInset + 8, 6)
+            Margin = new Thickness(7, 4, CountdownMascotSafeInset + 8, 4)
         };
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -171,16 +171,31 @@ public sealed partial class FloatingWindow
             Foreground = _floatingPrimaryBrush
         };
         var remainingText = CountdownRemainingText(
-            remaining.Replace(" ", string.Empty),
+            FormatSecondaryRemaining(remaining),
             13,
             FontWeights.SemiBold);
         remainingText.MaxWidth = 138;
+        remainingText.LineHeight = 15;
+        remainingText.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+        remainingText.TextTrimming = TextTrimming.None;
+        remainingText.TextWrapping = TextWrapping.NoWrap;
         remainingText.Foreground = _floatingMutedBrush;
 
         Grid.SetColumn(remainingText, 1);
         layout.Children.Add(name);
         layout.Children.Add(remainingText);
         return layout;
+    }
+
+    private static string FormatSecondaryRemaining(string remaining)
+    {
+        var units = remaining.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (units.Length <= 4)
+        {
+            return string.Concat(units);
+        }
+
+        return $"{string.Concat(units.Take(4))}\n{string.Concat(units.Skip(4))}";
     }
 
     private Brush WarmPaperAccentBrush(FloatingThemePalette theme) =>
@@ -202,7 +217,7 @@ public sealed partial class FloatingWindow
             FontSize = fontSize,
             FontWeight = fontWeight,
             TextAlignment = TextAlignment.Right,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.None,
             TextWrapping = TextWrapping.NoWrap
         };
         Typography.SetNumeralAlignment(block, FontNumeralAlignment.Tabular);

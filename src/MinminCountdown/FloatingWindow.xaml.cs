@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -19,6 +20,10 @@ public sealed partial class FloatingWindow : Window
     private readonly MainWindow _manager;
     private readonly ReminderEditing _reminderEditing = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
+    private WorkspaceKind _renderedWorkspace = WorkspaceKind.Countdowns;
+    private readonly Dictionary<WorkspaceKind, double> _workspaceScrollOffsets = new();
+    private readonly Dictionary<string, string> _noteCardErrors = new(StringComparer.Ordinal);
+    private int _floatingRowsRenderVersion;
     private bool _settingDefaultDate;
     private bool _dateDirty;
     private FloatingThemePalette? _activeTheme;
@@ -77,6 +82,9 @@ public sealed partial class FloatingWindow : Window
         ReferenceEquals(FloatingReminderLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
         ReferenceEquals(FloatingReminderIntervalLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
         ReferenceEquals(FloatingReminderSeparator.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
+        ReferenceEquals(FloatingNoteTextError.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
+        ReferenceEquals(FloatingNoteDateError.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
+        ReferenceEquals(FloatingReminderMessage.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
         ReferenceEquals(FloatingNoteMessage.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
         ReferenceEquals(FloatingCountdownsButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
         ReferenceEquals(FloatingNotesButton.Style, FindResource("FloatingHeaderSegmentButton")) &&
@@ -805,6 +813,9 @@ public sealed partial class FloatingWindow : Window
         AutomationProperties.SetName(FloatingAddNote, "添加快速便签");
         ThemedDatePickerBehavior.Attach(FloatingNoteDate);
         ThemedDatePickerBehavior.Attach(FloatingReminderDate);
+        UiAccessibility.MarkLive(FloatingNoteTextError);
+        UiAccessibility.MarkLive(FloatingNoteDateError);
+        UiAccessibility.MarkLive(FloatingReminderMessage);
         UiAccessibility.MarkLive(FloatingNoteMessage);
     }
 
@@ -831,10 +842,28 @@ public sealed partial class FloatingWindow : Window
             {
                 _dateDirty = true;
             }
+
+            ClearNoteFieldError(FloatingNoteDateError);
         };
-        FloatingReminder.SelectionChanged += (_, _) => UpdateReminderSchedule();
-        FloatingReminderInterval.SelectionChanged += (_, _) => UpdateReminderInterval();
-        FloatingCustomReminderMinutes.TextChanged += (_, _) => SetDefaultReminderSchedule();
+        FloatingNoteText.TextChanged += (_, _) => ClearNoteFieldError(FloatingNoteTextError);
+        FloatingReminder.SelectionChanged += (_, _) =>
+        {
+            ClearNoteFieldError(FloatingReminderMessage);
+            UpdateReminderSchedule();
+        };
+        FloatingReminderInterval.SelectionChanged += (_, _) =>
+        {
+            ClearNoteFieldError(FloatingReminderMessage);
+            UpdateReminderInterval();
+        };
+        FloatingReminderDate.SelectedDateChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
+        FloatingReminderHour.SelectionChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
+        FloatingReminderMinute.SelectionChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
+        FloatingCustomReminderMinutes.TextChanged += (_, _) =>
+        {
+            ClearNoteFieldError(FloatingReminderMessage);
+            SetDefaultReminderSchedule();
+        };
         FloatingAddNote.Click += (_, _) => AddNote();
         FloatingTags.CreateRequested += (_, name) =>
         {
@@ -932,9 +961,20 @@ public sealed partial class FloatingWindow : Window
 
     private void RenderRows(DateTimeOffset nowUtc)
     {
+        var previouslyRenderedWorkspace = _renderedWorkspace;
+        _workspaceScrollOffsets[previouslyRenderedWorkspace] = FloatingBodyScroller.VerticalOffset;
+        var workspace = _workspace;
+        var targetScrollOffset = _workspaceScrollOffsets.TryGetValue(workspace, out var savedScrollOffset)
+            ? savedScrollOffset
+            : 0;
+        var focusedNoteTag = previouslyRenderedWorkspace == workspace
+            ? FocusedFloatingNoteTag()
+            : null;
+        var renderVersion = ++_floatingRowsRenderVersion;
+
         FloatingRows.Children.Clear();
         var snapshot = _desktopWorkspace.Snapshot;
-        if (_workspace == WorkspaceKind.Countdowns)
+        if (workspace == WorkspaceKind.Countdowns)
         {
             var records = snapshot.VisibleCountdowns
                 .Where(record => record.TargetUtc > nowUtc)
@@ -969,6 +1009,7 @@ public sealed partial class FloatingWindow : Window
         else
         {
             var notes = snapshot.VisibleActiveNotes;
+            PruneNoteCardErrors(notes);
             foreach (var note in notes)
             {
                 FloatingRows.Children.Add(BuildCalendarIndexNoteCard(note, nowUtc));
@@ -984,7 +1025,12 @@ public sealed partial class FloatingWindow : Window
         FloatingIncome.Text = earnings is null
             ? _calendar.StatusText
             : $"今日已赚 ￥{earnings.Value:N2}";
-        Dispatcher.BeginInvoke(Reanchor);
+        _renderedWorkspace = workspace;
+        RestoreFloatingViewportAfterRender(
+            workspace,
+            targetScrollOffset,
+            focusedNoteTag,
+            renderVersion);
     }
 
     private TextBlock EmptyText(string text) => new()
@@ -997,15 +1043,22 @@ public sealed partial class FloatingWindow : Window
 
     private void AddNote()
     {
+        ClearNoteFieldErrors();
         if (string.IsNullOrWhiteSpace(FloatingNoteText.Text))
         {
-            SetNoteMessage("请先写下便签内容。");
+            ShowNoteValidationError(
+                FloatingNoteTextError,
+                "请先写下便签内容。",
+                FloatingNoteText);
             return;
         }
 
         if (FloatingNoteDate.SelectedDate is null)
         {
-            SetNoteMessage("请选择便签日期。");
+            ShowNoteValidationError(
+                FloatingNoteDateError,
+                "请选择便签日期。",
+                FloatingNoteDate);
             return;
         }
 
@@ -1021,7 +1074,10 @@ public sealed partial class FloatingWindow : Window
             true));
         if (!reminderResult.Succeeded)
         {
-            SetNoteMessage(reminderResult.Error);
+            ShowNoteValidationError(
+                FloatingReminderMessage,
+                reminderResult.Error,
+                FirstInvalidReminderControl());
             return;
         }
 
@@ -1044,6 +1100,7 @@ public sealed partial class FloatingWindow : Window
         FloatingNoteDate.SelectedDate = _desktopWorkspace.Snapshot.BeijingNow.Date;
         _settingDefaultDate = false;
         SetDefaultReminderSchedule();
+        ClearNoteFieldErrors();
         SetNoteMessage(string.Empty);
     }
 
@@ -1125,6 +1182,231 @@ public sealed partial class FloatingWindow : Window
     private void SetNoteMessage(string text)
     {
         FloatingNoteMessage.Text = text;
+    }
+
+    private void ClearNoteFieldErrors()
+    {
+        ClearNoteFieldError(FloatingNoteTextError);
+        ClearNoteFieldError(FloatingNoteDateError);
+        ClearNoteFieldError(FloatingReminderMessage);
+    }
+
+    private void ClearNoteFieldError(TextBlock field)
+    {
+        var previousMessage = field.Text;
+        SetNoteFieldError(field, string.Empty);
+        foreach (var control in NoteValidationControls())
+        {
+            if (string.Equals(
+                    AutomationProperties.GetHelpText(control),
+                    previousMessage,
+                    StringComparison.Ordinal))
+            {
+                AutomationProperties.SetHelpText(control, string.Empty);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(previousMessage) &&
+            string.Equals(FloatingNoteMessage.Text, previousMessage, StringComparison.Ordinal))
+        {
+            SetNoteMessage(string.Empty);
+        }
+    }
+
+    private void ShowNoteValidationError(TextBlock field, string message, Control focusTarget)
+    {
+        SetNoteFieldError(field, message);
+        SetNoteMessage(message);
+        AutomationProperties.SetHelpText(focusTarget, message);
+        focusTarget.Focus();
+    }
+
+    private static void SetNoteFieldError(TextBlock field, string message)
+    {
+        field.Text = message;
+        AutomationProperties.SetName(field, message);
+        AutomationProperties.SetHelpText(field, message);
+        field.Visibility = string.IsNullOrWhiteSpace(message)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private IEnumerable<Control> NoteValidationControls()
+    {
+        yield return FloatingNoteText;
+        yield return FloatingNoteDate;
+        yield return FloatingReminder;
+        yield return FloatingReminderInterval;
+        yield return FloatingCustomReminderMinutes;
+        yield return FloatingReminderDate;
+        yield return FloatingReminderHour;
+        yield return FloatingReminderMinute;
+    }
+
+    private Control FirstInvalidReminderControl()
+    {
+        var mode = SelectedReminderMode();
+        if (mode == ReminderEditingMode.Repeating)
+        {
+            if (FloatingReminderInterval.SelectedIndex is < 0 or > 3)
+            {
+                return FloatingReminderInterval;
+            }
+
+            if (FloatingReminderInterval.SelectedIndex == 3 && !HasValidCustomReminderMinutes())
+            {
+                return FloatingCustomReminderMinutes;
+            }
+        }
+
+        if (mode is not (ReminderEditingMode.Once or ReminderEditingMode.Repeating))
+        {
+            return FloatingReminder;
+        }
+
+        if (FloatingReminderDate.SelectedDate is null)
+        {
+            return FloatingReminderDate;
+        }
+
+        if (FloatingReminderHour.SelectedIndex < 0)
+        {
+            return FloatingReminderHour;
+        }
+
+        return FloatingReminderMinute.SelectedIndex < 0
+            ? FloatingReminderMinute
+            : FloatingReminderDate;
+    }
+
+    private bool HasValidCustomReminderMinutes() =>
+        int.TryParse(
+            FloatingCustomReminderMinutes.Text,
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out var minutes) &&
+        minutes is >= 1 and <= 1440;
+
+    private string? FocusedFloatingNoteTag()
+    {
+        if (Keyboard.FocusedElement is not FrameworkElement focused ||
+            focused.Tag is not string noteId ||
+            string.IsNullOrWhiteSpace(noteId) ||
+            !IsVisualDescendantOf(focused, FloatingRows))
+        {
+            return null;
+        }
+
+        return noteId;
+    }
+
+    private void RestoreFloatingViewportAfterRender(
+        WorkspaceKind workspace,
+        double targetScrollOffset,
+        string? focusedNoteTag,
+        int renderVersion)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (renderVersion != _floatingRowsRenderVersion ||
+                workspace != _workspace ||
+                workspace != _renderedWorkspace)
+            {
+                return;
+            }
+
+            FloatingBodyScroller.UpdateLayout();
+            if (focusedNoteTag is not null &&
+                FindFocusableFloatingNoteControl(focusedNoteTag) is { } focusTarget)
+            {
+                focusTarget.Focus();
+            }
+
+            var restoredOffset = ClampScrollOffset(targetScrollOffset);
+            FloatingBodyScroller.ScrollToVerticalOffset(restoredOffset);
+            _workspaceScrollOffsets[workspace] = FloatingBodyScroller.VerticalOffset;
+            Reanchor();
+        }), DispatcherPriority.Loaded);
+    }
+
+    private double ClampScrollOffset(double offset)
+    {
+        if (double.IsNaN(offset) || double.IsInfinity(offset) || offset <= 0 ||
+            double.IsNaN(FloatingBodyScroller.ScrollableHeight) ||
+            double.IsInfinity(FloatingBodyScroller.ScrollableHeight) ||
+            FloatingBodyScroller.ScrollableHeight <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Min(offset, FloatingBodyScroller.ScrollableHeight);
+    }
+
+    private FrameworkElement? FindFocusableFloatingNoteControl(string noteId)
+    {
+        foreach (UIElement row in FloatingRows.Children)
+        {
+            if (FindFocusableFloatingNoteControl(row, noteId) is { } control)
+            {
+                return control;
+            }
+        }
+
+        return null;
+    }
+
+    private static FrameworkElement? FindFocusableFloatingNoteControl(
+        DependencyObject element,
+        string noteId)
+    {
+        if (element is FrameworkElement candidate &&
+            candidate.Tag is string candidateTag &&
+            string.Equals(candidateTag, noteId, StringComparison.Ordinal) &&
+            candidate.Focusable &&
+            candidate.IsEnabled &&
+            candidate.IsVisible)
+        {
+            return candidate;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+        {
+            if (FindFocusableFloatingNoteControl(
+                    VisualTreeHelper.GetChild(element, index),
+                    noteId) is { } child)
+            {
+                return child;
+            }
+        }
+
+        return null;
+    }
+
+    private void PruneNoteCardErrors(IEnumerable<NoteRecord> notes)
+    {
+        if (_noteCardErrors.Count == 0)
+        {
+            return;
+        }
+
+        var noteIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var note in notes)
+        {
+            noteIds.Add(note.Id);
+        }
+
+        foreach (var noteId in _noteCardErrors.Keys.ToArray())
+        {
+            if (!noteIds.Contains(noteId))
+            {
+                var removedError = _noteCardErrors[noteId];
+                _noteCardErrors.Remove(noteId);
+                if (string.Equals(FloatingNoteMessage.Text, removedError, StringComparison.Ordinal))
+                {
+                    SetNoteMessage(string.Empty);
+                }
+            }
+        }
     }
 
     private void LoadAssets(string assetRoot)

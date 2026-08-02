@@ -223,4 +223,155 @@ function Invoke-CountdownRecordedScpTransfer {
     $attempt
 }
 
-Export-ModuleMember -Function Invoke-CountdownRecordedScpTransfer
+function Get-CountdownSshReadResultProperty {
+    param(
+        [Parameter(Mandatory)] [object] $Result,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $property = $Result.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        throw "SSH 回读 adapter 缺少字段：$Name"
+    }
+    $property.Value
+}
+
+function Invoke-CountdownRecordedSshRead {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $LedgerPath,
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Id,
+        [Parameter(Mandatory)] [scriptblock] $Reader,
+        [scriptblock] $StopwatchFactory
+    )
+
+    $resolvedLedgerPath = [System.IO.Path]::GetFullPath($LedgerPath)
+    $ledger = Read-CountdownTransferLedger -Path $resolvedLedgerPath
+    $stopwatch = if ($null -eq $StopwatchFactory) {
+        [System.Diagnostics.Stopwatch]::new()
+    }
+    else {
+        & $StopwatchFactory
+    }
+    if ($null -eq $stopwatch) {
+        throw 'SSH 回读计时 adapter 没有返回 Stopwatch。'
+    }
+
+    $readerResult = $null
+    $invocationException = $null
+    $stopwatch.Start()
+    try {
+        $readerOutput = @(& $Reader)
+        if ($readerOutput.Count -ne 1) {
+            throw 'SSH 回读 adapter 必须返回一个结果对象。'
+        }
+        $readerResult = $readerOutput[0]
+    }
+    catch {
+        $invocationException = $_.Exception
+    }
+    finally {
+        $stopwatch.Stop()
+    }
+
+    $exitCode = -1
+    $succeeded = $false
+    $payload = $null
+    $failureMessage = $null
+    if ($null -eq $invocationException) {
+        try {
+            $successValue = Get-CountdownSshReadResultProperty -Result $readerResult -Name 'Success'
+            if ($successValue -isnot [bool]) {
+                throw 'SSH 回读 adapter 的 Success 必须是 bool。'
+            }
+            $succeeded = [bool] $successValue
+
+            $exitCodeValue = Get-CountdownSshReadResultProperty -Result $readerResult -Name 'ExitCode'
+            if ($exitCodeValue -isnot [int] -and $exitCodeValue -isnot [long]) {
+                throw 'SSH 回读 adapter 的 ExitCode 必须是整数。'
+            }
+            if ([long] $exitCodeValue -lt [int]::MinValue -or [long] $exitCodeValue -gt [int]::MaxValue) {
+                throw 'SSH 回读 adapter 的 ExitCode 超出范围。'
+            }
+            $exitCode = [int] $exitCodeValue
+
+            $payloadProperty = $readerResult.PSObject.Properties['Bytes']
+            if ($null -eq $payloadProperty) {
+                throw 'SSH 回读 adapter 缺少字段：Bytes'
+            }
+            $payloadValue = $payloadProperty.Value
+            if ($null -ne $payloadValue -and $payloadValue -isnot [byte[]]) {
+                throw 'SSH 回读 adapter 的 Bytes 必须是 byte[] 或 null。'
+            }
+            if ($null -ne $payloadValue) {
+                $payload = [byte[]] $payloadValue
+            }
+
+            $failureValue = Get-CountdownSshReadResultProperty -Result $readerResult -Name 'FailureMessage'
+            if ($null -ne $failureValue -and $failureValue -isnot [string]) {
+                throw 'SSH 回读 adapter 的 FailureMessage 必须是字符串或 null。'
+            }
+            $failureMessage = [string] $failureValue
+            if ($succeeded -and $exitCode -ne 0) {
+                throw 'SSH 回读 adapter 成功时 ExitCode 必须为 0。'
+            }
+            if (-not $succeeded -and [string]::IsNullOrWhiteSpace($failureMessage)) {
+                throw 'SSH 回读 adapter 失败时必须提供原因。'
+            }
+        }
+        catch {
+            $invocationException = $_.Exception
+        }
+    }
+
+    $elapsedSeconds = [double] $stopwatch.Elapsed.TotalSeconds
+    $transferredBytes = if ($null -eq $invocationException -and $succeeded -and $null -ne $payload) {
+        [long] $payload.Length
+    }
+    else {
+        0L
+    }
+    $mibPerSecond = if ($elapsedSeconds -gt 0) {
+        ($transferredBytes / 1MB) / $elapsedSeconds
+    }
+    else {
+        0.0
+    }
+    $mbps = if ($elapsedSeconds -gt 0) {
+        ($transferredBytes * 8.0 / 1000000.0) / $elapsedSeconds
+    }
+    else {
+        0.0
+    }
+    $readSucceeded = $null -eq $invocationException -and $succeeded
+    $attempt = [pscustomobject][ordered]@{
+        id = $Id
+        method = 'ssh'
+        status = if ($readSucceeded) { 'succeeded' } else { 'failed-bytes-unverified' }
+        exitCode = $exitCode
+        transferStarted = if ($readSucceeded) { $transferredBytes -gt 0 } else { $null }
+        bytesVerified = $readSucceeded
+        metrics = [pscustomobject][ordered]@{
+            bytes = $transferredBytes
+            elapsed_seconds = [Math]::Round($elapsedSeconds, 6)
+            mib_per_second = [Math]::Round($mibPerSecond, 6)
+            MiBPerSecond = [Math]::Round($mibPerSecond, 6)
+            mbps = [Math]::Round($mbps, 6)
+        }
+    }
+    [void] $ledger.attempts.Add($attempt)
+    $ledger.generatedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    Write-CountdownTransferLedger -Path $resolvedLedgerPath -Ledger $ledger
+
+    if ($null -ne $invocationException) {
+        throw "SSH 回读无法执行：$($invocationException.Message)；尝试已写入：$resolvedLedgerPath"
+    }
+    if (-not $succeeded) {
+        throw "SSH 回读失败，退出码：$exitCode；$failureMessage；尝试已写入：$resolvedLedgerPath"
+    }
+    if ($null -ne $payload) {
+        Write-Output -NoEnumerate $payload
+    }
+}
+
+Export-ModuleMember -Function Invoke-CountdownRecordedScpTransfer, Invoke-CountdownRecordedSshRead

@@ -171,6 +171,8 @@ Import-Module (Join-Path $staging 'Countdown.Runtime.psm1') -Force
 Import-Module (Join-Path $staging 'Countdown.Settings.psm1') -Force
 Import-Module (Join-Path $staging 'Countdown.TransactionAcceptance.psm1') -Force
 $installMutex = $null
+$installStage = 'prepare-transaction'
+$transactionStarted = $false
 try {
     # 即使父验收已持锁也再次获取同线程可重入 mutex；公开参数不能跳过真实安装锁。
     $installMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 120
@@ -190,9 +192,11 @@ try {
     }
     $interactiveContext = Assert-CountdownInstallInteractiveContextStable -ExpectedContext $interactiveContext
     $transaction = Start-CountdownInstallTransaction -InstallPath $install -LauncherPath $launcherPath -LegacyLauncherPath $legacyLauncherPath -TaskName $taskName -LegacyTaskName $legacyTaskName
+    $transactionStarted = $true
     $transactionCompleted = $false
 
     try {
+        $installStage = 'configure-network-time'
         Set-Service -Name W32Time -StartupType Automatic
         Start-Service -Name W32Time
         $resync = (w32tm.exe /resync /rediscover | Out-String).Trim()
@@ -205,6 +209,7 @@ try {
             throw 'Windows Time status query failed.'
         }
 
+        $installStage = 'quiesce-existing-application'
         Stop-CountdownManagedApplication -InstallPath $install -TaskName $taskName -LegacyTaskName $legacyTaskName -FreezeFutureStarts
         # 旧进程已经静止后才捕获可变 settings/runtime 与桌面文件；任务原状态仍取自 prepared journal。
         $transaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
@@ -221,6 +226,7 @@ try {
         Remove-Item -LiteralPath $acceptanceStatusPath -Force -ErrorAction SilentlyContinue
         $startupRequest = New-CountdownStartupRequest -Path $startupRequestPath -AcceptanceReadOnly
 
+        $installStage = 'copy-payload'
         foreach ($file in $applicationFiles) {
             $source = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $staging $file)
             $destination = Assert-CountdownInstallPathOnDDrive -Path (Join-Path $install $file)
@@ -262,6 +268,7 @@ try {
         }
         $candidateLauncherPath = Assert-CountdownInstallPathOnDDrive -Path $candidateLauncherPath
         $launcherPath = Assert-CountdownInstallPathOnDDrive -Path $launcherPath
+        $installStage = 'replace-desktop-launcher'
         Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force
         if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
             throw 'Desktop launcher was not created.'
@@ -273,6 +280,7 @@ try {
         $launcherState = [ordered]@{ schemaVersion = 1; desktopPath = $launcherPath; desktopSha256 = $candidateLauncherHash } | ConvertTo-Json
         $launcherStatePath = Assert-CountdownInstallPathOnDDrive -Path $launcherStatePath
         $launcherStateTempPath = Assert-CountdownInstallPathOnDDrive -Path "$launcherStatePath.tmp"
+        $installStage = 'write-launcher-state'
         [System.IO.File]::WriteAllText($launcherStateTempPath, $launcherState, (New-Object System.Text.UTF8Encoding($false)))
         Move-Item -LiteralPath $launcherStateTempPath -Destination $launcherStatePath -Force
         $legacyLauncherPath = Assert-CountdownInstallPathOnDDrive -Path $legacyLauncherPath
@@ -284,6 +292,7 @@ try {
             }
         }
 
+        $installStage = 'register-task'
         $action = New-ScheduledTaskAction -Execute $powerShellEngine -Argument $arguments -WorkingDirectory $install
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $interactiveUser
         $principal = New-ScheduledTaskPrincipal -UserId $interactiveUser -LogonType Interactive -RunLevel Limited
@@ -302,6 +311,7 @@ try {
         }
         $expectedScheduledTaskIdentity = [string] (Export-ScheduledTask -InputObject $registeredTask -ErrorAction Stop)
 
+        $installStage = 'wait-window-ready'
         Start-ScheduledTask -TaskName $taskName
         $runtimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 30 -PollMilliseconds 250
         $result = [ordered]@{
@@ -332,6 +342,7 @@ try {
             TransactionPath = if ($DeferCommit) { $transaction.transactionPath } else { $null }
         }
         if ($DeferCommit) {
+            $installStage = 'write-deferred-receipt'
             [void] (Write-CountdownDeferredInstallReceipt -Path $DeferredReceiptPath -TransactionPath $transaction.transactionPath -LaunchToken $startupRequest.launchToken -InteractiveSessionId ([int] $interactiveContext.SessionId))
             $result.DeferredReceiptPath = [System.IO.Path]::GetFullPath($DeferredReceiptPath)
             $result | ConvertTo-Json -Depth 8
@@ -355,6 +366,7 @@ try {
         $removeAcceptedTransaction = {
             Remove-CountdownCommittedInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
         }
+        $installStage = 'transaction-acceptance'
         [void] (Invoke-CountdownTransactionAcceptance `
                 -StartupRequestPath $startupRequestPath `
                 -RuntimeStatusPath $runtimeStatusPath `
@@ -378,24 +390,64 @@ try {
         $result | ConvertTo-Json -Depth 8
     }
     catch {
-        $failure = $_.Exception.Message
-        if ($transactionCompleted) {
-            throw "安装已提交，但提交后收尾失败，未回滚：$failure"
-        }
+        $failureRecord = $_
+        $failure = $failureRecord.Exception.Message
+        $failurePosition = if ($null -eq $failureRecord.InvocationInfo) { '' } else { [string] $failureRecord.InvocationInfo.PositionMessage }
+        if ([string]::IsNullOrWhiteSpace($failurePosition)) { $failurePosition = '未提供' }
+        $failureStackTrace = [string] $failureRecord.ScriptStackTrace
+        if ([string]::IsNullOrWhiteSpace($failureStackTrace)) { $failureStackTrace = '未提供' }
+        $failurePosition = $failurePosition -replace '\s+', ' '
+        $failureStackTrace = $failureStackTrace -replace '\s+', ' '
+        $failureDiagnostic = "安装阶段=$installStage；错误 ID=$($failureRecord.FullyQualifiedErrorId)；错误位置=$failurePosition；ScriptStackTrace=$failureStackTrace"
+        $rollbackResult = $null
+        $rollbackFailure = $null
+        $rollbackAttempted = $false
+        $rollbackSucceeded = $false
+        $preservedUnmanagedLaunchers = $false
         if (-not $transactionCompleted) {
-            $rollbackResult = $null
+            $rollbackAttempted = $true
             try {
                 # 任意失败都优先恢复应用、任务与时间服务；若用户在事务窗口替换桌面文件，只保留该文件和可审计 journal。
                 $rollbackResult = Undo-CountdownInstallTransaction -TransactionPath $transaction.transactionPath -PowerShell7Path $powerShellEngine -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath -PreserveUnmanagedLaunchers
+                $rollbackSucceeded = $true
             }
             catch {
-                throw "安装失败：$failure；回滚也失败：$($_.Exception.Message)"
+                $rollbackFailure = $_
             }
             if ($null -ne $rollbackResult -and [bool] $rollbackResult.PreservedUnmanagedLaunchers) {
-                throw "安装失败，已恢复应用、任务和时间服务；为保护用户替换的桌面启动器，保留了事务证据：$failure"
+                $preservedUnmanagedLaunchers = $true
             }
         }
-        throw "安装失败，已回滚：$failure"
+        $failureReceiptWriteFailure = $null
+        if ($DeferCommit -and -not [string]::IsNullOrWhiteSpace($DeferredReceiptPath)) {
+            try {
+                $deferredReceiptDirectory = Split-Path -Parent (Assert-CountdownInstallPathOnDDrive -Path $DeferredReceiptPath)
+                $failureReceiptPath = Join-Path $deferredReceiptDirectory 'deployment-failure.json'
+                [void] (Write-CountdownInstallFailureReceipt `
+                        -Path $failureReceiptPath `
+                        -Stage $installStage `
+                        -ErrorRecord $failureRecord `
+                        -TransactionStarted $transactionStarted `
+                        -CommitState $(if ($transactionCompleted) { 'committed' } else { 'not-committed' }) `
+                        -RollbackAttempted $rollbackAttempted `
+                        -RollbackSucceeded $rollbackSucceeded `
+                        -PreservedUnmanagedLaunchers $preservedUnmanagedLaunchers)
+            }
+            catch {
+                $failureReceiptWriteFailure = $_.Exception.Message
+            }
+        }
+        $receiptWriteSuffix = if ([string]::IsNullOrWhiteSpace([string] $failureReceiptWriteFailure)) { '' } else { "；故障回执写入失败：$failureReceiptWriteFailure" }
+        if ($null -ne $rollbackFailure) {
+            throw "安装失败：$failure；$failureDiagnostic；回滚也失败：$($rollbackFailure.Exception.Message)$receiptWriteSuffix"
+        }
+        if ($transactionCompleted) {
+            throw "安装已提交，但提交后收尾失败，未回滚：$failure；$failureDiagnostic$receiptWriteSuffix"
+        }
+        if ($preservedUnmanagedLaunchers) {
+            throw "安装失败，已恢复应用、任务和时间服务；为保护用户替换的桌面启动器，保留了事务证据：$failure；$failureDiagnostic$receiptWriteSuffix"
+        }
+        throw "安装失败，已回滚：$failure；$failureDiagnostic$receiptWriteSuffix"
     }
 }
 finally {

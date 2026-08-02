@@ -621,6 +621,205 @@ function Write-CountdownDeferredInstallReceipt {
     [pscustomobject] $receipt
 }
 
+function ConvertTo-CountdownInstallFailureDiagnosticText {
+    param(
+        [AllowNull()] [object] $Value,
+        [Parameter(Mandatory)] [ValidateRange(1, 24576)] [int] $MaxUtf8Bytes
+    )
+
+    if ($null -eq $Value) { return $null }
+    $text = [string] $Value
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    if ($encoding.GetByteCount($text) -le $MaxUtf8Bytes) { return $text }
+
+    $lower = 0
+    $upper = $text.Length
+    while ($lower -lt $upper) {
+        $candidateLength = [int] [Math]::Ceiling(($lower + $upper) / 2.0)
+        if ($encoding.GetByteCount($text.Substring(0, $candidateLength)) -le $MaxUtf8Bytes) {
+            $lower = $candidateLength
+        }
+        else {
+            $upper = $candidateLength - 1
+        }
+    }
+    if ($lower -gt 0 -and [char]::IsHighSurrogate($text[$lower - 1])) {
+        $lower--
+    }
+    if ($lower -le 0) { return '' }
+    $text.Substring(0, $lower)
+}
+
+function Get-CountdownInstallFailureReceiptTextByteLimit {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('stage', 'exceptionMessage', 'fullyQualifiedErrorId', 'positionMessage', 'scriptStackTrace', 'writtenAtUtc')]
+        [string] $Name
+    )
+
+    switch ($Name) {
+        'stage' { 128; break }
+        'exceptionMessage' { 1024; break }
+        'fullyQualifiedErrorId' { 256; break }
+        'positionMessage' { 512; break }
+        'scriptStackTrace' { 1024; break }
+        'writtenAtUtc' { 128; break }
+    }
+}
+
+function ConvertFrom-CountdownInstallFailureReceiptBytes {
+    param([Parameter(Mandatory)] [byte[]] $Bytes)
+
+    if ($Bytes.Length -gt 24576) {
+        throw "安装失败回执超过允许大小：$($Bytes.Length)"
+    }
+
+    $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
+    try {
+        $json = $utf8.GetString($Bytes)
+        $receipt = ConvertFrom-Json -InputObject $json -AsHashtable -Depth 4 -ErrorAction Stop
+    }
+    catch {
+        throw "安装失败回执不是有效 UTF-8 JSON：$($_.Exception.Message)"
+    }
+    if ($receipt -isnot [System.Collections.IDictionary]) {
+        throw '安装失败回执必须是 JSON object。'
+    }
+
+    $expectedFields = @(
+        'schemaVersion',
+        'stage',
+        'exceptionMessage',
+        'fullyQualifiedErrorId',
+        'positionMessage',
+        'scriptStackTrace',
+        'transactionStarted',
+        'commitState',
+        'rollbackAttempted',
+        'rollbackSucceeded',
+        'preservedUnmanagedLaunchers',
+        'writtenAtUtc'
+    )
+    $expectedFieldSet = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]] $expectedFields,
+        [System.StringComparer]::Ordinal
+    )
+    if (@($receipt.Keys).Count -ne $expectedFields.Count) {
+        throw '安装失败回执字段数量无效。'
+    }
+    foreach ($key in @($receipt.Keys)) {
+        if (-not $expectedFieldSet.Contains([string] $key)) {
+            throw "安装失败回执包含未允许字段：$key"
+        }
+    }
+    foreach ($field in $expectedFields) {
+        if (@($receipt.Keys | Where-Object { [string]::Equals([string] $_, $field, [System.StringComparison]::Ordinal) }).Count -ne 1) {
+            throw "安装失败回执缺少字段：$field"
+        }
+    }
+
+    $schemaVersion = $receipt['schemaVersion']
+    if (($schemaVersion -isnot [int] -and $schemaVersion -isnot [long]) -or [long] $schemaVersion -ne 2) {
+        throw '安装失败回执 schemaVersion 无效。'
+    }
+
+    $normalized = [ordered]@{ schemaVersion = 2 }
+    foreach ($field in @('stage', 'exceptionMessage', 'fullyQualifiedErrorId', 'positionMessage', 'scriptStackTrace', 'writtenAtUtc')) {
+        $value = $receipt[$field]
+        if ($field -eq 'writtenAtUtc' -and $value -is [DateTimeOffset]) {
+            $value = $value.ToUniversalTime().ToString('o')
+        }
+        elseif ($field -eq 'writtenAtUtc' -and $value -is [DateTime]) {
+            $value = ([DateTimeOffset]::new($value.ToUniversalTime())).ToString('o')
+        }
+        $required = $field -in @('stage', 'exceptionMessage', 'writtenAtUtc')
+        if ($null -eq $value) {
+            if ($required) { throw "安装失败回执字段不能为空：$field" }
+            $normalized[$field] = $null
+            continue
+        }
+        if ($value -isnot [string]) {
+            throw "安装失败回执字段必须是字符串：$field"
+        }
+        if ($required -and [string]::IsNullOrWhiteSpace($value)) {
+            throw "安装失败回执字段不能为空：$field"
+        }
+        if ($utf8.GetByteCount($value) -gt (Get-CountdownInstallFailureReceiptTextByteLimit -Name $field)) {
+            throw "安装失败回执字段超过允许大小：$field"
+        }
+        $normalized[$field] = $value
+    }
+    try {
+        [void] [DateTimeOffset]::Parse(
+            [string] $normalized.writtenAtUtc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind
+        )
+    }
+    catch {
+        throw '安装失败回执 writtenAtUtc 无效。'
+    }
+    $commitState = $receipt['commitState']
+    if ($commitState -isnot [string] -or $commitState -notin @('committed', 'not-committed', 'unknown')) {
+        throw '安装失败回执 commitState 无效。'
+    }
+    $normalized.commitState = $commitState
+    foreach ($field in @('transactionStarted', 'rollbackAttempted', 'rollbackSucceeded', 'preservedUnmanagedLaunchers')) {
+        if ($receipt[$field] -isnot [bool]) {
+            throw "安装失败回执字段必须是 bool：$field"
+        }
+        $normalized[$field] = [bool] $receipt[$field]
+    }
+    if ($normalized.rollbackSucceeded -and -not $normalized.rollbackAttempted) {
+        throw '安装失败回执不能声称未尝试即回滚成功。'
+    }
+    if ($normalized.commitState -ne 'not-committed' -and $normalized.rollbackSucceeded) {
+        throw '安装失败回执在提交状态不是 not-committed 时不能声称回滚成功。'
+    }
+    [pscustomobject] $normalized
+}
+
+function Write-CountdownInstallFailureReceipt {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Stage,
+        [Parameter(Mandatory)] [System.Management.Automation.ErrorRecord] $ErrorRecord,
+        [Parameter(Mandatory)] [bool] $TransactionStarted,
+        [Parameter(Mandatory)]
+        [ValidateSet('committed', 'not-committed', 'unknown')]
+        [string] $CommitState,
+        [Parameter(Mandatory)] [bool] $RollbackAttempted,
+        [Parameter(Mandatory)] [bool] $RollbackSucceeded,
+        [Parameter(Mandatory)] [bool] $PreservedUnmanagedLaunchers
+    )
+
+    $exception = $ErrorRecord.Exception
+    $position = if ($null -eq $ErrorRecord.InvocationInfo) { '' } else { [string] $ErrorRecord.InvocationInfo.PositionMessage }
+    $receipt = [ordered]@{
+        schemaVersion = 2
+        stage = ConvertTo-CountdownInstallFailureDiagnosticText -Value $Stage -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'stage')
+        exceptionMessage = ConvertTo-CountdownInstallFailureDiagnosticText -Value $(if ($null -eq $exception) { '未提供' } else { $exception.Message }) -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'exceptionMessage')
+        fullyQualifiedErrorId = ConvertTo-CountdownInstallFailureDiagnosticText -Value $ErrorRecord.FullyQualifiedErrorId -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'fullyQualifiedErrorId')
+        positionMessage = ConvertTo-CountdownInstallFailureDiagnosticText -Value $position -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'positionMessage')
+        scriptStackTrace = ConvertTo-CountdownInstallFailureDiagnosticText -Value $ErrorRecord.ScriptStackTrace -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'scriptStackTrace')
+        transactionStarted = $TransactionStarted
+        commitState = $CommitState
+        rollbackAttempted = $RollbackAttempted
+        rollbackSucceeded = $RollbackSucceeded
+        preservedUnmanagedLaunchers = $PreservedUnmanagedLaunchers
+        writtenAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+    if ($RollbackSucceeded -and (-not $RollbackAttempted -or $CommitState -ne 'not-committed')) {
+        throw '安装失败回执状态组合无效。'
+    }
+    $receiptJson = $receipt | ConvertTo-Json -Depth 4
+    if (([System.Text.UTF8Encoding]::new($false)).GetByteCount($receiptJson) -gt 24576) {
+        throw '安装失败回执超过 24 KiB 上限。'
+    }
+    Write-CountdownInstallJsonAtomically -Path $Path -Value $receipt
+    [pscustomobject] $receipt
+}
+
 function Read-CountdownDeferredInstallReceipt {
     param([Parameter(Mandatory)] [string] $Path)
 
@@ -1454,4 +1653,4 @@ function Recover-CountdownInstallTransactions {
     }
 }
 
-Export-ModuleMember -Function Assert-CountdownInstallPathOnDDrive, Assert-CountdownInstallTreeHasNoReparsePoints, Enter-CountdownInstallTransactionMutex, Exit-CountdownInstallTransactionMutex, Get-CountdownInteractiveDesktopContext, Write-CountdownDeferredInstallReceipt, Read-CountdownDeferredInstallReceipt, Start-CountdownInstallTransaction, Capture-CountdownInstallPayloadSnapshot, Set-CountdownInstallTransactionCandidateLauncherHash, Complete-CountdownInstallTransaction, Remove-CountdownCommittedInstallTransaction, Undo-CountdownInstallTransaction, Recover-CountdownInstallTransactions, Stop-CountdownManagedApplication, Test-CountdownManagedApplicationStopped, Remove-CountdownScheduledTaskIfPresent
+Export-ModuleMember -Function Assert-CountdownInstallPathOnDDrive, Assert-CountdownInstallTreeHasNoReparsePoints, Enter-CountdownInstallTransactionMutex, Exit-CountdownInstallTransactionMutex, Get-CountdownInteractiveDesktopContext, Write-CountdownDeferredInstallReceipt, Write-CountdownInstallFailureReceipt, ConvertFrom-CountdownInstallFailureReceiptBytes, Read-CountdownDeferredInstallReceipt, Start-CountdownInstallTransaction, Capture-CountdownInstallPayloadSnapshot, Set-CountdownInstallTransactionCandidateLauncherHash, Complete-CountdownInstallTransaction, Remove-CountdownCommittedInstallTransaction, Undo-CountdownInstallTransaction, Recover-CountdownInstallTransactions, Stop-CountdownManagedApplication, Test-CountdownManagedApplicationStopped, Remove-CountdownScheduledTaskIfPresent

@@ -314,6 +314,81 @@ try {
         Assert-Equal $false ([bool] $exceptionUnknownAttempt.bytesVerified) '调用异常且 probe 失败时明确标记字节未验证'
         Assert-Equal 0 ([long] $exceptionUnknownAttempt.metrics.bytes) '调用异常且 probe 失败时保留零值数值字段'
     }
+
+    $sshReadEvents = [System.Collections.Generic.List[string]]::new()
+    $sshReadReader = {
+        [void] $sshReadEvents.Add('ssh')
+        [pscustomobject]@{
+            Success = $true
+            ExitCode = 0
+            Bytes = [byte[]]::new(1024)
+            FailureMessage = $null
+        }
+    }.GetNewClosure()
+    $sshReadStopwatchFactory = {
+        New-FakeStopwatch -ElapsedSeconds 2 -Events $sshReadEvents
+    }.GetNewClosure()
+    [byte[]] $sshReadBytes = Invoke-CountdownRecordedSshRead `
+        -LedgerPath $ledgerPath `
+        -Id 'remote-deployment-failure-receipt' `
+        -Reader $sshReadReader `
+        -StopwatchFactory $sshReadStopwatchFactory
+    $ledger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) |
+        ConvertFrom-Json -ErrorAction Stop
+    Assert-Equal 1024 $sshReadBytes.Length '成功 SSH 回读返回精确 byte[]'
+    Assert-Equal 8 @($ledger.attempts).Count '成功 SSH 回读在返回前持久化'
+    Assert-Equal 'start,ssh,stop' ($sshReadEvents -join ',') 'Stopwatch 完整包裹 SSH 回读'
+    if (@($ledger.attempts).Count -ge 8) {
+        $sshReadAttempt = $ledger.attempts[7]
+        Assert-Equal 'ssh' ([string] $sshReadAttempt.method) '回执读取使用 SSH 账本类型'
+        Assert-Equal 'succeeded' ([string] $sshReadAttempt.status) '成功 SSH 回读状态'
+        Assert-Equal 0 ([int] $sshReadAttempt.exitCode) '成功 SSH 回读退出码'
+        Assert-Equal $true ([bool] $sshReadAttempt.transferStarted) '成功 SSH 回读记录传输开始'
+        Assert-Equal $true ([bool] $sshReadAttempt.bytesVerified) '成功 SSH 回读记录字节已验证'
+        Assert-Equal 1024 ([long] $sshReadAttempt.metrics.bytes) '成功 SSH 回读记录 payload bytes'
+        Assert-Equal 2.0 ([double] $sshReadAttempt.metrics.elapsed_seconds) '成功 SSH 回读记录完整命令耗时'
+        Assert-Equal 0.000488 ([double] $sshReadAttempt.metrics.mib_per_second) '成功 SSH 回读记录 MiB/s'
+        Assert-Equal 0.004096 ([double] $sshReadAttempt.metrics.mbps) '成功 SSH 回读记录 Mbps'
+    }
+
+    $sshFailureReader = {
+        [pscustomobject]@{
+            Success = $false
+            ExitCode = 255
+            Bytes = $null
+            FailureMessage = '模拟 SSH 回读失败。'
+        }
+    }
+    $sshFailureStopwatchFactory = {
+        New-FakeStopwatch `
+            -ElapsedSeconds 1 `
+            -Events ([System.Collections.Generic.List[string]]::new())
+    }
+    $sshFailureMessage = $null
+    try {
+        Invoke-CountdownRecordedSshRead `
+            -LedgerPath $ledgerPath `
+            -Id 'remote-deployment-failure-receipt-failed' `
+            -Reader $sshFailureReader `
+            -StopwatchFactory $sshFailureStopwatchFactory | Out-Null
+    }
+    catch {
+        $sshFailureMessage = $_.Exception.Message
+    }
+    $ledger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) |
+        ConvertFrom-Json -ErrorAction Stop
+    Assert-Equal $true ($sshFailureMessage -match '退出码：255.*模拟 SSH 回读失败') '失败 SSH 回读保留退出码和原因'
+    Assert-Equal 9 @($ledger.attempts).Count '失败 SSH 回读在抛错前持久化'
+    if (@($ledger.attempts).Count -ge 9) {
+        $sshFailureAttempt = $ledger.attempts[8]
+        Assert-Equal 'failed-bytes-unverified' ([string] $sshFailureAttempt.status) '失败 SSH 回读不伪造传输状态'
+        Assert-Equal 255 ([int] $sshFailureAttempt.exitCode) '失败 SSH 回读退出码进入账本'
+        Assert-Equal $null $sshFailureAttempt.transferStarted '失败 SSH 回读不猜测传输是否开始'
+        Assert-Equal $false ([bool] $sshFailureAttempt.bytesVerified) '失败 SSH 回读明确字节未验证'
+        Assert-Equal 0 ([long] $sshFailureAttempt.metrics.bytes) '失败 SSH 回读保留零 bytes'
+        Assert-Equal 0.0 ([double] $sshFailureAttempt.metrics.mib_per_second) '失败 SSH 回读保留零 MiB/s'
+        Assert-Equal 0.0 ([double] $sshFailureAttempt.metrics.mbps) '失败 SSH 回读保留零 Mbps'
+    }
 }
 catch {
     [void] $failures.Add($_.Exception.Message)

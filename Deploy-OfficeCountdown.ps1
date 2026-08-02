@@ -48,6 +48,96 @@ if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) {
     $bytes
 }
 
+function Get-OfficeRemoteDeploymentFailureReceipt {
+    param([Parameter(Mandatory)] [string] $RemotePath)
+
+    $escapedRemotePath = $RemotePath.Replace("'", "''")
+    $runtimeGuard = "`$ErrorActionPreference = 'Stop'; if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') { throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。' }"
+    $receiptScript = @"
+$runtimeGuard
+if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) {
+  exit 0
+}
+`$item = Get-Item -LiteralPath '$escapedRemotePath' -Force -ErrorAction Stop
+if (`$item -isnot [System.IO.FileInfo] -or (`$item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+  throw '远端部署失败回执必须是非 reparse point 的普通文件。'
+}
+`$length = [long] `$item.Length
+if (`$length -gt 32768) {
+  throw "远端部署失败回执超过允许大小：`$length"
+}
+[Console]::Out.Write([Convert]::ToBase64String([System.IO.File]::ReadAllBytes(`$item.FullName)))
+"@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($receiptScript))
+    $exitCode = -1
+    try {
+        $output = & ssh.exe @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        return [pscustomobject]@{
+            Success = $false
+            ExitCode = -1
+            Bytes = $null
+            FailureMessage = "无法启动办公室设备部署失败回执读取：$($_.Exception.Message)"
+        }
+    }
+    if ($exitCode -ne 0) {
+        return [pscustomobject]@{
+            Success = $false
+            ExitCode = $exitCode
+            Bytes = $null
+            FailureMessage = '无法读取办公室设备上的部署失败回执。'
+        }
+    }
+
+    $text = ($output | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return [pscustomobject]@{
+            Success = $true
+            ExitCode = $exitCode
+            Bytes = $null
+            FailureMessage = $null
+        }
+    }
+    try {
+        $bytes = [Convert]::FromBase64String($text)
+    }
+    catch {
+        return [pscustomobject]@{
+            Success = $false
+            ExitCode = $exitCode
+            Bytes = $null
+            FailureMessage = "办公室设备返回的部署失败回执不是有效 Base64：$($_.Exception.Message)"
+        }
+    }
+    if ($bytes.Length -gt 32768) {
+        return [pscustomobject]@{
+            Success = $false
+            ExitCode = $exitCode
+            Bytes = $null
+            FailureMessage = "办公室设备返回的部署失败回执超过允许大小：$($bytes.Length)"
+        }
+    }
+    try {
+        [void] (ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes $bytes)
+    }
+    catch {
+        return [pscustomobject]@{
+            Success = $false
+            ExitCode = $exitCode
+            Bytes = $null
+            FailureMessage = "办公室设备返回的部署失败回执未通过契约校验：$($_.Exception.Message)"
+        }
+    }
+    [pscustomobject]@{
+        Success = $true
+        ExitCode = $exitCode
+        Bytes = [byte[]] $bytes
+        FailureMessage = $null
+    }
+}
+
 if (@(git -C $repoRoot status --porcelain).Count -ne 0) { throw '工作树不干净，拒绝部署未提交内容。' }
 if ((git -C $repoRoot branch --show-current).Trim() -ne 'main') { throw '仅允许从 main 分支部署。' }
 git -C $repoRoot fetch origin main
@@ -89,6 +179,7 @@ if ($ValidateOnly) {
 }
 
 Import-Module (Join-Path $repoRoot 'Countdown.TransferLedger.psm1') -Force
+Import-Module (Join-Path $repoRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
 . 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1' | Out-Null
 $officeHost = ($env:REPLICATOR_OFFICE_SSH_DESTINATION -split '@')[-1]
 & tailscale.exe ping --until-direct=false --c 3 --timeout 10s $officeHost
@@ -151,6 +242,8 @@ $remoteInstallScript = Join-Path $evidenceRoot 'remote-install.ps1'
 $remoteInstallHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $remoteInstallScript).Hash
 $remoteInstallDestination = "D:/Codex/deploy/clock-countdown-$shortCommit-$runId/remote-install.ps1"
 $remoteInstallPath = "$remoteRoot\remote-install.ps1"
+$remoteFailureReceiptPath = "$remoteRoot\deployment-failure.json"
+$failureReceiptEvidencePath = Join-Path $evidenceRoot 'remote-deployment-failure.json'
 Invoke-CountdownRecordedScpTransfer `
     -LedgerPath $transferLedgerPath `
     -Id 'remote-install-script' `
@@ -159,4 +252,36 @@ Invoke-CountdownRecordedScpTransfer `
     -RemotePath $remoteInstallPath `
     -ScpOptions $script:sshOptions `
     -RemoteBytesProbe $remoteBytesProbe | Out-Null
-Invoke-OfficeEncodedCommand -ScriptText "if ((Get-FileHash -Algorithm SHA256 -LiteralPath '$remoteInstallPath').Hash -ne '$remoteInstallHash') { throw '远端安装脚本哈希不匹配。' }; & (Join-Path `$PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File '$remoteInstallPath'; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }"
+try {
+    Invoke-OfficeEncodedCommand -ScriptText "if ((Get-FileHash -Algorithm SHA256 -LiteralPath '$remoteInstallPath').Hash -ne '$remoteInstallHash') { throw '远端安装脚本哈希不匹配。' }; & (Join-Path `$PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File '$remoteInstallPath'; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }"
+}
+catch {
+    $remoteExecutionFailure = $_.Exception.Message
+    $failureReceiptReader = {
+        Get-OfficeRemoteDeploymentFailureReceipt -RemotePath $remoteFailureReceiptPath
+    }.GetNewClosure()
+    try {
+        $failureReceiptBytes = Invoke-CountdownRecordedSshRead `
+            -LedgerPath $transferLedgerPath `
+            -Id 'remote-deployment-failure-receipt' `
+            -Reader $failureReceiptReader
+    }
+    catch {
+        throw "$remoteExecutionFailure；读取远端部署失败回执也失败：$($_.Exception.Message)"
+    }
+    if ($null -ne $failureReceiptBytes) {
+        try {
+            $failureReceipt = ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes $failureReceiptBytes
+        }
+        catch {
+            throw "$remoteExecutionFailure；远端部署失败回执二次契约校验失败：$($_.Exception.Message)"
+        }
+        [System.IO.File]::WriteAllText(
+            $failureReceiptEvidencePath,
+            ($failureReceipt | ConvertTo-Json -Depth 4),
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        throw "$remoteExecutionFailure；远端部署失败回执已保存：$failureReceiptEvidencePath"
+    }
+    throw $remoteExecutionFailure
+}

@@ -32,6 +32,97 @@ function Get-CountdownRemoteDeploymentCommitted {
     [bool] $committedProperty.Value
 }
 
+function Get-CountdownRemoteDeploymentStage {
+    param(
+        [Parameter(Mandatory)] [object] $Adapter,
+        [Parameter(Mandatory)] [string] $Fallback
+    )
+
+    $stateProperty = $Adapter.PSObject.Properties['State']
+    if ($null -eq $stateProperty -or $null -eq $stateProperty.Value) {
+        return $Fallback
+    }
+    $stageProperty = $stateProperty.Value.PSObject.Properties['Stage']
+    if ($null -eq $stageProperty -or [string]::IsNullOrWhiteSpace([string] $stageProperty.Value)) {
+        return $Fallback
+    }
+    [string] $stageProperty.Value
+}
+
+function Get-CountdownRemoteDeploymentFailureDiagnostic {
+    param(
+        [Parameter(Mandatory)] [string] $Stage,
+        [Parameter(Mandatory)] [System.Management.Automation.ErrorRecord] $ErrorRecord
+    )
+
+    $exception = $ErrorRecord.Exception
+    $exceptionType = if ($null -eq $exception) { '未提供' } else { $exception.GetType().FullName }
+    $message = if ($null -eq $exception) { '未提供' } else { [string] $exception.Message }
+    $errorId = if ([string]::IsNullOrWhiteSpace([string] $ErrorRecord.FullyQualifiedErrorId)) {
+        '未提供'
+    }
+    else {
+        [string] $ErrorRecord.FullyQualifiedErrorId
+    }
+    $position = if ($null -eq $ErrorRecord.InvocationInfo) { '' } else { [string] $ErrorRecord.InvocationInfo.PositionMessage }
+    if ([string]::IsNullOrWhiteSpace($position)) { $position = '未提供' }
+    $scriptStackTrace = [string] $ErrorRecord.ScriptStackTrace
+    if ([string]::IsNullOrWhiteSpace($scriptStackTrace)) { $scriptStackTrace = '未提供' }
+    $position = $position -replace '\s+', ' '
+    $scriptStackTrace = $scriptStackTrace -replace '\s+', ' '
+
+    "阶段=$Stage；异常类型=$exceptionType；错误 ID=$errorId；错误位置=$position；ScriptStackTrace=$scriptStackTrace；原因=$message"
+}
+
+function Get-CountdownRemoteDeploymentStateBoolean {
+    param(
+        [Parameter(Mandatory)] [object] $Adapter,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $stateProperty = $Adapter.PSObject.Properties['State']
+    if ($null -eq $stateProperty -or $null -eq $stateProperty.Value) { return $false }
+    $valueProperty = $stateProperty.Value.PSObject.Properties[$Name]
+    if ($null -eq $valueProperty -or $valueProperty.Value -isnot [bool]) { return $false }
+    [bool] $valueProperty.Value
+}
+
+function Write-CountdownRemoteDeploymentFailureReceipt {
+    param(
+        [Parameter(Mandatory)] [object] $Context,
+        [Parameter(Mandatory)] [object] $Adapter,
+        [Parameter(Mandatory)] [string] $Stage,
+        [Parameter(Mandatory)] [System.Management.Automation.ErrorRecord] $ErrorRecord,
+        [Parameter(Mandatory)]
+        [ValidateSet('committed', 'not-committed', 'unknown')]
+        [string] $CommitState,
+        [Parameter(Mandatory)] [bool] $RollbackAttempted,
+        [Parameter(Mandatory)] [bool] $RollbackSucceeded,
+        [Parameter(Mandatory)] [bool] $PreservedUnmanagedLaunchers
+    )
+
+    $receiptDirectory = Split-Path -Parent $Context.DeferredReceiptPath
+    $receiptPath = Join-Path $receiptDirectory 'deployment-failure.json'
+    if (Test-Path -LiteralPath $receiptPath) { return $false }
+    try {
+        Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+        [void] (Write-CountdownInstallFailureReceipt `
+                -Path $receiptPath `
+                -Stage $Stage `
+                -ErrorRecord $ErrorRecord `
+                -TransactionStarted (Get-CountdownRemoteDeploymentStateBoolean -Adapter $Adapter -Name 'InstallStarted') `
+                -CommitState $CommitState `
+                -RollbackAttempted $RollbackAttempted `
+                -RollbackSucceeded $RollbackSucceeded `
+                -PreservedUnmanagedLaunchers $PreservedUnmanagedLaunchers)
+        $true
+    }
+    catch {
+        # 回执诊断不能覆盖原始部署异常或改变回滚/提交边界。
+        $false
+    }
+}
+
 function Assert-CountdownRemoteDeploymentAdapter {
     param([Parameter(Mandatory)] [object] $Adapter)
 
@@ -60,6 +151,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
         TransactionModuleImported = $false
         InstallStarted = $false
         Committed = $false
+        Stage = '初始化'
         RollbackTransactionPath = $null
         InteractiveContext = $null
         LauncherPath = $null
@@ -80,6 +172,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
         Begin = {
             param($AdapterState, $Context)
 
+            $AdapterState.Stage = '加载发布包'
             Import-Module (Join-Path $Context.SourceRoot 'Countdown.ReleaseContract.psm1') -Force
             $releaseContract = Get-CountdownReleaseContract
             [void] (Assert-CountdownReleasePackage -Root $Context.SourceRoot)
@@ -94,6 +187,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             $AdapterState.LauncherPath = $launcherPath
             $AdapterState.LegacyLauncherPath = $legacyLauncherPath
             $AdapterState.LauncherTempPath = $launcherTempPath
+            $AdapterState.Stage = '取得安装事务锁'
             $AdapterState.InstallMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 120
 
             $settingsPath = Join-Path $Context.InstallPath 'settings.json'
@@ -106,12 +200,15 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 ExpectedDesktopPath = [string] $interactiveContext.Desktop
             }
             $AdapterState.InstallStarted = $true
+            $AdapterState.Stage = '执行安装器'
             $installerOutput = & (Join-Path $Context.SourceRoot 'Install-Countdown.ps1') @installerArguments | Out-String
+            $AdapterState.Stage = '读取延迟提交回执'
             $receipt = Read-CountdownDeferredInstallReceipt -Path $Context.DeferredReceiptPath
             if ($null -eq $receipt) {
                 throw '安装器没有写入可用于回滚的延迟提交回执。'
             }
             $AdapterState.RollbackTransactionPath = [string] $receipt.transactionPath
+            $AdapterState.Stage = '验证安装器输出'
             try {
                 $installer = $installerOutput | ConvertFrom-Json -ErrorAction Stop
             }
@@ -144,6 +241,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             }
             $validation = $validationProperty.Value
 
+            $AdapterState.Stage = '验证安装文件'
             foreach ($file in $releaseContract.InstalledFiles) {
                 $expectedHash = [string] $releaseContract.IntegrityHashes[$file]
                 $installedPath = Join-Path $Context.InstallPath $file
@@ -162,6 +260,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             Import-Module (Join-Path $Context.SourceRoot 'Countdown.TransactionAcceptance.psm1') -Force
 
             $applicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
+            $AdapterState.Stage = '验证已安装应用'
             $installedValidationOutput = & $Context.PowerShell7Path `
                 -NoLogo -NoProfile -NonInteractive -STA -File $applicationPath -ValidateOnly | Out-String
             if ($LASTEXITCODE -ne 0) {
@@ -179,6 +278,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 throw '安装后悬浮框验证失败。'
             }
 
+            $AdapterState.Stage = '等待窗口就绪回执'
             $task = Get-ScheduledTask -TaskName $Context.TaskName -ErrorAction Stop
             $runtimeStatusPath = Join-Path $Context.InstallPath 'runtime-status.json'
             $runtimeStatus = Wait-CountdownWindowReady `
@@ -191,6 +291,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             if ([string] $task.State -ne 'Running') {
                 throw "计划任务未运行：$($task.State)"
             }
+            $AdapterState.Stage = '复核计划任务引擎'
             if (-not [string]::Equals(
                     [System.IO.Path]::GetFullPath([string] $task.Actions.Execute),
                     [System.IO.Path]::GetFullPath($Context.PowerShell7Path),
@@ -206,6 +307,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             $AdapterState.LaunchToken = [string] $receipt.launchToken
             $AdapterState.ExpectedProcessId = [int] $runtimeStatus.processId
             $AdapterState.ExpectedScheduledTaskIdentity = [string] (Export-ScheduledTask -InputObject $task -ErrorAction Stop)
+            $AdapterState.Stage = '候选安装验证完成'
 
             [pscustomobject]@{
                 Validation = $validation
@@ -216,6 +318,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
         Accept = {
             param($AdapterState, $Context, $Candidate)
 
+            $AdapterState.Stage = '准备事务验收'
             Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
             Import-Module (Join-Path $Context.InstallPath 'Countdown.Settings.psm1') -Force
             Import-Module (Join-Path $Context.SourceRoot 'Countdown.Runtime.psm1') -Force
@@ -230,6 +333,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 [string] (Export-ScheduledTask -InputObject $ScheduledTask -ErrorAction Stop)
             }
             $completeTransaction = {
+                $AdapterState.Stage = '提交安装事务'
                 Complete-CountdownInstallTransaction `
                     -TransactionPath $AdapterState.RollbackTransactionPath `
                     -ExpectedInstallPath $Context.InstallPath `
@@ -240,6 +344,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                     -ExpectedLauncherTempPath $AdapterState.LauncherTempPath
             }
             $removeCommittedTransaction = {
+                $AdapterState.Stage = '清理已提交事务'
                 $moveCommittedTransaction = {
                     param([string] $Source, [string] $Destination)
                     # InstallTransaction 只在 journal 写入 committed 后调用此动作；移动失败也已不可回滚。
@@ -275,11 +380,13 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 CompleteTransaction = $completeTransaction
                 RemoveCommittedTransaction = $removeCommittedTransaction
             }
+            $AdapterState.Stage = '执行事务验收'
             Invoke-CountdownTransactionAcceptance @acceptanceArguments
         }
         Rollback = {
             param($AdapterState, $Context, $Candidate)
 
+            $AdapterState.Stage = '回滚安装事务'
             if (-not [bool] $AdapterState.TransactionModuleImported -or -not [bool] $AdapterState.InstallStarted) {
                 return [pscustomobject]@{
                     PreservedUnmanagedLaunchers = $false
@@ -335,6 +442,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
         }
         Finalize = {
             param($AdapterState, $Context)
+            $AdapterState.Stage = '刷新桌面图标'
             $iconRefreshPath = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
             $null = & $iconRefreshPath -show 2>$null
             if ($LASTEXITCODE -ne 0) {
@@ -343,6 +451,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
         }
         Dispose = {
             param($AdapterState, $Context)
+            $AdapterState.Stage = '释放安装事务锁'
             if ($null -ne $AdapterState.InstallMutex) {
                 Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
                 Exit-CountdownInstallTransactionMutex -Mutex $AdapterState.InstallMutex
@@ -390,12 +499,14 @@ function Invoke-CountdownRemoteDeployment {
     $committed = $false
     $result = $null
     $deploymentFailure = $null
+    $stage = '开始候选安装'
     try {
         try {
             $candidate = & $Adapter.Begin $Adapter.State $context
             if ($null -eq $candidate) {
                 throw '远端部署 adapter 没有返回候选结果。'
             }
+            $stage = '验证候选结果契约'
             $validation = Get-CountdownRemoteDeploymentProperty -InputObject $candidate -Name 'Validation' -Required
             $validationSchemaVersion = [int] (Get-CountdownRemoteDeploymentProperty `
                     -InputObject $validation `
@@ -430,7 +541,9 @@ function Invoke-CountdownRemoteDeployment {
                 }
             }
 
+            $stage = '执行事务验收'
             $acceptance = & $Adapter.Accept $Adapter.State $context $candidate
+            $stage = '确认提交边界'
             $committed = Get-CountdownRemoteDeploymentCommitted -Adapter $Adapter
             if (-not $committed) {
                 throw '远端部署 adapter 在返回验收成功前未确认提交边界。'
@@ -444,9 +557,11 @@ function Invoke-CountdownRemoteDeployment {
             }
             $finalizeProperty = $Adapter.PSObject.Properties['Finalize']
             if ($null -ne $finalizeProperty) {
+                $stage = '执行提交后收尾'
                 [void] (& $finalizeProperty.Value $Adapter.State $context)
             }
 
+            $stage = '组装部署结果'
             $result = [pscustomobject]@{
                 SchemaVersion = 1
                 Valid = $true
@@ -465,14 +580,40 @@ function Invoke-CountdownRemoteDeployment {
             }
         }
         catch {
-            $failure = $_.Exception.Message
+            $failureRecord = $_
+            $failureStage = Get-CountdownRemoteDeploymentStage -Adapter $Adapter -Fallback $stage
+            $failure = Get-CountdownRemoteDeploymentFailureDiagnostic `
+                -Stage $failureStage `
+                -ErrorRecord $failureRecord
             try {
                 $committed = Get-CountdownRemoteDeploymentCommitted -Adapter $Adapter
             }
             catch {
-                throw "远端部署失败，adapter 提交状态无法验证，未回滚：$failure；提交状态错误：$($_.Exception.Message)"
+                $commitProbeRecord = $_
+                [void] (Write-CountdownRemoteDeploymentFailureReceipt `
+                        -Context $context `
+                        -Adapter $Adapter `
+                        -Stage $failureStage `
+                        -ErrorRecord $failureRecord `
+                        -CommitState 'unknown' `
+                        -RollbackAttempted $false `
+                        -RollbackSucceeded $false `
+                        -PreservedUnmanagedLaunchers $false)
+                $commitProbeFailure = Get-CountdownRemoteDeploymentFailureDiagnostic `
+                    -Stage '确认提交状态' `
+                    -ErrorRecord $commitProbeRecord
+                throw "远端部署失败，adapter 提交状态无法验证，未回滚：$failure；提交状态错误：$commitProbeFailure"
             }
             if ($committed) {
+                [void] (Write-CountdownRemoteDeploymentFailureReceipt `
+                        -Context $context `
+                        -Adapter $Adapter `
+                        -Stage $failureStage `
+                        -ErrorRecord $failureRecord `
+                        -CommitState 'committed' `
+                        -RollbackAttempted $false `
+                        -RollbackSucceeded $false `
+                        -PreservedUnmanagedLaunchers $false)
                 throw "部署已提交，但提交后收尾失败，未回滚：$failure"
             }
 
@@ -480,6 +621,15 @@ function Invoke-CountdownRemoteDeployment {
                 $rollback = & $Adapter.Rollback $Adapter.State $context $candidate
             }
             catch {
+                [void] (Write-CountdownRemoteDeploymentFailureReceipt `
+                        -Context $context `
+                        -Adapter $Adapter `
+                        -Stage $failureStage `
+                        -ErrorRecord $failureRecord `
+                        -CommitState 'not-committed' `
+                        -RollbackAttempted $true `
+                        -RollbackSucceeded $false `
+                        -PreservedUnmanagedLaunchers $false)
                 throw "远端部署失败：$failure；回滚也失败：$($_.Exception.Message)"
             }
             $unresolvedCommitted = $false
@@ -490,6 +640,17 @@ function Invoke-CountdownRemoteDeployment {
                 $unresolvedCommitted = $null -ne $unresolvedProperty -and [bool] $unresolvedProperty.Value
                 $preservedUnmanaged = $null -ne $preservedProperty -and [bool] $preservedProperty.Value
             }
+            $failureReceiptCommitState = if ($unresolvedCommitted) { 'committed' } else { 'not-committed' }
+            $failureReceiptRollbackSucceeded = -not $unresolvedCommitted
+            [void] (Write-CountdownRemoteDeploymentFailureReceipt `
+                    -Context $context `
+                    -Adapter $Adapter `
+                    -Stage $failureStage `
+                    -ErrorRecord $failureRecord `
+                    -CommitState $failureReceiptCommitState `
+                    -RollbackAttempted $true `
+                    -RollbackSucceeded $failureReceiptRollbackSucceeded `
+                    -PreservedUnmanagedLaunchers $preservedUnmanaged)
             if ($unresolvedCommitted) {
                 throw "远端部署失败；检测到已提交但未完成解锁确认的事务，未声称回滚并保留了证据：$failure"
             }
@@ -504,11 +665,27 @@ function Invoke-CountdownRemoteDeployment {
     }
 
     $disposeFailure = $null
+    $disposeFailureRecord = $null
     try {
         [void] (& $Adapter.Dispose $Adapter.State $context)
     }
     catch {
+        $disposeFailureRecord = $_
         $disposeFailure = $_.Exception.Message
+    }
+
+    if ($null -ne $disposeFailureRecord) {
+        $disposeStage = Get-CountdownRemoteDeploymentStage -Adapter $Adapter -Fallback '释放部署资源'
+        $disposeCommitState = if ($committed) { 'committed' } else { 'unknown' }
+        [void] (Write-CountdownRemoteDeploymentFailureReceipt `
+                -Context $context `
+                -Adapter $Adapter `
+                -Stage $disposeStage `
+                -ErrorRecord $disposeFailureRecord `
+                -CommitState $disposeCommitState `
+                -RollbackAttempted $false `
+                -RollbackSucceeded $false `
+                -PreservedUnmanagedLaunchers $false)
     }
 
     if ($null -ne $deploymentFailure) {

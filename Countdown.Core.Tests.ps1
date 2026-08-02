@@ -218,7 +218,7 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
         Select-Object -First 1 -ExpandProperty Source)
 
     function New-CountdownRemoteDeploymentFixtureAdapter {
-        param([ValidateSet('Success', 'ValidationFailure', 'AdapterUiValidationFailure', 'ValidationSchemaFailure', 'AcceptanceFailure', 'CommitThenFail', 'RollbackFailure', 'FinalizeFailure', 'DisposeFailure', 'ValidationAndDisposeFailure')] [string] $Mode)
+        param([ValidateSet('Success', 'BeginFailure', 'ValidationFailure', 'AdapterUiValidationFailure', 'ValidationSchemaFailure', 'AcceptanceFailure', 'CommitThenFail', 'RollbackFailure', 'FinalizeFailure', 'DisposeFailure', 'ValidationAndDisposeFailure', 'CommitProbeFailure', 'UnresolvedCommittedTransaction')] [string] $Mode)
 
         $state = [pscustomobject]@{
             Mode = $Mode
@@ -234,10 +234,16 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
             Begin = {
                 param($AdapterState, $Context)
                 $AdapterState.Begun = $true
+                if ($AdapterState.Mode -eq 'BeginFailure') {
+                    throw [System.IO.IOException]::new('模拟候选安装异常。')
+                }
+                if ($AdapterState.Mode -eq 'CommitProbeFailure') {
+                    $AdapterState.PSObject.Properties.Remove('Committed')
+                }
                 [pscustomobject]@{
                     Validation = [pscustomobject]@{
                         SchemaVersion = if ($AdapterState.Mode -eq 'ValidationSchemaFailure') { 999 } else { 1 }
-                        Valid = $AdapterState.Mode -notin @('ValidationFailure', 'RollbackFailure', 'ValidationAndDisposeFailure')
+                        Valid = $AdapterState.Mode -notin @('ValidationFailure', 'RollbackFailure', 'ValidationAndDisposeFailure', 'CommitProbeFailure', 'UnresolvedCommittedTransaction')
                         CoreTestsPassed = 11
                         CSharpTestsPassed = 13
                         UiTestsPassed = 17
@@ -276,7 +282,10 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
                 if ($AdapterState.Mode -eq 'RollbackFailure') {
                     throw '模拟回滚失败。'
                 }
-                [pscustomobject]@{ PreservedUnmanagedLaunchers = $false }
+                [pscustomobject]@{
+                    PreservedUnmanagedLaunchers = $false
+                    UnresolvedCommittedTransaction = $AdapterState.Mode -eq 'UnresolvedCommittedTransaction'
+                }
             }
             Finalize = {
                 param($AdapterState, $Context)
@@ -504,11 +513,83 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $false ([bool] $successFixture.State.RolledBack) 'Remote deployment success does not roll back'
         Assert-Equal $true ([bool] $successFixture.State.Disposed) 'Remote deployment success releases its host adapter'
 
+        $beginFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode BeginFailure
+        $beginFailureReceiptPath = Join-Path $remoteDeploymentTestRoot 'deployment-failure.json'
+        $beginFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $PSScriptRoot `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $beginFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $beginFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($beginFailureMessage -match '远端部署失败，已回滚' -and $beginFailureMessage -match '阶段=开始候选安装' -and $beginFailureMessage -match '异常类型=System.IO.IOException' -and $beginFailureMessage -match '错误位置=' -and $beginFailureMessage -match 'ScriptStackTrace=' -and $beginFailureMessage -match '模拟候选安装异常') 'Remote deployment preserves stage, exception type, position and script stack for a pre-commit failure'
+        Assert-Equal $true ([bool] $beginFailureFixture.State.RolledBack) 'Begin failure still rolls back the candidate'
+        Assert-Equal $true ([bool] $beginFailureFixture.State.Disposed) 'Begin failure still releases its host adapter'
+        Assert-Equal $true (Test-Path -LiteralPath $beginFailureReceiptPath -PathType Leaf) 'Remote deployment writes a controller fallback receipt after a pre-commit failure'
+        $beginFailureReceipt = [System.IO.File]::ReadAllText($beginFailureReceiptPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        Assert-Equal '开始候选安装' ([string] $beginFailureReceipt.stage) 'Controller fallback receipt retains the active deployment stage'
+        Assert-Equal '模拟候选安装异常。' ([string] $beginFailureReceipt.exceptionMessage) 'Controller fallback receipt retains the original exception message'
+        Assert-Equal $true (-not [bool] $beginFailureReceipt.transactionStarted -and [string] $beginFailureReceipt.commitState -eq 'not-committed' -and [bool] $beginFailureReceipt.rollbackAttempted -and [bool] $beginFailureReceipt.rollbackSucceeded) 'Controller fallback receipt retains the uncommitted rollback outcome'
+
+        $commitProbeReceipt = Join-Path $remoteDeploymentTestRoot 'commit-probe\deferred-install-receipt.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $commitProbeReceipt) -Force | Out-Null
+        $commitProbeFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode CommitProbeFailure
+        $commitProbeFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $PSScriptRoot `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $commitProbeReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $commitProbeFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $commitProbeFailureMessage = $_.Exception.Message
+        }
+        $commitProbeFailureReceiptPath = Join-Path (Split-Path -Parent $commitProbeReceipt) 'deployment-failure.json'
+        Assert-Equal $true ($commitProbeFailureMessage -match '提交状态无法验证.*未回滚') 'Remote deployment fails closed when commit state cannot be probed'
+        Assert-Equal 0 ([int] $commitProbeFailureFixture.State.RollbackCount) 'Commit state probe failure does not speculate with a rollback'
+        Assert-Equal $true (Test-Path -LiteralPath $commitProbeFailureReceiptPath -PathType Leaf) 'Commit state probe failure writes an auditable receipt'
+        $commitProbeFailureReceipt = [System.IO.File]::ReadAllText($commitProbeFailureReceiptPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        Assert-Equal $true ([string] $commitProbeFailureReceipt.commitState -eq 'unknown' -and -not [bool] $commitProbeFailureReceipt.rollbackAttempted -and -not [bool] $commitProbeFailureReceipt.rollbackSucceeded) 'Commit state probe receipt records the unknown boundary without a rollback claim'
+
+        $unresolvedReceipt = Join-Path $remoteDeploymentTestRoot 'unresolved-committed\deferred-install-receipt.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $unresolvedReceipt) -Force | Out-Null
+        $unresolvedCommittedFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode UnresolvedCommittedTransaction
+        $unresolvedCommittedMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $PSScriptRoot `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $unresolvedReceipt `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $unresolvedCommittedFixture.Adapter | Out-Null
+        }
+        catch {
+            $unresolvedCommittedMessage = $_.Exception.Message
+        }
+        $unresolvedCommittedReceiptPath = Join-Path (Split-Path -Parent $unresolvedReceipt) 'deployment-failure.json'
+        Assert-Equal $true ($unresolvedCommittedMessage -match '已提交但未完成解锁确认.*未声称回滚') 'Remote deployment does not falsely claim rollback for an unresolved committed transaction'
+        Assert-Equal 1 ([int] $unresolvedCommittedFixture.State.RollbackCount) 'Unresolved committed transaction records the attempted rollback boundary'
+        $unresolvedCommittedReceipt = [System.IO.File]::ReadAllText($unresolvedCommittedReceiptPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        Assert-Equal $true ([string] $unresolvedCommittedReceipt.commitState -eq 'committed' -and [bool] $unresolvedCommittedReceipt.rollbackAttempted -and -not [bool] $unresolvedCommittedReceipt.rollbackSucceeded) 'Unresolved committed receipt preserves the no-rollback-success fact'
+
         $validationFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode ValidationFailure
         $validationFailureMessage = $null
         try {
             Invoke-CountdownRemoteDeployment `
-                -SourceRoot $remoteDeploymentSource `
+                -SourceRoot $PSScriptRoot `
                 -InstallPath $remoteDeploymentInstall `
                 -PowerShell7Path $remoteDeploymentPowerShell `
                 -DeferredReceiptPath $remoteDeploymentReceipt `
@@ -741,14 +822,16 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $true ([bool] $validationAndDisposeFailureFixture.State.RolledBack) 'Validation and disposal failure still rolls back the candidate'
         Assert-Equal $true ([bool] $validationAndDisposeFailureFixture.State.Disposed) 'Validation and disposal failure attempts adapter disposal'
 
+        $disposeFailureReceipt = Join-Path $remoteDeploymentTestRoot 'dispose-failure\deferred-install-receipt.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $disposeFailureReceipt) -Force | Out-Null
         $disposeFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode DisposeFailure
         $disposeFailureMessage = $null
         try {
             Invoke-CountdownRemoteDeployment `
-                -SourceRoot $remoteDeploymentSource `
+                -SourceRoot $PSScriptRoot `
                 -InstallPath $remoteDeploymentInstall `
                 -PowerShell7Path $remoteDeploymentPowerShell `
-                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -DeferredReceiptPath $disposeFailureReceipt `
                 -TaskName 'Minmin Countdown Fixture' `
                 -LegacyTaskName '敏敏子倒计时 Fixture' `
                 -Adapter $disposeFailureFixture.Adapter | Out-Null
@@ -759,6 +842,10 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $true ($disposeFailureMessage -match '部署已提交.*资源释放失败.*未回滚.*模拟资源释放失败') 'Remote deployment reports committed disposal failure without claiming rollback'
         Assert-Equal $false ([bool] $disposeFailureFixture.State.RolledBack) 'Committed disposal failure does not roll back'
         Assert-Equal $true ([bool] $disposeFailureFixture.State.Disposed) 'Committed disposal failure records the disposal attempt'
+        $disposeFailureReceiptPath = Join-Path (Split-Path -Parent $disposeFailureReceipt) 'deployment-failure.json'
+        Assert-Equal $true (Test-Path -LiteralPath $disposeFailureReceiptPath -PathType Leaf) 'Committed disposal failure writes an auditable receipt'
+        $disposeFailureReceiptDocument = [System.IO.File]::ReadAllText($disposeFailureReceiptPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        Assert-Equal $true ([string] $disposeFailureReceiptDocument.commitState -eq 'committed' -and -not [bool] $disposeFailureReceiptDocument.rollbackAttempted -and -not [bool] $disposeFailureReceiptDocument.rollbackSucceeded) 'Committed disposal receipt never claims a rollback'
 
         $knownTransactionPath = Join-Path $remoteDeploymentTestRoot 'known-transaction-without-journal'
         New-Item -ItemType Directory -Path $knownTransactionPath -Force | Out-Null
@@ -876,6 +963,10 @@ $recordedTransferCallCount = [regex]::Matches(
     $deploySource,
     '(?m)^\s*Invoke-CountdownRecordedScpTransfer\b').Count
 Assert-Equal 2 $recordedTransferCallCount 'Office deploy records both SCP commands through the transfer ledger interface'
+$recordedSshReadCallCount = [regex]::Matches(
+    $deploySource,
+    '\bInvoke-CountdownRecordedSshRead\b').Count
+Assert-Equal 1 $recordedSshReadCallCount 'Office deploy records the SSH failure receipt read through the transfer ledger interface'
 Assert-Equal $false $deploySource.Contains('& scp.exe') 'Office deploy has no direct SCP call that bypasses the transfer ledger'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'
@@ -1623,6 +1714,96 @@ try {
     Assert-Equal $deferredReceipt.launchToken $readDeferredReceipt.launchToken 'Deferred install receipt preserves startup token'
     [System.IO.File]::WriteAllText($deferredReceiptPath, '{bad-json', (New-Object System.Text.UTF8Encoding($false)))
     Assert-Equal $true ($null -eq (Read-CountdownDeferredInstallReceipt -Path $deferredReceiptPath)) 'Malformed deferred install receipt is rejected'
+    $failureReceiptPath = Join-Path $transactionTestRoot 'deployment-failure.json'
+    $failureReceiptRecord = $null
+    $failureReceiptException = [System.InvalidOperationException]::new('failure receipt sentinel')
+    $failureReceiptException.Data['do-not-serialize'] = 'sentinel-secret'
+    try {
+        throw $failureReceiptException
+    }
+    catch {
+        $failureReceiptRecord = $_
+    }
+    $failureReceipt = Write-CountdownInstallFailureReceipt `
+        -Path $failureReceiptPath `
+        -Stage 'replace-desktop-launcher' `
+        -ErrorRecord $failureReceiptRecord `
+        -TransactionStarted $true `
+        -CommitState 'not-committed' `
+        -RollbackAttempted $true `
+        -RollbackSucceeded $true `
+        -PreservedUnmanagedLaunchers $false
+    $failureReceiptText = [System.IO.File]::ReadAllText($failureReceiptPath, [System.Text.Encoding]::UTF8)
+    $readFailureReceipt = $failureReceiptText | ConvertFrom-Json
+    Assert-Equal 2 ([int] $readFailureReceipt.schemaVersion) 'Failure receipt uses a stable schema version'
+    Assert-Equal 'replace-desktop-launcher' ([string] $readFailureReceipt.stage) 'Failure receipt records the precise installer stage'
+    Assert-Equal 'failure receipt sentinel' ([string] $readFailureReceipt.exceptionMessage) 'Failure receipt preserves the original exception message'
+    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $readFailureReceipt.fullyQualifiedErrorId)) 'Failure receipt preserves the fully qualified error ID'
+    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $readFailureReceipt.positionMessage)) 'Failure receipt preserves the original error position'
+    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $readFailureReceipt.scriptStackTrace)) 'Failure receipt preserves the original script stack'
+    Assert-Equal $true ([bool] $readFailureReceipt.transactionStarted -and [string] $readFailureReceipt.commitState -eq 'not-committed' -and [bool] $readFailureReceipt.rollbackAttempted -and [bool] $readFailureReceipt.rollbackSucceeded) 'Failure receipt records transactional rollback state'
+    Assert-Equal $false ([bool] $readFailureReceipt.preservedUnmanagedLaunchers) 'Failure receipt records launcher preservation state'
+    Assert-Equal $true ($failureReceiptText -notmatch 'sentinel-secret') 'Failure receipt serializes selected diagnostics rather than exception data'
+    Assert-Equal 'replace-desktop-launcher' ([string] $failureReceipt.stage) 'Failure receipt writer returns the persisted receipt'
+    Assert-Equal $true ([System.Text.UTF8Encoding]::new($false).GetByteCount($failureReceiptText) -le 24576) 'Failure receipt remains below the remote retrieval ceiling'
+    $validatedFailureReceipt = ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes($failureReceiptText))
+    Assert-Equal 'not-committed' ([string] $validatedFailureReceipt.commitState) 'Failure receipt parser accepts the writer output'
+    $untrustedFailureReceipt = [ordered]@{}
+    foreach ($property in $readFailureReceipt.PSObject.Properties) {
+        $untrustedFailureReceipt[$property.Name] = $property.Value
+    }
+    $untrustedFailureReceipt['unexpected'] = 'do-not-persist'
+    $untrustedFailureReceiptRejected = $false
+    try {
+        ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($untrustedFailureReceipt | ConvertTo-Json -Depth 4))) | Out-Null
+    }
+    catch {
+        $untrustedFailureReceiptRejected = $_.Exception.Message -match '字段数量无效|未允许字段'
+    }
+    Assert-Equal $true $untrustedFailureReceiptRejected 'Failure receipt parser rejects non-whitelisted fields'
+    $invalidStateReceipt = [ordered]@{}
+    foreach ($property in $readFailureReceipt.PSObject.Properties) {
+        $invalidStateReceipt[$property.Name] = $property.Value
+    }
+    $invalidStateReceipt.commitState = 'unknown'
+    $invalidStateReceipt.rollbackSucceeded = $true
+    $invalidStateReceiptRejected = $false
+    try {
+        ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($invalidStateReceipt | ConvertTo-Json -Depth 4))) | Out-Null
+    }
+    catch {
+        $invalidStateReceiptRejected = $_.Exception.Message -match '不能声称回滚成功'
+    }
+    Assert-Equal $true $invalidStateReceiptRejected 'Failure receipt parser rejects an unknown commit state that claims rollback success'
+    $invalidUtf8ReceiptRejected = $false
+    try {
+        ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes ([byte[]] @(0xC3, 0x28)) | Out-Null
+    }
+    catch {
+        $invalidUtf8ReceiptRejected = $_.Exception.Message -match '有效 UTF-8 JSON'
+    }
+    Assert-Equal $true $invalidUtf8ReceiptRejected 'Failure receipt parser rejects invalid UTF-8'
+    $longFailureReceiptRecord = $null
+    try {
+        throw [System.InvalidOperationException]::new((('诊断' * 8000) -join ''))
+    }
+    catch {
+        $longFailureReceiptRecord = $_
+    }
+    $longFailureReceiptPath = Join-Path $transactionTestRoot 'deployment-failure-long.json'
+    $longFailureReceipt = Write-CountdownInstallFailureReceipt `
+        -Path $longFailureReceiptPath `
+        -Stage (('阶段' * 100) -join '') `
+        -ErrorRecord $longFailureReceiptRecord `
+        -TransactionStarted $true `
+        -CommitState 'not-committed' `
+        -RollbackAttempted $true `
+        -RollbackSucceeded $true `
+        -PreservedUnmanagedLaunchers $false
+    $longFailureReceiptBytes = [System.IO.File]::ReadAllBytes($longFailureReceiptPath)
+    Assert-Equal $true ($longFailureReceiptBytes.Length -le 24576) 'Oversized diagnostics remain within the 24 KiB receipt contract'
+    Assert-Equal $true (([System.Text.UTF8Encoding]::new($false)).GetByteCount([string] $longFailureReceipt.stage) -le 128) 'Failure receipt truncates stage by UTF-8 bytes'
+    Assert-Equal $true (([System.Text.UTF8Encoding]::new($false)).GetByteCount([string] $longFailureReceipt.exceptionMessage) -le 1024) 'Failure receipt truncates exception messages by UTF-8 bytes'
     $candidateLauncherSourcePath = Join-Path $transactionTestRoot 'candidate-launcher.exe'
     [System.IO.File]::WriteAllText($candidateLauncherSourcePath, 'new launcher', (New-Object System.Text.UTF8Encoding($false)))
     $candidateLauncherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidateLauncherSourcePath).Hash
@@ -1890,8 +2071,13 @@ $recoveryCommand = Get-Command Recover-CountdownInstallTransactions -Module Coun
 Assert-Equal $false $recoveryCommand.Parameters.ContainsKey('TransactionMutexHeld') 'Recovery does not expose a lock-bypass switch'
 $candidateCommand = Get-Command Set-CountdownInstallTransactionCandidateLauncherHash -Module Countdown.InstallTransaction
 Assert-Equal $true $candidateCommand.Parameters.ContainsKey('CandidateLauncherSha256') 'Transaction persists a candidate launcher hash before replacement'
+$failureReceiptCommand = Get-Command Write-CountdownInstallFailureReceipt -Module Countdown.InstallTransaction
+Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('ErrorRecord') -and $failureReceiptCommand.Parameters.ContainsKey('RollbackSucceeded')) 'Transaction module exposes a selected-field deployment failure receipt writer'
+$failureReceiptParserCommand = Get-Command ConvertFrom-CountdownInstallFailureReceiptBytes -Module Countdown.InstallTransaction
+Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('CommitState') -and $failureReceiptParserCommand.Parameters.ContainsKey('Bytes')) 'Transaction module exposes a strict deployment failure receipt contract'
 $installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Install-Countdown.ps1'), [System.Text.Encoding]::UTF8)
 $buildSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1'), [System.Text.Encoding]::UTF8)
+$deploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
 Assert-Equal 2 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'Both self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
 $managedBuildIntermediates = @(
     'src\MinminCountdown.Core\bin',
@@ -1926,6 +2112,13 @@ $candidateHashCheckIndex = $installerSource.IndexOf('Transaction launcher candid
 $launcherMoveIndex = $installerSource.IndexOf('Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force')
 $installedLauncherHashCheckIndex = $installerSource.IndexOf('Desktop launcher hash mismatch after replacement.')
 Assert-Equal $true ($payloadCaptureIndex -ge 0 -and $candidatePathIndex -gt $payloadCaptureIndex -and $candidatePersistIndex -gt $candidatePathIndex -and $preparedLauncherGuardIndex -gt $candidatePersistIndex -and $candidateHashCheckIndex -gt $preparedLauncherGuardIndex -and $launcherMoveIndex -gt $candidateHashCheckIndex -and $installedLauncherHashCheckIndex -gt $launcherMoveIndex) 'Installer keeps candidate under the transaction and verifies both candidate and replaced launcher immediately around the move'
+$failureRecordIndex = $installerSource.IndexOf('$failureRecord = $_')
+$failureStringIndex = $installerSource.IndexOf('$failure = $failureRecord.Exception.Message')
+$launcherReplacementStageIndex = $installerSource.IndexOf("`$installStage = 'replace-desktop-launcher'")
+$launcherStateStageIndex = $installerSource.IndexOf("`$installStage = 'write-launcher-state'")
+$launcherStateMoveIndex = $installerSource.IndexOf('Move-Item -LiteralPath $launcherStateTempPath -Destination $launcherStatePath -Force')
+Assert-Equal $true ($failureRecordIndex -ge 0 -and $failureStringIndex -gt $failureRecordIndex -and $launcherReplacementStageIndex -ge 0 -and $launcherReplacementStageIndex -lt $launcherMoveIndex -and $launcherStateStageIndex -gt $launcherMoveIndex -and $launcherStateStageIndex -lt $launcherStateMoveIndex) 'Installer preserves the original error record and marks both desktop replacement stages before they execute'
+Assert-Equal $true ($deploymentSource.Contains('Get-OfficeRemoteDeploymentFailureReceipt') -and $deploymentSource.Contains('remote-deployment-failure.json') -and $deploymentSource.Contains('ConvertFrom-CountdownInstallFailureReceiptBytes') -and $deploymentSource.Contains('ReparsePoint') -and $deploymentSource.Contains('WriteAllText(') -and -not $deploymentSource.Contains('WriteAllBytes($failureReceiptEvidencePath')) 'Office deployment validates a bounded non-reparse remote failure receipt before persisting normalized evidence'
 $installTreeGuardIndex = $installerSource.IndexOf('Assert-CountdownInstallTreeHasNoReparsePoints -Path $install', $payloadCaptureIndex)
 $payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force', $installTreeGuardIndex)
 Assert-Equal $true ($installTreeGuardIndex -gt $payloadCaptureIndex -and $payloadCopyIndex -gt $installTreeGuardIndex) 'Installer rechecks the install tree after the stable snapshot and before writing payload files'

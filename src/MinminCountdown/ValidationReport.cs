@@ -881,6 +881,8 @@ internal static class ValidationReport
             ["FloatingReferenceContentOverlapTargets"] = floatingReferenceExercise.ContentOverlapTargets,
             ["FloatingReferenceCaptureWritten"] = floatingReferenceExercise.CaptureWritten,
             ["FloatingReferenceScenarioMatches"] = floatingReferenceExercise.ScenarioMatches,
+            ["FloatingPrimaryDeadlineTextFullyVisible"] =
+                floatingReferenceExercise.PrimaryDeadlineTextFullyVisible,
             ["FloatingReferenceViewportStatesMatch"] = floatingReferenceExercise.ViewportStatesMatch,
             ["FloatingViewportScrollAndFocusRestored"] =
                 floatingReferenceExercise.ViewportScrollAndFocusRestored,
@@ -1866,6 +1868,76 @@ internal static class ValidationReport
             viewportStates.Add(
                 CaptureFloatingViewportState("zero-countdowns", referenceWindow, root, rows));
 
+            const string primaryDeadlineText = "12月31日 23:59";
+            var primaryDeadlineUtc = new DateTimeOffset(
+                2030,
+                12,
+                31,
+                23,
+                59,
+                0,
+                TimeSpan.FromHours(8)).ToUniversalTime();
+            var primaryDeadlineAdded = referenceSession.TrySaveCountdown(
+                "reference-primary-deadline",
+                "最长日期倒计时",
+                primaryDeadlineUtc,
+                Array.Empty<string>(),
+                out _);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
+            var primaryDeadlineWithoutScrollbar = CaptureFloatingViewportState(
+                "primary-deadline-without-scrollbar",
+                referenceWindow,
+                root,
+                rows);
+            var primaryDeadlineTextFullyVisibleWithoutScrollbar =
+                !primaryDeadlineWithoutScrollbar.VerticalScrollBarVisible &&
+                PrimaryDeadlineTextFullyVisible(rows, primaryDeadlineText);
+
+            var primaryDeadlineOverflowIds = Enumerable.Range(1, 8)
+                .Select(index => $"reference-primary-deadline-overflow-{index}")
+                .ToArray();
+            var primaryDeadlineOverflowAdded = true;
+            for (var index = 0; index < primaryDeadlineOverflowIds.Length; index++)
+            {
+                primaryDeadlineOverflowAdded &= referenceSession.TrySaveCountdown(
+                    primaryDeadlineOverflowIds[index],
+                    $"最长日期滚动倒计时 {index + 1}",
+                    primaryDeadlineUtc.AddDays(index + 1),
+                    Array.Empty<string>(),
+                    out _);
+            }
+
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 10);
+            var primaryDeadlineWithScrollbar = CaptureFloatingViewportState(
+                "primary-deadline-with-scrollbar",
+                referenceWindow,
+                root,
+                rows);
+            var primaryDeadlineTextFullyVisibleWithScrollbar =
+                primaryDeadlineWithScrollbar.VerticalScrollBarVisible &&
+                PrimaryDeadlineTextFullyVisible(rows, primaryDeadlineText);
+
+            var primaryDeadlineOverflowDeleted = true;
+            foreach (var id in primaryDeadlineOverflowIds)
+            {
+                primaryDeadlineOverflowDeleted &= referenceSession.TryDeleteCountdown(id, out _);
+            }
+
+            var primaryDeadlineDeleted = referenceSession.TryDeleteCountdown(
+                "reference-primary-deadline",
+                out _);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
+            var primaryDeadlineTextFullyVisible =
+                primaryDeadlineAdded &&
+                primaryDeadlineOverflowAdded &&
+                primaryDeadlineOverflowDeleted &&
+                primaryDeadlineDeleted &&
+                primaryDeadlineTextFullyVisibleWithoutScrollbar &&
+                primaryDeadlineTextFullyVisibleWithScrollbar;
+
             var overflowCountdownIds = Enumerable.Range(1, 8)
                 .Select(index => $"reference-overflow-{index}")
                 .ToArray();
@@ -2232,6 +2304,7 @@ internal static class ValidationReport
                 contentOverlapTargets,
                 captureWritten,
                 scenarioMatches,
+                primaryDeadlineTextFullyVisible,
                 viewportStatesMatch,
                 rasterCardStatesMatch,
                 dynamicCardContentRemainsWpf,
@@ -4045,6 +4118,18 @@ internal static class ValidationReport
                TextBlockLinesFit(text);
     }
 
+    private static bool PrimaryDeadlineTextFullyVisible(
+        DependencyObject rows,
+        string expectedText)
+    {
+        var text = Descendants<TextBlock>(rows).SingleOrDefault(candidate =>
+            candidate.Text.StartsWith(expectedText, StringComparison.Ordinal));
+        return text is not null &&
+               string.Equals(text.Text, expectedText, StringComparison.Ordinal) &&
+               text.TextWrapping == TextWrapping.NoWrap &&
+               TextBlockLinesFit(text);
+    }
+
     private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(
         FloatingWindow floating,
         Button minimizeButton,
@@ -4214,6 +4299,7 @@ internal static class ValidationReport
         IReadOnlyList<string> ContentOverlapTargets,
         bool CaptureWritten,
         bool ScenarioMatches,
+        bool PrimaryDeadlineTextFullyVisible,
         bool ViewportStatesMatch,
         bool RasterCardStatesMatch,
         bool DynamicCardContentRemainsWpf,

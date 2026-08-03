@@ -177,6 +177,7 @@ if (-not $validation.FloatingReferenceMascotGeometryMatches) { throw 'The render
 if (-not $validation.FloatingReferenceContentSafeAreaMatches -or $validation.FloatingReferenceContentOverlapCount -ne 0) { throw "A rendered mascot overlaps protected floating content: $(@($validation.FloatingReferenceContentOverlapTargets) -join ',')." }
 if (-not $validation.FloatingReferenceCaptureWritten) { throw 'The floating reference scene did not produce a non-empty RenderTargetBitmap PNG.' }
 if (-not $validation.FloatingReferenceScenarioMatches) { throw 'The isolated floating reference scene is missing its deterministic two-card countdown and income state.' }
+if (-not $validation.FloatingPrimaryDeadlineTextFullyVisible) { throw 'The widest primary deadline subtitle is clipped or retains a visible Beijing-time suffix.' }
 if (-not $validation.FloatingReferenceViewportStatesMatch) { throw 'The fixed floating viewport does not preserve zero, one, multiple countdown, note reminder, or scrolling states.' }
 if (-not $validation.FloatingViewportScrollAndFocusRestored) { throw 'Floating refresh does not restore the current scroll position and sticky-note focus.' }
 if (-not $validation.FloatingNoteFailureAppearsInSourceCard) { throw 'A failed floating sticky-note completion does not expose an accessible error in its source card.' }
@@ -529,7 +530,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 140
+    Passed = 141
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

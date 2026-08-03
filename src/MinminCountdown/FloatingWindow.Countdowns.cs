@@ -129,7 +129,7 @@ public sealed partial class FloatingWindow
         });
         copy.Children.Add(new TextBlock
         {
-            Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M月d日 HH:mm} · 北京时间",
+            Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M月d日 HH:mm}",
             Margin = new Thickness(0, 3, 0, 0),
             FontSize = 11,
             TextTrimming = TextTrimming.CharacterEllipsis,

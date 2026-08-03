@@ -982,7 +982,7 @@ public sealed partial class FloatingWindow : Window
             if (!snapshot.HasFilterConstraints &&
                 _calendar.GetWorkdayEndCountdown(nowUtc, snapshot.Settings.Preferences) is { } workdayEnd)
             {
-                records.Add(workdayEnd);
+                records.Insert(0, workdayEnd);
             }
 
             FloatingCountdownCount = records.Count(record => record.Id != "__workday_end__");

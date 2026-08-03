@@ -9,7 +9,6 @@ namespace MinminCountdown;
 
 public sealed partial class FloatingWindow
 {
-    private const string WorkdayEndCountdownId = "__workday_end__";
     private const double CountdownMascotSafeInset = 54;
     private const double PrimaryRemainingWidth = 194;
     private const double SecondaryRemainingWidth = 194;
@@ -20,12 +19,13 @@ public sealed partial class FloatingWindow
         string displayPrecision)
     {
         var rows = new List<FrameworkElement>(records.Count);
-        var primaryAssigned = false;
-        foreach (var record in records)
+        for (var index = 0; index < records.Count; index++)
         {
-            var isPrimary = !primaryAssigned && record.Id != WorkdayEndCountdownId;
-            primaryAssigned |= isPrimary;
-            rows.Add(BuildWarmPaperCountdownRow(record, nowUtc, displayPrecision, isPrimary));
+            rows.Add(BuildWarmPaperCountdownRow(
+                records[index],
+                nowUtc,
+                displayPrecision,
+                index == 0));
         }
 
         return rows;

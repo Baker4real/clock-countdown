@@ -880,6 +880,8 @@ internal static class ValidationReport
             ["FloatingReferenceContentOverlapCount"] = floatingReferenceExercise.ContentOverlapCount,
             ["FloatingReferenceContentOverlapTargets"] = floatingReferenceExercise.ContentOverlapTargets,
             ["FloatingReferenceCaptureWritten"] = floatingReferenceExercise.CaptureWritten,
+            ["FloatingWorkdayCountdownUsesPrimaryVisual"] =
+                floatingReferenceExercise.WorkdayCountdownUsesPrimaryVisual,
             ["FloatingReferenceScenarioMatches"] = floatingReferenceExercise.ScenarioMatches,
             ["FloatingPrimaryDeadlineTextFullyVisible"] =
                 floatingReferenceExercise.PrimaryDeadlineTextFullyVisible,
@@ -1624,6 +1626,14 @@ internal static class ValidationReport
         };
         var referenceBeijing = new DateTimeOffset(2030, 7, 15, 11, 11, 0, TimeSpan.FromHours(8));
         var referenceUtc = referenceBeijing.ToUniversalTime();
+        var referenceWorkdayTargetUtc = new DateTimeOffset(
+            2030,
+            7,
+            15,
+            18,
+            0,
+            0,
+            TimeSpan.FromHours(8)).ToUniversalTime();
         var temporaryRoot = Path.Combine(
             Path.GetTempPath(),
             $"MinminCountdown-floating-reference-{Guid.NewGuid():N}");
@@ -1776,11 +1786,19 @@ internal static class ValidationReport
             var contentSafeAreaMatches =
                 referencePlushScene.Bounds.Count(bounds => bounds is not null) == 3 &&
                 contentOverlapCount == 0;
+            var workdayCountdownUsesPrimaryVisual = WorkdayCountdownUsesPrimaryVisual(
+                rows,
+                referenceUtc,
+                referenceWorkdayTargetUtc);
             var scenarioMatches =
                 rows.Children.Count == 2 &&
+                workdayCountdownUsesPrimaryVisual &&
                 referenceWindow.FloatingCountdownCount == 1 &&
                 referenceWindow.FloatingCountdownTexts.Count == 1 &&
-                PrimaryRemainingTextFitsOnOneLine(rows, referenceUtc) &&
+                PrimaryRemainingTextFitsOnOneLine(
+                    rows,
+                    referenceWorkdayTargetUtc,
+                    referenceUtc) &&
                 string.Equals(referenceWindow.IncomeText, "今日已赚 ￥41.13", StringComparison.Ordinal);
             var actualCapture = CaptureVisual(root);
             var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
@@ -1870,6 +1888,31 @@ internal static class ValidationReport
             viewportStates.Add(
                 CaptureFloatingViewportState("zero-countdowns", referenceWindow, root, rows));
 
+            var afterWorkdayUtc = referenceUtc.AddHours(8);
+            var ordinaryPrimaryTargetUtc = referenceUtc
+                .AddDays(4)
+                .AddHours(13)
+                .AddMinutes(18)
+                .AddSeconds(59);
+            var ordinaryPrimaryAdded = referenceSession.TrySaveCountdown(
+                "reference-ordinary-primary",
+                "普通主项单行倒计时",
+                ordinaryPrimaryTargetUtc,
+                Array.Empty<string>(),
+                out _);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
+            var ordinaryPrimaryRemainingTextFullyVisible =
+                PrimaryRemainingTextFitsOnOneLine(
+                    rows,
+                    ordinaryPrimaryTargetUtc,
+                    afterWorkdayUtc);
+            var ordinaryPrimaryDeleted = referenceSession.TryDeleteCountdown(
+                "reference-ordinary-primary",
+                out _);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
+
             const string primaryDeadlineText = "12月31日 23:59";
             var primaryDeadlineUtc = new DateTimeOffset(
                 2030,
@@ -1885,8 +1928,8 @@ internal static class ValidationReport
                 primaryDeadlineUtc,
                 Array.Empty<string>(),
                 out _);
-            referenceWindow.UpdateTime(referenceUtc);
-            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var primaryDeadlineWithoutScrollbar = CaptureFloatingViewportState(
                 "primary-deadline-without-scrollbar",
                 referenceWindow,
@@ -1910,8 +1953,8 @@ internal static class ValidationReport
                     out _);
             }
 
-            referenceWindow.UpdateTime(referenceUtc);
-            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 10);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
             var primaryDeadlineWithScrollbar = CaptureFloatingViewportState(
                 "primary-deadline-with-scrollbar",
                 referenceWindow,
@@ -1930,9 +1973,12 @@ internal static class ValidationReport
             var primaryDeadlineDeleted = referenceSession.TryDeleteCountdown(
                 "reference-primary-deadline",
                 out _);
-            referenceWindow.UpdateTime(referenceUtc);
-            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             var primaryDeadlineTextFullyVisible =
+                ordinaryPrimaryAdded &&
+                ordinaryPrimaryDeleted &&
+                ordinaryPrimaryRemainingTextFullyVisible &&
                 primaryDeadlineAdded &&
                 primaryDeadlineOverflowAdded &&
                 primaryDeadlineOverflowDeleted &&
@@ -2283,6 +2329,7 @@ internal static class ValidationReport
                                     contentSafeAreaMatches,
                                     contentOverlapCount,
                                     contentOverlapTargets,
+                                    workdayCountdownUsesPrimaryVisual,
                                     scenarioMatches,
                                     viewportStatesMatch,
                                     captureWritten
@@ -2305,6 +2352,7 @@ internal static class ValidationReport
                 contentOverlapCount,
                 contentOverlapTargets,
                 captureWritten,
+                workdayCountdownUsesPrimaryVisual,
                 scenarioMatches,
                 primaryDeadlineTextFullyVisible,
                 viewportStatesMatch,
@@ -4101,17 +4149,118 @@ internal static class ValidationReport
             });
     }
 
+    private static bool WorkdayCountdownUsesPrimaryVisual(
+        StackPanel rows,
+        DateTimeOffset nowUtc,
+        DateTimeOffset workdayTargetUtc)
+    {
+        if (rows.Children.Count != 2 ||
+            rows.Children[0] is not Border { Child: Grid primaryRoot } ||
+            rows.Children[1] is not Border { Child: Grid secondaryRoot })
+        {
+            return false;
+        }
+
+        var primaryRemaining = CountdownFormatting.FormatRemaining(
+            workdayTargetUtc,
+            nowUtc,
+            "Second");
+        var secondaryTargetUtc = nowUtc
+            .AddDays(4)
+            .AddHours(13)
+            .AddMinutes(18)
+            .AddSeconds(59);
+        var secondaryRemainingForAutomation = CountdownFormatting.FormatRemaining(
+            secondaryTargetUtc,
+            nowUtc,
+            "Second");
+        var secondaryRemaining = string.Concat(secondaryRemainingForAutomation
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var primaryTexts = Descendants<TextBlock>(primaryRoot).ToArray();
+        var secondaryTexts = Descendants<TextBlock>(secondaryRoot).ToArray();
+        var primaryTitle = primaryTexts.SingleOrDefault(text =>
+            string.Equals(text.Text, "距离下班", StringComparison.Ordinal));
+        var primaryDeadline = primaryTexts.SingleOrDefault(text =>
+            string.Equals(text.Text, "7月15日 18:00", StringComparison.Ordinal));
+        var primaryRemainingText = primaryTexts.SingleOrDefault(text =>
+            string.Equals(text.Text, primaryRemaining, StringComparison.Ordinal));
+        var secondaryTitle = secondaryTexts.SingleOrDefault(text =>
+            string.Equals(text.Text, "七月倒计时", StringComparison.Ordinal));
+        var secondaryRemainingText = secondaryTexts.SingleOrDefault(text =>
+            string.Equals(text.Text, secondaryRemaining, StringComparison.Ordinal));
+        var primaryDecorations = primaryRoot.Children.OfType<Border>().ToArray();
+        var secondaryDecorations = secondaryRoot.Children.OfType<Border>().ToArray();
+        var primaryNames = rows.Children
+            .OfType<Border>()
+            .Select(card => card.Child as Grid)
+            .Where(root => root is not null)
+            .Select(root => AutomationProperties.GetName(root!))
+            .Where(name => name.StartsWith("主要倒计时 ", StringComparison.Ordinal))
+            .ToArray();
+
+        return
+            primaryNames.Length == 1 &&
+            string.Equals(
+                AutomationProperties.GetName(primaryRoot),
+                $"主要倒计时 距离下班，{primaryRemaining}",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                AutomationProperties.GetName(secondaryRoot),
+                $"倒计时 七月倒计时，{secondaryRemainingForAutomation}",
+                StringComparison.Ordinal) &&
+            Math.Abs(primaryRoot.MinHeight - 68) <= 0.01 &&
+            Math.Abs(secondaryRoot.MinHeight - 39) <= 0.01 &&
+            primaryDecorations.Length == 3 &&
+            secondaryDecorations.Length == 1 &&
+            Math.Abs(primaryDecorations[0].Margin.Right - 54) <= 0.01 &&
+            Math.Abs(primaryDecorations[0].Opacity - 0.62) <= 0.01 &&
+            Math.Abs(primaryDecorations[0].CornerRadius.TopLeft - 4) <= 0.01 &&
+            !primaryDecorations[0].IsHitTestVisible &&
+            string.Equals(BrushColor(primaryDecorations[0].Background), "#FFFFF6D9", StringComparison.Ordinal) &&
+            Math.Abs(primaryDecorations[1].Width - 3) <= 0.01 &&
+            Math.Abs(primaryDecorations[1].Height - 42) <= 0.01 &&
+            !primaryDecorations[1].IsHitTestVisible &&
+            string.Equals(BrushColor(primaryDecorations[1].Background), "#FFA24438", StringComparison.Ordinal) &&
+            Math.Abs(primaryDecorations[2].Opacity - 0.78) <= 0.01 &&
+            Math.Abs(secondaryDecorations[0].Opacity - 0.48) <= 0.01 &&
+            primaryTitle is not null &&
+            Math.Abs(primaryTitle.FontSize - 15) <= 0.01 &&
+            primaryTitle.FontWeight == FontWeights.SemiBold &&
+            primaryTitle.TextWrapping == TextWrapping.Wrap &&
+            string.Equals(BrushColor(primaryTitle.Foreground), "#FF4A2D24", StringComparison.Ordinal) &&
+            primaryDeadline is not null &&
+            Math.Abs(primaryDeadline.FontSize - 11) <= 0.01 &&
+            string.Equals(BrushColor(primaryDeadline.Foreground), "#FF87665A", StringComparison.Ordinal) &&
+            primaryRemainingText is not null &&
+            Math.Abs(primaryRemainingText.FontSize - 16) <= 0.01 &&
+            primaryRemainingText.FontWeight == FontWeights.SemiBold &&
+            Math.Abs(primaryRemainingText.Width - 194) <= 0.01 &&
+            string.Equals(BrushColor(primaryRemainingText.Foreground), "#FFA24438", StringComparison.Ordinal) &&
+            secondaryTitle is not null &&
+            Math.Abs(secondaryTitle.FontSize - 13) <= 0.01 &&
+            string.Equals(BrushColor(secondaryTitle.Foreground), "#FF4A2D24", StringComparison.Ordinal) &&
+            secondaryRemainingText is not null &&
+            Math.Abs(secondaryRemainingText.FontSize - 13) <= 0.01 &&
+            secondaryRemainingText.FontWeight == FontWeights.SemiBold &&
+            Math.Abs(secondaryRemainingText.Width - 194) <= 0.01 &&
+            string.Equals(BrushColor(secondaryRemainingText.Foreground), "#FF87665A", StringComparison.Ordinal);
+    }
+
     private static bool PrimaryRemainingTextFitsOnOneLine(
         DependencyObject rows,
-        DateTimeOffset referenceUtc)
+        DateTimeOffset targetUtc,
+        DateTimeOffset nowUtc)
     {
         var expectedRemaining = CountdownFormatting.FormatRemaining(
-            referenceUtc.AddDays(4).AddHours(13).AddMinutes(18).AddSeconds(59),
-            referenceUtc,
+            targetUtc,
+            nowUtc,
             "Second");
         var text = Descendants<TextBlock>(rows).SingleOrDefault(candidate =>
             string.Equals(candidate.Text, expectedRemaining, StringComparison.Ordinal));
         return text is not null &&
+               Math.Abs(text.Width - 194) <= 0.01 &&
+               Math.Abs(text.FontSize - 16) <= 0.01 &&
+               text.FontWeight == FontWeights.SemiBold &&
                text.TextWrapping == TextWrapping.NoWrap &&
                text.TextTrimming == TextTrimming.None &&
                !text.Text.Contains('\n') &&
@@ -4300,6 +4449,7 @@ internal static class ValidationReport
         int ContentOverlapCount,
         IReadOnlyList<string> ContentOverlapTargets,
         bool CaptureWritten,
+        bool WorkdayCountdownUsesPrimaryVisual,
         bool ScenarioMatches,
         bool PrimaryDeadlineTextFullyVisible,
         bool ViewportStatesMatch,

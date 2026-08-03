@@ -176,7 +176,8 @@ if (-not $validation.FloatingReferencePanelGeometryMatches) { throw 'The floatin
 if (-not $validation.FloatingReferenceMascotGeometryMatches) { throw 'The rendered mascot alpha bounds do not match the frozen reference geometry.' }
 if (-not $validation.FloatingReferenceContentSafeAreaMatches -or $validation.FloatingReferenceContentOverlapCount -ne 0) { throw "A rendered mascot overlaps protected floating content: $(@($validation.FloatingReferenceContentOverlapTargets) -join ',')." }
 if (-not $validation.FloatingReferenceCaptureWritten) { throw 'The floating reference scene did not produce a non-empty RenderTargetBitmap PNG.' }
-if (-not $validation.FloatingReferenceScenarioMatches) { throw 'The isolated floating reference scene is missing its deterministic two-card countdown and income state.' }
+if (-not $validation.FloatingWorkdayCountdownUsesPrimaryVisual) { throw 'The workday-end countdown is not the sole primary row with its accessible name, warm-paper surface, accent rail, typography, and emphasized remaining time.' }
+if (-not $validation.FloatingReferenceScenarioMatches) { throw 'The isolated floating reference scene does not render the workday-end countdown as the first primary row while preserving its deterministic two-card and income state.' }
 if (-not $validation.FloatingPrimaryDeadlineTextFullyVisible) { throw 'The widest primary deadline subtitle is clipped or retains a visible Beijing-time suffix.' }
 if (-not $validation.FloatingReferenceViewportStatesMatch) { throw 'The fixed floating viewport does not preserve zero, one, multiple countdown, note reminder, or scrolling states.' }
 if (-not $validation.FloatingViewportScrollAndFocusRestored) { throw 'Floating refresh does not restore the current scroll position and sticky-note focus.' }
@@ -530,7 +531,7 @@ finally {
 }
 
 [pscustomobject]@{
-    Passed = 141
+    Passed = 142
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

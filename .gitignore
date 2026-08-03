@@ -33,7 +33,13 @@ launcher-state.json.tmp
 *.invalid
 .local/
 *.local.md
-.env.local
+# 本机环境与设备凭据不得进入仓库。
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
 assets/floating-plush/source/
 src/**/bin/
 src/**/obj/

@@ -138,6 +138,50 @@ if (`$length -gt 32768) {
     }
 }
 
+function Get-OfficeRemotePreRollbackDiagnostics {
+    param([Parameter(Mandatory)] [string] $RemotePath)
+
+    $escapedRemotePath = $RemotePath.Replace("'", "''")
+    $runtimeGuard = "`$ErrorActionPreference = 'Stop'; if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') { throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。' }"
+    $readerScript = @"
+$runtimeGuard
+if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) { exit 0 }
+`$item = Get-Item -LiteralPath '$escapedRemotePath' -Force -ErrorAction Stop
+if (`$item -isnot [System.IO.FileInfo] -or (`$item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+  throw 'rollback 前诊断必须是非 reparse point 的普通文件。'
+}
+if ([long] `$item.Length -gt 32768) { throw "rollback 前诊断超过远端读取上限：`$(`$item.Length)" }
+[Console]::Out.Write([Convert]::ToBase64String([System.IO.File]::ReadAllBytes(`$item.FullName)))
+"@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($readerScript))
+    try {
+        $output = & ssh.exe @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        return [pscustomobject]@{ Success = $false; ExitCode = -1; Bytes = $null; FailureMessage = "无法启动 rollback 前诊断读取：$($_.Exception.Message)" }
+    }
+    if ($exitCode -ne 0) {
+        return [pscustomobject]@{ Success = $false; ExitCode = $exitCode; Bytes = $null; FailureMessage = '无法读取办公室设备上的 rollback 前诊断。' }
+    }
+    $text = ($output | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return [pscustomobject]@{ Success = $true; ExitCode = 0; Bytes = $null; FailureMessage = $null }
+    }
+    try { $bytes = [Convert]::FromBase64String($text) }
+    catch {
+        return [pscustomobject]@{ Success = $false; ExitCode = 0; Bytes = $null; FailureMessage = "办公室设备返回的 rollback 前诊断不是有效 Base64：$($_.Exception.Message)" }
+    }
+    if ($bytes.Length -gt 32768) {
+        return [pscustomobject]@{ Success = $false; ExitCode = 0; Bytes = $null; FailureMessage = "办公室设备返回的 rollback 前诊断超过远端读取上限：$($bytes.Length)" }
+    }
+    try { [void] (ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes $bytes) }
+    catch {
+        return [pscustomobject]@{ Success = $false; ExitCode = 0; Bytes = $null; FailureMessage = "办公室设备返回的 rollback 前诊断未通过契约校验：$($_.Exception.Message)" }
+    }
+    [pscustomobject]@{ Success = $true; ExitCode = 0; Bytes = [byte[]] $bytes; FailureMessage = $null }
+}
+
 if (@(git -C $repoRoot status --porcelain).Count -ne 0) { throw '工作树不干净，拒绝部署未提交内容。' }
 if ((git -C $repoRoot branch --show-current).Trim() -ne 'main') { throw '仅允许从 main 分支部署。' }
 git -C $repoRoot fetch origin main
@@ -151,6 +195,7 @@ $powerShell7 = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop 
 if ($LASTEXITCODE -ne 0) { throw '无法从当前 main 提交重建 C# 部署产物。' }
 
 Import-Module (Join-Path $repoRoot 'Countdown.ReleaseContract.psm1') -Force
+Import-Module (Join-Path $repoRoot 'Countdown.RemoteDeployment.psm1') -Force
 $releaseContract = Get-CountdownReleaseContract
 $requiredFiles = @($releaseContract.PackageFiles)
 $packageValidation = Assert-CountdownReleasePackage -Root $repoRoot
@@ -244,6 +289,8 @@ $remoteInstallDestination = "D:/Codex/deploy/clock-countdown-$shortCommit-$runId
 $remoteInstallPath = "$remoteRoot\remote-install.ps1"
 $remoteFailureReceiptPath = "$remoteRoot\deployment-failure.json"
 $failureReceiptEvidencePath = Join-Path $evidenceRoot 'remote-deployment-failure.json'
+$remotePreRollbackDiagnosticsPath = "$remoteRoot\pre-rollback-diagnostics.json"
+$preRollbackDiagnosticsEvidencePath = Join-Path $evidenceRoot 'pre-rollback-diagnostics.json'
 Invoke-CountdownRecordedScpTransfer `
     -LedgerPath $transferLedgerPath `
     -Id 'remote-install-script' `
@@ -257,9 +304,11 @@ try {
 }
 catch {
     $remoteExecutionFailure = $_.Exception.Message
+    $evidenceMessages = [System.Collections.Generic.List[string]]::new()
     $failureReceiptReader = {
         Get-OfficeRemoteDeploymentFailureReceipt -RemotePath $remoteFailureReceiptPath
     }.GetNewClosure()
+    $failureReceiptBytes = $null
     try {
         $failureReceiptBytes = Invoke-CountdownRecordedSshRead `
             -LedgerPath $transferLedgerPath `
@@ -267,21 +316,55 @@ catch {
             -Reader $failureReceiptReader
     }
     catch {
-        throw "$remoteExecutionFailure；读取远端部署失败回执也失败：$($_.Exception.Message)"
+        $evidenceMessages.Add("读取远端部署失败回执也失败：$($_.Exception.Message)")
     }
     if ($null -ne $failureReceiptBytes) {
         try {
             $failureReceipt = ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes $failureReceiptBytes
+            [System.IO.File]::WriteAllText(
+                $failureReceiptEvidencePath,
+                ($failureReceipt | ConvertTo-Json -Depth 4),
+                [System.Text.UTF8Encoding]::new($false)
+            )
+            $evidenceMessages.Add("远端部署失败回执已保存：$failureReceiptEvidencePath")
         }
         catch {
-            throw "$remoteExecutionFailure；远端部署失败回执二次契约校验失败：$($_.Exception.Message)"
+            $evidenceMessages.Add("远端部署失败回执二次契约校验失败：$($_.Exception.Message)")
         }
-        [System.IO.File]::WriteAllText(
-            $failureReceiptEvidencePath,
-            ($failureReceipt | ConvertTo-Json -Depth 4),
-            [System.Text.UTF8Encoding]::new($false)
-        )
-        throw "$remoteExecutionFailure；远端部署失败回执已保存：$failureReceiptEvidencePath"
     }
-    throw $remoteExecutionFailure
+    elseif ($evidenceMessages.Count -eq 0) {
+        $evidenceMessages.Add('远端部署失败回执缺失。')
+    }
+
+    $preRollbackDiagnosticsReader = {
+        Get-OfficeRemotePreRollbackDiagnostics -RemotePath $remotePreRollbackDiagnosticsPath
+    }.GetNewClosure()
+    $preRollbackDiagnosticsBytes = $null
+    try {
+        $preRollbackDiagnosticsBytes = Invoke-CountdownRecordedSshRead `
+            -LedgerPath $transferLedgerPath `
+            -Id 'pre-rollback-diagnostics' `
+            -Reader $preRollbackDiagnosticsReader
+    }
+    catch {
+        $evidenceMessages.Add("读取 rollback 前诊断 sidecar 失败：$($_.Exception.Message)")
+    }
+    if ($null -ne $preRollbackDiagnosticsBytes) {
+        try {
+            $preRollbackDiagnostics = ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes $preRollbackDiagnosticsBytes
+            [System.IO.File]::WriteAllText(
+                $preRollbackDiagnosticsEvidencePath,
+                ($preRollbackDiagnostics | ConvertTo-Json -Depth 12),
+                [System.Text.UTF8Encoding]::new($false)
+            )
+            $evidenceMessages.Add("rollback 前诊断 sidecar 已保存：$preRollbackDiagnosticsEvidencePath")
+        }
+        catch {
+            $evidenceMessages.Add("rollback 前诊断 sidecar 二次契约校验失败：$($_.Exception.Message)")
+        }
+    }
+    elseif (-not ($evidenceMessages | Where-Object { $_ -like '读取 rollback 前诊断 sidecar 失败*' })) {
+        $evidenceMessages.Add('rollback 前诊断 sidecar 缺失。')
+    }
+    throw ((@($remoteExecutionFailure) + @($evidenceMessages)) -join '；')
 }

@@ -464,10 +464,57 @@ function Wait-CountdownWindowReady {
     throw "启动就绪回执超时（$TimeoutSeconds 秒）：$lastReason"
 }
 
+function Get-CountdownExpectedProcessProbeReason {
+    param(
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId,
+        [Parameter(Mandatory)] [ValidateRange(0, 2147483647)] [int] $ExpectedSessionId,
+        [Parameter(Mandatory)] [string] $ExpectedApplicationPath,
+        [scriptblock] $ProcessProbe
+    )
+
+    if ($null -eq $ProcessProbe) {
+        $ProcessProbe = {
+            param([int] $Id)
+            Get-CimInstance Win32_Process -Filter "ProcessId=$Id" -OperationTimeoutSec 2 -ErrorAction Stop |
+                Select-Object -First 1
+        }
+    }
+
+    try {
+        $process = & $ProcessProbe $ExpectedProcessId
+    }
+    catch {
+        return "期望进程 $ExpectedProcessId 探针失败：$($_.Exception.Message)"
+    }
+    if ($null -eq $process) {
+        return "期望进程 $ExpectedProcessId 不存在。"
+    }
+    if ((Get-CountdownRuntimeProperty -Object $process -Name 'ProcessId') -ne $ExpectedProcessId) {
+        return "期望进程 $ExpectedProcessId 的探针返回了其他进程号。"
+    }
+    if ((Get-CountdownRuntimeProperty -Object $process -Name 'SessionId') -ne $ExpectedSessionId) {
+        return "期望进程 $ExpectedProcessId 仍在运行，但会话不匹配。"
+    }
+
+    $expectedAdapterPath = ConvertTo-CountdownRuntimeFullPath -Path $ExpectedApplicationPath
+    $expectedExecutablePath = ConvertTo-CountdownRuntimeFullPath -Path (Join-Path (Split-Path -Parent $expectedAdapterPath) 'app\MinminCountdown.exe')
+    $processExecutablePath = [string] (Get-CountdownRuntimeProperty -Object $process -Name 'ExecutablePath')
+    if ([string]::IsNullOrWhiteSpace($processExecutablePath) -or
+        -not [string]::Equals(
+            (ConvertTo-CountdownRuntimeFullPath -Path $processExecutablePath),
+            $expectedExecutablePath,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "期望进程 $ExpectedProcessId 仍在运行，但可执行路径不匹配。"
+    }
+
+    "期望进程 $ExpectedProcessId 仍在运行，且会话和可执行路径匹配。"
+}
+
 function Wait-CountdownAcceptanceReadyReceipt {
     param(
         [Parameter(Mandatory)] [string] $Path,
         [Parameter(Mandatory)] [string] $LaunchToken,
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId,
         [Parameter(Mandatory)] [ValidateRange(0, 2147483647)] [int] $ExpectedSessionId,
         [Parameter(Mandatory)] [string] $ExpectedApplicationPath,
         [ValidateRange(0, 300)] [int] $TimeoutSeconds = 30,
@@ -480,11 +527,17 @@ function Wait-CountdownAcceptanceReadyReceipt {
     do {
         $receipt = Read-CountdownRuntimeReceipt -Path $Path
         if ($null -eq $receipt) {
-            $lastReason = '回执不存在、损坏或不可读。'
+            $processReason = Get-CountdownExpectedProcessProbeReason -ExpectedProcessId $ExpectedProcessId -ExpectedSessionId $ExpectedSessionId -ExpectedApplicationPath $ExpectedApplicationPath -ProcessProbe $ProcessProbe
+            $lastReason = "回执不存在、损坏或不可读；$processReason"
         }
         elseif ([int] (Get-CountdownRuntimeProperty -Object $receipt -Name 'schemaVersion') -ne 1 -or
             [string] (Get-CountdownRuntimeProperty -Object $receipt -Name 'stage') -ne 'finalized-ready') {
-            $lastReason = '回执 schema 或 stage 无效。'
+            $processReason = Get-CountdownExpectedProcessProbeReason -ExpectedProcessId $ExpectedProcessId -ExpectedSessionId $ExpectedSessionId -ExpectedApplicationPath $ExpectedApplicationPath -ProcessProbe $ProcessProbe
+            $lastReason = "回执 schema 或 stage 无效；$processReason"
+        }
+        elseif ([int] (Get-CountdownRuntimeProperty -Object $receipt -Name 'processId') -ne $ExpectedProcessId) {
+            $processReason = Get-CountdownExpectedProcessProbeReason -ExpectedProcessId $ExpectedProcessId -ExpectedSessionId $ExpectedSessionId -ExpectedApplicationPath $ExpectedApplicationPath -ProcessProbe $ProcessProbe
+            $lastReason = "回执进程号与期望进程 $ExpectedProcessId 不一致；$processReason"
         }
         else {
             $shadowReceipt = [pscustomobject]@{

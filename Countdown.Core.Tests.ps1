@@ -227,7 +227,16 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
             Committed = $false
             RolledBack = $false
             RollbackCount = 0
+            DiagnosticsPresentBeforeRollback = $false
             Disposed = $false
+            InteractiveContext = [pscustomobject]@{ SessionId = 7 }
+            StartupRequestPath = Join-Path $remoteDeploymentInstall 'startup-request.json'
+            RuntimeStatusPath = Join-Path $remoteDeploymentInstall 'runtime-status.json'
+            AcceptanceStatusPath = Join-Path $remoteDeploymentInstall 'acceptance-status.json'
+            LaunchToken = 'sensitive-launch-token-sentinel'
+            ExpectedProcessId = 0
+            ExpectedScheduledTaskIdentity = '<Task><Actions><Exec><Arguments>sensitive-task-argument-sentinel</Arguments></Exec></Actions></Task>'
+            SettingsPath = Join-Path $remoteDeploymentInstall 'settings.json'
         }
         $adapter = [pscustomobject]@{
             State = $state
@@ -279,6 +288,7 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
                 param($AdapterState, $Context, $Candidate)
                 $AdapterState.RolledBack = $true
                 $AdapterState.RollbackCount++
+                $AdapterState.DiagnosticsPresentBeforeRollback = Test-Path -LiteralPath (Join-Path (Split-Path -Parent $Context.DeferredReceiptPath) 'pre-rollback-diagnostics.json') -PathType Leaf
                 if ($AdapterState.Mode -eq 'RollbackFailure') {
                     throw '模拟回滚失败。'
                 }
@@ -494,6 +504,54 @@ function Invoke-CountdownTransactionAcceptance {
 Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
 '@,
             [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText(
+            (Join-Path $remoteDeploymentInstall 'settings.json'),
+            '{"sensitive-settings-sentinel":true}',
+            [System.Text.UTF8Encoding]::new($false))
+
+        $missingAcceptancePath = Join-Path $remoteDeploymentTestRoot 'missing-acceptance-status.json'
+        $expectedAcceptanceApplicationPath = Join-Path $remoteDeploymentInstall '敏敏子倒计时.ps1'
+        $expectedAcceptanceExecutablePath = Join-Path $remoteDeploymentInstall 'app\MinminCountdown.exe'
+        $aliveMissingAcceptanceMessage = $null
+        try {
+            Wait-CountdownAcceptanceReadyReceipt `
+                -Path $missingAcceptancePath `
+                -LaunchToken 'missing-acceptance-token' `
+                -ExpectedProcessId 4242 `
+                -ExpectedSessionId 7 `
+                -ExpectedApplicationPath $expectedAcceptanceApplicationPath `
+                -TimeoutSeconds 0 `
+                -PollMilliseconds 1 `
+                -ProcessProbe {
+                    param([int] $ProcessId)
+                    [pscustomobject]@{
+                        ProcessId = $ProcessId
+                        SessionId = 7
+                        ExecutablePath = $expectedAcceptanceExecutablePath
+                    }
+                } | Out-Null
+        }
+        catch {
+            $aliveMissingAcceptanceMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($aliveMissingAcceptanceMessage -match '回执不存在.*期望进程 4242 仍在运行.*会话和可执行路径匹配') 'Acceptance wait distinguishes a living candidate process when the receipt is absent'
+
+        $deadMissingAcceptanceMessage = $null
+        try {
+            Wait-CountdownAcceptanceReadyReceipt `
+                -Path $missingAcceptancePath `
+                -LaunchToken 'missing-acceptance-token' `
+                -ExpectedProcessId 4242 `
+                -ExpectedSessionId 7 `
+                -ExpectedApplicationPath $expectedAcceptanceApplicationPath `
+                -TimeoutSeconds 0 `
+                -PollMilliseconds 1 `
+                -ProcessProbe { param([int] $ProcessId) $null } | Out-Null
+        }
+        catch {
+            $deadMissingAcceptanceMessage = $_.Exception.Message
+        }
+        Assert-Equal $true ($deadMissingAcceptanceMessage -match '回执不存在.*期望进程 4242 不存在') 'Acceptance wait distinguishes a missing candidate process when the receipt is absent'
 
         $successFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode Success
         $successResult = Invoke-CountdownRemoteDeployment `
@@ -532,11 +590,176 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $true ($beginFailureMessage -match '远端部署失败，已回滚' -and $beginFailureMessage -match '阶段=开始候选安装' -and $beginFailureMessage -match '异常类型=System.IO.IOException' -and $beginFailureMessage -match '错误位置=' -and $beginFailureMessage -match 'ScriptStackTrace=' -and $beginFailureMessage -match '模拟候选安装异常') 'Remote deployment preserves stage, exception type, position and script stack for a pre-commit failure'
         Assert-Equal $true ([bool] $beginFailureFixture.State.RolledBack) 'Begin failure still rolls back the candidate'
         Assert-Equal $true ([bool] $beginFailureFixture.State.Disposed) 'Begin failure still releases its host adapter'
+        Assert-Equal $true ([bool] $beginFailureFixture.State.DiagnosticsPresentBeforeRollback) 'Remote deployment captures candidate diagnostics before rollback begins'
+        $preRollbackDiagnosticsPath = Join-Path $remoteDeploymentTestRoot 'pre-rollback-diagnostics.json'
+        Assert-Equal $true (Test-Path -LiteralPath $preRollbackDiagnosticsPath -PathType Leaf) 'Pre-rollback diagnostics use the fixed sidecar name beside the deferred receipt'
+        if (Test-Path -LiteralPath $preRollbackDiagnosticsPath -PathType Leaf) {
+            $preRollbackDiagnosticsText = [System.IO.File]::ReadAllText($preRollbackDiagnosticsPath, [System.Text.Encoding]::UTF8)
+            $preRollbackDiagnosticsDocument = $preRollbackDiagnosticsText | ConvertFrom-Json
+            Assert-Equal 1 ([int] $preRollbackDiagnosticsDocument.schemaVersion) 'Pre-rollback diagnostics use schema v1'
+            Assert-Equal $true ($preRollbackDiagnosticsText -notmatch 'sensitive-launch-token-sentinel|sensitive-task-argument-sentinel|sensitive-settings-sentinel') 'Pre-rollback diagnostics omit tokens, task XML and settings contents'
+        }
+        $preRollbackParserCommand = Get-Command ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Module Countdown.RemoteDeployment -ErrorAction SilentlyContinue
+        Assert-Equal $true ($null -ne $preRollbackParserCommand) 'Remote deployment exports the strict pre-rollback diagnostics parser'
+        if ($null -ne $preRollbackParserCommand -and (Test-Path -LiteralPath $preRollbackDiagnosticsPath -PathType Leaf)) {
+            $preRollbackDiagnosticsBytes = [System.IO.File]::ReadAllBytes($preRollbackDiagnosticsPath)
+            $validatedPreRollbackDiagnostics = ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes $preRollbackDiagnosticsBytes
+            Assert-Equal 1 ([int] $validatedPreRollbackDiagnostics.schemaVersion) 'Pre-rollback diagnostics parser accepts writer output'
+
+            $unexpectedPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $unexpectedPreRollbackDocument['unexpected'] = 'reject-me'
+            $unexpectedPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($unexpectedPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch {
+                $unexpectedPreRollbackRejected = $_.Exception.Message -match '字段数量无效|未允许字段'
+            }
+            Assert-Equal $true $unexpectedPreRollbackRejected 'Pre-rollback diagnostics parser rejects additional fields'
+
+            $nestedUnexpectedPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $nestedUnexpectedPreRollbackDocument.receipts.runtime.core['unexpected'] = 'reject-me'
+            $nestedUnexpectedPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($nestedUnexpectedPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $nestedUnexpectedPreRollbackRejected = $_.Exception.Message -match '字段数量无效|未允许字段' }
+            Assert-Equal $true $nestedUnexpectedPreRollbackRejected 'Pre-rollback diagnostics parser rejects nested additional fields'
+
+            $invalidTypePreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $invalidTypePreRollbackDocument.receipts.runtime.core.processId = '4242'
+            $invalidTypePreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($invalidTypePreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $invalidTypePreRollbackRejected = $_.Exception.Message -match 'processId.*类型无效' }
+            Assert-Equal $true $invalidTypePreRollbackRejected 'Pre-rollback diagnostics parser rejects invalid nested field types'
+
+            $invalidTimestampPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $invalidTimestampPreRollbackDocument.captureAtUtc = 'not-a-time'
+            $invalidTimestampPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($invalidTimestampPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $invalidTimestampPreRollbackRejected = $_.Exception.Message -match 'captureAtUtc.*时间戳无效' }
+            Assert-Equal $true $invalidTimestampPreRollbackRejected 'Pre-rollback diagnostics parser rejects invalid timestamps'
+
+            $missingIntegrityPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $missingIntegrityPreRollbackDocument.receipts.runtime.status = 'readable'
+            $missingIntegrityPreRollbackDocument.receipts.runtime.length = $null
+            $missingIntegrityPreRollbackDocument.receipts.runtime.lastWriteTimeUtc = $null
+            $missingIntegrityPreRollbackDocument.receipts.runtime.sha256 = $null
+            $missingIntegrityPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($missingIntegrityPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $missingIntegrityPreRollbackRejected = $_.Exception.Message -match 'readable 状态缺少完整性元数据' }
+            Assert-Equal $true $missingIntegrityPreRollbackRejected 'Pre-rollback diagnostics parser rejects readable files without integrity metadata'
+
+            $duplicateLogsPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $duplicateLogsPreRollbackDocument.logs = @(
+                $duplicateLogsPreRollbackDocument.logs[0],
+                $duplicateLogsPreRollbackDocument.logs[0],
+                $duplicateLogsPreRollbackDocument.logs[0],
+                $duplicateLogsPreRollbackDocument.logs[0])
+            $duplicateLogsPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($duplicateLogsPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $duplicateLogsPreRollbackRejected = $_.Exception.Message -match '重复名称|固定日志名称' }
+            Assert-Equal $true $duplicateLogsPreRollbackRejected 'Pre-rollback diagnostics parser rejects duplicate log names'
+
+            $invalidTempStatusPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $invalidTempStatusPreRollbackDocument.acceptanceTempFiles.files = @([ordered]@{
+                    name = "acceptance-status.json.$('a' * 32).tmp"
+                    status = 'unexpected'
+                    length = 0
+                    lastWriteTimeUtc = $invalidTempStatusPreRollbackDocument.captureAtUtc
+                    sha256 = '0' * 64
+                    error = $null
+                })
+            $invalidTempStatusPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($invalidTempStatusPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $invalidTempStatusPreRollbackRejected = $_.Exception.Message -match 'acceptanceTempFiles.*status 无效' }
+            Assert-Equal $true $invalidTempStatusPreRollbackRejected 'Pre-rollback diagnostics parser rejects invalid acceptance temporary file status'
+
+            $invalidTempNamePreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $invalidTempNamePreRollbackDocument.acceptanceTempFiles.files = @([ordered]@{
+                    name = 'acceptance-status.json.sensitive-launch-token-sentinel.tmp'
+                    status = 'readable'
+                    length = 0
+                    lastWriteTimeUtc = $invalidTempNamePreRollbackDocument.captureAtUtc
+                    sha256 = '0' * 64
+                    error = $null
+                })
+            $invalidTempNamePreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($invalidTempNamePreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $invalidTempNamePreRollbackRejected = $_.Exception.Message -match 'acceptanceTempFiles.*name 无效' }
+            Assert-Equal $true $invalidTempNamePreRollbackRejected 'Pre-rollback diagnostics parser rejects unsafe acceptance temporary file names'
+
+            $invalidTempErrorPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $invalidTempErrorPreRollbackDocument.acceptanceTempFiles.error = 42
+            $invalidTempErrorPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($invalidTempErrorPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $invalidTempErrorPreRollbackRejected = $_.Exception.Message -match 'acceptanceTempFiles\.error 类型无效' }
+            Assert-Equal $true $invalidTempErrorPreRollbackRejected 'Pre-rollback diagnostics parser rejects invalid acceptance temporary file error types'
+
+            $missingTempErrorPreRollbackDocument = $preRollbackDiagnosticsText | ConvertFrom-Json -AsHashtable
+            $missingTempErrorPreRollbackDocument.acceptanceTempFiles.status = 'io-error'
+            $missingTempErrorPreRollbackDocument.acceptanceTempFiles.error = $null
+            $missingTempErrorPreRollbackRejected = $false
+            try {
+                ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes(($missingTempErrorPreRollbackDocument | ConvertTo-Json -Depth 12 -Compress))) | Out-Null
+            }
+            catch { $missingTempErrorPreRollbackRejected = $_.Exception.Message -match 'acceptanceTempFiles\.io-error 缺少错误原因' }
+            Assert-Equal $true $missingTempErrorPreRollbackRejected 'Pre-rollback diagnostics parser rejects io-error without an error reason'
+
+            $invalidUtf8PreRollbackRejected = $false
+            try { ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([byte[]]@(0x7B, 0x22, 0xFF, 0x22, 0x7D)) | Out-Null }
+            catch { $invalidUtf8PreRollbackRejected = $_.Exception.Message -match 'UTF-8' }
+            Assert-Equal $true $invalidUtf8PreRollbackRejected 'Pre-rollback diagnostics parser rejects invalid UTF-8'
+
+            $bomPreRollbackRejected = $false
+            try { ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([byte[]]@(0xEF, 0xBB, 0xBF, 0x7B, 0x7D)) | Out-Null }
+            catch { $bomPreRollbackRejected = $_.Exception.Message -match 'BOM' }
+            Assert-Equal $true $bomPreRollbackRejected 'Pre-rollback diagnostics parser rejects a UTF-8 BOM'
+
+            $oversizedPreRollbackRejected = $false
+            try { ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([byte[]]::new(24577)) | Out-Null }
+            catch { $oversizedPreRollbackRejected = $_.Exception.Message -match '超过允许大小' }
+            Assert-Equal $true $oversizedPreRollbackRejected 'Pre-rollback diagnostics parser rejects payloads above 24 KiB'
+        }
         Assert-Equal $true (Test-Path -LiteralPath $beginFailureReceiptPath -PathType Leaf) 'Remote deployment writes a controller fallback receipt after a pre-commit failure'
         $beginFailureReceipt = [System.IO.File]::ReadAllText($beginFailureReceiptPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
         Assert-Equal '开始候选安装' ([string] $beginFailureReceipt.stage) 'Controller fallback receipt retains the active deployment stage'
         Assert-Equal '模拟候选安装异常。' ([string] $beginFailureReceipt.exceptionMessage) 'Controller fallback receipt retains the original exception message'
         Assert-Equal $true (-not [bool] $beginFailureReceipt.transactionStarted -and [string] $beginFailureReceipt.commitState -eq 'not-committed' -and [bool] $beginFailureReceipt.rollbackAttempted -and [bool] $beginFailureReceipt.rollbackSucceeded) 'Controller fallback receipt retains the uncommitted rollback outcome'
+
+        $blockedDiagnosticsParent = Join-Path $remoteDeploymentTestRoot 'blocked-diagnostics-parent'
+        [System.IO.File]::WriteAllText($blockedDiagnosticsParent, 'not-a-directory', [System.Text.UTF8Encoding]::new($false))
+        $captureFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode BeginFailure
+        $captureFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $PSScriptRoot `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath (Join-Path $blockedDiagnosticsParent 'deferred-install-receipt.json') `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -Adapter $captureFailureFixture.Adapter | Out-Null
+        }
+        catch {
+            $captureFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal 1 ([int] $captureFailureFixture.State.RollbackCount) 'Pre-rollback diagnostics capture failure still invokes rollback exactly once'
+        Assert-Equal $true ($captureFailureMessage -match '模拟候选安装异常.*rollback 前诊断捕获失败') 'Pre-rollback diagnostics capture failure preserves the deployment failure and adds a capture summary'
 
         $commitProbeReceipt = Join-Path $remoteDeploymentTestRoot 'commit-probe\deferred-install-receipt.json'
         New-Item -ItemType Directory -Path (Split-Path -Parent $commitProbeReceipt) -Force | Out-Null
@@ -643,14 +866,60 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $false ([bool] $validationSchemaFailureFixture.State.Accepted) 'Validation schema failure does not enter acceptance'
         Assert-Equal $true ([bool] $validationSchemaFailureFixture.State.RolledBack) 'Validation schema failure rolls back the candidate'
 
+        $richDiagnosticsDirectory = Join-Path $remoteDeploymentTestRoot 'rich-diagnostics'
+        New-Item -ItemType Directory -Path $richDiagnosticsDirectory -Force | Out-Null
+        $richDiagnosticsReceipt = Join-Path $richDiagnosticsDirectory 'deferred-install-receipt.json'
+        $richDiagnosticsToken = 'rich-diagnostics-token'
+        $richDiagnosticsSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+        $richDiagnosticsApplicationPath = Join-Path $remoteDeploymentInstall '敏敏子倒计时.ps1'
+        $richRequestedAtUtc = [DateTimeOffset]::Parse('2036-01-02T03:04:05.0000000+00:00')
+        $richReleasedAtUtc = $richRequestedAtUtc.AddSeconds(1)
+        $richReadyAtUtc = $richRequestedAtUtc.AddSeconds(2)
+        $richFinalizedAtUtc = $richRequestedAtUtc.AddSeconds(3)
+        $richDiagnosticsStatus = [ordered]@{
+            schemaVersion = 4
+            stage = 'window-ready'
+            launchToken = $richDiagnosticsToken
+            processId = $PID
+            sessionId = $richDiagnosticsSessionId
+            applicationPath = $richDiagnosticsApplicationPath
+            readyAtUtc = $richReadyAtUtc.ToString('o')
+        }
+        [System.IO.File]::WriteAllText((Join-Path $remoteDeploymentInstall 'startup-request.json'), (@{
+                    schemaVersion = 1
+                    launchToken = $richDiagnosticsToken
+                    requestedAtUtc = $richRequestedAtUtc.ToString('o')
+                    releasedAtUtc = $richReleasedAtUtc.ToString('o')
+                    readyAtUtc = $richReadyAtUtc.ToString('o')
+                    finalizedAtUtc = $richFinalizedAtUtc.ToString('o')
+                    acceptanceState = 'finalized'
+                    acceptanceReadOnly = $false
+                } | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText((Join-Path $remoteDeploymentInstall 'runtime-status.json'), ($richDiagnosticsStatus | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+        $richDiagnosticsStatus.schemaVersion = 1
+        $richDiagnosticsStatus.stage = 'finalized-ready'
+        $richDiagnosticsStatus.readyAtUtc = $richFinalizedAtUtc.ToString('o')
+        [System.IO.File]::WriteAllText((Join-Path $remoteDeploymentInstall 'acceptance-status.json'), ($richDiagnosticsStatus | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText((Join-Path $remoteDeploymentInstall "acceptance-status.json.$([guid]::NewGuid().ToString('N')).tmp"), '{}', [System.Text.UTF8Encoding]::new($false))
+        $richDiagnosticsLogDirectory = Join-Path $remoteDeploymentInstall 'logs'
+        New-Item -ItemType Directory -Path $richDiagnosticsLogDirectory -Force | Out-Null
+        $richDiagnosticsLog = @(
+            @{ schemaVersion = 1; timestampUtc = [DateTimeOffset]::UtcNow.AddSeconds(-1).ToString('o'); level = 'Info'; event = 'AcceptanceMigrationReady'; processId = $PID },
+            @{ schemaVersion = 1; timestampUtc = [DateTimeOffset]::UtcNow.ToString('o'); level = 'Info'; event = 'UnrelatedNewestEvent'; processId = 1 }
+        ) | ForEach-Object { $_ | ConvertTo-Json -Compress }
+        [System.IO.File]::WriteAllText((Join-Path $richDiagnosticsLogDirectory 'application.jsonl'), ($richDiagnosticsLog -join [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+
         $acceptanceFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode AcceptanceFailure
+        $acceptanceFailureFixture.State.LaunchToken = $richDiagnosticsToken
+        $acceptanceFailureFixture.State.ExpectedProcessId = $PID
+        $acceptanceFailureFixture.State.InteractiveContext.SessionId = $richDiagnosticsSessionId
         $acceptanceFailureMessage = $null
         try {
             Invoke-CountdownRemoteDeployment `
                 -SourceRoot $remoteDeploymentSource `
                 -InstallPath $remoteDeploymentInstall `
                 -PowerShell7Path $remoteDeploymentPowerShell `
-                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -DeferredReceiptPath $richDiagnosticsReceipt `
                 -TaskName 'Minmin Countdown Fixture' `
                 -LegacyTaskName '敏敏子倒计时 Fixture' `
                 -Adapter $acceptanceFailureFixture.Adapter | Out-Null
@@ -661,6 +930,22 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $true ($acceptanceFailureMessage -match '模拟验收失败') 'Remote deployment surfaces acceptance failure'
         Assert-Equal $true ([bool] $acceptanceFailureFixture.State.RolledBack) 'Acceptance failure rolls back the candidate'
         Assert-Equal $true ([bool] $acceptanceFailureFixture.State.Disposed) 'Acceptance failure releases its host adapter'
+        $richDiagnostics = ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes ([System.IO.File]::ReadAllBytes((Join-Path $richDiagnosticsDirectory 'pre-rollback-diagnostics.json')))
+        Assert-Equal 'readable' ([string] $richDiagnostics.receipts.runtime.status) 'Pre-rollback diagnostics records readable runtime metadata'
+        Assert-Equal $true ([bool] $richDiagnostics.receipts.runtime.match.token) 'Pre-rollback diagnostics matches the runtime token without persisting it'
+        Assert-Equal $true ([bool] $richDiagnostics.receipts.runtime.match.processId) 'Pre-rollback diagnostics matches the runtime PID'
+        Assert-Equal $true ([bool] $richDiagnostics.receipts.runtime.match.sessionId) 'Pre-rollback diagnostics matches the runtime session'
+        Assert-Equal $true ([bool] $richDiagnostics.receipts.runtime.match.applicationPath) 'Pre-rollback diagnostics matches the runtime application path'
+        Assert-Equal $true ([string] $richDiagnostics.receipts.acceptance.status -eq 'readable' -and [bool] $richDiagnostics.receipts.acceptance.match.token -and [bool] $richDiagnostics.receipts.acceptance.match.processId) 'Pre-rollback diagnostics records the candidate acceptance receipt before rollback'
+        Assert-Equal $richRequestedAtUtc.ToString('o') ([DateTimeOffset] $richDiagnostics.receipts.startup.core.requestedAtUtc).ToUniversalTime().ToString('o') 'Pre-rollback diagnostics records the startup request time'
+        Assert-Equal $richReleasedAtUtc.ToString('o') ([DateTimeOffset] $richDiagnostics.receipts.startup.core.releasedAtUtc).ToUniversalTime().ToString('o') 'Pre-rollback diagnostics records the startup release time'
+        Assert-Equal $richReadyAtUtc.ToString('o') ([DateTimeOffset] $richDiagnostics.receipts.startup.core.readyAtUtc).ToUniversalTime().ToString('o') 'Pre-rollback diagnostics records the startup ready time'
+        Assert-Equal $richFinalizedAtUtc.ToString('o') ([DateTimeOffset] $richDiagnostics.receipts.startup.core.finalizedAtUtc).ToUniversalTime().ToString('o') 'Pre-rollback diagnostics records the startup finalized time'
+        Assert-Equal $richReadyAtUtc.ToString('o') ([DateTimeOffset] $richDiagnostics.receipts.runtime.core.readyAtUtc).ToUniversalTime().ToString('o') 'Pre-rollback diagnostics records the window-ready receipt time'
+        Assert-Equal $richFinalizedAtUtc.ToString('o') ([DateTimeOffset] $richDiagnostics.receipts.acceptance.core.readyAtUtc).ToUniversalTime().ToString('o') 'Pre-rollback diagnostics records the finalized-ready receipt time'
+        Assert-Equal $true ([string] $richDiagnostics.process.status -eq 'running' -and [bool] $richDiagnostics.process.sessionMatch) 'Pre-rollback diagnostics records that the expected candidate process is still running in the expected session'
+        Assert-Equal 1 @($richDiagnostics.acceptanceTempFiles.files).Count 'Pre-rollback diagnostics enumerates atomic acceptance temporary files'
+        Assert-Equal $true (@($richDiagnostics.logs[0].tail.event) -contains 'AcceptanceMigrationReady') 'Pre-rollback diagnostics prioritizes the expected PID acceptance event in the bounded log tail'
 
         $commitThenFailFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode CommitThenFail
         $commitThenFailMessage = $null
@@ -873,6 +1158,24 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
             $missingJournalMessage = $_.Exception.Message
         }
         Assert-Equal $true ($missingJournalMessage -match '无法验证待回滚事务的 journal；拒绝声称已回滚') 'Known rollback transaction without a journal fails closed'
+
+        $remoteDeploymentControllerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1'), [System.Text.Encoding]::UTF8)
+        $preRollbackCaptureCallCount = [regex]::Matches($remoteDeploymentControllerSource, '(?m)^\s*\$preRollbackCapture = Write-CountdownPreRollbackDiagnostics\b').Count
+        $preRollbackCaptureIndex = $remoteDeploymentControllerSource.IndexOf('$preRollbackCapture = Write-CountdownPreRollbackDiagnostics')
+        $rollbackInvocationIndex = $remoteDeploymentControllerSource.IndexOf('$rollback = & $Adapter.Rollback', $preRollbackCaptureIndex)
+        Assert-Equal 1 $preRollbackCaptureCallCount 'Remote deployment invokes pre-rollback diagnostics capture exactly once'
+        Assert-Equal $true ($preRollbackCaptureIndex -ge 0 -and $rollbackInvocationIndex -gt $preRollbackCaptureIndex) 'Remote deployment captures diagnostics before invoking rollback'
+
+        $officeDeploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
+        Assert-Equal 2 ([regex]::Matches($officeDeploymentSource, '\bInvoke-CountdownRecordedSshRead\b').Count) 'Office deployment records both failure receipt and pre-rollback diagnostics SSH reads'
+        Assert-Equal $true ($officeDeploymentSource.Contains("-Id 'pre-rollback-diagnostics'") -and $officeDeploymentSource.Contains('pre-rollback-diagnostics.json')) 'Office deployment gives the sidecar a stable ledger and evidence identity'
+        $preRollbackRemoteReaderIndex = $officeDeploymentSource.IndexOf('function Get-OfficeRemotePreRollbackDiagnostics')
+        $preRollbackRemoteReaderEnd = if ($preRollbackRemoteReaderIndex -ge 0) { $officeDeploymentSource.IndexOf('if (@(git', $preRollbackRemoteReaderIndex) } else { -1 }
+        $preRollbackRemoteReaderSource = if ($preRollbackRemoteReaderIndex -ge 0 -and $preRollbackRemoteReaderEnd -gt $preRollbackRemoteReaderIndex) {
+            $officeDeploymentSource.Substring($preRollbackRemoteReaderIndex, $preRollbackRemoteReaderEnd - $preRollbackRemoteReaderIndex)
+        }
+        else { '' }
+        Assert-Equal $true ($preRollbackRemoteReaderSource.Contains('ReparsePoint') -and $preRollbackRemoteReaderSource.Contains('32768') -and $preRollbackRemoteReaderSource.Contains('ConvertFrom-CountdownPreRollbackDiagnosticsBytes')) 'Office sidecar reader enforces non-reparse, 32 KiB remote and strict local parser gates'
     }
     finally {
         Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
@@ -966,7 +1269,7 @@ Assert-Equal 2 $recordedTransferCallCount 'Office deploy records both SCP comman
 $recordedSshReadCallCount = [regex]::Matches(
     $deploySource,
     '\bInvoke-CountdownRecordedSshRead\b').Count
-Assert-Equal 1 $recordedSshReadCallCount 'Office deploy records the SSH failure receipt read through the transfer ledger interface'
+Assert-Equal 2 $recordedSshReadCallCount 'Office deploy records both failure evidence reads through the transfer ledger interface'
 Assert-Equal $false $deploySource.Contains('& scp.exe') 'Office deploy has no direct SCP call that bypasses the transfer ledger'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'
@@ -1452,7 +1755,7 @@ try {
         readyAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
     }
     [System.IO.File]::WriteAllText($acceptanceStatusTestPath, ($acceptanceReceipt | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
-    Assert-Equal 'finalized-ready' ([string] (Wait-CountdownAcceptanceReadyReceipt -Path $acceptanceStatusTestPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -TimeoutSeconds 0 -ProcessProbe $managedExecutableProbe).stage) 'Acceptance-ready receipt validates token, C# PID, session and adapter path'
+    Assert-Equal 'finalized-ready' ([string] (Wait-CountdownAcceptanceReadyReceipt -Path $acceptanceStatusTestPath -LaunchToken $startupRequest.launchToken -ExpectedProcessId 4242 -ExpectedSessionId 7 -ExpectedApplicationPath $runtimeApplicationPath -TimeoutSeconds 0 -ProcessProbe $managedExecutableProbe).stage) 'Acceptance-ready receipt validates token, C# PID, session and adapter path'
     $unmanagedExecutableProbe = {
         param([int] $ProcessId)
         if ($ProcessId -eq 4242) {

@@ -181,6 +181,7 @@ function Invoke-CountdownTransactionAcceptance {
         $acceptanceArguments = @{
             Path = $AcceptanceStatusPath
             LaunchToken = $LaunchToken
+            ExpectedProcessId = $ExpectedProcessId
             ExpectedSessionId = $ExpectedSessionId
             ExpectedApplicationPath = $ExpectedApplicationPath
             TimeoutSeconds = $ReadyTimeoutSeconds

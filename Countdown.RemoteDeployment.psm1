@@ -123,6 +123,465 @@ function Write-CountdownRemoteDeploymentFailureReceipt {
     }
 }
 
+
+function Get-CountdownPreRollbackValue {
+    param([AllowNull()] [object] $Object, [Parameter(Mandatory)] [string] $Name)
+    if ($null -eq $Object) { return $null }
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        return $null
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    $property.Value
+}
+
+function ConvertTo-CountdownPreRollbackText {
+    param([AllowNull()] [object] $Value, [ValidateRange(1, 2048)] [int] $MaxLength = 512)
+    if ($null -eq $Value) { return $null }
+    $text = [string] $Value
+    if ($text.Length -le $MaxLength) { return $text }
+    $text.Substring(0, $MaxLength)
+}
+
+function ConvertTo-CountdownPreRollbackTimestampText {
+    param([AllowNull()] [object] $Value)
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [DateTimeOffset]) { return ([DateTimeOffset] $Value).ToUniversalTime().ToString('o') }
+    if ($Value -is [DateTime]) { return ([DateTimeOffset] ([DateTime] $Value)).ToUniversalTime().ToString('o') }
+    ConvertTo-CountdownPreRollbackText $Value 128
+}
+
+function Get-CountdownPreRollbackHash {
+    param([Parameter(Mandatory)] [byte[]] $Bytes)
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try { [Convert]::ToHexString($algorithm.ComputeHash($Bytes)) }
+    finally { $algorithm.Dispose() }
+}
+
+function Get-CountdownPreRollbackFile {
+    param([Parameter(Mandatory)] [string] $Path)
+    $diagnostic = [ordered]@{ status = 'absent'; length = $null; lastWriteTimeUtc = $null; sha256 = $null; error = $null }
+    if (-not [System.IO.File]::Exists($Path)) {
+        return [pscustomobject]@{ Diagnostic = [pscustomobject] $diagnostic; Bytes = $null }
+    }
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if ($item -isnot [System.IO.FileInfo] -or ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            $diagnostic.status = 'invalid'
+            $diagnostic.error = '不是非 reparse point 的普通文件。'
+            return [pscustomobject]@{ Diagnostic = [pscustomobject] $diagnostic; Bytes = $null }
+        }
+        $bytes = [System.IO.File]::ReadAllBytes($item.FullName)
+        $diagnostic.status = 'readable'
+        $diagnostic.length = [long] $bytes.Length
+        $diagnostic.lastWriteTimeUtc = $item.LastWriteTimeUtc.ToString('o')
+        $diagnostic.sha256 = Get-CountdownPreRollbackHash -Bytes $bytes
+        [pscustomobject]@{ Diagnostic = [pscustomobject] $diagnostic; Bytes = [byte[]] $bytes }
+    }
+    catch {
+        $diagnostic.status = 'io-error'
+        $diagnostic.error = ConvertTo-CountdownPreRollbackText $_.Exception.Message
+        [pscustomobject]@{ Diagnostic = [pscustomobject] $diagnostic; Bytes = $null }
+    }
+}
+
+function Get-CountdownPreRollbackReceipt {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [AllowNull()] [string] $ExpectedToken,
+        [int] $ExpectedProcessId,
+        [int] $ExpectedSessionId,
+        [Parameter(Mandatory)] [string] $ExpectedApplicationPath
+    )
+    $file = Get-CountdownPreRollbackFile -Path $Path
+    $core = [ordered]@{
+        schemaVersion = $null; stage = $null; acceptanceState = $null; acceptanceReadOnly = $null
+        processId = $null; sessionId = $null; applicationPath = $null
+        requestedAtUtc = $null; releasedAtUtc = $null; readyAtUtc = $null; finalizedAtUtc = $null
+    }
+    $match = [ordered]@{
+        tokenExpected = -not [string]::IsNullOrWhiteSpace($ExpectedToken); token = $null
+        processId = $null; sessionId = $null; applicationPath = $null
+    }
+    $result = [ordered]@{
+        status = $file.Diagnostic.status; length = $file.Diagnostic.length
+        lastWriteTimeUtc = $file.Diagnostic.lastWriteTimeUtc; sha256 = $file.Diagnostic.sha256
+        core = [pscustomobject] $core; match = [pscustomobject] $match; error = $file.Diagnostic.error
+    }
+    if ($file.Diagnostic.status -ne 'readable') { return [pscustomobject] $result }
+    try {
+        $json = [System.Text.UTF8Encoding]::new($false, $true).GetString($file.Bytes)
+        $receipt = ConvertFrom-Json $json -AsHashtable -Depth 8 -ErrorAction Stop
+        if ($receipt -isnot [System.Collections.IDictionary]) { throw 'JSON 根节点不是 object。' }
+        foreach ($name in @('schemaVersion', 'processId', 'sessionId')) {
+            $value = Get-CountdownPreRollbackValue $receipt $name
+            if ($value -is [int] -or $value -is [long]) { $core[$name] = [long] $value }
+        }
+        foreach ($name in @('stage', 'acceptanceState', 'applicationPath')) {
+            $value = Get-CountdownPreRollbackValue $receipt $name
+            if ($value -is [string]) { $core[$name] = ConvertTo-CountdownPreRollbackText $value 1024 }
+        }
+        foreach ($name in @('requestedAtUtc', 'releasedAtUtc', 'readyAtUtc', 'finalizedAtUtc')) {
+            $value = Get-CountdownPreRollbackValue $receipt $name
+            if ($null -ne $value) { $core[$name] = ConvertTo-CountdownPreRollbackTimestampText $value }
+        }
+        $readOnly = Get-CountdownPreRollbackValue $receipt 'acceptanceReadOnly'
+        if ($readOnly -is [bool]) { $core.acceptanceReadOnly = [bool] $readOnly }
+        $actualToken = Get-CountdownPreRollbackValue $receipt 'launchToken'
+        if ($match.tokenExpected -and $actualToken -is [string]) { $match.token = $actualToken -ceq $ExpectedToken }
+        if ($ExpectedProcessId -gt 0 -and $null -ne $core.processId) { $match.processId = [long] $core.processId -eq $ExpectedProcessId }
+        if ($null -ne $core.sessionId) { $match.sessionId = [long] $core.sessionId -eq $ExpectedSessionId }
+        if (-not [string]::IsNullOrWhiteSpace([string] $core.applicationPath)) {
+            try { $match.applicationPath = [System.IO.Path]::GetFullPath($core.applicationPath) -ieq [System.IO.Path]::GetFullPath($ExpectedApplicationPath) }
+            catch { $match.applicationPath = $false }
+        }
+    }
+    catch {
+        $result.status = 'invalid'
+        $result.error = ConvertTo-CountdownPreRollbackText $_.Exception.Message
+    }
+    $result.core = [pscustomobject] $core
+    $result.match = [pscustomobject] $match
+    [pscustomobject] $result
+}
+
+function Get-CountdownPreRollbackProcess {
+    param([int] $ProcessId, [int] $SessionId, [Parameter(Mandatory)] [string] $ApplicationPath)
+    $result = [ordered]@{
+        status = 'not-known'; processId = $ProcessId; sessionId = $null; sessionMatch = $null
+        executablePath = $null; executablePathMatch = $null; startTimeUtc = $null
+        parentProcessId = $null; responding = $null; error = $null
+    }
+    if ($ProcessId -le 0) { return [pscustomobject] $result }
+    try {
+        $process = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -OperationTimeoutSec 2 -ErrorAction Stop | Select-Object -First 1
+    }
+    catch {
+        $result.status = 'probe-error'
+        $result.error = ConvertTo-CountdownPreRollbackText $_.Exception.Message
+        return [pscustomobject] $result
+    }
+    if ($null -eq $process) { $result.status = 'missing'; return [pscustomobject] $result }
+    $result.status = 'running'
+    $result.sessionId = [int] $process.SessionId
+    $result.sessionMatch = [int] $process.SessionId -eq $SessionId
+    $result.executablePath = ConvertTo-CountdownPreRollbackText $process.ExecutablePath 1024
+    if (-not [string]::IsNullOrWhiteSpace($result.executablePath)) {
+        $expectedExe = Join-Path (Split-Path -Parent $ApplicationPath) 'app\MinminCountdown.exe'
+        try { $result.executablePathMatch = [System.IO.Path]::GetFullPath($result.executablePath) -ieq [System.IO.Path]::GetFullPath($expectedExe) }
+        catch { $result.executablePathMatch = $false }
+    }
+    if ($process.ParentProcessId -is [int] -or $process.ParentProcessId -is [long]) { $result.parentProcessId = [int] $process.ParentProcessId }
+    try { $result.startTimeUtc = ([DateTimeOffset] $process.CreationDate).ToUniversalTime().ToString('o') } catch { }
+    try { $result.responding = [bool] (Get-Process -Id $ProcessId -ErrorAction Stop).Responding }
+    catch { $result.error = ConvertTo-CountdownPreRollbackText "Responding 探针失败：$($_.Exception.Message)" }
+    [pscustomobject] $result
+}
+
+function Get-CountdownPreRollbackTask {
+    param([Parameter(Mandatory)] [string] $TaskName)
+    $result = [ordered]@{
+        status = 'missing'; state = $null; lastRunTimeUtc = $null; lastTaskResult = $null
+        actionIdentitySha256 = $null; error = $null
+    }
+    try { $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    catch {
+        $result.status = 'error'
+        $result.error = ConvertTo-CountdownPreRollbackText $_.Exception.Message
+        return [pscustomobject] $result
+    }
+    if ($null -eq $task) { return [pscustomobject] $result }
+    $result.status = 'readable'
+    $result.state = ConvertTo-CountdownPreRollbackText $task.State 64
+    try {
+        $identity = @($task.Actions | ForEach-Object { "$($_.Execute)$([char]0)$($_.Arguments)$([char]0)$($_.WorkingDirectory)" }) -join ([char]1)
+        $result.actionIdentitySha256 = Get-CountdownPreRollbackHash ([System.Text.UTF8Encoding]::new($false).GetBytes($identity))
+        $info = Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction Stop
+        if ($info.LastRunTime -gt [DateTime]::MinValue) { $result.lastRunTimeUtc = $info.LastRunTime.ToUniversalTime().ToString('o') }
+        $result.lastTaskResult = [long] $info.LastTaskResult
+    }
+    catch { $result.error = ConvertTo-CountdownPreRollbackText $_.Exception.Message }
+    [pscustomobject] $result
+}
+
+function Get-CountdownPreRollbackLog {
+    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] [string] $Name, [int] $ExpectedProcessId)
+    $file = Get-CountdownPreRollbackFile -Path $Path
+    $result = [ordered]@{
+        name = $Name; status = $file.Diagnostic.status; length = $file.Diagnostic.length
+        lastWriteTimeUtc = $file.Diagnostic.lastWriteTimeUtc; sha256 = $file.Diagnostic.sha256
+        tail = @(); error = $file.Diagnostic.error
+    }
+    if ($file.Diagnostic.status -ne 'readable') { return [pscustomobject] $result }
+    try { $text = [System.Text.UTF8Encoding]::new($false, $true).GetString($file.Bytes) }
+    catch {
+        $result.status = 'invalid'
+        $result.error = ConvertTo-CountdownPreRollbackText $_.Exception.Message
+        return [pscustomobject] $result
+    }
+    $records = @()
+    $invalid = 0
+    $lines = @($text -split "\r?\n" | Where-Object { $_ } | Select-Object -Last 100)
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        try {
+            $entry = ConvertFrom-Json $lines[$index] -AsHashtable -Depth 4 -ErrorAction Stop
+            if ($entry -isnot [System.Collections.IDictionary]) { throw '日志行不是 object。' }
+            $processId = Get-CountdownPreRollbackValue $entry 'processId'
+            $event = ConvertTo-CountdownPreRollbackText (Get-CountdownPreRollbackValue $entry 'event') 256
+            $normalized = [pscustomobject][ordered]@{
+                timestampUtc = Get-CountdownPreRollbackValue $entry 'timestampUtc'
+                level = ConvertTo-CountdownPreRollbackText (Get-CountdownPreRollbackValue $entry 'level') 32
+                event = $event
+                processId = $(if ($processId -is [int] -or $processId -is [long]) { [long] $processId } else { $null })
+                exceptionType = ConvertTo-CountdownPreRollbackText (Get-CountdownPreRollbackValue $entry 'exceptionType') 256
+                exceptionMessage = ConvertTo-CountdownPreRollbackText (Get-CountdownPreRollbackValue $entry 'exceptionMessage') 256
+            }
+            $preferred = $ExpectedProcessId -gt 0 -and $normalized.processId -eq $ExpectedProcessId -and $event -in @('AcceptanceMigrationReady', 'AcceptanceReadOnlyReleased', 'FatalUnhandledException', 'ProcessExited')
+            $records += [pscustomobject]@{ Index = $index; Preferred = $preferred; Entry = $normalized }
+        }
+        catch { $invalid++ }
+    }
+    if ($records.Count -eq 0 -and $lines.Count -gt 0) { $result.status = 'invalid'; $result.error = '最近日志均不是有效 JSONL。'; return [pscustomobject] $result }
+    $result.tail = @($records | Sort-Object @{ Expression = 'Preferred'; Descending = $true }, @{ Expression = 'Index'; Descending = $true } | Select-Object -First 3 | Sort-Object Index | ForEach-Object Entry)
+    if ($invalid -gt 0) { $result.error = "最近日志有 $invalid 行无法解析，已跳过。" }
+    [pscustomobject] $result
+}
+
+function Write-CountdownPreRollbackDiagnostics {
+    param([Parameter(Mandatory)] [object] $Context, [Parameter(Mandatory)] [object] $Adapter, [Parameter(Mandatory)] [string] $Stage)
+    $path = Join-Path (Split-Path -Parent $Context.DeferredReceiptPath) 'pre-rollback-diagnostics.json'
+    $temporaryPath = $null
+    try {
+        $path = [System.IO.Path]::GetFullPath($path)
+        if ([System.IO.Path]::GetPathRoot($path) -ine 'D:\') { throw 'rollback 前诊断只能写入普通 D: 路径。' }
+        $directory = Split-Path -Parent $path
+        if (-not [System.IO.Directory]::Exists($directory)) { New-Item -ItemType Directory -Path $directory -Force -ErrorAction Stop | Out-Null }
+        $directoryItem = Get-Item -LiteralPath $directory -Force -ErrorAction Stop
+        if (($directoryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'rollback 前诊断目录不能是 reparse point。' }
+
+        $state = Get-CountdownPreRollbackValue $Adapter 'State'
+        $pidValue = Get-CountdownPreRollbackValue $state 'ExpectedProcessId'
+        $expectedPid = if (($pidValue -is [int] -or $pidValue -is [long]) -and $pidValue -gt 0) { [int] $pidValue } else { 0 }
+        $interactive = Get-CountdownPreRollbackValue $state 'InteractiveContext'
+        $sessionValue = Get-CountdownPreRollbackValue $interactive 'SessionId'
+        $expectedSession = if ($sessionValue -is [int] -or $sessionValue -is [long]) { [int] $sessionValue } else { 0 }
+        $applicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
+        $token = [string] (Get-CountdownPreRollbackValue $state 'LaunchToken')
+        $statusPaths = [ordered]@{}
+        foreach ($definition in @(
+                @('startup', 'StartupRequestPath', 'startup-request.json'),
+                @('runtime', 'RuntimeStatusPath', 'runtime-status.json'),
+                @('acceptance', 'AcceptanceStatusPath', 'acceptance-status.json'))) {
+            $statusPath = [string] (Get-CountdownPreRollbackValue $state $definition[1])
+            if ([string]::IsNullOrWhiteSpace($statusPath)) { $statusPath = Join-Path $Context.InstallPath $definition[2] }
+            $statusPaths[$definition[0]] = $statusPath
+        }
+        $receipts = [ordered]@{}
+        foreach ($name in $statusPaths.Keys) {
+            $receipts[$name] = Get-CountdownPreRollbackReceipt $statusPaths[$name] $token $expectedPid $expectedSession $applicationPath
+        }
+
+        $tempResult = [ordered]@{ status = 'readable'; truncated = $false; files = @(); error = $null }
+        try {
+            $tempFiles = @(Get-ChildItem -LiteralPath (Split-Path -Parent $statusPaths.acceptance) -File -Force -ErrorAction Stop | Where-Object Name -Like 'acceptance-status.json.*.tmp' | Sort-Object LastWriteTimeUtc -Descending)
+            $tempResult.truncated = $tempFiles.Count -gt 16
+            $tempResult.files = @($tempFiles | Select-Object -First 16 | ForEach-Object {
+                    $snapshot = (Get-CountdownPreRollbackFile $_.FullName).Diagnostic
+                    [pscustomobject][ordered]@{ name = $_.Name; status = $snapshot.status; length = $snapshot.length; lastWriteTimeUtc = $snapshot.lastWriteTimeUtc; sha256 = $snapshot.sha256; error = $snapshot.error }
+                })
+        }
+        catch { $tempResult.status = 'io-error'; $tempResult.error = ConvertTo-CountdownPreRollbackText $_.Exception.Message }
+
+        $logs = @('application.jsonl', 'application.jsonl.1', 'application.jsonl.2', 'application.jsonl.3' | ForEach-Object {
+                Get-CountdownPreRollbackLog (Join-Path $Context.InstallPath "logs\$_") $_ $expectedPid
+            })
+        $presence = {
+            param([string] $Root)
+            [pscustomobject][ordered]@{
+                startup = [System.IO.File]::Exists((Join-Path $Root 'startup-request.json'))
+                runtime = [System.IO.File]::Exists((Join-Path $Root 'runtime-status.json'))
+                acceptance = [System.IO.File]::Exists((Join-Path $Root 'acceptance-status.json'))
+            }
+        }
+        $document = [ordered]@{
+            schemaVersion = 1
+            captureAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+            deploymentStage = ConvertTo-CountdownPreRollbackText $Stage 256
+            expected = [pscustomobject][ordered]@{ processId = $expectedPid; sessionId = $expectedSession; applicationPath = [System.IO.Path]::GetFullPath($applicationPath) }
+            receipts = [pscustomobject] $receipts
+            acceptanceTempFiles = [pscustomobject] $tempResult
+            process = Get-CountdownPreRollbackProcess $expectedPid $expectedSession $applicationPath
+            task = Get-CountdownPreRollbackTask $Context.TaskName
+            misplacedReceipts = [pscustomobject][ordered]@{ installRoot = & $presence $Context.InstallPath; appSubdirectory = & $presence (Join-Path $Context.InstallPath 'app') }
+            logs = @($logs)
+        }
+        $encoding = [System.Text.UTF8Encoding]::new($false)
+        $json = $document | ConvertTo-Json -Depth 12 -Compress
+        if ($encoding.GetByteCount($json) -gt 24576) {
+            foreach ($log in $logs) { $log.tail = @($log.tail | Select-Object -Last 1) }
+            $json = $document | ConvertTo-Json -Depth 12 -Compress
+        }
+        if ($encoding.GetByteCount($json) -gt 24576) { throw 'rollback 前诊断超过 24 KiB 上限。' }
+        $temporaryPath = "$path.$([guid]::NewGuid().ToString('N')).tmp"
+        [System.IO.File]::WriteAllText($temporaryPath, $json, $encoding)
+        [System.IO.File]::Move($temporaryPath, $path, $true)
+        $temporaryPath = $null
+        [pscustomobject]@{ Success = $true; FailureMessage = $null }
+    }
+    catch { [pscustomobject]@{ Success = $false; FailureMessage = ConvertTo-CountdownPreRollbackText $_.Exception.Message 1024 } }
+    finally {
+        if ($null -ne $temporaryPath -and [System.IO.File]::Exists($temporaryPath)) {
+            try { Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction Stop } catch { }
+        }
+    }
+}
+
+function Assert-CountdownPreRollbackShape {
+    param([AllowNull()] [object] $Value, [Parameter(Mandatory)] [string[]] $Fields, [Parameter(Mandatory)] [string] $Name)
+    if ($Value -isnot [System.Collections.IDictionary]) { throw "$Name 必须是 JSON object。" }
+    $allowed = [System.Collections.Generic.HashSet[string]]::new($Fields, [System.StringComparer]::Ordinal)
+    if (@($Value.Keys).Count -ne $Fields.Count) { throw "$Name 字段数量无效。" }
+    foreach ($key in $Value.Keys) { if (-not $allowed.Contains([string] $key)) { throw "$Name 包含未允许字段：$key" } }
+}
+
+function Assert-CountdownPreRollbackMetadata {
+    param([System.Collections.IDictionary] $Value, [string] $Name)
+    if ($null -ne $Value.length -and (($Value.length -isnot [int] -and $Value.length -isnot [long]) -or $Value.length -lt 0)) { throw "$Name length 无效。" }
+    if ($null -ne $Value.sha256 -and ($Value.sha256 -isnot [string] -or $Value.sha256 -notmatch '\A[0-9A-F]{64}\z')) { throw "$Name sha256 无效。" }
+    if ($null -ne $Value.error -and $Value.error -isnot [string]) { throw "$Name error 无效。" }
+    $metadataPresent = @($Value.length, $Value.lastWriteTimeUtc, $Value.sha256 | Where-Object { $null -ne $_ }).Count
+    if ($Value.status -eq 'readable' -and $metadataPresent -ne 3) { throw "$Name readable 状态缺少完整性元数据。" }
+    if ($Value.status -eq 'absent' -and $metadataPresent -ne 0) { throw "$Name absent 状态不能包含完整性元数据。" }
+    if ($Value.status -in @('invalid', 'io-error') -and $metadataPresent -notin @(0, 3)) { throw "$Name 完整性元数据组合无效。" }
+    if ($Value.status -in @('invalid', 'io-error') -and [string]::IsNullOrWhiteSpace([string] $Value.error)) { throw "$Name $($Value.status) 状态缺少错误原因。" }
+}
+
+function Assert-CountdownPreRollbackTimestamp {
+    param([AllowNull()] [object] $Value, [Parameter(Mandatory)] [string] $Name, [switch] $Required)
+    if ($null -eq $Value) {
+        if ($Required) { throw "$Name 缺少时间戳。" }
+        return
+    }
+    if ($Value -is [DateTime] -or $Value -is [DateTimeOffset]) { return }
+    if ($Value -isnot [string] -or [string]::IsNullOrWhiteSpace($Value)) { throw "$Name 时间戳类型无效。" }
+    $parsed = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse(
+            $Value,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AllowWhiteSpaces,
+            [ref] $parsed)) {
+        throw "$Name 时间戳无效。"
+    }
+}
+
+function Assert-CountdownPreRollbackValueTypes {
+    param(
+        [System.Collections.IDictionary] $Value,
+        [string] $Name,
+        [string[]] $IntegerFields = @(),
+        [string[]] $BooleanFields = @(),
+        [string[]] $StringFields = @(),
+        [string[]] $TimestampFields = @()
+    )
+    foreach ($field in $IntegerFields) {
+        if ($null -ne $Value[$field] -and $Value[$field] -isnot [int] -and $Value[$field] -isnot [long]) { throw "$Name.$field 类型无效。" }
+    }
+    foreach ($field in $BooleanFields) {
+        if ($null -ne $Value[$field] -and $Value[$field] -isnot [bool]) { throw "$Name.$field 类型无效。" }
+    }
+    foreach ($field in $StringFields) {
+        if ($null -ne $Value[$field] -and $Value[$field] -isnot [string]) { throw "$Name.$field 类型无效。" }
+    }
+    foreach ($field in $TimestampFields) {
+        Assert-CountdownPreRollbackTimestamp $Value[$field] "$Name.$field"
+    }
+}
+
+function ConvertFrom-CountdownPreRollbackDiagnosticsBytes {
+    param([Parameter(Mandatory)] [byte[]] $Bytes)
+    if ($Bytes.Length -gt 24576) { throw "rollback 前诊断超过允许大小：$($Bytes.Length)" }
+    if ($Bytes.Length -ge 3 -and $Bytes[0] -eq 0xEF -and $Bytes[1] -eq 0xBB -and $Bytes[2] -eq 0xBF) { throw 'rollback 前诊断不允许 UTF-8 BOM。' }
+    try {
+        $document = ConvertFrom-Json ([System.Text.UTF8Encoding]::new($false, $true).GetString($Bytes)) -AsHashtable -Depth 12 -ErrorAction Stop
+    }
+    catch { throw "rollback 前诊断不是有效 UTF-8 JSON：$($_.Exception.Message)" }
+
+    Assert-CountdownPreRollbackShape $document @('schemaVersion', 'captureAtUtc', 'deploymentStage', 'expected', 'receipts', 'acceptanceTempFiles', 'process', 'task', 'misplacedReceipts', 'logs') 'rollback 前诊断'
+    if (($document.schemaVersion -isnot [int] -and $document.schemaVersion -isnot [long]) -or $document.schemaVersion -ne 1) { throw 'rollback 前诊断 schemaVersion 无效。' }
+    Assert-CountdownPreRollbackTimestamp $document.captureAtUtc 'rollback 前诊断.captureAtUtc' -Required
+    if ($document.deploymentStage -isnot [string] -or [string]::IsNullOrWhiteSpace($document.deploymentStage)) { throw 'rollback 前诊断 deploymentStage 无效。' }
+    Assert-CountdownPreRollbackShape $document.expected @('processId', 'sessionId', 'applicationPath') 'expected'
+    foreach ($name in @('processId', 'sessionId')) {
+        if (($document.expected[$name] -isnot [int] -and $document.expected[$name] -isnot [long]) -or $document.expected[$name] -lt 0) { throw "expected.$name 无效。" }
+    }
+    if ($document.expected.applicationPath -isnot [string]) { throw 'expected.applicationPath 无效。' }
+
+    Assert-CountdownPreRollbackShape $document.receipts @('startup', 'runtime', 'acceptance') 'receipts'
+    foreach ($name in @('startup', 'runtime', 'acceptance')) {
+        $receipt = $document.receipts[$name]
+        Assert-CountdownPreRollbackShape $receipt @('status', 'length', 'lastWriteTimeUtc', 'sha256', 'core', 'match', 'error') "receipts.$name"
+        if ($receipt.status -notin @('absent', 'readable', 'invalid', 'io-error')) { throw "receipts.$name.status 无效。" }
+        Assert-CountdownPreRollbackMetadata $receipt "receipts.$name"
+        Assert-CountdownPreRollbackShape $receipt.core @('schemaVersion', 'stage', 'acceptanceState', 'acceptanceReadOnly', 'processId', 'sessionId', 'applicationPath', 'requestedAtUtc', 'releasedAtUtc', 'readyAtUtc', 'finalizedAtUtc') "receipts.$name.core"
+        Assert-CountdownPreRollbackShape $receipt.match @('tokenExpected', 'token', 'processId', 'sessionId', 'applicationPath') "receipts.$name.match"
+        Assert-CountdownPreRollbackValueTypes $receipt "receipts.$name" -TimestampFields @('lastWriteTimeUtc')
+        Assert-CountdownPreRollbackValueTypes $receipt.core "receipts.$name.core" -IntegerFields @('schemaVersion', 'processId', 'sessionId') -BooleanFields @('acceptanceReadOnly') -StringFields @('stage', 'acceptanceState', 'applicationPath') -TimestampFields @('requestedAtUtc', 'releasedAtUtc', 'readyAtUtc', 'finalizedAtUtc')
+        if ($receipt.match.tokenExpected -isnot [bool]) { throw "receipts.$name.match.tokenExpected 无效。" }
+        foreach ($field in @('token', 'processId', 'sessionId', 'applicationPath')) {
+            if ($null -ne $receipt.match[$field] -and $receipt.match[$field] -isnot [bool]) { throw "receipts.$name.match.$field 无效。" }
+        }
+    }
+
+    Assert-CountdownPreRollbackShape $document.acceptanceTempFiles @('status', 'truncated', 'files', 'error') 'acceptanceTempFiles'
+    if ($document.acceptanceTempFiles.status -notin @('readable', 'io-error') -or $document.acceptanceTempFiles.truncated -isnot [bool] -or $document.acceptanceTempFiles.files -isnot [System.Collections.IList] -or @($document.acceptanceTempFiles.files).Count -gt 16) { throw 'acceptanceTempFiles 无效。' }
+    if ($null -ne $document.acceptanceTempFiles.error -and $document.acceptanceTempFiles.error -isnot [string]) { throw 'acceptanceTempFiles.error 类型无效。' }
+    if ($document.acceptanceTempFiles.status -eq 'io-error' -and [string]::IsNullOrWhiteSpace([string] $document.acceptanceTempFiles.error)) { throw 'acceptanceTempFiles.io-error 缺少错误原因。' }
+    foreach ($file in @($document.acceptanceTempFiles.files)) {
+        Assert-CountdownPreRollbackShape $file @('name', 'status', 'length', 'lastWriteTimeUtc', 'sha256', 'error') 'acceptanceTempFiles.files[]'
+        if ($file.status -notin @('absent', 'readable', 'invalid', 'io-error')) { throw 'acceptanceTempFiles.files[].status 无效。' }
+        if ($file.name -isnot [string] -or $file.name -notmatch '\Aacceptance-status\.json\.[0-9A-Fa-f]{32}\.tmp\z') { throw 'acceptanceTempFiles.files[].name 无效。' }
+        Assert-CountdownPreRollbackMetadata $file 'acceptanceTempFiles.files[]'
+        Assert-CountdownPreRollbackValueTypes $file 'acceptanceTempFiles.files[]' -StringFields @('name', 'status') -TimestampFields @('lastWriteTimeUtc')
+    }
+
+    Assert-CountdownPreRollbackShape $document.process @('status', 'processId', 'sessionId', 'sessionMatch', 'executablePath', 'executablePathMatch', 'startTimeUtc', 'parentProcessId', 'responding', 'error') 'process'
+    if ($document.process.status -notin @('not-known', 'running', 'missing', 'probe-error')) { throw 'process.status 无效。' }
+    foreach ($field in @('sessionMatch', 'executablePathMatch', 'responding')) {
+        if ($null -ne $document.process[$field] -and $document.process[$field] -isnot [bool]) { throw "process.$field 无效。" }
+    }
+    Assert-CountdownPreRollbackValueTypes $document.process 'process' -IntegerFields @('processId', 'sessionId', 'parentProcessId') -StringFields @('executablePath', 'error') -TimestampFields @('startTimeUtc')
+    Assert-CountdownPreRollbackShape $document.task @('status', 'state', 'lastRunTimeUtc', 'lastTaskResult', 'actionIdentitySha256', 'error') 'task'
+    if ($document.task.status -notin @('missing', 'readable', 'error')) { throw 'task.status 无效。' }
+    if ($null -ne $document.task.actionIdentitySha256 -and $document.task.actionIdentitySha256 -notmatch '\A[0-9A-F]{64}\z') { throw 'task.actionIdentitySha256 无效。' }
+    Assert-CountdownPreRollbackValueTypes $document.task 'task' -IntegerFields @('lastTaskResult') -StringFields @('state', 'actionIdentitySha256', 'error') -TimestampFields @('lastRunTimeUtc')
+
+    Assert-CountdownPreRollbackShape $document.misplacedReceipts @('installRoot', 'appSubdirectory') 'misplacedReceipts'
+    foreach ($location in @('installRoot', 'appSubdirectory')) {
+        Assert-CountdownPreRollbackShape $document.misplacedReceipts[$location] @('startup', 'runtime', 'acceptance') "misplacedReceipts.$location"
+        foreach ($field in @('startup', 'runtime', 'acceptance')) { if ($document.misplacedReceipts[$location][$field] -isnot [bool]) { throw "misplacedReceipts.$location.$field 无效。" } }
+    }
+
+    if ($document.logs -isnot [System.Collections.IList] -or @($document.logs).Count -ne 4) { throw 'logs 无效。' }
+    $expectedLogNames = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]] @('application.jsonl', 'application.jsonl.1', 'application.jsonl.2', 'application.jsonl.3'),
+        [System.StringComparer]::Ordinal)
+    $actualLogNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($log in @($document.logs)) {
+        Assert-CountdownPreRollbackShape $log @('name', 'status', 'length', 'lastWriteTimeUtc', 'sha256', 'tail', 'error') 'logs[]'
+        Assert-CountdownPreRollbackMetadata $log 'logs[]'
+        if ($log.name -notin @('application.jsonl', 'application.jsonl.1', 'application.jsonl.2', 'application.jsonl.3') -or $log.status -notin @('absent', 'readable', 'invalid', 'io-error') -or $log.tail -isnot [System.Collections.IList] -or @($log.tail).Count -gt 3) { throw 'logs[] 无效。' }
+        if (-not $actualLogNames.Add([string] $log.name)) { throw "logs[] 包含重复名称：$($log.name)" }
+        Assert-CountdownPreRollbackValueTypes $log 'logs[]' -StringFields @('name', 'status') -TimestampFields @('lastWriteTimeUtc')
+        foreach ($entry in @($log.tail)) {
+            Assert-CountdownPreRollbackShape $entry @('timestampUtc', 'level', 'event', 'processId', 'exceptionType', 'exceptionMessage') 'logs[].tail[]'
+            Assert-CountdownPreRollbackValueTypes $entry 'logs[].tail[]' -IntegerFields @('processId') -StringFields @('level', 'event', 'exceptionType', 'exceptionMessage') -TimestampFields @('timestampUtc')
+        }
+    }
+    if (-not $actualLogNames.SetEquals($expectedLogNames)) { throw 'logs[] 未包含四个固定日志名称。' }
+    [pscustomobject] $document
+}
+
 function Assert-CountdownRemoteDeploymentAdapter {
     param([Parameter(Mandatory)] [object] $Adapter)
 
@@ -617,6 +1076,14 @@ function Invoke-CountdownRemoteDeployment {
                 throw "部署已提交，但提交后收尾失败，未回滚：$failure"
             }
 
+            $preRollbackCaptureFailure = $null
+            try {
+                $preRollbackCapture = Write-CountdownPreRollbackDiagnostics -Context $context -Adapter $Adapter -Stage $failureStage
+                if (-not [bool] $preRollbackCapture.Success) { $preRollbackCaptureFailure = [string] $preRollbackCapture.FailureMessage }
+            }
+            catch { $preRollbackCaptureFailure = $_.Exception.Message }
+            $preRollbackCaptureSuffix = if ([string]::IsNullOrWhiteSpace($preRollbackCaptureFailure)) { '' } else { "；rollback 前诊断捕获失败：$preRollbackCaptureFailure" }
+
             try {
                 $rollback = & $Adapter.Rollback $Adapter.State $context $candidate
             }
@@ -630,7 +1097,7 @@ function Invoke-CountdownRemoteDeployment {
                         -RollbackAttempted $true `
                         -RollbackSucceeded $false `
                         -PreservedUnmanagedLaunchers $false)
-                throw "远端部署失败：$failure；回滚也失败：$($_.Exception.Message)"
+                throw "远端部署失败：$failure；回滚也失败：$($_.Exception.Message)$preRollbackCaptureSuffix"
             }
             $unresolvedCommitted = $false
             $preservedUnmanaged = $false
@@ -652,12 +1119,12 @@ function Invoke-CountdownRemoteDeployment {
                     -RollbackSucceeded $failureReceiptRollbackSucceeded `
                     -PreservedUnmanagedLaunchers $preservedUnmanaged)
             if ($unresolvedCommitted) {
-                throw "远端部署失败；检测到已提交但未完成解锁确认的事务，未声称回滚并保留了证据：$failure"
+                throw "远端部署失败；检测到已提交但未完成解锁确认的事务，未声称回滚并保留了证据：$failure$preRollbackCaptureSuffix"
             }
             if ($preservedUnmanaged) {
-                throw "远端部署失败，已恢复应用、任务和时间服务；为保护用户替换的桌面启动器，保留了事务证据：$failure"
+                throw "远端部署失败，已恢复应用、任务和时间服务；为保护用户替换的桌面启动器，保留了事务证据：$failure$preRollbackCaptureSuffix"
             }
-            throw "远端部署失败，已回滚：$failure"
+            throw "远端部署失败，已回滚：$failure$preRollbackCaptureSuffix"
         }
     }
     catch {
@@ -703,4 +1170,4 @@ function Invoke-CountdownRemoteDeployment {
     $result
 }
 
-Export-ModuleMember -Function Invoke-CountdownRemoteDeployment
+Export-ModuleMember -Function Invoke-CountdownRemoteDeployment, ConvertFrom-CountdownPreRollbackDiagnosticsBytes

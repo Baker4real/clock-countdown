@@ -105,7 +105,7 @@ public sealed partial class FloatingWindow
     {
         var layout = new Grid
         {
-            Margin = new Thickness(12, 8, CountdownMascotSafeInset + 8, 8)
+            Margin = new Thickness(12, 8, CountdownMascotSafeInset + 14, 8)
         };
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -159,7 +159,7 @@ public sealed partial class FloatingWindow
     {
         var layout = new Grid
         {
-            Margin = new Thickness(7, 4, CountdownMascotSafeInset + 8, 4)
+            Margin = new Thickness(7, 4, CountdownMascotSafeInset + 14, 4)
         };
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

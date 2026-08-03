@@ -32,7 +32,10 @@
     <Color x:Key="TagColor">#FFF7E8</Color>
     <Color x:Key="TagChipTextColor">#4A2D24</Color>
     <Color x:Key="ExpiredColor">#F9DFDB</Color>
+    <Color x:Key="SegmentSelectedColor">#FFF7E8</Color>
     <Color x:Key="SegmentSelectedForegroundColor">#725326</Color>
+    <Color x:Key="WorkspacePanelColor">#00FFFDFC</Color>
+    <Color x:Key="WorkspacePanelLineColor">#00F1D5C5</Color>
     <Color x:Key="CharacterPanelColor">#FFF7E8</Color>
     <Color x:Key="CharacterLineColor">#EFC9A7</Color>
     <Color x:Key="CharacterMyMelodyDockColor">#FFE3C7</Color>
@@ -65,7 +68,10 @@
     <SolidColorBrush x:Key="TagBrush" Color="{DynamicResource TagColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="TagChipTextBrush" Color="{DynamicResource TagChipTextColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="ExpiredBrush" Color="{DynamicResource ExpiredColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="SegmentSelectedBrush" Color="{DynamicResource SegmentSelectedColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="SegmentSelectedForegroundBrush" Color="{DynamicResource SegmentSelectedForegroundColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="WorkspacePanelBrush" Color="{DynamicResource WorkspacePanelColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="WorkspacePanelLineBrush" Color="{DynamicResource WorkspacePanelLineColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="CharacterPanelBrush" Color="{DynamicResource CharacterPanelColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="CharacterLineBrush" Color="{DynamicResource CharacterLineColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="CharacterMyMelodyDockBrush" Color="{DynamicResource CharacterMyMelodyDockColor}" po:Freeze="False" />
@@ -270,7 +276,7 @@
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CanvasBrush}" />
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource TagBrush}" />
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SegmentSelectedBrush}" />
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}" />
               </Trigger>
@@ -490,7 +496,7 @@
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource TagBrush}" />
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SegmentSelectedBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}" />
               </Trigger>
             </ControlTemplate.Triggers>
@@ -907,6 +913,7 @@
     <Style TargetType="{x:Type ToolTip}">
       <Setter Property="Background" Value="{DynamicResource InkBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource CanvasBrush}" />
+      <Setter Property="MaxWidth" Value="360" />
       <Setter Property="Padding" Value="8,5" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Template">
@@ -915,7 +922,10 @@
             <Border Background="{TemplateBinding Background}"
                     Padding="{TemplateBinding Padding}"
                     CornerRadius="5">
-              <ContentPresenter />
+              <TextBlock x:Name="Content"
+                         Text="{TemplateBinding Content}"
+                         Foreground="{TemplateBinding Foreground}"
+                         TextWrapping="Wrap" />
             </Border>
           </ControlTemplate>
         </Setter.Value>

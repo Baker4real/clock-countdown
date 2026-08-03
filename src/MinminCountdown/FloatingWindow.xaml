@@ -84,7 +84,7 @@
                          MinWidth="92"
                          MinHeight="34"
                          FontSize="22"
-                         FontWeight="Bold"
+                         FontWeight="SemiBold"
                          LineHeight="32"
                          LineStackingStrategy="BlockLineHeight"
                          Foreground="{DynamicResource FloatingHeaderTextBrush}"
@@ -177,7 +177,11 @@
                         HorizontalAlignment="Left"
                         Background="{DynamicResource FloatingHeaderDangerBrush}"
                         IsHitTestVisible="False" />
-                <TextBox x:Name="FloatingNoteText" MaxLength="140" />
+                <TextBox x:Name="FloatingNoteText"
+                         MaxHeight="88"
+                         MaxLength="140"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" />
                 <TextBlock x:Name="FloatingNoteTextError"
                            Margin="2,4,2,0"
                            Foreground="{DynamicResource FloatingErrorBrush}"

@@ -525,6 +525,8 @@ internal static class ValidationReport
         var floatingManualPlacement = floatingWindowScenarios.ManualPlacement;
         var mainReferenceDecorationScaling = ValidateMainReferenceDecorationScaling(main);
         var mainNightReferenceGeometry = ValidateMainNightReferenceGeometry(main);
+        var mainWorkspaceResourcesFollowTheme =
+            ValidateMainWorkspaceResourcesWithoutRerender(theme, main, workspaceSnapshot.UtcNow);
         var mainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
 
@@ -639,7 +641,8 @@ internal static class ValidationReport
             ["MainThemeReminderLabelFollowsTheme"] = mainThemeExercise.ReminderLabelFollowsTheme,
             ["MainThemeSegmentSelectedTextContrast"] = mainThemeExercise.SegmentSelectedTextContrast,
             ["MainCharacterPanelDocksFollowDayNightTheme"] = mainThemeExercise.CharacterPanelDocksFollowTheme,
-            ["MainReferenceDecorationsFollowDayNightTheme"] = mainThemeExercise.ReferenceDecorationsFollowTheme,
+            ["MainReferenceDecorationsFollowDayNightTheme"] =
+                mainThemeExercise.ReferenceDecorationsFollowTheme && mainWorkspaceResourcesFollowTheme,
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
             ["FloatingThemePlushGlowColors"] = floatingThemeExercise.PlushGlowColors,
@@ -1024,6 +1027,9 @@ internal static class ValidationReport
         var decorationLayer = Required<Canvas>(main, "MainReferenceDecorationLayer");
         var contentProjection = Required<Grid>(main, "MainContentProjection");
         var contentSurface = Required<Canvas>(main, "MainContentSurface");
+        var notesWorkspace = Required<Canvas>(main, "NotesWorkspace");
+        var noteEditorPanel = Required<Border>(main, "NoteEditorPanel");
+        var noteTextLabel = Required<TextBlock>(main, "NoteTextLabel");
         var countdownScene = Required<Image>(main, "CountdownReferenceDecoration");
         var notesScene = Required<Image>(main, "NotesReferenceDecoration");
         var nightCountdownScene = Required<Image>(main, "NightCountdownTopDecoration");
@@ -1051,7 +1057,13 @@ internal static class ValidationReport
                     !ReferenceEquals(VisualTreeHelper.GetParent(decorationLayer), layoutSurface) ||
                     !ReferenceEquals(VisualTreeHelper.GetParent(contentProjection), layoutSurface) ||
                     !ReferenceEquals(VisualTreeHelper.GetParent(contentSurface), contentProjection) ||
+                    !ReferenceEquals(VisualTreeHelper.GetParent(countdownScene), decorationLayer) ||
+                    !ReferenceEquals(VisualTreeHelper.GetParent(notesScene), decorationLayer) ||
+                    !ReferenceEquals(VisualTreeHelper.GetParent(nightCountdownScene), decorationLayer) ||
+                    !ReferenceEquals(VisualTreeHelper.GetParent(nightNotesScene), notesWorkspace) ||
                     Panel.GetZIndex(decorationLayer) >= Panel.GetZIndex(contentProjection) ||
+                    Panel.GetZIndex(noteEditorPanel) >= Panel.GetZIndex(nightNotesScene) ||
+                    Panel.GetZIndex(nightNotesScene) >= Panel.GetZIndex(noteTextLabel) ||
                     decorationLayer.IsHitTestVisible ||
                     countdownScene.IsHitTestVisible ||
                     notesScene.IsHitTestVisible ||
@@ -1194,25 +1206,9 @@ internal static class ValidationReport
         FormattableString.Invariant(
             $"{bounds.X:0},{bounds.Y:0},{bounds.Width:0},{bounds.Height:0}");
 
-    private static bool HasNonIdentityTransform(DependencyObject root)
-    {
-        if (root is FrameworkElement element &&
-            (!element.RenderTransform.Value.IsIdentity ||
-             !element.LayoutTransform.Value.IsIdentity))
-        {
-            return true;
-        }
-
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-        {
-            if (HasNonIdentityTransform(VisualTreeHelper.GetChild(root, index)))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private static bool HasNonIdentityTransform(FrameworkElement element) =>
+        !element.RenderTransform.Value.IsIdentity ||
+        !element.LayoutTransform.Value.IsIdentity;
 
     private static MainReferenceCaptureResult RunMainReferenceCapture(
         ApplicationTheme theme,
@@ -1783,9 +1779,16 @@ internal static class ValidationReport
                 .Select(target => target.Name)
                 .ToArray();
             var contentOverlapCount = contentOverlapTargets.Length;
+            var countdownRowsReserveScrollbarInset = rows.Children
+                .OfType<Border>()
+                .All(card => Descendants<Grid>(card).Any(grid =>
+                    grid.ColumnDefinitions.Count == 2 && grid.Margin.Right >= 68));
             var contentSafeAreaMatches =
                 referencePlushScene.Bounds.Count(bounds => bounds is not null) == 3 &&
-                contentOverlapCount == 0;
+                contentOverlapCount == 0 &&
+                countdownRowsReserveScrollbarInset &&
+                Required<TextBlock>(referenceWindow, "FloatingTitle").FontWeight == FontWeights.SemiBold &&
+                Required<TextBox>(referenceWindow, "FloatingNoteText").TextWrapping == TextWrapping.Wrap;
             var workdayCountdownUsesPrimaryVisual = WorkdayCountdownUsesPrimaryVisual(
                 rows,
                 referenceUtc,
@@ -3210,7 +3213,8 @@ internal static class ValidationReport
         var count = content?.Children
             .OfType<TextBlock>()
             .FirstOrDefault(text => string.Equals(text.Uid, "NoteDateCount", StringComparison.Ordinal));
-        var timeline = (section.Root as Grid)?.Children
+        var root = section.Root as Grid;
+        var timeline = root?.Children
             .OfType<Grid>()
             .FirstOrDefault(grid => string.Equals(grid.Uid, "NoteDateTimeline", StringComparison.Ordinal));
         var line = timeline?.Children
@@ -3221,6 +3225,12 @@ internal static class ValidationReport
             .Any(ellipse => string.Equals(ellipse.Uid, "NoteTimelineNode", StringComparison.Ordinal)) == true;
         return
             string.Equals(section.Root.Uid, "NoteDateTimelineSection", StringComparison.Ordinal) &&
+            Math.Abs(section.Root.Margin.Bottom - 12) <= 0.01 &&
+            root?.ColumnDefinitions.Count > 0 &&
+            root.ColumnDefinitions[0].Width.IsAbsolute &&
+            Math.Abs(root.ColumnDefinitions[0].Width.Value - 30) <= 0.01 &&
+            timeline is not null &&
+            Math.Abs(timeline.Width - 30) <= 0.01 &&
             line &&
             node &&
             label is not null &&
@@ -3619,6 +3629,140 @@ internal static class ValidationReport
             referenceDecorationsFollowTheme);
     }
 
+    private static bool ValidateMainWorkspaceResourcesWithoutRerender(
+        ApplicationTheme theme,
+        MainWindow main,
+        DateTimeOffset restoreUtc)
+    {
+        static bool UsesResource(DependencyObject element, DependencyProperty property, string key) =>
+            ReferenceEquals(element.GetValue(property), Application.Current.FindResource(key));
+
+        static bool UsesAnyResource(
+            DependencyObject element,
+            DependencyProperty property,
+            params string[] keys) =>
+            keys.Any(key => UsesResource(element, property, key));
+
+        static IEnumerable<StackPanel> CardBodies(Panel rows) =>
+            rows.Children
+                .OfType<Border>()
+                .Select(card => card.Child as Grid)
+                .Where(grid => grid is not null)
+                .SelectMany(grid => grid!.Children.OfType<StackPanel>())
+                .Where(panel => Grid.GetColumn(panel) is 0 or 1);
+
+        static bool BodyTextUsesTheme(StackPanel body) =>
+            body.Children
+                .OfType<TextBlock>()
+                .All(text => UsesAnyResource(
+                    text,
+                    TextBlock.ForegroundProperty,
+                    "InkBrush",
+                    "BodyBrush",
+                    "MutedBrush",
+                    "DangerBrush"));
+
+        static bool TagTextUsesTheme(StackPanel body) =>
+            body.Children
+                .OfType<WrapPanel>()
+                .SelectMany(panel => panel.Children.OfType<Border>())
+                .Select(chip => chip.Child)
+                .OfType<TextBlock>()
+                .All(text => UsesResource(text, TextBlock.ForegroundProperty, "TagChipTextBrush"));
+
+        var originalWorkspace = main.CurrentWorkspace;
+        try
+        {
+            theme.Apply(ApplicationThemeMode.Day);
+            main.ApplyTheme(ApplicationThemeMode.Day);
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            PumpDispatcher();
+            main.UpdateLayout();
+
+            theme.Apply(ApplicationThemeMode.Night);
+            main.ApplyTheme(ApplicationThemeMode.Night);
+            PumpDispatcher();
+            main.UpdateLayout();
+
+            var panelsFollowTheme = new[]
+                {
+                    main.FindName("CountdownEditorSurface") as Border,
+                    main.FindName("CountdownPreferencesSurface") as Border,
+                    main.FindName("NoteEditorPanel") as Border
+                }
+                .All(panel =>
+                    panel is not null &&
+                    UsesResource(panel, Border.BackgroundProperty, "WorkspacePanelBrush") &&
+                    UsesResource(panel, Border.BorderBrushProperty, "WorkspacePanelLineBrush"));
+            var titleFollowsTheme =
+                main.FindName("CountdownEditorTitle") is TextBlock editorTitle &&
+                UsesResource(editorTitle, TextBlock.ForegroundProperty, "InkBrush");
+            var countdownRows = Required<StackPanel>(main, "CountdownRows");
+            var countdownCardsFollowTheme = countdownRows.Children
+                .OfType<Border>()
+                .All(card =>
+                    UsesAnyResource(card, Border.BackgroundProperty, "CardBrush", "ExpiredBrush") &&
+                    UsesResource(card, Border.BorderBrushProperty, "PeachLineBrush"));
+            var countdownBodies = CardBodies(countdownRows).ToArray();
+            var countdownTextFollowsTheme =
+                countdownBodies.All(BodyTextUsesTheme) && countdownBodies.All(TagTextUsesTheme);
+
+            theme.Apply(ApplicationThemeMode.Day);
+            main.ApplyTheme(ApplicationThemeMode.Day);
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            PumpDispatcher();
+            main.UpdateLayout();
+
+            theme.Apply(ApplicationThemeMode.Night);
+            main.ApplyTheme(ApplicationThemeMode.Night);
+            PumpDispatcher();
+            main.UpdateLayout();
+
+            var noteBodies = new[]
+                {
+                    Required<StackPanel>(main, "ActiveNoteRows"),
+                    Required<StackPanel>(main, "CompletedNoteRows")
+                }
+                .SelectMany(rows => Descendants<Border>(rows))
+                .Where(card =>
+                    Math.Abs(card.CornerRadius.TopLeft - 8) <= 0.01 &&
+                    Math.Abs(card.Padding.Left - 14) <= 0.01)
+                .Select(card => card.Child as Grid)
+                .Where(grid => grid is not null)
+                .SelectMany(grid => grid!.Children.OfType<StackPanel>())
+                .ToArray();
+            var noteCardsFollowTheme = new[]
+                {
+                    Required<StackPanel>(main, "ActiveNoteRows"),
+                    Required<StackPanel>(main, "CompletedNoteRows")
+                }
+                .SelectMany(rows => Descendants<Border>(rows))
+                .Where(card =>
+                    Math.Abs(card.CornerRadius.TopLeft - 8) <= 0.01 &&
+                    Math.Abs(card.Padding.Left - 14) <= 0.01)
+                .All(card =>
+                    UsesResource(card, Border.BackgroundProperty, "NoteBrush") &&
+                    UsesResource(card, Border.BorderBrushProperty, "NoteLineBrush"));
+            var noteTextFollowsTheme =
+                noteBodies.All(BodyTextUsesTheme) && noteBodies.All(TagTextUsesTheme);
+
+            return panelsFollowTheme &&
+                titleFollowsTheme &&
+                countdownCardsFollowTheme &&
+                countdownTextFollowsTheme &&
+                noteCardsFollowTheme &&
+                noteTextFollowsTheme;
+        }
+        finally
+        {
+            var restoreMode = theme.Apply(restoreUtc);
+            main.ApplyTheme(restoreMode);
+            main.ShowWorkspace(originalWorkspace);
+            PumpDispatcher();
+            main.UpdateLayout();
+        }
+    }
+
     private static bool ValidateTagPopupThemeTransition(
         ApplicationTheme theme,
         TagSelector selector,
@@ -3688,7 +3832,10 @@ internal static class ValidationReport
                 ("PeachLineColor", "#F1D5C5"),
                 ("TagColor", "#FFF7E8"),
                 ("TagChipTextColor", "#4A2D24"),
+                ("SegmentSelectedColor", "#FFF7E8"),
                 ("SegmentSelectedForegroundColor", "#725326"),
+                ("WorkspacePanelColor", "#00FFFDFC"),
+                ("WorkspacePanelLineColor", "#00F1D5C5"),
                 ("FloatingDayPanelBrush", "#FFFDFC"),
                 ("FloatingDayHeaderBrush", "#FFF6D9"),
                 ("FloatingDayNoteInputBrush", "#FFF6D9"),
@@ -3705,9 +3852,12 @@ internal static class ValidationReport
                 ("NoteColor", "#4E3827"),
                 ("InkColor", "#FFF4D8"),
                 ("ActiveColor", "#9A523B"),
-                ("TagColor", "#4B3522"),
+                ("TagColor", "#E7C99B"),
                 ("TagChipTextColor", "#4A2D24"),
+                ("SegmentSelectedColor", "#4B3522"),
                 ("SegmentSelectedForegroundColor", "#FFF0CC"),
+                ("WorkspacePanelColor", "#FF3A2C21"),
+                ("WorkspacePanelLineColor", "#FF8B6845"),
                 ("FloatingNightPanelBrush", "#3A2B1E"),
                 ("FloatingNightHeaderBrush", "#4A3524"),
                 ("FloatingNightNoteInputBrush", "#F7E1B3"),
@@ -3915,9 +4065,12 @@ internal static class ValidationReport
                 theme.Apply(checkpoint.ToUniversalTime());
                 var toolTip = new ToolTip { Content = "主题提示" };
                 toolTip.ApplyTemplate();
+                var content = toolTip.Template.FindName("Content", toolTip) as TextBlock;
                 if (toolTip.Background is not Brush background ||
                     toolTip.Foreground is not Brush foreground ||
-                    !ApplicationTheme.MeetsContrast(background, foreground, 4.5))
+                    !ApplicationTheme.MeetsContrast(background, foreground, 4.5) ||
+                    toolTip.MaxWidth > 360 ||
+                    content?.TextWrapping is not TextWrapping.Wrap)
                 {
                     return false;
                 }
@@ -3977,13 +4130,15 @@ internal static class ValidationReport
         var body = (Color)Application.Current.FindResource("BodyColor");
         var muted = (Color)Application.Current.FindResource("MutedColor");
         var tag = (Color)Application.Current.FindResource("TagColor");
+        var segmentSelected = (Color)Application.Current.FindResource("SegmentSelectedColor");
         var segmentSelectedForeground =
             (Color)Application.Current.FindResource("SegmentSelectedForegroundColor");
         return
             ContrastRatio(canvas, ink) >= 7 &&
             ContrastRatio(canvas, body) >= 4.5 &&
             ContrastRatio(canvas, muted) >= 4.5 &&
-            ContrastRatio(tag, segmentSelectedForeground) >= 4.5;
+            ContrastRatio(tag, (Color)Application.Current.FindResource("TagChipTextColor")) >= 4.5 &&
+            ContrastRatio(segmentSelected, segmentSelectedForeground) >= 4.5;
     }
 
     private static bool MainSegmentButtonsHaveAccessibleSelectedStates(MainWindow main)

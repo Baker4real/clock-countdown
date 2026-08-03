@@ -51,12 +51,6 @@
                  Stretch="Fill"
                  IsHitTestVisible="False"
                  Visibility="Collapsed" />
-          <Image x:Name="NightNotesTopDecoration"
-                 Width="1165"
-                 Height="1350"
-                 Stretch="Fill"
-                 IsHitTestVisible="False"
-                 Visibility="Collapsed" />
         </Canvas>
 
         <Grid x:Name="MainContentProjection"
@@ -473,12 +467,13 @@
             <Canvas x:Name="CountdownWorkspace"
                     Width="1165"
                     Height="1350">
-              <Border Canvas.Left="38"
+              <Border x:Name="CountdownEditorSurface"
+                      Canvas.Left="38"
                       Canvas.Top="402"
                       Width="1088"
                       Height="440"
-                      Background="Transparent"
-                      BorderBrush="Transparent"
+                      Background="{DynamicResource WorkspacePanelBrush}"
+                      BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
                       BorderThickness="1"
                       CornerRadius="16" />
               <TextBlock x:Name="CountdownEditorTitle"
@@ -486,7 +481,8 @@
                          Canvas.Top="431"
                          Text="新增倒计时"
                          FontSize="27"
-                         FontWeight="SemiBold" />
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource InkBrush}" />
 
               <TextBlock Canvas.Left="74" Canvas.Top="491" Text="名称" Style="{StaticResource MainFieldLabel}" />
               <TextBlock Canvas.Left="711" Canvas.Top="491" Text="截止日期" Style="{StaticResource MainFieldLabel}" />
@@ -558,12 +554,13 @@
                       Content="添加倒计时"
                       Style="{StaticResource MainPrimaryButton}" />
 
-              <Border Canvas.Left="38"
+              <Border x:Name="CountdownPreferencesSurface"
+                      Canvas.Left="38"
                       Canvas.Top="866"
                       Width="1088"
                       Height="168"
-                      Background="Transparent"
-                      BorderBrush="Transparent"
+                      Background="{DynamicResource WorkspacePanelBrush}"
+                      BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
                       BorderThickness="1"
                       CornerRadius="16" />
               <TextBlock Canvas.Left="74" Canvas.Top="896" Text="显示精度" Style="{StaticResource MainFieldLabel}" />
@@ -618,10 +615,18 @@
                       Canvas.Top="368"
                       Width="1072"
                       Height="400"
-                      Background="Transparent"
-                      BorderBrush="Transparent"
+                      Panel.ZIndex="-2"
+                      Background="{DynamicResource WorkspacePanelBrush}"
+                      BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
                       BorderThickness="1"
                       CornerRadius="40" />
+              <Image x:Name="NightNotesTopDecoration"
+                     Width="1165"
+                     Height="1350"
+                     Panel.ZIndex="-1"
+                     Stretch="Fill"
+                     IsHitTestVisible="False"
+                     Visibility="Collapsed" />
               <TextBlock x:Name="NoteTextLabel"
                          Canvas.Left="72"
                          Canvas.Top="412"

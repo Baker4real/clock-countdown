@@ -520,7 +520,9 @@ public sealed partial class MainWindow : Window
     {
         get
         {
-            if (FindResource("TagChipTextBrush") is not SolidColorBrush foreground)
+            if (FindResource("TagChipTextBrush") is not SolidColorBrush foreground ||
+                FindResource("TagBrush") is not SolidColorBrush defaultBackground ||
+                !ApplicationTheme.MeetsContrast(defaultBackground, foreground, 4.5))
             {
                 return false;
             }
@@ -805,21 +807,26 @@ public sealed partial class MainWindow : Window
             layout.ColumnDefinitions.Add(new ColumnDefinition());
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var text = new StackPanel();
-            text.Children.Add(new TextBlock
+            var name = new TextBlock
             {
                 Text = record.Name,
                 FontSize = 25,
                 FontWeight = FontWeights.SemiBold
-            });
-            text.Children.Add(new TextBlock
+            };
+            name.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+            text.Children.Add(name);
+            var remaining = new TextBlock
             {
                 Text = CountdownFormatting.FormatRemaining(
                     record.TargetUtc,
                     snapshot.UtcNow,
                     snapshot.Settings.Preferences.DisplayPrecision),
-                Margin = new Thickness(0, 5, 0, 0),
-                Foreground = active ? (Brush)FindResource("BodyBrush") : (Brush)FindResource("DangerBrush")
-            });
+                Margin = new Thickness(0, 5, 0, 0)
+            };
+            remaining.SetResourceReference(
+                TextBlock.ForegroundProperty,
+                active ? "BodyBrush" : "DangerBrush");
+            text.Children.Add(remaining);
             text.Children.Add(CreateTagChips(record.TagIds));
             Grid.SetColumn(actions, 1);
             layout.Children.Add(text);
@@ -968,7 +975,7 @@ public sealed partial class MainWindow : Window
             var timeline = new Grid
             {
                 Uid = "NoteDateTimeline",
-                Width = 24
+                Width = 30
             };
             var timelineLine = new Border
             {
@@ -1004,9 +1011,9 @@ public sealed partial class MainWindow : Window
             var section = new Grid
             {
                 Uid = "NoteDateTimelineSection",
-                Margin = new Thickness(0)
+                Margin = new Thickness(0, 0, 0, 12)
             };
-            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
             section.ColumnDefinitions.Add(new ColumnDefinition());
             Grid.SetColumn(content, 1);
             section.Children.Add(timeline);
@@ -1160,23 +1167,27 @@ public sealed partial class MainWindow : Window
         actions.Children.Add(delete);
 
         var body = new StackPanel();
-        body.Children.Add(new TextBlock
+        var noteText = new TextBlock
         {
             Text = note.Text,
             TextWrapping = TextWrapping.Wrap,
-            TextDecorations = note.IsCompleted ? TextDecorations.Strikethrough : null,
-            Foreground = note.IsCompleted ? (Brush)FindResource("MutedBrush") : (Brush)FindResource("InkBrush")
-        });
+            TextDecorations = note.IsCompleted ? TextDecorations.Strikethrough : null
+        };
+        noteText.SetResourceReference(
+            TextBlock.ForegroundProperty,
+            note.IsCompleted ? "MutedBrush" : "InkBrush");
+        body.Children.Add(noteText);
         var details = FormatNoteDetails(note, nowUtc);
         if (!string.IsNullOrWhiteSpace(details))
         {
-            body.Children.Add(new TextBlock
+            var detailText = new TextBlock
             {
                 Text = details,
                 Margin = new Thickness(0, 4, 0, 0),
-                FontSize = 17,
-                Foreground = (Brush)FindResource("MutedBrush")
-            });
+                FontSize = 17
+            };
+            detailText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            body.Children.Add(detailText);
         }
         body.Children.Add(CreateTagChips(note.TagIds));
 
@@ -1856,20 +1867,29 @@ public sealed partial class MainWindow : Window
                      tag.Id,
                      StringComparer.OrdinalIgnoreCase)))
         {
+            var chipText = new TextBlock
+            {
+                Text = tag.Name,
+                FontSize = 16
+            };
+            chipText.SetResourceReference(TextBlock.ForegroundProperty, "TagChipTextBrush");
             var chip = new Border
             {
                 Uid = tag.Id,
                 Margin = new Thickness(0, 0, 5, 0),
                 Padding = new Thickness(7, 3, 7, 3),
                 CornerRadius = new CornerRadius(10),
-                Background = ParseBrush(tag.Color) ?? (Brush)FindResource("TagBrush"),
-                Child = new TextBlock
-                {
-                    Text = tag.Name,
-                    FontSize = 16,
-                    Foreground = (Brush)FindResource("TagChipTextBrush")
-                }
+                Child = chipText
             };
+            var savedBackground = ParseBrush(tag.Color);
+            if (savedBackground is null)
+            {
+                chip.SetResourceReference(Border.BackgroundProperty, "TagBrush");
+            }
+            else
+            {
+                chip.Background = savedBackground;
+            }
             panel.Children.Add(chip);
         }
 
@@ -1895,30 +1915,32 @@ public sealed partial class MainWindow : Window
 
     private Border Card(UIElement content, string backgroundResource)
     {
-        return new Border
+        var card = new Border
         {
             Child = content,
             Margin = new Thickness(0, 0, 0, 12),
             Padding = new Thickness(21),
             CornerRadius = new CornerRadius(18),
-            Background = (Brush)FindResource(backgroundResource),
-            BorderBrush = (Brush)FindResource("PeachLineBrush"),
             BorderThickness = new Thickness(1)
         };
+        card.SetResourceReference(Border.BackgroundProperty, backgroundResource);
+        card.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
+        return card;
     }
 
     private Border NoteCard(UIElement content)
     {
-        return new Border
+        var card = new Border
         {
             Child = content,
             Margin = new Thickness(0, 0, 0, 8),
             Padding = new Thickness(14),
             CornerRadius = new CornerRadius(8),
-            Background = (Brush)FindResource("NoteBrush"),
-            BorderBrush = (Brush)FindResource("NoteLineBrush"),
             BorderThickness = new Thickness(1)
         };
+        card.SetResourceReference(Border.BackgroundProperty, "NoteBrush");
+        card.SetResourceReference(Border.BorderBrushProperty, "NoteLineBrush");
+        return card;
     }
 
     private Button NoteActionButton(string content, string id, string accessibleName)

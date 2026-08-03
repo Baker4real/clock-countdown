@@ -12,7 +12,7 @@ public sealed partial class FloatingWindow
     private const string WorkdayEndCountdownId = "__workday_end__";
     private const double CountdownMascotSafeInset = 54;
     private const double PrimaryRemainingWidth = 194;
-    private const double SecondaryRemainingMinimumWidth = 104;
+    private const double SecondaryRemainingWidth = 194;
 
     private IReadOnlyList<FrameworkElement> BuildWarmPaperCountdownRows(
         IReadOnlyList<CountdownRecord> records,
@@ -177,8 +177,7 @@ public sealed partial class FloatingWindow
             FormatSecondaryRemaining(remaining),
             13,
             FontWeights.SemiBold);
-        remainingText.MinWidth = SecondaryRemainingMinimumWidth;
-        remainingText.MaxWidth = 138;
+        remainingText.Width = SecondaryRemainingWidth;
         remainingText.LineHeight = 15;
         remainingText.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         remainingText.TextTrimming = TextTrimming.None;
@@ -191,16 +190,8 @@ public sealed partial class FloatingWindow
         return layout;
     }
 
-    private static string FormatSecondaryRemaining(string remaining)
-    {
-        var units = remaining.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (units.Length <= 4)
-        {
-            return string.Concat(units);
-        }
-
-        return $"{string.Concat(units.Take(4))}\n{string.Concat(units.Skip(4))}";
-    }
+    private static string FormatSecondaryRemaining(string remaining) =>
+        string.Concat(remaining.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     private Brush WarmPaperAccentBrush(FloatingThemePalette theme) =>
         ThemeBrush(theme.Mode == ApplicationThemeMode.Day

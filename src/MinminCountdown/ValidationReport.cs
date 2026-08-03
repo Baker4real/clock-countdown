@@ -1821,10 +1821,12 @@ internal static class ValidationReport
 
             var longSecondaryTextFullyVisible =
                 longSecondaryRemaining is not null &&
+                longSecondaryRemaining.TextWrapping == TextWrapping.NoWrap &&
                 longSecondaryRemaining.TextTrimming == TextTrimming.None &&
+                !longSecondaryRemaining.Text.Contains('\n') &&
                 !longSecondaryRemaining.Text.Contains('…') &&
                 longSecondaryRemaining.LineHeight > 0 &&
-                longSecondaryRemaining.ActualHeight + 0.5 >= longSecondaryRemaining.LineHeight * 2 &&
+                longSecondaryRemaining.ActualHeight <= longSecondaryRemaining.LineHeight + 0.5 &&
                 TextBlockLinesFit(longSecondaryRemaining) &&
                 longSecondaryFitsViewport;
             var longSecondaryDeleted = referenceSession.TryDeleteCountdown(

@@ -56,8 +56,8 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.InstallTransaction.psm1`：带全机互斥锁的可回滚安装事务；覆盖安装目录、启动器、两份计划任务与 Windows 时间服务状态，并为办公室验收原子写出独立回执
 - `Countdown.TransactionAcceptance.psm1`：安装与办公室部署共用的事务验收状态机
 - `Countdown.Validation.psm1`：安装器共用的 Core、C#、兼容 UI 与应用 validate-only 验证 module
-- `Countdown.RemoteDeployment.psm1`：办公室候选安装、验证门禁、事务验收、回滚、提交后收尾、有界失败回执与回滚前诊断 sidecar module
-- `Countdown.TransferLedger.psm1`：办公室两次 SCP、失败回执与回滚前诊断 SSH 回读共用的计时、吞吐与失败尝试账本 module
+- `Countdown.RemoteDeployment.psm1`：办公室候选安装、验证门禁、事务验收、回滚、提交后收尾，以及成功/失败回执、部署 binding、独立回读与回滚前诊断的严格契约 module
+- `Countdown.TransferLedger.psm1`：办公室全部 SCP 与 SSH 证据回读共用的计时、吞吐和失败尝试账本 module
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
 - `CountdownLauncher.cs`：无控制台桌面启动器源码
 - `CountdownLauncher.exe`：安装器使用的已编译启动器
@@ -65,7 +65,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口兼容回退与来源校验使用的三张官方透明角色立绘
 - `assets/floating-plush/*.png`：悬浮窗现役视觉资产与旧 PowerShell 回归夹具；来源、处理边界、哈希和用途见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
 - `assets/main-decorations/*.png`：主窗口暖色日夜装饰资产；现役用法见 [DESIGN.md](DESIGN.md)
-- `assets/ui-references/*.png`：用户生成的页面与悬浮窗参考图固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
+- `assets/ui-references/`：用户生成的页面与悬浮窗参考图及机器可读 `manifest.json` 的固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
 - [DESIGN.md](DESIGN.md)：主窗口便签“暖纸时间轴”方向 B，以及悬浮窗“倒计时 B 暖纸层级 + 便签 B 台历索引”的现役视觉、交互和日夜主题合同
 - `tools/Build-MainNightTopScene.ps1`：从日间参考构图生成主窗口夜间暖琥珀顶部场景的维护脚本
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本

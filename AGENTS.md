@@ -10,7 +10,7 @@
 - 所有日期计算统一使用 `China Standard Time`，不要依赖设备当前时区推断北京时间。
 - 修改倒计时逻辑后运行 `Countdown.Core.Tests.ps1` 与 `Countdown.CSharp.Tests.ps1`；修改界面后同时运行 C# 验证 module、应用的 `--validate-only` 检查，并保留 PowerShell 回归测试作为兼容性基线。
 - 修改发布契约中的受校验文件或重新编译启动器后，同步更新 `Countdown.ReleaseContract.psm1` 的静态 SHA-256，并运行安装器的 `-ValidateOnly` 检查。
-- 办公室部署的每次 SCP 都必须把 bytes、完整命令墙钟耗时、MiB/s、Mbps、状态和退出码写入本次 `run-evidence`；缺少完整命令计时即视为传输证据未通过，远端文件创建/写入时间戳不能替代该数据。
+- 办公室部署的每次 SCP 和 SSH 证据回读都必须把 bytes、完整命令墙钟耗时、MiB/s、Mbps、状态和退出码写入本次 `run-evidence`；成功部署还必须先严格持久化成功回执，再完成 binding 与独立运行态回读。缺少完整命令计时或独立回读即视为部署证据未通过，远端文件创建/写入时间戳不能替代该数据。
 - 动态倒计时卡片的事件处理器通过控件 `Tag` 传递记录 ID；不要用 `GetNewClosure()` 捕获会被写入的 `$script:` 状态。
 - 不提交 `settings.json`、`startup-request.json`、`runtime-status.json`、`acceptance-status.json`、`launcher-state.json`、本机登录状态或设备凭据。
 - 普通发布只提交并推送到用户拥有远端的 `main`，不创建 `patch-stack/*`。

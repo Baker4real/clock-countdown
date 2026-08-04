@@ -2490,7 +2490,8 @@ $deploymentGateFunctionNames = @(
     'New-CountdownDeploymentCommitFileManifest',
     'New-CountdownDeploymentFileManifest',
     'Assert-CountdownDeploymentFileManifest',
-    'Assert-CountdownDeploymentFileSet'
+    'Assert-CountdownDeploymentFileSet',
+    'Assert-CountdownRemoteInstallScript'
 )
 $deploymentGateFunctions = @(
     $deploymentAst.FindAll({
@@ -2512,6 +2513,54 @@ try {
         $deploymentGateModuleSource,
         [System.Text.UTF8Encoding]::new($false))
     Import-Module $deploymentGateModulePath -Force
+
+    $validRemoteInstallScript = @(
+        "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+        "Invoke-LockedDeploymentFile -Path 'release.psm1' -ExpectedSha256 '$('B' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+        "Invoke-LockedDeploymentFile -Path 'remote.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
+    ) -join "`r`n"
+    $validRemoteInstallResult = Assert-CountdownRemoteInstallScript -ScriptText $validRemoteInstallScript
+    Assert-Equal 3 $validRemoteInstallResult.InvocationCount 'Generated remote install script keeps every locked file parameter on its command invocation'
+
+    $brokenRemoteInstallScript = @(
+        "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+        'Invoke-LockedDeploymentFile',
+        "    -Path 'release.psm1' -ExpectedSha256 '$('B' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+        'Invoke-LockedDeploymentFile',
+        "    -Path 'remote.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
+    ) -join "`r`n"
+    $brokenRemoteInstallRejected = $false
+    $brokenRemoteInstallMessage = ''
+    try {
+        Assert-CountdownRemoteInstallScript -ScriptText $brokenRemoteInstallScript | Out-Null
+    }
+    catch {
+        $brokenRemoteInstallRejected = $true
+        $brokenRemoteInstallMessage = $_.Exception.Message
+    }
+    Assert-Equal $true $brokenRemoteInstallRejected 'Generated remote install script rejects a bare locked file command before upload'
+    Assert-Equal $true $brokenRemoteInstallMessage.Contains('缺少参数') 'Generated remote install script reports the missing mandatory parameter set'
+
+    foreach ($missingValueParameter in @('Path', 'ExpectedSha256', 'Action')) {
+        $missingValueInvocation = switch ($missingValueParameter) {
+            'Path' { "Invoke-LockedDeploymentFile -Path -ExpectedSha256 '$('B' * 64)' -Action { param(`$lockedPath) `$lockedPath }" }
+            'ExpectedSha256' { "Invoke-LockedDeploymentFile -Path 'release.psm1' -ExpectedSha256 -Action { param(`$lockedPath) `$lockedPath }" }
+            'Action' { "Invoke-LockedDeploymentFile -Path 'release.psm1' -ExpectedSha256 '$('B' * 64)' -Action" }
+        }
+        $missingValueScript = @(
+            "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+            $missingValueInvocation,
+            "Invoke-LockedDeploymentFile -Path 'remote.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
+        ) -join "`r`n"
+        $missingValueRejected = $false
+        try {
+            Assert-CountdownRemoteInstallScript -ScriptText $missingValueScript | Out-Null
+        }
+        catch {
+            $missingValueRejected = $_.Exception.Message -match "参数 $missingValueParameter 缺少值"
+        }
+        Assert-Equal $true $missingValueRejected "Generated remote install script rejects a $missingValueParameter parameter without a value"
+    }
 
     $fixtureCommit = '1111111111111111111111111111111111111111'
     $deploymentGitFixture = [pscustomobject]@{

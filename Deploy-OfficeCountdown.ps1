@@ -1027,6 +1027,68 @@ function Invoke-OfficePostDeploymentIndependentVerification {
     }
 }
 
+function Assert-CountdownRemoteInstallScript {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $ScriptText
+    )
+
+    $tokens = $null
+    $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+        $ScriptText,
+        [ref] $tokens,
+        [ref] $parseErrors)
+    if (@($parseErrors).Count -ne 0) {
+        throw "远端安装脚本 AST 无效：$($parseErrors[0].Message)"
+    }
+
+    $invocations = @(
+        $ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Invoke-LockedDeploymentFile'
+            }, $true)
+    )
+    if ($invocations.Count -ne 3) {
+        throw "远端安装脚本必须包含 3 次锁定文件调用，实际为 $($invocations.Count)。"
+    }
+
+    foreach ($invocation in $invocations) {
+        $commandElements = @($invocation.CommandElements)
+        $parameterAsts = @(
+            $commandElements |
+                Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } |
+                ForEach-Object { $_ }
+        )
+        $parameterNames = @($parameterAsts | ForEach-Object { $_.ParameterName })
+        $missingParameters = @(
+            @('Path', 'ExpectedSha256', 'Action') |
+                Where-Object { $_ -notin $parameterNames }
+        )
+        if ($missingParameters.Count -ne 0) {
+            throw "远端安装脚本第 $($invocation.Extent.StartLineNumber) 行的锁定文件调用缺少参数：$($missingParameters -join ', ')。"
+        }
+
+        foreach ($parameterName in @('Path', 'ExpectedSha256', 'Action')) {
+            $parameterAst = $parameterAsts |
+                Where-Object { $_.ParameterName -eq $parameterName } |
+                Select-Object -First 1
+            $parameterIndex = [Array]::IndexOf($commandElements, $parameterAst)
+            $hasInlineArgument = $null -ne $parameterAst.Argument
+            $hasFollowingArgument = $parameterIndex + 1 -lt $commandElements.Count -and
+                $commandElements[$parameterIndex + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]
+            if (-not $hasInlineArgument -and -not $hasFollowingArgument) {
+                throw "远端安装脚本第 $($invocation.Extent.StartLineNumber) 行的参数 $parameterName 缺少值。"
+            }
+        }
+    }
+
+    [pscustomobject]@{
+        InvocationCount = $invocations.Count
+    }
+}
+
 if ($LoadFunctionsOnly) { return }
 
 $gitPath = (Get-Command git.exe -CommandType Application -ErrorAction Stop |
@@ -1304,15 +1366,9 @@ Invoke-LockedDeploymentFile -Path `$archive -ExpectedSha256 '$archiveHash' -Acti
     param(`$lockedPath)
     Expand-Archive -LiteralPath `$lockedPath -DestinationPath `$source -Force
 }
-Invoke-LockedDeploymentFile `
-    -Path (Join-Path `$source 'Countdown.ReleaseContract.psm1') `
-    -ExpectedSha256 '$releaseContractSha256' `
-    -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }
+Invoke-LockedDeploymentFile -Path (Join-Path `$source 'Countdown.ReleaseContract.psm1') -ExpectedSha256 '$releaseContractSha256' -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }
 [void] (Assert-CountdownReleasePackage -Root `$source)
-Invoke-LockedDeploymentFile `
-    -Path (Join-Path `$source 'Countdown.RemoteDeployment.psm1') `
-    -ExpectedSha256 '$remoteDeploymentSha256' `
-    -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }
+Invoke-LockedDeploymentFile -Path (Join-Path `$source 'Countdown.RemoteDeployment.psm1') -ExpectedSha256 '$remoteDeploymentSha256' -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }
 `$deploymentArguments = @{
   SourceRoot = `$source
   InstallPath = 'D:\敏敏子倒计时'
@@ -1326,6 +1382,7 @@ Invoke-LockedDeploymentFile `
 }
 Invoke-CountdownRemoteDeployment @deploymentArguments | ConvertTo-Json -Compress
 "@
+[void] (Assert-CountdownRemoteInstallScript -ScriptText $remoteInstall)
 $remoteInstallScript = Join-Path $evidenceRoot 'remote-install.ps1'
 [System.IO.File]::WriteAllText(
     $remoteInstallScript,

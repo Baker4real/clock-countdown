@@ -93,11 +93,69 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     try {
         New-Item -ItemType Directory -Path $validationTestRoot -Force | Out-Null
+        $validationApplicationReport = [ordered]@{
+            Valid = $true
+            FloatingWindowPresent = $true
+        }
+        foreach ($fieldName in @(
+                'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
+                'MainReferenceDecorationLayerOrderMatches',
+                'MainWorkspaceResourcesFollowDayNightTheme',
+                'MainDynamicCountdownCardsUseThemeResources',
+                'MainDynamicNoteCardsUseThemeResources',
+                'FloatingReferenceContentSafeAreaMatches',
+                'FloatingReferenceBaselineGateIsolationBehavior',
+                'FloatingReferenceFreshnessGateIsolationBehavior',
+                'FloatingLongNotesBodyHasNoManualLineBreaks',
+                'FloatingLongNotesNaturalWraps',
+                'FloatingLongNotesUsesOnlyOuterScroller',
+                'FloatingLongNotesOuterScrollable',
+                'FloatingLongNotesTopBottomReachable',
+                'FloatingLongNotesSafeAreaMatches',
+                'FloatingLongNotesLayoutValid',
+                'FloatingTitleUsesSemiBoldWeight',
+                'FloatingNoteInputWraps',
+                'FloatingNoteInputScrolls',
+                'FloatingInitialWorkspaceStateMatches',
+                'FloatingWorkspaceSwitchingStaysSynchronized',
+                'FloatingCountdownSelectionSurvivesDayNightThemes',
+                'FloatingQuickAddDayResourcesFollowLocalTheme',
+                'FloatingQuickAddNightResourcesFollowLocalTheme',
+                'FloatingQuickAddIndependentFromApplicationAutoTheme',
+                'FloatingQuickAddThemeResourceIsolationBehavior',
+                'FloatingQuickAddDayExpandedScrolledCaptureWritten',
+                'FloatingQuickAddNightExpandedScrolledCaptureWritten',
+                'FloatingNightPlushSourceAlphaBoundsMatch',
+                'FloatingNightPlushEdgeBrightnessWithinLimit',
+                'FloatingNightPlushEdgeSaturationWithinLimit',
+                'FloatingNightPlushEdgeGlowGateIsolationBehavior',
+                'FloatingSecondaryRemainingUnitSpacingMatches',
+                'FloatingSecondaryRemainingLayoutMatches',
+                'FloatingSecondaryRemainingGateIsolationBehavior',
+                'FloatingScrollBarLocalStyleScoped',
+                'FloatingScrollBarHitTargetUsable',
+                'FloatingScrollBarVisualWeightProgression',
+                'FloatingScrollBarUsesWarmThemeTokens',
+                'FloatingScrollBarContentRemainsSafe',
+                'FloatingScrollBarInputPathsWork',
+                'FloatingScrollBarGateIsolationBehavior',
+                'FloatingScrollBarDayNightStateCapturesReady',
+                'UiQualityGateIsolationBehavior'
+            )) {
+            $validationApplicationReport[$fieldName] = $true
+        }
+        $validationApplicationReport['FloatingReferenceBaselineRequested'] = $false
+        $validationApplicationReport['FloatingReferenceBaselineManifestAvailable'] = $false
+        $validationApplicationReport['FloatingReferenceBaselineValidated'] = $false
+        $validationApplicationReport['MainDynamicCountdownCardSampleCount'] = 1
+        $validationApplicationReport['MainDynamicNoteCardSampleCount'] = 1
+        $validationApplicationJson = $validationApplicationReport | ConvertTo-Json -Compress
+        $validationApplicationFixture = $validationApplicationJson.Replace("'", "''")
         $validationFixtures = [ordered]@{
             'Countdown.Core.Tests.ps1' = "param([switch] `$ParentTransactionMutexHeld)`r`n'{`"Passed`":11,`"Failed`":0}'"
             'Countdown.CSharp.Tests.ps1' = "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'"
             'Countdown.Ui.Tests.ps1' = "'{`"Passed`":17,`"Failed`":0}'"
-            '敏敏子倒计时.ps1' = "param([switch] `$ValidateOnly)`r`n'{`"Valid`":true,`"FloatingWindowPresent`":true}'"
+            '敏敏子倒计时.ps1' = "param([switch] `$ValidateOnly)`r`n'$validationApplicationFixture'"
         }
         foreach ($fixture in $validationFixtures.GetEnumerator()) {
             [System.IO.File]::WriteAllText(
@@ -121,7 +179,7 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
         Assert-Equal '{"Passed":11,"Failed":0}' ([string] $validationResult.TestOutput) 'Validation interface preserves Core JSON compatibility'
         Assert-Equal '{"Passed":13,"Failed":0,"AdapterUiValidated":true}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
         Assert-Equal '{"Passed":17,"Failed":0}' ([string] $validationResult.UiTestOutput) 'Validation interface preserves UI JSON compatibility'
-        Assert-Equal '{"Valid":true,"FloatingWindowPresent":true}' ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
+        Assert-Equal $validationApplicationJson ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
 
         [System.IO.File]::WriteAllText(
             (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
@@ -280,8 +338,8 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
                     AcceptanceState = 'finalized-ready'
                     RuntimeProcessId = 4242
                     TaskState = 'Running'
-                    SettingsHashBefore = 'before-hash'
-                    SettingsHashAfter = 'after-hash'
+                    SettingsHashBefore = ('A' * 64)
+                    SettingsHashAfter = ('B' * 64)
                 }
             }
             Rollback = {
@@ -396,6 +454,193 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
         }
     }
 
+    function New-CountdownIssue4DefaultAdapterPackage {
+        param(
+            [Parameter(Mandatory)] [string] $Name,
+            [switch] $IncludeExtraPackageFile,
+            [switch] $OmitExtraManifestEntry,
+            [switch] $IncludeUnexpectedManifestEntry,
+            [switch] $ContractHashConflict,
+            [switch] $DriftReleaseContractAfterManifest
+        )
+
+        $root = Join-Path $remoteDeploymentTestRoot "issue4-default-$Name"
+        $installPath = Join-Path $root 'install'
+        New-Item -ItemType Directory -Path $root -Force | Out-Null
+        New-Item -ItemType Directory -Path $installPath -Force | Out-Null
+        $packageFiles = [System.Collections.Generic.List[string]]::new()
+        foreach ($relativePath in @(
+                'Countdown.ReleaseContract.psm1',
+                'Countdown.InstallTransaction.psm1',
+                'Countdown.Validation.psm1',
+                'Countdown.Runtime.psm1',
+                'Countdown.Settings.psm1',
+                'Countdown.TransactionAcceptance.psm1',
+                'Install-Countdown.ps1',
+                '敏敏子倒计时.ps1')) {
+            $packageFiles.Add($relativePath)
+        }
+        if ($IncludeExtraPackageFile) {
+            $packageFiles.Add('data\issue4-extra.txt')
+        }
+
+        foreach ($relativePath in $packageFiles) {
+            if ($relativePath -eq 'Countdown.ReleaseContract.psm1') { continue }
+            $path = Join-Path $root $relativePath
+            New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+            $content = switch ($relativePath) {
+                'Countdown.InstallTransaction.psm1' {
+                    "`$global:CountdownIssue4InstallTransactionSentinel = 'executed'`r`n"
+                }
+                'Install-Countdown.ps1' {
+                    "`$global:CountdownIssue4InstallerSentinel = 'executed'`r`n"
+                }
+                default { "Set-StrictMode -Version Latest`r`n" }
+            }
+            [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
+        }
+
+        $contractIntegrityHash = if ($ContractHashConflict) { '0' * 64 } else {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $root 'Countdown.InstallTransaction.psm1')).Hash
+        }
+        $packageFilesLiteral = @(
+            $packageFiles | ForEach-Object { "            '$($_.Replace("'", "''"))'" }
+        ) -join ",`r`n"
+        $releaseContractSource = @"
+Set-StrictMode -Version Latest
+
+function Get-CountdownReleaseContract {
+    [pscustomobject]@{
+        PackageFiles = [string[]] @(
+$packageFilesLiteral
+        )
+        IntegrityHashes = [ordered]@{
+            'Countdown.InstallTransaction.psm1' = '$contractIntegrityHash'
+        }
+        InstalledFiles = [string[]] @()
+        RetiredRuntimeFiles = [string[]] @()
+    }
+}
+
+function Assert-CountdownReleasePackage {
+    param([string] `$Root)
+    [pscustomobject]@{ Valid = `$true }
+}
+
+function Get-CountdownInteractiveDesktopContext {
+    `$global:CountdownIssue4WindowsActionSentinel = 'executed'
+    throw 'Issue #4 fixture crossed into Windows actions.'
+}
+
+Export-ModuleMember -Function Get-CountdownReleaseContract, Assert-CountdownReleasePackage, Get-CountdownInteractiveDesktopContext
+"@
+        $releaseContractPath = Join-Path $root 'Countdown.ReleaseContract.psm1'
+        [System.IO.File]::WriteAllText(
+            $releaseContractPath,
+            $releaseContractSource,
+            [System.Text.UTF8Encoding]::new($false))
+
+        $manifest = [ordered]@{}
+        foreach ($relativePath in $packageFiles) {
+            if ($OmitExtraManifestEntry -and $relativePath -eq 'data\issue4-extra.txt') { continue }
+            $manifest[$relativePath] = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $root $relativePath)).Hash
+        }
+        if ($IncludeUnexpectedManifestEntry) {
+            $unexpectedPath = Join-Path $root 'issue4-unexpected.txt'
+            [System.IO.File]::WriteAllText(
+                $unexpectedPath,
+                'unexpected',
+                [System.Text.UTF8Encoding]::new($false))
+            $manifest['issue4-unexpected.txt'] = (Get-FileHash -Algorithm SHA256 -LiteralPath $unexpectedPath).Hash
+        }
+        if ($DriftReleaseContractAfterManifest) {
+            [System.IO.File]::WriteAllText(
+                $releaseContractPath,
+                "`$global:CountdownIssue4MaliciousReleaseSentinel = 'executed'`r`n$releaseContractSource",
+                [System.Text.UTF8Encoding]::new($false))
+        }
+
+        $adapter = & $remoteDeploymentModule { New-CountdownRemoteDeploymentWindowsAdapter }
+        $context = [pscustomobject]@{
+            SourceRoot = $root
+            InstallPath = $installPath
+            PowerShell7Path = $remoteDeploymentPowerShell
+            DeferredReceiptPath = Join-Path $root 'deferred-install-receipt.json'
+            TaskName = "Issue4 $Name"
+            LegacyTaskName = "Issue4 Legacy $Name"
+            DeploymentBindingPath = ''
+            DeploymentBindingSha256 = ''
+            ExpectedFileSha256 = $manifest
+            TrustedFileManifestRequired = $true
+            AdapterState = $adapter.State
+        }
+        [pscustomobject]@{
+            Adapter = $adapter
+            Context = $context
+        }
+    }
+
+    function Invoke-CountdownIssue4DefaultAdapterRejection {
+        param([Parameter(Mandatory)] [object] $Fixture)
+
+        foreach ($name in @(
+                'CountdownIssue4InstallTransactionSentinel',
+                'CountdownIssue4InstallerSentinel',
+                'CountdownIssue4WindowsActionSentinel',
+                'CountdownIssue4MaliciousReleaseSentinel')) {
+            Remove-Variable -Name $name -Scope Global -ErrorAction SilentlyContinue
+        }
+        $message = ''
+        try {
+            [void] (& $Fixture.Adapter.Begin $Fixture.Adapter.State $Fixture.Context)
+        }
+        catch {
+            $message = $_.Exception.Message
+        }
+        finally {
+            [void] (& $Fixture.Adapter.Dispose $Fixture.Adapter.State $Fixture.Context)
+        }
+        $result = [pscustomobject]@{
+            Message = $message
+            TransactionModuleImported = [bool] $Fixture.Adapter.State.TransactionModuleImported
+            InstallStarted = [bool] $Fixture.Adapter.State.InstallStarted
+            InstallTransactionSentinel = $null -ne (Get-Variable -Name CountdownIssue4InstallTransactionSentinel -Scope Global -ErrorAction SilentlyContinue)
+            InstallerSentinel = $null -ne (Get-Variable -Name CountdownIssue4InstallerSentinel -Scope Global -ErrorAction SilentlyContinue)
+            WindowsActionSentinel = $null -ne (Get-Variable -Name CountdownIssue4WindowsActionSentinel -Scope Global -ErrorAction SilentlyContinue)
+            MaliciousReleaseSentinel = $null -ne (Get-Variable -Name CountdownIssue4MaliciousReleaseSentinel -Scope Global -ErrorAction SilentlyContinue)
+        }
+        foreach ($name in @(
+                'CountdownIssue4InstallTransactionSentinel',
+                'CountdownIssue4InstallerSentinel',
+                'CountdownIssue4WindowsActionSentinel',
+                'CountdownIssue4MaliciousReleaseSentinel')) {
+            Remove-Variable -Name $name -Scope Global -ErrorAction SilentlyContinue
+        }
+        Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+        Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
+        $result
+    }
+
+    function Invoke-CountdownIssue4AtomicReplacementProbe {
+        param(
+            [Parameter(Mandatory)] [string] $DestinationPath,
+            [Parameter(Mandatory)] [string] $ReplacementPath,
+            [Parameter(Mandatory)] [string] $BackupPath,
+            [switch] $Restore
+        )
+
+        try {
+            [System.IO.File]::Replace($ReplacementPath, $DestinationPath, $BackupPath, $true)
+            if ($Restore) {
+                [System.IO.File]::Replace($BackupPath, $DestinationPath, $ReplacementPath, $true)
+            }
+            $true
+        }
+        catch {
+            $false
+        }
+    }
+
     try {
         New-Item -ItemType Directory -Path $remoteDeploymentSource -Force | Out-Null
         New-Item -ItemType Directory -Path $remoteDeploymentInstall -Force | Out-Null
@@ -496,8 +741,8 @@ function Invoke-CountdownTransactionAcceptance {
         AcceptanceState = 'finalized-ready'
         RuntimeProcessId = 4242
         TaskState = 'Running'
-        SettingsHashBefore = 'before-hash'
-        SettingsHashAfter = 'after-hash'
+        SettingsHashBefore = ('A' * 64)
+        SettingsHashAfter = ('B' * 64)
     }
 }
 
@@ -508,6 +753,547 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
             (Join-Path $remoteDeploymentInstall 'settings.json'),
             '{"sensitive-settings-sentinel":true}',
             [System.Text.UTF8Encoding]::new($false))
+
+        $trustedLoaderRoot = Join-Path $remoteDeploymentTestRoot 'trusted-source-loader'
+        $trustedLoaderModulePath = Join-Path $trustedLoaderRoot 'Issue4.SourceLoader.Fixture.psm1'
+        $trustedLoaderMaliciousPath = Join-Path $remoteDeploymentTestRoot 'Issue4.SourceLoader.Malicious.psm1'
+        $trustedLoaderBackupPath = Join-Path $remoteDeploymentTestRoot 'Issue4.SourceLoader.Backup.psm1'
+        $trustedLoaderSource = @'
+function Get-CountdownIssue4SourceLoaderValue { 'benign' }
+Export-ModuleMember -Function Get-CountdownIssue4SourceLoaderValue
+'@
+        $maliciousLoaderSource = @'
+Set-Variable -Scope Global -Name CountdownIssue4RemoteLoaderSentinel -Value 'executed'
+function Get-CountdownIssue4SourceLoaderValue { 'malicious' }
+Export-ModuleMember -Function Get-CountdownIssue4SourceLoaderValue
+'@
+        New-Item -ItemType Directory -Path $trustedLoaderRoot -Force | Out-Null
+        [System.IO.File]::WriteAllText(
+            $trustedLoaderModulePath,
+            $trustedLoaderSource,
+            [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText(
+            $trustedLoaderMaliciousPath,
+            $maliciousLoaderSource,
+            [System.Text.UTF8Encoding]::new($false))
+        $trustedLoaderHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $trustedLoaderModulePath).Hash
+        $trustedLoaderManifest = [ordered]@{
+            'Issue4.SourceLoader.Fixture.psm1' = $trustedLoaderHash
+        }
+        $trustedLoaderState = [pscustomobject]@{
+            SourceFileLocks = $null
+            InstalledFileLocks = $null
+        }
+        $trustedLoaderContext = [pscustomobject]@{
+            SourceRoot = $trustedLoaderRoot
+            InstallPath = $trustedLoaderRoot
+            ExpectedFileSha256 = $trustedLoaderManifest
+            TrustedFileManifestRequired = $true
+            AdapterState = $trustedLoaderState
+        }
+        $remoteDeploymentModule = Get-Module -Name Countdown.RemoteDeployment | Select-Object -First 1
+        $trustedLoaderState.SourceFileLocks = & $remoteDeploymentModule {
+            param($root, $manifest)
+            Enter-CountdownRemoteDeploymentFileLocks `
+                -Root $root `
+                -ExpectedFileSha256 $manifest `
+                -RelativePaths @('Issue4.SourceLoader.Fixture.psm1') `
+                -Stage '远端 source-loader 夹具'
+        } $trustedLoaderRoot $trustedLoaderManifest
+        $trustedLoaderSwapState = [pscustomobject]@{
+            Rejected = $false
+            Succeeded = $false
+            Restored = $false
+            ImportedValue = ''
+        }
+        Remove-Variable -Name CountdownIssue4RemoteLoaderSentinel -Scope Global -ErrorAction SilentlyContinue
+        $trustedLoaderAction = {
+            param($lockedPath)
+            try {
+                [System.IO.File]::Replace(
+                    $trustedLoaderMaliciousPath,
+                    $lockedPath,
+                    $trustedLoaderBackupPath,
+                    $true)
+                $trustedLoaderSwapState.Succeeded = $true
+                try {
+                    $fixtureModule = Import-Module $lockedPath -Force -PassThru
+                    $trustedLoaderSwapState.ImportedValue = & $fixtureModule { Get-CountdownIssue4SourceLoaderValue }
+                }
+                finally {
+                    [System.IO.File]::Replace(
+                        $trustedLoaderBackupPath,
+                        $lockedPath,
+                        $trustedLoaderMaliciousPath,
+                        $true)
+                    $trustedLoaderSwapState.Restored = $true
+                }
+            }
+            catch {
+                if ($trustedLoaderSwapState.Succeeded) { throw }
+                $trustedLoaderSwapState.Rejected = $true
+                $fixtureModule = Import-Module $lockedPath -Force -PassThru
+                $trustedLoaderSwapState.ImportedValue = & $fixtureModule { Get-CountdownIssue4SourceLoaderValue }
+            }
+        }.GetNewClosure()
+        try {
+            & $remoteDeploymentModule {
+                param($context, $action)
+                Invoke-CountdownRemoteDeploymentTrustedFile `
+                    -Context $context `
+                    -Location Source `
+                    -RelativePath 'Issue4.SourceLoader.Fixture.psm1' `
+                    -Stage '远端 source-loader 导入窗口夹具' `
+                    -Action $action
+            } $trustedLoaderContext $trustedLoaderAction
+        }
+        finally {
+            & $remoteDeploymentModule {
+                param($locks)
+                Exit-CountdownRemoteDeploymentFileLocks -Locks $locks
+            } $trustedLoaderState.SourceFileLocks
+            $trustedLoaderState.SourceFileLocks = $null
+        }
+        Assert-Equal $true $trustedLoaderSwapState.Rejected 'Default remote source-loader rejects an atomic malicious replacement'
+        Assert-Equal $false $trustedLoaderSwapState.Succeeded 'Malicious remote module cannot enter the verified loader window'
+        Assert-Equal $false $trustedLoaderSwapState.Restored 'Rejected remote replacement never opens a restore window'
+        Assert-Equal 'benign' $trustedLoaderSwapState.ImportedValue 'Default remote source-loader imports the same benign bytes that passed SHA-256 verification'
+        Assert-Equal $false ($null -ne (Get-Variable -Name CountdownIssue4RemoteLoaderSentinel -Scope Global -ErrorAction SilentlyContinue)) 'Default remote source-loader never executes the malicious sentinel'
+        Remove-Module Issue4.SourceLoader.Fixture -Force -ErrorAction SilentlyContinue
+
+        $missingDefaultManifestRejected = $false
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath $remoteDeploymentReceipt `
+                -TaskName 'Minmin Countdown Manifest Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Manifest Fixture' | Out-Null
+        }
+        catch {
+            $missingDefaultManifestRejected = $_.Exception.Message -match '默认部署 adapter 缺少受信文件 identity'
+        }
+        Assert-Equal $true $missingDefaultManifestRejected 'Default remote adapter fails closed before Windows actions when the trusted file manifest is absent'
+
+        $driftedHashResult = Invoke-CountdownIssue4DefaultAdapterRejection -Fixture (
+            New-CountdownIssue4DefaultAdapterPackage `
+                -Name 'hash-drift' `
+                -DriftReleaseContractAfterManifest)
+        $missingPackageMemberResult = Invoke-CountdownIssue4DefaultAdapterRejection -Fixture (
+            New-CountdownIssue4DefaultAdapterPackage `
+                -Name 'missing-package-member' `
+                -IncludeExtraPackageFile `
+                -OmitExtraManifestEntry)
+        $extraManifestMemberResult = Invoke-CountdownIssue4DefaultAdapterRejection -Fixture (
+            New-CountdownIssue4DefaultAdapterPackage `
+                -Name 'extra-manifest-member' `
+                -IncludeUnexpectedManifestEntry)
+        $contractHashConflictResult = Invoke-CountdownIssue4DefaultAdapterRejection -Fixture (
+            New-CountdownIssue4DefaultAdapterPackage `
+                -Name 'contract-hash-conflict' `
+                -ContractHashConflict)
+
+        foreach ($case in @(
+                [pscustomobject]@{
+                    Name = 'Hash drift before source locking'
+                    Result = $driftedHashResult
+                    Pattern = '锁定远端部署源文件：受信文件 SHA-256 不匹配：Countdown\.ReleaseContract\.psm1'
+                },
+                [pscustomobject]@{
+                    Name = 'Missing non-entry package member'
+                    Result = $missingPackageMemberResult
+                    Pattern = '远端部署预期文件 manifest 与发布契约文件数量不一致'
+                },
+                [pscustomobject]@{
+                    Name = 'Extra manifest member and count drift'
+                    Result = $extraManifestMemberResult
+                    Pattern = '远端部署预期文件 manifest 与发布契约文件数量不一致'
+                },
+                [pscustomobject]@{
+                    Name = 'Manifest and release contract hash conflict'
+                    Result = $contractHashConflictResult
+                    Pattern = '远端部署预期文件 manifest 与发布契约哈希不一致：Countdown\.InstallTransaction\.psm1'
+                })) {
+            Assert-Equal $true ($case.Result.Message -match $case.Pattern) "$($case.Name) fails closed with the expected reason"
+            Assert-Equal $false ([bool] $case.Result.TransactionModuleImported) "$($case.Name) fails before the install transaction module is imported"
+            Assert-Equal $false ([bool] $case.Result.InstallStarted) "$($case.Name) fails before the installer starts"
+            Assert-Equal $false ([bool] $case.Result.InstallTransactionSentinel) "$($case.Name) never executes the install transaction sentinel"
+            Assert-Equal $false ([bool] $case.Result.InstallerSentinel) "$($case.Name) never executes the installer sentinel"
+            Assert-Equal $false ([bool] $case.Result.WindowsActionSentinel) "$($case.Name) fails before Windows actions"
+            Assert-Equal $false ([bool] $case.Result.MaliciousReleaseSentinel) "$($case.Name) never executes drifted release-contract bytes"
+        }
+
+        $acceptLockRoot = Join-Path $remoteDeploymentTestRoot 'issue4-accept-locks'
+        $acceptSourceRoot = Join-Path $acceptLockRoot 'source'
+        $acceptInstallRoot = Join-Path $acceptLockRoot 'install'
+        New-Item -ItemType Directory -Path $acceptSourceRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $acceptInstallRoot -Force | Out-Null
+        foreach ($file in @(
+                'Countdown.InstallTransaction.psm1',
+                'Countdown.Runtime.psm1',
+                'Countdown.TransactionAcceptance.psm1')) {
+            Copy-Item `
+                -LiteralPath (Join-Path $remoteDeploymentSource $file) `
+                -Destination (Join-Path $acceptSourceRoot $file) `
+                -Force
+        }
+        [System.IO.File]::WriteAllText(
+            (Join-Path $acceptSourceRoot 'Countdown.TransactionAcceptance.psm1'),
+            @'
+function Test-CountdownIssue4AcceptReplacementRejected {
+    param(
+        [string] $DestinationPath,
+        [string] $ReplacementPath,
+        [string] $BackupPath
+    )
+
+    try {
+        [System.IO.File]::Replace($ReplacementPath, $DestinationPath, $BackupPath, $true)
+    }
+    catch {
+        return $true
+    }
+    [System.IO.File]::Replace($BackupPath, $DestinationPath, $ReplacementPath, $true)
+    $false
+}
+
+function Invoke-CountdownTransactionAcceptance {
+    param(
+        [string] $StartupRequestPath,
+        [string] $RuntimeStatusPath,
+        [string] $AcceptanceStatusPath,
+        [string] $LaunchToken,
+        [object] $ExpectedInteractiveContext,
+        [int] $ExpectedProcessId,
+        [int] $ExpectedSessionId,
+        [string] $ExpectedApplicationPath,
+        [string] $TaskName,
+        [string] $ExpectedScheduledTaskIdentity,
+        [string] $SettingsSnapshotPath,
+        [string] $SettingsPath,
+        [scriptblock] $GetInteractiveContext,
+        [scriptblock] $GetScheduledTask,
+        [scriptblock] $GetScheduledTaskIdentity,
+        [scriptblock] $CompleteTransaction,
+        [scriptblock] $RemoveCommittedTransaction
+    )
+
+    $global:CountdownIssue4AcceptDuringSourceReplacementRejected =
+        Test-CountdownIssue4AcceptReplacementRejected `
+            -DestinationPath $global:CountdownIssue4AcceptSourceProbePath `
+            -ReplacementPath $global:CountdownIssue4AcceptSourceReplacementPath `
+            -BackupPath $global:CountdownIssue4AcceptDuringSourceBackupPath
+    $global:CountdownIssue4AcceptDuringInstalledReplacementRejected =
+        Test-CountdownIssue4AcceptReplacementRejected `
+            -DestinationPath $global:CountdownIssue4AcceptInstalledProbePath `
+            -ReplacementPath $global:CountdownIssue4AcceptInstalledReplacementPath `
+            -BackupPath $global:CountdownIssue4AcceptDuringInstalledBackupPath
+
+    [void] (& $CompleteTransaction)
+    [void] (& $RemoveCommittedTransaction)
+    [pscustomobject]@{
+        AcceptanceState = 'finalized-ready'
+        RuntimeProcessId = 4242
+        TaskState = 'Running'
+        SettingsHashBefore = ('A' * 64)
+        SettingsHashAfter = ('B' * 64)
+    }
+}
+
+Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
+'@,
+            [System.Text.UTF8Encoding]::new($false))
+        Copy-Item `
+            -LiteralPath (Join-Path $remoteDeploymentInstall 'Countdown.Settings.psm1') `
+            -Destination (Join-Path $acceptInstallRoot 'Countdown.Settings.psm1') `
+            -Force
+        $acceptSourceProbePath = Join-Path $acceptSourceRoot 'issue4-source-lock.txt'
+        $acceptSourceReplacementPath = Join-Path $acceptSourceRoot 'issue4-source-replacement.txt'
+        $acceptInstalledProbePath = Join-Path $acceptInstallRoot 'issue4-installed-lock.txt'
+        $acceptInstalledReplacementPath = Join-Path $acceptInstallRoot 'issue4-installed-replacement.txt'
+        [System.IO.File]::WriteAllText($acceptSourceProbePath, 'source-benign', [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($acceptSourceReplacementPath, 'source-malicious', [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($acceptInstalledProbePath, 'installed-benign', [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($acceptInstalledReplacementPath, 'installed-malicious', [System.Text.UTF8Encoding]::new($false))
+        $acceptManifest = [ordered]@{}
+        foreach ($file in @(
+                'Countdown.InstallTransaction.psm1',
+                'Countdown.Runtime.psm1',
+                'Countdown.TransactionAcceptance.psm1',
+                'issue4-source-lock.txt')) {
+            $acceptManifest[$file] = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $acceptSourceRoot $file)).Hash
+        }
+        foreach ($file in @('Countdown.Settings.psm1', 'issue4-installed-lock.txt')) {
+            $acceptManifest[$file] = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $acceptInstallRoot $file)).Hash
+        }
+        $acceptAdapter = & $remoteDeploymentModule { New-CountdownRemoteDeploymentWindowsAdapter }
+        $acceptTransactionPath = Join-Path $acceptLockRoot 'transaction'
+        New-Item -ItemType Directory -Path $acceptTransactionPath -Force | Out-Null
+        $acceptAdapter.State.RollbackTransactionPath = $acceptTransactionPath
+        $acceptAdapter.State.InteractiveContext = [pscustomobject]@{
+            User = 'MINMIN\Issue4AcceptLocks'
+            SessionId = 7
+            Desktop = Join-Path $acceptLockRoot 'desktop'
+        }
+        $acceptAdapter.State.LauncherPath = Join-Path $acceptLockRoot 'desktop\敏敏子倒计时.exe'
+        $acceptAdapter.State.LegacyLauncherPath = Join-Path $acceptLockRoot 'desktop\敏敏子倒计时.cmd'
+        $acceptAdapter.State.LauncherTempPath = "$($acceptAdapter.State.LauncherPath).new"
+        $acceptAdapter.State.SettingsSnapshotPath = Join-Path $acceptTransactionPath 'install-backup\settings.json'
+        $acceptAdapter.State.SettingsPath = Join-Path $acceptInstallRoot 'settings.json'
+        $acceptAdapter.State.StartupRequestPath = Join-Path $acceptInstallRoot 'startup-request.json'
+        $acceptAdapter.State.RuntimeStatusPath = Join-Path $acceptInstallRoot 'runtime-status.json'
+        $acceptAdapter.State.AcceptanceStatusPath = Join-Path $acceptInstallRoot 'acceptance-status.json'
+        $acceptAdapter.State.LaunchToken = 'issue4-accept-lock-token'
+        $acceptAdapter.State.ExpectedProcessId = 4242
+        $acceptAdapter.State.ExpectedScheduledTaskIdentity = '<Task />'
+        $acceptContext = [pscustomobject]@{
+            SourceRoot = $acceptSourceRoot
+            InstallPath = $acceptInstallRoot
+            PowerShell7Path = $remoteDeploymentPowerShell
+            DeferredReceiptPath = Join-Path $acceptLockRoot 'deferred-install-receipt.json'
+            TaskName = 'Issue4 Accept Locks'
+            LegacyTaskName = 'Issue4 Accept Locks Legacy'
+            ExpectedFileSha256 = $acceptManifest
+            TrustedFileManifestRequired = $true
+            AdapterState = $acceptAdapter.State
+        }
+        $acceptAdapter.State.SourceFileLocks = & $remoteDeploymentModule {
+            param($root, $manifest)
+            Enter-CountdownRemoteDeploymentFileLocks `
+                -Root $root `
+                -ExpectedFileSha256 $manifest `
+                -RelativePaths ([string[]] @(
+                        'Countdown.InstallTransaction.psm1',
+                        'Countdown.Runtime.psm1',
+                        'Countdown.TransactionAcceptance.psm1',
+                        'issue4-source-lock.txt')) `
+                -Stage 'Issue #4 Accept source locks'
+        } $acceptSourceRoot $acceptManifest
+        $acceptAdapter.State.InstalledFileLocks = & $remoteDeploymentModule {
+            param($root, $manifest)
+            Enter-CountdownRemoteDeploymentFileLocks `
+                -Root $root `
+                -ExpectedFileSha256 $manifest `
+                -RelativePaths ([string[]] @('Countdown.Settings.psm1', 'issue4-installed-lock.txt')) `
+                -Stage 'Issue #4 Accept installed locks'
+        } $acceptInstallRoot $acceptManifest
+        $acceptSourceReplacementRejected = -not (Invoke-CountdownIssue4AtomicReplacementProbe `
+                -DestinationPath $acceptSourceProbePath `
+                -ReplacementPath $acceptSourceReplacementPath `
+                -BackupPath (Join-Path $acceptSourceRoot 'issue4-source-backup.txt'))
+        $acceptInstalledReplacementRejected = -not (Invoke-CountdownIssue4AtomicReplacementProbe `
+                -DestinationPath $acceptInstalledProbePath `
+                -ReplacementPath $acceptInstalledReplacementPath `
+                -BackupPath (Join-Path $acceptInstallRoot 'issue4-installed-backup.txt'))
+        $global:CountdownIssue4AcceptSourceProbePath = $acceptSourceProbePath
+        $global:CountdownIssue4AcceptSourceReplacementPath = $acceptSourceReplacementPath
+        $global:CountdownIssue4AcceptInstalledProbePath = $acceptInstalledProbePath
+        $global:CountdownIssue4AcceptInstalledReplacementPath = $acceptInstalledReplacementPath
+        $global:CountdownIssue4AcceptDuringSourceBackupPath = Join-Path $acceptSourceRoot 'issue4-source-backup-during-accept.txt'
+        $global:CountdownIssue4AcceptDuringInstalledBackupPath = Join-Path $acceptInstallRoot 'issue4-installed-backup-during-accept.txt'
+        $global:CountdownIssue4AcceptDuringSourceReplacementRejected = $false
+        $global:CountdownIssue4AcceptDuringInstalledReplacementRejected = $false
+        $acceptResult = $null
+        $acceptDuringSourceReplacementRejected = $false
+        $acceptDuringInstalledReplacementRejected = $false
+        $acceptAfterSourceReplacementRejected = $false
+        $acceptAfterInstalledReplacementRejected = $false
+        try {
+            $acceptResult = & $acceptAdapter.Accept $acceptAdapter.State $acceptContext ([pscustomobject]@{})
+            $acceptDuringSourceReplacementRejected = [bool] $global:CountdownIssue4AcceptDuringSourceReplacementRejected
+            $acceptDuringInstalledReplacementRejected = [bool] $global:CountdownIssue4AcceptDuringInstalledReplacementRejected
+            $acceptAfterSourceReplacementRejected = -not (Invoke-CountdownIssue4AtomicReplacementProbe `
+                    -DestinationPath $acceptSourceProbePath `
+                    -ReplacementPath $acceptSourceReplacementPath `
+                    -BackupPath (Join-Path $acceptSourceRoot 'issue4-source-backup-after-accept.txt'))
+            $acceptAfterInstalledReplacementRejected = -not (Invoke-CountdownIssue4AtomicReplacementProbe `
+                    -DestinationPath $acceptInstalledProbePath `
+                    -ReplacementPath $acceptInstalledReplacementPath `
+                    -BackupPath (Join-Path $acceptInstallRoot 'issue4-installed-backup-after-accept.txt'))
+        }
+        finally {
+            [void] (& $acceptAdapter.Dispose $acceptAdapter.State $acceptContext)
+            foreach ($name in @(
+                    'CountdownIssue4AcceptSourceProbePath',
+                    'CountdownIssue4AcceptSourceReplacementPath',
+                    'CountdownIssue4AcceptInstalledProbePath',
+                    'CountdownIssue4AcceptInstalledReplacementPath',
+                    'CountdownIssue4AcceptDuringSourceBackupPath',
+                    'CountdownIssue4AcceptDuringInstalledBackupPath',
+                    'CountdownIssue4AcceptDuringSourceReplacementRejected',
+                    'CountdownIssue4AcceptDuringInstalledReplacementRejected')) {
+                Remove-Variable -Name $name -Scope Global -ErrorAction SilentlyContinue
+            }
+            Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+            Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
+            Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
+            Import-Module (Join-Path $PSScriptRoot 'Countdown.TransactionAcceptance.psm1') -Force
+        }
+        Assert-Equal $true $acceptSourceReplacementRejected 'Default adapter keeps source locks through the point immediately before Accept'
+        Assert-Equal $true $acceptInstalledReplacementRejected 'Default adapter keeps installed locks through the point immediately before Accept'
+        Assert-Equal $true $acceptDuringSourceReplacementRejected 'Default adapter rejects source replacement inside the Accept behavior chain'
+        Assert-Equal $true $acceptDuringInstalledReplacementRejected 'Default adapter rejects installed-file replacement inside the Accept behavior chain'
+        Assert-Equal 'finalized-ready' ([string] $acceptResult.AcceptanceState) 'Default adapter Accept completes while source and installed files remain locked'
+        Assert-Equal $true $acceptAfterSourceReplacementRejected 'Default adapter keeps source locks after Accept returns and before Dispose'
+        Assert-Equal $true $acceptAfterInstalledReplacementRejected 'Default adapter keeps installed locks after Accept returns and before Dispose'
+        Assert-Equal $null $acceptAdapter.State.SourceFileLocks 'Default adapter Dispose clears source lock state'
+        Assert-Equal $null $acceptAdapter.State.InstalledFileLocks 'Default adapter Dispose clears installed lock state'
+        Assert-Equal $true (Invoke-CountdownIssue4AtomicReplacementProbe `
+                -DestinationPath $acceptSourceProbePath `
+                -ReplacementPath $acceptSourceReplacementPath `
+                -BackupPath (Join-Path $acceptSourceRoot 'issue4-source-backup-after-dispose.txt') `
+                -Restore) 'Default adapter Dispose releases source locks'
+        Assert-Equal $true (Invoke-CountdownIssue4AtomicReplacementProbe `
+                -DestinationPath $acceptInstalledProbePath `
+                -ReplacementPath $acceptInstalledReplacementPath `
+                -BackupPath (Join-Path $acceptInstallRoot 'issue4-installed-backup-after-dispose.txt') `
+                -Restore) 'Default adapter Dispose releases installed locks'
+
+        $rollbackLockRoot = Join-Path $remoteDeploymentTestRoot 'issue4-rollback-locks'
+        $rollbackSourceRoot = Join-Path $rollbackLockRoot 'source'
+        $rollbackInstallRoot = Join-Path $rollbackLockRoot 'install'
+        $rollbackTransactionPath = Join-Path $rollbackLockRoot 'transaction'
+        New-Item -ItemType Directory -Path $rollbackSourceRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $rollbackInstallRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $rollbackTransactionPath -Force | Out-Null
+        [System.IO.File]::WriteAllText(
+            (Join-Path $rollbackTransactionPath 'journal.json'),
+            '{}',
+            [System.Text.UTF8Encoding]::new($false))
+        $rollbackTransactionModulePath = Join-Path $rollbackSourceRoot 'Countdown.InstallTransaction.psm1'
+        [System.IO.File]::WriteAllText(
+            $rollbackTransactionModulePath,
+            @'
+function Undo-CountdownInstallTransaction {
+    param(
+        [string] $TransactionPath,
+        [string] $PowerShell7Path,
+        [string] $ExpectedInstallPath,
+        [string] $ExpectedTaskName,
+        [string] $ExpectedLegacyTaskName,
+        [string] $ExpectedLauncherPath,
+        [string] $ExpectedLegacyLauncherPath,
+        [string] $ExpectedLauncherTempPath,
+        [switch] $PreserveUnmanagedLaunchers
+    )
+
+    try {
+        [System.IO.File]::Replace(
+            $global:CountdownIssue4RollbackInstalledReplacementPath,
+            $global:CountdownIssue4RollbackInstalledProbePath,
+            $global:CountdownIssue4RollbackInstalledBackupPath,
+            $true)
+        $global:CountdownIssue4RollbackInstalledReplacementSucceeded = $true
+        [System.IO.File]::Replace(
+            $global:CountdownIssue4RollbackInstalledBackupPath,
+            $global:CountdownIssue4RollbackInstalledProbePath,
+            $global:CountdownIssue4RollbackInstalledReplacementPath,
+            $true)
+    }
+    catch {
+        $global:CountdownIssue4RollbackInstalledReplacementSucceeded = $false
+    }
+    try {
+        [System.IO.File]::Replace(
+            $global:CountdownIssue4RollbackSourceReplacementPath,
+            $global:CountdownIssue4RollbackSourceProbePath,
+            $global:CountdownIssue4RollbackSourceBackupPath,
+            $true)
+        $global:CountdownIssue4RollbackSourceReplacementRejected = $false
+    }
+    catch {
+        $global:CountdownIssue4RollbackSourceReplacementRejected = $true
+    }
+    [pscustomobject]@{ PreservedUnmanagedLaunchers = $false }
+}
+
+Export-ModuleMember -Function Undo-CountdownInstallTransaction
+'@,
+            [System.Text.UTF8Encoding]::new($false))
+        $rollbackSourceProbePath = Join-Path $rollbackSourceRoot 'issue4-source-lock.txt'
+        $rollbackSourceReplacementPath = Join-Path $rollbackSourceRoot 'issue4-source-replacement.txt'
+        $rollbackInstalledProbePath = Join-Path $rollbackInstallRoot 'issue4-installed-lock.txt'
+        $rollbackInstalledReplacementPath = Join-Path $rollbackInstallRoot 'issue4-installed-replacement.txt'
+        [System.IO.File]::WriteAllText($rollbackSourceProbePath, 'source-benign', [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($rollbackSourceReplacementPath, 'source-malicious', [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($rollbackInstalledProbePath, 'installed-benign', [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($rollbackInstalledReplacementPath, 'installed-malicious', [System.Text.UTF8Encoding]::new($false))
+        $global:CountdownIssue4RollbackInstalledProbePath = $rollbackInstalledProbePath
+        $global:CountdownIssue4RollbackInstalledReplacementPath = $rollbackInstalledReplacementPath
+        $global:CountdownIssue4RollbackInstalledBackupPath = Join-Path $rollbackInstallRoot 'issue4-installed-backup.txt'
+        $global:CountdownIssue4RollbackSourceProbePath = $rollbackSourceProbePath
+        $global:CountdownIssue4RollbackSourceReplacementPath = $rollbackSourceReplacementPath
+        $global:CountdownIssue4RollbackSourceBackupPath = Join-Path $rollbackSourceRoot 'issue4-source-backup.txt'
+        $global:CountdownIssue4RollbackInstalledReplacementSucceeded = $false
+        $global:CountdownIssue4RollbackSourceReplacementRejected = $false
+        $rollbackManifest = [ordered]@{
+            'Countdown.InstallTransaction.psm1' = (Get-FileHash -Algorithm SHA256 -LiteralPath $rollbackTransactionModulePath).Hash
+            'issue4-source-lock.txt' = (Get-FileHash -Algorithm SHA256 -LiteralPath $rollbackSourceProbePath).Hash
+            'issue4-installed-lock.txt' = (Get-FileHash -Algorithm SHA256 -LiteralPath $rollbackInstalledProbePath).Hash
+        }
+        $rollbackAdapter = & $remoteDeploymentModule { New-CountdownRemoteDeploymentWindowsAdapter }
+        $rollbackAdapter.State.TransactionModuleImported = $true
+        $rollbackAdapter.State.InstallStarted = $true
+        $rollbackAdapter.State.RollbackTransactionPath = $rollbackTransactionPath
+        $rollbackAdapter.State.LauncherPath = Join-Path $rollbackLockRoot 'desktop\敏敏子倒计时.exe'
+        $rollbackAdapter.State.LegacyLauncherPath = Join-Path $rollbackLockRoot 'desktop\敏敏子倒计时.cmd'
+        $rollbackAdapter.State.LauncherTempPath = "$($rollbackAdapter.State.LauncherPath).new"
+        $rollbackContext = [pscustomobject]@{
+            SourceRoot = $rollbackSourceRoot
+            InstallPath = $rollbackInstallRoot
+            PowerShell7Path = $remoteDeploymentPowerShell
+            DeferredReceiptPath = Join-Path $rollbackLockRoot 'deferred-install-receipt.json'
+            TaskName = 'Issue4 Rollback Locks'
+            LegacyTaskName = 'Issue4 Rollback Locks Legacy'
+            ExpectedFileSha256 = $rollbackManifest
+            TrustedFileManifestRequired = $true
+            AdapterState = $rollbackAdapter.State
+        }
+        $rollbackAdapter.State.SourceFileLocks = & $remoteDeploymentModule {
+            param($root, $manifest)
+            Enter-CountdownRemoteDeploymentFileLocks `
+                -Root $root `
+                -ExpectedFileSha256 $manifest `
+                -RelativePaths ([string[]] @('Countdown.InstallTransaction.psm1', 'issue4-source-lock.txt')) `
+                -Stage 'Issue #4 Rollback source locks'
+        } $rollbackSourceRoot $rollbackManifest
+        $rollbackAdapter.State.InstalledFileLocks = & $remoteDeploymentModule {
+            param($root, $manifest)
+            Enter-CountdownRemoteDeploymentFileLocks `
+                -Root $root `
+                -ExpectedFileSha256 $manifest `
+                -RelativePaths ([string[]] @('issue4-installed-lock.txt')) `
+                -Stage 'Issue #4 Rollback installed locks'
+        } $rollbackInstallRoot $rollbackManifest
+        try {
+            [void] (& $rollbackAdapter.Rollback $rollbackAdapter.State $rollbackContext ([pscustomobject]@{}))
+            Assert-Equal $true ([bool] $global:CountdownIssue4RollbackInstalledReplacementSucceeded) 'Default adapter Rollback releases installed locks before restoring the install directory'
+            Assert-Equal $true ([bool] $global:CountdownIssue4RollbackSourceReplacementRejected) 'Default adapter Rollback retains source locks while restoring the install directory'
+            Assert-Equal $null $rollbackAdapter.State.InstalledFileLocks 'Default adapter Rollback clears installed lock state before restoration'
+            Assert-Equal $true ($null -ne $rollbackAdapter.State.SourceFileLocks) 'Default adapter Rollback keeps source lock state until Dispose'
+        }
+        finally {
+            [void] (& $rollbackAdapter.Dispose $rollbackAdapter.State $rollbackContext)
+            foreach ($name in @(
+                    'CountdownIssue4RollbackInstalledProbePath',
+                    'CountdownIssue4RollbackInstalledReplacementPath',
+                    'CountdownIssue4RollbackInstalledBackupPath',
+                    'CountdownIssue4RollbackSourceProbePath',
+                    'CountdownIssue4RollbackSourceReplacementPath',
+                    'CountdownIssue4RollbackSourceBackupPath',
+                    'CountdownIssue4RollbackInstalledReplacementSucceeded',
+                    'CountdownIssue4RollbackSourceReplacementRejected')) {
+                Remove-Variable -Name $name -Scope Global -ErrorAction SilentlyContinue
+            }
+            Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+        }
+        Assert-Equal $null $rollbackAdapter.State.SourceFileLocks 'Default adapter Dispose clears the source locks retained by Rollback'
+        Assert-Equal $true (Invoke-CountdownIssue4AtomicReplacementProbe `
+                -DestinationPath $rollbackSourceProbePath `
+                -ReplacementPath $rollbackSourceReplacementPath `
+                -BackupPath (Join-Path $rollbackSourceRoot 'issue4-source-backup-after-dispose.txt') `
+                -Restore) 'Default adapter Dispose finally releases Rollback source locks'
 
         $missingAcceptancePath = Join-Path $remoteDeploymentTestRoot 'missing-acceptance-status.json'
         $expectedAcceptanceApplicationPath = Join-Path $remoteDeploymentInstall '敏敏子倒计时.ps1'
@@ -570,6 +1356,296 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $true ([bool] $successFixture.State.Accepted) 'Remote deployment success reaches acceptance'
         Assert-Equal $false ([bool] $successFixture.State.RolledBack) 'Remote deployment success does not roll back'
         Assert-Equal $true ([bool] $successFixture.State.Disposed) 'Remote deployment success releases its host adapter'
+
+        $expectedDeploymentBindingHash = '9' * 64
+        $bindingTestRoot = Join-Path $remoteDeploymentTestRoot 'binding-success'
+        New-Item -ItemType Directory -Path $bindingTestRoot -Force | Out-Null
+        $remoteBindingPath = Join-Path $bindingTestRoot 'deployment-binding.json'
+        $bindingFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode Success
+        $bindingResult = Invoke-CountdownRemoteDeployment `
+            -SourceRoot $remoteDeploymentSource `
+            -InstallPath $remoteDeploymentInstall `
+            -PowerShell7Path $remoteDeploymentPowerShell `
+            -DeferredReceiptPath (Join-Path $bindingTestRoot 'deferred-install-receipt.json') `
+            -TaskName 'Minmin Countdown Fixture' `
+            -LegacyTaskName '敏敏子倒计时 Fixture' `
+            -DeploymentBindingPath $remoteBindingPath `
+            -DeploymentBindingSha256 $expectedDeploymentBindingHash `
+            -Adapter $bindingFixture.Adapter
+        $bindingBytes = [System.IO.File]::ReadAllBytes($remoteBindingPath)
+        $bindingDocument = ConvertFrom-CountdownRemoteDeploymentBindingJson `
+            -Json ([System.Text.UTF8Encoding]::new($false, $true).GetString($bindingBytes)) `
+            -ExpectedDeploymentBindingSha256 $expectedDeploymentBindingHash `
+            -ExpectedProcessId 4242
+        $expectedFixtureTokenHash = [Convert]::ToHexString(
+            [System.Security.Cryptography.SHA256]::HashData(
+                [System.Text.UTF8Encoding]::new($false).GetBytes('sensitive-launch-token-sentinel')))
+        Assert-Equal 14 @($bindingResult.PSObject.Properties).Count 'Deployment binding does not change the strict success receipt schema'
+        Assert-Equal 4 @($bindingDocument.PSObject.Properties).Count 'Deployment binding sidecar uses the exact independent schema'
+        Assert-Equal $expectedDeploymentBindingHash ([string] $bindingDocument.DeploymentBindingSha256) 'Deployment binding sidecar preserves the locally generated nonce hash'
+        Assert-Equal $expectedFixtureTokenHash ([string] $bindingDocument.TokenSha256) 'Deployment binding sidecar binds the committed launch token hash'
+        Assert-Equal $false ([bool] $bindingFixture.State.RolledBack) 'Successful binding publication never rolls back a committed deployment'
+
+        $bindingFailureTestRoot = Join-Path $remoteDeploymentTestRoot 'binding-failure'
+        New-Item -ItemType Directory -Path $bindingFailureTestRoot -Force | Out-Null
+        $bindingFailurePath = Join-Path $bindingFailureTestRoot 'deployment-binding-existing.json'
+        [System.IO.File]::WriteAllText($bindingFailurePath, 'existing', [System.Text.UTF8Encoding]::new($false))
+        $bindingFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode Success
+        $bindingFailureMessage = $null
+        try {
+            Invoke-CountdownRemoteDeployment `
+                -SourceRoot $remoteDeploymentSource `
+                -InstallPath $remoteDeploymentInstall `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -DeferredReceiptPath (Join-Path $bindingFailureTestRoot 'deferred-install-receipt.json') `
+                -TaskName 'Minmin Countdown Fixture' `
+                -LegacyTaskName '敏敏子倒计时 Fixture' `
+                -DeploymentBindingPath $bindingFailurePath `
+                -DeploymentBindingSha256 $expectedDeploymentBindingHash `
+                -Adapter $bindingFailureFixture.Adapter | Out-Null
+        }
+        catch { $bindingFailureMessage = $_.Exception.Message }
+        Assert-Equal $true ($bindingFailureMessage -match '部署已提交.*未回滚.*binding') 'Binding publication failure reports a committed deployment with incomplete verification'
+        Assert-Equal 0 ([int] $bindingFailureFixture.State.RollbackCount) 'Binding publication failure never invokes the rollback seam after commit'
+        Assert-Equal 'existing' ([System.IO.File]::ReadAllText($bindingFailurePath, [System.Text.Encoding]::UTF8)) 'Binding publication failure preserves existing bytes'
+
+        $successReceiptJson = $successResult | ConvertTo-Json -Compress -Depth 4
+        $normalizedSuccessReceipt = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $successReceiptJson
+        Assert-Equal 14 @($normalizedSuccessReceipt.PSObject.Properties).Count 'Success receipt parser returns the exact schema field set'
+        Assert-Equal 'Running' ([string] $normalizedSuccessReceipt.TaskState) 'Success receipt parser requires the running task state'
+        Assert-Equal 'window-ready' ([string] $normalizedSuccessReceipt.RuntimeStage) 'Success receipt parser requires window-ready runtime state'
+        Assert-Equal $false ($normalizedSuccessReceipt.PSObject.Properties.Name -contains 'LaunchToken') 'Success receipt schema excludes the raw launch token'
+
+        $invalidSuccessReceiptCases = [ordered]@{}
+        $missingFieldReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        [void] $missingFieldReceipt.Remove('UiTests')
+        $invalidSuccessReceiptCases['missing field'] = $missingFieldReceipt | ConvertTo-Json -Compress
+        $extraFieldReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $extraFieldReceipt['Credential'] = 'must-not-be-persisted'
+        $invalidSuccessReceiptCases['extra field'] = $extraFieldReceipt | ConvertTo-Json -Compress
+        $invalidSuccessReceiptCases['truncated JSON'] = $successReceiptJson.Substring(0, $successReceiptJson.Length - 1)
+        $invalidSuccessReceiptCases['multiple objects'] = "$successReceiptJson`n$successReceiptJson"
+        $invalidSuccessReceiptCases['noise output'] = "unexpected output`n$successReceiptJson"
+        $invalidSuccessReceiptCases['duplicate field'] = $successReceiptJson.Insert(1, '"Valid":true,')
+        $unsupportedSchemaReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $unsupportedSchemaReceipt.SchemaVersion = 2
+        $invalidSuccessReceiptCases['unsupported schema'] = $unsupportedSchemaReceipt | ConvertTo-Json -Compress
+        $failedStatusReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $failedStatusReceipt.Valid = $false
+        $invalidSuccessReceiptCases['failed status'] = $failedStatusReceipt | ConvertTo-Json -Compress
+        $wrongTypeReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $wrongTypeReceipt.CoreTests = '11'
+        $invalidSuccessReceiptCases['wrong type'] = $wrongTypeReceipt | ConvertTo-Json -Compress
+        $invalidRangeReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $invalidRangeReceipt.RuntimeProcessId = 0
+        $invalidSuccessReceiptCases['invalid range'] = $invalidRangeReceipt | ConvertTo-Json -Compress
+        $invalidStateReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $invalidStateReceipt.AcceptanceState = 'accepted'
+        $invalidSuccessReceiptCases['invalid state'] = $invalidStateReceipt | ConvertTo-Json -Compress
+        foreach ($case in $invalidSuccessReceiptCases.GetEnumerator()) {
+            $rejected = $false
+            try {
+                ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json ([string] $case.Value) | Out-Null
+            }
+            catch {
+                $rejected = $true
+            }
+            Assert-Equal $true $rejected "Success receipt parser rejects $($case.Key)"
+        }
+
+        $successReceiptEvidencePath = Join-Path $remoteDeploymentTestRoot 'remote-deployment-success.json'
+        $persistedSuccessReceipt = Write-CountdownRemoteDeploymentSuccessReceipt `
+            -Path $successReceiptEvidencePath `
+            -Json $successReceiptJson
+        $persistedSuccessBytes = [System.IO.File]::ReadAllBytes($successReceiptEvidencePath)
+        $persistedSuccessText = [System.Text.UTF8Encoding]::new($false, $true).GetString($persistedSuccessBytes)
+        Assert-Equal $true (Test-Path -LiteralPath $successReceiptEvidencePath -PathType Leaf) 'Success receipt writer atomically publishes one evidence file'
+        Assert-Equal $false ($persistedSuccessBytes.Length -ge 3 -and $persistedSuccessBytes[0] -eq 0xEF -and $persistedSuccessBytes[1] -eq 0xBB -and $persistedSuccessBytes[2] -eq 0xBF) 'Success receipt evidence is UTF-8 without BOM'
+        Assert-Equal $false ($persistedSuccessText -match 'Credential|LaunchToken|sensitive-launch-token-sentinel') 'Success receipt evidence excludes credentials and raw launch tokens'
+        Assert-Equal 14 @($persistedSuccessReceipt.PSObject.Properties).Count 'Success receipt writer returns the normalized exact schema'
+        [void] (ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $persistedSuccessText)
+        $persistedSuccessHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $successReceiptEvidencePath).Hash
+
+        $existingEvidenceRejected = $false
+        try {
+            Write-CountdownRemoteDeploymentSuccessReceipt -Path $successReceiptEvidencePath -Json $successReceiptJson | Out-Null
+        }
+        catch {
+            $existingEvidenceRejected = $_.Exception.Message -match '部署已提交但本地证据不完整.*未回滚'
+        }
+        Assert-Equal $true $existingEvidenceRejected 'Success receipt persistence failure reports committed deployment with incomplete local evidence and no rollback claim'
+        Assert-Equal $persistedSuccessHash (Get-FileHash -Algorithm SHA256 -LiteralPath $successReceiptEvidencePath).Hash 'Failed success receipt publication preserves the existing evidence bytes'
+        Assert-Equal 0 @(Get-ChildItem -LiteralPath $remoteDeploymentTestRoot -File -Filter 'remote-deployment-success.json.*.tmp').Count 'Success receipt writer leaves no temporary file after publication failure'
+
+        $invalidEvidencePath = Join-Path $remoteDeploymentTestRoot 'invalid-success.json'
+        $invalidEvidenceRejected = $false
+        try {
+            Write-CountdownRemoteDeploymentSuccessReceipt `
+                -Path $invalidEvidencePath `
+                -Json $invalidSuccessReceiptCases['truncated JSON'] | Out-Null
+        }
+        catch {
+            $invalidEvidenceRejected = $_.Exception.Message -match '部署已提交但本地证据不完整.*未回滚'
+        }
+        Assert-Equal $true $invalidEvidenceRejected 'Invalid remote success output reports committed deployment with incomplete local evidence'
+        Assert-Equal $false (Test-Path -LiteralPath $invalidEvidencePath) 'Invalid success output never creates local success evidence'
+
+        $expectedReadbackExecutableHash = 'C' * 64
+        $expectedReadbackSettingsHash = 'D' * 64
+        $validReadback = [ordered]@{
+            SchemaVersion = 1
+            Valid = $true
+            HostIdentityMatch = $true
+            UserIdentityMatch = $true
+            RemoteMachineNameSha256 = 'A' * 64
+            RemoteUserNameSha256 = 'B' * 64
+            TaskState = 'Running'
+            TaskExecuteMatch = $true
+            TaskArgumentsMatch = $true
+            TaskWorkingDirectoryMatch = $true
+            StartupSchemaVersion = 1
+            StartupAcceptanceState = 'finalized'
+            RuntimeSchemaVersion = 4
+            RuntimeStage = 'window-ready'
+            AcceptanceSchemaVersion = 1
+            AcceptanceStage = 'finalized-ready'
+            TokenSha256 = 'E' * 64
+            TokenMatch = $true
+            RuntimeProcessId = 4242
+            AcceptanceProcessId = 4242
+            ProcessIdMatch = $true
+            RuntimeSessionId = 7
+            AcceptanceSessionId = 7
+            ProcessSessionId = 7
+            SessionIdMatch = $true
+            ApplicationPathMatch = $true
+            ProcessExecutablePathMatch = $true
+            ExecutableSha256 = $expectedReadbackExecutableHash
+            ExecutableHashMatch = $true
+            SettingsSha256 = $expectedReadbackSettingsHash
+            SettingsHashMatch = $true
+        }
+        $validReadbackJson = $validReadback | ConvertTo-Json -Compress
+        $normalizedReadback = ConvertFrom-CountdownRemoteDeploymentReadbackJson `
+            -Json $validReadbackJson `
+            -ExpectedProcessId 4242 `
+            -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+            -ExpectedTokenSha256 ('E' * 64) `
+            -ExpectedSettingsSha256 $expectedReadbackSettingsHash
+        Assert-Equal 31 @($normalizedReadback.PSObject.Properties).Count 'Independent readback parser returns the exact schema field set'
+        Assert-Equal $true ([bool] $normalizedReadback.Valid) 'Independent readback parser accepts a fully cross-bound receipt'
+        Assert-Equal $false ($normalizedReadback.PSObject.Properties.Name -contains 'LaunchToken') 'Independent readback schema excludes the raw launch token'
+
+        $invalidReadbackCases = [ordered]@{}
+        $readbackMissingField = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        [void] $readbackMissingField.Remove('TokenMatch')
+        $invalidReadbackCases['missing field'] = $readbackMissingField | ConvertTo-Json -Compress
+        $readbackExtraField = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackExtraField.LaunchToken = 'sensitive-launch-token-sentinel'
+        $invalidReadbackCases['raw token field'] = $readbackExtraField | ConvertTo-Json -Compress
+        $invalidReadbackCases['duplicate field'] = $validReadbackJson.Insert(1, '"Valid":true,')
+        $readbackWrongSchema = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackWrongSchema.SchemaVersion = 2
+        $invalidReadbackCases['output schema'] = $readbackWrongSchema | ConvertTo-Json -Compress
+        foreach ($field in @('HostIdentityMatch', 'UserIdentityMatch')) {
+            $caseValue = $validReadbackJson | ConvertFrom-Json -AsHashtable
+            $caseValue[$field] = $false
+            $invalidReadbackCases["identity $field"] = $caseValue | ConvertTo-Json -Compress
+        }
+        $readbackTaskState = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackTaskState.TaskState = 'Ready'
+        $invalidReadbackCases['task state'] = $readbackTaskState | ConvertTo-Json -Compress
+        foreach ($field in @('TaskExecuteMatch', 'TaskArgumentsMatch', 'TaskWorkingDirectoryMatch')) {
+            $caseValue = $validReadbackJson | ConvertFrom-Json -AsHashtable
+            $caseValue[$field] = $false
+            $invalidReadbackCases["task action $field"] = $caseValue | ConvertTo-Json -Compress
+        }
+        foreach ($definition in @(
+                @('StartupAcceptanceState', 'ready'),
+                @('RuntimeStage', 'starting'),
+                @('AcceptanceStage', 'accepted'))) {
+            $caseValue = $validReadbackJson | ConvertFrom-Json -AsHashtable
+            $caseValue[[string] $definition[0]] = [string] $definition[1]
+            $invalidReadbackCases["receipt $($definition[0])"] = $caseValue | ConvertTo-Json -Compress
+        }
+        $readbackTokenMismatch = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackTokenMismatch.TokenMatch = $false
+        $invalidReadbackCases['token mismatch'] = $readbackTokenMismatch | ConvertTo-Json -Compress
+        $readbackPidMismatch = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackPidMismatch.RuntimeProcessId = 4243
+        $invalidReadbackCases['success receipt PID mismatch'] = $readbackPidMismatch | ConvertTo-Json -Compress
+        $readbackProcessMismatch = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackProcessMismatch.ProcessIdMatch = $false
+        $invalidReadbackCases['process identity mismatch'] = $readbackProcessMismatch | ConvertTo-Json -Compress
+        $readbackSessionMismatch = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackSessionMismatch.AcceptanceSessionId = 8
+        $invalidReadbackCases['receipt session mismatch'] = $readbackSessionMismatch | ConvertTo-Json -Compress
+        $readbackSessionIdentityMismatch = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackSessionIdentityMismatch.SessionIdMatch = $false
+        $invalidReadbackCases['process session mismatch'] = $readbackSessionIdentityMismatch | ConvertTo-Json -Compress
+        foreach ($field in @('ApplicationPathMatch', 'ProcessExecutablePathMatch')) {
+            $caseValue = $validReadbackJson | ConvertFrom-Json -AsHashtable
+            $caseValue[$field] = $false
+            $invalidReadbackCases["path $field"] = $caseValue | ConvertTo-Json -Compress
+        }
+        $readbackExecutableHash = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackExecutableHash.ExecutableSha256 = 'F' * 64
+        $invalidReadbackCases['executable release hash'] = $readbackExecutableHash | ConvertTo-Json -Compress
+        $readbackExecutableMatch = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackExecutableMatch.ExecutableHashMatch = $false
+        $invalidReadbackCases['executable hash match'] = $readbackExecutableMatch | ConvertTo-Json -Compress
+        $readbackSettingsHash = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackSettingsHash.SettingsSha256 = 'F' * 64
+        $invalidReadbackCases['settings success receipt hash'] = $readbackSettingsHash | ConvertTo-Json -Compress
+        $readbackSettingsMatch = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackSettingsMatch.SettingsHashMatch = $false
+        $invalidReadbackCases['settings hash match'] = $readbackSettingsMatch | ConvertTo-Json -Compress
+        foreach ($case in $invalidReadbackCases.GetEnumerator()) {
+            $rejected = $false
+            try {
+                ConvertFrom-CountdownRemoteDeploymentReadbackJson `
+                    -Json ([string] $case.Value) `
+                    -ExpectedProcessId 4242 `
+                    -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+                    -ExpectedTokenSha256 ('E' * 64) `
+                    -ExpectedSettingsSha256 $expectedReadbackSettingsHash | Out-Null
+            }
+            catch {
+                $rejected = $true
+            }
+            Assert-Equal $true $rejected "Independent readback parser rejects $($case.Key)"
+        }
+
+        $readbackEvidencePath = Join-Path $remoteDeploymentTestRoot 'post-deployment-independent-readback.json'
+        $persistedReadback = Write-CountdownRemoteDeploymentReadbackReceipt `
+            -Path $readbackEvidencePath `
+            -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes($validReadbackJson)) `
+            -ExpectedProcessId 4242 `
+            -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+            -ExpectedTokenSha256 ('E' * 64) `
+            -ExpectedSettingsSha256 $expectedReadbackSettingsHash
+        $persistedReadbackBytes = [System.IO.File]::ReadAllBytes($readbackEvidencePath)
+        $persistedReadbackText = [System.Text.UTF8Encoding]::new($false, $true).GetString($persistedReadbackBytes)
+        Assert-Equal $true (Test-Path -LiteralPath $readbackEvidencePath -PathType Leaf) 'Independent readback writer atomically publishes one evidence file'
+        Assert-Equal $false ($persistedReadbackText -match 'LaunchToken|sensitive-launch-token-sentinel') 'Independent readback evidence never persists the raw token'
+        Assert-Equal 31 @($persistedReadback.PSObject.Properties).Count 'Independent readback writer returns the normalized exact schema'
+        $readbackEvidenceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $readbackEvidencePath).Hash
+        $existingReadbackRejected = $false
+        try {
+            Write-CountdownRemoteDeploymentReadbackReceipt `
+                -Path $readbackEvidencePath `
+                -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes($validReadbackJson)) `
+                -ExpectedProcessId 4242 `
+                -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+                -ExpectedTokenSha256 ('E' * 64) `
+                -ExpectedSettingsSha256 $expectedReadbackSettingsHash | Out-Null
+        }
+        catch {
+            $existingReadbackRejected = $_.Exception.Message -match '部署已提交但独立验证不完整.*未回滚'
+        }
+        Assert-Equal $true $existingReadbackRejected 'Independent readback publication failure reports committed deployment without a rollback claim'
+        Assert-Equal $readbackEvidenceHash (Get-FileHash -Algorithm SHA256 -LiteralPath $readbackEvidencePath).Hash 'Failed readback publication preserves existing evidence bytes'
+        Assert-Equal 0 @(Get-ChildItem -LiteralPath $remoteDeploymentTestRoot -File -Filter 'post-deployment-independent-readback.json.*.tmp').Count 'Independent readback writer leaves no temporary file after publication failure'
 
         $beginFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode BeginFailure
         $beginFailureReceiptPath = Join-Path $remoteDeploymentTestRoot 'deployment-failure.json'
@@ -1167,15 +2243,59 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         Assert-Equal $true ($preRollbackCaptureIndex -ge 0 -and $rollbackInvocationIndex -gt $preRollbackCaptureIndex) 'Remote deployment captures diagnostics before invoking rollback'
 
         $officeDeploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
-        Assert-Equal 2 ([regex]::Matches($officeDeploymentSource, '\bInvoke-CountdownRecordedSshRead\b').Count) 'Office deployment records both failure receipt and pre-rollback diagnostics SSH reads'
+        Assert-Equal 4 ([regex]::Matches($officeDeploymentSource, '\bInvoke-CountdownRecordedSshRead\b').Count) 'Office deployment records both failure reads, the deployment binding, and the post-deployment independent readback'
         Assert-Equal $true ($officeDeploymentSource.Contains("-Id 'pre-rollback-diagnostics'") -and $officeDeploymentSource.Contains('pre-rollback-diagnostics.json')) 'Office deployment gives the sidecar a stable ledger and evidence identity'
         $preRollbackRemoteReaderIndex = $officeDeploymentSource.IndexOf('function Get-OfficeRemotePreRollbackDiagnostics')
-        $preRollbackRemoteReaderEnd = if ($preRollbackRemoteReaderIndex -ge 0) { $officeDeploymentSource.IndexOf('if (@(git', $preRollbackRemoteReaderIndex) } else { -1 }
+        $preRollbackRemoteReaderEnd = if ($preRollbackRemoteReaderIndex -ge 0) { $officeDeploymentSource.IndexOf('function Get-OfficePostDeploymentIndependentReadback', $preRollbackRemoteReaderIndex) } else { -1 }
         $preRollbackRemoteReaderSource = if ($preRollbackRemoteReaderIndex -ge 0 -and $preRollbackRemoteReaderEnd -gt $preRollbackRemoteReaderIndex) {
             $officeDeploymentSource.Substring($preRollbackRemoteReaderIndex, $preRollbackRemoteReaderEnd - $preRollbackRemoteReaderIndex)
         }
         else { '' }
         Assert-Equal $true ($preRollbackRemoteReaderSource.Contains('ReparsePoint') -and $preRollbackRemoteReaderSource.Contains('32768') -and $preRollbackRemoteReaderSource.Contains('ConvertFrom-CountdownPreRollbackDiagnosticsBytes')) 'Office sidecar reader enforces non-reparse, 32 KiB remote and strict local parser gates'
+        $independentReadbackReaderIndex = $officeDeploymentSource.IndexOf('function Get-OfficePostDeploymentIndependentReadback')
+        $independentReadbackReaderEnd = if ($independentReadbackReaderIndex -ge 0) { $officeDeploymentSource.IndexOf('function Invoke-CountdownDeploymentGit', $independentReadbackReaderIndex) } else { -1 }
+        $independentReadbackReaderSource = if ($independentReadbackReaderIndex -ge 0 -and $independentReadbackReaderEnd -gt $independentReadbackReaderIndex) {
+            $officeDeploymentSource.Substring($independentReadbackReaderIndex, $independentReadbackReaderEnd - $independentReadbackReaderIndex)
+        }
+        else { '' }
+        Assert-Equal $true (
+            $independentReadbackReaderSource.Contains('$env:SSH_CONNECTION') -and
+            $independentReadbackReaderSource.Contains('[System.Security.Principal.WindowsIdentity]::GetCurrent().Name') -and
+            $independentReadbackReaderSource.Contains("Get-ScheduledTask -TaskName ([string] `$expected.TaskName)")
+        ) 'Independent readback binds the remote host, Windows user, and exact scheduled task'
+        Assert-Equal $true (
+            $independentReadbackReaderSource.Contains("TaskName = 'Minmin Countdown'") -and
+            $independentReadbackReaderSource.Contains('TaskArguments = ''-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File') -and
+            $independentReadbackReaderSource.Contains("Join-Path `$PSHOME 'pwsh.exe'") -and
+            $independentReadbackReaderSource.Contains('TaskWorkingDirectoryMatch')
+        ) 'Independent readback requires the managed PowerShell 7 STA thin-adapter task action'
+        Assert-Equal $true (
+            $independentReadbackReaderSource.Contains("'startup-request.json'") -and
+            $independentReadbackReaderSource.Contains("'runtime-status.json'") -and
+            $independentReadbackReaderSource.Contains("'acceptance-status.json'") -and
+            $independentReadbackReaderSource.Contains('$expected.DeploymentBindingPath') -and
+            $independentReadbackReaderSource.Contains("'finalized-ready'") -and
+            $independentReadbackReaderSource.Contains('Get-ReadbackSha256Text -Text $tokens[0]') -and
+            $independentReadbackReaderSource.Contains('$binding.TokenSha256') -and
+            $independentReadbackReaderSource.Contains('$expected.ExpectedTokenSha256') -and
+            -not $independentReadbackReaderSource.Contains('LaunchToken = $tokens')
+        ) 'Independent readback cross-checks all three receipts and the deployment binding while persisting only the token hash and match result'
+        Assert-Equal $true (
+            $independentReadbackReaderSource.Contains('Get-Process -Id $runtimeProcessId') -and
+            $independentReadbackReaderSource.Contains("ExecutablePath = 'D:\敏敏子倒计时\app\MinminCountdown.exe'") -and
+            $independentReadbackReaderSource.Contains("Join-Path ([string] `$expected.InstallPath) 'settings.json'") -and
+            $independentReadbackReaderSource.Contains('ConvertFrom-CountdownRemoteDeploymentReadbackJson')
+        ) 'Independent readback verifies the live PID, interactive session, process path, EXE hash, settings hash, and local schema before ledger success'
+        Assert-Equal $true (
+            $independentReadbackReaderSource.Contains('[System.IO.Compression.GZipStream]') -and
+            $independentReadbackReaderSource.Contains('$remoteCommand.Length -gt 30000')
+        ) 'Independent readback compresses the in-memory SSH command and fails closed before the Windows command-line limit'
+        Assert-Equal $true (
+            $officeDeploymentSource.Contains("'-o', 'BatchMode=yes'") -and
+            $officeDeploymentSource.Contains("'-o', 'IdentitiesOnly=yes'") -and
+            $officeDeploymentSource.Contains("'-o', 'StrictHostKeyChecking=yes'") -and
+            $officeDeploymentSource.Contains('UserKnownHostsFile=$env:REPLICATOR_OFFICE_SSH_USER_KNOWN_HOSTS_FILE')
+        ) 'Independent readback reuses the strict managed office SSH options'
     }
     finally {
         Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
@@ -1250,18 +2370,398 @@ foreach ($trustRoot in @('Deploy-OfficeCountdown.ps1', 'Install-Countdown.ps1', 
 $deploySource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'),
     [System.Text.Encoding]::UTF8)
-$deployCommitGateIndex = $deploySource.IndexOf('本地 HEAD 与 origin/main 不一致，拒绝部署。')
-$deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $repoRoot')
+$deployCommitGateIndex = $deploySource.IndexOf("-Stage '构建前'")
+$deploySnapshotExportIndex = if ($deployCommitGateIndex -ge 0) {
+    $deploySource.IndexOf('Export-CountdownDeploymentCommitSnapshot', $deployCommitGateIndex)
+}
+else { -1 }
+$deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $sourceRoot')
 $deployValidationExitIndex = $deploySource.IndexOf('if ($ValidateOnly) {')
-$transferLedgerImportIndex = $deploySource.IndexOf("Import-Module (Join-Path `$repoRoot 'Countdown.TransferLedger.psm1') -Force")
+$transferLedgerImportIndex = $deploySource.IndexOf("-Stage '传输账本模块导入'")
 $credentialImportIndex = $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'")
 Assert-Equal $true (
     $deployCommitGateIndex -ge 0 -and
+    $deploySnapshotExportIndex -gt $deployCommitGateIndex -and
     $deployPackageAssertionIndex -gt $deployCommitGateIndex -and
     $deployValidationExitIndex -gt $deployPackageAssertionIndex -and
     $transferLedgerImportIndex -gt $deployValidationExitIndex -and
     $credentialImportIndex -gt $transferLedgerImportIndex
-) 'Office deploy imports the transfer module only after Git, package hash, and validate-only gates'
+) 'Office deploy snapshots the verified commit and imports transfer code only after Git, package hash, and validate-only gates'
+$deploymentTokens = $null
+$deploymentParseErrors = $null
+$deploymentAst = [System.Management.Automation.Language.Parser]::ParseInput(
+    $deploySource,
+    [ref] $deploymentTokens,
+    [ref] $deploymentParseErrors)
+Assert-Equal 0 $deploymentParseErrors.Count 'Office deployment script parses before gate fixtures are extracted'
+$directGitCommands = @(
+    $deploymentAst.FindAll({
+            param($node)
+            if ($node -isnot [System.Management.Automation.Language.CommandAst]) { return $false }
+            $commandName = $node.GetCommandName()
+            $commandName -in @('git', 'git.exe')
+        }, $true)
+)
+Assert-Equal 0 $directGitCommands.Count 'Office deployment has no Git command outside the checked wrapper invocation'
+$deploymentGitWrappers = @(
+    $deploymentAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Invoke-CountdownDeploymentGit'
+        }, $true)
+)
+$deploymentGitProcessInvocations = @(
+    $deploymentAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Ampersand -and
+            $node.CommandElements.Count -gt 0 -and
+            $node.CommandElements[0] -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $node.CommandElements[0].VariablePath.UserPath -eq 'GitPath'
+        }, $true)
+)
+Assert-Equal 1 $deploymentGitWrappers.Count 'Office deployment defines one checked Git wrapper'
+Assert-Equal 1 $deploymentGitProcessInvocations.Count 'Office deployment starts Git only once in the checked wrapper'
+$deploymentGitWrapper = if ($deploymentGitWrappers.Count -eq 1) { $deploymentGitWrappers[0] } else { $null }
+$deploymentGitProcessInvocation = if ($deploymentGitProcessInvocations.Count -eq 1) { $deploymentGitProcessInvocations[0] } else { $null }
+$deploymentGitInvocationOwnedByWrapper = $null -ne $deploymentGitWrapper -and
+    $null -ne $deploymentGitProcessInvocation -and
+    $deploymentGitProcessInvocation.Extent.StartOffset -ge $deploymentGitWrapper.Extent.StartOffset -and
+    $deploymentGitProcessInvocation.Extent.EndOffset -le $deploymentGitWrapper.Extent.EndOffset
+Assert-Equal $true $deploymentGitInvocationOwnedByWrapper 'The checked wrapper owns the only real Git process invocation'
+$deploymentGitInvocationAssignment = if ($null -ne $deploymentGitProcessInvocation) {
+    $candidate = $deploymentGitProcessInvocation
+    while ($null -ne $candidate -and
+        $candidate -isnot [System.Management.Automation.Language.AssignmentStatementAst]) {
+        $candidate = $candidate.Parent
+    }
+    $candidate
+}
+else { $null }
+$deploymentGitInvocationBlock = if ($null -ne $deploymentGitInvocationAssignment -and
+    $deploymentGitInvocationAssignment.Parent -is [System.Management.Automation.Language.StatementBlockAst]) {
+    $deploymentGitInvocationAssignment.Parent
+}
+else { $null }
+$deploymentGitInvocationStatements = if ($null -ne $deploymentGitInvocationBlock) {
+    @($deploymentGitInvocationBlock.Statements)
+}
+else { @() }
+$deploymentGitInvocationStatementIndex = if ($null -ne $deploymentGitInvocationAssignment) {
+    [Array]::IndexOf($deploymentGitInvocationStatements, $deploymentGitInvocationAssignment)
+}
+else { -1 }
+$deploymentGitExitCodeStatement = if ($deploymentGitInvocationStatementIndex -ge 0 -and
+    $deploymentGitInvocationStatementIndex + 1 -lt $deploymentGitInvocationStatements.Count) {
+    $deploymentGitInvocationStatements[$deploymentGitInvocationStatementIndex + 1]
+}
+else { $null }
+$deploymentGitExitCodeText = if ($null -ne $deploymentGitExitCodeStatement) {
+    $deploymentGitExitCodeStatement.Extent.Text.Trim()
+}
+else { '' }
+Assert-Equal '$exitCode = $LASTEXITCODE' $deploymentGitExitCodeText 'Office deployment captures the real Git exit code in the immediately following statement'
+Assert-Equal $true (
+    $deploySource.Contains("@('status', '--porcelain=v1', '--untracked-files=all')") -and
+    $deploySource.Contains("@('branch', '--show-current')") -and
+    $deploySource.Contains("@('rev-parse', '--verify', 'HEAD')") -and
+    $deploySource.Contains("@('rev-parse', '--verify', 'refs/remotes/origin/main')")
+) 'Office deployment repository gate checks clean tree, branch, HEAD, and fetched origin/main'
+foreach ($stage in @('构建前', '构建后', '打包前', '打包后', '远程输出前')) {
+    Assert-Equal $true $deploySource.Contains("-Stage '$stage'") "Office deployment runs repository gate at $stage"
+}
+Assert-Equal $true (
+    $deploySource.Contains("@('archive', '--format=zip', `"--output=`$DestinationPath`", `$Commit)") -and
+    $deploySource.Contains('Copy-Item -LiteralPath (Join-Path $sourceRoot $file)') -and
+    -not $deploySource.Contains('Copy-Item -LiteralPath (Join-Path $repoRoot $file)') -and
+    $deploySource.Contains("Assert-CountdownDeploymentFileManifest -Root `$sourceRoot -Manifest `$packageManifest -Stage '打包后'") -and
+    $deploySource.Contains("Assert-CountdownDeploymentFileManifest -Root `$extractRoot -Manifest `$packageManifest -Stage '远程输出前'")
+) 'Office deployment builds package bytes only from the verified commit snapshot'
+
+$deploymentGateFunctionNames = @(
+    'Invoke-CountdownDeploymentGit',
+    'Get-CountdownDeploymentGitScalar',
+    'Assert-CountdownDeploymentRepositoryState',
+    'Export-CountdownDeploymentCommitSnapshot',
+    'Resolve-CountdownDeploymentSnapshotPath',
+    'Get-CountdownDeploymentCommitFileIdentity',
+    'New-CountdownDeploymentCommitIdentityManifest',
+    'Invoke-CountdownDeploymentLockedCommitFile',
+    'New-CountdownDeploymentCommitFileManifest',
+    'New-CountdownDeploymentFileManifest',
+    'Assert-CountdownDeploymentFileManifest',
+    'Assert-CountdownDeploymentFileSet'
+)
+$deploymentGateFunctions = @(
+    $deploymentAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -in $deploymentGateFunctionNames
+        }, $true)
+)
+Assert-Equal $deploymentGateFunctionNames.Count $deploymentGateFunctions.Count 'Office deployment exposes every gate function required by isolated fixtures'
+$deploymentGateEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-deployment-gate-tests'
+$deploymentGateTestRoot = Join-Path $deploymentGateEvidenceRoot ([guid]::NewGuid().ToString('N'))
+$deploymentGateModulePath = Join-Path $deploymentGateTestRoot 'Countdown.DeploymentGate.Fixture.psm1'
+try {
+    New-Item -ItemType Directory -Path $deploymentGateTestRoot -Force | Out-Null
+    $deploymentGateModuleSource = "Set-StrictMode -Version Latest`r`n`$ErrorActionPreference = 'Stop'`r`n" +
+        (($deploymentGateFunctions | ForEach-Object { $_.Extent.Text }) -join "`r`n`r`n")
+    [System.IO.File]::WriteAllText(
+        $deploymentGateModulePath,
+        $deploymentGateModuleSource,
+        [System.Text.UTF8Encoding]::new($false))
+    Import-Module $deploymentGateModulePath -Force
+
+    $fixtureCommit = '1111111111111111111111111111111111111111'
+    $deploymentGitFixture = [pscustomobject]@{
+        FailCommand = ''
+        FailExitCode = 0
+        Dirty = $false
+        Branch = 'main'
+        Head = $fixtureCommit
+        Remote = $fixtureCommit
+    }
+    $deploymentGitAdapter = {
+        param($RepositoryRoot, $Arguments)
+
+        $command = [string] $Arguments[0]
+        if ($deploymentGitFixture.FailCommand -eq $command) {
+            return [pscustomobject]@{ ExitCode = $deploymentGitFixture.FailExitCode; Output = @() }
+        }
+        $output = switch ($command) {
+            'fetch' { @() }
+            'status' { if ($deploymentGitFixture.Dirty) { @(' M changed-during-build.txt') } else { @() } }
+            'branch' { @($deploymentGitFixture.Branch) }
+            'rev-parse' {
+                if ($Arguments[-1] -eq 'HEAD') { @($deploymentGitFixture.Head) }
+                else { @($deploymentGitFixture.Remote) }
+            }
+            default { throw "Unexpected fixture Git command: $command" }
+        }
+        [pscustomobject]@{ ExitCode = 0; Output = @($output) }
+    }.GetNewClosure()
+
+    $deploymentGitFixture.FailCommand = 'status'
+    $deploymentGitFixture.FailExitCode = 19
+    $emptyGitFailureRejected = $false
+    try {
+        Assert-CountdownDeploymentRepositoryState -GitPath 'fixture-git.exe' -RepositoryRoot $deploymentGateTestRoot -Stage '失败夹具' -Adapter $deploymentGitAdapter | Out-Null
+    }
+    catch {
+        $emptyGitFailureRejected = $_.Exception.Message -match '退出码 19' -and $_.Exception.Message -match '<no output>'
+    }
+    Assert-Equal $true $emptyGitFailureRejected 'Repository gate rejects a nonzero Git command with empty output'
+
+    $deploymentGitFixture.FailCommand = ''
+    $deploymentGitFixture.FailExitCode = 0
+    $initialGate = Assert-CountdownDeploymentRepositoryState -GitPath 'fixture-git.exe' -RepositoryRoot $deploymentGateTestRoot -Stage '构建前夹具' -Adapter $deploymentGitAdapter
+    Assert-Equal $fixtureCommit $initialGate.Head 'Repository gate accepts one clean pushed commit'
+
+    $deploymentGitFixture.Remote = '2222222222222222222222222222222222222222'
+    $remoteAdvanceRejected = $false
+    try {
+        Assert-CountdownDeploymentRepositoryState -GitPath 'fixture-git.exe' -RepositoryRoot $deploymentGateTestRoot -Stage '构建后夹具' -ExpectedCommit $fixtureCommit -Adapter $deploymentGitAdapter | Out-Null
+    }
+    catch {
+        $remoteAdvanceRejected = $_.Exception.Message -match 'HEAD 与 origin/main 不一致'
+    }
+    Assert-Equal $true $remoteAdvanceRejected 'Repository gate rejects origin/main advancing after the initial gate'
+
+    $deploymentGitFixture.Remote = $fixtureCommit
+    $deploymentGitFixture.Dirty = $true
+    $buildDirtyRejected = $false
+    try {
+        Assert-CountdownDeploymentRepositoryState -GitPath 'fixture-git.exe' -RepositoryRoot $deploymentGateTestRoot -Stage '构建后夹具' -ExpectedCommit $fixtureCommit -Adapter $deploymentGitAdapter | Out-Null
+    }
+    catch {
+        $buildDirtyRejected = $_.Exception.Message -match '工作树不干净'
+    }
+    Assert-Equal $true $buildDirtyRejected 'Repository gate rejects a worktree dirtied during the build'
+
+    $trustRootRepository = Join-Path $deploymentGateTestRoot 'commit-trust-root-repository'
+    $trustedSnapshotRoot = Join-Path $deploymentGateTestRoot 'trusted-snapshot'
+    $replacedSnapshotRoot = Join-Path $deploymentGateTestRoot 'replaced-snapshot'
+    $trustRootArchive = Join-Path $deploymentGateTestRoot 'commit-trust-root.zip'
+    $trustRootModulePath = Join-Path $trustRootRepository 'Countdown.ReleaseContract.psm1'
+    $trustedModuleSource = @'
+function Get-CountdownIssue4TrustRootFixtureValue { 'benign' }
+Export-ModuleMember -Function Get-CountdownIssue4TrustRootFixtureValue
+'@
+    $maliciousModuleSource = @'
+Set-Variable -Scope Global -Name CountdownIssue4MaliciousSentinel -Value 'executed'
+function Get-CountdownIssue4TrustRootFixtureValue { 'malicious' }
+Export-ModuleMember -Function Get-CountdownIssue4TrustRootFixtureValue
+'@
+    New-Item -ItemType Directory -Path $trustRootRepository -Force | Out-Null
+    [System.IO.File]::WriteAllText($trustRootModulePath, $trustedModuleSource, [System.Text.UTF8Encoding]::new($false))
+    $fixtureGitPath = 'fixture-git.exe'
+    $trustRootCommit = '3333333333333333333333333333333333333333'
+    $trustedBlobIdentity = '4444444444444444444444444444444444444444'
+    $maliciousBlobIdentity = '5555555555555555555555555555555555555555'
+    $trustRootGitAdapter = {
+        param($RepositoryRoot, $Arguments)
+
+        $output = switch ([string] $Arguments[0]) {
+            'rev-parse' { @($trustedBlobIdentity) }
+            'hash-object' {
+                $content = [System.IO.File]::ReadAllText([string] $Arguments[-1], [System.Text.Encoding]::UTF8)
+                if ([string]::Equals($content, $trustedModuleSource, [System.StringComparison]::Ordinal)) {
+                    @($trustedBlobIdentity)
+                }
+                else {
+                    @($maliciousBlobIdentity)
+                }
+            }
+            'archive' {
+                $outputArgument = @($Arguments | Where-Object { ([string] $_).StartsWith('--output=', [System.StringComparison]::Ordinal) })
+                if ($outputArgument.Count -ne 1) { throw 'Archive fixture did not receive one output path.' }
+                $destinationPath = ([string] $outputArgument[0]).Substring('--output='.Length)
+                Compress-Archive -LiteralPath $trustRootModulePath -DestinationPath $destinationPath -Force
+                @()
+            }
+            default { throw "Unexpected trust-root fixture Git command: $($Arguments[0])" }
+        }
+        [pscustomobject]@{ ExitCode = 0; Output = @($output) }
+    }.GetNewClosure()
+    $trustRootIdentityManifest = New-CountdownDeploymentCommitIdentityManifest `
+        -GitPath $fixtureGitPath `
+        -RepositoryRoot $trustRootRepository `
+        -Commit $trustRootCommit `
+        -RelativePaths @('Countdown.ReleaseContract.psm1') `
+        -Adapter $trustRootGitAdapter
+    Export-CountdownDeploymentCommitSnapshot `
+        -GitPath $fixtureGitPath `
+        -RepositoryRoot $trustRootRepository `
+        -Commit $trustRootCommit `
+        -DestinationPath $trustRootArchive `
+        -Adapter $trustRootGitAdapter
+    Expand-Archive -LiteralPath $trustRootArchive -DestinationPath $trustedSnapshotRoot
+
+    [System.IO.File]::WriteAllText($trustRootModulePath, $maliciousModuleSource, [System.Text.UTF8Encoding]::new($false))
+    Compress-Archive -LiteralPath $trustRootModulePath -DestinationPath $trustRootArchive -Force
+    Expand-Archive -LiteralPath $trustRootArchive -DestinationPath $replacedSnapshotRoot
+    Remove-Variable -Name CountdownIssue4MaliciousSentinel -Scope Global -ErrorAction SilentlyContinue
+    $replacedArchiveRejected = $false
+    try {
+        Invoke-CountdownDeploymentLockedCommitFile `
+            -GitPath $fixtureGitPath `
+            -RepositoryRoot $trustRootRepository `
+            -Root $replacedSnapshotRoot `
+            -RelativePath 'Countdown.ReleaseContract.psm1' `
+            -ExpectedIdentity $trustRootIdentityManifest['Countdown.ReleaseContract.psm1'] `
+            -Stage '首次发布契约夹具' `
+            -Adapter $trustRootGitAdapter `
+            -Action { param($lockedPath, $sha256) Import-Module $lockedPath -Force | Out-Null }
+    }
+    catch {
+        $replacedArchiveRejected = $_.Exception.Message -match 'blob identity 不一致'
+    }
+    Assert-Equal $true $replacedArchiveRejected 'Commit snapshot replacement is rejected before the first release-contract code executes'
+    Assert-Equal $false ($null -ne (Get-Variable -Name CountdownIssue4MaliciousSentinel -Scope Global -ErrorAction SilentlyContinue)) 'Rejected first trust root never executes its malicious sentinel'
+
+    $maliciousSwapCandidate = Join-Path $deploymentGateTestRoot 'malicious-release-contract.psm1'
+    $trustedSwapBackup = Join-Path $deploymentGateTestRoot 'trusted-release-contract.backup.psm1'
+    [System.IO.File]::WriteAllText($maliciousSwapCandidate, $maliciousModuleSource, [System.Text.UTF8Encoding]::new($false))
+    $swapState = [pscustomobject]@{
+        Rejected = $false
+        Succeeded = $false
+        Restored = $false
+        ImportedValue = ''
+    }
+    $lockedImportAction = {
+        param($lockedPath, $sha256)
+
+        try {
+            [System.IO.File]::Replace($maliciousSwapCandidate, $lockedPath, $trustedSwapBackup, $true)
+            $swapState.Succeeded = $true
+            try {
+                $fixtureModule = Import-Module $lockedPath -Force -PassThru
+                $swapState.ImportedValue = & $fixtureModule { Get-CountdownIssue4TrustRootFixtureValue }
+            }
+            finally {
+                [System.IO.File]::Replace($trustedSwapBackup, $lockedPath, $maliciousSwapCandidate, $true)
+                $swapState.Restored = $true
+            }
+        }
+        catch {
+            if ($swapState.Succeeded) { throw }
+            $swapState.Rejected = $true
+            $fixtureModule = Import-Module $lockedPath -Force -PassThru
+            $swapState.ImportedValue = & $fixtureModule { Get-CountdownIssue4TrustRootFixtureValue }
+        }
+    }.GetNewClosure()
+    Invoke-CountdownDeploymentLockedCommitFile `
+        -GitPath $fixtureGitPath `
+        -RepositoryRoot $trustRootRepository `
+        -Root $trustedSnapshotRoot `
+        -RelativePath 'Countdown.ReleaseContract.psm1' `
+        -ExpectedIdentity $trustRootIdentityManifest['Countdown.ReleaseContract.psm1'] `
+        -Stage '发布契约导入窗口夹具' `
+        -Adapter $trustRootGitAdapter `
+        -Action $lockedImportAction
+    Assert-Equal $true $swapState.Rejected 'Locked release-contract import rejects an atomic malicious replacement'
+    Assert-Equal $false $swapState.Succeeded 'Malicious module cannot enter the verified import window'
+    Assert-Equal $false $swapState.Restored 'Rejected replacement never needs a restore window'
+    Assert-Equal 'benign' $swapState.ImportedValue 'Locked import executes the same benign bytes that passed Git identity verification'
+    Assert-Equal $false ($null -ne (Get-Variable -Name CountdownIssue4MaliciousSentinel -Scope Global -ErrorAction SilentlyContinue)) 'Import-window replacement cannot execute its malicious sentinel'
+    Remove-Module Countdown.ReleaseContract -Force -ErrorAction SilentlyContinue
+    Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
+
+    $controlFile = Join-Path $deploymentGateTestRoot 'Deploy-Control.ps1'
+    [System.IO.File]::WriteAllText($controlFile, 'committed control', [System.Text.UTF8Encoding]::new($false))
+    $controlManifestFixture = New-CountdownDeploymentFileManifest -Root $deploymentGateTestRoot -RelativePaths @('Deploy-Control.ps1')
+    [System.IO.File]::WriteAllText($controlFile, 'changed control', [System.Text.UTF8Encoding]::new($false))
+    $controlChangeRejected = $false
+    try {
+        Assert-CountdownDeploymentFileManifest -Root $deploymentGateTestRoot -Manifest $controlManifestFixture -Stage '打包前夹具'
+    }
+    catch {
+        $controlChangeRejected = $_.Exception.Message -match '部署文件已变化'
+    }
+    Assert-Equal $true $controlChangeRejected 'Deployment gate rejects a changed control file'
+
+    $snapshotRoot = Join-Path $deploymentGateTestRoot 'commit-snapshot'
+    $activeRoot = Join-Path $deploymentGateTestRoot 'active-worktree'
+    $fixturePackageRoot = Join-Path $deploymentGateTestRoot 'package'
+    $fixtureExtractRoot = Join-Path $deploymentGateTestRoot 'package-check'
+    New-Item -ItemType Directory -Path $snapshotRoot, $activeRoot, $fixturePackageRoot -Force | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $snapshotRoot 'payload.txt'), 'committed payload', [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Join-Path $activeRoot 'payload.txt'), 'committed payload', [System.Text.UTF8Encoding]::new($false))
+    $snapshotManifestFixture = New-CountdownDeploymentFileManifest -Root $snapshotRoot -RelativePaths @('payload.txt')
+    [System.IO.File]::WriteAllText((Join-Path $activeRoot 'payload.txt'), 'concurrent worktree change', [System.Text.UTF8Encoding]::new($false))
+    Copy-Item -LiteralPath (Join-Path $snapshotRoot 'payload.txt') -Destination (Join-Path $fixturePackageRoot 'payload.txt')
+    $fixtureArchive = Join-Path $deploymentGateTestRoot 'fixture-package.zip'
+    Compress-Archive -Path (Join-Path $fixturePackageRoot '*') -DestinationPath $fixtureArchive
+    Expand-Archive -LiteralPath $fixtureArchive -DestinationPath $fixtureExtractRoot
+    Assert-CountdownDeploymentFileSet -Root $fixtureExtractRoot -ExpectedFiles @('payload.txt') -Stage 'ZIP 夹具'
+    Assert-CountdownDeploymentFileManifest -Root $fixtureExtractRoot -Manifest $snapshotManifestFixture -Stage 'ZIP 夹具'
+    Assert-Equal 'committed payload' ([System.IO.File]::ReadAllText((Join-Path $fixtureExtractRoot 'payload.txt'), [System.Text.Encoding]::UTF8)) 'Concurrent worktree changes cannot enter the snapshot-backed ZIP'
+
+    [System.IO.File]::WriteAllText((Join-Path $fixtureExtractRoot 'payload.txt'), 'changed ZIP payload', [System.Text.UTF8Encoding]::new($false))
+    $zipPayloadChangeRejected = $false
+    try {
+        Assert-CountdownDeploymentFileManifest -Root $fixtureExtractRoot -Manifest $snapshotManifestFixture -Stage 'ZIP 哈希夹具'
+    }
+    catch {
+        $zipPayloadChangeRejected = $_.Exception.Message -match '部署文件已变化'
+    }
+    Assert-Equal $true $zipPayloadChangeRejected 'Deployment gate rejects a changed file extracted from the ZIP'
+
+    [System.IO.File]::WriteAllText((Join-Path $fixtureExtractRoot 'unexpected.txt'), 'unexpected ZIP file', [System.Text.UTF8Encoding]::new($false))
+    $zipFileSetChangeRejected = $false
+    try {
+        Assert-CountdownDeploymentFileSet -Root $fixtureExtractRoot -ExpectedFiles @('payload.txt') -Stage 'ZIP 文件集夹具'
+    }
+    catch {
+        $zipFileSetChangeRejected = $_.Exception.Message -match '发布包文件集与已验证清单不一致'
+    }
+    Assert-Equal $true $zipFileSetChangeRejected 'Deployment gate rejects an unexpected file extracted from the ZIP'
+}
+finally {
+    Remove-Module 'Countdown.DeploymentGate.Fixture' -Force -ErrorAction SilentlyContinue
+    Remove-CountdownIsolatedTestTree -Path $deploymentGateTestRoot -AllowedRoot $deploymentGateEvidenceRoot
+}
 $recordedTransferCallCount = [regex]::Matches(
     $deploySource,
     '(?m)^\s*Invoke-CountdownRecordedScpTransfer\b').Count
@@ -1269,7 +2769,7 @@ Assert-Equal 2 $recordedTransferCallCount 'Office deploy records both SCP comman
 $recordedSshReadCallCount = [regex]::Matches(
     $deploySource,
     '\bInvoke-CountdownRecordedSshRead\b').Count
-Assert-Equal 2 $recordedSshReadCallCount 'Office deploy records both failure evidence reads through the transfer ledger interface'
+Assert-Equal 4 $recordedSshReadCallCount 'Office deploy records both failure evidence reads, the deployment binding, and the post-deployment independent readback through the transfer ledger interface'
 Assert-Equal $false $deploySource.Contains('& scp.exe') 'Office deploy has no direct SCP call that bypasses the transfer ledger'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'

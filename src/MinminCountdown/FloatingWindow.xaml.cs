@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -15,6 +17,19 @@ namespace MinminCountdown;
 public sealed partial class FloatingWindow : Window
 {
     private const double CountdownScrollBarSafeOffset = 76;
+    private static readonly string[] QuickAddThemeCheckNames =
+    [
+        "TextBox",
+        "DatePicker",
+        "DatePickerPopup",
+        "ComboBox",
+        "ComboBoxPopup",
+        "TagSelector",
+        "TagSelectorPopup",
+        "CheckBox",
+        "ScrollViewer",
+        "ScrollBar"
+    ];
     private readonly DesktopWorkspace _desktopWorkspace;
     private readonly HolidayCalendar _calendar;
     private readonly MainWindow _manager;
@@ -61,11 +76,13 @@ public sealed partial class FloatingWindow : Window
             snapshot.Settings.Preferences.ThemePreference));
         _desktopWorkspace.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         _calendar.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
-        Refresh();
+        ShowWorkspace(WorkspaceKind.Countdowns);
     }
 
     internal int PlushCount => new[] { PlushTopLeft.Source, PlushTopRight.Source, PlushBottomRight.Source }
         .Count(source => source is not null);
+
+    internal static IReadOnlyList<string> RequiredQuickAddThemeChecks => QuickAddThemeCheckNames;
 
     internal ApplicationThemeMode CurrentThemeMode =>
         (_activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。")).Mode;
@@ -513,6 +530,39 @@ public sealed partial class FloatingWindow : Window
         RenderRows(nowUtc);
     }
 
+    internal bool InitialCountdownSelectionSurvivesDayNightThemes()
+    {
+        var snapshot = _desktopWorkspace.Snapshot;
+        var checkpoints = new[]
+        {
+            new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8)),
+            new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8))
+        };
+        try
+        {
+            var matches = true;
+            foreach (var checkpoint in checkpoints)
+            {
+                ApplyTheme(ApplicationTheme.Resolve(checkpoint.ToUniversalTime()));
+                UpdateLayout();
+                matches &=
+                    FloatingCountdownsButton.IsChecked == true &&
+                    FloatingNotesButton.IsChecked == false &&
+                    HeaderControlHasAccessibleContrast(FloatingCountdownsButton) &&
+                    HeaderControlHasAccessibleContrast(FloatingNotesButton);
+            }
+
+            return matches;
+        }
+        finally
+        {
+            ApplyTheme(ApplicationTheme.Resolve(
+                snapshot.UtcNow,
+                snapshot.Settings.Preferences.ThemePreference));
+            UpdateLayout();
+        }
+    }
+
     private FloatingThemeExerciseResult RunThemeBoundaryExercise()
     {
         var checkpoints = new[]
@@ -622,6 +672,7 @@ public sealed partial class FloatingWindow : Window
         }
 
         _activeTheme = nextTheme;
+        ApplyQuickAddThemeResources(nextTheme);
         SetActiveThemeBrush("FloatingHeaderTextBrush", nextTheme.HeaderTextBrushKey);
         SetActiveThemeBrush("FloatingHeaderDangerBrush", nextTheme.HeaderDangerBrushKey);
         SetActiveThemeBrush("FloatingHeaderHoverBrush", nextTheme.HeaderHoverBrushKey);
@@ -661,6 +712,601 @@ public sealed partial class FloatingWindow : Window
     private Brush ThemeBrush(string resourceKey) =>
         FindResource(resourceKey) as Brush ??
         throw new InvalidOperationException($"找不到悬浮窗主题资源：{resourceKey}");
+
+    private void ApplyQuickAddThemeResources(FloatingThemePalette theme)
+    {
+        foreach (var scope in QuickAddThemeResourceScopes())
+        {
+            ApplyQuickAddThemeResources(scope, theme);
+        }
+    }
+
+    private void ApplyQuickAddThemeResources(
+        ResourceDictionary scope,
+        FloatingThemePalette theme)
+    {
+        var activeBrushKey = theme.Mode == ApplicationThemeMode.Day
+            ? theme.HeaderDangerBrushKey
+            : theme.HeaderSelectedBrushKey;
+        var bindings = new (string LocalKey, string ThemeKey)[]
+        {
+            ("CanvasBrush", theme.SurfaceBrushKey),
+            ("CardBrush", theme.NoteCardBrushKey),
+            ("NoteBrush", theme.NoteCardBrushKey),
+            ("InkBrush", theme.TextBrushKey),
+            ("BodyBrush", theme.MutedBrushKey),
+            ("MutedBrush", theme.MutedBrushKey),
+            ("PeachLineBrush", theme.BorderBrushKey),
+            ("ActiveBrush", activeBrushKey),
+            ("ActiveHoverBrush", theme.HeaderHoverBrushKey),
+            ("DangerBrush", theme.HeaderDangerBrushKey),
+            ("SegmentSelectedBrush", theme.HeaderSelectedBrushKey),
+            ("SegmentSelectedForegroundBrush", theme.HeaderSelectedTextBrushKey)
+        };
+
+        foreach (var binding in bindings)
+        {
+            scope[binding.LocalKey] = ThemeBrush(binding.ThemeKey);
+        }
+    }
+
+    private void ApplyQuickAddThemeToDatePickerPopup(DatePicker picker)
+    {
+        if (_activeTheme is not { } theme ||
+            ThemedDatePickerBehavior.GetCalendar(picker) is not { } calendar)
+        {
+            return;
+        }
+
+        ApplyQuickAddThemeResources(calendar.Resources, theme);
+    }
+
+    private IEnumerable<ResourceDictionary> QuickAddThemeResourceScopes()
+    {
+        yield return Resources;
+        yield return FloatingBodyScroller.Resources;
+        yield return FloatingNoteEntry.Resources;
+        yield return FloatingNoteDate.Resources;
+        yield return FloatingReminder.Resources;
+        yield return FloatingReminderDate.Resources;
+        yield return FloatingReminderHour.Resources;
+        yield return FloatingReminderMinute.Resources;
+        yield return FloatingReminderInterval.Resources;
+        yield return FloatingTags.Resources;
+    }
+
+    internal FloatingQuickAddThemeProbeResult ProbeQuickAddThemeResources()
+    {
+        var originalWorkspace = _workspace;
+        var originalReminderMode = FloatingReminder.SelectedIndex;
+        var originalReminderInterval = FloatingReminderInterval.SelectedIndex;
+        var originalTags = _desktopWorkspace.Snapshot.Settings.Tags;
+        var originalSelection = FloatingTags.SelectedTagIds.ToArray();
+        var originalOffset = FloatingBodyScroller.VerticalOffset;
+        var probeTag = new TagRecord(
+            $"floating-theme-probe-{Guid.NewGuid():N}",
+            "主题探针",
+            "#FFD36B");
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Notes);
+            FloatingReminder.SelectedIndex = 2;
+            FloatingReminderInterval.SelectedIndex = 3;
+            FloatingTags.SetTags(originalTags.Concat([probeTag]).ToArray());
+            FloatingTags.SetSelection([probeTag.Id]);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+
+            var textBoxes = new[] { FloatingNoteText, FloatingCustomReminderMinutes };
+            var datePickers = new[] { FloatingNoteDate, FloatingReminderDate };
+            var comboBoxes = new[]
+            {
+                FloatingReminder,
+                FloatingReminderHour,
+                FloatingReminderMinute,
+                FloatingReminderInterval
+            };
+
+            var checks = QuickAddThemeCheckNames.ToDictionary(
+                name => name,
+                _ => false,
+                StringComparer.Ordinal);
+            var diagnostics = new List<FloatingQuickAddThemeProbeDiagnostic>();
+            checks["TextBox"] = textBoxes.All(TextBoxUsesQuickAddTheme);
+            checks["DatePicker"] = datePickers.All(ControlUsesQuickAddSurface);
+            checks["DatePickerPopup"] = datePickers
+                .Select(picker => DatePickerPopupUsesQuickAddTheme(picker, diagnostics))
+                .ToArray()
+                .All(matches => matches);
+            checks["ComboBox"] = comboBoxes.All(ControlUsesQuickAddSurface);
+            checks["ComboBoxPopup"] = comboBoxes
+                .Select(comboBox => ComboBoxPopupUsesQuickAddTheme(comboBox, diagnostics))
+                .ToArray()
+                .All(matches => matches);
+            checks["TagSelector"] =
+                UsesQuickAddResources(FloatingTags, "CanvasBrush", "InkBrush", "PeachLineBrush") &&
+                ControlUsesQuickAddSurface(FloatingTags.PopupTrigger);
+
+            FloatingTags.IsPopupOpen = true;
+            WindowValidationInput.Pump(Dispatcher);
+            var popupRoot = FloatingTags.Popup.Child;
+            var popupSearch = popupRoot is null
+                ? null
+                : QuickAddVisualDescendants<TextBox>(popupRoot).FirstOrDefault();
+            var popupCheckBox = popupRoot is null
+                ? null
+                : QuickAddVisualDescendants<CheckBox>(popupRoot).FirstOrDefault();
+            var popupScroller = popupRoot is null
+                ? null
+                : QuickAddVisualDescendants<ScrollViewer>(popupRoot).FirstOrDefault();
+            checks["TagSelectorPopup"] =
+                FloatingTags.Popup.IsOpen &&
+                popupRoot is Border popupSurface &&
+                BorderUsesQuickAddSurface(popupSurface) &&
+                popupSearch is not null &&
+                TextBoxUsesQuickAddTheme(popupSearch);
+            checks["CheckBox"] = popupCheckBox is not null && CheckBoxUsesQuickAddTheme(popupCheckBox);
+            checks["ScrollViewer"] =
+                ScrollViewerUsesQuickAddTheme(FloatingBodyScroller) &&
+                popupScroller is not null &&
+                ScrollViewerUsesQuickAddTheme(popupScroller);
+            checks["ScrollBar"] =
+                ScrollViewerScrollBarsUseQuickAddTheme(FloatingBodyScroller) &&
+                popupScroller is not null &&
+                ScrollViewerScrollBarsUseQuickAddTheme(popupScroller);
+
+            AddFailedQuickAddThemeDiagnostics(
+                checks,
+                diagnostics,
+                textBoxes,
+                datePickers,
+                comboBoxes,
+                popupRoot,
+                popupSearch,
+                popupCheckBox,
+                popupScroller);
+
+            return new FloatingQuickAddThemeProbeResult(CurrentThemeMode, checks, diagnostics);
+        }
+        finally
+        {
+            FloatingTags.IsPopupOpen = false;
+            FloatingNoteDate.IsDropDownOpen = false;
+            FloatingReminderDate.IsDropDownOpen = false;
+            FloatingReminder.IsDropDownOpen = false;
+            FloatingReminderHour.IsDropDownOpen = false;
+            FloatingReminderMinute.IsDropDownOpen = false;
+            FloatingReminderInterval.IsDropDownOpen = false;
+            FloatingTags.SetTags(originalTags);
+            FloatingTags.SetSelection(originalSelection);
+            FloatingReminder.SelectedIndex = originalReminderMode;
+            FloatingReminderInterval.SelectedIndex = originalReminderInterval;
+            ShowWorkspace(originalWorkspace);
+            FloatingBodyScroller.ScrollToVerticalOffset(originalOffset);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private bool DatePickerPopupUsesQuickAddTheme(
+        DatePicker picker,
+        ICollection<FloatingQuickAddThemeProbeDiagnostic> diagnostics)
+    {
+        picker.BringIntoView();
+        WindowValidationInput.Pump(Dispatcher);
+        picker.IsDropDownOpen = false;
+        picker.ApplyTemplate();
+        var trigger = picker.Template.FindName("PART_Button", picker) as Button;
+        var owner = Window.GetWindow(picker);
+        owner?.Activate();
+        owner?.Focus();
+        trigger?.Focus();
+        WindowValidationInput.Pump(Dispatcher);
+        var popup = picker.Template.FindName("PART_Popup", picker) as Popup;
+        var popupOpened = false;
+        var popupWasOpenDuringEvent = false;
+        var surfaceMatchedDuringEvent = false;
+        var resourcesMatchedDuringEvent = false;
+        System.Windows.Controls.Calendar? calendarDuringEvent = null;
+        RoutedEventHandler openedHandler = (_, _) =>
+        {
+            popupOpened = true;
+            popupWasOpenDuringEvent = popup?.IsOpen == true;
+            calendarDuringEvent = ThemedDatePickerBehavior.GetCalendar(picker);
+            calendarDuringEvent?.ApplyTemplate();
+            calendarDuringEvent?.UpdateLayout();
+            surfaceMatchedDuringEvent =
+                calendarDuringEvent is not null &&
+                ControlUsesQuickAddSurface(calendarDuringEvent);
+            resourcesMatchedDuringEvent =
+                calendarDuringEvent is not null &&
+                UsesQuickAddResources(
+                    calendarDuringEvent,
+                    "CardBrush",
+                    "ActiveBrush",
+                    "MutedBrush",
+                    "SegmentSelectedBrush");
+        };
+        picker.CalendarOpened += openedHandler;
+        try
+        {
+            trigger?.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var matches =
+                popupOpened &&
+                popupWasOpenDuringEvent &&
+                surfaceMatchedDuringEvent &&
+                resourcesMatchedDuringEvent;
+            if (!matches)
+            {
+                AddQuickAddThemeDiagnostics(
+                    diagnostics,
+                    "DatePickerPopup",
+                    (FrameworkElement?)calendarDuringEvent ?? picker,
+                    popupWasOpenDuringEvent,
+                    $"Picker={picker.Name};" +
+                    $"CalendarOpened={popupOpened};" +
+                    $"TriggerFocused={trigger?.IsKeyboardFocusWithin == true};" +
+                    $"PART_Popup={(popup is null ? "missing" : "present")};" +
+                    $"ProductionStaysOpen={popup?.StaysOpen.ToString() ?? "unknown"};" +
+                    $"Calendar={(calendarDuringEvent is null ? "missing" : "present")}",
+                    "CardBrush",
+                    "ActiveBrush",
+                    "MutedBrush",
+                    "SegmentSelectedBrush");
+            }
+
+            return matches;
+        }
+        finally
+        {
+            picker.CalendarOpened -= openedHandler;
+            picker.IsDropDownOpen = false;
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private bool ComboBoxPopupUsesQuickAddTheme(
+        ComboBox comboBox,
+        ICollection<FloatingQuickAddThemeProbeDiagnostic> diagnostics)
+    {
+        comboBox.BringIntoView();
+        WindowValidationInput.Pump(Dispatcher);
+        comboBox.IsDropDownOpen = false;
+        comboBox.ApplyTemplate();
+        var trigger = QuickAddVisualDescendants<ToggleButton>(comboBox).FirstOrDefault();
+        var toggleProvider = trigger is null
+            ? null
+            : new ToggleButtonAutomationPeer(trigger).GetPattern(PatternInterface.Toggle) as IToggleProvider;
+        var owner = Window.GetWindow(comboBox);
+        owner?.Activate();
+        owner?.Focus();
+        if (owner is not null && trigger is not null)
+        {
+            FocusManager.SetFocusedElement(owner, trigger);
+        }
+
+        Keyboard.Focus((IInputElement?)trigger ?? comboBox);
+        WindowValidationInput.Pump(Dispatcher);
+        var popup = comboBox.Template.FindName("PART_Popup", comboBox) as Popup;
+        var popupOpened = false;
+        var popupWasOpenDuringEvent = false;
+        var popupSurfaceMatchedDuringEvent = false;
+        var itemResourcesMatchedDuringEvent = false;
+        Border? popupSurfaceDuringEvent = null;
+        ComboBoxItem? itemDuringEvent = null;
+        EventHandler openedHandler = (_, _) =>
+        {
+            popupOpened = true;
+            popupWasOpenDuringEvent = popup?.IsOpen == true;
+            popupSurfaceDuringEvent = popup?.Child as Border;
+            popupSurfaceDuringEvent?.UpdateLayout();
+            itemDuringEvent = popupSurfaceDuringEvent is null
+                ? null
+                : QuickAddVisualDescendants<ComboBoxItem>(popupSurfaceDuringEvent).FirstOrDefault();
+            itemDuringEvent ??= comboBox.ItemContainerGenerator.ContainerFromIndex(0) as ComboBoxItem;
+            itemDuringEvent?.ApplyTemplate();
+            itemDuringEvent?.UpdateLayout();
+            popupSurfaceMatchedDuringEvent =
+                popupSurfaceDuringEvent is not null &&
+                BorderUsesQuickAddSurface(popupSurfaceDuringEvent);
+            itemResourcesMatchedDuringEvent =
+                itemDuringEvent is not null &&
+                UsesQuickAddResources(
+                    itemDuringEvent,
+                    "InkBrush",
+                    "CardBrush",
+                    "SegmentSelectedBrush",
+                    "SegmentSelectedForegroundBrush");
+        };
+        if (popup is not null)
+        {
+            popup.Opened += openedHandler;
+        }
+
+        try
+        {
+            toggleProvider?.Toggle();
+            WindowValidationInput.Pump(Dispatcher);
+            var matches =
+                popupOpened &&
+                popupWasOpenDuringEvent &&
+                popupSurfaceMatchedDuringEvent &&
+                itemResourcesMatchedDuringEvent;
+            if (!matches)
+            {
+                AddQuickAddThemeDiagnostics(
+                    diagnostics,
+                    "ComboBoxPopup",
+                    (FrameworkElement?)itemDuringEvent ?? (FrameworkElement?)popupSurfaceDuringEvent ?? comboBox,
+                    popupWasOpenDuringEvent,
+                    $"ComboBox={comboBox.Name};" +
+                    $"PopupOpened={popupOpened};" +
+                    $"DropDownOpenAfterPump={comboBox.IsDropDownOpen};" +
+                    $"Trigger={(trigger is null ? "missing" : "present")};" +
+                    $"ToggleProvider={(toggleProvider is null ? "missing" : "present")};" +
+                    $"TriggerCheckedAfterPump={trigger?.IsChecked?.ToString() ?? "unknown"};" +
+                    $"TriggerFocused={trigger?.IsKeyboardFocusWithin == true};" +
+                    $"PART_Popup={(popup is null ? "missing" : "present")};" +
+                    $"ProductionStaysOpen={popup?.StaysOpen.ToString() ?? "unknown"};" +
+                    $"PopupChild={popup?.Child?.GetType().Name ?? "missing"};" +
+                    $"Item0={(itemDuringEvent is null ? "missing" : "present")}",
+                    "InkBrush",
+                    "CardBrush",
+                    "SegmentSelectedBrush",
+                    "SegmentSelectedForegroundBrush");
+            }
+
+            return matches;
+        }
+        finally
+        {
+            if (popup is not null)
+            {
+                popup.Opened -= openedHandler;
+            }
+
+            comboBox.IsDropDownOpen = false;
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private void AddFailedQuickAddThemeDiagnostics(
+        IReadOnlyDictionary<string, bool> checks,
+        ICollection<FloatingQuickAddThemeProbeDiagnostic> diagnostics,
+        IReadOnlyList<TextBox> textBoxes,
+        IReadOnlyList<DatePicker> datePickers,
+        IReadOnlyList<ComboBox> comboBoxes,
+        UIElement? popupRoot,
+        TextBox? popupSearch,
+        CheckBox? popupCheckBox,
+        ScrollViewer? popupScroller)
+    {
+        void AddForEach(
+            string check,
+            IEnumerable<FrameworkElement> elements,
+            params string[] keys)
+        {
+            if (checks.TryGetValue(check, out var passed) && passed)
+            {
+                return;
+            }
+
+            foreach (var element in elements)
+            {
+                AddQuickAddThemeDiagnostics(
+                    diagnostics,
+                    check,
+                    element,
+                    FloatingTags.Popup.IsOpen,
+                    string.Empty,
+                    keys);
+            }
+        }
+
+        AddForEach("TextBox", textBoxes, "CanvasBrush", "InkBrush", "PeachLineBrush", "ActiveBrush", "CardBrush");
+        AddForEach("DatePicker", datePickers, "CanvasBrush", "InkBrush", "PeachLineBrush");
+        AddForEach("ComboBox", comboBoxes, "CanvasBrush", "InkBrush", "PeachLineBrush");
+        AddForEach("TagSelector", [FloatingTags, FloatingTags.PopupTrigger], "CanvasBrush", "InkBrush", "PeachLineBrush");
+
+        if (!checks["TagSelectorPopup"])
+        {
+            AddQuickAddThemeDiagnostics(
+                diagnostics,
+                "TagSelectorPopup",
+                popupRoot as FrameworkElement ?? FloatingTags,
+                FloatingTags.Popup.IsOpen,
+                $"PopupChild={popupRoot?.GetType().Name ?? "missing"};" +
+                $"Search={(popupSearch is null ? "missing" : "present")}",
+                "CanvasBrush",
+                "InkBrush",
+                "PeachLineBrush",
+                "ActiveBrush",
+                "CardBrush");
+        }
+
+        if (!checks["CheckBox"])
+        {
+            AddQuickAddThemeDiagnostics(
+                diagnostics,
+                "CheckBox",
+                (FrameworkElement?)popupCheckBox ?? FloatingTags,
+                FloatingTags.Popup.IsOpen,
+                $"CheckBox={(popupCheckBox is null ? "missing" : "present")};" +
+                $"Checked={popupCheckBox?.IsChecked?.ToString() ?? "unknown"}",
+                "CanvasBrush",
+                "BodyBrush",
+                "PeachLineBrush",
+                "ActiveBrush");
+        }
+
+        AddForEach(
+            "ScrollViewer",
+            new FrameworkElement?[] { FloatingBodyScroller, popupScroller }.OfType<FrameworkElement>(),
+            "PeachLineBrush",
+            "ActiveBrush");
+        if (!checks["ScrollBar"])
+        {
+            foreach (var scroller in new[] { FloatingBodyScroller, popupScroller }.Where(scroller => scroller is not null))
+            {
+                scroller!.ApplyTemplate();
+                var vertical = scroller.Template.FindName("PART_VerticalScrollBar", scroller) as ScrollBar;
+                var horizontal = scroller.Template.FindName("PART_HorizontalScrollBar", scroller) as ScrollBar;
+                AddQuickAddThemeDiagnostics(
+                    diagnostics,
+                    "ScrollBar",
+                    (FrameworkElement?)vertical ?? (FrameworkElement?)horizontal ?? scroller,
+                    FloatingTags.Popup.IsOpen,
+                    $"Vertical={(vertical is null ? "missing" : "present")};" +
+                    $"Horizontal={(horizontal is null ? "missing" : "present")};" +
+                    $"Scroller={scroller.Name}",
+                    "PeachLineBrush",
+                    "ActiveBrush",
+                    "FloatingMutedBrush");
+            }
+        }
+    }
+
+    private void AddQuickAddThemeDiagnostics(
+        ICollection<FloatingQuickAddThemeProbeDiagnostic> diagnostics,
+        string check,
+        FrameworkElement element,
+        bool popupIsOpen,
+        string templateParts,
+        params string[] resourceKeys)
+    {
+        var elementName = string.IsNullOrWhiteSpace(element.Name)
+            ? element.GetType().Name
+            : element.Name;
+        var templatePresent = element is not Control control || control.Template is not null;
+        var inBodyScrollerScope = QuickAddVisualDescendants<DependencyObject>(FloatingBodyScroller)
+            .Any(candidate => ReferenceEquals(candidate, element));
+        foreach (var resourceKey in resourceKeys)
+        {
+            var expected = Resources.Contains(resourceKey) ? Resources[resourceKey] : null;
+            var actual = element.TryFindResource(resourceKey);
+            diagnostics.Add(new FloatingQuickAddThemeProbeDiagnostic(
+                check,
+                elementName,
+                resourceKey,
+                DescribeQuickAddResource(expected),
+                DescribeQuickAddResource(actual),
+                ReferenceEquals(actual, expected),
+                element.Resources.Contains(resourceKey),
+                inBodyScrollerScope && FloatingBodyScroller.Resources.Contains(resourceKey),
+                popupIsOpen,
+                templatePresent,
+                templateParts,
+                DescribeQuickAddElementState(element)));
+        }
+    }
+
+    private static string DescribeQuickAddResource(object? resource) => resource switch
+    {
+        SolidColorBrush brush => brush.Color.ToString(),
+        null => "missing",
+        _ => resource.GetType().Name
+    };
+
+    private static string DescribeQuickAddElementState(FrameworkElement element) => element switch
+    {
+        Control control =>
+            $"Style={control.Style?.GetType().Name ?? "missing"};" +
+            $"Template={control.Template?.GetType().Name ?? "missing"};" +
+            $"Background={DescribeQuickAddResource(control.Background)};" +
+            $"Foreground={DescribeQuickAddResource(control.Foreground)};" +
+            $"Border={DescribeQuickAddResource(control.BorderBrush)}",
+        Border border =>
+            $"Background={DescribeQuickAddResource(border.Background)};" +
+            $"Border={DescribeQuickAddResource(border.BorderBrush)}",
+        _ => element.GetType().Name
+    };
+
+    private bool TextBoxUsesQuickAddTheme(TextBox textBox)
+    {
+        textBox.ApplyTemplate();
+        return ControlUsesQuickAddSurface(textBox) &&
+            UsesQuickAddResources(textBox, "ActiveBrush", "CardBrush");
+    }
+
+    private bool CheckBoxUsesQuickAddTheme(CheckBox checkBox)
+    {
+        checkBox.ApplyTemplate();
+        checkBox.UpdateLayout();
+        var box = QuickAddVisualDescendants<Border>(checkBox)
+            .FirstOrDefault(border =>
+                Math.Abs(border.Width - 18) <= 0.1 &&
+                Math.Abs(border.Height - 18) <= 0.1);
+        var boxBrushKey = checkBox.IsChecked == true ? "ActiveBrush" : "CanvasBrush";
+        var boxBorderBrushKey = checkBox.IsChecked == true ? "ActiveBrush" : "PeachLineBrush";
+        return
+            Equals(checkBox.Foreground, checkBox.TryFindResource("BodyBrush")) &&
+            UsesQuickAddResources(checkBox, "CanvasBrush", "PeachLineBrush", "ActiveBrush") &&
+            box is not null &&
+            Equals(box.Background, checkBox.TryFindResource(boxBrushKey)) &&
+            Equals(box.BorderBrush, checkBox.TryFindResource(boxBorderBrushKey));
+    }
+
+    private bool ScrollViewerUsesQuickAddTheme(ScrollViewer scrollViewer)
+    {
+        scrollViewer.ApplyTemplate();
+        return scrollViewer.Template is not null &&
+            UsesQuickAddResources(scrollViewer, "PeachLineBrush", "ActiveBrush");
+    }
+
+    private bool ScrollViewerScrollBarsUseQuickAddTheme(ScrollViewer scrollViewer)
+    {
+        scrollViewer.ApplyTemplate();
+        var scrollBars = new[] { "PART_VerticalScrollBar", "PART_HorizontalScrollBar" }
+            .Select(name => scrollViewer.Template.FindName(name, scrollViewer) as ScrollBar)
+            .Where(scrollBar => scrollBar is not null)
+            .Cast<ScrollBar>()
+            .ToArray();
+        foreach (var scrollBar in scrollBars)
+        {
+            scrollBar.ApplyTemplate();
+        }
+
+        return scrollBars.Length == 2 && scrollBars.All(scrollBar =>
+            scrollBar.Template is not null &&
+            Equals(scrollBar.Foreground, scrollBar.TryFindResource("PeachLineBrush")) &&
+            UsesQuickAddResources(scrollBar, "ActiveBrush"));
+    }
+
+    private bool ControlUsesQuickAddSurface(Control control) =>
+        control.Style is not null &&
+        control.Template is not null &&
+        Equals(control.Background, control.TryFindResource("CanvasBrush")) &&
+        Equals(control.Foreground, control.TryFindResource("InkBrush")) &&
+        Equals(control.BorderBrush, control.TryFindResource("PeachLineBrush")) &&
+        UsesQuickAddResources(control, "CanvasBrush", "InkBrush", "PeachLineBrush");
+
+    private bool BorderUsesQuickAddSurface(Border border) =>
+        Equals(border.Background, border.TryFindResource("CanvasBrush")) &&
+        Equals(border.BorderBrush, border.TryFindResource("PeachLineBrush")) &&
+        UsesQuickAddResources(border, "CanvasBrush", "PeachLineBrush");
+
+    private bool UsesQuickAddResources(FrameworkElement element, params string[] keys) =>
+        keys.All(key =>
+            Resources.Contains(key) &&
+            ReferenceEquals(element.TryFindResource(key), Resources[key]));
+
+    private static IEnumerable<T> QuickAddVisualDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        if (root is T match)
+        {
+            yield return match;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            foreach (var descendant in QuickAddVisualDescendants<T>(
+                         VisualTreeHelper.GetChild(root, index)))
+            {
+                yield return descendant;
+            }
+        }
+    }
 
     private static void SetRasterTranslation(
         UIElement element,
@@ -845,6 +1491,8 @@ public sealed partial class FloatingWindow : Window
 
             ClearNoteFieldError(FloatingNoteDateError);
         };
+        FloatingNoteDate.CalendarOpened += (_, _) =>
+            ApplyQuickAddThemeToDatePickerPopup(FloatingNoteDate);
         FloatingNoteText.TextChanged += (_, _) => ClearNoteFieldError(FloatingNoteTextError);
         FloatingReminder.SelectionChanged += (_, _) =>
         {
@@ -857,6 +1505,8 @@ public sealed partial class FloatingWindow : Window
             UpdateReminderInterval();
         };
         FloatingReminderDate.SelectedDateChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
+        FloatingReminderDate.CalendarOpened += (_, _) =>
+            ApplyQuickAddThemeToDatePickerPopup(FloatingReminderDate);
         FloatingReminderHour.SelectionChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
         FloatingReminderMinute.SelectionChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
         FloatingCustomReminderMinutes.TextChanged += (_, _) =>
@@ -1482,6 +2132,84 @@ public sealed partial class FloatingWindow : Window
         };
 }
 
+internal enum FloatingScrollBarThumbState
+{
+    Normal,
+    Hover,
+    Drag
+}
+
+internal sealed class FloatingScrollBarThumb : Thumb
+{
+    private static readonly DependencyPropertyKey VisualWidthPropertyKey =
+        DependencyProperty.RegisterReadOnly(
+            nameof(VisualWidth),
+            typeof(double),
+            typeof(FloatingScrollBarThumb),
+            new FrameworkPropertyMetadata(4d));
+
+    private static readonly DependencyPropertyKey ThumbOpacityPropertyKey =
+        DependencyProperty.RegisterReadOnly(
+            nameof(ThumbOpacity),
+            typeof(double),
+            typeof(FloatingScrollBarThumb),
+            new FrameworkPropertyMetadata(0.52d));
+
+    public static readonly DependencyProperty VisualWidthProperty =
+        VisualWidthPropertyKey.DependencyProperty;
+
+    public static readonly DependencyProperty ThumbOpacityProperty =
+        ThumbOpacityPropertyKey.DependencyProperty;
+
+    public double VisualWidth => (double)GetValue(VisualWidthProperty);
+
+    public double ThumbOpacity => (double)GetValue(ThumbOpacityProperty);
+
+    protected override void OnMouseEnter(MouseEventArgs eventArgs)
+    {
+        base.OnMouseEnter(eventArgs);
+        if (!IsDragging)
+        {
+            ApplyVisualState(FloatingScrollBarThumbState.Hover);
+        }
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs eventArgs)
+    {
+        base.OnMouseLeave(eventArgs);
+        if (!IsDragging)
+        {
+            ApplyVisualState(FloatingScrollBarThumbState.Normal);
+        }
+    }
+
+    protected override void OnDraggingChanged(DependencyPropertyChangedEventArgs eventArgs)
+    {
+        base.OnDraggingChanged(eventArgs);
+        ApplyVisualState(IsDragging
+            ? FloatingScrollBarThumbState.Drag
+            : IsMouseOver
+                ? FloatingScrollBarThumbState.Hover
+                : FloatingScrollBarThumbState.Normal);
+    }
+
+    internal void ApplyVisualStateForValidation(FloatingScrollBarThumbState state) =>
+        ApplyVisualState(state);
+
+    private void ApplyVisualState(FloatingScrollBarThumbState state)
+    {
+        var (width, opacity) = state switch
+        {
+            FloatingScrollBarThumbState.Normal => (4d, 0.52d),
+            FloatingScrollBarThumbState.Hover => (4d, 0.78d),
+            FloatingScrollBarThumbState.Drag => (4d, 0.96d),
+            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
+        };
+        SetValue(VisualWidthPropertyKey, width);
+        SetValue(ThumbOpacityPropertyKey, opacity);
+    }
+}
+
 internal sealed record FloatingDragInteractionExerciseResult(
     bool CoversWindowBackground,
     bool ReceivesPointerGesture,
@@ -1504,6 +2232,32 @@ internal sealed record FloatingThemeExerciseResult(
     bool TextContrast,
     bool SurfacesFollowDayNightTheme,
     bool PlushSceneFollowsDayNightTheme);
+
+internal sealed record FloatingQuickAddThemeProbeResult(
+    ApplicationThemeMode Mode,
+    IReadOnlyDictionary<string, bool> Checks,
+    IReadOnlyList<FloatingQuickAddThemeProbeDiagnostic> Diagnostics)
+{
+    public IReadOnlyList<string> FailedChecks => FloatingWindow.RequiredQuickAddThemeChecks
+        .Where(name => !Checks.TryGetValue(name, out var passed) || !passed)
+        .ToArray();
+
+    public bool Passed => FailedChecks.Count == 0;
+}
+
+internal sealed record FloatingQuickAddThemeProbeDiagnostic(
+    string Check,
+    string Control,
+    string ResourceKey,
+    string ExpectedResource,
+    string ActualResource,
+    bool ResourceReferenceMatches,
+    bool ElementDeclaresResource,
+    bool UsesFloatingBodyScrollerScope,
+    bool PopupIsOpen,
+    bool TemplatePresent,
+    string TemplateParts,
+    string ElementState);
 
 internal sealed record FloatingThemePalette(
     ApplicationThemeMode Mode,
@@ -1564,14 +2318,14 @@ internal sealed record FloatingThemePalette(
         "FloatingNightHeaderSelectedTextBrush",
         "FloatingNightSurfaceBrush",
         "FloatingNightNoteCardBrush",
-        "FloatingNightNoteInputBrush",
-        "FloatingNightNoteInputTextBrush",
-        "FloatingNightErrorBrush",
+        "FloatingNightNoteCardBrush",
+        "FloatingNightTextBrush",
+        "FloatingNightHeaderDangerBrush",
         "FloatingNightTextBrush",
         "FloatingNightMutedBrush",
         "FloatingNightPlushGlowBrush",
-        16,
-        0.34,
+        14,
+        0.16,
         0);
 
     public static FloatingThemePalette For(DateTimeOffset nowUtc)

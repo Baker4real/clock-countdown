@@ -174,9 +174,10 @@ public sealed partial class FloatingWindow
             Foreground = _floatingPrimaryBrush
         };
         var remainingText = CountdownRemainingText(
-            FormatSecondaryRemaining(remaining),
+            remaining,
             13,
             FontWeights.SemiBold);
+        FitSingleLineText(remainingText, SecondaryRemainingWidth);
         remainingText.Width = SecondaryRemainingWidth;
         remainingText.LineHeight = 15;
         remainingText.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
@@ -189,9 +190,6 @@ public sealed partial class FloatingWindow
         layout.Children.Add(remainingText);
         return layout;
     }
-
-    private static string FormatSecondaryRemaining(string remaining) =>
-        string.Concat(remaining.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     private Brush WarmPaperAccentBrush(FloatingThemePalette theme) =>
         ThemeBrush(theme.Mode == ApplicationThemeMode.Day
@@ -217,5 +215,23 @@ public sealed partial class FloatingWindow
         };
         Typography.SetNumeralAlignment(block, FontNumeralAlignment.Tabular);
         return block;
+    }
+
+    private static void FitSingleLineText(TextBlock text, double availableWidth)
+    {
+        const double widthReserve = 2;
+        const double minimumFontSize = 10;
+        text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var requiredWidth = text.DesiredSize.Width;
+        var usableWidth = availableWidth - widthReserve;
+        if (requiredWidth <= usableWidth)
+        {
+            return;
+        }
+
+        var fittedFontSize = text.FontSize * (usableWidth / requiredWidth);
+        text.FontSize = Math.Max(
+            minimumFontSize,
+            Math.Floor(fittedFontSize * 4) / 4);
     }
 }

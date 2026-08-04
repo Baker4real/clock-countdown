@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
@@ -18,6 +19,113 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
+    private const string FloatingReferenceBaselineVersion = "2026-08-04-v1";
+    private const string FloatingReferenceScenario = "floating-countdowns-baseline";
+    private const string FloatingLongNotesScenario = "long-notes";
+    private const string FloatingReferenceStateFingerprintAlgorithm =
+        "SHA-256 of canonical UTF-8 floating capture state";
+    private const string FloatingReferenceDayCountdownSha256 =
+        "6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9";
+    private const string FloatingReferenceNightCountdownSha256 =
+        "CCC7279389D0E7204C679080581C9E69C14A87D4737D2D05FEF998F49FB8ECD7";
+    private const string FloatingReferenceSourceAggregateAlgorithm =
+        "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order";
+    private const string FloatingReferencePixelComparisonAlgorithm =
+        "BGRA8 absolute channel delta over 520x390 pixels";
+    private const string FloatingReferenceAlphaAlgorithm = "BGRA8 alpha scan";
+    private const string FloatingReferenceRoiAlgorithm =
+        "minimal bounding rectangle of pixels with alpha > 32";
+    private const int FloatingReferenceMaximumAbsoluteChannelDelta = 8;
+    private const double FloatingReferenceMaximumMeanAbsoluteError = 0.02;
+    private const double FloatingReferenceMaximumRootMeanSquareError = 0.25;
+    private const int FloatingReferenceMaximumChangedPixelCount = 500;
+    private const double FloatingReferenceMinimumTopBottomMeanAbsoluteError = 0.1;
+    private const double FloatingReferenceMinimumTopBottomRootMeanSquareError = 1;
+    private const int FloatingReferenceMinimumTopBottomChangedPixelCount = 1_000;
+    private static readonly string[] FloatingReferenceCanonicalSourcePaths =
+    {
+        "assets/floating-plush/component-day-card-blank.png",
+        "assets/floating-plush/component-day-header-blank.png",
+        "assets/floating-plush/component-day-mascots.png",
+        "assets/floating-plush/component-day-outer-shell.png",
+        "assets/floating-plush/floating-plush-cinnamoroll-reference.png",
+        "assets/floating-plush/floating-plush-kuromi-reference.png",
+        "assets/floating-plush/floating-plush-mymelody-reference.png",
+        "src/MinminCountdown/App.xaml",
+        "src/MinminCountdown/ApplicationTheme.cs",
+        "src/MinminCountdown/DomainLogic.cs",
+        "src/MinminCountdown/FloatingWindow.Countdowns.cs",
+        "src/MinminCountdown/FloatingWindow.Notes.cs",
+        "src/MinminCountdown/FloatingWindow.xaml",
+        "src/MinminCountdown/FloatingWindow.xaml.cs",
+        "src/MinminCountdown/MinminCountdown.csproj",
+        "src/MinminCountdown/UiControls.cs"
+    };
+    private static readonly string[] FloatingReferenceBaselineNegativeFixtures =
+    {
+        "malformed-manifest",
+        "missing-png",
+        "duplicate-path",
+        "orphan-png",
+        "wrong-dimensions",
+        "duplicate-scenario-theme",
+        "source-hash-mismatch",
+        "executable-hash-mismatch",
+        "png-hash-mismatch",
+        "alpha-metrics-mismatch",
+        "content-roi-mismatch",
+        "pixel-metrics-mismatch"
+    };
+    private static readonly string[] FloatingReferenceFreshnessNegativeFixtures =
+    {
+        "swapped-top-bottom",
+        "duplicate-capture-id",
+        "state-fingerprint-mismatch",
+        "duplicate-state-fingerprint",
+        "reused-frame",
+        "top-bottom-pixel-difference-too-small",
+        "long-note-layout-unreachable"
+    };
+    private static readonly FloatingReferenceCaptureSpec[] FloatingReferenceCaptureSpecs =
+    {
+        new(
+            "floating-countdowns-day",
+            FloatingReferenceScenario,
+            "Day",
+            "Baseline",
+            "floating-countdowns-day.png"),
+        new(
+            "floating-countdowns-night",
+            FloatingReferenceScenario,
+            "Night",
+            "Baseline",
+            "floating-countdowns-night.png"),
+        new(
+            "long-notes-day-top",
+            FloatingLongNotesScenario,
+            "Day",
+            "Top",
+            "long-notes-day-top.png"),
+        new(
+            "long-notes-day-bottom",
+            FloatingLongNotesScenario,
+            "Day",
+            "Bottom",
+            "long-notes-day-bottom.png"),
+        new(
+            "long-notes-night-top",
+            FloatingLongNotesScenario,
+            "Night",
+            "Top",
+            "long-notes-night-top.png"),
+        new(
+            "long-notes-night-bottom",
+            FloatingLongNotesScenario,
+            "Night",
+            "Bottom",
+            "long-notes-night-bottom.png")
+    };
+
     public static IReadOnlyDictionary<string, object?> Create(
         MainWindow main,
         FloatingWindow floating,
@@ -41,6 +149,18 @@ internal static class ValidationReport
         floating.UpdateLayout();
         floating.Reanchor();
         PumpDispatcher();
+
+        var initialFloatingWorkspaceStateMatches = FloatingWorkspacePresentationMatches(
+            floating,
+            WorkspaceKind.Countdowns,
+            desktopWorkspace.Snapshot);
+        var floatingCountdownSelectionSurvivesDayNightThemes =
+            floating.InitialCountdownSelectionSurvivesDayNightThemes();
+        var floatingQuickAddTheme = ValidateFloatingQuickAddLocalTheme(
+            theme,
+            floating);
+        var floatingQuickAddThemeResourceIsolationBehavior =
+            ValidationExercises.RunFloatingQuickAddThemeResourceIsolationBehavior();
 
         var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd);
         var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);
@@ -300,7 +420,8 @@ internal static class ValidationReport
         var originalFloatingWorkspace = floatingNotesButton.IsChecked == true
             ? WorkspaceKind.Notes
             : WorkspaceKind.Countdowns;
-        floating.ShowWorkspace(WorkspaceKind.Notes);
+        floatingNotesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        PumpDispatcher();
         floating.UpdateLayout();
         var floatingRows = Required<StackPanel>(floating, "FloatingRows");
         var renderedFloatingNoteIds = GetRenderedNoteIds(floatingRows);
@@ -315,6 +436,36 @@ internal static class ValidationReport
             floatingTitle,
             Required<Border>(floating, "FloatingDragHandle"));
         var floatingTitleHeightFit = MeasureTextHeightFit(floatingTitle);
+        var floatingNotesWorkspaceStateMatches = FloatingWorkspacePresentationMatches(
+            floating,
+            WorkspaceKind.Notes,
+            workspaceSnapshot);
+        floatingNotesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        PumpDispatcher();
+        floating.UpdateLayout();
+        var floatingNotesReselectionStateMatches = FloatingWorkspacePresentationMatches(
+            floating,
+            WorkspaceKind.Notes,
+            workspaceSnapshot);
+        floatingCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        PumpDispatcher();
+        floating.UpdateLayout();
+        var floatingCountdownWorkspaceStateMatches = FloatingWorkspacePresentationMatches(
+            floating,
+            WorkspaceKind.Countdowns,
+            workspaceSnapshot);
+        floatingCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        PumpDispatcher();
+        floating.UpdateLayout();
+        var floatingCountdownReselectionStateMatches = FloatingWorkspacePresentationMatches(
+            floating,
+            WorkspaceKind.Countdowns,
+            workspaceSnapshot);
+        var floatingWorkspaceSwitchingStaysSynchronized =
+            floatingNotesWorkspaceStateMatches &&
+            floatingNotesReselectionStateMatches &&
+            floatingCountdownWorkspaceStateMatches &&
+            floatingCountdownReselectionStateMatches;
         floating.ShowWorkspace(originalFloatingWorkspace);
         floating.UpdateLayout();
         var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
@@ -506,6 +657,16 @@ internal static class ValidationReport
         var floatingBottomAnchored = floating.IsBottomAnchored;
         var floatingReanchorsAfterContentChanges = floating.IsBottomAnchored;
         var floatingReferenceExercise = RunFloatingReferenceExercise(main, assetRoot);
+        var floatingReferenceBaselineGateIsolationBehavior =
+            ValidationExercises.RunFloatingReferenceManifestGateIsolationBehavior();
+        var floatingReferenceFreshnessGateIsolationBehavior =
+            ValidationExercises.RunFloatingReferenceFreshnessGateIsolationBehavior();
+        var floatingNightPlushEdgeGlowGateIsolationBehavior =
+            ValidationExercises.RunFloatingNightPlushEdgeGlowGateIsolationBehavior();
+        var floatingSecondaryRemainingGateIsolationBehavior =
+            ValidationExercises.RunFloatingSecondaryRemainingGateIsolationBehavior();
+        var floatingScrollBarGateIsolationBehavior =
+            ValidationExercises.RunFloatingScrollBarGateIsolationBehavior();
         var mainThemeExercise = RunMainThemeExercise(theme, main, workspaceSnapshot.UtcNow);
         var floatingThemeExercise = floatingWindowScenarios.ThemeExercise;
         var tagPopupFollowsDayNightTheme =
@@ -523,10 +684,29 @@ internal static class ValidationReport
         var tagChipTextContrast =
             ValidateTagChipTextContrast(theme, main, workspaceSnapshot.UtcNow);
         var floatingManualPlacement = floatingWindowScenarios.ManualPlacement;
-        var mainReferenceDecorationScaling = ValidateMainReferenceDecorationScaling(main);
+        var mainReferenceDecorationValidation = ValidateMainReferenceDecorationScaling(main);
         var mainNightReferenceGeometry = ValidateMainNightReferenceGeometry(main);
-        var mainWorkspaceResourcesFollowTheme =
-            ValidateMainWorkspaceResourcesWithoutRerender(theme, main, workspaceSnapshot.UtcNow);
+        var mainWorkspaceThemeValidation =
+            ValidateMainWorkspaceResourcesWithoutRerender(
+                theme,
+                main,
+                workspaceSnapshot.UtcNow,
+                assetRoot);
+        var uiQualityGates = ValidationExercises.EvaluateUiQualityGates(
+            new UiQualityGateInputs(
+                mainReferenceDecorationValidation.ScalingMatches,
+                mainReferenceDecorationValidation.LayerOrderMatches,
+                mainWorkspaceThemeValidation.StaticResourcesFollowTheme,
+                mainWorkspaceThemeValidation.CountdownCardSampleCount,
+                mainWorkspaceThemeValidation.CountdownCardResourcesFollowTheme,
+                mainWorkspaceThemeValidation.NoteCardSampleCount,
+                mainWorkspaceThemeValidation.NoteCardResourcesFollowTheme,
+                floatingReferenceExercise.ContentSafeAreaMatches,
+                floatingReferenceExercise.TitleUsesSemiBoldWeight,
+                floatingReferenceExercise.NoteInputWraps,
+                floatingReferenceExercise.NoteInputScrolls));
+        var uiQualityGateIsolationBehavior =
+            ValidationExercises.RunUiQualityGateIsolationBehavior();
         var mainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
 
@@ -642,7 +822,17 @@ internal static class ValidationReport
             ["MainThemeSegmentSelectedTextContrast"] = mainThemeExercise.SegmentSelectedTextContrast,
             ["MainCharacterPanelDocksFollowDayNightTheme"] = mainThemeExercise.CharacterPanelDocksFollowTheme,
             ["MainReferenceDecorationsFollowDayNightTheme"] =
-                mainThemeExercise.ReferenceDecorationsFollowTheme && mainWorkspaceResourcesFollowTheme,
+                mainThemeExercise.ReferenceDecorationsFollowTheme,
+            ["MainWorkspaceResourcesFollowDayNightTheme"] =
+                uiQualityGates.MainWorkspaceResourcesFollowTheme,
+            ["MainDynamicCountdownCardsUseThemeResources"] =
+                uiQualityGates.MainCountdownCardResourcesFollowTheme,
+            ["MainDynamicCountdownCardSampleCount"] =
+                mainWorkspaceThemeValidation.CountdownCardSampleCount,
+            ["MainDynamicNoteCardsUseThemeResources"] =
+                uiQualityGates.MainNoteCardResourcesFollowTheme,
+            ["MainDynamicNoteCardSampleCount"] =
+                mainWorkspaceThemeValidation.NoteCardSampleCount,
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
             ["FloatingThemePlushGlowColors"] = floatingThemeExercise.PlushGlowColors,
@@ -653,6 +843,24 @@ internal static class ValidationReport
             ["FloatingThemeTextContrast"] = floatingThemeExercise.TextContrast,
             ["FloatingPlushSceneFollowsDayNightTheme"] =
                 floatingThemeExercise.PlushSceneFollowsDayNightTheme,
+            ["FloatingQuickAddDayResourceChecks"] = floatingQuickAddTheme.Day.Checks,
+            ["FloatingQuickAddNightResourceChecks"] = floatingQuickAddTheme.Night.Checks,
+            ["FloatingQuickAddDayResourceDiagnostics"] = floatingQuickAddTheme.Day.Diagnostics,
+            ["FloatingQuickAddNightResourceDiagnostics"] = floatingQuickAddTheme.Night.Diagnostics,
+            ["FloatingQuickAddDayResourcesFollowLocalTheme"] = floatingQuickAddTheme.Day.Passed,
+            ["FloatingQuickAddNightResourcesFollowLocalTheme"] = floatingQuickAddTheme.Night.Passed,
+            ["FloatingQuickAddIndependentFromApplicationAutoTheme"] =
+                floatingQuickAddTheme.IndependentFromApplicationTheme,
+            ["FloatingQuickAddThemeResourceIsolationBehavior"] =
+                floatingQuickAddThemeResourceIsolationBehavior,
+            ["FloatingQuickAddLocalCanvasColors"] = floatingQuickAddTheme.CanvasColors,
+            ["FloatingQuickAddLocalActiveColors"] = floatingQuickAddTheme.ActiveColors,
+            ["FloatingInitialWorkspaceStateMatches"] =
+                initialFloatingWorkspaceStateMatches,
+            ["FloatingWorkspaceSwitchingStaysSynchronized"] =
+                floatingWorkspaceSwitchingStaysSynchronized,
+            ["FloatingCountdownSelectionSurvivesDayNightThemes"] =
+                floatingCountdownSelectionSurvivesDayNightThemes,
             ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
             ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
             ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
@@ -727,7 +935,9 @@ internal static class ValidationReport
             ["MainNightReferenceDecorationAssetsLoaded"] = main.MainNightReferenceDecorationsLoaded,
             ["MainReferenceDecorationsAreNonInteractive"] = main.MainReferenceDecorationsAreNonInteractive,
             ["MainReferenceDecorationsShareScaleAtMinimumAndWideSizes"] =
-                mainReferenceDecorationScaling,
+                uiQualityGates.MainReferenceDecorationScaling,
+            ["MainReferenceDecorationLayerOrderMatches"] =
+                uiQualityGates.MainReferenceDecorationLayerOrder,
             ["MainNightReferenceGeometryMatchesDay"] = mainNightReferenceGeometry.Matches,
             ["MainNightReferenceCharacterBounds"] = mainNightReferenceGeometry.CharacterBounds,
             ["MainNightReferenceWaveColumnCounts"] = mainNightReferenceGeometry.WaveColumnCounts,
@@ -879,7 +1089,89 @@ internal static class ValidationReport
             ["FloatingReferenceAspectMatches"] = floatingReferenceExercise.AspectMatches,
             ["FloatingReferencePanelGeometryMatches"] = floatingReferenceExercise.PanelGeometryMatches,
             ["FloatingReferenceMascotGeometryMatches"] = floatingReferenceExercise.MascotGeometryMatches,
-            ["FloatingReferenceContentSafeAreaMatches"] = floatingReferenceExercise.ContentSafeAreaMatches,
+            ["FloatingReferenceBaselineRequested"] =
+                floatingReferenceExercise.Baseline.Requested,
+            ["FloatingReferenceBaselineManifestAvailable"] =
+                floatingReferenceExercise.Baseline.ManifestAvailable,
+            ["FloatingReferenceBaselineValidated"] =
+                floatingReferenceExercise.Baseline.AllPassed,
+            ["FloatingReferenceBaselineGateIsolationBehavior"] =
+                floatingReferenceBaselineGateIsolationBehavior,
+            ["FloatingReferenceFreshnessGateIsolationBehavior"] =
+                floatingReferenceFreshnessGateIsolationBehavior,
+            ["FloatingReferenceBaselineManifestPath"] =
+                floatingReferenceExercise.Baseline.ManifestPath,
+            ["FloatingReferenceBaselineSourceAggregateSha256"] =
+                floatingReferenceExercise.Baseline.SourceAggregateSha256,
+            ["FloatingReferenceBaselineExecutableSha256"] =
+                floatingReferenceExercise.Baseline.ExecutableSha256,
+            ["FloatingReferenceBaselineGates"] =
+                floatingReferenceExercise.Baseline.Gates.AsDictionary(),
+            ["FloatingReferenceFreshnessGates"] =
+                floatingReferenceExercise.Baseline.FreshnessGates.AsDictionary(),
+            ["FloatingReferenceBaselineCaptures"] =
+                floatingReferenceExercise.Baseline.Captures,
+            ["FloatingReferenceBaselineDiagnostics"] =
+                floatingReferenceExercise.Baseline.Diagnostics,
+            ["FloatingReferenceBaselineNegativeFixtures"] =
+                FloatingReferenceBaselineNegativeFixtures,
+            ["FloatingReferenceFreshnessNegativeFixtures"] =
+                FloatingReferenceFreshnessNegativeFixtures,
+            ["FloatingLongNotesBodyHasNoManualLineBreaks"] =
+                floatingReferenceExercise.LongNotes.BodyHasNoManualLineBreaks,
+            ["FloatingLongNotesNaturalWraps"] =
+                floatingReferenceExercise.LongNotes.NaturalWraps,
+            ["FloatingLongNotesUsesOnlyOuterScroller"] =
+                floatingReferenceExercise.LongNotes.UsesOnlyOuterScroller,
+            ["FloatingLongNotesOuterScrollable"] =
+                floatingReferenceExercise.LongNotes.OuterScrollable,
+            ["FloatingLongNotesTopBottomReachable"] =
+                floatingReferenceExercise.LongNotes.TopBottomReachable,
+            ["FloatingLongNotesSafeAreaMatches"] =
+                floatingReferenceExercise.LongNotes.SafeAreaMatches,
+            ["FloatingLongNotesLayoutValid"] =
+                floatingReferenceExercise.LongNotes.LayoutValid,
+            ["FloatingLongNotesMeasurements"] =
+                floatingReferenceExercise.LongNotes.Measurements,
+            ["FloatingLongNotesCaptures"] = floatingReferenceExercise.LongNotes.Captures
+                .Select(capture => new
+                {
+                    capture.Spec.CaptureId,
+                    capture.Spec.Scenario,
+                    capture.Spec.Theme,
+                    capture.Spec.State,
+                    PngSha256 = Convert.ToHexString(SHA256.HashData(capture.PngBytes)),
+                    capture.StateFingerprint
+                })
+                .ToArray(),
+            ["FloatingNightPlushSourceAlphaBoundsMatch"] =
+                floatingReferenceExercise.NightPlushEdgeGlow.SourceAlphaBoundsMatch,
+            ["FloatingNightPlushSourceAlphaBounds"] =
+                floatingReferenceExercise.NightPlushEdgeGlow.SourceAlphaBounds,
+            ["FloatingNightPlushEdgeBrightnessWithinLimit"] =
+                floatingReferenceExercise.NightPlushEdgeGlow.Gates.BrightnessWithinLimit,
+            ["FloatingNightPlushEdgeSaturationWithinLimit"] =
+                floatingReferenceExercise.NightPlushEdgeGlow.Gates.SaturationWithinLimit,
+            ["FloatingNightPlushEdgeGlowGateIsolationBehavior"] =
+                floatingNightPlushEdgeGlowGateIsolationBehavior,
+            ["FloatingNightPlushEdgeGlowMeasurements"] =
+                floatingReferenceExercise.NightPlushEdgeGlow.Measurements,
+            ["FloatingNightPlushEdgeBrightnessLimit"] =
+                ValidationExercises.FloatingNightPlushEdgeBrightnessLimit,
+            ["FloatingNightPlushEdgeSaturationLimit"] =
+                ValidationExercises.FloatingNightPlushEdgeSaturationLimit,
+            ["FloatingNightPlushEdgeRoiAlgorithm"] =
+                floatingReferenceExercise.NightPlushEdgeGlow.Algorithm,
+            ["FloatingReferenceContentSafeAreaMatches"] =
+                uiQualityGates.FloatingContentSafeArea,
+            ["FloatingTitleUsesSemiBoldWeight"] =
+                uiQualityGates.FloatingTitleUsesSemiBoldWeight,
+            ["FloatingNoteInputWraps"] = uiQualityGates.FloatingNoteInputWraps,
+            ["FloatingNoteInputScrolls"] = uiQualityGates.FloatingNoteInputScrolls,
+            ["FloatingQuickAddDayExpandedScrolledCaptureWritten"] =
+                floatingReferenceExercise.QuickAddDayExpandedScrolledCaptureWritten,
+            ["FloatingQuickAddNightExpandedScrolledCaptureWritten"] =
+                floatingReferenceExercise.QuickAddNightExpandedScrolledCaptureWritten,
             ["FloatingReferenceContentOverlapCount"] = floatingReferenceExercise.ContentOverlapCount,
             ["FloatingReferenceContentOverlapTargets"] = floatingReferenceExercise.ContentOverlapTargets,
             ["FloatingReferenceCaptureWritten"] = floatingReferenceExercise.CaptureWritten,
@@ -897,6 +1189,44 @@ internal static class ValidationReport
                 floatingReferenceExercise.ResolvedNoteCardErrorDoesNotReturn,
             ["FloatingSecondaryRemainingTextFullyVisible"] =
                 floatingReferenceExercise.SecondaryRemainingTextFullyVisible,
+            ["FloatingSecondaryRemainingUnitSpacingMatches"] =
+                floatingReferenceExercise.SecondaryRemainingGates.UnitSpacingMatches,
+            ["FloatingSecondaryRemainingLayoutMatches"] =
+                floatingReferenceExercise.SecondaryRemainingGates.FixedColumnLayoutMatches,
+            ["FloatingSecondaryRemainingGateIsolationBehavior"] =
+                floatingSecondaryRemainingGateIsolationBehavior,
+            ["FloatingSecondaryRemainingSamples"] =
+                floatingReferenceExercise.SecondaryRemainingSamples,
+            ["FloatingScrollBarLocalStyleScoped"] =
+                floatingReferenceExercise.ScrollBar.Gates.LocalStyleScoped,
+            ["FloatingScrollBarHitTargetUsable"] =
+                floatingReferenceExercise.ScrollBar.Gates.HitTargetUsable,
+            ["FloatingScrollBarVisualWeightProgression"] =
+                floatingReferenceExercise.ScrollBar.Gates.VisualWeightProgression,
+            ["FloatingScrollBarUsesWarmThemeTokens"] =
+                floatingReferenceExercise.ScrollBar.Gates.UsesWarmThemeTokens,
+            ["FloatingScrollBarContentRemainsSafe"] =
+                floatingReferenceExercise.ScrollBar.Gates.ContentRemainsSafe,
+            ["FloatingScrollBarInputPathsWork"] =
+                floatingReferenceExercise.ScrollBar.Gates.InputPathsWork,
+            ["FloatingScrollBarGateIsolationBehavior"] =
+                floatingScrollBarGateIsolationBehavior,
+            ["FloatingScrollBarDayNightStateCapturesReady"] =
+                floatingReferenceExercise.ScrollBar.StateCapturesReady,
+            ["FloatingScrollBarStateMeasurements"] =
+                floatingReferenceExercise.ScrollBar.Measurements,
+            ["FloatingScrollBarWheelOffsets"] = new[]
+            {
+                floatingReferenceExercise.ScrollBar.WheelOffsetBefore,
+                floatingReferenceExercise.ScrollBar.WheelOffsetAfter
+            },
+            ["FloatingScrollBarDragOffsets"] = new[]
+            {
+                floatingReferenceExercise.ScrollBar.DragOffsetBefore,
+                floatingReferenceExercise.ScrollBar.DragOffsetAfter
+            },
+            ["FloatingScrollBarCaptureNames"] =
+                floatingReferenceExercise.ScrollBar.Captures.Keys,
             ["FloatingDayRasterComponentAssetNames"] = floating.DayRasterComponentAssetNames,
             ["FloatingDayRasterShellAndHeaderLoaded"] = floating.DayRasterShellAndHeaderLoaded,
             ["FloatingRasterSurfacesFollowDayNightTheme"] =
@@ -1002,6 +1332,8 @@ internal static class ValidationReport
             ["WindowIconLoaded"] = main.Icon is not null
         };
 
+        report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
+
         var validationReportContractBehavior =
             ValidationExercises.RunValidationReportContractBehavior(report);
         report["ValidationReportContractBehavior"] = validationReportContractBehavior;
@@ -1015,11 +1347,81 @@ internal static class ValidationReport
         return report;
     }
 
-    private static bool ValidateMainReferenceDecorationScaling(MainWindow main)
+    private static bool FloatingWorkspacePresentationMatches(
+        FloatingWindow floating,
+        WorkspaceKind workspace,
+        DesktopWorkspaceSnapshot snapshot)
+    {
+        var countdownButton = Required<ToggleButton>(floating, "FloatingCountdownsButton");
+        var notesButton = Required<ToggleButton>(floating, "FloatingNotesButton");
+        var title = Required<TextBlock>(floating, "FloatingTitle");
+        var noteEntry = Required<Border>(floating, "FloatingNoteEntry");
+        var rows = Required<StackPanel>(floating, "FloatingRows");
+        var selectedButtonCount = new[]
+        {
+            countdownButton.IsChecked == true,
+            notesButton.IsChecked == true
+        }.Count(selected => selected);
+        var chromeMatches =
+            selectedButtonCount == 1 &&
+            countdownButton.IsChecked == (workspace == WorkspaceKind.Countdowns) &&
+            notesButton.IsChecked == (workspace == WorkspaceKind.Notes) &&
+            string.Equals(
+                title.Text,
+                workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签",
+                StringComparison.Ordinal) &&
+            noteEntry.Visibility == (workspace == WorkspaceKind.Notes
+                ? Visibility.Visible
+                : Visibility.Collapsed) &&
+            rows.Children.Count > 0;
+        if (!chromeMatches)
+        {
+            return false;
+        }
+
+        if (workspace == WorkspaceKind.Countdowns)
+        {
+            var expectedCountdownCount = snapshot.VisibleCountdowns.Count(record =>
+                record.TargetUtc > snapshot.UtcNow);
+            var emptyMessages = rows.Children
+                .OfType<TextBlock>()
+                .Select(text => text.Text)
+                .ToArray();
+            return
+                floating.FloatingCountdownCount == expectedCountdownCount &&
+                !Descendants<CheckBox>(rows).Any() &&
+                emptyMessages.All(message => string.Equals(
+                    message,
+                    "没有未到期的倒计时。",
+                    StringComparison.Ordinal));
+        }
+
+        var expectedNoteIds = snapshot.VisibleActiveNotes
+            .Select(note => note.Id)
+            .ToArray();
+        var noteIdsMatch = GetRenderedNoteIds(rows).SequenceEqual(
+            expectedNoteIds,
+            StringComparer.Ordinal);
+        var emptyNoteMessages = rows.Children
+            .OfType<TextBlock>()
+            .Select(text => text.Text)
+            .ToArray();
+        return
+            noteIdsMatch &&
+            (expectedNoteIds.Length > 0
+                ? emptyNoteMessages.Length == 0
+                : emptyNoteMessages.Length == 1 && string.Equals(
+                    emptyNoteMessages[0],
+                    "今天还没有待办便签。",
+                    StringComparison.Ordinal));
+    }
+
+    private static MainReferenceDecorationValidation ValidateMainReferenceDecorationScaling(
+        MainWindow main)
     {
         if (main.Content is not FrameworkElement root)
         {
-            return false;
+            return new MainReferenceDecorationValidation(false, false);
         }
 
         var scaleViewport = Required<Viewbox>(main, "MainScaleViewport");
@@ -1036,6 +1438,8 @@ internal static class ValidationReport
         var nightNotesScene = Required<Image>(main, "NightNotesTopDecoration");
         var originalWidth = main.Width;
         var originalHeight = main.Height;
+        var scalingMatches = true;
+        var layerOrderMatches = true;
 
         try
         {
@@ -1048,49 +1452,49 @@ internal static class ValidationReport
             {
                 main.Width = size.Width;
                 main.Height = size.Height;
-                PumpDispatcher();
-                main.UpdateLayout();
+                scalingMatches &= WaitForStableMainReferenceLayout(
+                    main,
+                    root,
+                    decorationLayer,
+                    layoutSurface,
+                    contentProjection);
 
-                if (!SameBounds(
+                scalingMatches &=
+                    SameBounds(
                         BoundsIn(decorationLayer, root),
-                        BoundsIn(layoutSurface, root)) ||
-                    !ReferenceEquals(VisualTreeHelper.GetParent(decorationLayer), layoutSurface) ||
-                    !ReferenceEquals(VisualTreeHelper.GetParent(contentProjection), layoutSurface) ||
-                    !ReferenceEquals(VisualTreeHelper.GetParent(contentSurface), contentProjection) ||
-                    !ReferenceEquals(VisualTreeHelper.GetParent(countdownScene), decorationLayer) ||
-                    !ReferenceEquals(VisualTreeHelper.GetParent(notesScene), decorationLayer) ||
-                    !ReferenceEquals(VisualTreeHelper.GetParent(nightCountdownScene), decorationLayer) ||
-                    !ReferenceEquals(VisualTreeHelper.GetParent(nightNotesScene), notesWorkspace) ||
-                    Panel.GetZIndex(decorationLayer) >= Panel.GetZIndex(contentProjection) ||
-                    Panel.GetZIndex(noteEditorPanel) >= Panel.GetZIndex(nightNotesScene) ||
-                    Panel.GetZIndex(nightNotesScene) >= Panel.GetZIndex(noteTextLabel) ||
-                    decorationLayer.IsHitTestVisible ||
-                    countdownScene.IsHitTestVisible ||
-                    notesScene.IsHitTestVisible ||
-                    nightCountdownScene.IsHitTestVisible ||
-                    nightNotesScene.IsHitTestVisible ||
-                    layoutSurface.Width != 1165 ||
-                    layoutSurface.Height != 1350 ||
-                    contentProjection.Width != layoutSurface.Width ||
-                    contentProjection.Height != layoutSurface.Height ||
-                    contentSurface.Width != layoutSurface.Width ||
-                    contentSurface.Height != layoutSurface.Height ||
-                    countdownScene.Width != layoutSurface.Width ||
-                    countdownScene.Height != layoutSurface.Height ||
-                    notesScene.Width != layoutSurface.Width ||
-                    notesScene.Height != layoutSurface.Height ||
-                    nightCountdownScene.Width != layoutSurface.Width ||
-                    nightCountdownScene.Height != layoutSurface.Height ||
-                    nightNotesScene.Width != layoutSurface.Width ||
-                    nightNotesScene.Height != layoutSurface.Height ||
-                    HasNonIdentityTransform(contentProjection) ||
-                    scaleViewport.Stretch != Stretch.Uniform)
-                {
-                    return false;
-                }
+                        BoundsIn(layoutSurface, root)) &&
+                    ReferenceEquals(VisualTreeHelper.GetParent(decorationLayer), layoutSurface) &&
+                    ReferenceEquals(VisualTreeHelper.GetParent(contentProjection), layoutSurface) &&
+                    ReferenceEquals(VisualTreeHelper.GetParent(contentSurface), contentProjection) &&
+                    ReferenceEquals(VisualTreeHelper.GetParent(countdownScene), decorationLayer) &&
+                    ReferenceEquals(VisualTreeHelper.GetParent(notesScene), decorationLayer) &&
+                    ReferenceEquals(VisualTreeHelper.GetParent(nightCountdownScene), decorationLayer) &&
+                    ReferenceEquals(VisualTreeHelper.GetParent(nightNotesScene), notesWorkspace) &&
+                    layoutSurface.Width == 1165 &&
+                    layoutSurface.Height == 1350 &&
+                    contentProjection.Width == layoutSurface.Width &&
+                    contentProjection.Height == layoutSurface.Height &&
+                    contentSurface.Width == layoutSurface.Width &&
+                    contentSurface.Height == layoutSurface.Height &&
+                    countdownScene.Width == layoutSurface.Width &&
+                    countdownScene.Height == layoutSurface.Height &&
+                    notesScene.Width == layoutSurface.Width &&
+                    notesScene.Height == layoutSurface.Height &&
+                    nightCountdownScene.Width == layoutSurface.Width &&
+                    nightCountdownScene.Height == layoutSurface.Height &&
+                    nightNotesScene.Width == layoutSurface.Width &&
+                    nightNotesScene.Height == layoutSurface.Height &&
+                    !HasNonIdentityTransform(contentProjection) &&
+                    scaleViewport.Stretch == Stretch.Uniform;
+                layerOrderMatches &=
+                    Panel.GetZIndex(decorationLayer) < Panel.GetZIndex(contentProjection) &&
+                    Panel.GetZIndex(noteEditorPanel) < Panel.GetZIndex(nightNotesScene) &&
+                    Panel.GetZIndex(nightNotesScene) < Panel.GetZIndex(noteTextLabel);
             }
 
-            return true;
+            return new MainReferenceDecorationValidation(
+                scalingMatches,
+                layerOrderMatches);
         }
         finally
         {
@@ -1098,8 +1502,75 @@ internal static class ValidationReport
             main.Height = originalHeight;
             main.InvalidateMeasure();
             main.InvalidateArrange();
-            PumpDispatcher();
+            WaitForStableMainReferenceLayout(
+                main,
+                root,
+                decorationLayer,
+                layoutSurface,
+                contentProjection);
         }
+    }
+
+    private static bool WaitForStableMainReferenceLayout(
+        MainWindow main,
+        FrameworkElement root,
+        FrameworkElement decorationLayer,
+        FrameworkElement layoutSurface,
+        FrameworkElement contentProjection)
+    {
+        const int maximumPasses = 10;
+        const int requiredStablePasses = 2;
+        const double tolerance = 0.01;
+        double[]? previous = null;
+        var stablePasses = 0;
+
+        for (var pass = 0; pass < maximumPasses; pass++)
+        {
+            main.InvalidateMeasure();
+            main.InvalidateArrange();
+            PumpDispatcher();
+            main.UpdateLayout();
+
+            var decorationBounds = BoundsIn(decorationLayer, root);
+            var layoutBounds = BoundsIn(layoutSurface, root);
+            var contentBounds = BoundsIn(contentProjection, root);
+            var current = new[]
+            {
+                main.ActualWidth,
+                main.ActualHeight,
+                decorationBounds.X,
+                decorationBounds.Y,
+                decorationBounds.Width,
+                decorationBounds.Height,
+                layoutBounds.X,
+                layoutBounds.Y,
+                layoutBounds.Width,
+                layoutBounds.Height,
+                contentBounds.X,
+                contentBounds.Y,
+                contentBounds.Width,
+                contentBounds.Height
+            };
+
+            if (previous is not null &&
+                current.Zip(previous, (actual, expected) => Math.Abs(actual - expected))
+                    .All(delta => delta <= tolerance))
+            {
+                stablePasses++;
+                if (stablePasses >= requiredStablePasses)
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                stablePasses = 0;
+            }
+
+            previous = current;
+        }
+
+        return false;
     }
 
     private static MainNightReferenceGeometryResult ValidateMainNightReferenceGeometry(
@@ -1641,14 +2112,20 @@ internal static class ValidationReport
         try
         {
             Directory.CreateDirectory(holidayDirectory);
-            var notes = Enumerable.Range(1, 6)
-                .Select(index => new NoteRecord(
-                    $"reference-note-{index}",
-                    $"固定视口便签 {index}\n第二行用于验证多行内容和滚动",
+            var longNoteTexts = Enumerable.Range(1, 6)
+                .Select(index =>
+                    $"{(index == 1 ? "首锚点" : $"中段锚点{index}")}：这是一条没有手工换行符的长便签正文，" +
+                    "它必须依靠真实 WPF TextWrapping 在固定纸面宽度内自然折行，同时保持日期印记、完成复选框、标签和相邻卡片互不遮挡，" +
+                    $"编号 {index} 的末尾校验文字{(index == 6 ? "，尾锚点" : string.Empty)}。")
+                .ToArray();
+            var notes = longNoteTexts
+                .Select((text, index) => new NoteRecord(
+                    $"reference-note-{index + 1}",
+                    text,
                     "2030-07-15",
                     false,
-                    Array.Empty<string>(),
-                    index == 1
+                    new[] { "reference-warm-tag" },
+                    index == 0
                         ? new RepeatingReminder(
                             referenceUtc.AddHours(1),
                             new ReminderInterval(30))
@@ -1664,7 +2141,7 @@ internal static class ValidationReport
                         Array.Empty<string>())
                 },
                 notes,
-                Array.Empty<TagRecord>(),
+                new[] { new TagRecord("reference-warm-tag", "长便签", "#F4B6A6") },
                 new CountdownPreferences(
                     "Second",
                     5255.85m,
@@ -1786,9 +2263,13 @@ internal static class ValidationReport
             var contentSafeAreaMatches =
                 referencePlushScene.Bounds.Count(bounds => bounds is not null) == 3 &&
                 contentOverlapCount == 0 &&
-                countdownRowsReserveScrollbarInset &&
-                Required<TextBlock>(referenceWindow, "FloatingTitle").FontWeight == FontWeights.SemiBold &&
-                Required<TextBox>(referenceWindow, "FloatingNoteText").TextWrapping == TextWrapping.Wrap;
+                countdownRowsReserveScrollbarInset;
+            var titleUsesSemiBoldWeight =
+                Required<TextBlock>(referenceWindow, "FloatingTitle").FontWeight == FontWeights.SemiBold;
+            var floatingNoteInput = Required<TextBox>(referenceWindow, "FloatingNoteText");
+            var noteInputWraps = floatingNoteInput.TextWrapping == TextWrapping.Wrap;
+            var noteInputScrolls =
+                floatingNoteInput.VerticalScrollBarVisibility == ScrollBarVisibility.Auto;
             var workdayCountdownUsesPrimaryVisual = WorkdayCountdownUsesPrimaryVisual(
                 rows,
                 referenceUtc,
@@ -1807,6 +2288,54 @@ internal static class ValidationReport
             var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
             var captureBytes = EncodePng(framedCapture);
             var captureWritten = captureBytes.Length > 0;
+            var baselineBodyScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
+            var dayCountdownCapture = CreateFloatingReferenceActualCapture(
+                FloatingReferenceCaptureSpecs.Single(spec =>
+                    spec.CaptureId == "floating-countdowns-day"),
+                captureBytes,
+                CreateFloatingReferenceStateFingerprint(
+                    "Day",
+                    "Countdowns",
+                    string.Empty,
+                    string.Empty,
+                    "Baseline",
+                    baselineBodyScroller.VerticalOffset,
+                    baselineBodyScroller.ScrollableHeight,
+                    "距离下班",
+                    "七月倒计时"));
+            var secondaryRemainingSamples = new List<FloatingSecondaryRemainingMeasurement>();
+            var referencePreferences = referenceSession.Current.Preferences;
+            var precisionPreferencesSaved = true;
+            var precisionCases = new (string Precision, string ExpectedText)[]
+            {
+                ("Day", "4 天"),
+                ("Hour", "4 天 13 小时"),
+                ("Minute", "4 天 13 小时 18 分钟"),
+                ("Second", "4 天 13 小时 18 分钟 59 秒")
+            };
+            foreach (var precisionCase in precisionCases)
+            {
+                var preferenceSaved = referenceSession.TrySavePreferences(
+                    precisionCase.Precision,
+                    referencePreferences.MonthlySalary,
+                    referencePreferences.WorkStart,
+                    referencePreferences.WorkEnd,
+                    out _);
+                precisionPreferencesSaved &= preferenceSaved;
+                referenceWindow.UpdateTime(referenceUtc);
+                WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
+                secondaryRemainingSamples.Add(CaptureFloatingSecondaryRemaining(
+                    precisionCase.Precision,
+                    precisionCase.ExpectedText,
+                    CountdownFormatting.FormatRemaining(
+                        referenceUtc.AddDays(4).AddHours(13).AddMinutes(18).AddSeconds(59),
+                        referenceUtc,
+                        precisionCase.Precision),
+                    FindFloatingSecondaryRemaining(rows, "七月倒计时"),
+                    referenceWindow,
+                    preferenceSaved));
+            }
+
             var longSecondaryAdded = referenceSession.TrySaveCountdown(
                 "reference-long-secondary",
                 "长周期次级倒计时",
@@ -1815,41 +2344,35 @@ internal static class ValidationReport
                 out _);
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 3);
-            var longSecondaryRemaining = Descendants<TextBlock>(rows).FirstOrDefault(text =>
-                text.Text.Contains("2000000天", StringComparison.Ordinal));
-            var longSecondaryFitsViewport = false;
-            if (longSecondaryRemaining is not null)
-            {
-                var referenceBodyScroller = Required<ScrollViewer>(
-                    referenceWindow,
-                    "FloatingBodyScroller");
-                referenceBodyScroller.ApplyTemplate();
-                if (referenceBodyScroller.Template.FindName(
-                        "PART_ScrollContentPresenter",
-                        referenceBodyScroller) is ScrollContentPresenter viewport)
-                {
-                    var remainingBounds = BoundsIn(longSecondaryRemaining, viewport);
-                    var viewportBounds = new Rect(
-                        new Point(0, 0),
-                        viewport.RenderSize);
-                    longSecondaryFitsViewport =
-                        remainingBounds.Left + 0.5 >= viewportBounds.Left &&
-                        remainingBounds.Top + 0.5 >= viewportBounds.Top &&
-                        remainingBounds.Right <= viewportBounds.Right + 0.5 &&
-                        remainingBounds.Bottom <= viewportBounds.Bottom + 0.5;
-                }
-            }
-
-            var longSecondaryTextFullyVisible =
-                longSecondaryRemaining is not null &&
-                longSecondaryRemaining.TextWrapping == TextWrapping.NoWrap &&
-                longSecondaryRemaining.TextTrimming == TextTrimming.None &&
-                !longSecondaryRemaining.Text.Contains('\n') &&
-                !longSecondaryRemaining.Text.Contains('…') &&
-                longSecondaryRemaining.LineHeight > 0 &&
-                longSecondaryRemaining.ActualHeight <= longSecondaryRemaining.LineHeight + 0.5 &&
-                TextBlockLinesFit(longSecondaryRemaining) &&
-                longSecondaryFitsViewport;
+            const string longSecondaryExpected = "2000000 天 00 小时 00 分钟 00 秒";
+            var longSecondaryMeasurement = CaptureFloatingSecondaryRemaining(
+                "SecondLongDays",
+                longSecondaryExpected,
+                CountdownFormatting.FormatRemaining(
+                    referenceUtc.AddDays(2_000_000),
+                    referenceUtc,
+                    "Second"),
+                FindFloatingSecondaryRemaining(rows, "长周期次级倒计时"),
+                referenceWindow,
+                longSecondaryAdded);
+            secondaryRemainingSamples.Add(longSecondaryMeasurement);
+            var secondaryRemainingGates =
+                ValidationExercises.EvaluateFloatingSecondaryRemainingGates(
+                    new FloatingSecondaryRemainingGateInputs(
+                        secondaryRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
+                        secondaryRemainingSamples.Select(sample => sample.FormattedText).ToArray(),
+                        secondaryRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
+                        precisionPreferencesSaved &&
+                            longSecondaryAdded &&
+                            secondaryRemainingSamples.Count == 5,
+                        secondaryRemainingSamples.All(sample => sample.ColumnIs194Pixels),
+                        secondaryRemainingSamples.All(sample => sample.IsRightAligned),
+                        secondaryRemainingSamples.All(sample => sample.IsSingleLineAndUntrimmed),
+                        secondaryRemainingSamples.All(sample => sample.IsFullyVisible),
+                        secondaryRemainingSamples.All(sample => sample.UsesTabularNumerals),
+                        secondaryRemainingSamples.Take(4).All(sample =>
+                            Math.Abs(sample.FontSize - 13) <= 0.01) &&
+                            longSecondaryMeasurement.FontSize is >= 10 and < 13));
             var longSecondaryDeleted = referenceSession.TryDeleteCountdown(
                 "reference-long-secondary",
                 out _);
@@ -1858,19 +2381,44 @@ internal static class ValidationReport
             secondaryRemainingTextFullyVisible =
                 longSecondaryAdded &&
                 longSecondaryDeleted &&
-                longSecondaryTextFullyVisible;
+                longSecondaryMeasurement.IsFullyVisible;
             byte[]? notesCaptureBytes = null;
             byte[]? nightCountdownCaptureBytes = null;
             byte[]? nightNotesCaptureBytes = null;
             byte[]? scrolledCountdownsCaptureBytes = null;
             byte[]? scrolledNotesCaptureBytes = null;
+            byte[]? nightScrolledNotesCaptureBytes = null;
+            var floatingScrollBarValidation = FloatingScrollBarValidation.NotRun;
+            var nightPlushEdgeGlow = FloatingNightPlushEdgeGlowValidation.NotRun;
+            var floatingReferenceBaseline = FloatingReferenceBaselineValidation.NotRequested;
+            var floatingLongNotesValidation = FloatingLongNotesValidation.NotRun;
             referenceWindow.ApplyTheme(ApplicationThemeMode.Night);
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
+            nightPlushEdgeGlow = ValidateFloatingNightPlushEdgeGlow(
+                referenceWindow,
+                plushScene,
+                expectedMascots,
+                actualWidth,
+                actualHeight);
             nightCountdownCaptureBytes = EncodePng(ScaleToFrame(
                 CaptureVisual(root),
                 captureWidth,
                 captureHeight));
+            var nightCountdownCapture = CreateFloatingReferenceActualCapture(
+                FloatingReferenceCaptureSpecs.Single(spec =>
+                    spec.CaptureId == "floating-countdowns-night"),
+                nightCountdownCaptureBytes,
+                CreateFloatingReferenceStateFingerprint(
+                    "Night",
+                    "Countdowns",
+                    string.Empty,
+                    string.Empty,
+                    "Baseline",
+                    baselineBodyScroller.VerticalOffset,
+                    baselineBodyScroller.ScrollableHeight,
+                    "距离下班",
+                    "七月倒计时"));
             referenceWindow.ApplyTheme(ApplicationThemeMode.Day);
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
@@ -2005,6 +2553,14 @@ internal static class ValidationReport
 
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
+            floatingScrollBarValidation = ValidateFloatingScrollBar(
+                manager,
+                referenceWindow,
+                root,
+                rows,
+                referenceUtc,
+                captureWidth,
+                captureHeight);
             var countdownScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
             countdownScroller.ScrollToVerticalOffset(countdownScroller.ScrollableHeight);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
@@ -2027,20 +2583,26 @@ internal static class ValidationReport
             Required<ToggleButton>(referenceWindow, "FloatingNotesButton")
                 .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
-            notesCaptureBytes = EncodePng(ScaleToFrame(
-                CaptureVisual(root),
+            floatingLongNotesValidation = CaptureFloatingLongNoteFrames(
+                referenceWindow,
+                root,
+                rows,
+                notes,
+                referenceUtc,
                 captureWidth,
-                captureHeight));
-            referenceWindow.ApplyTheme(ApplicationThemeMode.Night);
-            referenceWindow.UpdateTime(referenceUtc);
-            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
-            nightNotesCaptureBytes = EncodePng(ScaleToFrame(
-                CaptureVisual(root),
-                captureWidth,
-                captureHeight));
-            referenceWindow.ApplyTheme(ApplicationThemeMode.Day);
-            referenceWindow.UpdateTime(referenceUtc);
-            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+                captureHeight);
+            notesCaptureBytes = floatingLongNotesValidation.Captures
+                .Single(capture => capture.Spec.CaptureId == "long-notes-day-top")
+                .PngBytes;
+            nightNotesCaptureBytes = floatingLongNotesValidation.Captures
+                .Single(capture => capture.Spec.CaptureId == "long-notes-night-top")
+                .PngBytes;
+            floatingReferenceBaseline = ValidateFloatingReferenceBaseline(
+                assetRoot,
+                new[] { dayCountdownCapture, nightCountdownCapture }
+                    .Concat(floatingLongNotesValidation.Captures)
+                    .ToArray(),
+                floatingLongNotesValidation.LayoutValid);
             viewportStates.Add(
                 CaptureFloatingViewportState("six-multiline-notes", referenceWindow, root, rows));
 
@@ -2073,6 +2635,18 @@ internal static class ValidationReport
                 CaptureVisual(root),
                 captureWidth,
                 captureHeight));
+            referenceWindow.ApplyTheme(ApplicationThemeMode.Night);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+            bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
+            PumpDispatcher();
+            nightScrolledNotesCaptureBytes = EncodePng(ScaleToFrame(
+                CaptureVisual(root),
+                captureWidth,
+                captureHeight));
+            referenceWindow.ApplyTheme(ApplicationThemeMode.Day);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             viewportStates.Add(
                 CaptureFloatingViewportState("scrolled-notes", referenceWindow, root, rows));
 
@@ -2258,11 +2832,25 @@ internal static class ValidationReport
                         Path.Combine(evidenceDirectory, $"{captureName}-notes-scrolled.png"),
                         scrolledNotesCaptureBytes);
                 }
+                if (nightScrolledNotesCaptureBytes is not null)
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(evidenceDirectory, $"{captureName}-night-notes-scrolled.png"),
+                        nightScrolledNotesCaptureBytes);
+                }
                 if (scrolledCountdownsCaptureBytes is not null)
                 {
                     File.WriteAllBytes(
                         Path.Combine(evidenceDirectory, $"{captureName}-countdowns-scrolled.png"),
                         scrolledCountdownsCaptureBytes);
+                }
+                foreach (var stateCapture in floatingScrollBarValidation.Captures)
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(
+                            evidenceDirectory,
+                            $"{captureName}-scrollbar-{stateCapture.Key}.png"),
+                        stateCapture.Value);
                 }
                 var referenceImagePath = Environment.GetEnvironmentVariable(
                     "MINMIN_COUNTDOWN_REFERENCE_IMAGE");
@@ -2351,7 +2939,15 @@ internal static class ValidationReport
                 aspectMatches,
                 panelGeometryMatches,
                 mascotGeometryMatches,
+                floatingReferenceBaseline,
+                floatingLongNotesValidation,
+                nightPlushEdgeGlow,
                 contentSafeAreaMatches,
+                titleUsesSemiBoldWeight,
+                noteInputWraps,
+                noteInputScrolls,
+                scrolledNotesCaptureBytes?.Length > 0,
+                nightScrolledNotesCaptureBytes?.Length > 0,
                 contentOverlapCount,
                 contentOverlapTargets,
                 captureWritten,
@@ -2365,6 +2961,9 @@ internal static class ValidationReport
                 noteFailureAppearsInSourceCard,
                 resolvedNoteCardErrorDoesNotReturn,
                 secondaryRemainingTextFullyVisible,
+                secondaryRemainingGates,
+                secondaryRemainingSamples,
+                floatingScrollBarValidation,
                 new[] { Math.Round(actualWidth, 2), Math.Round(actualHeight, 2) },
                 capturePath);
         }
@@ -2384,6 +2983,1371 @@ internal static class ValidationReport
             }
         }
     }
+
+    private static FloatingLongNotesValidation CaptureFloatingLongNoteFrames(
+        FloatingWindow window,
+        Grid root,
+        StackPanel rows,
+        IReadOnlyList<NoteRecord> notes,
+        DateTimeOffset referenceUtc,
+        int captureWidth,
+        int captureHeight)
+    {
+        var bodyScroller = Required<ScrollViewer>(window, "FloatingBodyScroller");
+        var noteEntry = Required<Border>(window, "FloatingNoteEntry");
+        noteEntry.Visibility = Visibility.Collapsed;
+        PumpDispatcher();
+        window.UpdateLayout();
+        bodyScroller.ApplyTemplate();
+        var viewport = bodyScroller.Template.FindName(
+            "PART_ScrollContentPresenter",
+            bodyScroller) as ScrollContentPresenter;
+        var noteById = notes.ToDictionary(note => note.Id, StringComparer.Ordinal);
+        var measurements = new List<FloatingLongNoteFrameMeasurement>();
+        var captures = new List<FloatingReferenceActualCapture>();
+        var bodyHasNoManualLineBreaks = notes.All(note =>
+            !note.Text.Contains('\r') && !note.Text.Contains('\n'));
+        var naturalWraps = true;
+        var safeAreaMatches = true;
+        var usesOnlyOuterScroller =
+            viewport is not null &&
+            HasVisualAncestor(rows, bodyScroller) &&
+            !Descendants<ScrollViewer>(rows).Any();
+
+        foreach (var theme in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
+        {
+            window.ApplyTheme(theme);
+            window.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(window, root, rows, notes.Count);
+            foreach (var state in new[] { "Top", "Bottom" })
+            {
+                if (state == "Top")
+                {
+                    bodyScroller.ScrollToTop();
+                }
+                else
+                {
+                    bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
+                }
+                WaitForStableFloatingReferenceLayout(window, root, rows, notes.Count);
+
+                var cardBindings = CaptureFloatingNoteCardBindings(rows, noteById);
+                var stateNaturalWraps = cardBindings.Count == notes.Count && cardBindings.All(binding =>
+                    binding.BodyText.TextWrapping == TextWrapping.Wrap &&
+                    TextWouldNaturallyWrap(binding.BodyText));
+                var stateSafeAreaMatches =
+                    root.ActualWidth is >= 519.5 and <= 520.5 &&
+                    root.ActualHeight is >= 389.5 and <= 390.5 &&
+                    FloatingLongNoteSafeAreaMatches(window, root, cardBindings);
+                naturalWraps &= stateNaturalWraps;
+                safeAreaMatches &= stateSafeAreaMatches;
+
+                var visibleBindings = viewport is null
+                    ? Array.Empty<FloatingNoteCardBinding>()
+                    : cardBindings
+                        .Where(binding => VisibleIntersectionHeight(binding.Card, viewport) >= 4)
+                        .OrderBy(binding => BoundsIn(binding.Card, viewport).Top)
+                        .ToArray();
+                var primaryBinding = state == "Top"
+                    ? visibleBindings.FirstOrDefault()
+                    : visibleBindings.LastOrDefault();
+                var primaryAnchorReachable =
+                    primaryBinding is not null &&
+                    viewport is not null &&
+                    FloatingLongNoteAnchorReachable(primaryBinding.BodyText, viewport, state);
+                var firstVisibleAnchor = visibleBindings.Length == 0
+                    ? string.Empty
+                    : FloatingLongNoteAnchor(visibleBindings[0], takeSuffix: false);
+                var lastVisibleAnchor = visibleBindings.Length == 0
+                    ? string.Empty
+                    : FloatingLongNoteAnchor(visibleBindings[^1], takeSuffix: true);
+                var captureId = $"long-notes-{theme.ToString().ToLowerInvariant()}-{state.ToLowerInvariant()}";
+                var fingerprint = CreateFloatingReferenceStateFingerprint(
+                    theme.ToString(),
+                    "Notes",
+                    primaryBinding?.Note.Id ?? string.Empty,
+                    primaryBinding?.Note.Text ?? string.Empty,
+                    state,
+                    bodyScroller.VerticalOffset,
+                    bodyScroller.ScrollableHeight,
+                    firstVisibleAnchor,
+                    lastVisibleAnchor);
+                var pngBytes = EncodePng(ScaleToFrame(
+                    CaptureVisual(root),
+                    captureWidth,
+                    captureHeight));
+                var spec = FloatingReferenceCaptureSpecs.Single(candidate =>
+                    string.Equals(candidate.CaptureId, captureId, StringComparison.Ordinal));
+                captures.Add(CreateFloatingReferenceActualCapture(spec, pngBytes, fingerprint));
+                measurements.Add(new FloatingLongNoteFrameMeasurement(
+                    captureId,
+                    theme.ToString(),
+                    state,
+                    Math.Round(bodyScroller.VerticalOffset, 2),
+                    Math.Round(bodyScroller.ScrollableHeight, 2),
+                    primaryBinding?.Note.Id ?? string.Empty,
+                    fingerprint.NoteTextSha256,
+                    firstVisibleAnchor,
+                    lastVisibleAnchor,
+                    bodyHasNoManualLineBreaks,
+                    stateNaturalWraps,
+                    usesOnlyOuterScroller,
+                    bodyScroller.ScrollableHeight > 0,
+                    primaryAnchorReachable,
+                    stateSafeAreaMatches));
+            }
+        }
+
+        window.ApplyTheme(ApplicationThemeMode.Day);
+        window.UpdateTime(referenceUtc);
+        bodyScroller.ScrollToTop();
+        WaitForStableFloatingReferenceLayout(window, root, rows, notes.Count);
+        noteEntry.Visibility = Visibility.Visible;
+        PumpDispatcher();
+        window.UpdateLayout();
+
+        var outerScrollable = measurements.Count == 4 &&
+            measurements.All(measurement => measurement.ScrollableHeight > 0);
+        var topBottomReachable = measurements.Count == 4 && measurements.All(measurement =>
+            measurement.PrimaryAnchorReachable &&
+            !string.IsNullOrWhiteSpace(measurement.FirstVisibleAnchor) &&
+            !string.IsNullOrWhiteSpace(measurement.LastVisibleAnchor) &&
+            (measurement.State == "Top"
+                ? Math.Abs(measurement.VerticalOffset) <= 1
+                : Math.Abs(measurement.VerticalOffset - measurement.ScrollableHeight) <= 1));
+        return new FloatingLongNotesValidation(
+            bodyHasNoManualLineBreaks,
+            naturalWraps,
+            usesOnlyOuterScroller,
+            outerScrollable,
+            topBottomReachable,
+            safeAreaMatches,
+            measurements,
+            captures);
+    }
+
+    private static IReadOnlyList<FloatingNoteCardBinding> CaptureFloatingNoteCardBindings(
+        StackPanel rows,
+        IReadOnlyDictionary<string, NoteRecord> noteById) =>
+        rows.Children
+            .OfType<Border>()
+            .Select(card =>
+            {
+                var completion = Descendants<CheckBox>(card).SingleOrDefault();
+                if (completion?.Tag is not string noteId ||
+                    !noteById.TryGetValue(noteId, out var note) ||
+                    card.Child is not Grid layout)
+                {
+                    return null;
+                }
+
+                var body = layout.Children.OfType<StackPanel>()
+                    .Single(element => Grid.GetColumn(element) == 1);
+                var bodyText = body.Children.OfType<TextBlock>()
+                    .First(element => string.Equals(element.Text, note.Text, StringComparison.Ordinal));
+                var dateStamp = layout.Children.OfType<Border>()
+                    .Single(element => Grid.GetColumn(element) == 2);
+                return new FloatingNoteCardBinding(card, layout, completion, body, bodyText, dateStamp, note);
+            })
+            .Where(binding => binding is not null)
+            .Cast<FloatingNoteCardBinding>()
+            .ToArray();
+
+    private static bool FloatingLongNoteSafeAreaMatches(
+        FloatingWindow window,
+        Grid root,
+        IReadOnlyList<FloatingNoteCardBinding> bindings)
+    {
+        if (bindings.Count != 6)
+        {
+            return false;
+        }
+
+        var cardBounds = bindings.Select(binding => BoundsIn(binding.Card, root)).ToArray();
+        var cardsStayInsideRightSafeArea = cardBounds.All(bounds =>
+            bounds.Left >= 57 && bounds.Right <= 396.5 && bounds.Bottom > bounds.Top);
+        var adjacentCardsDoNotOverlap = cardBounds.Zip(cardBounds.Skip(1)).All(pair =>
+            pair.First.Bottom <= pair.Second.Top + 0.5);
+        var cardInternalsDoNotOverlap = bindings.All(binding =>
+        {
+            var card = BoundsIn(binding.Card, root);
+            var text = BoundsIn(binding.BodyText, root);
+            var completion = BoundsIn(binding.Completion, root);
+            var dateStamp = BoundsIn(binding.DateStamp, root);
+            return !text.IntersectsWith(completion) &&
+                   !text.IntersectsWith(dateStamp) &&
+                   text.Left >= card.Left &&
+                   text.Right <= card.Right + 0.5 &&
+                   text.Top >= card.Top &&
+                   text.Bottom <= card.Bottom + 0.5;
+        });
+        var noteEntry = Required<Border>(window, "FloatingNoteEntry");
+        var fixtureTagsRemainBound = bindings.All(binding =>
+            binding.Note.TagIds.SequenceEqual(new[] { "reference-warm-tag" }, StringComparer.Ordinal));
+        var quickAddIsClosedForLongNoteViewport = noteEntry.Visibility == Visibility.Collapsed;
+        return cardsStayInsideRightSafeArea &&
+               adjacentCardsDoNotOverlap &&
+               cardInternalsDoNotOverlap &&
+               fixtureTagsRemainBound &&
+               quickAddIsClosedForLongNoteViewport;
+    }
+
+    private static bool TextWouldNaturallyWrap(TextBlock text)
+    {
+        var dpi = VisualTreeHelper.GetDpi(text);
+        var formatted = new FormattedText(
+            text.Text,
+            CultureInfo.CurrentCulture,
+            text.FlowDirection,
+            new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+            text.FontSize,
+            text.Foreground,
+            dpi.PixelsPerDip);
+        return formatted.WidthIncludingTrailingWhitespace > text.ActualWidth + 1 &&
+               text.ActualHeight >= formatted.Height * 1.8;
+    }
+
+    private static double VisibleIntersectionHeight(
+        FrameworkElement element,
+        FrameworkElement viewport)
+    {
+        var intersection = Rect.Intersect(
+            BoundsIn(element, viewport),
+            new Rect(new Point(0, 0), viewport.RenderSize));
+        return intersection.IsEmpty ? 0 : intersection.Height;
+    }
+
+    private static bool FloatingLongNoteAnchorReachable(
+        TextBlock text,
+        FrameworkElement viewport,
+        string state)
+    {
+        var bounds = BoundsIn(text, viewport);
+        var viewportBounds = new Rect(new Point(0, 0), viewport.RenderSize);
+        var intersection = Rect.Intersect(bounds, viewportBounds);
+        if (intersection.IsEmpty || intersection.Height < 12)
+        {
+            return false;
+        }
+
+        return state == "Top"
+            ? bounds.Top >= -1 && bounds.Top < viewportBounds.Bottom
+            : bounds.Bottom > viewportBounds.Top && bounds.Bottom <= viewportBounds.Bottom + 1;
+    }
+
+    private static string FloatingLongNoteAnchor(
+        FloatingNoteCardBinding binding,
+        bool takeSuffix)
+    {
+        const int anchorLength = 12;
+        var text = binding.Note.Text;
+        var anchor = takeSuffix
+            ? text[^Math.Min(anchorLength, text.Length)..]
+            : text[..Math.Min(anchorLength, text.Length)];
+        return $"{binding.Note.Id}:{anchor}";
+    }
+
+    private static bool HasVisualAncestor(DependencyObject element, DependencyObject expectedAncestor)
+    {
+        for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, expectedAncestor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static FloatingReferenceActualCapture CreateFloatingReferenceActualCapture(
+        FloatingReferenceCaptureSpec spec,
+        byte[] pngBytes,
+        FloatingReferenceStateFingerprint stateFingerprint) =>
+        new(spec, pngBytes, stateFingerprint);
+
+    private static FloatingReferenceStateFingerprint CreateFloatingReferenceStateFingerprint(
+        string theme,
+        string workspace,
+        string noteId,
+        string noteText,
+        string viewportState,
+        double verticalOffset,
+        double scrollableHeight,
+        string firstVisibleAnchor,
+        string lastVisibleAnchor)
+    {
+        var roundedOffset = Math.Round(verticalOffset, 2);
+        var roundedScrollableHeight = Math.Round(scrollableHeight, 2);
+        var noteTextSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(noteText)));
+        var canonicalState = string.Join(
+            "\n",
+            $"theme={theme}",
+            $"workspace={workspace}",
+            $"noteId={noteId}",
+            $"noteTextSha256={noteTextSha256}",
+            $"viewportState={viewportState}",
+            $"verticalOffset={roundedOffset.ToString("F2", CultureInfo.InvariantCulture)}",
+            $"scrollableHeight={roundedScrollableHeight.ToString("F2", CultureInfo.InvariantCulture)}",
+            $"firstVisibleAnchor={firstVisibleAnchor}",
+            $"lastVisibleAnchor={lastVisibleAnchor}");
+        return new FloatingReferenceStateFingerprint(
+            FloatingReferenceStateFingerprintAlgorithm,
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
+            theme,
+            workspace,
+            noteId,
+            noteTextSha256,
+            viewportState,
+            roundedOffset,
+            roundedScrollableHeight,
+            firstVisibleAnchor,
+            lastVisibleAnchor);
+    }
+
+    private static FloatingReferenceBaselineValidation ValidateFloatingReferenceBaseline(
+        string assetRoot,
+        IReadOnlyList<FloatingReferenceActualCapture> actualCaptures,
+        bool longNoteLayoutValid)
+    {
+        const string sourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
+        var sourceRootValue = Environment.GetEnvironmentVariable(sourceRootVariable);
+        if (string.IsNullOrWhiteSpace(sourceRootValue))
+        {
+            return FloatingReferenceBaselineValidation.NotRequested;
+        }
+
+        var sourceRoot = Path.GetFullPath(sourceRootValue);
+        if (!Directory.Exists(sourceRoot))
+        {
+            return FloatingReferenceBaselineValidation.Invalid(
+                true,
+                false,
+                $"视觉源码根目录不存在：{sourceRootVariable}。");
+        }
+
+        var baselineRelativeDirectory =
+            $"assets/ui-references/floating-window/520x390/{FloatingReferenceBaselineVersion}";
+        var manifestRelativePath = $"{baselineRelativeDirectory}/manifest.json";
+        var baselineDirectory = ResolveRepositoryRelativePath(sourceRoot, baselineRelativeDirectory);
+        var manifestPath = ResolveRepositoryRelativePath(sourceRoot, manifestRelativePath);
+        var generationRequested = string.Equals(
+            Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE"),
+            "1",
+            StringComparison.Ordinal);
+        if (generationRequested)
+        {
+            GenerateFloatingReferenceBaseline(
+                sourceRoot,
+                baselineDirectory,
+                manifestPath,
+                baselineRelativeDirectory,
+                actualCaptures);
+        }
+
+        if (!File.Exists(manifestPath))
+        {
+            return FloatingReferenceBaselineValidation.Invalid(
+                true,
+                false,
+                $"未找到悬浮窗参考图 manifest：{manifestRelativePath}");
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+            var root = document.RootElement;
+            var structureValid =
+                HasExactJsonProperties(
+                    root,
+                    "schemaVersion",
+                    "baselineVersion",
+                    "captureKind",
+                    "canvas",
+                    "sourceBinding",
+                    "executable",
+                    "pixelComparison",
+                    "freshness",
+                    "captures") &&
+                root.GetProperty("schemaVersion").GetInt32() == 1 &&
+                string.Equals(
+                    root.GetProperty("baselineVersion").GetString(),
+                    FloatingReferenceBaselineVersion,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    root.GetProperty("captureKind").GetString(),
+                    "actual-wpf-floating-window",
+                    StringComparison.Ordinal);
+
+            var canvas = root.GetProperty("canvas");
+            structureValid &=
+                HasExactJsonProperties(canvas, "width", "height", "metricDpi") &&
+                canvas.GetProperty("width").GetInt32() == 520 &&
+                canvas.GetProperty("height").GetInt32() == 390 &&
+                canvas.GetProperty("metricDpi").GetInt32() == 96;
+
+            var sourceBindingElement = root.GetProperty("sourceBinding");
+            structureValid &= HasExactJsonProperties(
+                sourceBindingElement,
+                "aggregateAlgorithm",
+                "aggregateSha256",
+                "files");
+            var aggregateAlgorithm = sourceBindingElement
+                .GetProperty("aggregateAlgorithm")
+                .GetString() ?? string.Empty;
+            var manifestAggregateSha256 = sourceBindingElement
+                .GetProperty("aggregateSha256")
+                .GetString() ?? string.Empty;
+            var sourceBindings = sourceBindingElement
+                .GetProperty("files")
+                .EnumerateArray()
+                .Select(element =>
+                {
+                    structureValid &= HasExactJsonProperties(element, "path", "sha256");
+                    return new FloatingReferenceSourceBinding(
+                        element.GetProperty("path").GetString() ?? string.Empty,
+                        element.GetProperty("sha256").GetString() ?? string.Empty);
+                })
+                .ToArray();
+
+            var executable = root.GetProperty("executable");
+            structureValid &= HasExactJsonProperties(
+                executable,
+                "path",
+                "sha256",
+                "generation");
+            var executableLogicalPath = executable.GetProperty("path").GetString() ?? string.Empty;
+            var manifestExecutableSha256 = executable.GetProperty("sha256").GetString() ?? string.Empty;
+            var executableGeneration = executable.GetProperty("generation").GetString() ?? string.Empty;
+
+            var pixelComparison = root.GetProperty("pixelComparison");
+            structureValid &= HasExactJsonProperties(
+                pixelComparison,
+                "algorithm",
+                "maxAbsoluteChannelDelta",
+                "maximumMeanAbsoluteError",
+                "maximumRootMeanSquareError",
+                "maximumChangedPixelCount");
+            var comparisonAlgorithm = pixelComparison.GetProperty("algorithm").GetString() ?? string.Empty;
+            var maximumAbsoluteChannelDelta = pixelComparison
+                .GetProperty("maxAbsoluteChannelDelta")
+                .GetInt32();
+            var maximumMeanAbsoluteError = pixelComparison
+                .GetProperty("maximumMeanAbsoluteError")
+                .GetDouble();
+            var maximumRootMeanSquareError = pixelComparison
+                .GetProperty("maximumRootMeanSquareError")
+                .GetDouble();
+            var maximumChangedPixelCount = pixelComparison
+                .GetProperty("maximumChangedPixelCount")
+                .GetInt32();
+
+            var freshness = root.GetProperty("freshness");
+            structureValid &= HasExactJsonProperties(
+                freshness,
+                "stateFingerprintAlgorithm",
+                "minimumTopBottomMeanAbsoluteError",
+                "minimumTopBottomRootMeanSquareError",
+                "minimumTopBottomChangedPixelCount",
+                "topBottomComparisons");
+            var stateFingerprintAlgorithm = freshness
+                .GetProperty("stateFingerprintAlgorithm")
+                .GetString() ?? string.Empty;
+            var minimumTopBottomMeanAbsoluteError = freshness
+                .GetProperty("minimumTopBottomMeanAbsoluteError")
+                .GetDouble();
+            var minimumTopBottomRootMeanSquareError = freshness
+                .GetProperty("minimumTopBottomRootMeanSquareError")
+                .GetDouble();
+            var minimumTopBottomChangedPixelCount = freshness
+                .GetProperty("minimumTopBottomChangedPixelCount")
+                .GetInt32();
+            var topBottomComparisons = freshness
+                .GetProperty("topBottomComparisons")
+                .EnumerateArray()
+                .Select(element => ReadFloatingReferenceStateDifference(element, ref structureValid))
+                .ToArray();
+
+            var captureElements = root.GetProperty("captures").EnumerateArray().ToArray();
+            var captures = captureElements.Select(element =>
+                ReadFloatingReferenceCapture(element, ref structureValid)).ToArray();
+            structureValid &=
+                captures.Length == FloatingReferenceCaptureSpecs.Length &&
+                string.Equals(
+                    aggregateAlgorithm,
+                    FloatingReferenceSourceAggregateAlgorithm,
+                    StringComparison.Ordinal) &&
+                string.Equals(executableLogicalPath, "app/MinminCountdown.exe", StringComparison.Ordinal) &&
+                string.Equals(
+                    executableGeneration,
+                    "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    comparisonAlgorithm,
+                    FloatingReferencePixelComparisonAlgorithm,
+                    StringComparison.Ordinal) &&
+                maximumAbsoluteChannelDelta == FloatingReferenceMaximumAbsoluteChannelDelta &&
+                Math.Abs(maximumMeanAbsoluteError - FloatingReferenceMaximumMeanAbsoluteError) < 0.0000001 &&
+                Math.Abs(maximumRootMeanSquareError - FloatingReferenceMaximumRootMeanSquareError) < 0.0000001 &&
+                maximumChangedPixelCount == FloatingReferenceMaximumChangedPixelCount &&
+                string.Equals(
+                    stateFingerprintAlgorithm,
+                    FloatingReferenceStateFingerprintAlgorithm,
+                    StringComparison.Ordinal) &&
+                Math.Abs(
+                    minimumTopBottomMeanAbsoluteError -
+                    FloatingReferenceMinimumTopBottomMeanAbsoluteError) < 0.0000001 &&
+                Math.Abs(
+                    minimumTopBottomRootMeanSquareError -
+                    FloatingReferenceMinimumTopBottomRootMeanSquareError) < 0.0000001 &&
+                minimumTopBottomChangedPixelCount ==
+                    FloatingReferenceMinimumTopBottomChangedPixelCount &&
+                topBottomComparisons.Length == 2;
+
+            var expectedCapturePaths = FloatingReferenceCaptureSpecs
+                .Select(spec => $"{baselineRelativeDirectory}/{spec.FileName}")
+                .ToArray();
+            var capturePaths = captures.Select(capture => capture.Path).ToArray();
+            var capturePathsUnique =
+                capturePaths.Distinct(StringComparer.Ordinal).Count() == capturePaths.Length;
+            structureValid &=
+                capturePaths.Length == expectedCapturePaths.Length &&
+                capturePaths.Order(StringComparer.Ordinal)
+                    .SequenceEqual(expectedCapturePaths.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+            var expectedStateBindingsMatch = captures.All(capture =>
+            {
+                var spec = FloatingReferenceCaptureSpecs.SingleOrDefault(candidate =>
+                    string.Equals(candidate.CaptureId, capture.CaptureId, StringComparison.Ordinal));
+                return spec is not null &&
+                    string.Equals(capture.Scenario, spec.Scenario, StringComparison.Ordinal) &&
+                    string.Equals(capture.Theme, spec.Theme, StringComparison.Ordinal) &&
+                    string.Equals(capture.State, spec.State, StringComparison.Ordinal) &&
+                    string.Equals(
+                        capture.Path,
+                        $"{baselineRelativeDirectory}/{spec.FileName}",
+                        StringComparison.Ordinal) &&
+                    string.Equals(capture.StateFingerprint.Theme, spec.Theme, StringComparison.Ordinal) &&
+                    string.Equals(capture.StateFingerprint.ViewportState, spec.State, StringComparison.Ordinal);
+            });
+            structureValid &= expectedStateBindingsMatch;
+            var captureIds = captures.Select(capture => capture.CaptureId).ToArray();
+            var captureIdsUnique =
+                captureIds.Distinct(StringComparer.Ordinal).Count() == captureIds.Length &&
+                captureIds.Order(StringComparer.Ordinal).SequenceEqual(
+                    FloatingReferenceCaptureSpecs
+                        .Select(spec => spec.CaptureId)
+                        .Order(StringComparer.Ordinal),
+                    StringComparer.Ordinal);
+            var scenarioThemePairsUnique =
+                captures
+                    .Select(capture => $"{capture.Scenario}\0{capture.Theme}\0{capture.State}")
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() == captures.Length;
+
+            var expectedCaptureFilesPresent = expectedCapturePaths.All(relativePath =>
+                File.Exists(ResolveRepositoryRelativePath(sourceRoot, relativePath)));
+            var pngInventory = Directory.Exists(baselineDirectory)
+                ? Directory.GetFiles(baselineDirectory, "*.png", SearchOption.TopDirectoryOnly)
+                    .Select(path => Path.GetFileName(path))
+                    .Order(StringComparer.Ordinal)
+                    .ToArray()
+                : Array.Empty<string>();
+            var expectedPngInventory = expectedCapturePaths
+                .Select(path => Path.GetFileName(path))
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var noOrphanPngFiles =
+                pngInventory.SequenceEqual(expectedPngInventory, StringComparer.Ordinal);
+
+            var currentSourceBindings = GetFloatingReferenceSourceBindings(sourceRoot);
+            var currentSourceAggregate = AggregateFloatingReferenceSourceBindings(
+                currentSourceBindings);
+            var sourceHashesMatch =
+                sourceBindings.Length == currentSourceBindings.Count &&
+                sourceBindings.Select(binding => binding.Path)
+                    .SequenceEqual(FloatingReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
+                sourceBindings.Zip(currentSourceBindings)
+                    .All(pair =>
+                        string.Equals(pair.First.Path, pair.Second.Path, StringComparison.Ordinal) &&
+                        IsUpperSha256(pair.First.Sha256) &&
+                        string.Equals(pair.First.Sha256, pair.Second.Sha256, StringComparison.Ordinal)) &&
+                IsUpperSha256(manifestAggregateSha256) &&
+                string.Equals(
+                    manifestAggregateSha256,
+                    AggregateFloatingReferenceSourceBindings(sourceBindings),
+                    StringComparison.Ordinal) &&
+                string.Equals(manifestAggregateSha256, currentSourceAggregate, StringComparison.Ordinal);
+
+            var processPath = Environment.ProcessPath;
+            var executableSha256 = !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
+                ? Sha256File(processPath)
+                : string.Empty;
+            var executableHashMatches =
+                IsUpperSha256(manifestExecutableSha256) &&
+                string.Equals(manifestExecutableSha256, executableSha256, StringComparison.Ordinal);
+
+            var actualByCaptureId = actualCaptures.ToDictionary(
+                capture => capture.Spec.CaptureId,
+                StringComparer.Ordinal);
+            var canvasDimensionsMatch = captures.Count(capture =>
+                capture.Width == 520 && capture.Height == 390) == FloatingReferenceCaptureSpecs.Length;
+            var pngHashesMatch = expectedCaptureFilesPresent;
+            var alphaMetricsMatch = expectedCaptureFilesPresent;
+            var contentRoiMatches = expectedCaptureFilesPresent;
+            var pixelMetricsWithinThresholds = expectedCaptureFilesPresent;
+            var stateFingerprintsMatch = expectedCaptureFilesPresent;
+            var measurements = new List<FloatingReferenceBaselineCaptureMeasurement>();
+            foreach (var capture in captures)
+            {
+                if (!expectedCapturePaths.Contains(capture.Path, StringComparer.Ordinal) ||
+                    !actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture))
+                {
+                    pngHashesMatch = false;
+                    alphaMetricsMatch = false;
+                    contentRoiMatches = false;
+                    pixelMetricsWithinThresholds = false;
+                    stateFingerprintsMatch = false;
+                    continue;
+                }
+
+                var actualBytes = actualCapture.PngBytes;
+
+                var baselinePath = ResolveRepositoryRelativePath(sourceRoot, capture.Path);
+                if (!File.Exists(baselinePath))
+                {
+                    pngHashesMatch = false;
+                    alphaMetricsMatch = false;
+                    contentRoiMatches = false;
+                    pixelMetricsWithinThresholds = false;
+                    stateFingerprintsMatch = false;
+                    continue;
+                }
+
+                var baselineBytes = File.ReadAllBytes(baselinePath);
+                var baselineMetrics = MeasureFloatingReferenceCapture(baselineBytes);
+                var actualMetrics = MeasureFloatingReferenceCapture(actualBytes);
+                var comparison = CompareFloatingReferencePixels(baselineBytes, actualBytes);
+                var baselineSha256 = Convert.ToHexString(SHA256.HashData(baselineBytes));
+                var actualSha256 = Convert.ToHexString(SHA256.HashData(actualBytes));
+                canvasDimensionsMatch &=
+                    baselineMetrics.Width == 520 &&
+                    baselineMetrics.Height == 390 &&
+                    actualMetrics.Width == 520 &&
+                    actualMetrics.Height == 390;
+                pngHashesMatch &=
+                    IsUpperSha256(capture.PngSha256) &&
+                    string.Equals(capture.PngSha256, baselineSha256, StringComparison.Ordinal) &&
+                    string.Equals(capture.PngSha256, actualSha256, StringComparison.Ordinal);
+                stateFingerprintsMatch &=
+                    FloatingReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
+                    capture.StateFingerprint == actualCapture.StateFingerprint;
+                alphaMetricsMatch &=
+                    capture.Alpha == baselineMetrics.Alpha &&
+                    capture.Alpha == actualMetrics.Alpha;
+                contentRoiMatches &=
+                    capture.ContentRoi == baselineMetrics.ContentRoi &&
+                    capture.ContentRoi == actualMetrics.ContentRoi;
+                pixelMetricsWithinThresholds &=
+                    capture.Comparison == FloatingReferencePixelMetrics.Zero &&
+                    comparison.MaxAbsoluteChannelDelta <= maximumAbsoluteChannelDelta &&
+                    comparison.MeanAbsoluteError <= maximumMeanAbsoluteError &&
+                    comparison.RootMeanSquareError <= maximumRootMeanSquareError &&
+                    comparison.ChangedPixelCount <= maximumChangedPixelCount;
+                measurements.Add(new FloatingReferenceBaselineCaptureMeasurement(
+                    capture.CaptureId,
+                    capture.Scenario,
+                    capture.Theme,
+                    capture.State,
+                    capture.Path,
+                    baselineSha256,
+                    actualSha256,
+                    capture.StateFingerprint,
+                    actualMetrics.Alpha,
+                    actualMetrics.ContentRoi,
+                    comparison));
+            }
+
+            var manifestPngHashes = captures.Select(capture => capture.PngSha256).ToArray();
+            var pngHashesUnique =
+                manifestPngHashes.Distinct(StringComparer.Ordinal).Count() == captures.Length &&
+                captures.Single(capture => capture.CaptureId == "floating-countdowns-day").PngSha256 ==
+                    FloatingReferenceDayCountdownSha256 &&
+                captures.Single(capture => capture.CaptureId == "floating-countdowns-night").PngSha256 ==
+                    FloatingReferenceNightCountdownSha256;
+            var stateFingerprintsUnique =
+                captures.Select(capture => capture.StateFingerprint.Sha256)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() == captures.Length;
+            var topBottomPixelsDiffer = true;
+            foreach (var themeName in new[] { "Day", "Night" })
+            {
+                var topId = $"long-notes-{themeName.ToLowerInvariant()}-top";
+                var bottomId = $"long-notes-{themeName.ToLowerInvariant()}-bottom";
+                if (!actualByCaptureId.TryGetValue(topId, out var topActual) ||
+                    !actualByCaptureId.TryGetValue(bottomId, out var bottomActual))
+                {
+                    topBottomPixelsDiffer = false;
+                    continue;
+                }
+
+                var measuredDifference = CompareFloatingReferencePixels(
+                    topActual.PngBytes,
+                    bottomActual.PngBytes);
+                var manifestDifference = topBottomComparisons.SingleOrDefault(difference =>
+                    string.Equals(difference.Theme, themeName, StringComparison.Ordinal));
+                topBottomPixelsDiffer &=
+                    manifestDifference is not null &&
+                    string.Equals(manifestDifference.TopCaptureId, topId, StringComparison.Ordinal) &&
+                    string.Equals(manifestDifference.BottomCaptureId, bottomId, StringComparison.Ordinal) &&
+                    manifestDifference.Metrics == measuredDifference &&
+                    measuredDifference.MeanAbsoluteError >=
+                        FloatingReferenceMinimumTopBottomMeanAbsoluteError &&
+                    measuredDifference.RootMeanSquareError >=
+                        FloatingReferenceMinimumTopBottomRootMeanSquareError &&
+                    measuredDifference.ChangedPixelCount >=
+                        FloatingReferenceMinimumTopBottomChangedPixelCount;
+            }
+
+            var gates = ValidationExercises.EvaluateFloatingReferenceManifestGates(
+                new FloatingReferenceManifestGateInputs(
+                    structureValid,
+                    expectedCaptureFilesPresent,
+                    capturePathsUnique,
+                    noOrphanPngFiles,
+                    canvasDimensionsMatch,
+                    scenarioThemePairsUnique,
+                    sourceHashesMatch,
+                    executableHashMatches,
+                    pngHashesMatch,
+                    alphaMetricsMatch,
+                    contentRoiMatches,
+                    pixelMetricsWithinThresholds));
+            var freshnessGates = ValidationExercises.EvaluateFloatingReferenceFreshnessGates(
+                new FloatingReferenceFreshnessGateInputs(
+                    expectedStateBindingsMatch,
+                    captureIdsUnique,
+                    stateFingerprintsMatch,
+                    stateFingerprintsUnique,
+                    pngHashesUnique,
+                    topBottomPixelsDiffer,
+                    longNoteLayoutValid));
+            var diagnostics = gates.AsDictionary()
+                .Concat(freshnessGates.AsDictionary())
+                .Where(pair => !pair.Value)
+                .Select(pair => pair.Key)
+                .ToArray();
+            return new FloatingReferenceBaselineValidation(
+                true,
+                true,
+                manifestRelativePath,
+                currentSourceAggregate,
+                executableSha256,
+                gates,
+                freshnessGates,
+                measurements,
+                diagnostics);
+        }
+        catch (Exception exception) when (exception is IOException or JsonException or InvalidOperationException or FormatException or KeyNotFoundException)
+        {
+            return FloatingReferenceBaselineValidation.Invalid(
+                true,
+                File.Exists(manifestPath),
+                exception.Message,
+                manifestRelativePath);
+        }
+    }
+
+    private static void GenerateFloatingReferenceBaseline(
+        string sourceRoot,
+        string baselineDirectory,
+        string manifestPath,
+        string baselineRelativeDirectory,
+        IReadOnlyList<FloatingReferenceActualCapture> actualCaptures)
+    {
+        if (actualCaptures.Count != FloatingReferenceCaptureSpecs.Length ||
+            actualCaptures.Select(capture => capture.Spec.CaptureId)
+                .Distinct(StringComparer.Ordinal)
+                .Count() != FloatingReferenceCaptureSpecs.Length)
+        {
+            throw new InvalidOperationException("悬浮窗参考图生成必须提供严格六帧 inventory。");
+        }
+
+        Directory.CreateDirectory(baselineDirectory);
+        var captureMetrics = actualCaptures.ToDictionary(
+            capture => capture.Spec.CaptureId,
+            capture => MeasureFloatingReferenceCapture(capture.PngBytes),
+            StringComparer.Ordinal);
+        if (captureMetrics.Values.Any(metrics => metrics.Width != 520 || metrics.Height != 390))
+        {
+            throw new InvalidOperationException("悬浮窗参考图生成帧不是 520x390。");
+        }
+
+        var dayCountdown = actualCaptures.Single(capture =>
+            capture.Spec.CaptureId == "floating-countdowns-day");
+        var nightCountdown = actualCaptures.Single(capture =>
+            capture.Spec.CaptureId == "floating-countdowns-night");
+        if (!string.Equals(
+                Convert.ToHexString(SHA256.HashData(dayCountdown.PngBytes)),
+                FloatingReferenceDayCountdownSha256,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                Convert.ToHexString(SHA256.HashData(nightCountdown.PngBytes)),
+                FloatingReferenceNightCountdownSha256,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("#2 日夜倒计时参考帧发生变化，拒绝重写 2026-08-04-v1。");
+        }
+
+        var sourceBindings = GetFloatingReferenceSourceBindings(sourceRoot);
+        var sourceAggregate = AggregateFloatingReferenceSourceBindings(sourceBindings);
+        var processPath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(processPath) || !File.Exists(processPath))
+        {
+            throw new InvalidOperationException("无法绑定生成参考图的当前 EXE。");
+        }
+
+        var executableSha256 = Sha256File(processPath);
+        var stateDifferences = new[] { "Day", "Night" }
+            .Select(theme =>
+            {
+                var topId = $"long-notes-{theme.ToLowerInvariant()}-top";
+                var bottomId = $"long-notes-{theme.ToLowerInvariant()}-bottom";
+                var top = actualCaptures.Single(capture => capture.Spec.CaptureId == topId);
+                var bottom = actualCaptures.Single(capture => capture.Spec.CaptureId == bottomId);
+                return new FloatingReferenceStateDifference(
+                    theme,
+                    topId,
+                    bottomId,
+                    CompareFloatingReferencePixels(top.PngBytes, bottom.PngBytes));
+            })
+            .ToArray();
+        if (stateDifferences.Any(difference =>
+                difference.Metrics.MeanAbsoluteError < FloatingReferenceMinimumTopBottomMeanAbsoluteError ||
+                difference.Metrics.RootMeanSquareError < FloatingReferenceMinimumTopBottomRootMeanSquareError ||
+                difference.Metrics.ChangedPixelCount < FloatingReferenceMinimumTopBottomChangedPixelCount))
+        {
+            throw new InvalidOperationException("长便签 top/bottom 帧像素差不足，拒绝生成可复用旧帧的 manifest。");
+        }
+
+        var manifest = JsonSerializer.SerializeToUtf8Bytes(
+            new
+            {
+                schemaVersion = 1,
+                baselineVersion = FloatingReferenceBaselineVersion,
+                captureKind = "actual-wpf-floating-window",
+                canvas = new { width = 520, height = 390, metricDpi = 96 },
+                sourceBinding = new
+                {
+                    aggregateAlgorithm = FloatingReferenceSourceAggregateAlgorithm,
+                    aggregateSha256 = sourceAggregate,
+                    files = sourceBindings.Select(binding => new
+                    {
+                        path = binding.Path,
+                        sha256 = binding.Sha256
+                    })
+                },
+                executable = new
+                {
+                    path = "app/MinminCountdown.exe",
+                    sha256 = executableSha256,
+                    generation = "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
+                },
+                pixelComparison = new
+                {
+                    algorithm = FloatingReferencePixelComparisonAlgorithm,
+                    maxAbsoluteChannelDelta = FloatingReferenceMaximumAbsoluteChannelDelta,
+                    maximumMeanAbsoluteError = FloatingReferenceMaximumMeanAbsoluteError,
+                    maximumRootMeanSquareError = FloatingReferenceMaximumRootMeanSquareError,
+                    maximumChangedPixelCount = FloatingReferenceMaximumChangedPixelCount
+                },
+                freshness = new
+                {
+                    stateFingerprintAlgorithm = FloatingReferenceStateFingerprintAlgorithm,
+                    minimumTopBottomMeanAbsoluteError =
+                        FloatingReferenceMinimumTopBottomMeanAbsoluteError,
+                    minimumTopBottomRootMeanSquareError =
+                        FloatingReferenceMinimumTopBottomRootMeanSquareError,
+                    minimumTopBottomChangedPixelCount =
+                        FloatingReferenceMinimumTopBottomChangedPixelCount,
+                    topBottomComparisons = stateDifferences.Select(difference => new
+                    {
+                        theme = difference.Theme,
+                        topCaptureId = difference.TopCaptureId,
+                        bottomCaptureId = difference.BottomCaptureId,
+                        maxAbsoluteChannelDelta = difference.Metrics.MaxAbsoluteChannelDelta,
+                        meanAbsoluteError = difference.Metrics.MeanAbsoluteError,
+                        rootMeanSquareError = difference.Metrics.RootMeanSquareError,
+                        changedPixelCount = difference.Metrics.ChangedPixelCount
+                    })
+                },
+                captures = FloatingReferenceCaptureSpecs.Select(spec =>
+                {
+                    var capture = actualCaptures.Single(actual =>
+                        string.Equals(actual.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal));
+                    var path = $"{baselineRelativeDirectory}/{spec.FileName}";
+                    return CreateFloatingReferenceManifestCapture(
+                        capture,
+                        path,
+                        captureMetrics[spec.CaptureId]);
+                })
+            },
+            new JsonSerializerOptions { WriteIndented = true });
+        foreach (var capture in actualCaptures)
+        {
+            var relativePath = $"{baselineRelativeDirectory}/{capture.Spec.FileName}";
+            var path = ResolveRepositoryRelativePath(sourceRoot, relativePath);
+            if (capture.Spec.CaptureId is "floating-countdowns-day" or "floating-countdowns-night")
+            {
+                if (!File.Exists(path) ||
+                    !File.ReadAllBytes(path).SequenceEqual(capture.PngBytes))
+                {
+                    throw new InvalidOperationException($"#2 固定参考帧缺失或字节已变化：{capture.Spec.CaptureId}。");
+                }
+                continue;
+            }
+
+            WriteBytesAtomically(path, capture.PngBytes);
+        }
+        WriteBytesAtomically(manifestPath, manifest);
+    }
+
+    private static object CreateFloatingReferenceManifestCapture(
+        FloatingReferenceActualCapture capture,
+        string path,
+        FloatingReferenceCaptureMetrics metrics) =>
+        new
+        {
+            captureId = capture.Spec.CaptureId,
+            scenario = capture.Spec.Scenario,
+            theme = capture.Spec.Theme,
+            state = capture.Spec.State,
+            path,
+            width = metrics.Width,
+            height = metrics.Height,
+            pngSha256 = Convert.ToHexString(SHA256.HashData(capture.PngBytes)),
+            stateFingerprint = new
+            {
+                algorithm = capture.StateFingerprint.Algorithm,
+                sha256 = capture.StateFingerprint.Sha256,
+                theme = capture.StateFingerprint.Theme,
+                workspace = capture.StateFingerprint.Workspace,
+                noteId = capture.StateFingerprint.NoteId,
+                noteTextSha256 = capture.StateFingerprint.NoteTextSha256,
+                viewportState = capture.StateFingerprint.ViewportState,
+                verticalOffset = capture.StateFingerprint.VerticalOffset,
+                scrollableHeight = capture.StateFingerprint.ScrollableHeight,
+                firstVisibleAnchor = capture.StateFingerprint.FirstVisibleAnchor,
+                lastVisibleAnchor = capture.StateFingerprint.LastVisibleAnchor
+            },
+            alpha = new
+            {
+                algorithm = FloatingReferenceAlphaAlgorithm,
+                minimum = metrics.Alpha.Minimum,
+                maximum = metrics.Alpha.Maximum,
+                transparentPixelCount = metrics.Alpha.TransparentPixelCount,
+                nonOpaquePixelCount = metrics.Alpha.NonOpaquePixelCount,
+                opaquePixelCount = metrics.Alpha.OpaquePixelCount
+            },
+            contentRoi = new
+            {
+                algorithm = FloatingReferenceRoiAlgorithm,
+                alphaThreshold = metrics.ContentRoi.AlphaThreshold,
+                x = metrics.ContentRoi.X,
+                y = metrics.ContentRoi.Y,
+                width = metrics.ContentRoi.Width,
+                height = metrics.ContentRoi.Height,
+                pixelCount = metrics.ContentRoi.PixelCount
+            },
+            comparison = new
+            {
+                maxAbsoluteChannelDelta = 0,
+                meanAbsoluteError = 0d,
+                rootMeanSquareError = 0d,
+                changedPixelCount = 0
+            }
+        };
+
+    private static FloatingReferenceManifestCapture ReadFloatingReferenceCapture(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "captureId",
+            "scenario",
+            "theme",
+            "state",
+            "path",
+            "width",
+            "height",
+            "pngSha256",
+            "stateFingerprint",
+            "alpha",
+            "contentRoi",
+            "comparison");
+        var stateFingerprint = ReadFloatingReferenceStateFingerprint(
+            element.GetProperty("stateFingerprint"),
+            ref structureValid);
+        var alpha = element.GetProperty("alpha");
+        structureValid &=
+            HasExactJsonProperties(
+                alpha,
+                "algorithm",
+                "minimum",
+                "maximum",
+                "transparentPixelCount",
+                "nonOpaquePixelCount",
+                "opaquePixelCount") &&
+            string.Equals(
+                alpha.GetProperty("algorithm").GetString(),
+                FloatingReferenceAlphaAlgorithm,
+                StringComparison.Ordinal);
+        var contentRoi = element.GetProperty("contentRoi");
+        structureValid &=
+            HasExactJsonProperties(
+                contentRoi,
+                "algorithm",
+                "alphaThreshold",
+                "x",
+                "y",
+                "width",
+                "height",
+                "pixelCount") &&
+            string.Equals(
+                contentRoi.GetProperty("algorithm").GetString(),
+                FloatingReferenceRoiAlgorithm,
+                StringComparison.Ordinal);
+        var comparison = element.GetProperty("comparison");
+        structureValid &= HasExactJsonProperties(
+            comparison,
+            "maxAbsoluteChannelDelta",
+            "meanAbsoluteError",
+            "rootMeanSquareError",
+            "changedPixelCount");
+        return new FloatingReferenceManifestCapture(
+            element.GetProperty("captureId").GetString() ?? string.Empty,
+            element.GetProperty("scenario").GetString() ?? string.Empty,
+            element.GetProperty("theme").GetString() ?? string.Empty,
+            element.GetProperty("state").GetString() ?? string.Empty,
+            element.GetProperty("path").GetString() ?? string.Empty,
+            element.GetProperty("width").GetInt32(),
+            element.GetProperty("height").GetInt32(),
+            element.GetProperty("pngSha256").GetString() ?? string.Empty,
+            stateFingerprint,
+            new FloatingReferenceAlphaMetrics(
+                alpha.GetProperty("minimum").GetInt32(),
+                alpha.GetProperty("maximum").GetInt32(),
+                alpha.GetProperty("transparentPixelCount").GetInt32(),
+                alpha.GetProperty("nonOpaquePixelCount").GetInt32(),
+                alpha.GetProperty("opaquePixelCount").GetInt32()),
+            new FloatingReferenceContentRoi(
+                contentRoi.GetProperty("alphaThreshold").GetInt32(),
+                contentRoi.GetProperty("x").GetInt32(),
+                contentRoi.GetProperty("y").GetInt32(),
+                contentRoi.GetProperty("width").GetInt32(),
+                contentRoi.GetProperty("height").GetInt32(),
+                contentRoi.GetProperty("pixelCount").GetInt32()),
+            new FloatingReferencePixelMetrics(
+                comparison.GetProperty("maxAbsoluteChannelDelta").GetInt32(),
+                comparison.GetProperty("meanAbsoluteError").GetDouble(),
+                comparison.GetProperty("rootMeanSquareError").GetDouble(),
+                comparison.GetProperty("changedPixelCount").GetInt32()));
+    }
+
+    private static FloatingReferenceStateFingerprint ReadFloatingReferenceStateFingerprint(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "algorithm",
+            "sha256",
+            "theme",
+            "workspace",
+            "noteId",
+            "noteTextSha256",
+            "viewportState",
+            "verticalOffset",
+            "scrollableHeight",
+            "firstVisibleAnchor",
+            "lastVisibleAnchor");
+        return new FloatingReferenceStateFingerprint(
+            element.GetProperty("algorithm").GetString() ?? string.Empty,
+            element.GetProperty("sha256").GetString() ?? string.Empty,
+            element.GetProperty("theme").GetString() ?? string.Empty,
+            element.GetProperty("workspace").GetString() ?? string.Empty,
+            element.GetProperty("noteId").GetString() ?? string.Empty,
+            element.GetProperty("noteTextSha256").GetString() ?? string.Empty,
+            element.GetProperty("viewportState").GetString() ?? string.Empty,
+            element.GetProperty("verticalOffset").GetDouble(),
+            element.GetProperty("scrollableHeight").GetDouble(),
+            element.GetProperty("firstVisibleAnchor").GetString() ?? string.Empty,
+            element.GetProperty("lastVisibleAnchor").GetString() ?? string.Empty);
+    }
+
+    private static FloatingReferenceStateDifference ReadFloatingReferenceStateDifference(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "theme",
+            "topCaptureId",
+            "bottomCaptureId",
+            "maxAbsoluteChannelDelta",
+            "meanAbsoluteError",
+            "rootMeanSquareError",
+            "changedPixelCount");
+        return new FloatingReferenceStateDifference(
+            element.GetProperty("theme").GetString() ?? string.Empty,
+            element.GetProperty("topCaptureId").GetString() ?? string.Empty,
+            element.GetProperty("bottomCaptureId").GetString() ?? string.Empty,
+            new FloatingReferencePixelMetrics(
+                element.GetProperty("maxAbsoluteChannelDelta").GetInt32(),
+                element.GetProperty("meanAbsoluteError").GetDouble(),
+                element.GetProperty("rootMeanSquareError").GetDouble(),
+                element.GetProperty("changedPixelCount").GetInt32()));
+    }
+
+    private static bool FloatingReferenceStateFingerprintMatchesCanonical(
+        FloatingReferenceStateFingerprint fingerprint)
+    {
+        if (!string.Equals(
+                fingerprint.Algorithm,
+                FloatingReferenceStateFingerprintAlgorithm,
+                StringComparison.Ordinal) ||
+            !IsUpperSha256(fingerprint.Sha256) ||
+            !IsUpperSha256(fingerprint.NoteTextSha256))
+        {
+            return false;
+        }
+
+        var canonical = CreateFloatingReferenceStateFingerprint(
+            fingerprint.Theme,
+            fingerprint.Workspace,
+            fingerprint.NoteId,
+            string.Empty,
+            fingerprint.ViewportState,
+            fingerprint.VerticalOffset,
+            fingerprint.ScrollableHeight,
+            fingerprint.FirstVisibleAnchor,
+            fingerprint.LastVisibleAnchor);
+        var canonicalState = string.Join(
+            "\n",
+            $"theme={fingerprint.Theme}",
+            $"workspace={fingerprint.Workspace}",
+            $"noteId={fingerprint.NoteId}",
+            $"noteTextSha256={fingerprint.NoteTextSha256}",
+            $"viewportState={fingerprint.ViewportState}",
+            $"verticalOffset={fingerprint.VerticalOffset.ToString("F2", CultureInfo.InvariantCulture)}",
+            $"scrollableHeight={fingerprint.ScrollableHeight.ToString("F2", CultureInfo.InvariantCulture)}",
+            $"firstVisibleAnchor={fingerprint.FirstVisibleAnchor}",
+            $"lastVisibleAnchor={fingerprint.LastVisibleAnchor}");
+        return string.Equals(canonical.Algorithm, fingerprint.Algorithm, StringComparison.Ordinal) &&
+               string.Equals(
+                   Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
+                   fingerprint.Sha256,
+                   StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<FloatingReferenceSourceBinding> GetFloatingReferenceSourceBindings(
+        string sourceRoot) =>
+        FloatingReferenceCanonicalSourcePaths.Select(relativePath =>
+        {
+            var path = ResolveRepositoryRelativePath(sourceRoot, relativePath);
+            if (!File.Exists(path))
+            {
+                throw new FileNotFoundException(
+                    $"悬浮窗参考图绑定的视觉源码不存在：{relativePath}",
+                    path);
+            }
+
+            return new FloatingReferenceSourceBinding(relativePath, Sha256File(path));
+        }).ToArray();
+
+    private static string AggregateFloatingReferenceSourceBindings(
+        IEnumerable<FloatingReferenceSourceBinding> bindings)
+    {
+        using var stream = new MemoryStream();
+        foreach (var binding in bindings.OrderBy(binding => binding.Path, StringComparer.Ordinal))
+        {
+            var line = Encoding.UTF8.GetBytes($"{binding.Path}\0{binding.Sha256}\n");
+            stream.Write(line, 0, line.Length);
+        }
+
+        return Convert.ToHexString(SHA256.HashData(stream.ToArray()));
+    }
+
+    private static FloatingReferenceCaptureMetrics MeasureFloatingReferenceCapture(byte[] bytes)
+    {
+        var bitmap = DecodeBitmap(bytes);
+        var (pixels, stride) = GetBgra32Pixels(bitmap);
+        var minimum = byte.MaxValue;
+        var maximum = byte.MinValue;
+        var transparent = 0;
+        var nonOpaque = 0;
+        var opaque = 0;
+        var minX = bitmap.PixelWidth;
+        var minY = bitmap.PixelHeight;
+        var maxX = -1;
+        var maxY = -1;
+        var contentPixels = 0;
+        for (var y = 0; y < bitmap.PixelHeight; y++)
+        {
+            for (var x = 0; x < bitmap.PixelWidth; x++)
+            {
+                var alpha = pixels[(y * stride) + (x * 4) + 3];
+                minimum = Math.Min(minimum, alpha);
+                maximum = Math.Max(maximum, alpha);
+                if (alpha == 0)
+                {
+                    transparent++;
+                }
+                if (alpha < byte.MaxValue)
+                {
+                    nonOpaque++;
+                }
+                else
+                {
+                    opaque++;
+                }
+                if (alpha <= 32)
+                {
+                    continue;
+                }
+
+                contentPixels++;
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+            }
+        }
+
+        var roi = contentPixels == 0
+            ? new FloatingReferenceContentRoi(32, 0, 0, 0, 0, 0)
+            : new FloatingReferenceContentRoi(
+                32,
+                minX,
+                minY,
+                maxX - minX + 1,
+                maxY - minY + 1,
+                contentPixels);
+        return new FloatingReferenceCaptureMetrics(
+            bitmap.PixelWidth,
+            bitmap.PixelHeight,
+            new FloatingReferenceAlphaMetrics(minimum, maximum, transparent, nonOpaque, opaque),
+            roi);
+    }
+
+    private static FloatingReferencePixelMetrics CompareFloatingReferencePixels(
+        byte[] baselineBytes,
+        byte[] actualBytes)
+    {
+        var baseline = DecodeBitmap(baselineBytes);
+        var actual = DecodeBitmap(actualBytes);
+        if (baseline.PixelWidth != actual.PixelWidth || baseline.PixelHeight != actual.PixelHeight)
+        {
+            return new FloatingReferencePixelMetrics(int.MaxValue, double.MaxValue, double.MaxValue, int.MaxValue);
+        }
+
+        var (baselinePixels, _) = GetBgra32Pixels(baseline);
+        var (actualPixels, _) = GetBgra32Pixels(actual);
+        var maximumDelta = 0;
+        var absoluteDeltaSum = 0d;
+        var squaredDeltaSum = 0d;
+        var changedPixels = 0;
+        for (var pixelOffset = 0; pixelOffset < baselinePixels.Length; pixelOffset += 4)
+        {
+            var pixelChanged = false;
+            for (var channel = 0; channel < 4; channel++)
+            {
+                var delta = Math.Abs(
+                    baselinePixels[pixelOffset + channel] - actualPixels[pixelOffset + channel]);
+                maximumDelta = Math.Max(maximumDelta, delta);
+                absoluteDeltaSum += delta;
+                squaredDeltaSum += delta * delta;
+                pixelChanged |= delta != 0;
+            }
+
+            if (pixelChanged)
+            {
+                changedPixels++;
+            }
+        }
+
+        return new FloatingReferencePixelMetrics(
+            maximumDelta,
+            Math.Round(absoluteDeltaSum / baselinePixels.Length, 6),
+            Math.Round(Math.Sqrt(squaredDeltaSum / baselinePixels.Length), 6),
+            changedPixels);
+    }
+
+    private static BitmapSource DecodeBitmap(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes, writable: false);
+        var decoder = BitmapDecoder.Create(
+            stream,
+            BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+        var bitmap = decoder.Frames[0];
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static (byte[] Pixels, int Stride) GetBgra32Pixels(BitmapSource source)
+    {
+        var converted = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var stride = converted.PixelWidth * 4;
+        var pixels = new byte[stride * converted.PixelHeight];
+        converted.CopyPixels(pixels, stride, 0);
+        return (pixels, stride);
+    }
+
+    private static bool HasExactJsonProperties(JsonElement element, params string[] expected)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var actual = element.EnumerateObject().Select(property => property.Name).ToArray();
+        return actual.Length == expected.Length &&
+               actual.Distinct(StringComparer.Ordinal).Count() == actual.Length &&
+               actual.Order(StringComparer.Ordinal)
+                   .SequenceEqual(expected.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+    }
+
+    private static string ResolveRepositoryRelativePath(string sourceRoot, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath) ||
+            relativePath.Contains('\\', StringComparison.Ordinal) ||
+            Path.IsPathRooted(relativePath))
+        {
+            throw new InvalidOperationException($"参考图路径不是可移植仓库相对路径：{relativePath}");
+        }
+
+        var root = Path.GetFullPath(sourceRoot).TrimEnd(Path.DirectorySeparatorChar) +
+                   Path.DirectorySeparatorChar;
+        var resolved = Path.GetFullPath(Path.Combine(
+            root,
+            relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        if (!resolved.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"参考图路径逃出源码根目录：{relativePath}");
+        }
+
+        return resolved;
+    }
+
+    private static string Sha256File(string path) =>
+        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private static bool IsUpperSha256(string value) =>
+        value.Length == 64 && value.All(character =>
+            character is >= '0' and <= '9' or >= 'A' and <= 'F');
 
     private static Rect BoundsIn(FrameworkElement element, Visual ancestor) =>
         element.TransformToAncestor(ancestor)
@@ -2477,6 +4441,247 @@ internal static class ValidationReport
             $"悬浮窗固定参考场景在 {maximumPasses} 轮调度后仍未稳定：" +
             $"期望卡片 {expectedRowCount}，实际卡片 {rows.Children.OfType<Border>().Count()}。");
     }
+
+    private static FloatingScrollBarValidation ValidateFloatingScrollBar(
+        MainWindow manager,
+        FloatingWindow window,
+        Grid root,
+        StackPanel rows,
+        DateTimeOffset referenceUtc,
+        int captureWidth,
+        int captureHeight)
+    {
+        var bodyScroller = Required<ScrollViewer>(window, "FloatingBodyScroller");
+        bodyScroller.ApplyTemplate();
+        var localStyle = bodyScroller.Resources.Contains(typeof(ScrollBar))
+            ? bodyScroller.Resources[typeof(ScrollBar)] as Style
+            : null;
+        var applicationStyle = Application.Current.TryFindResource(typeof(ScrollBar)) as Style;
+        var mainWindowStyleUnaffected =
+            applicationStyle is not null &&
+            !ReferenceEquals(localStyle, applicationStyle) &&
+            Descendants<ScrollBar>(manager).All(scrollBar =>
+                !ReferenceEquals(scrollBar.Style, localStyle));
+        var measurements = new List<FloatingScrollBarStateMeasurement>();
+        var captures = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+        foreach (var theme in new[]
+                 {
+                     ApplicationThemeMode.Day,
+                     ApplicationThemeMode.Night
+                 })
+        {
+            window.ApplyTheme(theme);
+            window.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(window, root, rows, 9);
+            foreach (var state in new[]
+                     {
+                         (Name: "normal", VisualState: FloatingScrollBarThumbState.Normal),
+                         (Name: "hover", VisualState: FloatingScrollBarThumbState.Hover),
+                         (Name: "drag", VisualState: FloatingScrollBarThumbState.Drag)
+                     })
+            {
+                var parts = RequiredFloatingScrollBarParts(bodyScroller);
+                parts.Thumb.ApplyVisualStateForValidation(state.VisualState);
+                PumpDispatcher();
+                window.UpdateLayout();
+                var scrollBarBounds = BoundsIn(parts.ScrollBar, root);
+                var thumbBounds = BoundsIn(parts.ThumbVisual, root);
+                var visibleCardBounds = rows.Children
+                    .OfType<Border>()
+                    .SelectMany(card => Descendants<Border>(card).Prepend(card))
+                    .Where(border =>
+                        border.IsVisible &&
+                        border.ActualWidth > 0 &&
+                        border.ActualHeight > 0 &&
+                        HasVisibleBrush(border.Background))
+                    .Select(border => BoundsIn(border, root))
+                    .ToArray();
+                var protectedContentBounds = Descendants<FrameworkElement>(rows)
+                    .Where(element =>
+                        element.IsVisible &&
+                        element.ActualWidth > 0 &&
+                        element.ActualHeight > 0 &&
+                        element is TextBlock or Control)
+                    .Select(element => BoundsIn(element, root))
+                    .ToArray();
+                var maximumVisibleCardRight = visibleCardBounds.Length == 0
+                    ? 0
+                    : visibleCardBounds.Max(bounds => bounds.Right);
+                var cardSurfacesAreClear =
+                    visibleCardBounds.All(bounds => !bounds.IntersectsWith(thumbBounds));
+                var contentIsClear =
+                    protectedContentBounds.All(bounds => !bounds.IntersectsWith(thumbBounds));
+                var doesNotObscureContent =
+                    scrollBarBounds.Right <= 396.5 &&
+                    thumbBounds.Right <= 396.5 &&
+                    maximumVisibleCardRight <= 396.5 &&
+                    cardSurfacesAreClear &&
+                    contentIsClear;
+                var usesThemeTokens =
+                    ReferenceEquals(
+                        parts.Thumb.Background,
+                        window.FindResource("FloatingMutedBrush")) &&
+                    ReferenceEquals(
+                        parts.ThumbVisual.BorderBrush,
+                        window.FindResource("PeachLineBrush"));
+                var bodyBounds = BoundsIn(bodyScroller, root);
+                measurements.Add(new FloatingScrollBarStateMeasurement(
+                    theme.ToString(),
+                    state.Name,
+                    Math.Round(
+                        Math.Min(parts.HitRail.ActualWidth, parts.Thumb.ActualWidth),
+                        2),
+                    Math.Round(parts.ThumbVisual.ActualWidth, 2),
+                    Math.Round(parts.ThumbVisual.Opacity, 2),
+                    Math.Round(BoundsIn(parts.Track, root).Right, 2),
+                    Math.Round(BoundsIn(parts.Thumb, root).Left, 2),
+                    Math.Round(BoundsIn(parts.Thumb, root).Right, 2),
+                    Math.Round(scrollBarBounds.Right, 2),
+                    Math.Round(thumbBounds.Left, 2),
+                    Math.Round(thumbBounds.Right, 2),
+                    Math.Round(maximumVisibleCardRight, 2),
+                    Math.Round(bodyBounds.X + bodyScroller.ViewportWidth, 2),
+                    cardSurfacesAreClear,
+                    contentIsClear,
+                    doesNotObscureContent,
+                    usesThemeTokens,
+                    BrushColor(parts.ThumbVisual.Background),
+                    BrushColor(parts.ThumbVisual.BorderBrush)));
+                captures[$"{theme.ToString().ToLowerInvariant()}-{state.Name}"] =
+                    EncodePng(ScaleToFrame(
+                        CaptureVisual(root),
+                        captureWidth,
+                        captureHeight));
+            }
+        }
+
+        window.ApplyTheme(ApplicationThemeMode.Day);
+        window.UpdateTime(referenceUtc);
+        WaitForStableFloatingReferenceLayout(window, root, rows, 9);
+        var inputParts = RequiredFloatingScrollBarParts(bodyScroller);
+        bodyScroller.ScrollToTop();
+        PumpDispatcher();
+        var wheelOffsetBefore = bodyScroller.VerticalOffset;
+        var wheelEvent = new MouseWheelEventArgs(
+            Mouse.PrimaryDevice,
+            Environment.TickCount,
+            -120)
+        {
+            RoutedEvent = UIElement.MouseWheelEvent,
+            Source = bodyScroller
+        };
+        bodyScroller.RaiseEvent(wheelEvent);
+        PumpDispatcher();
+        var wheelOffsetAfter = bodyScroller.VerticalOffset;
+
+        bodyScroller.ScrollToTop();
+        PumpDispatcher();
+        var dragOffsetBefore = bodyScroller.VerticalOffset;
+        inputParts.Thumb.RaiseEvent(new DragStartedEventArgs(0, 0)
+        {
+            RoutedEvent = Thumb.DragStartedEvent,
+            Source = inputParts.Thumb
+        });
+        inputParts.Thumb.RaiseEvent(new DragDeltaEventArgs(
+            0,
+            Math.Max(24, inputParts.Track.ActualHeight / 3))
+        {
+            RoutedEvent = Thumb.DragDeltaEvent,
+            Source = inputParts.Thumb
+        });
+        PumpDispatcher();
+        var dragOffsetAfter = bodyScroller.VerticalOffset;
+        inputParts.Thumb.RaiseEvent(new DragCompletedEventArgs(
+            0,
+            dragOffsetAfter - dragOffsetBefore,
+            canceled: false)
+        {
+            RoutedEvent = Thumb.DragCompletedEvent,
+            Source = inputParts.Thumb
+        });
+        PumpDispatcher();
+
+        var normal = measurements.Where(sample => sample.State == "normal").ToArray();
+        var hover = measurements.Where(sample => sample.State == "hover").ToArray();
+        var drag = measurements.Where(sample => sample.State == "drag").ToArray();
+        var bodyContentRights = measurements.Select(sample => sample.BodyContentRight).ToArray();
+        var gates = ValidationExercises.EvaluateFloatingScrollBarGates(
+            new FloatingScrollBarGateInputs(
+                localStyle is not null &&
+                    ReferenceEquals(inputParts.ScrollBar.Style, localStyle),
+                mainWindowStyleUnaffected,
+                measurements.Min(sample => sample.HitTargetWidth),
+                normal.Min(sample => sample.ThumbVisualWidth),
+                hover.Min(sample => sample.ThumbVisualWidth),
+                drag.Min(sample => sample.ThumbVisualWidth),
+                normal.Min(sample => sample.ThumbOpacity),
+                hover.Min(sample => sample.ThumbOpacity),
+                drag.Min(sample => sample.ThumbOpacity),
+                measurements
+                    .Where(sample => sample.Theme == nameof(ApplicationThemeMode.Day))
+                    .All(sample => sample.UsesThemeTokens),
+                measurements
+                    .Where(sample => sample.Theme == nameof(ApplicationThemeMode.Night))
+                    .All(sample => sample.UsesThemeTokens),
+                normal.All(sample => sample.DoesNotObscureContent),
+                hover.All(sample => sample.DoesNotObscureContent),
+                drag.All(sample => sample.DoesNotObscureContent),
+                bodyContentRights.Max() - bodyContentRights.Min() <= 0.1,
+                wheelEvent.Handled && wheelOffsetAfter > wheelOffsetBefore,
+                dragOffsetAfter > dragOffsetBefore));
+        inputParts.Thumb.ApplyVisualStateForValidation(
+            FloatingScrollBarThumbState.Normal);
+        bodyScroller.ScrollToTop();
+        PumpDispatcher();
+
+        return new FloatingScrollBarValidation(
+            gates,
+            measurements,
+            Math.Round(wheelOffsetBefore, 2),
+            Math.Round(wheelOffsetAfter, 2),
+            Math.Round(dragOffsetBefore, 2),
+            Math.Round(dragOffsetAfter, 2),
+            captures);
+    }
+
+    private static FloatingScrollBarParts RequiredFloatingScrollBarParts(
+        ScrollViewer bodyScroller)
+    {
+        bodyScroller.ApplyTemplate();
+        var scrollBar = bodyScroller.Template.FindName(
+                "PART_VerticalScrollBar",
+                bodyScroller) as ScrollBar
+            ?? throw new InvalidOperationException("悬浮窗垂直滚动条未实例化。");
+        scrollBar.ApplyTemplate();
+        var hitRail = scrollBar.Template.FindName(
+                "FloatingScrollBarHitRail",
+                scrollBar) as Grid
+            ?? throw new InvalidOperationException("悬浮窗滚动条命中轨道未实例化。");
+        var track = scrollBar.Template.FindName("PART_Track", scrollBar) as Track
+            ?? throw new InvalidOperationException("悬浮窗滚动条 Track 未实例化。");
+        var thumb = track.Thumb as FloatingScrollBarThumb
+            ?? throw new InvalidOperationException("悬浮窗滚动条 Thumb 未实例化。");
+        thumb.ApplyTemplate();
+        var thumbVisual = thumb.Template.FindName(
+                "FloatingScrollBarThumbVisual",
+                thumb) as Border
+            ?? throw new InvalidOperationException("悬浮窗滚动条可见 thumb 未实例化。");
+        return new FloatingScrollBarParts(
+            scrollBar,
+            hitRail,
+            track,
+            thumb,
+            thumbVisual);
+    }
+
+    private static bool HasVisibleBrush(Brush? brush) =>
+        brush switch
+        {
+            null => false,
+            SolidColorBrush solid => solid.Color.A > 0,
+            _ => true
+        };
 
     private static FloatingViewportState CaptureFloatingViewportState(
         string name,
@@ -2593,6 +4798,14 @@ internal static class ValidationReport
             rasterSources.Length > 0 &&
             rasterSources[0] is not null &&
             rasterSources.All(source => ReferenceEquals(source, rasterSources[0]));
+        var renderedMultilineNoteCount = renderedCards.Count(card =>
+            Descendants<CheckBox>(card).Any(checkBox => checkBox.IsVisible) &&
+            Descendants<TextBlock>(card).Any(text =>
+                text.IsVisible &&
+                text.TextWrapping == TextWrapping.Wrap &&
+                !text.Text.Contains('\r') &&
+                !text.Text.Contains('\n') &&
+                TextWouldNaturallyWrap(text)));
         return new FloatingViewportState(
             name,
             Math.Round(window.ActualWidth, 2),
@@ -2604,7 +4817,7 @@ internal static class ValidationReport
             rasterCardsShareSource,
             Descendants<TextBlock>(rows).Count(element => element.IsVisible),
             Descendants<CheckBox>(rows).Count(element => element.IsVisible),
-            Descendants<TextBlock>(rows).Count(text => text.Text.Contains('\n')),
+            renderedMultilineNoteCount,
             repeatingReminderPanel.IsVisible && repeatingReminderPanel.ActualHeight > 0,
             Math.Round(bodyScroller.ScrollableHeight, 2),
             Math.Round(bodyScroller.VerticalOffset, 2),
@@ -2724,6 +4937,258 @@ internal static class ValidationReport
             .Select(region => FindAlphaBounds(pixels, stride, region, 32))
             .ToArray();
         return new PlushSceneCapture(bitmap.PixelWidth, bitmap.PixelHeight, pixels, stride, bounds);
+    }
+
+    private static FloatingNightPlushEdgeGlowValidation ValidateFloatingNightPlushEdgeGlow(
+        FloatingWindow window,
+        Canvas scene,
+        IReadOnlyList<NormalizedRect> expectedMascots,
+        double sceneWidth,
+        double sceneHeight)
+    {
+        const string algorithm =
+            "base-alpha>32; transparent samples outside Chebyshev distance 2-6px; " +
+            "brightness=sRGB-relative-luminance(aggregate-effect-color)*mean-effect-alpha; " +
+            "saturation=HSL saturation(aggregate-premultiplied-effect-color/effect-alpha)";
+        var targets = new[]
+        {
+            new PlushEdgeTarget(
+                "MyMelody",
+                Required<Image>(window, "PlushTopLeft"),
+                Required<Border>(window, "MyMelodyPlushAnchor")),
+            new PlushEdgeTarget(
+                "Cinnamoroll",
+                Required<Image>(window, "PlushTopRight"),
+                Required<Border>(window, "CinnamorollPlushAnchor")),
+            new PlushEdgeTarget(
+                "Kuromi",
+                Required<Image>(window, "PlushBottomRight"),
+                Required<Border>(window, "KuromiPlushAnchor"))
+        };
+        var rendered = CaptureVisual(scene);
+        var effects = targets.Select(target => target.Image.Effect).ToArray();
+        RenderTargetBitmap source;
+        try
+        {
+            foreach (var target in targets)
+            {
+                target.Image.Effect = null;
+            }
+
+            PumpDispatcher();
+            source = CaptureVisual(scene);
+        }
+        finally
+        {
+            for (var index = 0; index < targets.Length; index++)
+            {
+                targets[index].Image.Effect = effects[index];
+            }
+
+            PumpDispatcher();
+        }
+
+        var stride = rendered.PixelWidth * 4;
+        var renderedPixels = new byte[stride * rendered.PixelHeight];
+        var sourcePixels = new byte[stride * source.PixelHeight];
+        rendered.CopyPixels(renderedPixels, stride, 0);
+        source.CopyPixels(sourcePixels, stride, 0);
+        var regions = targets
+            .Select(target => ToPixelRegion(
+                BoundsIn(target.Anchor, scene),
+                rendered.PixelWidth,
+                rendered.PixelHeight))
+            .ToArray();
+        var sourceBounds = regions
+            .Select(region => FindAlphaBounds(sourcePixels, stride, region, 32))
+            .ToArray();
+        var sourceAlphaBoundsMatch =
+            sourceBounds.Length == expectedMascots.Count &&
+            sourceBounds.Zip(expectedMascots).All(pair =>
+                pair.First is { } bounds &&
+                Matches(Normalize(bounds, sceneWidth, sceneHeight), pair.Second, 0.011));
+        var measurements = targets
+            .Select((target, index) => MeasurePlushEdgeGlow(
+                target.Name,
+                renderedPixels,
+                sourcePixels,
+                stride,
+                rendered.PixelWidth,
+                rendered.PixelHeight,
+                regions[index]))
+            .ToArray();
+        var gates = ValidationExercises.EvaluateFloatingNightPlushEdgeGlow(
+            new FloatingNightPlushEdgeGateInputs(
+                measurements.Max(measurement => measurement.BrightnessSignal),
+                measurements.Max(measurement => measurement.Saturation),
+                measurements.Length == 3 &&
+                    measurements.All(measurement =>
+                        measurement.RoiPixelCount > 0 &&
+                        measurement.VisibleEffectSampleCount > 0)));
+        return new FloatingNightPlushEdgeGlowValidation(
+            sourceAlphaBoundsMatch,
+            sourceBounds.Select(bounds => bounds is null ? string.Empty : FormatRect(bounds.Value)).ToArray(),
+            measurements,
+            gates,
+            algorithm);
+    }
+
+    private static FloatingNightPlushEdgeMeasurement MeasurePlushEdgeGlow(
+        string role,
+        byte[] renderedPixels,
+        byte[] sourcePixels,
+        int stride,
+        int width,
+        int height,
+        Int32Rect region)
+    {
+        const byte sourceAlphaThreshold = 32;
+        const int innerDistance = 2;
+        const int outerDistance = 6;
+        var roiPixelCount = 0;
+        var visibleEffectSampleCount = 0;
+        var effectAlphaSum = 0d;
+        var effectRedSum = 0d;
+        var effectGreenSum = 0d;
+        var effectBlueSum = 0d;
+
+        for (var y = region.Y; y < region.Y + region.Height; y++)
+        {
+            for (var x = region.X; x < region.X + region.Width; x++)
+            {
+                var sourceOffset = (y * stride) + (x * 4);
+                if (sourcePixels[sourceOffset + 3] != 0)
+                {
+                    continue;
+                }
+
+                var distance = MinimumOpaqueChebyshevDistance(
+                    sourcePixels,
+                    stride,
+                    width,
+                    height,
+                    x,
+                    y,
+                    outerDistance,
+                    sourceAlphaThreshold);
+                if (distance < innerDistance || distance > outerDistance)
+                {
+                    continue;
+                }
+
+                roiPixelCount++;
+                var effectAlpha = Math.Max(
+                    0,
+                    renderedPixels[sourceOffset + 3] - sourcePixels[sourceOffset + 3]);
+                if (effectAlpha <= 1)
+                {
+                    continue;
+                }
+
+                visibleEffectSampleCount++;
+                effectAlphaSum += effectAlpha;
+                effectBlueSum += Math.Max(
+                    0,
+                    renderedPixels[sourceOffset] - sourcePixels[sourceOffset]);
+                effectGreenSum += Math.Max(
+                    0,
+                    renderedPixels[sourceOffset + 1] - sourcePixels[sourceOffset + 1]);
+                effectRedSum += Math.Max(
+                    0,
+                    renderedPixels[sourceOffset + 2] - sourcePixels[sourceOffset + 2]);
+            }
+        }
+
+        var red = effectAlphaSum == 0 ? 0 : Math.Clamp(effectRedSum / effectAlphaSum, 0, 1);
+        var green = effectAlphaSum == 0 ? 0 : Math.Clamp(effectGreenSum / effectAlphaSum, 0, 1);
+        var blue = effectAlphaSum == 0 ? 0 : Math.Clamp(effectBlueSum / effectAlphaSum, 0, 1);
+        var meanEffectAlpha = roiPixelCount == 0
+            ? 0
+            : effectAlphaSum / (255 * roiPixelCount);
+
+        return new FloatingNightPlushEdgeMeasurement(
+            role,
+            roiPixelCount,
+            visibleEffectSampleCount,
+            Math.Round(RelativeLuminance(red, green, blue) * meanEffectAlpha, 6),
+            Math.Round(HslSaturation(red, green, blue), 6),
+            $"#FF{(byte)Math.Round(red * 255):X2}{(byte)Math.Round(green * 255):X2}{(byte)Math.Round(blue * 255):X2}");
+    }
+
+    private static int MinimumOpaqueChebyshevDistance(
+        byte[] sourcePixels,
+        int stride,
+        int width,
+        int height,
+        int x,
+        int y,
+        int maximumDistance,
+        byte alphaThreshold)
+    {
+        var minimum = maximumDistance + 1;
+        for (var offsetY = -maximumDistance; offsetY <= maximumDistance; offsetY++)
+        {
+            var sampleY = y + offsetY;
+            if (sampleY < 0 || sampleY >= height)
+            {
+                continue;
+            }
+
+            for (var offsetX = -maximumDistance; offsetX <= maximumDistance; offsetX++)
+            {
+                var distance = Math.Max(Math.Abs(offsetX), Math.Abs(offsetY));
+                if (distance >= minimum)
+                {
+                    continue;
+                }
+
+                var sampleX = x + offsetX;
+                if (sampleX < 0 || sampleX >= width)
+                {
+                    continue;
+                }
+
+                if (sourcePixels[(sampleY * stride) + (sampleX * 4) + 3] > alphaThreshold)
+                {
+                    minimum = distance;
+                }
+            }
+        }
+
+        return minimum;
+    }
+
+    private static double RelativeLuminance(double red, double green, double blue) =>
+        (0.2126 * LinearChannel(red)) +
+        (0.7152 * LinearChannel(green)) +
+        (0.0722 * LinearChannel(blue));
+
+    private static double LinearChannel(double channel) =>
+        channel <= 0.04045
+            ? channel / 12.92
+            : Math.Pow((channel + 0.055) / 1.055, 2.4);
+
+    private static double HslSaturation(double red, double green, double blue)
+    {
+        var maximum = Math.Max(red, Math.Max(green, blue));
+        var minimum = Math.Min(red, Math.Min(green, blue));
+        var chroma = maximum - minimum;
+        if (chroma <= double.Epsilon)
+        {
+            return 0;
+        }
+
+        var lightness = (maximum + minimum) / 2;
+        return chroma / (1 - Math.Abs((2 * lightness) - 1));
+    }
+
+    private static Int32Rect ToPixelRegion(Rect bounds, int width, int height)
+    {
+        var left = Math.Clamp((int)Math.Floor(bounds.Left), 0, width);
+        var top = Math.Clamp((int)Math.Floor(bounds.Top), 0, height);
+        var right = Math.Clamp((int)Math.Ceiling(bounds.Right), left, width);
+        var bottom = Math.Clamp((int)Math.Ceiling(bounds.Bottom), top, height);
+        return new Int32Rect(left, top, right - left, bottom - top);
     }
 
     private static Rect? FindAlphaBounds(
@@ -2899,6 +5364,23 @@ internal static class ValidationReport
     {
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes, 0, bytes.Length);
+    }
+
+    private static void WriteBytesAtomically(string path, byte[] bytes)
+    {
+        var directory = Path.GetDirectoryName(path) ??
+            throw new InvalidOperationException("原子写入目标没有父目录。");
+        Directory.CreateDirectory(directory);
+        var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            WriteNewBytes(temporaryPath, bytes);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        finally
+        {
+            TryDeleteFile(temporaryPath);
+        }
     }
 
     private static AlphaMetrics MeasureAlpha(BitmapSource source)
@@ -3629,7 +6111,108 @@ internal static class ValidationReport
             referenceDecorationsFollowTheme);
     }
 
-    private static bool ValidateMainWorkspaceResourcesWithoutRerender(
+    private static MainWorkspaceThemeValidation ValidateMainWorkspaceResourcesWithoutRerender(
+        ApplicationTheme theme,
+        MainWindow main,
+        DateTimeOffset restoreUtc,
+        string assetRoot)
+    {
+        var liveResult = EvaluateMainWorkspaceResourcesWithoutRerender(
+            theme,
+            main,
+            restoreUtc);
+        if (liveResult.CountdownCardSampleCount > 0 && liveResult.NoteCardSampleCount > 0)
+        {
+            return liveResult;
+        }
+
+        return RunIsolatedMainWorkspaceThemeValidation(theme, restoreUtc, assetRoot);
+    }
+
+    private static MainWorkspaceThemeValidation RunIsolatedMainWorkspaceThemeValidation(
+        ApplicationTheme theme,
+        DateTimeOffset restoreUtc,
+        string assetRoot)
+    {
+        var temporaryRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-main-theme-{Guid.NewGuid():N}");
+        var settingsPath = Path.Combine(temporaryRoot, "settings.json");
+        var diagnosticPath = Path.Combine(temporaryRoot, "validation.jsonl");
+        MainWindow? validationMain = null;
+        Directory.CreateDirectory(temporaryRoot);
+
+        try
+        {
+            var store = new SettingsStore(clock: new ValidationClock(restoreUtc));
+            store.Save(
+                settingsPath,
+                new CountdownSettings(
+                    new[]
+                    {
+                        new CountdownRecord(
+                            "validation-theme-countdown",
+                            "主题资源验证倒计时",
+                            restoreUtc.AddDays(2),
+                            Array.Empty<string>())
+                    },
+                    new[]
+                    {
+                        new NoteRecord(
+                            "validation-theme-note",
+                            "主题资源验证便签",
+                            ChinaStandardTime.ToBeijingTime(restoreUtc)
+                                .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                            false,
+                            Array.Empty<string>(),
+                            NoReminder.Instance)
+                    },
+                    Array.Empty<TagRecord>(),
+                    CountdownSettings.Empty.Preferences));
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            using var calendar = new HolidayCalendar(temporaryRoot);
+            validationMain = new MainWindow(
+                workspace,
+                calendar,
+                new DiagnosticLogger(diagnosticPath),
+                assetRoot)
+            {
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            validationMain.Show();
+            PumpDispatcher();
+            validationMain.UpdateLayout();
+            return EvaluateMainWorkspaceResourcesWithoutRerender(
+                theme,
+                validationMain,
+                restoreUtc);
+        }
+        finally
+        {
+            validationMain?.Close();
+            TryDeleteFile(settingsPath);
+            TryDeleteFile(settingsPath + ".tmp");
+            TryDeleteFile(diagnosticPath);
+            var holidayDirectory = Path.Combine(temporaryRoot, "holiday-cache");
+            if (Directory.Exists(holidayDirectory) &&
+                !Directory.EnumerateFileSystemEntries(holidayDirectory).Any())
+            {
+                Directory.Delete(holidayDirectory);
+            }
+            if (Directory.Exists(temporaryRoot) &&
+                !Directory.EnumerateFileSystemEntries(temporaryRoot).Any())
+            {
+                Directory.Delete(temporaryRoot);
+            }
+        }
+    }
+
+    private static MainWorkspaceThemeValidation EvaluateMainWorkspaceResourcesWithoutRerender(
         ApplicationTheme theme,
         MainWindow main,
         DateTimeOffset restoreUtc)
@@ -3642,14 +6225,6 @@ internal static class ValidationReport
             DependencyProperty property,
             params string[] keys) =>
             keys.Any(key => UsesResource(element, property, key));
-
-        static IEnumerable<StackPanel> CardBodies(Panel rows) =>
-            rows.Children
-                .OfType<Border>()
-                .Select(card => card.Child as Grid)
-                .Where(grid => grid is not null)
-                .SelectMany(grid => grid!.Children.OfType<StackPanel>())
-                .Where(panel => Grid.GetColumn(panel) is 0 or 1);
 
         static bool BodyTextUsesTheme(StackPanel body) =>
             body.Children
@@ -3669,6 +6244,23 @@ internal static class ValidationReport
                 .Select(chip => chip.Child)
                 .OfType<TextBlock>()
                 .All(text => UsesResource(text, TextBlock.ForegroundProperty, "TagChipTextBrush"));
+
+        static bool CardBodiesUseTheme(Border card, bool requirePrimaryColumn)
+        {
+            if (card.Child is not Grid grid)
+            {
+                return false;
+            }
+
+            var bodies = grid.Children
+                .OfType<StackPanel>()
+                .Where(panel => !requirePrimaryColumn || Grid.GetColumn(panel) is 0 or 1)
+                .ToArray();
+            return bodies.Length > 0 &&
+                bodies.Any(body => body.Children.OfType<TextBlock>().Any()) &&
+                bodies.All(BodyTextUsesTheme) &&
+                bodies.All(TagTextUsesTheme);
+        }
 
         var originalWorkspace = main.CurrentWorkspace;
         try
@@ -3697,15 +6289,14 @@ internal static class ValidationReport
             var titleFollowsTheme =
                 main.FindName("CountdownEditorTitle") is TextBlock editorTitle &&
                 UsesResource(editorTitle, TextBlock.ForegroundProperty, "InkBrush");
-            var countdownRows = Required<StackPanel>(main, "CountdownRows");
-            var countdownCardsFollowTheme = countdownRows.Children
+            var countdownCards = Required<StackPanel>(main, "CountdownRows")
+                .Children
                 .OfType<Border>()
-                .All(card =>
+                .ToArray();
+            var countdownCardsFollowTheme = countdownCards.All(card =>
                     UsesAnyResource(card, Border.BackgroundProperty, "CardBrush", "ExpiredBrush") &&
-                    UsesResource(card, Border.BorderBrushProperty, "PeachLineBrush"));
-            var countdownBodies = CardBodies(countdownRows).ToArray();
-            var countdownTextFollowsTheme =
-                countdownBodies.All(BodyTextUsesTheme) && countdownBodies.All(TagTextUsesTheme);
+                    UsesResource(card, Border.BorderBrushProperty, "PeachLineBrush") &&
+                    CardBodiesUseTheme(card, requirePrimaryColumn: true));
 
             theme.Apply(ApplicationThemeMode.Day);
             main.ApplyTheme(ApplicationThemeMode.Day);
@@ -3718,7 +6309,7 @@ internal static class ValidationReport
             PumpDispatcher();
             main.UpdateLayout();
 
-            var noteBodies = new[]
+            var noteCards = new[]
                 {
                     Required<StackPanel>(main, "ActiveNoteRows"),
                     Required<StackPanel>(main, "CompletedNoteRows")
@@ -3727,31 +6318,18 @@ internal static class ValidationReport
                 .Where(card =>
                     Math.Abs(card.CornerRadius.TopLeft - 8) <= 0.01 &&
                     Math.Abs(card.Padding.Left - 14) <= 0.01)
-                .Select(card => card.Child as Grid)
-                .Where(grid => grid is not null)
-                .SelectMany(grid => grid!.Children.OfType<StackPanel>())
                 .ToArray();
-            var noteCardsFollowTheme = new[]
-                {
-                    Required<StackPanel>(main, "ActiveNoteRows"),
-                    Required<StackPanel>(main, "CompletedNoteRows")
-                }
-                .SelectMany(rows => Descendants<Border>(rows))
-                .Where(card =>
-                    Math.Abs(card.CornerRadius.TopLeft - 8) <= 0.01 &&
-                    Math.Abs(card.Padding.Left - 14) <= 0.01)
-                .All(card =>
+            var noteCardsFollowTheme = noteCards.All(card =>
                     UsesResource(card, Border.BackgroundProperty, "NoteBrush") &&
-                    UsesResource(card, Border.BorderBrushProperty, "NoteLineBrush"));
-            var noteTextFollowsTheme =
-                noteBodies.All(BodyTextUsesTheme) && noteBodies.All(TagTextUsesTheme);
+                    UsesResource(card, Border.BorderBrushProperty, "NoteLineBrush") &&
+                    CardBodiesUseTheme(card, requirePrimaryColumn: false));
 
-            return panelsFollowTheme &&
-                titleFollowsTheme &&
-                countdownCardsFollowTheme &&
-                countdownTextFollowsTheme &&
-                noteCardsFollowTheme &&
-                noteTextFollowsTheme;
+            return new MainWorkspaceThemeValidation(
+                panelsFollowTheme && titleFollowsTheme,
+                countdownCards.Length,
+                countdownCardsFollowTheme,
+                noteCards.Length,
+                noteCardsFollowTheme);
         }
         finally
         {
@@ -4276,6 +6854,97 @@ internal static class ValidationReport
             Brushes.Black,
             dpi.PixelsPerDip);
 
+    private static TextBlock? FindFloatingSecondaryRemaining(
+        StackPanel rows,
+        string countdownName)
+    {
+        foreach (var row in rows.Children.OfType<Border>())
+        {
+            var texts = Descendants<TextBlock>(row).ToArray();
+            if (!texts.Any(text =>
+                    string.Equals(text.Text, countdownName, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            return texts.SingleOrDefault(text =>
+                !string.Equals(text.Text, countdownName, StringComparison.Ordinal) &&
+                Grid.GetColumn(text) == 1 &&
+                text.TextAlignment == TextAlignment.Right);
+        }
+
+        return null;
+    }
+
+    private static FloatingSecondaryRemainingMeasurement CaptureFloatingSecondaryRemaining(
+        string precision,
+        string expectedText,
+        string formattedText,
+        TextBlock? text,
+        FloatingWindow floating,
+        bool preferenceSaved)
+    {
+        var columnIs194Pixels =
+            text is not null &&
+            Math.Abs(text.Width - 194) <= 0.01 &&
+            Math.Abs(text.ActualWidth - 194) <= 0.5;
+        var isRightAligned =
+            text is not null &&
+            text.HorizontalAlignment == HorizontalAlignment.Right &&
+            text.TextAlignment == TextAlignment.Right;
+        var isSingleLineAndUntrimmed =
+            text is not null &&
+            text.TextWrapping == TextWrapping.NoWrap &&
+            text.TextTrimming == TextTrimming.None &&
+            !text.Text.Contains('\r') &&
+            !text.Text.Contains('\n') &&
+            !text.Text.Contains('…') &&
+            text.LineHeight > 0 &&
+            text.ActualHeight <= text.LineHeight + 0.5;
+        var isFullyVisible =
+            text is not null &&
+            isSingleLineAndUntrimmed &&
+            TextBlockLinesFit(text) &&
+            FitsInsideFloatingViewport(text, floating);
+        return new FloatingSecondaryRemainingMeasurement(
+            precision,
+            expectedText,
+            formattedText,
+            text?.Text ?? string.Empty,
+            Math.Round(text?.Width ?? 0, 2),
+            Math.Round(text?.ActualWidth ?? 0, 2),
+            Math.Round(text?.FontSize ?? 0, 2),
+            columnIs194Pixels,
+            isRightAligned,
+            isSingleLineAndUntrimmed,
+            isFullyVisible,
+            text is not null &&
+                System.Windows.Documents.Typography.GetNumeralAlignment(text) ==
+                    FontNumeralAlignment.Tabular,
+            preferenceSaved);
+    }
+
+    private static bool FitsInsideFloatingViewport(
+        FrameworkElement element,
+        FloatingWindow floating)
+    {
+        var bodyScroller = Required<ScrollViewer>(floating, "FloatingBodyScroller");
+        bodyScroller.ApplyTemplate();
+        if (bodyScroller.Template.FindName(
+                "PART_ScrollContentPresenter",
+                bodyScroller) is not ScrollContentPresenter viewport)
+        {
+            return false;
+        }
+
+        var elementBounds = BoundsIn(element, viewport);
+        var viewportBounds = new Rect(new Point(0, 0), viewport.RenderSize);
+        return elementBounds.Left + 0.5 >= viewportBounds.Left &&
+               elementBounds.Top + 0.5 >= viewportBounds.Top &&
+               elementBounds.Right <= viewportBounds.Right + 0.5 &&
+               elementBounds.Bottom <= viewportBounds.Bottom + 0.5;
+    }
+
     private static bool TextBlockLinesFit(TextBlock textBlock)
     {
         var dpi = VisualTreeHelper.GetDpi(textBlock);
@@ -4329,8 +6998,7 @@ internal static class ValidationReport
             secondaryTargetUtc,
             nowUtc,
             "Second");
-        var secondaryRemaining = string.Concat(secondaryRemainingForAutomation
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var secondaryRemaining = secondaryRemainingForAutomation;
         var primaryTexts = Descendants<TextBlock>(primaryRoot).ToArray();
         var secondaryTexts = Descendants<TextBlock>(secondaryRoot).ToArray();
         var primaryTitle = primaryTexts.SingleOrDefault(text =>
@@ -4579,6 +7247,93 @@ internal static class ValidationReport
             new(false, false, false, false, false, false);
     }
 
+    private static FloatingQuickAddThemeValidation ValidateFloatingQuickAddLocalTheme(
+        ApplicationTheme applicationTheme,
+        FloatingWindow floating)
+    {
+        var originalApplicationMode = applicationTheme.ActiveMode;
+        var originalFloatingMode = floating.CurrentThemeMode;
+        try
+        {
+            applicationTheme.Apply(new DateTimeOffset(
+                2030,
+                1,
+                15,
+                6,
+                59,
+                0,
+                TimeSpan.FromHours(8)).ToUniversalTime());
+            floating.ApplyTheme(ApplicationThemeMode.Day);
+            PumpDispatcher();
+            var dayIndependent = !ReferenceEquals(
+                floating.FindResource("CanvasBrush"),
+                Application.Current.FindResource("CanvasBrush"));
+            var day = floating.ProbeQuickAddThemeResources();
+            var dayCanvas = ResourceColor(floating, "CanvasBrush");
+            var dayActive = ResourceColor(floating, "ActiveBrush");
+
+            applicationTheme.Apply(new DateTimeOffset(
+                2030,
+                1,
+                15,
+                7,
+                0,
+                0,
+                TimeSpan.FromHours(8)).ToUniversalTime());
+            floating.ApplyTheme(ApplicationThemeMode.Night);
+            PumpDispatcher();
+            var nightIndependent = !ReferenceEquals(
+                floating.FindResource("CanvasBrush"),
+                Application.Current.FindResource("CanvasBrush"));
+            var night = floating.ProbeQuickAddThemeResources();
+            var nightCanvas = ResourceColor(floating, "CanvasBrush");
+            var nightActive = ResourceColor(floating, "ActiveBrush");
+
+            return new FloatingQuickAddThemeValidation(
+                day,
+                night,
+                new[] { dayCanvas, nightCanvas },
+                new[] { dayActive, nightActive },
+                dayIndependent &&
+                nightIndependent &&
+                day.Mode == ApplicationThemeMode.Day &&
+                night.Mode == ApplicationThemeMode.Night &&
+                dayCanvas == "#FFFFFDFC" &&
+                nightCanvas == "#FF473323" &&
+                dayActive == "#FFA24438" &&
+                nightActive == "#FF6E492E");
+        }
+        finally
+        {
+            applicationTheme.Apply(originalApplicationMode);
+            floating.ApplyTheme(originalFloatingMode);
+            PumpDispatcher();
+        }
+    }
+
+    private static string ResourceColor(FrameworkElement element, string resourceKey) =>
+        element.FindResource(resourceKey) is SolidColorBrush brush
+            ? brush.Color.ToString()
+            : string.Empty;
+
+    private sealed record FloatingQuickAddThemeValidation(
+        FloatingQuickAddThemeProbeResult Day,
+        FloatingQuickAddThemeProbeResult Night,
+        IReadOnlyList<string> CanvasColors,
+        IReadOnlyList<string> ActiveColors,
+        bool IndependentFromApplicationTheme);
+
+    private sealed record MainReferenceDecorationValidation(
+        bool ScalingMatches,
+        bool LayerOrderMatches);
+
+    private sealed record MainWorkspaceThemeValidation(
+        bool StaticResourcesFollowTheme,
+        int CountdownCardSampleCount,
+        bool CountdownCardResourcesFollowTheme,
+        int NoteCardSampleCount,
+        bool NoteCardResourcesFollowTheme);
+
     private sealed record MainReferenceCaptureResult(
         bool Requested,
         bool CapturesWritten,
@@ -4596,11 +7351,229 @@ internal static class ValidationReport
         string Path,
         string Sha256);
 
+    private sealed record FloatingReferenceSourceBinding(string Path, string Sha256);
+
+    private sealed record FloatingReferenceCaptureSpec(
+        string CaptureId,
+        string Scenario,
+        string Theme,
+        string State,
+        string FileName);
+
+    private sealed record FloatingReferenceStateFingerprint(
+        string Algorithm,
+        string Sha256,
+        string Theme,
+        string Workspace,
+        string NoteId,
+        string NoteTextSha256,
+        string ViewportState,
+        double VerticalOffset,
+        double ScrollableHeight,
+        string FirstVisibleAnchor,
+        string LastVisibleAnchor);
+
+    private sealed record FloatingReferenceActualCapture(
+        FloatingReferenceCaptureSpec Spec,
+        byte[] PngBytes,
+        FloatingReferenceStateFingerprint StateFingerprint);
+
+    private sealed record FloatingReferenceStateDifference(
+        string Theme,
+        string TopCaptureId,
+        string BottomCaptureId,
+        FloatingReferencePixelMetrics Metrics);
+
+    private sealed record FloatingReferenceAlphaMetrics(
+        int Minimum,
+        int Maximum,
+        int TransparentPixelCount,
+        int NonOpaquePixelCount,
+        int OpaquePixelCount);
+
+    private sealed record FloatingReferenceContentRoi(
+        int AlphaThreshold,
+        int X,
+        int Y,
+        int Width,
+        int Height,
+        int PixelCount);
+
+    private sealed record FloatingReferencePixelMetrics(
+        int MaxAbsoluteChannelDelta,
+        double MeanAbsoluteError,
+        double RootMeanSquareError,
+        int ChangedPixelCount)
+    {
+        public static FloatingReferencePixelMetrics Zero { get; } = new(0, 0, 0, 0);
+    }
+
+    private sealed record FloatingReferenceCaptureMetrics(
+        int Width,
+        int Height,
+        FloatingReferenceAlphaMetrics Alpha,
+        FloatingReferenceContentRoi ContentRoi);
+
+    private sealed record FloatingReferenceManifestCapture(
+        string CaptureId,
+        string Scenario,
+        string Theme,
+        string State,
+        string Path,
+        int Width,
+        int Height,
+        string PngSha256,
+        FloatingReferenceStateFingerprint StateFingerprint,
+        FloatingReferenceAlphaMetrics Alpha,
+        FloatingReferenceContentRoi ContentRoi,
+        FloatingReferencePixelMetrics Comparison);
+
+    private sealed record FloatingReferenceBaselineCaptureMeasurement(
+        string CaptureId,
+        string Scenario,
+        string Theme,
+        string State,
+        string Path,
+        string BaselineSha256,
+        string ActualSha256,
+        FloatingReferenceStateFingerprint StateFingerprint,
+        FloatingReferenceAlphaMetrics Alpha,
+        FloatingReferenceContentRoi ContentRoi,
+        FloatingReferencePixelMetrics Comparison);
+
+    private sealed record FloatingReferenceBaselineValidation(
+        bool Requested,
+        bool ManifestAvailable,
+        string ManifestPath,
+        string SourceAggregateSha256,
+        string ExecutableSha256,
+        FloatingReferenceManifestGateResults Gates,
+        FloatingReferenceFreshnessGateResults FreshnessGates,
+        IReadOnlyList<FloatingReferenceBaselineCaptureMeasurement> Captures,
+        IReadOnlyList<string> Diagnostics)
+    {
+        private static FloatingReferenceManifestGateResults FailedGates { get; } = new(
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+        private static FloatingReferenceFreshnessGateResults FailedFreshnessGates { get; } = new(
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+
+        public bool AllPassed => Gates.AllPassed && FreshnessGates.AllPassed;
+
+        public static FloatingReferenceBaselineValidation NotRequested { get; } = new(
+            false,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            FailedGates,
+            FailedFreshnessGates,
+            Array.Empty<FloatingReferenceBaselineCaptureMeasurement>(),
+            new[] { "未设置 MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT；运行时发布包不携带参考图。" });
+
+        public static FloatingReferenceBaselineValidation Invalid(
+            bool requested,
+            bool manifestAvailable,
+            string diagnostic,
+            string manifestPath = "") =>
+            new(
+                requested,
+                manifestAvailable,
+                manifestPath,
+                string.Empty,
+                string.Empty,
+                FailedGates,
+                FailedFreshnessGates,
+                Array.Empty<FloatingReferenceBaselineCaptureMeasurement>(),
+                new[] { diagnostic });
+    }
+
+    private sealed record FloatingNoteCardBinding(
+        Border Card,
+        Grid Layout,
+        CheckBox Completion,
+        StackPanel Body,
+        TextBlock BodyText,
+        Border DateStamp,
+        NoteRecord Note);
+
+    private sealed record FloatingLongNoteFrameMeasurement(
+        string CaptureId,
+        string Theme,
+        string State,
+        double VerticalOffset,
+        double ScrollableHeight,
+        string NoteId,
+        string NoteTextSha256,
+        string FirstVisibleAnchor,
+        string LastVisibleAnchor,
+        bool BodyHasNoManualLineBreaks,
+        bool NaturalWraps,
+        bool UsesOnlyOuterScroller,
+        bool OuterScrollable,
+        bool PrimaryAnchorReachable,
+        bool SafeAreaMatches);
+
+    private sealed record FloatingLongNotesValidation(
+        bool BodyHasNoManualLineBreaks,
+        bool NaturalWraps,
+        bool UsesOnlyOuterScroller,
+        bool OuterScrollable,
+        bool TopBottomReachable,
+        bool SafeAreaMatches,
+        IReadOnlyList<FloatingLongNoteFrameMeasurement> Measurements,
+        IReadOnlyList<FloatingReferenceActualCapture> Captures)
+    {
+        public bool LayoutValid =>
+            BodyHasNoManualLineBreaks &&
+            NaturalWraps &&
+            UsesOnlyOuterScroller &&
+            OuterScrollable &&
+            TopBottomReachable &&
+            SafeAreaMatches &&
+            Measurements.Count == 4 &&
+            Captures.Count == 4;
+
+        public static FloatingLongNotesValidation NotRun { get; } = new(
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            Array.Empty<FloatingLongNoteFrameMeasurement>(),
+            Array.Empty<FloatingReferenceActualCapture>());
+    }
+
     private sealed record FloatingReferenceExerciseResult(
         bool AspectMatches,
         bool PanelGeometryMatches,
         bool MascotGeometryMatches,
+        FloatingReferenceBaselineValidation Baseline,
+        FloatingLongNotesValidation LongNotes,
+        FloatingNightPlushEdgeGlowValidation NightPlushEdgeGlow,
         bool ContentSafeAreaMatches,
+        bool TitleUsesSemiBoldWeight,
+        bool NoteInputWraps,
+        bool NoteInputScrolls,
+        bool QuickAddDayExpandedScrolledCaptureWritten,
+        bool QuickAddNightExpandedScrolledCaptureWritten,
         int ContentOverlapCount,
         IReadOnlyList<string> ContentOverlapTargets,
         bool CaptureWritten,
@@ -4614,8 +7587,105 @@ internal static class ValidationReport
         bool NoteFailureAppearsInSourceCard,
         bool ResolvedNoteCardErrorDoesNotReturn,
         bool SecondaryRemainingTextFullyVisible,
+        FloatingSecondaryRemainingGateResults SecondaryRemainingGates,
+        IReadOnlyList<FloatingSecondaryRemainingMeasurement> SecondaryRemainingSamples,
+        FloatingScrollBarValidation ScrollBar,
         IReadOnlyList<double> ActualSize,
         string CapturePath);
+
+    private sealed record FloatingSecondaryRemainingMeasurement(
+        string Precision,
+        string ExpectedText,
+        string FormattedText,
+        string RenderedText,
+        double ColumnWidth,
+        double ActualWidth,
+        double FontSize,
+        bool ColumnIs194Pixels,
+        bool IsRightAligned,
+        bool IsSingleLineAndUntrimmed,
+        bool IsFullyVisible,
+        bool UsesTabularNumerals,
+        bool PreferenceSaved);
+
+    private sealed record FloatingScrollBarParts(
+        ScrollBar ScrollBar,
+        Grid HitRail,
+        Track Track,
+        FloatingScrollBarThumb Thumb,
+        Border ThumbVisual);
+
+    private sealed record FloatingScrollBarStateMeasurement(
+        string Theme,
+        string State,
+        double HitTargetWidth,
+        double ThumbVisualWidth,
+        double ThumbOpacity,
+        double TrackRight,
+        double ThumbHitLeft,
+        double ThumbHitRight,
+        double ScrollBarRight,
+        double ThumbVisualLeft,
+        double ThumbVisualRight,
+        double MaximumVisibleCardRight,
+        double BodyContentRight,
+        bool CardSurfacesAreClear,
+        bool ContentIsClear,
+        bool DoesNotObscureContent,
+        bool UsesThemeTokens,
+        string ThumbColor,
+        string BorderColor);
+
+    private sealed record FloatingScrollBarValidation(
+        FloatingScrollBarGateResults Gates,
+        IReadOnlyList<FloatingScrollBarStateMeasurement> Measurements,
+        double WheelOffsetBefore,
+        double WheelOffsetAfter,
+        double DragOffsetBefore,
+        double DragOffsetAfter,
+        IReadOnlyDictionary<string, byte[]> Captures)
+    {
+        public bool StateCapturesReady =>
+            Captures.Count == 6 &&
+            Captures.Values.All(bytes => bytes.Length > 0);
+
+        public static FloatingScrollBarValidation NotRun { get; } = new(
+            new FloatingScrollBarGateResults(false, false, false, false, false, false),
+            Array.Empty<FloatingScrollBarStateMeasurement>(),
+            0,
+            0,
+            0,
+            0,
+            new Dictionary<string, byte[]>(StringComparer.Ordinal));
+    }
+
+    private sealed record PlushEdgeTarget(
+        string Name,
+        Image Image,
+        Border Anchor);
+
+    private sealed record FloatingNightPlushEdgeMeasurement(
+        string Role,
+        int RoiPixelCount,
+        int VisibleEffectSampleCount,
+        double BrightnessSignal,
+        double Saturation,
+        string AggregateEffectColor);
+
+    private sealed record FloatingNightPlushEdgeGlowValidation(
+        bool SourceAlphaBoundsMatch,
+        IReadOnlyList<string> SourceAlphaBounds,
+        IReadOnlyList<FloatingNightPlushEdgeMeasurement> Measurements,
+        FloatingNightPlushEdgeGateResults Gates,
+        string Algorithm)
+    {
+        public static FloatingNightPlushEdgeGlowValidation NotRun { get; } = new(
+            false,
+            Array.Empty<string>(),
+            Array.Empty<FloatingNightPlushEdgeMeasurement>(),
+            new FloatingNightPlushEdgeGateResults(false, false),
+            string.Empty);
+    }
 
     private sealed record FloatingViewportState(
         string Name,

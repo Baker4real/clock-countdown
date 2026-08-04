@@ -7,6 +7,9 @@ namespace MinminCountdown;
 
 internal static class ValidationExercises
 {
+    internal const double FloatingNightPlushEdgeBrightnessLimit = 0.012;
+    internal const double FloatingNightPlushEdgeSaturationLimit = 0.35;
+
     public static bool RunReminderEditingInterfaceBehavior()
     {
         var editor = new ReminderEditing();
@@ -630,13 +633,92 @@ internal static class ValidationExercises
                      "DesktopWorkspaceInterfaceBehavior",
                      "ReminderEditingInterfaceBehavior",
                      "StartupAcceptanceProtocolInterfaceBehavior",
-                     "HolidayCalendarInterfaceBehavior"
+                     "HolidayCalendarInterfaceBehavior",
+                     "MainReferenceDecorationsShareScaleAtMinimumAndWideSizes",
+                     "MainReferenceDecorationLayerOrderMatches",
+                     "MainWorkspaceResourcesFollowDayNightTheme",
+                     "MainDynamicCountdownCardsUseThemeResources",
+                     "MainDynamicNoteCardsUseThemeResources",
+                     "FloatingReferenceContentSafeAreaMatches",
+                     "FloatingReferenceBaselineGateIsolationBehavior",
+                     "FloatingReferenceFreshnessGateIsolationBehavior",
+                     "FloatingLongNotesBodyHasNoManualLineBreaks",
+                     "FloatingLongNotesNaturalWraps",
+                     "FloatingLongNotesUsesOnlyOuterScroller",
+                     "FloatingLongNotesOuterScrollable",
+                     "FloatingLongNotesTopBottomReachable",
+                     "FloatingLongNotesSafeAreaMatches",
+                     "FloatingLongNotesLayoutValid",
+                     "FloatingTitleUsesSemiBoldWeight",
+                     "FloatingNoteInputWraps",
+                     "FloatingNoteInputScrolls",
+                     "FloatingInitialWorkspaceStateMatches",
+                     "FloatingWorkspaceSwitchingStaysSynchronized",
+                     "FloatingCountdownSelectionSurvivesDayNightThemes",
+                     "FloatingQuickAddDayResourcesFollowLocalTheme",
+                     "FloatingQuickAddNightResourcesFollowLocalTheme",
+                     "FloatingQuickAddIndependentFromApplicationAutoTheme",
+                     "FloatingQuickAddThemeResourceIsolationBehavior",
+                     "FloatingQuickAddDayExpandedScrolledCaptureWritten",
+                     "FloatingQuickAddNightExpandedScrolledCaptureWritten",
+                     "FloatingNightPlushSourceAlphaBoundsMatch",
+                     "FloatingNightPlushEdgeBrightnessWithinLimit",
+                     "FloatingNightPlushEdgeSaturationWithinLimit",
+                     "FloatingNightPlushEdgeGlowGateIsolationBehavior",
+                     "FloatingSecondaryRemainingUnitSpacingMatches",
+                     "FloatingSecondaryRemainingLayoutMatches",
+                     "FloatingSecondaryRemainingGateIsolationBehavior",
+                     "FloatingScrollBarLocalStyleScoped",
+                     "FloatingScrollBarHitTargetUsable",
+                     "FloatingScrollBarVisualWeightProgression",
+                     "FloatingScrollBarUsesWarmThemeTokens",
+                     "FloatingScrollBarContentRemainsSafe",
+                     "FloatingScrollBarInputPathsWork",
+                     "FloatingScrollBarGateIsolationBehavior",
+                     "FloatingScrollBarDayNightStateCapturesReady",
+                     "UiQualityGateIsolationBehavior"
+                 })
+        {
+            var quickAddThemePrefix = requiredBehavior switch
+            {
+                "FloatingQuickAddDayResourcesFollowLocalTheme" => "FloatingQuickAddDayResource",
+                "FloatingQuickAddNightResourcesFollowLocalTheme" => "FloatingQuickAddNightResource",
+                _ => null
+            };
+            var quickAddFailureDetails = quickAddThemePrefix is null
+                ? string.Empty
+                : $" Checks={JsonSerializer.Serialize(report[$"{quickAddThemePrefix}Checks"])};" +
+                  $" Diagnostics={JsonSerializer.Serialize(report[$"{quickAddThemePrefix}Diagnostics"])}";
+            Must(
+                report.TryGetValue(requiredBehavior, out var value) && value is true,
+                $"validate-only report 的真实行为字段 {requiredBehavior} 未通过。" +
+                quickAddFailureDetails);
+        }
+
+        foreach (var sampleCountField in new[]
+                 {
+                     "MainDynamicCountdownCardSampleCount",
+                     "MainDynamicNoteCardSampleCount"
                  })
         {
             Must(
-                report.TryGetValue(requiredBehavior, out var value) && value is true,
-                $"validate-only report 的真实行为字段 {requiredBehavior} 未通过。");
+                report.TryGetValue(sampleCountField, out var value) &&
+                value is int sampleCount &&
+                sampleCount > 0,
+                $"validate-only report 的动态卡片样本字段 {sampleCountField} 未命中合格样本。");
         }
+
+        Must(
+            report.TryGetValue("FloatingReferenceBaselineRequested", out var baselineRequestedValue) &&
+            baselineRequestedValue is bool baselineRequested &&
+            report.TryGetValue("FloatingReferenceBaselineManifestAvailable", out var baselineAvailableValue) &&
+            baselineAvailableValue is bool baselineAvailable &&
+            report.TryGetValue("FloatingReferenceBaselineValidated", out var baselineValidatedValue) &&
+            baselineValidatedValue is bool baselineValidated &&
+            (baselineRequested
+                ? baselineAvailable && baselineValidated
+                : !baselineAvailable && !baselineValidated),
+            "悬浮窗参考基线报告没有区分源码树实测与不携带参考资产的运行时发布包。");
 
         if (report.TryGetValue("ValidationReportContractBehavior", out var contractBehavior))
         {
@@ -648,6 +730,462 @@ internal static class ValidationExercises
         }
 
         return true;
+    }
+
+    public static UiQualityGateResults EvaluateUiQualityGates(UiQualityGateInputs input) =>
+        new(
+            input.MainReferenceDecorationScaling,
+            input.MainReferenceDecorationLayerOrder,
+            input.MainWorkspaceResourcesFollowTheme,
+            input.MainCountdownCardSampleCount > 0 &&
+                input.MainCountdownCardResourcesFollowTheme,
+            input.MainNoteCardSampleCount > 0 &&
+                input.MainNoteCardResourcesFollowTheme,
+            input.FloatingContentSafeArea,
+            input.FloatingTitleUsesSemiBoldWeight,
+            input.FloatingNoteInputWraps,
+            input.FloatingNoteInputScrolls);
+
+    public static bool RunUiQualityGateIsolationBehavior()
+    {
+        var passing = new UiQualityGateInputs(
+            true,
+            true,
+            true,
+            1,
+            true,
+            1,
+            true,
+            true,
+            true,
+            true,
+            true);
+
+        VerifyOnlyTargetFails(
+            passing with { MainReferenceDecorationScaling = false },
+            nameof(UiQualityGateResults.MainReferenceDecorationScaling));
+        VerifyOnlyTargetFails(
+            passing with { MainReferenceDecorationLayerOrder = false },
+            nameof(UiQualityGateResults.MainReferenceDecorationLayerOrder));
+        VerifyOnlyTargetFails(
+            passing with { MainWorkspaceResourcesFollowTheme = false },
+            nameof(UiQualityGateResults.MainWorkspaceResourcesFollowTheme));
+        VerifyOnlyTargetFails(
+            passing with { MainCountdownCardSampleCount = 0 },
+            nameof(UiQualityGateResults.MainCountdownCardResourcesFollowTheme));
+        VerifyOnlyTargetFails(
+            passing with { MainCountdownCardResourcesFollowTheme = false },
+            nameof(UiQualityGateResults.MainCountdownCardResourcesFollowTheme));
+        VerifyOnlyTargetFails(
+            passing with { MainNoteCardSampleCount = 0 },
+            nameof(UiQualityGateResults.MainNoteCardResourcesFollowTheme));
+        VerifyOnlyTargetFails(
+            passing with { MainNoteCardResourcesFollowTheme = false },
+            nameof(UiQualityGateResults.MainNoteCardResourcesFollowTheme));
+        VerifyOnlyTargetFails(
+            passing with { FloatingContentSafeArea = false },
+            nameof(UiQualityGateResults.FloatingContentSafeArea));
+        VerifyOnlyTargetFails(
+            passing with { FloatingTitleUsesSemiBoldWeight = false },
+            nameof(UiQualityGateResults.FloatingTitleUsesSemiBoldWeight));
+        VerifyOnlyTargetFails(
+            passing with { FloatingNoteInputWraps = false },
+            nameof(UiQualityGateResults.FloatingNoteInputWraps));
+        VerifyOnlyTargetFails(
+            passing with { FloatingNoteInputScrolls = false },
+            nameof(UiQualityGateResults.FloatingNoteInputScrolls));
+
+        return true;
+    }
+
+    public static FloatingReferenceManifestGateResults EvaluateFloatingReferenceManifestGates(
+        FloatingReferenceManifestGateInputs input) =>
+        new(
+            input.ManifestStructureValid,
+            input.ExpectedCaptureFilesPresent,
+            input.CapturePathsUnique,
+            input.NoOrphanPngFiles,
+            input.CanvasDimensionsMatch,
+            input.ScenarioThemePairsUnique,
+            input.SourceHashesMatch,
+            input.ExecutableHashMatches,
+            input.PngHashesMatch,
+            input.AlphaMetricsMatch,
+            input.ContentRoiMatches,
+            input.PixelMetricsWithinThresholds);
+
+    public static bool RunFloatingReferenceManifestGateIsolationBehavior()
+    {
+        var passing = new FloatingReferenceManifestGateInputs(
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+        Must(
+            EvaluateFloatingReferenceManifestGates(passing).AllPassed,
+            "悬浮窗参考图 manifest 全通过夹具被错误拒绝。");
+
+        var fixtures = new (string Name, FloatingReferenceManifestGateInputs Input, string Gate)[]
+        {
+            ("malformed-manifest", passing with { ManifestStructureValid = false },
+                nameof(FloatingReferenceManifestGateResults.ManifestStructureValid)),
+            ("missing-png", passing with { ExpectedCaptureFilesPresent = false },
+                nameof(FloatingReferenceManifestGateResults.ExpectedCaptureFilesPresent)),
+            ("duplicate-path", passing with { CapturePathsUnique = false },
+                nameof(FloatingReferenceManifestGateResults.CapturePathsUnique)),
+            ("orphan-png", passing with { NoOrphanPngFiles = false },
+                nameof(FloatingReferenceManifestGateResults.NoOrphanPngFiles)),
+            ("wrong-dimensions", passing with { CanvasDimensionsMatch = false },
+                nameof(FloatingReferenceManifestGateResults.CanvasDimensionsMatch)),
+            ("duplicate-scenario-theme", passing with { ScenarioThemePairsUnique = false },
+                nameof(FloatingReferenceManifestGateResults.ScenarioThemePairsUnique)),
+            ("source-hash-mismatch", passing with { SourceHashesMatch = false },
+                nameof(FloatingReferenceManifestGateResults.SourceHashesMatch)),
+            ("executable-hash-mismatch", passing with { ExecutableHashMatches = false },
+                nameof(FloatingReferenceManifestGateResults.ExecutableHashMatches)),
+            ("png-hash-mismatch", passing with { PngHashesMatch = false },
+                nameof(FloatingReferenceManifestGateResults.PngHashesMatch)),
+            ("alpha-metrics-mismatch", passing with { AlphaMetricsMatch = false },
+                nameof(FloatingReferenceManifestGateResults.AlphaMetricsMatch)),
+            ("content-roi-mismatch", passing with { ContentRoiMatches = false },
+                nameof(FloatingReferenceManifestGateResults.ContentRoiMatches)),
+            ("pixel-metrics-mismatch", passing with { PixelMetricsWithinThresholds = false },
+                nameof(FloatingReferenceManifestGateResults.PixelMetricsWithinThresholds))
+        };
+        foreach (var fixture in fixtures)
+        {
+            VerifyOnlyFloatingReferenceManifestGateFails(
+                fixture.Name,
+                fixture.Input,
+                fixture.Gate);
+        }
+
+        return true;
+    }
+
+    public static FloatingReferenceFreshnessGateResults EvaluateFloatingReferenceFreshnessGates(
+        FloatingReferenceFreshnessGateInputs input) =>
+        new(
+            input.ExpectedStateBindingsMatch,
+            input.CaptureIdsUnique,
+            input.StateFingerprintsMatch,
+            input.StateFingerprintsUnique,
+            input.PngHashesUnique,
+            input.TopBottomPixelsDiffer,
+            input.LongNoteLayoutValid);
+
+    public static bool RunFloatingReferenceFreshnessGateIsolationBehavior()
+    {
+        var passing = new FloatingReferenceFreshnessGateInputs(
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+        Must(
+            EvaluateFloatingReferenceFreshnessGates(passing).AllPassed,
+            "悬浮窗长便签帧新鲜度全通过夹具被错误拒绝。");
+
+        var fixtures = new (string Name, FloatingReferenceFreshnessGateInputs Input, string Gate)[]
+        {
+            ("swapped-top-bottom", passing with { ExpectedStateBindingsMatch = false },
+                nameof(FloatingReferenceFreshnessGateResults.ExpectedStateBindingsMatch)),
+            ("duplicate-capture-id", passing with { CaptureIdsUnique = false },
+                nameof(FloatingReferenceFreshnessGateResults.CaptureIdsUnique)),
+            ("state-fingerprint-mismatch", passing with { StateFingerprintsMatch = false },
+                nameof(FloatingReferenceFreshnessGateResults.StateFingerprintsMatch)),
+            ("duplicate-state-fingerprint", passing with { StateFingerprintsUnique = false },
+                nameof(FloatingReferenceFreshnessGateResults.StateFingerprintsUnique)),
+            ("reused-frame", passing with { PngHashesUnique = false },
+                nameof(FloatingReferenceFreshnessGateResults.PngHashesUnique)),
+            ("top-bottom-pixel-difference-too-small", passing with { TopBottomPixelsDiffer = false },
+                nameof(FloatingReferenceFreshnessGateResults.TopBottomPixelsDiffer)),
+            ("long-note-layout-unreachable", passing with { LongNoteLayoutValid = false },
+                nameof(FloatingReferenceFreshnessGateResults.LongNoteLayoutValid))
+        };
+        foreach (var fixture in fixtures)
+        {
+            var results = EvaluateFloatingReferenceFreshnessGates(fixture.Input).AsDictionary();
+            Must(
+                results.TryGetValue(fixture.Gate, out var failed) && !failed,
+                $"悬浮窗长便签负向夹具 {fixture.Name} 未让 {fixture.Gate} 变红。");
+            Must(
+                results
+                    .Where(pair => !string.Equals(pair.Key, fixture.Gate, StringComparison.Ordinal))
+                    .All(pair => pair.Value),
+                $"悬浮窗长便签负向夹具 {fixture.Name} 误伤无关契约。");
+        }
+
+        return true;
+    }
+
+    private static void VerifyOnlyFloatingReferenceManifestGateFails(
+        string fixtureName,
+        FloatingReferenceManifestGateInputs input,
+        string expectedFailure)
+    {
+        var results = EvaluateFloatingReferenceManifestGates(input).AsDictionary();
+        Must(
+            results.TryGetValue(expectedFailure, out var failed) && !failed,
+            $"悬浮窗参考图负向夹具 {fixtureName} 未让 {expectedFailure} 变红。");
+        Must(
+            results
+                .Where(pair => !string.Equals(pair.Key, expectedFailure, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"悬浮窗参考图负向夹具 {fixtureName} 误伤无关契约。");
+    }
+
+    public static bool RunFloatingQuickAddThemeResourceIsolationBehavior()
+    {
+        var passingChecks = FloatingWindow.RequiredQuickAddThemeChecks.ToDictionary(
+            name => name,
+            _ => true,
+            StringComparer.Ordinal);
+        Must(
+            new FloatingQuickAddThemeProbeResult(
+                ApplicationThemeMode.Day,
+                passingChecks,
+                Array.Empty<FloatingQuickAddThemeProbeDiagnostic>()).Passed,
+            "悬浮窗快速新增局部主题全通过夹具被错误拒绝。");
+
+        foreach (var target in FloatingWindow.RequiredQuickAddThemeChecks)
+        {
+            var failingChecks = new Dictionary<string, bool>(passingChecks, StringComparer.Ordinal)
+            {
+                [target] = false
+            };
+            var result = new FloatingQuickAddThemeProbeResult(
+                ApplicationThemeMode.Night,
+                failingChecks,
+                [new FloatingQuickAddThemeProbeDiagnostic(
+                    target,
+                    "SyntheticControl",
+                    "CanvasBrush",
+                    "#FFFFFDFC",
+                    "#FF473323",
+                    false,
+                    false,
+                    false,
+                    true,
+                    true,
+                    string.Empty,
+                    string.Empty)]);
+            Must(
+                !result.Passed &&
+                result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal) &&
+                result.Diagnostics.Single().Check == target,
+                $"悬浮窗快速新增局部主题负向夹具未让 {target} 单独失败。");
+        }
+
+        return true;
+    }
+
+    public static FloatingNightPlushEdgeGateResults EvaluateFloatingNightPlushEdgeGlow(
+        FloatingNightPlushEdgeGateInputs input) =>
+        new(
+            input.HasThreeRoleSamples &&
+                input.MaximumBrightnessSignal <= FloatingNightPlushEdgeBrightnessLimit,
+            input.HasThreeRoleSamples &&
+                input.MaximumSaturation <= FloatingNightPlushEdgeSaturationLimit);
+
+    public static bool RunFloatingNightPlushEdgeGlowGateIsolationBehavior()
+    {
+        var passing = new FloatingNightPlushEdgeGateInputs(0.006, 0.20, true);
+        var passingResult = EvaluateFloatingNightPlushEdgeGlow(passing);
+        Must(
+            passingResult.BrightnessWithinLimit && passingResult.SaturationWithinLimit,
+            "夜间悬浮窗角色外缘暖光全通过夹具被错误拒绝。");
+
+        var brightResult = EvaluateFloatingNightPlushEdgeGlow(
+            passing with
+            {
+                MaximumBrightnessSignal = FloatingNightPlushEdgeBrightnessLimit + 0.01
+            });
+        Must(
+            !brightResult.BrightnessWithinLimit && brightResult.SaturationWithinLimit,
+            "夜间悬浮窗角色外缘亮度负向夹具未单独变红。");
+
+        var saturatedResult = EvaluateFloatingNightPlushEdgeGlow(
+            passing with
+            {
+                MaximumSaturation = FloatingNightPlushEdgeSaturationLimit + 0.01
+            });
+        Must(
+            saturatedResult.BrightnessWithinLimit && !saturatedResult.SaturationWithinLimit,
+            "夜间悬浮窗角色外缘饱和度负向夹具未单独变红。");
+
+        return true;
+    }
+
+    public static FloatingSecondaryRemainingGateResults EvaluateFloatingSecondaryRemainingGates(
+        FloatingSecondaryRemainingGateInputs input) =>
+        new(
+            input.ExpectedTexts.Count == 5 &&
+                input.FormattedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal) &&
+                input.RenderedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal),
+            input.HasExpectedSampleCount &&
+                input.ColumnsAre194Pixels &&
+                input.TextIsRightAligned &&
+                input.TextIsSingleLineAndUntrimmed &&
+                input.TextIsFullyVisible &&
+                input.UsesTabularNumerals &&
+                input.FontSizingMatches);
+
+    public static bool RunFloatingSecondaryRemainingGateIsolationBehavior()
+    {
+        var expected = new[]
+        {
+            "4 天",
+            "4 天 13 小时",
+            "4 天 13 小时 18 分钟",
+            "4 天 13 小时 18 分钟 59 秒",
+            "2000000 天 00 小时 00 分钟 00 秒"
+        };
+        var passing = new FloatingSecondaryRemainingGateInputs(
+            expected,
+            expected,
+            expected,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+        var passingResult = EvaluateFloatingSecondaryRemainingGates(passing);
+        Must(
+            passingResult.UnitSpacingMatches && passingResult.FixedColumnLayoutMatches,
+            "悬浮窗次级倒计时全通过夹具被错误拒绝。");
+
+        var spacingRemoved = EvaluateFloatingSecondaryRemainingGates(
+            passing with
+            {
+                RenderedTexts = expected
+                    .Select(text => text.Replace(" ", string.Empty, StringComparison.Ordinal))
+                    .ToArray()
+            });
+        Must(
+            !spacingRemoved.UnitSpacingMatches && spacingRemoved.FixedColumnLayoutMatches,
+            "悬浮窗次级倒计时去空格负向夹具未单独变红。");
+
+        var brokenLayout = EvaluateFloatingSecondaryRemainingGates(
+            passing with { ColumnsAre194Pixels = false });
+        Must(
+            brokenLayout.UnitSpacingMatches && !brokenLayout.FixedColumnLayoutMatches,
+            "悬浮窗次级倒计时固定列负向夹具未单独变红。");
+
+        return true;
+    }
+
+    public static FloatingScrollBarGateResults EvaluateFloatingScrollBarGates(
+        FloatingScrollBarGateInputs input) =>
+        new(
+            input.LocalStylePresent && input.MainWindowStyleUnaffected,
+            input.HitTargetWidth >= 10,
+            input.NormalThumbWidth is >= 3.5 and <= 4.5 &&
+                input.HoverThumbWidth is >= 3.5 and <= 4.5 &&
+                input.DragThumbWidth is >= 3.5 and <= 4.5 &&
+                input.NormalThumbOpacity is > 0 and <= 0.6 &&
+                input.HoverThumbOpacity > input.NormalThumbOpacity &&
+                input.DragThumbOpacity > input.HoverThumbOpacity &&
+                input.DragThumbOpacity <= 1,
+            input.DayThemeTokensMatch && input.NightThemeTokensMatch,
+            input.NormalDoesNotObscureContent &&
+                input.HoverDoesNotObscureContent &&
+                input.DragDoesNotObscureContent &&
+                input.ContentSafeAreaUnchanged,
+            input.WheelChangesOffset && input.DragChangesOffset);
+
+    public static bool RunFloatingScrollBarGateIsolationBehavior()
+    {
+        var passing = new FloatingScrollBarGateInputs(
+            true,
+            true,
+            10,
+            4,
+            4,
+            4,
+            0.52,
+            0.78,
+            0.96,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+        var passingResult = EvaluateFloatingScrollBarGates(passing);
+        Must(
+            passingResult.AllPassed,
+            "悬浮窗滚动条全通过夹具被错误拒绝。");
+
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { LocalStylePresent = false },
+            nameof(FloatingScrollBarGateResults.LocalStyleScoped));
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { HitTargetWidth = 8 },
+            nameof(FloatingScrollBarGateResults.HitTargetUsable));
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { NormalThumbWidth = 7 },
+            nameof(FloatingScrollBarGateResults.VisualWeightProgression));
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { NormalDoesNotObscureContent = false },
+            nameof(FloatingScrollBarGateResults.ContentRemainsSafe));
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { ContentSafeAreaUnchanged = false },
+            nameof(FloatingScrollBarGateResults.ContentRemainsSafe));
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { NightThemeTokensMatch = false },
+            nameof(FloatingScrollBarGateResults.UsesWarmThemeTokens));
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { WheelChangesOffset = false },
+            nameof(FloatingScrollBarGateResults.InputPathsWork));
+        VerifyOnlyFloatingScrollBarGateFails(
+            passing with { DragChangesOffset = false },
+            nameof(FloatingScrollBarGateResults.InputPathsWork));
+        return true;
+    }
+
+    private static void VerifyOnlyFloatingScrollBarGateFails(
+        FloatingScrollBarGateInputs input,
+        string expectedFailure)
+    {
+        var results = EvaluateFloatingScrollBarGates(input).AsDictionary();
+        Must(
+            results.TryGetValue(expectedFailure, out var failed) && !failed,
+            $"悬浮窗滚动条负向夹具未让 {expectedFailure} 变红。");
+        Must(
+            results
+                .Where(pair => !string.Equals(pair.Key, expectedFailure, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"悬浮窗滚动条负向夹具 {expectedFailure} 误伤无关契约。");
+    }
+
+    private static void VerifyOnlyTargetFails(
+        UiQualityGateInputs input,
+        string target)
+    {
+        var results = EvaluateUiQualityGates(input).AsDictionary();
+        Must(
+            results.TryGetValue(target, out var targetValue) && !targetValue,
+            $"UI 质量门禁负向夹具未让 {target} 单独失败。");
+        Must(
+            results
+                .Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"UI 质量门禁负向夹具 {target} 误伤无关契约。");
     }
 
     public static PersistenceFailureExerciseResult RunPersistenceFailures(
@@ -1012,4 +1550,196 @@ internal sealed record TagInteractionExerciseResult(
 {
     public static TagInteractionExerciseResult NotRun { get; } =
         new(false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
+}
+
+internal sealed record UiQualityGateInputs(
+    bool MainReferenceDecorationScaling,
+    bool MainReferenceDecorationLayerOrder,
+    bool MainWorkspaceResourcesFollowTheme,
+    int MainCountdownCardSampleCount,
+    bool MainCountdownCardResourcesFollowTheme,
+    int MainNoteCardSampleCount,
+    bool MainNoteCardResourcesFollowTheme,
+    bool FloatingContentSafeArea,
+    bool FloatingTitleUsesSemiBoldWeight,
+    bool FloatingNoteInputWraps,
+    bool FloatingNoteInputScrolls);
+
+internal sealed record FloatingNightPlushEdgeGateInputs(
+    double MaximumBrightnessSignal,
+    double MaximumSaturation,
+    bool HasThreeRoleSamples);
+
+internal sealed record FloatingNightPlushEdgeGateResults(
+    bool BrightnessWithinLimit,
+    bool SaturationWithinLimit);
+
+internal sealed record FloatingReferenceManifestGateInputs(
+    bool ManifestStructureValid,
+    bool ExpectedCaptureFilesPresent,
+    bool CapturePathsUnique,
+    bool NoOrphanPngFiles,
+    bool CanvasDimensionsMatch,
+    bool ScenarioThemePairsUnique,
+    bool SourceHashesMatch,
+    bool ExecutableHashMatches,
+    bool PngHashesMatch,
+    bool AlphaMetricsMatch,
+    bool ContentRoiMatches,
+    bool PixelMetricsWithinThresholds);
+
+internal sealed record FloatingReferenceManifestGateResults(
+    bool ManifestStructureValid,
+    bool ExpectedCaptureFilesPresent,
+    bool CapturePathsUnique,
+    bool NoOrphanPngFiles,
+    bool CanvasDimensionsMatch,
+    bool ScenarioThemePairsUnique,
+    bool SourceHashesMatch,
+    bool ExecutableHashMatches,
+    bool PngHashesMatch,
+    bool AlphaMetricsMatch,
+    bool ContentRoiMatches,
+    bool PixelMetricsWithinThresholds)
+{
+    public bool AllPassed => AsDictionary().Values.All(value => value);
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(ManifestStructureValid)] = ManifestStructureValid,
+            [nameof(ExpectedCaptureFilesPresent)] = ExpectedCaptureFilesPresent,
+            [nameof(CapturePathsUnique)] = CapturePathsUnique,
+            [nameof(NoOrphanPngFiles)] = NoOrphanPngFiles,
+            [nameof(CanvasDimensionsMatch)] = CanvasDimensionsMatch,
+            [nameof(ScenarioThemePairsUnique)] = ScenarioThemePairsUnique,
+            [nameof(SourceHashesMatch)] = SourceHashesMatch,
+            [nameof(ExecutableHashMatches)] = ExecutableHashMatches,
+            [nameof(PngHashesMatch)] = PngHashesMatch,
+            [nameof(AlphaMetricsMatch)] = AlphaMetricsMatch,
+            [nameof(ContentRoiMatches)] = ContentRoiMatches,
+            [nameof(PixelMetricsWithinThresholds)] = PixelMetricsWithinThresholds
+        };
+}
+
+internal sealed record FloatingReferenceFreshnessGateInputs(
+    bool ExpectedStateBindingsMatch,
+    bool CaptureIdsUnique,
+    bool StateFingerprintsMatch,
+    bool StateFingerprintsUnique,
+    bool PngHashesUnique,
+    bool TopBottomPixelsDiffer,
+    bool LongNoteLayoutValid);
+
+internal sealed record FloatingReferenceFreshnessGateResults(
+    bool ExpectedStateBindingsMatch,
+    bool CaptureIdsUnique,
+    bool StateFingerprintsMatch,
+    bool StateFingerprintsUnique,
+    bool PngHashesUnique,
+    bool TopBottomPixelsDiffer,
+    bool LongNoteLayoutValid)
+{
+    public bool AllPassed => AsDictionary().Values.All(value => value);
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(ExpectedStateBindingsMatch)] = ExpectedStateBindingsMatch,
+            [nameof(CaptureIdsUnique)] = CaptureIdsUnique,
+            [nameof(StateFingerprintsMatch)] = StateFingerprintsMatch,
+            [nameof(StateFingerprintsUnique)] = StateFingerprintsUnique,
+            [nameof(PngHashesUnique)] = PngHashesUnique,
+            [nameof(TopBottomPixelsDiffer)] = TopBottomPixelsDiffer,
+            [nameof(LongNoteLayoutValid)] = LongNoteLayoutValid
+        };
+}
+
+internal sealed record FloatingSecondaryRemainingGateInputs(
+    IReadOnlyList<string> ExpectedTexts,
+    IReadOnlyList<string> FormattedTexts,
+    IReadOnlyList<string> RenderedTexts,
+    bool HasExpectedSampleCount,
+    bool ColumnsAre194Pixels,
+    bool TextIsRightAligned,
+    bool TextIsSingleLineAndUntrimmed,
+    bool TextIsFullyVisible,
+    bool UsesTabularNumerals,
+    bool FontSizingMatches);
+
+internal sealed record FloatingSecondaryRemainingGateResults(
+    bool UnitSpacingMatches,
+    bool FixedColumnLayoutMatches);
+
+internal sealed record FloatingScrollBarGateInputs(
+    bool LocalStylePresent,
+    bool MainWindowStyleUnaffected,
+    double HitTargetWidth,
+    double NormalThumbWidth,
+    double HoverThumbWidth,
+    double DragThumbWidth,
+    double NormalThumbOpacity,
+    double HoverThumbOpacity,
+    double DragThumbOpacity,
+    bool DayThemeTokensMatch,
+    bool NightThemeTokensMatch,
+    bool NormalDoesNotObscureContent,
+    bool HoverDoesNotObscureContent,
+    bool DragDoesNotObscureContent,
+    bool ContentSafeAreaUnchanged,
+    bool WheelChangesOffset,
+    bool DragChangesOffset);
+
+internal sealed record FloatingScrollBarGateResults(
+    bool LocalStyleScoped,
+    bool HitTargetUsable,
+    bool VisualWeightProgression,
+    bool UsesWarmThemeTokens,
+    bool ContentRemainsSafe,
+    bool InputPathsWork)
+{
+    public bool AllPassed =>
+        LocalStyleScoped &&
+        HitTargetUsable &&
+        VisualWeightProgression &&
+        UsesWarmThemeTokens &&
+        ContentRemainsSafe &&
+        InputPathsWork;
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(LocalStyleScoped)] = LocalStyleScoped,
+            [nameof(HitTargetUsable)] = HitTargetUsable,
+            [nameof(VisualWeightProgression)] = VisualWeightProgression,
+            [nameof(UsesWarmThemeTokens)] = UsesWarmThemeTokens,
+            [nameof(ContentRemainsSafe)] = ContentRemainsSafe,
+            [nameof(InputPathsWork)] = InputPathsWork
+        };
+}
+
+internal sealed record UiQualityGateResults(
+    bool MainReferenceDecorationScaling,
+    bool MainReferenceDecorationLayerOrder,
+    bool MainWorkspaceResourcesFollowTheme,
+    bool MainCountdownCardResourcesFollowTheme,
+    bool MainNoteCardResourcesFollowTheme,
+    bool FloatingContentSafeArea,
+    bool FloatingTitleUsesSemiBoldWeight,
+    bool FloatingNoteInputWraps,
+    bool FloatingNoteInputScrolls)
+{
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(MainReferenceDecorationScaling)] = MainReferenceDecorationScaling,
+            [nameof(MainReferenceDecorationLayerOrder)] = MainReferenceDecorationLayerOrder,
+            [nameof(MainWorkspaceResourcesFollowTheme)] = MainWorkspaceResourcesFollowTheme,
+            [nameof(MainCountdownCardResourcesFollowTheme)] = MainCountdownCardResourcesFollowTheme,
+            [nameof(MainNoteCardResourcesFollowTheme)] = MainNoteCardResourcesFollowTheme,
+            [nameof(FloatingContentSafeArea)] = FloatingContentSafeArea,
+            [nameof(FloatingTitleUsesSemiBoldWeight)] = FloatingTitleUsesSemiBoldWeight,
+            [nameof(FloatingNoteInputWraps)] = FloatingNoteInputWraps,
+            [nameof(FloatingNoteInputScrolls)] = FloatingNoteInputScrolls
+        };
 }

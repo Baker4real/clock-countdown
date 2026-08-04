@@ -7,7 +7,8 @@ function Invoke-CountdownValidationProcess {
     param(
         [Parameter(Mandatory)] [string] $PowerShell7Path,
         [Parameter(Mandatory)] [string] $Operation,
-        [Parameter(Mandatory)] [string[]] $ArgumentList
+        [Parameter(Mandatory)] [string[]] $ArgumentList,
+        [hashtable] $EnvironmentVariables = @{}
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -18,6 +19,14 @@ function Invoke-CountdownValidationProcess {
     $startInfo.RedirectStandardError = $true
     foreach ($argument in $ArgumentList) {
         [void] $startInfo.ArgumentList.Add($argument)
+    }
+    foreach ($entry in $EnvironmentVariables.GetEnumerator()) {
+        if ($null -eq $entry.Value) {
+            [void] $startInfo.Environment.Remove([string] $entry.Key)
+        }
+        else {
+            $startInfo.Environment[[string] $entry.Key] = [string] $entry.Value
+        }
     }
 
     $process = [System.Diagnostics.Process]::new()
@@ -146,9 +155,16 @@ function Invoke-CountdownValidationSuite {
         )
     $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
 
+    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-08-04-v1\manifest.json'
+    $floatingBaselineRequired = Test-Path -LiteralPath $floatingBaselineManifest -PathType Leaf
+    $applicationEnvironment = @{
+        MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT = if ($floatingBaselineRequired) { $resolvedRoot } else { $null }
+        MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE = $null
+    }
     $application = Invoke-CountdownValidationProcess `
         -PowerShell7Path $resolvedPowerShell `
         -Operation '应用 validate-only' `
+        -EnvironmentVariables $applicationEnvironment `
         -ArgumentList @(
             '-NoLogo',
             '-NoProfile',
@@ -163,6 +179,81 @@ function Invoke-CountdownValidationSuite {
         $validProperty.Value -isnot [bool] -or
         -not [bool] $validProperty.Value) {
         throw '应用 validate-only 报告未通过。'
+    }
+    $requiredUiQualityFields = @(
+        'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
+        'MainReferenceDecorationLayerOrderMatches',
+        'MainWorkspaceResourcesFollowDayNightTheme',
+        'MainDynamicCountdownCardsUseThemeResources',
+        'MainDynamicNoteCardsUseThemeResources',
+        'FloatingReferenceContentSafeAreaMatches',
+        'FloatingReferenceBaselineGateIsolationBehavior',
+        'FloatingReferenceFreshnessGateIsolationBehavior',
+        'FloatingLongNotesBodyHasNoManualLineBreaks',
+        'FloatingLongNotesNaturalWraps',
+        'FloatingLongNotesUsesOnlyOuterScroller',
+        'FloatingLongNotesOuterScrollable',
+        'FloatingLongNotesTopBottomReachable',
+        'FloatingLongNotesSafeAreaMatches',
+        'FloatingLongNotesLayoutValid',
+        'FloatingTitleUsesSemiBoldWeight',
+        'FloatingNoteInputWraps',
+        'FloatingNoteInputScrolls',
+        'FloatingInitialWorkspaceStateMatches',
+        'FloatingWorkspaceSwitchingStaysSynchronized',
+        'FloatingCountdownSelectionSurvivesDayNightThemes',
+        'FloatingQuickAddDayResourcesFollowLocalTheme',
+        'FloatingQuickAddNightResourcesFollowLocalTheme',
+        'FloatingQuickAddIndependentFromApplicationAutoTheme',
+        'FloatingQuickAddThemeResourceIsolationBehavior',
+        'FloatingQuickAddDayExpandedScrolledCaptureWritten',
+        'FloatingQuickAddNightExpandedScrolledCaptureWritten',
+        'FloatingNightPlushSourceAlphaBoundsMatch',
+        'FloatingNightPlushEdgeBrightnessWithinLimit',
+        'FloatingNightPlushEdgeSaturationWithinLimit',
+        'FloatingNightPlushEdgeGlowGateIsolationBehavior',
+        'FloatingSecondaryRemainingUnitSpacingMatches',
+        'FloatingSecondaryRemainingLayoutMatches',
+        'FloatingSecondaryRemainingGateIsolationBehavior',
+        'FloatingScrollBarLocalStyleScoped',
+        'FloatingScrollBarHitTargetUsable',
+        'FloatingScrollBarVisualWeightProgression',
+        'FloatingScrollBarUsesWarmThemeTokens',
+        'FloatingScrollBarContentRemainsSafe',
+        'FloatingScrollBarInputPathsWork',
+        'FloatingScrollBarGateIsolationBehavior',
+        'FloatingScrollBarDayNightStateCapturesReady',
+        'UiQualityGateIsolationBehavior'
+    )
+    if ($floatingBaselineRequired) {
+        $requiredUiQualityFields += 'FloatingReferenceBaselineValidated'
+    }
+    foreach ($fieldName in $requiredUiQualityFields) {
+        $field = $application.Report.PSObject.Properties[$fieldName]
+        if ($null -eq $field -or $field.Value -isnot [bool] -or -not [bool] $field.Value) {
+            throw "应用 validate-only 报告的 UI 质量门禁未通过：$fieldName"
+        }
+    }
+    foreach ($stateField in @(
+        'FloatingReferenceBaselineRequested',
+        'FloatingReferenceBaselineManifestAvailable'
+    )) {
+        $field = $application.Report.PSObject.Properties[$stateField]
+        if ($null -eq $field -or $field.Value -isnot [bool] -or [bool] $field.Value -ne $floatingBaselineRequired) {
+            throw "应用 validate-only 的悬浮窗参考基线状态错误：$stateField"
+        }
+    }
+    if (-not $floatingBaselineRequired -and [bool] $application.Report.FloatingReferenceBaselineValidated) {
+        throw '不携带参考资产的发布包伪造了悬浮窗参考基线验收。'
+    }
+    foreach ($sampleCountFieldName in @(
+        'MainDynamicCountdownCardSampleCount',
+        'MainDynamicNoteCardSampleCount'
+    )) {
+        $sampleCountField = $application.Report.PSObject.Properties[$sampleCountFieldName]
+        if ($null -eq $sampleCountField -or [int] $sampleCountField.Value -lt 1) {
+            throw "应用 validate-only 报告未命中动态卡片样本：$sampleCountFieldName"
+        }
     }
     $adapterUiProperty = $cSharp.Report.PSObject.Properties['AdapterUiValidated']
     if ($null -eq $adapterUiProperty -or

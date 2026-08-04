@@ -1,6 +1,18 @@
 ﻿#requires -Version 7.0
 
 $ErrorActionPreference = 'Stop'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-04-v1\manifest.json'
+$floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
+[Environment]::SetEnvironmentVariable(
+    'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
+    $(if ($floatingReferenceBaselineRequired) { $PSScriptRoot } else { $null }),
+    [EnvironmentVariableTarget]::Process
+)
+[Environment]::SetEnvironmentVariable(
+    'MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE',
+    $null,
+    [EnvironmentVariableTarget]::Process
+)
 Add-Type -AssemblyName PresentationFramework
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
@@ -174,8 +186,83 @@ if (-not $validation.FloatingPlushAnchorsIntegrateWithPanel) { throw 'Floating p
 if (-not $validation.FloatingReferenceAspectMatches) { throw 'The floating reference scene is not rendered at the required 520x390 4:3 format.' }
 if (-not $validation.FloatingReferencePanelGeometryMatches) { throw 'The floating frame, header, or selected warm-paper countdown hierarchy does not match its fixed geometry.' }
 if (-not $validation.FloatingReferenceMascotGeometryMatches) { throw 'The rendered mascot alpha bounds do not match the frozen reference geometry.' }
+if (-not $validation.FloatingReferenceBaselineGateIsolationBehavior) { throw 'A floating reference manifest negative fixture did not fail closed in isolation.' }
+if (@($validation.FloatingReferenceBaselineNegativeFixtures).Count -ne 12) { throw 'The floating reference manifest negative-fixture inventory is incomplete.' }
+if (-not $validation.FloatingReferenceFreshnessGateIsolationBehavior) { throw 'A long-note frame freshness negative fixture did not fail closed in isolation.' }
+$expectedFreshnessFixtures = @(
+    'duplicate-capture-id',
+    'duplicate-state-fingerprint',
+    'long-note-layout-unreachable',
+    'reused-frame',
+    'state-fingerprint-mismatch',
+    'swapped-top-bottom',
+    'top-bottom-pixel-difference-too-small'
+)
+if (((@($validation.FloatingReferenceFreshnessNegativeFixtures) | Sort-Object) -join ',') -ne ($expectedFreshnessFixtures -join ',')) { throw 'The long-note frame freshness negative-fixture inventory is incomplete.' }
+foreach ($fieldName in @(
+    'FloatingLongNotesBodyHasNoManualLineBreaks',
+    'FloatingLongNotesNaturalWraps',
+    'FloatingLongNotesUsesOnlyOuterScroller',
+    'FloatingLongNotesOuterScrollable',
+    'FloatingLongNotesTopBottomReachable',
+    'FloatingLongNotesSafeAreaMatches',
+    'FloatingLongNotesLayoutValid'
+)) {
+    if (-not [bool] $validation.$fieldName) { throw "The long-note WPF viewport contract is red: $fieldName." }
+}
+$expectedLongNoteCaptureIds = @(
+    'long-notes-day-bottom',
+    'long-notes-day-top',
+    'long-notes-night-bottom',
+    'long-notes-night-top'
+)
+$longNoteMeasurements = @($validation.FloatingLongNotesMeasurements)
+if ($longNoteMeasurements.Count -ne 4 -or ((@($longNoteMeasurements.CaptureId) | Sort-Object) -join ',') -ne ($expectedLongNoteCaptureIds -join ',')) { throw 'The long-note WPF measurement inventory is not the exact four required states.' }
+if (@($longNoteMeasurements | Where-Object { -not $_.BodyHasNoManualLineBreaks -or -not $_.NaturalWraps -or -not $_.UsesOnlyOuterScroller -or -not $_.OuterScrollable -or -not $_.PrimaryAnchorReachable -or -not $_.SafeAreaMatches }).Count -ne 0) { throw 'A long-note WPF state failed wrap, outer-scroll, reachability, or safe-area measurement.' }
+if (@($longNoteMeasurements | Where-Object { $_.State -eq 'Top' -and [math]::Abs([double] $_.VerticalOffset) -gt 1 }).Count -ne 0) { throw 'A long-note top frame is not captured at offset zero.' }
+if (@($longNoteMeasurements | Where-Object { $_.State -eq 'Bottom' -and [math]::Abs([double] $_.VerticalOffset - [double] $_.ScrollableHeight) -gt 1 }).Count -ne 0) { throw 'A long-note bottom frame is not captured at ScrollableHeight.' }
+if (@($longNoteMeasurements | Where-Object { ([string] $_.NoteTextSha256).Length -ne 64 -or [string]::IsNullOrWhiteSpace([string] $_.FirstVisibleAnchor) -or [string]::IsNullOrWhiteSpace([string] $_.LastVisibleAnchor) }).Count -ne 0) { throw 'A long-note frame is missing its body hash or visible anchors.' }
+$longNoteCaptures = @($validation.FloatingLongNotesCaptures)
+if ($longNoteCaptures.Count -ne 4 -or ((@($longNoteCaptures.CaptureId) | Sort-Object) -join ',') -ne ($expectedLongNoteCaptureIds -join ',')) { throw 'The actual WPF long-note capture inventory is incomplete.' }
+if (@($longNoteCaptures.PngSha256 | Sort-Object -Unique).Count -ne 4 -or @($longNoteCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count -ne 4) { throw 'Long-note frames or state fingerprints were reused across states.' }
+if ($floatingReferenceBaselineRequired) {
+    if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
+    if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-04-v1/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
+    if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
+    if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
+    if (@($validation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete long-note freshness gate is red.' }
+    if (@($validation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count -ne 6) { throw 'The six-frame manifest reuses a PNG hash.' }
+    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-day').BaselineSha256 -ne '6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9') { throw 'The frozen #2 day countdown PNG hash changed.' }
+    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-night').BaselineSha256 -ne 'CCC7279389D0E7204C679080581C9E69C14A87D4737D2D05FEF998F49FB8ECD7') { throw 'The frozen #2 night countdown PNG hash changed.' }
+    if (@($validation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count -ne 0) { throw 'A current floating frame exceeds the fixed pixel comparison thresholds.' }
+}
+elseif ($validation.FloatingReferenceBaselineRequested -or $validation.FloatingReferenceBaselineManifestAvailable -or $validation.FloatingReferenceBaselineValidated -or @($validation.FloatingReferenceBaselineCaptures).Count -ne 0) {
+    throw 'A runtime package without reference assets claimed a floating baseline validation.'
+}
+if (-not $validation.FloatingNightPlushSourceAlphaBoundsMatch) { throw 'The night mascot source alpha bounds no longer match the frozen reference geometry.' }
+if ((@($validation.FloatingNightPlushSourceAlphaBounds) -join ';') -ne '7,5,137,95;371,15,137,77;407,207,113,109') { throw 'The night mascot source alpha bounds moved.' }
+if (-not $validation.FloatingNightPlushEdgeBrightnessWithinLimit) { throw 'The night mascot 2-6px outer-edge brightness exceeds its warm-shadow limit.' }
+if (-not $validation.FloatingNightPlushEdgeSaturationWithinLimit) { throw 'The night mascot 2-6px outer-edge saturation still forms a vivid outline.' }
+if (-not $validation.FloatingNightPlushEdgeGlowGateIsolationBehavior) { throw 'The night mascot brightness and saturation negative fixtures cannot fail independently.' }
+$nightPlushEdgeMeasurements = @($validation.FloatingNightPlushEdgeGlowMeasurements)
+if ($nightPlushEdgeMeasurements.Count -ne 3) { throw 'The night mascot edge gate did not measure all three roles independently.' }
+$maximumNightPlushBrightness = ($nightPlushEdgeMeasurements | Measure-Object -Property BrightnessSignal -Maximum).Maximum
+$maximumNightPlushSaturation = ($nightPlushEdgeMeasurements | Measure-Object -Property Saturation -Maximum).Maximum
+if ($maximumNightPlushBrightness -gt [double] $validation.FloatingNightPlushEdgeBrightnessLimit) { throw 'The reported night mascot edge brightness exceeds its reported limit.' }
+if ($maximumNightPlushSaturation -gt [double] $validation.FloatingNightPlushEdgeSaturationLimit) { throw 'The reported night mascot edge saturation exceeds its reported limit.' }
+if (-not ([string] $validation.FloatingNightPlushEdgeRoiAlgorithm).Contains('Chebyshev distance 2-6px', [System.StringComparison]::Ordinal)) { throw 'The night mascot edge report does not define the required 2-6px ROI.' }
 if (-not $validation.FloatingReferenceContentSafeAreaMatches -or $validation.FloatingReferenceContentOverlapCount -ne 0) { throw "A rendered mascot overlaps protected floating content: $(@($validation.FloatingReferenceContentOverlapTargets) -join ',')." }
+if (-not $validation.FloatingTitleUsesSemiBoldWeight) { throw 'The floating title does not preserve its independent SemiBold weight contract.' }
+if (-not $validation.FloatingNoteInputWraps) { throw 'The floating sticky-note input does not preserve independent text wrapping.' }
+if (-not $validation.FloatingNoteInputScrolls) { throw 'The floating sticky-note input does not preserve independent vertical scrolling.' }
+if (-not $validation.FloatingInitialWorkspaceStateMatches) { throw 'The floating window does not initialize through the synchronized countdown workspace state.' }
+if (-not $validation.FloatingWorkspaceSwitchingStaysSynchronized) { throw 'Floating workspace switches do not preserve exactly one selected button, matching chrome, and matching content.' }
+if (-not $validation.FloatingCountdownSelectionSurvivesDayNightThemes) { throw 'The initial floating countdown selection is not recognized across day and night themes.' }
 if (-not $validation.FloatingReferenceCaptureWritten) { throw 'The floating reference scene did not produce a non-empty RenderTargetBitmap PNG.' }
+if (-not $validation.FloatingQuickAddDayExpandedScrolledCaptureWritten) { throw 'The expanded and scrolled floating quick-add day scene did not produce a non-empty offscreen capture.' }
+if (-not $validation.FloatingQuickAddNightExpandedScrolledCaptureWritten) { throw 'The expanded and scrolled floating quick-add night scene did not produce a non-empty offscreen capture.' }
 if (-not $validation.FloatingWorkdayCountdownUsesPrimaryVisual) { throw 'The workday-end countdown is not the sole primary row with its accessible name, warm-paper surface, accent rail, typography, and emphasized remaining time.' }
 if (-not $validation.FloatingReferenceScenarioMatches) { throw 'The isolated floating reference scene does not render the workday-end countdown as the first primary row while preserving its deterministic two-card and income state.' }
 if (-not $validation.FloatingPrimaryDeadlineTextFullyVisible) { throw 'The widest primary deadline subtitle is clipped or retains a visible Beijing-time suffix.' }
@@ -184,6 +271,35 @@ if (-not $validation.FloatingViewportScrollAndFocusRestored) { throw 'Floating r
 if (-not $validation.FloatingNoteFailureAppearsInSourceCard) { throw 'A failed floating sticky-note completion does not expose an accessible error in its source card.' }
 if (-not $validation.FloatingResolvedNoteCardErrorDoesNotReturn) { throw 'A resolved floating sticky-note card error returns after the note is completed and restored.' }
 if (-not $validation.FloatingSecondaryRemainingTextFullyVisible) { throw 'A long secondary countdown is clipped inside the fixed floating viewport.' }
+if (-not $validation.FloatingSecondaryRemainingUnitSpacingMatches) { throw 'A secondary countdown no longer preserves FormatRemaining unit spacing.' }
+if (-not $validation.FloatingSecondaryRemainingLayoutMatches) { throw 'A secondary countdown no longer fits its 194px right-aligned, single-line tabular column.' }
+if (-not $validation.FloatingSecondaryRemainingGateIsolationBehavior) { throw 'The secondary countdown spacing and fixed-column negative fixtures cannot fail independently.' }
+$secondaryRemainingSamples = @($validation.FloatingSecondaryRemainingSamples)
+if ($secondaryRemainingSamples.Count -ne 5) { throw 'The secondary countdown gate did not cover all four precisions and long days.' }
+if (($secondaryRemainingSamples.Precision -join ';') -ne 'Day;Hour;Minute;Second;SecondLongDays') { throw 'The secondary countdown precision coverage is incomplete or unstable.' }
+if (($secondaryRemainingSamples.RenderedText -join ';') -ne '4 天;4 天 13 小时;4 天 13 小时 18 分钟;4 天 13 小时 18 分钟 59 秒;2000000 天 00 小时 00 分钟 00 秒') { throw 'The secondary countdown WPF text does not preserve unit spacing for every precision.' }
+if (@($secondaryRemainingSamples | Where-Object { [Math]::Abs([double] $_.ColumnWidth - 194) -gt 0.01 }).Count -ne 0) { throw 'A secondary countdown does not declare the fixed 194px column.' }
+if (@($secondaryRemainingSamples | Where-Object { [Math]::Abs([double] $_.ActualWidth - 194) -gt 0.5 }).Count -ne 0) { throw 'A secondary countdown actual layout width escaped the 194px rounding tolerance.' }
+if (@($secondaryRemainingSamples[0..3] | Where-Object { [Math]::Abs([double] $_.FontSize - 13) -gt 0.01 }).Count -ne 0) { throw 'A regular secondary countdown no longer uses 13px type.' }
+if ([double] $secondaryRemainingSamples[4].FontSize -lt 10 -or [double] $secondaryRemainingSamples[4].FontSize -ge 13) { throw 'The long-day secondary countdown did not use its bounded adaptive font size.' }
+foreach ($fieldName in @(
+    'FloatingScrollBarLocalStyleScoped',
+    'FloatingScrollBarHitTargetUsable',
+    'FloatingScrollBarVisualWeightProgression',
+    'FloatingScrollBarUsesWarmThemeTokens',
+    'FloatingScrollBarContentRemainsSafe',
+    'FloatingScrollBarInputPathsWork',
+    'FloatingScrollBarGateIsolationBehavior',
+    'FloatingScrollBarDayNightStateCapturesReady'
+)) {
+    if (-not [bool] $validation.$fieldName) { throw "Floating scroll-bar gate failed: $fieldName" }
+}
+$floatingScrollBarSamples = @($validation.FloatingScrollBarStateMeasurements)
+if ($floatingScrollBarSamples.Count -ne 6) { throw 'The floating scroll-bar gate did not cover six day/night visual states.' }
+if (@($floatingScrollBarSamples | Where-Object { [Math]::Abs([double] $_.HitTargetWidth - 10) -gt 0.01 -or [Math]::Abs([double] $_.ThumbVisualWidth - 4) -gt 0.01 }).Count -ne 0) { throw 'The floating scroll-bar 10px hit / 4px visual geometry is incorrect.' }
+if ((@($floatingScrollBarSamples[0..2].ThumbOpacity) -join ',') -ne '0.52,0.78,0.96') { throw 'The floating scroll-bar hover/drag emphasis progression is incorrect.' }
+if (@($floatingScrollBarSamples | Where-Object { [double] $_.ThumbVisualRight -gt 396.01 -or [double] $_.MaximumVisibleCardRight -ge [double] $_.ThumbVisualLeft -or -not [bool] $_.DoesNotObscureContent }).Count -ne 0) { throw 'A floating scroll-bar state overlaps a card or escapes x=396.' }
+if ([double] $validation.FloatingScrollBarWheelOffsets[1] -le [double] $validation.FloatingScrollBarWheelOffsets[0] -or [double] $validation.FloatingScrollBarDragOffsets[1] -le [double] $validation.FloatingScrollBarDragOffsets[0]) { throw 'A real floating scroll-bar wheel or thumb-drag input path did not move.' }
 if (-not $validation.FloatingDatePickerKeyboardLifecycleWorks) { throw 'A floating date picker does not focus its live calendar, close with Escape, and return focus to its trigger button.' }
 if (-not $validation.FloatingFieldErrorsAppearAtSource) { throw 'A floating quick-note validation error is not shown beside and associated with its invalid field.' }
 if (-not $validation.FloatingCorrectedFieldErrorsClearLiveMessage) { throw 'Correcting a floating quick-note field leaves stale local or live-region errors.' }
@@ -295,20 +411,51 @@ if (-not $validation.MainReferenceDecorationAssetsLoaded) { throw 'The main-wind
 if (-not $validation.MainNightReferenceDecorationAssetsLoaded) { throw 'The main-window night character and wave assets did not load.' }
 if (-not $validation.MainReferenceDecorationsAreNonInteractive) { throw 'The main-window day reference decorations block workspace interaction.' }
 if (-not $validation.MainReferenceDecorationsFollowDayNightTheme) { throw 'The main-window day reference decorations do not follow the active theme.' }
+if (-not $validation.MainReferenceDecorationLayerOrderMatches) { throw 'The main-window reference decoration layer order does not match the workspace contract.' }
+if (-not $validation.MainWorkspaceResourcesFollowDayNightTheme) { throw 'The main-window workspace surfaces do not independently follow theme resources.' }
+if (-not $validation.MainDynamicCountdownCardsUseThemeResources -or $validation.MainDynamicCountdownCardSampleCount -lt 1) { throw 'No qualifying dynamic countdown card sample uses the required theme resources.' }
+if (-not $validation.MainDynamicNoteCardsUseThemeResources -or $validation.MainDynamicNoteCardSampleCount -lt 1) { throw 'No qualifying dynamic sticky-note card sample uses the required theme resources.' }
 if (-not $validation.MainNightReferenceGeometryMatchesDay) { throw 'The main-window night character and wave geometry no longer matches the day reference.' }
 if ((@($validation.MainNightReferenceWaveColumnCounts) -join ',') -ne '1093,1079') { throw 'The main-window night wave contour is not continuous across the reference width.' }
 if (-not $validation.MainReferenceDecorationsShareScaleAtMinimumAndWideSizes) { throw 'The main-window day reference decorations do not share the content scaling coordinate system at minimum and wide sizes.' }
+if (-not $validation.UiQualityGateIsolationBehavior) { throw 'A targeted UI quality-gate fixture failed to isolate its intended contract.' }
 if ((@($validation.MainThemeCharacterPanelColors) -join ',') -ne '#FFFFF7E8,#FF3B2B1D') { throw 'The main-window character scene does not switch to the expected day/night palette.' }
 if (-not $validation.MainCharacterPanelDocksFollowDayNightTheme) { throw 'The main-window character docks do not follow the day/night theme.' }
 if (-not $validation.MainThemeUsesChinaStandardTime) { throw 'The main window theme does not use China Standard Time.' }
 if ((@($validation.FloatingThemeBoundaryModes) -join ',') -ne 'Night,Day,Day,Night') { throw 'The floating panel does not switch themes at the expected Beijing-time boundaries.' }
 if ((@($validation.FloatingThemePanelColors) -join ',') -ne '#FFFFFDFC,#FF3A2B1E') { throw 'The floating panel day/night palette is incorrect.' }
-if ((@($validation.FloatingThemePlushGlowColors) -join ',') -ne '#FFB9794E,#FFE9B36D') { throw 'The floating plush scene glow palette is incorrect.' }
+if ((@($validation.FloatingThemePlushGlowColors) -join ',') -ne '#FFB9794E,#FF756A62') { throw 'The floating plush scene glow palette is incorrect.' }
 if ((@($validation.FloatingMascotPresentationModes) -join ',') -ne 'NightAnchors,DayRaster,DayRaster,NightAnchors') { throw 'The floating mascot layer does not switch between day raster and night anchors at Beijing-time boundaries.' }
 if (-not $validation.FloatingRasterMascotBoundaryStatesMatch) { throw 'The floating mascot day/night boundary states are incomplete.' }
 if (-not $validation.FloatingThemeUsesChinaStandardTime) { throw 'The floating panel theme does not use China Standard Time.' }
 if (-not $validation.FloatingPlushSceneFollowsDayNightTheme) { throw 'The floating plush scene does not follow the day/night theme transition.' }
 if (-not $validation.FloatingThemeTextContrast) { throw 'Floating header and validation text do not maintain sufficient contrast across day and night.' }
+if (-not $validation.FloatingQuickAddDayResourcesFollowLocalTheme) { throw 'Floating quick-add controls do not use the local warm day theme.' }
+if (-not $validation.FloatingQuickAddNightResourcesFollowLocalTheme) { throw 'Floating quick-add controls do not use the local warm night theme.' }
+if (-not $validation.FloatingQuickAddIndependentFromApplicationAutoTheme) { throw 'Floating quick-add controls still inherit the opposite application auto theme.' }
+if (-not $validation.FloatingQuickAddThemeResourceIsolationBehavior) { throw 'Floating quick-add resource checks cannot fail one control family at a time.' }
+if ((@($validation.FloatingQuickAddLocalCanvasColors) -join ',') -ne '#FFFFFDFC,#FF473323') { throw 'Floating quick-add local surface colors are not warm day and night values.' }
+if ((@($validation.FloatingQuickAddLocalActiveColors) -join ',') -ne '#FFA24438,#FF6E492E') { throw 'Floating quick-add local active colors are not coral and warm brown.' }
+$quickAddThemeChecks = @(
+    'TextBox',
+    'DatePicker',
+    'DatePickerPopup',
+    'ComboBox',
+    'ComboBoxPopup',
+    'TagSelector',
+    'TagSelectorPopup',
+    'CheckBox',
+    'ScrollViewer',
+    'ScrollBar'
+)
+foreach ($checkName in $quickAddThemeChecks) {
+    if (-not [bool] $validation.FloatingQuickAddDayResourceChecks.$checkName) {
+        throw "Floating quick-add day resource check failed: $checkName"
+    }
+    if (-not [bool] $validation.FloatingQuickAddNightResourceChecks.$checkName) {
+        throw "Floating quick-add night resource check failed: $checkName"
+    }
+}
 if (-not $validation.TagPopupFollowsDayNightTheme) { throw 'An open tag popup does not follow the day/night theme transition.' }
 if (-not $validation.MainThemeReminderLabelFollowsTheme) { throw 'The main-window reminder label does not follow the day/night theme.' }
 if (-not $validation.WarmYellowPaletteMatchesLegacy) { throw 'The application no longer matches the legacy warm-yellow palette.' }

@@ -13,6 +13,9 @@
         Background="Transparent"
         Topmost="True"
         WindowStartupLocation="Manual">
+  <Window.Resources>
+    <SolidColorBrush x:Key="FloatingNightPlushGlowBrush" Color="#756A62" />
+  </Window.Resources>
   <Grid x:Name="TaskWrap"
         Margin="0"
         Background="Transparent"
@@ -158,6 +161,83 @@
                       Grid.Row="1"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
+          <ScrollViewer.Resources>
+            <Style TargetType="{x:Type ScrollBar}">
+              <Setter Property="Width" Value="10" />
+              <Setter Property="Height" Value="Auto" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="Foreground" Value="{DynamicResource PeachLineBrush}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type ScrollBar}">
+                    <Grid x:Name="FloatingScrollBarHitRail"
+                          Width="10"
+                          HorizontalAlignment="Right"
+                          Background="Transparent">
+                      <Track x:Name="PART_Track"
+                             Orientation="{TemplateBinding Orientation}"
+                             IsDirectionReversed="True">
+                        <Track.DecreaseRepeatButton>
+                          <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                        CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                        Focusable="False"
+                                        IsTabStop="False">
+                            <RepeatButton.Template>
+                              <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                <Border Background="Transparent" />
+                              </ControlTemplate>
+                            </RepeatButton.Template>
+                          </RepeatButton>
+                        </Track.DecreaseRepeatButton>
+                        <Track.Thumb>
+                          <local:FloatingScrollBarThumb x:Name="FloatingScrollBarThumb"
+                                                        Width="10"
+                                                        Background="{DynamicResource FloatingMutedBrush}"
+                                                        Focusable="False">
+                            <local:FloatingScrollBarThumb.Template>
+                              <ControlTemplate TargetType="{x:Type local:FloatingScrollBarThumb}">
+                                <Grid Background="Transparent">
+                                  <Border x:Name="FloatingScrollBarThumbVisual"
+                                          Width="{TemplateBinding VisualWidth}"
+                                          HorizontalAlignment="Right"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{DynamicResource PeachLineBrush}"
+                                          BorderThickness="0.5"
+                                          CornerRadius="3"
+                                          Opacity="{TemplateBinding ThumbOpacity}" />
+                                </Grid>
+                              </ControlTemplate>
+                            </local:FloatingScrollBarThumb.Template>
+                          </local:FloatingScrollBarThumb>
+                        </Track.Thumb>
+                        <Track.IncreaseRepeatButton>
+                          <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                        CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                        Focusable="False"
+                                        IsTabStop="False">
+                            <RepeatButton.Template>
+                              <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                <Border Background="Transparent" />
+                              </ControlTemplate>
+                            </RepeatButton.Template>
+                          </RepeatButton>
+                        </Track.IncreaseRepeatButton>
+                      </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="Orientation" Value="Horizontal">
+                        <Setter Property="Width" Value="Auto" />
+                        <Setter Property="Height" Value="10" />
+                        <Setter TargetName="FloatingScrollBarHitRail" Property="Width" Value="Auto" />
+                        <Setter TargetName="FloatingScrollBarHitRail" Property="Height" Value="10" />
+                        <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ScrollViewer.Resources>
           <StackPanel>
             <StackPanel x:Name="FloatingRows"
                         Margin="8,13,11,0" />

@@ -87,6 +87,643 @@ function Get-CountdownRemoteDeploymentStateBoolean {
     [bool] $valueProperty.Value
 }
 
+function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string] $Json)
+
+    if ([string]::IsNullOrWhiteSpace($Json)) {
+        throw '远程部署成功回执为空。'
+    }
+    if ($Json.Length -gt 32768) {
+        throw "远程部署成功回执超过允许大小：$($Json.Length)"
+    }
+
+    $options = [System.Text.Json.JsonDocumentOptions]::new()
+    $options.AllowTrailingCommas = $false
+    $options.CommentHandling = [System.Text.Json.JsonCommentHandling]::Disallow
+    try {
+        $document = [System.Text.Json.JsonDocument]::Parse($Json, $options)
+    }
+    catch {
+        throw "远程部署成功回执不是单个完整 JSON object：$($_.Exception.Message)"
+    }
+
+    try {
+        $root = $document.RootElement
+        if ($root.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+            throw '远程部署成功回执根节点必须是 object。'
+        }
+
+        $expectedNames = [string[]] @(
+            'SchemaVersion', 'Valid', 'CoreTests', 'CSharpTests', 'UiTests',
+            'UiValid', 'AdapterUiValidated', 'TaskState', 'RuntimeProcessId',
+            'RuntimeStage', 'CalendarState', 'AcceptanceState',
+            'SettingsHashBefore', 'SettingsHashAfter'
+        )
+        $expectedSet = [System.Collections.Generic.HashSet[string]]::new(
+            $expectedNames,
+            [System.StringComparer]::Ordinal)
+        $actualSet = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::Ordinal)
+        $properties = [ordered]@{}
+        foreach ($property in $root.EnumerateObject()) {
+            if (-not $actualSet.Add($property.Name)) {
+                throw "远程部署成功回执包含重复字段：$($property.Name)"
+            }
+            if (-not $expectedSet.Contains($property.Name)) {
+                throw "远程部署成功回执包含额外字段：$($property.Name)"
+            }
+            $properties[$property.Name] = $property.Value
+        }
+        foreach ($name in $expectedNames) {
+            if (-not $actualSet.Contains($name)) {
+                throw "远程部署成功回执缺少字段：$name"
+            }
+        }
+
+        $schemaVersion = 0L
+        if ($properties.SchemaVersion.ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+            -not $properties.SchemaVersion.TryGetInt64([ref] $schemaVersion) -or
+            $schemaVersion -ne 1) {
+            throw '远程部署成功回执 SchemaVersion 不受支持。'
+        }
+
+        foreach ($name in @('Valid', 'UiValid', 'AdapterUiValidated')) {
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::True) {
+                throw "远程部署成功回执 $name 必须是 true bool。"
+            }
+        }
+
+        $testCounts = [ordered]@{}
+        foreach ($name in @('CoreTests', 'CSharpTests', 'UiTests')) {
+            $value = 0L
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+                -not $properties[$name].TryGetInt64([ref] $value) -or
+                $value -lt 1 -or $value -gt 1000000) {
+                throw "远程部署成功回执 $name 必须是 1 到 1000000 的整数。"
+            }
+            $testCounts[$name] = [int] $value
+        }
+
+        $runtimeProcessId = 0L
+        if ($properties.RuntimeProcessId.ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+            -not $properties.RuntimeProcessId.TryGetInt64([ref] $runtimeProcessId) -or
+            $runtimeProcessId -lt 1 -or $runtimeProcessId -gt [int]::MaxValue) {
+            throw '远程部署成功回执 RuntimeProcessId 无效。'
+        }
+
+        $strings = [ordered]@{}
+        foreach ($name in @(
+                'TaskState', 'RuntimeStage', 'CalendarState', 'AcceptanceState',
+                'SettingsHashBefore', 'SettingsHashAfter')) {
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::String) {
+                throw "远程部署成功回执 $name 必须是 string。"
+            }
+            $strings[$name] = $properties[$name].GetString()
+        }
+        if ($strings.TaskState -ne 'Running') { throw '远程部署成功回执 TaskState 必须是 Running。' }
+        if ($strings.RuntimeStage -ne 'window-ready') { throw '远程部署成功回执 RuntimeStage 必须是 window-ready。' }
+        if ($strings.CalendarState -notin @('Pending', 'Ready', 'Unavailable')) {
+            throw '远程部署成功回执 CalendarState 无效。'
+        }
+        if ($strings.AcceptanceState -ne 'finalized-ready') {
+            throw '远程部署成功回执 AcceptanceState 必须是 finalized-ready。'
+        }
+        foreach ($name in @('SettingsHashBefore', 'SettingsHashAfter')) {
+            $value = [string] $strings[$name]
+            if ($value -ne '' -and $value -notmatch '\A[0-9A-Fa-f]{64}\z') {
+                throw "远程部署成功回执 $name 必须为空或 SHA-256。"
+            }
+            $strings[$name] = $value.ToUpperInvariant()
+        }
+
+        [pscustomobject][ordered]@{
+            SchemaVersion = 1
+            Valid = $true
+            CoreTests = $testCounts.CoreTests
+            CSharpTests = $testCounts.CSharpTests
+            UiTests = $testCounts.UiTests
+            UiValid = $true
+            AdapterUiValidated = $true
+            TaskState = $strings.TaskState
+            RuntimeProcessId = [int] $runtimeProcessId
+            RuntimeStage = $strings.RuntimeStage
+            CalendarState = $strings.CalendarState
+            AcceptanceState = $strings.AcceptanceState
+            SettingsHashBefore = $strings.SettingsHashBefore
+            SettingsHashAfter = $strings.SettingsHashAfter
+        }
+    }
+    finally {
+        $document.Dispose()
+    }
+}
+
+function Write-CountdownRemoteDeploymentSuccessReceipt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Json
+    )
+
+    $temporaryPath = $null
+    try {
+        $receipt = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $Json
+        $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+        $directory = Split-Path -Parent $resolvedPath
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw "成功回执目录不存在：$directory"
+        }
+        $directoryItem = Get-Item -LiteralPath $directory -Force -ErrorAction Stop
+        if (($directoryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "成功回执目录不得是 reparse point：$directory"
+        }
+        if (Test-Path -LiteralPath $resolvedPath) {
+            throw "成功回执已存在，拒绝覆盖：$resolvedPath"
+        }
+
+        $normalizedJson = $receipt | ConvertTo-Json -Compress -Depth 4
+        [void] (ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $normalizedJson)
+        $bytes = [System.Text.UTF8Encoding]::new($false, $true).GetBytes($normalizedJson)
+        $temporaryPath = "$resolvedPath.$([guid]::NewGuid().ToString('N')).tmp"
+        $stream = [System.IO.FileStream]::new(
+            $temporaryPath,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None,
+            4096,
+            [System.IO.FileOptions]::WriteThrough)
+        try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        }
+        finally {
+            $stream.Dispose()
+        }
+        [System.IO.File]::Move($temporaryPath, $resolvedPath, $false)
+        $temporaryPath = $null
+
+        $persistedBytes = [System.IO.File]::ReadAllBytes($resolvedPath)
+        $expectedHash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes))
+        $persistedHash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($persistedBytes))
+        if ($persistedBytes.Length -ne $bytes.Length -or $persistedHash -ne $expectedHash) {
+            throw '成功回执原子写入后字节校验失败。'
+        }
+        $receipt
+    }
+    catch {
+        throw "部署已提交但本地证据不完整，未回滚：$($_.Exception.Message)"
+    }
+    finally {
+        if ($null -ne $temporaryPath -and [System.IO.File]::Exists($temporaryPath)) {
+            [System.IO.File]::Delete($temporaryPath)
+        }
+    }
+}
+
+function ConvertFrom-CountdownRemoteDeploymentBindingJson {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Json,
+        [Parameter(Mandatory)] [string] $ExpectedDeploymentBindingSha256,
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Json) -or $Json.Length -gt 4096) {
+        throw '部署 binding 必须是 1 到 4096 字符的 JSON object。'
+    }
+    if ($ExpectedDeploymentBindingSha256 -notmatch '\A[0-9A-Fa-f]{64}\z') {
+        throw '部署 binding 的本地期望 SHA-256 无效。'
+    }
+    $expectedNames = [string[]] @(
+        'SchemaVersion', 'DeploymentBindingSha256', 'TokenSha256', 'RuntimeProcessId')
+    $options = [System.Text.Json.JsonDocumentOptions]::new()
+    $options.AllowTrailingCommas = $false
+    $options.CommentHandling = [System.Text.Json.JsonCommentHandling]::Disallow
+    try { $document = [System.Text.Json.JsonDocument]::Parse($Json, $options) }
+    catch { throw "部署 binding 不是单个完整 JSON object：$($_.Exception.Message)" }
+    try {
+        if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+            throw '部署 binding 根节点必须是 object。'
+        }
+        $expectedSet = [System.Collections.Generic.HashSet[string]]::new($expectedNames, [System.StringComparer]::Ordinal)
+        $actualSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        $properties = [ordered]@{}
+        foreach ($property in $document.RootElement.EnumerateObject()) {
+            if (-not $actualSet.Add($property.Name)) { throw "部署 binding 包含重复字段：$($property.Name)" }
+            if (-not $expectedSet.Contains($property.Name)) { throw "部署 binding 包含额外字段：$($property.Name)" }
+            $properties[$property.Name] = $property.Value
+        }
+        foreach ($name in $expectedNames) {
+            if (-not $actualSet.Contains($name)) { throw "部署 binding 缺少字段：$name" }
+        }
+        $schemaVersion = 0L
+        $runtimeProcessId = 0L
+        if ($properties.SchemaVersion.ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+            -not $properties.SchemaVersion.TryGetInt64([ref] $schemaVersion) -or $schemaVersion -ne 1) {
+            throw '部署 binding SchemaVersion 必须是整数 1。'
+        }
+        if ($properties.RuntimeProcessId.ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+            -not $properties.RuntimeProcessId.TryGetInt64([ref] $runtimeProcessId) -or
+            $runtimeProcessId -ne $ExpectedProcessId) {
+            throw '部署 binding RuntimeProcessId 与成功回执不一致。'
+        }
+        foreach ($name in @('DeploymentBindingSha256', 'TokenSha256')) {
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::String -or
+                $properties[$name].GetString() -notmatch '\A[0-9A-Fa-f]{64}\z') {
+                throw "部署 binding $name 无效。"
+            }
+        }
+        $bindingHash = $properties.DeploymentBindingSha256.GetString().ToUpperInvariant()
+        $tokenHash = $properties.TokenSha256.GetString().ToUpperInvariant()
+        if ($bindingHash -ne $ExpectedDeploymentBindingSha256.ToUpperInvariant()) {
+            throw '部署 binding 与本次本地部署 nonce 不一致。'
+        }
+        [pscustomobject][ordered]@{
+            SchemaVersion = 1
+            DeploymentBindingSha256 = $bindingHash
+            TokenSha256 = $tokenHash
+            RuntimeProcessId = [int] $runtimeProcessId
+        }
+    }
+    finally { $document.Dispose() }
+}
+
+function Write-CountdownRemoteDeploymentBindingReceipt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [byte[]] $Bytes,
+        [Parameter(Mandatory)] [string] $ExpectedDeploymentBindingSha256,
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId
+    )
+
+    $temporaryPath = $null
+    try {
+        $json = [System.Text.UTF8Encoding]::new($false, $true).GetString($Bytes)
+        $binding = ConvertFrom-CountdownRemoteDeploymentBindingJson `
+            -Json $json `
+            -ExpectedDeploymentBindingSha256 $ExpectedDeploymentBindingSha256 `
+            -ExpectedProcessId $ExpectedProcessId
+        $normalized = [System.Text.UTF8Encoding]::new($false).GetBytes(
+            ($binding | ConvertTo-Json -Compress -Depth 3))
+        $resolved = [System.IO.Path]::GetFullPath($Path)
+        $directory = Split-Path -Parent $resolved
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw "部署 binding 证据目录不存在：$directory"
+        }
+        $directoryItem = Get-Item -LiteralPath $directory -Force -ErrorAction Stop
+        if (($directoryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "部署 binding 证据目录不得是 reparse point：$directory"
+        }
+        if (Test-Path -LiteralPath $resolved) { throw "部署 binding 证据已存在：$resolved" }
+        $temporaryPath = "$resolved.$([guid]::NewGuid().ToString('N')).tmp"
+        $stream = [System.IO.FileStream]::new(
+            $temporaryPath,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None,
+            4096,
+            [System.IO.FileOptions]::WriteThrough)
+        try {
+            $stream.Write($normalized, 0, $normalized.Length)
+            $stream.Flush($true)
+        }
+        finally { $stream.Dispose() }
+        [System.IO.File]::Move($temporaryPath, $resolved, $false)
+        $temporaryPath = $null
+        $persisted = [System.IO.File]::ReadAllBytes($resolved)
+        $expectedHash = [Convert]::ToHexString(
+            [System.Security.Cryptography.SHA256]::HashData($normalized))
+        $persistedHash = [Convert]::ToHexString(
+            [System.Security.Cryptography.SHA256]::HashData($persisted))
+        if ($persisted.Length -ne $normalized.Length -or $persistedHash -ne $expectedHash) {
+            throw '部署 binding 原子写入后字节校验失败。'
+        }
+        $binding
+    }
+    catch { throw "部署已提交但独立验证不完整，未回滚：$($_.Exception.Message)" }
+    finally {
+        if ($null -ne $temporaryPath -and [System.IO.File]::Exists($temporaryPath)) {
+            [System.IO.File]::Delete($temporaryPath)
+        }
+    }
+}
+
+function ConvertFrom-CountdownRemoteDeploymentReadbackJson {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Json,
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId,
+        [Parameter(Mandatory)] [string] $ExpectedExecutableSha256,
+        [Parameter(Mandatory)] [string] $ExpectedTokenSha256,
+        [AllowEmptyString()] [string] $ExpectedSettingsSha256 = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Json) -or $Json.Length -gt 32768) {
+        throw '独立回读必须是 1 到 32768 字符的 JSON object。'
+    }
+    foreach ($expectedHash in @($ExpectedExecutableSha256, $ExpectedTokenSha256, $ExpectedSettingsSha256)) {
+        if ($expectedHash -ne '' -and $expectedHash -notmatch '\A[0-9A-Fa-f]{64}\z') {
+            throw '独立回读的期望 SHA-256 无效。'
+        }
+    }
+    $expectedExecutableHash = $ExpectedExecutableSha256.ToUpperInvariant()
+    $expectedTokenHash = $ExpectedTokenSha256.ToUpperInvariant()
+    $expectedSettingsHash = $ExpectedSettingsSha256.ToUpperInvariant()
+    $expectedNames = [string[]] @(
+        'SchemaVersion', 'Valid', 'HostIdentityMatch', 'UserIdentityMatch',
+        'RemoteMachineNameSha256', 'RemoteUserNameSha256', 'TaskState',
+        'TaskExecuteMatch', 'TaskArgumentsMatch', 'TaskWorkingDirectoryMatch',
+        'StartupSchemaVersion', 'StartupAcceptanceState', 'RuntimeSchemaVersion',
+        'RuntimeStage', 'AcceptanceSchemaVersion', 'AcceptanceStage', 'TokenSha256',
+        'TokenMatch', 'RuntimeProcessId', 'AcceptanceProcessId', 'ProcessIdMatch',
+        'RuntimeSessionId', 'AcceptanceSessionId', 'ProcessSessionId', 'SessionIdMatch',
+        'ApplicationPathMatch', 'ProcessExecutablePathMatch', 'ExecutableSha256',
+        'ExecutableHashMatch', 'SettingsSha256', 'SettingsHashMatch'
+    )
+    $options = [System.Text.Json.JsonDocumentOptions]::new()
+    $options.AllowTrailingCommas = $false
+    $options.CommentHandling = [System.Text.Json.JsonCommentHandling]::Disallow
+    try { $document = [System.Text.Json.JsonDocument]::Parse($Json, $options) }
+    catch { throw "独立回读不是单个完整 JSON object：$($_.Exception.Message)" }
+    try {
+        if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+            throw '独立回读根节点必须是 object。'
+        }
+        $expectedSet = [System.Collections.Generic.HashSet[string]]::new($expectedNames, [System.StringComparer]::Ordinal)
+        $actualSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        $properties = [ordered]@{}
+        foreach ($property in $document.RootElement.EnumerateObject()) {
+            if (-not $actualSet.Add($property.Name)) { throw "独立回读包含重复字段：$($property.Name)" }
+            if (-not $expectedSet.Contains($property.Name)) { throw "独立回读包含额外字段：$($property.Name)" }
+            $properties[$property.Name] = $property.Value
+        }
+        foreach ($name in $expectedNames) {
+            if (-not $actualSet.Contains($name)) { throw "独立回读缺少字段：$name" }
+        }
+
+        $integerValues = [ordered]@{}
+        foreach ($definition in @(
+                @('SchemaVersion', 1L, 1L), @('StartupSchemaVersion', 1L, 1L),
+                @('RuntimeSchemaVersion', 4L, 4L), @('AcceptanceSchemaVersion', 1L, 1L),
+                @('RuntimeProcessId', 1L, [long] [int]::MaxValue),
+                @('AcceptanceProcessId', 1L, [long] [int]::MaxValue),
+                @('RuntimeSessionId', 1L, [long] [int]::MaxValue),
+                @('AcceptanceSessionId', 1L, [long] [int]::MaxValue),
+                @('ProcessSessionId', 1L, [long] [int]::MaxValue))) {
+            $name = [string] $definition[0]
+            $value = 0L
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+                -not $properties[$name].TryGetInt64([ref] $value) -or
+                $value -lt [long] $definition[1] -or $value -gt [long] $definition[2]) {
+                throw "独立回读 $name 类型或值域无效。"
+            }
+            $integerValues[$name] = [int] $value
+        }
+        if ($integerValues.RuntimeProcessId -ne $ExpectedProcessId -or
+            $integerValues.AcceptanceProcessId -ne $ExpectedProcessId) {
+            throw '独立回读 PID 与成功回执不一致。'
+        }
+        if ($integerValues.RuntimeSessionId -ne $integerValues.AcceptanceSessionId -or
+            $integerValues.RuntimeSessionId -ne $integerValues.ProcessSessionId) {
+            throw '独立回读交互会话不一致。'
+        }
+
+        foreach ($name in @(
+                'Valid', 'HostIdentityMatch', 'UserIdentityMatch', 'TaskExecuteMatch',
+                'TaskArgumentsMatch', 'TaskWorkingDirectoryMatch', 'TokenMatch',
+                'ProcessIdMatch', 'SessionIdMatch', 'ApplicationPathMatch',
+                'ProcessExecutablePathMatch', 'ExecutableHashMatch', 'SettingsHashMatch')) {
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::True) {
+                throw "独立回读 $name 必须是 true bool。"
+            }
+        }
+        $strings = [ordered]@{}
+        foreach ($name in @(
+                'RemoteMachineNameSha256', 'RemoteUserNameSha256', 'TaskState',
+                'StartupAcceptanceState', 'RuntimeStage', 'AcceptanceStage',
+                'TokenSha256', 'ExecutableSha256', 'SettingsSha256')) {
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::String) {
+                throw "独立回读 $name 必须是 string。"
+            }
+            $strings[$name] = $properties[$name].GetString()
+        }
+        if ($strings.TaskState -ne 'Running') { throw '独立回读计划任务未运行。' }
+        if ($strings.StartupAcceptanceState -ne 'finalized') { throw '独立回读 startup 未达到 finalized。' }
+        if ($strings.RuntimeStage -ne 'window-ready') { throw '独立回读 runtime 未达到 window-ready。' }
+        if ($strings.AcceptanceStage -ne 'finalized-ready') { throw '独立回读 acceptance 未达到 finalized-ready。' }
+        foreach ($name in @('RemoteMachineNameSha256', 'RemoteUserNameSha256', 'TokenSha256', 'ExecutableSha256')) {
+            if ([string] $strings[$name] -notmatch '\A[0-9A-Fa-f]{64}\z') { throw "独立回读 $name 无效。" }
+            $strings[$name] = ([string] $strings[$name]).ToUpperInvariant()
+        }
+        $settingsHash = [string] $strings.SettingsSha256
+        if ($settingsHash -ne '' -and $settingsHash -notmatch '\A[0-9A-Fa-f]{64}\z') { throw '独立回读 SettingsSha256 无效。' }
+        $settingsHash = $settingsHash.ToUpperInvariant()
+        if ($strings.ExecutableSha256 -ne $expectedExecutableHash) { throw '独立回读运行 EXE 哈希与发布合同不一致。' }
+        if ($strings.TokenSha256 -ne $expectedTokenHash) { throw '独立回读 token 哈希与本次部署 binding 不一致。' }
+        if ($settingsHash -ne $expectedSettingsHash) { throw '独立回读 settings 哈希与成功回执不一致。' }
+
+        [pscustomobject][ordered]@{
+            SchemaVersion = 1; Valid = $true
+            HostIdentityMatch = $true; UserIdentityMatch = $true
+            RemoteMachineNameSha256 = $strings.RemoteMachineNameSha256
+            RemoteUserNameSha256 = $strings.RemoteUserNameSha256
+            TaskState = $strings.TaskState; TaskExecuteMatch = $true
+            TaskArgumentsMatch = $true; TaskWorkingDirectoryMatch = $true
+            StartupSchemaVersion = 1; StartupAcceptanceState = $strings.StartupAcceptanceState
+            RuntimeSchemaVersion = 4; RuntimeStage = $strings.RuntimeStage
+            AcceptanceSchemaVersion = 1; AcceptanceStage = $strings.AcceptanceStage
+            TokenSha256 = $strings.TokenSha256; TokenMatch = $true
+            RuntimeProcessId = $integerValues.RuntimeProcessId
+            AcceptanceProcessId = $integerValues.AcceptanceProcessId; ProcessIdMatch = $true
+            RuntimeSessionId = $integerValues.RuntimeSessionId
+            AcceptanceSessionId = $integerValues.AcceptanceSessionId
+            ProcessSessionId = $integerValues.ProcessSessionId; SessionIdMatch = $true
+            ApplicationPathMatch = $true; ProcessExecutablePathMatch = $true
+            ExecutableSha256 = $strings.ExecutableSha256; ExecutableHashMatch = $true
+            SettingsSha256 = $settingsHash; SettingsHashMatch = $true
+        }
+    }
+    finally { $document.Dispose() }
+}
+
+function Write-CountdownRemoteDeploymentReadbackReceipt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [byte[]] $Bytes,
+        [Parameter(Mandatory)] [int] $ExpectedProcessId,
+        [Parameter(Mandatory)] [string] $ExpectedExecutableSha256,
+        [Parameter(Mandatory)] [string] $ExpectedTokenSha256,
+        [AllowEmptyString()] [string] $ExpectedSettingsSha256 = ''
+    )
+    $temporaryPath = $null
+    try {
+        $json = [System.Text.UTF8Encoding]::new($false, $true).GetString($Bytes)
+        $receipt = ConvertFrom-CountdownRemoteDeploymentReadbackJson -Json $json -ExpectedProcessId $ExpectedProcessId -ExpectedExecutableSha256 $ExpectedExecutableSha256 -ExpectedTokenSha256 $ExpectedTokenSha256 -ExpectedSettingsSha256 $ExpectedSettingsSha256
+        $normalized = [System.Text.UTF8Encoding]::new($false).GetBytes(($receipt | ConvertTo-Json -Compress -Depth 4))
+        $resolved = [System.IO.Path]::GetFullPath($Path)
+        $directory = Split-Path -Parent $resolved
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw "独立回读证据目录不存在：$directory"
+        }
+        $directoryItem = Get-Item -LiteralPath $directory -Force -ErrorAction Stop
+        if (($directoryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "独立回读证据目录不得是 reparse point：$directory"
+        }
+        if (Test-Path -LiteralPath $resolved) { throw "独立回读证据已存在：$resolved" }
+        $temporaryPath = "$resolved.$([guid]::NewGuid().ToString('N')).tmp"
+        $stream = [System.IO.FileStream]::new(
+            $temporaryPath,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None,
+            4096,
+            [System.IO.FileOptions]::WriteThrough)
+        try {
+            $stream.Write($normalized, 0, $normalized.Length)
+            $stream.Flush($true)
+        }
+        finally {
+            $stream.Dispose()
+        }
+        [System.IO.File]::Move($temporaryPath, $resolved, $false)
+        $temporaryPath = $null
+        $persisted = [System.IO.File]::ReadAllBytes($resolved)
+        $expectedHash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($normalized))
+        $persistedHash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($persisted))
+        if ($persisted.Length -ne $normalized.Length -or $persistedHash -ne $expectedHash) {
+            throw '独立回读证据原子写入后字节校验失败。'
+        }
+        $receipt
+    }
+    catch { throw "部署已提交但独立验证不完整，未回滚：$($_.Exception.Message)" }
+    finally { if ($null -ne $temporaryPath -and [System.IO.File]::Exists($temporaryPath)) { [System.IO.File]::Delete($temporaryPath) } }
+}
+
+function Resolve-CountdownRemoteDeploymentTrustedPath {
+    param(
+        [Parameter(Mandatory)] [string] $Root,
+        [Parameter(Mandatory)] [string] $RelativePath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RelativePath) -or
+        [System.IO.Path]::IsPathRooted($RelativePath)) {
+        throw "远端部署受信文件路径必须是相对路径：$RelativePath"
+    }
+    $rootPath = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $resolved = [System.IO.Path]::GetFullPath((Join-Path $rootPath $RelativePath))
+    if (-not $resolved.StartsWith($rootPath + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "远端部署受信文件路径逃出根目录：$RelativePath"
+    }
+    $resolved
+}
+
+function Enter-CountdownRemoteDeploymentFileLocks {
+    param(
+        [Parameter(Mandatory)] [string] $Root,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $ExpectedFileSha256,
+        [Parameter(Mandatory)] [string[]] $RelativePaths,
+        [Parameter(Mandatory)] [string] $Stage
+    )
+
+    $locks = [System.Collections.Specialized.OrderedDictionary]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    try {
+        foreach ($relativePath in $RelativePaths) {
+            if (-not $ExpectedFileSha256.Contains($relativePath)) {
+                throw "$Stage：缺少预期 SHA-256：$relativePath"
+            }
+            $expectedHash = [string] $ExpectedFileSha256[$relativePath]
+            if ($expectedHash -notmatch '\A[0-9A-Fa-f]{64}\z') {
+                throw "$Stage：预期 SHA-256 无效：$relativePath"
+            }
+            $path = Resolve-CountdownRemoteDeploymentTrustedPath -Root $Root -RelativePath $relativePath
+            $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+            if ($item -isnot [System.IO.FileInfo] -or
+                ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Stage：受信文件必须是非 reparse point 的普通文件：$relativePath"
+            }
+            $stream = [System.IO.FileStream]::new(
+                $item.FullName,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read)
+            try {
+                $actualHash = [Convert]::ToHexString(
+                    [System.Security.Cryptography.SHA256]::HashData($stream))
+                $stream.Position = 0
+                if (-not [string]::Equals(
+                        $actualHash,
+                        $expectedHash,
+                        [System.StringComparison]::OrdinalIgnoreCase)) {
+                    throw "$Stage：受信文件 SHA-256 不匹配：$relativePath"
+                }
+                $locks.Add($relativePath, [pscustomobject]@{
+                        Path = $item.FullName
+                        Sha256 = $actualHash
+                        Stream = $stream
+                    })
+                $stream = $null
+            }
+            finally {
+                if ($null -ne $stream) { $stream.Dispose() }
+            }
+        }
+        $locks
+    }
+    catch {
+        foreach ($entry in $locks.Values) { $entry.Stream.Dispose() }
+        throw
+    }
+}
+
+function Exit-CountdownRemoteDeploymentFileLocks {
+    param([AllowNull()] [System.Collections.IDictionary] $Locks)
+
+    if ($null -eq $Locks) { return }
+    foreach ($entry in $Locks.Values) { $entry.Stream.Dispose() }
+}
+
+function Invoke-CountdownRemoteDeploymentTrustedFile {
+    param(
+        [Parameter(Mandatory)] [object] $Context,
+        [Parameter(Mandatory)] [ValidateSet('Source', 'Installed')] [string] $Location,
+        [Parameter(Mandatory)] [string] $RelativePath,
+        [Parameter(Mandatory)] [string] $Stage,
+        [Parameter(Mandatory)] [scriptblock] $Action
+    )
+
+    $root = if ($Location -eq 'Source') { $Context.SourceRoot } else { $Context.InstallPath }
+    $locksPropertyName = if ($Location -eq 'Source') { 'SourceFileLocks' } else { 'InstalledFileLocks' }
+    $adapterStateProperty = $Context.PSObject.Properties['AdapterState']
+    $adapterState = if ($null -eq $adapterStateProperty) { $null } else { $adapterStateProperty.Value }
+    $locksProperty = if ($null -eq $adapterState) { $null } else { $adapterState.PSObject.Properties[$locksPropertyName] }
+    $locks = if ($null -eq $locksProperty) { $null } else { $locksProperty.Value }
+    $manifestRequiredProperty = $Context.PSObject.Properties['TrustedFileManifestRequired']
+    $manifestRequired = $null -ne $manifestRequiredProperty -and [bool] $manifestRequiredProperty.Value
+    if ($null -eq $locks -or -not $locks.Contains($RelativePath)) {
+        if ($manifestRequired) {
+            throw "$Stage：受信文件未保持锁定 identity：$Location/$RelativePath"
+        }
+        $path = Resolve-CountdownRemoteDeploymentTrustedPath -Root $root -RelativePath $RelativePath
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+        if ($item -isnot [System.IO.FileInfo] -or
+            ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "$Stage：受信文件必须是非 reparse point 的普通文件：$RelativePath"
+        }
+        $stream = [System.IO.FileStream]::new(
+            $item.FullName,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read)
+        try { return & $Action $item.FullName }
+        finally { $stream.Dispose() }
+    }
+    & $Action ([string] $locks[$RelativePath].Path)
+}
+
 function Write-CountdownRemoteDeploymentFailureReceipt {
     param(
         [Parameter(Mandatory)] [object] $Context,
@@ -105,7 +742,12 @@ function Write-CountdownRemoteDeploymentFailureReceipt {
     $receiptPath = Join-Path $receiptDirectory 'deployment-failure.json'
     if (Test-Path -LiteralPath $receiptPath) { return $false }
     try {
-        Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+        Invoke-CountdownRemoteDeploymentTrustedFile `
+            -Context $Context `
+            -Location Source `
+            -RelativePath 'Countdown.InstallTransaction.psm1' `
+            -Stage '写入失败回执' `
+            -Action { param($lockedPath) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
         [void] (Write-CountdownInstallFailureReceipt `
                 -Path $receiptPath `
                 -Stage $Stage `
@@ -607,6 +1249,8 @@ function Assert-CountdownRemoteDeploymentAdapter {
 function New-CountdownRemoteDeploymentWindowsAdapter {
     $state = [pscustomobject]@{
         InstallMutex = $null
+        SourceFileLocks = $null
+        InstalledFileLocks = $null
         TransactionModuleImported = $false
         InstallStarted = $false
         Committed = $false
@@ -632,11 +1276,45 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             param($AdapterState, $Context)
 
             $AdapterState.Stage = '加载发布包'
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.ReleaseContract.psm1') -Force
+            if ([bool] $Context.TrustedFileManifestRequired) {
+                $AdapterState.SourceFileLocks = Enter-CountdownRemoteDeploymentFileLocks `
+                    -Root $Context.SourceRoot `
+                    -ExpectedFileSha256 $Context.ExpectedFileSha256 `
+                    -RelativePaths ([string[]] @($Context.ExpectedFileSha256.Keys)) `
+                    -Stage '锁定远端部署源文件'
+            }
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.ReleaseContract.psm1' `
+                -Stage '加载发布契约' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
             $releaseContract = Get-CountdownReleaseContract
             [void] (Assert-CountdownReleasePackage -Root $Context.SourceRoot)
+            if ([bool] $Context.TrustedFileManifestRequired) {
+                if ($Context.ExpectedFileSha256.Count -ne @($releaseContract.PackageFiles).Count) {
+                    throw '远端部署预期文件 manifest 与发布契约文件数量不一致。'
+                }
+                foreach ($file in $releaseContract.PackageFiles) {
+                    if (-not $Context.ExpectedFileSha256.Contains($file)) {
+                        throw "远端部署预期文件 manifest 缺少发布文件：$file"
+                    }
+                    if ($releaseContract.IntegrityHashes.Contains($file) -and
+                        -not [string]::Equals(
+                            [string] $Context.ExpectedFileSha256[$file],
+                            [string] $releaseContract.IntegrityHashes[$file],
+                            [System.StringComparison]::OrdinalIgnoreCase)) {
+                        throw "远端部署预期文件 manifest 与发布契约哈希不一致：$file"
+                    }
+                }
+            }
 
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.InstallTransaction.psm1' `
+                -Stage '加载安装事务模块' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
             $AdapterState.TransactionModuleImported = $true
             $interactiveContext = Get-CountdownInteractiveDesktopContext
             $launcherPath = Join-Path ([string] $interactiveContext.Desktop) '敏敏子倒计时.exe'
@@ -660,7 +1338,12 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             }
             $AdapterState.InstallStarted = $true
             $AdapterState.Stage = '执行安装器'
-            $installerOutput = & (Join-Path $Context.SourceRoot 'Install-Countdown.ps1') @installerArguments | Out-String
+            $installerOutput = Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Install-Countdown.ps1' `
+                -Stage '执行安装器' `
+                -Action { param($lockedPath) & $lockedPath @installerArguments | Out-String }
             $AdapterState.Stage = '读取延迟提交回执'
             $receipt = Read-CountdownDeferredInstallReceipt -Path $Context.DeferredReceiptPath
             if ($null -eq $receipt) {
@@ -701,12 +1384,20 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             $validation = $validationProperty.Value
 
             $AdapterState.Stage = '验证安装文件'
+            if ([bool] $Context.TrustedFileManifestRequired) {
+                $AdapterState.InstalledFileLocks = Enter-CountdownRemoteDeploymentFileLocks `
+                    -Root $Context.InstallPath `
+                    -ExpectedFileSha256 $Context.ExpectedFileSha256 `
+                    -RelativePaths ([string[]] @($releaseContract.InstalledFiles)) `
+                    -Stage '锁定已安装文件'
+            }
             foreach ($file in $releaseContract.InstalledFiles) {
-                $expectedHash = [string] $releaseContract.IntegrityHashes[$file]
-                $installedPath = Join-Path $Context.InstallPath $file
-                if ((Get-FileHash -Algorithm SHA256 -LiteralPath $installedPath).Hash -ne $expectedHash) {
-                    throw "安装后哈希不匹配：$file"
-                }
+                Invoke-CountdownRemoteDeploymentTrustedFile `
+                    -Context $Context `
+                    -Location Installed `
+                    -RelativePath $file `
+                    -Stage '验证安装文件' `
+                    -Action { param($lockedPath) }
             }
             foreach ($file in $releaseContract.RetiredRuntimeFiles) {
                 if (Test-Path -LiteralPath (Join-Path $Context.InstallPath $file)) {
@@ -714,17 +1405,41 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 }
             }
 
-            Import-Module (Join-Path $Context.InstallPath 'Countdown.Settings.psm1') -Force
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.Runtime.psm1') -Force
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.TransactionAcceptance.psm1') -Force
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Installed `
+                -RelativePath 'Countdown.Settings.psm1' `
+                -Stage '加载已安装设置模块' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.Runtime.psm1' `
+                -Stage '加载运行时模块' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.TransactionAcceptance.psm1' `
+                -Stage '加载事务验收模块' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
 
             $applicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
             $AdapterState.Stage = '验证已安装应用'
-            $installedValidationOutput = & $Context.PowerShell7Path `
-                -NoLogo -NoProfile -NonInteractive -STA -File $applicationPath -ValidateOnly | Out-String
-            if ($LASTEXITCODE -ne 0) {
-                throw "安装后应用 validate-only 失败：$installedValidationOutput"
-            }
+            $installedValidationOutput = Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Installed `
+                -RelativePath '敏敏子倒计时.ps1' `
+                -Stage '验证已安装应用' `
+                -Action {
+                    param($lockedPath)
+                    $validationOutput = & $Context.PowerShell7Path `
+                        -NoLogo -NoProfile -NonInteractive -STA -File $lockedPath -ValidateOnly | Out-String
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "安装后应用 validate-only 失败：$validationOutput"
+                    }
+                    $validationOutput
+                }
             try {
                 $installedValidation = $installedValidationOutput | ConvertFrom-Json -ErrorAction Stop
             }
@@ -778,10 +1493,30 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             param($AdapterState, $Context, $Candidate)
 
             $AdapterState.Stage = '准备事务验收'
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
-            Import-Module (Join-Path $Context.InstallPath 'Countdown.Settings.psm1') -Force
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.Runtime.psm1') -Force
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.TransactionAcceptance.psm1') -Force
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.InstallTransaction.psm1' `
+                -Stage '准备事务验收' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Installed `
+                -RelativePath 'Countdown.Settings.psm1' `
+                -Stage '准备事务验收' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.Runtime.psm1' `
+                -Stage '准备事务验收' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.TransactionAcceptance.psm1' `
+                -Stage '准备事务验收' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
             $getInteractiveContext = { Get-CountdownInteractiveDesktopContext }
             $getScheduledTask = {
                 param([string] $ExpectedTaskName)
@@ -846,13 +1581,20 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             param($AdapterState, $Context, $Candidate)
 
             $AdapterState.Stage = '回滚安装事务'
+            Exit-CountdownRemoteDeploymentFileLocks -Locks $AdapterState.InstalledFileLocks
+            $AdapterState.InstalledFileLocks = $null
             if (-not [bool] $AdapterState.TransactionModuleImported -or -not [bool] $AdapterState.InstallStarted) {
                 return [pscustomobject]@{
                     PreservedUnmanagedLaunchers = $false
                     UnresolvedCommittedTransaction = $false
                 }
             }
-            Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.InstallTransaction.psm1' `
+                -Stage '回滚安装事务' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
 
             $preservedUnmanagedLaunchers = $false
             $unresolvedCommittedTransaction = $false
@@ -911,10 +1653,23 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
         Dispose = {
             param($AdapterState, $Context)
             $AdapterState.Stage = '释放安装事务锁'
-            if ($null -ne $AdapterState.InstallMutex) {
-                Import-Module (Join-Path $Context.SourceRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
-                Exit-CountdownInstallTransactionMutex -Mutex $AdapterState.InstallMutex
-                $AdapterState.InstallMutex = $null
+            try {
+                if ($null -ne $AdapterState.InstallMutex) {
+                    Invoke-CountdownRemoteDeploymentTrustedFile `
+                        -Context $Context `
+                        -Location Source `
+                        -RelativePath 'Countdown.InstallTransaction.psm1' `
+                        -Stage '释放安装事务锁' `
+                        -Action { param($lockedPath) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
+                    Exit-CountdownInstallTransactionMutex -Mutex $AdapterState.InstallMutex
+                    $AdapterState.InstallMutex = $null
+                }
+            }
+            finally {
+                Exit-CountdownRemoteDeploymentFileLocks -Locks $AdapterState.InstalledFileLocks
+                Exit-CountdownRemoteDeploymentFileLocks -Locks $AdapterState.SourceFileLocks
+                $AdapterState.InstalledFileLocks = $null
+                $AdapterState.SourceFileLocks = $null
             }
         }
     }
@@ -929,8 +1684,44 @@ function Invoke-CountdownRemoteDeployment {
         [Parameter(Mandatory)] [string] $DeferredReceiptPath,
         [Parameter(Mandatory)] [string] $TaskName,
         [Parameter(Mandatory)] [string] $LegacyTaskName,
+        [string] $DeploymentBindingPath = '',
+        [string] $DeploymentBindingSha256 = '',
+        [System.Collections.IDictionary] $ExpectedFileSha256,
         [object] $Adapter
     )
+
+    $usingDefaultAdapter = $null -eq $Adapter
+    $expectedManifest = [System.Collections.Specialized.OrderedDictionary]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    if ($null -ne $ExpectedFileSha256) {
+        foreach ($entry in $ExpectedFileSha256.GetEnumerator()) {
+            $relativePath = [string] $entry.Key
+            $expectedHash = [string] $entry.Value
+            [void] (Resolve-CountdownRemoteDeploymentTrustedPath -Root $SourceRoot -RelativePath $relativePath)
+            if ($expectedHash -notmatch '\A[0-9A-Fa-f]{64}\z') {
+                throw "远端部署预期文件 SHA-256 无效：$relativePath"
+            }
+            if ($expectedManifest.Contains($relativePath)) {
+                throw "远端部署预期文件 manifest 包含重复路径：$relativePath"
+            }
+            $expectedManifest.Add($relativePath, $expectedHash.ToUpperInvariant())
+        }
+    }
+    if ($usingDefaultAdapter) {
+        foreach ($requiredPath in @(
+                'Countdown.ReleaseContract.psm1',
+                'Countdown.InstallTransaction.psm1',
+                'Countdown.Validation.psm1',
+                'Countdown.Runtime.psm1',
+                'Countdown.Settings.psm1',
+                'Countdown.TransactionAcceptance.psm1',
+                'Install-Countdown.ps1',
+                '敏敏子倒计时.ps1')) {
+            if (-not $expectedManifest.Contains($requiredPath)) {
+                throw "远端默认部署 adapter 缺少受信文件 identity：$requiredPath"
+            }
+        }
+    }
 
     $context = [pscustomobject]@{
         SourceRoot = [System.IO.Path]::GetFullPath($SourceRoot)
@@ -939,6 +1730,11 @@ function Invoke-CountdownRemoteDeployment {
         DeferredReceiptPath = [System.IO.Path]::GetFullPath($DeferredReceiptPath)
         TaskName = $TaskName
         LegacyTaskName = $LegacyTaskName
+        DeploymentBindingPath = if ([string]::IsNullOrWhiteSpace($DeploymentBindingPath)) { '' } else { [System.IO.Path]::GetFullPath($DeploymentBindingPath) }
+        DeploymentBindingSha256 = $DeploymentBindingSha256.ToUpperInvariant()
+        ExpectedFileSha256 = $expectedManifest
+        TrustedFileManifestRequired = $usingDefaultAdapter
+        AdapterState = $null
     }
     if (-not (Test-Path -LiteralPath $context.SourceRoot -PathType Container)) {
         throw "远端部署源目录不存在：$($context.SourceRoot)"
@@ -949,11 +1745,18 @@ function Invoke-CountdownRemoteDeployment {
     if ([string]::IsNullOrWhiteSpace($TaskName) -or [string]::IsNullOrWhiteSpace($LegacyTaskName)) {
         throw '远端部署任务名称不能为空。'
     }
+    $hasBindingPath = -not [string]::IsNullOrWhiteSpace($context.DeploymentBindingPath)
+    $hasBindingHash = -not [string]::IsNullOrWhiteSpace($context.DeploymentBindingSha256)
+    if ($hasBindingPath -ne $hasBindingHash -or
+        ($hasBindingHash -and $context.DeploymentBindingSha256 -notmatch '\A[0-9A-F]{64}\z')) {
+        throw '远端部署 binding path 和 SHA-256 必须成对提供且哈希有效。'
+    }
 
     if ($null -eq $Adapter) {
         $Adapter = New-CountdownRemoteDeploymentWindowsAdapter
     }
     $Adapter = Assert-CountdownRemoteDeploymentAdapter -Adapter $Adapter
+    $context.AdapterState = $Adapter.State
     $candidate = $null
     $committed = $false
     $result = $null
@@ -1036,6 +1839,33 @@ function Invoke-CountdownRemoteDeployment {
                 AcceptanceState = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'AcceptanceState' -Required)
                 SettingsHashBefore = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsHashBefore' -Required)
                 SettingsHashAfter = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsHashAfter' -Required)
+            }
+            $result = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson `
+                -Json ($result | ConvertTo-Json -Compress -Depth 4)
+            if ($hasBindingHash) {
+                $stage = '写入本次部署 binding'
+                $launchToken = [string] (Get-CountdownRemoteDeploymentProperty `
+                        -InputObject $Adapter.State `
+                        -Name 'LaunchToken' `
+                        -Required)
+                if ([string]::IsNullOrWhiteSpace($launchToken)) {
+                    throw '远端部署 adapter 未保留本次 launch token。'
+                }
+                $tokenSha256 = [Convert]::ToHexString(
+                    [System.Security.Cryptography.SHA256]::HashData(
+                        [System.Text.UTF8Encoding]::new($false).GetBytes($launchToken)))
+                $bindingBytes = [System.Text.UTF8Encoding]::new($false).GetBytes(
+                    ([pscustomobject][ordered]@{
+                            SchemaVersion = 1
+                            DeploymentBindingSha256 = $context.DeploymentBindingSha256
+                            TokenSha256 = $tokenSha256
+                            RuntimeProcessId = [int] $result.RuntimeProcessId
+                        } | ConvertTo-Json -Compress))
+                [void] (Write-CountdownRemoteDeploymentBindingReceipt `
+                        -Path $context.DeploymentBindingPath `
+                        -Bytes $bindingBytes `
+                        -ExpectedDeploymentBindingSha256 $context.DeploymentBindingSha256 `
+                        -ExpectedProcessId ([int] $result.RuntimeProcessId))
             }
         }
         catch {
@@ -1170,4 +2000,12 @@ function Invoke-CountdownRemoteDeployment {
     $result
 }
 
-Export-ModuleMember -Function Invoke-CountdownRemoteDeployment, ConvertFrom-CountdownPreRollbackDiagnosticsBytes
+Export-ModuleMember -Function `
+    Invoke-CountdownRemoteDeployment, `
+    ConvertFrom-CountdownPreRollbackDiagnosticsBytes, `
+    ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson, `
+    Write-CountdownRemoteDeploymentSuccessReceipt, `
+    ConvertFrom-CountdownRemoteDeploymentBindingJson, `
+    Write-CountdownRemoteDeploymentBindingReceipt, `
+    ConvertFrom-CountdownRemoteDeploymentReadbackJson, `
+    Write-CountdownRemoteDeploymentReadbackReceipt

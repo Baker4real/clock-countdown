@@ -44,6 +44,8 @@ $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "Countdown-transfer-ledg
 $ledgerPath = Join-Path $testRoot 'transfer-attempts.json'
 $firstSource = Join-Path $testRoot 'first.bin'
 $secondSource = Join-Path $testRoot 'second.bin'
+$bindingEvidencePath = Join-Path $testRoot 'behavior-deployment-binding.json'
+$readbackEvidencePath = Join-Path $testRoot 'behavior-independent-readback.json'
 
 try {
     Import-Module (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1') -Force
@@ -330,7 +332,7 @@ try {
     }.GetNewClosure()
     [byte[]] $sshReadBytes = Invoke-CountdownRecordedSshRead `
         -LedgerPath $ledgerPath `
-        -Id 'remote-deployment-failure-receipt' `
+        -Id 'post-deployment-independent-readback' `
         -Reader $sshReadReader `
         -StopwatchFactory $sshReadStopwatchFactory
     $ledger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) |
@@ -340,6 +342,7 @@ try {
     Assert-Equal 'start,ssh,stop' ($sshReadEvents -join ',') 'Stopwatch 完整包裹 SSH 回读'
     if (@($ledger.attempts).Count -ge 8) {
         $sshReadAttempt = $ledger.attempts[7]
+        Assert-Equal 'post-deployment-independent-readback' ([string] $sshReadAttempt.id) '成功独立回读使用稳定账本 ID'
         Assert-Equal 'ssh' ([string] $sshReadAttempt.method) '回执读取使用 SSH 账本类型'
         Assert-Equal 'succeeded' ([string] $sshReadAttempt.status) '成功 SSH 回读状态'
         Assert-Equal 0 ([int] $sshReadAttempt.exitCode) '成功 SSH 回读退出码'
@@ -368,7 +371,7 @@ try {
     try {
         Invoke-CountdownRecordedSshRead `
             -LedgerPath $ledgerPath `
-            -Id 'remote-deployment-failure-receipt-failed' `
+            -Id 'post-deployment-independent-readback' `
             -Reader $sshFailureReader `
             -StopwatchFactory $sshFailureStopwatchFactory | Out-Null
     }
@@ -381,6 +384,7 @@ try {
     Assert-Equal 9 @($ledger.attempts).Count '失败 SSH 回读在抛错前持久化'
     if (@($ledger.attempts).Count -ge 9) {
         $sshFailureAttempt = $ledger.attempts[8]
+        Assert-Equal 'post-deployment-independent-readback' ([string] $sshFailureAttempt.id) '失败独立回读保留同一稳定账本 ID'
         Assert-Equal 'failed-bytes-unverified' ([string] $sshFailureAttempt.status) '失败 SSH 回读不伪造传输状态'
         Assert-Equal 255 ([int] $sshFailureAttempt.exitCode) '失败 SSH 回读退出码进入账本'
         Assert-Equal $null $sshFailureAttempt.transferStarted '失败 SSH 回读不猜测传输是否开始'
@@ -389,12 +393,358 @@ try {
         Assert-Equal 0.0 ([double] $sshFailureAttempt.metrics.mib_per_second) '失败 SSH 回读保留零 MiB/s'
         Assert-Equal 0.0 ([double] $sshFailureAttempt.metrics.mbps) '失败 SSH 回读保留零 Mbps'
     }
+
+    $invalidReadbackBytes = [System.Text.UTF8Encoding]::new($false).GetBytes('{"Valid":false}')
+    $sshContractFailureReader = {
+        [pscustomobject]@{
+            Success = $false
+            ExitCode = 0
+            Bytes = [byte[]] $invalidReadbackBytes
+            FailureMessage = '模拟独立回读 schema 失败。'
+        }
+    }.GetNewClosure()
+    $sshContractFailureStopwatchFactory = {
+        New-FakeStopwatch `
+            -ElapsedSeconds 0.5 `
+            -Events ([System.Collections.Generic.List[string]]::new())
+    }
+    $sshContractFailureMessage = $null
+    try {
+        Invoke-CountdownRecordedSshRead `
+            -LedgerPath $ledgerPath `
+            -Id 'post-deployment-independent-readback' `
+            -Reader $sshContractFailureReader `
+            -StopwatchFactory $sshContractFailureStopwatchFactory | Out-Null
+    }
+    catch {
+        $sshContractFailureMessage = $_.Exception.Message
+    }
+    $ledger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) |
+        ConvertFrom-Json -ErrorAction Stop
+    Assert-Equal $true ($sshContractFailureMessage -match '退出码：0.*schema 失败') '独立回读 schema 失败保留验证原因'
+    Assert-Equal 10 @($ledger.attempts).Count '独立回读 schema 失败在抛错前持久化'
+    if (@($ledger.attempts).Count -ge 10) {
+        $sshContractFailureAttempt = $ledger.attempts[9]
+        Assert-Equal 'post-deployment-independent-readback' ([string] $sshContractFailureAttempt.id) 'schema 失败使用独立回读稳定账本 ID'
+        Assert-Equal 'failed' ([string] $sshContractFailureAttempt.status) 'schema 失败且 payload 已返回时记录失败而不是字节未知'
+        Assert-Equal 0 ([int] $sshContractFailureAttempt.exitCode) 'schema 失败保留 SSH 成功退出码'
+        Assert-Equal $true ([bool] $sshContractFailureAttempt.transferStarted) 'schema 失败保留已发生的数据传输'
+        Assert-Equal $true ([bool] $sshContractFailureAttempt.bytesVerified) 'schema 失败保留可验证 payload 字节数'
+        Assert-Equal $invalidReadbackBytes.Length ([long] $sshContractFailureAttempt.metrics.bytes) 'schema 失败记录实际 payload bytes'
+        Assert-Equal ([Math]::Round((($invalidReadbackBytes.Length / 1MB) / 0.5), 6)) ([double] $sshContractFailureAttempt.metrics.mib_per_second) 'schema 失败记录实际 MiB/s'
+        Assert-Equal ([Math]::Round((($invalidReadbackBytes.Length * 8.0 / 1000000.0) / 0.5), 6)) ([double] $sshContractFailureAttempt.metrics.mbps) 'schema 失败记录实际 Mbps'
+    }
+
+    $strictOptions = @(
+        '-i', 'D:\Codex\.codex\credentials\ssh\replicator\office\id_ed25519',
+        '-o', 'BatchMode=yes',
+        '-o', 'IdentitiesOnly=yes',
+        '-o', 'ConnectTimeout=10',
+        '-o', 'ConnectionAttempts=1',
+        '-o', 'StrictHostKeyChecking=yes',
+        '-o', 'UserKnownHostsFile=D:\Codex\.codex\credentials\ssh\replicator\office\known_hosts',
+        '-o', 'KexAlgorithms=curve25519-sha256')
+    $commandCapture = [pscustomobject]@{ FileName = $null; Arguments = $null }
+    $commandPayload = [System.Text.UTF8Encoding]::new($false).GetBytes('{"binding":"captured"}')
+    $commandRunner = {
+        param($FileName, $Arguments)
+        $commandCapture.FileName = $FileName
+        $commandCapture.Arguments = [string[]] $Arguments
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = [Convert]::ToBase64String($commandPayload)
+            StandardError = ''
+            ProcessId = $PID + 1
+        }
+    }.GetNewClosure()
+    $commandResult = Invoke-CountdownSshBase64CommandRead `
+        -Options $strictOptions `
+        -Destination 'replicator@office-host' `
+        -RemoteCommand 'pwsh.exe -NoLogo -NoProfile -EncodedCommand fixture' `
+        -MaximumDecodedBytes 4096 `
+        -Description '严格 SSH 行为测试' `
+        -CommandRunner $commandRunner
+    Assert-Equal $true ([bool] $commandResult.Success) '严格 SSH command seam 接受受管参数并返回 payload'
+    Assert-Equal 'ssh.exe' ([string] $commandCapture.FileName) '严格 SSH command seam 只启动 ssh.exe'
+    Assert-Equal (($strictOptions + @('replicator@office-host', 'pwsh.exe -NoLogo -NoProfile -EncodedCommand fixture')) -join "`n") (@($commandCapture.Arguments) -join "`n") '严格 SSH command seam 保留完整且有序的参数边界'
+    Assert-Equal ([Convert]::ToHexString($commandPayload)) ([Convert]::ToHexString([byte[]] $commandResult.Bytes)) '严格 SSH command seam 返回解码后的精确 bytes'
+
+    $pwshPath = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
+    $childProcess = Invoke-CountdownExternalCommandProcess `
+        -FileName $pwshPath `
+        -Arguments @('-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '[Console]::Out.Write([Environment]::ProcessId)')
+    Assert-Equal 0 ([int] $childProcess.ExitCode) '受管 command runner 启动真实新进程成功'
+    Assert-Equal $true ([int] $childProcess.ProcessId -ne $PID) '受管 command runner 没有在当前测试进程内执行命令'
+    Assert-Equal ([int] $childProcess.ProcessId) ([int] ([string] $childProcess.StandardOutput).Trim()) '受管 command runner 捕获新进程的精确 stdout'
+
+    Import-Module (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1') -Force
+    $expectedBindingHash = 'A' * 64
+    $mismatchedBindingJson = [pscustomobject][ordered]@{
+        SchemaVersion = 1
+        DeploymentBindingSha256 = 'B' * 64
+        TokenSha256 = 'C' * 64
+        RuntimeProcessId = 4242
+    } | ConvertTo-Json -Compress
+    $mismatchedBindingBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($mismatchedBindingJson)
+    $mismatchRunner = {
+        param($FileName, $Arguments)
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = [Convert]::ToBase64String($mismatchedBindingBytes)
+            StandardError = ''
+            ProcessId = $PID + 1
+        }
+    }.GetNewClosure()
+    $mismatchReader = {
+        $read = Invoke-CountdownSshBase64CommandRead `
+            -Options $strictOptions `
+            -Destination 'replicator@office-host' `
+            -RemoteCommand 'pwsh.exe -NoLogo -NoProfile -EncodedCommand binding-fixture' `
+            -MaximumDecodedBytes 4096 `
+            -Description '部署 binding 独立回读' `
+            -CommandRunner $mismatchRunner
+        if ($read.Success) {
+            try {
+                ConvertFrom-CountdownRemoteDeploymentBindingJson `
+                    -Json ([System.Text.UTF8Encoding]::new($false, $true).GetString([byte[]] $read.Bytes)) `
+                    -ExpectedDeploymentBindingSha256 $expectedBindingHash `
+                    -ExpectedProcessId 4242 | Out-Null
+            }
+            catch {
+                $read.Success = $false
+                $read.FailureMessage = "nonce/token mismatch：$($_.Exception.Message)"
+            }
+        }
+        $read
+    }.GetNewClosure()
+    $mismatchMessage = $null
+    try {
+        Invoke-CountdownRecordedSshRead `
+            -LedgerPath $ledgerPath `
+            -Id 'remote-deployment-binding' `
+            -Reader $mismatchReader `
+            -StopwatchFactory {
+                New-FakeStopwatch -ElapsedSeconds 0.25 -Events ([System.Collections.Generic.List[string]]::new())
+            } | Out-Null
+    }
+    catch { $mismatchMessage = $_.Exception.Message }
+    $ledger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $bindingMismatchAttempt = @($ledger.attempts)[-1]
+    Assert-Equal $true ($mismatchMessage -match 'nonce/token mismatch.*本次本地部署 nonce 不一致') 'nonce mismatch 通过生产 SSH command/contract/ledger 调用链报告失败'
+    Assert-Equal 'remote-deployment-binding' ([string] $bindingMismatchAttempt.id) 'nonce mismatch 使用 binding 稳定账本 ID'
+    Assert-Equal 'failed' ([string] $bindingMismatchAttempt.status) 'nonce mismatch 已返回 payload 时作为失败 attempt 入账'
+    Assert-Equal $mismatchedBindingBytes.Length ([long] $bindingMismatchAttempt.metrics.bytes) 'nonce mismatch 失败 attempt 记录实际输出 bytes'
+
+    $expectedReadbackExecutableHash = 'D' * 64
+    $expectedReadbackSettingsHash = 'E' * 64
+    $readbackWithUnexpectedToken = [pscustomobject][ordered]@{
+        SchemaVersion = 1; Valid = $true
+        HostIdentityMatch = $true; UserIdentityMatch = $true
+        RemoteMachineNameSha256 = '1' * 64; RemoteUserNameSha256 = '2' * 64
+        TaskState = 'Running'; TaskExecuteMatch = $true; TaskArgumentsMatch = $true
+        TaskWorkingDirectoryMatch = $true; StartupSchemaVersion = 1
+        StartupAcceptanceState = 'finalized'; RuntimeSchemaVersion = 4
+        RuntimeStage = 'window-ready'; AcceptanceSchemaVersion = 1
+        AcceptanceStage = 'finalized-ready'; TokenSha256 = 'F' * 64; TokenMatch = $true
+        RuntimeProcessId = 4242; AcceptanceProcessId = 4242; ProcessIdMatch = $true
+        RuntimeSessionId = 7; AcceptanceSessionId = 7; ProcessSessionId = 7
+        SessionIdMatch = $true; ApplicationPathMatch = $true
+        ProcessExecutablePathMatch = $true; ExecutableSha256 = $expectedReadbackExecutableHash
+        ExecutableHashMatch = $true; SettingsSha256 = $expectedReadbackSettingsHash
+        SettingsHashMatch = $true
+    } | ConvertTo-Json -Compress
+    $unexpectedTokenBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($readbackWithUnexpectedToken)
+    $unexpectedTokenRunner = {
+        param($FileName, $Arguments)
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = [Convert]::ToBase64String($unexpectedTokenBytes)
+            StandardError = ''
+            ProcessId = $PID + 1
+        }
+    }.GetNewClosure()
+    $unexpectedTokenReader = {
+        $read = Invoke-CountdownSshBase64CommandRead `
+            -Options $strictOptions `
+            -Destination 'replicator@office-host' `
+            -RemoteCommand 'pwsh.exe -NoLogo -NoProfile -EncodedCommand readback-fixture' `
+            -MaximumDecodedBytes 32768 `
+            -Description '部署后独立回读' `
+            -CommandRunner $unexpectedTokenRunner
+        if ($read.Success) {
+            try {
+                ConvertFrom-CountdownRemoteDeploymentReadbackJson `
+                    -Json ([System.Text.UTF8Encoding]::new($false, $true).GetString([byte[]] $read.Bytes)) `
+                    -ExpectedProcessId 4242 `
+                    -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+                    -ExpectedTokenSha256 ('0' * 64) `
+                    -ExpectedSettingsSha256 $expectedReadbackSettingsHash | Out-Null
+            }
+            catch {
+                $read.Success = $false
+                $read.FailureMessage = "nonce/token mismatch：$($_.Exception.Message)"
+            }
+        }
+        $read
+    }.GetNewClosure()
+    $unexpectedTokenMessage = $null
+    try {
+        Invoke-CountdownRecordedSshRead `
+            -LedgerPath $ledgerPath `
+            -Id 'post-deployment-independent-readback' `
+            -Reader $unexpectedTokenReader `
+            -StopwatchFactory {
+                New-FakeStopwatch -ElapsedSeconds 0.5 -Events ([System.Collections.Generic.List[string]]::new())
+            } | Out-Null
+    }
+    catch { $unexpectedTokenMessage = $_.Exception.Message }
+    $ledger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $tokenMismatchAttempt = @($ledger.attempts)[-1]
+    Assert-Equal $true ($unexpectedTokenMessage -match 'nonce/token mismatch.*token 哈希与本次部署 binding 不一致') 'token mismatch 通过生产 SSH command/contract/ledger 调用链报告失败'
+    Assert-Equal 'post-deployment-independent-readback' ([string] $tokenMismatchAttempt.id) 'token mismatch 使用独立回读稳定账本 ID'
+    Assert-Equal 'failed' ([string] $tokenMismatchAttempt.status) 'token mismatch 已返回 payload 时作为失败 attempt 入账'
+    Assert-Equal $unexpectedTokenBytes.Length ([long] $tokenMismatchAttempt.metrics.bytes) 'token mismatch 失败 attempt 记录实际输出 bytes'
+
+    . (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1') -LoadFunctionsOnly
+    $behaviorBindingHash = '1' * 64
+    $behaviorTokenHash = '2' * 64
+    $behaviorExecutableHash = '3' * 64
+    $behaviorSettingsHash = '4' * 64
+    $behaviorBindingJson = [pscustomobject][ordered]@{
+        SchemaVersion = 1
+        DeploymentBindingSha256 = $behaviorBindingHash
+        TokenSha256 = $behaviorTokenHash
+        RuntimeProcessId = 4242
+    } | ConvertTo-Json -Compress
+    $behaviorBindingBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($behaviorBindingJson)
+    $behaviorReadback = [pscustomobject][ordered]@{
+        SchemaVersion = 1; Valid = $true
+        HostIdentityMatch = $true; UserIdentityMatch = $true
+        RemoteMachineNameSha256 = '5' * 64; RemoteUserNameSha256 = '6' * 64
+        TaskState = 'Running'; TaskExecuteMatch = $true; TaskArgumentsMatch = $true
+        TaskWorkingDirectoryMatch = $true; StartupSchemaVersion = 1
+        StartupAcceptanceState = 'finalized'; RuntimeSchemaVersion = 4
+        RuntimeStage = 'window-ready'; AcceptanceSchemaVersion = 1
+        AcceptanceStage = 'finalized-ready'; TokenSha256 = $behaviorTokenHash; TokenMatch = $true
+        RuntimeProcessId = 4242; AcceptanceProcessId = 4242; ProcessIdMatch = $true
+        RuntimeSessionId = 7; AcceptanceSessionId = 7; ProcessSessionId = 7
+        SessionIdMatch = $true; ApplicationPathMatch = $true
+        ProcessExecutablePathMatch = $true; ExecutableSha256 = $behaviorExecutableHash
+        ExecutableHashMatch = $true; SettingsSha256 = $behaviorSettingsHash
+        SettingsHashMatch = $true; UnexpectedField = 'schema-drift'
+    }
+    $behaviorReadbackJson = $behaviorReadback | ConvertTo-Json -Compress
+    $behaviorReadbackBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($behaviorReadbackJson)
+    $behaviorRunnerState = [pscustomobject]@{ Calls = 0 }
+    $behaviorRunner = {
+        param($FileName, $Arguments)
+        $behaviorRunnerState.Calls++
+        $payload = if ($behaviorRunnerState.Calls -eq 1) {
+            $behaviorBindingBytes
+        }
+        else {
+            $behaviorReadbackBytes
+        }
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = [Convert]::ToBase64String([byte[]] $payload)
+            StandardError = ''
+            ProcessId = $PID + 1
+        }
+    }.GetNewClosure()
+    $behaviorStopwatchFactory = {
+        New-FakeStopwatch `
+            -ElapsedSeconds 0.5 `
+            -Events ([System.Collections.Generic.List[string]]::new())
+    }
+    $rollbackState = [pscustomobject]@{ Calls = 0 }
+    $rollbackSpy = { $rollbackState.Calls++ }.GetNewClosure()
+    $script:sshOptions = [string[]] $strictOptions
+    $env:REPLICATOR_OFFICE_SSH_DESTINATION = 'replicator@office-host'
+    $behaviorMessage = $null
+    try {
+        Invoke-OfficePostDeploymentIndependentVerification `
+            -LedgerPath $ledgerPath `
+            -DeploymentBindingEvidencePath $bindingEvidencePath `
+            -IndependentReadbackEvidencePath $readbackEvidencePath `
+            -RemoteDeploymentBindingPath 'D:\Codex\deploy\fixture\deployment-binding.json' `
+            -DeploymentBindingSha256 $behaviorBindingHash `
+            -SuccessReceipt ([pscustomobject]@{ RuntimeProcessId = 4242; SettingsHashAfter = $behaviorSettingsHash }) `
+            -ExpectedExecutableSha256 $behaviorExecutableHash `
+            -ExpectedRemoteHost 'office-host' `
+            -ExpectedRemoteUser 'replicator' `
+            -CommandRunner $behaviorRunner `
+            -StopwatchFactory $behaviorStopwatchFactory `
+            -RollbackAction $rollbackSpy | Out-Null
+    }
+    catch {
+        $behaviorMessage = $_.Exception.Message
+    }
+    $behaviorLedger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $behaviorAttempts = @($behaviorLedger.attempts)[-2..-1]
+    Assert-Equal 2 ([int] $behaviorRunnerState.Calls) '提交后验证直接调用 binding 与独立回读两个生产 reader'
+    Assert-Equal 'succeeded' ([string] $behaviorAttempts[0].status) '合法 binding 先通过生产 parser 与 ledger'
+    Assert-Equal $behaviorBindingBytes.Length ([long] $behaviorAttempts[0].metrics.bytes) 'binding attempt 记录实际 UTF-8 payload bytes'
+    Assert-Equal 'post-deployment-independent-readback' ([string] $behaviorAttempts[1].id) '字段漂移使用独立回读稳定账本 ID'
+    Assert-Equal 'failed' ([string] $behaviorAttempts[1].status) '字段漂移在生产 parser 失败后记录 failed attempt'
+    Assert-Equal $true ([bool] $behaviorAttempts[1].bytesVerified) '字段漂移保留已验证 payload bytes 状态'
+    Assert-Equal $behaviorReadbackBytes.Length ([long] $behaviorAttempts[1].metrics.bytes) '字段漂移记录实际 UTF-8 payload bytes'
+    Assert-Equal $true ($behaviorMessage -match '部署已提交但独立验证不完整，未回滚.*额外字段.*UnexpectedField') '提交后字段漂移返回验证不完整且未回滚的最终错误'
+    Assert-Equal 0 ([int] $rollbackState.Calls) '提交后独立验证失败不会调用 rollback'
+    Assert-Equal $true (Test-Path -LiteralPath $bindingEvidencePath -PathType Leaf) '提交后链路持久化已验证 binding evidence'
+    Assert-Equal $false (Test-Path -LiteralPath $readbackEvidencePath) '失败独立回读不会发布成功 evidence'
+
+    $validLedgerBytes = [System.IO.File]::ReadAllBytes($ledgerPath)
+    $validLedgerText = [System.Text.UTF8Encoding]::new($false, $true).GetString($validLedgerBytes)
+    $validLedgerObject = $validLedgerText | ConvertFrom-Json -AsHashtable
+    $driftCases = [ordered]@{}
+    $rootExtra = $validLedgerText | ConvertFrom-Json -AsHashtable
+    $rootExtra.unexpected = $true
+    $driftCases['root extra field'] = $rootExtra | ConvertTo-Json -Depth 8
+    $rootWrongType = $validLedgerText | ConvertFrom-Json -AsHashtable
+    $rootWrongType.attempts = 'not-an-array'
+    $driftCases['attempts wrong type'] = $rootWrongType | ConvertTo-Json -Depth 8
+    $attemptExtra = $validLedgerText | ConvertFrom-Json -AsHashtable
+    $attemptExtra.attempts[0].credential = 'must-not-be-accepted'
+    $driftCases['attempt extra field'] = $attemptExtra | ConvertTo-Json -Depth 8
+    $metricMissing = $validLedgerText | ConvertFrom-Json -AsHashtable
+    [void] $metricMissing.attempts[0].metrics.Remove('mbps')
+    $driftCases['metrics missing field'] = $metricMissing | ConvertTo-Json -Depth 8
+    $metricWrongType = $validLedgerText | ConvertFrom-Json -AsHashtable
+    $metricWrongType.attempts[0].metrics.bytes = '1048576'
+    $driftCases['metrics wrong type'] = $metricWrongType | ConvertTo-Json -Depth 8
+    $invalidStatus = $validLedgerText | ConvertFrom-Json -AsHashtable
+    $invalidStatus.attempts[0].status = 'complete'
+    $driftCases['status invalid enum'] = $invalidStatus | ConvertTo-Json -Depth 8
+    $driftCases['duplicate root field'] = $validLedgerText.Insert(1, '"attempts":[],')
+    foreach ($case in $driftCases.GetEnumerator()) {
+        [System.IO.File]::WriteAllText($ledgerPath, [string] $case.Value, [System.Text.UTF8Encoding]::new($false))
+        $beforeDriftBytes = [System.IO.File]::ReadAllBytes($ledgerPath)
+        $readerState = [pscustomobject]@{ Called = $false }
+        $reader = {
+            $readerState.Called = $true
+            throw 'ledger drift 后不得执行 Reader。'
+        }.GetNewClosure()
+        $driftMessage = $null
+        try {
+            Invoke-CountdownRecordedSshRead `
+                -LedgerPath $ledgerPath `
+                -Id 'must-not-run' `
+                -Reader $reader | Out-Null
+        }
+        catch { $driftMessage = $_.Exception.Message }
+        $afterDriftBytes = [System.IO.File]::ReadAllBytes($ledgerPath)
+        Assert-Equal $true ($driftMessage -match 'SCP 传输账本') "Ledger rejects $($case.Key)"
+        Assert-Equal $false ([bool] $readerState.Called) "Ledger drift blocks Reader for $($case.Key)"
+        Assert-Equal ([Convert]::ToHexString($beforeDriftBytes)) ([Convert]::ToHexString($afterDriftBytes)) "Ledger drift preserves original bytes for $($case.Key)"
+        [System.IO.File]::WriteAllBytes($ledgerPath, $validLedgerBytes)
+    }
 }
 catch {
     [void] $failures.Add($_.Exception.Message)
 }
 finally {
-    foreach ($path in @($ledgerPath, $firstSource, $secondSource)) {
+    foreach ($path in @($ledgerPath, $firstSource, $secondSource, $bindingEvidencePath, $readbackEvidencePath)) {
         if (Test-Path -LiteralPath $path -PathType Leaf) {
             Remove-Item -LiteralPath $path -Force
         }

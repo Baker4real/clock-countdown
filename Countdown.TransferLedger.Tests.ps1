@@ -606,6 +606,33 @@ try {
     Assert-Equal $unexpectedTokenBytes.Length ([long] $tokenMismatchAttempt.metrics.bytes) 'token mismatch 失败 attempt 记录实际输出 bytes'
 
     . (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1') -LoadFunctionsOnly
+
+    $isoTimestamp = '2026-08-04T11:33:21.1234567+00:00'
+    $flatReadback = ConvertFrom-CountdownReadbackFlatJsonObject `
+        -Json ('{"readyAtUtc":"' + $isoTimestamp + '","stage":"window-ready","processId":17388,"valid":true,"optional":null}') `
+        -SourceName 'readback fixture'
+    Assert-Equal 'System.String' $flatReadback.readyAtUtc.GetType().FullName 'Readback flat JSON converter preserves ISO timestamps as strings'
+    Assert-Equal $isoTimestamp ([string] $flatReadback.readyAtUtc) 'Readback flat JSON converter preserves ISO timestamp text exactly'
+    Assert-Equal 'System.Int64' $flatReadback.processId.GetType().FullName 'Readback flat JSON converter preserves integer tokens'
+    Assert-Equal 'System.Boolean' $flatReadback.valid.GetType().FullName 'Readback flat JSON converter preserves bool tokens'
+    Assert-Equal $null $flatReadback.optional 'Readback flat JSON converter preserves null tokens'
+
+    foreach ($invalidFlatJson in @(
+            '{"readyAtUtc":1.5}',
+            '{"readyAtUtc":{}}',
+            '{"readyAtUtc":[]}',
+            '{"readyAtUtc":"first","readyAtUtc":"second"}',
+            '{"readyAtUtc":"value",}',
+            '{/*comment*/"readyAtUtc":"value"}')) {
+        $invalidFlatJsonRejected = $false
+        try {
+            ConvertFrom-CountdownReadbackFlatJsonObject -Json $invalidFlatJson -SourceName 'invalid readback fixture' | Out-Null
+        }
+        catch {
+            $invalidFlatJsonRejected = $true
+        }
+        Assert-Equal $true $invalidFlatJsonRejected "Readback flat JSON converter rejects invalid token shape: $invalidFlatJson"
+    }
     $behaviorBindingHash = '1' * 64
     $behaviorTokenHash = '2' * 64
     $behaviorExecutableHash = '3' * 64
@@ -635,10 +662,14 @@ try {
     }
     $behaviorReadbackJson = $behaviorReadback | ConvertTo-Json -Compress
     $behaviorReadbackBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($behaviorReadbackJson)
-    $behaviorRunnerState = [pscustomobject]@{ Calls = 0 }
+    $behaviorRunnerState = [pscustomobject]@{
+        Calls = 0
+        RemoteCommands = [System.Collections.Generic.List[string]]::new()
+    }
     $behaviorRunner = {
         param($FileName, $Arguments)
         $behaviorRunnerState.Calls++
+        $behaviorRunnerState.RemoteCommands.Add([string] $Arguments[-1])
         $payload = if ($behaviorRunnerState.Calls -eq 1) {
             $behaviorBindingBytes
         }
@@ -693,6 +724,35 @@ try {
     Assert-Equal 0 ([int] $rollbackState.Calls) '提交后独立验证失败不会调用 rollback'
     Assert-Equal $true (Test-Path -LiteralPath $bindingEvidencePath -PathType Leaf) '提交后链路持久化已验证 binding evidence'
     Assert-Equal $false (Test-Path -LiteralPath $readbackEvidencePath) '失败独立回读不会发布成功 evidence'
+
+    $readbackRemoteCommand = [string] $behaviorRunnerState.RemoteCommands[1]
+    $encodedCommandPrefix = '-EncodedCommand '
+    $encodedCommandIndex = $readbackRemoteCommand.LastIndexOf($encodedCommandPrefix, [System.StringComparison]::Ordinal)
+    $bootstrapBase64 = $readbackRemoteCommand.Substring($encodedCommandIndex + $encodedCommandPrefix.Length)
+    $bootstrapText = [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($bootstrapBase64))
+    $compressedMatch = [regex]::Match(
+        $bootstrapText,
+        '(?m)^\$compressed = \[Convert\]::FromBase64String\(''(?<payload>[A-Za-z0-9+/=]+)''\)$')
+    $compressedReaderBytes = [Convert]::FromBase64String($compressedMatch.Groups['payload'].Value)
+    $compressedReaderStream = [System.IO.MemoryStream]::new($compressedReaderBytes, $false)
+    try {
+        $readerGzipStream = [System.IO.Compression.GZipStream]::new(
+            $compressedReaderStream,
+            [System.IO.Compression.CompressionMode]::Decompress)
+        try {
+            $readerOutputStream = [System.IO.MemoryStream]::new()
+            try {
+                $readerGzipStream.CopyTo($readerOutputStream)
+                $embeddedReaderScript = [System.Text.UTF8Encoding]::new($false, $true).GetString($readerOutputStream.ToArray())
+            }
+            finally { $readerOutputStream.Dispose() }
+        }
+        finally { $readerGzipStream.Dispose() }
+    }
+    finally { $compressedReaderStream.Dispose() }
+    $canonicalConverterDefinition = "function ConvertFrom-CountdownReadbackFlatJsonObject {`n$(${function:ConvertFrom-CountdownReadbackFlatJsonObject}.ToString())`n}"
+    Assert-Equal $true $compressedMatch.Success 'Production readback command contains one decodable gzip reader payload'
+    Assert-Equal $true $embeddedReaderScript.Contains($canonicalConverterDefinition) 'Production SSH reader embeds the canonical flat JSON converter definition'
 
     $validLedgerBytes = [System.IO.File]::ReadAllBytes($ledgerPath)
     $validLedgerText = [System.Text.UTF8Encoding]::new($false, $true).GetString($validLedgerBytes)

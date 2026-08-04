@@ -243,6 +243,66 @@ if ([long] `$item.Length -lt 1 -or [long] `$item.Length -gt 4096) {
     $commandResult
 }
 
+function ConvertFrom-CountdownReadbackFlatJsonObject {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Json,
+        [Parameter(Mandatory)] [string] $SourceName
+    )
+
+    $options = [System.Text.Json.JsonDocumentOptions]::new()
+    $options.AllowTrailingCommas = $false
+    $options.CommentHandling = [System.Text.Json.JsonCommentHandling]::Disallow
+    try {
+        $document = [System.Text.Json.JsonDocument]::Parse($Json, $options)
+    }
+    catch {
+        throw "$SourceName 不是单个完整 JSON object：$($_.Exception.Message)"
+    }
+
+    $values = [ordered]@{}
+    try {
+        if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+            throw "$SourceName 根节点必须是 object。"
+        }
+        $names = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        foreach ($property in $document.RootElement.EnumerateObject()) {
+            if (-not $names.Add($property.Name)) {
+                throw "$SourceName 包含重复字段：$($property.Name)"
+            }
+            $kind = $property.Value.ValueKind
+            $value = if ($kind -eq [System.Text.Json.JsonValueKind]::String) {
+                $property.Value.GetString()
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::Number) {
+                $integer = 0L
+                if (-not $property.Value.TryGetInt64([ref] $integer)) {
+                    throw "$SourceName 字段 $($property.Name) 必须是 Int64 integer。"
+                }
+                $integer
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::True) {
+                $true
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::False) {
+                $false
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::Null) {
+                $null
+            }
+            else {
+                throw "$SourceName 字段 $($property.Name) 必须是 flat scalar JSON value。"
+            }
+            $values.Add($property.Name, $value)
+        }
+    }
+    finally {
+        $document.Dispose()
+    }
+
+    [pscustomobject] $values
+}
+
 function Get-OfficePostDeploymentIndependentReadback {
     param(
         [Parameter(Mandatory)] [string] $ExpectedRemoteHost,
@@ -273,6 +333,7 @@ function Get-OfficePostDeploymentIndependentReadback {
     }
     $parameterJson = $parameters | ConvertTo-Json -Compress
     $parameterBase64 = [Convert]::ToBase64String([System.Text.UTF8Encoding]::new($false).GetBytes($parameterJson))
+    $flatJsonConverterDefinition = "function ConvertFrom-CountdownReadbackFlatJsonObject {`n$(${function:ConvertFrom-CountdownReadbackFlatJsonObject}.ToString())`n}"
     $readerScript = @'
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -283,6 +344,8 @@ if ($PSVersionTable.PSVersion.Major -lt 7 -or $PSVersionTable.PSEdition -ne 'Cor
 $expectedJson = [System.Text.UTF8Encoding]::new($false, $true).GetString(
     [Convert]::FromBase64String('__COUNTDOWN_READBACK_PARAMETERS__'))
 $expected = $expectedJson | ConvertFrom-Json -ErrorAction Stop
+
+__COUNTDOWN_READBACK_FLAT_JSON_CONVERTER__
 
 function Get-ReadbackSha256Text {
     param([Parameter(Mandatory)] [string] $Text)
@@ -310,25 +373,7 @@ function Read-ReadbackJsonObject {
         throw "独立回读状态文件不得包含 UTF-8 BOM：$Path"
     }
     $text = [System.Text.UTF8Encoding]::new($false, $true).GetString($bytes)
-    $options = [System.Text.Json.JsonDocumentOptions]::new()
-    $options.AllowTrailingCommas = $false
-    $options.CommentHandling = [System.Text.Json.JsonCommentHandling]::Disallow
-    $document = [System.Text.Json.JsonDocument]::Parse($text, $options)
-    try {
-        if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
-            throw "独立回读状态文件根节点必须是 object：$Path"
-        }
-        $names = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-        foreach ($property in $document.RootElement.EnumerateObject()) {
-            if (-not $names.Add($property.Name)) {
-                throw "独立回读状态文件包含重复字段 $($property.Name)：$Path"
-            }
-        }
-    }
-    finally {
-        $document.Dispose()
-    }
-    $text | ConvertFrom-Json -ErrorAction Stop
+    ConvertFrom-CountdownReadbackFlatJsonObject -Json $text -SourceName $Path
 }
 
 function Assert-ReadbackJsonShape {
@@ -554,7 +599,8 @@ $result = [pscustomobject][ordered]@{
 $resultJson = $result | ConvertTo-Json -Compress -Depth 4
 [Console]::Out.Write(
     [Convert]::ToBase64String([System.Text.UTF8Encoding]::new($false).GetBytes($resultJson)))
-'@.Replace('__COUNTDOWN_READBACK_PARAMETERS__', $parameterBase64)
+'@.Replace('__COUNTDOWN_READBACK_PARAMETERS__', $parameterBase64).
+    Replace('__COUNTDOWN_READBACK_FLAT_JSON_CONVERTER__', $flatJsonConverterDefinition)
 
     $readerScriptBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($readerScript)
     $compressedStream = [System.IO.MemoryStream]::new()

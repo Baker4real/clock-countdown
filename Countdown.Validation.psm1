@@ -129,17 +129,24 @@ function Invoke-CountdownValidationSuite {
         -ArgumentList $coreArguments
     $corePassed = Assert-CountdownValidationTestReport -Report $core.Report -Label 'Core 回归'
 
+    $cSharpArguments = @(
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-STA',
+        '-File',
+        (Join-Path $resolvedRoot 'Countdown.CSharp.Tests.ps1')
+    )
+    if ($ParentTransactionMutexHeld) {
+        $cSharpArguments += @(
+            '-OfficeDeploymentStagingRoot',
+            (Split-Path -Parent $resolvedRoot)
+        )
+    }
     $cSharp = Invoke-CountdownValidationProcess `
         -PowerShell7Path $resolvedPowerShell `
         -Operation 'C# 回归' `
-        -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-STA',
-            '-File',
-            (Join-Path $resolvedRoot 'Countdown.CSharp.Tests.ps1')
-        )
+        -ArgumentList $cSharpArguments
     $cSharpPassed = Assert-CountdownValidationTestReport -Report $cSharp.Report -Label 'C# 回归'
 
     $ui = Invoke-CountdownValidationProcess `

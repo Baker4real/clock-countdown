@@ -1,7 +1,9 @@
 #requires -Version 7.0
 
 [CmdletBinding()]
-param()
+param(
+    [string] $OfficeDeploymentStagingRoot
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -182,12 +184,33 @@ if (-not [string]::Equals(
 }
 
 $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-$testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
+$defaultTestCapabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
+$testCapabilityRoot = $defaultTestCapabilityRoot
+$testGroupRoot = Join-Path $testCapabilityRoot 'clock-countdown-csharp-tests'
+if (-not [string]::IsNullOrWhiteSpace($OfficeDeploymentStagingRoot)) {
+    $officeDeploymentRoot = [System.IO.Path]::GetFullPath('D:\Codex\deploy')
+    $resolvedStagingRoot = [System.IO.Path]::GetFullPath($OfficeDeploymentStagingRoot)
+    $resolvedSourceRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
+    $expectedSourceRoot = [System.IO.Path]::GetFullPath((Join-Path $resolvedStagingRoot 'source'))
+    if (-not [string]::Equals(
+            [System.IO.Path]::GetDirectoryName($resolvedStagingRoot),
+            $officeDeploymentRoot,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "办公室部署 staging 必须是受管根的直接子目录：$resolvedStagingRoot"
+    }
+    if (-not [string]::Equals(
+            $resolvedSourceRoot,
+            $expectedSourceRoot,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "C# 测试脚本不属于指定的办公室部署 staging：$resolvedSourceRoot"
+    }
+    $testCapabilityRoot = $officeDeploymentRoot
+    $testGroupRoot = Join-Path $resolvedStagingRoot 'clock-countdown-csharp-tests'
+}
 $testCapabilityRootPrefix = $testCapabilityRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar,
     [System.IO.Path]::AltDirectorySeparatorChar
 ) + [System.IO.Path]::DirectorySeparatorChar
-$testGroupRoot = Join-Path $testCapabilityRoot 'clock-countdown-csharp-tests'
 $testRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $testGroupRoot ("run-" + [guid]::NewGuid().ToString('N')))
 )

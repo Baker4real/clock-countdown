@@ -153,7 +153,16 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
         $validationApplicationFixture = $validationApplicationJson.Replace("'", "''")
         $validationFixtures = [ordered]@{
             'Countdown.Core.Tests.ps1' = "param([switch] `$ParentTransactionMutexHeld)`r`n'{`"Passed`":11,`"Failed`":0}'"
-            'Countdown.CSharp.Tests.ps1' = "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'"
+            'Countdown.CSharp.Tests.ps1' = @"
+param([string] `$OfficeDeploymentStagingRoot)
+if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
+    [System.IO.File]::WriteAllText(
+        (Join-Path `$PSScriptRoot 'office-staging-argument.txt'),
+        `$OfficeDeploymentStagingRoot,
+        [System.Text.UTF8Encoding]::new(`$false))
+}
+'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
+"@
             'Countdown.Ui.Tests.ps1' = "'{`"Passed`":17,`"Failed`":0}'"
             '敏敏子倒计时.ps1' = "param([switch] `$ValidateOnly)`r`n'$validationApplicationFixture'"
         }
@@ -180,10 +189,22 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
         Assert-Equal '{"Passed":13,"Failed":0,"AdapterUiValidated":true}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
         Assert-Equal '{"Passed":17,"Failed":0}' ([string] $validationResult.UiTestOutput) 'Validation interface preserves UI JSON compatibility'
         Assert-Equal $validationApplicationJson ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
+        Assert-Equal `
+            ([System.IO.Path]::GetFullPath((Split-Path -Parent $validationTestRoot))) `
+            ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'office-staging-argument.txt'), [System.Text.Encoding]::UTF8)) `
+            'Validation interface passes the current staging root to C# tests while the parent transaction mutex is held'
 
         [System.IO.File]::WriteAllText(
             (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
-            "[Console]::Error.WriteLine('expected diagnostic')`r`n'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'",
+            @"
+param([string] `$OfficeDeploymentStagingRoot)
+[System.IO.File]::WriteAllText(
+    (Join-Path `$PSScriptRoot 'normal-office-staging-argument-present.txt'),
+    [string] `$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot'),
+    [System.Text.UTF8Encoding]::new(`$false))
+[Console]::Error.WriteLine('expected diagnostic')
+'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
+"@,
             $utf8NoBom)
         $successfulDiagnosticPreserved = $false
         try {
@@ -198,6 +219,35 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
             $successfulDiagnosticPreserved = $false
         }
         Assert-Equal $true $successfulDiagnosticPreserved 'Validation interface parses stdout JSON without merging successful stderr diagnostics'
+        Assert-Equal `
+            'False' `
+            ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'normal-office-staging-argument-present.txt'), [System.Text.Encoding]::UTF8)) `
+            'Validation interface does not pass the office staging parameter outside the parent transaction context'
+
+        $cSharpTestScript = Join-Path $PSScriptRoot 'Countdown.CSharp.Tests.ps1'
+        $invalidOfficeStagingRoot = Join-Path 'D:\Codex\deploy' ("invalid-csharp-staging-" + [guid]::NewGuid().ToString('N'))
+        $invalidSourceOutput = @(& $validationPowerShell `
+                -NoLogo `
+                -NoProfile `
+                -NonInteractive `
+                -STA `
+                -File $cSharpTestScript `
+                -OfficeDeploymentStagingRoot $invalidOfficeStagingRoot 2>&1)
+        $invalidSourceExitCode = $LASTEXITCODE
+        Assert-Equal $true ($invalidSourceExitCode -ne 0 -and ($invalidSourceOutput -join "`n") -match '不属于指定的办公室部署 staging') 'C# tests reject an office staging that does not own the script source before creating test data'
+        Assert-Equal $false (Test-Path -LiteralPath $invalidOfficeStagingRoot) 'Rejected office staging validation creates no directory'
+
+        $nestedOfficeStagingRoot = Join-Path $invalidOfficeStagingRoot 'nested'
+        $nestedStagingOutput = @(& $validationPowerShell `
+                -NoLogo `
+                -NoProfile `
+                -NonInteractive `
+                -STA `
+                -File $cSharpTestScript `
+                -OfficeDeploymentStagingRoot $nestedOfficeStagingRoot 2>&1)
+        $nestedStagingExitCode = $LASTEXITCODE
+        Assert-Equal $true ($nestedStagingExitCode -ne 0 -and ($nestedStagingOutput -join "`n") -match '必须是受管根的直接子目录') 'C# tests reject a nested office staging before creating test data'
+        Assert-Equal $false (Test-Path -LiteralPath $invalidOfficeStagingRoot) 'Rejected nested staging validation creates no parent directory'
 
         [System.IO.File]::WriteAllText(
             (Join-Path $validationTestRoot 'Countdown.Ui.Tests.ps1'),

@@ -30,18 +30,40 @@ jobs:
         with:
           dotnet-version: '10.0.302'
 
-      - name: Build C# projects
+      - name: Publish C# test artifacts
         shell: pwsh
         run: |
-          $projects = @(
-            '.\src\MinminCountdown\MinminCountdown.csproj',
-            '.\src\MinminCountdown.Verification\MinminCountdown.Verification.csproj'
+          $applicationArgs = @(
+            'publish', '.\src\MinminCountdown\MinminCountdown.csproj',
+            '--configuration', 'Release',
+            '--runtime', 'win-x64',
+            '--self-contained', 'true',
+            '-p:PublishSingleFile=true',
+            '-p:IncludeNativeLibrariesForSelfExtract=true',
+            '-p:IncludeSourceRevisionInInformationalVersion=false',
+            '-p:DebugType=None',
+            '-p:DebugSymbols=false',
+            '--output', '.\app'
           )
-          foreach ($project in $projects) {
-            dotnet build $project --configuration Release --nologo
-            $buildExit = $LASTEXITCODE
-            if ($buildExit -ne 0) { exit $buildExit }
-          }
+          dotnet @applicationArgs
+          $applicationExit = $LASTEXITCODE
+          if ($applicationExit -ne 0) { exit $applicationExit }
+
+          $verificationArgs = @(
+            'publish', '.\src\MinminCountdown.Verification\MinminCountdown.Verification.csproj',
+            '--configuration', 'Release',
+            '--runtime', 'win-x64',
+            '--self-contained', 'true',
+            '-p:PublishSingleFile=true',
+            '-p:IncludeNativeLibrariesForSelfExtract=true',
+            '-p:IncludeSourceRevisionInInformationalVersion=false',
+            '-p:DebugType=None',
+            '-p:DebugSymbols=false',
+            '--output', '.\verification'
+          )
+          dotnet @verificationArgs
+          $verificationExit = $LASTEXITCODE
+          if ($verificationExit -ne 0) { exit $verificationExit }
 
       - name: Test release contract
         shell: pwsh

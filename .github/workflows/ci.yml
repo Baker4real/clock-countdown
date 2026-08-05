@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows build and contracts
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build C# projects
+        shell: pwsh
+        run: |
+          $projects = @(
+            '.\src\MinminCountdown\MinminCountdown.csproj',
+            '.\src\MinminCountdown.Verification\MinminCountdown.Verification.csproj'
+          )
+          foreach ($project in $projects) {
+            dotnet build $project --configuration Release --nologo
+            $buildExit = $LASTEXITCODE
+            if ($buildExit -ne 0) { exit $buildExit }
+          }
+
+      - name: Test release contract
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.Core.Tests.ps1 -ReleaseContractOnly
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) { exit $testExit }
+
+      - name: Test validation lifecycle
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.Core.Tests.ps1 -ValidationOnly
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) { exit $testExit }
+
+      - name: Test remote deployment transaction
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.Core.Tests.ps1 -RemoteDeploymentOnly
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) { exit $testExit }

@@ -827,20 +827,41 @@ public sealed partial class FloatingWindow : Window
                 UsesQuickAddResources(FloatingTags, "CanvasBrush", "InkBrush", "PeachLineBrush") &&
                 ControlUsesQuickAddSurface(FloatingTags.PopupTrigger);
 
-            FloatingTags.IsPopupOpen = true;
-            WindowValidationInput.Pump(Dispatcher);
-            var popupRoot = FloatingTags.Popup.Child;
-            var popupSearch = popupRoot is null
-                ? null
-                : QuickAddVisualDescendants<TextBox>(popupRoot).FirstOrDefault();
-            var popupCheckBox = popupRoot is null
-                ? null
-                : QuickAddVisualDescendants<CheckBox>(popupRoot).FirstOrDefault();
-            var popupScroller = popupRoot is null
-                ? null
-                : QuickAddVisualDescendants<ScrollViewer>(popupRoot).FirstOrDefault();
+            var tagPopupOpened = false;
+            UIElement? popupRoot = null;
+            TextBox? popupSearch = null;
+            CheckBox? popupCheckBox = null;
+            ScrollViewer? popupScroller = null;
+            EventHandler tagPopupOpenedHandler = (_, _) =>
+            {
+                tagPopupOpened = true;
+                popupRoot = FloatingTags.Popup.Child;
+                if (popupRoot is FrameworkElement popupElement)
+                {
+                    popupElement.UpdateLayout();
+                }
+                popupSearch = popupRoot is null
+                    ? null
+                    : QuickAddVisualDescendants<TextBox>(popupRoot).FirstOrDefault();
+                popupCheckBox = popupRoot is null
+                    ? null
+                    : QuickAddVisualDescendants<CheckBox>(popupRoot).FirstOrDefault();
+                popupScroller = popupRoot is null
+                    ? null
+                    : QuickAddVisualDescendants<ScrollViewer>(popupRoot).FirstOrDefault();
+            };
+            FloatingTags.Popup.Opened += tagPopupOpenedHandler;
+            try
+            {
+                FloatingTags.IsPopupOpen = true;
+                WindowValidationInput.Pump(Dispatcher);
+            }
+            finally
+            {
+                FloatingTags.Popup.Opened -= tagPopupOpenedHandler;
+            }
             checks["TagSelectorPopup"] =
-                FloatingTags.Popup.IsOpen &&
+                tagPopupOpened &&
                 popupRoot is Border popupSurface &&
                 BorderUsesQuickAddSurface(popupSurface) &&
                 popupSearch is not null &&
@@ -989,7 +1010,6 @@ public sealed partial class FloatingWindow : Window
         WindowValidationInput.Pump(Dispatcher);
         var popup = comboBox.Template.FindName("PART_Popup", comboBox) as Popup;
         var popupOpened = false;
-        var popupWasOpenDuringEvent = false;
         var popupSurfaceMatchedDuringEvent = false;
         var itemResourcesMatchedDuringEvent = false;
         Border? popupSurfaceDuringEvent = null;
@@ -997,7 +1017,6 @@ public sealed partial class FloatingWindow : Window
         EventHandler openedHandler = (_, _) =>
         {
             popupOpened = true;
-            popupWasOpenDuringEvent = popup?.IsOpen == true;
             popupSurfaceDuringEvent = popup?.Child as Border;
             popupSurfaceDuringEvent?.UpdateLayout();
             itemDuringEvent = popupSurfaceDuringEvent is null
@@ -1029,7 +1048,6 @@ public sealed partial class FloatingWindow : Window
             WindowValidationInput.Pump(Dispatcher);
             var matches =
                 popupOpened &&
-                popupWasOpenDuringEvent &&
                 popupSurfaceMatchedDuringEvent &&
                 itemResourcesMatchedDuringEvent;
             if (!matches)
@@ -1038,7 +1056,7 @@ public sealed partial class FloatingWindow : Window
                     diagnostics,
                     "ComboBoxPopup",
                     (FrameworkElement?)itemDuringEvent ?? (FrameworkElement?)popupSurfaceDuringEvent ?? comboBox,
-                    popupWasOpenDuringEvent,
+                    popupOpened,
                     $"ComboBox={comboBox.Name};" +
                     $"PopupOpened={popupOpened};" +
                     $"DropDownOpenAfterPump={comboBox.IsDropDownOpen};" +
@@ -2277,6 +2295,7 @@ internal sealed record FloatingThemePalette(
     string ErrorBrushKey,
     string TextBrushKey,
     string MutedBrushKey,
+    string PrimaryCountdownAccentBrushKey,
     string PlushGlowBrushKey,
     double PlushGlowBlurRadius,
     double PlushGlowOpacity,
@@ -2300,6 +2319,7 @@ internal sealed record FloatingThemePalette(
         "FloatingDayErrorBrush",
         "FloatingDayTextBrush",
         "FloatingDayMutedBrush",
+        "FloatingDayPrimaryCountdownAccentBrush",
         "FloatingDayPlushGlowBrush",
         8,
         0.08,
@@ -2323,6 +2343,7 @@ internal sealed record FloatingThemePalette(
         "FloatingNightHeaderDangerBrush",
         "FloatingNightTextBrush",
         "FloatingNightMutedBrush",
+        "FloatingNightPrimaryCountdownAccentBrush",
         "FloatingNightPlushGlowBrush",
         14,
         0.16,

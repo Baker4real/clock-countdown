@@ -627,6 +627,31 @@ internal static class ValidationExercises
             string.Equals(json, repeatedJson, StringComparison.Ordinal),
             "同一 validate-only report 的 JSON 序列化结果不稳定。");
 
+        var hasMainBaselineRequested = report.TryGetValue(
+            "MainReferenceBaselineRequested",
+            out var mainBaselineRequestedValue);
+        var mainBaselineRequested = mainBaselineRequestedValue is true;
+        var hasStressTitleVisuals = report.TryGetValue(
+            "MainStressCountdownTitleVisuals",
+            out var stressTitleVisualsValue);
+        var stressTitleVisuals = stressTitleVisualsValue is true;
+        var hasStressTitleMeasurements = document.RootElement.TryGetProperty(
+            "MainStressCountdownTitleMeasurements",
+            out var stressTitleMeasurements);
+        Must(
+            hasMainBaselineRequested &&
+            mainBaselineRequestedValue is bool &&
+            hasStressTitleVisuals &&
+            stressTitleVisualsValue is bool &&
+            hasStressTitleMeasurements &&
+            stressTitleMeasurements.ValueKind == JsonValueKind.Array &&
+            (mainBaselineRequested
+                ? stressTitleVisuals && stressTitleMeasurements.GetArrayLength() == 2
+                : !stressTitleVisuals && stressTitleMeasurements.GetArrayLength() == 0),
+            "主窗口 Stress 标题报告没有区分源码树真实 WPF 测量与发布包未请求状态。" +
+            $" Requested={mainBaselineRequested}; Visuals={stressTitleVisuals};" +
+            $" Measurements={JsonSerializer.Serialize(report["MainStressCountdownTitleMeasurements"])}");
+
         foreach (var requiredBehavior in new[]
                  {
                      "Valid",
@@ -648,6 +673,7 @@ internal static class ValidationExercises
                      "FloatingLongNotesOuterScrollable",
                      "FloatingLongNotesTopBottomReachable",
                      "FloatingLongNotesSafeAreaMatches",
+                     "FloatingLongNotesTypographyMatches",
                      "FloatingLongNotesLayoutValid",
                      "FloatingTitleUsesSemiBoldWeight",
                      "FloatingNoteInputWraps",
@@ -665,6 +691,9 @@ internal static class ValidationExercises
                      "FloatingNightPlushEdgeBrightnessWithinLimit",
                      "FloatingNightPlushEdgeSaturationWithinLimit",
                      "FloatingNightPlushEdgeGlowGateIsolationBehavior",
+                     "FloatingPrimaryCountdownTextContrast",
+                     "FloatingPrimaryCountdownAccentSeparatedFromPlushGlow",
+                     "FloatingPrimaryCountdownContrastGateIsolationBehavior",
                      "FloatingSecondaryRemainingUnitSpacingMatches",
                      "FloatingSecondaryRemainingLayoutMatches",
                      "FloatingSecondaryRemainingGateIsolationBehavior",
@@ -718,7 +747,9 @@ internal static class ValidationExercises
             (baselineRequested
                 ? baselineAvailable && baselineValidated
                 : !baselineAvailable && !baselineValidated),
-            "悬浮窗参考基线报告没有区分源码树实测与不携带参考资产的运行时发布包。");
+            "悬浮窗参考基线报告没有区分源码树实测与不携带参考资产的运行时发布包。" +
+            $" MainStressTitleVisuals={report["MainStressCountdownTitleVisuals"]};" +
+            $" MainStressTitleMeasurements={JsonSerializer.Serialize(report["MainStressCountdownTitleMeasurements"])}");
 
         if (report.TryGetValue("ValidationReportContractBehavior", out var contractBehavior))
         {
@@ -880,11 +911,13 @@ internal static class ValidationExercises
             input.StateFingerprintsUnique,
             input.PngHashesUnique,
             input.TopBottomPixelsDiffer,
+            input.LongNoteTypographyMatches,
             input.LongNoteLayoutValid);
 
     public static bool RunFloatingReferenceFreshnessGateIsolationBehavior()
     {
         var passing = new FloatingReferenceFreshnessGateInputs(
+            true,
             true,
             true,
             true,
@@ -910,6 +943,8 @@ internal static class ValidationExercises
                 nameof(FloatingReferenceFreshnessGateResults.PngHashesUnique)),
             ("top-bottom-pixel-difference-too-small", passing with { TopBottomPixelsDiffer = false },
                 nameof(FloatingReferenceFreshnessGateResults.TopBottomPixelsDiffer)),
+            ("long-note-typography-mismatch", passing with { LongNoteTypographyMatches = false },
+                nameof(FloatingReferenceFreshnessGateResults.LongNoteTypographyMatches)),
             ("long-note-layout-unreachable", passing with { LongNoteLayoutValid = false },
                 nameof(FloatingReferenceFreshnessGateResults.LongNoteLayoutValid))
         };
@@ -925,6 +960,140 @@ internal static class ValidationExercises
                     .All(pair => pair.Value),
                 $"悬浮窗长便签负向夹具 {fixture.Name} 误伤无关契约。");
         }
+
+        return true;
+    }
+
+    public static MainReferenceManifestGateResults EvaluateMainReferenceManifestGates(
+        MainReferenceManifestGateInputs input) =>
+        new(
+            input.ManifestStructureValid,
+            input.ExpectedCaptureFilesPresent,
+            input.NoOrphanPngFiles,
+            input.CaptureIdsUnique,
+            input.CapturePathsUnique,
+            input.ScenarioBindingsUnique,
+            input.CanvasDimensionsMatch,
+            input.SourceHashesMatch,
+            input.ExecutableHashMatches,
+            input.PngHashesMatch,
+            input.StateFingerprintsMatch,
+            input.AlphaMetricsMatch,
+            input.ContentRoiMatches,
+            input.PixelMetricsWithinThresholds,
+            input.StateFingerprintsUnique,
+            input.PngHashesUnique);
+
+    public static bool RunMainReferenceManifestGateIsolationBehavior()
+    {
+        var passing = new MainReferenceManifestGateInputs(
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+        Must(
+            EvaluateMainReferenceManifestGates(passing).AllPassed,
+            "主窗口参考图 manifest 全通过夹具被错误拒绝。");
+
+        var fixtures = new (string Name, MainReferenceManifestGateInputs Input, string Gate)[]
+        {
+            ("malformed-manifest", passing with { ManifestStructureValid = false },
+                nameof(MainReferenceManifestGateResults.ManifestStructureValid)),
+            ("missing-png", passing with { ExpectedCaptureFilesPresent = false },
+                nameof(MainReferenceManifestGateResults.ExpectedCaptureFilesPresent)),
+            ("orphan-png", passing with { NoOrphanPngFiles = false },
+                nameof(MainReferenceManifestGateResults.NoOrphanPngFiles)),
+            ("duplicate-capture-id", passing with { CaptureIdsUnique = false },
+                nameof(MainReferenceManifestGateResults.CaptureIdsUnique)),
+            ("duplicate-path", passing with { CapturePathsUnique = false },
+                nameof(MainReferenceManifestGateResults.CapturePathsUnique)),
+            ("duplicate-scenario", passing with { ScenarioBindingsUnique = false },
+                nameof(MainReferenceManifestGateResults.ScenarioBindingsUnique)),
+            ("wrong-dimensions", passing with { CanvasDimensionsMatch = false },
+                nameof(MainReferenceManifestGateResults.CanvasDimensionsMatch)),
+            ("source-hash-mismatch", passing with { SourceHashesMatch = false },
+                nameof(MainReferenceManifestGateResults.SourceHashesMatch)),
+            ("executable-hash-mismatch", passing with { ExecutableHashMatches = false },
+                nameof(MainReferenceManifestGateResults.ExecutableHashMatches)),
+            ("png-hash-mismatch", passing with { PngHashesMatch = false },
+                nameof(MainReferenceManifestGateResults.PngHashesMatch)),
+            ("state-fingerprint-mismatch", passing with { StateFingerprintsMatch = false },
+                nameof(MainReferenceManifestGateResults.StateFingerprintsMatch)),
+            ("alpha-metrics-mismatch", passing with { AlphaMetricsMatch = false },
+                nameof(MainReferenceManifestGateResults.AlphaMetricsMatch)),
+            ("content-roi-mismatch", passing with { ContentRoiMatches = false },
+                nameof(MainReferenceManifestGateResults.ContentRoiMatches)),
+            ("pixel-metrics-mismatch", passing with { PixelMetricsWithinThresholds = false },
+                nameof(MainReferenceManifestGateResults.PixelMetricsWithinThresholds)),
+            ("duplicate-state-fingerprint", passing with { StateFingerprintsUnique = false },
+                nameof(MainReferenceManifestGateResults.StateFingerprintsUnique)),
+            ("reused-frame", passing with { PngHashesUnique = false },
+                nameof(MainReferenceManifestGateResults.PngHashesUnique))
+        };
+        foreach (var fixture in fixtures)
+        {
+            var results = EvaluateMainReferenceManifestGates(fixture.Input).AsDictionary();
+            Must(
+                results.TryGetValue(fixture.Gate, out var failed) && !failed,
+                $"主窗口参考图负向夹具 {fixture.Name} 未让 {fixture.Gate} 变红。");
+            Must(
+                results
+                    .Where(pair => !string.Equals(pair.Key, fixture.Gate, StringComparison.Ordinal))
+                    .All(pair => pair.Value),
+                $"主窗口参考图负向夹具 {fixture.Name} 误伤无关契约。");
+        }
+
+        return true;
+    }
+
+    public static MainStressCountdownTitleGateResults EvaluateMainStressCountdownTitleGates(
+        MainStressCountdownTitleGateInputs input) =>
+        new(
+            input.ExactTitleRendered,
+            input.TextIsSingleLineAndUntrimmed &&
+            input.TextFits &&
+            input.FullyVisibleInViewport &&
+            input.SeparatedFromActions);
+
+    public static bool RunMainStressCountdownTitleGateIsolationBehavior()
+    {
+        var passing = new MainStressCountdownTitleGateInputs(
+            true,
+            true,
+            true,
+            true,
+            true);
+        Must(
+            EvaluateMainStressCountdownTitleGates(passing).AllPassed,
+            "主窗口 Stress 标题全通过夹具被错误拒绝。");
+
+        var titleMissing = EvaluateMainStressCountdownTitleGates(
+            passing with { ExactTitleRendered = false });
+        Must(
+            !titleMissing.ExactTitleRendered && titleMissing.LayoutSafe,
+            "主窗口 Stress 标题缺失负夹具未单独让精确文本门禁变红。");
+
+        var truncatedOrOverlapping = EvaluateMainStressCountdownTitleGates(
+            passing with
+            {
+                TextIsSingleLineAndUntrimmed = false,
+                SeparatedFromActions = false
+            });
+        Must(
+            truncatedOrOverlapping.ExactTitleRendered && !truncatedOrOverlapping.LayoutSafe,
+            "主窗口 Stress 标题截断或重叠负夹具未单独让布局门禁变红。");
 
         return true;
     }
@@ -1023,6 +1192,69 @@ internal static class ValidationExercises
         Must(
             saturatedResult.BrightnessWithinLimit && !saturatedResult.SaturationWithinLimit,
             "夜间悬浮窗角色外缘饱和度负向夹具未单独变红。");
+
+        return true;
+    }
+
+    public static FloatingPrimaryCountdownContrastGateResults EvaluateFloatingPrimaryCountdownContrastGates(
+        FloatingPrimaryCountdownContrastGateInputs input) =>
+        new(
+            input.ContrastRatios.Count == 2 && input.ContrastRatios.All(ratio => ratio >= 4.5),
+            input.AccentSeparatedFromPlushGlow);
+
+    public static bool RunFloatingPrimaryCountdownContrastGateIsolationBehavior()
+    {
+        static double ContrastRatio(
+            (byte Red, byte Green, byte Blue) first,
+            (byte Red, byte Green, byte Blue) second)
+        {
+            static double Luminance((byte Red, byte Green, byte Blue) color)
+            {
+                static double Channel(byte value)
+                {
+                    var normalized = value / 255d;
+                    return normalized <= 0.04045
+                        ? normalized / 12.92
+                        : Math.Pow((normalized + 0.055) / 1.055, 2.4);
+                }
+
+                return (0.2126 * Channel(color.Red)) +
+                    (0.7152 * Channel(color.Green)) +
+                    (0.0722 * Channel(color.Blue));
+            }
+
+            var firstLuminance = Luminance(first);
+            var secondLuminance = Luminance(second);
+            return (Math.Max(firstLuminance, secondLuminance) + 0.05) /
+                (Math.Min(firstLuminance, secondLuminance) + 0.05);
+        }
+
+        var passing = new FloatingPrimaryCountdownContrastGateInputs(
+            new[] { 5.83, 6.12 },
+            true);
+        var passingResult = EvaluateFloatingPrimaryCountdownContrastGates(passing);
+        Must(
+            passingResult.TextContrast && passingResult.AccentSeparatedFromPlushGlow,
+            "悬浮窗主倒计时对比度与语义分离全通过夹具被错误拒绝。");
+
+        var legacyNightAccent = EvaluateFloatingPrimaryCountdownContrastGates(
+            passing with
+            {
+                ContrastRatios = new[]
+                {
+                    5.83,
+                    ContrastRatio((0x75, 0x6A, 0x62), (0x49, 0x35, 0x25))
+                }
+            });
+        Must(
+            !legacyNightAccent.TextContrast && legacyNightAccent.AccentSeparatedFromPlushGlow,
+            "旧夜间主倒计时强调色负向夹具未单独让对比度门禁变红。");
+
+        var sharedAccentToken = EvaluateFloatingPrimaryCountdownContrastGates(
+            passing with { AccentSeparatedFromPlushGlow = false });
+        Must(
+            sharedAccentToken.TextContrast && !sharedAccentToken.AccentSeparatedFromPlushGlow,
+            "主倒计时与玩偶共享 token 的负向夹具未单独让语义分离门禁变红。");
 
         return true;
     }
@@ -1574,6 +1806,14 @@ internal sealed record FloatingNightPlushEdgeGateResults(
     bool BrightnessWithinLimit,
     bool SaturationWithinLimit);
 
+internal sealed record FloatingPrimaryCountdownContrastGateInputs(
+    IReadOnlyList<double> ContrastRatios,
+    bool AccentSeparatedFromPlushGlow);
+
+internal sealed record FloatingPrimaryCountdownContrastGateResults(
+    bool TextContrast,
+    bool AccentSeparatedFromPlushGlow);
+
 internal sealed record FloatingReferenceManifestGateInputs(
     bool ManifestStructureValid,
     bool ExpectedCaptureFilesPresent,
@@ -1629,6 +1869,7 @@ internal sealed record FloatingReferenceFreshnessGateInputs(
     bool StateFingerprintsUnique,
     bool PngHashesUnique,
     bool TopBottomPixelsDiffer,
+    bool LongNoteTypographyMatches,
     bool LongNoteLayoutValid);
 
 internal sealed record FloatingReferenceFreshnessGateResults(
@@ -1638,6 +1879,7 @@ internal sealed record FloatingReferenceFreshnessGateResults(
     bool StateFingerprintsUnique,
     bool PngHashesUnique,
     bool TopBottomPixelsDiffer,
+    bool LongNoteTypographyMatches,
     bool LongNoteLayoutValid)
 {
     public bool AllPassed => AsDictionary().Values.All(value => value);
@@ -1651,8 +1893,83 @@ internal sealed record FloatingReferenceFreshnessGateResults(
             [nameof(StateFingerprintsUnique)] = StateFingerprintsUnique,
             [nameof(PngHashesUnique)] = PngHashesUnique,
             [nameof(TopBottomPixelsDiffer)] = TopBottomPixelsDiffer,
+            [nameof(LongNoteTypographyMatches)] = LongNoteTypographyMatches,
             [nameof(LongNoteLayoutValid)] = LongNoteLayoutValid
         };
+}
+
+internal sealed record MainReferenceManifestGateInputs(
+    bool ManifestStructureValid,
+    bool ExpectedCaptureFilesPresent,
+    bool NoOrphanPngFiles,
+    bool CaptureIdsUnique,
+    bool CapturePathsUnique,
+    bool ScenarioBindingsUnique,
+    bool CanvasDimensionsMatch,
+    bool SourceHashesMatch,
+    bool ExecutableHashMatches,
+    bool PngHashesMatch,
+    bool StateFingerprintsMatch,
+    bool AlphaMetricsMatch,
+    bool ContentRoiMatches,
+    bool PixelMetricsWithinThresholds,
+    bool StateFingerprintsUnique,
+    bool PngHashesUnique);
+
+internal sealed record MainReferenceManifestGateResults(
+    bool ManifestStructureValid,
+    bool ExpectedCaptureFilesPresent,
+    bool NoOrphanPngFiles,
+    bool CaptureIdsUnique,
+    bool CapturePathsUnique,
+    bool ScenarioBindingsUnique,
+    bool CanvasDimensionsMatch,
+    bool SourceHashesMatch,
+    bool ExecutableHashMatches,
+    bool PngHashesMatch,
+    bool StateFingerprintsMatch,
+    bool AlphaMetricsMatch,
+    bool ContentRoiMatches,
+    bool PixelMetricsWithinThresholds,
+    bool StateFingerprintsUnique,
+    bool PngHashesUnique)
+{
+    public bool AllPassed => AsDictionary().Values.All(value => value);
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(ManifestStructureValid)] = ManifestStructureValid,
+            [nameof(ExpectedCaptureFilesPresent)] = ExpectedCaptureFilesPresent,
+            [nameof(NoOrphanPngFiles)] = NoOrphanPngFiles,
+            [nameof(CaptureIdsUnique)] = CaptureIdsUnique,
+            [nameof(CapturePathsUnique)] = CapturePathsUnique,
+            [nameof(ScenarioBindingsUnique)] = ScenarioBindingsUnique,
+            [nameof(CanvasDimensionsMatch)] = CanvasDimensionsMatch,
+            [nameof(SourceHashesMatch)] = SourceHashesMatch,
+            [nameof(ExecutableHashMatches)] = ExecutableHashMatches,
+            [nameof(PngHashesMatch)] = PngHashesMatch,
+            [nameof(StateFingerprintsMatch)] = StateFingerprintsMatch,
+            [nameof(AlphaMetricsMatch)] = AlphaMetricsMatch,
+            [nameof(ContentRoiMatches)] = ContentRoiMatches,
+            [nameof(PixelMetricsWithinThresholds)] = PixelMetricsWithinThresholds,
+            [nameof(StateFingerprintsUnique)] = StateFingerprintsUnique,
+            [nameof(PngHashesUnique)] = PngHashesUnique
+        };
+}
+
+internal sealed record MainStressCountdownTitleGateInputs(
+    bool ExactTitleRendered,
+    bool TextIsSingleLineAndUntrimmed,
+    bool TextFits,
+    bool FullyVisibleInViewport,
+    bool SeparatedFromActions);
+
+internal sealed record MainStressCountdownTitleGateResults(
+    bool ExactTitleRendered,
+    bool LayoutSafe)
+{
+    public bool AllPassed => ExactTitleRendered && LayoutSafe;
 }
 
 internal sealed record FloatingSecondaryRemainingGateInputs(

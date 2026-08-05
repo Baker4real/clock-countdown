@@ -94,6 +94,7 @@
     <SolidColorBrush x:Key="FloatingDayErrorBrush" Color="#B34B36" />
     <SolidColorBrush x:Key="FloatingDayTextBrush" Color="#4A2D24" />
     <SolidColorBrush x:Key="FloatingDayMutedBrush" Color="#87665A" />
+    <SolidColorBrush x:Key="FloatingDayPrimaryCountdownAccentBrush" Color="#A24438" />
     <SolidColorBrush x:Key="FloatingDayPlushGlowBrush" Color="#B9794E" />
     <SolidColorBrush x:Key="FloatingDayMyMelodyDockBrush" Color="#FFE3C7" />
     <SolidColorBrush x:Key="FloatingDayCinnamorollDockBrush" Color="#FFF0D2" />
@@ -115,6 +116,7 @@
     <SolidColorBrush x:Key="FloatingNightErrorBrush" Color="#8F342B" />
     <SolidColorBrush x:Key="FloatingNightTextBrush" Color="#FFF4D8" />
     <SolidColorBrush x:Key="FloatingNightMutedBrush" Color="#E9CAA0" />
+    <SolidColorBrush x:Key="FloatingNightPrimaryCountdownAccentBrush" Color="#E9B36D" />
     <SolidColorBrush x:Key="FloatingNightPlushGlowBrush" Color="#E9B36D" />
     <SolidColorBrush x:Key="FloatingNightMyMelodyDockBrush" Color="#5A3D2B" />
     <SolidColorBrush x:Key="FloatingNightCinnamorollDockBrush" Color="#55452A" />

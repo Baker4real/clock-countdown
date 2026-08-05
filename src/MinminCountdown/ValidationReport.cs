@@ -19,15 +19,11 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
-    private const string FloatingReferenceBaselineVersion = "2026-08-04-v1";
+    private const string FloatingReferenceBaselineVersion = "2026-08-05-v3";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingReferenceStateFingerprintAlgorithm =
         "SHA-256 of canonical UTF-8 floating capture state";
-    private const string FloatingReferenceDayCountdownSha256 =
-        "6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9";
-    private const string FloatingReferenceNightCountdownSha256 =
-        "CCC7279389D0E7204C679080581C9E69C14A87D4737D2D05FEF998F49FB8ECD7";
     private const string FloatingReferenceSourceAggregateAlgorithm =
         "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order";
     private const string FloatingReferencePixelComparisonAlgorithm =
@@ -84,6 +80,7 @@ internal static class ValidationReport
         "duplicate-state-fingerprint",
         "reused-frame",
         "top-bottom-pixel-difference-too-small",
+        "long-note-typography-mismatch",
         "long-note-layout-unreachable"
     };
     private static readonly FloatingReferenceCaptureSpec[] FloatingReferenceCaptureSpecs =
@@ -124,6 +121,74 @@ internal static class ValidationReport
             "Night",
             "Bottom",
             "long-notes-night-bottom.png")
+    };
+    private const string MainReferenceBaselineVersion = "2026-08-05-v3";
+    private const string MainStressCountdownTitle =
+        "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
+    private const string MainReferenceStateFingerprintAlgorithm =
+        "SHA-256 of canonical UTF-8 main-window capture state";
+    private const string MainReferenceSourceAggregateAlgorithm =
+        "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order";
+    private const string MainReferencePixelComparisonAlgorithm =
+        "BGRA8 absolute channel delta over 1165x1350 pixels";
+    private const string MainReferenceAlphaAlgorithm =
+        "Pbgra32 alpha scan; every pixel must equal 255";
+    private const string MainReferenceRoiAlgorithm =
+        "fixed full-canvas ROI for opaque 1165x1350 main-window surface";
+    private const int MainReferenceMaximumAbsoluteChannelDelta = 8;
+    private const double MainReferenceMaximumMeanAbsoluteError = 0.02;
+    private const double MainReferenceMaximumRootMeanSquareError = 0.25;
+    private const int MainReferenceMaximumChangedPixelCount = 500;
+    private static readonly string[] MainReferenceCanonicalSourcePaths =
+    {
+        "assets/main-decorations/main-countdown-scene-day.png",
+        "assets/main-decorations/main-countdown-top-night.png",
+        "assets/main-decorations/main-notes-scene-day.png",
+        "assets/main-decorations/main-notes-top-night.png",
+        "src/MinminCountdown.Core/SettingsContract.cs",
+        "src/MinminCountdown.Core/SettingsModels.cs",
+        "src/MinminCountdown/App.xaml",
+        "src/MinminCountdown/ApplicationTheme.cs",
+        "src/MinminCountdown/DesktopWorkspace.cs",
+        "src/MinminCountdown/DomainLogic.cs",
+        "src/MinminCountdown/MainWindow.xaml",
+        "src/MinminCountdown/MainWindow.xaml.cs",
+        "src/MinminCountdown/MinminCountdown.csproj",
+        "src/MinminCountdown/UiControls.cs"
+    };
+    private static readonly string[] MainReferenceBaselineNegativeFixtures =
+    {
+        "malformed-manifest",
+        "missing-png",
+        "orphan-png",
+        "duplicate-capture-id",
+        "duplicate-path",
+        "duplicate-scenario",
+        "wrong-dimensions",
+        "source-hash-mismatch",
+        "executable-hash-mismatch",
+        "png-hash-mismatch",
+        "state-fingerprint-mismatch",
+        "alpha-metrics-mismatch",
+        "content-roi-mismatch",
+        "pixel-metrics-mismatch",
+        "duplicate-state-fingerprint",
+        "reused-frame"
+    };
+    private static readonly MainReferenceCaptureSpec[] MainReferenceCaptureSpecs =
+    {
+        new("main-day-countdowns-empty", "Day", "Countdowns", "Empty", "main-day-countdowns-empty.png"),
+        new("main-day-countdowns-representative", "Day", "Countdowns", "Representative", "main-day-countdowns-representative.png"),
+        new("main-day-countdowns-stress", "Day", "Countdowns", "Stress", "main-day-countdowns-stress.png"),
+        new("main-day-notes-empty", "Day", "Notes", "Empty", "main-day-notes-empty.png"),
+        new("main-day-notes-representative", "Day", "Notes", "Representative", "main-day-notes-representative.png"),
+        new("main-day-notes-stress", "Day", "Notes", "Stress", "main-day-notes-stress.png"),
+        new("main-night-countdowns-empty", "Night", "Countdowns", "Empty", "main-night-countdowns-empty.png"),
+        new("main-night-countdowns-representative", "Night", "Countdowns", "Representative", "main-night-countdowns-representative.png"),
+        new("main-night-countdowns-stress", "Night", "Countdowns", "Stress", "main-night-countdowns-stress.png"),
+        new("main-night-notes-empty", "Night", "Notes", "Empty", "main-night-notes-empty.png"),
+        new("main-night-notes-representative", "Night", "Notes", "Representative", "main-night-notes-representative.png"),
+        new("main-night-notes-stress", "Night", "Notes", "Stress", "main-night-notes-stress.png")
     };
 
     public static IReadOnlyDictionary<string, object?> Create(
@@ -663,6 +728,8 @@ internal static class ValidationReport
             ValidationExercises.RunFloatingReferenceFreshnessGateIsolationBehavior();
         var floatingNightPlushEdgeGlowGateIsolationBehavior =
             ValidationExercises.RunFloatingNightPlushEdgeGlowGateIsolationBehavior();
+        var floatingPrimaryCountdownContrastGateIsolationBehavior =
+            ValidationExercises.RunFloatingPrimaryCountdownContrastGateIsolationBehavior();
         var floatingSecondaryRemainingGateIsolationBehavior =
             ValidationExercises.RunFloatingSecondaryRemainingGateIsolationBehavior();
         var floatingScrollBarGateIsolationBehavior =
@@ -707,8 +774,13 @@ internal static class ValidationReport
                 floatingReferenceExercise.NoteInputScrolls));
         var uiQualityGateIsolationBehavior =
             ValidationExercises.RunUiQualityGateIsolationBehavior();
-        var mainReferenceCapture =
+        var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
+        var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
+        var mainReferenceBaselineGateIsolationBehavior =
+            ValidationExercises.RunMainReferenceManifestGateIsolationBehavior();
+        var mainStressCountdownTitleGateIsolationBehavior =
+            ValidationExercises.RunMainStressCountdownTitleGateIsolationBehavior();
 
         var reminderWindow = new ReminderWindow(new NoteRecord(
             "validation-reminder",
@@ -841,6 +913,14 @@ internal static class ValidationReport
             ["FloatingRasterMascotBoundaryStatesMatch"] =
                 floatingThemeExercise.RasterMascotBoundaryStatesMatch,
             ["FloatingThemeTextContrast"] = floatingThemeExercise.TextContrast,
+            ["FloatingPrimaryCountdownTextContrast"] =
+                floatingReferenceExercise.PrimaryCountdownContrast.Gates.TextContrast,
+            ["FloatingPrimaryCountdownAccentSeparatedFromPlushGlow"] =
+                floatingReferenceExercise.PrimaryCountdownContrast.Gates.AccentSeparatedFromPlushGlow,
+            ["FloatingPrimaryCountdownContrastMeasurements"] =
+                floatingReferenceExercise.PrimaryCountdownContrast.Measurements,
+            ["FloatingPrimaryCountdownContrastGateIsolationBehavior"] =
+                floatingPrimaryCountdownContrastGateIsolationBehavior,
             ["FloatingPlushSceneFollowsDayNightTheme"] =
                 floatingThemeExercise.PlushSceneFollowsDayNightTheme,
             ["FloatingQuickAddDayResourceChecks"] = floatingQuickAddTheme.Day.Checks,
@@ -941,16 +1021,36 @@ internal static class ValidationReport
             ["MainNightReferenceGeometryMatchesDay"] = mainNightReferenceGeometry.Matches,
             ["MainNightReferenceCharacterBounds"] = mainNightReferenceGeometry.CharacterBounds,
             ["MainNightReferenceWaveColumnCounts"] = mainNightReferenceGeometry.WaveColumnCounts,
-            ["MainReferenceCaptureRequested"] = mainReferenceCapture.Requested,
-            ["MainReferenceCaptureWritten"] = mainReferenceCapture.CapturesWritten,
-            ["MainReferenceCaptureUsesZeroState"] = mainReferenceCapture.UsesZeroState,
-            ["MainReferenceCaptureCanvasMatches"] = mainReferenceCapture.CanvasMatches,
-            ["MainReferenceCaptureAlphaIsOpaque"] = mainReferenceCapture.AlphaIsOpaque,
-            ["MainReferenceCountdownCapturePath"] = mainReferenceCapture.CountdownCapturePath,
-            ["MainReferenceNotesCapturePath"] = mainReferenceCapture.NotesCapturePath,
-            ["MainNightReferenceCountdownCapturePath"] = mainReferenceCapture.NightCountdownCapturePath,
-            ["MainNightReferenceNotesCapturePath"] = mainReferenceCapture.NightNotesCapturePath,
-            ["MainReferenceCaptureManifestPath"] = mainReferenceCapture.ManifestPath,
+            ["MainReferenceCaptureRequested"] = legacyMainReferenceCapture.Requested,
+            ["MainReferenceCaptureWritten"] = legacyMainReferenceCapture.CapturesWritten,
+            ["MainReferenceCaptureUsesZeroState"] = legacyMainReferenceCapture.UsesZeroState,
+            ["MainReferenceCaptureCanvasMatches"] = legacyMainReferenceCapture.CanvasMatches,
+            ["MainReferenceCaptureAlphaIsOpaque"] = legacyMainReferenceCapture.AlphaIsOpaque,
+            ["MainReferenceCountdownCapturePath"] = legacyMainReferenceCapture.CountdownCapturePath,
+            ["MainReferenceNotesCapturePath"] = legacyMainReferenceCapture.NotesCapturePath,
+            ["MainNightReferenceCountdownCapturePath"] = legacyMainReferenceCapture.NightCountdownCapturePath,
+            ["MainNightReferenceNotesCapturePath"] = legacyMainReferenceCapture.NightNotesCapturePath,
+            ["MainReferenceCaptureManifestPath"] = legacyMainReferenceCapture.ManifestPath,
+            ["MainReferenceBaselineRequested"] = mainReferenceBaseline.Requested,
+            ["MainReferenceBaselineManifestAvailable"] = mainReferenceBaseline.ManifestAvailable,
+            ["MainReferenceBaselineValidated"] = mainReferenceBaseline.AllPassed,
+            ["MainReferenceBaselineGateIsolationBehavior"] =
+                mainReferenceBaselineGateIsolationBehavior,
+            ["MainReferenceBaselineManifestPath"] = mainReferenceBaseline.ManifestPath,
+            ["MainReferenceBaselineSourceAggregateSha256"] =
+                mainReferenceBaseline.SourceAggregateSha256,
+            ["MainReferenceBaselineExecutableSha256"] =
+                mainReferenceBaseline.ExecutableSha256,
+            ["MainReferenceBaselineGates"] = mainReferenceBaseline.Gates.AsDictionary(),
+            ["MainReferenceBaselineCaptures"] = mainReferenceBaseline.Captures,
+            ["MainReferenceBaselineDiagnostics"] = mainReferenceBaseline.Diagnostics,
+            ["MainReferenceBaselineNegativeFixtures"] = MainReferenceBaselineNegativeFixtures,
+            ["MainStressCountdownTitleVisuals"] =
+                mainReferenceBaseline.StressCountdownTitleVisuals,
+            ["MainStressCountdownTitleGateIsolationBehavior"] =
+                mainStressCountdownTitleGateIsolationBehavior,
+            ["MainStressCountdownTitleMeasurements"] =
+                mainReferenceBaseline.StressCountdownTitleMeasurements,
             ["LegacyMigrationSupported"] = legacyMigration,
             ["DuplicateSettingsRejected"] = duplicateRejected,
             ["InvalidNotesRejected"] = invalidNotesRejected,
@@ -1129,6 +1229,8 @@ internal static class ValidationReport
                 floatingReferenceExercise.LongNotes.TopBottomReachable,
             ["FloatingLongNotesSafeAreaMatches"] =
                 floatingReferenceExercise.LongNotes.SafeAreaMatches,
+            ["FloatingLongNotesTypographyMatches"] =
+                floatingReferenceExercise.LongNotes.TypographyMatches,
             ["FloatingLongNotesLayoutValid"] =
                 floatingReferenceExercise.LongNotes.LayoutValid,
             ["FloatingLongNotesMeasurements"] =
@@ -2067,6 +2169,1194 @@ internal static class ValidationReport
         }).ToArray();
     }
 
+    private static MainReferenceBaselineValidation RunMainReferenceBaseline(
+        ApplicationTheme theme,
+        string assetRoot)
+    {
+        const string sourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
+        var sourceRoot = Environment.GetEnvironmentVariable(sourceRootVariable);
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+        {
+            return MainReferenceBaselineValidation.NotRequested;
+        }
+
+        sourceRoot = Path.GetFullPath(sourceRoot);
+        if (!Directory.Exists(sourceRoot))
+        {
+            return MainReferenceBaselineValidation.Invalid(
+                true,
+                false,
+                $"视觉源码根目录不存在：{sourceRootVariable}。");
+        }
+
+        var actualCaptures = CaptureMainReferenceScenarios(theme, assetRoot);
+        var baselineRelativeDirectory =
+            $"assets/ui-references/main-window/1165x1350/{MainReferenceBaselineVersion}";
+        var manifestRelativePath = $"{baselineRelativeDirectory}/manifest.json";
+        var baselineDirectory = ResolveRepositoryRelativePath(sourceRoot, baselineRelativeDirectory);
+        var manifestPath = ResolveRepositoryRelativePath(sourceRoot, manifestRelativePath);
+        var generationRequested = string.Equals(
+            Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE"),
+            "1",
+            StringComparison.Ordinal);
+        if (generationRequested)
+        {
+            GenerateMainReferenceBaseline(
+                sourceRoot,
+                baselineDirectory,
+                manifestPath,
+                baselineRelativeDirectory,
+                actualCaptures);
+        }
+
+        return ValidateMainReferenceBaseline(
+            sourceRoot,
+            baselineDirectory,
+            manifestPath,
+            manifestRelativePath,
+            baselineRelativeDirectory,
+            actualCaptures);
+    }
+
+    private static IReadOnlyList<MainReferenceActualCapture> CaptureMainReferenceScenarios(
+        ApplicationTheme theme,
+        string assetRoot)
+    {
+        const int captureWidth = 1165;
+        const int captureHeight = 1350;
+        var dayBeijing = new DateTimeOffset(2032, 5, 18, 10, 15, 30, TimeSpan.FromHours(8));
+        var nightBeijing = new DateTimeOffset(2032, 5, 18, 20, 15, 30, TimeSpan.FromHours(8));
+        var referenceUtc = dayBeijing.ToUniversalTime();
+        var originalThemeMode = theme.ActiveMode;
+        var captures = new List<MainReferenceActualCapture>();
+
+        try
+        {
+            foreach (var state in new[] { "Empty", "Representative", "Stress" })
+            {
+                var temporaryRoot = Path.Combine(
+                    Path.GetTempPath(),
+                    $"MinminCountdown-main-reference-{state.ToLowerInvariant()}-{Guid.NewGuid():N}");
+                var settingsPath = Path.Combine(temporaryRoot, "settings.json");
+                var diagnosticPath = Path.Combine(temporaryRoot, "validation.jsonl");
+                MainWindow? validationMain = null;
+                Directory.CreateDirectory(temporaryRoot);
+
+                try
+                {
+                    var settings = CreateMainReferenceSettings(state, referenceUtc);
+                    var store = new SettingsStore(clock: new ValidationClock(referenceUtc));
+                    store.Save(settingsPath, settings);
+                    var workspace = DesktopWorkspace.Load(settingsPath, store);
+                    using var calendar = new HolidayCalendar(temporaryRoot);
+                    validationMain = new MainWindow(
+                        workspace,
+                        calendar,
+                        new DiagnosticLogger(diagnosticPath),
+                        assetRoot)
+                    {
+                        Width = captureWidth,
+                        Height = captureHeight,
+                        ShowActivated = false,
+                        ShowInTaskbar = false,
+                        WindowStartupLocation = WindowStartupLocation.Manual,
+                        Left = -20_000,
+                        Top = -20_000,
+                        Opacity = 1
+                    };
+                    validationMain.Show();
+                    PumpDispatcher();
+                    validationMain.UpdateLayout();
+                    if (validationMain.Content is not FrameworkElement root)
+                    {
+                        throw new InvalidOperationException("主窗口独立参考场景缺少根视觉。");
+                    }
+
+                    var stressNotesPrepared = false;
+                    foreach (var spec in MainReferenceCaptureSpecs.Where(spec =>
+                                 string.Equals(spec.State, state, StringComparison.Ordinal)))
+                    {
+                        var mode = Enum.Parse<ApplicationThemeMode>(spec.Theme);
+                        var workspaceKind = Enum.Parse<WorkspaceKind>(spec.Workspace);
+                        var beijingTime = mode == ApplicationThemeMode.Day
+                            ? dayBeijing
+                            : nightBeijing;
+                        theme.Apply(mode);
+                        validationMain.ApplyTheme(mode);
+                        validationMain.ShowWorkspace(workspaceKind);
+                        validationMain.UpdateTime(beijingTime);
+                        if (state == "Stress" &&
+                            workspaceKind == WorkspaceKind.Notes &&
+                            !stressNotesPrepared)
+                        {
+                            Required<Button>(validationMain, "ToggleCompletedNotes")
+                                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            stressNotesPrepared = true;
+                        }
+
+                        PumpDispatcher();
+                        ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+                        var stressCountdownTitle =
+                            state == "Stress" && workspaceKind == WorkspaceKind.Countdowns
+                                ? MeasureMainStressCountdownTitle(validationMain, spec)
+                                : null;
+                        var pngBytes = EncodePng(CaptureOpaqueMainSurface(root));
+                        var metrics = MeasureMainReferenceCapture(pngBytes);
+                        if (metrics.Width != captureWidth || metrics.Height != captureHeight)
+                        {
+                            throw new InvalidOperationException(
+                                $"主窗口参考帧 {spec.CaptureId} 不是 {captureWidth}x{captureHeight}。");
+                        }
+                        if (!metrics.Alpha.IsFullyOpaque)
+                        {
+                            throw new InvalidOperationException(
+                                $"主窗口参考帧 {spec.CaptureId} 包含非不透明像素。");
+                        }
+
+                        var fingerprint = CreateMainReferenceStateFingerprint(
+                            spec,
+                            beijingTime,
+                            settings);
+                        captures.Add(new MainReferenceActualCapture(
+                            spec,
+                            beijingTime,
+                            pngBytes,
+                            fingerprint,
+                            metrics.Alpha,
+                            metrics.ContentRoi,
+                            stressCountdownTitle));
+                    }
+                }
+                finally
+                {
+                    validationMain?.Close();
+                    PumpDispatcher();
+                    TryDeleteFile(settingsPath);
+                    TryDeleteFile(settingsPath + ".tmp");
+                    TryDeleteFile(diagnosticPath);
+                    var holidayDirectory = Path.Combine(temporaryRoot, "holiday-cache");
+                    if (Directory.Exists(holidayDirectory) &&
+                        !Directory.EnumerateFileSystemEntries(holidayDirectory).Any())
+                    {
+                        Directory.Delete(holidayDirectory);
+                    }
+                    if (Directory.Exists(temporaryRoot) &&
+                        !Directory.EnumerateFileSystemEntries(temporaryRoot).Any())
+                    {
+                        Directory.Delete(temporaryRoot);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            theme.Apply(originalThemeMode);
+        }
+
+        if (captures.Count != MainReferenceCaptureSpecs.Length)
+        {
+            throw new InvalidOperationException("主窗口正式参考场景未生成严格十二帧。");
+        }
+
+        return MainReferenceCaptureSpecs.Select(spec => captures.Single(capture =>
+            string.Equals(capture.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal))).ToArray();
+    }
+
+    private static MainStressCountdownTitleMeasurement MeasureMainStressCountdownTitle(
+        MainWindow main,
+        MainReferenceCaptureSpec spec)
+    {
+        var rows = Required<StackPanel>(main, "CountdownRows");
+        var matchingTitles = Descendants<TextBlock>(rows)
+            .Where(text =>
+                text.IsVisible &&
+                string.Equals(text.Text, MainStressCountdownTitle, StringComparison.Ordinal))
+            .ToArray();
+        var title = matchingTitles.FirstOrDefault();
+        if (title is null)
+        {
+            return MainStressCountdownTitleMeasurement.Missing(spec, MainStressCountdownTitle);
+        }
+
+        var card = rows.Children
+            .OfType<Border>()
+            .SingleOrDefault(candidate => HasVisualAncestor(title, candidate));
+        var actions = card is null
+            ? null
+            : Descendants<StackPanel>(card).SingleOrDefault(panel =>
+                panel.Orientation == Orientation.Horizontal &&
+                panel.Children.OfType<Button>()
+                    .Select(button => button.Content?.ToString() ?? string.Empty)
+                    .SequenceEqual(new[] { "编辑", "删除" }, StringComparer.Ordinal));
+        var scrollViewer = FindVisualAncestor<ScrollViewer>(rows);
+        var viewport = scrollViewer is null
+            ? null
+            : Descendants<ScrollContentPresenter>(scrollViewer)
+                .FirstOrDefault(candidate =>
+                    candidate.IsVisible &&
+                    candidate.ActualWidth > 0 &&
+                    candidate.ActualHeight > 0);
+        if (actions is null || viewport is null)
+        {
+            return MainStressCountdownTitleMeasurement.Missing(
+                spec,
+                MainStressCountdownTitle,
+                title.Text,
+                matchingTitles.Length == 1,
+                title.TextWrapping.ToString(),
+                title.TextTrimming.ToString());
+        }
+
+        var titleBounds = BoundsIn(title, viewport);
+        var actionsBounds = BoundsIn(actions, viewport);
+        var viewportBounds = new Rect(new Point(0, 0), viewport.RenderSize);
+        var textFit = MeasureTextFit(title, viewport);
+        var fullyVisibleInViewport =
+            titleBounds.Left >= viewportBounds.Left - 0.5 &&
+            titleBounds.Top >= viewportBounds.Top - 0.5 &&
+            titleBounds.Right <= viewportBounds.Right + 0.5 &&
+            titleBounds.Bottom <= viewportBounds.Bottom + 0.5;
+        var titleActionsIntersection = Rect.Intersect(titleBounds, actionsBounds);
+        var separatedFromActions =
+            titleActionsIntersection.IsEmpty ||
+            titleActionsIntersection.Width <= 0.5 ||
+            titleActionsIntersection.Height <= 0.5;
+
+        return new MainStressCountdownTitleMeasurement(
+            spec.CaptureId,
+            spec.Theme,
+            MainStressCountdownTitle,
+            title.Text,
+            matchingTitles.Length == 1,
+            title.TextWrapping.ToString(),
+            title.TextTrimming.ToString(),
+            Math.Round(textFit.Required, 2),
+            Math.Round(textFit.Available, 2),
+            textFit.Fits,
+            MainStressCountdownTitleBounds.From(titleBounds),
+            MainStressCountdownTitleBounds.From(viewportBounds),
+            fullyVisibleInViewport,
+            MainStressCountdownTitleBounds.From(actionsBounds),
+            separatedFromActions);
+    }
+
+    private static T? FindVisualAncestor<T>(DependencyObject element)
+        where T : DependencyObject
+    {
+        for (DependencyObject? current = element;
+             current is not null;
+             current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    private static CountdownSettings CreateMainReferenceSettings(
+        string state,
+        DateTimeOffset referenceUtc)
+    {
+        var preferences = new CountdownPreferences(
+            "Second",
+            23_000m,
+            TimeSpan.FromHours(9),
+            TimeSpan.FromHours(18),
+            ThemePreferenceMode.Auto);
+        if (state == "Empty")
+        {
+            return new CountdownSettings(
+                Array.Empty<CountdownRecord>(),
+                Array.Empty<NoteRecord>(),
+                Array.Empty<TagRecord>(),
+                preferences);
+        }
+
+        var tags = new[]
+        {
+            new TagRecord("reference-work", "工作", "#F4B183"),
+            new TagRecord("reference-life", "生活", "#F4B6A6"),
+            new TagRecord("reference-focus", "重点", "#F4D58D")
+        };
+        var beijingDate = ChinaStandardTime.ToBeijingTime(referenceUtc).Date;
+        string Date(int offset) => beijingDate.AddDays(offset)
+            .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+        if (state == "Representative")
+        {
+            return new CountdownSettings(
+                new[]
+                {
+                    new CountdownRecord(
+                        "reference-release",
+                        "版本发布",
+                        referenceUtc.AddDays(2).AddHours(3),
+                        new[] { "reference-work", "reference-focus" }),
+                    new CountdownRecord(
+                        "reference-review",
+                        "季度复盘",
+                        referenceUtc.AddDays(18),
+                        new[] { "reference-work" }),
+                    new CountdownRecord(
+                        "reference-trip",
+                        "周末出发",
+                        referenceUtc.AddDays(5).AddHours(7),
+                        new[] { "reference-life" })
+                },
+                new[]
+                {
+                    new NoteRecord(
+                        "reference-note-plan",
+                        "整理发布清单并确认每一项验收结果。",
+                        Date(0),
+                        false,
+                        new[] { "reference-work", "reference-focus" },
+                        new RepeatingReminder(
+                            referenceUtc.AddHours(2),
+                            new ReminderInterval(30))),
+                    new NoteRecord(
+                        "reference-note-call",
+                        "下午和同事同步下周安排。",
+                        Date(1),
+                        false,
+                        new[] { "reference-work" },
+                        new OnceReminder(referenceUtc.AddHours(5), OnceDeliveryState.Pending)),
+                    new NoteRecord(
+                        "reference-note-life",
+                        "回家前记得取快递。",
+                        Date(0),
+                        false,
+                        new[] { "reference-life" },
+                        NoReminder.Instance)
+                },
+                tags,
+                preferences);
+        }
+
+        if (state != "Stress")
+        {
+            throw new ArgumentOutOfRangeException(nameof(state));
+        }
+
+        return new CountdownSettings(
+            new[]
+            {
+                new CountdownRecord(
+                    "stress-countdown-long",
+                    MainStressCountdownTitle,
+                    referenceUtc.AddHours(1),
+                    new[] { "reference-work", "reference-focus" }),
+                new CountdownRecord("stress-countdown-expired", "已到期里程碑", referenceUtc.AddHours(-5), new[] { "reference-work" }),
+                new CountdownRecord("stress-countdown-2", "设计评审", referenceUtc.AddDays(1), new[] { "reference-work" }),
+                new CountdownRecord("stress-countdown-3", "开发冻结", referenceUtc.AddDays(3), new[] { "reference-focus" }),
+                new CountdownRecord("stress-countdown-4", "测试收口", referenceUtc.AddDays(5), new[] { "reference-work" }),
+                new CountdownRecord("stress-countdown-5", "文档校对", referenceUtc.AddDays(7), Array.Empty<string>()),
+                new CountdownRecord("stress-countdown-6", "团队复盘", referenceUtc.AddDays(14), new[] { "reference-work" }),
+                new CountdownRecord("stress-countdown-7", "旅行出发", referenceUtc.AddDays(30), new[] { "reference-life" }),
+                new CountdownRecord("stress-countdown-8", "年度目标", referenceUtc.AddDays(200), new[] { "reference-focus" })
+            },
+            new[]
+            {
+                new NoteRecord(
+                    "stress-note-active-1",
+                    "这是一条很长的未完成便签，用来确认正文在主窗口暖纸卡片中会自然换行，同时提醒、标签和日期信息仍然保持清晰，不会与右侧操作按钮发生重叠。",
+                    Date(-1),
+                    false,
+                    new[] { "reference-work", "reference-focus" },
+                    new RepeatingReminder(referenceUtc.AddMinutes(45), new ReminderInterval(15))),
+                new NoteRecord("stress-note-active-2", "核对多日期分组的今天节点。", Date(0), false, new[] { "reference-work" }, NoReminder.Instance),
+                new NoteRecord("stress-note-active-3", "准备明天的评审材料与演示数据。", Date(1), false, new[] { "reference-focus" }, new OnceReminder(referenceUtc.AddHours(8), OnceDeliveryState.Pending)),
+                new NoteRecord("stress-note-active-4", "没有日期的临时想法也需要稳定显示。", null, false, new[] { "reference-life" }, NoReminder.Instance),
+                new NoteRecord(
+                    "stress-note-completed-1",
+                    "已完成的长便签仍要保留完整信息层级，并以弱化暖色和删除线表达状态，而不是退回默认系统灰色。",
+                    Date(-2),
+                    true,
+                    new[] { "reference-work" },
+                    NoReminder.Instance),
+                new NoteRecord("stress-note-completed-2", "已完成：整理资料。", Date(-1), true, new[] { "reference-work" }, NoReminder.Instance),
+                new NoteRecord("stress-note-completed-3", "已完成：确认时间。", Date(0), true, new[] { "reference-focus" }, NoReminder.Instance),
+                new NoteRecord("stress-note-completed-4", "已完成：同步结果。", Date(1), true, Array.Empty<string>(), NoReminder.Instance)
+            },
+            tags,
+            preferences);
+    }
+
+    private static MainReferenceStateFingerprint CreateMainReferenceStateFingerprint(
+        MainReferenceCaptureSpec spec,
+        DateTimeOffset beijingTime,
+        CountdownSettings settings)
+    {
+        var settingsSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            SettingsContract.SerializeCanonical(settings))));
+        var activeNoteCount = settings.Notes.Count(note => !note.IsCompleted);
+        var completedNoteCount = settings.Notes.Count(note => note.IsCompleted);
+        var canonicalState = string.Join(
+            "\n",
+            $"theme={spec.Theme}",
+            $"workspace={spec.Workspace}",
+            $"state={spec.State}",
+            $"beijingTime={beijingTime.ToString("O", CultureInfo.InvariantCulture)}",
+            $"settingsSha256={settingsSha256}",
+            $"countdownCount={settings.Countdowns.Count}",
+            $"noteCount={settings.Notes.Count}",
+            $"activeNoteCount={activeNoteCount}",
+            $"completedNoteCount={completedNoteCount}");
+        return new MainReferenceStateFingerprint(
+            MainReferenceStateFingerprintAlgorithm,
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
+            spec.Theme,
+            spec.Workspace,
+            spec.State,
+            beijingTime,
+            settingsSha256,
+            settings.Countdowns.Count,
+            settings.Notes.Count,
+            activeNoteCount,
+            completedNoteCount);
+    }
+
+    private static MainReferenceBaselineValidation ValidateMainReferenceBaseline(
+        string sourceRoot,
+        string baselineDirectory,
+        string manifestPath,
+        string manifestRelativePath,
+        string baselineRelativeDirectory,
+        IReadOnlyList<MainReferenceActualCapture> actualCaptures)
+    {
+        if (!File.Exists(manifestPath))
+        {
+            return MainReferenceBaselineValidation.Invalid(
+                true,
+                false,
+                $"主窗口正式参考 manifest 不存在：{manifestRelativePath}。",
+                manifestRelativePath);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
+            var root = document.RootElement;
+            var structureValid = HasExactJsonProperties(
+                    root,
+                    "schemaVersion",
+                    "baselineVersion",
+                    "captureKind",
+                    "canvas",
+                    "contentRoi",
+                    "sourceBinding",
+                    "executable",
+                    "pixelComparison",
+                    "captures") &&
+                root.GetProperty("schemaVersion").GetInt32() == 1 &&
+                string.Equals(
+                    root.GetProperty("baselineVersion").GetString(),
+                    MainReferenceBaselineVersion,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    root.GetProperty("captureKind").GetString(),
+                    "actual-wpf-main-window",
+                    StringComparison.Ordinal);
+
+            var canvas = root.GetProperty("canvas");
+            structureValid &= HasExactJsonProperties(canvas, "width", "height", "metricDpi") &&
+                canvas.GetProperty("width").GetInt32() == 1165 &&
+                canvas.GetProperty("height").GetInt32() == 1350 &&
+                canvas.GetProperty("metricDpi").GetInt32() == 96;
+            var manifestRoi = ReadMainReferenceContentRoi(
+                root.GetProperty("contentRoi"),
+                ref structureValid);
+            structureValid &= manifestRoi == MainReferenceContentRoi.FullCanvas;
+
+            var sourceBinding = root.GetProperty("sourceBinding");
+            structureValid &= HasExactJsonProperties(
+                sourceBinding,
+                "aggregateAlgorithm",
+                "aggregateSha256",
+                "files");
+            var aggregateAlgorithm = sourceBinding
+                .GetProperty("aggregateAlgorithm")
+                .GetString() ?? string.Empty;
+            var manifestAggregateSha256 = sourceBinding
+                .GetProperty("aggregateSha256")
+                .GetString() ?? string.Empty;
+            var sourceBindings = sourceBinding
+                .GetProperty("files")
+                .EnumerateArray()
+                .Select(element =>
+                {
+                    structureValid &= HasExactJsonProperties(element, "path", "sha256");
+                    return new MainReferenceSourceBinding(
+                        element.GetProperty("path").GetString() ?? string.Empty,
+                        element.GetProperty("sha256").GetString() ?? string.Empty);
+                })
+                .ToArray();
+
+            var executable = root.GetProperty("executable");
+            structureValid &= HasExactJsonProperties(executable, "path", "sha256", "generation");
+            var executablePath = executable.GetProperty("path").GetString() ?? string.Empty;
+            var manifestExecutableSha256 = executable.GetProperty("sha256").GetString() ?? string.Empty;
+            var executableGeneration = executable.GetProperty("generation").GetString() ?? string.Empty;
+
+            var pixelComparison = root.GetProperty("pixelComparison");
+            structureValid &= HasExactJsonProperties(
+                pixelComparison,
+                "algorithm",
+                "maxAbsoluteChannelDelta",
+                "maximumMeanAbsoluteError",
+                "maximumRootMeanSquareError",
+                "maximumChangedPixelCount");
+            var comparisonAlgorithm = pixelComparison.GetProperty("algorithm").GetString() ?? string.Empty;
+            var maximumAbsoluteChannelDelta = pixelComparison
+                .GetProperty("maxAbsoluteChannelDelta")
+                .GetInt32();
+            var maximumMeanAbsoluteError = pixelComparison
+                .GetProperty("maximumMeanAbsoluteError")
+                .GetDouble();
+            var maximumRootMeanSquareError = pixelComparison
+                .GetProperty("maximumRootMeanSquareError")
+                .GetDouble();
+            var maximumChangedPixelCount = pixelComparison
+                .GetProperty("maximumChangedPixelCount")
+                .GetInt32();
+
+            var captures = root.GetProperty("captures")
+                .EnumerateArray()
+                .Select(element => ReadMainReferenceManifestCapture(element, ref structureValid))
+                .ToArray();
+            structureValid &=
+                captures.Length == MainReferenceCaptureSpecs.Length &&
+                string.Equals(
+                    aggregateAlgorithm,
+                    MainReferenceSourceAggregateAlgorithm,
+                    StringComparison.Ordinal) &&
+                string.Equals(executablePath, "app/MinminCountdown.exe", StringComparison.Ordinal) &&
+                string.Equals(
+                    executableGeneration,
+                    "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    comparisonAlgorithm,
+                    MainReferencePixelComparisonAlgorithm,
+                    StringComparison.Ordinal) &&
+                maximumAbsoluteChannelDelta == MainReferenceMaximumAbsoluteChannelDelta &&
+                Math.Abs(maximumMeanAbsoluteError - MainReferenceMaximumMeanAbsoluteError) < 0.0000001 &&
+                Math.Abs(maximumRootMeanSquareError - MainReferenceMaximumRootMeanSquareError) < 0.0000001 &&
+                maximumChangedPixelCount == MainReferenceMaximumChangedPixelCount;
+
+            var expectedPaths = MainReferenceCaptureSpecs
+                .Select(spec => $"{baselineRelativeDirectory}/{spec.FileName}")
+                .ToArray();
+            var captureIds = captures.Select(capture => capture.CaptureId).ToArray();
+            var capturePaths = captures.Select(capture => capture.Path).ToArray();
+            var captureIdsUnique =
+                captureIds.Distinct(StringComparer.Ordinal).Count() == captures.Length &&
+                captureIds.Order(StringComparer.Ordinal).SequenceEqual(
+                    MainReferenceCaptureSpecs.Select(spec => spec.CaptureId).Order(StringComparer.Ordinal),
+                    StringComparer.Ordinal);
+            var capturePathsUnique =
+                capturePaths.Distinct(StringComparer.Ordinal).Count() == captures.Length &&
+                capturePaths.Order(StringComparer.Ordinal).SequenceEqual(
+                    expectedPaths.Order(StringComparer.Ordinal),
+                    StringComparer.Ordinal);
+            var scenarioBindingsUnique = captures
+                .Select(capture => $"{capture.Theme}\0{capture.Workspace}\0{capture.State}")
+                .Distinct(StringComparer.Ordinal)
+                .Count() == captures.Length;
+            var stateBindingsMatch = captures.All(capture =>
+            {
+                var spec = MainReferenceCaptureSpecs.SingleOrDefault(candidate =>
+                    string.Equals(candidate.CaptureId, capture.CaptureId, StringComparison.Ordinal));
+                return spec is not null &&
+                    string.Equals(capture.Theme, spec.Theme, StringComparison.Ordinal) &&
+                    string.Equals(capture.Workspace, spec.Workspace, StringComparison.Ordinal) &&
+                    string.Equals(capture.State, spec.State, StringComparison.Ordinal) &&
+                    string.Equals(
+                        capture.Path,
+                        $"{baselineRelativeDirectory}/{spec.FileName}",
+                        StringComparison.Ordinal) &&
+                    string.Equals(capture.StateFingerprint.Theme, spec.Theme, StringComparison.Ordinal) &&
+                    string.Equals(capture.StateFingerprint.Workspace, spec.Workspace, StringComparison.Ordinal) &&
+                    string.Equals(capture.StateFingerprint.State, spec.State, StringComparison.Ordinal);
+            });
+            structureValid &= captureIdsUnique && capturePathsUnique &&
+                scenarioBindingsUnique && stateBindingsMatch;
+
+            var expectedCaptureFilesPresent = expectedPaths.All(relativePath =>
+                File.Exists(ResolveRepositoryRelativePath(sourceRoot, relativePath)));
+            var pngInventory = Directory.Exists(baselineDirectory)
+                ? Directory.GetFiles(baselineDirectory, "*.png", SearchOption.TopDirectoryOnly)
+                    .Select(Path.GetFileName)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray()
+                : Array.Empty<string>();
+            var expectedInventory = expectedPaths
+                .Select(Path.GetFileName)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+            var noOrphanPngFiles = pngInventory.SequenceEqual(expectedInventory, StringComparer.Ordinal);
+
+            var currentSourceBindings = GetMainReferenceSourceBindings(sourceRoot);
+            var currentSourceAggregate = AggregateMainReferenceSourceBindings(currentSourceBindings);
+            var sourceHashesMatch =
+                sourceBindings.Length == currentSourceBindings.Count &&
+                sourceBindings.Select(binding => binding.Path)
+                    .SequenceEqual(MainReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
+                sourceBindings.Zip(currentSourceBindings).All(pair =>
+                    string.Equals(pair.First.Path, pair.Second.Path, StringComparison.Ordinal) &&
+                    IsUpperSha256(pair.First.Sha256) &&
+                    string.Equals(pair.First.Sha256, pair.Second.Sha256, StringComparison.Ordinal)) &&
+                IsUpperSha256(manifestAggregateSha256) &&
+                string.Equals(
+                    manifestAggregateSha256,
+                    AggregateMainReferenceSourceBindings(sourceBindings),
+                    StringComparison.Ordinal) &&
+                string.Equals(manifestAggregateSha256, currentSourceAggregate, StringComparison.Ordinal);
+
+            var processPath = Environment.ProcessPath;
+            var executableSha256 = !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
+                ? Sha256File(processPath)
+                : string.Empty;
+            var executableHashMatches =
+                IsUpperSha256(manifestExecutableSha256) &&
+                string.Equals(manifestExecutableSha256, executableSha256, StringComparison.Ordinal);
+
+            var actualByCaptureId = actualCaptures.ToDictionary(
+                capture => capture.Spec.CaptureId,
+                StringComparer.Ordinal);
+            var canvasDimensionsMatch = captures.Length == MainReferenceCaptureSpecs.Length;
+            var pngHashesMatch = expectedCaptureFilesPresent;
+            var stateFingerprintsMatch = expectedCaptureFilesPresent;
+            var alphaMetricsMatch = expectedCaptureFilesPresent;
+            var contentRoiMatches = expectedCaptureFilesPresent;
+            var pixelMetricsWithinThresholds = expectedCaptureFilesPresent;
+            var measurements = new List<MainReferenceBaselineCaptureMeasurement>();
+            foreach (var capture in captures)
+            {
+                if (!actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture) ||
+                    !expectedPaths.Contains(capture.Path, StringComparer.Ordinal))
+                {
+                    canvasDimensionsMatch = false;
+                    pngHashesMatch = false;
+                    stateFingerprintsMatch = false;
+                    alphaMetricsMatch = false;
+                    contentRoiMatches = false;
+                    pixelMetricsWithinThresholds = false;
+                    continue;
+                }
+
+                var baselinePath = ResolveRepositoryRelativePath(sourceRoot, capture.Path);
+                if (!File.Exists(baselinePath))
+                {
+                    pngHashesMatch = false;
+                    stateFingerprintsMatch = false;
+                    alphaMetricsMatch = false;
+                    contentRoiMatches = false;
+                    pixelMetricsWithinThresholds = false;
+                    continue;
+                }
+
+                var baselineBytes = File.ReadAllBytes(baselinePath);
+                var baselineMetrics = MeasureMainReferenceCapture(baselineBytes);
+                var actualMetrics = MeasureMainReferenceCapture(actualCapture.PngBytes);
+                var comparison = CompareMainReferencePixels(baselineBytes, actualCapture.PngBytes);
+                var baselineSha256 = Convert.ToHexString(SHA256.HashData(baselineBytes));
+                var actualSha256 = Convert.ToHexString(SHA256.HashData(actualCapture.PngBytes));
+                canvasDimensionsMatch &=
+                    capture.Width == 1165 &&
+                    capture.Height == 1350 &&
+                    baselineMetrics.Width == 1165 &&
+                    baselineMetrics.Height == 1350 &&
+                    actualMetrics.Width == 1165 &&
+                    actualMetrics.Height == 1350;
+                pngHashesMatch &=
+                    IsUpperSha256(capture.PngSha256) &&
+                    string.Equals(capture.PngSha256, baselineSha256, StringComparison.Ordinal) &&
+                    string.Equals(capture.PngSha256, actualSha256, StringComparison.Ordinal);
+                stateFingerprintsMatch &=
+                    MainReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
+                    capture.StateFingerprint == actualCapture.StateFingerprint;
+                alphaMetricsMatch &=
+                    capture.Alpha == baselineMetrics.Alpha &&
+                    capture.Alpha == actualMetrics.Alpha &&
+                    capture.Alpha.IsFullyOpaque;
+                contentRoiMatches &=
+                    capture.ContentRoi == MainReferenceContentRoi.FullCanvas &&
+                    capture.ContentRoi == baselineMetrics.ContentRoi &&
+                    capture.ContentRoi == actualMetrics.ContentRoi;
+                pixelMetricsWithinThresholds &=
+                    capture.Comparison == MainReferencePixelMetrics.Zero &&
+                    comparison.MaxAbsoluteChannelDelta <= maximumAbsoluteChannelDelta &&
+                    comparison.MeanAbsoluteError <= maximumMeanAbsoluteError &&
+                    comparison.RootMeanSquareError <= maximumRootMeanSquareError &&
+                    comparison.ChangedPixelCount <= maximumChangedPixelCount;
+                measurements.Add(new MainReferenceBaselineCaptureMeasurement(
+                    capture.CaptureId,
+                    capture.Theme,
+                    capture.Workspace,
+                    capture.State,
+                    capture.Path,
+                    capture.BeijingTime,
+                    baselineSha256,
+                    actualSha256,
+                    capture.StateFingerprint,
+                    actualMetrics.Alpha,
+                    actualMetrics.ContentRoi,
+                    comparison));
+            }
+
+            var stateFingerprintsUnique =
+                captures.Select(capture => capture.StateFingerprint.Sha256)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() == captures.Length;
+            var pngHashesUnique =
+                captures.Select(capture => capture.PngSha256)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() == captures.Length;
+            var gates = ValidationExercises.EvaluateMainReferenceManifestGates(
+                new MainReferenceManifestGateInputs(
+                    structureValid,
+                    expectedCaptureFilesPresent,
+                    noOrphanPngFiles,
+                    captureIdsUnique,
+                    capturePathsUnique,
+                    scenarioBindingsUnique,
+                    canvasDimensionsMatch,
+                    sourceHashesMatch,
+                    executableHashMatches,
+                    pngHashesMatch,
+                    stateFingerprintsMatch,
+                    alphaMetricsMatch,
+                    contentRoiMatches,
+                    pixelMetricsWithinThresholds,
+                    stateFingerprintsUnique,
+                    pngHashesUnique));
+            var diagnostics = gates.AsDictionary()
+                .Where(pair => !pair.Value)
+                .Select(pair => pair.Key)
+                .ToArray();
+            var stressCountdownTitleMeasurements = actualCaptures
+                .Select(capture => capture.StressCountdownTitle)
+                .OfType<MainStressCountdownTitleMeasurement>()
+                .OrderBy(measurement => measurement.CaptureId, StringComparer.Ordinal)
+                .ToArray();
+            return new MainReferenceBaselineValidation(
+                true,
+                true,
+                manifestRelativePath,
+                currentSourceAggregate,
+                executableSha256,
+                gates,
+                measurements,
+                stressCountdownTitleMeasurements,
+                diagnostics);
+        }
+        catch (Exception exception) when (exception is IOException or JsonException or
+               InvalidOperationException or FormatException or KeyNotFoundException)
+        {
+            return MainReferenceBaselineValidation.Invalid(
+                true,
+                File.Exists(manifestPath),
+                exception.Message,
+                manifestRelativePath);
+        }
+    }
+
+    private static void GenerateMainReferenceBaseline(
+        string sourceRoot,
+        string baselineDirectory,
+        string manifestPath,
+        string baselineRelativeDirectory,
+        IReadOnlyList<MainReferenceActualCapture> actualCaptures)
+    {
+        if (actualCaptures.Count != MainReferenceCaptureSpecs.Length ||
+            actualCaptures.Select(capture => capture.Spec.CaptureId)
+                .Distinct(StringComparer.Ordinal)
+                .Count() != MainReferenceCaptureSpecs.Length)
+        {
+            throw new InvalidOperationException("主窗口参考图生成必须提供严格十二帧 inventory。");
+        }
+        if (Directory.Exists(baselineDirectory) &&
+            Directory.EnumerateFileSystemEntries(baselineDirectory).Any())
+        {
+            throw new InvalidOperationException(
+                $"主窗口正式参考基线已存在，拒绝覆盖：{MainReferenceBaselineVersion}。");
+        }
+        if (actualCaptures.Any(capture =>
+                MeasureMainReferenceCapture(capture.PngBytes) is not
+                { Width: 1165, Height: 1350, Alpha.IsFullyOpaque: true }))
+        {
+            throw new InvalidOperationException("主窗口正式参考帧必须为 1165x1350 全不透明 PNG。");
+        }
+
+        Directory.CreateDirectory(baselineDirectory);
+        var sourceBindings = GetMainReferenceSourceBindings(sourceRoot);
+        var sourceAggregate = AggregateMainReferenceSourceBindings(sourceBindings);
+        var processPath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(processPath) || !File.Exists(processPath))
+        {
+            throw new InvalidOperationException("无法绑定生成主窗口参考图的当前 EXE。");
+        }
+
+        var executableSha256 = Sha256File(processPath);
+        var manifest = JsonSerializer.SerializeToUtf8Bytes(
+            new
+            {
+                schemaVersion = 1,
+                baselineVersion = MainReferenceBaselineVersion,
+                captureKind = "actual-wpf-main-window",
+                canvas = new { width = 1165, height = 1350, metricDpi = 96 },
+                contentRoi = new
+                {
+                    algorithm = MainReferenceRoiAlgorithm,
+                    x = 0,
+                    y = 0,
+                    width = 1165,
+                    height = 1350,
+                    pixelCount = 1165 * 1350
+                },
+                sourceBinding = new
+                {
+                    aggregateAlgorithm = MainReferenceSourceAggregateAlgorithm,
+                    aggregateSha256 = sourceAggregate,
+                    files = sourceBindings.Select(binding => new
+                    {
+                        path = binding.Path,
+                        sha256 = binding.Sha256
+                    })
+                },
+                executable = new
+                {
+                    path = "app/MinminCountdown.exe",
+                    sha256 = executableSha256,
+                    generation = "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
+                },
+                pixelComparison = new
+                {
+                    algorithm = MainReferencePixelComparisonAlgorithm,
+                    maxAbsoluteChannelDelta = MainReferenceMaximumAbsoluteChannelDelta,
+                    maximumMeanAbsoluteError = MainReferenceMaximumMeanAbsoluteError,
+                    maximumRootMeanSquareError = MainReferenceMaximumRootMeanSquareError,
+                    maximumChangedPixelCount = MainReferenceMaximumChangedPixelCount
+                },
+                captures = MainReferenceCaptureSpecs.Select(spec =>
+                {
+                    var capture = actualCaptures.Single(actual =>
+                        string.Equals(actual.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal));
+                    return CreateMainReferenceManifestCapture(
+                        capture,
+                        $"{baselineRelativeDirectory}/{spec.FileName}");
+                })
+            },
+            new JsonSerializerOptions { WriteIndented = true });
+        foreach (var capture in actualCaptures)
+        {
+            var path = ResolveRepositoryRelativePath(
+                sourceRoot,
+                $"{baselineRelativeDirectory}/{capture.Spec.FileName}");
+            WriteBytesAtomically(path, capture.PngBytes);
+        }
+        WriteBytesAtomically(manifestPath, manifest);
+    }
+
+    private static object CreateMainReferenceManifestCapture(
+        MainReferenceActualCapture capture,
+        string path) =>
+        new
+        {
+            captureId = capture.Spec.CaptureId,
+            theme = capture.Spec.Theme,
+            workspace = capture.Spec.Workspace,
+            state = capture.Spec.State,
+            path,
+            beijingTime = capture.BeijingTime,
+            width = 1165,
+            height = 1350,
+            pngSha256 = Convert.ToHexString(SHA256.HashData(capture.PngBytes)),
+            stateFingerprint = new
+            {
+                algorithm = capture.StateFingerprint.Algorithm,
+                sha256 = capture.StateFingerprint.Sha256,
+                theme = capture.StateFingerprint.Theme,
+                workspace = capture.StateFingerprint.Workspace,
+                state = capture.StateFingerprint.State,
+                beijingTime = capture.StateFingerprint.BeijingTime,
+                settingsSha256 = capture.StateFingerprint.SettingsSha256,
+                countdownCount = capture.StateFingerprint.CountdownCount,
+                noteCount = capture.StateFingerprint.NoteCount,
+                activeNoteCount = capture.StateFingerprint.ActiveNoteCount,
+                completedNoteCount = capture.StateFingerprint.CompletedNoteCount
+            },
+            alpha = new
+            {
+                algorithm = capture.Alpha.Algorithm,
+                minimum = capture.Alpha.Minimum,
+                maximum = capture.Alpha.Maximum,
+                nonOpaquePixelCount = capture.Alpha.NonOpaquePixelCount,
+                opaquePixelCount = capture.Alpha.OpaquePixelCount
+            },
+            contentRoi = new
+            {
+                algorithm = capture.ContentRoi.Algorithm,
+                x = capture.ContentRoi.X,
+                y = capture.ContentRoi.Y,
+                width = capture.ContentRoi.Width,
+                height = capture.ContentRoi.Height,
+                pixelCount = capture.ContentRoi.PixelCount
+            },
+            comparison = new
+            {
+                maxAbsoluteChannelDelta = 0,
+                meanAbsoluteError = 0,
+                rootMeanSquareError = 0,
+                changedPixelCount = 0
+            }
+        };
+
+    private static MainReferenceManifestCapture ReadMainReferenceManifestCapture(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "captureId",
+            "theme",
+            "workspace",
+            "state",
+            "path",
+            "beijingTime",
+            "width",
+            "height",
+            "pngSha256",
+            "stateFingerprint",
+            "alpha",
+            "contentRoi",
+            "comparison");
+        return new MainReferenceManifestCapture(
+            element.GetProperty("captureId").GetString() ?? string.Empty,
+            element.GetProperty("theme").GetString() ?? string.Empty,
+            element.GetProperty("workspace").GetString() ?? string.Empty,
+            element.GetProperty("state").GetString() ?? string.Empty,
+            element.GetProperty("path").GetString() ?? string.Empty,
+            element.GetProperty("beijingTime").GetDateTimeOffset(),
+            element.GetProperty("width").GetInt32(),
+            element.GetProperty("height").GetInt32(),
+            element.GetProperty("pngSha256").GetString() ?? string.Empty,
+            ReadMainReferenceStateFingerprint(
+                element.GetProperty("stateFingerprint"),
+                ref structureValid),
+            ReadMainReferenceAlphaMetrics(element.GetProperty("alpha"), ref structureValid),
+            ReadMainReferenceContentRoi(element.GetProperty("contentRoi"), ref structureValid),
+            ReadMainReferencePixelMetrics(element.GetProperty("comparison"), ref structureValid));
+    }
+
+    private static MainReferenceStateFingerprint ReadMainReferenceStateFingerprint(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "algorithm",
+            "sha256",
+            "theme",
+            "workspace",
+            "state",
+            "beijingTime",
+            "settingsSha256",
+            "countdownCount",
+            "noteCount",
+            "activeNoteCount",
+            "completedNoteCount");
+        return new MainReferenceStateFingerprint(
+            element.GetProperty("algorithm").GetString() ?? string.Empty,
+            element.GetProperty("sha256").GetString() ?? string.Empty,
+            element.GetProperty("theme").GetString() ?? string.Empty,
+            element.GetProperty("workspace").GetString() ?? string.Empty,
+            element.GetProperty("state").GetString() ?? string.Empty,
+            element.GetProperty("beijingTime").GetDateTimeOffset(),
+            element.GetProperty("settingsSha256").GetString() ?? string.Empty,
+            element.GetProperty("countdownCount").GetInt32(),
+            element.GetProperty("noteCount").GetInt32(),
+            element.GetProperty("activeNoteCount").GetInt32(),
+            element.GetProperty("completedNoteCount").GetInt32());
+    }
+
+    private static MainReferenceAlphaMetrics ReadMainReferenceAlphaMetrics(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "algorithm",
+            "minimum",
+            "maximum",
+            "nonOpaquePixelCount",
+            "opaquePixelCount");
+        return new MainReferenceAlphaMetrics(
+            element.GetProperty("algorithm").GetString() ?? string.Empty,
+            element.GetProperty("minimum").GetInt32(),
+            element.GetProperty("maximum").GetInt32(),
+            element.GetProperty("nonOpaquePixelCount").GetInt32(),
+            element.GetProperty("opaquePixelCount").GetInt32());
+    }
+
+    private static MainReferenceContentRoi ReadMainReferenceContentRoi(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "algorithm",
+            "x",
+            "y",
+            "width",
+            "height",
+            "pixelCount");
+        return new MainReferenceContentRoi(
+            element.GetProperty("algorithm").GetString() ?? string.Empty,
+            element.GetProperty("x").GetInt32(),
+            element.GetProperty("y").GetInt32(),
+            element.GetProperty("width").GetInt32(),
+            element.GetProperty("height").GetInt32(),
+            element.GetProperty("pixelCount").GetInt32());
+    }
+
+    private static MainReferencePixelMetrics ReadMainReferencePixelMetrics(
+        JsonElement element,
+        ref bool structureValid)
+    {
+        structureValid &= HasExactJsonProperties(
+            element,
+            "maxAbsoluteChannelDelta",
+            "meanAbsoluteError",
+            "rootMeanSquareError",
+            "changedPixelCount");
+        return new MainReferencePixelMetrics(
+            element.GetProperty("maxAbsoluteChannelDelta").GetInt32(),
+            element.GetProperty("meanAbsoluteError").GetDouble(),
+            element.GetProperty("rootMeanSquareError").GetDouble(),
+            element.GetProperty("changedPixelCount").GetInt32());
+    }
+
+    private static bool MainReferenceStateFingerprintMatchesCanonical(
+        MainReferenceStateFingerprint fingerprint)
+    {
+        if (!IsUpperSha256(fingerprint.Sha256) ||
+            !IsUpperSha256(fingerprint.SettingsSha256) ||
+            fingerprint.CountdownCount < 0 ||
+            fingerprint.NoteCount < 0 ||
+            fingerprint.ActiveNoteCount < 0 ||
+            fingerprint.CompletedNoteCount < 0 ||
+            fingerprint.ActiveNoteCount + fingerprint.CompletedNoteCount != fingerprint.NoteCount)
+        {
+            return false;
+        }
+
+        var canonicalState = string.Join(
+            "\n",
+            $"theme={fingerprint.Theme}",
+            $"workspace={fingerprint.Workspace}",
+            $"state={fingerprint.State}",
+            $"beijingTime={fingerprint.BeijingTime.ToString("O", CultureInfo.InvariantCulture)}",
+            $"settingsSha256={fingerprint.SettingsSha256}",
+            $"countdownCount={fingerprint.CountdownCount}",
+            $"noteCount={fingerprint.NoteCount}",
+            $"activeNoteCount={fingerprint.ActiveNoteCount}",
+            $"completedNoteCount={fingerprint.CompletedNoteCount}");
+        return string.Equals(
+                   fingerprint.Algorithm,
+                   MainReferenceStateFingerprintAlgorithm,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
+                   fingerprint.Sha256,
+                   StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<MainReferenceSourceBinding> GetMainReferenceSourceBindings(
+        string sourceRoot) =>
+        MainReferenceCanonicalSourcePaths.Select(relativePath =>
+        {
+            var path = ResolveRepositoryRelativePath(sourceRoot, relativePath);
+            if (!File.Exists(path))
+            {
+                throw new FileNotFoundException(
+                    $"主窗口参考图绑定的视觉源码不存在：{relativePath}",
+                    path);
+            }
+
+            return new MainReferenceSourceBinding(relativePath, Sha256File(path));
+        }).ToArray();
+
+    private static string AggregateMainReferenceSourceBindings(
+        IEnumerable<MainReferenceSourceBinding> bindings)
+    {
+        using var stream = new MemoryStream();
+        foreach (var binding in bindings.OrderBy(binding => binding.Path, StringComparer.Ordinal))
+        {
+            var line = Encoding.UTF8.GetBytes($"{binding.Path}\0{binding.Sha256}\n");
+            stream.Write(line, 0, line.Length);
+        }
+
+        return Convert.ToHexString(SHA256.HashData(stream.ToArray()));
+    }
+
+    private static MainReferenceCaptureMetrics MeasureMainReferenceCapture(byte[] bytes)
+    {
+        var bitmap = DecodeBitmap(bytes);
+        var (pixels, _) = GetBgra32Pixels(bitmap);
+        var minimum = byte.MaxValue;
+        var maximum = byte.MinValue;
+        var nonOpaque = 0;
+        var opaque = 0;
+        for (var index = 3; index < pixels.Length; index += 4)
+        {
+            var alpha = pixels[index];
+            minimum = Math.Min(minimum, alpha);
+            maximum = Math.Max(maximum, alpha);
+            if (alpha == byte.MaxValue)
+            {
+                opaque++;
+            }
+            else
+            {
+                nonOpaque++;
+            }
+        }
+
+        return new MainReferenceCaptureMetrics(
+            bitmap.PixelWidth,
+            bitmap.PixelHeight,
+            new MainReferenceAlphaMetrics(
+                MainReferenceAlphaAlgorithm,
+                minimum,
+                maximum,
+                nonOpaque,
+                opaque),
+            new MainReferenceContentRoi(
+                MainReferenceRoiAlgorithm,
+                0,
+                0,
+                bitmap.PixelWidth,
+                bitmap.PixelHeight,
+                bitmap.PixelWidth * bitmap.PixelHeight));
+    }
+
+    private static MainReferencePixelMetrics CompareMainReferencePixels(
+        byte[] baselineBytes,
+        byte[] actualBytes)
+    {
+        var metrics = CompareFloatingReferencePixels(baselineBytes, actualBytes);
+        return new MainReferencePixelMetrics(
+            metrics.MaxAbsoluteChannelDelta,
+            metrics.MeanAbsoluteError,
+            metrics.RootMeanSquareError,
+            metrics.ChangedPixelCount);
+    }
+
     private static FloatingReferenceExerciseResult RunFloatingReferenceExercise(
         MainWindow manager,
         string assetRoot)
@@ -2304,6 +3594,14 @@ internal static class ValidationReport
                     "距离下班",
                     "七月倒计时"));
             var secondaryRemainingSamples = new List<FloatingSecondaryRemainingMeasurement>();
+            var primaryCountdownContrastMeasurements = new List<FloatingPrimaryCountdownContrastMeasurement>
+            {
+                CaptureFloatingPrimaryCountdownContrast(
+                    ApplicationThemeMode.Day,
+                    referenceWindow,
+                    rows,
+                    panel)
+            };
             var referencePreferences = referenceSession.Current.Preferences;
             var precisionPreferencesSaved = true;
             var precisionCases = new (string Precision, string ExpectedText)[]
@@ -2419,6 +3717,21 @@ internal static class ValidationReport
                     baselineBodyScroller.ScrollableHeight,
                     "距离下班",
                     "七月倒计时"));
+            primaryCountdownContrastMeasurements.Add(CaptureFloatingPrimaryCountdownContrast(
+                ApplicationThemeMode.Night,
+                referenceWindow,
+                rows,
+                panel));
+            var primaryCountdownContrastGates =
+                ValidationExercises.EvaluateFloatingPrimaryCountdownContrastGates(
+                    new FloatingPrimaryCountdownContrastGateInputs(
+                        primaryCountdownContrastMeasurements
+                            .Select(measurement => measurement.ContrastRatio)
+                            .ToArray(),
+                        primaryCountdownContrastMeasurements.All(measurement =>
+                            measurement.UsesExpectedSemanticAccent &&
+                            measurement.AccentTrackMatchesText &&
+                            measurement.AccentDiffersFromPlushGlow)));
             referenceWindow.ApplyTheme(ApplicationThemeMode.Day);
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
@@ -2602,6 +3915,7 @@ internal static class ValidationReport
                 new[] { dayCountdownCapture, nightCountdownCapture }
                     .Concat(floatingLongNotesValidation.Captures)
                     .ToArray(),
+                floatingLongNotesValidation.TypographyMatches,
                 floatingLongNotesValidation.LayoutValid);
             viewportStates.Add(
                 CaptureFloatingViewportState("six-multiline-notes", referenceWindow, root, rows));
@@ -2941,6 +4255,9 @@ internal static class ValidationReport
                 mascotGeometryMatches,
                 floatingReferenceBaseline,
                 floatingLongNotesValidation,
+                new FloatingPrimaryCountdownContrastValidation(
+                    primaryCountdownContrastGates,
+                    primaryCountdownContrastMeasurements),
                 nightPlushEdgeGlow,
                 contentSafeAreaMatches,
                 titleUsesSemiBoldWeight,
@@ -3009,6 +4326,7 @@ internal static class ValidationReport
             !note.Text.Contains('\r') && !note.Text.Contains('\n'));
         var naturalWraps = true;
         var safeAreaMatches = true;
+        var typographyMatches = true;
         var usesOnlyOuterScroller =
             viewport is not null &&
             HasVisualAncestor(rows, bodyScroller) &&
@@ -3039,8 +4357,25 @@ internal static class ValidationReport
                     root.ActualWidth is >= 519.5 and <= 520.5 &&
                     root.ActualHeight is >= 389.5 and <= 390.5 &&
                     FloatingLongNoteSafeAreaMatches(window, root, cardBindings);
+                var reminderTexts = cardBindings
+                    .Select(binding => binding.ReminderText)
+                    .Where(text => text is not null)
+                    .Cast<TextBlock>()
+                    .ToArray();
+                var stateTypographyMatches =
+                    cardBindings.Count == notes.Count &&
+                    cardBindings.All(binding =>
+                        Math.Abs(binding.BodyText.FontSize - 13) <= 0.01 &&
+                        Math.Abs(binding.BodyText.LineHeight - 18) <= 0.01 &&
+                        binding.BodyText.LineStackingStrategy == LineStackingStrategy.BlockLineHeight) &&
+                    reminderTexts.Length == 1 &&
+                    reminderTexts.All(text =>
+                        Math.Abs(text.FontSize - 12) <= 0.01 &&
+                        Math.Abs(text.LineHeight - 17) <= 0.01 &&
+                        text.LineStackingStrategy == LineStackingStrategy.BlockLineHeight);
                 naturalWraps &= stateNaturalWraps;
                 safeAreaMatches &= stateSafeAreaMatches;
+                typographyMatches &= stateTypographyMatches;
 
                 var visibleBindings = viewport is null
                     ? Array.Empty<FloatingNoteCardBinding>()
@@ -3094,7 +4429,12 @@ internal static class ValidationReport
                     usesOnlyOuterScroller,
                     bodyScroller.ScrollableHeight > 0,
                     primaryAnchorReachable,
-                    stateSafeAreaMatches));
+                    stateSafeAreaMatches,
+                    TypographyMeasurement(cardBindings.Select(binding => binding.BodyText.FontSize)),
+                    TypographyMeasurement(cardBindings.Select(binding => binding.BodyText.LineHeight)),
+                    TypographyMeasurement(reminderTexts.Select(text => text.FontSize)),
+                    TypographyMeasurement(reminderTexts.Select(text => text.LineHeight)),
+                    stateTypographyMatches));
             }
         }
 
@@ -3122,8 +4462,86 @@ internal static class ValidationReport
             outerScrollable,
             topBottomReachable,
             safeAreaMatches,
+            typographyMatches,
             measurements,
             captures);
+    }
+
+    private static double TypographyMeasurement(IEnumerable<double> values)
+    {
+        var measured = values.FirstOrDefault();
+        return double.IsFinite(measured) ? Math.Round(measured, 2) : 0;
+    }
+
+    private static FloatingPrimaryCountdownContrastMeasurement CaptureFloatingPrimaryCountdownContrast(
+        ApplicationThemeMode theme,
+        FloatingWindow window,
+        StackPanel rows,
+        Border taskCard)
+    {
+        var primaryCard = rows.Children.OfType<Border>().First();
+        var primaryRoot = primaryCard.Child as Grid
+            ?? throw new InvalidOperationException("悬浮窗主倒计时缺少动态根布局。");
+        var primarySurface = primaryRoot.Children.OfType<Border>().First(border =>
+            border.Background is SolidColorBrush brush &&
+            brush.Color.A > 0 &&
+            border.Height is not 1 &&
+            border.Width is not 3);
+        var accentTrack = primaryRoot.Children.OfType<Border>().Single(border =>
+            Math.Abs(border.Width - 3) <= 0.01);
+        var remainingText = Descendants<TextBlock>(primaryCard).Single(text =>
+            Math.Abs(text.FontSize - 16) <= 0.01 &&
+            Math.Abs(text.Width - 194) <= 0.01);
+        var foreground = remainingText.Foreground as SolidColorBrush
+            ?? throw new InvalidOperationException("悬浮窗主倒计时前景不是实色画刷。");
+        var surface = primarySurface.Background as SolidColorBrush
+            ?? throw new InvalidOperationException("悬浮窗主倒计时纸面不是实色画刷。");
+        var taskCardBrush = taskCard.Background as SolidColorBrush
+            ?? throw new InvalidOperationException("悬浮窗任务卡背景不是实色画刷。");
+        var palette = FloatingThemePalette.For(theme);
+        var effectiveTaskCard = taskCardBrush.Color.A > 0
+            ? taskCardBrush.Color
+            : ((SolidColorBrush)window.FindResource(palette.PanelBrushKey)).Color;
+        var compositeBackground = CompositeColor(
+            surface.Color,
+            primarySurface.Opacity,
+            effectiveTaskCard);
+        var expectedAccentKey = $"Floating{theme}PrimaryCountdownAccentBrush";
+        var expectedAccent = window.TryFindResource(expectedAccentKey) as SolidColorBrush;
+        var plushGlow = window.FindResource(palette.PlushGlowBrushKey) as SolidColorBrush
+            ?? throw new InvalidOperationException("悬浮窗玩偶阴影不是实色画刷。");
+        var accentTrackBrush = accentTrack.Background as SolidColorBrush;
+
+        return new FloatingPrimaryCountdownContrastMeasurement(
+            theme.ToString(),
+            expectedAccentKey,
+            palette.PlushGlowBrushKey,
+            foreground.Color.ToString(),
+            surface.Color.ToString(),
+            Math.Round(primarySurface.Opacity, 2),
+            taskCardBrush.Color.ToString(),
+            effectiveTaskCard.ToString(),
+            compositeBackground.ToString(),
+            Math.Round(ContrastRatio(foreground.Color, compositeBackground), 3),
+            Math.Round(remainingText.FontSize, 2),
+            expectedAccent is not null && ReferenceEquals(remainingText.Foreground, expectedAccent),
+            expectedAccent is not null && ReferenceEquals(accentTrack.Background, expectedAccent),
+            !string.Equals(foreground.Color.ToString(), plushGlow.Color.ToString(), StringComparison.Ordinal));
+    }
+
+    private static Color CompositeColor(Color foreground, double elementOpacity, Color background)
+    {
+        var alpha = (foreground.A / 255d) * elementOpacity;
+        static byte Mix(byte foregroundChannel, byte backgroundChannel, double alpha) =>
+            (byte)Math.Round(
+                (foregroundChannel * alpha) + (backgroundChannel * (1 - alpha)),
+                MidpointRounding.AwayFromZero);
+
+        return Color.FromArgb(
+            255,
+            Mix(foreground.R, background.R, alpha),
+            Mix(foreground.G, background.G, alpha),
+            Mix(foreground.B, background.B, alpha));
     }
 
     private static IReadOnlyList<FloatingNoteCardBinding> CaptureFloatingNoteCardBindings(
@@ -3145,9 +4563,19 @@ internal static class ValidationReport
                     .Single(element => Grid.GetColumn(element) == 1);
                 var bodyText = body.Children.OfType<TextBlock>()
                     .First(element => string.Equals(element.Text, note.Text, StringComparison.Ordinal));
+                var reminderText = body.Children.OfType<TextBlock>()
+                    .SingleOrDefault(element => element.Text.StartsWith("下次提醒：", StringComparison.Ordinal));
                 var dateStamp = layout.Children.OfType<Border>()
                     .Single(element => Grid.GetColumn(element) == 2);
-                return new FloatingNoteCardBinding(card, layout, completion, body, bodyText, dateStamp, note);
+                return new FloatingNoteCardBinding(
+                    card,
+                    layout,
+                    completion,
+                    body,
+                    bodyText,
+                    reminderText,
+                    dateStamp,
+                    note);
             })
             .Where(binding => binding is not null)
             .Cast<FloatingNoteCardBinding>()
@@ -3308,6 +4736,7 @@ internal static class ValidationReport
     private static FloatingReferenceBaselineValidation ValidateFloatingReferenceBaseline(
         string assetRoot,
         IReadOnlyList<FloatingReferenceActualCapture> actualCaptures,
+        bool longNoteTypographyMatches,
         bool longNoteLayoutValid)
     {
         const string sourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
@@ -3669,11 +5098,7 @@ internal static class ValidationReport
 
             var manifestPngHashes = captures.Select(capture => capture.PngSha256).ToArray();
             var pngHashesUnique =
-                manifestPngHashes.Distinct(StringComparer.Ordinal).Count() == captures.Length &&
-                captures.Single(capture => capture.CaptureId == "floating-countdowns-day").PngSha256 ==
-                    FloatingReferenceDayCountdownSha256 &&
-                captures.Single(capture => capture.CaptureId == "floating-countdowns-night").PngSha256 ==
-                    FloatingReferenceNightCountdownSha256;
+                manifestPngHashes.Distinct(StringComparer.Ordinal).Count() == captures.Length;
             var stateFingerprintsUnique =
                 captures.Select(capture => capture.StateFingerprint.Sha256)
                     .Distinct(StringComparer.Ordinal)
@@ -3730,6 +5155,7 @@ internal static class ValidationReport
                     stateFingerprintsUnique,
                     pngHashesUnique,
                     topBottomPixelsDiffer,
+                    longNoteTypographyMatches,
                     longNoteLayoutValid));
             var diagnostics = gates.AsDictionary()
                 .Concat(freshnessGates.AsDictionary())
@@ -3772,6 +5198,13 @@ internal static class ValidationReport
             throw new InvalidOperationException("悬浮窗参考图生成必须提供严格六帧 inventory。");
         }
 
+        if (Directory.Exists(baselineDirectory) &&
+            Directory.EnumerateFileSystemEntries(baselineDirectory).Any())
+        {
+            throw new InvalidOperationException(
+                $"悬浮窗正式参考基线已存在，拒绝覆盖：{FloatingReferenceBaselineVersion}。");
+        }
+
         Directory.CreateDirectory(baselineDirectory);
         var captureMetrics = actualCaptures.ToDictionary(
             capture => capture.Spec.CaptureId,
@@ -3780,22 +5213,6 @@ internal static class ValidationReport
         if (captureMetrics.Values.Any(metrics => metrics.Width != 520 || metrics.Height != 390))
         {
             throw new InvalidOperationException("悬浮窗参考图生成帧不是 520x390。");
-        }
-
-        var dayCountdown = actualCaptures.Single(capture =>
-            capture.Spec.CaptureId == "floating-countdowns-day");
-        var nightCountdown = actualCaptures.Single(capture =>
-            capture.Spec.CaptureId == "floating-countdowns-night");
-        if (!string.Equals(
-                Convert.ToHexString(SHA256.HashData(dayCountdown.PngBytes)),
-                FloatingReferenceDayCountdownSha256,
-                StringComparison.Ordinal) ||
-            !string.Equals(
-                Convert.ToHexString(SHA256.HashData(nightCountdown.PngBytes)),
-                FloatingReferenceNightCountdownSha256,
-                StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException("#2 日夜倒计时参考帧发生变化，拒绝重写 2026-08-04-v1。");
         }
 
         var sourceBindings = GetFloatingReferenceSourceBindings(sourceRoot);
@@ -3896,16 +5313,6 @@ internal static class ValidationReport
         {
             var relativePath = $"{baselineRelativeDirectory}/{capture.Spec.FileName}";
             var path = ResolveRepositoryRelativePath(sourceRoot, relativePath);
-            if (capture.Spec.CaptureId is "floating-countdowns-day" or "floating-countdowns-night")
-            {
-                if (!File.Exists(path) ||
-                    !File.ReadAllBytes(path).SequenceEqual(capture.PngBytes))
-                {
-                    throw new InvalidOperationException($"#2 固定参考帧缺失或字节已变化：{capture.Spec.CaptureId}。");
-                }
-                continue;
-            }
-
             WriteBytesAtomically(path, capture.PngBytes);
         }
         WriteBytesAtomically(manifestPath, manifest);
@@ -7346,6 +8753,256 @@ internal static class ValidationReport
         string NightNotesCapturePath,
         string ManifestPath);
 
+    private sealed record MainReferenceCaptureSpec(
+        string CaptureId,
+        string Theme,
+        string Workspace,
+        string State,
+        string FileName);
+
+    private sealed record MainReferenceSourceBinding(string Path, string Sha256);
+
+    private sealed record MainReferenceStateFingerprint(
+        string Algorithm,
+        string Sha256,
+        string Theme,
+        string Workspace,
+        string State,
+        DateTimeOffset BeijingTime,
+        string SettingsSha256,
+        int CountdownCount,
+        int NoteCount,
+        int ActiveNoteCount,
+        int CompletedNoteCount);
+
+    private sealed record MainReferenceAlphaMetrics(
+        string Algorithm,
+        int Minimum,
+        int Maximum,
+        int NonOpaquePixelCount,
+        int OpaquePixelCount)
+    {
+        public bool IsFullyOpaque =>
+            string.Equals(Algorithm, MainReferenceAlphaAlgorithm, StringComparison.Ordinal) &&
+            Minimum == byte.MaxValue &&
+            Maximum == byte.MaxValue &&
+            NonOpaquePixelCount == 0 &&
+            OpaquePixelCount == 1165 * 1350;
+    }
+
+    private sealed record MainReferenceContentRoi(
+        string Algorithm,
+        int X,
+        int Y,
+        int Width,
+        int Height,
+        int PixelCount)
+    {
+        public static MainReferenceContentRoi FullCanvas { get; } = new(
+            MainReferenceRoiAlgorithm,
+            0,
+            0,
+            1165,
+            1350,
+            1165 * 1350);
+    }
+
+    private sealed record MainReferencePixelMetrics(
+        int MaxAbsoluteChannelDelta,
+        double MeanAbsoluteError,
+        double RootMeanSquareError,
+        int ChangedPixelCount)
+    {
+        public static MainReferencePixelMetrics Zero { get; } = new(0, 0, 0, 0);
+    }
+
+    private sealed record MainReferenceCaptureMetrics(
+        int Width,
+        int Height,
+        MainReferenceAlphaMetrics Alpha,
+        MainReferenceContentRoi ContentRoi);
+
+    private sealed record MainReferenceActualCapture(
+        MainReferenceCaptureSpec Spec,
+        DateTimeOffset BeijingTime,
+        byte[] PngBytes,
+        MainReferenceStateFingerprint StateFingerprint,
+        MainReferenceAlphaMetrics Alpha,
+        MainReferenceContentRoi ContentRoi,
+        MainStressCountdownTitleMeasurement? StressCountdownTitle);
+
+    private sealed record MainStressCountdownTitleBounds(
+        double X,
+        double Y,
+        double Width,
+        double Height)
+    {
+        public static MainStressCountdownTitleBounds Empty { get; } = new(0, 0, 0, 0);
+
+        public static MainStressCountdownTitleBounds From(Rect bounds) =>
+            new(
+                Math.Round(bounds.X, 2),
+                Math.Round(bounds.Y, 2),
+                Math.Round(bounds.Width, 2),
+                Math.Round(bounds.Height, 2));
+    }
+
+    private sealed record MainStressCountdownTitleMeasurement(
+        string CaptureId,
+        string Theme,
+        string ExpectedText,
+        string RenderedText,
+        bool ExactTitleRendered,
+        string TextWrapping,
+        string TextTrimming,
+        double FormattedWidth,
+        double AvailableWidth,
+        bool TextFits,
+        MainStressCountdownTitleBounds TitleBounds,
+        MainStressCountdownTitleBounds ViewportBounds,
+        bool FullyVisibleInViewport,
+        MainStressCountdownTitleBounds ActionsBounds,
+        bool SeparatedFromActions)
+    {
+        public static MainStressCountdownTitleMeasurement Missing(
+            MainReferenceCaptureSpec spec,
+            string expectedText,
+            string renderedText = "",
+            bool exactTitleRendered = false,
+            string textWrapping = "",
+            string textTrimming = "") =>
+            new(
+                spec.CaptureId,
+                spec.Theme,
+                expectedText,
+                renderedText,
+                exactTitleRendered,
+                textWrapping,
+                textTrimming,
+                0,
+                0,
+                false,
+                MainStressCountdownTitleBounds.Empty,
+                MainStressCountdownTitleBounds.Empty,
+                false,
+                MainStressCountdownTitleBounds.Empty,
+                false);
+    }
+
+    private sealed record MainReferenceManifestCapture(
+        string CaptureId,
+        string Theme,
+        string Workspace,
+        string State,
+        string Path,
+        DateTimeOffset BeijingTime,
+        int Width,
+        int Height,
+        string PngSha256,
+        MainReferenceStateFingerprint StateFingerprint,
+        MainReferenceAlphaMetrics Alpha,
+        MainReferenceContentRoi ContentRoi,
+        MainReferencePixelMetrics Comparison);
+
+    private sealed record MainReferenceBaselineCaptureMeasurement(
+        string CaptureId,
+        string Theme,
+        string Workspace,
+        string State,
+        string Path,
+        DateTimeOffset BeijingTime,
+        string BaselineSha256,
+        string ActualSha256,
+        MainReferenceStateFingerprint StateFingerprint,
+        MainReferenceAlphaMetrics Alpha,
+        MainReferenceContentRoi ContentRoi,
+        MainReferencePixelMetrics Comparison);
+
+    private sealed record MainReferenceBaselineValidation(
+        bool Requested,
+        bool ManifestAvailable,
+        string ManifestPath,
+        string SourceAggregateSha256,
+        string ExecutableSha256,
+        MainReferenceManifestGateResults Gates,
+        IReadOnlyList<MainReferenceBaselineCaptureMeasurement> Captures,
+        IReadOnlyList<MainStressCountdownTitleMeasurement> StressCountdownTitleMeasurements,
+        IReadOnlyList<string> Diagnostics)
+    {
+        private static MainReferenceManifestGateResults FailedGates { get; } = new(
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+
+        public bool AllPassed => Gates.AllPassed;
+
+        public bool StressCountdownTitleVisuals =>
+            StressCountdownTitleMeasurements.Count == 2 &&
+            StressCountdownTitleMeasurements
+                .Select(measurement => measurement.CaptureId)
+                .Order(StringComparer.Ordinal)
+                .SequenceEqual(
+                    new[]
+                    {
+                        "main-day-countdowns-stress",
+                        "main-night-countdowns-stress"
+                    },
+                    StringComparer.Ordinal) &&
+            StressCountdownTitleMeasurements.All(measurement =>
+                ValidationExercises.EvaluateMainStressCountdownTitleGates(
+                    new MainStressCountdownTitleGateInputs(
+                        measurement.ExactTitleRendered &&
+                        string.Equals(
+                            measurement.ExpectedText,
+                            measurement.RenderedText,
+                            StringComparison.Ordinal),
+                        string.Equals(measurement.TextWrapping, "NoWrap", StringComparison.Ordinal) &&
+                        string.Equals(measurement.TextTrimming, "None", StringComparison.Ordinal),
+                        measurement.TextFits,
+                        measurement.FullyVisibleInViewport,
+                        measurement.SeparatedFromActions)).AllPassed);
+
+        public static MainReferenceBaselineValidation NotRequested { get; } = new(
+            false,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            FailedGates,
+            Array.Empty<MainReferenceBaselineCaptureMeasurement>(),
+            Array.Empty<MainStressCountdownTitleMeasurement>(),
+            new[] { "未设置 MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT；运行时发布包不携带主窗口参考图。" });
+
+        public static MainReferenceBaselineValidation Invalid(
+            bool requested,
+            bool manifestAvailable,
+            string diagnostic,
+            string manifestPath = "") =>
+            new(
+                requested,
+                manifestAvailable,
+                manifestPath,
+                string.Empty,
+                string.Empty,
+                FailedGates,
+                Array.Empty<MainReferenceBaselineCaptureMeasurement>(),
+                Array.Empty<MainStressCountdownTitleMeasurement>(),
+                new[] { diagnostic });
+    }
+
     private sealed record VisualCaptureArtifactBinding(
         string Id,
         string Path,
@@ -7472,6 +9129,7 @@ internal static class ValidationReport
             false,
             false,
             false,
+            false,
             false);
 
         public bool AllPassed => Gates.AllPassed && FreshnessGates.AllPassed;
@@ -7510,6 +9168,7 @@ internal static class ValidationReport
         CheckBox Completion,
         StackPanel Body,
         TextBlock BodyText,
+        TextBlock? ReminderText,
         Border DateStamp,
         NoteRecord Note);
 
@@ -7528,7 +9187,12 @@ internal static class ValidationReport
         bool UsesOnlyOuterScroller,
         bool OuterScrollable,
         bool PrimaryAnchorReachable,
-        bool SafeAreaMatches);
+        bool SafeAreaMatches,
+        double BodyFontSize,
+        double BodyLineHeight,
+        double ReminderFontSize,
+        double ReminderLineHeight,
+        bool TypographyMatches);
 
     private sealed record FloatingLongNotesValidation(
         bool BodyHasNoManualLineBreaks,
@@ -7537,6 +9201,7 @@ internal static class ValidationReport
         bool OuterScrollable,
         bool TopBottomReachable,
         bool SafeAreaMatches,
+        bool TypographyMatches,
         IReadOnlyList<FloatingLongNoteFrameMeasurement> Measurements,
         IReadOnlyList<FloatingReferenceActualCapture> Captures)
     {
@@ -7547,6 +9212,7 @@ internal static class ValidationReport
             OuterScrollable &&
             TopBottomReachable &&
             SafeAreaMatches &&
+            TypographyMatches &&
             Measurements.Count == 4 &&
             Captures.Count == 4;
 
@@ -7557,9 +9223,30 @@ internal static class ValidationReport
             false,
             false,
             false,
+            false,
             Array.Empty<FloatingLongNoteFrameMeasurement>(),
             Array.Empty<FloatingReferenceActualCapture>());
     }
+
+    private sealed record FloatingPrimaryCountdownContrastMeasurement(
+        string Theme,
+        string PrimaryCountdownAccentBrushKey,
+        string PlushGlowBrushKey,
+        string Foreground,
+        string PrimarySurfaceBackground,
+        double PrimarySurfaceOpacity,
+        string TaskCardBackground,
+        string EffectiveTaskCardBackground,
+        string CompositeBackground,
+        double ContrastRatio,
+        double FontSize,
+        bool UsesExpectedSemanticAccent,
+        bool AccentTrackMatchesText,
+        bool AccentDiffersFromPlushGlow);
+
+    private sealed record FloatingPrimaryCountdownContrastValidation(
+        FloatingPrimaryCountdownContrastGateResults Gates,
+        IReadOnlyList<FloatingPrimaryCountdownContrastMeasurement> Measurements);
 
     private sealed record FloatingReferenceExerciseResult(
         bool AspectMatches,
@@ -7567,6 +9254,7 @@ internal static class ValidationReport
         bool MascotGeometryMatches,
         FloatingReferenceBaselineValidation Baseline,
         FloatingLongNotesValidation LongNotes,
+        FloatingPrimaryCountdownContrastValidation PrimaryCountdownContrast,
         FloatingNightPlushEdgeGlowValidation NightPlushEdgeGlow,
         bool ContentSafeAreaMatches,
         bool TitleUsesSemiBoldWeight,

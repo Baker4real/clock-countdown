@@ -9,18 +9,27 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $script:assertions = 0
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-04-v1\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-05-v3\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-[Environment]::SetEnvironmentVariable(
-    'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
-    $(if ($floatingReferenceBaselineRequired) { $PSScriptRoot } else { $null }),
-    [EnvironmentVariableTarget]::Process
-)
-[Environment]::SetEnvironmentVariable(
-    'MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE',
-    $null,
-    [EnvironmentVariableTarget]::Process
-)
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-05-v3\manifest.json'
+$mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
+
+function Resolve-ReferenceBaselineMode {
+    param(
+        [Parameter(Mandatory)] [bool] $MainManifestAvailable,
+        [Parameter(Mandatory)] [bool] $FloatingManifestAvailable
+    )
+
+    if ($MainManifestAvailable -and $FloatingManifestAvailable) {
+        return 'SourceTree'
+    }
+
+    if (-not $MainManifestAvailable -and -not $FloatingManifestAvailable) {
+        return 'ReleasePackage'
+    }
+
+    throw '主窗口与悬浮窗视觉 manifest 必须同时存在或同时缺失；部分基线状态已失败闭锁。'
+}
 
 function Invoke-CheckedNativeCommand {
     param(
@@ -69,6 +78,50 @@ function Assert-Equal {
         throw "$Name 失败：expected=[$Expected] actual=[$Actual]"
     }
 }
+
+$sourceTreeBaselineMode = Resolve-ReferenceBaselineMode `
+    -MainManifestAvailable $true `
+    -FloatingManifestAvailable $true
+$releasePackageBaselineMode = Resolve-ReferenceBaselineMode `
+    -MainManifestAvailable $false `
+    -FloatingManifestAvailable $false
+Assert-Equal 'SourceTree' $sourceTreeBaselineMode '双 manifest 存在时选择源码树视觉验证模式'
+Assert-Equal 'ReleasePackage' $releasePackageBaselineMode '双 manifest 缺失时选择发布包验证模式'
+foreach ($partialBaseline in @(
+    @{ Main = $true; Floating = $false },
+    @{ Main = $false; Floating = $true }
+)) {
+    $partialBaselineRejected = $false
+    try {
+        $null = Resolve-ReferenceBaselineMode `
+            -MainManifestAvailable $partialBaseline.Main `
+            -FloatingManifestAvailable $partialBaseline.Floating
+    }
+    catch {
+        $partialBaselineRejected = $true
+    }
+
+    Assert-Equal $true $partialBaselineRejected '只存在一套视觉 manifest 时失败闭锁'
+}
+
+$referenceBaselineMode = Resolve-ReferenceBaselineMode `
+    -MainManifestAvailable $mainReferenceBaselineRequired `
+    -FloatingManifestAvailable $floatingReferenceBaselineRequired
+[Environment]::SetEnvironmentVariable(
+    'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
+    $(if ($referenceBaselineMode -eq 'SourceTree') { $PSScriptRoot } else { $null }),
+    [EnvironmentVariableTarget]::Process
+)
+[Environment]::SetEnvironmentVariable(
+    'MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE',
+    $null,
+    [EnvironmentVariableTarget]::Process
+)
+[Environment]::SetEnvironmentVariable(
+    'MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE',
+    $null,
+    [EnvironmentVariableTarget]::Process
+)
 
 if (-not ('MinminCountdown.Tests.BundleAssetProbe' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -204,8 +257,6 @@ if (-not [string]::IsNullOrWhiteSpace($OfficeDeploymentStagingRoot)) {
             [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "C# 测试脚本不属于指定的办公室部署 staging：$resolvedSourceRoot"
     }
-    $testCapabilityRoot = $officeDeploymentRoot
-    $testGroupRoot = Join-Path $resolvedStagingRoot 'clock-countdown-csharp-tests'
 }
 $testCapabilityRootPrefix = $testCapabilityRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar,
@@ -567,6 +618,65 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorFieldsDoNotOverlap) '主窗口重复提醒字段、首次提醒与错误区互不重叠'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorLabelsVisible) '主窗口便签编辑器保留可见字段标签'
     Assert-Equal $true ([bool] $adapterValidation.MainMinimumSizeMatchesDefault) '主窗口默认尺寸与最小可用尺寸一致'
+    Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineRequested) '主窗口参考基线只在源码树存在双 manifest 时请求'
+    Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineManifestAvailable) '主窗口参考 manifest 可用状态匹配源码树或发布包模式'
+    Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineGateIsolationBehavior) '主窗口十六个 manifest 门禁负向夹具逐项失败闭锁'
+    Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-capture-id,duplicate-path,duplicate-scenario,duplicate-state-fingerprint,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,reused-frame,source-hash-mismatch,state-fingerprint-mismatch,wrong-dimensions' ((@($adapterValidation.MainReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '主窗口正式视觉负向夹具集合完整'
+    Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
+    if ($mainReferenceBaselineRequired) {
+    Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口十二场景真实 WPF 帧通过正式 manifest'
+    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-08-05-v3/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
+    Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
+    Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
+    Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
+    $mainReferenceCaptures = @($adapterValidation.MainReferenceBaselineCaptures)
+    $expectedMainReferenceCaptureIds = @(
+        'main-day-countdowns-empty',
+        'main-day-countdowns-representative',
+        'main-day-countdowns-stress',
+        'main-day-notes-empty',
+        'main-day-notes-representative',
+        'main-day-notes-stress',
+        'main-night-countdowns-empty',
+        'main-night-countdowns-representative',
+        'main-night-countdowns-stress',
+        'main-night-notes-empty',
+        'main-night-notes-representative',
+        'main-night-notes-stress'
+    )
+    Assert-Equal 12 $mainReferenceCaptures.Count '主窗口正式 manifest 严格绑定十二帧'
+    Assert-Equal ($expectedMainReferenceCaptureIds -join ',') ((@($mainReferenceCaptures.CaptureId) | Sort-Object) -join ',') '主窗口十二场景 capture ID 固定'
+    Assert-Equal 12 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口 Day/Night × Countdowns/Notes × 三状态组合唯一'
+    Assert-Equal 12 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口十二帧 PNG hash 全部唯一'
+    Assert-Equal 12 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口十二帧状态指纹全部唯一'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-08-05-v3/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口十二帧路径可移植且基线与实拍 SHA 一致'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 1572750 }).Count '主窗口十二帧 1165×1350 画布全部不透明'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 1165x1350 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 1165 -or $_.ContentRoi.Height -ne 1350 -or $_.ContentRoi.PixelCount -ne 1572750 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口十二帧像素指标未超过 manifest 固定阈值'
+    Assert-Equal 4 @($mainReferenceCaptures | Where-Object { $_.StateFingerprint.CountdownCount -eq 0 -and $_.StateFingerprint.NoteCount -eq 0 }).Count '主窗口 Empty 四态确实绑定零数据设置'
+    Assert-Equal 4 @($mainReferenceCaptures | Where-Object { $_.State -eq 'Representative' -and $_.StateFingerprint.CountdownCount -eq 3 -and $_.StateFingerprint.NoteCount -eq 3 -and $_.StateFingerprint.ActiveNoteCount -eq 3 }).Count '主窗口 Representative 四态绑定少量倒计时、未完成便签与提醒'
+    Assert-Equal 4 @($mainReferenceCaptures | Where-Object { $_.State -eq 'Stress' -and $_.StateFingerprint.CountdownCount -eq 9 -and $_.StateFingerprint.NoteCount -eq 8 -and $_.StateFingerprint.ActiveNoteCount -eq 4 -and $_.StateFingerprint.CompletedNoteCount -eq 4 }).Count '主窗口 Stress 四态绑定极长标题、长便签、提醒、完成状态与多日期组'
+    Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleVisuals) '主窗口 Stress 日夜 30 字符标题通过真实 WPF 可见性与操作区隔离门禁'
+    $stressCountdownTitleMeasurements = @($adapterValidation.MainStressCountdownTitleMeasurements)
+    Assert-Equal 2 $stressCountdownTitleMeasurements.Count '主窗口 Stress 标题精确测量 Day/Night 两态'
+    Assert-Equal 'main-day-countdowns-stress,main-night-countdowns-stress' ((@($stressCountdownTitleMeasurements.CaptureId) | Sort-Object) -join ',') '主窗口 Stress 标题测量 capture ID 固定'
+    Assert-Equal 0 @($stressCountdownTitleMeasurements | Where-Object {
+        $_.RenderedText -ne '极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级' -or
+        -not $_.ExactTitleRendered -or
+        $_.TextWrapping -ne 'NoWrap' -or
+        $_.TextTrimming -ne 'None' -or
+        -not $_.TextFits -or
+        -not $_.FullyVisibleInViewport -or
+        -not $_.SeparatedFromActions
+    }).Count '主窗口 Stress 标题日夜两态均完整单行显示且不与操作按钮相交'
+    Assert-Equal 0 @($adapterValidation.MainReferenceBaselineDiagnostics).Count '主窗口正式 manifest 验证没有残留诊断'
+    }
+    else {
+        Assert-Equal $false ([bool] $adapterValidation.MainReferenceBaselineValidated) '发布包不伪造未携带主窗口参考资产时的视觉验收'
+        Assert-Equal 0 @($adapterValidation.MainReferenceBaselineCaptures).Count '发布包不伪造主窗口参考帧度量'
+        Assert-Equal $false ([bool] $adapterValidation.MainStressCountdownTitleVisuals) '发布包不伪造未执行的 Stress 标题真实 WPF 验收'
+        Assert-Equal 0 @($adapterValidation.MainStressCountdownTitleMeasurements).Count '发布包不伪造 Stress 标题测量'
+    }
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.NoteEmptyStatesDistinguished) '首次空态与筛选无结果状态具有不同反馈'
@@ -588,8 +698,8 @@ try {
     Assert-Equal $floatingReferenceBaselineRequired ([bool] $adapterValidation.FloatingReferenceBaselineManifestAvailable) '悬浮窗参考 manifest 可用状态匹配源码树'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineGateIsolationBehavior) '悬浮窗参考 manifest 十二个负向夹具逐项失败闭锁'
     Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-path,duplicate-scenario-theme,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,source-hash-mismatch,wrong-dimensions' ((@($adapterValidation.FloatingReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '悬浮窗参考 manifest 负向夹具集合完整'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceFreshnessGateIsolationBehavior) '长便签帧新鲜度七个负向夹具逐项失败闭锁'
-    Assert-Equal 'duplicate-capture-id,duplicate-state-fingerprint,long-note-layout-unreachable,reused-frame,state-fingerprint-mismatch,swapped-top-bottom,top-bottom-pixel-difference-too-small' ((@($adapterValidation.FloatingReferenceFreshnessNegativeFixtures) | Sort-Object) -join ',') '长便签帧新鲜度负向夹具集合完整'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceFreshnessGateIsolationBehavior) '长便签帧新鲜度与排版八个负向夹具逐项失败闭锁'
+    Assert-Equal 'duplicate-capture-id,duplicate-state-fingerprint,long-note-layout-unreachable,long-note-typography-mismatch,reused-frame,state-fingerprint-mismatch,swapped-top-bottom,top-bottom-pixel-difference-too-small' ((@($adapterValidation.FloatingReferenceFreshnessNegativeFixtures) | Sort-Object) -join ',') '长便签帧新鲜度与排版负向夹具集合完整'
     foreach ($fieldName in @(
         'FloatingLongNotesBodyHasNoManualLineBreaks',
         'FloatingLongNotesNaturalWraps',
@@ -597,6 +707,7 @@ try {
         'FloatingLongNotesOuterScrollable',
         'FloatingLongNotesTopBottomReachable',
         'FloatingLongNotesSafeAreaMatches',
+        'FloatingLongNotesTypographyMatches',
         'FloatingLongNotesLayoutValid'
     )) {
         Assert-Equal $true ([bool] $adapterValidation.$fieldName) "长便签真实 WPF 门禁通过：$fieldName"
@@ -606,6 +717,7 @@ try {
     Assert-Equal 4 $longNoteMeasurements.Count '长便签真实 WPF 精确测量日夜 top/bottom 四态'
     Assert-Equal $expectedLongNoteCaptureIds ((@($longNoteMeasurements.CaptureId) | Sort-Object) -join ',') '长便签测量 capture ID 固定'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { -not $_.BodyHasNoManualLineBreaks -or -not $_.NaturalWraps -or -not $_.UsesOnlyOuterScroller -or -not $_.OuterScrollable -or -not $_.PrimaryAnchorReachable -or -not $_.SafeAreaMatches }).Count '长便签每态均证明无手工换行、自然折行、仅外层滚动、锚点可达和安全区'
+    Assert-Equal 0 @($longNoteMeasurements | Where-Object { [double] $_.BodyFontSize -ne 13 -or [double] $_.BodyLineHeight -ne 18 -or [double] $_.ReminderFontSize -ne 12 -or [double] $_.ReminderLineHeight -ne 17 -or -not $_.TypographyMatches }).Count '长便签日夜 top/bottom 四态均满足正文 13/18 与提醒 12/17 显式排版'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { $_.State -eq 'Top' -and [math]::Abs([double] $_.VerticalOffset) -gt 1 }).Count '长便签 top 四舍五入 offset 约等于零'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { $_.State -eq 'Bottom' -and [math]::Abs([double] $_.VerticalOffset - [double] $_.ScrollableHeight) -gt 1 }).Count '长便签 bottom offset 约等于 ScrollableHeight'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { ([string] $_.NoteTextSha256).Length -ne 64 -or [string]::IsNullOrWhiteSpace([string] $_.FirstVisibleAnchor) -or [string]::IsNullOrWhiteSpace([string] $_.LastVisibleAnchor) }).Count '长便签每态绑定正文 SHA-256 与可见首尾锚点'
@@ -616,16 +728,16 @@ try {
     Assert-Equal 4 @($longNoteCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '长便签四态 fingerprint 全部唯一'
     if ($floatingReferenceBaselineRequired) {
         Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日夜截图通过版本化 manifest'
-        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-04-v1/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-05-v3/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
         Assert-Equal 6 @($adapterValidation.FloatingReferenceBaselineCaptures).Count '悬浮窗参考 manifest 严格绑定六帧'
         Assert-Equal 'floating-countdowns-day,floating-countdowns-night,long-notes-day-bottom,long-notes-day-top,long-notes-night-bottom,long-notes-night-top' ((@($adapterValidation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') '悬浮窗参考 manifest capture ID 固定'
-        Assert-Equal 7 @($adapterValidation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '长便签七个真实新鲜度门禁全部通过'
+        Assert-Equal 8 @($adapterValidation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '长便签八个真实新鲜度与排版门禁全部通过'
         Assert-Equal 6 @($adapterValidation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count '六帧 PNG hash 全部唯一'
-        Assert-Equal '6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9' ([string] (@($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-day')[0].BaselineSha256)) '#2 日间倒计时 PNG hash 保持冻结'
-        Assert-Equal 'CCC7279389D0E7204C679080581C9E69C14A87D4737D2D05FEF998F49FB8ECD7' ([string] (@($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-night')[0].BaselineSha256)) '#2 夜间倒计时 PNG hash 保持冻结'
+        Assert-Equal '6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9' ([string] (@($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-day')[0].BaselineSha256)) '当前日间倒计时 PNG hash 与正式基线一致'
+        Assert-Equal '2A3E246125832271AB26AAC6D90FE5B91A58D97049C20197282F2CD1A892E960' ([string] (@($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-night')[0].BaselineSha256)) '当前夜间倒计时 PNG hash 与正式基线一致'
         Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '当前真实帧像素指标未超过 manifest 固定阈值'
         Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineDiagnostics).Count '悬浮窗参考 manifest 验证没有残留诊断'
     }
@@ -732,6 +844,17 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.FloatingRasterMascotBoundaryStatesMatch) '悬浮窗日间 raster 角色与夜间旧三角色边界状态完整'
     Assert-Equal $true ([bool] $adapterValidation.FloatingPlushSceneFollowsDayNightTheme) '悬浮窗角色场景在日夜边界同步切换暖色光晕'
     Assert-Equal $true ([bool] $adapterValidation.FloatingThemeTextContrast) '悬浮窗标题与便签错误提示在日夜主题下保持可读对比度'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryCountdownTextContrast) '悬浮窗主倒计时相对真实合成纸面达到 4.5:1 对比度'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryCountdownAccentSeparatedFromPlushGlow) '悬浮窗主倒计时强调与玩偶阴影使用独立语义 token'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryCountdownContrastGateIsolationBehavior) '旧夜间强调色与共享 token 负向夹具分别单项失败'
+    $primaryContrastMeasurements = @($adapterValidation.FloatingPrimaryCountdownContrastMeasurements)
+    Assert-Equal 2 $primaryContrastMeasurements.Count '悬浮窗主倒计时报告日夜两份真实 WPF 对比度测量'
+    Assert-Equal 'Day,Night' ((@($primaryContrastMeasurements.Theme) | Sort-Object) -join ',') '悬浮窗主倒计时测量覆盖日夜主题'
+    $nightPrimaryContrast = @($primaryContrastMeasurements | Where-Object Theme -eq 'Night')[0]
+    Assert-Equal '#FFE9B36D' ([string] $nightPrimaryContrast.Foreground) '夜间主倒计时使用独立暖金强调'
+    Assert-Equal '#FF493525' ([string] $nightPrimaryContrast.CompositeBackground) '夜间主倒计时报告真实合成背景'
+    Assert-Equal $true ([math]::Abs([double] $nightPrimaryContrast.ContrastRatio - 6.12) -le 0.01) '夜间主倒计时实际对比度约为 6.12:1'
+    Assert-Equal 0 @($primaryContrastMeasurements | Where-Object { [double] $_.FontSize -ne 16 -or -not $_.UsesExpectedSemanticAccent -or -not $_.AccentTrackMatchesText -or -not $_.AccentDiffersFromPlushGlow }).Count '日夜主项轨和 16 DIP 数字均使用独立强调 token'
     Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddDayResourcesFollowLocalTheme) '悬浮窗快速新增真实控件日间使用局部暖色主题'
     Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddNightResourcesFollowLocalTheme) '悬浮窗快速新增真实控件夜间使用局部暖棕主题'
     Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddIndependentFromApplicationAutoTheme) '悬浮窗快速新增局部主题不受应用自动主题反向切换污染'

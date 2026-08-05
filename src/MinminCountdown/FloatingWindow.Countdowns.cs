@@ -192,9 +192,7 @@ public sealed partial class FloatingWindow
     }
 
     private Brush WarmPaperAccentBrush(FloatingThemePalette theme) =>
-        ThemeBrush(theme.Mode == ApplicationThemeMode.Day
-            ? theme.HeaderDangerBrushKey
-            : theme.PlushGlowBrushKey);
+        ThemeBrush(theme.PrimaryCountdownAccentBrushKey);
 
     private static TextBlock CountdownRemainingText(
         string text,

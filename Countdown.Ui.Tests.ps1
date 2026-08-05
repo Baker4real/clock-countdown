@@ -1,7 +1,12 @@
 ﻿#requires -Version 7.0
 
 $ErrorActionPreference = 'Stop'
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-04-v1\manifest.json'
+[Environment]::SetEnvironmentVariable(
+    'MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE',
+    'stale-test-request',
+    [EnvironmentVariableTarget]::Process
+)
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-05-v3\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -13,6 +18,15 @@ $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBa
     $null,
     [EnvironmentVariableTarget]::Process
 )
+[Environment]::SetEnvironmentVariable(
+    'MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE',
+    $null,
+    [EnvironmentVariableTarget]::Process
+)
+if (-not [string]::IsNullOrWhiteSpace(
+        [Environment]::GetEnvironmentVariable('MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE'))) {
+    throw 'UI 测试未清理主窗口视觉基线生成环境变量。'
+}
 Add-Type -AssemblyName PresentationFramework
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
@@ -193,6 +207,7 @@ $expectedFreshnessFixtures = @(
     'duplicate-capture-id',
     'duplicate-state-fingerprint',
     'long-note-layout-unreachable',
+    'long-note-typography-mismatch',
     'reused-frame',
     'state-fingerprint-mismatch',
     'swapped-top-bottom',
@@ -206,6 +221,7 @@ foreach ($fieldName in @(
     'FloatingLongNotesOuterScrollable',
     'FloatingLongNotesTopBottomReachable',
     'FloatingLongNotesSafeAreaMatches',
+    'FloatingLongNotesTypographyMatches',
     'FloatingLongNotesLayoutValid'
 )) {
     if (-not [bool] $validation.$fieldName) { throw "The long-note WPF viewport contract is red: $fieldName." }
@@ -219,6 +235,7 @@ $expectedLongNoteCaptureIds = @(
 $longNoteMeasurements = @($validation.FloatingLongNotesMeasurements)
 if ($longNoteMeasurements.Count -ne 4 -or ((@($longNoteMeasurements.CaptureId) | Sort-Object) -join ',') -ne ($expectedLongNoteCaptureIds -join ',')) { throw 'The long-note WPF measurement inventory is not the exact four required states.' }
 if (@($longNoteMeasurements | Where-Object { -not $_.BodyHasNoManualLineBreaks -or -not $_.NaturalWraps -or -not $_.UsesOnlyOuterScroller -or -not $_.OuterScrollable -or -not $_.PrimaryAnchorReachable -or -not $_.SafeAreaMatches }).Count -ne 0) { throw 'A long-note WPF state failed wrap, outer-scroll, reachability, or safe-area measurement.' }
+if (@($longNoteMeasurements | Where-Object { [double] $_.BodyFontSize -ne 13 -or [double] $_.BodyLineHeight -ne 18 -or [double] $_.ReminderFontSize -ne 12 -or [double] $_.ReminderLineHeight -ne 17 -or -not $_.TypographyMatches }).Count -ne 0) { throw 'A long-note WPF state does not match the explicit 13/18 body and 12/17 reminder typography contract.' }
 if (@($longNoteMeasurements | Where-Object { $_.State -eq 'Top' -and [math]::Abs([double] $_.VerticalOffset) -gt 1 }).Count -ne 0) { throw 'A long-note top frame is not captured at offset zero.' }
 if (@($longNoteMeasurements | Where-Object { $_.State -eq 'Bottom' -and [math]::Abs([double] $_.VerticalOffset - [double] $_.ScrollableHeight) -gt 1 }).Count -ne 0) { throw 'A long-note bottom frame is not captured at ScrollableHeight.' }
 if (@($longNoteMeasurements | Where-Object { ([string] $_.NoteTextSha256).Length -ne 64 -or [string]::IsNullOrWhiteSpace([string] $_.FirstVisibleAnchor) -or [string]::IsNullOrWhiteSpace([string] $_.LastVisibleAnchor) }).Count -ne 0) { throw 'A long-note frame is missing its body hash or visible anchors.' }
@@ -228,14 +245,14 @@ if (@($longNoteCaptures.PngSha256 | Sort-Object -Unique).Count -ne 4 -or @($long
 if ($floatingReferenceBaselineRequired) {
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-04-v1/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-05-v3/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
     $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
     if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
     if (@($validation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete long-note freshness gate is red.' }
     if (@($validation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count -ne 6) { throw 'The six-frame manifest reuses a PNG hash.' }
-    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-day').BaselineSha256 -ne '6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9') { throw 'The frozen #2 day countdown PNG hash changed.' }
-    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-night').BaselineSha256 -ne 'CCC7279389D0E7204C679080581C9E69C14A87D4737D2D05FEF998F49FB8ECD7') { throw 'The frozen #2 night countdown PNG hash changed.' }
+    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-day').BaselineSha256 -ne '6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9') { throw 'The current day countdown PNG hash does not match the formal baseline.' }
+    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-night').BaselineSha256 -ne '2A3E246125832271AB26AAC6D90FE5B91A58D97049C20197282F2CD1A892E960') { throw 'The current night countdown PNG hash does not match the formal baseline.' }
     if (@($validation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count -ne 0) { throw 'A current floating frame exceeds the fixed pixel comparison thresholds.' }
 }
 elseif ($validation.FloatingReferenceBaselineRequested -or $validation.FloatingReferenceBaselineManifestAvailable -or $validation.FloatingReferenceBaselineValidated -or @($validation.FloatingReferenceBaselineCaptures).Count -ne 0) {
@@ -430,6 +447,14 @@ if (-not $validation.FloatingRasterMascotBoundaryStatesMatch) { throw 'The float
 if (-not $validation.FloatingThemeUsesChinaStandardTime) { throw 'The floating panel theme does not use China Standard Time.' }
 if (-not $validation.FloatingPlushSceneFollowsDayNightTheme) { throw 'The floating plush scene does not follow the day/night theme transition.' }
 if (-not $validation.FloatingThemeTextContrast) { throw 'Floating header and validation text do not maintain sufficient contrast across day and night.' }
+if (-not $validation.FloatingPrimaryCountdownTextContrast) { throw 'The primary floating countdown does not maintain 4.5:1 contrast against its actual composited surface.' }
+if (-not $validation.FloatingPrimaryCountdownAccentSeparatedFromPlushGlow) { throw 'The primary floating countdown accent still shares the plush glow semantic token.' }
+if (-not $validation.FloatingPrimaryCountdownContrastGateIsolationBehavior) { throw 'The primary countdown contrast and semantic-token fixtures do not fail independently.' }
+$primaryCountdownContrastMeasurements = @($validation.FloatingPrimaryCountdownContrastMeasurements)
+if ($primaryCountdownContrastMeasurements.Count -ne 2 -or ((@($primaryCountdownContrastMeasurements.Theme) | Sort-Object) -join ',') -ne 'Day,Night') { throw 'The primary countdown contrast report does not contain exact day/night WPF measurements.' }
+$nightPrimaryCountdownContrast = @($primaryCountdownContrastMeasurements | Where-Object Theme -eq 'Night')[0]
+if ([string] $nightPrimaryCountdownContrast.Foreground -ne '#FFE9B36D' -or [string] $nightPrimaryCountdownContrast.CompositeBackground -ne '#FF493525' -or [math]::Abs([double] $nightPrimaryCountdownContrast.ContrastRatio - 6.12) -gt 0.01) { throw 'The night primary countdown does not report the expected warm-gold contrast against #493525.' }
+if (@($primaryCountdownContrastMeasurements | Where-Object { [double] $_.FontSize -ne 16 -or -not $_.UsesExpectedSemanticAccent -or -not $_.AccentTrackMatchesText -or -not $_.AccentDiffersFromPlushGlow }).Count -ne 0) { throw 'A primary countdown WPF measurement does not use the independent semantic accent for both rail and 16 DIP text.' }
 if (-not $validation.FloatingQuickAddDayResourcesFollowLocalTheme) { throw 'Floating quick-add controls do not use the local warm day theme.' }
 if (-not $validation.FloatingQuickAddNightResourcesFollowLocalTheme) { throw 'Floating quick-add controls do not use the local warm night theme.' }
 if (-not $validation.FloatingQuickAddIndependentFromApplicationAutoTheme) { throw 'Floating quick-add controls still inherit the opposite application auto theme.' }

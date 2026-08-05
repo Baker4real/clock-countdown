@@ -70,6 +70,9 @@ public sealed partial class FloatingWindow
         body.Children.Add(new TextBlock
         {
             Text = note.Text,
+            FontSize = 13,
+            LineHeight = 18,
+            LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
             TextWrapping = TextWrapping.Wrap,
             Foreground = _floatingPrimaryBrush
         });
@@ -81,7 +84,9 @@ public sealed partial class FloatingWindow
             {
                 Text = $"下次提醒：{ChinaStandardTime.ToBeijingTime(nextReminder.Value):M月d日 HH:mm}",
                 Margin = new Thickness(0, 4, 0, 0),
-                FontSize = 11,
+                FontSize = 12,
+                LineHeight = 17,
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = _floatingMutedBrush
             });

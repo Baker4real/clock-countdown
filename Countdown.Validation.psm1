@@ -162,11 +162,15 @@ function Invoke-CountdownValidationSuite {
         )
     $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
 
-    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-08-04-v1\manifest.json'
+    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-08-05-v3\manifest.json'
     $floatingBaselineRequired = Test-Path -LiteralPath $floatingBaselineManifest -PathType Leaf
+    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\1165x1350\2026-08-05-v3\manifest.json'
+    $mainBaselineRequired = Test-Path -LiteralPath $mainBaselineManifest -PathType Leaf
+    $visualBaselinesRequired = $floatingBaselineRequired -and $mainBaselineRequired
     $applicationEnvironment = @{
-        MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT = if ($floatingBaselineRequired) { $resolvedRoot } else { $null }
+        MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT = if ($visualBaselinesRequired) { $resolvedRoot } else { $null }
         MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE = $null
+        MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE = $null
     }
     $application = Invoke-CountdownValidationProcess `
         -PowerShell7Path $resolvedPowerShell `

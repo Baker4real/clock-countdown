@@ -19,7 +19,7 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
-    private const string FloatingReferenceBaselineVersion = "2026-08-05-v3";
+    private const string FloatingReferenceBaselineVersion = "2026-08-06-v6";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingReferenceStateFingerprintAlgorithm =
@@ -122,7 +122,7 @@ internal static class ValidationReport
             "Bottom",
             "long-notes-night-bottom.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-08-05-v3";
+    private const string MainReferenceBaselineVersion = "2026-08-06-v6";
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
     private const string MainReferenceStateFingerprintAlgorithm =
@@ -803,17 +803,57 @@ internal static class ValidationReport
             confirmationDialog.Content is Border confirmationBorder &&
             Equals(confirmationBorder.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
 
+        var countdownName = Required<TextBox>(main, "CountdownName");
+        var countdownDate = Required<DatePicker>(main, "CountdownDate");
+        var countdownHour = Required<ComboBox>(main, "CountdownHour");
+        var countdownMinute = Required<ComboBox>(main, "CountdownMinute");
+        var countdownSecond = Required<ComboBox>(main, "CountdownSecond");
+        var displayPrecision = Required<ComboBox>(main, "DisplayPrecision");
+        var monthlySalary = Required<TextBox>(main, "MonthlySalary");
+        var workStart = Required<TextBox>(main, "WorkStart");
+        var workEnd = Required<TextBox>(main, "WorkEnd");
         var compactSelection =
-            Required<DatePicker>(main, "CountdownDate").Width is >= 370 and <= 400 &&
-            Required<ComboBox>(main, "CountdownHour").Width is >= 180 and <= 205 &&
-            Required<ComboBox>(main, "CountdownMinute").Width is >= 180 and <= 205 &&
-            Required<ComboBox>(main, "CountdownSecond").Width is >= 180 and <= 205 &&
-            Required<ComboBox>(main, "DisplayPrecision").ActualWidth is >= 200 and <= 220;
+            countdownDate.Width is >= 370 and <= 400 &&
+            countdownHour.Width is >= 180 and <= 205 &&
+            countdownMinute.Width is >= 180 and <= 205 &&
+            countdownSecond.Width is >= 180 and <= 205 &&
+            displayPrecision.ActualWidth is >= 200 and <= 220 &&
+            new Control[]
+            {
+                countdownName,
+                countdownDate,
+                countdownHour,
+                countdownMinute,
+                countdownSecond
+            }.All(control => control.ActualHeight is >= 55 and <= 57);
         var compactPreferences =
-            Required<ComboBox>(main, "DisplayPrecision").ActualWidth >= 96 &&
-            Required<TextBox>(main, "MonthlySalary").ActualWidth >= 112 &&
-            Required<TextBox>(main, "WorkStart").ActualWidth >= 96 &&
-            Required<TextBox>(main, "WorkEnd").ActualWidth >= 96;
+            displayPrecision.ActualWidth >= 96 &&
+            monthlySalary.ActualWidth >= 112 &&
+            workStart.ActualWidth >= 96 &&
+            workEnd.ActualWidth >= 96 &&
+            new Control[]
+            {
+                displayPrecision,
+                monthlySalary,
+                workStart,
+                workEnd
+            }.All(control => control.ActualHeight is >= 55 and <= 57);
+        var countdownInputsUseProjectTheme = new Control[]
+            {
+                countdownName,
+                countdownDate,
+                countdownHour,
+                countdownMinute,
+                countdownSecond,
+                displayPrecision,
+                monthlySalary,
+                workStart,
+                workEnd
+            }
+            .All(control =>
+                ReferenceEquals(control.Background, Application.Current.FindResource("CanvasBrush")) &&
+                ReferenceEquals(control.BorderBrush, Application.Current.FindResource("PeachLineBrush")) &&
+                ReferenceEquals(control.Foreground, Application.Current.FindResource("InkBrush")));
         var desktopWorkspaceInterfaceBehavior =
             ValidationExercises.RunDesktopWorkspaceInterfaceBehavior();
         var reminderEditingInterfaceBehavior =
@@ -840,15 +880,18 @@ internal static class ValidationReport
             ["Height"] = main.Height,
             ["CompactSelectionFieldLayout"] = compactSelection,
             ["CompactPreferenceFieldLayout"] = compactPreferences,
-            ["CountdownNameWidth"] = Required<TextBox>(main, "CountdownName").ActualWidth,
-            ["TargetDateWidth"] = Required<DatePicker>(main, "CountdownDate").Width,
-            ["TargetHourWidth"] = Required<ComboBox>(main, "CountdownHour").Width,
-            ["TargetMinuteWidth"] = Required<ComboBox>(main, "CountdownMinute").Width,
-            ["TargetSecondWidth"] = Required<ComboBox>(main, "CountdownSecond").Width,
-            ["DisplayPrecisionWidth"] = Required<ComboBox>(main, "DisplayPrecision").ActualWidth,
-            ["MonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").ActualWidth,
-            ["WorkStartWidth"] = Required<TextBox>(main, "WorkStart").ActualWidth,
-            ["WorkEndWidth"] = Required<TextBox>(main, "WorkEnd").ActualWidth,
+            ["CountdownInputsUseProjectTheme"] = countdownInputsUseProjectTheme,
+            ["CountdownInputHeight"] = countdownName.ActualHeight,
+            ["CountdownPreferenceInputHeight"] = displayPrecision.ActualHeight,
+            ["CountdownNameWidth"] = countdownName.ActualWidth,
+            ["TargetDateWidth"] = countdownDate.Width,
+            ["TargetHourWidth"] = countdownHour.Width,
+            ["TargetMinuteWidth"] = countdownMinute.Width,
+            ["TargetSecondWidth"] = countdownSecond.Width,
+            ["DisplayPrecisionWidth"] = displayPrecision.ActualWidth,
+            ["MonthlySalaryWidth"] = monthlySalary.ActualWidth,
+            ["WorkStartWidth"] = workStart.ActualWidth,
+            ["WorkEndWidth"] = workEnd.ActualWidth,
             ["ExpandedTargetDateWidth"] = Required<DatePicker>(main, "CountdownDate").Width,
             ["ExpandedTargetHourWidth"] = Required<ComboBox>(main, "CountdownHour").Width,
             ["ExpandedTargetMinuteWidth"] = Required<ComboBox>(main, "CountdownMinute").Width,
@@ -7683,16 +7726,22 @@ internal static class ValidationReport
             PumpDispatcher();
             main.UpdateLayout();
 
-            var panelsFollowTheme = new[]
+            var countdownPanelsFollowTheme = new[]
                 {
+                    main.FindName("CountdownWorkspaceBackdrop") as Border,
                     main.FindName("CountdownEditorSurface") as Border,
-                    main.FindName("CountdownPreferencesSurface") as Border,
-                    main.FindName("NoteEditorPanel") as Border
+                    main.FindName("CountdownPreferencesSurface") as Border
                 }
                 .All(panel =>
                     panel is not null &&
-                    UsesResource(panel, Border.BackgroundProperty, "WorkspacePanelBrush") &&
-                    UsesResource(panel, Border.BorderBrushProperty, "WorkspacePanelLineBrush"));
+                    UsesResource(panel, Border.BackgroundProperty, "BackgroundBrush") &&
+                    UsesResource(panel, Border.BorderBrushProperty, "PeachLineBrush"));
+            var notePanel = main.FindName("NoteEditorPanel") as Border;
+            var panelsFollowTheme =
+                countdownPanelsFollowTheme &&
+                notePanel is not null &&
+                UsesResource(notePanel, Border.BackgroundProperty, "WorkspacePanelBrush") &&
+                UsesResource(notePanel, Border.BorderBrushProperty, "WorkspacePanelLineBrush");
             var titleFollowsTheme =
                 main.FindName("CountdownEditorTitle") is TextBlock editorTitle &&
                 UsesResource(editorTitle, TextBlock.ForegroundProperty, "InkBrush");

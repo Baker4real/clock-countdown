@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-05-v3\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-06-v6\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -166,11 +166,12 @@ if (-not $validation.DatePickerTextClicksUseTheme) { throw 'Clicking the date te
 if (-not $validation.DatePickerTextOpensThemedPopup) { throw 'Clicking the date text did not open a real themed calendar popup.' }
 if ($validation.TimeDropDowns -ne 3) { throw "Expected three time drop-downs, got $($validation.TimeDropDowns)." }
 if (-not $validation.CompactSelectionFieldLayout) {
-    throw "Short selection fields should stay content-sized at default and expanded window widths: default(name=$($validation.CountdownNameWidth), date=$($validation.TargetDateWidth), hour=$($validation.TargetHourWidth), minute=$($validation.TargetMinuteWidth), second=$($validation.TargetSecondWidth), precision=$($validation.DisplayPrecisionWidth)); expanded(date=$($validation.ExpandedTargetDateWidth), hour=$($validation.ExpandedTargetHourWidth), minute=$($validation.ExpandedTargetMinuteWidth), second=$($validation.ExpandedTargetSecondWidth), precision=$($validation.ExpandedDisplayPrecisionWidth))."
+    throw "Short selection fields should stay content-sized and use the compact height: height=$($validation.CountdownInputHeight); default(name=$($validation.CountdownNameWidth), date=$($validation.TargetDateWidth), hour=$($validation.TargetHourWidth), minute=$($validation.TargetMinuteWidth), second=$($validation.TargetSecondWidth), precision=$($validation.DisplayPrecisionWidth)); expanded(date=$($validation.ExpandedTargetDateWidth), hour=$($validation.ExpandedTargetHourWidth), minute=$($validation.ExpandedTargetMinuteWidth), second=$($validation.ExpandedTargetSecondWidth), precision=$($validation.ExpandedDisplayPrecisionWidth))."
 }
 if (-not $validation.CompactPreferenceFieldLayout) {
-    throw "Preference fields should stay compact at default and expanded window widths: default(precision=$($validation.DisplayPrecisionWidth), salary=$($validation.MonthlySalaryWidth), start=$($validation.WorkStartWidth), end=$($validation.WorkEndWidth)); expanded(precision=$($validation.ExpandedDisplayPrecisionWidth), salary=$($validation.ExpandedMonthlySalaryWidth), start=$($validation.ExpandedWorkStartWidth), end=$($validation.ExpandedWorkEndWidth))."
+    throw "Preference fields should stay compact at default and expanded window widths: height=$($validation.CountdownPreferenceInputHeight); default(precision=$($validation.DisplayPrecisionWidth), salary=$($validation.MonthlySalaryWidth), start=$($validation.WorkStartWidth), end=$($validation.WorkEndWidth)); expanded(precision=$($validation.ExpandedDisplayPrecisionWidth), salary=$($validation.ExpandedMonthlySalaryWidth), start=$($validation.ExpandedWorkStartWidth), end=$($validation.ExpandedWorkEndWidth))."
 }
+if (-not $validation.CountdownInputsUseProjectTheme) { throw 'Countdown inputs are not using the shared day/night Canvas, PeachLine, and Ink theme resources.' }
 if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
 if (-not $validation.HasNameEditor) { throw 'Countdown name editor is missing.' }
@@ -245,7 +246,7 @@ if (@($longNoteCaptures.PngSha256 | Sort-Object -Unique).Count -ne 4 -or @($long
 if ($floatingReferenceBaselineRequired) {
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-05-v3/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-06-v6/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
     $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
     if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }

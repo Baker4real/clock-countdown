@@ -295,6 +295,27 @@
                    BasedOn="{StaticResource {x:Type DatePicker}}">
               <Setter Property="FontSize" Value="20" />
             </Style>
+            <Style x:Key="MainCompactFieldLabel"
+                   TargetType="{x:Type TextBlock}"
+                   BasedOn="{StaticResource MainFieldLabel}">
+              <Setter Property="FontSize" Value="18" />
+            </Style>
+            <Style x:Key="MainCompactTextInput"
+                   TargetType="{x:Type TextBox}"
+                   BasedOn="{StaticResource {x:Type TextBox}}">
+              <Setter Property="Height" Value="56" />
+              <Setter Property="Padding" Value="16,0" />
+            </Style>
+            <Style x:Key="MainCompactSelectionInput"
+                   TargetType="{x:Type ComboBox}"
+                   BasedOn="{StaticResource {x:Type ComboBox}}">
+              <Setter Property="Height" Value="56" />
+            </Style>
+            <Style x:Key="MainCompactDateInput"
+                   TargetType="{x:Type DatePicker}"
+                   BasedOn="{StaticResource {x:Type DatePicker}}">
+              <Setter Property="Height" Value="56" />
+            </Style>
           </Grid.Resources>
 
           <Canvas x:Name="MainContentSurface"
@@ -467,139 +488,149 @@
             <Canvas x:Name="CountdownWorkspace"
                     Width="1165"
                     Height="1350">
+              <Border x:Name="CountdownWorkspaceBackdrop"
+                      Canvas.Left="38"
+                      Canvas.Top="402"
+                      Width="1088"
+                      Height="886"
+                      Background="{DynamicResource BackgroundBrush}"
+                      BorderBrush="{DynamicResource PeachLineBrush}"
+                      BorderThickness="0"
+                      CornerRadius="16"
+                      IsHitTestVisible="False" />
               <Border x:Name="CountdownEditorSurface"
                       Canvas.Left="38"
                       Canvas.Top="402"
                       Width="1088"
-                      Height="440"
-                      Background="{DynamicResource WorkspacePanelBrush}"
-                      BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
+                      Height="384"
+                      Background="{DynamicResource BackgroundBrush}"
+                      BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
                       CornerRadius="16" />
               <TextBlock x:Name="CountdownEditorTitle"
                          Canvas.Left="73"
-                         Canvas.Top="431"
+                         Canvas.Top="432"
                          Text="新增倒计时"
                          FontSize="27"
                          FontWeight="SemiBold"
                          Foreground="{DynamicResource InkBrush}" />
 
-              <TextBlock Canvas.Left="74" Canvas.Top="491" Text="名称" Style="{StaticResource MainFieldLabel}" />
-              <TextBlock Canvas.Left="711" Canvas.Top="491" Text="截止日期" Style="{StaticResource MainFieldLabel}" />
+              <TextBlock Canvas.Left="74" Canvas.Top="488" Text="名称" Style="{StaticResource MainCompactFieldLabel}" />
+              <TextBlock Canvas.Left="711" Canvas.Top="488" Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
               <TextBox x:Name="CountdownName"
                        Canvas.Left="73"
-                       Canvas.Top="522"
+                       Canvas.Top="516"
                        Width="615"
-                       Height="74"
+                       Style="{StaticResource MainCompactTextInput}"
                        MaxLength="30" />
               <DatePicker x:Name="CountdownDate"
                           Canvas.Left="707"
-                          Canvas.Top="522"
+                          Canvas.Top="516"
                           Width="384"
-                          Height="74" />
+                          Style="{StaticResource MainCompactDateInput}" />
 
-              <TextBlock Canvas.Left="74" Canvas.Top="621" Text="时" Style="{StaticResource MainFieldLabel}" />
-              <TextBlock Canvas.Left="288" Canvas.Top="621" Text="分" Style="{StaticResource MainFieldLabel}" />
-              <TextBlock Canvas.Left="493" Canvas.Top="621" Text="秒" Style="{StaticResource MainFieldLabel}" />
+              <TextBlock Canvas.Left="74" Canvas.Top="592" Text="时" Style="{StaticResource MainCompactFieldLabel}" />
+              <TextBlock Canvas.Left="288" Canvas.Top="592" Text="分" Style="{StaticResource MainCompactFieldLabel}" />
+              <TextBlock Canvas.Left="493" Canvas.Top="592" Text="秒" Style="{StaticResource MainCompactFieldLabel}" />
               <ComboBox x:Name="CountdownHour"
                         Canvas.Left="74"
-                        Canvas.Top="651"
+                        Canvas.Top="620"
                         Width="195"
-                        Height="74" />
+                        Style="{StaticResource MainCompactSelectionInput}" />
               <ComboBox x:Name="CountdownMinute"
                         Canvas.Left="288"
-                        Canvas.Top="651"
+                        Canvas.Top="620"
                         Width="188"
-                        Height="74" />
+                        Style="{StaticResource MainCompactSelectionInput}" />
               <ComboBox x:Name="CountdownSecond"
                         Canvas.Left="493"
-                        Canvas.Top="651"
+                        Canvas.Top="620"
                         Width="188"
-                        Height="74" />
+                        Style="{StaticResource MainCompactSelectionInput}" />
               <Button x:Name="SetNowButton"
                       Canvas.Left="701"
-                      Canvas.Top="651"
+                      Canvas.Top="620"
                       Width="142"
-                      Height="74"
+                      Height="56"
                       Content="设为现在"
                       Style="{StaticResource MainSecondaryButton}" />
               <local:TagSelector x:Name="CountdownTags"
                                  Canvas.Left="861"
-                                 Canvas.Top="651"
+                                 Canvas.Top="620"
                                  Width="222"
-                                 Height="74" />
+                                 Height="56" />
               <TextBlock x:Name="CountdownMessage"
                          Canvas.Left="74"
-                         Canvas.Top="752"
-                         Width="770"
-                         MaxHeight="64"
+                         Canvas.Top="704"
+                         Width="690"
+                         MaxHeight="56"
                          FontSize="18"
                          VerticalAlignment="Center"
                          Foreground="{DynamicResource DangerBrush}"
                          TextWrapping="Wrap" />
               <Button x:Name="CancelCountdownEdit"
                       Canvas.Left="786"
-                      Canvas.Top="748"
+                      Canvas.Top="704"
                       Width="72"
-                      Height="68"
+                      Height="56"
                       Content="取消"
                       Visibility="Collapsed"
                       Style="{StaticResource MainSecondaryButton}" />
               <Button x:Name="SaveCountdownButton"
                       Canvas.Left="866"
-                      Canvas.Top="748"
+                      Canvas.Top="704"
                       Width="221"
-                      Height="68"
-                      MinHeight="68"
+                      Height="56"
+                      MinHeight="56"
                       Content="添加倒计时"
                       Style="{StaticResource MainPrimaryButton}" />
 
               <Border x:Name="CountdownPreferencesSurface"
                       Canvas.Left="38"
-                      Canvas.Top="866"
+                      Canvas.Top="810"
                       Width="1088"
-                      Height="168"
-                      Background="{DynamicResource WorkspacePanelBrush}"
-                      BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
+                      Height="140"
+                      Background="{DynamicResource BackgroundBrush}"
+                      BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
                       CornerRadius="16" />
-              <TextBlock Canvas.Left="74" Canvas.Top="896" Text="显示精度" Style="{StaticResource MainFieldLabel}" />
-              <TextBlock Canvas.Left="309" Canvas.Top="896" Text="月薪（元）" Style="{StaticResource MainFieldLabel}" />
-              <TextBlock Canvas.Left="571" Canvas.Top="896" Text="上班时间" Style="{StaticResource MainFieldLabel}" />
-              <TextBlock Canvas.Left="778" Canvas.Top="896" Text="下班时间" Style="{StaticResource MainFieldLabel}" />
+              <TextBlock Canvas.Left="74" Canvas.Top="832" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
+              <TextBlock Canvas.Left="309" Canvas.Top="832" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
+              <TextBlock Canvas.Left="571" Canvas.Top="832" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
+              <TextBlock Canvas.Left="778" Canvas.Top="832" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
               <ComboBox x:Name="DisplayPrecision"
                         Canvas.Left="73"
-                        Canvas.Top="932"
+                        Canvas.Top="860"
                         Width="210"
-                        Height="73" />
+                        Style="{StaticResource MainCompactSelectionInput}" />
               <TextBox x:Name="MonthlySalary"
                        Canvas.Left="306"
-                       Canvas.Top="932"
+                       Canvas.Top="860"
                        Width="243"
-                       Height="73" />
+                       Style="{StaticResource MainCompactTextInput}" />
               <TextBox x:Name="WorkStart"
                        Canvas.Left="568"
-                       Canvas.Top="932"
+                       Canvas.Top="860"
                        Width="187"
-                       Height="73" />
+                       Style="{StaticResource MainCompactTextInput}" />
               <TextBox x:Name="WorkEnd"
                        Canvas.Left="773"
-                       Canvas.Top="932"
+                       Canvas.Top="860"
                        Width="172"
-                       Height="73" />
+                       Style="{StaticResource MainCompactTextInput}" />
               <Button x:Name="SavePreferencesButton"
                       Canvas.Left="961"
-                      Canvas.Top="928"
+                      Canvas.Top="860"
                       Width="140"
-                      Height="74"
-                      MinHeight="74"
+                      Height="56"
+                      MinHeight="56"
                       Content="保存设置"
                       Style="{StaticResource MainPrimaryButton}" />
 
               <ScrollViewer Canvas.Left="40"
-                            Canvas.Top="1042"
+                            Canvas.Top="972"
                             Width="1085"
-                            Height="246"
+                            Height="316"
                             VerticalScrollBarVisibility="Auto"
                             HorizontalScrollBarVisibility="Disabled">
                 <StackPanel x:Name="CountdownRows" />

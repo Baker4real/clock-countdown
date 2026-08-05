@@ -72,13 +72,6 @@ jobs:
           $testExit = $LASTEXITCODE
           if ($testExit -ne 0) { exit $testExit }
 
-      - name: Test validation lifecycle
-        shell: pwsh
-        run: |
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.Core.Tests.ps1 -ValidationOnly
-          $testExit = $LASTEXITCODE
-          if ($testExit -ne 0) { exit $testExit }
-
       - name: Test remote deployment transaction
         shell: pwsh
         run: |

@@ -2346,6 +2346,67 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             $officeDeploymentSource.Contains("'-o', 'StrictHostKeyChecking=yes'") -and
             $officeDeploymentSource.Contains('UserKnownHostsFile=$env:REPLICATOR_OFFICE_SSH_USER_KNOWN_HOSTS_FILE')
         ) 'Independent readback reuses the strict managed office SSH options'
+
+        $callbackScopeLedger = Join-Path $remoteDeploymentTestRoot 'callback-scope-transfer-attempts.json'
+        $callbackScopeResult = & {
+            . (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1') -LoadFunctionsOnly
+            Import-Module (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1') -Force
+
+            function Get-OfficeRemoteDeploymentBinding {
+                [pscustomobject]@{
+                    Success = $true
+                    ExitCode = 0
+                    Bytes = [Text.UTF8Encoding]::new($false).GetBytes('binding')
+                    FailureMessage = $null
+                }
+            }
+            function Get-OfficePostDeploymentIndependentReadback {
+                [pscustomobject]@{
+                    Success = $true
+                    ExitCode = 0
+                    Bytes = [Text.UTF8Encoding]::new($false).GetBytes('readback')
+                    FailureMessage = $null
+                }
+            }
+            function Write-CountdownRemoteDeploymentBindingReceipt {
+                param($Path, $Bytes, $ExpectedDeploymentBindingSha256, $ExpectedProcessId)
+                [pscustomobject]@{ TokenSha256 = ('A' * 64) }
+            }
+            function Write-CountdownRemoteDeploymentReadbackReceipt {
+                param(
+                    $Path,
+                    $Bytes,
+                    $ExpectedProcessId,
+                    $ExpectedExecutableSha256,
+                    $ExpectedTokenSha256,
+                    $ExpectedSettingsSha256
+                )
+                [pscustomobject]@{ Valid = $true }
+            }
+
+            Invoke-OfficePostDeploymentIndependentVerification `
+                -LedgerPath $callbackScopeLedger `
+                -DeploymentBindingEvidencePath (Join-Path $remoteDeploymentTestRoot 'binding.json') `
+                -IndependentReadbackEvidencePath (Join-Path $remoteDeploymentTestRoot 'readback.json') `
+                -RemoteDeploymentBindingPath 'D:\fixture\deployment-binding.json' `
+                -DeploymentBindingSha256 ('B' * 64) `
+                -SuccessReceipt ([pscustomobject]@{
+                        RuntimeProcessId = 1234
+                        SettingsHashAfter = ('C' * 64)
+                    }) `
+                -ExpectedExecutableSha256 ('D' * 64) `
+                -ExpectedRemoteHost 'fixture-host' `
+                -ExpectedRemoteUser 'fixture-user' `
+                -RollbackAction { throw 'Committed readback must never roll back.' }
+
+            $ledger = Get-Content -LiteralPath $callbackScopeLedger -Raw | ConvertFrom-Json
+            [pscustomobject]@{
+                Attempts = @($ledger.attempts).Count
+                AllSucceeded = @($ledger.attempts | Where-Object status -ne 'succeeded').Count -eq 0
+            }
+        }
+        Assert-Equal 2 $callbackScopeResult.Attempts 'Committed independent readback executes both readers across the transfer module scope'
+        Assert-Equal $true $callbackScopeResult.AllSucceeded 'Committed independent readback records both module-scope callbacks as succeeded'
     }
     finally {
         Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force

@@ -1015,6 +1015,14 @@ function Invoke-OfficePostDeploymentIndependentVerification {
     )
 
     try {
+        $deploymentBindingReaderCommand = Get-Command `
+            Get-OfficeRemoteDeploymentBinding `
+            -CommandType Function `
+            -ErrorAction Stop
+        $independentReadbackReaderCommand = Get-Command `
+            Get-OfficePostDeploymentIndependentReadback `
+            -CommandType Function `
+            -ErrorAction Stop
         $deploymentBindingReader = {
             $readerArguments = @{
                 RemotePath = $RemoteDeploymentBindingPath
@@ -1022,7 +1030,7 @@ function Invoke-OfficePostDeploymentIndependentVerification {
                 ExpectedProcessId = [int] $SuccessReceipt.RuntimeProcessId
             }
             if ($null -ne $CommandRunner) { $readerArguments.CommandRunner = $CommandRunner }
-            Get-OfficeRemoteDeploymentBinding @readerArguments
+            & $deploymentBindingReaderCommand @readerArguments
         }.GetNewClosure()
         $bindingReadArguments = @{
             LedgerPath = $LedgerPath
@@ -1049,7 +1057,7 @@ function Invoke-OfficePostDeploymentIndependentVerification {
                 ExpectedSettingsSha256 = [string] $SuccessReceipt.SettingsHashAfter
             }
             if ($null -ne $CommandRunner) { $readerArguments.CommandRunner = $CommandRunner }
-            Get-OfficePostDeploymentIndependentReadback @readerArguments
+            & $independentReadbackReaderCommand @readerArguments
         }.GetNewClosure()
         $readbackArguments = @{
             LedgerPath = $LedgerPath

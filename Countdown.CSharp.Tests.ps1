@@ -502,8 +502,21 @@ try {
     )
     $adapterValidationDocument = [System.Text.Json.JsonDocument]::Parse($adapterValidationOutput)
     try {
+        $adapterValidationJsonKinds = [System.Collections.Generic.Dictionary[string, string]]::new(
+            [System.StringComparer]::Ordinal)
         $adapterValidationPropertyNames = @(
             foreach ($property in $adapterValidationDocument.RootElement.EnumerateObject()) {
+                $jsonKind = switch ($property.Value.ValueKind.ToString()) {
+                    'Null' { 'Null' }
+                    'True' { 'Boolean' }
+                    'False' { 'Boolean' }
+                    'String' { 'String' }
+                    'Object' { 'Object' }
+                    'Array' { 'Array' }
+                    'Number' { 'Number' }
+                    default { throw "未知的 validate-only JSON 值类型：$($property.Value.ValueKind)" }
+                }
+                $adapterValidationJsonKinds.Add($property.Name, $jsonKind)
                 $property.Name
             }
         )
@@ -521,27 +534,7 @@ try {
     )
     $adapterValidationShapeLines = [string[]] @(
         foreach ($propertyName in $adapterValidationShapeNames) {
-            $value = $adapterValidation.PSObject.Properties[$propertyName].Value
-            $kind = if ($null -eq $value) {
-                'Null'
-            }
-            elseif ($value -is [bool]) {
-                'Boolean'
-            }
-            elseif ($value -is [string]) {
-                'String'
-            }
-            elseif ($value -is [pscustomobject]) {
-                'Object'
-            }
-            elseif ($value -is [System.Collections.IEnumerable]) {
-                'Array'
-            }
-            else {
-                $value.GetType().Name
-            }
-
-            '{0}:{1}' -f $propertyName, $kind
+            '{0}:{1}' -f $propertyName, $adapterValidationJsonKinds[$propertyName]
         }
     )
     $adapterValidationShape = [string]::Join(
@@ -640,7 +633,8 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
     Assert-Equal 428 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容'
-    Assert-Equal 'E73240FF7F0FF1D4002AAB202568BC767EDCE0E7772770CB7AE53ED7F3C9D4BB' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
+    Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
+    Assert-Equal '4B778582AE7FBDCAFA84E5B715DF9E642D7352AF547D4910DF2361B127D3050C' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusDisclosureVisuals) 'validate-only 验证便签状态披露视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureAccessibility) 'validate-only 验证便签披露控件无障碍契约'

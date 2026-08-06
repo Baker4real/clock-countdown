@@ -557,6 +557,19 @@ function Assert-CountdownRemoteInstallScript {
             if (-not $hasInlineArgument -and -not $hasFollowingArgument) {
                 throw "远端安装脚本第 $($invocation.Extent.StartLineNumber) 行的参数 $parameterName 缺少值。"
             }
+
+            if ($parameterName -eq 'ExpectedSha256') {
+                $argumentAst = if ($hasInlineArgument) {
+                    $parameterAst.Argument
+                }
+                else {
+                    $commandElements[$parameterIndex + 1]
+                }
+                if ($argumentAst -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -or
+                    $argumentAst.Value -notmatch '^[0-9a-fA-F]{64}$') {
+                    throw "远端安装脚本第 $($invocation.Extent.StartLineNumber) 行的 ExpectedSha256 必须是 64 位十六进制字面量。"
+                }
+            }
         }
     }
 
@@ -661,7 +674,7 @@ $controlManifest = New-CountdownDeploymentCommitFileManifest `
     -Stage '控制文件提交身份校验'
 
 $powerShell7 = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
-$transferLedgerSha256 = Invoke-CountdownDeploymentLockedCommitFile `
+[void] (Invoke-CountdownDeploymentLockedCommitFile `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
     -Root $sourceRoot `
@@ -672,7 +685,7 @@ $transferLedgerSha256 = Invoke-CountdownDeploymentLockedCommitFile `
         param($lockedPath, $sha256)
         & $powerShell7 -NoLogo -NoProfile -NonInteractive -File $lockedPath -Clean
         if ($LASTEXITCODE -ne 0) { throw '无法从当前 main 提交重建 C# 部署产物。' }
-    }
+    })
 
 [void] (Assert-CountdownDeploymentRepositoryState `
     -GitPath $gitPath `
@@ -735,7 +748,7 @@ Assert-CountdownDeploymentFileManifest -Root $extractRoot -Manifest $packageMani
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash -ne $archiveHash) {
     throw '远程输出前：ZIP 已变化，拒绝部署。'
 }
-Invoke-CountdownDeploymentLockedCommitFile `
+$transferLedgerSha256 = Invoke-CountdownDeploymentLockedCommitFile `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
     -Root $extractRoot `

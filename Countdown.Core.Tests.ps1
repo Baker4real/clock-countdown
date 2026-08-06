@@ -2735,6 +2735,16 @@ Assert-Equal $true (
     $deploySource.Contains("Assert-CountdownDeploymentFileManifest -Root `$sourceRoot -Manifest `$packageManifest -Stage '打包后'") -and
     $deploySource.Contains("Assert-CountdownDeploymentFileManifest -Root `$extractRoot -Manifest `$packageManifest -Stage '远程输出前'")
 ) 'Office deployment builds package bytes only from the verified commit snapshot'
+$buildInvocationIndex = $deploySource.IndexOf('[void] (Invoke-CountdownDeploymentLockedCommitFile', $deploySource.IndexOf('$powerShell7 ='))
+$buildScriptPathIndex = $deploySource.IndexOf("-RelativePath 'Build-CountdownApplication.ps1'", $buildInvocationIndex)
+$transferLedgerHashAssignmentIndex = $deploySource.IndexOf('$transferLedgerSha256 = Invoke-CountdownDeploymentLockedCommitFile', $buildScriptPathIndex)
+$transferLedgerPathIndex = $deploySource.IndexOf("-RelativePath 'Countdown.TransferLedger.psm1'", $transferLedgerHashAssignmentIndex)
+Assert-Equal $true (
+    $buildInvocationIndex -ge 0 -and
+    $buildScriptPathIndex -gt $buildInvocationIndex -and
+    $transferLedgerHashAssignmentIndex -gt $buildScriptPathIndex -and
+    $transferLedgerPathIndex -gt $transferLedgerHashAssignmentIndex
+) 'Office deployment discards build stdout before assigning the locked TransferLedger SHA-256'
 
 $deploymentGateFunctionNames = @(
     'Invoke-CountdownDeploymentGit',
@@ -2780,6 +2790,18 @@ try {
     ) -join "`r`n"
     $validRemoteInstallResult = Assert-CountdownRemoteInstallScript -ScriptText $validRemoteInstallScript
     Assert-Equal 4 $validRemoteInstallResult.InvocationCount 'Generated remote install script locks TransferLedger before RemoteDeployment and keeps every parameter on its invocation'
+
+    $invalidHashRemoteInstallScript = $validRemoteInstallScript.Replace(
+        "-ExpectedSha256 '$('C' * 64)'",
+        "-ExpectedSha256 'build output'")
+    $invalidHashRejected = $false
+    try {
+        Assert-CountdownRemoteInstallScript -ScriptText $invalidHashRemoteInstallScript | Out-Null
+    }
+    catch {
+        $invalidHashRejected = $_.Exception.Message -match 'ExpectedSha256 必须是 64 位十六进制字面量'
+    }
+    Assert-Equal $true $invalidHashRejected 'Generated remote install script rejects build output in an expected SHA-256 before upload'
 
     $brokenRemoteInstallScript = @(
         "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",

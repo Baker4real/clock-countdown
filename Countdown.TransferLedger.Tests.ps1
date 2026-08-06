@@ -46,10 +46,33 @@ $firstSource = Join-Path $testRoot 'first.bin'
 $secondSource = Join-Path $testRoot 'second.bin'
 $bindingEvidencePath = Join-Path $testRoot 'behavior-deployment-binding.json'
 $readbackEvidencePath = Join-Path $testRoot 'behavior-independent-readback.json'
+$alternateTransferLedgerPath = Join-Path $testRoot 'Countdown.TransferLedger.psm1'
 
 try {
-    Import-Module (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1') -Force
     New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+    $trustedTransferLedgerModule = Import-Module `
+        (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1') `
+        -Force `
+        -PassThru
+    $alternateTransferLedgerSource = @'
+function Invoke-CountdownRecordedSshRead {
+    param($LedgerPath, $Id, $Reader, $StopwatchFactory)
+    throw 'alternate-transfer-ledger-recorded-read-hijack'
+}
+function Invoke-CountdownSshBase64CommandRead {
+    param($Options, $Destination, $RemoteCommand, $MaximumDecodedBytes, $Description, $CommandRunner)
+    throw 'alternate-transfer-ledger-base64-read-hijack'
+}
+Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownSshBase64CommandRead
+'@
+    [System.IO.File]::WriteAllText(
+        $alternateTransferLedgerPath,
+        $alternateTransferLedgerSource,
+        [System.Text.UTF8Encoding]::new($false))
+    $alternateTransferLedgerModule = Import-Module $alternateTransferLedgerPath -Force -PassThru
+    Import-Module (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1') -Force
+    Remove-Module $alternateTransferLedgerModule -Force
+    Import-Module -ModuleInfo $trustedTransferLedgerModule -Scope Local
     [System.IO.File]::WriteAllBytes($firstSource, [byte[]]::new(1MB))
     [System.IO.File]::WriteAllBytes($secondSource, [byte[]]::new(2MB))
 
@@ -605,34 +628,6 @@ try {
     Assert-Equal 'failed' ([string] $tokenMismatchAttempt.status) 'token mismatch 已返回 payload 时作为失败 attempt 入账'
     Assert-Equal $unexpectedTokenBytes.Length ([long] $tokenMismatchAttempt.metrics.bytes) 'token mismatch 失败 attempt 记录实际输出 bytes'
 
-    . (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1') -LoadFunctionsOnly
-
-    $isoTimestamp = '2026-08-04T11:33:21.1234567+00:00'
-    $flatReadback = ConvertFrom-CountdownReadbackFlatJsonObject `
-        -Json ('{"readyAtUtc":"' + $isoTimestamp + '","stage":"window-ready","processId":17388,"valid":true,"optional":null}') `
-        -SourceName 'readback fixture'
-    Assert-Equal 'System.String' $flatReadback.readyAtUtc.GetType().FullName 'Readback flat JSON converter preserves ISO timestamps as strings'
-    Assert-Equal $isoTimestamp ([string] $flatReadback.readyAtUtc) 'Readback flat JSON converter preserves ISO timestamp text exactly'
-    Assert-Equal 'System.Int64' $flatReadback.processId.GetType().FullName 'Readback flat JSON converter preserves integer tokens'
-    Assert-Equal 'System.Boolean' $flatReadback.valid.GetType().FullName 'Readback flat JSON converter preserves bool tokens'
-    Assert-Equal $null $flatReadback.optional 'Readback flat JSON converter preserves null tokens'
-
-    foreach ($invalidFlatJson in @(
-            '{"readyAtUtc":1.5}',
-            '{"readyAtUtc":{}}',
-            '{"readyAtUtc":[]}',
-            '{"readyAtUtc":"first","readyAtUtc":"second"}',
-            '{"readyAtUtc":"value",}',
-            '{/*comment*/"readyAtUtc":"value"}')) {
-        $invalidFlatJsonRejected = $false
-        try {
-            ConvertFrom-CountdownReadbackFlatJsonObject -Json $invalidFlatJson -SourceName 'invalid readback fixture' | Out-Null
-        }
-        catch {
-            $invalidFlatJsonRejected = $true
-        }
-        Assert-Equal $true $invalidFlatJsonRejected "Readback flat JSON converter rejects invalid token shape: $invalidFlatJson"
-    }
     $behaviorBindingHash = '1' * 64
     $behaviorTokenHash = '2' * 64
     $behaviorExecutableHash = '3' * 64
@@ -658,18 +653,85 @@ try {
         SessionIdMatch = $true; ApplicationPathMatch = $true
         ProcessExecutablePathMatch = $true; ExecutableSha256 = $behaviorExecutableHash
         ExecutableHashMatch = $true; SettingsSha256 = $behaviorSettingsHash
-        SettingsHashMatch = $true; UnexpectedField = 'schema-drift'
+        SettingsHashMatch = $true
     }
     $behaviorReadbackJson = $behaviorReadback | ConvertTo-Json -Compress
     $behaviorReadbackBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($behaviorReadbackJson)
-    $behaviorRunnerState = [pscustomobject]@{
-        Calls = 0
-        RemoteCommands = [System.Collections.Generic.List[string]]::new()
+    $runtimeStageDrift = $behaviorReadbackJson | ConvertFrom-Json -AsHashtable
+    $runtimeStageDrift.RuntimeStage = 'starting'
+    $runtimeStageDriftBytes = [System.Text.UTF8Encoding]::new($false).GetBytes(
+        ($runtimeStageDrift | ConvertTo-Json -Compress))
+
+    $failureCallOrder = [System.Collections.Generic.List[string]]::new()
+    $failureBindingReader = {
+        param($Context)
+        [void] $failureCallOrder.Add('binding')
+        [pscustomobject]@{
+            Success = $true
+            ExitCode = 0
+            Bytes = [byte[]] $behaviorBindingBytes
+            FailureMessage = $null
+        }
+    }.GetNewClosure()
+    $failureReadbackReader = {
+        param($Context)
+        [void] $failureCallOrder.Add('readback')
+        [pscustomobject]@{
+            Success = $true
+            ExitCode = 0
+            Bytes = [byte[]] $runtimeStageDriftBytes
+            FailureMessage = $null
+        }
+    }.GetNewClosure()
+    $failureAdapter = [pscustomobject]@{
+        ReadDeploymentBinding = $failureBindingReader
+        ReadIndependentReadback = $failureReadbackReader
     }
+    $behaviorStopwatchFactory = {
+        New-FakeStopwatch `
+            -ElapsedSeconds 0.5 `
+            -Events ([System.Collections.Generic.List[string]]::new())
+    }
+    $failureMessage = $null
+    try {
+        Invoke-CountdownRemoteDeploymentIndependentReadback `
+            -LedgerPath $ledgerPath `
+            -DeploymentBindingEvidencePath $bindingEvidencePath `
+            -IndependentReadbackEvidencePath $readbackEvidencePath `
+            -RemoteDeploymentBindingPath 'D:\Codex\deploy\fixture\deployment-binding.json' `
+            -DeploymentBindingSha256 $behaviorBindingHash `
+            -SuccessReceipt ([pscustomobject]@{ RuntimeProcessId = 4242; SettingsHashAfter = $behaviorSettingsHash }) `
+            -ExpectedExecutableSha256 $behaviorExecutableHash `
+            -ExpectedRemoteHost 'office-host' `
+            -ExpectedRemoteUser 'replicator' `
+            -Adapter $failureAdapter `
+            -StopwatchFactory $behaviorStopwatchFactory | Out-Null
+    }
+    catch {
+        $failureMessage = $_.Exception.Message
+    }
+    $failureLedger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $failureAttempts = @($failureLedger.attempts)[-2..-1]
+    Assert-Equal 'binding,readback' ($failureCallOrder -join ',') '提交后 module 按 binding/readback 顺序调用合成 adapter'
+    Assert-Equal $false ($null -ne $failureAdapter.PSObject.Properties['Rollback']) '提交后合成 adapter 不暴露 rollback capability'
+    Assert-Equal 'remote-deployment-binding' ([string] $failureAttempts[0].id) '提交后 module 保留 binding ledger ID'
+    Assert-Equal 'succeeded' ([string] $failureAttempts[0].status) '合法 binding 先通过 production parser 与 ledger'
+    Assert-Equal 'post-deployment-independent-readback' ([string] $failureAttempts[1].id) '提交后 module 保留 readback ledger ID'
+    Assert-Equal 'failed' ([string] $failureAttempts[1].status) 'RuntimeStage 单项漂移记录 failed attempt'
+    Assert-Equal $true ([bool] $failureAttempts[1].bytesVerified) 'RuntimeStage 单项漂移保留已验证 payload bytes 状态'
+    Assert-Equal $runtimeStageDriftBytes.Length ([long] $failureAttempts[1].metrics.bytes) 'RuntimeStage 单项漂移记录实际 UTF-8 payload bytes'
+    Assert-Equal $true ($failureMessage -match '部署已提交但独立验证不完整，未回滚.*runtime 未达到 window-ready') 'RuntimeStage 单项漂移报告已提交且未回滚'
+    Assert-Equal $true (Test-Path -LiteralPath $bindingEvidencePath -PathType Leaf) '失败切片先持久化已验证 binding evidence'
+    Assert-Equal $false (Test-Path -LiteralPath $readbackEvidencePath) '失败切片不发布 readback evidence'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $testRoot -File -Filter 'behavior-deployment-binding.json.*.tmp').Count '失败切片不残留 binding 临时文件'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $testRoot -File -Filter 'behavior-independent-readback.json.*.tmp').Count '失败切片不残留 readback 临时文件'
+
+    Remove-Item -LiteralPath $bindingEvidencePath -Force
+
+    $behaviorRunnerState = [pscustomobject]@{ Calls = 0 }
     $behaviorRunner = {
         param($FileName, $Arguments)
         $behaviorRunnerState.Calls++
-        $behaviorRunnerState.RemoteCommands.Add([string] $Arguments[-1])
         $payload = if ($behaviorRunnerState.Calls -eq 1) {
             $behaviorBindingBytes
         }
@@ -683,76 +745,34 @@ try {
             ProcessId = $PID + 1
         }
     }.GetNewClosure()
-    $behaviorStopwatchFactory = {
-        New-FakeStopwatch `
-            -ElapsedSeconds 0.5 `
-            -Events ([System.Collections.Generic.List[string]]::new())
-    }
-    $rollbackState = [pscustomobject]@{ Calls = 0 }
-    $rollbackSpy = { $rollbackState.Calls++ }.GetNewClosure()
-    $script:sshOptions = [string[]] $strictOptions
-    $env:REPLICATOR_OFFICE_SSH_DESTINATION = 'replicator@office-host'
-    $behaviorMessage = $null
-    try {
-        Invoke-OfficePostDeploymentIndependentVerification `
-            -LedgerPath $ledgerPath `
-            -DeploymentBindingEvidencePath $bindingEvidencePath `
-            -IndependentReadbackEvidencePath $readbackEvidencePath `
-            -RemoteDeploymentBindingPath 'D:\Codex\deploy\fixture\deployment-binding.json' `
-            -DeploymentBindingSha256 $behaviorBindingHash `
-            -SuccessReceipt ([pscustomobject]@{ RuntimeProcessId = 4242; SettingsHashAfter = $behaviorSettingsHash }) `
-            -ExpectedExecutableSha256 $behaviorExecutableHash `
-            -ExpectedRemoteHost 'office-host' `
-            -ExpectedRemoteUser 'replicator' `
-            -CommandRunner $behaviorRunner `
-            -StopwatchFactory $behaviorStopwatchFactory `
-            -RollbackAction $rollbackSpy | Out-Null
-    }
-    catch {
-        $behaviorMessage = $_.Exception.Message
-    }
-    $behaviorLedger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    $behaviorAttempts = @($behaviorLedger.attempts)[-2..-1]
-    Assert-Equal 2 ([int] $behaviorRunnerState.Calls) '提交后验证直接调用 binding 与独立回读两个生产 reader'
-    Assert-Equal 'succeeded' ([string] $behaviorAttempts[0].status) '合法 binding 先通过生产 parser 与 ledger'
-    Assert-Equal $behaviorBindingBytes.Length ([long] $behaviorAttempts[0].metrics.bytes) 'binding attempt 记录实际 UTF-8 payload bytes'
-    Assert-Equal 'post-deployment-independent-readback' ([string] $behaviorAttempts[1].id) '字段漂移使用独立回读稳定账本 ID'
-    Assert-Equal 'failed' ([string] $behaviorAttempts[1].status) '字段漂移在生产 parser 失败后记录 failed attempt'
-    Assert-Equal $true ([bool] $behaviorAttempts[1].bytesVerified) '字段漂移保留已验证 payload bytes 状态'
-    Assert-Equal $behaviorReadbackBytes.Length ([long] $behaviorAttempts[1].metrics.bytes) '字段漂移记录实际 UTF-8 payload bytes'
-    Assert-Equal $true ($behaviorMessage -match '部署已提交但独立验证不完整，未回滚.*额外字段.*UnexpectedField') '提交后字段漂移返回验证不完整且未回滚的最终错误'
-    Assert-Equal 0 ([int] $rollbackState.Calls) '提交后独立验证失败不会调用 rollback'
-    Assert-Equal $true (Test-Path -LiteralPath $bindingEvidencePath -PathType Leaf) '提交后链路持久化已验证 binding evidence'
-    Assert-Equal $false (Test-Path -LiteralPath $readbackEvidencePath) '失败独立回读不会发布成功 evidence'
-
-    $readbackRemoteCommand = [string] $behaviorRunnerState.RemoteCommands[1]
-    $encodedCommandPrefix = '-EncodedCommand '
-    $encodedCommandIndex = $readbackRemoteCommand.LastIndexOf($encodedCommandPrefix, [System.StringComparison]::Ordinal)
-    $bootstrapBase64 = $readbackRemoteCommand.Substring($encodedCommandIndex + $encodedCommandPrefix.Length)
-    $bootstrapText = [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($bootstrapBase64))
-    $compressedMatch = [regex]::Match(
-        $bootstrapText,
-        '(?m)^\$compressed = \[Convert\]::FromBase64String\(''(?<payload>[A-Za-z0-9+/=]+)''\)$')
-    $compressedReaderBytes = [Convert]::FromBase64String($compressedMatch.Groups['payload'].Value)
-    $compressedReaderStream = [System.IO.MemoryStream]::new($compressedReaderBytes, $false)
-    try {
-        $readerGzipStream = [System.IO.Compression.GZipStream]::new(
-            $compressedReaderStream,
-            [System.IO.Compression.CompressionMode]::Decompress)
-        try {
-            $readerOutputStream = [System.IO.MemoryStream]::new()
-            try {
-                $readerGzipStream.CopyTo($readerOutputStream)
-                $embeddedReaderScript = [System.Text.UTF8Encoding]::new($false, $true).GetString($readerOutputStream.ToArray())
-            }
-            finally { $readerOutputStream.Dispose() }
-        }
-        finally { $readerGzipStream.Dispose() }
-    }
-    finally { $compressedReaderStream.Dispose() }
-    $canonicalConverterDefinition = "function ConvertFrom-CountdownReadbackFlatJsonObject {`n$(${function:ConvertFrom-CountdownReadbackFlatJsonObject}.ToString())`n}"
-    Assert-Equal $true $compressedMatch.Success 'Production readback command contains one decodable gzip reader payload'
-    Assert-Equal $true $embeddedReaderScript.Contains($canonicalConverterDefinition) 'Production SSH reader embeds the canonical flat JSON converter definition'
+    $productionAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
+        -Options $strictOptions `
+        -Destination 'replicator@office-host' `
+        -CommandRunner $behaviorRunner
+    Assert-Equal $false ($null -ne $productionAdapter.PSObject.Properties['Rollback']) 'Production readback adapter 不暴露 rollback capability'
+    Invoke-CountdownRemoteDeploymentIndependentReadback `
+        -LedgerPath $ledgerPath `
+        -DeploymentBindingEvidencePath $bindingEvidencePath `
+        -IndependentReadbackEvidencePath $readbackEvidencePath `
+        -RemoteDeploymentBindingPath 'D:\Codex\deploy\fixture\deployment-binding.json' `
+        -DeploymentBindingSha256 $behaviorBindingHash `
+        -SuccessReceipt ([pscustomobject]@{ RuntimeProcessId = 4242; SettingsHashAfter = $behaviorSettingsHash }) `
+        -ExpectedExecutableSha256 $behaviorExecutableHash `
+        -ExpectedRemoteHost 'office-host' `
+        -ExpectedRemoteUser 'replicator' `
+        -Adapter $productionAdapter `
+        -StopwatchFactory $behaviorStopwatchFactory | Out-Null
+    $successLedger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $successAttempts = @($successLedger.attempts)[-2..-1]
+    Assert-Equal 2 ([int] $behaviorRunnerState.Calls) '成功 twin 通过 production adapter 执行 binding/readback 两次读取'
+    Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback' (($successAttempts.id) -join ',') '成功 twin 保留两个 ledger ID 与顺序'
+    Assert-Equal 'succeeded,succeeded' (($successAttempts.status) -join ',') '成功 twin 的两个 ledger attempt 均成功'
+    Assert-Equal $true (Test-Path -LiteralPath $bindingEvidencePath -PathType Leaf) '成功 twin 发布 binding evidence'
+    Assert-Equal $true (Test-Path -LiteralPath $readbackEvidencePath -PathType Leaf) '成功 twin 发布 readback evidence'
+    Assert-Equal $true (Test-Path -LiteralPath $readbackEvidencePath -PathType Leaf) '同名其他路径 TransferLedger module 未劫持已按绝对路径选择的命令绑定'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $testRoot -File -Filter 'behavior-*.json.*.tmp').Count '成功 twin 不残留 evidence 临时文件'
+    $persistedReadback = [System.IO.File]::ReadAllText($readbackEvidencePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    Assert-Equal 31 @($persistedReadback.PSObject.Properties).Count '成功 twin 保持 readback 精确 31 字段 schema'
 
     $validLedgerBytes = [System.IO.File]::ReadAllBytes($ledgerPath)
     $validLedgerText = [System.Text.UTF8Encoding]::new($false, $true).GetString($validLedgerBytes)
@@ -804,7 +824,7 @@ catch {
     [void] $failures.Add($_.Exception.Message)
 }
 finally {
-    foreach ($path in @($ledgerPath, $firstSource, $secondSource, $bindingEvidencePath, $readbackEvidencePath)) {
+    foreach ($path in @($ledgerPath, $firstSource, $secondSource, $bindingEvidencePath, $readbackEvidencePath, $alternateTransferLedgerPath)) {
         if (Test-Path -LiteralPath $path -PathType Leaf) {
             Remove-Item -LiteralPath $path -Force
         }

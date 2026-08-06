@@ -3,6 +3,52 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$script:transferLedgerModulePath = [System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1'))
+$transferLedgerModule = Get-Module -Name Countdown.TransferLedger |
+    Where-Object {
+        [string]::Equals(
+            [System.IO.Path]::GetFullPath($_.Path),
+            $script:transferLedgerModulePath,
+            [System.StringComparison]::OrdinalIgnoreCase)
+    } |
+    Select-Object -First 1
+if ($null -eq $transferLedgerModule) {
+    $transferLedgerModule = Import-Module $script:transferLedgerModulePath -Scope Local -PassThru -ErrorAction Stop
+}
+$recordedSshReadExport =
+    $transferLedgerModule.ExportedCommands['Invoke-CountdownRecordedSshRead']
+$sshBase64CommandReadExport =
+    $transferLedgerModule.ExportedCommands['Invoke-CountdownSshBase64CommandRead']
+if ($recordedSshReadExport -isnot [System.Management.Automation.FunctionInfo] -or
+    $sshBase64CommandReadExport -isnot [System.Management.Automation.FunctionInfo]) {
+    throw "受信传输账本模块缺少远端回读命令：$script:transferLedgerModulePath"
+}
+$script:recordedSshReadCommand = $transferLedgerModule.NewBoundScriptBlock({
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)] [string] $LedgerPath,
+            [Parameter(Mandatory)] [string] $Id,
+            [Parameter(Mandatory)] [scriptblock] $Reader,
+            [scriptblock] $StopwatchFactory
+        )
+
+        Invoke-CountdownRecordedSshRead @PSBoundParameters
+    })
+$script:sshBase64CommandReadCommand = $transferLedgerModule.NewBoundScriptBlock({
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)] [string[]] $Options,
+            [Parameter(Mandatory)] [string] $Destination,
+            [Parameter(Mandatory)] [string] $RemoteCommand,
+            [Parameter(Mandatory)] [int] $MaximumDecodedBytes,
+            [Parameter(Mandatory)] [string] $Description,
+            [scriptblock] $CommandRunner
+        )
+
+        Invoke-CountdownSshBase64CommandRead @PSBoundParameters
+    })
+
 function Get-CountdownRemoteDeploymentProperty {
     param(
         [Parameter(Mandatory)] [object] $InputObject,
@@ -600,6 +646,634 @@ function Write-CountdownRemoteDeploymentReadbackReceipt {
     }
     catch { throw "部署已提交但独立验证不完整，未回滚：$($_.Exception.Message)" }
     finally { if ($null -ne $temporaryPath -and [System.IO.File]::Exists($temporaryPath)) { [System.IO.File]::Delete($temporaryPath) } }
+}
+
+function ConvertFrom-CountdownRemoteDeploymentReadbackFlatJsonObject {
+    param(
+        [Parameter(Mandatory)] [string] $Json,
+        [Parameter(Mandatory)] [string] $SourceName
+    )
+
+    $options = [System.Text.Json.JsonDocumentOptions]::new()
+    $options.AllowTrailingCommas = $false
+    $options.CommentHandling = [System.Text.Json.JsonCommentHandling]::Disallow
+    try {
+        $document = [System.Text.Json.JsonDocument]::Parse($Json, $options)
+    }
+    catch {
+        throw "$SourceName 不是单个完整 JSON object：$($_.Exception.Message)"
+    }
+
+    $values = [ordered]@{}
+    try {
+        if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+            throw "$SourceName 根节点必须是 object。"
+        }
+        $names = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        foreach ($property in $document.RootElement.EnumerateObject()) {
+            if (-not $names.Add($property.Name)) {
+                throw "$SourceName 包含重复字段：$($property.Name)"
+            }
+            $kind = $property.Value.ValueKind
+            $value = if ($kind -eq [System.Text.Json.JsonValueKind]::String) {
+                $property.Value.GetString()
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::Number) {
+                $integer = 0L
+                if (-not $property.Value.TryGetInt64([ref] $integer)) {
+                    throw "$SourceName 字段 $($property.Name) 必须是 Int64 integer。"
+                }
+                $integer
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::True) {
+                $true
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::False) {
+                $false
+            }
+            elseif ($kind -eq [System.Text.Json.JsonValueKind]::Null) {
+                $null
+            }
+            else {
+                throw "$SourceName 字段 $($property.Name) 必须是 flat scalar JSON value。"
+            }
+            $values.Add($property.Name, $value)
+        }
+    }
+    finally {
+        $document.Dispose()
+    }
+
+    [pscustomobject] $values
+}
+
+function Invoke-CountdownRemoteDeploymentBindingRead {
+    param(
+        [Parameter(Mandatory)] [string[]] $Options,
+        [Parameter(Mandatory)] [string] $Destination,
+        [Parameter(Mandatory)] [string] $RemotePath,
+        [Parameter(Mandatory)] [string] $ExpectedDeploymentBindingSha256,
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId,
+        [scriptblock] $CommandRunner
+    )
+
+    $escapedRemotePath = $RemotePath.Replace("'", "''")
+    $scriptText = @"
+`$ErrorActionPreference = 'Stop'
+if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') {
+    throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。'
+}
+`$path = '$escapedRemotePath'
+if (-not (Test-Path -LiteralPath `$path -PathType Leaf)) { throw '部署 binding 不存在。' }
+`$item = Get-Item -LiteralPath `$path -Force -ErrorAction Stop
+if (`$item -isnot [System.IO.FileInfo] -or
+    (`$item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw '部署 binding 必须是非 reparse point 的普通文件。'
+}
+if ([long] `$item.Length -lt 1 -or [long] `$item.Length -gt 4096) {
+    throw "部署 binding 大小无效：`$(`$item.Length)"
+}
+[Console]::Out.Write([Convert]::ToBase64String([System.IO.File]::ReadAllBytes(`$item.FullName)))
+"@
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($scriptText))
+    $arguments = @{
+        Options = $Options
+        Destination = $Destination
+        RemoteCommand = "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
+        MaximumDecodedBytes = 4096
+        Description = '部署 binding 独立回读'
+    }
+    if ($null -ne $CommandRunner) { $arguments.CommandRunner = $CommandRunner }
+    & $script:sshBase64CommandReadCommand @arguments
+}
+
+function Get-CountdownRemoteDeploymentReadbackSha256Text {
+    param([Parameter(Mandatory)] [string] $Text)
+
+    [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [System.Text.UTF8Encoding]::new($false).GetBytes($Text)))
+}
+
+function Read-CountdownRemoteDeploymentReadbackJsonObject {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "独立回读状态文件不存在：$Path"
+    }
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($item -isnot [System.IO.FileInfo] -or
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "独立回读状态文件必须是非 reparse point 的普通文件：$Path"
+    }
+    if ([long] $item.Length -lt 1 -or [long] $item.Length -gt 32768) {
+        throw "独立回读状态文件大小无效：$Path"
+    }
+    $bytes = [System.IO.File]::ReadAllBytes($item.FullName)
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        throw "独立回读状态文件不得包含 UTF-8 BOM：$Path"
+    }
+    $text = [System.Text.UTF8Encoding]::new($false, $true).GetString($bytes)
+    ConvertFrom-CountdownRemoteDeploymentReadbackFlatJsonObject -Json $text -SourceName $Path
+}
+
+function Assert-CountdownRemoteDeploymentReadbackJsonShape {
+    param(
+        [Parameter(Mandatory)] [object] $Value,
+        [Parameter(Mandatory)] [string[]] $ExpectedNames,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $expectedNamesSet = [System.Collections.Generic.HashSet[string]]::new(
+        $ExpectedNames,
+        [System.StringComparer]::Ordinal)
+    $actualNamesSet = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::Ordinal)
+    foreach ($property in $Value.PSObject.Properties) {
+        if (-not $actualNamesSet.Add($property.Name) -or -not $expectedNamesSet.Contains($property.Name)) {
+            throw "$Name 包含未允许字段：$($property.Name)"
+        }
+    }
+    foreach ($expectedName in $ExpectedNames) {
+        if (-not $actualNamesSet.Contains($expectedName)) {
+            throw "$Name 缺少字段：$expectedName"
+        }
+    }
+}
+
+function Assert-CountdownRemoteDeploymentReadbackOrdinaryFile {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "独立回读文件不存在：$Path"
+    }
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($item -isnot [System.IO.FileInfo] -or
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "独立回读文件必须是非 reparse point 的普通文件：$Path"
+    }
+    $item
+}
+
+function Invoke-CountdownRemoteDeploymentReadbackProbe {
+    param([Parameter(Mandatory)] [object] $Expected)
+
+    $sshConnectionParts = @(([string] $env:SSH_CONNECTION) -split '\s+' | Where-Object { $_ -ne '' })
+    $hostIdentityMatch = $sshConnectionParts.Count -eq 4 -and
+        [string]::Equals([string] $sshConnectionParts[2], [string] $Expected.ExpectedRemoteHost, [System.StringComparison]::OrdinalIgnoreCase)
+    $windowsIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $identityUser = @($windowsIdentity -split '\\')[-1]
+    $userIdentityMatch = [string]::Equals($identityUser, [string] $Expected.ExpectedRemoteUser, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $hostIdentityMatch) { throw '独立回读的 SSH 服务端地址与受管 office 目标不一致。' }
+    if (-not $userIdentityMatch) { throw '独立回读的 Windows 用户与受管 office 用户不一致。' }
+
+    $task = Get-ScheduledTask -TaskName ([string] $Expected.TaskName) -ErrorAction Stop
+    $taskActions = @($task.Actions)
+    if ($taskActions.Count -ne 1) { throw '独立回读计划任务必须只有一个执行动作。' }
+    $taskAction = $taskActions[0]
+    $expectedPowerShell7 = [System.IO.Path]::GetFullPath((Join-Path $PSHOME 'pwsh.exe'))
+    $taskExecuteMatch = [string]::Equals(
+        [System.IO.Path]::GetFullPath([string] $taskAction.Execute),
+        $expectedPowerShell7,
+        [System.StringComparison]::OrdinalIgnoreCase)
+    $taskArgumentsMatch = [string]::Equals(
+        [string] $taskAction.Arguments,
+        [string] $Expected.TaskArguments,
+        [System.StringComparison]::Ordinal)
+    $taskWorkingDirectoryMatch = [string]::Equals(
+        [System.IO.Path]::GetFullPath([string] $taskAction.WorkingDirectory).TrimEnd('\'),
+        [System.IO.Path]::GetFullPath([string] $Expected.InstallPath).TrimEnd('\'),
+        [System.StringComparison]::OrdinalIgnoreCase)
+    if ([string] $task.State -ne 'Running') { throw "独立回读计划任务未运行：$($task.State)" }
+    if (-not $taskExecuteMatch) { throw '独立回读计划任务未使用当前 PowerShell 7 pwsh.exe。' }
+    if (-not $taskArgumentsMatch) { throw '独立回读计划任务未使用受管 pwsh.exe -STA 薄 adapter 参数。' }
+    if (-not $taskWorkingDirectoryMatch) { throw '独立回读计划任务工作目录不一致。' }
+
+    $startup = Read-CountdownRemoteDeploymentReadbackJsonObject -Path (Join-Path ([string] $Expected.InstallPath) 'startup-request.json')
+    $runtime = Read-CountdownRemoteDeploymentReadbackJsonObject -Path (Join-Path ([string] $Expected.InstallPath) 'runtime-status.json')
+    $acceptance = Read-CountdownRemoteDeploymentReadbackJsonObject -Path (Join-Path ([string] $Expected.InstallPath) 'acceptance-status.json')
+    $binding = Read-CountdownRemoteDeploymentReadbackJsonObject -Path ([string] $Expected.DeploymentBindingPath)
+    Assert-CountdownRemoteDeploymentReadbackJsonShape -Value $startup -Name 'startup-request.json' -ExpectedNames @(
+        'schemaVersion', 'launchToken', 'requestedAtUtc', 'acceptanceReadOnly',
+        'acceptanceState', 'releasedAtUtc', 'readyAtUtc', 'finalizedAtUtc')
+    Assert-CountdownRemoteDeploymentReadbackJsonShape -Value $runtime -Name 'runtime-status.json' -ExpectedNames @(
+        'schemaVersion', 'stage', 'launchToken', 'processId', 'sessionId',
+        'applicationPath', 'readyAtUtc', 'calendarState', 'timeZoneId')
+    Assert-CountdownRemoteDeploymentReadbackJsonShape -Value $acceptance -Name 'acceptance-status.json' -ExpectedNames @(
+        'schemaVersion', 'stage', 'launchToken', 'processId', 'sessionId',
+        'applicationPath', 'readyAtUtc')
+    Assert-CountdownRemoteDeploymentReadbackJsonShape -Value $binding -Name 'deployment-binding.json' -ExpectedNames @(
+        'SchemaVersion', 'DeploymentBindingSha256', 'TokenSha256', 'RuntimeProcessId')
+
+    if ($startup.schemaVersion -isnot [long] -and $startup.schemaVersion -isnot [int]) { throw '独立回读 startup schema 类型无效。' }
+    if ($runtime.schemaVersion -isnot [long] -and $runtime.schemaVersion -isnot [int]) { throw '独立回读 runtime schema 类型无效。' }
+    if ($acceptance.schemaVersion -isnot [long] -and $acceptance.schemaVersion -isnot [int]) { throw '独立回读 acceptance schema 类型无效。' }
+    if ($binding.SchemaVersion -isnot [long] -and $binding.SchemaVersion -isnot [int]) { throw '独立回读 binding schema 类型无效。' }
+    if ($binding.RuntimeProcessId -isnot [long] -and $binding.RuntimeProcessId -isnot [int]) { throw '独立回读 binding PID 类型无效。' }
+    foreach ($definition in @(
+            @('binding hash', $binding.DeploymentBindingSha256),
+            @('binding token hash', $binding.TokenSha256))) {
+        if ($definition[1] -isnot [string] -or [string] $definition[1] -notmatch '\A[0-9A-Fa-f]{64}\z') {
+            throw "独立回读 $($definition[0]) 类型或值域无效。"
+        }
+    }
+    if ([int] $binding.SchemaVersion -ne 1 -or
+        [int] $binding.RuntimeProcessId -ne [int] $Expected.ExpectedProcessId -or
+        -not [string]::Equals([string] $binding.DeploymentBindingSha256, [string] $Expected.ExpectedDeploymentBindingSha256, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw '独立回读 binding 与本次本地部署 nonce 或成功回执不一致。'
+    }
+    foreach ($definition in @(
+            @('startup launchToken', $startup.launchToken),
+            @('startup acceptanceState', $startup.acceptanceState),
+            @('runtime stage', $runtime.stage),
+            @('runtime launchToken', $runtime.launchToken),
+            @('runtime applicationPath', $runtime.applicationPath),
+            @('runtime readyAtUtc', $runtime.readyAtUtc),
+            @('runtime calendarState', $runtime.calendarState),
+            @('runtime timeZoneId', $runtime.timeZoneId),
+            @('acceptance stage', $acceptance.stage),
+            @('acceptance launchToken', $acceptance.launchToken),
+            @('acceptance applicationPath', $acceptance.applicationPath),
+            @('acceptance readyAtUtc', $acceptance.readyAtUtc))) {
+        if ($definition[1] -isnot [string]) { throw "独立回读 $($definition[0]) 类型无效。" }
+    }
+    foreach ($definition in @(
+            @('runtime processId', $runtime.processId),
+            @('runtime sessionId', $runtime.sessionId),
+            @('acceptance processId', $acceptance.processId),
+            @('acceptance sessionId', $acceptance.sessionId))) {
+        if ($definition[1] -isnot [long] -and $definition[1] -isnot [int]) {
+            throw "独立回读 $($definition[0]) 类型无效。"
+        }
+    }
+    if ([int] $startup.schemaVersion -ne 1 -or [string] $startup.acceptanceState -ne 'finalized' -or $startup.acceptanceReadOnly -isnot [bool] -or [bool] $startup.acceptanceReadOnly) {
+        throw '独立回读 startup 未达到 finalized 可编辑状态。'
+    }
+    if ([int] $runtime.schemaVersion -ne 4 -or [string] $runtime.stage -ne 'window-ready') { throw '独立回读 runtime 未达到 window-ready。' }
+    if ([int] $acceptance.schemaVersion -ne 1 -or [string] $acceptance.stage -ne 'finalized-ready') { throw '独立回读 acceptance 未达到 finalized-ready。' }
+    if ([string] $runtime.calendarState -notin @('Pending', 'Ready', 'Unavailable') -or [string] $runtime.timeZoneId -ne 'China Standard Time') {
+        throw '独立回读 runtime 日历或时区状态无效。'
+    }
+
+    $tokens = @([string] $startup.launchToken, [string] $runtime.launchToken, [string] $acceptance.launchToken)
+    $tokenMatch = -not [string]::IsNullOrWhiteSpace($tokens[0]) -and
+        [string]::Equals($tokens[0], $tokens[1], [System.StringComparison]::Ordinal) -and
+        [string]::Equals($tokens[0], $tokens[2], [System.StringComparison]::Ordinal)
+    if (-not $tokenMatch) { throw '独立回读三份状态文件的 launch token 不一致。' }
+    $tokenSha256 = Get-CountdownRemoteDeploymentReadbackSha256Text -Text $tokens[0]
+    if (-not [string]::Equals($tokenSha256, [string] $Expected.ExpectedTokenSha256, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals($tokenSha256, [string] $binding.TokenSha256, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw '独立回读 launch token 与本次部署 binding 不一致。'
+    }
+
+    $runtimeProcessId = [int] $runtime.processId
+    $acceptanceProcessId = [int] $acceptance.processId
+    $processIdMatch = $runtimeProcessId -eq [int] $Expected.ExpectedProcessId -and $acceptanceProcessId -eq $runtimeProcessId
+    if (-not $processIdMatch) { throw '独立回读 PID 与成功回执不一致。' }
+    $runtimeSessionId = [int] $runtime.sessionId
+    $acceptanceSessionId = [int] $acceptance.sessionId
+    $process = Get-Process -Id $runtimeProcessId -ErrorAction Stop
+    $processSessionId = [int] $process.SessionId
+    $sessionIdMatch = $runtimeSessionId -gt 0 -and
+        $runtimeSessionId -eq $acceptanceSessionId -and
+        $runtimeSessionId -eq $processSessionId
+    if (-not $sessionIdMatch) { throw '独立回读交互会话不一致。' }
+
+    $expectedApplicationPath = [System.IO.Path]::GetFullPath([string] $Expected.ApplicationPath)
+    $applicationPathMatch = [string]::Equals(
+        [System.IO.Path]::GetFullPath([string] $runtime.applicationPath),
+        $expectedApplicationPath,
+        [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals(
+            [System.IO.Path]::GetFullPath([string] $acceptance.applicationPath),
+            $expectedApplicationPath,
+            [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $applicationPathMatch) { throw '独立回读应用 adapter 路径不一致。' }
+
+    $expectedExecutablePath = [System.IO.Path]::GetFullPath([string] $Expected.ExecutablePath)
+    $processExecutablePathMatch = [string]::Equals(
+        [System.IO.Path]::GetFullPath([string] $process.Path),
+        $expectedExecutablePath,
+        [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $processExecutablePathMatch) { throw '独立回读进程可执行路径不一致。' }
+    $executableItem = Assert-CountdownRemoteDeploymentReadbackOrdinaryFile -Path $expectedExecutablePath
+    $executableSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $executableItem.FullName).Hash
+    $executableHashMatch = [string]::Equals($executableSha256, [string] $Expected.ExpectedExecutableSha256, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $executableHashMatch) { throw '独立回读运行 EXE 哈希与发布合同不一致。' }
+
+    $settingsPath = Join-Path ([string] $Expected.InstallPath) 'settings.json'
+    $settingsSha256 = ''
+    if (Test-Path -LiteralPath $settingsPath) {
+        $settingsItem = Assert-CountdownRemoteDeploymentReadbackOrdinaryFile -Path $settingsPath
+        $settingsSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsItem.FullName).Hash
+    }
+    $settingsHashMatch = [string]::Equals($settingsSha256, [string] $Expected.ExpectedSettingsSha256, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $settingsHashMatch) { throw '独立回读 settings 哈希与成功回执不一致。' }
+
+    $result = [pscustomobject][ordered]@{
+        SchemaVersion = 1; Valid = $true
+        HostIdentityMatch = $hostIdentityMatch; UserIdentityMatch = $userIdentityMatch
+        RemoteMachineNameSha256 = Get-CountdownRemoteDeploymentReadbackSha256Text -Text ([Environment]::MachineName)
+        RemoteUserNameSha256 = Get-CountdownRemoteDeploymentReadbackSha256Text -Text $windowsIdentity
+        TaskState = [string] $task.State; TaskExecuteMatch = $taskExecuteMatch
+        TaskArgumentsMatch = $taskArgumentsMatch; TaskWorkingDirectoryMatch = $taskWorkingDirectoryMatch
+        StartupSchemaVersion = [int] $startup.schemaVersion; StartupAcceptanceState = [string] $startup.acceptanceState
+        RuntimeSchemaVersion = [int] $runtime.schemaVersion; RuntimeStage = [string] $runtime.stage
+        AcceptanceSchemaVersion = [int] $acceptance.schemaVersion; AcceptanceStage = [string] $acceptance.stage
+        TokenSha256 = $tokenSha256; TokenMatch = $tokenMatch
+        RuntimeProcessId = $runtimeProcessId; AcceptanceProcessId = $acceptanceProcessId
+        ProcessIdMatch = $processIdMatch; RuntimeSessionId = $runtimeSessionId
+        AcceptanceSessionId = $acceptanceSessionId; ProcessSessionId = $processSessionId
+        SessionIdMatch = $sessionIdMatch; ApplicationPathMatch = $applicationPathMatch
+        ProcessExecutablePathMatch = $processExecutablePathMatch; ExecutableSha256 = $executableSha256
+        ExecutableHashMatch = $executableHashMatch; SettingsSha256 = $settingsSha256
+        SettingsHashMatch = $settingsHashMatch
+    }
+    $resultJson = $result | ConvertTo-Json -Compress -Depth 4
+    [Console]::Out.Write(
+        [Convert]::ToBase64String([System.Text.UTF8Encoding]::new($false).GetBytes($resultJson)))
+}
+
+function Invoke-CountdownRemoteDeploymentIndependentRead {
+    param(
+        [Parameter(Mandatory)] [string[]] $Options,
+        [Parameter(Mandatory)] [string] $Destination,
+        [Parameter(Mandatory)] [string] $ExpectedRemoteHost,
+        [Parameter(Mandatory)] [string] $ExpectedRemoteUser,
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId,
+        [Parameter(Mandatory)] [string] $ExpectedExecutableSha256,
+        [Parameter(Mandatory)] [string] $ExpectedTokenSha256,
+        [Parameter(Mandatory)] [string] $ExpectedDeploymentBindingSha256,
+        [Parameter(Mandatory)] [string] $DeploymentBindingPath,
+        [AllowEmptyString()] [string] $ExpectedSettingsSha256 = '',
+        [scriptblock] $CommandRunner
+    )
+
+    $parameters = [ordered]@{
+        ExpectedRemoteHost = $ExpectedRemoteHost
+        ExpectedRemoteUser = $ExpectedRemoteUser
+        ExpectedProcessId = $ExpectedProcessId
+        ExpectedExecutableSha256 = $ExpectedExecutableSha256
+        ExpectedTokenSha256 = $ExpectedTokenSha256
+        ExpectedDeploymentBindingSha256 = $ExpectedDeploymentBindingSha256
+        DeploymentBindingPath = $DeploymentBindingPath
+        ExpectedSettingsSha256 = $ExpectedSettingsSha256
+        InstallPath = 'D:\敏敏子倒计时'
+        TaskName = 'Minmin Countdown'
+        ApplicationPath = 'D:\敏敏子倒计时\敏敏子倒计时.ps1'
+        ExecutablePath = 'D:\敏敏子倒计时\app\MinminCountdown.exe'
+        TaskArguments = '-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File "D:\敏敏子倒计时\敏敏子倒计时.ps1"'
+    }
+    $parameterJson = $parameters | ConvertTo-Json -Compress
+    $parameterBase64 = [Convert]::ToBase64String([System.Text.UTF8Encoding]::new($false).GetBytes($parameterJson))
+    $definitionNames = [string[]] @(
+        'ConvertFrom-CountdownRemoteDeploymentReadbackFlatJsonObject',
+        'Get-CountdownRemoteDeploymentReadbackSha256Text',
+        'Read-CountdownRemoteDeploymentReadbackJsonObject',
+        'Assert-CountdownRemoteDeploymentReadbackJsonShape',
+        'Assert-CountdownRemoteDeploymentReadbackOrdinaryFile',
+        'Invoke-CountdownRemoteDeploymentReadbackProbe'
+    )
+    $definitions = foreach ($definitionName in $definitionNames) {
+        $definition = Get-Command $definitionName -CommandType Function -ErrorAction Stop
+        "function $definitionName {`n$($definition.Definition)`n}"
+    }
+    $definitionText = $definitions -join "`n`n"
+    $readerScript = @"
+Set-StrictMode -Version Latest
+`$ErrorActionPreference = 'Stop'
+if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') {
+    throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。'
+}
+`$expectedJson = [System.Text.UTF8Encoding]::new(`$false, `$true).GetString(
+    [Convert]::FromBase64String('$parameterBase64'))
+`$expected = `$expectedJson | ConvertFrom-Json -ErrorAction Stop
+
+$definitionText
+
+Invoke-CountdownRemoteDeploymentReadbackProbe -Expected `$expected
+"@
+
+    $readerScriptBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($readerScript)
+    $compressedStream = [System.IO.MemoryStream]::new()
+    try {
+        $gzipStream = [System.IO.Compression.GZipStream]::new(
+            $compressedStream,
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $true)
+        try {
+            $gzipStream.Write($readerScriptBytes, 0, $readerScriptBytes.Length)
+        }
+        finally {
+            $gzipStream.Dispose()
+        }
+        $compressedBase64 = [Convert]::ToBase64String($compressedStream.ToArray())
+    }
+    finally {
+        $compressedStream.Dispose()
+    }
+    $bootstrap = @"
+`$compressed = [Convert]::FromBase64String('$compressedBase64')
+`$inputStream = [System.IO.MemoryStream]::new(`$compressed, `$false)
+try {
+    `$gzipStream = [System.IO.Compression.GZipStream]::new(`$inputStream, [System.IO.Compression.CompressionMode]::Decompress)
+    try {
+        `$outputStream = [System.IO.MemoryStream]::new()
+        try {
+            `$gzipStream.CopyTo(`$outputStream)
+            `$scriptText = [System.Text.UTF8Encoding]::new(`$false, `$true).GetString(`$outputStream.ToArray())
+        }
+        finally { `$outputStream.Dispose() }
+    }
+    finally { `$gzipStream.Dispose() }
+}
+finally { `$inputStream.Dispose() }
+& ([scriptblock]::Create(`$scriptText))
+"@
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($bootstrap))
+    $remoteCommand = "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
+    if ($remoteCommand.Length -gt 30000) {
+        return [pscustomobject]@{
+            Success = $false
+            ExitCode = -1
+            Bytes = $null
+            FailureMessage = "部署后独立回读命令超过安全长度：$($remoteCommand.Length)"
+        }
+    }
+    $commandArguments = @{
+        Options = $Options
+        Destination = $Destination
+        RemoteCommand = $remoteCommand
+        MaximumDecodedBytes = 32768
+        Description = '部署后独立回读'
+    }
+    if ($null -ne $CommandRunner) { $commandArguments.CommandRunner = $CommandRunner }
+    & $script:sshBase64CommandReadCommand @commandArguments
+}
+
+function New-CountdownRemoteDeploymentReadbackSshAdapter {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string[]] $Options,
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Destination,
+        [scriptblock] $CommandRunner
+    )
+
+    $capturedOptions = [string[]] @($Options)
+    $capturedDestination = $Destination
+    $capturedCommandRunner = $CommandRunner
+    $bindingReadCommand = Get-Command Invoke-CountdownRemoteDeploymentBindingRead -CommandType Function -ErrorAction Stop
+    $independentReadCommand = Get-Command Invoke-CountdownRemoteDeploymentIndependentRead -CommandType Function -ErrorAction Stop
+    $bindingReader = {
+        param([Parameter(Mandatory)] [object] $Context)
+
+        $arguments = @{
+            Options = $capturedOptions
+            Destination = $capturedDestination
+            RemotePath = [string] $Context.RemotePath
+            ExpectedDeploymentBindingSha256 = [string] $Context.ExpectedDeploymentBindingSha256
+            ExpectedProcessId = [int] $Context.ExpectedProcessId
+        }
+        if ($null -ne $capturedCommandRunner) { $arguments.CommandRunner = $capturedCommandRunner }
+        & $bindingReadCommand @arguments
+    }.GetNewClosure()
+    $independentReader = {
+        param([Parameter(Mandatory)] [object] $Context)
+
+        $arguments = @{
+            Options = $capturedOptions
+            Destination = $capturedDestination
+            ExpectedRemoteHost = [string] $Context.ExpectedRemoteHost
+            ExpectedRemoteUser = [string] $Context.ExpectedRemoteUser
+            ExpectedProcessId = [int] $Context.ExpectedProcessId
+            ExpectedExecutableSha256 = [string] $Context.ExpectedExecutableSha256
+            ExpectedTokenSha256 = [string] $Context.ExpectedTokenSha256
+            ExpectedDeploymentBindingSha256 = [string] $Context.ExpectedDeploymentBindingSha256
+            DeploymentBindingPath = [string] $Context.DeploymentBindingPath
+            ExpectedSettingsSha256 = [string] $Context.ExpectedSettingsSha256
+        }
+        if ($null -ne $capturedCommandRunner) { $arguments.CommandRunner = $capturedCommandRunner }
+        & $independentReadCommand @arguments
+    }.GetNewClosure()
+
+    [pscustomobject]@{
+        ReadDeploymentBinding = $bindingReader
+        ReadIndependentReadback = $independentReader
+    }
+}
+
+function Invoke-CountdownRemoteDeploymentIndependentReadback {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $LedgerPath,
+        [Parameter(Mandatory)] [string] $DeploymentBindingEvidencePath,
+        [Parameter(Mandatory)] [string] $IndependentReadbackEvidencePath,
+        [Parameter(Mandatory)] [string] $RemoteDeploymentBindingPath,
+        [Parameter(Mandatory)] [string] $DeploymentBindingSha256,
+        [Parameter(Mandatory)] [object] $SuccessReceipt,
+        [Parameter(Mandatory)] [string] $ExpectedExecutableSha256,
+        [Parameter(Mandatory)] [string] $ExpectedRemoteHost,
+        [Parameter(Mandatory)] [string] $ExpectedRemoteUser,
+        [Parameter(Mandatory)] [object] $Adapter,
+        [scriptblock] $StopwatchFactory
+    )
+
+    try {
+        $bindingReaderOperation = Get-CountdownRemoteDeploymentProperty -InputObject $Adapter -Name 'ReadDeploymentBinding' -Required
+        $independentReaderOperation = Get-CountdownRemoteDeploymentProperty -InputObject $Adapter -Name 'ReadIndependentReadback' -Required
+        if ($bindingReaderOperation -isnot [scriptblock] -or $independentReaderOperation -isnot [scriptblock]) {
+            throw '提交后独立回读 adapter 的 reader 必须是 scriptblock。'
+        }
+        $runtimeProcessId = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'RuntimeProcessId' -Required)
+        $settingsHashAfter = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'SettingsHashAfter' -Required)
+        $bindingContext = [pscustomobject]@{
+            RemotePath = $RemoteDeploymentBindingPath
+            ExpectedDeploymentBindingSha256 = $DeploymentBindingSha256
+            ExpectedProcessId = $runtimeProcessId
+        }
+        $bindingReader = {
+            $readerResult = & $bindingReaderOperation $bindingContext
+            if ($readerResult.Success) {
+                try {
+                    [void] (ConvertFrom-CountdownRemoteDeploymentBindingJson `
+                            -Json ([System.Text.UTF8Encoding]::new($false, $true).GetString([byte[]] $readerResult.Bytes)) `
+                            -ExpectedDeploymentBindingSha256 $bindingContext.ExpectedDeploymentBindingSha256 `
+                            -ExpectedProcessId ([int] $bindingContext.ExpectedProcessId))
+                }
+                catch {
+                    return [pscustomobject]@{
+                        Success = $false
+                        ExitCode = 0
+                        Bytes = [byte[]] $readerResult.Bytes
+                        FailureMessage = "办公室设备返回的部署 binding 未通过契约校验：$($_.Exception.Message)"
+                    }
+                }
+            }
+            $readerResult
+        }.GetNewClosure()
+        $bindingReadArguments = @{
+            LedgerPath = $LedgerPath
+            Id = 'remote-deployment-binding'
+            Reader = $bindingReader
+        }
+        if ($null -ne $StopwatchFactory) { $bindingReadArguments.StopwatchFactory = $StopwatchFactory }
+        [byte[]] $deploymentBindingBytes = & $script:recordedSshReadCommand @bindingReadArguments
+        $deploymentBinding = Write-CountdownRemoteDeploymentBindingReceipt `
+            -Path $DeploymentBindingEvidencePath `
+            -Bytes $deploymentBindingBytes `
+            -ExpectedDeploymentBindingSha256 $DeploymentBindingSha256 `
+            -ExpectedProcessId $runtimeProcessId
+
+        $readbackContext = [pscustomobject]@{
+            ExpectedRemoteHost = $ExpectedRemoteHost
+            ExpectedRemoteUser = $ExpectedRemoteUser
+            ExpectedProcessId = $runtimeProcessId
+            ExpectedExecutableSha256 = $ExpectedExecutableSha256
+            ExpectedTokenSha256 = [string] $deploymentBinding.TokenSha256
+            ExpectedDeploymentBindingSha256 = $DeploymentBindingSha256
+            DeploymentBindingPath = $RemoteDeploymentBindingPath
+            ExpectedSettingsSha256 = $settingsHashAfter
+        }
+        $independentReader = {
+            $readerResult = & $independentReaderOperation $readbackContext
+            if ($readerResult.Success) {
+                try {
+                    [void] (ConvertFrom-CountdownRemoteDeploymentReadbackJson `
+                            -Json ([System.Text.UTF8Encoding]::new($false, $true).GetString([byte[]] $readerResult.Bytes)) `
+                            -ExpectedProcessId ([int] $readbackContext.ExpectedProcessId) `
+                            -ExpectedExecutableSha256 ([string] $readbackContext.ExpectedExecutableSha256) `
+                            -ExpectedTokenSha256 ([string] $readbackContext.ExpectedTokenSha256) `
+                            -ExpectedSettingsSha256 ([string] $readbackContext.ExpectedSettingsSha256))
+                }
+                catch {
+                    return [pscustomobject]@{
+                        Success = $false
+                        ExitCode = 0
+                        Bytes = [byte[]] $readerResult.Bytes
+                        FailureMessage = "办公室设备返回的独立回读未通过契约校验：$($_.Exception.Message)"
+                    }
+                }
+            }
+            $readerResult
+        }.GetNewClosure()
+        $readbackArguments = @{
+            LedgerPath = $LedgerPath
+            Id = 'post-deployment-independent-readback'
+            Reader = $independentReader
+        }
+        if ($null -ne $StopwatchFactory) { $readbackArguments.StopwatchFactory = $StopwatchFactory }
+        [byte[]] $independentReadbackBytes = & $script:recordedSshReadCommand @readbackArguments
+        [void] (Write-CountdownRemoteDeploymentReadbackReceipt `
+                -Path $IndependentReadbackEvidencePath `
+                -Bytes $independentReadbackBytes `
+                -ExpectedProcessId $runtimeProcessId `
+                -ExpectedExecutableSha256 $ExpectedExecutableSha256 `
+                -ExpectedTokenSha256 ([string] $deploymentBinding.TokenSha256) `
+                -ExpectedSettingsSha256 $settingsHashAfter)
+    }
+    catch {
+        throw "部署已提交但独立验证不完整，未回滚：$($_.Exception.Message)"
+    }
 }
 
 function Resolve-CountdownRemoteDeploymentTrustedPath {
@@ -2008,4 +2682,6 @@ Export-ModuleMember -Function `
     ConvertFrom-CountdownRemoteDeploymentBindingJson, `
     Write-CountdownRemoteDeploymentBindingReceipt, `
     ConvertFrom-CountdownRemoteDeploymentReadbackJson, `
-    Write-CountdownRemoteDeploymentReadbackReceipt
+    Write-CountdownRemoteDeploymentReadbackReceipt, `
+    New-CountdownRemoteDeploymentReadbackSshAdapter, `
+    Invoke-CountdownRemoteDeploymentIndependentReadback

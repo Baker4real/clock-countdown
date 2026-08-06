@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace MinminCountdown;
@@ -167,19 +169,254 @@ public sealed partial class FloatingWindow
 {
     internal FloatingWindowValidationScenarios RunValidationScenarios(bool exerciseNoteAdd)
     {
-        var crossDayReminderAdded =
-            exerciseNoteAdd && RunCrossDayReminderAddExercise();
-        var reminderModes = exerciseNoteAdd
-            ? RunReminderModeClickExercises()
-            : ReminderModeClickResult.NotRun;
+        var originalWorkspace = _workspace;
+        var initialStateMatches = FloatingWorkspacePresentationMatches(
+            WorkspaceKind.Countdowns,
+            _desktopWorkspace.Snapshot);
+        try
+        {
+            var crossDayReminderAdded =
+                exerciseNoteAdd && RunCrossDayReminderAddExercise();
+            var reminderModes = exerciseNoteAdd
+                ? RunReminderModeClickExercises()
+                : ReminderModeClickResult.NotRun;
+            var dragInteraction = RunDragInteractionExercise();
+            var themeExercise = RunThemeBoundaryExercise();
+            var manualPlacement = RunManualPlacementExercise();
+            var uiPolish = ProbeUiPolishScenarios();
+            var workspace = ProbeWorkspaceScenarios(initialStateMatches);
 
-        return new FloatingWindowValidationScenarios(
-            crossDayReminderAdded,
-            reminderModes,
-            RunDragInteractionExercise(),
-            RunThemeBoundaryExercise(),
-            RunManualPlacementExercise(),
-            ProbeUiPolishScenarios());
+            return new FloatingWindowValidationScenarios(
+                crossDayReminderAdded,
+                reminderModes,
+                dragInteraction,
+                themeExercise,
+                manualPlacement,
+                uiPolish,
+                workspace);
+        }
+        finally
+        {
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+        }
+    }
+
+    private FloatingWorkspaceValidationScenarios ProbeWorkspaceScenarios(
+        bool initialStateMatches)
+    {
+        var snapshot = _desktopWorkspace.Snapshot;
+
+        FloatingNotesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        var notesStateMatches = FloatingWorkspacePresentationMatches(
+            WorkspaceKind.Notes,
+            snapshot);
+        var renderedNoteIds = GetFloatingRenderedNoteIds();
+        var expectedNoteIds = snapshot.VisibleActiveNotes
+            .Select(note => note.Id)
+            .ToArray();
+        var notesKeepExistingSortOrder = expectedNoteIds.SequenceEqual(
+            renderedNoteIds,
+            StringComparer.Ordinal);
+        var countdownButtonTextFit = MeasureValidationButtonText(FloatingCountdownsButton);
+        var notesButtonTextFit = MeasureValidationButtonText(FloatingNotesButton);
+        var titleTextFit = MeasureValidationTitleText(FloatingTitle, FloatingDragHandle);
+        var titleTextHeightFit = MeasureValidationTitleTextHeight(FloatingTitle);
+
+        FloatingNotesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        var notesReselectionStateMatches = FloatingWorkspacePresentationMatches(
+            WorkspaceKind.Notes,
+            snapshot);
+
+        FloatingCountdownsButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        var countdownStateMatches = FloatingWorkspacePresentationMatches(
+            WorkspaceKind.Countdowns,
+            snapshot);
+
+        FloatingCountdownsButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        var countdownReselectionStateMatches = FloatingWorkspacePresentationMatches(
+            WorkspaceKind.Countdowns,
+            snapshot);
+        var countdownSelectionSurvivesDayNightThemes =
+            InitialCountdownSelectionSurvivesDayNightThemes();
+
+        return new FloatingWorkspaceValidationScenarios(
+            initialStateMatches,
+            notesStateMatches &&
+            notesReselectionStateMatches &&
+            countdownStateMatches &&
+            countdownReselectionStateMatches,
+            countdownSelectionSurvivesDayNightThemes,
+            notesKeepExistingSortOrder,
+            countdownButtonTextFit,
+            notesButtonTextFit,
+            titleTextFit,
+            titleTextHeightFit,
+            FloatingCountdownCount,
+            FloatingCountdownTexts,
+            IncomeText,
+            renderedNoteIds);
+    }
+
+    private bool FloatingWorkspacePresentationMatches(
+        WorkspaceKind workspace,
+        DesktopWorkspaceSnapshot snapshot)
+    {
+        var selectedButtonCount = new[]
+        {
+            FloatingCountdownsButton.IsChecked == true,
+            FloatingNotesButton.IsChecked == true
+        }.Count(selected => selected);
+        var chromeMatches =
+            selectedButtonCount == 1 &&
+            FloatingCountdownsButton.IsChecked == (workspace == WorkspaceKind.Countdowns) &&
+            FloatingNotesButton.IsChecked == (workspace == WorkspaceKind.Notes) &&
+            string.Equals(
+                FloatingTitle.Text,
+                workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签",
+                StringComparison.Ordinal) &&
+            FloatingNoteEntry.Visibility == (workspace == WorkspaceKind.Notes
+                ? Visibility.Visible
+                : Visibility.Collapsed) &&
+            FloatingRows.Children.Count > 0;
+        if (!chromeMatches)
+        {
+            return false;
+        }
+
+        if (workspace == WorkspaceKind.Countdowns)
+        {
+            var expectedCountdownCount = snapshot.VisibleCountdowns.Count(record =>
+                record.TargetUtc > snapshot.UtcNow);
+            var emptyMessages = FloatingRows.Children
+                .OfType<TextBlock>()
+                .Select(text => text.Text)
+                .ToArray();
+            return
+                FloatingCountdownCount == expectedCountdownCount &&
+                !ValidationDescendants<CheckBox>(FloatingRows).Any() &&
+                emptyMessages.All(message => string.Equals(
+                    message,
+                    "没有未到期的倒计时。",
+                    StringComparison.Ordinal));
+        }
+
+        var expectedNoteIds = snapshot.VisibleActiveNotes
+            .Select(note => note.Id)
+            .ToArray();
+        var noteIdsMatch = GetFloatingRenderedNoteIds().SequenceEqual(
+            expectedNoteIds,
+            StringComparer.Ordinal);
+        var emptyNoteMessages = FloatingRows.Children
+            .OfType<TextBlock>()
+            .Select(text => text.Text)
+            .ToArray();
+        return
+            noteIdsMatch &&
+            (expectedNoteIds.Length > 0
+                ? emptyNoteMessages.Length == 0
+                : emptyNoteMessages.Length == 1 && string.Equals(
+                    emptyNoteMessages[0],
+                    "今天还没有待办便签。",
+                    StringComparison.Ordinal));
+    }
+
+    private IReadOnlyList<string> GetFloatingRenderedNoteIds() =>
+        ValidationDescendants<CheckBox>(FloatingRows)
+            .Where(checkBox => checkBox.Tag is string)
+            .Select(checkBox => (string)checkBox.Tag)
+            .ToArray();
+
+    private static WindowValidationTextFit MeasureValidationButtonText(ContentControl button)
+    {
+        var text = button.Content?.ToString() ?? string.Empty;
+        var formatted = new FormattedText(
+            text,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            new Typeface(button.FontFamily, button.FontStyle, button.FontWeight, button.FontStretch),
+            button.FontSize,
+            Brushes.Black,
+            VisualTreeHelper.GetDpi(button).PixelsPerDip);
+        var available = Math.Max(
+            0,
+            button.ActualWidth -
+            button.Padding.Left -
+            button.Padding.Right -
+            button.BorderThickness.Left -
+            button.BorderThickness.Right);
+        return new WindowValidationTextFit(available >= formatted.Width, available, formatted.Width);
+    }
+
+    private static WindowValidationTextFit MeasureValidationTitleText(
+        TextBlock textBlock,
+        FrameworkElement visibleAncestor)
+    {
+        var dpi = VisualTreeHelper.GetDpi(textBlock);
+        var formatted = FormatValidationText(textBlock, dpi);
+        var origin = textBlock.TranslatePoint(new Point(0, 0), visibleAncestor);
+        var visibleBounds = Rect.Intersect(
+            new Rect(origin, textBlock.RenderSize),
+            new Rect(new Point(0, 0), visibleAncestor.RenderSize));
+        var available = visibleBounds.IsEmpty ? 0 : visibleBounds.Width;
+        var required =
+            formatted.WidthIncludingTrailingWhitespace +
+            Math.Max(0, formatted.OverhangTrailing) +
+            (2 / dpi.DpiScaleX);
+        return new WindowValidationTextFit(available >= required, available, required);
+    }
+
+    private static WindowValidationTextFit MeasureValidationTitleTextHeight(TextBlock textBlock)
+    {
+        var dpi = VisualTreeHelper.GetDpi(textBlock);
+        var formatted = FormatValidationText(textBlock, dpi);
+        var available = Math.Max(0, textBlock.ActualHeight);
+        var required =
+            formatted.Height +
+            Math.Max(0, formatted.OverhangAfter) +
+            (4 / dpi.DpiScaleY);
+        return new WindowValidationTextFit(available >= required, available, required);
+    }
+
+    private static FormattedText FormatValidationText(TextBlock textBlock, DpiScale dpi) =>
+        new(
+            textBlock.Text,
+            CultureInfo.CurrentCulture,
+            textBlock.FlowDirection,
+            new Typeface(
+                textBlock.FontFamily,
+                textBlock.FontStyle,
+                textBlock.FontWeight,
+                textBlock.FontStretch),
+            textBlock.FontSize,
+            Brushes.Black,
+            dpi.PixelsPerDip);
+
+    private static IEnumerable<T> ValidationDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in ValidationDescendants<T>(child))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     private FloatingUiPolishScenarios ProbeUiPolishScenarios()
@@ -326,7 +563,27 @@ internal sealed record FloatingWindowValidationScenarios(
     FloatingDragInteractionExerciseResult DragInteraction,
     FloatingThemeExerciseResult ThemeExercise,
     FloatingManualPlacementExerciseResult ManualPlacement,
-    FloatingUiPolishScenarios UiPolish);
+    FloatingUiPolishScenarios UiPolish,
+    FloatingWorkspaceValidationScenarios Workspace);
+
+internal sealed record FloatingWorkspaceValidationScenarios(
+    bool InitialStateMatches,
+    bool SwitchingStaysSynchronized,
+    bool CountdownSelectionSurvivesDayNightThemes,
+    bool NotesKeepExistingSortOrder,
+    WindowValidationTextFit CountdownButtonTextFit,
+    WindowValidationTextFit NotesButtonTextFit,
+    WindowValidationTextFit TitleTextFit,
+    WindowValidationTextFit TitleTextHeightFit,
+    int CountdownCount,
+    IReadOnlyList<string> CountdownTexts,
+    string IncomeText,
+    IReadOnlyList<string> RenderedNoteIds);
+
+internal sealed record WindowValidationTextFit(
+    bool Fits,
+    double Available,
+    double Required);
 
 internal sealed record MainUiPolishScenarios(
     bool NoteEditorFieldsDoNotOverlap,

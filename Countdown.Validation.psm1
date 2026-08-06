@@ -96,6 +96,154 @@ function Assert-CountdownValidationTestReport {
     [int] $passedProperty.Value
 }
 
+function Assert-CountdownApplicationValidationReport {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [object] $Report,
+        [Parameter(Mandatory)] [bool] $MainManifestRequired,
+        [Parameter(Mandatory)] [bool] $FloatingManifestRequired
+    )
+
+    $validProperty = $Report.PSObject.Properties['Valid']
+    if ($null -eq $validProperty -or
+        $validProperty.Value -isnot [bool] -or
+        -not [bool] $validProperty.Value) {
+        throw '应用 validate-only 报告未通过。'
+    }
+
+    $contractProperty = $Report.PSObject.Properties['ValidationReportContractBehavior']
+    if ($null -eq $contractProperty -or $contractProperty.Value -isnot [bool]) {
+        throw '应用 validate-only 报告缺少布尔字段：ValidationReportContractBehavior'
+    }
+    if (-not [bool] $contractProperty.Value) {
+        throw '应用 validate-only 报告契约未通过：ValidationReportContractBehavior'
+    }
+
+    $requiredUiQualityFields = @(
+        'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
+        'MainReferenceDecorationLayerOrderMatches',
+        'MainWorkspaceResourcesFollowDayNightTheme',
+        'MainDynamicCountdownCardsUseThemeResources',
+        'MainDynamicNoteCardsUseThemeResources',
+        'FloatingReferenceContentSafeAreaMatches',
+        'FloatingReferenceBaselineGateIsolationBehavior',
+        'FloatingReferenceFreshnessGateIsolationBehavior',
+        'FloatingLongNotesBodyHasNoManualLineBreaks',
+        'FloatingLongNotesNaturalWraps',
+        'FloatingLongNotesUsesOnlyOuterScroller',
+        'FloatingLongNotesOuterScrollable',
+        'FloatingLongNotesTopBottomReachable',
+        'FloatingLongNotesSafeAreaMatches',
+        'FloatingLongNotesLayoutValid',
+        'FloatingTitleUsesSemiBoldWeight',
+        'FloatingNoteInputWraps',
+        'FloatingNoteInputScrolls',
+        'FloatingInitialWorkspaceStateMatches',
+        'FloatingWorkspaceSwitchingStaysSynchronized',
+        'FloatingCountdownSelectionSurvivesDayNightThemes',
+        'FloatingQuickAddDayResourcesFollowLocalTheme',
+        'FloatingQuickAddNightResourcesFollowLocalTheme',
+        'FloatingQuickAddIndependentFromApplicationAutoTheme',
+        'FloatingQuickAddThemeResourceIsolationBehavior',
+        'FloatingQuickAddDayExpandedScrolledCaptureWritten',
+        'FloatingQuickAddNightExpandedScrolledCaptureWritten',
+        'FloatingNightPlushSourceAlphaBoundsMatch',
+        'FloatingNightPlushEdgeBrightnessWithinLimit',
+        'FloatingNightPlushEdgeSaturationWithinLimit',
+        'FloatingNightPlushEdgeGlowGateIsolationBehavior',
+        'FloatingSecondaryRemainingUnitSpacingMatches',
+        'FloatingSecondaryRemainingLayoutMatches',
+        'FloatingSecondaryRemainingGateIsolationBehavior',
+        'FloatingScrollBarLocalStyleScoped',
+        'FloatingScrollBarHitTargetUsable',
+        'FloatingScrollBarVisualWeightProgression',
+        'FloatingScrollBarUsesWarmThemeTokens',
+        'FloatingScrollBarContentRemainsSafe',
+        'FloatingScrollBarInputPathsWork',
+        'FloatingScrollBarGateIsolationBehavior',
+        'FloatingScrollBarDayNightStateCapturesReady',
+        'UiQualityGateIsolationBehavior'
+    )
+    foreach ($fieldName in $requiredUiQualityFields) {
+        $field = $Report.PSObject.Properties[$fieldName]
+        if ($null -eq $field -or $field.Value -isnot [bool] -or -not [bool] $field.Value) {
+            throw "应用 validate-only 报告的 UI 质量门禁未通过：$fieldName"
+        }
+    }
+
+    if ($MainManifestRequired -ne $FloatingManifestRequired) {
+        throw '主窗口与悬浮窗视觉 manifest 模式不一致。'
+    }
+
+    $baselines = @(
+        [pscustomobject]@{ Name = 'Main'; Label = '主窗口'; Required = $MainManifestRequired; CaptureCount = 12 }
+        [pscustomobject]@{ Name = 'Floating'; Label = '悬浮窗'; Required = $FloatingManifestRequired; CaptureCount = 6 }
+    )
+    $baselineStates = [ordered]@{}
+    foreach ($baseline in $baselines) {
+        $state = [ordered]@{}
+        foreach ($stateName in @('Requested', 'ManifestAvailable', 'Validated')) {
+            $fieldName = "$($baseline.Name)ReferenceBaseline$stateName"
+            $field = $Report.PSObject.Properties[$fieldName]
+            if ($null -eq $field -or $field.Value -isnot [bool]) {
+                throw "应用 validate-only 的$($baseline.Label)参考基线状态错误：$fieldName"
+            }
+            $state[$stateName] = [bool] $field.Value
+        }
+        $baselineStates[$baseline.Name] = [pscustomobject] $state
+    }
+
+    if ($baselineStates.Main.ManifestAvailable -ne $baselineStates.Floating.ManifestAvailable) {
+        throw '主窗口与悬浮窗视觉 manifest 模式不一致。'
+    }
+
+    foreach ($baseline in $baselines) {
+        $state = $baselineStates[$baseline.Name]
+        if ($state.Requested -ne $baseline.Required -or
+            $state.ManifestAvailable -ne $baseline.Required -or
+            $state.Validated -ne $baseline.Required) {
+            throw "应用 validate-only 的$($baseline.Label)参考基线状态组合无效：Requested=$($state.Requested); ManifestAvailable=$($state.ManifestAvailable); Validated=$($state.Validated)"
+        }
+
+        $captureFieldName = "$($baseline.Name)ReferenceBaselineCaptures"
+        $captureField = $Report.PSObject.Properties[$captureFieldName]
+        if ($null -eq $captureField) {
+            throw "应用 validate-only 报告缺少 captures 字段：$captureFieldName"
+        }
+        $actualCaptureCount = @($captureField.Value).Count
+        if ($baseline.Required) {
+            if ($actualCaptureCount -ne $baseline.CaptureCount) {
+                throw "应用 validate-only 的$($baseline.Label)参考基线必须包含 $($baseline.CaptureCount) 个 captures，实际为 $actualCaptureCount。"
+            }
+        }
+        elseif ($actualCaptureCount -ne 0) {
+            throw "不携带参考资产的发布包伪造了$($baseline.Label)参考基线 captures。"
+        }
+    }
+
+    foreach ($sampleCountFieldName in @(
+            'MainDynamicCountdownCardSampleCount',
+            'MainDynamicNoteCardSampleCount'
+        )) {
+        $sampleCountField = $Report.PSObject.Properties[$sampleCountFieldName]
+        $isInteger = $null -ne $sampleCountField -and (
+            $sampleCountField.Value -is [sbyte] -or
+            $sampleCountField.Value -is [byte] -or
+            $sampleCountField.Value -is [int16] -or
+            $sampleCountField.Value -is [uint16] -or
+            $sampleCountField.Value -is [int32] -or
+            $sampleCountField.Value -is [uint32] -or
+            $sampleCountField.Value -is [int64] -or
+            $sampleCountField.Value -is [uint64]
+        )
+        if (-not $isInteger -or [int64] $sampleCountField.Value -lt 1) {
+            throw "应用 validate-only 报告未命中动态卡片样本：$sampleCountFieldName"
+        }
+    }
+
+    $Report
+}
+
 function Invoke-CountdownValidationSuite {
     [CmdletBinding()]
     param(
@@ -185,87 +333,10 @@ function Invoke-CountdownValidationSuite {
             (Join-Path $resolvedRoot '敏敏子倒计时.ps1'),
             '-ValidateOnly'
         )
-    $validProperty = $application.Report.PSObject.Properties['Valid']
-    if ($null -eq $validProperty -or
-        $validProperty.Value -isnot [bool] -or
-        -not [bool] $validProperty.Value) {
-        throw '应用 validate-only 报告未通过。'
-    }
-    $requiredUiQualityFields = @(
-        'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
-        'MainReferenceDecorationLayerOrderMatches',
-        'MainWorkspaceResourcesFollowDayNightTheme',
-        'MainDynamicCountdownCardsUseThemeResources',
-        'MainDynamicNoteCardsUseThemeResources',
-        'FloatingReferenceContentSafeAreaMatches',
-        'FloatingReferenceBaselineGateIsolationBehavior',
-        'FloatingReferenceFreshnessGateIsolationBehavior',
-        'FloatingLongNotesBodyHasNoManualLineBreaks',
-        'FloatingLongNotesNaturalWraps',
-        'FloatingLongNotesUsesOnlyOuterScroller',
-        'FloatingLongNotesOuterScrollable',
-        'FloatingLongNotesTopBottomReachable',
-        'FloatingLongNotesSafeAreaMatches',
-        'FloatingLongNotesLayoutValid',
-        'FloatingTitleUsesSemiBoldWeight',
-        'FloatingNoteInputWraps',
-        'FloatingNoteInputScrolls',
-        'FloatingInitialWorkspaceStateMatches',
-        'FloatingWorkspaceSwitchingStaysSynchronized',
-        'FloatingCountdownSelectionSurvivesDayNightThemes',
-        'FloatingQuickAddDayResourcesFollowLocalTheme',
-        'FloatingQuickAddNightResourcesFollowLocalTheme',
-        'FloatingQuickAddIndependentFromApplicationAutoTheme',
-        'FloatingQuickAddThemeResourceIsolationBehavior',
-        'FloatingQuickAddDayExpandedScrolledCaptureWritten',
-        'FloatingQuickAddNightExpandedScrolledCaptureWritten',
-        'FloatingNightPlushSourceAlphaBoundsMatch',
-        'FloatingNightPlushEdgeBrightnessWithinLimit',
-        'FloatingNightPlushEdgeSaturationWithinLimit',
-        'FloatingNightPlushEdgeGlowGateIsolationBehavior',
-        'FloatingSecondaryRemainingUnitSpacingMatches',
-        'FloatingSecondaryRemainingLayoutMatches',
-        'FloatingSecondaryRemainingGateIsolationBehavior',
-        'FloatingScrollBarLocalStyleScoped',
-        'FloatingScrollBarHitTargetUsable',
-        'FloatingScrollBarVisualWeightProgression',
-        'FloatingScrollBarUsesWarmThemeTokens',
-        'FloatingScrollBarContentRemainsSafe',
-        'FloatingScrollBarInputPathsWork',
-        'FloatingScrollBarGateIsolationBehavior',
-        'FloatingScrollBarDayNightStateCapturesReady',
-        'UiQualityGateIsolationBehavior'
-    )
-    if ($floatingBaselineRequired) {
-        $requiredUiQualityFields += 'FloatingReferenceBaselineValidated'
-    }
-    foreach ($fieldName in $requiredUiQualityFields) {
-        $field = $application.Report.PSObject.Properties[$fieldName]
-        if ($null -eq $field -or $field.Value -isnot [bool] -or -not [bool] $field.Value) {
-            throw "应用 validate-only 报告的 UI 质量门禁未通过：$fieldName"
-        }
-    }
-    foreach ($stateField in @(
-        'FloatingReferenceBaselineRequested',
-        'FloatingReferenceBaselineManifestAvailable'
-    )) {
-        $field = $application.Report.PSObject.Properties[$stateField]
-        if ($null -eq $field -or $field.Value -isnot [bool] -or [bool] $field.Value -ne $floatingBaselineRequired) {
-            throw "应用 validate-only 的悬浮窗参考基线状态错误：$stateField"
-        }
-    }
-    if (-not $floatingBaselineRequired -and [bool] $application.Report.FloatingReferenceBaselineValidated) {
-        throw '不携带参考资产的发布包伪造了悬浮窗参考基线验收。'
-    }
-    foreach ($sampleCountFieldName in @(
-        'MainDynamicCountdownCardSampleCount',
-        'MainDynamicNoteCardSampleCount'
-    )) {
-        $sampleCountField = $application.Report.PSObject.Properties[$sampleCountFieldName]
-        if ($null -eq $sampleCountField -or [int] $sampleCountField.Value -lt 1) {
-            throw "应用 validate-only 报告未命中动态卡片样本：$sampleCountFieldName"
-        }
-    }
+    $null = Assert-CountdownApplicationValidationReport `
+        -Report $application.Report `
+        -MainManifestRequired $mainBaselineRequired `
+        -FloatingManifestRequired $floatingBaselineRequired
     $adapterUiProperty = $cSharp.Report.PSObject.Properties['AdapterUiValidated']
     if ($null -eq $adapterUiProperty -or
         $adapterUiProperty.Value -isnot [bool] -or
@@ -288,4 +359,4 @@ function Invoke-CountdownValidationSuite {
     }
 }
 
-Export-ModuleMember -Function Invoke-CountdownValidationSuite
+Export-ModuleMember -Function Assert-CountdownApplicationValidationReport, Invoke-CountdownValidationSuite

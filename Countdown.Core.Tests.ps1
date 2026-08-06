@@ -95,6 +95,7 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
         New-Item -ItemType Directory -Path $validationTestRoot -Force | Out-Null
         $validationApplicationReport = [ordered]@{
             Valid = $true
+            ValidationReportContractBehavior = $true
             FloatingWindowPresent = $true
         }
         foreach ($fieldName in @(
@@ -144,12 +145,144 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
             )) {
             $validationApplicationReport[$fieldName] = $true
         }
-        $validationApplicationReport['FloatingReferenceBaselineRequested'] = $false
-        $validationApplicationReport['FloatingReferenceBaselineManifestAvailable'] = $false
-        $validationApplicationReport['FloatingReferenceBaselineValidated'] = $false
+        foreach ($baselineName in @('Main', 'Floating')) {
+            $validationApplicationReport["${baselineName}ReferenceBaselineRequested"] = $false
+            $validationApplicationReport["${baselineName}ReferenceBaselineManifestAvailable"] = $false
+            $validationApplicationReport["${baselineName}ReferenceBaselineValidated"] = $false
+            $validationApplicationReport["${baselineName}ReferenceBaselineCaptures"] = @()
+        }
         $validationApplicationReport['MainDynamicCountdownCardSampleCount'] = 1
         $validationApplicationReport['MainDynamicNoteCardSampleCount'] = 1
+        $validationApplicationReport['UnknownFutureField'] = [ordered]@{
+            Preserved = 'future-compatible'
+        }
         $validationApplicationJson = $validationApplicationReport | ConvertTo-Json -Compress
+
+        function Copy-CountdownApplicationValidationReportFixture {
+            $validationApplicationJson | ConvertFrom-Json
+        }
+
+        function Get-CountdownApplicationValidationReportFailure {
+            param(
+                [Parameter(Mandatory)] [object] $Report,
+                [Parameter(Mandatory)] [bool] $MainManifestRequired,
+                [Parameter(Mandatory)] [bool] $FloatingManifestRequired
+            )
+
+            try {
+                Assert-CountdownApplicationValidationReport `
+                    -Report $Report `
+                    -MainManifestRequired $MainManifestRequired `
+                    -FloatingManifestRequired $FloatingManifestRequired | Out-Null
+                return $null
+            }
+            catch {
+                return $_.Exception.Message
+            }
+        }
+
+        $packageValidationReport = Copy-CountdownApplicationValidationReportFixture
+        $assertedPackageValidationReport = Assert-CountdownApplicationValidationReport `
+            -Report $packageValidationReport `
+            -MainManifestRequired $false `
+            -FloatingManifestRequired $false
+        Assert-Equal `
+            'future-compatible' `
+            ([string] $assertedPackageValidationReport.UnknownFutureField.Preserved) `
+            'Application validation report interface accepts and preserves unknown fields'
+
+        $missingContractReport = Copy-CountdownApplicationValidationReportFixture
+        $missingContractReport.PSObject.Properties.Remove('ValidationReportContractBehavior')
+        Assert-Equal `
+            '应用 validate-only 报告缺少布尔字段：ValidationReportContractBehavior' `
+            (Get-CountdownApplicationValidationReportFailure `
+                -Report $missingContractReport `
+                -MainManifestRequired $false `
+                -FloatingManifestRequired $false) `
+            'Application validation report interface rejects a missing contract behavior field'
+
+        $stringUiBooleanReport = Copy-CountdownApplicationValidationReportFixture
+        $stringUiBooleanReport.MainReferenceDecorationsShareScaleAtMinimumAndWideSizes = 'true'
+        Assert-Equal `
+            '应用 validate-only 报告的 UI 质量门禁未通过：MainReferenceDecorationsShareScaleAtMinimumAndWideSizes' `
+            (Get-CountdownApplicationValidationReportFailure `
+                -Report $stringUiBooleanReport `
+                -MainManifestRequired $false `
+                -FloatingManifestRequired $false) `
+            'Application validation report interface rejects a string UI boolean'
+
+        $sourceTreeValidationReport = Copy-CountdownApplicationValidationReportFixture
+        foreach ($baselineName in @('Main', 'Floating')) {
+            $sourceTreeValidationReport."${baselineName}ReferenceBaselineRequested" = $true
+            $sourceTreeValidationReport."${baselineName}ReferenceBaselineManifestAvailable" = $true
+            $sourceTreeValidationReport."${baselineName}ReferenceBaselineValidated" = $true
+        }
+        $sourceTreeValidationReport.MainReferenceBaselineCaptures = @(
+            1..12 | ForEach-Object { [pscustomobject]@{ CaptureId = "main-$_" } }
+        )
+        $sourceTreeValidationReport.FloatingReferenceBaselineCaptures = @(
+            1..6 | ForEach-Object { [pscustomobject]@{ CaptureId = "floating-$_" } }
+        )
+        Assert-Equal `
+            $true `
+            ($null -ne (Assert-CountdownApplicationValidationReport `
+                    -Report $sourceTreeValidationReport `
+                    -MainManifestRequired $true `
+                    -FloatingManifestRequired $true)) `
+            'Application validation report interface accepts complete source-tree baselines'
+
+        $partialManifestReport = $sourceTreeValidationReport | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $partialManifestReport.FloatingReferenceBaselineManifestAvailable = $false
+        Assert-Equal `
+            '主窗口与悬浮窗视觉 manifest 模式不一致。' `
+            (Get-CountdownApplicationValidationReportFailure `
+                -Report $partialManifestReport `
+                -MainManifestRequired $true `
+                -FloatingManifestRequired $true) `
+            'Application validation report interface rejects a single available manifest'
+
+        $unrequestedValidatedReport = $sourceTreeValidationReport | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $unrequestedValidatedReport.MainReferenceBaselineRequested = $false
+        Assert-Equal `
+            '应用 validate-only 的主窗口参考基线状态组合无效：Requested=False; ManifestAvailable=True; Validated=True' `
+            (Get-CountdownApplicationValidationReportFailure `
+                -Report $unrequestedValidatedReport `
+                -MainManifestRequired $true `
+                -FloatingManifestRequired $true) `
+            'Application validation report interface rejects validated output that was not requested'
+
+        $missingSourceCaptureReport = $sourceTreeValidationReport | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $missingSourceCaptureReport.FloatingReferenceBaselineCaptures = @()
+        Assert-Equal `
+            '应用 validate-only 的悬浮窗参考基线必须包含 6 个 captures，实际为 0。' `
+            (Get-CountdownApplicationValidationReportFailure `
+                -Report $missingSourceCaptureReport `
+                -MainManifestRequired $true `
+                -FloatingManifestRequired $true) `
+            'Application validation report interface requires source-tree captures'
+
+        $fabricatedPackageCaptureReport = Copy-CountdownApplicationValidationReportFixture
+        $fabricatedPackageCaptureReport.FloatingReferenceBaselineCaptures = @(
+            [pscustomobject]@{ CaptureId = 'fabricated' }
+        )
+        Assert-Equal `
+            '不携带参考资产的发布包伪造了悬浮窗参考基线 captures。' `
+            (Get-CountdownApplicationValidationReportFailure `
+                -Report $fabricatedPackageCaptureReport `
+                -MainManifestRequired $false `
+                -FloatingManifestRequired $false) `
+            'Application validation report interface rejects package captures'
+
+        $missingDynamicSampleReport = Copy-CountdownApplicationValidationReportFixture
+        $missingDynamicSampleReport.MainDynamicCountdownCardSampleCount = 0
+        Assert-Equal `
+            '应用 validate-only 报告未命中动态卡片样本：MainDynamicCountdownCardSampleCount' `
+            (Get-CountdownApplicationValidationReportFailure `
+                -Report $missingDynamicSampleReport `
+                -MainManifestRequired $false `
+                -FloatingManifestRequired $false) `
+            'Application validation report interface requires dynamic card samples'
+
         $validationApplicationFixture = $validationApplicationJson.Replace("'", "''")
         $validationFixtures = [ordered]@{
             'Countdown.Core.Tests.ps1' = "param([switch] `$ParentTransactionMutexHeld)`r`n'{`"Passed`":11,`"Failed`":0}'"
@@ -2292,121 +2425,135 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         Assert-Equal 1 $preRollbackCaptureCallCount 'Remote deployment invokes pre-rollback diagnostics capture exactly once'
         Assert-Equal $true ($preRollbackCaptureIndex -ge 0 -and $rollbackInvocationIndex -gt $preRollbackCaptureIndex) 'Remote deployment captures diagnostics before invoking rollback'
 
-        $officeDeploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
-        Assert-Equal 4 ([regex]::Matches($officeDeploymentSource, '\bInvoke-CountdownRecordedSshRead\b').Count) 'Office deployment records both failure reads, the deployment binding, and the post-deployment independent readback'
-        Assert-Equal $true ($officeDeploymentSource.Contains("-Id 'pre-rollback-diagnostics'") -and $officeDeploymentSource.Contains('pre-rollback-diagnostics.json')) 'Office deployment gives the sidecar a stable ledger and evidence identity'
-        $preRollbackRemoteReaderIndex = $officeDeploymentSource.IndexOf('function Get-OfficeRemotePreRollbackDiagnostics')
-        $preRollbackRemoteReaderEnd = if ($preRollbackRemoteReaderIndex -ge 0) { $officeDeploymentSource.IndexOf('function Get-OfficePostDeploymentIndependentReadback', $preRollbackRemoteReaderIndex) } else { -1 }
-        $preRollbackRemoteReaderSource = if ($preRollbackRemoteReaderIndex -ge 0 -and $preRollbackRemoteReaderEnd -gt $preRollbackRemoteReaderIndex) {
-            $officeDeploymentSource.Substring($preRollbackRemoteReaderIndex, $preRollbackRemoteReaderEnd - $preRollbackRemoteReaderIndex)
-        }
-        else { '' }
-        Assert-Equal $true ($preRollbackRemoteReaderSource.Contains('ReparsePoint') -and $preRollbackRemoteReaderSource.Contains('32768') -and $preRollbackRemoteReaderSource.Contains('ConvertFrom-CountdownPreRollbackDiagnosticsBytes')) 'Office sidecar reader enforces non-reparse, 32 KiB remote and strict local parser gates'
-        $independentReadbackReaderIndex = $officeDeploymentSource.IndexOf('function Get-OfficePostDeploymentIndependentReadback')
-        $independentReadbackReaderEnd = if ($independentReadbackReaderIndex -ge 0) { $officeDeploymentSource.IndexOf('function Invoke-CountdownDeploymentGit', $independentReadbackReaderIndex) } else { -1 }
-        $independentReadbackReaderSource = if ($independentReadbackReaderIndex -ge 0 -and $independentReadbackReaderEnd -gt $independentReadbackReaderIndex) {
-            $officeDeploymentSource.Substring($independentReadbackReaderIndex, $independentReadbackReaderEnd - $independentReadbackReaderIndex)
-        }
-        else { '' }
-        Assert-Equal $true (
-            $independentReadbackReaderSource.Contains('$env:SSH_CONNECTION') -and
-            $independentReadbackReaderSource.Contains('[System.Security.Principal.WindowsIdentity]::GetCurrent().Name') -and
-            $independentReadbackReaderSource.Contains("Get-ScheduledTask -TaskName ([string] `$expected.TaskName)")
-        ) 'Independent readback binds the remote host, Windows user, and exact scheduled task'
-        Assert-Equal $true (
-            $independentReadbackReaderSource.Contains("TaskName = 'Minmin Countdown'") -and
-            $independentReadbackReaderSource.Contains('TaskArguments = ''-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File') -and
-            $independentReadbackReaderSource.Contains("Join-Path `$PSHOME 'pwsh.exe'") -and
-            $independentReadbackReaderSource.Contains('TaskWorkingDirectoryMatch')
-        ) 'Independent readback requires the managed PowerShell 7 STA thin-adapter task action'
-        Assert-Equal $true (
-            $independentReadbackReaderSource.Contains("'startup-request.json'") -and
-            $independentReadbackReaderSource.Contains("'runtime-status.json'") -and
-            $independentReadbackReaderSource.Contains("'acceptance-status.json'") -and
-            $independentReadbackReaderSource.Contains('$expected.DeploymentBindingPath') -and
-            $independentReadbackReaderSource.Contains("'finalized-ready'") -and
-            $independentReadbackReaderSource.Contains('Get-ReadbackSha256Text -Text $tokens[0]') -and
-            $independentReadbackReaderSource.Contains('$binding.TokenSha256') -and
-            $independentReadbackReaderSource.Contains('$expected.ExpectedTokenSha256') -and
-            -not $independentReadbackReaderSource.Contains('LaunchToken = $tokens')
-        ) 'Independent readback cross-checks all three receipts and the deployment binding while persisting only the token hash and match result'
-        Assert-Equal $true (
-            $independentReadbackReaderSource.Contains('Get-Process -Id $runtimeProcessId') -and
-            $independentReadbackReaderSource.Contains("ExecutablePath = 'D:\敏敏子倒计时\app\MinminCountdown.exe'") -and
-            $independentReadbackReaderSource.Contains("Join-Path ([string] `$expected.InstallPath) 'settings.json'") -and
-            $independentReadbackReaderSource.Contains('ConvertFrom-CountdownRemoteDeploymentReadbackJson')
-        ) 'Independent readback verifies the live PID, interactive session, process path, EXE hash, settings hash, and local schema before ledger success'
-        Assert-Equal $true (
-            $independentReadbackReaderSource.Contains('[System.IO.Compression.GZipStream]') -and
-            $independentReadbackReaderSource.Contains('$remoteCommand.Length -gt 30000')
-        ) 'Independent readback compresses the in-memory SSH command and fails closed before the Windows command-line limit'
-        Assert-Equal $true (
-            $officeDeploymentSource.Contains("'-o', 'BatchMode=yes'") -and
-            $officeDeploymentSource.Contains("'-o', 'IdentitiesOnly=yes'") -and
-            $officeDeploymentSource.Contains("'-o', 'StrictHostKeyChecking=yes'") -and
-            $officeDeploymentSource.Contains('UserKnownHostsFile=$env:REPLICATOR_OFFICE_SSH_USER_KNOWN_HOSTS_FILE')
-        ) 'Independent readback reuses the strict managed office SSH options'
+        $readbackAdapterCommand = Get-Command `
+            New-CountdownRemoteDeploymentReadbackSshAdapter `
+            -Module Countdown.RemoteDeployment `
+            -ErrorAction SilentlyContinue
+        $independentReadbackCommand = Get-Command `
+            Invoke-CountdownRemoteDeploymentIndependentReadback `
+            -Module Countdown.RemoteDeployment `
+            -ErrorAction SilentlyContinue
+        Assert-Equal $true ($null -ne $readbackAdapterCommand) 'Remote deployment exports the independent readback SSH adapter interface'
+        Assert-Equal $true ($null -ne $independentReadbackCommand) 'Remote deployment exports the independent readback orchestration interface'
 
-        $callbackScopeLedger = Join-Path $remoteDeploymentTestRoot 'callback-scope-transfer-attempts.json'
-        $callbackScopeResult = & {
-            . (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1') -LoadFunctionsOnly
-            Import-Module (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1') -Force
+        $publicReadbackBindingHash = 'F' * 64
+        $publicReadbackBindingJson = [ordered]@{
+            SchemaVersion = 1
+            DeploymentBindingSha256 = $publicReadbackBindingHash
+            TokenSha256 = 'E' * 64
+            RuntimeProcessId = 4242
+        } | ConvertTo-Json -Compress
+        $publicReadbackBindingBytes = [System.Text.UTF8Encoding]::new($false).GetBytes(
+            $publicReadbackBindingJson)
+        $publicReadbackBytes = [System.Text.UTF8Encoding]::new($false).GetBytes(
+            $validReadbackJson)
+        $publicReadbackOptions = @(
+            '-i', 'D:\fixture\id_ed25519',
+            '-o', 'BatchMode=yes',
+            '-o', 'IdentitiesOnly=yes',
+            '-o', 'ConnectTimeout=10',
+            '-o', 'ConnectionAttempts=1',
+            '-o', 'StrictHostKeyChecking=yes',
+            '-o', 'UserKnownHostsFile=D:\fixture\known_hosts',
+            '-o', 'KexAlgorithms=curve25519-sha256'
+        )
+        $publicReadbackRunnerState = [pscustomobject]@{ Calls = 0 }
+        $publicReadbackRunner = {
+            param($FileName, $Arguments)
+            $publicReadbackRunnerState.Calls++
+            $payload = if ($publicReadbackRunnerState.Calls -eq 1) {
+                $publicReadbackBindingBytes
+            }
+            else {
+                $publicReadbackBytes
+            }
+            [pscustomobject]@{
+                ExitCode = 0
+                StandardOutput = [Convert]::ToBase64String([byte[]] $payload)
+                StandardError = ''
+                ProcessId = $PID + 1
+            }
+        }.GetNewClosure()
+        $publicReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
+            -Options $publicReadbackOptions `
+            -Destination 'replicator@fixture-host' `
+            -CommandRunner $publicReadbackRunner
+        Assert-Equal $false ($null -ne $publicReadbackAdapter.PSObject.Properties['Rollback']) 'Independent readback adapter does not expose Rollback capability'
+        Assert-Equal $false ($null -ne $publicReadbackAdapter.PSObject.Properties['RollbackAction']) 'Independent readback adapter does not expose RollbackAction capability'
 
-            function Get-OfficeRemoteDeploymentBinding {
-                [pscustomobject]@{
-                    Success = $true
-                    ExitCode = 0
-                    Bytes = [Text.UTF8Encoding]::new($false).GetBytes('binding')
-                    FailureMessage = $null
-                }
-            }
-            function Get-OfficePostDeploymentIndependentReadback {
-                [pscustomobject]@{
-                    Success = $true
-                    ExitCode = 0
-                    Bytes = [Text.UTF8Encoding]::new($false).GetBytes('readback')
-                    FailureMessage = $null
-                }
-            }
-            function Write-CountdownRemoteDeploymentBindingReceipt {
-                param($Path, $Bytes, $ExpectedDeploymentBindingSha256, $ExpectedProcessId)
-                [pscustomobject]@{ TokenSha256 = ('A' * 64) }
-            }
-            function Write-CountdownRemoteDeploymentReadbackReceipt {
-                param(
-                    $Path,
-                    $Bytes,
-                    $ExpectedProcessId,
-                    $ExpectedExecutableSha256,
-                    $ExpectedTokenSha256,
-                    $ExpectedSettingsSha256
-                )
-                [pscustomobject]@{ Valid = $true }
-            }
+        $publicReadbackLedger = Join-Path $remoteDeploymentTestRoot 'public-readback-transfer-attempts.json'
+        $publicReadbackBindingEvidence = Join-Path $remoteDeploymentTestRoot 'public-readback-binding.json'
+        $publicReadbackEvidence = Join-Path $remoteDeploymentTestRoot 'public-independent-readback.json'
+        Invoke-CountdownRemoteDeploymentIndependentReadback `
+            -LedgerPath $publicReadbackLedger `
+            -DeploymentBindingEvidencePath $publicReadbackBindingEvidence `
+            -IndependentReadbackEvidencePath $publicReadbackEvidence `
+            -RemoteDeploymentBindingPath 'D:\fixture\deployment-binding.json' `
+            -DeploymentBindingSha256 $publicReadbackBindingHash `
+            -SuccessReceipt ([pscustomobject]@{
+                    RuntimeProcessId = 4242
+                    SettingsHashAfter = $expectedReadbackSettingsHash
+                }) `
+            -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+            -ExpectedRemoteHost 'fixture-host' `
+            -ExpectedRemoteUser 'fixture-user' `
+            -Adapter $publicReadbackAdapter
+        $publicReadbackLedgerDocument = Get-Content -LiteralPath $publicReadbackLedger -Raw | ConvertFrom-Json
+        Assert-Equal 2 ([int] $publicReadbackRunnerState.Calls) 'Independent readback public adapter executes binding and readback once each'
+        Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback' ((@($publicReadbackLedgerDocument.attempts).id) -join ',') 'Independent readback public interface preserves ledger IDs and order'
+        Assert-Equal 'succeeded,succeeded' ((@($publicReadbackLedgerDocument.attempts).status) -join ',') 'Independent readback public interface records both successful reads'
+        Assert-Equal $true (Test-Path -LiteralPath $publicReadbackBindingEvidence -PathType Leaf) 'Independent readback public interface publishes binding evidence'
+        Assert-Equal $true (Test-Path -LiteralPath $publicReadbackEvidence -PathType Leaf) 'Independent readback public interface publishes readback evidence'
 
-            Invoke-OfficePostDeploymentIndependentVerification `
-                -LedgerPath $callbackScopeLedger `
-                -DeploymentBindingEvidencePath (Join-Path $remoteDeploymentTestRoot 'binding.json') `
-                -IndependentReadbackEvidencePath (Join-Path $remoteDeploymentTestRoot 'readback.json') `
+        $failedPublicReadback = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $failedPublicReadback.RuntimeStage = 'starting'
+        $failedPublicReadbackBytes = [System.Text.UTF8Encoding]::new($false).GetBytes(
+            ($failedPublicReadback | ConvertTo-Json -Compress))
+        $failedPublicReadbackRunnerState = [pscustomobject]@{ Calls = 0 }
+        $failedPublicReadbackRunner = {
+            param($FileName, $Arguments)
+            $failedPublicReadbackRunnerState.Calls++
+            $payload = if ($failedPublicReadbackRunnerState.Calls -eq 1) {
+                $publicReadbackBindingBytes
+            }
+            else {
+                $failedPublicReadbackBytes
+            }
+            [pscustomobject]@{
+                ExitCode = 0
+                StandardOutput = [Convert]::ToBase64String([byte[]] $payload)
+                StandardError = ''
+                ProcessId = $PID + 1
+            }
+        }.GetNewClosure()
+        $failedPublicReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
+            -Options $publicReadbackOptions `
+            -Destination 'replicator@fixture-host' `
+            -CommandRunner $failedPublicReadbackRunner
+        $failedPublicReadbackMessage = $null
+        $failedPublicReadbackEvidence = Join-Path $remoteDeploymentTestRoot 'failed-public-independent-readback.json'
+        try {
+            Invoke-CountdownRemoteDeploymentIndependentReadback `
+                -LedgerPath (Join-Path $remoteDeploymentTestRoot 'failed-public-readback-transfer-attempts.json') `
+                -DeploymentBindingEvidencePath (Join-Path $remoteDeploymentTestRoot 'failed-public-readback-binding.json') `
+                -IndependentReadbackEvidencePath $failedPublicReadbackEvidence `
                 -RemoteDeploymentBindingPath 'D:\fixture\deployment-binding.json' `
-                -DeploymentBindingSha256 ('B' * 64) `
+                -DeploymentBindingSha256 $publicReadbackBindingHash `
                 -SuccessReceipt ([pscustomobject]@{
-                        RuntimeProcessId = 1234
-                        SettingsHashAfter = ('C' * 64)
+                        RuntimeProcessId = 4242
+                        SettingsHashAfter = $expectedReadbackSettingsHash
                     }) `
-                -ExpectedExecutableSha256 ('D' * 64) `
+                -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
                 -ExpectedRemoteHost 'fixture-host' `
                 -ExpectedRemoteUser 'fixture-user' `
-                -RollbackAction { throw 'Committed readback must never roll back.' }
-
-            $ledger = Get-Content -LiteralPath $callbackScopeLedger -Raw | ConvertFrom-Json
-            [pscustomobject]@{
-                Attempts = @($ledger.attempts).Count
-                AllSucceeded = @($ledger.attempts | Where-Object status -ne 'succeeded').Count -eq 0
-            }
+                -Adapter $failedPublicReadbackAdapter | Out-Null
         }
-        Assert-Equal 2 $callbackScopeResult.Attempts 'Committed independent readback executes both readers across the transfer module scope'
-        Assert-Equal $true $callbackScopeResult.AllSucceeded 'Committed independent readback records both module-scope callbacks as succeeded'
+        catch {
+            $failedPublicReadbackMessage = $_.Exception.Message
+        }
+        Assert-Equal $false ($null -ne $failedPublicReadbackAdapter.PSObject.Properties['RollbackAction']) 'Failed independent readback adapter still exposes no RollbackAction capability'
+        Assert-Equal $true ($failedPublicReadbackMessage -match '部署已提交但独立验证不完整，未回滚.*runtime 未达到 window-ready') 'Independent readback public interface reports post-commit failure without a rollback claim'
+        Assert-Equal $false (Test-Path -LiteralPath $failedPublicReadbackEvidence) 'Failed independent readback never publishes readback evidence'
     }
     finally {
         Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
@@ -2628,17 +2775,18 @@ try {
     $validRemoteInstallScript = @(
         "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
         "Invoke-LockedDeploymentFile -Path 'release.psm1' -ExpectedSha256 '$('B' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
-        "Invoke-LockedDeploymentFile -Path 'remote.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
+        "Invoke-LockedDeploymentFile -Path 'Countdown.TransferLedger.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+        "Invoke-LockedDeploymentFile -Path 'Countdown.RemoteDeployment.psm1' -ExpectedSha256 '$('D' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
     ) -join "`r`n"
     $validRemoteInstallResult = Assert-CountdownRemoteInstallScript -ScriptText $validRemoteInstallScript
-    Assert-Equal 3 $validRemoteInstallResult.InvocationCount 'Generated remote install script keeps every locked file parameter on its command invocation'
+    Assert-Equal 4 $validRemoteInstallResult.InvocationCount 'Generated remote install script locks TransferLedger before RemoteDeployment and keeps every parameter on its invocation'
 
     $brokenRemoteInstallScript = @(
         "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
         'Invoke-LockedDeploymentFile',
         "    -Path 'release.psm1' -ExpectedSha256 '$('B' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
-        'Invoke-LockedDeploymentFile',
-        "    -Path 'remote.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
+        "Invoke-LockedDeploymentFile -Path 'Countdown.TransferLedger.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+        "Invoke-LockedDeploymentFile -Path 'Countdown.RemoteDeployment.psm1' -ExpectedSha256 '$('D' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
     ) -join "`r`n"
     $brokenRemoteInstallRejected = $false
     $brokenRemoteInstallMessage = ''
@@ -2661,7 +2809,8 @@ try {
         $missingValueScript = @(
             "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
             $missingValueInvocation,
-            "Invoke-LockedDeploymentFile -Path 'remote.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
+            "Invoke-LockedDeploymentFile -Path 'Countdown.TransferLedger.psm1' -ExpectedSha256 '$('C' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
+            "Invoke-LockedDeploymentFile -Path 'Countdown.RemoteDeployment.psm1' -ExpectedSha256 '$('D' * 64)' -Action { param(`$lockedPath) `$lockedPath }"
         ) -join "`r`n"
         $missingValueRejected = $false
         try {
@@ -2929,7 +3078,7 @@ Assert-Equal 2 $recordedTransferCallCount 'Office deploy records both SCP comman
 $recordedSshReadCallCount = [regex]::Matches(
     $deploySource,
     '\bInvoke-CountdownRecordedSshRead\b').Count
-Assert-Equal 4 $recordedSshReadCallCount 'Office deploy records both failure evidence reads, the deployment binding, and the post-deployment independent readback through the transfer ledger interface'
+Assert-Equal 2 $recordedSshReadCallCount 'Office deploy directly records both failure evidence reads; committed binding/readback are owned by the RemoteDeployment interface'
 Assert-Equal $false $deploySource.Contains('& scp.exe') 'Office deploy has no direct SCP call that bypasses the transfer ledger'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'

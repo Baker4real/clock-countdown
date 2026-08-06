@@ -215,12 +215,8 @@ internal static class ValidationReport
         floating.Reanchor();
         PumpDispatcher();
 
-        var initialFloatingWorkspaceStateMatches = FloatingWorkspacePresentationMatches(
-            floating,
-            WorkspaceKind.Countdowns,
-            desktopWorkspace.Snapshot);
-        var floatingCountdownSelectionSurvivesDayNightThemes =
-            floating.InitialCountdownSelectionSurvivesDayNightThemes();
+        var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);
+        var floatingWorkspace = floatingWindowScenarios.Workspace;
         var floatingQuickAddTheme = ValidateFloatingQuickAddLocalTheme(
             theme,
             floating);
@@ -228,7 +224,6 @@ internal static class ValidationReport
             ValidationExercises.RunFloatingQuickAddThemeResourceIsolationBehavior();
 
         var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd);
-        var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);
         var noteExercise = mainWindowScenarios.NoteExercise;
         var floatingNoteExercise = floatingWindowScenarios.CrossDayReminderAdded;
         var mainReminderModeExercise = mainWindowScenarios.ReminderModes;
@@ -478,61 +473,6 @@ internal static class ValidationReport
             .ToArray();
         var tagChipsUseUid = tagChips.All(chip => chip.Uid.Length > 0);
 
-        var floatingCountdownButton = Required<ToggleButton>(floating, "FloatingCountdownsButton");
-        var floatingNotesButton = Required<ToggleButton>(floating, "FloatingNotesButton");
-        var countdownButtonFit = MeasureButtonFit(floatingCountdownButton);
-        var notesButtonFit = MeasureButtonFit(floatingNotesButton);
-        var originalFloatingWorkspace = floatingNotesButton.IsChecked == true
-            ? WorkspaceKind.Notes
-            : WorkspaceKind.Countdowns;
-        floatingNotesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        PumpDispatcher();
-        floating.UpdateLayout();
-        var floatingRows = Required<StackPanel>(floating, "FloatingRows");
-        var renderedFloatingNoteIds = GetRenderedNoteIds(floatingRows);
-        var expectedFloatingNoteIds = workspaceSnapshot.VisibleActiveNotes
-            .Select(note => note.Id)
-            .ToArray();
-        var floatingNotesKeepExistingSortOrder = expectedFloatingNoteIds.SequenceEqual(
-            renderedFloatingNoteIds,
-            StringComparer.Ordinal);
-        var floatingTitle = Required<TextBlock>(floating, "FloatingTitle");
-        var floatingTitleFit = MeasureTextFit(
-            floatingTitle,
-            Required<Border>(floating, "FloatingDragHandle"));
-        var floatingTitleHeightFit = MeasureTextHeightFit(floatingTitle);
-        var floatingNotesWorkspaceStateMatches = FloatingWorkspacePresentationMatches(
-            floating,
-            WorkspaceKind.Notes,
-            workspaceSnapshot);
-        floatingNotesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        PumpDispatcher();
-        floating.UpdateLayout();
-        var floatingNotesReselectionStateMatches = FloatingWorkspacePresentationMatches(
-            floating,
-            WorkspaceKind.Notes,
-            workspaceSnapshot);
-        floatingCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        PumpDispatcher();
-        floating.UpdateLayout();
-        var floatingCountdownWorkspaceStateMatches = FloatingWorkspacePresentationMatches(
-            floating,
-            WorkspaceKind.Countdowns,
-            workspaceSnapshot);
-        floatingCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        PumpDispatcher();
-        floating.UpdateLayout();
-        var floatingCountdownReselectionStateMatches = FloatingWorkspacePresentationMatches(
-            floating,
-            WorkspaceKind.Countdowns,
-            workspaceSnapshot);
-        var floatingWorkspaceSwitchingStaysSynchronized =
-            floatingNotesWorkspaceStateMatches &&
-            floatingNotesReselectionStateMatches &&
-            floatingCountdownWorkspaceStateMatches &&
-            floatingCountdownReselectionStateMatches;
-        floating.ShowWorkspace(originalFloatingWorkspace);
-        floating.UpdateLayout();
         var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
         var savePreferencesButtonFit = MeasureButtonFit(savePreferencesButton);
         var savePreferencesButtonRight = savePreferencesButton
@@ -595,7 +535,10 @@ internal static class ValidationReport
         var floatingHeaderBounds = floatingHeaderSurface
             .TransformToAncestor(floating)
             .TransformBounds(new Rect(new Point(0, 0), floatingHeaderSurface.RenderSize));
-        var floatingHeaderForegroundBounds = new[] { TextContentBounds(floatingTitle, floating) }
+        var floatingHeaderForegroundBounds = new[]
+            {
+                TextContentBounds(Required<TextBlock>(floating, "FloatingTitle"), floating)
+            }
             .Concat(new FrameworkElement[]
             {
                 Required<ToggleButton>(floating, "FloatingCountdownsButton"),
@@ -722,8 +665,11 @@ internal static class ValidationReport
         var floatingBottomAnchored = floating.IsBottomAnchored;
         var floatingReanchorsAfterContentChanges = floating.IsBottomAnchored;
         var floatingReferenceExercise = RunFloatingReferenceExercise(main, assetRoot);
+        var visualReferenceBaselineInterfaceBehavior =
+            ValidationExercises.RunVisualReferenceBaselineInterfaceBehavior();
         var floatingReferenceBaselineGateIsolationBehavior =
-            ValidationExercises.RunFloatingReferenceManifestGateIsolationBehavior();
+            ValidationExercises.RunFloatingReferenceManifestGateIsolationBehavior() &&
+            visualReferenceBaselineInterfaceBehavior;
         var floatingReferenceFreshnessGateIsolationBehavior =
             ValidationExercises.RunFloatingReferenceFreshnessGateIsolationBehavior();
         var floatingNightPlushEdgeGlowGateIsolationBehavior =
@@ -778,7 +724,8 @@ internal static class ValidationReport
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
         var mainReferenceBaselineGateIsolationBehavior =
-            ValidationExercises.RunMainReferenceManifestGateIsolationBehavior();
+            ValidationExercises.RunMainReferenceManifestGateIsolationBehavior() &&
+            visualReferenceBaselineInterfaceBehavior;
         var mainStressCountdownTitleGateIsolationBehavior =
             ValidationExercises.RunMainStressCountdownTitleGateIsolationBehavior();
 
@@ -863,7 +810,7 @@ internal static class ValidationReport
         var holidayCalendarInterfaceBehavior =
             ValidationExercises.RunHolidayCalendarInterfaceBehavior();
 
-        var report = new Dictionary<string, object?>(StringComparer.Ordinal)
+        var report = new ValidationReportProjection
         {
             ["DesktopWorkspaceModuleDeep"] = desktopWorkspaceInterfaceBehavior,
             ["StartupAcceptanceProtocolModuleDeep"] =
@@ -979,11 +926,11 @@ internal static class ValidationReport
             ["FloatingQuickAddLocalCanvasColors"] = floatingQuickAddTheme.CanvasColors,
             ["FloatingQuickAddLocalActiveColors"] = floatingQuickAddTheme.ActiveColors,
             ["FloatingInitialWorkspaceStateMatches"] =
-                initialFloatingWorkspaceStateMatches,
+                floatingWorkspace.InitialStateMatches,
             ["FloatingWorkspaceSwitchingStaysSynchronized"] =
-                floatingWorkspaceSwitchingStaysSynchronized,
+                floatingWorkspace.SwitchingStaysSynchronized,
             ["FloatingCountdownSelectionSurvivesDayNightThemes"] =
-                floatingCountdownSelectionSurvivesDayNightThemes,
+                floatingWorkspace.CountdownSelectionSurvivesDayNightThemes,
             ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
             ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
             ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
@@ -1406,30 +1353,34 @@ internal static class ValidationReport
             ["FloatingPlushGroupWithinWorkArea"] = plushGroupWithinWorkArea,
             ["FloatingCountdownBottomMargin"] = floatingBottomMargin,
             ["FloatingNotesBottomMargin"] = floatingBottomMargin,
-            ["FloatingCountdownButtonTextFits"] = countdownButtonFit.Fits,
-            ["FloatingCountdownButtonTextAvailableWidth"] = countdownButtonFit.Available,
-            ["FloatingCountdownButtonTextRequiredWidth"] = countdownButtonFit.Required,
-            ["FloatingNotesButtonTextFits"] = notesButtonFit.Fits,
-            ["FloatingNotesButtonTextAvailableWidth"] = notesButtonFit.Available,
-            ["FloatingNotesButtonTextRequiredWidth"] = notesButtonFit.Required,
-            ["FloatingNotesKeepExistingSortOrder"] = floatingNotesKeepExistingSortOrder,
-            ["FloatingTitleTextFits"] = floatingTitleFit.Fits,
-            ["FloatingTitleTextAvailableWidth"] = floatingTitleFit.Available,
-            ["FloatingTitleTextRequiredWidth"] = floatingTitleFit.Required,
-            ["FloatingTitleTextHasVerticalClearance"] = floatingTitleHeightFit.Fits,
-            ["FloatingTitleTextAvailableHeight"] = floatingTitleHeightFit.Available,
-            ["FloatingTitleTextRequiredHeight"] = floatingTitleHeightFit.Required,
+            ["FloatingCountdownButtonTextFits"] = floatingWorkspace.CountdownButtonTextFit.Fits,
+            ["FloatingCountdownButtonTextAvailableWidth"] =
+                floatingWorkspace.CountdownButtonTextFit.Available,
+            ["FloatingCountdownButtonTextRequiredWidth"] =
+                floatingWorkspace.CountdownButtonTextFit.Required,
+            ["FloatingNotesButtonTextFits"] = floatingWorkspace.NotesButtonTextFit.Fits,
+            ["FloatingNotesButtonTextAvailableWidth"] =
+                floatingWorkspace.NotesButtonTextFit.Available,
+            ["FloatingNotesButtonTextRequiredWidth"] =
+                floatingWorkspace.NotesButtonTextFit.Required,
+            ["FloatingNotesKeepExistingSortOrder"] = floatingWorkspace.NotesKeepExistingSortOrder,
+            ["FloatingTitleTextFits"] = floatingWorkspace.TitleTextFit.Fits,
+            ["FloatingTitleTextAvailableWidth"] = floatingWorkspace.TitleTextFit.Available,
+            ["FloatingTitleTextRequiredWidth"] = floatingWorkspace.TitleTextFit.Required,
+            ["FloatingTitleTextHasVerticalClearance"] = floatingWorkspace.TitleTextHeightFit.Fits,
+            ["FloatingTitleTextAvailableHeight"] = floatingWorkspace.TitleTextHeightFit.Available,
+            ["FloatingTitleTextRequiredHeight"] = floatingWorkspace.TitleTextHeightFit.Required,
             ["SavePreferencesButtonTextFits"] = savePreferencesButtonFit.Fits,
             ["SavePreferencesButtonIsFullyVisible"] = savePreferencesButtonIsVisible,
             ["SavePreferencesButtonIsFullyVisibleAtMinimumWidth"] =
                 savePreferencesButtonIsVisibleAtMinimumWidth,
             ["SavePreferencesButtonRight"] = Math.Round(savePreferencesButtonRight, 2),
             ["MainWindowActualWidth"] = Math.Round(main.ActualWidth, 2),
-            ["FloatingCountdownCount"] = floating.FloatingCountdownCount,
+            ["FloatingCountdownCount"] = floatingWorkspace.CountdownCount,
             ["HasWorkdayEndCountdown"] =
                 false,
-            ["FloatingCountdownTexts"] = floating.FloatingCountdownTexts,
-            ["FloatingIncomeText"] = floating.IncomeText,
+            ["FloatingCountdownTexts"] = floatingWorkspace.CountdownTexts,
+            ["FloatingIncomeText"] = floatingWorkspace.IncomeText,
             ["FloatingManagerButtonPresent"] = floating.FindName("OpenManagerButton") is Button,
             ["HasUnifiedNoteEntry"] =
                 main.FindName("CountdownTab") is ToggleButton &&
@@ -1470,7 +1421,7 @@ internal static class ValidationReport
                 .Select(note => note.Text)
                 .ToArray(),
             ["RenderedManagerNoteIds"] = renderedManagerNoteIds,
-            ["RenderedFloatingNoteIds"] = renderedFloatingNoteIds,
+            ["RenderedFloatingNoteIds"] = floatingWorkspace.RenderedNoteIds,
             ["SortedNames"] = workspaceSnapshot.AllCountdowns
                 .Select(record => record.Name)
                 .ToArray(),
@@ -1479,86 +1430,11 @@ internal static class ValidationReport
 
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
 
-        var validationReportContractBehavior =
-            ValidationExercises.RunValidationReportContractBehavior(report);
-        report["ValidationReportContractBehavior"] = validationReportContractBehavior;
-        report["ValidationReportModuleDeep"] = validationReportContractBehavior;
-        ValidationExercises.RunValidationReportContractBehavior(report);
-
         datePicker.IsDropDownOpen = false;
         reminderWindow.Close();
         floating.Hide();
         main.Hide();
-        return report;
-    }
-
-    private static bool FloatingWorkspacePresentationMatches(
-        FloatingWindow floating,
-        WorkspaceKind workspace,
-        DesktopWorkspaceSnapshot snapshot)
-    {
-        var countdownButton = Required<ToggleButton>(floating, "FloatingCountdownsButton");
-        var notesButton = Required<ToggleButton>(floating, "FloatingNotesButton");
-        var title = Required<TextBlock>(floating, "FloatingTitle");
-        var noteEntry = Required<Border>(floating, "FloatingNoteEntry");
-        var rows = Required<StackPanel>(floating, "FloatingRows");
-        var selectedButtonCount = new[]
-        {
-            countdownButton.IsChecked == true,
-            notesButton.IsChecked == true
-        }.Count(selected => selected);
-        var chromeMatches =
-            selectedButtonCount == 1 &&
-            countdownButton.IsChecked == (workspace == WorkspaceKind.Countdowns) &&
-            notesButton.IsChecked == (workspace == WorkspaceKind.Notes) &&
-            string.Equals(
-                title.Text,
-                workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签",
-                StringComparison.Ordinal) &&
-            noteEntry.Visibility == (workspace == WorkspaceKind.Notes
-                ? Visibility.Visible
-                : Visibility.Collapsed) &&
-            rows.Children.Count > 0;
-        if (!chromeMatches)
-        {
-            return false;
-        }
-
-        if (workspace == WorkspaceKind.Countdowns)
-        {
-            var expectedCountdownCount = snapshot.VisibleCountdowns.Count(record =>
-                record.TargetUtc > snapshot.UtcNow);
-            var emptyMessages = rows.Children
-                .OfType<TextBlock>()
-                .Select(text => text.Text)
-                .ToArray();
-            return
-                floating.FloatingCountdownCount == expectedCountdownCount &&
-                !Descendants<CheckBox>(rows).Any() &&
-                emptyMessages.All(message => string.Equals(
-                    message,
-                    "没有未到期的倒计时。",
-                    StringComparison.Ordinal));
-        }
-
-        var expectedNoteIds = snapshot.VisibleActiveNotes
-            .Select(note => note.Id)
-            .ToArray();
-        var noteIdsMatch = GetRenderedNoteIds(rows).SequenceEqual(
-            expectedNoteIds,
-            StringComparer.Ordinal);
-        var emptyNoteMessages = rows.Children
-            .OfType<TextBlock>()
-            .Select(text => text.Text)
-            .ToArray();
-        return
-            noteIdsMatch &&
-            (expectedNoteIds.Length > 0
-                ? emptyNoteMessages.Length == 0
-                : emptyNoteMessages.Length == 1 && string.Equals(
-                    emptyNoteMessages[0],
-                    "今天还没有待办便签。",
-                    StringComparison.Ordinal));
+        return report.Seal();
     }
 
     private static MainReferenceDecorationValidation ValidateMainReferenceDecorationScaling(
@@ -2828,20 +2704,6 @@ internal static class ValidationReport
             structureValid &= captureIdsUnique && capturePathsUnique &&
                 scenarioBindingsUnique && stateBindingsMatch;
 
-            var expectedCaptureFilesPresent = expectedPaths.All(relativePath =>
-                File.Exists(ResolveRepositoryRelativePath(sourceRoot, relativePath)));
-            var pngInventory = Directory.Exists(baselineDirectory)
-                ? Directory.GetFiles(baselineDirectory, "*.png", SearchOption.TopDirectoryOnly)
-                    .Select(Path.GetFileName)
-                    .Order(StringComparer.Ordinal)
-                    .ToArray()
-                : Array.Empty<string>();
-            var expectedInventory = expectedPaths
-                .Select(Path.GetFileName)
-                .Order(StringComparer.Ordinal)
-                .ToArray();
-            var noOrphanPngFiles = pngInventory.SequenceEqual(expectedInventory, StringComparer.Ordinal);
-
             var currentSourceBindings = GetMainReferenceSourceBindings(sourceRoot);
             var currentSourceAggregate = AggregateMainReferenceSourceBindings(currentSourceBindings);
             var sourceHashesMatch =
@@ -2870,117 +2732,99 @@ internal static class ValidationReport
             var actualByCaptureId = actualCaptures.ToDictionary(
                 capture => capture.Spec.CaptureId,
                 StringComparer.Ordinal);
-            var canvasDimensionsMatch = captures.Length == MainReferenceCaptureSpecs.Length;
-            var pngHashesMatch = expectedCaptureFilesPresent;
-            var stateFingerprintsMatch = expectedCaptureFilesPresent;
-            var alphaMetricsMatch = expectedCaptureFilesPresent;
-            var contentRoiMatches = expectedCaptureFilesPresent;
-            var pixelMetricsWithinThresholds = expectedCaptureFilesPresent;
-            var measurements = new List<MainReferenceBaselineCaptureMeasurement>();
-            foreach (var capture in captures)
+            var stateFingerprintsMatch = captures.All(capture =>
+                actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture) &&
+                MainReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
+                capture.StateFingerprint == actualCapture.StateFingerprint);
+            var stateFingerprintsUnique =
+                captures.Select(capture => capture.StateFingerprint.Sha256)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() == captures.Length;
+            var baselineEvaluation = VisualReferenceBaseline.Main.Validate(
+                new MainVisualReferenceRequest(
+                    new VisualReferenceFileRequest(
+                        sourceRoot,
+                        baselineDirectory,
+                        expectedPaths,
+                        captures.Select(capture => new VisualReferenceManifestCapture(
+                            capture.CaptureId,
+                            capture.Path,
+                            capture.Width,
+                            capture.Height,
+                            capture.PngSha256,
+                            new VisualReferenceAlphaMetrics(
+                                capture.Alpha.Minimum,
+                                capture.Alpha.Maximum,
+                                0,
+                                capture.Alpha.NonOpaquePixelCount,
+                                capture.Alpha.OpaquePixelCount),
+                            new VisualReferenceContentRoi(
+                                0,
+                                capture.ContentRoi.X,
+                                capture.ContentRoi.Y,
+                                capture.ContentRoi.Width,
+                                capture.ContentRoi.Height,
+                                capture.ContentRoi.PixelCount),
+                            new VisualReferencePixelMetrics(
+                                capture.Comparison.MaxAbsoluteChannelDelta,
+                                capture.Comparison.MeanAbsoluteError,
+                                capture.Comparison.RootMeanSquareError,
+                                capture.Comparison.ChangedPixelCount)))
+                            .ToArray(),
+                        actualCaptures.Select(capture => new VisualReferenceActualCapture(
+                            capture.Spec.CaptureId,
+                            capture.PngBytes)).ToArray(),
+                        maximumAbsoluteChannelDelta,
+                        maximumMeanAbsoluteError,
+                        maximumRootMeanSquareError,
+                        maximumChangedPixelCount),
+                    1165,
+                    1350,
+                    structureValid,
+                    captureIdsUnique,
+                    capturePathsUnique,
+                    scenarioBindingsUnique,
+                    sourceHashesMatch,
+                    executableHashMatches,
+                    stateFingerprintsMatch,
+                    stateFingerprintsUnique));
+            var measurements = baselineEvaluation.Measurements.Select(measurement =>
             {
-                if (!actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture) ||
-                    !expectedPaths.Contains(capture.Path, StringComparer.Ordinal))
-                {
-                    canvasDimensionsMatch = false;
-                    pngHashesMatch = false;
-                    stateFingerprintsMatch = false;
-                    alphaMetricsMatch = false;
-                    contentRoiMatches = false;
-                    pixelMetricsWithinThresholds = false;
-                    continue;
-                }
-
-                var baselinePath = ResolveRepositoryRelativePath(sourceRoot, capture.Path);
-                if (!File.Exists(baselinePath))
-                {
-                    pngHashesMatch = false;
-                    stateFingerprintsMatch = false;
-                    alphaMetricsMatch = false;
-                    contentRoiMatches = false;
-                    pixelMetricsWithinThresholds = false;
-                    continue;
-                }
-
-                var baselineBytes = File.ReadAllBytes(baselinePath);
-                var baselineMetrics = MeasureMainReferenceCapture(baselineBytes);
-                var actualMetrics = MeasureMainReferenceCapture(actualCapture.PngBytes);
-                var comparison = CompareMainReferencePixels(baselineBytes, actualCapture.PngBytes);
-                var baselineSha256 = Convert.ToHexString(SHA256.HashData(baselineBytes));
-                var actualSha256 = Convert.ToHexString(SHA256.HashData(actualCapture.PngBytes));
-                canvasDimensionsMatch &=
-                    capture.Width == 1165 &&
-                    capture.Height == 1350 &&
-                    baselineMetrics.Width == 1165 &&
-                    baselineMetrics.Height == 1350 &&
-                    actualMetrics.Width == 1165 &&
-                    actualMetrics.Height == 1350;
-                pngHashesMatch &=
-                    IsUpperSha256(capture.PngSha256) &&
-                    string.Equals(capture.PngSha256, baselineSha256, StringComparison.Ordinal) &&
-                    string.Equals(capture.PngSha256, actualSha256, StringComparison.Ordinal);
-                stateFingerprintsMatch &=
-                    MainReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
-                    capture.StateFingerprint == actualCapture.StateFingerprint;
-                alphaMetricsMatch &=
-                    capture.Alpha == baselineMetrics.Alpha &&
-                    capture.Alpha == actualMetrics.Alpha &&
-                    capture.Alpha.IsFullyOpaque;
-                contentRoiMatches &=
-                    capture.ContentRoi == MainReferenceContentRoi.FullCanvas &&
-                    capture.ContentRoi == baselineMetrics.ContentRoi &&
-                    capture.ContentRoi == actualMetrics.ContentRoi;
-                pixelMetricsWithinThresholds &=
-                    capture.Comparison == MainReferencePixelMetrics.Zero &&
-                    comparison.MaxAbsoluteChannelDelta <= maximumAbsoluteChannelDelta &&
-                    comparison.MeanAbsoluteError <= maximumMeanAbsoluteError &&
-                    comparison.RootMeanSquareError <= maximumRootMeanSquareError &&
-                    comparison.ChangedPixelCount <= maximumChangedPixelCount;
-                measurements.Add(new MainReferenceBaselineCaptureMeasurement(
+                var capture = captures.Single(candidate => string.Equals(
+                    candidate.CaptureId,
+                    measurement.CaptureId,
+                    StringComparison.Ordinal));
+                return new MainReferenceBaselineCaptureMeasurement(
                     capture.CaptureId,
                     capture.Theme,
                     capture.Workspace,
                     capture.State,
                     capture.Path,
                     capture.BeijingTime,
-                    baselineSha256,
-                    actualSha256,
+                    measurement.BaselineSha256,
+                    measurement.ActualSha256,
                     capture.StateFingerprint,
-                    actualMetrics.Alpha,
-                    actualMetrics.ContentRoi,
-                    comparison));
-            }
-
-            var stateFingerprintsUnique =
-                captures.Select(capture => capture.StateFingerprint.Sha256)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count() == captures.Length;
-            var pngHashesUnique =
-                captures.Select(capture => capture.PngSha256)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count() == captures.Length;
-            var gates = ValidationExercises.EvaluateMainReferenceManifestGates(
-                new MainReferenceManifestGateInputs(
-                    structureValid,
-                    expectedCaptureFilesPresent,
-                    noOrphanPngFiles,
-                    captureIdsUnique,
-                    capturePathsUnique,
-                    scenarioBindingsUnique,
-                    canvasDimensionsMatch,
-                    sourceHashesMatch,
-                    executableHashMatches,
-                    pngHashesMatch,
-                    stateFingerprintsMatch,
-                    alphaMetricsMatch,
-                    contentRoiMatches,
-                    pixelMetricsWithinThresholds,
-                    stateFingerprintsUnique,
-                    pngHashesUnique));
-            var diagnostics = gates.AsDictionary()
-                .Where(pair => !pair.Value)
-                .Select(pair => pair.Key)
-                .ToArray();
+                    new MainReferenceAlphaMetrics(
+                        MainReferenceAlphaAlgorithm,
+                        measurement.ActualAlpha.Minimum,
+                        measurement.ActualAlpha.Maximum,
+                        measurement.ActualAlpha.NonOpaquePixelCount,
+                        measurement.ActualAlpha.OpaquePixelCount),
+                    new MainReferenceContentRoi(
+                        MainReferenceRoiAlgorithm,
+                        measurement.ActualContentRoi.X,
+                        measurement.ActualContentRoi.Y,
+                        measurement.ActualContentRoi.Width,
+                        measurement.ActualContentRoi.Height,
+                        measurement.ActualContentRoi.PixelCount),
+                    new MainReferencePixelMetrics(
+                        measurement.Comparison.MaxAbsoluteChannelDelta,
+                        measurement.Comparison.MeanAbsoluteError,
+                        measurement.Comparison.RootMeanSquareError,
+                        measurement.Comparison.ChangedPixelCount));
+            }).ToArray();
+            var gates = baselineEvaluation.Gates;
+            var diagnostics = baselineEvaluation.Diagnostics;
             var stressCountdownTitleMeasurements = actualCaptures
                 .Select(capture => capture.StressCountdownTitle)
                 .OfType<MainStressCountdownTitleMeasurement>()
@@ -5016,21 +4860,6 @@ internal static class ValidationReport
                     .Distinct(StringComparer.Ordinal)
                     .Count() == captures.Length;
 
-            var expectedCaptureFilesPresent = expectedCapturePaths.All(relativePath =>
-                File.Exists(ResolveRepositoryRelativePath(sourceRoot, relativePath)));
-            var pngInventory = Directory.Exists(baselineDirectory)
-                ? Directory.GetFiles(baselineDirectory, "*.png", SearchOption.TopDirectoryOnly)
-                    .Select(path => Path.GetFileName(path))
-                    .Order(StringComparer.Ordinal)
-                    .ToArray()
-                : Array.Empty<string>();
-            var expectedPngInventory = expectedCapturePaths
-                .Select(path => Path.GetFileName(path))
-                .Order(StringComparer.Ordinal)
-                .ToArray();
-            var noOrphanPngFiles =
-                pngInventory.SequenceEqual(expectedPngInventory, StringComparer.Ordinal);
-
             var currentSourceBindings = GetFloatingReferenceSourceBindings(sourceRoot);
             var currentSourceAggregate = AggregateFloatingReferenceSourceBindings(
                 currentSourceBindings);
@@ -5061,87 +4890,10 @@ internal static class ValidationReport
             var actualByCaptureId = actualCaptures.ToDictionary(
                 capture => capture.Spec.CaptureId,
                 StringComparer.Ordinal);
-            var canvasDimensionsMatch = captures.Count(capture =>
-                capture.Width == 520 && capture.Height == 390) == FloatingReferenceCaptureSpecs.Length;
-            var pngHashesMatch = expectedCaptureFilesPresent;
-            var alphaMetricsMatch = expectedCaptureFilesPresent;
-            var contentRoiMatches = expectedCaptureFilesPresent;
-            var pixelMetricsWithinThresholds = expectedCaptureFilesPresent;
-            var stateFingerprintsMatch = expectedCaptureFilesPresent;
-            var measurements = new List<FloatingReferenceBaselineCaptureMeasurement>();
-            foreach (var capture in captures)
-            {
-                if (!expectedCapturePaths.Contains(capture.Path, StringComparer.Ordinal) ||
-                    !actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture))
-                {
-                    pngHashesMatch = false;
-                    alphaMetricsMatch = false;
-                    contentRoiMatches = false;
-                    pixelMetricsWithinThresholds = false;
-                    stateFingerprintsMatch = false;
-                    continue;
-                }
-
-                var actualBytes = actualCapture.PngBytes;
-
-                var baselinePath = ResolveRepositoryRelativePath(sourceRoot, capture.Path);
-                if (!File.Exists(baselinePath))
-                {
-                    pngHashesMatch = false;
-                    alphaMetricsMatch = false;
-                    contentRoiMatches = false;
-                    pixelMetricsWithinThresholds = false;
-                    stateFingerprintsMatch = false;
-                    continue;
-                }
-
-                var baselineBytes = File.ReadAllBytes(baselinePath);
-                var baselineMetrics = MeasureFloatingReferenceCapture(baselineBytes);
-                var actualMetrics = MeasureFloatingReferenceCapture(actualBytes);
-                var comparison = CompareFloatingReferencePixels(baselineBytes, actualBytes);
-                var baselineSha256 = Convert.ToHexString(SHA256.HashData(baselineBytes));
-                var actualSha256 = Convert.ToHexString(SHA256.HashData(actualBytes));
-                canvasDimensionsMatch &=
-                    baselineMetrics.Width == 520 &&
-                    baselineMetrics.Height == 390 &&
-                    actualMetrics.Width == 520 &&
-                    actualMetrics.Height == 390;
-                pngHashesMatch &=
-                    IsUpperSha256(capture.PngSha256) &&
-                    string.Equals(capture.PngSha256, baselineSha256, StringComparison.Ordinal) &&
-                    string.Equals(capture.PngSha256, actualSha256, StringComparison.Ordinal);
-                stateFingerprintsMatch &=
-                    FloatingReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
-                    capture.StateFingerprint == actualCapture.StateFingerprint;
-                alphaMetricsMatch &=
-                    capture.Alpha == baselineMetrics.Alpha &&
-                    capture.Alpha == actualMetrics.Alpha;
-                contentRoiMatches &=
-                    capture.ContentRoi == baselineMetrics.ContentRoi &&
-                    capture.ContentRoi == actualMetrics.ContentRoi;
-                pixelMetricsWithinThresholds &=
-                    capture.Comparison == FloatingReferencePixelMetrics.Zero &&
-                    comparison.MaxAbsoluteChannelDelta <= maximumAbsoluteChannelDelta &&
-                    comparison.MeanAbsoluteError <= maximumMeanAbsoluteError &&
-                    comparison.RootMeanSquareError <= maximumRootMeanSquareError &&
-                    comparison.ChangedPixelCount <= maximumChangedPixelCount;
-                measurements.Add(new FloatingReferenceBaselineCaptureMeasurement(
-                    capture.CaptureId,
-                    capture.Scenario,
-                    capture.Theme,
-                    capture.State,
-                    capture.Path,
-                    baselineSha256,
-                    actualSha256,
-                    capture.StateFingerprint,
-                    actualMetrics.Alpha,
-                    actualMetrics.ContentRoi,
-                    comparison));
-            }
-
-            var manifestPngHashes = captures.Select(capture => capture.PngSha256).ToArray();
-            var pngHashesUnique =
-                manifestPngHashes.Distinct(StringComparer.Ordinal).Count() == captures.Length;
+            var stateFingerprintsMatch = captures.All(capture =>
+                actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture) &&
+                FloatingReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
+                capture.StateFingerprint == actualCapture.StateFingerprint);
             var stateFingerprintsUnique =
                 captures.Select(capture => capture.StateFingerprint.Sha256)
                     .Distinct(StringComparer.Ordinal)
@@ -5176,35 +4928,95 @@ internal static class ValidationReport
                         FloatingReferenceMinimumTopBottomChangedPixelCount;
             }
 
-            var gates = ValidationExercises.EvaluateFloatingReferenceManifestGates(
-                new FloatingReferenceManifestGateInputs(
+            var baselineEvaluation = VisualReferenceBaseline.Floating.Validate(
+                new FloatingVisualReferenceRequest(
+                    new VisualReferenceFileRequest(
+                        sourceRoot,
+                        baselineDirectory,
+                        expectedCapturePaths,
+                        captures.Select(capture => new VisualReferenceManifestCapture(
+                            capture.CaptureId,
+                            capture.Path,
+                            capture.Width,
+                            capture.Height,
+                            capture.PngSha256,
+                            new VisualReferenceAlphaMetrics(
+                                capture.Alpha.Minimum,
+                                capture.Alpha.Maximum,
+                                capture.Alpha.TransparentPixelCount,
+                                capture.Alpha.NonOpaquePixelCount,
+                                capture.Alpha.OpaquePixelCount),
+                            new VisualReferenceContentRoi(
+                                capture.ContentRoi.AlphaThreshold,
+                                capture.ContentRoi.X,
+                                capture.ContentRoi.Y,
+                                capture.ContentRoi.Width,
+                                capture.ContentRoi.Height,
+                                capture.ContentRoi.PixelCount),
+                            new VisualReferencePixelMetrics(
+                                capture.Comparison.MaxAbsoluteChannelDelta,
+                                capture.Comparison.MeanAbsoluteError,
+                                capture.Comparison.RootMeanSquareError,
+                                capture.Comparison.ChangedPixelCount)))
+                            .ToArray(),
+                        actualCaptures.Select(capture => new VisualReferenceActualCapture(
+                            capture.Spec.CaptureId,
+                            capture.PngBytes)).ToArray(),
+                        maximumAbsoluteChannelDelta,
+                        maximumMeanAbsoluteError,
+                        maximumRootMeanSquareError,
+                        maximumChangedPixelCount),
+                    520,
+                    390,
                     structureValid,
-                    expectedCaptureFilesPresent,
                     capturePathsUnique,
-                    noOrphanPngFiles,
-                    canvasDimensionsMatch,
                     scenarioThemePairsUnique,
                     sourceHashesMatch,
                     executableHashMatches,
-                    pngHashesMatch,
-                    alphaMetricsMatch,
-                    contentRoiMatches,
-                    pixelMetricsWithinThresholds));
-            var freshnessGates = ValidationExercises.EvaluateFloatingReferenceFreshnessGates(
-                new FloatingReferenceFreshnessGateInputs(
                     expectedStateBindingsMatch,
                     captureIdsUnique,
                     stateFingerprintsMatch,
                     stateFingerprintsUnique,
-                    pngHashesUnique,
                     topBottomPixelsDiffer,
                     longNoteTypographyMatches,
                     longNoteLayoutValid));
-            var diagnostics = gates.AsDictionary()
-                .Concat(freshnessGates.AsDictionary())
-                .Where(pair => !pair.Value)
-                .Select(pair => pair.Key)
-                .ToArray();
+            var measurements = baselineEvaluation.Measurements.Select(measurement =>
+            {
+                var capture = captures.Single(candidate => string.Equals(
+                    candidate.CaptureId,
+                    measurement.CaptureId,
+                    StringComparison.Ordinal));
+                return new FloatingReferenceBaselineCaptureMeasurement(
+                    capture.CaptureId,
+                    capture.Scenario,
+                    capture.Theme,
+                    capture.State,
+                    capture.Path,
+                    measurement.BaselineSha256,
+                    measurement.ActualSha256,
+                    capture.StateFingerprint,
+                    new FloatingReferenceAlphaMetrics(
+                        measurement.ActualAlpha.Minimum,
+                        measurement.ActualAlpha.Maximum,
+                        measurement.ActualAlpha.TransparentPixelCount,
+                        measurement.ActualAlpha.NonOpaquePixelCount,
+                        measurement.ActualAlpha.OpaquePixelCount),
+                    new FloatingReferenceContentRoi(
+                        measurement.ActualContentRoi.AlphaThreshold,
+                        measurement.ActualContentRoi.X,
+                        measurement.ActualContentRoi.Y,
+                        measurement.ActualContentRoi.Width,
+                        measurement.ActualContentRoi.Height,
+                        measurement.ActualContentRoi.PixelCount),
+                    new FloatingReferencePixelMetrics(
+                        measurement.Comparison.MaxAbsoluteChannelDelta,
+                        measurement.Comparison.MeanAbsoluteError,
+                        measurement.Comparison.RootMeanSquareError,
+                        measurement.Comparison.ChangedPixelCount));
+            }).ToArray();
+            var gates = baselineEvaluation.Gates;
+            var freshnessGates = baselineEvaluation.FreshnessGates;
+            var diagnostics = baselineEvaluation.Diagnostics;
             return new FloatingReferenceBaselineValidation(
                 true,
                 true,
@@ -8281,18 +8093,6 @@ internal static class ValidationReport
             formatted.WidthIncludingTrailingWhitespace +
             Math.Max(0, formatted.OverhangTrailing) +
             (2 / dpi.DpiScaleX);
-        return new TextFit(available >= required, available, required);
-    }
-
-    private static TextFit MeasureTextHeightFit(TextBlock textBlock)
-    {
-        var dpi = VisualTreeHelper.GetDpi(textBlock);
-        var formatted = FormatText(textBlock, dpi);
-        var available = Math.Max(0, textBlock.ActualHeight);
-        var required =
-            formatted.Height +
-            Math.Max(0, formatted.OverhangAfter) +
-            (4 / dpi.DpiScaleY);
         return new TextFit(available >= required, available, required);
     }
 

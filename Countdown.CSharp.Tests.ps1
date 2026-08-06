@@ -512,6 +512,47 @@ try {
         $adapterValidationDocument.Dispose()
     }
     $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
+    $adapterValidationShapeNames = [string[]] @(
+        $adapterValidation.PSObject.Properties.Name
+    )
+    [Array]::Sort(
+        $adapterValidationShapeNames,
+        [System.StringComparer]::Ordinal
+    )
+    $adapterValidationShapeLines = [string[]] @(
+        foreach ($propertyName in $adapterValidationShapeNames) {
+            $value = $adapterValidation.PSObject.Properties[$propertyName].Value
+            $kind = if ($null -eq $value) {
+                'Null'
+            }
+            elseif ($value -is [bool]) {
+                'Boolean'
+            }
+            elseif ($value -is [string]) {
+                'String'
+            }
+            elseif ($value -is [pscustomobject]) {
+                'Object'
+            }
+            elseif ($value -is [System.Collections.IEnumerable]) {
+                'Array'
+            }
+            else {
+                $value.GetType().Name
+            }
+
+            '{0}:{1}' -f $propertyName, $kind
+        }
+    )
+    $adapterValidationShape = [string]::Join(
+        "`n",
+        $adapterValidationShapeLines
+    )
+    $adapterValidationShapeSha256 = [System.Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [System.Text.UTF8Encoding]::new($false).GetBytes($adapterValidationShape)
+        )
+    )
     $adapterDiagnosticEvents = @(
         Get-Content -LiteralPath $adapterDiagnosticPath |
             ForEach-Object { ($_ | ConvertFrom-Json).event }
@@ -598,6 +639,8 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
+    Assert-Equal 428 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容'
+    Assert-Equal 'E73240FF7F0FF1D4002AAB202568BC767EDCE0E7772770CB7AE53ED7F3C9D4BB' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusDisclosureVisuals) 'validate-only 验证便签状态披露视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureAccessibility) 'validate-only 验证便签披露控件无障碍契约'
@@ -620,7 +663,7 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.MainMinimumSizeMatchesDefault) '主窗口默认尺寸与最小可用尺寸一致'
     Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineRequested) '主窗口参考基线只在源码树存在双 manifest 时请求'
     Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineManifestAvailable) '主窗口参考 manifest 可用状态匹配源码树或发布包模式'
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineGateIsolationBehavior) '主窗口十六个 manifest 门禁负向夹具逐项失败闭锁'
+    Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineGateIsolationBehavior) '主窗口十六个 manifest 门禁负向夹具与视觉基线 module interface 均通过'
     Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-capture-id,duplicate-path,duplicate-scenario,duplicate-state-fingerprint,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,reused-frame,source-hash-mismatch,state-fingerprint-mismatch,wrong-dimensions' ((@($adapterValidation.MainReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '主窗口正式视觉负向夹具集合完整'
     Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
     if ($mainReferenceBaselineRequired) {
@@ -696,7 +739,7 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceMascotGeometryMatches) '悬浮窗三角色可见像素匹配参考图锚点和裁切'
     Assert-Equal $floatingReferenceBaselineRequired ([bool] $adapterValidation.FloatingReferenceBaselineRequested) '悬浮窗参考基线只在源码树存在 manifest 时请求'
     Assert-Equal $floatingReferenceBaselineRequired ([bool] $adapterValidation.FloatingReferenceBaselineManifestAvailable) '悬浮窗参考 manifest 可用状态匹配源码树'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineGateIsolationBehavior) '悬浮窗参考 manifest 十二个负向夹具逐项失败闭锁'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineGateIsolationBehavior) '悬浮窗参考 manifest 十二个负向夹具与视觉基线 module interface 均通过'
     Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-path,duplicate-scenario-theme,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,source-hash-mismatch,wrong-dimensions' ((@($adapterValidation.FloatingReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '悬浮窗参考 manifest 负向夹具集合完整'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceFreshnessGateIsolationBehavior) '长便签帧新鲜度与排版八个负向夹具逐项失败闭锁'
     Assert-Equal 'duplicate-capture-id,duplicate-state-fingerprint,long-note-layout-unreachable,long-note-typography-mismatch,reused-frame,state-fingerprint-mismatch,swapped-top-bottom,top-bottom-pixel-difference-too-small' ((@($adapterValidation.FloatingReferenceFreshnessNegativeFixtures) | Sort-Object) -join ',') '长便签帧新鲜度与排版负向夹具集合完整'

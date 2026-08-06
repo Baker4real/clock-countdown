@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -605,164 +608,6 @@ internal static class ValidationExercises
         }
     }
 
-    public static bool RunValidationReportContractBehavior(
-        IReadOnlyDictionary<string, object?> report)
-    {
-        var json = JsonSerializer.Serialize(report);
-        var repeatedJson = JsonSerializer.Serialize(report);
-        using var document = JsonDocument.Parse(json);
-        Must(
-            document.RootElement.ValueKind == JsonValueKind.Object,
-            "validate-only report 未序列化为 JSON object。");
-
-        var propertyNames = document.RootElement
-            .EnumerateObject()
-            .Select(property => property.Name)
-            .ToArray();
-        Must(
-            propertyNames.Length == report.Count &&
-            propertyNames.Distinct(StringComparer.Ordinal).Count() == propertyNames.Length,
-            "validate-only report 的顶层字段不唯一。");
-        Must(
-            string.Equals(json, repeatedJson, StringComparison.Ordinal),
-            "同一 validate-only report 的 JSON 序列化结果不稳定。");
-
-        var hasMainBaselineRequested = report.TryGetValue(
-            "MainReferenceBaselineRequested",
-            out var mainBaselineRequestedValue);
-        var mainBaselineRequested = mainBaselineRequestedValue is true;
-        var hasStressTitleVisuals = report.TryGetValue(
-            "MainStressCountdownTitleVisuals",
-            out var stressTitleVisualsValue);
-        var stressTitleVisuals = stressTitleVisualsValue is true;
-        var hasStressTitleMeasurements = document.RootElement.TryGetProperty(
-            "MainStressCountdownTitleMeasurements",
-            out var stressTitleMeasurements);
-        Must(
-            hasMainBaselineRequested &&
-            mainBaselineRequestedValue is bool &&
-            hasStressTitleVisuals &&
-            stressTitleVisualsValue is bool &&
-            hasStressTitleMeasurements &&
-            stressTitleMeasurements.ValueKind == JsonValueKind.Array &&
-            (mainBaselineRequested
-                ? stressTitleVisuals && stressTitleMeasurements.GetArrayLength() == 2
-                : !stressTitleVisuals && stressTitleMeasurements.GetArrayLength() == 0),
-            "主窗口 Stress 标题报告没有区分源码树真实 WPF 测量与发布包未请求状态。" +
-            $" Requested={mainBaselineRequested}; Visuals={stressTitleVisuals};" +
-            $" Measurements={JsonSerializer.Serialize(report["MainStressCountdownTitleMeasurements"])}");
-
-        foreach (var requiredBehavior in new[]
-                 {
-                     "Valid",
-                     "DesktopWorkspaceInterfaceBehavior",
-                     "ReminderEditingInterfaceBehavior",
-                     "StartupAcceptanceProtocolInterfaceBehavior",
-                     "HolidayCalendarInterfaceBehavior",
-                     "MainReferenceDecorationsShareScaleAtMinimumAndWideSizes",
-                     "MainReferenceDecorationLayerOrderMatches",
-                     "MainWorkspaceResourcesFollowDayNightTheme",
-                     "MainDynamicCountdownCardsUseThemeResources",
-                     "MainDynamicNoteCardsUseThemeResources",
-                     "FloatingReferenceContentSafeAreaMatches",
-                     "FloatingReferenceBaselineGateIsolationBehavior",
-                     "FloatingReferenceFreshnessGateIsolationBehavior",
-                     "FloatingLongNotesBodyHasNoManualLineBreaks",
-                     "FloatingLongNotesNaturalWraps",
-                     "FloatingLongNotesUsesOnlyOuterScroller",
-                     "FloatingLongNotesOuterScrollable",
-                     "FloatingLongNotesTopBottomReachable",
-                     "FloatingLongNotesSafeAreaMatches",
-                     "FloatingLongNotesTypographyMatches",
-                     "FloatingLongNotesLayoutValid",
-                     "FloatingTitleUsesSemiBoldWeight",
-                     "FloatingNoteInputWraps",
-                     "FloatingNoteInputScrolls",
-                     "FloatingInitialWorkspaceStateMatches",
-                     "FloatingWorkspaceSwitchingStaysSynchronized",
-                     "FloatingCountdownSelectionSurvivesDayNightThemes",
-                     "FloatingQuickAddDayResourcesFollowLocalTheme",
-                     "FloatingQuickAddNightResourcesFollowLocalTheme",
-                     "FloatingQuickAddIndependentFromApplicationAutoTheme",
-                     "FloatingQuickAddThemeResourceIsolationBehavior",
-                     "FloatingQuickAddDayExpandedScrolledCaptureWritten",
-                     "FloatingQuickAddNightExpandedScrolledCaptureWritten",
-                     "FloatingNightPlushSourceAlphaBoundsMatch",
-                     "FloatingNightPlushEdgeBrightnessWithinLimit",
-                     "FloatingNightPlushEdgeSaturationWithinLimit",
-                     "FloatingNightPlushEdgeGlowGateIsolationBehavior",
-                     "FloatingPrimaryCountdownTextContrast",
-                     "FloatingPrimaryCountdownAccentSeparatedFromPlushGlow",
-                     "FloatingPrimaryCountdownContrastGateIsolationBehavior",
-                     "FloatingSecondaryRemainingUnitSpacingMatches",
-                     "FloatingSecondaryRemainingLayoutMatches",
-                     "FloatingSecondaryRemainingGateIsolationBehavior",
-                     "FloatingScrollBarLocalStyleScoped",
-                     "FloatingScrollBarHitTargetUsable",
-                     "FloatingScrollBarVisualWeightProgression",
-                     "FloatingScrollBarUsesWarmThemeTokens",
-                     "FloatingScrollBarContentRemainsSafe",
-                     "FloatingScrollBarInputPathsWork",
-                     "FloatingScrollBarGateIsolationBehavior",
-                     "FloatingScrollBarDayNightStateCapturesReady",
-                     "UiQualityGateIsolationBehavior"
-                 })
-        {
-            var quickAddThemePrefix = requiredBehavior switch
-            {
-                "FloatingQuickAddDayResourcesFollowLocalTheme" => "FloatingQuickAddDayResource",
-                "FloatingQuickAddNightResourcesFollowLocalTheme" => "FloatingQuickAddNightResource",
-                _ => null
-            };
-            var quickAddFailureDetails = quickAddThemePrefix is null
-                ? string.Empty
-                : $" Checks={JsonSerializer.Serialize(report[$"{quickAddThemePrefix}Checks"])};" +
-                  $" Diagnostics={JsonSerializer.Serialize(report[$"{quickAddThemePrefix}Diagnostics"])}";
-            Must(
-                report.TryGetValue(requiredBehavior, out var value) && value is true,
-                $"validate-only report 的真实行为字段 {requiredBehavior} 未通过。" +
-                quickAddFailureDetails);
-        }
-
-        foreach (var sampleCountField in new[]
-                 {
-                     "MainDynamicCountdownCardSampleCount",
-                     "MainDynamicNoteCardSampleCount"
-                 })
-        {
-            Must(
-                report.TryGetValue(sampleCountField, out var value) &&
-                value is int sampleCount &&
-                sampleCount > 0,
-                $"validate-only report 的动态卡片样本字段 {sampleCountField} 未命中合格样本。");
-        }
-
-        Must(
-            report.TryGetValue("FloatingReferenceBaselineRequested", out var baselineRequestedValue) &&
-            baselineRequestedValue is bool baselineRequested &&
-            report.TryGetValue("FloatingReferenceBaselineManifestAvailable", out var baselineAvailableValue) &&
-            baselineAvailableValue is bool baselineAvailable &&
-            report.TryGetValue("FloatingReferenceBaselineValidated", out var baselineValidatedValue) &&
-            baselineValidatedValue is bool baselineValidated &&
-            (baselineRequested
-                ? baselineAvailable && baselineValidated
-                : !baselineAvailable && !baselineValidated),
-            "悬浮窗参考基线报告没有区分源码树实测与不携带参考资产的运行时发布包。" +
-            $" MainStressTitleVisuals={report["MainStressCountdownTitleVisuals"]};" +
-            $" MainStressTitleMeasurements={JsonSerializer.Serialize(report["MainStressCountdownTitleMeasurements"])}");
-
-        if (report.TryGetValue("ValidationReportContractBehavior", out var contractBehavior))
-        {
-            Must(
-                contractBehavior is true &&
-                report.TryGetValue("ValidationReportModuleDeep", out var compatibilityValue) &&
-                compatibilityValue is true,
-                "validate-only report 的契约结果与兼容字段不一致。");
-        }
-
-        return true;
-    }
-
     public static UiQualityGateResults EvaluateUiQualityGates(UiQualityGateInputs input) =>
         new(
             input.MainReferenceDecorationScaling,
@@ -1056,6 +901,216 @@ internal static class ValidationExercises
         }
 
         return true;
+    }
+
+    public static bool RunVisualReferenceBaselineInterfaceBehavior()
+    {
+        const int width = 4;
+        const int height = 4;
+        const string mainRelativePath = "references/main/main.png";
+        const string floatingRelativePath = "references/floating/floating.png";
+        var fixtureRoot = Path.Combine(
+            Path.GetTempPath(),
+            "MinminCountdown.VisualReferenceBaseline",
+            Guid.NewGuid().ToString("N"));
+        var mainDirectory = Path.Combine(fixtureRoot, "references", "main");
+        var floatingDirectory = Path.Combine(fixtureRoot, "references", "floating");
+        Directory.CreateDirectory(mainDirectory);
+        Directory.CreateDirectory(floatingDirectory);
+
+        try
+        {
+            var opaquePng = CreateOpaqueVisualReferenceFixturePng(blue: 48);
+            var alternateOpaquePng = CreateOpaqueVisualReferenceFixturePng(blue: 96);
+            var transparentPng = CreateTransparentVisualReferenceFixturePng();
+            var mainPath = Path.Combine(mainDirectory, "main.png");
+            var floatingPath = Path.Combine(floatingDirectory, "floating.png");
+            File.WriteAllBytes(mainPath, opaquePng);
+            File.WriteAllBytes(floatingPath, transparentPng);
+
+            var mainCapture = new VisualReferenceManifestCapture(
+                "main",
+                mainRelativePath,
+                width,
+                height,
+                Convert.ToHexString(SHA256.HashData(opaquePng)),
+                new VisualReferenceAlphaMetrics(255, 255, 0, 0, width * height),
+                new VisualReferenceContentRoi(0, 0, 0, width, height, width * height),
+                VisualReferencePixelMetrics.Zero);
+            var mainRequest = new MainVisualReferenceRequest(
+                new VisualReferenceFileRequest(
+                    fixtureRoot,
+                    mainDirectory,
+                    new[] { mainRelativePath },
+                    new[] { mainCapture },
+                    new[] { new VisualReferenceActualCapture("main", opaquePng) },
+                    0,
+                    0,
+                    0,
+                    0),
+                width,
+                height,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true);
+
+            var floatingAlpha = new VisualReferenceAlphaMetrics(0, 255, 11, 12, 4);
+            var floatingRoi = new VisualReferenceContentRoi(32, 1, 1, 2, 2, 4);
+            var floatingCapture = new VisualReferenceManifestCapture(
+                "floating",
+                floatingRelativePath,
+                width,
+                height,
+                Convert.ToHexString(SHA256.HashData(transparentPng)),
+                floatingAlpha,
+                floatingRoi,
+                VisualReferencePixelMetrics.Zero);
+            var floatingFiles = new VisualReferenceFileRequest(
+                fixtureRoot,
+                floatingDirectory,
+                new[] { floatingRelativePath },
+                new[] { floatingCapture },
+                new[] { new VisualReferenceActualCapture("floating", transparentPng) },
+                0,
+                0,
+                0,
+                0);
+            var floatingRequest = new FloatingVisualReferenceRequest(
+                floatingFiles,
+                width,
+                height,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true);
+
+            var mainResult = VisualReferenceBaseline.Main.Validate(mainRequest);
+            var floatingResult = VisualReferenceBaseline.Floating.Validate(floatingRequest);
+            Must(mainResult.AllPassed, "主窗口视觉基线 module 未通过正常文件集。");
+            Must(floatingResult.AllPassed, "悬浮窗视觉基线 module 未通过正常文件集。");
+            Must(
+                floatingResult.Measurements.Single().ActualContentRoi == floatingRoi,
+                "悬浮窗视觉基线 module 未按 alpha > 32 收缩内容 ROI。");
+
+            var escapingPath = "../escape.png";
+            var escapingResult = VisualReferenceBaseline.Main.Validate(
+                mainRequest with
+                {
+                    Files = mainRequest.Files with
+                    {
+                        ExpectedCapturePaths = new[] { escapingPath },
+                        ManifestCaptures = new[] { mainCapture with { Path = escapingPath } }
+                    }
+                });
+            Must(
+                !escapingResult.Gates.ManifestStructureValid &&
+                escapingResult.Diagnostics.Any(diagnostic =>
+                    diagnostic.Contains("逃出源码根目录", StringComparison.Ordinal)),
+                "视觉基线 module 未拒绝逃出源码根目录的路径。");
+
+            File.Delete(mainPath);
+            Must(
+                !VisualReferenceBaseline.Main.Validate(mainRequest).Gates.ExpectedCaptureFilesPresent,
+                "视觉基线 module 未让缺失 PNG 的文件门禁失败。");
+            File.WriteAllBytes(mainPath, opaquePng);
+
+            var orphanPath = Path.Combine(mainDirectory, "orphan.png");
+            File.WriteAllBytes(orphanPath, opaquePng);
+            Must(
+                !VisualReferenceBaseline.Main.Validate(mainRequest).Gates.NoOrphanPngFiles,
+                "视觉基线 module 未让孤儿 PNG 的 inventory 门禁失败。");
+            File.Delete(orphanPath);
+
+            File.WriteAllBytes(mainPath, alternateOpaquePng);
+            Must(
+                !VisualReferenceBaseline.Main.Validate(mainRequest).Gates.PngHashesMatch,
+                "视觉基线 module 未让合法但不同的 PNG 触发哈希失败。");
+            File.WriteAllBytes(mainPath, opaquePng);
+
+            var transparentMainResult = VisualReferenceBaseline.Main.Validate(
+                new MainVisualReferenceRequest(
+                    floatingFiles,
+                    width,
+                    height,
+                    true,
+                    true,
+                    true,
+                    true,
+                    true,
+                    true,
+                    true,
+                    true));
+            Must(
+                !transparentMainResult.Gates.AlphaMetricsMatch,
+                "主窗口视觉基线 module 未拒绝含透明像素的帧。");
+            return true;
+        }
+        finally
+        {
+            if (Directory.Exists(fixtureRoot))
+            {
+                Directory.Delete(fixtureRoot, recursive: true);
+            }
+        }
+    }
+
+    private static byte[] CreateOpaqueVisualReferenceFixturePng(byte blue)
+    {
+        var pixels = new byte[4 * 4 * 4];
+        for (var offset = 0; offset < pixels.Length; offset += 4)
+        {
+            pixels[offset] = blue;
+            pixels[offset + 1] = 112;
+            pixels[offset + 2] = 176;
+            pixels[offset + 3] = byte.MaxValue;
+        }
+        return EncodeVisualReferenceFixturePng(pixels);
+    }
+
+    private static byte[] CreateTransparentVisualReferenceFixturePng()
+    {
+        var pixels = new byte[4 * 4 * 4];
+        pixels[3] = 32;
+        foreach (var (x, y) in new[] { (1, 1), (2, 1), (1, 2), (2, 2) })
+        {
+            var offset = ((y * 4) + x) * 4;
+            pixels[offset] = 48;
+            pixels[offset + 1] = 112;
+            pixels[offset + 2] = 176;
+            pixels[offset + 3] = byte.MaxValue;
+        }
+        return EncodeVisualReferenceFixturePng(pixels);
+    }
+
+    private static byte[] EncodeVisualReferenceFixturePng(byte[] pixels)
+    {
+        var source = BitmapSource.Create(
+            4,
+            4,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            pixels,
+            4 * 4);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
     }
 
     public static MainStressCountdownTitleGateResults EvaluateMainStressCountdownTitleGates(

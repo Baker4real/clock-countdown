@@ -96,6 +96,7 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
         $validationApplicationReport = [ordered]@{
             Valid = $true
             ValidationReportContractBehavior = $true
+            CalendarReminderBehavior = $true
             FloatingWindowPresent = $true
         }
         foreach ($fieldName in @(
@@ -457,7 +458,6 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
     $remoteDeploymentReceipt = Join-Path $remoteDeploymentTestRoot 'deferred-install-receipt.json'
     $remoteDeploymentPowerShell = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop |
         Select-Object -First 1 -ExpandProperty Source)
-
     function New-CountdownRemoteDeploymentFixtureAdapter {
         param([ValidateSet('Success', 'BeginFailure', 'ValidationFailure', 'AdapterUiValidationFailure', 'ValidationSchemaFailure', 'AcceptanceFailure', 'CommitThenFail', 'RollbackFailure', 'FinalizeFailure', 'DisposeFailure', 'ValidationAndDisposeFailure', 'CommitProbeFailure', 'UnresolvedCommittedTransaction')] [string] $Mode)
 
@@ -936,6 +936,163 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
             (Join-Path $remoteDeploymentInstall 'settings.json'),
             '{"sensitive-settings-sentinel":true}',
             [System.Text.UTF8Encoding]::new($false))
+
+        $installedValidationTransaction = Join-Path $remoteDeploymentTestRoot 'installed-validation-transaction'
+        New-Item -ItemType Directory -Path $installedValidationTransaction -Force | Out-Null
+        $installedValidationApplication = Join-Path $remoteDeploymentInstall '敏敏子倒计时.ps1'
+        if (-not (Test-Path -LiteralPath $installedValidationApplication -PathType Leaf)) {
+            [System.IO.File]::WriteAllText(
+                $installedValidationApplication,
+                "param()`r`n",
+                [System.Text.UTF8Encoding]::new($false))
+        }
+        $installedValidationActiveSettings = Join-Path $remoteDeploymentInstall 'settings.json'
+        $installedValidationActiveBefore = Get-Item -LiteralPath $installedValidationActiveSettings
+        $installedValidationActiveHashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $installedValidationActiveSettings).Hash
+        $installedValidationInvocation = [pscustomobject]@{
+            Executable = ''
+            Arguments = @()
+            SettingsFile = ''
+            ActiveSettingsArgumentObserved = $false
+        }
+        $installedValidationNativeInvocation = {
+            param([string] $Executable, [string[]] $Arguments)
+
+            $installedValidationInvocation.Executable = $Executable
+            $installedValidationInvocation.Arguments = [string[]] @($Arguments)
+            $settingsIndex = [Array]::IndexOf($Arguments, '-SettingsFile')
+            if ($settingsIndex -lt 0 -or $settingsIndex + 1 -ge $Arguments.Count) {
+                throw 'Native validation fixture did not receive -SettingsFile.'
+            }
+            $settingsFile = [string] $Arguments[$settingsIndex + 1]
+            $installedValidationInvocation.SettingsFile = $settingsFile
+            $installedValidationInvocation.ActiveSettingsArgumentObserved = @($Arguments) -contains $installedValidationActiveSettings
+            foreach ($path in @(
+                    $settingsFile,
+                    "$settingsFile.tmp",
+                    "$settingsFile.backup1",
+                    "$settingsFile.backup2",
+                    "$settingsFile.backup2.tmp",
+                    "$settingsFile.backup2.rollback"
+                )) {
+                [System.IO.File]::WriteAllText($path, 'fixture', [System.Text.UTF8Encoding]::new($false))
+            }
+            [pscustomobject]@{
+                ExitCode = 0
+                Output = [pscustomobject]@{
+                    Valid = $true
+                    FloatingWindowPresent = $true
+                    FloatingManagerButtonPresent = $true
+                } | ConvertTo-Json -Compress
+            }
+        }.GetNewClosure()
+        $installedValidationResult = Invoke-CountdownInstalledApplicationValidation `
+            -ApplicationPath $installedValidationApplication `
+            -PowerShell7Path $remoteDeploymentPowerShell `
+            -TransactionPath $installedValidationTransaction `
+            -ActiveSettingsPath $installedValidationActiveSettings `
+            -NativeInvocation $installedValidationNativeInvocation
+        $installedValidationActiveAfter = Get-Item -LiteralPath $installedValidationActiveSettings
+        Assert-Equal $true ([bool] $installedValidationResult.Valid) 'Remote installed application validation returns the native validation result'
+        Assert-Equal $true (@($installedValidationInvocation.Arguments) -contains '-ValidateOnly') 'Remote installed application validation invokes the installed app in validate-only mode'
+        Assert-Equal $false $installedValidationInvocation.ActiveSettingsArgumentObserved 'Remote installed application validation never passes the active settings path to the child process'
+        Assert-Equal $true ([System.IO.Path]::GetFullPath($installedValidationInvocation.SettingsFile).StartsWith([System.IO.Path]::GetFullPath($installedValidationTransaction).TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)) 'Remote installed application validation uses a transaction-local settings path'
+        Assert-Equal 0 @(
+            Get-ChildItem -LiteralPath $installedValidationTransaction -Force |
+                Where-Object { $_.Name -like 'installed-validation-*' }
+        ).Count 'Remote installed application validation cleans settings and companion files in finally'
+        Assert-Equal $installedValidationActiveBefore.Length $installedValidationActiveAfter.Length 'Remote installed application validation preserves active settings length'
+        Assert-Equal $installedValidationActiveBefore.LastWriteTimeUtc $installedValidationActiveAfter.LastWriteTimeUtc 'Remote installed application validation preserves active settings mtime'
+        Assert-Equal $installedValidationActiveHashBefore (Get-FileHash -Algorithm SHA256 -LiteralPath $installedValidationActiveSettings).Hash 'Remote installed application validation preserves active settings SHA-256'
+
+        $removedActiveSettingsPath = Join-Path $remoteDeploymentInstall 'removed-active.settings.json'
+        [System.IO.File]::WriteAllText($removedActiveSettingsPath, '{"active-settings":true}', [System.Text.UTF8Encoding]::new($false))
+        $activeSettingsRemovalInvocation = {
+            param([string] $Executable, [string[]] $Arguments)
+
+            [System.IO.File]::Delete($removedActiveSettingsPath)
+            & $installedValidationNativeInvocation $Executable $Arguments
+        }.GetNewClosure()
+        $activeSettingsRemovalRejected = $false
+        try {
+            Invoke-CountdownInstalledApplicationValidation `
+                -ApplicationPath $installedValidationApplication `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -TransactionPath $installedValidationTransaction `
+                -ActiveSettingsPath $removedActiveSettingsPath `
+                -NativeInvocation $activeSettingsRemovalInvocation | Out-Null
+        }
+        catch {
+            $activeSettingsRemovalRejected = $_.Exception.Message -match '改变了现役 settings.json'
+        }
+        Assert-Equal $true $activeSettingsRemovalRejected 'Installed validation rejects present active settings removed by the child process'
+
+        $replacedActiveSettingsPath = Join-Path $remoteDeploymentInstall 'replaced-active.settings.json'
+        $replacementCandidatePath = "$replacedActiveSettingsPath.replacement"
+        [System.IO.File]::WriteAllText($replacedActiveSettingsPath, '{"active-settings":true}', [System.Text.UTF8Encoding]::new($false))
+        $replacedActiveSettingsBytes = [System.IO.File]::ReadAllBytes($replacedActiveSettingsPath)
+        $replacedActiveSettingsMtime = (Get-Item -LiteralPath $replacedActiveSettingsPath).LastWriteTimeUtc
+        $activeSettingsReplacementInvocation = {
+            param([string] $Executable, [string[]] $Arguments)
+
+            [System.IO.File]::WriteAllBytes($replacementCandidatePath, $replacedActiveSettingsBytes)
+            [System.IO.File]::SetLastWriteTimeUtc($replacementCandidatePath, $replacedActiveSettingsMtime)
+            [System.IO.File]::Move($replacementCandidatePath, $replacedActiveSettingsPath, $true)
+            [System.IO.File]::SetLastWriteTimeUtc($replacedActiveSettingsPath, $replacedActiveSettingsMtime)
+            & $installedValidationNativeInvocation $Executable $Arguments
+        }.GetNewClosure()
+        $activeSettingsReplacementRejected = $false
+        try {
+            Invoke-CountdownInstalledApplicationValidation `
+                -ApplicationPath $installedValidationApplication `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -TransactionPath $installedValidationTransaction `
+                -ActiveSettingsPath $replacedActiveSettingsPath `
+                -NativeInvocation $activeSettingsReplacementInvocation | Out-Null
+        }
+        catch {
+            $activeSettingsReplacementRejected = $_.Exception.Message -match '改变了现役 settings.json'
+        }
+        finally {
+            Remove-Item -LiteralPath $replacementCandidatePath -Force -ErrorAction SilentlyContinue
+        }
+        Assert-Equal $true $activeSettingsReplacementRejected 'Installed validation rejects same-bytes active settings object replacement'
+
+        $freshInstallSettingsPath = Join-Path $remoteDeploymentInstall 'fresh-install.settings.json'
+        Assert-Equal $false (Test-Path -LiteralPath $freshInstallSettingsPath) 'Fresh-install validation starts without an active settings file'
+        $freshInstallValidationResult = Invoke-CountdownInstalledApplicationValidation `
+            -ApplicationPath $installedValidationApplication `
+            -PowerShell7Path $remoteDeploymentPowerShell `
+            -TransactionPath $installedValidationTransaction `
+            -ActiveSettingsPath $freshInstallSettingsPath `
+            -NativeInvocation $installedValidationNativeInvocation
+        Assert-Equal $true ([bool] $freshInstallValidationResult.Valid) 'Fresh-install validation accepts absent active settings that remain absent'
+        Assert-Equal $false (Test-Path -LiteralPath $freshInstallSettingsPath) 'Fresh-install validation does not create active settings'
+        $freshInstallCreationInvocation = {
+            param([string] $Executable, [string[]] $Arguments)
+
+            [System.IO.File]::WriteAllText(
+                $freshInstallSettingsPath,
+                '{"unexpected-active-settings":true}',
+                [System.Text.UTF8Encoding]::new($false))
+            & $installedValidationNativeInvocation $Executable $Arguments
+        }.GetNewClosure()
+        $freshInstallCreationRejected = $false
+        try {
+            Invoke-CountdownInstalledApplicationValidation `
+                -ApplicationPath $installedValidationApplication `
+                -PowerShell7Path $remoteDeploymentPowerShell `
+                -TransactionPath $installedValidationTransaction `
+                -ActiveSettingsPath $freshInstallSettingsPath `
+                -NativeInvocation $freshInstallCreationInvocation | Out-Null
+        }
+        catch {
+            $freshInstallCreationRejected = $_.Exception.Message -match '改变了现役 settings.json'
+        }
+        finally {
+            Remove-Item -LiteralPath $freshInstallSettingsPath -Force -ErrorAction SilentlyContinue
+        }
+        Assert-Equal $true $freshInstallCreationRejected 'Fresh-install validation rejects active settings created by the child process'
 
         $trustedLoaderRoot = Join-Path $remoteDeploymentTestRoot 'trusted-source-loader'
         $trustedLoaderModulePath = Join-Path $trustedLoaderRoot 'Issue4.SourceLoader.Fixture.psm1'
@@ -2628,23 +2785,28 @@ foreach ($trustRoot in @('Deploy-OfficeCountdown.ps1', 'Install-Countdown.ps1', 
 $deploySource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'),
     [System.Text.Encoding]::UTF8)
+$deployValidationExitIndex = $deploySource.IndexOf('if ($ValidateOnly) {')
+$deployCandidateValidationIndex = if ($deployValidationExitIndex -ge 0) {
+    $deploySource.IndexOf('$candidateArchiveValidation = Invoke-CountdownWorkingTreeArchiveValidation', $deployValidationExitIndex)
+}
+else { -1 }
 $deployCommitGateIndex = $deploySource.IndexOf("-Stage '构建前'")
 $deploySnapshotExportIndex = if ($deployCommitGateIndex -ge 0) {
     $deploySource.IndexOf('Export-CountdownDeploymentCommitSnapshot', $deployCommitGateIndex)
 }
 else { -1 }
 $deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $sourceRoot')
-$deployValidationExitIndex = $deploySource.IndexOf('if ($ValidateOnly) {')
 $transferLedgerImportIndex = $deploySource.IndexOf("-Stage '传输账本模块导入'")
 $credentialImportIndex = $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'")
 Assert-Equal $true (
-    $deployCommitGateIndex -ge 0 -and
+    $deployValidationExitIndex -ge 0 -and
+    $deployCandidateValidationIndex -gt $deployValidationExitIndex -and
+    $deployCommitGateIndex -gt $deployCandidateValidationIndex -and
     $deploySnapshotExportIndex -gt $deployCommitGateIndex -and
     $deployPackageAssertionIndex -gt $deployCommitGateIndex -and
-    $deployValidationExitIndex -gt $deployPackageAssertionIndex -and
-    $transferLedgerImportIndex -gt $deployValidationExitIndex -and
+    $transferLedgerImportIndex -gt $deployPackageAssertionIndex -and
     $credentialImportIndex -gt $transferLedgerImportIndex
-) 'Office deploy snapshots the verified commit and imports transfer code only after Git, package hash, and validate-only gates'
+) 'Office deploy validates a working-tree candidate before every Git gate while formal deployment snapshots the verified commit before remote imports'
 $deploymentTokens = $null
 $deploymentParseErrors = $null
 $deploymentAst = [System.Management.Automation.Language.Parser]::ParseInput(
@@ -2759,6 +2921,7 @@ $deploymentGateFunctionNames = @(
     'New-CountdownDeploymentFileManifest',
     'Assert-CountdownDeploymentFileManifest',
     'Assert-CountdownDeploymentFileSet',
+    'Invoke-CountdownWorkingTreeArchiveValidation',
     'Assert-CountdownRemoteInstallScript'
 )
 $deploymentGateFunctions = @(
@@ -2781,6 +2944,40 @@ try {
         $deploymentGateModuleSource,
         [System.Text.UTF8Encoding]::new($false))
     Import-Module $deploymentGateModulePath -Force
+
+    $workingTreeCandidateRoot = Join-Path $deploymentGateTestRoot 'working-tree-candidate'
+    New-Item -ItemType Directory -Path $workingTreeCandidateRoot -Force | Out-Null
+    $workingTreeCandidatePath = Join-Path $workingTreeCandidateRoot 'candidate.txt'
+    $workingTreeCandidateBytes = [System.Text.UTF8Encoding]::new($false).GetBytes('working-tree-bytes')
+    [System.IO.File]::WriteAllBytes($workingTreeCandidatePath, $workingTreeCandidateBytes)
+    $oldHeadHash = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [System.Text.UTF8Encoding]::new($false).GetBytes('old-head-bytes')))
+    $workingTreeHash = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData($workingTreeCandidateBytes))
+    $successfulCandidateArchive = Join-Path $deploymentGateTestRoot 'candidate-success.zip'
+    $candidateArchiveResult = Invoke-CountdownWorkingTreeArchiveValidation `
+        -RepositoryRoot $workingTreeCandidateRoot `
+        -RelativePaths @('candidate.txt') `
+        -TemporaryArchivePath $successfulCandidateArchive
+    Assert-Equal $workingTreeHash $candidateArchiveResult.SourceManifest['candidate.txt'] 'Working-tree validation archives current candidate bytes'
+    Assert-Equal $false ([string]::Equals($oldHeadHash, $candidateArchiveResult.SourceManifest['candidate.txt'], [System.StringComparison]::OrdinalIgnoreCase)) 'Working-tree validation does not archive stale HEAD bytes'
+    Assert-Equal 1 $candidateArchiveResult.ArchiveFiles 'Working-tree validation verifies the exact archive entry allowlist'
+    Assert-Equal $false (Test-Path -LiteralPath $successfulCandidateArchive) 'Working-tree validation removes its temporary ZIP after success'
+
+    $failedCandidateArchive = Join-Path $deploymentGateTestRoot 'candidate-failure.zip'
+    $candidateArchiveFailureRejected = $false
+    try {
+        Invoke-CountdownWorkingTreeArchiveValidation `
+            -RepositoryRoot $workingTreeCandidateRoot `
+            -RelativePaths @('candidate.txt', 'missing.txt') `
+            -TemporaryArchivePath $failedCandidateArchive | Out-Null
+    }
+    catch {
+        $candidateArchiveFailureRejected = $_.Exception.Message -match 'missing.txt'
+    }
+    Assert-Equal $true $candidateArchiveFailureRejected 'Working-tree validation rejects a missing allowlisted file after opening the archive'
+    Assert-Equal $false (Test-Path -LiteralPath $failedCandidateArchive) 'Working-tree validation removes its temporary ZIP after failure'
 
     $validRemoteInstallScript = @(
         "Invoke-LockedDeploymentFile -Path 'archive.zip' -ExpectedSha256 '$('A' * 64)' -Action { param(`$lockedPath) `$lockedPath }",
@@ -2886,6 +3083,17 @@ try {
 
     $deploymentGitFixture.FailCommand = ''
     $deploymentGitFixture.FailExitCode = 0
+    $deploymentGitFixture.Dirty = $true
+    $formalDirtyRejected = $false
+    try {
+        Assert-CountdownDeploymentRepositoryState -GitPath 'fixture-git.exe' -RepositoryRoot $deploymentGateTestRoot -Stage '构建前夹具' -Adapter $deploymentGitAdapter | Out-Null
+    }
+    catch {
+        $formalDirtyRejected = $_.Exception.Message -match '工作树不干净'
+    }
+    Assert-Equal $true $formalDirtyRejected 'Formal deployment rejects a dirty worktree at its initial gate before remote actions'
+
+    $deploymentGitFixture.Dirty = $false
     $initialGate = Assert-CountdownDeploymentRepositoryState -GitPath 'fixture-git.exe' -RepositoryRoot $deploymentGateTestRoot -Stage '构建前夹具' -Adapter $deploymentGitAdapter
     Assert-Equal $fixtureCommit $initialGate.Head 'Repository gate accepts one clean pushed commit'
 
@@ -3192,18 +3400,22 @@ function Start-CountdownAcceptanceTestApplication {
     param(
         [Parameter(Mandatory)] [object] $StartupRequest,
         [switch] $ChangeSettings,
+        [AllowNull()] [string] $SettingsJsonAfterRelease,
         [switch] $SkipFinalizedReady
     )
 
-    $job = Start-Job -ArgumentList $acceptanceStartupRequestPath, $acceptanceStatusPath, $StartupRequest.launchToken, $acceptanceApplicationPath, $acceptanceSettingsPath, ([bool] $ChangeSettings), ([bool] $SkipFinalizedReady) -ScriptBlock {
-        param($StartupRequestPath, $AcceptanceStatusPath, $LaunchToken, $ApplicationPath, $SettingsPath, $ChangeSettings, $SkipFinalizedReady)
+    $job = Start-Job -ArgumentList $acceptanceStartupRequestPath, $acceptanceStatusPath, $StartupRequest.launchToken, $acceptanceApplicationPath, $acceptanceSettingsPath, ([bool] $ChangeSettings), $SettingsJsonAfterRelease, ([bool] $SkipFinalizedReady) -ScriptBlock {
+        param($StartupRequestPath, $AcceptanceStatusPath, $LaunchToken, $ApplicationPath, $SettingsPath, $ChangeSettings, $SettingsJsonAfterRelease, $SkipFinalizedReady)
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
         do {
             try {
-                $request = [System.IO.File]::ReadAllText($StartupRequestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+                $request = [System.IO.File]::ReadAllText($StartupRequestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json -DateKind String
                 if ([string] $request.acceptanceState -eq 'released') {
                     if ($ChangeSettings) {
                         [System.IO.File]::WriteAllText($SettingsPath, '{"schemaVersion":9,"unexpected":true}', [System.Text.UTF8Encoding]::new($false))
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace($SettingsJsonAfterRelease)) {
+                        [System.IO.File]::WriteAllText($SettingsPath, $SettingsJsonAfterRelease, [System.Text.UTF8Encoding]::new($false))
                     }
                     $request.acceptanceState = 'ready'
                     [System.IO.File]::WriteAllText($StartupRequestPath, ($request | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
@@ -3217,7 +3429,7 @@ function Start-CountdownAcceptanceTestApplication {
 
         do {
             try {
-                $request = [System.IO.File]::ReadAllText($StartupRequestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+                $request = [System.IO.File]::ReadAllText($StartupRequestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json -DateKind String
                 if ([string] $request.acceptanceState -eq 'finalized') {
                     $receipt = [ordered]@{
                         schemaVersion = 1
@@ -3316,6 +3528,77 @@ try {
     Assert-Equal 'finalized' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'Transaction acceptance leaves the startup request finalized'
     Wait-Job -Job $acceptanceReadyJob -Timeout 5 | Out-Null
     Assert-Equal 'Completed' ([string] $acceptanceReadyJob.State) 'Acceptance test application observed release before finalize'
+
+    $acceptanceMigrationUtc = [DateTimeOffset] '2026-07-20T02:16:00Z'
+    $acceptanceLegacyRepeat = [pscustomobject]@{
+        schemaVersion = 9
+        timeZoneId = 'China Standard Time'
+        displayPrecision = 'Minute'
+        monthlySalary = 0
+        workStart = '09:00'
+        workEnd = '18:00'
+        themePreference = 'Auto'
+        tags = @()
+        countdowns = @()
+        notes = @([pscustomobject]@{
+                id = 'acceptance-repeat-note'
+                text = '验收重复提醒'
+                date = $null
+                isCompleted = $false
+                tagIds = @()
+                reminder = [pscustomobject]@{
+                    type = 'repeat'
+                    firstDueUtc = '2026-07-20T01:00:00.0000000+00:00'
+                    intervalMinutes = 1
+                }
+            })
+    }
+    $acceptanceLegacyJson = $acceptanceLegacyRepeat | ConvertTo-Json -Depth 8
+    $acceptanceMigratedJson = ConvertTo-CountdownSettingsJson -State (
+        ConvertFrom-CountdownSettingsObject -Settings $acceptanceLegacyRepeat -MigrationUtc $acceptanceMigrationUtc)
+    $acceptanceMigrated = $acceptanceMigratedJson | ConvertFrom-Json
+    $acceptanceRuleId = [string] $acceptanceMigrated.notes[0].reminderRules[0].id
+    $acceptanceOccurrenceKey = "{0}|{1}" -f $acceptanceRuleId, $acceptanceMigrationUtc.ToString('o')
+    $cursorBeyondFrozen = $acceptanceMigratedJson | ConvertFrom-Json
+    $cursorBeyondFrozen.reminderStates.PSObject.Properties[$acceptanceRuleId].Value.handledThroughUtc = $acceptanceMigrationUtc.AddMinutes(1).ToString('o')
+    Assert-Equal $false (Test-CountdownSettingsDeploymentTransition `
+            -BeforeHash 'legacy-repeat' `
+            -AfterHash 'cursor-beyond-frozen' `
+            -BeforeJson $acceptanceLegacyJson `
+            -AfterJson ($cursorBeyondFrozen | ConvertTo-Json -Depth 12) `
+            -MigrationUtc $acceptanceMigrationUtc) 'Deployment transition rejects a reminder cursor beyond the frozen migration occurrence'
+    $forgedDelivery = $acceptanceMigratedJson | ConvertFrom-Json
+    $forgedDelivery.reminderStates.PSObject.Properties[$acceptanceRuleId].Value.lastDeliveredOccurrenceKey = $acceptanceOccurrenceKey
+    Assert-Equal $false (Test-CountdownSettingsDeploymentTransition `
+            -BeforeHash 'legacy-repeat' `
+            -AfterHash 'forged-delivery' `
+            -BeforeJson $acceptanceLegacyJson `
+            -AfterJson ($forgedDelivery | ConvertTo-Json -Depth 12) `
+            -MigrationUtc $acceptanceMigrationUtc) 'Deployment transition rejects a forged reminder delivery'
+    $forgedDisposition = $acceptanceMigratedJson | ConvertFrom-Json
+    $forgedDispositionState = $forgedDisposition.reminderStates.PSObject.Properties[$acceptanceRuleId].Value
+    $forgedDispositionState.lastDeliveredOccurrenceKey = $acceptanceOccurrenceKey
+    $forgedDispositionState.lastDispositionOccurrenceKey = $acceptanceOccurrenceKey
+    Assert-Equal $false (Test-CountdownSettingsDeploymentTransition `
+            -BeforeHash 'legacy-repeat' `
+            -AfterHash 'forged-disposition' `
+            -BeforeJson $acceptanceLegacyJson `
+            -AfterJson ($forgedDisposition | ConvertTo-Json -Depth 12) `
+            -MigrationUtc $acceptanceMigrationUtc) 'Deployment transition rejects a forged reminder disposition'
+    [System.IO.File]::WriteAllText($acceptanceSettingsSnapshotPath, $acceptanceLegacyJson, [System.Text.UTF8Encoding]::new($false))
+    $frozenMigrationRequest = Reset-CountdownAcceptanceTestCase
+    $frozenMigrationRequest.requestedAtUtc = $acceptanceMigrationUtc.ToString('o')
+    [System.IO.File]::WriteAllText(
+        $acceptanceStartupRequestPath,
+        ($frozenMigrationRequest | ConvertTo-Json -Compress),
+        [System.Text.UTF8Encoding]::new($false))
+    $frozenMigrationJob = Start-CountdownAcceptanceTestApplication `
+        -StartupRequest $frozenMigrationRequest `
+        -SettingsJsonAfterRelease $acceptanceMigratedJson
+    $frozenMigrationResult = @(Invoke-CountdownAcceptanceTestCase -StartupRequest $frozenMigrationRequest)
+    Assert-Equal 'finalized-ready' ([string] $frozenMigrationResult[0].AcceptanceState) 'Transaction acceptance uses one frozen migration instant across the C# handoff'
+    Wait-Job -Job $frozenMigrationJob -Timeout 5 | Out-Null
+    Assert-Equal 'Completed' ([string] $frozenMigrationJob.State) 'Frozen migration acceptance completes the release protocol'
 
     $pidDriftRequest = Reset-CountdownAcceptanceTestCase -RuntimeProcessId 5252
     $pidDriftRejected = $false
@@ -4284,7 +4567,7 @@ Assert-Equal 0 @($loadedLegacyV3.Records[0].tagIds).Count 'Schema v3 creates unt
 Assert-Equal 'Minute' $loadedLegacyV3.Preferences.Precision 'Schema v3 preserves precision'
 $canonicalLegacyV3 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV3
 $canonicalLegacyV3Object = $canonicalLegacyV3 | ConvertFrom-Json
-Assert-Equal 9 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
+Assert-Equal 10 $canonicalLegacyV3Object.schemaVersion 'Canonical settings schema'
 Assert-Equal 'Auto' $loadedLegacyV3.Preferences.ThemePreference 'Schema v3 defaults the theme preference to Auto'
 Assert-Equal 'Auto' $canonicalLegacyV3Object.themePreference 'Canonical settings persist the Auto theme preference'
 Assert-Equal 0 @($canonicalLegacyV3Object.tags).Count 'Canonical settings tags'
@@ -4306,7 +4589,7 @@ catch {
 Assert-Equal $true $candidateSaveFailureObserved 'Settings candidate persistence failure is observable'
 Assert-Equal '旧版倒计时' $loadedLegacyV3.Records[0].name 'Settings candidate persistence failure preserves source record'
 Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'same' -AfterHash 'same' -BeforeJson $null -AfterJson $null) 'Unchanged settings are accepted for deployment'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v9 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV3Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV3) 'Strict schema v3 to v10 migration is accepted for deployment'
 $legacyV1Settings = [pscustomobject]@{ schemaVersion = 1; timeZoneId = 'China Standard Time'; targetUtc = '2099-01-01T00:00:00Z' }
 $canonicalLegacyV1 = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $legacyV1Settings)
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV1Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV1) 'Schema v1 migration remains rejected for deployment'
@@ -4314,7 +4597,7 @@ $settingsModuleTestPath = Join-Path $PSScriptRoot 'settings-module-test.json'
 try {
     Save-CountdownSettings -Path $settingsModuleTestPath -State $loadedLegacyV3
     $savedSettings = [System.IO.File]::ReadAllText($settingsModuleTestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    Assert-Equal 9 $savedSettings.schemaVersion 'Settings module writes canonical schema'
+    Assert-Equal 10 $savedSettings.schemaVersion 'Settings module writes canonical schema'
     Assert-Equal $false (Test-Path -LiteralPath "$settingsModuleTestPath.tmp") 'Settings module cleans temporary file'
 }
 finally {
@@ -4340,7 +4623,7 @@ Assert-Equal 0 @($loadedLegacyV4.Notes[0].tagIds).Count 'Schema v4 creates untag
 Assert-Equal '保留的旧版便签' $loadedLegacyV4.Notes[0].text 'Schema v4 preserves notes'
 Assert-Equal $null $loadedLegacyV4.Notes[0].date 'Schema v4 does not invent a note date'
 $canonicalLegacyV4 = ConvertTo-CountdownSettingsJson -State $loadedLegacyV4
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV4) 'Strict schema v4 to v9 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson $canonicalLegacyV4) 'Strict schema v4 to v10 migration is accepted for deployment'
 $invalidV4Transition = $canonicalLegacyV4 | ConvertFrom-Json
 $invalidV4Transition.notes[0].text = '被篡改的便签'
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($legacyV4Settings | ConvertTo-Json -Depth 4) -AfterJson ($invalidV4Transition | ConvertTo-Json -Depth 5)) 'Schema v4 migration rejects changed notes'
@@ -4373,52 +4656,56 @@ Assert-Equal '工作' $loadedV5.Tags[0].name 'Settings state copy does not mutat
 Assert-Equal 'work' $loadedV5.Records[0].tagIds[0] 'Settings state copy does not mutate source countdown tags'
 Assert-Equal 'home' $loadedV5.Notes[0].tagIds[0] 'Settings state copy does not mutate source note tags'
 $canonicalFromV5 = ConvertTo-CountdownSettingsJson -State $loadedV5 | ConvertFrom-Json
-Assert-Equal 9 $canonicalFromV5.schemaVersion 'Schema v5 migrates to canonical schema v9'
+Assert-Equal 10 $canonicalFromV5.schemaVersion 'Schema v5 migrates to canonical schema v10'
 Assert-Equal 'Auto' $canonicalFromV5.themePreference 'Schema v5 migration defaults the theme preference to Auto'
-Assert-Equal '#6B8E23' $canonicalFromV5.tags[0].color 'Schema v9 serializes tag color'
-Assert-Equal $true ($null -eq $canonicalFromV5.tags[1].PSObject.Properties['color']) 'Schema v9 omits an unspecified tag color'
-Assert-Equal 'work' $canonicalFromV5.countdowns[0].tagIds[0] 'Schema v9 serializes countdown tag IDs'
-Assert-Equal 'home' $canonicalFromV5.notes[0].tagIds[0] 'Schema v9 serializes note tag IDs'
-Assert-Equal $null $canonicalFromV5.notes[0].date 'Schema v9 preserves an unknown legacy note date as null'
-Assert-Equal 'none' $canonicalFromV5.notes[0].reminder.type 'Schema v9 disables reminders for migrated notes'
-$loadedNullDateV7 = ConvertFrom-CountdownSettingsObject -Settings $canonicalFromV5
-Assert-Equal $null $loadedNullDateV7.Notes[0].date 'Schema v7 accepts an explicitly unknown note date'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalFromV5 | ConvertTo-Json -Depth 5)) 'Strict schema v5 to v9 migration is accepted for deployment'
+Assert-Equal '#6B8E23' $canonicalFromV5.tags[0].color 'Schema v10 serializes tag color'
+Assert-Equal $true ($null -eq $canonicalFromV5.tags[1].PSObject.Properties['color']) 'Schema v10 omits an unspecified tag color'
+Assert-Equal 'work' $canonicalFromV5.countdowns[0].tagIds[0] 'Schema v10 serializes countdown tag IDs'
+Assert-Equal 'home' $canonicalFromV5.notes[0].tagIds[0] 'Schema v10 serializes note tag IDs'
+Assert-Equal $null $canonicalFromV5.notes[0].date 'Schema v10 preserves an unknown legacy note date as null'
+Assert-Equal 0 @($canonicalFromV5.notes[0].reminderRules).Count 'Schema v10 disables reminders for migrated notes'
+$loadedNullDateV10 = ConvertFrom-CountdownSettingsObject -Settings $canonicalFromV5
+Assert-Equal $null $loadedNullDateV10.Notes[0].date 'Schema v10 accepts an explicitly unknown note date'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalFromV5 | ConvertTo-Json -Depth 8)) 'Strict schema v5 to v10 migration is accepted for deployment'
 $invalidV5Transition = $canonicalFromV5 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
 $invalidV5Transition.notes[0].date = '2026-07-18'
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v5Settings | ConvertTo-Json -Depth 5) -AfterJson ($invalidV5Transition | ConvertTo-Json -Depth 5)) 'Schema v5 migration rejects an invented note date'
 
-$v6Settings = $canonicalFromV5 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$v6Settings = $canonicalFromV5 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 $v6Settings.schemaVersion = 6
 $v6Settings.PSObject.Properties.Remove('themePreference')
-$v6Settings.notes[0].PSObject.Properties.Remove('reminder')
+$v6Settings.PSObject.Properties.Remove('reminderStates')
+foreach ($countdown in @($v6Settings.countdowns)) { $countdown.PSObject.Properties.Remove('reminderRules') }
+foreach ($note in @($v6Settings.notes)) { $note.PSObject.Properties.Remove('reminderRules') }
 $v6Settings.notes[0].date = '2026-07-18'
 $loadedV6 = ConvertFrom-CountdownSettingsObject -Settings $v6Settings
 Assert-Equal $true $loadedV6.Migrated 'Schema v6 settings migrate to add reminder fields'
 Assert-Equal '2026-07-18' $loadedV6.Notes[0].date 'Schema v6 loads an exact note date'
 Assert-Equal $null $loadedV6.Notes[0].reminderIntervalMinutes 'Schema v6 migration disables reminders'
 $canonicalV6 = ConvertTo-CountdownSettingsJson -State $loadedV6 | ConvertFrom-Json
-Assert-Equal 9 $canonicalV6.schemaVersion 'Schema v6 migrates to canonical schema v9'
-Assert-Equal '2026-07-18' $canonicalV6.notes[0].date 'Schema v9 preserves an exact note date'
-Assert-Equal 'none' $canonicalV6.notes[0].reminder.type 'Schema v9 persists a disabled reminder explicitly'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v6Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalV6 | ConvertTo-Json -Depth 5)) 'Strict schema v6 to v9 migration is accepted for deployment'
+Assert-Equal 10 $canonicalV6.schemaVersion 'Schema v6 migrates to canonical schema v10'
+Assert-Equal '2026-07-18' $canonicalV6.notes[0].date 'Schema v10 preserves an exact note date'
+Assert-Equal 0 @($canonicalV6.notes[0].reminderRules).Count 'Schema v10 persists a disabled reminder explicitly'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v6Settings | ConvertTo-Json -Depth 8) -AfterJson ($canonicalV6 | ConvertTo-Json -Depth 8)) 'Strict schema v6 to v10 migration is accepted for deployment'
 
-$v7Settings = $canonicalV6 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
+$v7Settings = $canonicalV6 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 $v7Settings.schemaVersion = 7
 $v7Settings.PSObject.Properties.Remove('themePreference')
-$v7Settings.notes[0].PSObject.Properties.Remove('reminder')
+$v7Settings.PSObject.Properties.Remove('reminderStates')
+foreach ($countdown in @($v7Settings.countdowns)) { $countdown.PSObject.Properties.Remove('reminderRules') }
+foreach ($note in @($v7Settings.notes)) { $note.PSObject.Properties.Remove('reminderRules') }
 $v7Settings.notes[0] | Add-Member -NotePropertyName reminderIntervalMinutes -NotePropertyValue 30 -Force
-$v7Settings.notes[0] | Add-Member -NotePropertyName reminderStartUtc -NotePropertyValue '2026-07-19T00:00:00.0000000+00:00' -Force
+$v7Settings.notes[0] | Add-Member -NotePropertyName reminderStartUtc -NotePropertyValue '2099-07-19T00:00:00.0000000+00:00' -Force
 $loadedV7 = ConvertFrom-CountdownSettingsObject -Settings $v7Settings
-Assert-Equal $true $loadedV7.Migrated 'Schema v7 settings migrate to schema v9'
+Assert-Equal $true $loadedV7.Migrated 'Schema v7 settings migrate to schema v10'
 Assert-Equal 30 $loadedV7.Notes[0].reminderIntervalMinutes 'Schema v7 loads a reminder interval'
-Assert-Equal ([DateTimeOffset]'2026-07-19T00:00:00Z') $loadedV7.Notes[0].reminderStartUtc 'Schema v7 loads a UTC reminder start'
+Assert-Equal ([DateTimeOffset]'2099-07-19T00:00:00Z') $loadedV7.Notes[0].reminderStartUtc 'Schema v7 loads a UTC reminder start'
 $canonicalV7 = ConvertTo-CountdownSettingsJson -State $loadedV7 | ConvertFrom-Json
-Assert-Equal 9 $canonicalV7.schemaVersion 'Schema v7 writes canonical schema v9'
-Assert-Equal 'repeat' $canonicalV7.notes[0].reminder.type 'Schema v7 migrates to a repeat reminder'
-Assert-Equal 30 $canonicalV7.notes[0].reminder.intervalMinutes 'Schema v7 preserves a reminder interval'
-Assert-Equal ([DateTimeOffset]'2026-07-19T00:30:00Z') ([DateTimeOffset] $canonicalV7.notes[0].reminder.firstDueUtc).ToUniversalTime() 'Schema v7 preserves the first due time'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v7Settings | ConvertTo-Json -Depth 5) -AfterJson ($canonicalV7 | ConvertTo-Json -Depth 5)) 'Strict schema v7 to v9 migration is accepted for deployment'
+Assert-Equal 10 $canonicalV7.schemaVersion 'Schema v7 writes canonical schema v10'
+Assert-Equal 'fixedInterval' $canonicalV7.notes[0].reminderRules[0].type 'Schema v7 migrates to a fixed-interval rule'
+Assert-Equal 30 $canonicalV7.notes[0].reminderRules[0].intervalMinutes 'Schema v7 preserves a reminder interval'
+Assert-Equal ([DateTimeOffset]'2099-07-19T00:30:00Z') ([DateTimeOffset] $canonicalV7.notes[0].reminderRules[0].firstDueUtc).ToUniversalTime() 'Schema v7 preserves the first due time'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v7Settings | ConvertTo-Json -Depth 8) -AfterJson ($canonicalV7 | ConvertTo-Json -Depth 8)) 'Strict schema v7 to v10 migration is accepted for deployment'
 $preFreezeV7 = $canonicalV7 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
 $preFreezeV7.monthlySalary = 100
 $postFreezeV7 = $canonicalV7 | ConvertTo-Json -Depth 5 | ConvertFrom-Json
@@ -4426,29 +4713,32 @@ $postFreezeV7.monthlySalary = 200
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'pre-freeze' -AfterHash 'post-freeze' -BeforeJson ($preFreezeV7 | ConvertTo-Json -Depth 5) -AfterJson ($postFreezeV7 | ConvertTo-Json -Depth 5)) 'Schema v7 changes after the selected deployment baseline are rejected'
 Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'post-freeze' -AfterHash 'post-freeze' -BeforeJson ($postFreezeV7 | ConvertTo-Json -Depth 5) -AfterJson ($postFreezeV7 | ConvertTo-Json -Depth 5)) 'A pre-freeze save preserved in the transaction snapshot remains deployable'
 $reloadedCanonicalV7 = ConvertFrom-CountdownSettingsObject -Settings $canonicalV7
-Assert-Equal 2 $reloadedCanonicalV7.Tags.Count 'Schema v9 reloads tags without optional colors'
-Assert-Equal $null $reloadedCanonicalV7.Tags[1].color 'Schema v9 reload preserves an unspecified tag color'
+Assert-Equal 2 $reloadedCanonicalV7.Tags.Count 'Schema v10 reloads tags without optional colors'
+Assert-Equal $null $reloadedCanonicalV7.Tags[1].color 'Schema v10 reload preserves an unspecified tag color'
 
-$v8OnceSettings = $canonicalV7 | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+$v8OnceSettings = $canonicalV7 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
 $v8OnceSettings.schemaVersion = 8
 $v8OnceSettings.PSObject.Properties.Remove('themePreference')
-$v8OnceSettings.notes[0].reminder = [pscustomobject]@{
-    type = 'once'
-    firstDueUtc = '2026-07-20T01:15:00.0000000+00:00'
-    delivery = 'pending'
-}
+$v8OnceSettings.PSObject.Properties.Remove('reminderStates')
+foreach ($countdown in @($v8OnceSettings.countdowns)) { $countdown.PSObject.Properties.Remove('reminderRules') }
+foreach ($note in @($v8OnceSettings.notes)) { $note.PSObject.Properties.Remove('reminderRules') }
+$v8OnceSettings.notes[0] | Add-Member -NotePropertyName reminder -NotePropertyValue ([pscustomobject]@{
+        type = 'once'
+        firstDueUtc = '2026-07-20T01:15:00.0000000+00:00'
+        delivery = 'pending'
+    }) -Force
 $loadedV8Once = ConvertFrom-CountdownSettingsObject -Settings $v8OnceSettings
-Assert-Equal $true $loadedV8Once.Migrated 'Schema v8 settings migrate to schema v9'
+Assert-Equal $true $loadedV8Once.Migrated 'Schema v8 settings migrate to schema v10'
 Assert-Equal 'Auto' $loadedV8Once.Preferences.ThemePreference 'Schema v8 defaults the theme preference to Auto'
 Assert-Equal 'once' $loadedV8Once.Notes[0].reminder.type 'Schema v8 loads an once reminder'
 Assert-Equal 'pending' $loadedV8Once.Notes[0].reminder.delivery 'Schema v8 preserves pending delivery state'
 $canonicalV8Once = ConvertTo-CountdownSettingsJson -State $loadedV8Once | ConvertFrom-Json
-Assert-Equal 'once' $canonicalV8Once.notes[0].reminder.type 'Schema v8 round-trips an once reminder'
-Assert-Equal ([DateTimeOffset]'2026-07-20T01:15:00Z') ([DateTimeOffset] $canonicalV8Once.notes[0].reminder.firstDueUtc).ToUniversalTime() 'Schema v8 round-trips the once due time'
-Assert-Equal 'pending' $canonicalV8Once.notes[0].reminder.delivery 'Schema v8 round-trips pending delivery state'
-Assert-Equal 9 $canonicalV8Once.schemaVersion 'Schema v8 writes canonical schema v9'
+Assert-Equal 'absoluteOnce' $canonicalV8Once.notes[0].reminderRules[0].type 'Schema v8 migrates an once reminder to an absolute rule'
+Assert-Equal ([DateTimeOffset]'2026-07-20T01:15:00Z') ([DateTimeOffset] $canonicalV8Once.notes[0].reminderRules[0].scheduledUtc).ToUniversalTime() 'Schema v8 preserves the once due time'
+Assert-Equal 0 @($canonicalV8Once.reminderStates.PSObject.Properties).Count 'Schema v8 preserves pending delivery by omitting handled state'
+Assert-Equal 10 $canonicalV8Once.schemaVersion 'Schema v8 writes canonical schema v10'
 Assert-Equal 'Auto' $canonicalV8Once.themePreference 'Schema v8 writes the default Auto theme preference'
-Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v8OnceSettings | ConvertTo-Json -Depth 6) -AfterJson ($canonicalV8Once | ConvertTo-Json -Depth 6)) 'Strict schema v8 to v9 migration is accepted for deployment'
+Assert-Equal $true (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v8OnceSettings | ConvertTo-Json -Depth 8) -AfterJson ($canonicalV8Once | ConvertTo-Json -Depth 8)) 'Strict schema v8 to v10 migration is accepted for deployment'
 $invalidV8ThemeTransition = $canonicalV8Once | ConvertTo-Json -Depth 6 | ConvertFrom-Json
 $invalidV8ThemeTransition.themePreference = 'Night'
 Assert-Equal $false (Test-CountdownSettingsDeploymentTransition -BeforeHash 'before' -AfterHash 'after' -BeforeJson ($v8OnceSettings | ConvertTo-Json -Depth 6) -AfterJson ($invalidV8ThemeTransition | ConvertTo-Json -Depth 6)) 'Schema v8 migration rejects an invented manual theme preference'
@@ -4463,13 +4753,27 @@ catch {
 }
 Assert-Equal $true $invalidV8OnceBranchRejected 'Schema v8 rejects repeat fields on an once reminder'
 
-$v9NightSettings = $canonicalV8Once | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+$v9NightSettings = $canonicalV8Once | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$v9NightSettings.schemaVersion = 9
 $v9NightSettings.themePreference = 'Night'
+foreach ($countdown in @($v9NightSettings.countdowns)) { $countdown.PSObject.Properties.Remove('reminderRules') }
+foreach ($note in @($v9NightSettings.notes)) {
+    $note.PSObject.Properties.Remove('reminderRules')
+    $note | Add-Member -NotePropertyName reminder -NotePropertyValue ([pscustomobject]@{
+        type = 'once'
+        firstDueUtc = '2026-07-20T01:15:00.0000000+00:00'
+        delivery = 'pending'
+    }) -Force
+}
+$v9NightSettings.PSObject.Properties.Remove('reminderStates')
 $loadedV9Night = ConvertFrom-CountdownSettingsObject -Settings $v9NightSettings
-Assert-Equal $false $loadedV9Night.Migrated 'Schema v9 settings do not migrate'
+Assert-Equal $true $loadedV9Night.Migrated 'Schema v9 settings migrate to schema v10'
 Assert-Equal 'Night' $loadedV9Night.Preferences.ThemePreference 'Schema v9 loads a manual night preference'
 $canonicalV9Night = ConvertTo-CountdownSettingsJson -State $loadedV9Night | ConvertFrom-Json
-Assert-Equal 'Night' $canonicalV9Night.themePreference 'Schema v9 round-trips a manual night preference'
+Assert-Equal 10 $canonicalV9Night.schemaVersion 'Schema v9 writes canonical schema v10'
+Assert-Equal 'Night' $canonicalV9Night.themePreference 'Schema v9 migration preserves a manual night preference'
+Assert-Equal 'absoluteOnce' $canonicalV9Night.notes[0].reminderRules[0].type 'Schema v9 migrates a pending once reminder'
+Assert-Equal 0 @($canonicalV9Night.reminderStates.PSObject.Properties).Count 'Schema v9 pending once migration does not invent handled state'
 $missingV9ThemeRejected = $false
 try {
     $missingV9Theme = $v9NightSettings | ConvertTo-Json -Depth 6 | ConvertFrom-Json
@@ -4480,6 +4784,442 @@ catch {
     $missingV9ThemeRejected = $true
 }
 Assert-Equal $true $missingV9ThemeRejected 'Schema v9 rejects a missing theme preference'
+
+$v9PendingRuleIdFirst = [string] (ConvertTo-CountdownSettingsJson -State (
+        ConvertFrom-CountdownSettingsObject -Settings $v9NightSettings -MigrationUtc ([DateTimeOffset]'2026-07-20T02:16:00Z')
+    ) | ConvertFrom-Json).notes[0].reminderRules[0].id
+$v9PendingRuleIdSecond = [string] (ConvertTo-CountdownSettingsJson -State (
+        ConvertFrom-CountdownSettingsObject -Settings $v9NightSettings -MigrationUtc ([DateTimeOffset]'2030-01-01T00:00:00Z')
+    ) | ConvertFrom-Json).notes[0].reminderRules[0].id
+Assert-Equal $v9PendingRuleIdFirst $v9PendingRuleIdSecond 'Schema v9 migration derives a stable reminder rule ID independent of wall-clock time'
+
+$v9DeliveredOnceSettings = $v9NightSettings | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$v9DeliveredOnceSettings.notes[0].reminder.delivery = 'delivered'
+$canonicalV9DeliveredOnce = ConvertTo-CountdownSettingsJson -State (
+    ConvertFrom-CountdownSettingsObject -Settings $v9DeliveredOnceSettings -MigrationUtc ([DateTimeOffset]'2026-07-20T02:16:00Z')
+) | ConvertFrom-Json
+$v9DeliveredRuleId = [string] $canonicalV9DeliveredOnce.notes[0].reminderRules[0].id
+$v9DeliveredState = $canonicalV9DeliveredOnce.reminderStates.PSObject.Properties[$v9DeliveredRuleId].Value
+Assert-Equal ([DateTimeOffset]'2026-07-20T01:15:00Z') ([DateTimeOffset] $v9DeliveredState.handledThroughUtc).ToUniversalTime() 'Schema v9 delivered once migration preserves the handled cursor'
+Assert-Equal ("{0}|2026-07-20T01:15:00.0000000+00:00" -f $v9DeliveredRuleId) ([string] $v9DeliveredState.lastDeliveredOccurrenceKey) 'Schema v9 delivered once migration persists the canonical occurrence key'
+Assert-Equal $null $v9DeliveredState.lastDispositionOccurrenceKey 'Schema v9 delivered once migration does not invent disposition'
+Assert-Equal $null $v9DeliveredState.activeSnooze 'Schema v9 delivered once migration does not invent snooze state'
+
+$v9RepeatSettings = $v9NightSettings | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$v9RepeatSettings.notes[0].reminder = [pscustomobject]@{
+    type = 'repeat'
+    firstDueUtc = '2026-07-20T01:00:00.0000000+00:00'
+    intervalMinutes = 30
+}
+$v9RepeatMigrationUtc = [DateTimeOffset]'2026-07-20T02:16:00Z'
+$loadedV9Repeat = ConvertFrom-CountdownSettingsObject -Settings $v9RepeatSettings -MigrationUtc $v9RepeatMigrationUtc
+$canonicalV9Repeat = ConvertTo-CountdownSettingsJson -State $loadedV9Repeat | ConvertFrom-Json
+$v9RepeatRuleId = [string] $canonicalV9Repeat.notes[0].reminderRules[0].id
+$v9RepeatState = $canonicalV9Repeat.reminderStates.PSObject.Properties[$v9RepeatRuleId].Value
+Assert-Equal 'fixedInterval' $canonicalV9Repeat.notes[0].reminderRules[0].type 'Schema v9 repeat migration creates a fixed-interval rule'
+Assert-Equal ([DateTimeOffset]'2026-07-20T02:00:00Z') ([DateTimeOffset] $v9RepeatState.handledThroughUtc).ToUniversalTime() 'Schema v9 repeat migration advances the cursor to the latest elapsed occurrence'
+Assert-Equal $null $v9RepeatState.lastDeliveredOccurrenceKey 'Schema v9 repeat migration does not claim a rendered delivery'
+Assert-Equal $null $v9RepeatState.lastDispositionOccurrenceKey 'Schema v9 repeat migration does not invent disposition'
+Assert-Equal $null $v9RepeatState.activeSnooze 'Schema v9 repeat migration does not invent snooze state'
+$reloadedV10Repeat = ConvertFrom-CountdownSettingsObject -Settings $canonicalV9Repeat -MigrationUtc ([DateTimeOffset]'2099-01-01T00:00:00Z')
+Assert-Equal $false $reloadedV10Repeat.Migrated 'Canonical schema v10 reload does not migrate'
+Assert-Equal 'repeat' $reloadedV10Repeat.Notes[0].reminder.type 'Canonical schema v10 projects the first fixed-interval rule for the legacy UI'
+Assert-Equal ($canonicalV9Repeat | ConvertTo-Json -Depth 8) ((ConvertTo-CountdownSettingsJson -State $reloadedV10Repeat | ConvertFrom-Json) | ConvertTo-Json -Depth 8) 'Schema v10 reminder rules and cursor round-trip canonically'
+
+$multiRuleV10 = $canonicalV9Night | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$multiRuleV10.notes[0].reminderRules = @(
+    [pscustomobject]@{ id = 'multi-absolute'; type = 'absoluteOnce'; scheduledUtc = '2099-01-01T00:00:00.0000000+00:00' },
+    [pscustomobject]@{ id = 'multi-fixed'; type = 'fixedInterval'; firstDueUtc = '2099-01-02T00:00:00.0000000+00:00'; intervalMinutes = 45 }
+)
+$multiRuleV10.reminderStates = [pscustomobject]@{}
+$multiRuleState = ConvertFrom-CountdownSettingsObject -Settings $multiRuleV10
+$multiRuleCanonical = ConvertTo-CountdownSettingsJson -State $multiRuleState | ConvertFrom-Json
+Assert-Equal 2 @($multiRuleCanonical.notes[0].reminderRules).Count 'Schema v10 round-trips multiple reminder rules on one record'
+Assert-Equal 'multi-absolute' $multiRuleCanonical.notes[0].reminderRules[0].id 'Schema v10 preserves reminder rule order and identity'
+Assert-Equal 'multi-fixed' $multiRuleCanonical.notes[0].reminderRules[1].id 'Schema v10 preserves a second reminder rule identity'
+
+$relativeV10 = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$relativeV10.countdowns[0].targetUtc = '2099-01-01T00:10:00.0000000+00:00'
+$relativeV10.countdowns[0].reminderRules = @(
+    [pscustomobject]@{ id = 'relative-zero'; type = 'countdownRelative'; offsetMinutesBefore = 0 },
+    [pscustomobject]@{ id = 'relative-max'; type = 'countdownRelative'; offsetMinutesBefore = 5256000 }
+)
+$relativeV10.reminderStates = [pscustomobject]@{}
+$relativeV10.reminderStates | Add-Member -NotePropertyName 'relative-max' -NotePropertyValue ([pscustomobject]@{
+        handledThroughUtc = '2088-12-31T23:50:00.0000000+00:00'
+        lastDeliveredOccurrenceKey = 'relative-max|2088-12-31T23:50:00.0000000+00:00'
+        lastDispositionOccurrenceKey = $null
+        activeSnooze = $null
+    })
+$relativeState = ConvertFrom-CountdownSettingsObject -Settings $relativeV10
+$relativeCanonical = ConvertTo-CountdownSettingsJson -State $relativeState | ConvertFrom-Json
+Assert-Equal 2 @($relativeCanonical.countdowns[0].reminderRules).Count 'Schema v10 round-trips countdown-relative reminder rules'
+Assert-Equal 0 $relativeCanonical.countdowns[0].reminderRules[0].offsetMinutesBefore 'Schema v10 accepts a zero countdown-relative offset'
+Assert-Equal 5256000 $relativeCanonical.countdowns[0].reminderRules[1].offsetMinutesBefore 'Schema v10 accepts the maximum countdown-relative offset'
+Assert-Equal 'relative-max|2088-12-31T23:50:00.0000000+00:00' $relativeCanonical.reminderStates.'relative-max'.lastDeliveredOccurrenceKey 'Schema v10 preserves a historical delivered relative occurrence after target movement'
+$relativeReloaded = ConvertFrom-CountdownSettingsObject -Settings $relativeCanonical
+Assert-Equal ($relativeCanonical | ConvertTo-Json -Depth 8) ((ConvertTo-CountdownSettingsJson -State $relativeReloaded | ConvertFrom-Json) | ConvertTo-Json -Depth 8) 'Schema v10 countdown-relative rules round-trip canonically'
+
+$calendarV10 = $multiRuleV10 | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+$calendarV10.notes[0].reminderRules = @(
+    [pscustomobject]@{ id = 'calendar-daily'; type = 'calendar'; frequency = 'daily'; interval = 2; startDate = '2032-01-01'; localTime = '09:00' },
+    [pscustomobject]@{ id = 'calendar-weekly'; type = 'calendar'; frequency = 'weekly'; interval = 3; startDate = '2032-01-05'; localTime = '10:30'; weekdays = @('friday', 'monday') },
+    [pscustomobject]@{ id = 'calendar-monthly-day'; type = 'calendar'; frequency = 'monthly'; interval = 1; startDate = '2032-01-01'; localTime = '11:00'; day = 31 },
+    [pscustomobject]@{ id = 'calendar-yearly-last'; type = 'calendar'; frequency = 'yearly'; interval = 4; startDate = '2032-01-01'; localTime = '12:00'; month = 2; lastDay = $true }
+)
+$calendarV10.countdowns[0].reminderRules = @(
+    [pscustomobject]@{ id = 'calendar-countdown-last'; type = 'calendar'; frequency = 'monthly'; interval = 1; startDate = '2032-01-01'; localTime = '09:00'; lastDay = $true }
+)
+$calendarV10.reminderStates = [pscustomobject]@{}
+$calendarV10.reminderStates | Add-Member -NotePropertyName 'calendar-countdown-last' -NotePropertyValue ([pscustomobject]@{
+        handledThroughUtc = '2032-02-29T01:00:00.0000000+00:00'
+        lastDeliveredOccurrenceKey = 'calendar-countdown-last|2032-02-29T01:00:00.0000000+00:00'
+        lastDispositionOccurrenceKey = $null
+        activeSnooze = $null
+    })
+$calendarState = ConvertFrom-CountdownSettingsObject -Settings $calendarV10
+$calendarCanonical = ConvertTo-CountdownSettingsJson -State $calendarState | ConvertFrom-Json
+Assert-Equal 4 @($calendarCanonical.notes[0].reminderRules).Count 'Schema v10 round-trips all four calendar frequencies'
+Assert-Equal 'monday' $calendarCanonical.notes[0].reminderRules[1].weekdays[0] 'Schema v10 canonicalizes weekly selectors to Monday-first order'
+Assert-Equal 'friday' $calendarCanonical.notes[0].reminderRules[1].weekdays[1] 'Schema v10 preserves all typed weekly selector values'
+Assert-Equal 31 $calendarCanonical.notes[0].reminderRules[2].day 'Schema v10 preserves an explicit monthly day without clamping'
+Assert-Equal $true $calendarCanonical.notes[0].reminderRules[3].lastDay 'Schema v10 preserves an explicit yearly lastDay selector'
+Assert-Equal $true $calendarCanonical.countdowns[0].reminderRules[0].lastDay 'Schema v10 supports calendar selectors on countdowns'
+Assert-Equal 'none' $calendarState.Notes[0].reminder.type 'Schema v10 keeps calendar rules out of the legacy reminder projection'
+Assert-Equal ($calendarCanonical | ConvertTo-Json -Depth 12) ((ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $calendarCanonical) | ConvertFrom-Json) | ConvertTo-Json -Depth 12) 'Schema v10 calendar rules and states round-trip canonically'
+
+$invalidCalendarCursorRejected = $false
+try {
+    $invalid = $calendarV10 | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    $invalid.reminderStates.'calendar-countdown-last'.handledThroughUtc = '2032-02-28T01:00:00.0000000+00:00'
+    $invalid.reminderStates.'calendar-countdown-last'.lastDeliveredOccurrenceKey = 'calendar-countdown-last|2032-02-28T01:00:00.0000000+00:00'
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $invalidCalendarCursorRejected = $true }
+Assert-Equal $true $invalidCalendarCursorRejected 'Schema v10 rejects a calendar cursor that is not a typed occurrence'
+
+$duplicateCalendarScheduleRejected = $false
+try {
+    $invalid = $calendarV10 | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+    $invalid.notes[0].reminderRules = @(
+        [pscustomobject]@{ id = 'calendar-duplicate-a'; type = 'calendar'; frequency = 'weekly'; interval = 2; startDate = '2032-01-05'; localTime = '09:00'; weekdays = @('friday', 'monday') },
+        [pscustomobject]@{ id = 'calendar-duplicate-b'; type = 'calendar'; frequency = 'WEEKLY'; interval = 2; startDate = '2032-01-05'; localTime = '09:00'; weekdays = @('Monday', 'Friday') }
+    )
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $duplicateCalendarScheduleRejected = $true }
+Assert-Equal $true $duplicateCalendarScheduleRejected 'Schema v10 rejects duplicate canonical calendar schedules independent of weekday order and case'
+
+foreach ($mutation in @(
+        @{ Name = 'interval-zero'; Apply = { param($rule) $rule.interval = 0 } },
+        @{ Name = 'interval-too-large'; Apply = { param($rule) $rule.interval = 1000 } },
+        @{ Name = 'interval-decimal'; Apply = { param($rule) $rule.interval = 1.0 } },
+        @{ Name = 'interval-string'; Apply = { param($rule) $rule.interval = '1' } },
+        @{ Name = 'weekly-empty'; Apply = { param($rule) $rule.frequency = 'weekly'; $rule | Add-Member -NotePropertyName weekdays -NotePropertyValue @() } },
+        @{ Name = 'monthly-both-selectors'; Apply = { param($rule) $rule.frequency = 'monthly'; $rule | Add-Member -NotePropertyName day -NotePropertyValue 31; $rule | Add-Member -NotePropertyName lastDay -NotePropertyValue $true } },
+        @{ Name = 'monthly-false-last-day'; Apply = { param($rule) $rule.frequency = 'monthly'; $rule | Add-Member -NotePropertyName lastDay -NotePropertyValue $false } },
+        @{ Name = 'yearly-invalid-month'; Apply = { param($rule) $rule.frequency = 'yearly'; $rule | Add-Member -NotePropertyName month -NotePropertyValue 13; $rule | Add-Member -NotePropertyName day -NotePropertyValue 1 } },
+        @{ Name = 'unsupported-frequency'; Apply = { param($rule) $rule.frequency = 'hourly' } },
+        @{ Name = 'free-form-rrule'; Apply = { param($rule) $rule | Add-Member -NotePropertyName rrule -NotePropertyValue 'FREQ=DAILY;COUNT=3' } }
+    )) {
+    $calendarMutationRejected = $false
+    try {
+        $invalid = $multiRuleV10 | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        $rule = [pscustomobject]@{ id = 'calendar-invalid'; type = 'calendar'; frequency = 'daily'; interval = 1; startDate = '2032-01-01'; localTime = '09:00' }
+        & $mutation.Apply $rule
+        $invalid.notes[0].reminderRules = @($rule)
+        $invalid.reminderStates = [pscustomobject]@{}
+        ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+    }
+    catch { $calendarMutationRejected = $true }
+    Assert-Equal $true $calendarMutationRejected "Schema v10 rejects invalid calendar rule $($mutation.Name)"
+}
+
+$noteRelativeV10Rejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.notes[0].reminderRules = @(
+        [pscustomobject]@{ id = 'note-relative'; type = 'countdownRelative'; offsetMinutesBefore = 0 }
+    )
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $noteRelativeV10Rejected = $true }
+Assert-Equal $true $noteRelativeV10Rejected 'Schema v10 rejects countdown-relative rules on notes'
+
+foreach ($invalidOffset in @(-1, 5256001, 1.0, '1')) {
+    $invalidRelativeOffsetRejected = $false
+    try {
+        $invalid = $relativeV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        $invalid.countdowns[0].reminderRules[0].offsetMinutesBefore = $invalidOffset
+        ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+    }
+    catch { $invalidRelativeOffsetRejected = $true }
+    Assert-Equal $true $invalidRelativeOffsetRejected "Schema v10 rejects invalid countdown-relative offset $invalidOffset"
+}
+
+$relativeForeignFieldRejected = $false
+try {
+    $invalid = $relativeV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.countdowns[0].reminderRules[0] | Add-Member -NotePropertyName scheduledUtc -NotePropertyValue '2099-01-01T00:10:00.0000000+00:00'
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $relativeForeignFieldRejected = $true }
+Assert-Equal $true $relativeForeignFieldRejected 'Schema v10 rejects foreign fields on countdown-relative rules'
+
+$unknownV10RuleRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.notes[0].reminderRules[0].type = 'rfc5545'
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $unknownV10RuleRejected = $true }
+Assert-Equal $true $unknownV10RuleRejected 'Schema v10 rejects unknown reminder rule types'
+
+$duplicateV10ScheduleRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.notes[0].reminderRules = @(
+        [pscustomobject]@{ id = 'duplicate-a'; type = 'absoluteOnce'; scheduledUtc = '2099-01-01T00:00:00.0000000+00:00' },
+        [pscustomobject]@{ id = 'duplicate-b'; type = 'absoluteOnce'; scheduledUtc = '2099-01-01T00:00:00.0000000+00:00' }
+    )
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $duplicateV10ScheduleRejected = $true }
+Assert-Equal $true $duplicateV10ScheduleRejected 'Schema v10 rejects duplicate canonical schedules on one record'
+
+$tooManyV10RulesRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.notes[0].reminderRules = @(0..8 | ForEach-Object {
+            [pscustomobject]@{ id = "rule-$_"; type = 'absoluteOnce'; scheduledUtc = ([DateTimeOffset]'2099-01-01T00:00:00Z').AddMinutes($_).ToString('o') }
+        })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $tooManyV10RulesRejected = $true }
+Assert-Equal $true $tooManyV10RulesRejected 'Schema v10 rejects more than eight reminder rules on one record'
+
+$duplicateGlobalV10RuleIdRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.countdowns[0].reminderRules = @([pscustomobject]@{ id = 'multi-absolute'; type = 'absoluteOnce'; scheduledUtc = '2099-02-01T00:00:00.0000000+00:00' })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $duplicateGlobalV10RuleIdRejected = $true }
+Assert-Equal $true $duplicateGlobalV10RuleIdRejected 'Schema v10 rejects duplicate global reminder rule IDs'
+
+$danglingV10StateRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates | Add-Member -NotePropertyName 'missing-rule' -NotePropertyValue ([pscustomobject]@{ handledThroughUtc = '2099-01-01T00:00:00.0000000+00:00'; lastDeliveredOccurrenceKey = $null; lastDispositionOccurrenceKey = $null; activeSnooze = $null })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $danglingV10StateRejected = $true }
+Assert-Equal $true $danglingV10StateRejected 'Schema v10 rejects dangling reminder state'
+
+$emptyV10StateRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates | Add-Member -NotePropertyName 'multi-absolute' -NotePropertyValue ([pscustomobject]@{ handledThroughUtc = $null; lastDeliveredOccurrenceKey = $null; lastDispositionOccurrenceKey = $null; activeSnooze = $null })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $emptyV10StateRejected = $true }
+Assert-Equal $true $emptyV10StateRejected 'Schema v10 rejects empty reminder state'
+
+$earlyV10CursorRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates | Add-Member -NotePropertyName 'multi-absolute' -NotePropertyValue ([pscustomobject]@{ handledThroughUtc = '2098-12-31T23:59:59.0000000+00:00'; lastDeliveredOccurrenceKey = $null; lastDispositionOccurrenceKey = $null; activeSnooze = $null })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $earlyV10CursorRejected = $true }
+Assert-Equal $true $earlyV10CursorRejected 'Schema v10 rejects a cursor before the first scheduled occurrence'
+
+foreach ($misalignedCursor in @(
+        [pscustomobject]@{ RuleId = 'multi-absolute'; HandledThroughUtc = '2099-01-01T00:01:00.0000000+00:00'; Name = 'absolute once cursor after its unique occurrence' },
+        [pscustomobject]@{ RuleId = 'multi-fixed'; HandledThroughUtc = '2099-01-02T00:01:00.0000000+00:00'; Name = 'fixed interval cursor between occurrences' }
+    )) {
+    $misalignedV10CursorRejected = $false
+    try {
+        $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        $invalid.reminderStates | Add-Member -NotePropertyName $misalignedCursor.RuleId -NotePropertyValue ([pscustomobject]@{
+                handledThroughUtc = $misalignedCursor.HandledThroughUtc
+                lastDeliveredOccurrenceKey = $null
+                lastDispositionOccurrenceKey = $null
+                activeSnooze = $null
+            })
+        $invalidRawJson = $invalid | ConvertTo-Json -Depth 8
+        ConvertFrom-CountdownSettingsObject -Settings ($invalidRawJson | ConvertFrom-Json) | Out-Null
+    }
+    catch { $misalignedV10CursorRejected = $true }
+    Assert-Equal $true $misalignedV10CursorRejected "Schema v10 rejects $($misalignedCursor.Name)"
+}
+
+$alignedV10Cursors = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$alignedV10Cursors.reminderStates | Add-Member -NotePropertyName 'multi-absolute' -NotePropertyValue ([pscustomobject]@{
+        handledThroughUtc = '2099-01-01T00:00:00.0000000+00:00'
+        lastDeliveredOccurrenceKey = $null
+        lastDispositionOccurrenceKey = $null
+        activeSnooze = $null
+    })
+$alignedV10Cursors.reminderStates | Add-Member -NotePropertyName 'multi-fixed' -NotePropertyValue ([pscustomobject]@{
+        handledThroughUtc = '2099-01-02T01:30:00.0000000+00:00'
+        lastDeliveredOccurrenceKey = $null
+        lastDispositionOccurrenceKey = $null
+        activeSnooze = $null
+    })
+$loadedAlignedV10Cursors = ConvertFrom-CountdownSettingsObject -Settings (($alignedV10Cursors | ConvertTo-Json -Depth 8) | ConvertFrom-Json)
+Assert-Equal ([DateTimeOffset]'2099-01-01T00:00:00Z') ([DateTimeOffset] $loadedAlignedV10Cursors.ReminderStates['multi-absolute'].handledThroughUtc).ToUniversalTime() 'Schema v10 accepts an aligned absolute once cursor'
+Assert-Equal ([DateTimeOffset]'2099-01-02T01:30:00Z') ([DateTimeOffset] $loadedAlignedV10Cursors.ReminderStates['multi-fixed'].handledThroughUtc).ToUniversalTime() 'Schema v10 accepts an aligned fixed interval cursor'
+
+$disposedV10 = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$disposedV10.reminderStates | Add-Member -NotePropertyName 'multi-absolute' -NotePropertyValue ([pscustomobject]@{
+        handledThroughUtc = '2099-01-01T00:00:00.0000000+00:00'
+        lastDeliveredOccurrenceKey = 'multi-absolute|2099-01-01T00:00:00.0000000+00:00'
+        lastDispositionOccurrenceKey = 'multi-absolute|2099-01-01T00:00:00.0000000+00:00'
+        activeSnooze = $null
+    })
+$loadedDisposedV10 = ConvertFrom-CountdownSettingsObject -Settings $disposedV10
+$canonicalDisposedV10 = ConvertTo-CountdownSettingsJson -State $loadedDisposedV10 | ConvertFrom-Json
+Assert-Equal 'multi-absolute|2099-01-01T00:00:00.0000000+00:00' ([string] $canonicalDisposedV10.reminderStates.'multi-absolute'.lastDispositionOccurrenceKey) 'Schema v10 round-trips disposition separately from delivery'
+Assert-Equal $null $canonicalDisposedV10.reminderStates.'multi-absolute'.activeSnooze 'Schema v10 writes an explicit empty active snooze'
+
+$legacyAcknowledgedV10 = $disposedV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$legacyDisposition = [string] $legacyAcknowledgedV10.reminderStates.'multi-absolute'.lastDispositionOccurrenceKey
+$legacyAcknowledgedV10.reminderStates.'multi-absolute'.PSObject.Properties.Remove('lastDispositionOccurrenceKey')
+$legacyAcknowledgedV10.reminderStates.'multi-absolute'.PSObject.Properties.Remove('activeSnooze')
+$legacyAcknowledgedV10.reminderStates.'multi-absolute' | Add-Member -NotePropertyName 'lastAcknowledgedOccurrenceKey' -NotePropertyValue $legacyDisposition
+$legacyAcknowledgedCanonical = ConvertTo-CountdownSettingsJson -State (
+    ConvertFrom-CountdownSettingsObject -Settings $legacyAcknowledgedV10
+) | ConvertFrom-Json
+Assert-Equal $legacyDisposition ([string] $legacyAcknowledgedCanonical.reminderStates.'multi-absolute'.lastDispositionOccurrenceKey) 'Schema v10 accepts provisional acknowledgement input and writes canonical disposition'
+Assert-Equal $null $legacyAcknowledgedCanonical.reminderStates.'multi-absolute'.activeSnooze 'Schema v10 canonicalizes provisional acknowledgement input with empty snooze state'
+Assert-Equal $null $legacyAcknowledgedCanonical.reminderStates.'multi-absolute'.PSObject.Properties['lastAcknowledgedOccurrenceKey'] 'Schema v10 canonical output omits the provisional acknowledgement field'
+
+$missingDispositionFieldRejected = $false
+try {
+    $invalid = $disposedV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates.'multi-absolute'.PSObject.Properties.Remove('lastDispositionOccurrenceKey')
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $missingDispositionFieldRejected = $true }
+Assert-Equal $true $missingDispositionFieldRejected 'Schema v10 strictly requires the canonical disposition field'
+
+foreach ($invalidDisposition in @(
+        [pscustomobject]@{ Value = 'multi-fixed|2099-01-01T00:00:00.0000000+00:00'; Name = 'a different rule disposition' },
+        [pscustomobject]@{ Value = 'multi-absolute|2099-01-01T08:00:00.0000000+08:00'; Name = 'a non-UTC disposition' }
+    )) {
+    $invalidDispositionRejected = $false
+    try {
+        $invalid = $disposedV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        $invalid.reminderStates.'multi-absolute'.lastDispositionOccurrenceKey = $invalidDisposition.Value
+        ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+    }
+    catch { $invalidDispositionRejected = $true }
+    Assert-Equal $true $invalidDispositionRejected "Schema v10 rejects $($invalidDisposition.Name)"
+}
+
+$dispositionWithoutDeliveryRejected = $false
+try {
+    $invalid = $disposedV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates.'multi-absolute'.lastDeliveredOccurrenceKey = $null
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $dispositionWithoutDeliveryRejected = $true }
+Assert-Equal $true $dispositionWithoutDeliveryRejected 'Schema v10 rejects disposition without a delivery fact'
+
+$dispositionAfterDeliveryRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates | Add-Member -NotePropertyName 'multi-fixed' -NotePropertyValue ([pscustomobject]@{
+            handledThroughUtc = '2099-01-02T01:30:00.0000000+00:00'
+            lastDeliveredOccurrenceKey = 'multi-fixed|2099-01-02T01:00:00.0000000+00:00'
+            lastDispositionOccurrenceKey = 'multi-fixed|2099-01-02T01:30:00.0000000+00:00'
+            activeSnooze = $null
+        })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $dispositionAfterDeliveryRejected = $true }
+Assert-Equal $true $dispositionAfterDeliveryRejected 'Schema v10 rejects disposition after the last delivered occurrence'
+
+$snoozedV10 = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$snoozedV10.reminderStates | Add-Member -NotePropertyName 'multi-fixed' -NotePropertyValue ([pscustomobject]@{
+        handledThroughUtc = '2099-01-02T01:30:00.0000000+00:00'
+        lastDeliveredOccurrenceKey = 'multi-fixed|2099-01-02T01:30:00.0000000+00:00'
+        lastDispositionOccurrenceKey = 'multi-fixed|2099-01-02T00:45:00.0000000+00:00'
+        activeSnooze = [pscustomobject]@{
+            occurrenceKey = 'multi-fixed|2099-01-02T01:30:00.0000000+00:00'
+            originalScheduledUtc = '2099-01-02T01:30:00.0000000+00:00'
+            snoozeUntilUtc = '2099-01-02T02:00:00.0000000+00:00'
+        }
+    })
+$canonicalSnoozedV10 = ConvertTo-CountdownSettingsJson -State (
+    ConvertFrom-CountdownSettingsObject -Settings $snoozedV10
+) | ConvertFrom-Json
+Assert-Equal 'multi-fixed|2099-01-02T01:30:00.0000000+00:00' ([string] $canonicalSnoozedV10.reminderStates.'multi-fixed'.activeSnooze.occurrenceKey) 'Schema v10 round-trips an active snooze occurrence key'
+Assert-Equal ([DateTimeOffset]'2099-01-02T01:30:00Z') ([DateTimeOffset] $canonicalSnoozedV10.reminderStates.'multi-fixed'.activeSnooze.originalScheduledUtc).ToUniversalTime() 'Schema v10 round-trips an active snooze original UTC'
+Assert-Equal ([DateTimeOffset]'2099-01-02T02:00:00Z') ([DateTimeOffset] $canonicalSnoozedV10.reminderStates.'multi-fixed'.activeSnooze.snoozeUntilUtc).ToUniversalTime() 'Schema v10 round-trips an active snooze override UTC'
+
+foreach ($invalidSnooze in @(
+        [pscustomobject]@{ Name = 'a snooze key for a different rule'; Mutate = { param($state) $state.activeSnooze.occurrenceKey = 'multi-absolute|2099-01-02T01:30:00.0000000+00:00' } },
+        [pscustomobject]@{ Name = 'a snooze key that differs from original schedule'; Mutate = { param($state) $state.activeSnooze.originalScheduledUtc = '2099-01-02T00:45:00.0000000+00:00' } },
+        [pscustomobject]@{ Name = 'a snooze override not later than the original schedule'; Mutate = { param($state) $state.activeSnooze.snoozeUntilUtc = '2099-01-02T01:30:00.0000000+00:00' } },
+        [pscustomobject]@{ Name = 'a snooze occurrence already disposed'; Mutate = { param($state) $state.lastDispositionOccurrenceKey = 'multi-fixed|2099-01-02T01:30:00.0000000+00:00' } },
+        [pscustomobject]@{ Name = 'a snooze occurrence without matching delivery'; Mutate = { param($state) $state.lastDeliveredOccurrenceKey = 'multi-fixed|2099-01-02T00:45:00.0000000+00:00' } }
+    )) {
+    $invalidSnoozeRejected = $false
+    try {
+        $invalid = $snoozedV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+        & $invalidSnooze.Mutate $invalid.reminderStates.'multi-fixed'
+        ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+    }
+    catch { $invalidSnoozeRejected = $true }
+    Assert-Equal $true $invalidSnoozeRejected "Schema v10 rejects $($invalidSnooze.Name)"
+}
+
+$mismatchedV10OccurrenceRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates | Add-Member -NotePropertyName 'multi-absolute' -NotePropertyValue ([pscustomobject]@{
+            handledThroughUtc = '2099-01-01T00:00:00.0000000+00:00'
+            lastDeliveredOccurrenceKey = 'multi-fixed|2099-01-01T00:00:00.0000000+00:00'
+            lastDispositionOccurrenceKey = $null
+            activeSnooze = $null
+        })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $mismatchedV10OccurrenceRejected = $true }
+Assert-Equal $true $mismatchedV10OccurrenceRejected 'Schema v10 rejects an occurrence key for a different reminder rule'
+
+$nonUtcV10OccurrenceRejected = $false
+try {
+    $invalid = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $invalid.reminderStates | Add-Member -NotePropertyName 'multi-absolute' -NotePropertyValue ([pscustomobject]@{
+            handledThroughUtc = '2099-01-01T00:00:00.0000000+00:00'
+            lastDeliveredOccurrenceKey = 'multi-absolute|2099-01-01T08:00:00.0000000+08:00'
+            lastDispositionOccurrenceKey = $null
+            activeSnooze = $null
+        })
+    ConvertFrom-CountdownSettingsObject -Settings $invalid | Out-Null
+}
+catch { $nonUtcV10OccurrenceRejected = $true }
+Assert-Equal $true $nonUtcV10OccurrenceRejected 'Schema v10 rejects a non-UTC occurrence key even when it names the same instant'
+
+foreach ($nonIntegerJson in @('1.0', '1e0')) {
+    $nonIntegerV10IntervalRejected = $false
+    try {
+        $invalidJson = ($multiRuleV10 | ConvertTo-Json -Depth 8).Replace('"intervalMinutes": 45', "`"intervalMinutes`": $nonIntegerJson")
+        ConvertFrom-CountdownSettingsObject -Settings ($invalidJson | ConvertFrom-Json) | Out-Null
+    }
+    catch { $nonIntegerV10IntervalRejected = $true }
+    Assert-Equal $true $nonIntegerV10IntervalRejected "Schema v10 rejects non-integer JSON intervalMinutes $nonIntegerJson"
+}
+
+foreach ($integerInterval in @([int] 45, [long] 45)) {
+    $validIntegerInterval = $multiRuleV10 | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $validIntegerInterval.notes[0].reminderRules[1].intervalMinutes = $integerInterval
+    $loadedIntegerInterval = ConvertFrom-CountdownSettingsObject -Settings $validIntegerInterval
+    Assert-Equal 45 $loadedIntegerInterval.Notes[0].reminderRules[1].intervalMinutes "Schema v10 accepts $($integerInterval.GetType().Name) intervalMinutes"
+}
 
 $missingV6NoteDateRejected = $false
 try {

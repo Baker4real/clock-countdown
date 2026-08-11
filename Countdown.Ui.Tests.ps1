@@ -45,40 +45,61 @@ if ($actual -ne '2026-08-22') {
 }
 
 $diagnosticLogPath = Join-Path $PSScriptRoot 'ui-diagnostic-test\application.jsonl'
+$validationSettingsPath = Join-Path `
+    ([System.IO.Path]::GetTempPath()) `
+    ("MinminCountdown-ui-validation-{0}.settings.json" -f [guid]::NewGuid().ToString('N'))
 foreach ($diagnosticPath in @($diagnosticLogPath, "$diagnosticLogPath.1", "$diagnosticLogPath.2", "$diagnosticLogPath.3")) {
     Remove-Item -LiteralPath $diagnosticPath -Force -ErrorAction SilentlyContinue
 }
-$fatalDiagnosticOutput = & $powerShellEngine `
-    -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
-    -ValidateOnly -ExerciseFatalDiagnostic -DiagnosticLogPath $diagnosticLogPath 2>&1 | Out-String
-if ($LASTEXITCODE -eq 0) { throw 'Fatal diagnostic exercise unexpectedly succeeded.' }
-if (-not (Test-Path -LiteralPath $diagnosticLogPath -PathType Leaf)) {
-    throw "Fatal diagnostic exercise did not create a log: $fatalDiagnosticOutput"
-}
-$fatalDiagnosticEntries = @(Get-Content -LiteralPath $diagnosticLogPath -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json })
-if (@($fatalDiagnosticEntries | Where-Object { $_.event -eq 'ProcessStarted' }).Count -ne 1) { throw 'Diagnostic lifecycle log is missing ProcessStarted.' }
-$fatalDiagnosticEntry = @($fatalDiagnosticEntries | Where-Object { $_.event -eq 'FatalUnhandledException' })[-1]
-if ($null -eq $fatalDiagnosticEntry -or $fatalDiagnosticEntry.exceptionType -ne 'System.InvalidOperationException') {
-    throw "Fatal diagnostic log is missing the unhandled exception: $fatalDiagnosticOutput"
-}
+try {
+    $fatalDiagnosticOutput = & $powerShellEngine `
+        -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
+        -ValidateOnly -ExerciseFatalDiagnostic -SettingsFile $validationSettingsPath `
+        -DiagnosticLogPath $diagnosticLogPath 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0) { throw 'Fatal diagnostic exercise unexpectedly succeeded.' }
+    if (-not (Test-Path -LiteralPath $diagnosticLogPath -PathType Leaf)) {
+        throw "Fatal diagnostic exercise did not create a log: $fatalDiagnosticOutput"
+    }
+    $fatalDiagnosticEntries = @(Get-Content -LiteralPath $diagnosticLogPath -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json })
+    if (@($fatalDiagnosticEntries | Where-Object { $_.event -eq 'ProcessStarted' }).Count -ne 1) { throw 'Diagnostic lifecycle log is missing ProcessStarted.' }
+    $fatalDiagnosticEntry = @($fatalDiagnosticEntries | Where-Object { $_.event -eq 'FatalUnhandledException' })[-1]
+    if ($null -eq $fatalDiagnosticEntry -or $fatalDiagnosticEntry.exceptionType -ne 'System.InvalidOperationException') {
+        throw "Fatal diagnostic log is missing the unhandled exception: $fatalDiagnosticOutput"
+    }
 
-$validationJson = & $powerShellEngine `
-    -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') -ValidateOnly | Out-String
-if ($LASTEXITCODE -ne 0) {
-    throw "Application validation failed: $validationJson"
+    $applicationHostPath = Join-Path $PSScriptRoot 'Countdown.App.psm1'
+    $applicationHostPathLiteral = $applicationHostPath.Replace("'", "''")
+    $validationSettingsPathLiteral = $validationSettingsPath.Replace("'", "''")
+    $applicationHostCommand = "Import-Module -Force -Name '$applicationHostPathLiteral'; Start-CountdownApplication -ValidateOnly -SettingsFile '$validationSettingsPathLiteral'"
+    if (
+        -not $applicationHostCommand.Contains('Start-CountdownApplication') -or
+        -not $applicationHostCommand.Contains('-ValidateOnly') -or
+        -not $applicationHostCommand.Contains('-SettingsFile') -or
+        -not $applicationHostCommand.Contains("'$validationSettingsPathLiteral'")
+    ) {
+        throw 'Application-host validation command does not use the isolated validation settings file.'
+    }
+    $applicationHostValidationJson = & $powerShellEngine `
+        -NoLogo -NoProfile -NonInteractive -STA -Command $applicationHostCommand | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        throw "Application-host validation failed: $applicationHostValidationJson"
+    }
+    $applicationHostValidation = $applicationHostValidationJson | ConvertFrom-Json
+    if (-not $applicationHostValidation.Valid) { throw 'Application host did not preserve the ValidateOnly contract.' }
+
+    $validationJson = & $powerShellEngine `
+        -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
+        -ValidateOnly -SettingsFile $validationSettingsPath | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        throw "Application validation failed: $validationJson"
+    }
+    $validation = $validationJson | ConvertFrom-Json
 }
-$validation = $validationJson | ConvertFrom-Json
+finally {
+    Remove-Item -LiteralPath $validationSettingsPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath "$validationSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
+}
 if (-not $validation.DatePickerTextDefersCalendarUntilPointerRelease) { throw 'Clicking the date text opens the calendar before the pointer is released.' }
-
-$applicationHostPath = Join-Path $PSScriptRoot 'Countdown.App.psm1'
-$applicationHostCommand = "Import-Module -Force -Name '$($applicationHostPath.Replace("'", "''"))'; Start-CountdownApplication -ValidateOnly"
-$applicationHostValidationJson = & $powerShellEngine `
-    -NoLogo -NoProfile -NonInteractive -STA -Command $applicationHostCommand | Out-String
-if ($LASTEXITCODE -ne 0) {
-    throw "Application-host validation failed: $applicationHostValidationJson"
-}
-$applicationHostValidation = $applicationHostValidationJson | ConvertFrom-Json
-if (-not $applicationHostValidation.Valid) { throw 'Application host did not preserve the ValidateOnly contract.' }
 
 $runtimeIntegrationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-ui-tests'
 $runtimeIntegrationRoot = Join-Path $runtimeIntegrationEvidenceRoot ("ui-runtime-integration-" + [guid]::NewGuid().ToString('N'))
@@ -370,8 +391,20 @@ if (-not $validation.HasUnifiedNoteEntry) { throw 'Unified sticky-note entry is 
 if (-not $validation.HasNoteControls) { throw 'Sticky-note input or add action is missing.' }
 if (-not $validation.HasNoteReminderControls) { throw 'Sticky-note reminder selectors or custom-minute inputs are missing from the manager or floating entry.' }
 if (-not $validation.NoteReminderControlsWork) { throw 'Sticky-note reminder selectors do not support presets, custom minutes, and disabling reminders.' }
+if (-not $validation.ReminderRulesEditorSharedEntryWorks) { throw 'Main and floating note flows do not expose the shared reminder-rules editor entry.' }
+if (-not $validation.FloatingReminderRulesEntryStaysCompact) { throw 'Floating reminder-rules entry expanded the fixed 520 x 390 surface.' }
 if (-not $validation.NoteReminderDispatchWorks) { throw 'Sticky-note reminders were not dispatched exactly once per due interval.' }
-if (-not $validation.NoteReminderWindowIsThemed) { throw 'Sticky-note reminder window did not use the warm non-blocking application theme.' }
+if (-not $validation.ReminderRequiresContentRenderedConfirmation) { throw 'A reminder was confirmed without a real ContentRendered boundary.' }
+if (-not $validation.ReminderPersistenceFailureStaysVisible) { throw 'A reminder did not stay visible with an explicit persistence failure state.' }
+if (-not $validation.ReminderPersistenceRetryBackoffWorks) { throw 'Reminder persistence retry did not follow the 5/10/20/30-second bounded backoff.' }
+if (-not $validation.ReminderDeliverySingleFlightWorks) { throw 'A reminder occurrence created duplicate windows or persistence retries.' }
+if (-not $validation.ReminderIndependentOccurrencesWork) { throw 'One failing reminder occurrence blocked another due reminder from rendering and confirming.' }
+if (-not $validation.ReminderPersistenceFailureCloseGuardWorks) { throw 'A persistence-failed reminder allowed a normal close to bypass its retry state.' }
+if (-not $validation.RepeatingReminderRenderedLatchWorks) { throw 'A repeating reminder cycle was latched before real rendering or duplicated afterward.' }
+if (-not $validation.RepeatingReminderDistinctCyclesCoexist) { throw 'Distinct repeating-reminder cycles did not retain separate windows or duplicated the current cycle.' }
+if (-not $validation.ReminderPersistenceFailureDisposeWorks) { throw 'Coordinator disposal did not force-close a persistence-failed reminder without retrying it.' }
+if (-not $validation.ReminderDiagnosticsExcludePrivatePayload) { throw 'Reminder failure diagnostics exposed note text or a complete settings payload.' }
+if (-not $validation.ReminderCenterIsThemed) { throw 'Reminder center did not use the warm non-blocking application theme.' }
 if (-not $validation.OfficialCharacterBackgroundLoaded) { throw 'The official Sanrio character background was not loaded into the main window.' }
 if (-not $validation.OfficialCharacterBackgroundCharactersExclusive) { throw 'The official Sanrio background must contain only My Melody, Cinnamoroll, and Kuromi.' }
 if (-not $validation.OfficialCharacterBackgroundLowContrast) { throw 'The official Sanrio character background is too strong for readable application content.' }
@@ -496,16 +529,20 @@ if (-not $validation.DestructiveConfirmationIsSafe) { throw 'A destructive confi
 if (-not $validation.EffectiveThemeTextContrast) { throw 'Muted note or calendar text falls below the required effective contrast.' }
 if (-not $validation.FormControlsHaveAccessibleNames) { throw 'A core form control is missing an explicit accessible name.' }
 if (-not $validation.StatusMessagesUseLiveRegions) { throw 'Dynamic status messages are not announced through live regions.' }
-if (-not $validation.ReminderWindowSupportsKeyboardDismissal) { throw 'The reminder window cannot be dismissed with Escape, Enter, or Space.' }
-if (-not $validation.ReminderWindowFocusesDismissAction) { throw 'The reminder window does not focus its dismiss action when shown.' }
+if (-not $validation.ReminderCenterSupportsKeyboardNavigation) { throw 'The reminder center does not support complete keyboard traversal.' }
+if (-not $validation.ReminderCenterInitialFocusAndAccessibleNameWork) { throw 'The reminder center lacks its initial focus or accessible name.' }
 if (-not $validation.CompactActionTargetsAreUsable) { throw 'Compact tag and note actions are smaller than the desktop interaction target.' }
 
-$testSettingsPath = Join-Path $PSScriptRoot 'ui-test.settings.json'
-$noteAddSettingsPath = Join-Path $PSScriptRoot 'ui-note-add-test.settings.json'
-$tagInteractionSettingsPath = Join-Path $PSScriptRoot 'ui-tag-interaction.settings.json'
-$persistenceFailureSettingsPath = Join-Path $PSScriptRoot 'ui-persistence-failure.settings.json'
-$persistenceFailureUnblockedSettingsPath = Join-Path $PSScriptRoot 'ui-persistence-failure-unblocked.settings.json'
-$legacyV3SettingsPath = Join-Path $PSScriptRoot 'ui-test-v3.settings.json'
+$uiSettingsRoot = Join-Path `
+    'D:\Codex\.codex\tmp\clock-countdown-ui-tests' `
+    ([guid]::NewGuid().ToString('N'))
+[System.IO.Directory]::CreateDirectory($uiSettingsRoot) | Out-Null
+$testSettingsPath = Join-Path $uiSettingsRoot 'ui-test.settings.json'
+$noteAddSettingsPath = Join-Path $uiSettingsRoot 'ui-note-add-test.settings.json'
+$tagInteractionSettingsPath = Join-Path $uiSettingsRoot 'ui-tag-interaction.settings.json'
+$persistenceFailureSettingsPath = Join-Path $uiSettingsRoot 'ui-persistence-failure.settings.json'
+$persistenceFailureUnblockedSettingsPath = Join-Path $uiSettingsRoot 'ui-persistence-failure-unblocked.settings.json'
+$legacyV3SettingsPath = Join-Path $uiSettingsRoot 'ui-test-v3.settings.json'
 try {
     [System.IO.File]::WriteAllText($testSettingsPath, (@{
         schemaVersion = 6
@@ -598,7 +635,16 @@ try {
     ).AddDays(2).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
     $expectedNoteExerciseDates = @($noteExerciseDateBefore, $noteExerciseDateAfter) | Select-Object -Unique
     $noteAddSettings = [System.IO.File]::ReadAllText($noteAddSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if (@($noteAddSettings.notes | Where-Object { $_.text -eq '验证点击添加便签' -and $_.date -in $expectedNoteExerciseDates -and -not $_.isCompleted -and $_.reminder.type -eq 'repeat' -and $_.reminder.intervalMinutes -eq 30 -and $null -ne $_.reminder.firstDueUtc }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note with its selected date and reminder.' }
+    if (@($noteAddSettings.notes | Where-Object {
+                $rules = @($_.reminderRules)
+                $_.text -eq '验证点击添加便签' -and
+                $_.date -in $expectedNoteExerciseDates -and
+                -not $_.isCompleted -and
+                $rules.Count -eq 1 -and
+                $rules[0].type -eq 'fixedInterval' -and
+                $rules[0].intervalMinutes -eq 30 -and
+                $null -ne $rules[0].firstDueUtc
+            }).Count -ne 1) { throw 'Clicking Add did not persist the active sticky note with its selected date and reminder rule.' }
     if (-not $noteAddValidation.MainNoReminderViaClick -or -not $noteAddValidation.MainOnceReminderViaClick -or -not $noteAddValidation.MainRepeatingReminderViaClick) { throw 'Main window reminder mode click paths did not all pass.' }
     if (-not $noteAddValidation.FloatingNoReminderViaClick -or -not $noteAddValidation.FloatingOnceReminderViaClick -or -not $noteAddValidation.FloatingRepeatingReminderViaClick) { throw 'Floating window reminder mode click paths did not all pass.' }
 
@@ -625,7 +671,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if (-not $tagInteractionValidation.TagNoteEditingPersistsDate) { throw 'Editing a sticky note did not persist its selected calendar date.' }
     if (-not $tagInteractionValidation.TagRenameAndDeleteDetachOnly) { throw 'Tag rename or delete-detach behavior failed.' }
     $tagInteractionSettings = [System.IO.File]::ReadAllText($tagInteractionSettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    if ($tagInteractionSettings.schemaVersion -ne 9) { throw 'Tag interaction exercise did not persist schema v9.' }
+    if ($tagInteractionSettings.schemaVersion -ne 10) { throw 'Tag interaction exercise did not persist schema v10.' }
     if ($tagInteractionSettings.themePreference -ne 'Auto') { throw 'Tag interaction exercise did not preserve the Auto theme preference.' }
     if (@($tagInteractionSettings.tags).Count -lt 2) { throw 'Tag interaction exercise did not preserve the shared tag library after deletion.' }
     if (@($tagInteractionSettings.countdowns).Count -lt 5 -or @($tagInteractionSettings.notes).Count -lt 4) { throw 'Tag interaction exercise did not preserve the records while managing tags.' }
@@ -679,7 +725,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if (-not $legacyV3Validation.SettingsWereMigrated) { throw 'Schema-v3 settings were not marked for migration.' }
     if ($legacyV3Validation.LoadedCountdowns -ne 1 -or (@($legacyV3Validation.SortedNames) -join ',') -ne '旧版倒计时') { throw 'Schema-v3 countdowns were not preserved.' }
     if ($legacyV3Validation.LoadedNotes -ne 0) { throw 'Schema-v3 migration should initialize an empty sticky-note list.' }
-    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v9.' }
+    if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v10.' }
     if ($legacyV3Validation.LoadedDisplayPrecision -ne 'Minute' -or ([decimal] $legacyV3Validation.LoadedMonthlySalary) -ne [decimal]12345 -or $legacyV3Validation.LoadedWorkStart -ne '08:30' -or $legacyV3Validation.LoadedWorkEnd -ne '17:30') { throw 'Schema-v3 preferences were not preserved.' }
     $legacyV3HashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SettingsPath).Hash
     if ($legacyV3HashAfterValidation -ne $legacyV3HashBeforeValidation) { throw 'ValidateOnly modified the supplied schema-v3 settings file.' }
@@ -689,22 +735,32 @@ finally {
         Remove-Item -LiteralPath $diagnosticPath -Force -ErrorAction SilentlyContinue
     }
     Remove-Item -LiteralPath (Split-Path -Parent $diagnosticLogPath) -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $testSettingsPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath "$testSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $noteAddSettingsPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath "$noteAddSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $tagInteractionSettingsPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath "$tagInteractionSettingsPath.tmp" -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $persistenceFailureSettingsPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath "$persistenceFailureSettingsPath.tmp" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $persistenceFailureUnblockedSettingsPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath "$persistenceFailureUnblockedSettingsPath.tmp" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $legacyV3SettingsPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath "$legacyV3SettingsPath.tmp" -Force -ErrorAction SilentlyContinue
+    foreach ($settingsPath in @(
+            $testSettingsPath,
+            $noteAddSettingsPath,
+            $tagInteractionSettingsPath,
+            $persistenceFailureSettingsPath,
+            $persistenceFailureUnblockedSettingsPath,
+            $legacyV3SettingsPath
+        )) {
+        foreach ($suffix in @('', '.tmp', '.backup1', '.backup2', '.backup2.tmp', '.backup2.rollback')) {
+            $companionPath = "$settingsPath$suffix"
+            if (Test-Path -LiteralPath $companionPath -PathType Leaf) {
+                Remove-Item -LiteralPath $companionPath -Force
+            }
+        }
+    }
+    if (Test-Path -LiteralPath "$persistenceFailureSettingsPath.tmp" -PathType Container) {
+        [System.IO.Directory]::Delete("$persistenceFailureSettingsPath.tmp", $false)
+    }
+    if (Test-Path -LiteralPath "$persistenceFailureUnblockedSettingsPath.tmp" -PathType Container) {
+        [System.IO.Directory]::Delete("$persistenceFailureUnblockedSettingsPath.tmp", $false)
+    }
+    [System.IO.Directory]::Delete($uiSettingsRoot, $false)
 }
 
 [pscustomobject]@{
-    Passed = 142
+    Passed = 152
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid

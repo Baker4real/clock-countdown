@@ -49,6 +49,7 @@ internal static class ValidationReportContract
         "Valid",
         "DesktopWorkspaceInterfaceBehavior",
         "ReminderEditingInterfaceBehavior",
+        "CalendarReminderBehavior",
         "StartupAcceptanceProtocolInterfaceBehavior",
         "HolidayCalendarInterfaceBehavior",
         "MainReferenceDecorationsShareScaleAtMinimumAndWideSizes",

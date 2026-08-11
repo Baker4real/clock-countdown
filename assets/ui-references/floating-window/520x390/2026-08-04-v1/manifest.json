@@ -8,8 +8,8 @@
     "metricDpi": 96
   },
   "sourceBinding": {
-    "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "0108D25A190E69D5610609B06B2BC5BD7B29A52473DBBAEA58B983D60AC49A3C",
+    "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
+    "aggregateSha256": "B3586191E6D768E2D5D4826C302EB243A511334B1A06275AD95E441D7E0E00D9",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -41,7 +41,7 @@
       },
       {
         "path": "src/MinminCountdown/App.xaml",
-        "sha256": "22C2ECB3C1CD2B04BBB255B00D8F0C55A50E6A4DEABC859985EB5DABB220A107"
+        "sha256": "4F7B584AF01E190D2306EF54C933C24504C50829B9F5035FF317EA4AD38B0D47"
       },
       {
         "path": "src/MinminCountdown/ApplicationTheme.cs",
@@ -49,23 +49,23 @@
       },
       {
         "path": "src/MinminCountdown/DomainLogic.cs",
-        "sha256": "1F9718E51C88FF93D13C3B7F8AAE6A0FE5DDB1ED778AA1F42EAB76545AB9D1B8"
+        "sha256": "0672AAE0BDF61DE7265899A114CEF77746BDFCE97F627C9F741ACFDD19246C68"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Countdowns.cs",
-        "sha256": "66A3BB94CBFA6B75F5BF80FA47B6A915012384ADD46A39337D34688400E011E8"
+        "sha256": "37A7790B9EB756B35640213C0C2612A0F7B19ACDE4368A6755C2FB817B70FD3E"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Notes.cs",
-        "sha256": "0982FE127CDDA3BB2FD63B27B68ADD7EC553E615E37465D9A927994669BD774F"
+        "sha256": "0CEE735F51707B81214A93305B137C566AC1452EA342909A5C223B1CBDFC40C2"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml",
-        "sha256": "28C9DBE447D89AD756C5235B20A6E9E7AF6AA8D8E7531939D1DA3ED0E2C8919F"
+        "sha256": "BE717650D7EDF3A69B2415755394B5152974A7CFFEB301814705C1D5E9638D4F"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml.cs",
-        "sha256": "20ADABDBEE466786C01AD46739B10F58AFA50DDDE1C881BEA97DA9EDC5A7416D"
+        "sha256": "D545C4411B07068DECBA1EA2A167733196BC6F947E8A3C93F7A203A039DA4BCC"
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
@@ -79,7 +79,7 @@
   },
   "executable": {
     "path": "app/MinminCountdown.exe",
-    "sha256": "2357122D876FCC50B4109AD8E60E35DC4A0D705D683D545A991AF0C88E9454CE",
+    "sha256": "7F5994D75A30D1D2E6E8642EC5512022B2DC70802A3CC36D34B64AEAC5DBDC99",
     "generation": "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
   },
   "pixelComparison": {
@@ -100,18 +100,18 @@
         "topCaptureId": "long-notes-day-top",
         "bottomCaptureId": "long-notes-day-bottom",
         "maxAbsoluteChannelDelta": 216,
-        "meanAbsoluteError": 8.358778,
-        "rootMeanSquareError": 28.609812,
-        "changedPixelCount": 51473
+        "meanAbsoluteError": 7.567947,
+        "rootMeanSquareError": 26.831098,
+        "changedPixelCount": 48774
       },
       {
         "theme": "Night",
         "topCaptureId": "long-notes-night-top",
         "bottomCaptureId": "long-notes-night-bottom",
         "maxAbsoluteChannelDelta": 201,
-        "meanAbsoluteError": 8.37575,
-        "rootMeanSquareError": 27.64732,
-        "changedPixelCount": 51714
+        "meanAbsoluteError": 7.552165,
+        "rootMeanSquareError": 25.818391,
+        "changedPixelCount": 48750
       }
     ]
   },
@@ -135,8 +135,8 @@
         "viewportState": "Baseline",
         "verticalOffset": 0,
         "scrollableHeight": 0,
-        "firstVisibleAnchor": "\u8DDD\u79BB\u4E0B\u73ED",
-        "lastVisibleAnchor": "\u4E03\u6708\u5012\u8BA1\u65F6"
+        "firstVisibleAnchor": "距离下班",
+        "lastVisibleAnchor": "七月倒计时"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -147,7 +147,7 @@
         "opaquePixelCount": 151258
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -170,7 +170,7 @@
       "path": "assets/ui-references/floating-window/520x390/2026-08-04-v1/floating-countdowns-night.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "CCC7279389D0E7204C679080581C9E69C14A87D4737D2D05FEF998F49FB8ECD7",
+      "pngSha256": "2A3E246125832271AB26AAC6D90FE5B91A58D97049C20197282F2CD1A892E960",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
         "sha256": "EEC67D957AA2401D40A5ED47000338542E2662E8ABFB827D6149104F63624FC4",
@@ -181,8 +181,8 @@
         "viewportState": "Baseline",
         "verticalOffset": 0,
         "scrollableHeight": 0,
-        "firstVisibleAnchor": "\u8DDD\u79BB\u4E0B\u73ED",
-        "lastVisibleAnchor": "\u4E03\u6708\u5012\u8BA1\u65F6"
+        "firstVisibleAnchor": "距离下班",
+        "lastVisibleAnchor": "七月倒计时"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -193,7 +193,7 @@
         "opaquePixelCount": 150664
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -216,19 +216,19 @@
       "path": "assets/ui-references/floating-window/520x390/2026-08-04-v1/long-notes-day-top.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "61F941BE490E21F1AB86AAEA74418C377338DB961967F518E94FB04CBDE41254",
+      "pngSha256": "4F5781808BB70BD0BB39CB1C3231D2887244908ECA05697AC2036BEDA90D9FE9",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "F742F513A9E4E74F5ACFD0C4DC60DAB733C1D2C9B07C5C9EBC2DEB5E79FE6D30",
+        "sha256": "043D7DEFC5398C061A60E84859AF904C3271B2BE0F81B7207A1847304EC3A2F3",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-1",
         "noteTextSha256": "F5F77918BA836A251A5CC842AA8FC6BE8AA2DE0F0EC7C35A4E0D97689E18ED52",
         "viewportState": "Top",
         "verticalOffset": 0,
-        "scrollableHeight": 583.84,
-        "firstVisibleAnchor": "reference-note-1:\u9996\u951A\u70B9\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709\u624B\u5DE5",
-        "lastVisibleAnchor": "reference-note-2:\u53F7 2 \u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\u3002"
+        "scrollableHeight": 687.84,
+        "firstVisibleAnchor": "reference-note-1:首锚点：这是一条没有手工",
+        "lastVisibleAnchor": "reference-note-2:号 2 的末尾校验文字。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -239,7 +239,7 @@
         "opaquePixelCount": 151089
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -262,19 +262,19 @@
       "path": "assets/ui-references/floating-window/520x390/2026-08-04-v1/long-notes-day-bottom.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "BF902EFCBBA6D1760EE4C7864BC82394D6D36CFAB822CF3CF945E110A018E12C",
+      "pngSha256": "0A73B6B88314F99EF57F0F6196E31B4CED16B265E51361BA53B6A5603570EEB3",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "6E3FDA31E133BF423FDCF56A92DBDB9D3C1597AB60888D348D0B281425FD31EC",
+        "sha256": "B76F36D4A953FF8DD9C85E0B106E6115DCBA9CED3C5EC1F68CA7829017032EDD",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-6",
         "noteTextSha256": "EDD146B6B25D26BD5A0BC7964B73DAAD9544C3EC194275D126E1768BFD5982C3",
         "viewportState": "Bottom",
-        "verticalOffset": 583.84,
-        "scrollableHeight": 583.84,
-        "firstVisibleAnchor": "reference-note-5:\u4E2D\u6BB5\u951A\u70B95\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709",
-        "lastVisibleAnchor": "reference-note-6:\u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\uFF0C\u5C3E\u951A\u70B9\u3002"
+        "verticalOffset": 687.84,
+        "scrollableHeight": 687.84,
+        "firstVisibleAnchor": "reference-note-5:中段锚点5：这是一条没有",
+        "lastVisibleAnchor": "reference-note-6:的末尾校验文字，尾锚点。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -285,7 +285,7 @@
         "opaquePixelCount": 151089
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -308,19 +308,19 @@
       "path": "assets/ui-references/floating-window/520x390/2026-08-04-v1/long-notes-night-top.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "E5001B70CF68E72B07FAFB064CC8832326DB65C1FF6BCDE4F2097713B2FB7D43",
+      "pngSha256": "F46E4DA7B4FC3288555B22C3FCD3A5613B00F44F602AEC53D44608142CBB24BB",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "44E819B27AFCD801D9CF97C75DDD1B8B47344A157753D8EEE311583F1EC49E80",
+        "sha256": "E9082199E59AFF15A70F7C94F82C86D4851289F52FF8C174C7BD9935682C486D",
         "theme": "Night",
         "workspace": "Notes",
         "noteId": "reference-note-1",
         "noteTextSha256": "F5F77918BA836A251A5CC842AA8FC6BE8AA2DE0F0EC7C35A4E0D97689E18ED52",
         "viewportState": "Top",
         "verticalOffset": 0,
-        "scrollableHeight": 583.84,
-        "firstVisibleAnchor": "reference-note-1:\u9996\u951A\u70B9\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709\u624B\u5DE5",
-        "lastVisibleAnchor": "reference-note-2:\u53F7 2 \u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\u3002"
+        "scrollableHeight": 687.84,
+        "firstVisibleAnchor": "reference-note-1:首锚点：这是一条没有手工",
+        "lastVisibleAnchor": "reference-note-2:号 2 的末尾校验文字。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -331,7 +331,7 @@
         "opaquePixelCount": 150664
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -354,19 +354,19 @@
       "path": "assets/ui-references/floating-window/520x390/2026-08-04-v1/long-notes-night-bottom.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "0912CAA7650D01D9C7B505FC70D22ADF120AF09464C537A4E55590B92E4CCC14",
+      "pngSha256": "4E6BB5FA8C14422AEE61A978270B3DA7CCB4CF06413223916E988F9E222CCD27",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "D59DD313E51B714B94C5BA0BEA23324DF655782D3E521CA474529441B51E066A",
+        "sha256": "D9A461B09C3A2BCA40C35C57E9224A046AA9003242CA0AD2843AFD99D57BB161",
         "theme": "Night",
         "workspace": "Notes",
         "noteId": "reference-note-6",
         "noteTextSha256": "EDD146B6B25D26BD5A0BC7964B73DAAD9544C3EC194275D126E1768BFD5982C3",
         "viewportState": "Bottom",
-        "verticalOffset": 583.84,
-        "scrollableHeight": 583.84,
-        "firstVisibleAnchor": "reference-note-5:\u4E2D\u6BB5\u951A\u70B95\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709",
-        "lastVisibleAnchor": "reference-note-6:\u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\uFF0C\u5C3E\u951A\u70B9\u3002"
+        "verticalOffset": 687.84,
+        "scrollableHeight": 687.84,
+        "firstVisibleAnchor": "reference-note-5:中段锚点5：这是一条没有",
+        "lastVisibleAnchor": "reference-note-6:的末尾校验文字，尾锚点。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -377,7 +377,7 @@
         "opaquePixelCount": 150664
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,

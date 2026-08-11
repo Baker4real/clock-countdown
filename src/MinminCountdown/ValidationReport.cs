@@ -337,6 +337,31 @@ internal static class ValidationReport
         var tagSearchDoesNotSubmit = !selector.CreateButtonIsDefault;
         var reminderBehavior = ValidateReminderDispatch();
         var oneTimeReminderBehavior = ValidateOneTimeReminderLifecycle();
+        var repeatingReminderDelivery = ValidateRepeatingReminderDeliveryCoordinator();
+        var reminderDispositionAndSnooze =
+            ValidationExercises.RunReminderDispositionAndSnoozeBehavior();
+        var reminderCompletionAndReopen =
+            ValidationExercises.RunReminderCompletionAndReopenBehavior();
+        var reminderCenterSnoozeClick =
+            ValidationExercises.RunReminderCenterSnoozeClickBehavior();
+        var reminderCenterExpiredCustomSnoozeRetry =
+            ValidationExercises.RunReminderCenterExpiredCustomSnoozeRetryBehavior();
+        var reminderCenterStaleRetryAfterCompleteReopen =
+            ValidationExercises.RunReminderCenterStaleRetryAfterCompleteReopenBehavior();
+        var reminderCenterCompleteClick =
+            ValidationExercises.RunReminderCenterCompleteClickBehavior();
+        var reminderCenterDeliveryFailureActionGate =
+            ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
+        var validateOnlySettingsIsolation =
+            ValidationExercises.RunValidateOnlySettingsIsolationBehavior();
+        var countdownReminderWpf =
+            ValidationExercises.RunCountdownReminderWpfBehavior();
+        var reminderDelivery = ValidateReminderDeliveryCoordinator();
+        var reminderCenter = ValidateReminderCenterBehavior(theme, assetRoot);
+        var reminderCenterAppendsAfterOpen = ValidateReminderCenterAppendsAfterOpen();
+        var reminderCenterSourceLifecycle = ValidateReminderCenterSourceLifecycle();
+        var reminderPersistenceFailureDisposeWorks =
+            ValidateReminderPersistenceFailureDispose();
         var crossDayReminderBehavior = mainWindowScenarios.CrossDayReminderBehavior;
         var reminderSummaryAdvances = mainWindowScenarios.ReminderSummaryAdvances;
         var roundTrip = ValidateRoundTrip(workspaceSnapshot.Settings);
@@ -729,19 +754,12 @@ internal static class ValidationReport
         var mainStressCountdownTitleGateIsolationBehavior =
             ValidationExercises.RunMainStressCountdownTitleGateIsolationBehavior();
 
-        var reminderWindow = new ReminderWindow(new NoteRecord(
-            "validation-reminder",
-            "主题提醒",
-            "2031-04-05",
-            false,
-            Array.Empty<string>(),
-            30,
-            DateTimeOffset.UtcNow));
+        var reminderCenterWindow = new ReminderCenterWindow();
         var reminderThemed =
-            reminderWindow.WindowStyle == WindowStyle.None &&
-            reminderWindow.Content is Border reminderBorder &&
-            Equals(reminderBorder.Background, Application.Current.FindResource("NoteBrush"));
-        var reminderKeyboardExercise = ValidateReminderWindowKeyboardDismissal();
+            reminderCenterWindow.WindowStyle == WindowStyle.None &&
+            reminderCenterWindow.Content is Border reminderBorder &&
+            Equals(reminderBorder.Background, Application.Current.FindResource("CanvasBrush"));
+        var reminderKeyboardExercise = ValidateReminderCenterKeyboardNavigation();
         var confirmationDialog = new ConfirmationDialog(main, "验证确认", "确认窗口主题验证");
         var confirmationThemed =
             confirmationDialog.WindowStyle == WindowStyle.None &&
@@ -801,14 +819,26 @@ internal static class ValidationReport
                 ReferenceEquals(control.Background, Application.Current.FindResource("CanvasBrush")) &&
                 ReferenceEquals(control.BorderBrush, Application.Current.FindResource("PeachLineBrush")) &&
                 ReferenceEquals(control.Foreground, Application.Current.FindResource("InkBrush")));
+        var countdownReminderTransactionBehavior =
+            ValidationExercises.RunCountdownReminderTransactionBehavior();
         var desktopWorkspaceInterfaceBehavior =
-            ValidationExercises.RunDesktopWorkspaceInterfaceBehavior();
+            ValidationExercises.RunDesktopWorkspaceInterfaceBehavior() &&
+            countdownReminderTransactionBehavior;
         var reminderEditingInterfaceBehavior =
             ValidationExercises.RunReminderEditingInterfaceBehavior();
+        var calendarReminderBehavior =
+            ValidationExercises.RunCalendarReminderBehavior();
         var startupAcceptanceProtocolInterfaceBehavior =
             ValidationExercises.RunStartupAcceptanceProtocolInterfaceBehavior();
         var holidayCalendarInterfaceBehavior =
             ValidationExercises.RunHolidayCalendarInterfaceBehavior();
+        var reminderRulesEditorSharedEntryWorks =
+            ValidationExercises.ExerciseReminderRulesEntry(
+                main,
+                Required<Button>(main, "ManageNoteReminderRulesButton")) &&
+            ValidationExercises.ExerciseReminderRulesEntry(
+                floating,
+                Required<Button>(floating, "FloatingManageReminderRules"));
 
         var report = new ValidationReportProjection
         {
@@ -818,10 +848,15 @@ internal static class ValidationReport
             ["WorkdayCalendarModuleDeep"] = holidayCalendarInterfaceBehavior,
             ["Valid"] = true,
             ["DesktopWorkspaceInterfaceBehavior"] = desktopWorkspaceInterfaceBehavior,
+            ["CountdownReminderTransactionBehavior"] =
+                countdownReminderTransactionBehavior,
             ["ReminderEditingInterfaceBehavior"] = reminderEditingInterfaceBehavior,
+            ["CalendarReminderBehavior"] = calendarReminderBehavior,
             ["StartupAcceptanceProtocolInterfaceBehavior"] =
                 startupAcceptanceProtocolInterfaceBehavior,
             ["HolidayCalendarInterfaceBehavior"] = holidayCalendarInterfaceBehavior,
+            ["VirtualWorkdayCountdownExcludedFromReminders"] =
+                holidayCalendarInterfaceBehavior,
             ["Title"] = main.Title,
             ["Width"] = main.Width,
             ["Height"] = main.Height,
@@ -976,6 +1011,18 @@ internal static class ValidationReport
                 Required<ComboBox>(main, "NoteReminderInterval").Items.Count == 4 &&
                 Required<ComboBox>(floating, "FloatingReminder").Items.Count == 3 &&
                 Required<ComboBox>(floating, "FloatingReminderInterval").Items.Count == 4,
+            ["ReminderRulesEditorSharedEntryWorks"] =
+                reminderRulesEditorSharedEntryWorks &&
+                Required<Button>(main, "ManageNoteReminderRulesButton").Visibility == Visibility.Visible &&
+                Required<TextBlock>(main, "NoteReminderRulesSummary").Visibility == Visibility.Visible &&
+                Required<ComboBox>(main, "NoteReminder").Visibility == Visibility.Collapsed &&
+                Required<Button>(floating, "FloatingManageReminderRules").Visibility == Visibility.Visible &&
+                Required<TextBlock>(floating, "FloatingReminderRulesSummary").Visibility == Visibility.Visible &&
+                Required<ComboBox>(floating, "FloatingReminder").Visibility == Visibility.Collapsed,
+            ["FloatingReminderRulesEntryStaysCompact"] =
+                Math.Abs(floating.Width - 520) <= 0.1 &&
+                floating.Height <= 391 &&
+                Required<Button>(floating, "FloatingManageReminderRules").Width <= 116,
             ["NoteReminderTimeOptionCounts"] = new[]
             {
                 Required<ComboBox>(main, "NoteReminderHour").Items.Count,
@@ -986,12 +1033,95 @@ internal static class ValidationReport
             ["CrossDayReminderSelectionWorks"] = crossDayReminderBehavior,
             ["ReminderSummaryAdvancesAfterFirstDue"] = reminderSummaryAdvances,
             ["OneTimeReminderLifecycleWorks"] = oneTimeReminderBehavior,
+            ["ReminderRequiresContentRenderedConfirmation"] =
+                reminderDelivery.RequiresContentRenderedConfirmation,
+            ["ReminderPersistenceFailureStaysVisible"] =
+                reminderDelivery.PersistenceFailureStaysVisible,
+            ["ReminderPersistenceRetryBackoffWorks"] =
+                reminderDelivery.PersistenceRetryBackoffWorks,
+            ["ReminderDeliverySingleFlightWorks"] =
+                reminderDelivery.SingleFlightWorks,
+            ["ReminderIndependentOccurrencesWork"] =
+                reminderDelivery.IndependentOccurrencesWork,
+            ["ReminderPersistenceFailureCloseGuardWorks"] =
+                reminderDelivery.PersistenceFailureCloseGuardWorks,
+            ["ReminderPersistenceFailureDisposeWorks"] =
+                reminderPersistenceFailureDisposeWorks,
+            ["ReminderDiagnosticsExcludePrivatePayload"] =
+                reminderDelivery.DiagnosticsExcludePrivatePayload,
+            ["ReminderCenterSingleWindow"] = reminderCenter.SingleWindow,
+            ["ReminderCenterSameTickBatch"] = reminderCenter.SameTickBatch,
+            ["ReminderCenterAppendsAfterOpen"] =
+                reminderCenterAppendsAfterOpen,
+            ["ReminderCenterStableOrdering"] = reminderCenter.StableOrdering,
+            ["ReminderCenterEntriesRendered"] = reminderCenter.EntriesRendered,
+            ["ReminderAcknowledgementDistinctFromDelivery"] =
+                reminderCenter.AcknowledgementDistinctFromDelivery,
+            ["ReminderAcknowledgementFailureRetainsEntry"] =
+                reminderCenter.AcknowledgementFailureRetainsEntry,
+            ["ReminderAcknowledgementFailureIsAtomic"] =
+                reminderCenter.AcknowledgementFailureIsAtomic,
+            ["ReminderCenterSingleItemDisposition"] =
+                reminderCenter.SingleItemDisposition,
+            ["ReminderCenterOpenSourcePreservesState"] =
+                reminderCenter.OpenSourcePreservesState,
+            ["ReminderCenterOpenSourceFindsExactNote"] =
+                reminderCenter.OpenSourceFindsExactNote,
+            ["ReminderCenterOpenSourceRestoresMinimizedWindow"] =
+                reminderCenter.OpenSourceRestoresMinimizedWindow,
+            ["ReminderCenterPersistenceFailureRetainsCurrentSource"] =
+                reminderCenterSourceLifecycle.PersistenceFailureRetainsCurrentSource,
+            ["ReminderCenterRemovesDeletedSource"] =
+                reminderCenterSourceLifecycle.RemovesDeletedSource,
+            ["ReminderCenterCancelsDeletedSourceAckRetry"] =
+                reminderCenterSourceLifecycle.CancelsDeletedSourceAcknowledgementRetry,
+            ["ReminderCenterRemovesDisabledSource"] =
+                reminderCenterSourceLifecycle.RemovesDisabledSource,
+            ["ReminderCenterRemovesCompletedSource"] =
+                reminderCenterSourceLifecycle.RemovesCompletedSource,
+            ["ReminderCenterReopensAfterSourceRemoval"] =
+                reminderCenterSourceLifecycle.ReopensAfterSourceRemoval,
+            ["ReminderCenterClosesWhenEmpty"] = reminderCenter.ClosesWhenEmpty,
+            ["ReminderCenterReopens"] = reminderCenter.Reopens,
+            ["ReminderCenterScrollsLongContent"] = reminderCenter.ScrollsLongContent,
+            ["ReminderCenterFollowsDayNightTheme"] = reminderCenter.FollowsDayNightTheme,
+            ["ReminderCenterHasOnlySafeActions"] = reminderCenter.HasOnlySafeActions,
+            ["ReminderCenterDisplaysSourceContentAndTime"] =
+                reminderCenter.DisplaysSourceContentAndTime,
+            ["ReminderCenterAccessible"] = reminderCenter.Accessible,
+            ["RepeatingReminderRenderedLatchWorks"] =
+                repeatingReminderDelivery.RenderedLatchWorks,
+            ["RepeatingReminderDistinctCyclesCoexist"] =
+                repeatingReminderDelivery.SingleUnresolvedOccurrenceWorks,
+            ["RepeatingReminderDueBeforeShow"] = repeatingReminderDelivery.DueBeforeShow,
+            ["ReminderCenterOpened"] = repeatingReminderDelivery.WindowOpened,
+            ["RepeatingReminderContentRendered"] = repeatingReminderDelivery.ContentRendered,
+            ["RepeatingReminderNoDuplicate"] = repeatingReminderDelivery.NoDuplicate,
+            ["ReminderDispositionAndSnoozePersistAcrossRestart"] =
+                reminderDispositionAndSnooze,
+            ["ReminderCompletionAndReopenAreAtomic"] =
+                reminderCompletionAndReopen,
+            ["ReminderCenterSnoozeClickPersists"] =
+                reminderCenterSnoozeClick,
+            ["ReminderCenterExpiredCustomSnoozeRetryAllowsCorrection"] =
+                reminderCenterExpiredCustomSnoozeRetry,
+            ["ReminderCenterCompleteReopenDiscardsStaleRetries"] =
+                reminderCenterStaleRetryAfterCompleteReopen,
+            ["ReminderCenterCompleteClickIsAtomic"] =
+                reminderCenterCompleteClick,
+            ["ReminderCenterDeliveryFailureDisablesDispositions"] =
+                reminderCenterDeliveryFailureActionGate,
+            ["ValidateOnlySettingsIsolationBehavior"] =
+                validateOnlySettingsIsolation,
+            ["CountdownReminderWpfBehavior"] = countdownReminderWpf,
+            ["ReminderAcknowledgementMonotonicAcrossOccurrences"] =
+                repeatingReminderDelivery.AcknowledgementMonotonicAcrossOccurrences,
             ["NoteReminderDispatchWorks"] = reminderBehavior,
-            ["NoteReminderWindowIsThemed"] = reminderThemed,
-            ["ReminderWindowSupportsKeyboardDismissal"] =
-                reminderKeyboardExercise.AllKeysDismiss,
-            ["ReminderWindowFocusesDismissAction"] =
-                reminderKeyboardExercise.FocusesDismissAction,
+            ["ReminderCenterIsThemed"] = reminderThemed,
+            ["ReminderCenterSupportsKeyboardNavigation"] =
+                reminderKeyboardExercise.KeyboardTraversalWorks,
+            ["ReminderCenterInitialFocusAndAccessibleNameWork"] =
+                reminderKeyboardExercise.InitialFocusAndAccessibleNameWork,
             ["OfficialCharacterBackgroundLoaded"] =
                 Required<Image>(main, "MyMelodyBackground").Source is not null &&
                 Required<Image>(main, "CinnamorollBackground").Source is not null &&
@@ -1431,7 +1561,7 @@ internal static class ValidationReport
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
 
         datePicker.IsDropDownOpen = false;
-        reminderWindow.Close();
+        reminderCenterWindow.Close();
         floating.Hide();
         main.Hide();
         return report.Seal();
@@ -2250,7 +2380,7 @@ internal static class ValidationReport
                 {
                     validationMain?.Close();
                     PumpDispatcher();
-                    TryDeleteFile(settingsPath);
+                    TryDeleteSettingsFiles(settingsPath);
                     TryDeleteFile(settingsPath + ".tmp");
                     TryDeleteFile(diagnosticPath);
                     var holidayDirectory = Path.Combine(temporaryRoot, "holiday-cache");
@@ -4174,7 +4304,7 @@ internal static class ValidationReport
         finally
         {
             referenceWindow?.Close();
-            TryDeleteFile(settingsPath);
+            TryDeleteSettingsFiles(settingsPath);
             TryDeleteFile(holidayPath);
             if (Directory.Exists(holidayDirectory))
             {
@@ -6680,6 +6810,18 @@ internal static class ValidationReport
         }
     }
 
+    private static void TryDeleteSettingsFiles(string settingsPath)
+    {
+        foreach (var suffix in new[]
+                 {
+                     "", ".tmp", ".backup1", ".backup2",
+                     ".backup2.tmp", ".backup2.rollback"
+                 })
+        {
+            TryDeleteFile(settingsPath + suffix);
+        }
+    }
+
     private static Rect? VisibleImageBounds(Image image, UIElement ancestor)
     {
         if (image.Source is not BitmapSource source ||
@@ -6869,31 +7011,1360 @@ internal static class ValidationReport
                 return false;
             }
 
-            var confirmation = after.ConfirmReminderDisplayed(
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            var failedConfirmation = after.ConfirmReminderDisplayed(
                 dueNote,
                 firstDueUtc.AddMinutes(5));
-            if (!confirmation.Succeeded)
+            var retryAfterFailure = after.GetDueReminders(firstDueUtc.AddMinutes(5));
+            var pendingSettings = after.Snapshot.Settings;
+            var pendingAfterFailure = ReminderRuleCompatibility.ToLegacy(
+                pendingSettings,
+                pendingSettings.Notes.Single()) is OnceReminder
+            {
+                Delivery: OnceDeliveryState.Pending
+            };
+            Directory.Delete(settingsPath + ".tmp");
+            var successfulConfirmation = after.ConfirmReminderDisplayed(
+                dueNote,
+                firstDueUtc.AddMinutes(5));
+            if (failedConfirmation.Succeeded ||
+                retryAfterFailure.Count != 1 ||
+                !pendingAfterFailure ||
+                !successfulConfirmation.Succeeded)
             {
                 return false;
             }
 
-            var duplicateInProcess = after.GetDueReminders(firstDueUtc.AddMinutes(5));
+            var unresolvedInProcess = after.GetDueReminderOccurrences(firstDueUtc.AddMinutes(5));
             var reloaded = DesktopWorkspace.Load(settingsPath, afterStore);
-            var duplicateAfterRestart = reloaded.GetDueReminders(firstDueUtc.AddMinutes(5));
+            var unresolvedAfterRestart = reloaded.GetDueReminderOccurrences(firstDueUtc.AddMinutes(5));
+            var reloadedOccurrence = unresolvedAfterRestart.SingleOrDefault();
+            var disposition = reloadedOccurrence is null
+                ? new DesktopWorkspaceChangeResult(false, "没有可处置的 occurrence。")
+                : reloaded.AcknowledgeReminder(
+                    reloadedOccurrence.Note,
+                    reloadedOccurrence.Rule.Id,
+                    reloadedOccurrence.ScheduledUtc);
+            var disposedAfterRestart = DesktopWorkspace.Load(settingsPath, afterStore)
+                .GetDueReminderOccurrences(firstDueUtc.AddMinutes(5));
             return
                 early.Count == 0 &&
                 overdue.Count == 1 &&
-                duplicateInProcess.Count == 0 &&
-                duplicateAfterRestart.Count == 0 &&
-                reloaded.Snapshot.Settings.Notes.Single().Reminder is OnceReminder
+                unresolvedInProcess.Count == 1 &&
+                unresolvedInProcess[0].ScheduledUtc == firstDueUtc &&
+                unresolvedAfterRestart.Count == 1 &&
+                reloadedOccurrence?.ScheduledUtc == firstDueUtc &&
+                disposition.Succeeded &&
+                disposedAfterRestart.Count == 0 &&
+                ReminderRuleCompatibility.ToLegacy(
+                    reloaded.Snapshot.Settings,
+                    reloaded.Snapshot.Settings.Notes.Single()) is OnceReminder
                 {
                     Delivery: OnceDeliveryState.Delivered
                 };
         }
         finally
         {
-            File.Delete(settingsPath);
+            TryDeleteSettingsFiles(settingsPath);
             File.Delete(settingsPath + ".tmp");
+            if (Directory.Exists(settingsPath + ".tmp"))
+            {
+                Directory.Delete(settingsPath + ".tmp");
+            }
+        }
+    }
+
+    private static RepeatingReminderDeliveryExerciseResult ValidateRepeatingReminderDeliveryCoordinator()
+    {
+        var firstDueUtc = new DateTimeOffset(2031, 4, 7, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-repeat-render-{Guid.NewGuid():N}.settings.json");
+        var migrationPath = settingsPath + ".v9.json";
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            if (!session.TrySaveNote(
+                    null,
+                    "重复提醒真实渲染探针",
+                    new DateTime(2031, 4, 7),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(firstDueUtc, 30),
+                    out _))
+            {
+                return RepeatingReminderDeliveryExerciseResult.Failed;
+            }
+
+            var repeatingId = session.Current.Notes.Single().Id;
+            var rule = session.Current.Notes.Single().ReminderRules.Single();
+            var workspace = new DesktopWorkspace(session);
+            coordinator = new ReminderDeliveryCoordinator(workspace, logger: null);
+            clock.UtcNow = firstDueUtc;
+            var dueBeforeShow = session.Reminders.GetDue(session.Current, firstDueUtc)
+                .Any(note => note.Id == repeatingId);
+            coordinator.Tick(firstDueUtc);
+            var window = coordinator.ActiveWindow;
+            var windowOpened = window?.IsVisible == true && coordinator.ActiveWindowCount == 1;
+            window?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var contentRendered =
+                coordinator.ActiveOccurrenceRendered &&
+                coordinator.ActiveOccurrenceConfirmed &&
+                session.Reminders.GetDueOccurrences(session.Current, firstDueUtc)
+                    .SingleOrDefault() is { } unresolvedOccurrence &&
+                unresolvedOccurrence.Note.Id == repeatingId &&
+                unresolvedOccurrence.Rule.Id == rule.Id &&
+                unresolvedOccurrence.ScheduledUtc == firstDueUtc;
+            var nextDueUtc = firstDueUtc.AddMinutes(30);
+            clock.UtcNow = nextDueUtc;
+            coordinator.Tick(nextDueUtc);
+            var nextWindow = coordinator.ActiveWindow;
+            var firstKey = new ActiveReminderOccurrenceKey(rule.Id, firstDueUtc);
+            var secondKey = new ActiveReminderOccurrenceKey(rule.Id, nextDueUtc);
+            var singleUnresolvedOccurrenceWorks =
+                window?.IsVisible == true &&
+                ReferenceEquals(nextWindow, window) &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                window.EntryCount == 1 &&
+                window.OrderedKeys.SequenceEqual([firstKey]) &&
+                !window.OrderedKeys.Contains(secondKey) &&
+                Application.Current.Windows
+                    .OfType<ReminderCenterWindow>()
+                    .Count(candidate => candidate.IsVisible) == 1;
+            var unresolvedDue = session.Reminders.GetDueOccurrences(session.Current, nextDueUtc);
+            singleUnresolvedOccurrenceWorks &=
+                unresolvedDue.Count == 1 &&
+                unresolvedDue[0].ScheduledUtc == firstDueUtc;
+
+            var firstAcknowledged = window?.RequestAcknowledgement(firstKey) == true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            coordinator.Tick(nextDueUtc);
+            var secondWindow = coordinator.ActiveWindow;
+            secondWindow?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var secondOccurrenceKey = MinminCountdown.Core.ReminderOccurrenceKey.Create(
+                rule,
+                nextDueUtc).ToString();
+            var secondCycleOpenedAfterDisposition =
+                firstAcknowledged &&
+                window?.IsVisible == false &&
+                secondWindow?.IsVisible == true &&
+                !ReferenceEquals(secondWindow, window) &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                secondWindow.EntryCount == 1 &&
+                secondWindow.RenderedEntryCount == 1 &&
+                secondWindow.OrderedKeys.SequenceEqual([secondKey]) &&
+                session.Current.ReminderStates[rule.Id].LastDeliveredOccurrenceKey ==
+                    secondOccurrenceKey;
+            var secondAcknowledged = secondWindow?.RequestAcknowledgement(secondKey) == true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var acknowledgementAdvancedToSecond =
+                session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey ==
+                    secondOccurrenceKey;
+            var staleFirstAcknowledgement = workspace.AcknowledgeReminder(
+                session.Current.Notes.Single(note => note.Id == repeatingId),
+                rule.Id,
+                firstDueUtc);
+            var persistedAfterReverseAcknowledgement = new SettingsStore(clock: clock)
+                .Load(settingsPath)
+                .Settings
+                .ReminderStates[rule.Id];
+            coordinator.Tick(nextDueUtc);
+            var acknowledgementMonotonicAcrossOccurrences =
+                secondAcknowledged &&
+                acknowledgementAdvancedToSecond &&
+                staleFirstAcknowledgement.Succeeded &&
+                session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey ==
+                    secondOccurrenceKey &&
+                persistedAfterReverseAcknowledgement.LastDispositionOccurrenceKey ==
+                    secondOccurrenceKey;
+            var noDuplicate =
+                firstAcknowledged &&
+                secondAcknowledged &&
+                secondCycleOpenedAfterDisposition &&
+                coordinator.ActiveWindowCount == 0 &&
+                coordinator.ActiveEntryCount == 0 &&
+                session.Reminders.GetDueOccurrences(session.Current, nextDueUtc).Count == 0;
+
+            coordinator.Dispose();
+            coordinator = null;
+            var latestMissedUtc = firstDueUtc.AddHours(2).AddMinutes(5);
+            clock.UtcNow = latestMissedUtc;
+            var restarted = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            var latestDue = restarted.Reminders.GetDue(restarted.Current, latestMissedUtc);
+            var latestNote = latestDue.SingleOrDefault();
+            var latestRule = latestNote?.ReminderRules.SingleOrDefault();
+            var latestScheduledUtc = latestRule is null
+                ? DateTimeOffset.MinValue
+                : ReminderSchedule.GetScheduledUtc(latestRule, latestMissedUtc);
+            var beforeFailure = restarted.SerializeCurrent();
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            var failedLatestConfirmation = latestNote is null
+                ? new DesktopWorkspaceChangeResult(false, "没有最新 occurrence。")
+                : new DesktopWorkspace(restarted).ConfirmReminderDisplayed(
+                    latestNote,
+                    latestMissedUtc);
+            var failureStayedAtomic =
+                !failedLatestConfirmation.Succeeded &&
+                string.Equals(beforeFailure, restarted.SerializeCurrent(), StringComparison.Ordinal) &&
+                restarted.Reminders.GetDue(restarted.Current, latestMissedUtc).Count == 1;
+            Directory.Delete(settingsPath + ".tmp");
+            var crossedRetryUtc = latestMissedUtc.AddMinutes(31);
+            var successfulLatestConfirmation = latestNote is null
+                ? new DesktopWorkspaceChangeResult(false, "没有最新 occurrence。")
+                : new DesktopWorkspace(restarted).ConfirmReminderDisplayed(
+                    latestNote,
+                    latestRule!.Id,
+                    latestScheduledUtc);
+            var unresolvedAtConfirmation = restarted.Reminders
+                .GetDueOccurrences(restarted.Current, latestMissedUtc)
+                .SingleOrDefault();
+            var unresolvedAfterLaterCycles = restarted.Reminders
+                .GetDueOccurrences(restarted.Current, crossedRetryUtc)
+                .SingleOrDefault();
+            var latestOnlyAcrossRestart =
+                latestDue.Count == 1 &&
+                latestScheduledUtc == firstDueUtc.AddHours(2) &&
+                failureStayedAtomic &&
+                successfulLatestConfirmation.Succeeded &&
+                unresolvedAtConfirmation?.ScheduledUtc == latestScheduledUtc &&
+                unresolvedAfterLaterCycles?.ScheduledUtc == latestScheduledUtc &&
+                latestRule is not null &&
+                restarted.Current.ReminderStates[latestRule.Id].LastDeliveredOccurrenceKey ==
+                    MinminCountdown.Core.ReminderOccurrenceKey.Create(
+                        latestRule,
+                        latestScheduledUtc).ToString();
+
+            File.WriteAllText(
+                migrationPath,
+                """
+                {
+                  "schemaVersion": 9,
+                  "timeZoneId": "China Standard Time",
+                  "displayPrecision": "Second",
+                  "monthlySalary": 0,
+                  "workStart": "09:00",
+                  "workEnd": "18:00",
+                  "themePreference": "Auto",
+                  "tags": [],
+                  "countdowns": [],
+                  "notes": [
+                    {
+                      "id": "repeat-migration-note",
+                      "text": "迁移不复活历史周期",
+                      "date": "2031-04-07",
+                      "isCompleted": false,
+                      "tagIds": [],
+                      "reminder": {
+                        "type": "repeat",
+                        "firstDueUtc": "2031-04-07T01:00:00.0000000+00:00",
+                        "intervalMinutes": 30
+                      }
+                    }
+                  ]
+                }
+                """,
+                new UTF8Encoding(false));
+            var migrated = ApplicationSession.Load(
+                migrationPath,
+                new SettingsStore(clock: clock));
+            var migrationRule = migrated.Current.Notes.Single().ReminderRules.Single();
+            var migrationDoesNotRevive =
+                migrated.SettingsWereMigrated &&
+                migrated.Reminders.GetDue(migrated.Current, latestMissedUtc).Count == 0 &&
+                migrated.Current.ReminderStates[migrationRule.Id].HandledThroughUtc ==
+                    firstDueUtc.AddHours(2);
+            var retryKeepsCapturedOccurrence =
+                ValidateRepeatingReminderRetryKeepsCapturedOccurrence();
+            var renderedLatchWorks =
+                dueBeforeShow &&
+                windowOpened &&
+                contentRendered &&
+                noDuplicate &&
+                latestOnlyAcrossRestart &&
+                migrationDoesNotRevive &&
+                retryKeepsCapturedOccurrence;
+            return new RepeatingReminderDeliveryExerciseResult(
+                renderedLatchWorks,
+                singleUnresolvedOccurrenceWorks,
+                dueBeforeShow,
+                windowOpened,
+                contentRendered && secondCycleOpenedAfterDisposition,
+                noDuplicate,
+                acknowledgementMonotonicAcrossOccurrences);
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            TryDeleteSettingsFiles(settingsPath);
+            File.Delete(settingsPath + ".tmp");
+            File.Delete(migrationPath);
+        }
+    }
+
+    private static bool ValidateRepeatingReminderRetryKeepsCapturedOccurrence()
+    {
+        var firstDueUtc = new DateTimeOffset(2031, 4, 8, 1, 0, 0, TimeSpan.Zero);
+        var nextDueUtc = firstDueUtc.AddMinutes(1);
+        var staleRetryUtc = nextDueUtc.AddSeconds(10);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-repeat-retry-{Guid.NewGuid():N}.settings.json");
+        var blockedTemporaryPath = settingsPath + ".tmp";
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
+            var session = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            if (!session.TrySaveNote(
+                    null,
+                    "跨周期持久化重试 occurrence 探针",
+                    new DateTime(2031, 4, 8),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(firstDueUtc, 1),
+                    out _))
+            {
+                return false;
+            }
+
+            var note = session.Current.Notes.Single();
+            var rule = (FixedIntervalReminderRule)note.ReminderRules.Single();
+            Directory.CreateDirectory(blockedTemporaryPath);
+            var workspace = new DesktopWorkspace(session);
+            coordinator = new ReminderDeliveryCoordinator(
+                workspace,
+                new DiagnosticLogger(diagnosticPath));
+            clock.UtcNow = firstDueUtc;
+            coordinator.Tick(firstDueUtc);
+            var firstWindow = coordinator.ActiveWindow;
+            firstWindow?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var capturedOccurrenceFailed =
+                firstWindow?.IsVisible == true &&
+                coordinator.ActiveOccurrenceRendered &&
+                !coordinator.ActiveOccurrenceConfirmed &&
+                coordinator.PersistenceFailureCount == 1 &&
+                coordinator.NextPersistenceRetryUtc == firstDueUtc.AddSeconds(5) &&
+                !session.Current.ReminderStates.ContainsKey(rule.Id);
+
+            clock.UtcNow = nextDueUtc;
+            coordinator.Tick(nextDueUtc);
+            var nextWindow = coordinator.ActiveWindow;
+            var failureEventsBeforeBarrierRemoved = File.ReadLines(diagnosticPath).Count(line =>
+                line.Contains("OneTimeReminderDeliveryPersistFailed", StringComparison.Ordinal));
+            var nextCycleSuppressedWhileOldRetryFailed =
+                firstWindow?.IsVisible == true &&
+                ReferenceEquals(nextWindow, firstWindow) &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                firstWindow.EntryCount == 1 &&
+                firstWindow.OrderedKeys.SequenceEqual([
+                    new ActiveReminderOccurrenceKey(rule.Id, firstDueUtc)
+                ]) &&
+                failureEventsBeforeBarrierRemoved == 2 &&
+                !session.Current.ReminderStates.ContainsKey(rule.Id);
+
+            Directory.Delete(blockedTemporaryPath);
+            clock.UtcNow = staleRetryUtc;
+            coordinator.Tick(staleRetryUtc);
+            var stateAfterStaleRetry = session.Current.ReminderStates.GetValueOrDefault(rule.Id);
+            var persistedAfterStaleRetry = new SettingsStore(clock: clock)
+                .Load(settingsPath)
+                .Settings
+                .ReminderStates
+                .GetValueOrDefault(rule.Id);
+            var firstOccurrenceKey =
+                MinminCountdown.Core.ReminderOccurrenceKey.Create(rule, firstDueUtc).ToString();
+            var retryKeptCapturedOccurrence =
+                stateAfterStaleRetry?.HandledThroughUtc == firstDueUtc &&
+                stateAfterStaleRetry.LastDeliveredOccurrenceKey == firstOccurrenceKey &&
+                persistedAfterStaleRetry?.HandledThroughUtc == firstDueUtc &&
+                persistedAfterStaleRetry.LastDeliveredOccurrenceKey == firstOccurrenceKey &&
+                firstWindow?.PersistenceFailureVisible == false &&
+                coordinator.ActiveEntryCount == 1 &&
+                session.Reminders.GetDueOccurrences(session.Current, staleRetryUtc)
+                    .SingleOrDefault() is { } unresolvedOccurrence &&
+                unresolvedOccurrence.Note.Id == note.Id &&
+                unresolvedOccurrence.Rule.Id == rule.Id &&
+                unresolvedOccurrence.ScheduledUtc == firstDueUtc;
+
+            var firstAcknowledged = firstWindow?.RequestAcknowledgement(
+                new ActiveReminderOccurrenceKey(rule.Id, firstDueUtc)) == true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            coordinator.Tick(staleRetryUtc);
+            var secondWindow = coordinator.ActiveWindow;
+            secondWindow?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var nextOccurrenceKey =
+                MinminCountdown.Core.ReminderOccurrenceKey.Create(rule, nextDueUtc).ToString();
+            var nextCycleAppearedAfterDisposition =
+                firstAcknowledged &&
+                firstWindow?.IsVisible == false &&
+                secondWindow?.IsVisible == true &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                secondWindow.OrderedKeys.SequenceEqual([
+                    new ActiveReminderOccurrenceKey(rule.Id, nextDueUtc)
+                ]) &&
+                session.Current.ReminderStates[rule.Id].LastDeliveredOccurrenceKey ==
+                    nextOccurrenceKey;
+            var nextAcknowledged = secondWindow?.RequestAcknowledgement(
+                new ActiveReminderOccurrenceKey(rule.Id, nextDueUtc)) == true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            coordinator.Tick(staleRetryUtc);
+            var nextOccurrenceDidNotReopen =
+                nextAcknowledged &&
+                coordinator.ActiveWindowCount == 0 &&
+                coordinator.ActiveEntryCount == 0 &&
+                !session.Reminders.GetDue(session.Current, staleRetryUtc)
+                    .Any(candidate => candidate.Id == note.Id);
+            return
+                capturedOccurrenceFailed &&
+                nextCycleSuppressedWhileOldRetryFailed &&
+                retryKeptCapturedOccurrence &&
+                nextCycleAppearedAfterDisposition &&
+                nextOccurrenceDidNotReopen;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            TryDeleteSettingsFiles(settingsPath);
+            File.Delete(diagnosticPath);
+            if (Directory.Exists(blockedTemporaryPath))
+            {
+                Directory.Delete(blockedTemporaryPath);
+            }
+            else
+            {
+                File.Delete(blockedTemporaryPath);
+            }
+        }
+    }
+
+    private static bool ValidateReminderPersistenceFailureDispose()
+    {
+        var firstDueUtc = new DateTimeOffset(2031, 4, 7, 2, 30, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-delivery-dispose-{Guid.NewGuid():N}.settings.json");
+        var blockedTemporaryPath = settingsPath + ".tmp";
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
+            var session = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            if (!session.TrySaveNote(
+                    null,
+                    "退出时强制关闭持久化失败提醒探针",
+                    new DateTime(2031, 4, 7),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(firstDueUtc),
+                    out _))
+            {
+                return false;
+            }
+
+            var noteId = session.Current.Notes.Single().Id;
+            var noteRule = session.Current.Notes.Single().ReminderRules.Single();
+            var beforeFailure = session.SerializeCurrent();
+            Directory.CreateDirectory(blockedTemporaryPath);
+            coordinator = new ReminderDeliveryCoordinator(
+                new DesktopWorkspace(session),
+                new DiagnosticLogger(diagnosticPath));
+            clock.UtcNow = firstDueUtc;
+            coordinator.Tick(firstDueUtc);
+            var window = coordinator.ActiveWindow;
+            PumpDispatcher();
+            var firstRetryUtc = coordinator.NextPersistenceRetryUtc;
+            var firstFailureCount = coordinator.PersistenceFailureCount;
+            window?.Close();
+            PumpDispatcher();
+            var ordinaryCloseGuarded =
+                window?.IsVisible == true &&
+                coordinator.ActiveWindowCount == 1 &&
+                firstFailureCount == 1 &&
+                firstRetryUtc == firstDueUtc.AddSeconds(5);
+
+            coordinator.Dispose();
+            PumpDispatcher();
+            var failureEvents = File.ReadLines(diagnosticPath).Count(line =>
+                line.Contains("OneTimeReminderDeliveryPersistFailed", StringComparison.Ordinal));
+            var stillPending = ReminderRuleCompatibility.ToLegacy(
+                session.Current,
+                session.Current.Notes.Single(note => note.Id == noteId)) is
+                OnceReminder { Delivery: OnceDeliveryState.Pending };
+            Directory.Delete(blockedTemporaryPath);
+            var restarted = DesktopWorkspace.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            var restartedOccurrence = restarted.GetDueReminderOccurrences(firstDueUtc)
+                .SingleOrDefault();
+            var sameOccurrenceRestarts =
+                restartedOccurrence?.Note.Id == noteId &&
+                restartedOccurrence.Rule.Id == noteRule.Id &&
+                restartedOccurrence.ScheduledUtc == firstDueUtc &&
+                !restarted.Snapshot.Settings.ReminderStates.ContainsKey(noteRule.Id);
+            var disposeBehavior =
+                ordinaryCloseGuarded &&
+                window?.IsVisible == false &&
+                coordinator.ActiveWindowCount == 0 &&
+                failureEvents >= 1 &&
+                stillPending &&
+                string.Equals(beforeFailure, session.SerializeCurrent(), StringComparison.Ordinal) &&
+                sameOccurrenceRestarts;
+            return disposeBehavior;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            TryDeleteSettingsFiles(settingsPath);
+            File.Delete(diagnosticPath);
+            if (Directory.Exists(blockedTemporaryPath))
+            {
+                Directory.Delete(blockedTemporaryPath);
+            }
+            else
+            {
+                File.Delete(blockedTemporaryPath);
+            }
+        }
+    }
+
+    private static bool ValidateReminderCenterAppendsAfterOpen()
+    {
+        var firstDueUtc = new DateTimeOffset(2031, 5, 5, 1, 0, 0, TimeSpan.Zero);
+        var secondDueUtc = firstDueUtc.AddMinutes(1);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-center-append-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
+            var session = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            if (!session.TrySaveNote(
+                    null,
+                    "先到提醒追加探针",
+                    new DateTime(2031, 5, 5),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(firstDueUtc),
+                    out _))
+            {
+                return false;
+            }
+
+            var firstNote = session.Current.Notes.Single();
+            var firstRule = firstNote.ReminderRules.Single();
+            var firstKey = new ActiveReminderOccurrenceKey(firstRule.Id, firstDueUtc);
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), null);
+            clock.UtcNow = firstDueUtc;
+            coordinator.Tick(clock.UtcNow);
+            var center = coordinator.ActiveWindow;
+            PumpDispatcher();
+            var firstRendered =
+                center?.IsVisible == true &&
+                center.EntryCount == 1 &&
+                center.RenderedEntryCount == 1 &&
+                center.OrderedKeys.SequenceEqual([firstKey]);
+
+            if (!session.TrySaveNote(
+                    null,
+                    "后到提醒追加探针",
+                    new DateTime(2031, 5, 5),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(secondDueUtc),
+                    out _))
+            {
+                return false;
+            }
+
+            var secondNote = session.Current.Notes.Single(note =>
+                string.Equals(note.Text, "后到提醒追加探针", StringComparison.Ordinal));
+            var secondRule = secondNote.ReminderRules.Single();
+            var secondKey = new ActiveReminderOccurrenceKey(secondRule.Id, secondDueUtc);
+            clock.UtcNow = secondDueUtc;
+            coordinator.Tick(clock.UtcNow);
+            var sameCenter = coordinator.ActiveWindow;
+            PumpDispatcher();
+            return
+                firstRendered &&
+                ReferenceEquals(sameCenter, center) &&
+                sameCenter?.IsVisible == true &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 2 &&
+                sameCenter.EntryCount == 2 &&
+                sameCenter.RenderedEntryCount == 2 &&
+                sameCenter.OrderedKeys.SequenceEqual([firstKey, secondKey]) &&
+                session.Current.ReminderStates[firstRule.Id].LastDeliveredOccurrenceKey ==
+                    MinminCountdown.Core.ReminderOccurrenceKey.Create(firstRule, firstDueUtc).ToString() &&
+                session.Current.ReminderStates[secondRule.Id].LastDeliveredOccurrenceKey ==
+                    MinminCountdown.Core.ReminderOccurrenceKey.Create(secondRule, secondDueUtc).ToString();
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            TryDeleteSettingsFiles(settingsPath);
+            File.Delete(settingsPath + ".tmp");
+        }
+    }
+
+    private static ReminderCenterExerciseResult ValidateReminderCenterBehavior(
+        ApplicationTheme theme,
+        string assetRoot)
+    {
+        var dueUtc = new DateTimeOffset(2031, 5, 6, 1, 30, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-center-{Guid.NewGuid():N}.settings.json");
+        var blockedTemporaryPath = settingsPath + ".tmp";
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        ReminderDeliveryCoordinator? coordinator = null;
+        MainWindow? sourceWindow = null;
+        HolidayCalendar? calendar = null;
+        try
+        {
+            var clock = new MutableValidationClock(dueUtc.AddSeconds(-1));
+            var session = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            if (!session.TrySaveNote(
+                    null,
+                    "批量提醒甲",
+                    new DateTime(2031, 5, 6),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(dueUtc),
+                    out _) ||
+                !session.TrySaveNote(
+                    null,
+                    "批量提醒乙",
+                    new DateTime(2031, 5, 6),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(dueUtc),
+                    out _))
+            {
+                return ReminderCenterExerciseResult.Failed;
+            }
+
+            var firstNote = session.Current.Notes[0];
+            var secondNote = session.Current.Notes[1];
+            var firstRule = firstNote.ReminderRules.Single();
+            var secondRule = secondNote.ReminderRules.Single();
+            var firstKey = new ActiveReminderOccurrenceKey(firstRule.Id, dueUtc);
+            var secondKey = new ActiveReminderOccurrenceKey(secondRule.Id, dueUtc);
+            var workspace = new DesktopWorkspace(session);
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with
+            {
+                NoteSearch = "不会命中任何便签的筛选"
+            });
+            calendar = new HolidayCalendar(assetRoot);
+            sourceWindow = new MainWindow(
+                workspace,
+                calendar,
+                new DiagnosticLogger(diagnosticPath),
+                assetRoot)
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            sourceWindow.ShowWorkspace(WorkspaceKind.Countdowns);
+            var draftText = Required<TextBox>(sourceWindow, "NoteText");
+            var draftDate = Required<DatePicker>(sourceWindow, "NoteDate");
+            var draftReminder = Required<ComboBox>(sourceWindow, "NoteReminder");
+            draftText.Text = "必须保留的便签草稿";
+            draftDate.SelectedDate = new DateTime(2031, 5, 9);
+            draftReminder.SelectedIndex = 2;
+            sourceWindow.Show();
+            PumpDispatcher();
+            sourceWindow.WindowState = WindowState.Minimized;
+            PumpDispatcher();
+            var sourceWasVisibleAndMinimized =
+                sourceWindow.IsVisible &&
+                sourceWindow.WindowState == WindowState.Minimized;
+            var openedSourceIds = new List<string>();
+            coordinator = new ReminderDeliveryCoordinator(
+                workspace,
+                new DiagnosticLogger(diagnosticPath),
+                (sourceKind, noteId) =>
+                {
+                    if (sourceKind != ReminderSourceKind.Note)
+                    {
+                        return;
+                    }
+
+                    openedSourceIds.Add(noteId);
+                    sourceWindow.OpenReminderSource(sourceKind, noteId);
+                });
+
+            clock.UtcNow = dueUtc;
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow;
+            var singleWindowBeforeRender =
+                center?.IsVisible == true &&
+                coordinator.ActiveWindowCount == 1 &&
+                Application.Current.Windows
+                    .OfType<ReminderCenterWindow>()
+                    .Count(window => window.IsVisible) == 1;
+            var sameTickBatch =
+                center?.EntryCount == 2 &&
+                center.RenderedEntryCount == 0 &&
+                session.Current.ReminderStates.Count == 0;
+            var stableOrdering = center?.OrderedKeys.SequenceEqual([firstKey, secondKey]) == true;
+            PumpDispatcher();
+            var entriesRendered =
+                center?.RenderedEntryCount == 2 &&
+                session.Current.ReminderStates[firstRule.Id].LastDeliveredOccurrenceKey ==
+                    MinminCountdown.Core.ReminderOccurrenceKey.Create(firstRule, dueUtc).ToString() &&
+                session.Current.ReminderStates[secondRule.Id].LastDeliveredOccurrenceKey ==
+                    MinminCountdown.Core.ReminderOccurrenceKey.Create(secondRule, dueUtc).ToString();
+            var acknowledgementDistinctFromDelivery =
+                session.Current.ReminderStates.Values.All(state =>
+                    state.LastDeliveredOccurrenceKey is not null &&
+                    state.LastAcknowledgedOccurrenceKey is null) &&
+                center?.EntryCount == 2;
+
+            var visibleText = center is null
+                ? Array.Empty<string>()
+                : Descendants<TextBlock>(center).Select(text => text.Text).ToArray();
+            var buttons = center is null
+                ? Array.Empty<Button>()
+                : Descendants<Button>(center).ToArray();
+            var displaysSourceContentAndTime =
+                visibleText.Count(text => string.Equals(text, "便签", StringComparison.Ordinal)) == 2 &&
+                visibleText.Contains(firstNote.Text, StringComparer.Ordinal) &&
+                visibleText.Contains(secondNote.Text, StringComparer.Ordinal) &&
+                visibleText.Count(text => text.Contains("2031年5月6日 09:30", StringComparison.Ordinal) &&
+                                          text.Contains("北京时间", StringComparison.Ordinal)) == 2;
+            var hasOnlySafeActions =
+                buttons.Count(button => string.Equals(button.Content?.ToString(), "知道了", StringComparison.Ordinal)) == 2 &&
+                buttons.Count(button => string.Equals(button.Content?.ToString(), "稍后提醒", StringComparison.Ordinal)) == 2 &&
+                buttons.Count(button => string.Equals(button.Content?.ToString(), "完成便签", StringComparison.Ordinal)) == 2 &&
+                buttons.Count(button => string.Equals(button.Content?.ToString(), "打开来源", StringComparison.Ordinal)) == 2 &&
+                buttons.All(button => button.Content?.ToString() is
+                    "知道了" or "稍后提醒" or "完成便签" or "打开来源");
+            var accessible =
+                center is not null &&
+                string.Equals(AutomationProperties.GetName(center), "提醒中心", StringComparison.Ordinal) &&
+                buttons.All(button => !string.IsNullOrWhiteSpace(AutomationProperties.GetName(button))) &&
+                Descendants<ScrollViewer>(center).All(scroller =>
+                    !string.IsNullOrWhiteSpace(AutomationProperties.GetName(scroller)));
+
+            var beforeOpenSource = session.SerializeCurrent();
+            var filterBeforeOpen = workspace.Snapshot.Filter;
+            var openSourceRaised = center?.RequestOpenSource(firstKey) == true;
+            PumpDispatcher();
+            var filterAfterOpen = workspace.Snapshot.Filter;
+            var openSourcePreservesState =
+                openSourceRaised &&
+                string.Equals(beforeOpenSource, session.SerializeCurrent(), StringComparison.Ordinal) &&
+                FiltersEqual(filterBeforeOpen, filterAfterOpen) &&
+                string.Equals(draftText.Text, "必须保留的便签草稿", StringComparison.Ordinal) &&
+                draftDate.SelectedDate == new DateTime(2031, 5, 9) &&
+                draftReminder.SelectedIndex == 2 &&
+                sourceWindow.CurrentWorkspace == WorkspaceKind.Notes &&
+                center?.EntryCount == 2;
+            var openSourceRestoresMinimizedWindow =
+                sourceWasVisibleAndMinimized &&
+                sourceWindow.IsVisible &&
+                sourceWindow.WindowState == WindowState.Normal &&
+                sourceWindow.IsActive;
+            var sourceWasFocused =
+                openedSourceIds.SequenceEqual([firstNote.Id]) &&
+                Descendants<Border>(sourceWindow).Any(border =>
+                    AutomationProperties.GetName(border).Contains(
+                        $"当前提醒来源便签：{firstNote.Text}",
+                        StringComparison.Ordinal)) &&
+                Keyboard.FocusedElement is Button { Tag: string focusedNoteId } &&
+                string.Equals(focusedNoteId, firstNote.Id, StringComparison.OrdinalIgnoreCase);
+            sourceWindow.UpdateTime(ChinaStandardTime.ToBeijingTime(dueUtc.AddMinutes(1)));
+            PumpDispatcher();
+            var openSourceFindsExactNote =
+                sourceWasFocused &&
+                !Descendants<Border>(sourceWindow).Any(border =>
+                    AutomationProperties.GetName(border).Contains(
+                        $"当前提醒来源便签：{firstNote.Text}",
+                        StringComparison.Ordinal));
+
+            Directory.CreateDirectory(blockedTemporaryPath);
+            var beforeAcknowledgementFailure = session.SerializeCurrent();
+            var acknowledgementRequested = center?.RequestAcknowledgement(firstKey) == true;
+            var acknowledgementFailureRetainsEntry =
+                acknowledgementRequested &&
+                center?.EntryCount == 2 &&
+                center.IsFailureVisible(firstKey) &&
+                !center.IsAcknowledgeEnabled(firstKey) &&
+                center.RequestOpenSource(firstKey) &&
+                session.Current.ReminderStates[firstRule.Id].LastAcknowledgedOccurrenceKey is null;
+            var acknowledgementFailureIsAtomic =
+                string.Equals(
+                    beforeAcknowledgementFailure,
+                    session.SerializeCurrent(),
+                    StringComparison.Ordinal);
+
+            Directory.Delete(blockedTemporaryPath);
+            clock.UtcNow = dueUtc.AddSeconds(5);
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var firstOccurrenceKey = MinminCountdown.Core.ReminderOccurrenceKey.Create(
+                firstRule,
+                dueUtc).ToString();
+            var persistedAfterRetry = new SettingsStore(clock: clock)
+                .Load(settingsPath)
+                .Settings
+                .ReminderStates[firstRule.Id];
+            var singleItemDisposition =
+                center?.EntryCount == 1 &&
+                !center.OrderedKeys.Contains(firstKey) &&
+                center.OrderedKeys.Contains(secondKey) &&
+                session.Current.ReminderStates[firstRule.Id].LastAcknowledgedOccurrenceKey == firstOccurrenceKey &&
+                persistedAfterRetry.LastAcknowledgedOccurrenceKey == firstOccurrenceKey;
+
+            var secondAcknowledged = center?.RequestAcknowledgement(secondKey) == true;
+            PumpDispatcher();
+            var closesWhenEmpty =
+                secondAcknowledged &&
+                center?.IsVisible == false &&
+                coordinator.ActiveWindowCount == 0 &&
+                coordinator.ActiveEntryCount == 0;
+
+            var reopenedDueUtc = dueUtc.AddMinutes(1);
+            var reopenedSaved = session.TrySaveNote(
+                null,
+                "中心关闭后重新提醒",
+                new DateTime(2031, 5, 6),
+                false,
+                Array.Empty<string>(),
+                ReminderSchedule.CreateOnce(reopenedDueUtc),
+                out _);
+            clock.UtcNow = reopenedDueUtc;
+            coordinator.Tick(reopenedDueUtc);
+            var reopenedCenter = coordinator.ActiveWindow;
+            PumpDispatcher();
+            var reopens =
+                reopenedSaved &&
+                reopenedCenter?.IsVisible == true &&
+                !ReferenceEquals(reopenedCenter, center) &&
+                reopenedCenter.EntryCount == 1 &&
+                reopenedCenter.RenderedEntryCount == 1 &&
+                coordinator.ActiveWindowCount == 1;
+
+            coordinator.Dispose();
+            coordinator = null;
+            PumpDispatcher();
+
+            var originalMode = theme.ActiveMode;
+            var layoutWindow = new ReminderCenterWindow
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            for (var index = 11; index >= 0; index--)
+            {
+                var scheduledUtc = dueUtc.AddMinutes(index / 3);
+                layoutWindow.AddEntry(new ReminderCenterItem(
+                    new ActiveReminderOccurrenceKey($"layout-rule-{index:D2}", scheduledUtc),
+                    new NoteRecord(
+                        $"layout-note-{index:D2}",
+                        $"长内容提醒 {index:D2}：{new string('测', 96)}",
+                        "2031-05-06",
+                        false,
+                        Array.Empty<string>(),
+                        NoReminder.Instance),
+                    index / 3,
+                    index % 3));
+            }
+
+            try
+            {
+                layoutWindow.Show();
+                PumpDispatcher();
+                layoutWindow.UpdateLayout();
+                var scroller = Descendants<ScrollViewer>(layoutWindow).Single();
+                var longBodies = Descendants<TextBlock>(layoutWindow)
+                    .Where(text => text.Text.StartsWith("长内容提醒", StringComparison.Ordinal))
+                    .ToArray();
+                var scrollsLongContent =
+                    layoutWindow.UsesScrollableList &&
+                    scroller.VerticalScrollBarVisibility == ScrollBarVisibility.Auto &&
+                    scroller.ScrollableHeight > 0 &&
+                    longBodies.Length == 12 &&
+                    longBodies.All(text => text.TextWrapping == TextWrapping.Wrap && text.ActualHeight > 0);
+                theme.Apply(ApplicationThemeMode.Day);
+                PumpDispatcher();
+                var daySurface = ((Border)layoutWindow.Content).Background;
+                theme.Apply(ApplicationThemeMode.Night);
+                PumpDispatcher();
+                var nightSurface = ((Border)layoutWindow.Content).Background;
+                var followsDayNightTheme =
+                    daySurface is SolidColorBrush dayBrush &&
+                    nightSurface is SolidColorBrush nightBrush &&
+                    dayBrush.Color != nightBrush.Color &&
+                    nightBrush.Color == ((SolidColorBrush)Application.Current.FindResource("CanvasBrush")).Color;
+                theme.Apply(originalMode);
+
+                return new ReminderCenterExerciseResult(
+                    singleWindowBeforeRender,
+                    sameTickBatch,
+                    stableOrdering && layoutWindow.OrderedKeys.SequenceEqual(
+                        layoutWindow.OrderedKeys
+                            .OrderBy(key => key.ScheduledUtc)
+                            .ThenBy(key => key.RuleId, StringComparer.Ordinal)),
+                    entriesRendered,
+                    acknowledgementDistinctFromDelivery,
+                    acknowledgementFailureRetainsEntry,
+                    acknowledgementFailureIsAtomic,
+                    singleItemDisposition,
+                    openSourcePreservesState,
+                    openSourceFindsExactNote,
+                    openSourceRestoresMinimizedWindow,
+                    closesWhenEmpty,
+                    reopens,
+                    scrollsLongContent,
+                    followsDayNightTheme,
+                    hasOnlySafeActions,
+                    displaysSourceContentAndTime,
+                    accessible);
+            }
+            finally
+            {
+                theme.Apply(originalMode);
+                layoutWindow.ForceClose();
+            }
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            if (sourceWindow?.IsVisible == true)
+            {
+                sourceWindow.Close();
+            }
+
+            calendar?.Dispose();
+            TryDeleteSettingsFiles(settingsPath);
+            File.Delete(diagnosticPath);
+            if (Directory.Exists(blockedTemporaryPath))
+            {
+                Directory.Delete(blockedTemporaryPath);
+            }
+            else
+            {
+                File.Delete(blockedTemporaryPath);
+            }
+        }
+    }
+
+    private static bool FiltersEqual(
+        DesktopWorkspaceFilter left,
+        DesktopWorkspaceFilter right) =>
+        left.SelectedTagIds.SequenceEqual(right.SelectedTagIds, StringComparer.OrdinalIgnoreCase) &&
+        left.MatchMode == right.MatchMode &&
+        left.UntaggedOnly == right.UntaggedOnly &&
+        left.CountdownStatus == right.CountdownStatus &&
+        left.NoteStatus == right.NoteStatus &&
+        string.Equals(left.NoteSearch, right.NoteSearch, StringComparison.Ordinal) &&
+        string.Equals(left.NoteDate, right.NoteDate, StringComparison.Ordinal) &&
+        left.UndatedNotesOnly == right.UndatedNotesOnly;
+
+    private static ReminderCenterSourceLifecycleExerciseResult ValidateReminderCenterSourceLifecycle()
+    {
+        var firstDueUtc = new DateTimeOffset(2031, 6, 1, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-center-source-{Guid.NewGuid():N}.settings.json");
+        var blockedTemporaryPath = settingsPath + ".tmp";
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
+            var session = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            var workspace = new DesktopWorkspace(session);
+
+            bool TryCreateDueNote(string text, DateTimeOffset dueUtc, out NoteRecord note)
+            {
+                if (!session.TrySaveNote(
+                        null,
+                        text,
+                        new DateTime(2031, 6, 1),
+                        false,
+                        Array.Empty<string>(),
+                        ReminderSchedule.CreateOnce(dueUtc),
+                        out _))
+                {
+                    note = null!;
+                    return false;
+                }
+
+                note = session.Current.Notes.Single(candidate =>
+                    string.Equals(candidate.Text, text, StringComparison.Ordinal));
+                return true;
+            }
+
+            coordinator = new ReminderDeliveryCoordinator(workspace, null);
+            if (!TryCreateDueNote("删除来源生命周期探针", firstDueUtc, out var deletedNote))
+            {
+                return ReminderCenterSourceLifecycleExerciseResult.Failed;
+            }
+
+            clock.UtcNow = firstDueUtc;
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var deletedRule = deletedNote.ReminderRules.Single();
+            var deletedKey = new ActiveReminderOccurrenceKey(deletedRule.Id, firstDueUtc);
+            var deletedWindow = coordinator.ActiveWindow;
+            Directory.CreateDirectory(blockedTemporaryPath);
+            var acknowledgementFailed = deletedWindow?.RequestAcknowledgement(deletedKey) == true;
+            var persistenceFailureRetainsCurrentSource =
+                acknowledgementFailed &&
+                coordinator.ActiveEntryCount == 1 &&
+                coordinator.HasPendingPersistenceRetry &&
+                deletedWindow?.IsVisible == true &&
+                deletedWindow.IsFailureVisible(deletedKey);
+            Directory.Delete(blockedTemporaryPath);
+            var sourceDeleted = session.TryDeleteNote(deletedNote.Id, out _);
+            clock.UtcNow = firstDueUtc.AddSeconds(1);
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var removesDeletedSource =
+                sourceDeleted &&
+                coordinator.ActiveEntryCount == 0 &&
+                coordinator.ActiveWindowCount == 0 &&
+                deletedWindow?.IsVisible == false;
+            var cancelsDeletedSourceAcknowledgementRetry =
+                removesDeletedSource &&
+                !coordinator.HasPendingPersistenceRetry;
+
+            coordinator.Dispose();
+            coordinator = new ReminderDeliveryCoordinator(workspace, null);
+            var disabledDueUtc = firstDueUtc.AddMinutes(1);
+            if (!TryCreateDueNote("停用来源生命周期探针", disabledDueUtc, out var disabledNote))
+            {
+                return ReminderCenterSourceLifecycleExerciseResult.Failed;
+            }
+
+            clock.UtcNow = disabledDueUtc;
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var disabledWindow = coordinator.ActiveWindow;
+            var sourceDisabled = session.TrySaveNote(
+                disabledNote.Id,
+                disabledNote.Text,
+                new DateTime(2031, 6, 1),
+                false,
+                disabledNote.TagIds,
+                NoReminder.Instance,
+                out _);
+            clock.UtcNow = disabledDueUtc.AddSeconds(1);
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var removesDisabledSource =
+                sourceDisabled &&
+                coordinator.ActiveEntryCount == 0 &&
+                coordinator.ActiveWindowCount == 0 &&
+                disabledWindow?.IsVisible == false;
+
+            coordinator.Dispose();
+            coordinator = new ReminderDeliveryCoordinator(workspace, null);
+            var completedDueUtc = firstDueUtc.AddMinutes(2);
+            if (!TryCreateDueNote("完成来源生命周期探针", completedDueUtc, out var completedNote))
+            {
+                return ReminderCenterSourceLifecycleExerciseResult.Failed;
+            }
+
+            clock.UtcNow = completedDueUtc;
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var completedWindow = coordinator.ActiveWindow;
+            var sourceCompleted = session.TrySetNoteCompletion(completedNote.Id, true, out _);
+            clock.UtcNow = completedDueUtc.AddSeconds(1);
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var removesCompletedSource =
+                sourceCompleted &&
+                coordinator.ActiveEntryCount == 0 &&
+                coordinator.ActiveWindowCount == 0 &&
+                completedWindow?.IsVisible == false;
+
+            var reopenedDueUtc = firstDueUtc.AddMinutes(3);
+            if (!TryCreateDueNote("来源失效后重开探针", reopenedDueUtc, out _))
+            {
+                return ReminderCenterSourceLifecycleExerciseResult.Failed;
+            }
+
+            clock.UtcNow = reopenedDueUtc;
+            coordinator.Tick(clock.UtcNow);
+            PumpDispatcher();
+            var reopensAfterSourceRemoval =
+                removesCompletedSource &&
+                coordinator.ActiveEntryCount == 1 &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveWindow?.IsVisible == true;
+
+            return new ReminderCenterSourceLifecycleExerciseResult(
+                persistenceFailureRetainsCurrentSource,
+                removesDeletedSource,
+                cancelsDeletedSourceAcknowledgementRetry,
+                removesDisabledSource,
+                removesCompletedSource,
+                reopensAfterSourceRemoval);
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            if (Directory.Exists(blockedTemporaryPath))
+            {
+                Directory.Delete(blockedTemporaryPath);
+            }
+            else
+            {
+                File.Delete(blockedTemporaryPath);
+            }
+            TryDeleteSettingsFiles(settingsPath);
+        }
+    }
+
+    private static ReminderDeliveryExerciseResult ValidateReminderDeliveryCoordinator()
+    {
+        var firstDueUtc = new DateTimeOffset(2031, 4, 7, 1, 30, 0, TimeSpan.Zero);
+        var repeatingDueUtc = firstDueUtc.AddMinutes(-30);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-delivery-{Guid.NewGuid():N}.settings.json");
+        var blockedTemporaryPath = settingsPath + ".tmp";
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        const string reminderText = "真实渲染与持久化重试探针";
+        const string repeatingReminderText = "独立重复提醒探针";
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new MutableValidationClock(repeatingDueUtc.AddSeconds(-1));
+            var session = ApplicationSession.Load(
+                settingsPath,
+                new SettingsStore(clock: clock));
+            if (!session.TrySaveNote(
+                    null,
+                    reminderText,
+                    new DateTime(2031, 4, 7),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(firstDueUtc),
+                    out _))
+            {
+                return ReminderDeliveryExerciseResult.Failed;
+            }
+
+            var onceId = session.Current.Notes.Single().Id;
+            if (!session.TrySaveNote(
+                    null,
+                    repeatingReminderText,
+                    new DateTime(2031, 4, 7),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(repeatingDueUtc, 60),
+                    out _))
+            {
+                return ReminderDeliveryExerciseResult.Failed;
+            }
+
+            var repeatingId = session.Current.Notes.Single(note =>
+                string.Equals(note.Text, repeatingReminderText, StringComparison.Ordinal)).Id;
+            var workspace = new DesktopWorkspace(session);
+            coordinator = new ReminderDeliveryCoordinator(
+                workspace,
+                new DiagnosticLogger(diagnosticPath));
+            clock.UtcNow = repeatingDueUtc;
+            coordinator.Tick(repeatingDueUtc);
+            var repeatingWindow = Application.Current.Windows
+                .OfType<ReminderCenterWindow>()
+                .FirstOrDefault(window => Descendants<TextBlock>(window).Any(text =>
+                    string.Equals(text.Text, repeatingReminderText, StringComparison.Ordinal)));
+            PumpDispatcher();
+            var repeatingNote = session.Current.Notes.Single(note => note.Id == repeatingId);
+            var repeatingRule = repeatingNote.ReminderRules.Single();
+            var repeatingStatePersisted =
+                session.Current.ReminderStates.TryGetValue(repeatingRule.Id, out var repeatingState) &&
+                repeatingState.HandledThroughUtc == repeatingDueUtc &&
+                repeatingState.LastDeliveredOccurrenceKey ==
+                    MinminCountdown.Core.ReminderOccurrenceKey.Create(
+                        repeatingRule,
+                        repeatingDueUtc).ToString();
+            var repeatingRemainsUnresolved = workspace
+                .GetDueReminderOccurrences(repeatingDueUtc)
+                .SingleOrDefault() is { } repeatingOccurrence &&
+                repeatingOccurrence.Note.Id == repeatingId &&
+                repeatingOccurrence.Rule.Id == repeatingRule.Id &&
+                repeatingOccurrence.ScheduledUtc == repeatingDueUtc;
+
+            var repeatingKey = new ActiveReminderOccurrenceKey(repeatingRule.Id, repeatingDueUtc);
+            var repeatingAcknowledged = repeatingWindow?.RequestAcknowledgement(repeatingKey) == true;
+            PumpDispatcher();
+            var beforeFailure = session.SerializeCurrent();
+            Directory.CreateDirectory(blockedTemporaryPath);
+            clock.UtcNow = firstDueUtc;
+            coordinator.Tick(firstDueUtc);
+            var onceWindow = coordinator.ActiveWindow;
+            var onceRule = session.Current.Notes
+                .Single(note => note.Id == onceId)
+                .ReminderRules.Single();
+            var onceKey = new ActiveReminderOccurrenceKey(onceRule.Id, firstDueUtc);
+            var onceEntryRendered = false;
+            if (onceWindow is not null)
+            {
+                onceWindow.EntryRendered += (_, args) =>
+                    onceEntryRendered |= args.Key == onceKey;
+            }
+            var pendingBeforeRender = ReminderRuleCompatibility.ToLegacy(
+                session.Current,
+                session.Current.Notes.Single(note => note.Id == onceId)) is OnceReminder
+            {
+                Delivery: OnceDeliveryState.Pending
+            };
+            PumpDispatcher();
+            var independentOccurrencesWork =
+                repeatingStatePersisted &&
+                repeatingRemainsUnresolved &&
+                repeatingAcknowledged &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                onceWindow?.IsVisible == true &&
+                !ReferenceEquals(onceWindow, repeatingWindow) &&
+                onceEntryRendered &&
+                !session.Reminders.GetDue(session.Current, firstDueUtc)
+                    .Any(note => note.Id == repeatingId);
+            var dismiss = onceWindow is null
+                ? null
+                : Descendants<Button>(onceWindow).Single(button =>
+                    string.Equals(button.Content?.ToString(), "知道了", StringComparison.Ordinal) &&
+                    AutomationProperties.GetName(button).Contains(reminderText, StringComparison.Ordinal));
+            var openSource = onceWindow is null
+                ? null
+                : Descendants<Button>(onceWindow).Single(button =>
+                    string.Equals(button.Content?.ToString(), "打开来源", StringComparison.Ordinal) &&
+                    AutomationProperties.GetName(button).Contains(reminderText, StringComparison.Ordinal));
+            var failureStatusVisible =
+                onceWindow?.PersistenceFailureVisible == true &&
+                onceWindow.IsVisible &&
+                dismiss?.IsEnabled == false &&
+                openSource?.IsEnabled == true;
+            var failureKeyHandled = dismiss is not null &&
+                                    !WindowValidationInput.RaisePreviewKey(dismiss, Key.Escape);
+            PumpDispatcher();
+            var failureWindowStayedVisible = onceWindow?.IsVisible == true;
+            var firstRetryUtc = coordinator.NextPersistenceRetryUtc;
+            var firstFailureCount = coordinator.PersistenceFailureCount;
+            onceWindow?.Close();
+            PumpDispatcher();
+            var persistenceFailureCloseGuardWorks =
+                onceWindow?.IsVisible == true &&
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                coordinator.PersistenceFailureCount == firstFailureCount &&
+                coordinator.NextPersistenceRetryUtc == firstRetryUtc;
+            var firstFailureSingleFlight =
+                coordinator.ActiveWindowCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                coordinator.PersistenceFailureCount == 1 &&
+                coordinator.HasPendingPersistenceRetry &&
+                firstRetryUtc == firstDueUtc.AddSeconds(5) &&
+                string.Equals(beforeFailure, session.SerializeCurrent(), StringComparison.Ordinal);
+
+            coordinator.Tick(firstDueUtc.AddSeconds(4));
+            var noEarlyRetry = coordinator.PersistenceFailureCount == 1 &&
+                               coordinator.ActiveWindowCount == 1;
+            coordinator.Tick(firstDueUtc.AddSeconds(5));
+            var secondRetryUtc = coordinator.NextPersistenceRetryUtc;
+            coordinator.Tick(firstDueUtc.AddSeconds(15));
+            var thirdRetryUtc = coordinator.NextPersistenceRetryUtc;
+            coordinator.Tick(firstDueUtc.AddSeconds(35));
+            var fourthRetryUtc = coordinator.NextPersistenceRetryUtc;
+            coordinator.Tick(firstDueUtc.AddSeconds(65));
+            var fifthRetryUtc = coordinator.NextPersistenceRetryUtc;
+            var diagnostics = File.ReadAllText(diagnosticPath);
+            var diagnosticsExcludePrivatePayload =
+                diagnostics.Contains(
+                    "OneTimeReminderDeliveryPersistFailed",
+                    StringComparison.Ordinal) &&
+                !diagnostics.Contains(reminderText, StringComparison.Ordinal) &&
+                !diagnostics.Contains(beforeFailure, StringComparison.Ordinal) &&
+                !diagnostics.Contains("\"notes\"", StringComparison.Ordinal);
+            var backoffWorks =
+                secondRetryUtc == firstDueUtc.AddSeconds(15) &&
+                thirdRetryUtc == firstDueUtc.AddSeconds(35) &&
+                fourthRetryUtc == firstDueUtc.AddSeconds(65) &&
+                fifthRetryUtc == firstDueUtc.AddSeconds(95) &&
+                coordinator.PersistenceFailureCount == 5 &&
+                coordinator.ActiveWindowCount == 1;
+
+            Directory.Delete(blockedTemporaryPath);
+            coordinator.Tick(firstDueUtc.AddSeconds(95));
+            var delivered = ReminderRuleCompatibility.ToLegacy(
+                session.Current,
+                session.Current.Notes.Single(note => note.Id == onceId)) is OnceReminder
+            {
+                Delivery: OnceDeliveryState.Delivered
+            };
+            var successSingleFlight =
+                delivered &&
+                coordinator.ActiveOccurrenceConfirmed &&
+                !coordinator.HasPendingPersistenceRetry &&
+                coordinator.ActiveWindowCount == 1 &&
+                onceWindow?.PersistenceFailureVisible == false &&
+                dismiss?.IsEnabled == true;
+            coordinator.Tick(firstDueUtc.AddSeconds(96));
+            successSingleFlight &= coordinator.ActiveWindowCount == 1;
+            var acknowledged = onceWindow?.RequestAcknowledgement(onceKey) == true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            persistenceFailureCloseGuardWorks &=
+                acknowledged &&
+                onceWindow?.IsVisible == false &&
+                coordinator.ActiveWindowCount == 0;
+
+            return new ReminderDeliveryExerciseResult(
+                pendingBeforeRender && onceEntryRendered,
+                failureStatusVisible && failureKeyHandled && failureWindowStayedVisible,
+                firstFailureSingleFlight && noEarlyRetry && backoffWorks,
+                successSingleFlight,
+                independentOccurrencesWork,
+                persistenceFailureCloseGuardWorks,
+                diagnosticsExcludePrivatePayload);
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            TryDeleteSettingsFiles(settingsPath);
+            File.Delete(blockedTemporaryPath);
+            File.Delete(diagnosticPath);
+            if (Directory.Exists(blockedTemporaryPath))
+            {
+                Directory.Delete(blockedTemporaryPath);
+            }
         }
     }
 
@@ -7457,7 +8928,7 @@ internal static class ValidationReport
         finally
         {
             validationMain?.Close();
-            TryDeleteFile(settingsPath);
+            TryDeleteSettingsFiles(settingsPath);
             TryDeleteFile(settingsPath + ".tmp");
             TryDeleteFile(diagnosticPath);
             var holidayDirectory = Path.Combine(temporaryRoot, "holiday-cache");
@@ -7851,49 +9322,86 @@ internal static class ValidationReport
         }
     }
 
-    private static ReminderKeyboardExerciseResult ValidateReminderWindowKeyboardDismissal()
+    private static ReminderKeyboardExerciseResult ValidateReminderCenterKeyboardNavigation()
     {
-        var allKeysDismiss = true;
-        var focusesDismissAction = true;
-        foreach (var key in new[] { Key.Escape, Key.Enter, Key.Space })
+        var key = new ActiveReminderOccurrenceKey(
+            "validation-reminder-rule",
+            new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+        var window = new ReminderCenterWindow
         {
-            var window = new ReminderWindow(new NoteRecord(
-                $"validation-reminder-{key}",
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        window.AddEntry(new ReminderCenterItem(
+            key,
+            new NoteRecord(
+                "validation-reminder-note",
                 "键盘提醒验证",
                 "2031-04-05",
                 false,
                 Array.Empty<string>(),
-                NoReminder.Instance))
+                NoReminder.Instance),
+            0,
+            0));
+        try
+        {
+            window.Show();
+            PumpDispatcher();
+            window.SetDeliveryReady(key);
+            PumpDispatcher();
+            var buttons = Descendants<Button>(window).ToArray();
+            var acknowledge = buttons.Single(button =>
+                string.Equals(button.Content?.ToString(), "知道了", StringComparison.Ordinal));
+            var snooze = buttons.Single(button =>
+                string.Equals(button.Content?.ToString(), "稍后提醒", StringComparison.Ordinal));
+            var complete = buttons.Single(button =>
+                string.Equals(button.Content?.ToString(), "完成便签", StringComparison.Ordinal));
+            var openSource = buttons.Single(button =>
+                string.Equals(button.Content?.ToString(), "打开来源", StringComparison.Ordinal));
+            var snoozeChoice = Descendants<ComboBox>(window).Single(comboBox =>
+                comboBox.IsVisible &&
+                AutomationProperties.GetName(comboBox).StartsWith(
+                    "稍后提醒时间：",
+                    StringComparison.Ordinal));
+            acknowledge.Focus();
+            var tabRequest = new TraversalRequest(FocusNavigationDirection.Next);
+            var dispositionActionsTraverse =
+                acknowledge.MoveFocus(tabRequest) &&
+                ReferenceEquals(Keyboard.FocusedElement, complete) &&
+                complete.MoveFocus(tabRequest) &&
+                ReferenceEquals(Keyboard.FocusedElement, openSource);
+            var snoozeChoiceFocusable =
+                snoozeChoice.Focusable &&
+                snoozeChoice.IsTabStop &&
+                snoozeChoice.Focus();
+            snooze.Focus();
+            var snoozeActionsTraverse =
+                snooze.IsTabStop &&
+                snooze.MoveFocus(tabRequest) &&
+                ReferenceEquals(Keyboard.FocusedElement, acknowledge);
+            var tabTraverses =
+                dispositionActionsTraverse &&
+                snoozeChoiceFocusable &&
+                snoozeActionsTraverse;
+            var closeWasGuarded = true;
+            window.Close();
+            PumpDispatcher();
+            closeWasGuarded &= window.IsVisible;
+            return new ReminderKeyboardExerciseResult(
+                window.SupportsKeyboardNavigation && tabTraverses && closeWasGuarded,
+                window.ShowActivated &&
+                !string.IsNullOrWhiteSpace(AutomationProperties.GetName(window)));
+        }
+        finally
+        {
+            if (window.IsVisible)
             {
-                ShowInTaskbar = false,
-                WindowStartupLocation = WindowStartupLocation.Manual,
-                Left = -20_000,
-                Top = -20_000,
-                Opacity = 0
-            };
-            try
-            {
-                window.Show();
-                PumpDispatcher();
-                var dismiss = Descendants<Button>(window).Single(button =>
-                    string.Equals(button.Content?.ToString(), "知道了", StringComparison.Ordinal));
-                focusesDismissAction &=
-                    window.ShowActivated &&
-                    ReferenceEquals(Keyboard.FocusedElement, dismiss);
-                var handled = WindowValidationInput.RaisePreviewKey(dismiss, key);
-                PumpDispatcher();
-                allKeysDismiss &= handled && !window.IsVisible;
-            }
-            finally
-            {
-                if (window.IsVisible)
-                {
-                    window.Close();
-                }
+                window.ForceClose();
             }
         }
-
-        return new ReminderKeyboardExerciseResult(allKeysDismiss, focusesDismissAction);
     }
 
     private static bool ValidateToolTipThemeTextContrast(
@@ -8453,8 +9961,87 @@ internal static class ValidationReport
         bool ExitRequestsApplicationExit);
 
     private sealed record ReminderKeyboardExerciseResult(
-        bool AllKeysDismiss,
-        bool FocusesDismissAction);
+        bool KeyboardTraversalWorks,
+        bool InitialFocusAndAccessibleNameWork);
+
+    private sealed record ReminderDeliveryExerciseResult(
+        bool RequiresContentRenderedConfirmation,
+        bool PersistenceFailureStaysVisible,
+        bool PersistenceRetryBackoffWorks,
+        bool SingleFlightWorks,
+        bool IndependentOccurrencesWork,
+        bool PersistenceFailureCloseGuardWorks,
+        bool DiagnosticsExcludePrivatePayload)
+    {
+        public static ReminderDeliveryExerciseResult Failed { get; } =
+            new(false, false, false, false, false, false, false);
+    }
+
+    private sealed record ReminderCenterExerciseResult(
+        bool SingleWindow,
+        bool SameTickBatch,
+        bool StableOrdering,
+        bool EntriesRendered,
+        bool AcknowledgementDistinctFromDelivery,
+        bool AcknowledgementFailureRetainsEntry,
+        bool AcknowledgementFailureIsAtomic,
+        bool SingleItemDisposition,
+        bool OpenSourcePreservesState,
+        bool OpenSourceFindsExactNote,
+        bool OpenSourceRestoresMinimizedWindow,
+        bool ClosesWhenEmpty,
+        bool Reopens,
+        bool ScrollsLongContent,
+        bool FollowsDayNightTheme,
+        bool HasOnlySafeActions,
+        bool DisplaysSourceContentAndTime,
+        bool Accessible)
+    {
+        public static ReminderCenterExerciseResult Failed { get; } = new(
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false);
+    }
+
+    private sealed record ReminderCenterSourceLifecycleExerciseResult(
+        bool PersistenceFailureRetainsCurrentSource,
+        bool RemovesDeletedSource,
+        bool CancelsDeletedSourceAcknowledgementRetry,
+        bool RemovesDisabledSource,
+        bool RemovesCompletedSource,
+        bool ReopensAfterSourceRemoval)
+    {
+        public static ReminderCenterSourceLifecycleExerciseResult Failed { get; } =
+            new(false, false, false, false, false, false);
+    }
+
+    private sealed record RepeatingReminderDeliveryExerciseResult(
+        bool RenderedLatchWorks,
+        bool SingleUnresolvedOccurrenceWorks,
+        bool DueBeforeShow,
+        bool WindowOpened,
+        bool ContentRendered,
+        bool NoDuplicate,
+        bool AcknowledgementMonotonicAcrossOccurrences)
+    {
+        public static RepeatingReminderDeliveryExerciseResult Failed { get; } =
+            new(false, false, false, false, false, false, false);
+    }
 
     private sealed record AlphaMetrics(bool IsFullyOpaque, int NonOpaquePixels, byte MinimumAlpha);
 
@@ -9295,5 +10882,15 @@ internal static class ValidationReport
         }
 
         public DateTimeOffset UtcNow { get; }
+    }
+
+    private sealed class MutableValidationClock : IClock
+    {
+        public MutableValidationClock(DateTimeOffset utcNow)
+        {
+            UtcNow = utcNow;
+        }
+
+        public DateTimeOffset UtcNow { get; set; }
     }
 }

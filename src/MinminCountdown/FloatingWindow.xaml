@@ -276,13 +276,25 @@
                   <ComboBox x:Name="FloatingReminder"
                             Grid.Column="1"
                             Width="116"
-                            Margin="8,0,0,0" />
+                            Margin="8,0,0,0"
+                            Visibility="Collapsed" />
+                  <Button x:Name="FloatingManageReminderRules"
+                          Grid.Column="1"
+                          Width="116"
+                          Margin="8,0,0,0"
+                          Content="提醒规则"
+                          Style="{DynamicResource SecondaryButton}" />
                 </Grid>
                 <TextBlock x:Name="FloatingNoteDateError"
                            Margin="2,4,2,0"
                            Foreground="{DynamicResource FloatingErrorBrush}"
                            TextWrapping="Wrap"
                            Visibility="Collapsed" />
+                <TextBlock x:Name="FloatingReminderRulesSummary"
+                           Margin="2,5,2,0"
+                           Foreground="{DynamicResource FloatingNoteInputTextBrush}"
+                           Text="不提醒"
+                           TextWrapping="Wrap" />
                 <Grid x:Name="FloatingReminderSchedule"
                       Margin="0,8,0,0"
                       Visibility="Collapsed">

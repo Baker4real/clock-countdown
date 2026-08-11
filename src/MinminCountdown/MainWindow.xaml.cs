@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using MinminCountdown.Core;
@@ -32,6 +33,14 @@ public sealed partial class MainWindow : Window
     private readonly ReminderEditing _reminderEditing = new();
     private readonly Dictionary<string, CheckBox> _noteCompletionBoxes =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, FrameworkElement> _countdownSourceRows =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Button> _countdownSourceFocusTargets =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, FrameworkElement> _noteSourceRows =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Button> _noteSourceFocusTargets =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private ApplicationThemeMode _themeMode = ApplicationThemeMode.Day;
@@ -43,7 +52,11 @@ public sealed partial class MainWindow : Window
     private bool _noteDateDirty;
     private bool _settingReminderSchedule;
     private bool _noteReminderScheduleDirty;
+    private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();
+    private IReadOnlyList<ReminderRule> _noteReminderRules = Array.Empty<ReminderRule>();
     private long _lastRenderedNoteMinuteUtc = -1;
+    private string? _reminderSourceCountdownId;
+    private string? _reminderSourceNoteId;
 
     internal MainWindow(
         DesktopWorkspace desktopWorkspace,
@@ -74,6 +87,8 @@ public sealed partial class MainWindow : Window
 
     internal WorkspaceKind CurrentWorkspace => _workspace;
 
+    internal string? EditingCountdownId => _editingCountdownId;
+
     internal ApplicationThemeMode CurrentThemeMode => _themeMode;
 
     internal IReadOnlyList<int> TimeOptionCounts =>
@@ -95,6 +110,26 @@ public sealed partial class MainWindow : Window
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen;
 
+    internal void PrepareInstanceActivationStateForTest()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        SetNoteFilter(NoteStatusFilter.Completed);
+        NoteSearch.Text = "instance-activation-search";
+        NoteDateFilter.SelectedDate = new DateTime(2031, 4, 5);
+        CountdownName.Text = "instance-activation-countdown-draft";
+        NoteText.Text = "instance-activation-note-draft";
+    }
+
+    internal MainWindowActivationState CaptureInstanceActivationState() => new(
+        _workspace,
+        _desktopWorkspace.Snapshot.Filter,
+        CountdownName.Text,
+        NoteText.Text,
+        NoteSearch.Text,
+        NoteDateFilter.SelectedDate,
+        _editingCountdownId,
+        _editingNoteId);
+
     private NoteExerciseResult RunNoteAddExercise()
     {
         ShowWorkspace(WorkspaceKind.Notes);
@@ -111,6 +146,7 @@ public sealed partial class MainWindow : Window
             0,
             firstDueDay.Offset);
         NoteText.Text = "验证点击添加便签";
+        _noteReminderRules = Array.Empty<ReminderRule>();
         _settingDefaultDate = true;
         NoteDate.SelectedDate = null;
         _settingDefaultDate = false;
@@ -123,9 +159,13 @@ public sealed partial class MainWindow : Window
             NoteMessage.Text.Contains("日期", StringComparison.Ordinal);
 
         NoteDate.SelectedDate = noteDate;
-        NoteReminder.SelectedIndex = 2;
-        NoteReminderInterval.SelectedIndex = 1;
-        SetReminderFirstDue(firstDue);
+        _noteReminderRules = new ReminderRule[]
+        {
+            new FixedIntervalReminderRule(
+                Guid.NewGuid().ToString("N"),
+                firstDue.ToUniversalTime(),
+                new ReminderInterval(30))
+        };
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var afterAdd = _desktopWorkspace.Snapshot.Settings;
         var added = afterAdd.Notes.LastOrDefault(
@@ -178,15 +218,19 @@ public sealed partial class MainWindow : Window
 
         NoteText.Text = "验证主窗不提醒";
         NoteDate.SelectedDate = noteDate;
-        NoteReminder.SelectedIndex = 0;
+        _noteReminderRules = Array.Empty<ReminderRule>();
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var noReminderWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证主窗不提醒")?.Reminder is NoReminder;
 
         NoteText.Text = "验证主窗仅一次";
         NoteDate.SelectedDate = noteDate;
-        NoteReminder.SelectedIndex = 1;
-        SetReminderFirstDue(onceDue);
+        _noteReminderRules = new ReminderRule[]
+        {
+            new AbsoluteOnceReminderRule(
+                Guid.NewGuid().ToString("N"),
+                onceDue.ToUniversalTime())
+        };
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var onceWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证主窗仅一次")?.Reminder is OnceReminder
@@ -197,9 +241,13 @@ public sealed partial class MainWindow : Window
 
         NoteText.Text = "验证主窗重复提醒";
         NoteDate.SelectedDate = noteDate;
-        NoteReminder.SelectedIndex = 2;
-        NoteReminderInterval.SelectedIndex = 1;
-        SetReminderFirstDue(repeatDue);
+        _noteReminderRules = new ReminderRule[]
+        {
+            new FixedIntervalReminderRule(
+                Guid.NewGuid().ToString("N"),
+                repeatDue.ToUniversalTime(),
+                new ReminderInterval(30))
+        };
         SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var repeatWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证主窗重复提醒")?.Reminder is RepeatingReminder repeating &&
@@ -317,8 +365,14 @@ public sealed partial class MainWindow : Window
             var originalStart = saved.ReminderStartUtc;
             var liveEarly = workspace.GetDueReminders(firstDueUtc.Value.AddSeconds(-1));
             var liveDue = workspace.GetDueReminders(firstDueUtc.Value);
-            workspace.ConfirmReminderDisplayed(saved, firstDueUtc.Value);
-            if (!workspace.Apply(new SaveNoteChange(
+            var displayed = workspace.ConfirmReminderDisplayed(saved, firstDueUtc.Value);
+            var acknowledged = workspace.AcknowledgeReminder(
+                saved,
+                saved.ReminderRules.Single().Id,
+                firstDueUtc.Value);
+            if (!displayed.Succeeded ||
+                !acknowledged.Succeeded ||
+                !workspace.Apply(new SaveNoteChange(
                     saved.Id,
                     "已编辑的跨天提醒探针",
                     new DateTime(2031, 4, 5),
@@ -338,11 +392,11 @@ public sealed partial class MainWindow : Window
             reloaded.ConfirmReminderDisplayed(persistedNote, firstDueUtc.Value);
             var duplicate = reloaded.GetDueReminders(firstDueUtc.Value);
             var nextCycle = reloaded.GetDueReminders(firstDueUtc.Value.AddMinutes(30));
-            var completionRestarted =
+            var completionPreservedSchedule =
                 reloaded.Apply(new SetNoteCompletionChange(persistedNote.Id, true)).Succeeded &&
                 reloaded.Apply(new SetNoteCompletionChange(persistedNote.Id, false)).Succeeded &&
                 reloaded.Snapshot.Settings.Notes
-                    .Single(note => note.Id == persistedNote.Id).ReminderStartUtc == nowUtc;
+                    .Single(note => note.Id == persistedNote.Id).ReminderStartUtc == originalStart;
             return
                 originalStart == new DateTimeOffset(2031, 4, 6, 1, 0, 0, TimeSpan.Zero) &&
                 persistedNote.ReminderStartUtc == originalStart &&
@@ -350,10 +404,10 @@ public sealed partial class MainWindow : Window
                 liveEarly.Count == 0 &&
                 liveDue.Count == 1 &&
                 early.Count == 0 &&
-                due.Count == 1 &&
+                due.Count == 0 &&
                 duplicate.Count == 0 &&
                 nextCycle.Count == 1 &&
-                completionRestarted;
+                completionPreservedSchedule;
         }
         finally
         {
@@ -364,6 +418,10 @@ public sealed partial class MainWindow : Window
             _settingReminderSchedule = false;
             File.Delete(settingsPath);
             File.Delete(settingsPath + ".tmp");
+            File.Delete(settingsPath + ".backup1");
+            File.Delete(settingsPath + ".backup2");
+            File.Delete(settingsPath + ".backup2.tmp");
+            File.Delete(settingsPath + ".backup2.rollback");
         }
     }
 
@@ -412,6 +470,104 @@ public sealed partial class MainWindow : Window
         SaveCountdownButton.IsEnabled = showCountdowns;
         UpdateReferenceDecorationVisibility();
         RenderVisibleWorkspace();
+    }
+
+    internal bool OpenReminderSource(string noteId) =>
+        OpenReminderSource(ReminderSourceKind.Note, noteId);
+
+    internal bool OpenReminderSource(ReminderSourceKind sourceKind, string sourceId) =>
+        sourceKind == ReminderSourceKind.Countdown
+            ? OpenCountdownReminderSource(sourceId)
+            : OpenNoteReminderSource(sourceId);
+
+    private bool OpenNoteReminderSource(string noteId)
+    {
+        var note = _desktopWorkspace.Snapshot.AllNotes.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, noteId, StringComparison.OrdinalIgnoreCase));
+        if (note is null)
+        {
+            return false;
+        }
+
+        _reminderSourceNoteId = note.Id;
+        try
+        {
+            if (note.IsCompleted)
+            {
+                _completedNotesExpanded = true;
+            }
+            else
+            {
+                _activeNotesExpanded = true;
+            }
+
+            _collapsedNoteDateSections.Remove((note.IsCompleted, note.Date));
+            ShowWorkspace(WorkspaceKind.Notes);
+            if (!IsVisible)
+            {
+                Show();
+            }
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Activate();
+            if (_noteSourceRows.TryGetValue(note.Id, out var row))
+            {
+                row.BringIntoView();
+            }
+
+            if (_noteSourceFocusTargets.TryGetValue(note.Id, out var focusTarget))
+            {
+                Keyboard.Focus(focusTarget);
+            }
+            return true;
+        }
+        finally
+        {
+            _reminderSourceNoteId = null;
+        }
+    }
+
+    private bool OpenCountdownReminderSource(string countdownId)
+    {
+        var countdown = _desktopWorkspace.Snapshot.Settings.Countdowns.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, countdownId, StringComparison.OrdinalIgnoreCase));
+        if (countdown is null)
+        {
+            return false;
+        }
+
+        _reminderSourceCountdownId = countdown.Id;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            if (!IsVisible)
+            {
+                Show();
+            }
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Activate();
+            if (_countdownSourceRows.TryGetValue(countdown.Id, out var row))
+            {
+                row.BringIntoView();
+            }
+
+            if (_countdownSourceFocusTargets.TryGetValue(countdown.Id, out var focusTarget))
+            {
+                Keyboard.Focus(focusTarget);
+            }
+            return true;
+        }
+        finally
+        {
+            _reminderSourceCountdownId = null;
+        }
     }
 
     internal void UpdateTime(DateTimeOffset beijingNow)
@@ -571,6 +727,7 @@ public sealed partial class MainWindow : Window
         NameControl(CountdownMinute, "倒计时截止分钟");
         NameControl(CountdownSecond, "倒计时截止秒");
         NameControl(SetNowButton, "设为当前北京时间");
+        NameControl(ManageCountdownReminderRulesButton, "管理倒计时提醒规则");
         NameControl(SaveCountdownButton, "保存倒计时");
         NameControl(DisplayPrecision, "悬浮窗显示精度");
         NameControl(MonthlySalary, "月薪");
@@ -588,6 +745,7 @@ public sealed partial class MainWindow : Window
         NameControl(NoteReminderDate, "首次提醒日期");
         NameControl(NoteReminderHour, "首次提醒小时");
         NameControl(NoteReminderMinute, "首次提醒分钟");
+        NameControl(ManageNoteReminderRulesButton, "管理便签提醒规则");
         NameControl(NoteSearch, "搜索便签");
         NameControl(SaveNoteButton, "保存便签");
         NameControl(ResetEmptyNotesFiltersButton, "重置便签筛选");
@@ -624,12 +782,14 @@ public sealed partial class MainWindow : Window
             TagManagerPopup.IsOpen = !TagManagerPopup.IsOpen;
         };
         SetNowButton.Click += (_, _) => SetCountdownTarget(_desktopWorkspace.Snapshot.BeijingNow);
+        ManageCountdownReminderRulesButton.Click += (_, _) => OpenCountdownReminderRulesEditor();
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
         ThemeModeButton.Click += (_, _) => CycleThemePreference();
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
+        ManageNoteReminderRulesButton.Click += (_, _) => OpenNoteReminderRulesEditor();
         NoteReminder.SelectionChanged += (_, _) => UpdateReminderScheduleControls();
         NoteReminderInterval.SelectionChanged += (_, _) => UpdateReminderIntervalControls();
         CustomReminderMinutes.TextChanged += (_, _) => SetDefaultReminderFirstDue();
@@ -779,8 +939,22 @@ public sealed partial class MainWindow : Window
     private void RenderCountdowns()
     {
         CountdownRows.Children.Clear();
+        _countdownSourceRows.Clear();
+        _countdownSourceFocusTargets.Clear();
         var snapshot = _desktopWorkspace.Snapshot;
-        var records = snapshot.VisibleCountdowns;
+        var visibleIds = snapshot.VisibleCountdowns
+            .Select(static countdown => countdown.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var records = _reminderSourceCountdownId is null
+            ? snapshot.VisibleCountdowns
+            : snapshot.Settings.Countdowns
+                .Where(countdown =>
+                    visibleIds.Contains(countdown.Id) ||
+                    string.Equals(
+                        countdown.Id,
+                        _reminderSourceCountdownId,
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray();
         RecordCountText.Text = $"{records.Count} 个倒计时";
         if (records.Count == 0)
         {
@@ -831,7 +1005,20 @@ public sealed partial class MainWindow : Window
             Grid.SetColumn(actions, 1);
             layout.Children.Add(text);
             layout.Children.Add(actions);
-            CountdownRows.Children.Add(Card(layout, active ? "CardBrush" : "ExpiredBrush"));
+            var card = Card(layout, active ? "CardBrush" : "ExpiredBrush");
+            _countdownSourceRows[record.Id] = card;
+            _countdownSourceFocusTargets[record.Id] = edit;
+            if (string.Equals(
+                    record.Id,
+                    _reminderSourceCountdownId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                card.BorderThickness = new Thickness(2);
+                card.SetResourceReference(Border.BorderBrushProperty, "ActiveBrush");
+                AutomationProperties.SetName(card, $"当前提醒来源倒计时：{record.Name}");
+            }
+
+            CountdownRows.Children.Add(card);
         }
     }
 
@@ -843,7 +1030,18 @@ public sealed partial class MainWindow : Window
         ActiveNoteRows.Children.Clear();
         CompletedNoteRows.Children.Clear();
         _noteCompletionBoxes.Clear();
-        var records = snapshot.VisibleNotes;
+        _noteSourceRows.Clear();
+        _noteSourceFocusTargets.Clear();
+        var visibleIds = snapshot.VisibleNotes
+            .Select(static note => note.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var records = _reminderSourceNoteId is null
+            ? snapshot.VisibleNotes
+            : snapshot.AllNotes
+                .Where(note =>
+                    visibleIds.Contains(note.Id) ||
+                    string.Equals(note.Id, _reminderSourceNoteId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
         var active = records.Where(note => !note.IsCompleted).ToArray();
         var completed = records.Where(note => note.IsCompleted).ToArray();
         RecordCountText.Text = $"{active.Length} 个待办";
@@ -1177,7 +1375,7 @@ public sealed partial class MainWindow : Window
             TextBlock.ForegroundProperty,
             note.IsCompleted ? "MutedBrush" : "InkBrush");
         body.Children.Add(noteText);
-        var details = FormatNoteDetails(note, nowUtc);
+        var details = FormatNoteDetails(_desktopWorkspace.Snapshot.Settings, note, nowUtc);
         if (!string.IsNullOrWhiteSpace(details))
         {
             var detailText = new TextBlock
@@ -1200,36 +1398,74 @@ public sealed partial class MainWindow : Window
         grid.Children.Add(completion);
         grid.Children.Add(body);
         grid.Children.Add(actions);
-        return NoteCard(grid);
+        var card = NoteCard(grid);
+        _noteSourceRows[note.Id] = card;
+        _noteSourceFocusTargets[note.Id] = edit;
+        if (string.Equals(note.Id, _reminderSourceNoteId, StringComparison.OrdinalIgnoreCase))
+        {
+            card.BorderThickness = new Thickness(2);
+            card.SetResourceReference(Border.BorderBrushProperty, "ActiveBrush");
+            AutomationProperties.SetName(card, $"当前提醒来源便签：{note.Text}");
+        }
+
+        return card;
     }
 
     private static string FormatNoteDetails(NoteRecord note, DateTimeOffset nowUtc)
+        => FormatNoteDetails(
+            CountdownSettings.Empty with { Notes = new[] { note } },
+            note,
+            nowUtc);
+
+    private static string FormatNoteDetails(
+        CountdownSettings settings,
+        NoteRecord note,
+        DateTimeOffset nowUtc)
     {
-        if (note.Reminder is NoReminder)
+        if (note.ReminderRules.Count == 0)
         {
             return string.Empty;
         }
 
-        if (note.Reminder is OnceReminder once)
+        if (note.ReminderRules.Count == 1 &&
+            note.ReminderRules[0] is AbsoluteOnceReminderRule once)
         {
-            if (once.Delivery == OnceDeliveryState.Delivered)
+            if (settings.ReminderStates.TryGetValue(once.Id, out var state) &&
+                state.HandledThroughUtc >= once.ScheduledUtc)
             {
                 return "已提醒";
             }
 
-            var due = ChinaStandardTime.ToBeijingTime(once.FirstDueUtc);
+            var due = ChinaStandardTime.ToBeijingTime(once.ScheduledUtc);
             var suffix = note.IsCompleted ? "（已暂停）" : string.Empty;
             return $"一次提醒 {due:M 月 d 日 HH:mm}{suffix}";
         }
 
-        var repeating = (RepeatingReminder)note.Reminder;
-        var nextReminder = ReminderSchedule.GetNextDueUtc(note, nowUtc);
-        if (note.IsCompleted)
+        if (note.ReminderRules.Count == 1 &&
+            note.ReminderRules[0] is FixedIntervalReminderRule repeating)
         {
-            return $"每 {repeating.Interval.Minutes} 分钟（已暂停）";
+            var fixedNext = ReminderSchedule.GetNextDueUtc(settings, note, nowUtc);
+            if (note.IsCompleted)
+            {
+                return $"每 {repeating.Interval.Minutes} 分钟（已暂停）";
+            }
+
+            return $"下次 {ChinaStandardTime.ToBeijingTime(fixedNext!.Value):M 月 d 日 HH:mm} · 每 {repeating.Interval.Minutes} 分钟";
         }
 
-        return $"下次 {ChinaStandardTime.ToBeijingTime(nextReminder!.Value):M 月 d 日 HH:mm} · 每 {repeating.Interval.Minutes} 分钟";
+        var summary = note.ReminderRules.Count == 1 ? "日历重复" : $"{note.ReminderRules.Count} 条提醒";
+        var nextReminder = ReminderSchedule.GetNextDueUtc(
+            settings,
+            note,
+            nowUtc);
+        if (note.IsCompleted)
+        {
+            return $"{summary}（已暂停）";
+        }
+
+        return nextReminder is null
+            ? summary
+            : $"下次 {ChinaStandardTime.ToBeijingTime(nextReminder.Value):M 月 d 日 HH:mm} · {summary}";
     }
 
     private void SaveCountdown()
@@ -1240,19 +1476,22 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var target = CountdownFormatting.ToUtc(
-            CountdownDate.SelectedDate.Value,
-            CountdownHour.SelectedIndex,
-            CountdownMinute.SelectedIndex,
-            CountdownSecond.SelectedIndex);
+        var target = GetCountdownTargetUtc()!.Value;
         var result = _desktopWorkspace.Apply(new SaveCountdownChange(
             _editingCountdownId,
             CountdownName.Text,
             target,
-            CountdownTags.SelectedTagIds.ToArray()));
+            CountdownTags.SelectedTagIds.ToArray(),
+            _countdownReminderRules));
         if (!result.Succeeded)
         {
             SetMessage(CountdownMessage, $"保存失败：{result.Error}", true);
+            if (result.ReminderRuleErrorTarget != ReminderRuleEditingErrorTarget.None)
+            {
+                OpenCountdownReminderRulesEditor(
+                    result.ReminderRuleErrorTarget,
+                    result.Error);
+            }
             return;
         }
 
@@ -1278,23 +1517,22 @@ public sealed partial class MainWindow : Window
             ? null
             : _desktopWorkspace.Snapshot.Settings.Notes
                 .FirstOrDefault(note => note.Id == _editingNoteId);
-        var reminderResult = _reminderEditing.Build(CreateReminderEditingRequest(existing));
-        if (!reminderResult.Succeeded)
-        {
-            SetMessage(NoteMessage, reminderResult.Error, true);
-            return;
-        }
-
         var result = _desktopWorkspace.Apply(new SaveNoteChange(
             _editingNoteId,
             NoteText.Text,
             NoteDate.SelectedDate,
             existing?.IsCompleted ?? false,
             NoteTags.SelectedTagIds.ToArray(),
-            reminderResult.Reminder));
+            _noteReminderRules));
         if (!result.Succeeded)
         {
             SetMessage(NoteMessage, $"保存失败：{result.Error}", true);
+            if (result.ReminderRuleErrorTarget != ReminderRuleEditingErrorTarget.None)
+            {
+                OpenNoteReminderRulesEditor(
+                    result.ReminderRuleErrorTarget,
+                    result.Error);
+            }
             return;
         }
 
@@ -1347,6 +1585,11 @@ public sealed partial class MainWindow : Window
         }
 
         var record = _desktopWorkspace.Snapshot.Settings.Countdowns.First(item => item.Id == id);
+        BeginEditCountdown(record);
+    }
+
+    private void BeginEditCountdown(CountdownRecord record)
+    {
         var beijing = ChinaStandardTime.ToBeijingTime(record.TargetUtc);
         _editingCountdownId = record.Id;
         CountdownName.Text = record.Name;
@@ -1355,6 +1598,8 @@ public sealed partial class MainWindow : Window
         CountdownMinute.SelectedIndex = beijing.Minute;
         CountdownSecond.SelectedIndex = beijing.Second;
         CountdownTags.SetSelection(record.TagIds);
+        _countdownReminderRules = Array.AsReadOnly(record.ReminderRules.ToArray());
+        UpdateCountdownReminderRulesSummary();
         CountdownEditorTitle.Text = "编辑倒计时";
         SaveCountdownButton.Content = "保存修改";
         CancelCountdownEdit.Visibility = Visibility.Visible;
@@ -1397,11 +1642,20 @@ public sealed partial class MainWindow : Window
         _settingDefaultDate = false;
         _noteDateDirty = true;
         NoteTags.SetSelection(note.TagIds);
-        SetReminderSelection(note.Reminder);
-        var displayedDueUtc = note.Reminder switch
+        _noteReminderRules = Array.AsReadOnly(note.ReminderRules.ToArray());
+        UpdateNoteReminderRulesSummary();
+        var compatibleReminder = note.ReminderRules is
+            [AbsoluteOnceReminderRule or FixedIntervalReminderRule]
+            ? ReminderRuleCompatibility.ToLegacySchedule(note)
+            : NoReminder.Instance;
+        SetReminderSelection(compatibleReminder);
+        var displayedDueUtc = compatibleReminder switch
         {
             OnceReminder once => once.FirstDueUtc,
-            RepeatingReminder => ReminderSchedule.GetNextDueUtc(note, _desktopWorkspace.Snapshot.UtcNow),
+            RepeatingReminder => ReminderSchedule.GetNextDueUtc(
+                _desktopWorkspace.Snapshot.Settings,
+                note,
+                _desktopWorkspace.Snapshot.UtcNow),
             _ => null
         };
         SetReminderFirstDue(displayedDueUtc is null
@@ -1460,6 +1714,8 @@ public sealed partial class MainWindow : Window
         CountdownName.Clear();
         SetCountdownTarget(_desktopWorkspace.Snapshot.BeijingNow.AddDays(1));
         CountdownTags.SetSelection(Array.Empty<string>());
+        _countdownReminderRules = Array.Empty<ReminderRule>();
+        UpdateCountdownReminderRulesSummary();
         CountdownEditorTitle.Text = "新增倒计时";
         SaveCountdownButton.Content = "添加倒计时";
         CancelCountdownEdit.Visibility = Visibility.Collapsed;
@@ -1476,6 +1732,8 @@ public sealed partial class MainWindow : Window
         _settingDefaultDate = false;
         _noteDateDirty = false;
         NoteTags.SetSelection(snapshot.Filter.SelectedTagIds);
+        _noteReminderRules = Array.Empty<ReminderRule>();
+        UpdateNoteReminderRulesSummary();
         NoteReminder.SelectedIndex = 0;
         NoteReminderInterval.SelectedIndex = 1;
         CustomReminderMinutes.Clear();
@@ -1569,6 +1827,95 @@ public sealed partial class MainWindow : Window
         CustomReminderMinutes.Text = interval is 15 or 30 or 60
             ? string.Empty
             : interval.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void OpenNoteReminderRulesEditor(
+        ReminderRuleEditingErrorTarget initialErrorTarget = ReminderRuleEditingErrorTarget.None,
+        string initialError = "")
+    {
+        var editor = new ReminderRulesEditorWindow(
+            _noteReminderRules,
+            _desktopWorkspace.Clock,
+            initialErrorTarget: initialErrorTarget,
+            initialError: initialError)
+        {
+            Owner = this
+        };
+        if (editor.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _noteReminderRules = Array.AsReadOnly(editor.ResultRules.ToArray());
+        UpdateNoteReminderRulesSummary();
+        NoteMessage.Text = string.Empty;
+    }
+
+    private void OpenCountdownReminderRulesEditor(
+        ReminderRuleEditingErrorTarget initialErrorTarget = ReminderRuleEditingErrorTarget.None,
+        string initialError = "")
+    {
+        var targetUtc = GetCountdownTargetUtc();
+        if (targetUtc is null)
+        {
+            SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
+            return;
+        }
+
+        var editor = new ReminderRulesEditorWindow(
+            _countdownReminderRules,
+            _desktopWorkspace.Clock,
+            initialErrorTarget: initialErrorTarget,
+            initialError: initialError,
+            countdownTargetUtc: targetUtc)
+        {
+            Owner = this
+        };
+        if (editor.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _countdownReminderRules = Array.AsReadOnly(editor.ResultRules.ToArray());
+        UpdateCountdownReminderRulesSummary();
+        CountdownMessage.Text = string.Empty;
+    }
+
+    private DateTimeOffset? GetCountdownTargetUtc()
+    {
+        if (CountdownDate.SelectedDate is null ||
+            CountdownHour.SelectedIndex is < 0 or > 23 ||
+            CountdownMinute.SelectedIndex is < 0 or > 59 ||
+            CountdownSecond.SelectedIndex is < 0 or > 59)
+        {
+            return null;
+        }
+
+        return CountdownFormatting.ToUtc(
+            CountdownDate.SelectedDate.Value,
+            CountdownHour.SelectedIndex,
+            CountdownMinute.SelectedIndex,
+            CountdownSecond.SelectedIndex);
+    }
+
+    private void UpdateCountdownReminderRulesSummary()
+    {
+        CountdownReminderRulesSummary.Text = _countdownReminderRules.Count == 0
+            ? "不提醒"
+            : $"已配置 {_countdownReminderRules.Count} 条";
+        AutomationProperties.SetName(
+            CountdownReminderRulesSummary,
+            $"倒计时提醒规则摘要：{CountdownReminderRulesSummary.Text}");
+    }
+
+    private void UpdateNoteReminderRulesSummary()
+    {
+        NoteReminderRulesSummary.Text = _noteReminderRules.Count == 0
+            ? "不提醒"
+            : $"已配置 {_noteReminderRules.Count} 条提醒规则";
+        AutomationProperties.SetName(
+            NoteReminderRulesSummary,
+            $"便签提醒规则摘要：{NoteReminderRulesSummary.Text}");
     }
 
     private void UpdateReminderScheduleControls()
@@ -2121,6 +2468,16 @@ public sealed partial class MainWindow : Window
         public DateTimeOffset UtcNow { get; }
     }
 }
+
+internal sealed record MainWindowActivationState(
+    WorkspaceKind Workspace,
+    DesktopWorkspaceFilter Filter,
+    string CountdownDraft,
+    string NoteDraft,
+    string NoteSearch,
+    DateTime? NoteDateFilter,
+    string? EditingCountdownId,
+    string? EditingNoteId);
 
 internal sealed record NoteExerciseResult(
     bool DateRequired,

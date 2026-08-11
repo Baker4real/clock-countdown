@@ -46,21 +46,19 @@ function ConvertTo-CountdownNoteReminderIntervalMinutes {
     param([AllowNull()] [object] $Minutes)
 
     if ($null -eq $Minutes) { return $null }
-    [int] $parsed = 0
-    if (
-        $Minutes -is [bool] -or
-        -not [int]::TryParse(
-            ([string] $Minutes),
-            [System.Globalization.NumberStyles]::None,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [ref] $parsed
-        ) -or
-        $parsed -lt 1 -or
-        $parsed -gt 1440
-    ) {
+    $isInteger =
+        $Minutes -is [sbyte] -or
+        $Minutes -is [byte] -or
+        $Minutes -is [int16] -or
+        $Minutes -is [uint16] -or
+        $Minutes -is [int32] -or
+        $Minutes -is [uint32] -or
+        $Minutes -is [int64] -or
+        $Minutes -is [uint64]
+    if (-not $isInteger -or [decimal] $Minutes -lt 1 -or [decimal] $Minutes -gt 1440) {
         throw '便签提醒间隔必须是 1 到 1440 分钟之间的整数。'
     }
-    $parsed
+    [int] $Minutes
 }
 
 function ConvertTo-CountdownNoteReminderUtc {
@@ -351,4 +349,4 @@ function Invoke-NoteMutation {
     [pscustomobject]@{ Notes = $candidate; Action = $Action; Note = $note; Changed = $true; Message = $message }
 }
 
-Export-ModuleMember -Function New-CountdownNoteRecord, Get-DueCountdownNoteReminders, Invoke-NoteMutation
+Export-ModuleMember -Function New-CountdownNoteRecord, Get-DueCountdownNoteReminders, Invoke-NoteMutation, ConvertTo-CountdownNoteReminderIntervalMinutes, ConvertTo-CountdownNoteReminderUtc, Assert-CountdownNoteReminderProperties

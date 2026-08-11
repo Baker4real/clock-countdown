@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -54,17 +55,14 @@ internal static class RuntimeProtocol
 
     public static StartupRequest ReadStartupRequest(string startupRequestPath, bool required = false)
     {
+        if (!required)
+        {
+            return new StartupRequest(Guid.NewGuid().ToString("N"), false, "none", null);
+        }
+
         try
         {
             return ParseStartupRequest(startupRequestPath);
-        }
-        catch (FileNotFoundException) when (!required)
-        {
-            return new StartupRequest(Guid.NewGuid().ToString("N"), false, "none");
-        }
-        catch (DirectoryNotFoundException) when (!required)
-        {
-            return new StartupRequest(Guid.NewGuid().ToString("N"), false, "none");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
         {
@@ -114,21 +112,44 @@ internal static class RuntimeProtocol
             throw new InvalidDataException("启动请求的 launchToken 无效。");
         }
 
-        var acceptanceReadOnly =
-            document.RootElement.TryGetProperty("acceptanceReadOnly", out var readOnlyElement) &&
-            readOnlyElement.ValueKind == JsonValueKind.True;
+        if (!document.RootElement.TryGetProperty("acceptanceReadOnly", out var readOnlyElement) ||
+            readOnlyElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidDataException("启动请求的 acceptanceReadOnly 必须是布尔值。");
+        }
+
+        var acceptanceReadOnly = readOnlyElement.GetBoolean();
         var acceptanceState = document.RootElement.TryGetProperty("acceptanceState", out var stateElement)
             ? stateElement.GetString()
-            : acceptanceReadOnly ? "active" : "none";
+            : null;
         if (acceptanceState is not ("active" or "released" or "ready" or "finalized" or "none"))
         {
             throw new InvalidDataException("启动请求的 acceptanceState 无效。");
         }
 
+        var expectedReadOnly = acceptanceState is "active" or "released" or "ready";
+        if (acceptanceReadOnly != expectedReadOnly)
+        {
+            throw new InvalidDataException("启动请求的 acceptanceReadOnly 与 acceptanceState 不一致。");
+        }
+
+        if (!document.RootElement.TryGetProperty("requestedAtUtc", out var requestedAtElement) ||
+            requestedAtElement.ValueKind != JsonValueKind.String ||
+            !DateTimeOffset.TryParseExact(
+                requestedAtElement.GetString(),
+                "o",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var requestedAtUtc))
+        {
+            throw new InvalidDataException("启动请求的 requestedAtUtc 无效。");
+        }
+
         return new StartupRequest(
             token,
-            acceptanceState is "active" or "released" or "ready" or "finalized",
-            acceptanceState);
+            acceptanceReadOnly,
+            acceptanceState,
+            requestedAtUtc.ToUniversalTime());
     }
 
     private static bool TransitionAcceptanceState(
@@ -257,6 +278,9 @@ internal sealed class StartupAcceptanceProtocol
 
     public bool AcceptanceReadOnly => Request.AcceptanceReadOnly;
 
+    public bool RecoveryWritesAllowed =>
+        !string.Equals(Request.AcceptanceState, "active", StringComparison.Ordinal);
+
     public string RuntimeStatusPath => _runtimeStatusPath;
 
     public string AcceptanceStatusPath => _acceptanceStatusPath;
@@ -294,7 +318,11 @@ internal sealed class StartupAcceptanceProtocol
     private string AdapterPath => Path.Combine(_applicationRoot, ApplicationPaths.AdapterFileName);
 }
 
-internal sealed record StartupRequest(string LaunchToken, bool AcceptanceReadOnly, string AcceptanceState);
+internal sealed record StartupRequest(
+    string LaunchToken,
+    bool AcceptanceReadOnly,
+    string AcceptanceState,
+    DateTimeOffset? MigrationUtc);
 
 internal sealed record RuntimeReceipt(
     int SchemaVersion,

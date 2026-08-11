@@ -1,3 +1,6 @@
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
+
 namespace MinminCountdown;
 
 internal sealed class FloatingTrayController : IDisposable
@@ -36,6 +39,32 @@ internal sealed class FloatingTrayController : IDisposable
 
     internal void InvokeExitForValidation() => _trayIcon.InvokeExitForValidation();
 
+    internal string ActivationState => !_floatingWindow.IsVisible
+        ? IsTrayIconVisible ? "Tray" : "Hidden"
+        : _floatingWindow.WindowState == System.Windows.WindowState.Minimized
+            ? "Minimized"
+            : "VisibleNormal";
+
+    internal int InteractiveFloatingWindowCount => System.Windows.Application.Current?.Windows
+        .OfType<FloatingWindow>()
+        .Count() ?? 0;
+
+    internal long ForegroundWindowHandle => GetForegroundWindow().ToInt64();
+
+    internal bool FloatingWindowIsActive => _floatingWindow.IsActive;
+
+    internal bool RestoreAndActivateFromExternalRequest()
+    {
+        if (!CanTransition())
+        {
+            return false;
+        }
+
+        return RestoreCore();
+    }
+
+    internal void MinimizeToTrayForActivationTest() => OnMinimizeRequested(this, EventArgs.Empty);
+
     public void Dispose()
     {
         if (_disposed)
@@ -62,20 +91,37 @@ internal sealed class FloatingTrayController : IDisposable
 
     private void Restore()
     {
-        if (!CanTransition())
+        if (!RestoreAndActivateFromExternalRequest())
         {
             return;
         }
 
+        Restored?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool RestoreCore()
+    {
         if (!_floatingWindow.IsVisible)
         {
             _floatingWindow.Show();
         }
 
         _floatingWindow.WindowState = System.Windows.WindowState.Normal;
-        _floatingWindow.Activate();
+        var activateAccepted = _floatingWindow.Activate();
+        var focusAccepted = _floatingWindow.Focus();
+        var handle = new WindowInteropHelper(_floatingWindow).Handle;
+        var foregroundAccepted = false;
+        if (handle != IntPtr.Zero)
+        {
+            foregroundAccepted = SetForegroundWindow(handle);
+        }
         _trayIcon.Hide();
-        Restored?.Invoke(this, EventArgs.Empty);
+        var isForeground = handle != IntPtr.Zero &&
+            (GetForegroundWindow() == handle || _floatingWindow.IsActive);
+        return _floatingWindow.IsVisible &&
+               _floatingWindow.WindowState == System.Windows.WindowState.Normal &&
+               isForeground &&
+               (activateAccepted || focusAccepted || foregroundAccepted || isForeground);
     }
 
     private void RequestExit()
@@ -87,4 +133,11 @@ internal sealed class FloatingTrayController : IDisposable
     }
 
     private bool CanTransition() => !_disposed && _canTransition();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 }

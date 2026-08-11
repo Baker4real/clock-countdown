@@ -484,34 +484,10 @@ public sealed partial class FloatingWindow
                 string.IsNullOrEmpty(FloatingNoteMessage.Text) &&
                 ValidationErrorIsCleared(FloatingNoteDateError, FloatingNoteDate);
 
-            FloatingReminder.SelectedIndex = 2;
-            FloatingReminderInterval.SelectedIndex = 3;
-            FloatingCustomReminderMinutes.Text = "0";
-            FloatingAddNote.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            WindowValidationInput.Pump(Dispatcher);
-            var reminderErrorAtSource =
-                FloatingReminderMessage.Visibility == Visibility.Visible &&
-                FloatingCustomReminderMinutes.IsKeyboardFocusWithin &&
-                string.Equals(
-                    FloatingNoteMessage.Text,
-                    FloatingReminderMessage.Text,
-                    StringComparison.Ordinal) &&
-                ValidationErrorIsAccessible(
-                    FloatingReminderMessage,
-                    FloatingCustomReminderMinutes);
-            FloatingCustomReminderMinutes.Text = "45";
-            WindowValidationInput.Pump(Dispatcher);
-            var reminderErrorCleared =
-                FloatingReminderMessage.Visibility == Visibility.Collapsed &&
-                string.IsNullOrEmpty(FloatingNoteMessage.Text) &&
-                ValidationErrorIsCleared(
-                    FloatingReminderMessage,
-                    FloatingCustomReminderMinutes);
-
             return new FloatingUiPolishScenarios(
                 datePickerKeyboardLifecycleWorks,
-                textErrorAtSource && dateErrorAtSource && reminderErrorAtSource,
-                textErrorCleared && dateErrorCleared && reminderErrorCleared);
+                textErrorAtSource && dateErrorAtSource,
+                textErrorCleared && dateErrorCleared);
         }
         finally
         {

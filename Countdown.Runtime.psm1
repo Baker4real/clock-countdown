@@ -228,17 +228,42 @@ function Read-CountdownStartupRequestStrict {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw [System.IO.FileNotFoundException]::new('启动请求不存在。', $Path)
     }
-    $request = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    $request = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json -DateKind String
     $schemaVersion = Get-CountdownRuntimeProperty -Object $request -Name 'schemaVersion'
     $token = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'launchToken')
     $state = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'acceptanceState')
+    $requestedAtValue = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'requestedAtUtc')
     if ($null -eq $schemaVersion -or [int] $schemaVersion -ne 1) {
         throw "不支持的启动请求 schemaVersion：$schemaVersion"
     }
     if ([string]::IsNullOrWhiteSpace($token) -or $state -notin @('active', 'released', 'ready', 'finalized', 'none')) {
         throw '启动请求的 token 或 acceptanceState 无效。'
     }
+    $requestedAtUtc = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParseExact(
+            $requestedAtValue,
+            'o',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind,
+            [ref] $requestedAtUtc)) {
+        throw '启动请求的 requestedAtUtc 无效。'
+    }
     $request
+}
+
+function Get-CountdownStartupRequestMigrationUtc {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $LaunchToken
+    )
+
+    $request = Read-CountdownStartupRequestStrict -Path $Path
+    $requestToken = [string] (Get-CountdownRuntimeProperty -Object $request -Name 'launchToken')
+    if (-not [string]::Equals($requestToken, $LaunchToken, [System.StringComparison]::Ordinal)) {
+        throw '启动请求 token 已变化，拒绝选择设置迁移时刻。'
+    }
+
+    ([DateTimeOffset] $request.requestedAtUtc).ToUniversalTime()
 }
 
 function Remove-CountdownStartupRequest {
@@ -561,4 +586,4 @@ function Wait-CountdownAcceptanceReadyReceipt {
     throw "应用未确认 finalized-ready（$TimeoutSeconds 秒）：$lastReason"
 }
 
-Export-ModuleMember -Function New-CountdownStartupRequest, Get-CountdownStartupLaunchToken, Remove-CountdownStartupRequest, Complete-CountdownStartupRequest, Wait-CountdownStartupRequestState, Set-CountdownStartupRequestFinalized, Write-CountdownWindowReadyReceipt, Read-CountdownRuntimeReceipt, Test-CountdownWindowReadyReceipt, Wait-CountdownWindowReady, Wait-CountdownAcceptanceReadyReceipt, Write-CountdownDiagnosticEvent
+Export-ModuleMember -Function New-CountdownStartupRequest, Get-CountdownStartupLaunchToken, Get-CountdownStartupRequestMigrationUtc, Remove-CountdownStartupRequest, Complete-CountdownStartupRequest, Wait-CountdownStartupRequestState, Set-CountdownStartupRequestFinalized, Write-CountdownWindowReadyReceipt, Read-CountdownRuntimeReceipt, Test-CountdownWindowReadyReceipt, Wait-CountdownWindowReady, Wait-CountdownAcceptanceReadyReceipt, Write-CountdownDiagnosticEvent

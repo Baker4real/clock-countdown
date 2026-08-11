@@ -52,12 +52,510 @@ function ConvertTo-CountdownSettingsTargetUtc {
     [DateTimeOffset]::Parse(([string] $Value), [System.Globalization.CultureInfo]::InvariantCulture).ToUniversalTime()
 }
 
+function ConvertTo-CountdownRelativeReminderOffsetMinutes {
+    param([AllowNull()] [object] $Minutes)
+
+    $isInteger =
+        $Minutes -is [sbyte] -or
+        $Minutes -is [byte] -or
+        $Minutes -is [int16] -or
+        $Minutes -is [uint16] -or
+        $Minutes -is [int32] -or
+        $Minutes -is [uint32] -or
+        $Minutes -is [int64] -or
+        $Minutes -is [uint64]
+    if (-not $isInteger -or [decimal] $Minutes -lt 0 -or [decimal] $Minutes -gt 5256000) {
+        throw '倒计时相对提醒必须提前 0 到 5256000 分钟。'
+    }
+
+    [int] $Minutes
+}
+
+function ConvertTo-CountdownStrictInteger {
+    param(
+        [AllowNull()] [object] $Value,
+        [Parameter(Mandatory)] [int] $Minimum,
+        [Parameter(Mandatory)] [int] $Maximum,
+        [Parameter(Mandatory)] [string] $Subject
+    )
+
+    $isInteger =
+        $Value -is [sbyte] -or
+        $Value -is [byte] -or
+        $Value -is [int16] -or
+        $Value -is [uint16] -or
+        $Value -is [int32] -or
+        $Value -is [uint32] -or
+        $Value -is [int64] -or
+        $Value -is [uint64]
+    if (-not $isInteger -or [decimal] $Value -lt $Minimum -or [decimal] $Value -gt $Maximum) {
+        throw "$Subject 必须是 $Minimum 到 $Maximum 之间的整数。"
+    }
+
+    [int] $Value
+}
+
+function ConvertTo-CountdownCalendarDate {
+    param([AllowNull()] [object] $Value)
+
+    $parsed = [DateOnly]::MinValue
+    if ($Value -isnot [string] -or
+        -not [DateOnly]::TryParseExact(
+            [string] $Value,
+            'yyyy-MM-dd',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None,
+            [ref] $parsed
+        )) {
+        throw '日历提醒开始日期必须是有效的 yyyy-MM-dd。'
+    }
+
+    $parsed.ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function ConvertTo-CountdownCalendarTime {
+    param([AllowNull()] [object] $Value)
+
+    $parsed = [TimeOnly]::MinValue
+    if ($Value -isnot [string] -or
+        -not [TimeOnly]::TryParseExact(
+            [string] $Value,
+            'HH:mm',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None,
+            [ref] $parsed
+        )) {
+        throw '日历提醒本地时间必须是有效的 HH:mm。'
+    }
+
+    $parsed.ToString('HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function ConvertTo-CountdownCalendarWeekday {
+    param([AllowNull()] [object] $Value)
+
+    if ($Value -isnot [string]) { throw '按周日历提醒包含无效的星期。' }
+    switch (([string] $Value).Trim().ToLowerInvariant()) {
+        'monday' { 'monday'; break }
+        'tuesday' { 'tuesday'; break }
+        'wednesday' { 'wednesday'; break }
+        'thursday' { 'thursday'; break }
+        'friday' { 'friday'; break }
+        'saturday' { 'saturday'; break }
+        'sunday' { 'sunday'; break }
+        default { throw '按周日历提醒包含无效的星期。' }
+    }
+}
+
+function Get-CountdownCalendarWeekdayOrder {
+    param([Parameter(Mandatory)] [string] $Value)
+
+    switch ($Value) {
+        'monday' { 1 }
+        'tuesday' { 2 }
+        'wednesday' { 3 }
+        'thursday' { 4 }
+        'friday' { 5 }
+        'saturday' { 6 }
+        'sunday' { 7 }
+        default { throw '按周日历提醒包含无效的星期。' }
+    }
+}
+
+function ConvertTo-CountdownCalendarRule {
+    param(
+        [Parameter(Mandatory)] [object] $Rule,
+        [Parameter(Mandatory)] [string] $Id
+    )
+
+    $frequency = ([string] $Rule.frequency).Trim().ToLowerInvariant()
+    $interval = ConvertTo-CountdownStrictInteger -Value $Rule.interval -Minimum 1 -Maximum 999 -Subject '日历提醒间隔'
+    $startDate = ConvertTo-CountdownCalendarDate -Value $Rule.startDate
+    $localTime = ConvertTo-CountdownCalendarTime -Value $Rule.localTime
+    $normalized = [ordered]@{
+        id = $Id
+        type = 'calendar'
+        frequency = $frequency
+        interval = $interval
+        startDate = $startDate
+        localTime = $localTime
+    }
+    $selectorKey = ''
+
+    switch ($frequency) {
+        'daily' {
+            Assert-CountdownNoteReminderProperties -Reminder $Rule -Expected @('id', 'type', 'frequency', 'interval', 'startDate', 'localTime')
+        }
+        'weekly' {
+            Assert-CountdownNoteReminderProperties -Reminder $Rule -Expected @('id', 'type', 'frequency', 'interval', 'startDate', 'localTime', 'weekdays')
+            if ($null -eq $Rule.weekdays -or $Rule.weekdays -is [string]) {
+                throw '按周日历提醒必须至少包含一个星期。'
+            }
+            $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+            $weekdays = @(
+                foreach ($value in @($Rule.weekdays)) {
+                    $weekday = ConvertTo-CountdownCalendarWeekday -Value $value
+                    if (-not $seen.Add($weekday)) { throw '按周日历提醒不能包含重复星期。' }
+                    $weekday
+                }
+            )
+            if ($weekdays.Count -eq 0) { throw '按周日历提醒必须至少包含一个星期。' }
+            $weekdays = @($weekdays | Sort-Object { Get-CountdownCalendarWeekdayOrder -Value $_ })
+            $normalized.weekdays = $weekdays
+            $selectorKey = [string]::Join(',', $weekdays)
+        }
+        'monthly' {
+            $hasDay = $null -ne $Rule.PSObject.Properties['day']
+            $hasLastDay = $null -ne $Rule.PSObject.Properties['lastDay']
+            if ($hasDay -eq $hasLastDay) { throw '按月日历提醒必须且只能选择日期或最后一天。' }
+            if ($hasDay) {
+                Assert-CountdownNoteReminderProperties -Reminder $Rule -Expected @('id', 'type', 'frequency', 'interval', 'startDate', 'localTime', 'day')
+                $day = ConvertTo-CountdownStrictInteger -Value $Rule.day -Minimum 1 -Maximum 31 -Subject '按月日历提醒日期'
+                $normalized.day = $day
+                $selectorKey = "day=$day"
+            }
+            else {
+                Assert-CountdownNoteReminderProperties -Reminder $Rule -Expected @('id', 'type', 'frequency', 'interval', 'startDate', 'localTime', 'lastDay')
+                if ($Rule.lastDay -isnot [bool] -or -not [bool] $Rule.lastDay) { throw '按月日历提醒最后一天必须显式为 true。' }
+                $normalized.lastDay = $true
+                $selectorKey = 'lastDay'
+            }
+        }
+        'yearly' {
+            $hasDay = $null -ne $Rule.PSObject.Properties['day']
+            $hasLastDay = $null -ne $Rule.PSObject.Properties['lastDay']
+            if ($hasDay -eq $hasLastDay) { throw '按年日历提醒必须且只能选择日期或最后一天。' }
+            $month = ConvertTo-CountdownStrictInteger -Value $Rule.month -Minimum 1 -Maximum 12 -Subject '按年日历提醒月份'
+            $normalized.month = $month
+            if ($hasDay) {
+                Assert-CountdownNoteReminderProperties -Reminder $Rule -Expected @('id', 'type', 'frequency', 'interval', 'startDate', 'localTime', 'month', 'day')
+                $day = ConvertTo-CountdownStrictInteger -Value $Rule.day -Minimum 1 -Maximum 31 -Subject '按年日历提醒日期'
+                $normalized.day = $day
+                $selectorKey = "month=$month|day=$day"
+            }
+            else {
+                Assert-CountdownNoteReminderProperties -Reminder $Rule -Expected @('id', 'type', 'frequency', 'interval', 'startDate', 'localTime', 'month', 'lastDay')
+                if ($Rule.lastDay -isnot [bool] -or -not [bool] $Rule.lastDay) { throw '按年日历提醒最后一天必须显式为 true。' }
+                $normalized.lastDay = $true
+                $selectorKey = "month=$month|lastDay"
+            }
+        }
+        default { throw '设置中包含不支持的日历提醒频率。' }
+    }
+
+    [pscustomobject]@{
+        Rule = [pscustomobject] $normalized
+        Schedule = "calendar|$frequency|$interval|$startDate|$localTime|$selectorKey"
+    }
+}
+
+function Test-CountdownCalendarOccurrenceBoundary {
+    param(
+        [Parameter(Mandatory)] [object] $Rule,
+        [Parameter(Mandatory)] [DateTimeOffset] $ScheduledUtc
+    )
+
+    $zone = [TimeZoneInfo]::FindSystemTimeZoneById('China Standard Time')
+    $beijing = [TimeZoneInfo]::ConvertTime($ScheduledUtc.ToUniversalTime(), $zone)
+    $localDate = [DateOnly]::FromDateTime($beijing.DateTime)
+    $localTime = [TimeOnly]::FromDateTime($beijing.DateTime)
+    $startDate = [DateOnly]::ParseExact(
+        [string] $Rule.startDate,
+        'yyyy-MM-dd',
+        [System.Globalization.CultureInfo]::InvariantCulture
+    )
+    $expectedTime = [TimeOnly]::ParseExact(
+        [string] $Rule.localTime,
+        'HH:mm',
+        [System.Globalization.CultureInfo]::InvariantCulture
+    )
+    if ($localDate -lt $startDate -or $localTime -ne $expectedTime) { return $false }
+
+    $interval = [int] $Rule.interval
+    switch ([string] $Rule.frequency) {
+        'daily' {
+            return (($localDate.DayNumber - $startDate.DayNumber) % $interval) -eq 0
+        }
+        'weekly' {
+            $startWeek = $startDate.AddDays(-(([int] $startDate.DayOfWeek + 6) % 7))
+            $localWeek = $localDate.AddDays(-(([int] $localDate.DayOfWeek + 6) % 7))
+            $weekOffset = [int] (($localWeek.DayNumber - $startWeek.DayNumber) / 7)
+            $weekday = $localDate.DayOfWeek.ToString().ToLowerInvariant()
+            return ($weekOffset % $interval) -eq 0 -and $weekday -cin @($Rule.weekdays)
+        }
+        'monthly' {
+            $monthOffset = (($localDate.Year - $startDate.Year) * 12) +
+                ($localDate.Month - $startDate.Month)
+            if (($monthOffset % $interval) -ne 0) { return $false }
+            if ($null -ne $Rule.PSObject.Properties['lastDay']) {
+                return $localDate.Day -eq [DateTime]::DaysInMonth($localDate.Year, $localDate.Month)
+            }
+            return $localDate.Day -eq [int] $Rule.day
+        }
+        'yearly' {
+            if ((($localDate.Year - $startDate.Year) % $interval) -ne 0 -or
+                $localDate.Month -ne [int] $Rule.month) {
+                return $false
+            }
+            if ($null -ne $Rule.PSObject.Properties['lastDay']) {
+                return $localDate.Day -eq [DateTime]::DaysInMonth($localDate.Year, $localDate.Month)
+            }
+            return $localDate.Day -eq [int] $Rule.day
+        }
+        default { return $false }
+    }
+}
+
+function New-CountdownLegacyReminderRuleId {
+    param(
+        [Parameter(Mandatory)] [string] $SourceType,
+        [Parameter(Mandatory)] [string] $RecordId,
+        [Parameter(Mandatory)] [string] $LegacyBranch
+    )
+
+    $identity = "{0}`n{1}`n{2}" -f $SourceType.Trim().ToLowerInvariant(), $RecordId.Trim().ToUpperInvariant(), $LegacyBranch.Trim().ToLowerInvariant()
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($identity))
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    'legacy-{0}' -f [System.BitConverter]::ToString($hash).Replace('-', '').ToLowerInvariant()
+}
+
+function ConvertTo-CountdownReminderRules {
+    param(
+        [Parameter(Mandatory)] [string] $Owner,
+        [Parameter(Mandatory)] [string] $RecordId,
+        [AllowNull()] [System.Collections.IEnumerable] $Rules,
+        [AllowNull()] [object] $LegacyReminder,
+        [switch] $UseRules,
+        [switch] $AllowCountdownRelative
+    )
+
+    if (-not $UseRules) {
+        if ($null -eq $LegacyReminder -or [string] $LegacyReminder.type -eq 'none') { return ,@() }
+        $branch = switch ([string] $LegacyReminder.type) {
+            'once' { 'once' }
+            'repeat' { 'repeat' }
+            default { throw '设置中包含无效的便签提醒类型。' }
+        }
+        $ruleId = New-CountdownLegacyReminderRuleId -SourceType $Owner -RecordId $RecordId -LegacyBranch $branch
+        if ($branch -eq 'once') {
+            return ,@([pscustomobject][ordered]@{
+                id = $ruleId
+                type = 'absoluteOnce'
+                scheduledUtc = ConvertTo-CountdownNoteReminderUtc -Value $LegacyReminder.firstDueUtc -Subject '绝对一次提醒时间'
+            })
+        }
+        return ,@([pscustomobject][ordered]@{
+            id = $ruleId
+            type = 'fixedInterval'
+            firstDueUtc = ConvertTo-CountdownNoteReminderUtc -Value $LegacyReminder.firstDueUtc -Subject '固定间隔首次提醒时间'
+            intervalMinutes = ConvertTo-CountdownNoteReminderIntervalMinutes -Minutes $LegacyReminder.intervalMinutes
+        })
+    }
+
+    $result = [System.Collections.ArrayList]::new()
+    $schedules = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($rule in @($Rules)) {
+        if ($null -eq $rule) { throw "$Owner 包含无效的提醒规则。" }
+        $id = ([string] $rule.id).Trim()
+        if ([string]::IsNullOrWhiteSpace($id)) { throw '提醒规则 ID 不能为空。' }
+        $type = [string] $rule.type
+        switch ($type) {
+            'absoluteOnce' {
+                Assert-CountdownNoteReminderProperties -Reminder $rule -Expected @('id', 'type', 'scheduledUtc')
+                $scheduledUtc = ConvertTo-CountdownNoteReminderUtc -Value $rule.scheduledUtc -Subject '绝对一次提醒时间'
+                $schedule = 'absoluteOnce|{0}' -f $scheduledUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+                $normalized = [pscustomobject][ordered]@{ id = $id; type = 'absoluteOnce'; scheduledUtc = $scheduledUtc }
+            }
+            'fixedInterval' {
+                Assert-CountdownNoteReminderProperties -Reminder $rule -Expected @('id', 'type', 'firstDueUtc', 'intervalMinutes')
+                $firstDueUtc = ConvertTo-CountdownNoteReminderUtc -Value $rule.firstDueUtc -Subject '固定间隔首次提醒时间'
+                $intervalMinutes = ConvertTo-CountdownNoteReminderIntervalMinutes -Minutes $rule.intervalMinutes
+                $schedule = 'fixedInterval|{0}|{1}' -f $firstDueUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture), $intervalMinutes
+                $normalized = [pscustomobject][ordered]@{ id = $id; type = 'fixedInterval'; firstDueUtc = $firstDueUtc; intervalMinutes = $intervalMinutes }
+            }
+            'countdownRelative' {
+                if (-not $AllowCountdownRelative) {
+                    throw '倒计时相对提醒规则只能属于用户倒计时。'
+                }
+                Assert-CountdownNoteReminderProperties -Reminder $rule -Expected @('id', 'type', 'offsetMinutesBefore')
+                $offsetMinutesBefore = ConvertTo-CountdownRelativeReminderOffsetMinutes -Minutes $rule.offsetMinutesBefore
+                $schedule = 'countdownRelative|{0}' -f $offsetMinutesBefore
+                $normalized = [pscustomobject][ordered]@{ id = $id; type = 'countdownRelative'; offsetMinutesBefore = $offsetMinutesBefore }
+            }
+            'calendar' {
+                $calendar = ConvertTo-CountdownCalendarRule -Rule $rule -Id $id
+                $schedule = $calendar.Schedule
+                $normalized = $calendar.Rule
+            }
+            default { throw '设置中包含当前 schema 不支持的提醒规则类型。' }
+        }
+        if (-not $schedules.Add($schedule)) { throw "$Owner 包含重复的规范提醒日程。" }
+        [void] $result.Add($normalized)
+    }
+    if ($result.Count -gt 8) { throw "$Owner 最多只能包含 8 条提醒规则。" }
+    return ,$result
+}
+
+function Get-CountdownOccurrenceKey {
+    param(
+        [Parameter(Mandatory)] [string] $RuleId,
+        [Parameter(Mandatory)] [DateTimeOffset] $ScheduledUtc
+    )
+
+    '{0}|{1}' -f $RuleId, $ScheduledUtc.ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function ConvertFrom-CountdownOccurrenceKey {
+    param([Parameter(Mandatory)] [string] $Value)
+
+    $separator = $Value.LastIndexOf('|')
+    $scheduledUtc = [DateTimeOffset]::MinValue
+    if (
+        $separator -le 0 -or
+        -not [DateTimeOffset]::TryParseExact(
+            $Value.Substring($separator + 1),
+            'o',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None,
+            [ref] $scheduledUtc
+        ) -or
+        $scheduledUtc.Offset -ne [TimeSpan]::Zero
+    ) {
+        throw '提醒 occurrence 与规则游标互相矛盾。'
+    }
+
+    [pscustomobject]@{
+        RuleId = $Value.Substring(0, $separator)
+        ScheduledUtc = $scheduledUtc.ToUniversalTime()
+    }
+}
+
+function Get-CountdownReminderFirstScheduledUtc {
+    param([Parameter(Mandatory)] [object] $Rule)
+
+    switch ([string] $Rule.type) {
+        'absoluteOnce' { return ([DateTimeOffset] $Rule.scheduledUtc).ToUniversalTime() }
+        'fixedInterval' { return ([DateTimeOffset] $Rule.firstDueUtc).ToUniversalTime() }
+        'countdownRelative' { return $null }
+        'calendar' { return $null }
+        default { throw '设置中包含当前 schema 不支持的提醒规则类型。' }
+    }
+}
+
+function Test-CountdownOccurrenceMatchesRule {
+    param(
+        [Parameter(Mandatory)] [object] $Rule,
+        [Parameter(Mandatory)] [DateTimeOffset] $ScheduledUtc
+    )
+
+    $scheduled = $ScheduledUtc.ToUniversalTime()
+    switch ([string] $Rule.type) {
+        'absoluteOnce' { return $scheduled -eq ([DateTimeOffset] $Rule.scheduledUtc).ToUniversalTime() }
+        'fixedInterval' {
+            $firstDueUtc = ([DateTimeOffset] $Rule.firstDueUtc).ToUniversalTime()
+            return $scheduled -ge $firstDueUtc -and
+                (($scheduled.Ticks - $firstDueUtc.Ticks) % [TimeSpan]::FromMinutes([int] $Rule.intervalMinutes).Ticks) -eq 0
+        }
+        'countdownRelative' { return $true }
+        'calendar' { return Test-CountdownCalendarOccurrenceBoundary -Rule $Rule -ScheduledUtc $scheduled }
+        default { return $false }
+    }
+}
+
+function Get-CountdownLegacyReminderFromRules {
+    param(
+        [Parameter(Mandatory)] [System.Collections.IEnumerable] $Rules,
+        [AllowNull()] [System.Collections.IDictionary] $ReminderStates
+    )
+
+    $items = @($Rules)
+    if ($items.Count -eq 0) { return [pscustomobject][ordered]@{ type = 'none' } }
+    $rule = $items[0]
+    if ($rule.type -eq 'absoluteOnce') {
+        $delivery = 'pending'
+        if ($null -ne $ReminderStates -and $ReminderStates.Contains([string] $rule.id)) {
+            $state = $ReminderStates[[string] $rule.id]
+            $expectedKey = Get-CountdownOccurrenceKey -RuleId ([string] $rule.id) -ScheduledUtc ([DateTimeOffset] $rule.scheduledUtc)
+            if ([string] $state.lastDeliveredOccurrenceKey -ceq $expectedKey) { $delivery = 'delivered' }
+        }
+        return [pscustomobject][ordered]@{ type = 'once'; firstDueUtc = $rule.scheduledUtc; delivery = $delivery }
+    }
+    if ($rule.type -eq 'fixedInterval') {
+        return [pscustomobject][ordered]@{ type = 'repeat'; firstDueUtc = $rule.firstDueUtc; intervalMinutes = [int] $rule.intervalMinutes }
+    }
+    if ($rule.type -eq 'calendar') {
+        return [pscustomobject][ordered]@{ type = 'none' }
+    }
+    throw '当前兼容 oracle 不支持该提醒规则。'
+}
+
+function ConvertTo-CountdownSerializedReminderRule {
+    param([Parameter(Mandatory)] [object] $Rule)
+
+    switch ([string] $Rule.type) {
+        'absoluteOnce' {
+            return [ordered]@{
+                id = [string] $Rule.id
+                type = 'absoluteOnce'
+                scheduledUtc = ([DateTimeOffset] $Rule.scheduledUtc).ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+        }
+        'fixedInterval' {
+            return [ordered]@{
+                id = [string] $Rule.id
+                type = 'fixedInterval'
+                firstDueUtc = ([DateTimeOffset] $Rule.firstDueUtc).ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+                intervalMinutes = [int] $Rule.intervalMinutes
+            }
+        }
+        'countdownRelative' {
+            return [ordered]@{
+                id = [string] $Rule.id
+                type = 'countdownRelative'
+                offsetMinutesBefore = [int] $Rule.offsetMinutesBefore
+            }
+        }
+        'calendar' {
+            $serialized = [ordered]@{
+                id = [string] $Rule.id
+                type = 'calendar'
+                frequency = [string] $Rule.frequency
+                interval = [int] $Rule.interval
+                startDate = [string] $Rule.startDate
+                localTime = [string] $Rule.localTime
+            }
+            switch ([string] $Rule.frequency) {
+                'daily' { }
+                'weekly' { $serialized.weekdays = @($Rule.weekdays | ForEach-Object { [string] $_ }) }
+                'monthly' {
+                    if ($null -ne $Rule.PSObject.Properties['lastDay']) { $serialized.lastDay = $true }
+                    else { $serialized.day = [int] $Rule.day }
+                }
+                'yearly' {
+                    $serialized.month = [int] $Rule.month
+                    if ($null -ne $Rule.PSObject.Properties['lastDay']) { $serialized.lastDay = $true }
+                    else { $serialized.day = [int] $Rule.day }
+                }
+                default { throw '设置中包含不支持的日历提醒频率。' }
+            }
+            return $serialized
+        }
+        default { throw '设置中包含当前 schema 不支持的提醒规则类型。' }
+    }
+}
+
 function New-CountdownRecordFromSettings {
     param(
         [Parameter(Mandatory)] [string] $Id,
         [Parameter(Mandatory)] [string] $Name,
         [Parameter(Mandatory)] [DateTimeOffset] $TargetUtc,
-        [AllowNull()] [System.Collections.IEnumerable] $TagIds
+        [AllowNull()] [System.Collections.IEnumerable] $TagIds,
+        [AllowNull()] [System.Collections.IEnumerable] $ReminderRules
     )
 
     $tagIdCopy = [System.Collections.ArrayList]::new()
@@ -70,24 +568,31 @@ function New-CountdownRecordFromSettings {
         name = $Name
         targetUtc = $TargetUtc.ToUniversalTime()
         tagIds = $tagIdCopy
+        reminderRules = @($ReminderRules | Where-Object { $null -ne $_ })
     }
 }
 
 function ConvertFrom-CountdownSettingsObject {
     [CmdletBinding()]
-    param([Parameter(Mandatory)] [object] $Settings)
+    param(
+        [Parameter(Mandatory)] [object] $Settings,
+        [DateTimeOffset] $MigrationUtc = [DateTimeOffset]::UtcNow
+    )
 
     $records = [System.Collections.ArrayList]::new()
     $notes = [System.Collections.ArrayList]::new()
     $tags = [System.Collections.ArrayList]::new()
     $preferences = New-CountdownPreferences
+    $reminderStates = [ordered]@{}
+    $globalRuleIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $rulesById = [ordered]@{}
 
     if ($Settings.timeZoneId -ne 'China Standard Time') { throw '设置文件时区无效。' }
     if ($Settings.schemaVersion -eq 1) {
         [void] $records.Add((New-CountdownRecordFromSettings -Id ([guid]::NewGuid().ToString('N')) -Name '我的倒计时' -TargetUtc (ConvertTo-CountdownSettingsTargetUtc -Value $Settings.targetUtc)))
-        return [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $true }
+        return [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; ReminderStates = $reminderStates; Migrated = $true }
     }
-    if ($Settings.schemaVersion -notin @(2, 3, 4, 5, 6, 7, 8, 9)) { throw '设置文件版本无效。' }
+    if ($Settings.schemaVersion -notin @(2, 3, 4, 5, 6, 7, 8, 9, 10)) { throw '设置文件版本无效。' }
 
     if ($Settings.schemaVersion -ge 5) {
         if ($null -eq $Settings.PSObject.Properties['tags'] -or $null -eq $Settings.tags) { throw '设置中缺少标签库。' }
@@ -118,7 +623,16 @@ function ConvertFrom-CountdownSettingsObject {
             if ($null -eq $item.PSObject.Properties['tagIds'] -or $null -eq $item.tagIds) { throw '设置中的倒计时缺少标签 ID 列表。' }
             $recordTagIds = ConvertTo-CountdownTagIds -TagIds $item.tagIds -KnownTagIds $knownTagIds
         }
-        [void] $records.Add((New-CountdownRecordFromSettings -Id $id -Name $name -TargetUtc (ConvertTo-CountdownSettingsTargetUtc -Value $item.targetUtc) -TagIds $recordTagIds))
+        $recordRules = if ($Settings.schemaVersion -ge 10) {
+            if ($null -eq $item.PSObject.Properties['reminderRules']) { throw '设置中的倒计时缺少提醒规则列表。' }
+            ConvertTo-CountdownReminderRules -Owner '倒计时' -RecordId $id -Rules $item.reminderRules -UseRules -AllowCountdownRelative
+        }
+        else { @() }
+        foreach ($rule in @($recordRules)) {
+            if (-not $globalRuleIds.Add([string] $rule.id)) { throw '设置中包含重复的全局提醒规则 ID。' }
+            $rulesById[[string] $rule.id] = $rule
+        }
+        [void] $records.Add((New-CountdownRecordFromSettings -Id $id -Name $name -TargetUtc (ConvertTo-CountdownSettingsTargetUtc -Value $item.targetUtc) -TagIds $recordTagIds -ReminderRules $recordRules))
     }
 
     if ($Settings.schemaVersion -ge 3) {
@@ -155,11 +669,55 @@ function ConvertFrom-CountdownSettingsObject {
                 if ($null -eq $item.PSObject.Properties['date']) { throw '设置中的便签缺少日期字段。' }
                 $noteDate = $item.date
             }
+            if ($Settings.schemaVersion -ge 10) {
+                if ($null -eq $item.PSObject.Properties['reminderRules']) { throw '设置中的便签缺少提醒规则列表。' }
+                $noteRules = ConvertTo-CountdownReminderRules -Owner '便签' -RecordId $id -Rules $item.reminderRules -UseRules
+                foreach ($rule in @($noteRules)) {
+                    if (-not $globalRuleIds.Add([string] $rule.id)) { throw '设置中包含重复的全局提醒规则 ID。' }
+                    $rulesById[[string] $rule.id] = $rule
+                }
+                $legacyReminder = Get-CountdownLegacyReminderFromRules -Rules $noteRules -ReminderStates $null
+                $note = New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -Date $noteDate -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds -Reminder $legacyReminder
+                $note | Add-Member -NotePropertyName reminderRules -NotePropertyValue $noteRules -Force
+                [void] $notes.Add($note)
+                continue
+            }
             if ($Settings.schemaVersion -ge 8) {
                 if ($null -eq $item.PSObject.Properties['reminder']) {
                     throw '设置中的便签缺少提醒字段。'
                 }
-                [void] $notes.Add((New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -Date $noteDate -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds -Reminder $item.reminder))
+                $note = New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -Date $noteDate -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds -Reminder $item.reminder
+                $noteRules = ConvertTo-CountdownReminderRules -Owner 'note' -RecordId $id -LegacyReminder $note.reminder
+                foreach ($rule in @($noteRules)) {
+                    if (-not $globalRuleIds.Add([string] $rule.id)) { throw '设置中包含重复的全局提醒规则 ID。' }
+                    $rulesById[[string] $rule.id] = $rule
+                }
+                $note | Add-Member -NotePropertyName reminderRules -NotePropertyValue $noteRules -Force
+                if ($note.reminder.type -eq 'once' -and $note.reminder.delivery -eq 'delivered') {
+                    $rule = @($noteRules)[0]
+                    $scheduledUtc = ([DateTimeOffset] $rule.scheduledUtc).ToUniversalTime()
+                    $reminderStates[[string] $rule.id] = [pscustomobject][ordered]@{
+                        handledThroughUtc = $scheduledUtc
+                        lastDeliveredOccurrenceKey = Get-CountdownOccurrenceKey -RuleId ([string] $rule.id) -ScheduledUtc $scheduledUtc
+                        lastDispositionOccurrenceKey = $null
+                        activeSnooze = $null
+                    }
+                }
+                elseif ($note.reminder.type -eq 'repeat') {
+                    $rule = @($noteRules)[0]
+                    $firstDueUtc = ([DateTimeOffset] $rule.firstDueUtc).ToUniversalTime()
+                    if ($MigrationUtc.ToUniversalTime() -ge $firstDueUtc) {
+                        $intervalTicks = [TimeSpan]::FromMinutes([int] $rule.intervalMinutes).Ticks
+                        $cycles = [long] [Math]::Floor(($MigrationUtc.ToUniversalTime().Ticks - $firstDueUtc.Ticks) / $intervalTicks)
+                        $reminderStates[[string] $rule.id] = [pscustomobject][ordered]@{
+                            handledThroughUtc = $firstDueUtc.AddTicks($cycles * $intervalTicks)
+                            lastDeliveredOccurrenceKey = $null
+                            lastDispositionOccurrenceKey = $null
+                            activeSnooze = $null
+                        }
+                    }
+                }
+                [void] $notes.Add($note)
                 continue
             }
 
@@ -216,11 +774,124 @@ function ConvertFrom-CountdownSettingsObject {
                     $reminderStartUtc = $parsedReminderStart.ToUniversalTime()
                 }
             }
-            [void] $notes.Add((New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -Date $noteDate -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc))
+            $note = New-CountdownNoteRecord -Id $id -Text ([string] $item.text) -Date $noteDate -IsCompleted ([bool] $item.isCompleted) -TagIds $noteTagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc
+            $noteRules = ConvertTo-CountdownReminderRules -Owner 'note' -RecordId $id -LegacyReminder $note.reminder
+            foreach ($rule in @($noteRules)) {
+                if (-not $globalRuleIds.Add([string] $rule.id)) { throw '设置中包含重复的全局提醒规则 ID。' }
+                $rulesById[[string] $rule.id] = $rule
+            }
+            $note | Add-Member -NotePropertyName reminderRules -NotePropertyValue $noteRules -Force
+            if ($note.reminder.type -eq 'repeat') {
+                $rule = @($noteRules)[0]
+                $firstDueUtc = ([DateTimeOffset] $rule.firstDueUtc).ToUniversalTime()
+                if ($MigrationUtc.ToUniversalTime() -ge $firstDueUtc) {
+                    $intervalTicks = [TimeSpan]::FromMinutes([int] $rule.intervalMinutes).Ticks
+                    $cycles = [long] [Math]::Floor(($MigrationUtc.ToUniversalTime().Ticks - $firstDueUtc.Ticks) / $intervalTicks)
+                    $reminderStates[[string] $rule.id] = [pscustomobject][ordered]@{
+                        handledThroughUtc = $firstDueUtc.AddTicks($cycles * $intervalTicks)
+                        lastDeliveredOccurrenceKey = $null
+                        lastDispositionOccurrenceKey = $null
+                        activeSnooze = $null
+                    }
+                }
+            }
+            [void] $notes.Add($note)
         }
     }
 
-    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; Migrated = $Settings.schemaVersion -ne 9 }
+    if ($Settings.schemaVersion -ge 10) {
+        if ($null -eq $Settings.PSObject.Properties['reminderStates'] -or $null -eq $Settings.reminderStates) { throw '设置中缺少提醒规则状态。' }
+        foreach ($property in @($Settings.reminderStates.PSObject.Properties)) {
+            $ruleId = [string] $property.Name
+            if (-not $globalRuleIds.Contains($ruleId)) { throw '设置中包含悬空的提醒规则状态。' }
+            $hasDisposition = $null -ne $property.Value.PSObject.Properties['lastDispositionOccurrenceKey']
+            $hasAcknowledgement = $null -ne $property.Value.PSObject.Properties['lastAcknowledgedOccurrenceKey']
+            if ($hasDisposition -eq $hasAcknowledgement) { throw '提醒规则状态必须且只能包含一种处置 occurrence key 字段。' }
+            if ($hasDisposition) {
+                Assert-CountdownNoteReminderProperties -Reminder $property.Value -Expected @('handledThroughUtc', 'lastDeliveredOccurrenceKey', 'lastDispositionOccurrenceKey', 'activeSnooze')
+            }
+            else {
+                Assert-CountdownNoteReminderProperties -Reminder $property.Value -Expected @('handledThroughUtc', 'lastDeliveredOccurrenceKey', 'lastAcknowledgedOccurrenceKey')
+            }
+            $handledThroughUtc = if ($null -eq $property.Value.handledThroughUtc) { $null } else { ConvertTo-CountdownNoteReminderUtc -Value $property.Value.handledThroughUtc -Subject '提醒规则游标' }
+            $lastDeliveredOccurrenceKey = if ($null -eq $property.Value.lastDeliveredOccurrenceKey) { $null } else { [string] $property.Value.lastDeliveredOccurrenceKey }
+            $lastDispositionOccurrenceKey = if ($hasDisposition) {
+                if ($null -eq $property.Value.lastDispositionOccurrenceKey) { $null } else { [string] $property.Value.lastDispositionOccurrenceKey }
+            }
+            else {
+                if ($null -eq $property.Value.lastAcknowledgedOccurrenceKey) { $null } else { [string] $property.Value.lastAcknowledgedOccurrenceKey }
+            }
+            $sourceActiveSnooze = if ($hasDisposition) { $property.Value.activeSnooze } else { $null }
+            if ($null -eq $handledThroughUtc -and [string]::IsNullOrWhiteSpace($lastDeliveredOccurrenceKey) -and [string]::IsNullOrWhiteSpace($lastDispositionOccurrenceKey) -and $null -eq $sourceActiveSnooze) { throw '空提醒状态不得持久化。' }
+            $rule = $rulesById[$ruleId]
+            $firstScheduledUtc = Get-CountdownReminderFirstScheduledUtc -Rule $rule
+            if ($null -ne $handledThroughUtc -and $null -ne $firstScheduledUtc -and $handledThroughUtc -lt $firstScheduledUtc) { throw '提醒规则游标不能早于首次计划时刻。' }
+            if ($null -ne $handledThroughUtc) {
+                $validCursor = Test-CountdownOccurrenceMatchesRule -Rule $rule -ScheduledUtc $handledThroughUtc
+                if (-not $validCursor) { throw '提醒规则游标必须落在规则的计划 occurrence 上。' }
+            }
+            $lastDeliveredScheduledUtc = $null
+            if (-not [string]::IsNullOrWhiteSpace($lastDeliveredOccurrenceKey)) {
+                $occurrence = ConvertFrom-CountdownOccurrenceKey -Value $lastDeliveredOccurrenceKey
+                $occurrenceRuleId = $occurrence.RuleId
+                $occurrenceUtc = $occurrence.ScheduledUtc
+                if ($occurrenceRuleId -ine $ruleId -or $null -eq $handledThroughUtc -or $occurrenceUtc -gt $handledThroughUtc) { throw '提醒 occurrence 与规则游标互相矛盾。' }
+                $validOccurrence = Test-CountdownOccurrenceMatchesRule -Rule $rule -ScheduledUtc $occurrenceUtc
+                if (-not $validOccurrence) { throw '提醒 occurrence 与规则游标互相矛盾。' }
+                $lastDeliveredScheduledUtc = $occurrenceUtc
+                $lastDeliveredOccurrenceKey = Get-CountdownOccurrenceKey -RuleId $ruleId -ScheduledUtc $occurrenceUtc
+            }
+            $lastDispositionScheduledUtc = $null
+            if (-not [string]::IsNullOrWhiteSpace($lastDispositionOccurrenceKey)) {
+                if ([string]::IsNullOrWhiteSpace($lastDeliveredOccurrenceKey)) { throw '提醒处置 occurrence 缺少送达事实。' }
+                $occurrence = ConvertFrom-CountdownOccurrenceKey -Value $lastDispositionOccurrenceKey
+                $occurrenceRuleId = $occurrence.RuleId
+                $occurrenceUtc = $occurrence.ScheduledUtc
+                if ($occurrenceRuleId -ine $ruleId -or
+                    $null -eq $handledThroughUtc -or
+                    $occurrenceUtc -gt $handledThroughUtc -or
+                    $null -eq $lastDeliveredScheduledUtc -or
+                    $occurrenceUtc -gt $lastDeliveredScheduledUtc) { throw '提醒处置 occurrence 与规则游标互相矛盾。' }
+                $validOccurrence = Test-CountdownOccurrenceMatchesRule -Rule $rule -ScheduledUtc $occurrenceUtc
+                if (-not $validOccurrence) { throw '提醒处置 occurrence 与规则游标互相矛盾。' }
+                $lastDispositionScheduledUtc = $occurrenceUtc
+                $lastDispositionOccurrenceKey = Get-CountdownOccurrenceKey -RuleId $ruleId -ScheduledUtc $occurrenceUtc
+            }
+            $activeSnooze = $null
+            if ($null -ne $sourceActiveSnooze) {
+                Assert-CountdownNoteReminderProperties -Reminder $sourceActiveSnooze -Expected @('occurrenceKey', 'originalScheduledUtc', 'snoozeUntilUtc')
+                $snoozeOccurrence = ConvertFrom-CountdownOccurrenceKey -Value ([string] $sourceActiveSnooze.occurrenceKey)
+                $originalScheduledUtc = ConvertTo-CountdownNoteReminderUtc -Value $sourceActiveSnooze.originalScheduledUtc -Subject '稍后原计划时刻'
+                $snoozeUntilUtc = ConvertTo-CountdownNoteReminderUtc -Value $sourceActiveSnooze.snoozeUntilUtc -Subject '稍后覆盖时刻'
+                $canonicalSnoozeKey = Get-CountdownOccurrenceKey -RuleId $ruleId -ScheduledUtc $originalScheduledUtc
+                if ($snoozeOccurrence.RuleId -ine $ruleId -or
+                    $snoozeOccurrence.ScheduledUtc -ne $originalScheduledUtc -or
+                    $null -eq $handledThroughUtc -or
+                    $originalScheduledUtc -gt $handledThroughUtc -or
+                    $lastDeliveredOccurrenceKey -cne $canonicalSnoozeKey -or
+                    $snoozeUntilUtc -le $originalScheduledUtc -or
+                    ($null -ne $lastDispositionScheduledUtc -and $lastDispositionScheduledUtc -ge $originalScheduledUtc)) {
+                    throw '活动稍后提醒与规则 occurrence 状态互相矛盾。'
+                }
+                $activeSnooze = [pscustomobject][ordered]@{
+                    occurrenceKey = $canonicalSnoozeKey
+                    originalScheduledUtc = $originalScheduledUtc
+                    snoozeUntilUtc = $snoozeUntilUtc
+                }
+            }
+            $reminderStates[$ruleId] = [pscustomobject][ordered]@{
+                handledThroughUtc = $handledThroughUtc
+                lastDeliveredOccurrenceKey = $lastDeliveredOccurrenceKey
+                lastDispositionOccurrenceKey = $lastDispositionOccurrenceKey
+                activeSnooze = $activeSnooze
+            }
+        }
+        foreach ($note in $notes) {
+            $note.reminder = Get-CountdownLegacyReminderFromRules -Rules $note.reminderRules -ReminderStates $reminderStates
+        }
+    }
+
+    [pscustomobject]@{ Records = $records; Notes = $notes; Tags = $tags; Preferences = $preferences; ReminderStates = $reminderStates; Migrated = $Settings.schemaVersion -ne 10 }
 }
 
 function ConvertTo-CountdownSettingsJson {
@@ -234,6 +905,14 @@ function ConvertTo-CountdownSettingsJson {
         [string] $State.Preferences.ThemePreference
     }
     $preferences = New-CountdownPreferences -Precision ([string] $State.Preferences.Precision) -MonthlySalary ([decimal] $State.Preferences.MonthlySalary) -WorkStartText (Format-CountdownWorkTime -Value ([TimeSpan] $State.Preferences.WorkStart)) -WorkEndText (Format-CountdownWorkTime -Value ([TimeSpan] $State.Preferences.WorkEnd)) -ThemePreference $themePreference
+    $canonicalMonthlySalary = if (($preferences.MonthlySalary % [decimal] 1) -eq 0) {
+        [System.Numerics.BigInteger]::Parse(
+            $preferences.MonthlySalary.ToString('0', [System.Globalization.CultureInfo]::InvariantCulture),
+            [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    else {
+        $preferences.MonthlySalary
+    }
 
     if ($null -eq $State.PSObject.Properties['Tags']) { throw '设置状态缺少标签库。' }
     $tagIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -256,6 +935,8 @@ function ConvertTo-CountdownSettingsJson {
 
     $recordIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     $recordNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $globalRuleIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $rulesById = [ordered]@{}
     $records = @()
     foreach ($record in @($State.Records)) {
         $id = ([string] $record.id).Trim()
@@ -264,11 +945,24 @@ function ConvertTo-CountdownSettingsJson {
         if (-not $recordIds.Add($id) -or -not $recordNames.Add($name)) { throw '设置中包含重复的倒计时记录。' }
         if ($null -eq $record.PSObject.Properties['tagIds'] -or $null -eq $record.tagIds) { throw '设置中的倒计时缺少标签 ID 列表。' }
         $recordTagIds = ConvertTo-CountdownTagIds -TagIds $record.tagIds -KnownTagIds $knownTagIds
+        $recordRules = if ($null -eq $record.PSObject.Properties['reminderRules']) { @() } else {
+            ConvertTo-CountdownReminderRules -Owner '倒计时' -RecordId $id -Rules $record.reminderRules -UseRules -AllowCountdownRelative
+        }
+        foreach ($rule in @($recordRules)) {
+            if (-not $globalRuleIds.Add([string] $rule.id)) { throw '设置中包含重复的全局提醒规则 ID。' }
+            $rulesById[[string] $rule.id] = $rule
+        }
+        $serializedRules = @(
+            foreach ($rule in @($recordRules)) {
+                ConvertTo-CountdownSerializedReminderRule -Rule $rule
+            }
+        )
         $records += [ordered]@{
             id = $id
             name = $name
             targetUtc = ([DateTimeOffset] $record.targetUtc).ToUniversalTime().ToString('o')
             tagIds = @($recordTagIds | ForEach-Object { [string] $_ })
+            reminderRules = $serializedRules
         }
     }
 
@@ -287,51 +981,122 @@ function ConvertTo-CountdownSettingsJson {
             New-CountdownNoteRecord -Id ([string] $note.id) -Text ([string] $note.text) -Date $noteDate -IsCompleted ([bool] $note.isCompleted) -TagIds $noteTagIds -ReminderIntervalMinutes $reminderIntervalMinutes -ReminderStartUtc $reminderStartUtc
         }
         if (-not $noteIds.Add($validNote.id)) { throw '设置中包含重复的便签 ID。' }
-        $serializedReminder = switch ($validNote.reminder.type) {
-            'none' {
-                [ordered]@{ type = 'none' }
-                break
-            }
-            'once' {
-                [ordered]@{
-                    type = 'once'
-                    firstDueUtc = ([DateTimeOffset] $validNote.reminder.firstDueUtc).ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
-                    delivery = [string] $validNote.reminder.delivery
-                }
-                break
-            }
-            'repeat' {
-                [ordered]@{
-                    type = 'repeat'
-                    firstDueUtc = ([DateTimeOffset] $validNote.reminder.firstDueUtc).ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
-                    intervalMinutes = [int] $validNote.reminder.intervalMinutes
-                }
-                break
-            }
-            default { throw '设置中包含无效的便签提醒类型。' }
+        $noteRules = if ($null -ne $note.PSObject.Properties['reminderRules']) {
+            ConvertTo-CountdownReminderRules -Owner '便签' -RecordId $validNote.id -Rules $note.reminderRules -UseRules
         }
+        else {
+            ConvertTo-CountdownReminderRules -Owner 'note' -RecordId $validNote.id -LegacyReminder $validNote.reminder
+        }
+        foreach ($rule in @($noteRules)) {
+            if (-not $globalRuleIds.Add([string] $rule.id)) { throw '设置中包含重复的全局提醒规则 ID。' }
+            $rulesById[[string] $rule.id] = $rule
+        }
+        $serializedRules = @(
+            foreach ($rule in @($noteRules)) {
+                ConvertTo-CountdownSerializedReminderRule -Rule $rule
+            }
+        )
         $notes += [ordered]@{
             id = $validNote.id
             text = $validNote.text
             date = $validNote.date
             isCompleted = [bool] $validNote.isCompleted
             tagIds = @($validNote.tagIds | ForEach-Object { [string] $_ })
-            reminder = $serializedReminder
+            reminderRules = $serializedRules
+        }
+    }
+
+    $serializedReminderStates = [ordered]@{}
+    $sourceReminderStates = if ($null -eq $State.PSObject.Properties['ReminderStates']) { [ordered]@{} } else { $State.ReminderStates }
+    if ($sourceReminderStates -isnot [System.Collections.IDictionary]) { throw '提醒状态必须是按规则 ID 索引的对象。' }
+    foreach ($entry in $sourceReminderStates.GetEnumerator()) {
+        $ruleId = ([string] $entry.Key).Trim()
+        if (-not $rulesById.Contains($ruleId)) { throw '设置中包含悬空的提醒规则状态。' }
+        $state = $entry.Value
+        $handledThroughUtc = if ($null -eq $state.handledThroughUtc) { $null } else { ConvertTo-CountdownNoteReminderUtc -Value $state.handledThroughUtc -Subject '提醒规则游标' }
+        $lastDeliveredOccurrenceKey = if ($null -eq $state.lastDeliveredOccurrenceKey) { $null } else { [string] $state.lastDeliveredOccurrenceKey }
+        $lastDispositionOccurrenceKey = if ($null -ne $state.PSObject.Properties['lastDispositionOccurrenceKey']) {
+            if ($null -eq $state.lastDispositionOccurrenceKey) { $null } else { [string] $state.lastDispositionOccurrenceKey }
+        }
+        elseif ($null -ne $state.PSObject.Properties['lastAcknowledgedOccurrenceKey']) {
+            if ($null -eq $state.lastAcknowledgedOccurrenceKey) { $null } else { [string] $state.lastAcknowledgedOccurrenceKey }
+        }
+        else { $null }
+        $sourceActiveSnooze = if ($null -eq $state.PSObject.Properties['activeSnooze']) { $null } else { $state.activeSnooze }
+        if ($null -eq $handledThroughUtc -and [string]::IsNullOrWhiteSpace($lastDeliveredOccurrenceKey) -and [string]::IsNullOrWhiteSpace($lastDispositionOccurrenceKey) -and $null -eq $sourceActiveSnooze) { throw '空提醒状态不得持久化。' }
+        $rule = $rulesById[$ruleId]
+        $firstScheduledUtc = Get-CountdownReminderFirstScheduledUtc -Rule $rule
+        if ($null -ne $handledThroughUtc -and $null -ne $firstScheduledUtc -and $handledThroughUtc -lt $firstScheduledUtc) { throw '提醒规则游标不能早于首次计划时刻。' }
+        if ($null -ne $handledThroughUtc -and -not (Test-CountdownOccurrenceMatchesRule -Rule $rule -ScheduledUtc $handledThroughUtc)) { throw '提醒规则游标必须落在规则的计划 occurrence 上。' }
+        $lastDeliveredScheduledUtc = $null
+        if (-not [string]::IsNullOrWhiteSpace($lastDeliveredOccurrenceKey)) {
+            $occurrence = ConvertFrom-CountdownOccurrenceKey -Value $lastDeliveredOccurrenceKey
+            $occurrenceRuleId = $occurrence.RuleId
+            $occurrenceUtc = $occurrence.ScheduledUtc
+            if ($occurrenceRuleId -ine $ruleId -or $null -eq $handledThroughUtc -or $occurrenceUtc -gt $handledThroughUtc) { throw '提醒 occurrence 与规则游标互相矛盾。' }
+            $validOccurrence = Test-CountdownOccurrenceMatchesRule -Rule $rule -ScheduledUtc $occurrenceUtc
+            if (-not $validOccurrence) { throw '提醒 occurrence 与规则游标互相矛盾。' }
+            $lastDeliveredScheduledUtc = $occurrenceUtc
+            $lastDeliveredOccurrenceKey = Get-CountdownOccurrenceKey -RuleId $ruleId -ScheduledUtc $occurrenceUtc
+        }
+        $lastDispositionScheduledUtc = $null
+        if (-not [string]::IsNullOrWhiteSpace($lastDispositionOccurrenceKey)) {
+            if ([string]::IsNullOrWhiteSpace($lastDeliveredOccurrenceKey)) { throw '提醒处置 occurrence 缺少送达事实。' }
+            $occurrence = ConvertFrom-CountdownOccurrenceKey -Value $lastDispositionOccurrenceKey
+            $occurrenceRuleId = $occurrence.RuleId
+            $occurrenceUtc = $occurrence.ScheduledUtc
+            if ($occurrenceRuleId -ine $ruleId -or
+                $null -eq $handledThroughUtc -or
+                $occurrenceUtc -gt $handledThroughUtc -or
+                $null -eq $lastDeliveredScheduledUtc -or
+                $occurrenceUtc -gt $lastDeliveredScheduledUtc) { throw '提醒处置 occurrence 与规则游标互相矛盾。' }
+            $validOccurrence = Test-CountdownOccurrenceMatchesRule -Rule $rule -ScheduledUtc $occurrenceUtc
+            if (-not $validOccurrence) { throw '提醒处置 occurrence 与规则游标互相矛盾。' }
+            $lastDispositionScheduledUtc = $occurrenceUtc
+            $lastDispositionOccurrenceKey = Get-CountdownOccurrenceKey -RuleId $ruleId -ScheduledUtc $occurrenceUtc
+        }
+        $activeSnooze = $null
+        if ($null -ne $sourceActiveSnooze) {
+            $snoozeOccurrence = ConvertFrom-CountdownOccurrenceKey -Value ([string] $sourceActiveSnooze.occurrenceKey)
+            $originalScheduledUtc = ConvertTo-CountdownNoteReminderUtc -Value $sourceActiveSnooze.originalScheduledUtc -Subject '稍后原计划时刻'
+            $snoozeUntilUtc = ConvertTo-CountdownNoteReminderUtc -Value $sourceActiveSnooze.snoozeUntilUtc -Subject '稍后覆盖时刻'
+            $canonicalSnoozeKey = Get-CountdownOccurrenceKey -RuleId $ruleId -ScheduledUtc $originalScheduledUtc
+            if ($snoozeOccurrence.RuleId -ine $ruleId -or
+                $snoozeOccurrence.ScheduledUtc -ne $originalScheduledUtc -or
+                $null -eq $handledThroughUtc -or
+                $originalScheduledUtc -gt $handledThroughUtc -or
+                $lastDeliveredOccurrenceKey -cne $canonicalSnoozeKey -or
+                $snoozeUntilUtc -le $originalScheduledUtc -or
+                ($null -ne $lastDispositionScheduledUtc -and $lastDispositionScheduledUtc -ge $originalScheduledUtc)) {
+                throw '活动稍后提醒与规则 occurrence 状态互相矛盾。'
+            }
+            $activeSnooze = [ordered]@{
+                occurrenceKey = $canonicalSnoozeKey
+                originalScheduledUtc = $originalScheduledUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+                snoozeUntilUtc = $snoozeUntilUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+        }
+        $serializedReminderStates[$ruleId] = [ordered]@{
+            handledThroughUtc = if ($null -eq $handledThroughUtc) { $null } else { $handledThroughUtc.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture) }
+            lastDeliveredOccurrenceKey = $lastDeliveredOccurrenceKey
+            lastDispositionOccurrenceKey = $lastDispositionOccurrenceKey
+            activeSnooze = $activeSnooze
         }
     }
 
     [ordered]@{
-        schemaVersion = 9
+        schemaVersion = 10
         timeZoneId = 'China Standard Time'
         displayPrecision = $preferences.Precision
-        monthlySalary = $preferences.MonthlySalary
+        monthlySalary = $canonicalMonthlySalary
         workStart = Format-CountdownWorkTime -Value $preferences.WorkStart
         workEnd = Format-CountdownWorkTime -Value $preferences.WorkEnd
         themePreference = $preferences.ThemePreference
         tags = $tags
         countdowns = $records
         notes = $notes
-    } | ConvertTo-Json -Depth 5
+        reminderStates = $serializedReminderStates
+    } | ConvertTo-Json -Depth 8
 }
 
 function Copy-CountdownSettingsState {
@@ -493,7 +1258,8 @@ function Test-CountdownSettingsDeploymentTransition {
         [AllowNull()] [string] $BeforeHash,
         [AllowNull()] [string] $AfterHash,
         [AllowNull()] [string] $BeforeJson,
-        [AllowNull()] [string] $AfterJson
+        [AllowNull()] [string] $AfterJson,
+        [DateTimeOffset] $MigrationUtc = [DateTimeOffset]::UtcNow
     )
 
     if ($BeforeHash -eq $AfterHash) { return $true }
@@ -502,9 +1268,9 @@ function Test-CountdownSettingsDeploymentTransition {
     try {
         $before = $BeforeJson | ConvertFrom-Json
         $after = $AfterJson | ConvertFrom-Json
-        if ($before.schemaVersion -notin @(3, 4, 5, 6, 7, 8) -or $after.schemaVersion -ne 9) { return $false }
-        $expectedMigration = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $before) | ConvertFrom-Json
-        $null = ConvertFrom-CountdownSettingsObject -Settings $after
+        if ($before.schemaVersion -notin @(3, 4, 5, 6, 7, 8, 9) -or $after.schemaVersion -ne 10) { return $false }
+        $expectedMigration = ConvertTo-CountdownSettingsJson -State (ConvertFrom-CountdownSettingsObject -Settings $before -MigrationUtc $MigrationUtc) | ConvertFrom-Json
+        $null = ConvertFrom-CountdownSettingsObject -Settings $after -MigrationUtc $MigrationUtc
         if (-not (Test-CountdownSettingsJsonEquivalent -Expected $expectedMigration -Actual $after)) { return $false }
     }
     catch {

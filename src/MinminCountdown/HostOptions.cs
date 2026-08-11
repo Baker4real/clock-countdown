@@ -10,7 +10,9 @@ internal sealed record HostOptions(
     bool ExitAfterReadyForTest,
     bool RequireStartupRequest,
     string? SettingsFile,
-    string? DiagnosticLogPath)
+    string? DiagnosticLogPath,
+    InstanceActivationTestState? ActivationTestState,
+    InstanceActivationListenerBehavior ActivationListenerBehavior)
 {
     public static HostOptions Parse(IReadOnlyList<string> arguments)
     {
@@ -24,6 +26,8 @@ internal sealed record HostOptions(
         var requireStartupRequest = false;
         string? settingsFile = null;
         string? diagnosticLogPath = null;
+        InstanceActivationTestState? activationTestState = null;
+        var activationListenerBehavior = InstanceActivationListenerBehavior.Normal;
 
         for (var index = 0; index < arguments.Count; index++)
         {
@@ -60,6 +64,37 @@ internal sealed record HostOptions(
                 case "diagnosticlogpath":
                     diagnosticLogPath = ReadValue(arguments, ref index, arguments[index]);
                     break;
+                case "instanceactivationteststate":
+                    var stateValue = ReadTextValue(arguments, ref index, arguments[index]);
+                    if (!Enum.TryParse<InstanceActivationTestState>(stateValue, ignoreCase: true, out var parsedState) ||
+                        parsedState is not (InstanceActivationTestState.FloatingVisible or
+                                            InstanceActivationTestState.Tray or
+                                            InstanceActivationTestState.Hidden or
+                                            InstanceActivationTestState.Minimized or
+                                            InstanceActivationTestState.MainVisible))
+                    {
+                        throw new ArgumentException($"不支持的实例激活测试状态：{stateValue}");
+                    }
+
+                    activationTestState = parsedState;
+                    break;
+                case "instanceactivationlistenerbehavior":
+                    var behaviorValue = ReadTextValue(arguments, ref index, arguments[index]);
+                    if (!Enum.TryParse<InstanceActivationListenerBehavior>(
+                            behaviorValue,
+                            ignoreCase: true,
+                            out var parsedBehavior) ||
+                        parsedBehavior is not (InstanceActivationListenerBehavior.Normal or
+                                               InstanceActivationListenerBehavior.Timeout or
+                                               InstanceActivationListenerBehavior.ProtocolMismatch or
+                                               InstanceActivationListenerBehavior.Disconnect or
+                                               InstanceActivationListenerBehavior.CallbackFailureOnce))
+                    {
+                        throw new ArgumentException($"不支持的实例激活监听器测试行为：{behaviorValue}");
+                    }
+
+                    activationListenerBehavior = parsedBehavior;
+                    break;
                 default:
                     throw new ArgumentException($"不支持的启动参数：{arguments[index]}");
             }
@@ -69,6 +104,39 @@ internal sealed record HostOptions(
             !validateOnly)
         {
             throw new ArgumentException("exercise 参数只能与 --validate-only 一起使用。");
+        }
+
+        if (validateOnly && string.IsNullOrWhiteSpace(settingsFile))
+        {
+            throw new ArgumentException("--validate-only 必须显式指定 --settings-file。");
+        }
+
+        if (requireStartupRequest &&
+            (activationTestState is not null ||
+             activationListenerBehavior != InstanceActivationListenerBehavior.Normal))
+        {
+            throw new ArgumentException(
+                "实例激活测试参数不能与 --require-startup-request 组合。");
+        }
+
+        if (activationTestState is not null &&
+            (validateOnly ||
+             !exitAfterReadyForTest ||
+             string.IsNullOrWhiteSpace(settingsFile) ||
+             string.IsNullOrWhiteSpace(diagnosticLogPath)))
+        {
+            throw new ArgumentException(
+                "实例激活测试状态只能用于带隔离设置和诊断路径的 --exit-after-ready-for-test 普通交互进程。");
+        }
+
+        if (activationListenerBehavior != InstanceActivationListenerBehavior.Normal &&
+            (validateOnly ||
+             !exitAfterReadyForTest ||
+             string.IsNullOrWhiteSpace(settingsFile) ||
+             string.IsNullOrWhiteSpace(diagnosticLogPath)))
+        {
+            throw new ArgumentException(
+                "实例激活监听器测试行为只能用于带隔离设置和诊断路径的 --exit-after-ready-for-test 普通交互进程。");
         }
 
         return new HostOptions(
@@ -81,7 +149,9 @@ internal sealed record HostOptions(
             exitAfterReadyForTest,
             requireStartupRequest,
             settingsFile,
-            diagnosticLogPath);
+            diagnosticLogPath,
+            activationTestState,
+            activationListenerBehavior);
     }
 
     private static string NormalizeOption(string value)
@@ -97,11 +167,25 @@ internal sealed record HostOptions(
 
     private static string ReadValue(IReadOnlyList<string> arguments, ref int index, string option)
     {
+        return Path.GetFullPath(ReadTextValue(arguments, ref index, option));
+    }
+
+    private static string ReadTextValue(IReadOnlyList<string> arguments, ref int index, string option)
+    {
         if (++index >= arguments.Count || string.IsNullOrWhiteSpace(arguments[index]))
         {
             throw new ArgumentException($"{option} 缺少路径值。");
         }
 
-        return Path.GetFullPath(arguments[index]);
+        return arguments[index];
     }
+}
+
+internal enum InstanceActivationTestState
+{
+    FloatingVisible,
+    Tray,
+    Hidden,
+    Minimized,
+    MainVisible
 }

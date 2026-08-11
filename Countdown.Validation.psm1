@@ -119,6 +119,13 @@ function Assert-CountdownApplicationValidationReport {
         throw '应用 validate-only 报告契约未通过：ValidationReportContractBehavior'
     }
 
+    foreach ($fieldName in @('CalendarReminderBehavior')) {
+        $field = $Report.PSObject.Properties[$fieldName]
+        if ($null -eq $field -or $field.Value -isnot [bool] -or -not [bool] $field.Value) {
+            throw "应用 validate-only 报告的提醒行为未通过：$fieldName"
+        }
+    }
+
     $requiredUiQualityFields = @(
         'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
         'MainReferenceDecorationLayerOrderMatches',
@@ -320,19 +327,47 @@ function Invoke-CountdownValidationSuite {
         MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE = $null
         MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE = $null
     }
-    $application = Invoke-CountdownValidationProcess `
-        -PowerShell7Path $resolvedPowerShell `
-        -Operation '应用 validate-only' `
-        -EnvironmentVariables $applicationEnvironment `
-        -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-STA',
-            '-File',
-            (Join-Path $resolvedRoot '敏敏子倒计时.ps1'),
-            '-ValidateOnly'
-        )
+    $applicationValidationRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
+    [System.IO.Directory]::CreateDirectory($applicationValidationRoot) | Out-Null
+    $applicationValidationId = [guid]::NewGuid().ToString('N')
+    $applicationSettingsPath = Join-Path $applicationValidationRoot "$applicationValidationId.settings.json"
+    $applicationDiagnosticPath = Join-Path $applicationValidationRoot "$applicationValidationId.application.jsonl"
+    try {
+        $application = Invoke-CountdownValidationProcess `
+            -PowerShell7Path $resolvedPowerShell `
+            -Operation '应用 validate-only' `
+            -EnvironmentVariables $applicationEnvironment `
+            -ArgumentList @(
+                '-NoLogo',
+                '-NoProfile',
+                '-NonInteractive',
+                '-STA',
+                '-File',
+                (Join-Path $resolvedRoot '敏敏子倒计时.ps1'),
+                '-ValidateOnly',
+                '-SettingsFile',
+                $applicationSettingsPath,
+                '-DiagnosticLogPath',
+                $applicationDiagnosticPath
+            )
+    }
+    finally {
+        foreach ($path in @(
+                $applicationSettingsPath,
+                "$applicationSettingsPath.tmp",
+                $applicationDiagnosticPath,
+                "$applicationDiagnosticPath.1",
+                "$applicationDiagnosticPath.2",
+                "$applicationDiagnosticPath.3"
+            )) {
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+                Remove-Item -LiteralPath $path -Force
+            }
+        }
+        if (Test-Path -LiteralPath "$applicationSettingsPath.tmp" -PathType Container) {
+            [System.IO.Directory]::Delete("$applicationSettingsPath.tmp", $false)
+        }
+    }
     $null = Assert-CountdownApplicationValidationReport `
         -Report $application.Report `
         -MainManifestRequired $mainBaselineRequired `

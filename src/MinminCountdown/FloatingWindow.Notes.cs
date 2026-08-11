@@ -77,7 +77,10 @@ public sealed partial class FloatingWindow
             Foreground = _floatingPrimaryBrush
         });
 
-        var nextReminder = ReminderSchedule.GetNextDueUtc(note, nowUtc);
+        var nextReminder = ReminderSchedule.GetNextDueUtc(
+            _desktopWorkspace.Snapshot.Settings,
+            note,
+            nowUtc);
         if (nextReminder is not null)
         {
             body.Children.Add(new TextBlock

@@ -1,5 +1,12 @@
 settings.json
 settings.json.tmp
+# 设置备份、故障回滚与损坏证据只属于当前设备。
+settings.json.backup1
+settings.json.backup2
+settings.json.backup2.tmp
+settings.json.backup2.rollback
+settings.json.recovery-rollback-*
+settings-recovery-evidence/
 # 中断测试后可能残留的回归测试设置文件。
 clear-test.settings.json
 clear-test.settings.json.tmp

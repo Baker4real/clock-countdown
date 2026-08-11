@@ -3,6 +3,54 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ($null -eq ('CountdownInstalledSettingsFileIdentity' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+public static class CountdownInstalledSettingsFileIdentity
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandle(
+        SafeFileHandle fileHandle,
+        out ByHandleFileInformation information);
+
+    public static string Read(string path)
+    {
+        using SafeFileHandle handle = File.OpenHandle(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        if (!GetFileInformationByHandle(handle, out ByHandleFileInformation information))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        return $"{information.VolumeSerialNumber:X8}:{information.FileIndexHigh:X8}{information.FileIndexLow:X8}";
+    }
+}
+'@
+}
+
 $script:transferLedgerModulePath = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1'))
 $transferLedgerModule = Get-Module -Name Countdown.TransferLedger |
@@ -1920,6 +1968,120 @@ function Assert-CountdownRemoteDeploymentAdapter {
     $Adapter
 }
 
+function Get-CountdownInstalledSettingsFingerprint {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return [pscustomobject]@{
+            State = 'Absent'
+            Length = $null
+            LastWriteTimeUtc = $null
+            Sha256 = $null
+            FileIdentity = $null
+        }
+    }
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($item -isnot [System.IO.FileInfo] -or
+        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw '现役 settings 路径必须是普通文件或不存在。'
+    }
+
+    [pscustomobject]@{
+        State = 'Present'
+        Length = $item.Length
+        LastWriteTimeUtc = $item.LastWriteTimeUtc
+        Sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+        FileIdentity = [CountdownInstalledSettingsFileIdentity]::Read($item.FullName)
+    }
+}
+
+function Invoke-CountdownInstalledApplicationValidation {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $ApplicationPath,
+        [Parameter(Mandatory)] [string] $PowerShell7Path,
+        [Parameter(Mandatory)] [string] $TransactionPath,
+        [Parameter(Mandatory)] [string] $ActiveSettingsPath,
+        [scriptblock] $NativeInvocation
+    )
+
+    $validationSettingsPath = Join-Path $TransactionPath `
+        ("installed-validation-{0}.settings.json" -f [guid]::NewGuid().ToString('N'))
+    $activeSettingsBefore = Get-CountdownInstalledSettingsFingerprint -Path $ActiveSettingsPath
+    $arguments = [string[]] @(
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-STA',
+        '-File',
+        $ApplicationPath,
+        '-ValidateOnly',
+        '-SettingsFile',
+        $validationSettingsPath
+    )
+
+    try {
+        if ($null -eq $NativeInvocation) {
+            $output = @(& $PowerShell7Path @arguments 2>&1 | ForEach-Object { [string] $_ })
+            $exitCode = $LASTEXITCODE
+        }
+        else {
+            $nativeResult = & $NativeInvocation $PowerShell7Path $arguments
+            if ($null -eq $nativeResult -or
+                $nativeResult.PSObject.Properties.Name -notcontains 'ExitCode' -or
+                $nativeResult.PSObject.Properties.Name -notcontains 'Output') {
+                throw '安装后应用 native invocation 必须返回 ExitCode 和 Output。'
+            }
+            $exitCode = [int] $nativeResult.ExitCode
+            $output = @($nativeResult.Output | ForEach-Object { [string] $_ })
+        }
+        $validationOutput = $output -join [Environment]::NewLine
+        if ($exitCode -ne 0) {
+            throw "安装后应用 validate-only 失败：$validationOutput"
+        }
+    }
+    finally {
+        foreach ($path in @(
+                $validationSettingsPath,
+                "$validationSettingsPath.tmp",
+                "$validationSettingsPath.backup1",
+                "$validationSettingsPath.backup2",
+                "$validationSettingsPath.backup2.tmp",
+                "$validationSettingsPath.backup2.rollback"
+            )) {
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+                Remove-Item -LiteralPath $path -Force
+            }
+        }
+        if (Test-Path -LiteralPath "$validationSettingsPath.tmp" -PathType Container) {
+            [System.IO.Directory]::Delete("$validationSettingsPath.tmp", $false)
+        }
+    }
+
+    $activeSettingsAfter = Get-CountdownInstalledSettingsFingerprint -Path $ActiveSettingsPath
+    if ($activeSettingsBefore.State -ne $activeSettingsAfter.State -or
+        ($activeSettingsBefore.State -eq 'Present' -and (
+            $activeSettingsBefore.Length -ne $activeSettingsAfter.Length -or
+            $activeSettingsBefore.LastWriteTimeUtc -ne $activeSettingsAfter.LastWriteTimeUtc -or
+            $activeSettingsBefore.Sha256 -ne $activeSettingsAfter.Sha256 -or
+            $activeSettingsBefore.FileIdentity -ne $activeSettingsAfter.FileIdentity))) {
+        throw '安装后应用 validate-only 改变了现役 settings.json。'
+    }
+    try {
+        $installedValidation = $validationOutput | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        throw "安装后应用 validate-only 返回了无效 JSON：$($_.Exception.Message)"
+    }
+    if (-not [bool] $installedValidation.Valid -or
+        -not [bool] $installedValidation.FloatingWindowPresent -or
+        -not [bool] $installedValidation.FloatingManagerButtonPresent) {
+        throw '安装后悬浮框验证失败。'
+    }
+    $installedValidation
+}
+
 function New-CountdownRemoteDeploymentWindowsAdapter {
     $state = [pscustomobject]@{
         InstallMutex = $null
@@ -2100,31 +2262,19 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
 
             $applicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
             $AdapterState.Stage = '验证已安装应用'
-            $installedValidationOutput = Invoke-CountdownRemoteDeploymentTrustedFile `
+            $installedValidation = Invoke-CountdownRemoteDeploymentTrustedFile `
                 -Context $Context `
                 -Location Installed `
                 -RelativePath '敏敏子倒计时.ps1' `
                 -Stage '验证已安装应用' `
                 -Action {
                     param($lockedPath)
-                    $validationOutput = & $Context.PowerShell7Path `
-                        -NoLogo -NoProfile -NonInteractive -STA -File $lockedPath -ValidateOnly | Out-String
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "安装后应用 validate-only 失败：$validationOutput"
-                    }
-                    $validationOutput
+                    Invoke-CountdownInstalledApplicationValidation `
+                        -ApplicationPath $lockedPath `
+                        -PowerShell7Path $Context.PowerShell7Path `
+                        -TransactionPath ([string] $receipt.transactionPath) `
+                        -ActiveSettingsPath $settingsPath
                 }
-            try {
-                $installedValidation = $installedValidationOutput | ConvertFrom-Json -ErrorAction Stop
-            }
-            catch {
-                throw "安装后应用 validate-only 返回了无效 JSON：$($_.Exception.Message)"
-            }
-            if (-not [bool] $installedValidation.Valid -or
-                -not [bool] $installedValidation.FloatingWindowPresent -or
-                -not [bool] $installedValidation.FloatingManagerButtonPresent) {
-                throw '安装后悬浮框验证失败。'
-            }
 
             $AdapterState.Stage = '等待窗口就绪回执'
             $task = Get-ScheduledTask -TaskName $Context.TaskName -ErrorAction Stop
@@ -2676,6 +2826,7 @@ function Invoke-CountdownRemoteDeployment {
 
 Export-ModuleMember -Function `
     Invoke-CountdownRemoteDeployment, `
+    Invoke-CountdownInstalledApplicationValidation, `
     ConvertFrom-CountdownPreRollbackDiagnosticsBytes, `
     ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson, `
     Write-CountdownRemoteDeploymentSuccessReceipt, `

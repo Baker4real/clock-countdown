@@ -503,6 +503,134 @@ function Assert-CountdownDeploymentFileSet {
     }
 }
 
+function Invoke-CountdownWorkingTreeArchiveValidation {
+    param(
+        [Parameter(Mandatory)] [string] $RepositoryRoot,
+        [Parameter(Mandatory)] [string[]] $RelativePaths,
+        [Parameter(Mandatory)] [string] $TemporaryArchivePath
+    )
+
+    if ($RelativePaths.Count -eq 0) {
+        throw '本地候选发布包清单不得为空。'
+    }
+
+    $archivePath = [System.IO.Path]::GetFullPath($TemporaryArchivePath)
+    if (Test-Path -LiteralPath $archivePath) {
+        throw "本地候选临时 ZIP 已存在：$archivePath"
+    }
+    $archiveParent = [System.IO.Path]::GetDirectoryName($archivePath)
+    if (-not (Test-Path -LiteralPath $archiveParent -PathType Container)) {
+        throw "本地候选临时 ZIP 父目录不存在：$archiveParent"
+    }
+
+    $sourceManifest = [ordered]@{}
+    $expectedEntries = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $archive = $null
+    $archiveCreated = $false
+    try {
+        $archive = [System.IO.Compression.ZipFile]::Open(
+            $archivePath,
+            [System.IO.Compression.ZipArchiveMode]::Create)
+        $archiveCreated = $true
+        foreach ($relativePath in $RelativePaths) {
+            $entryName = $relativePath.Replace('\', '/')
+            if (-not $expectedEntries.Add($entryName)) {
+                throw "本地候选发布包清单包含重复路径：$relativePath"
+            }
+
+            $sourcePath = Resolve-CountdownDeploymentSnapshotPath `
+                -Root $RepositoryRoot `
+                -RelativePath $relativePath
+            $sourceItem = Get-Item -LiteralPath $sourcePath -Force -ErrorAction Stop
+            if ($sourceItem -isnot [System.IO.FileInfo] -or
+                ($sourceItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "本地候选文件必须是非 reparse point 的普通文件：$relativePath"
+            }
+
+            $sourceStream = [System.IO.FileStream]::new(
+                $sourceItem.FullName,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read)
+            try {
+                $sourceManifest[$relativePath] = [Convert]::ToHexString(
+                    [System.Security.Cryptography.SHA256]::HashData($sourceStream))
+                $sourceStream.Position = 0
+                $entry = $archive.CreateEntry(
+                    $entryName,
+                    [System.IO.Compression.CompressionLevel]::Optimal)
+                $entryStream = $entry.Open()
+                try {
+                    $sourceStream.CopyTo($entryStream)
+                }
+                finally {
+                    $entryStream.Dispose()
+                }
+            }
+            finally {
+                $sourceStream.Dispose()
+            }
+        }
+        $archive.Dispose()
+        $archive = $null
+
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
+        $actualEntries = [System.Collections.Generic.Dictionary[string, System.IO.Compression.ZipArchiveEntry]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $archive.Entries) {
+            if ([string]::IsNullOrWhiteSpace($entry.Name) -or
+                -not $actualEntries.TryAdd($entry.FullName, $entry)) {
+                throw "本地候选 ZIP 包含目录或重复 entry：$($entry.FullName)"
+            }
+        }
+        if ($actualEntries.Count -ne $expectedEntries.Count) {
+            throw '本地候选 ZIP 的 entry 数量与发布包清单不一致。'
+        }
+        foreach ($relativePath in $RelativePaths) {
+            $entryName = $relativePath.Replace('\', '/')
+            if (-not $actualEntries.ContainsKey($entryName)) {
+                throw "本地候选 ZIP 缺少发布包文件：$relativePath"
+            }
+            $entryStream = $actualEntries[$entryName].Open()
+            try {
+                $actualHash = [Convert]::ToHexString(
+                    [System.Security.Cryptography.SHA256]::HashData($entryStream))
+            }
+            finally {
+                $entryStream.Dispose()
+            }
+            if (-not [string]::Equals(
+                    $actualHash,
+                    [string] $sourceManifest[$relativePath],
+                    [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "本地候选 ZIP 文件哈希不匹配：$relativePath"
+            }
+        }
+        $archive.Dispose()
+        $archive = $null
+
+        Assert-CountdownDeploymentFileManifest `
+            -Root $RepositoryRoot `
+            -Manifest $sourceManifest `
+            -Stage '本地候选 ZIP 生成后'
+        $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash
+        [pscustomobject]@{
+            ArchiveSha256 = $archiveHash
+            ArchiveFiles = $actualEntries.Count
+            SourceManifest = $sourceManifest
+        }
+    }
+    finally {
+        if ($null -ne $archive) {
+            $archive.Dispose()
+        }
+        if ($archiveCreated -and (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
+            Remove-Item -LiteralPath $archivePath -Force
+        }
+    }
+}
+
 function Assert-CountdownRemoteInstallScript {
     [CmdletBinding()]
     param(
@@ -590,6 +718,32 @@ function Assert-CountdownRemoteInstallScript {
 }
 
 if ($LoadFunctionsOnly) { return }
+
+if ($ValidateOnly) {
+    $releaseContractPath = Join-Path $repoRoot 'Countdown.ReleaseContract.psm1'
+    Import-Module $releaseContractPath -Force | Out-Null
+    $releaseContract = Get-CountdownReleaseContract
+    $packageValidation = Assert-CountdownReleasePackage -Root $repoRoot
+    $temporaryArchiveRoot = 'D:\Codex\.codex\tmp'
+    New-Item -ItemType Directory -Path $temporaryArchiveRoot -Force | Out-Null
+    $temporaryArchivePath = Join-Path `
+        $temporaryArchiveRoot `
+        "clock-countdown-working-tree-$([guid]::NewGuid().ToString('N')).zip"
+    $candidateArchiveValidation = Invoke-CountdownWorkingTreeArchiveValidation `
+        -RepositoryRoot $repoRoot `
+        -RelativePaths ([string[]] @($releaseContract.PackageFiles)) `
+        -TemporaryArchivePath $temporaryArchivePath
+    [pscustomobject]@{
+        Valid = $true
+        CandidateSource = 'WorkingTree'
+        ArchiveSha256 = $candidateArchiveValidation.ArchiveSha256
+        VerifiedFiles = $packageValidation.VerifiedFiles
+        PackageFiles = $candidateArchiveValidation.ArchiveFiles
+        TemporaryArchiveRetained = Test-Path -LiteralPath $temporaryArchivePath
+        Deployed = $false
+    } | ConvertTo-Json
+    exit 0
+}
 
 $gitPath = (Get-Command git.exe -CommandType Application -ErrorAction Stop |
     Select-Object -First 1 -ExpandProperty Source)
@@ -734,10 +888,6 @@ Assert-CountdownDeploymentFileManifest -Root $sourceRoot -Manifest $packageManif
     -ExpectedCommit $commit)
 
 $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
-if ($ValidateOnly) {
-    [pscustomobject]@{ Valid = $true; Commit = $shortCommit; Archive = $archive; ArchiveSha256 = $archiveHash; VerifiedFiles = $packageValidation.VerifiedFiles; Transactional = $true } | ConvertTo-Json
-    exit 0
-}
 
 [void] (Assert-CountdownDeploymentRepositoryState `
     -GitPath $gitPath `

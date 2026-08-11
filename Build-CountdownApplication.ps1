@@ -143,6 +143,18 @@ if (-not (Test-Path -LiteralPath $application -PathType Leaf)) {
     throw "发布未生成应用程序：$application"
 }
 
+# Keep a framework-dependent source DLL beside the project output for the
+# source validate-only contract. The self-contained publish remains the
+# installable application artifact above.
+& $dotnet build $applicationProject -c Release --no-restore
+if ($LASTEXITCODE -ne 0) {
+    throw "源码 DLL 构建失败，退出码：$LASTEXITCODE"
+}
+$sourceApplicationDll = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
+if (-not (Test-Path -LiteralPath $sourceApplicationDll -PathType Leaf)) {
+    throw "源码构建未生成 validate-only DLL：$sourceApplicationDll"
+}
+
 foreach ($asset in $assetManifest) {
     $target = $asset.Target
     $targetDirectory = Split-Path -Parent $target

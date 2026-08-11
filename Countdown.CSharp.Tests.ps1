@@ -2,7 +2,16 @@
 
 [CmdletBinding()]
 param(
-    [string] $OfficeDeploymentStagingRoot
+    [string] $OfficeDeploymentStagingRoot,
+    [switch] $InstanceActivationOnly,
+    [switch] $InstanceActivationMatrix,
+    [switch] $MigrationParityOnly,
+    [ValidateSet('FloatingVisible', 'Tray', 'Hidden', 'Minimized', 'MainVisible')]
+    [string] $InstanceActivationTestState = 'FloatingVisible',
+    [ValidateSet('Normal', 'Timeout', 'ProtocolMismatch', 'Disconnect', 'CallbackFailureOnce')]
+    [string] $InstanceActivationListenerBehavior = 'Normal',
+    [ValidateSet('Normal', 'AcceptanceReadOnly', 'Finalized', 'ValidateExercise', 'StalledRecovery', 'OptionGuard', 'DiagnosticConcurrency', 'DisposeRace', 'Scope')]
+    [string] $InstanceActivationClientMode = 'Normal'
 )
 
 Set-StrictMode -Version Latest
@@ -79,6 +88,853 @@ function Assert-Equal {
     }
 }
 
+if (-not ('MinminCountdownActivationWindowProbe' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class MinminCountdownActivationWindowProbe
+{
+    public delegate bool EnumWindowsProc(IntPtr windowHandle, IntPtr state);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr state);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindowVisible(IntPtr windowHandle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr windowHandle, out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern int GetWindowText(IntPtr windowHandle, StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
+}
+'@
+}
+
+function Get-VisibleProcessWindows {
+    param([Parameter(Mandatory)] [int] $ProcessId)
+
+    $windows = [System.Collections.Generic.List[object]]::new()
+    $callback = [MinminCountdownActivationWindowProbe+EnumWindowsProc] {
+        param([IntPtr] $windowHandle, [IntPtr] $state)
+        [uint32] $ownerProcessId = 0
+        [void] [MinminCountdownActivationWindowProbe]::GetWindowThreadProcessId(
+            $windowHandle,
+            [ref] $ownerProcessId)
+        if ($ownerProcessId -eq $ProcessId -and
+            [MinminCountdownActivationWindowProbe]::IsWindowVisible($windowHandle)) {
+            $title = [System.Text.StringBuilder]::new(512)
+            [void] [MinminCountdownActivationWindowProbe]::GetWindowText($windowHandle, $title, $title.Capacity)
+            $windows.Add([pscustomobject]@{
+                Handle = $windowHandle.ToInt64()
+                Title = $title.ToString()
+            })
+        }
+        return $true
+    }
+    [void] [MinminCountdownActivationWindowProbe]::EnumWindows($callback, [IntPtr]::Zero)
+    return @($windows)
+}
+
+function Get-InstanceActivationPipeName {
+    param(
+        [Parameter(Mandatory)] [string] $ApplicationRoot,
+        [Parameter(Mandatory)] [string] $SettingsPath
+    )
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $scope = '{0}|{1}' -f (
+        [System.IO.Path]::GetFullPath($ApplicationRoot).ToUpperInvariant()
+    ), (
+        [System.IO.Path]::GetFullPath($SettingsPath).ToUpperInvariant()
+    )
+    $scopeHash = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData($utf8NoBom.GetBytes($scope)))
+    $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $mutexName = 'Local\MinminCountdown-{0}-{1}' -f $sid, $scopeHash.Substring(0, 24)
+    $activationScope = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData($utf8NoBom.GetBytes($mutexName)))
+    return 'MinminCountdown.Activation-{0}' -f $activationScope.Substring(0, 32)
+}
+
+function Invoke-InstanceActivationProcessTests {
+    $dotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+    $sourceApplication = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
+    $testGroupRoot = Join-Path $testCapabilityRoot 'clock-countdown-instance-activation-tests'
+    $testRoot = [System.IO.Path]::GetFullPath(
+        (Join-Path $testGroupRoot ("run-" + [guid]::NewGuid().ToString('N')))
+    )
+    $primaryProcess = $null
+    $secondaryProcess = $null
+    $firstSecondaryProcess = $null
+    $stalledPipe = $null
+    $parallelProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+
+    if ($InstanceActivationClientMode -ne 'Normal' -and
+        $InstanceActivationListenerBehavior -ne 'Normal') {
+        throw '客户端抑制与监听器故障场景必须分别运行。'
+    }
+
+    if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
+        throw "未找到受管 .NET 运行时：$dotnet"
+    }
+    if (-not (Test-Path -LiteralPath $sourceApplication -PathType Leaf)) {
+        throw "未找到源码构建应用：$sourceApplication。请先构建 MinminCountdown.csproj。"
+    }
+    if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
+        throw "未找到受管测试目录清理入口：$safeTreeDelete"
+    }
+
+    try {
+        New-Item -ItemType Directory -Path $testRoot | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') -Destination $testRoot
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'countdown-icon.ico') -Destination $testRoot
+
+        $settingsPath = Join-Path $testRoot 'settings.json'
+        $diagnosticPath = Join-Path $testRoot 'logs\application.jsonl'
+        $runtimeStatusPath = Join-Path $testRoot 'runtime-status.json'
+        $primaryOutputPath = Join-Path $testRoot 'primary.stdout.txt'
+        $primaryErrorPath = Join-Path $testRoot 'primary.stderr.txt'
+        $secondaryOutputPath = Join-Path $testRoot 'secondary.stdout.txt'
+        $secondaryErrorPath = Join-Path $testRoot 'secondary.stderr.txt'
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        $settingsJson = @'
+{
+  "schemaVersion": 10,
+  "timeZoneId": "China Standard Time",
+  "displayPrecision": "Minute",
+  "monthlySalary": 0,
+  "workStart": "09:00",
+  "workEnd": "18:00",
+  "themePreference": "Day",
+  "tags": [],
+  "countdowns": [],
+  "notes": [],
+  "reminderStates": {}
+}
+'@
+        [System.IO.File]::WriteAllText($settingsPath, $settingsJson, $utf8NoBom)
+        $settingsHashBefore = (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash
+
+        if ($InstanceActivationClientMode -eq 'OptionGuard') {
+            $guardOutputPath = Join-Path $testRoot 'option-guard.stdout.txt'
+            $guardErrorPath = Join-Path $testRoot 'option-guard.stderr.txt'
+            $secondaryProcess = Start-Process -FilePath $dotnet -ArgumentList @(
+                $sourceApplication,
+                '--require-startup-request',
+                '--exit-after-ready-for-test',
+                '--instance-activation-test-state',
+                'FloatingVisible',
+                '--settings-file',
+                $settingsPath,
+                '--diagnostic-log-path',
+                $diagnosticPath
+            ) -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput $guardOutputPath -RedirectStandardError $guardErrorPath
+            if (-not $secondaryProcess.WaitForExit(5000)) {
+                throw 'test-only 与 required 参数组合未在有界期限内退出。'
+            }
+            $secondaryProcess.WaitForExit()
+            Assert-Equal 1 $secondaryProcess.ExitCode 'test-only 与 required 参数组合失败闭锁'
+            $guardError = Get-Content -LiteralPath $guardErrorPath -Raw -Encoding UTF8
+            Assert-Equal $true $guardError.Contains(
+                '实例激活测试参数不能与 --require-startup-request 组合',
+                [System.StringComparison]::Ordinal) '参数解析明确拒绝 test-only 与 required 组合'
+            Assert-Equal $settingsHashBefore (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash `
+                '参数失败不写隔离设置'
+            [pscustomobject]@{
+                Passed = $script:assertions
+                Failed = 0
+                InstanceActivationOnly = $true
+                ProcessScenarios = 1
+            } | ConvertTo-Json
+            return
+        }
+
+        if ($InstanceActivationClientMode -eq 'Finalized') {
+            $startupRequestPath = Join-Path $testRoot 'startup-request.json'
+            $activeRequest = [ordered]@{
+                schemaVersion = 1
+                launchToken = [guid]::NewGuid().ToString('N')
+                requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+                acceptanceReadOnly = $true
+                acceptanceState = 'active'
+            } | ConvertTo-Json -Compress
+            [System.IO.File]::WriteAllText($startupRequestPath, $activeRequest, $utf8NoBom)
+        }
+
+        $primaryArguments = @(
+            $sourceApplication,
+            '--exit-after-ready-for-test',
+            '--instance-activation-test-state',
+            $InstanceActivationTestState,
+            '--settings-file',
+            $settingsPath,
+            '--diagnostic-log-path',
+            $diagnosticPath
+        )
+        if ($InstanceActivationListenerBehavior -ne 'Normal') {
+            $primaryArguments += @(
+                '--instance-activation-listener-behavior',
+                $InstanceActivationListenerBehavior
+            )
+        }
+        $primaryProcess = Start-Process -FilePath $dotnet -ArgumentList $primaryArguments `
+            -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $primaryOutputPath -RedirectStandardError $primaryErrorPath
+
+        $readyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
+        while (
+            -not (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) -and
+            -not $primaryProcess.HasExited -and
+            [DateTimeOffset]::UtcNow -lt $readyDeadline
+        ) {
+            Start-Sleep -Milliseconds 50
+        }
+        if (-not (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf)) {
+            $primaryError = if (Test-Path -LiteralPath $primaryErrorPath -PathType Leaf) {
+                Get-Content -LiteralPath $primaryErrorPath -Raw
+            }
+            else { '' }
+            throw "首个源码应用未进入窗口就绪状态：$primaryError"
+        }
+
+        $runtimeStatus = Get-Content -LiteralPath $runtimeStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-Equal $primaryProcess.Id ([int] $runtimeStatus.processId) '激活测试回执绑定首个源码应用进程'
+        Assert-Equal $false $primaryProcess.HasExited '第二次启动前主实例仍存活'
+
+        if ($InstanceActivationClientMode -in @('StalledRecovery', 'DisposeRace')) {
+            $pipeName = Get-InstanceActivationPipeName -ApplicationRoot $testRoot -SettingsPath $settingsPath
+            $stalledPipe = [System.IO.Pipes.NamedPipeClientStream]::new(
+                '.',
+                $pipeName,
+                [System.IO.Pipes.PipeDirection]::InOut,
+                [System.IO.Pipes.PipeOptions]::Asynchronous
+            )
+            $stalledPipe.Connect(2000)
+            Assert-Equal $true $stalledPipe.IsConnected '停滞客户端已建立真实命名管道连接'
+        }
+
+        $secondaryArguments = @(
+            $sourceApplication,
+            '--settings-file',
+            $settingsPath,
+            '--diagnostic-log-path',
+            $diagnosticPath
+        )
+        if ($InstanceActivationClientMode -eq 'AcceptanceReadOnly') {
+            $startupRequestPath = Join-Path $testRoot 'startup-request.json'
+            $startupRequest = [ordered]@{
+                schemaVersion = 1
+                launchToken = [guid]::NewGuid().ToString('N')
+                requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+                acceptanceReadOnly = $true
+                acceptanceState = 'active'
+            } | ConvertTo-Json -Compress
+            [System.IO.File]::WriteAllText($startupRequestPath, $startupRequest, $utf8NoBom)
+            $secondaryArguments += '--require-startup-request'
+        }
+        elseif ($InstanceActivationClientMode -eq 'Finalized') {
+            $finalizedRequest = [ordered]@{
+                schemaVersion = 1
+                launchToken = [guid]::NewGuid().ToString('N')
+                requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+                acceptanceReadOnly = $false
+                acceptanceState = 'finalized'
+            } | ConvertTo-Json -Compress
+            [System.IO.File]::WriteAllText($startupRequestPath, $finalizedRequest, $utf8NoBom)
+            $secondaryArguments += '--require-startup-request'
+        }
+        elseif ($InstanceActivationClientMode -eq 'ValidateExercise') {
+            $secondaryArguments = @(
+                $sourceApplication,
+                '--validate-only',
+                '--exercise-fatal-diagnostic',
+                '--settings-file',
+                $settingsPath,
+                '--diagnostic-log-path',
+                $diagnosticPath
+            )
+        }
+
+        if ($InstanceActivationClientMode -eq 'DiagnosticConcurrency') {
+            $padding = [ordered]@{
+                schemaVersion = 1
+                event = 'Padding'
+                padding = 'x' * 1048400
+            } | ConvertTo-Json -Compress
+            [System.IO.File]::WriteAllText(
+                $diagnosticPath,
+                $padding + [Environment]::NewLine,
+                $utf8NoBom)
+            $clientCount = 8
+            for ($index = 0; $index -lt $clientCount; $index++) {
+                $client = Start-Process -FilePath $dotnet -ArgumentList $secondaryArguments `
+                    -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+                    -RedirectStandardOutput (Join-Path $testRoot "parallel-$index.stdout.txt") `
+                    -RedirectStandardError (Join-Path $testRoot "parallel-$index.stderr.txt")
+                $parallelProcesses.Add($client)
+            }
+            foreach ($client in $parallelProcesses) {
+                if (-not $client.WaitForExit(10000)) {
+                    throw "并发激活客户端未在有界期限内退出：PID=$($client.Id)"
+                }
+                $client.WaitForExit()
+                Assert-Equal 0 $client.ExitCode "并发激活客户端收到匹配 ACK：PID=$($client.Id)"
+            }
+
+            $allDiagnosticEntries = [System.Collections.Generic.List[object]]::new()
+            foreach ($path in @($diagnosticPath, "$diagnosticPath.1", "$diagnosticPath.2", "$diagnosticPath.3")) {
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                    continue
+                }
+                foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+                    $allDiagnosticEntries.Add(($line | ConvertFrom-Json))
+                }
+            }
+            $parallelIds = @($parallelProcesses | ForEach-Object Id)
+            Assert-Equal $true (Test-Path -LiteralPath "$diagnosticPath.1" -PathType Leaf) `
+                '跨进程并发写入触发并保留 rollover'
+            Assert-Equal $clientCount @(
+                $allDiagnosticEntries |
+                    Where-Object {
+                        $_.event -eq 'InstanceActivationSucceeded' -and
+                        $_.processId -in $parallelIds
+                    }
+            ).Count '并发客户端激活结果无静默丢失'
+            Assert-Equal $clientCount @(
+                $allDiagnosticEntries |
+                    Where-Object {
+                        $_.event -eq 'InstanceActivationHandled' -and
+                        $_.processId -eq $primaryProcess.Id
+                    }
+            ).Count '主实例并发激活处理诊断无静默丢失'
+
+            [System.IO.File]::WriteAllText(
+                $diagnosticPath,
+                $padding + [Environment]::NewLine,
+                $utf8NoBom)
+            $loggerProbePath = Join-Path $testRoot 'diagnostic-concurrency-probe.ps1'
+            $loggerBarrierPath = Join-Path $testRoot 'diagnostic-concurrency.start'
+            $loggerProbe = @'
+param(
+    [Parameter(Mandatory)] [string] $AssemblyPath,
+    [Parameter(Mandatory)] [string] $LogPath,
+    [Parameter(Mandatory)] [string] $BarrierPath,
+    [Parameter(Mandatory)] [int] $Worker,
+    [Parameter(Mandatory)] [int] $WriteCount
+)
+$assembly = [System.Reflection.Assembly]::LoadFrom($AssemblyPath)
+$loggerType = $assembly.GetType('MinminCountdown.DiagnosticLogger', $true)
+$logger = [Activator]::CreateInstance($loggerType, [object[]] @($LogPath))
+$info = $loggerType.GetMethod('Info')
+while (-not (Test-Path -LiteralPath $BarrierPath -PathType Leaf)) {
+    Start-Sleep -Milliseconds 5
+}
+for ($index = 0; $index -lt $WriteCount; $index++) {
+    [void] $info.Invoke($logger, [object[]] @("InstanceActivationListenerFailedWorker$Worker-$index"))
+}
+'@
+            [System.IO.File]::WriteAllText($loggerProbePath, $loggerProbe, $utf8NoBom)
+            $loggerWorkerCount = 8
+            $writesPerWorker = 100
+            for ($worker = 0; $worker -lt $loggerWorkerCount; $worker++) {
+                $probeLogPath = if ($worker % 2 -eq 0) {
+                    $diagnosticPath
+                }
+                else {
+                    Join-Path $testRoot 'logs\..\logs\application.jsonl'
+                }
+                $probe = Start-Process -FilePath 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -ArgumentList @(
+                    '-NoLogo',
+                    '-NoProfile',
+                    '-File',
+                    $loggerProbePath,
+                    '-AssemblyPath',
+                    $sourceApplication,
+                    '-LogPath',
+                    $probeLogPath,
+                    '-BarrierPath',
+                    $loggerBarrierPath,
+                    '-Worker',
+                    $worker,
+                    '-WriteCount',
+                    $writesPerWorker
+                ) -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+                    -RedirectStandardOutput (Join-Path $testRoot "logger-$worker.stdout.txt") `
+                    -RedirectStandardError (Join-Path $testRoot "logger-$worker.stderr.txt")
+                $parallelProcesses.Add($probe)
+            }
+            Start-Sleep -Milliseconds 300
+            [System.IO.File]::WriteAllText($loggerBarrierPath, 'start', $utf8NoBom)
+            foreach ($probe in @($parallelProcesses | Select-Object -Last $loggerWorkerCount)) {
+                if (-not $probe.WaitForExit(10000)) {
+                    throw "诊断并发 probe 未在有界期限内退出：PID=$($probe.Id)"
+                }
+                $probe.WaitForExit()
+                Assert-Equal 0 $probe.ExitCode "诊断并发 probe 正常退出：PID=$($probe.Id)"
+            }
+            $probeEntries = [System.Collections.Generic.List[object]]::new()
+            foreach ($path in @($diagnosticPath, "$diagnosticPath.1", "$diagnosticPath.2", "$diagnosticPath.3")) {
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                    continue
+                }
+                foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+                    $probeEntries.Add(($line | ConvertFrom-Json))
+                }
+            }
+            Assert-Equal ($loggerWorkerCount * $writesPerWorker) @(
+                $probeEntries |
+                    Where-Object { $_.event -like 'InstanceActivationListenerFailedWorker*' }
+            ).Count '规范化同路径的跨进程 rotate+append 无静默丢失'
+            Assert-Equal $settingsHashBefore (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash `
+                '诊断并发与 rollover 不写设置'
+            [pscustomobject]@{
+                Passed = $script:assertions
+                Failed = 0
+                InstanceActivationOnly = $true
+                ProcessScenarios = 1
+            } | ConvertTo-Json
+            return
+        }
+
+        if ($InstanceActivationClientMode -eq 'DisposeRace') {
+            $floatingWindows = @(Get-VisibleProcessWindows -ProcessId $primaryProcess.Id |
+                Where-Object Title -eq '敏敏子悬浮窗')
+            Assert-Equal 1 $floatingWindows.Count 'Dispose 竞态前存在唯一真实悬浮窗'
+            Assert-Equal $true ([MinminCountdownActivationWindowProbe]::PostMessage(
+                [IntPtr]::new([long] $floatingWindows[0].Handle),
+                0x0010,
+                [IntPtr]::Zero,
+                [IntPtr]::Zero)) '向真实悬浮窗发送 WM_CLOSE'
+            if (-not $primaryProcess.WaitForExit(5000)) {
+                throw '停滞连接存在时主实例 Dispose 未有界收口。'
+            }
+            $primaryProcess.WaitForExit()
+            Assert-Equal 0 $primaryProcess.ExitCode '停滞连接存在时主实例正常退出'
+            $stalledPipe.Dispose()
+            $stalledPipe = $null
+            $primaryProcess.Dispose()
+            $primaryProcess = $null
+            [System.IO.File]::Delete($runtimeStatusPath)
+            $primaryProcess = Start-Process -FilePath $dotnet -ArgumentList $primaryArguments `
+                -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput $primaryOutputPath -RedirectStandardError $primaryErrorPath
+            $restartDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
+            while (-not (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) -and
+                -not $primaryProcess.HasExited -and
+                [DateTimeOffset]::UtcNow -lt $restartDeadline) {
+                Start-Sleep -Milliseconds 50
+            }
+            Assert-Equal $true (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) `
+                'Dispose 后同 scope 可重新取得租约并进入 window-ready'
+            Assert-Equal $false $primaryProcess.HasExited 'Dispose 后新主实例保持存活'
+            Assert-Equal $settingsHashBefore (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash `
+                'Dispose 竞态与同 scope 重启不写设置'
+            [pscustomobject]@{
+                Passed = $script:assertions
+                Failed = 0
+                InstanceActivationOnly = $true
+                ProcessScenarios = 1
+            } | ConvertTo-Json
+            return
+        }
+
+        if ($InstanceActivationClientMode -eq 'Scope') {
+            $settingsPathB = Join-Path $testRoot 'settings-b.json'
+            $diagnosticPathB = Join-Path $testRoot 'logs\application-b.jsonl'
+            [System.IO.File]::WriteAllText($settingsPathB, $settingsJson, $utf8NoBom)
+            $settingsHashBeforeB = (Get-FileHash -LiteralPath $settingsPathB -Algorithm SHA256).Hash
+            $scopeBPrimary = Start-Process -FilePath $dotnet -ArgumentList @(
+                $sourceApplication,
+                '--exit-after-ready-for-test',
+                '--instance-activation-test-state',
+                'FloatingVisible',
+                '--settings-file',
+                $settingsPathB,
+                '--diagnostic-log-path',
+                $diagnosticPathB
+            ) -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput (Join-Path $testRoot 'scope-b-primary.stdout.txt') `
+                -RedirectStandardError (Join-Path $testRoot 'scope-b-primary.stderr.txt')
+            $parallelProcesses.Add($scopeBPrimary)
+            $scopeReadyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
+            do {
+                $scopeBReady = (Test-Path -LiteralPath $diagnosticPathB -PathType Leaf) -and
+                    (Get-Content -LiteralPath $diagnosticPathB -Raw -Encoding UTF8).Contains(
+                        'WindowReady',
+                        [StringComparison]::Ordinal)
+                if ($scopeBReady) { break }
+                Start-Sleep -Milliseconds 50
+            } while (-not $scopeBPrimary.HasExited -and [DateTimeOffset]::UtcNow -lt $scopeReadyDeadline)
+            Assert-Equal $true $scopeBReady '不同设置路径的第二个主实例进入 window-ready'
+            Assert-Equal $false $primaryProcess.HasExited 'scope A 主实例保持存活'
+            Assert-Equal $false $scopeBPrimary.HasExited 'scope B 主实例保持存活'
+
+            $scopeClients = @(
+                @{ Settings = $settingsPath; Diagnostic = $diagnosticPath; ServerPid = $primaryProcess.Id; Name = 'a' },
+                @{ Settings = $settingsPathB; Diagnostic = $diagnosticPathB; ServerPid = $scopeBPrimary.Id; Name = 'b' }
+            )
+            foreach ($scopeClient in $scopeClients) {
+                $client = Start-Process -FilePath $dotnet -ArgumentList @(
+                    $sourceApplication,
+                    '--settings-file',
+                    $scopeClient.Settings,
+                    '--diagnostic-log-path',
+                    $scopeClient.Diagnostic
+                ) -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+                    -RedirectStandardOutput (Join-Path $testRoot "scope-$($scopeClient.Name)-client.stdout.txt") `
+                    -RedirectStandardError (Join-Path $testRoot "scope-$($scopeClient.Name)-client.stderr.txt")
+                $parallelProcesses.Add($client)
+                if (-not $client.WaitForExit(7000)) {
+                    throw "scope $($scopeClient.Name) 客户端未有界退出。"
+                }
+                $client.WaitForExit()
+                Assert-Equal 0 $client.ExitCode "scope $($scopeClient.Name) 客户端收到 ACK"
+                $clientEntry = Get-Content -LiteralPath $scopeClient.Diagnostic -Encoding UTF8 |
+                    ForEach-Object { $_ | ConvertFrom-Json } |
+                    Where-Object {
+                        $_.event -eq 'InstanceActivationSucceeded' -and
+                        $_.processId -eq $client.Id
+                    }
+                Assert-Equal 1 @($clientEntry).Count "scope $($scopeClient.Name) 客户端只记录一次成功"
+                Assert-Equal ([int] $scopeClient.ServerPid) ([int] $clientEntry.activationServerProcessId `
+                    ) "scope $($scopeClient.Name) ACK 绑定自己的 server PID"
+            }
+            Assert-Equal $settingsHashBefore (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash `
+                'scope A 激活不写设置'
+            Assert-Equal $settingsHashBeforeB (Get-FileHash -LiteralPath $settingsPathB -Algorithm SHA256).Hash `
+                'scope B 激活不写设置'
+            [pscustomobject]@{
+                Passed = $script:assertions
+                Failed = 0
+                InstanceActivationOnly = $true
+                ProcessScenarios = 2
+            } | ConvertTo-Json
+            return
+        }
+
+        if ($InstanceActivationListenerBehavior -eq 'CallbackFailureOnce') {
+            $firstSecondaryOutputPath = Join-Path $testRoot 'secondary-first.stdout.txt'
+            $firstSecondaryErrorPath = Join-Path $testRoot 'secondary-first.stderr.txt'
+            $firstSecondaryProcess = Start-Process -FilePath $dotnet -ArgumentList $secondaryArguments `
+                -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput $firstSecondaryOutputPath -RedirectStandardError $firstSecondaryErrorPath
+            if (-not $firstSecondaryProcess.WaitForExit(7000)) {
+                throw '回调故障场景的首次第二实例未在有界期限内退出。'
+            }
+            $firstSecondaryProcess.WaitForExit()
+            Assert-Equal 1 $firstSecondaryProcess.ExitCode '首次回调故障不能冒充激活成功'
+        }
+
+        $secondaryProcess = Start-Process -FilePath $dotnet -ArgumentList $secondaryArguments `
+            -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $secondaryOutputPath -RedirectStandardError $secondaryErrorPath
+        if (-not $secondaryProcess.WaitForExit(7000)) {
+            throw '真实第二个普通实例未在有界激活期限内退出。'
+        }
+        $secondaryProcess.WaitForExit()
+        $expectedSecondaryExitCode = if (
+            $InstanceActivationListenerBehavior -in @('Normal', 'CallbackFailureOnce') -and
+            $InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')
+        ) { 0 } else { 1 }
+        Assert-Equal $expectedSecondaryExitCode $secondaryProcess.ExitCode '第二实例只在匹配激活 ACK 后成功退出'
+        $primaryProcess.Refresh()
+        Assert-Equal $false $primaryProcess.HasExited '第二实例请求结束后主实例仍存活'
+
+        $diagnosticEntries = @(
+            Get-Content -LiteralPath $diagnosticPath -Encoding UTF8 |
+                ForEach-Object { $_ | ConvertFrom-Json }
+        )
+        $expectedClientEvent = if ($InstanceActivationClientMode -eq 'AcceptanceReadOnly') {
+            'InstanceActivationSuppressedAcceptanceReadOnly'
+        }
+        elseif ($InstanceActivationClientMode -eq 'ValidateExercise') {
+            'FatalUnhandledException'
+        }
+        else {
+            switch ($InstanceActivationListenerBehavior) {
+                'Timeout' { 'InstanceActivationTimedOut' }
+                'ProtocolMismatch' { 'InstanceActivationProtocolMismatch' }
+                'Disconnect' { 'InstanceActivationListenerFailed' }
+                'CallbackFailureOnce' { 'InstanceActivationSucceeded' }
+                default { 'InstanceActivationSucceeded' }
+            }
+        }
+        $activationClientResult = @(
+            $diagnosticEntries |
+                Where-Object { $_.event -eq $expectedClientEvent }
+        )
+        $activationHandled = @(
+            $diagnosticEntries |
+                Where-Object { $_.event -eq 'InstanceActivationHandled' }
+        )
+        $activationRequestsReceived = @(
+            $diagnosticEntries |
+                Where-Object { $_.event -eq 'InstanceActivationRequestReceived' }
+        )
+        Assert-Equal 1 $activationClientResult.Count '第二实例记录一次明确激活结果'
+        Assert-Equal 0 @(
+            $diagnosticEntries |
+                Where-Object {
+                    $_.event -eq 'InstanceActivationSucceeded' -and
+                    $expectedClientEvent -ne 'InstanceActivationSucceeded'
+                }
+        ).Count '超时或协议/监听失败不冒充激活成功'
+        $expectedRequestCount = if ($InstanceActivationListenerBehavior -eq 'CallbackFailureOnce') {
+            2
+        }
+        elseif ($InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')) {
+            1
+        }
+        else { 0 }
+        Assert-Equal $expectedRequestCount $activationRequestsReceived.Count '第二个普通实例只发送一次请求，非交互模式零请求'
+        $allowedActivationDiagnosticFields = @(
+            'schemaVersion',
+            'timestampUtc',
+            'level',
+            'event',
+            'processId',
+            'sessionId',
+            'runtimeVersion',
+            'activationScopeId',
+            'activationRequestId',
+            'activationServerProcessId',
+            'activationForegroundPermissionGranted',
+            'activationResult',
+            'activationStateBefore',
+            'activationStateAfter',
+            'interactiveFloatingWindowCount',
+            'activationForegroundWindowHandle',
+            'activationFloatingWindowIsActive',
+            'mainWindowVisibleBefore',
+            'mainWindowVisibleAfter',
+            'managerStatePreserved'
+        )
+        $unexpectedActivationDiagnosticFields = @(
+            $diagnosticEntries |
+                Where-Object { $_.event -like 'InstanceActivation*' } |
+                ForEach-Object { $_.PSObject.Properties.Name } |
+                Where-Object { $_ -notin $allowedActivationDiagnosticFields }
+        )
+        Assert-Equal 0 $unexpectedActivationDiagnosticFields.Count '激活诊断只含结果与非内容身份/窗口状态'
+        if ($InstanceActivationListenerBehavior -in @('Normal', 'CallbackFailureOnce') -and
+            $InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')) {
+            Assert-Equal 1 $activationHandled.Count '主实例处理一次激活请求'
+            Assert-Equal (
+                [string] $activationClientResult[0].activationScopeId
+            ) (
+                [string] $activationHandled[0].activationScopeId
+            ) '激活 ACK 绑定同一非内容 scope identity'
+            Assert-Equal (
+                [string] $activationClientResult[0].activationRequestId
+            ) (
+                [string] $activationHandled[0].activationRequestId
+            ) '激活 ACK 绑定同一 request identity'
+            Assert-Equal $primaryProcess.Id ([int] $activationClientResult[0].activationServerProcessId `
+                ) '前台授权只绑定命名管道真实 server PID'
+            $expectedStateBefore = switch ($InstanceActivationTestState) {
+                'Tray' { 'Tray' }
+                'Hidden' { 'Hidden' }
+                'Minimized' { 'Minimized' }
+                default { 'VisibleNormal' }
+            }
+            Assert-Equal $expectedStateBefore ([string] $activationHandled[0].activationStateBefore) '悬浮窗激活前状态'
+            Assert-Equal 'VisibleNormal' ([string] $activationHandled[0].activationStateAfter) '激活后悬浮窗恢复为可见正常状态'
+            Assert-Equal (
+                $InstanceActivationTestState -eq 'MainVisible'
+            ) (
+                [bool] $activationHandled[0].mainWindowVisibleBefore
+            ) '激活前管理窗口可见状态保持测试输入'
+            Assert-Equal (
+                [bool] $activationHandled[0].mainWindowVisibleBefore
+            ) (
+                [bool] $activationHandled[0].mainWindowVisibleAfter
+            ) '激活不显示或隐藏管理窗口'
+            Assert-Equal 1 ([int] $activationHandled[0].interactiveFloatingWindowCount) '第二次普通启动后仍只有一个交互悬浮窗'
+            Assert-Equal $true ([bool] $activationHandled[0].managerStatePreserved `
+                ) '激活保持工作区、筛选与编辑草稿状态'
+            $visibleWindows = @(Get-VisibleProcessWindows -ProcessId $primaryProcess.Id)
+            $floatingWindows = @($visibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
+            Assert-Equal 1 $floatingWindows.Count 'Win32 枚举确认主进程只有一个可见悬浮窗'
+            $foregroundMatchesFloating = [long] $floatingWindows[0].Handle -eq
+                [long] $activationHandled[0].activationForegroundWindowHandle
+            Assert-Equal $true (
+                $foregroundMatchesFloating -or
+                ([bool] $activationHandled[0].activationFloatingWindowIsActive -and
+                 -not [bool] $activationClientResult[0].activationForegroundPermissionGranted)
+            ) '匹配 ACK 由真实前台 HWND 或 WPF IsActive 证明'
+            Assert-Equal $floatingWindows.Count ([int] $activationHandled[0].interactiveFloatingWindowCount `
+                ) 'WPF FloatingWindow 计数与外部可见窗口枚举一致'
+            if ($InstanceActivationListenerBehavior -eq 'CallbackFailureOnce') {
+                Assert-Equal 1 @(
+                    $diagnosticEntries |
+                        Where-Object {
+                            $_.event -eq 'InstanceActivationListenerFailed' -and
+                            $_.processId -eq $primaryProcess.Id
+                        }
+                ).Count '主实例记录首次回调故障且 listener 继续服务'
+            }
+            if ($InstanceActivationClientMode -eq 'StalledRecovery') {
+                Assert-Equal 1 @(
+                    $diagnosticEntries |
+                        Where-Object {
+                            $_.event -eq 'InstanceActivationListenerFailed' -and
+                            $_.processId -eq $primaryProcess.Id
+                        }
+                ).Count '主实例记录停滞连接超时且 listener 继续服务'
+            }
+        }
+        elseif ($InstanceActivationClientMode -eq 'AcceptanceReadOnly') {
+            Assert-Equal 0 $activationHandled.Count 'acceptance-read-only 调用不发送激活请求'
+        }
+        elseif ($InstanceActivationClientMode -eq 'ValidateExercise') {
+            Assert-Equal 0 $activationHandled.Count 'validate-only exercise 探针不发送激活请求'
+            Assert-Equal 0 @(
+                $diagnosticEntries |
+                    Where-Object { $_.event -like 'InstanceActivation*' }
+            ).Count 'validate-only exercise 探针不记录交互激活结果'
+        }
+        Assert-Equal $settingsHashBefore (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash '激活不写设置'
+
+        [pscustomobject]@{
+            Passed = $script:assertions
+            Failed = 0
+            InstanceActivationOnly = $true
+            ProcessScenarios = 1
+        } | ConvertTo-Json
+    }
+    finally {
+        if ($null -ne $stalledPipe) {
+            $stalledPipe.Dispose()
+        }
+        foreach ($process in @($secondaryProcess, $firstSecondaryProcess) + @($parallelProcesses) + @($primaryProcess)) {
+            if ($null -eq $process) {
+                continue
+            }
+            try {
+                if (-not $process.HasExited) {
+                    $process.Kill($true)
+                    [void] $process.WaitForExit(5000)
+                }
+            }
+            finally {
+                $process.Dispose()
+            }
+        }
+
+        if (Test-Path -LiteralPath $testRoot -PathType Container) {
+            $cleanupJson = & $safeTreeDelete `
+                -Mode BatchPurge `
+                -TargetPaths $testRoot `
+                -CapabilityRoot $testCapabilityRoot `
+                -ConfirmApply `
+                -ConfirmPurge `
+                -Json | Out-String
+            if ($LASTEXITCODE -ne 0) {
+                throw "受管激活测试目录清理失败：$testRoot"
+            }
+            $cleanup = $cleanupJson | ConvertFrom-Json
+            if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
+                throw "受管激活测试目录未完成清理：$testRoot"
+            }
+        }
+    }
+}
+
+function Invoke-InstanceActivationMatrixTests {
+    $pwsh = 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe'
+    $scenarios = @(
+        [pscustomobject]@{ Name = 'State-FloatingVisible'; Arguments = @('-InstanceActivationTestState', 'FloatingVisible') },
+        [pscustomobject]@{ Name = 'State-Tray'; Arguments = @('-InstanceActivationTestState', 'Tray') },
+        [pscustomobject]@{ Name = 'State-Hidden'; Arguments = @('-InstanceActivationTestState', 'Hidden') },
+        [pscustomobject]@{ Name = 'State-Minimized'; Arguments = @('-InstanceActivationTestState', 'Minimized') },
+        [pscustomobject]@{ Name = 'State-MainVisible'; Arguments = @('-InstanceActivationTestState', 'MainVisible') },
+        [pscustomobject]@{ Name = 'Listener-Timeout'; Arguments = @('-InstanceActivationListenerBehavior', 'Timeout') },
+        [pscustomobject]@{ Name = 'Listener-ProtocolMismatch'; Arguments = @('-InstanceActivationListenerBehavior', 'ProtocolMismatch') },
+        [pscustomobject]@{ Name = 'Listener-Disconnect'; Arguments = @('-InstanceActivationListenerBehavior', 'Disconnect') },
+        [pscustomobject]@{ Name = 'Listener-CallbackFailureOnce'; Arguments = @('-InstanceActivationListenerBehavior', 'CallbackFailureOnce') },
+        [pscustomobject]@{ Name = 'Client-AcceptanceReadOnly'; Arguments = @('-InstanceActivationClientMode', 'AcceptanceReadOnly') },
+        [pscustomobject]@{ Name = 'Client-Finalized'; Arguments = @('-InstanceActivationClientMode', 'Finalized') },
+        [pscustomobject]@{ Name = 'Client-ValidateExercise'; Arguments = @('-InstanceActivationClientMode', 'ValidateExercise') },
+        [pscustomobject]@{ Name = 'Client-StalledRecovery'; Arguments = @('-InstanceActivationClientMode', 'StalledRecovery') },
+        [pscustomobject]@{ Name = 'Client-OptionGuard'; Arguments = @('-InstanceActivationClientMode', 'OptionGuard') },
+        [pscustomobject]@{ Name = 'Client-DiagnosticConcurrency'; Arguments = @('-InstanceActivationClientMode', 'DiagnosticConcurrency') },
+        [pscustomobject]@{ Name = 'Client-DisposeRace'; Arguments = @('-InstanceActivationClientMode', 'DisposeRace') },
+        [pscustomobject]@{ Name = 'Client-Scope'; Arguments = @('-InstanceActivationClientMode', 'Scope') }
+    )
+    $totalPassed = 0
+    $processScenarios = 0
+
+    foreach ($scenario in $scenarios) {
+        Write-Host "[instance-activation-matrix] START $($scenario.Name)"
+        $childArguments = @(
+            '-NoLogo',
+            '-NoProfile',
+            '-File',
+            $PSCommandPath,
+            '-InstanceActivationOnly'
+        ) + @($scenario.Arguments)
+        $output = & $pwsh @childArguments
+        $exitCode = $LASTEXITCODE
+        $outputText = @($output) -join [Environment]::NewLine
+        if ($exitCode -ne 0) {
+            throw "实例激活矩阵场景失败：$($scenario.Name)，exit=$exitCode`n$outputText"
+        }
+
+        try {
+            $result = $outputText | ConvertFrom-Json
+        }
+        catch {
+            throw "实例激活矩阵场景未返回有效 JSON：$($scenario.Name)`n$outputText"
+        }
+        if ([int] $result.Failed -ne 0 -or -not [bool] $result.InstanceActivationOnly) {
+            throw "实例激活矩阵场景返回失败结果：$($scenario.Name)`n$outputText"
+        }
+
+        $totalPassed += [int] $result.Passed
+        $processScenarios += [int] $result.ProcessScenarios
+        Write-Host "[instance-activation-matrix] PASS $($scenario.Name) assertions=$($result.Passed)"
+    }
+
+    [pscustomobject]@{
+        Passed = $totalPassed
+        Failed = 0
+        InstanceActivationMatrix = $true
+        MatrixScenarios = $scenarios.Count
+        ProcessScenarios = $processScenarios
+    } | ConvertTo-Json
+}
+
+if ($InstanceActivationMatrix) {
+    if ($InstanceActivationOnly -or
+        $InstanceActivationTestState -ne 'FloatingVisible' -or
+        $InstanceActivationListenerBehavior -ne 'Normal' -or
+        $InstanceActivationClientMode -ne 'Normal') {
+        throw '-InstanceActivationMatrix 不能与单场景参数组合。'
+    }
+    Invoke-InstanceActivationMatrixTests
+    exit 0
+}
+
+if ($InstanceActivationOnly) {
+    Invoke-InstanceActivationProcessTests
+    exit 0
+}
+
 $sourceTreeBaselineMode = Resolve-ReferenceBaselineMode `
     -MainManifestAvailable $true `
     -FloatingManifestAvailable $true
@@ -122,6 +978,108 @@ $referenceBaselineMode = Resolve-ReferenceBaselineMode `
     $null,
     [EnvironmentVariableTarget]::Process
 )
+
+if ($MigrationParityOnly) {
+    $migrationParityRoot = Join-Path 'D:\Codex\.codex\run-evidence\clock-countdown-migration-parity' ([guid]::NewGuid().ToString('N'))
+    $migrationSettingsModule = Join-Path $PSScriptRoot 'Countdown.Settings.psm1'
+    $migrationDotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+    $migrationVerificationDll = Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\bin\Release\net10.0-windows\MinminCountdown.Verification.dll'
+    $migrationUtc = [DateTimeOffset] '2031-09-10T02:16:00Z'
+    $migrationFiles = [System.Collections.Generic.List[string]]::new()
+    $migrationFixtures = @(
+        [pscustomobject]@{ Version = 3; Json = '{"schemaVersion":3,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":12345.67,"workStart":"08:30","workEnd":"17:45","countdowns":[{"id":"countdown-v3","name":"版本三倒计时","targetUtc":"2030-03-04T05:06:07.0000000+00:00"}]}' },
+        [pscustomobject]@{ Version = 4; Json = '{"schemaVersion":4,"timeZoneId":"China Standard Time","displayPrecision":"Hour","monthlySalary":8800,"workStart":"09:00","workEnd":"18:00","countdowns":[{"id":"countdown-v4","name":"版本四倒计时","targetUtc":"2030-04-05T06:07:08.0000000+00:00"}],"notes":[{"id":"note-v4","text":"版本四便签","isCompleted":true}]}' },
+        [pscustomobject]@{ Version = 5; Json = '{"schemaVersion":5,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":10000,"workStart":"09:15","workEnd":"18:15","tags":[{"id":"tag-work","name":"工作","color":"#FF8A70"}],"countdowns":[{"id":"countdown-v5","name":"版本五倒计时","targetUtc":"2030-05-06T07:08:09.0000000+00:00","tagIds":["tag-work"]}],"notes":[{"id":"note-v5","text":"版本五便签","isCompleted":false,"tagIds":["tag-work"]}]}' },
+        [pscustomobject]@{ Version = 6; Json = '{"schemaVersion":6,"timeZoneId":"China Standard Time","displayPrecision":"Day","monthlySalary":15000,"workStart":"08:00","workEnd":"17:00","tags":[],"countdowns":[{"id":"countdown-v6","name":"版本六倒计时","targetUtc":"2030-06-07T08:09:10.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v6","text":"版本六便签","date":"2030-06-07","isCompleted":false,"tagIds":[]}]}' },
+        [pscustomobject]@{ Version = 7; Json = '{"schemaVersion":7,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.5,"workStart":"09:00","workEnd":"18:30","tags":[],"countdowns":[{"id":"countdown-v7","name":"版本七倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v7","text":"版本七循环提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminderIntervalMinutes":30,"reminderStartUtc":"2031-09-10T01:00:00.0000000+00:00"}]}' },
+        [pscustomobject]@{ Version = 8; Json = '{"schemaVersion":8,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.5,"workStart":"09:00","workEnd":"18:30","tags":[],"countdowns":[{"id":"countdown-v8","name":"版本八倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v8","text":"版本八已送达提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T01:30:00.0000000+00:00","delivery":"delivered"}}]}' },
+        [pscustomobject]@{ Version = 9; Json = '{"schemaVersion":9,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.5,"workStart":"09:00","workEnd":"18:30","themePreference":"Night","tags":[],"countdowns":[{"id":"countdown-v9","name":"版本九倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v9-repeat","text":"已开始循环提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"repeat","firstDueUtc":"2031-09-10T01:00:00.0000000+00:00","intervalMinutes":30}}]}' }
+    )
+    try {
+        foreach ($requiredPath in @($migrationSettingsModule, $migrationDotnet, $migrationVerificationDll)) {
+            if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+                throw "迁移 parity 缺少受管依赖：$requiredPath"
+            }
+        }
+        New-Item -ItemType Directory -Path $migrationParityRoot -Force | Out-Null
+        Import-Module $migrationSettingsModule -Force
+        foreach ($fixture in $migrationFixtures) {
+            $migrationFixturePath = Join-Path $migrationParityRoot "schema-v$($fixture.Version).settings.json"
+            $migrationCSharpPath = Join-Path $migrationParityRoot "schema-v$($fixture.Version).csharp.json"
+            foreach ($path in @(
+                    $migrationFixturePath,
+                    $migrationCSharpPath,
+                    "$migrationCSharpPath.tmp",
+                    "$migrationCSharpPath.backup1",
+                    "$migrationCSharpPath.backup2",
+                    "$migrationCSharpPath.backup2.tmp",
+                    "$migrationCSharpPath.backup2.rollback"
+                )) {
+                [void] $migrationFiles.Add($path)
+            }
+            [System.IO.File]::WriteAllText($migrationFixturePath, $fixture.Json, [System.Text.UTF8Encoding]::new($false))
+            $migrationFixtureHash = (Get-FileHash -LiteralPath $migrationFixturePath -Algorithm SHA256).Hash
+            $powerShellCanonical = ConvertTo-CountdownSettingsJson -State (
+                ConvertFrom-CountdownSettingsObject `
+                    -Settings ($fixture.Json | ConvertFrom-Json -DateKind String) `
+                    -MigrationUtc $migrationUtc)
+            $migrationOutput = Invoke-CheckedNativeCommand `
+                -FilePath $migrationDotnet `
+                -Operation "运行 schema v$($fixture.Version) C#/PowerShell migration parity" `
+                -ArgumentList @(
+                    $migrationVerificationDll,
+                    'round-trip',
+                    '--input', $migrationFixturePath,
+                    '--output', $migrationCSharpPath,
+                    '--migration-utc', $migrationUtc.ToString('o'),
+                    '--json')
+            $migrationOutput | ConvertFrom-Json | Out-Null
+            $csharpCanonical = [System.IO.File]::ReadAllText($migrationCSharpPath, [System.Text.Encoding]::UTF8)
+            Assert-Equal $powerShellCanonical $csharpCanonical "schema v$($fixture.Version) 使用同一迁移时刻得到相同 canonical v10"
+            Assert-Equal $migrationFixtureHash (Get-FileHash -LiteralPath $migrationFixturePath -Algorithm SHA256).Hash "schema v$($fixture.Version) parity 保持共享输入字节不变"
+
+            $canonicalObject = $csharpCanonical | ConvertFrom-Json -DateKind String
+            Assert-Equal 10 ([int] $canonicalObject.schemaVersion) "schema v$($fixture.Version) 迁移到 canonical v10"
+            if ($fixture.Version -ge 7) {
+                $rule = $canonicalObject.notes[0].reminderRules[0]
+                $ruleId = [string] $rule.id
+                $state = $canonicalObject.reminderStates.PSObject.Properties[$ruleId].Value
+                Assert-Equal $null $state.lastDispositionOccurrenceKey "schema v$($fixture.Version) 不伪造 disposition"
+                Assert-Equal $null $state.activeSnooze "schema v$($fixture.Version) 不伪造 snooze"
+                if ($fixture.Version -eq 8) {
+                    Assert-Equal '2031-09-10T01:30:00.0000000+00:00' ([string] $rule.scheduledUtc) 'schema v8 保留一次提醒时刻'
+                    Assert-Equal ("{0}|2031-09-10T01:30:00.0000000+00:00" -f $ruleId) ([string] $state.lastDeliveredOccurrenceKey) 'schema v8 保留 delivery occurrence'
+                }
+                else {
+                    $expectedFirstDueUtc = if ($fixture.Version -eq 7) {
+                        '2031-09-10T01:30:00.0000000+00:00'
+                    }
+                    else {
+                        '2031-09-10T01:00:00.0000000+00:00'
+                    }
+                    Assert-Equal $expectedFirstDueUtc ([string] $rule.firstDueUtc) "schema v$($fixture.Version) 保留重复提醒起点"
+                    Assert-Equal '2031-09-10T02:00:00.0000000+00:00' ([string] $state.handledThroughUtc) "schema v$($fixture.Version) cursor 以固定迁移时刻计算"
+                    Assert-Equal $null $state.lastDeliveredOccurrenceKey "schema v$($fixture.Version) 不伪造 delivery"
+                }
+                if ($fixture.Version -eq 9) {
+                    Assert-Equal 'legacy-d71c35d11bb6b27f66e7c582ef71e036a4f36314a86250d45318b5d32763ca75' $ruleId 'schema v9 repeat 保持稳定规则 ID'
+                }
+            }
+        }
+        [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'MigrationParity' } | ConvertTo-Json
+        exit 0
+    }
+    finally {
+        foreach ($path in $migrationFiles) {
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+                [System.IO.File]::Delete($path)
+            }
+        }
+        if (Test-Path -LiteralPath $migrationParityRoot -PathType Container) {
+            [System.IO.Directory]::Delete($migrationParityRoot, $false)
+        }
+    }
+}
 
 if (-not ('MinminCountdown.Tests.BundleAssetProbe' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -384,7 +1342,7 @@ try {
         throw "C# round-trip 未生成显式输出：$roundTripPath"
     }
     $canonicalSettings = Get-Content -LiteralPath $roundTripPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    Assert-Equal 9 $canonicalSettings.schemaVersion 'C# round-trip 输出 schemaVersion'
+    Assert-Equal 10 $canonicalSettings.schemaVersion 'C# round-trip 输出 schemaVersion'
     Assert-Equal 'China Standard Time' $canonicalSettings.timeZoneId 'C# round-trip 输出时区'
     Assert-Equal 'Auto' $canonicalSettings.themePreference 'C# round-trip 为旧设置补齐自动主题偏好'
     $powerShellReloadedState = ConvertFrom-CountdownSettingsObject -Settings $canonicalSettings
@@ -627,14 +1585,18 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceInterfaceBehavior) '桌面工作区 interface 统一持久化、状态变更与筛选行为'
     Assert-Equal $true ([bool] $adapterValidation.ReminderEditingInterfaceBehavior) '提醒编辑 interface 统一模式、时间、间隔与既有提醒保留行为'
+    Assert-Equal $true ([bool] $adapterValidation.CalendarReminderBehavior) '日历提醒覆盖类型化规则、北京时间 occurrence、错过合并与 Ical.Net 失败闭锁'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderRulesEditorSharedEntryWorks) '主窗口与悬浮窗复用共享提醒规则编辑器入口并隐藏旧复杂控件'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingReminderRulesEntryStaysCompact) '悬浮窗提醒规则入口保持 520 x 390 紧凑表面'
     Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolInterfaceBehavior) '启动验收 protocol interface 覆盖请求、回执、状态推进与拒绝路径'
     Assert-Equal $true ([bool] $adapterValidation.HolidayCalendarInterfaceBehavior) '工作日历 interface 覆盖缓存初始化、派生结果与失败状态'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
+    Assert-Equal $true ([bool] $adapterValidation.ValidateOnlySettingsIsolationBehavior) 'validate-only 强制使用显式非根 settings 路径且不改变生产默认路径'
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    Assert-Equal 428 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容'
+    Assert-Equal 482 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
-    Assert-Equal '4B778582AE7FBDCAFA84E5B715DF9E642D7352AF547D4910DF2361B127D3050C' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
+    Assert-Equal 'CFF850180996B27BC8EFAB2FE99B3A007F1BA59C1EFE67D9864D79A69B0B993C' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusDisclosureVisuals) 'validate-only 验证便签状态披露视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureAccessibility) 'validate-only 验证便签披露控件无障碍契约'
@@ -718,7 +1680,7 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.NoteEmptyStatesDistinguished) '首次空态与筛选无结果状态具有不同反馈'
     Assert-Equal $true ([bool] $adapterValidation.NoteNoResultsResetWorks) '筛选无结果状态可就地重置完整筛选条件'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderWindowFocusesDismissAction) '提醒窗打开后聚焦知道了操作'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterInitialFocusAndAccessibleNameWork) '提醒中心打开后建立初始焦点与可访问名称'
     Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLoaded) 'adapter 验证角色图片资产已加载'
     Assert-Equal 3 ([int] $adapterValidation.MainCharacterPanelDockCount) '主窗口角色场景栏保留三个玩偶底座'
     Assert-Equal $true ([bool] $adapterValidation.MainCharacterPanelDocksIntegrateWithPanel) '主窗口三个玩偶底座与工作区面板形成一体'
@@ -941,6 +1903,49 @@ try {
     Assert-Equal $true ([bool] $adapterValidation.CrossDayReminderSelectionWorks) '便签提醒支持跨天选择并按北京时间触发'
     Assert-Equal $true ([bool] $adapterValidation.ReminderSummaryAdvancesAfterFirstDue) '首次提醒到期后主窗口摘要显示下一循环时间'
     Assert-Equal $true ([bool] $adapterValidation.OneTimeReminderLifecycleWorks) '一次性提醒支持离线补发并在送达后跨重启去重'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderRequiresContentRenderedConfirmation) '提醒只在真实 ContentRendered 后确认送达'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceFailureStaysVisible) '一次提醒持久化失败时保持可见并阻止提前关闭'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceRetryBackoffWorks) '一次提醒按 5/10/20/30 秒上限持续重试'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderDeliverySingleFlightWorks) '同一提醒 occurrence 在中心内只有一个条目和一个持久化重试'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderIndependentOccurrencesWork) '不同到期 occurrence 在同一中心独立显示且失败项不阻塞其他项确认'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceFailureCloseGuardWorks) '持久化失败态拒绝普通 Close 且保持同一退避状态'
+    Assert-Equal $true ([bool] $adapterValidation.RepeatingReminderRenderedLatchWorks) '重复提醒只在真实渲染后锁存当前周期'
+    Assert-Equal $true ([bool] $adapterValidation.RepeatingReminderDistinctCyclesCoexist) '重复提醒相邻周期聚合到同一中心且同周期不重复加入'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceFailureDisposeWorks) '应用退出可强制关闭失败态窗口且不触发提前重试'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderDiagnosticsExcludePrivatePayload) '提醒失败诊断不包含便签正文或完整设置载荷'
+    foreach ($field in @(
+            'ReminderCenterSingleWindow',
+            'ReminderCenterSameTickBatch',
+            'ReminderCenterAppendsAfterOpen',
+            'ReminderCenterStableOrdering',
+            'ReminderCenterEntriesRendered',
+            'ReminderAcknowledgementDistinctFromDelivery',
+            'ReminderAcknowledgementFailureRetainsEntry',
+            'ReminderAcknowledgementFailureIsAtomic',
+            'ReminderAcknowledgementMonotonicAcrossOccurrences',
+            'ReminderCenterSingleItemDisposition',
+            'ReminderCenterOpenSourcePreservesState',
+            'ReminderCenterOpenSourceFindsExactNote',
+            'ReminderCenterOpenSourceRestoresMinimizedWindow',
+            'ReminderCenterPersistenceFailureRetainsCurrentSource',
+            'ReminderCenterRemovesDeletedSource',
+            'ReminderCenterCancelsDeletedSourceAckRetry',
+            'ReminderCenterRemovesDisabledSource',
+            'ReminderCenterRemovesCompletedSource',
+            'ReminderCenterReopensAfterSourceRemoval',
+            'ReminderCenterClosesWhenEmpty',
+            'ReminderCenterReopens',
+            'ReminderCenterScrollsLongContent',
+            'ReminderCenterFollowsDayNightTheme',
+            'ReminderCenterHasOnlySafeActions',
+            'ReminderCenterDisplaysSourceContentAndTime',
+            'ReminderCenterAccessible',
+            'ReminderCenterIsThemed',
+            'ReminderCenterSupportsKeyboardNavigation',
+            'ReminderCenterInitialFocusAndAccessibleNameWork'
+        )) {
+        Assert-Equal $true ([bool] $adapterValidation.$field) "提醒中心验证字段通过：$field"
+    }
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'adapter validate-only 保持设置不变'
 
     [System.IO.File]::Copy($roundTripPath, $noteExercisePath)
@@ -1003,11 +2008,18 @@ try {
         $unknownSchemaProcess.Dispose()
     }
     $interactiveLegacySettings = $fixture | ConvertFrom-Json
-    $interactiveLegacySettings.schemaVersion = 6
+    $interactiveLegacySettings.schemaVersion = 9
+    $interactiveLegacySettings | Add-Member -NotePropertyName themePreference -NotePropertyValue 'Auto' -Force
     foreach ($note in @($interactiveLegacySettings.notes)) {
         $note.PSObject.Properties.Remove('reminderIntervalMinutes')
         $note.PSObject.Properties.Remove('reminderStartUtc')
+        $note | Add-Member -NotePropertyName reminder -NotePropertyValue ([pscustomobject]@{
+                type = 'repeat'
+                firstDueUtc = '2026-07-20T01:00:00.0000000+00:00'
+                intervalMinutes = 1
+            }) -Force
     }
+    $interactiveMigrationUtc = [DateTimeOffset] '2026-07-20T02:16:00Z'
     $interactiveLegacyJson = $interactiveLegacySettings | ConvertTo-Json -Depth 20
     [System.IO.File]::WriteAllText($interactiveSettingsPath, $interactiveLegacyJson, $utf8NoBom)
     $interactiveLegacyHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
@@ -1015,7 +2027,7 @@ try {
     $interactiveStartupRequest = [ordered]@{
         schemaVersion = 1
         launchToken = $interactiveLaunchToken
-        requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        requestedAtUtc = $interactiveMigrationUtc.ToString('o')
         acceptanceReadOnly = $true
         acceptanceState = 'active'
     } | ConvertTo-Json -Compress
@@ -1098,7 +2110,7 @@ try {
         -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $duplicateApplicationOutputPath `
         -RedirectStandardError $duplicateApplicationErrorPath
-    if (-not $duplicateApplicationProcess.WaitForExit(5000)) {
+    if (-not $duplicateApplicationProcess.WaitForExit(7000)) {
         $duplicateError = if (Test-Path -LiteralPath $duplicateApplicationErrorPath -PathType Leaf) {
             Get-Content -LiteralPath $duplicateApplicationErrorPath -Raw
         }
@@ -1111,11 +2123,14 @@ try {
         throw "真实第二个 C# EXE 未在单实例门禁期限内退出；首实例已退出=$($interactiveApplicationProcess.HasExited)；stderr=$duplicateError；diagnostic=$duplicateLog"
     }
     $duplicateApplicationProcess.WaitForExit()
-    Assert-Equal 0 $duplicateApplicationProcess.ExitCode '真实第二个 C# EXE 被单实例门禁正常拒绝'
+    Assert-Equal 1 $duplicateApplicationProcess.ExitCode '验收只读主实例不提供交互激活 ACK'
     $interactiveApplicationProcess.Refresh()
-    Assert-Equal $false $interactiveApplicationProcess.HasExited '拒绝第二实例后首个 C# EXE 仍存活'
+    Assert-Equal $false $interactiveApplicationProcess.HasExited '第二实例激活超时后首个 C# EXE 仍存活'
     $duplicateDiagnostic = Get-Content -LiteralPath $interactiveDiagnosticPath -Raw -Encoding UTF8
-    Assert-Equal $true $duplicateDiagnostic.Contains('DuplicateInstanceRejected', [System.StringComparison]::Ordinal) '真实第二个 C# EXE 写入拒绝诊断'
+    Assert-Equal $true $duplicateDiagnostic.Contains('InstanceActivationTimedOut', [System.StringComparison]::Ordinal) '验收只读主实例未监听时第二实例记录超时诊断'
+    Assert-Equal $false $duplicateDiagnostic.Contains('InstanceActivationSucceeded', [System.StringComparison]::Ordinal) '验收只读阶段不冒充恢复成功'
+    $duplicateApplicationProcess.Dispose()
+    $duplicateApplicationProcess = $null
 
     Assert-Equal $interactiveLegacyHash (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash 'active 验收期间 settings 文件保持只读'
     Assert-Equal $true (Complete-CountdownStartupRequest -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken) '同 token 原子授权 C# 持久化 schema 迁移'
@@ -1130,16 +2145,20 @@ try {
     $interactiveMigratedJson = Get-Content -LiteralPath $interactiveSettingsPath -Raw -Encoding UTF8
     $interactiveMigratedHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
     $interactiveMigratedSettings = $interactiveMigratedJson | ConvertFrom-Json
-    Assert-Equal 9 ([int] $interactiveMigratedSettings.schemaVersion) 'released 阶段把 schema v6 写回 canonical v9'
-    Assert-Equal 'Auto' ([string] $interactiveMigratedSettings.themePreference) 'released 阶段为 schema v6 补齐自动主题偏好'
+    Assert-Equal 10 ([int] $interactiveMigratedSettings.schemaVersion) 'released 阶段把 schema v9 写回 canonical v10'
+    Assert-Equal 'Auto' ([string] $interactiveMigratedSettings.themePreference) 'released 阶段保留 schema v9 自动主题偏好'
     Assert-Equal $false ($interactiveLegacyHash -eq $interactiveMigratedHash) 'released 阶段实际写回迁移后的设置'
+    $interactiveRuleId = [string] $interactiveMigratedSettings.notes[0].reminderRules[0].id
+    $interactiveReminderState = $interactiveMigratedSettings.reminderStates.PSObject.Properties[$interactiveRuleId].Value
+    Assert-Equal $interactiveMigrationUtc ([DateTimeOffset] $interactiveReminderState.handledThroughUtc).ToUniversalTime() 'C# 初次迁移使用启动请求冻结时刻而非后续墙钟'
     Assert-Equal $true (
         Test-CountdownSettingsDeploymentTransition `
             -BeforeHash $interactiveLegacyHash `
             -AfterHash $interactiveMigratedHash `
             -BeforeJson $interactiveLegacyJson `
-            -AfterJson $interactiveMigratedJson
-    ) 'released 阶段迁移保持 schema v6 数据语义'
+            -AfterJson $interactiveMigratedJson `
+            -MigrationUtc $interactiveMigrationUtc
+    ) 'released 阶段迁移保持 schema v9 数据语义'
     Assert-Equal $true (Set-CountdownStartupRequestFinalized -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken) '事务提交标记只把 ready 请求推进为 finalized'
     $acceptanceReleaseDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
     do {
@@ -1153,6 +2172,23 @@ try {
     Assert-Equal 'finalized-ready' ([string] $acceptanceStatus.stage) '应用真实观察 finalized 后写出确认回执'
     Assert-Equal $interactiveLaunchToken ([string] $acceptanceStatus.launchToken) '应用解锁确认回执绑定同一 token'
     Assert-Equal ([int] $runtimeReceipt.processId) ([int] $acceptanceStatus.processId) '应用解锁确认回执绑定同一 C# PID'
+
+    $finalizedActivationOutput = Invoke-CheckedNativeCommand `
+        -FilePath $pwsh `
+        -Operation '使用独立 canonical v10 设置验证 finalized 后实例激活' `
+        -ArgumentList @(
+            '-NoLogo',
+            '-NoProfile',
+            '-File',
+            $PSCommandPath,
+            '-InstanceActivationOnly',
+            '-InstanceActivationClientMode',
+            'Finalized'
+        )
+    $finalizedActivation = $finalizedActivationOutput | ConvertFrom-Json
+    Assert-Equal 0 ([int] $finalizedActivation.Failed) '独立 finalized 激活场景全部通过'
+    Assert-Equal $true ([bool] $finalizedActivation.InstanceActivationOnly) '独立 finalized 激活使用真实进程 seam'
+    Assert-Equal 1 ([int] $finalizedActivation.ProcessScenarios) '独立 finalized 激活只运行一个进程场景'
 
     if (-not $interactiveAdapterProcess.WaitForExit(45000)) {
         throw '交互启动未在测试退出期限内结束。'

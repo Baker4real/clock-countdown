@@ -83,9 +83,25 @@ internal static class CliApplication
 
     private static int RunRoundTrip(CliInvocation invocation)
     {
-        invocation.EnsureOnlyOptions("--json", "--input", "--output");
+        invocation.EnsureOnlyOptions("--json", "--input", "--output", "--migration-utc");
         var inputPath = Path.GetFullPath(invocation.GetRequiredValue("--input"));
         var outputPath = Path.GetFullPath(invocation.GetRequiredValue("--output"));
+        var migrationUtcText = invocation.GetOptionalValue("--migration-utc");
+        DateTimeOffset? migrationUtc = null;
+        if (migrationUtcText is not null)
+        {
+            if (!DateTimeOffset.TryParseExact(
+                    migrationUtcText,
+                    "o",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var parsedMigrationUtc))
+            {
+                throw new CliUsageException("--migration-utc 必须是 round-trip DateTimeOffset。");
+            }
+
+            migrationUtc = parsedMigrationUtc.ToUniversalTime();
+        }
         if (string.Equals(inputPath, outputPath, StringComparison.OrdinalIgnoreCase))
         {
             throw new CliUsageException("--input 与 --output 必须是不同文件，避免覆盖来源 fixture。");
@@ -93,7 +109,7 @@ internal static class CliApplication
 
         var originalInput = File.ReadAllBytes(inputPath);
         var store = new SettingsStore();
-        var input = store.Load(inputPath);
+        var input = store.Load(inputPath, migrationUtc);
         store.Save(outputPath, input.Settings);
         var output = store.Load(outputPath);
         var canonical = store.Serialize(output.Settings);
@@ -111,7 +127,7 @@ internal static class CliApplication
 
         if (!string.Equals(canonical, Encoding.UTF8.GetString(written), StringComparison.Ordinal))
         {
-            throw new VerificationException("round-trip 输出不是稳定的 canonical v9 JSON。");
+            throw new VerificationException("round-trip 输出不是稳定的 canonical v10 JSON。");
         }
 
         var summary = new RoundTripSummary(

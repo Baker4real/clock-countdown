@@ -210,6 +210,143 @@ internal static class SettingsFixtures
         }
         """;
 
+    public const string VersionNine = """
+        {
+          "schemaVersion": 9,
+          "timeZoneId": "China Standard Time",
+          "displayPrecision": "Second",
+          "monthlySalary": 20000.50,
+          "workStart": "09:00",
+          "workEnd": "18:30",
+          "themePreference": "Night",
+          "tags": [],
+          "countdowns": [
+            {
+              "id": "countdown-v9",
+              "name": "版本九倒计时",
+              "targetUtc": "2031-09-10T11:12:13.0000000+00:00",
+              "tagIds": []
+            }
+          ],
+          "notes": [
+            {
+              "id": "note-v9-none",
+              "text": "不提醒",
+              "date": "2031-09-10",
+              "isCompleted": false,
+              "tagIds": [],
+              "reminder": { "type": "none" }
+            },
+            {
+              "id": "note-v9-pending",
+              "text": "待送达一次提醒",
+              "date": "2031-09-10",
+              "isCompleted": false,
+              "tagIds": [],
+              "reminder": {
+                "type": "once",
+                "firstDueUtc": "2031-09-10T01:30:00.0000000+00:00",
+                "delivery": "pending"
+              }
+            },
+            {
+              "id": "note-v9-delivered",
+              "text": "已送达一次提醒",
+              "date": "2031-09-10",
+              "isCompleted": false,
+              "tagIds": [],
+              "reminder": {
+                "type": "once",
+                "firstDueUtc": "2031-09-10T02:30:00.0000000+00:00",
+                "delivery": "delivered"
+              }
+            },
+            {
+              "id": "note-v9-repeat",
+              "text": "已开始循环提醒",
+              "date": "2031-09-10",
+              "isCompleted": false,
+              "tagIds": [],
+              "reminder": {
+                "type": "repeat",
+                "firstDueUtc": "2031-09-10T01:00:00.0000000+00:00",
+                "intervalMinutes": 30
+              }
+            }
+          ]
+        }
+        """;
+
+    public const string VersionTen = """
+        {
+          "schemaVersion": 10,
+          "timeZoneId": "China Standard Time",
+          "displayPrecision": "Minute",
+          "monthlySalary": 18000,
+          "workStart": "08:30",
+          "workEnd": "17:30",
+          "themePreference": "Day",
+          "tags": [],
+          "countdowns": [
+            {
+              "id": "countdown-v10",
+              "name": "版本十倒计时",
+              "targetUtc": "2032-10-11T12:13:14.0000000+00:00",
+              "tagIds": [],
+              "reminderRules": [
+                {
+                  "id": "rule-countdown-once",
+                  "type": "absoluteOnce",
+                  "scheduledUtc": "2032-10-11T10:00:00.0000000+00:00"
+                },
+                {
+                  "id": "rule-countdown-repeat",
+                  "type": "fixedInterval",
+                  "firstDueUtc": "2032-10-10T10:00:00.0000000+00:00",
+                  "intervalMinutes": 60
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "id": "note-v10",
+              "text": "版本十便签",
+              "date": "2032-10-11",
+              "isCompleted": false,
+              "tagIds": [],
+              "reminderRules": [
+                {
+                  "id": "rule-note-once",
+                  "type": "absoluteOnce",
+                  "scheduledUtc": "2032-10-11T01:30:00.0000000+00:00"
+                },
+                {
+                  "id": "rule-note-repeat",
+                  "type": "fixedInterval",
+                  "firstDueUtc": "2032-10-11T02:00:00.0000000+00:00",
+                  "intervalMinutes": 30
+                }
+              ]
+            }
+          ],
+          "reminderStates": {
+            "rule-note-once": {
+              "handledThroughUtc": "2032-10-11T01:30:00.0000000+00:00",
+              "lastDeliveredOccurrenceKey": "rule-note-once|2032-10-11T01:30:00.0000000+00:00",
+              "lastDispositionOccurrenceKey": "rule-note-once|2032-10-11T01:30:00.0000000+00:00",
+              "activeSnooze": null
+            },
+            "rule-note-repeat": {
+              "handledThroughUtc": "2032-10-11T03:00:00.0000000+00:00",
+              "lastDeliveredOccurrenceKey": "rule-note-repeat|2032-10-11T03:00:00.0000000+00:00",
+              "lastDispositionOccurrenceKey": null,
+              "activeSnooze": null
+            }
+          }
+        }
+        """;
+
     public static IReadOnlyList<(int Version, string Json)> AllVersions { get; } =
     [
         (1, VersionOne),
@@ -219,6 +356,7 @@ internal static class SettingsFixtures
         (5, VersionFive),
         (6, VersionSix),
         (7, VersionSeven),
-        (8, VersionEight)
+        (8, VersionEight),
+        (9, VersionNine)
     ];
 }

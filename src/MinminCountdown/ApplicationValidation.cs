@@ -10,8 +10,7 @@ internal static class ApplicationValidation
         DiagnosticLogger logger,
         ResourceDictionary resources)
     {
-        var settingsPath = options.SettingsFile ??
-                           Path.Combine(applicationRoot, "settings.json");
+        var settingsPath = ResolveSettingsPath(options, applicationRoot);
         MainWindow? mainWindow = null;
         FloatingWindow? floatingWindow = null;
         FloatingTrayController? floatingTrayController = null;
@@ -20,6 +19,11 @@ internal static class ApplicationValidation
 
         try
         {
+            if (!ValidationExercises.RunSettingsRecoveryWindowBehavior())
+            {
+                throw new InvalidOperationException("设置恢复窗口或失败呈现路由验证失败。");
+            }
+
             var desktopWorkspace = DesktopWorkspace.Load(settingsPath);
             var initialSnapshot = desktopWorkspace.Snapshot;
             var theme = new ApplicationTheme(resources);
@@ -83,5 +87,24 @@ internal static class ApplicationValidation
             calendar?.Dispose();
             logger.Info("ValidationResourcesReleased");
         }
+    }
+
+    internal static string ResolveSettingsPath(HostOptions options, string applicationRoot)
+    {
+        var settingsPath = options.SettingsFile ??
+                           throw new ArgumentException(
+                               "--validate-only 必须显式指定 --settings-file。");
+        var resolvedSettingsPath = Path.GetFullPath(settingsPath);
+        var rootSettingsPath = Path.GetFullPath(Path.Combine(applicationRoot, "settings.json"));
+        if (string.Equals(
+                resolvedSettingsPath,
+                rootSettingsPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "--validate-only 拒绝使用应用根 settings.json；请指定唯一临时设置文件。");
+        }
+
+        return resolvedSettingsPath;
     }
 }

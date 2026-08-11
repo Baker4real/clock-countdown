@@ -113,13 +113,16 @@ function Invoke-CountdownTransactionAcceptance {
         [ValidateRange(1, 5000)] [int] $PollMilliseconds = 100
     )
 
+    $migrationUtc = Get-CountdownStartupRequestMigrationUtc `
+        -Path $StartupRequestPath `
+        -LaunchToken $LaunchToken
     $settingsBefore = Get-CountdownAcceptanceSettingsState -Path $SettingsSnapshotPath
     $settingsAfter = $null
     $settingsMutex = $null
     try {
         $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $SettingsPath -TimeoutSeconds 10
         $settingsCandidate = Get-CountdownAcceptanceSettingsState -Path $SettingsPath
-        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBefore.Hash -AfterHash $settingsCandidate.Hash -BeforeJson $settingsBefore.Json -AfterJson $settingsCandidate.Json)) {
+        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBefore.Hash -AfterHash $settingsCandidate.Hash -BeforeJson $settingsBefore.Json -AfterJson $settingsCandidate.Json -MigrationUtc $migrationUtc)) {
             throw '验收前 settings.json 超出允许的数据等价范围。'
         }
 
@@ -154,7 +157,7 @@ function Invoke-CountdownTransactionAcceptance {
     try {
         $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $SettingsPath -TimeoutSeconds 10
         $settingsAfter = Get-CountdownAcceptanceSettingsState -Path $SettingsPath
-        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBefore.Hash -AfterHash $settingsAfter.Hash -BeforeJson $settingsBefore.Json -AfterJson $settingsAfter.Json)) {
+        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBefore.Hash -AfterHash $settingsAfter.Hash -BeforeJson $settingsBefore.Json -AfterJson $settingsAfter.Json -MigrationUtc $migrationUtc)) {
             throw 'C# schema 迁移超出允许的数据等价范围。'
         }
 

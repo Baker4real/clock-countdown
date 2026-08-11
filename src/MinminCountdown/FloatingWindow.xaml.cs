@@ -41,6 +41,7 @@ public sealed partial class FloatingWindow : Window
     private int _floatingRowsRenderVersion;
     private bool _settingDefaultDate;
     private bool _dateDirty;
+    private IReadOnlyList<ReminderRule> _floatingReminderRules = Array.Empty<ReminderRule>();
     private FloatingThemePalette? _activeTheme;
     private Brush _floatingPrimaryBrush = Brushes.Black;
     private Brush _floatingMutedBrush = Brushes.Gray;
@@ -428,9 +429,13 @@ public sealed partial class FloatingWindow : Window
             firstDueDay.Offset);
         FloatingNoteText.Text = "验证快速跨天提醒";
         FloatingNoteDate.SelectedDate = noteDate;
-        FloatingReminder.SelectedIndex = 2;
-        FloatingReminderInterval.SelectedIndex = 1;
-        SetReminderSchedule(firstDue);
+        _floatingReminderRules = new ReminderRule[]
+        {
+            new FixedIntervalReminderRule(
+                Guid.NewGuid().ToString("N"),
+                firstDue.ToUniversalTime(),
+                new ReminderInterval(30))
+        };
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var afterAdd = _desktopWorkspace.Snapshot.Settings;
         var added = afterAdd.Notes.LastOrDefault(note => note.Text == "验证快速跨天提醒");
@@ -460,15 +465,19 @@ public sealed partial class FloatingWindow : Window
 
         FloatingNoteText.Text = "验证悬浮窗不提醒";
         FloatingNoteDate.SelectedDate = noteDate;
-        FloatingReminder.SelectedIndex = 0;
+        _floatingReminderRules = Array.Empty<ReminderRule>();
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var noReminderWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证悬浮窗不提醒")?.Reminder is NoReminder;
 
         FloatingNoteText.Text = "验证悬浮窗仅一次";
         FloatingNoteDate.SelectedDate = noteDate;
-        FloatingReminder.SelectedIndex = 1;
-        SetReminderSchedule(onceDue);
+        _floatingReminderRules = new ReminderRule[]
+        {
+            new AbsoluteOnceReminderRule(
+                Guid.NewGuid().ToString("N"),
+                onceDue.ToUniversalTime())
+        };
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var onceWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证悬浮窗仅一次")?.Reminder is OnceReminder
@@ -479,9 +488,13 @@ public sealed partial class FloatingWindow : Window
 
         FloatingNoteText.Text = "验证悬浮窗重复提醒";
         FloatingNoteDate.SelectedDate = noteDate;
-        FloatingReminder.SelectedIndex = 2;
-        FloatingReminderInterval.SelectedIndex = 1;
-        SetReminderSchedule(repeatDue);
+        _floatingReminderRules = new ReminderRule[]
+        {
+            new FixedIntervalReminderRule(
+                Guid.NewGuid().ToString("N"),
+                repeatDue.ToUniversalTime(),
+                new ReminderInterval(30))
+        };
         FloatingAddNote.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var repeatWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
             note => note.Text == "验证悬浮窗重复提醒")?.Reminder is RepeatingReminder repeating &&
@@ -1474,6 +1487,7 @@ public sealed partial class FloatingWindow : Window
         AutomationProperties.SetName(FloatingReminderDate, "快速便签首次提醒日期");
         AutomationProperties.SetName(FloatingReminderHour, "快速便签首次提醒小时");
         AutomationProperties.SetName(FloatingReminderMinute, "快速便签首次提醒分钟");
+        AutomationProperties.SetName(FloatingManageReminderRules, "管理快速便签提醒规则");
         AutomationProperties.SetName(FloatingAddNote, "添加快速便签");
         ThemedDatePickerBehavior.Attach(FloatingNoteDate);
         ThemedDatePickerBehavior.Attach(FloatingReminderDate);
@@ -1532,6 +1546,7 @@ public sealed partial class FloatingWindow : Window
             ClearNoteFieldError(FloatingReminderMessage);
             SetDefaultReminderSchedule();
         };
+        FloatingManageReminderRules.Click += (_, _) => OpenFloatingReminderRulesEditor();
         FloatingAddNote.Click += (_, _) => AddNote();
         FloatingTags.CreateRequested += (_, name) =>
         {
@@ -1730,35 +1745,22 @@ public sealed partial class FloatingWindow : Window
             return;
         }
 
-        var reminderResult = _reminderEditing.Build(new ReminderEditingRequest(
-            SelectedReminderMode(),
-            FloatingReminderDate.SelectedDate,
-            FloatingReminderHour.SelectedIndex,
-            FloatingReminderMinute.SelectedIndex,
-            SelectedReminderInterval(),
-            FloatingCustomReminderMinutes.Text,
-            _desktopWorkspace.Snapshot.UtcNow,
-            null,
-            true));
-        if (!reminderResult.Succeeded)
-        {
-            ShowNoteValidationError(
-                FloatingReminderMessage,
-                reminderResult.Error,
-                FirstInvalidReminderControl());
-            return;
-        }
-
         var result = _desktopWorkspace.Apply(new SaveNoteChange(
             null,
             FloatingNoteText.Text,
             FloatingNoteDate.SelectedDate,
             false,
             FloatingTags.SelectedTagIds.ToArray(),
-            reminderResult.Reminder));
+            _floatingReminderRules));
         if (!result.Succeeded)
         {
             SetNoteMessage($"保存失败：{result.Error}");
+            if (result.ReminderRuleErrorTarget != ReminderRuleEditingErrorTarget.None)
+            {
+                OpenFloatingReminderRulesEditor(
+                    result.ReminderRuleErrorTarget,
+                    result.Error);
+            }
             return;
         }
 
@@ -1767,6 +1769,8 @@ public sealed partial class FloatingWindow : Window
         _settingDefaultDate = true;
         FloatingNoteDate.SelectedDate = _desktopWorkspace.Snapshot.BeijingNow.Date;
         _settingDefaultDate = false;
+        _floatingReminderRules = Array.Empty<ReminderRule>();
+        UpdateFloatingReminderRulesSummary();
         SetDefaultReminderSchedule();
         ClearNoteFieldErrors();
         SetNoteMessage(string.Empty);
@@ -1791,6 +1795,38 @@ public sealed partial class FloatingWindow : Window
         {
             SetReminderSchedule(null);
         }
+    }
+
+    private void OpenFloatingReminderRulesEditor(
+        ReminderRuleEditingErrorTarget initialErrorTarget = ReminderRuleEditingErrorTarget.None,
+        string initialError = "")
+    {
+        var editor = new ReminderRulesEditorWindow(
+            _floatingReminderRules,
+            _desktopWorkspace.Clock,
+            initialErrorTarget: initialErrorTarget,
+            initialError: initialError)
+        {
+            Owner = this
+        };
+        if (editor.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _floatingReminderRules = Array.AsReadOnly(editor.ResultRules.ToArray());
+        UpdateFloatingReminderRulesSummary();
+        ClearNoteFieldError(FloatingReminderMessage);
+    }
+
+    private void UpdateFloatingReminderRulesSummary()
+    {
+        FloatingReminderRulesSummary.Text = _floatingReminderRules.Count == 0
+            ? "不提醒"
+            : $"已配置 {_floatingReminderRules.Count} 条提醒规则";
+        AutomationProperties.SetName(
+            FloatingReminderRulesSummary,
+            $"快速便签提醒规则摘要：{FloatingReminderRulesSummary.Text}");
     }
 
     private void UpdateReminderInterval()

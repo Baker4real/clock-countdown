@@ -3,16 +3,17 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Invoke-CountdownValidationProcess {
+function Invoke-CountdownProcess {
     param(
-        [Parameter(Mandatory)] [string] $PowerShell7Path,
+        [Parameter(Mandatory)] [string] $FilePath,
         [Parameter(Mandatory)] [string] $Operation,
         [Parameter(Mandatory)] [string[]] $ArgumentList,
-        [hashtable] $EnvironmentVariables = @{}
+        [hashtable] $EnvironmentVariables = @{},
+        [string] $StartFailureMessage = "$Operation 无法启动进程。"
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $PowerShell7Path
+    $startInfo.FileName = $FilePath
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
@@ -33,33 +34,54 @@ function Invoke-CountdownValidationProcess {
     $process.StartInfo = $startInfo
     try {
         if (-not $process.Start()) {
-            throw "$Operation 无法启动 PowerShell 7 进程。"
+            throw $StartFailureMessage
         }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
         $process.WaitForExit()
-        $output = $stdoutTask.GetAwaiter().GetResult()
-        $diagnostics = $stderrTask.GetAwaiter().GetResult()
-        $exitCode = $process.ExitCode
+        $result = [pscustomobject]@{
+            ExitCode = [int] $process.ExitCode
+            StandardOutput = [string] $stdoutTask.GetAwaiter().GetResult()
+            StandardError = [string] $stderrTask.GetAwaiter().GetResult()
+        }
     }
     finally {
         $process.Dispose()
     }
 
-    $json = $output.Trim()
-    if ($exitCode -ne 0) {
-        $diagnosticText = $diagnostics.Trim()
-        $failureOutput = if ([string]::IsNullOrWhiteSpace($json)) {
-            $diagnosticText
+    if ($result.ExitCode -ne 0) {
+        $output = $result.StandardOutput.Trim()
+        $diagnostics = $result.StandardError.Trim()
+        $failureOutput = if ([string]::IsNullOrWhiteSpace($output)) {
+            $diagnostics
         }
-        elseif ([string]::IsNullOrWhiteSpace($diagnosticText)) {
-            $json
+        elseif ([string]::IsNullOrWhiteSpace($diagnostics)) {
+            $output
         }
         else {
-            "$json$([Environment]::NewLine)$diagnosticText"
+            "$output$([Environment]::NewLine)$diagnostics"
         }
-        throw "$Operation 失败，退出码：$exitCode。$([Environment]::NewLine)$failureOutput"
+        throw "$Operation 失败，退出码：$($result.ExitCode)。$([Environment]::NewLine)$failureOutput"
     }
+
+    $result
+}
+
+function Invoke-CountdownValidationProcess {
+    param(
+        [Parameter(Mandatory)] [string] $PowerShell7Path,
+        [Parameter(Mandatory)] [string] $Operation,
+        [Parameter(Mandatory)] [string[]] $ArgumentList,
+        [hashtable] $EnvironmentVariables = @{}
+    )
+
+    $processResult = Invoke-CountdownProcess `
+        -FilePath $PowerShell7Path `
+        -Operation $Operation `
+        -ArgumentList $ArgumentList `
+        -EnvironmentVariables $EnvironmentVariables `
+        -StartFailureMessage "$Operation 无法启动 PowerShell 7 进程。"
+    $json = ([string] $processResult.StandardOutput).Trim()
     if ([string]::IsNullOrWhiteSpace($json)) {
         throw "$Operation 未返回 JSON。"
     }
@@ -74,6 +96,29 @@ function Invoke-CountdownValidationProcess {
     [pscustomobject]@{
         Json = $json
         Report = $report
+    }
+}
+
+function Remove-CountdownValidationArtifactFiles {
+    param([Parameter(Mandatory)] [string[]] $Paths)
+
+    $files = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+    foreach ($path in $Paths) {
+        if (-not (Test-Path -LiteralPath $path)) {
+            continue
+        }
+
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+        if ($item -isnot [System.IO.FileInfo] -or
+            $item.Attributes.HasFlag([System.IO.FileAttributes]::ReparsePoint) -or
+            -not [string]::IsNullOrWhiteSpace([string] $item.LinkType)) {
+            throw "验证设置清理目标不是普通文件：$path"
+        }
+        $files.Add($item)
+    }
+
+    foreach ($file in $files) {
+        Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
     }
 }
 
@@ -256,16 +301,21 @@ function Invoke-CountdownValidationSuite {
     param(
         [Parameter(Mandatory)] [string] $Root,
         [Parameter(Mandatory)] [string] $PowerShell7Path,
+        [Parameter(Mandatory)] [string] $DotnetPath,
         [switch] $ParentTransactionMutexHeld
     )
 
     $resolvedRoot = [System.IO.Path]::GetFullPath($Root)
     $resolvedPowerShell = [System.IO.Path]::GetFullPath($PowerShell7Path)
+    $resolvedDotnet = [System.IO.Path]::GetFullPath($DotnetPath)
     if (-not (Test-Path -LiteralPath $resolvedRoot -PathType Container)) {
         throw "验证根目录不存在：$resolvedRoot"
     }
     if (-not (Test-Path -LiteralPath $resolvedPowerShell -PathType Leaf)) {
         throw "验证所需的 PowerShell 7 不存在：$resolvedPowerShell"
+    }
+    if (-not (Test-Path -LiteralPath $resolvedDotnet -PathType Leaf)) {
+        throw "验证所需的受管 dotnet 不存在：$resolvedDotnet"
     }
 
     $coreArguments = @(
@@ -283,6 +333,20 @@ function Invoke-CountdownValidationSuite {
         -Operation 'Core 回归' `
         -ArgumentList $coreArguments
     $corePassed = Assert-CountdownValidationTestReport -Report $core.Report -Label 'Core 回归'
+
+    [void] (Invoke-CountdownProcess `
+            -FilePath $resolvedDotnet `
+            -Operation '源码应用 Release 构建' `
+            -ArgumentList @(
+                'build',
+                (Join-Path $resolvedRoot 'src\MinminCountdown\MinminCountdown.csproj'),
+                '--configuration',
+                'Release'
+            ) `
+            -EnvironmentVariables @{
+                DOTNET_ROOT = Split-Path -Parent $resolvedDotnet
+                DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+            })
 
     $cSharpArguments = @(
         '-NoLogo',
@@ -317,9 +381,9 @@ function Invoke-CountdownValidationSuite {
         )
     $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
 
-    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-08-06-v6\manifest.json'
+    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
     $floatingBaselineRequired = Test-Path -LiteralPath $floatingBaselineManifest -PathType Leaf
-    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\1165x1350\2026-08-06-v6\manifest.json'
+    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\1165x1350\2026-08-13-v12\manifest.json'
     $mainBaselineRequired = Test-Path -LiteralPath $mainBaselineManifest -PathType Leaf
     $visualBaselinesRequired = $floatingBaselineRequired -and $mainBaselineRequired
     $applicationEnvironment = @{
@@ -352,21 +416,20 @@ function Invoke-CountdownValidationSuite {
             )
     }
     finally {
-        foreach ($path in @(
+        Remove-CountdownValidationArtifactFiles -Paths @(
                 $applicationSettingsPath,
                 "$applicationSettingsPath.tmp",
+                "$applicationSettingsPath.backup1",
+                "$applicationSettingsPath.backup1.tmp",
+                "$applicationSettingsPath.backup1.rollback",
+                "$applicationSettingsPath.backup2",
+                "$applicationSettingsPath.backup2.tmp",
+                "$applicationSettingsPath.backup2.rollback",
                 $applicationDiagnosticPath,
                 "$applicationDiagnosticPath.1",
                 "$applicationDiagnosticPath.2",
                 "$applicationDiagnosticPath.3"
-            )) {
-            if (Test-Path -LiteralPath $path -PathType Leaf) {
-                Remove-Item -LiteralPath $path -Force
-            }
-        }
-        if (Test-Path -LiteralPath "$applicationSettingsPath.tmp" -PathType Container) {
-            [System.IO.Directory]::Delete("$applicationSettingsPath.tmp", $false)
-        }
+            )
     }
     $null = Assert-CountdownApplicationValidationReport `
         -Report $application.Report `

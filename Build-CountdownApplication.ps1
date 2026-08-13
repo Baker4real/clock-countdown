@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$dotnetRoot = 'D:\Codex\tools\dotnet\10'
+$dotnetRoot = 'D:\Codex\tools\dotnet\10.0'
 $dotnet = Join-Path $dotnetRoot 'dotnet.exe'
 if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
     throw "未找到受管 .NET SDK：$dotnet"

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using MinminCountdown.Core;
 
@@ -9,6 +10,13 @@ namespace MinminCountdown;
 
 public sealed partial class App : Application
 {
+    static App()
+    {
+        TextBoxBase.IsReadOnlyProperty.OverrideMetadata(
+            typeof(DatePickerTextBox),
+            new FrameworkPropertyMetadata(true));
+    }
+
     private readonly CancellationTokenSource _shutdownCancellation = new();
     private HostOptions? _options;
     private DiagnosticLogger? _logger;

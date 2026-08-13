@@ -4007,6 +4007,379 @@ internal static class ValidationExercises
         return true;
     }
 
+    public static CountdownEmptyStateGateResults EvaluateCountdownEmptyStateGates(
+        CountdownEmptyStateGateInputs input) =>
+        new(
+            input.EmptyStatesDistinguished,
+            input.PointerResetRestoresResults,
+            input.KeyboardResetRestoresResults,
+            input.DayNightTextContrast);
+
+    public static bool RunCountdownEmptyStateGateIsolationBehavior()
+    {
+        var passing = new CountdownEmptyStateGateInputs(true, true, true, true);
+        Must(EvaluateCountdownEmptyStateGates(passing).AllPassed,
+            "倒计时空态全通过夹具被错误拒绝。");
+        VerifyOnlyCountdownEmptyStateGateFails(
+            passing with { EmptyStatesDistinguished = false },
+            nameof(CountdownEmptyStateGateResults.EmptyStatesDistinguished));
+        VerifyOnlyCountdownEmptyStateGateFails(
+            passing with { PointerResetRestoresResults = false },
+            nameof(CountdownEmptyStateGateResults.PointerResetRestoresResults));
+        VerifyOnlyCountdownEmptyStateGateFails(
+            passing with { KeyboardResetRestoresResults = false },
+            nameof(CountdownEmptyStateGateResults.KeyboardResetRestoresResults));
+        VerifyOnlyCountdownEmptyStateGateFails(
+            passing with { DayNightTextContrast = false },
+            nameof(CountdownEmptyStateGateResults.DayNightTextContrast));
+        return true;
+    }
+
+    public static MainNoteCompletionGateResults EvaluateMainNoteCompletionGates(
+        MainNoteCompletionGateInputs input) =>
+        new(
+            input.DedicatedStyleApplied &&
+            input.MainBoxAtLeast24Pixels &&
+            input.MainTickScaled &&
+            input.WarmTokensReused &&
+            input.RoundedCornersPreserved &&
+            input.CheckAndUncheckWork &&
+            input.PersistenceFailureRollsBack &&
+            input.AccessibleNamesUpdate,
+            input.TagSelectorSizeUnchanged &&
+            input.FloatingSizeUnchanged);
+
+    public static bool RunMainNoteCompletionGateIsolationBehavior()
+    {
+        var passing = new MainNoteCompletionGateInputs(
+            true, true, true, true, true, true, true, true, true, true);
+        Must(EvaluateMainNoteCompletionGates(passing).AllPassed,
+            "主窗口便签完成复选框全通过夹具被错误拒绝。");
+
+        foreach (var input in new[]
+        {
+            passing with { DedicatedStyleApplied = false },
+            passing with { MainBoxAtLeast24Pixels = false },
+            passing with { MainTickScaled = false },
+            passing with { WarmTokensReused = false },
+            passing with { RoundedCornersPreserved = false },
+            passing with { CheckAndUncheckWork = false },
+            passing with { PersistenceFailureRollsBack = false },
+            passing with { AccessibleNamesUpdate = false }
+        })
+        {
+            VerifyOnlyMainNoteCompletionGateFails(
+                input,
+                nameof(MainNoteCompletionGateResults.MainTargetSizeAndBehavior));
+        }
+
+        foreach (var input in new[]
+        {
+            passing with { TagSelectorSizeUnchanged = false },
+            passing with { FloatingSizeUnchanged = false }
+        })
+        {
+            VerifyOnlyMainNoteCompletionGateFails(
+                input,
+                nameof(MainNoteCompletionGateResults.OtherUserSizesUnchanged));
+        }
+
+        return true;
+    }
+
+    public static MainCountdownRemainingGateResults EvaluateMainCountdownRemainingGates(
+        MainCountdownRemainingGateInputs input) =>
+        new(
+            input.ExpectedTexts.Count == 5 &&
+                input.FormattedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal) &&
+                input.RenderedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal),
+                input.HasExpectedSampleCount &&
+                input.ColumnsAre300Pixels &&
+                input.ActualColumnsAre300Pixels &&
+                input.TextIsRightAligned &&
+                input.TextIsSingleLineAndUntrimmed &&
+                input.TextIsFullyVisible &&
+                input.UsesTabularNumerals &&
+                input.PrecisionSamplesAreSaved &&
+                input.FontSizingMatches);
+
+    public static bool RunMainCountdownRemainingGateIsolationBehavior()
+    {
+        var expected = new[]
+        {
+            "4 天",
+            "4 天 13 小时",
+            "4 天 13 小时 18 分钟",
+            "4 天 13 小时 18 分钟 59 秒",
+            "2000000 天 00 小时 00 分钟 00 秒"
+        };
+        var passing = new MainCountdownRemainingGateInputs(
+            expected,
+            expected,
+            expected,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+        var passingResult = EvaluateMainCountdownRemainingGates(passing);
+        Must(passingResult.UnitSpacingMatches && passingResult.FixedColumnLayoutMatches,
+            "主窗口倒计时剩余时间全通过夹具被错误拒绝。");
+        VerifyOnlyMainCountdownRemainingGateFails(
+            passing with { ColumnsAre300Pixels = false },
+            nameof(MainCountdownRemainingGateResults.FixedColumnLayoutMatches));
+        VerifyOnlyMainCountdownRemainingGateFails(
+            passing with { ActualColumnsAre300Pixels = false },
+            nameof(MainCountdownRemainingGateResults.FixedColumnLayoutMatches));
+        VerifyOnlyMainCountdownRemainingGateFails(
+            passing with { FontSizingMatches = false },
+            nameof(MainCountdownRemainingGateResults.FixedColumnLayoutMatches));
+        VerifyOnlyMainCountdownRemainingGateFails(
+            passing with
+            {
+                RenderedTexts = expected.Select(text => text.Replace(" ", string.Empty, StringComparison.Ordinal)).ToArray()
+            },
+            nameof(MainCountdownRemainingGateResults.UnitSpacingMatches));
+        return true;
+    }
+
+    public static bool RunCountdownIncrementalRefreshGateIsolationBehavior()
+    {
+        var passing = new CountdownIncrementalRefreshGateResults(
+            true, true, true, true, true, true, true, true, true, true, true);
+        Must(passing.AllPassed, "倒计时增量刷新全通过夹具被错误拒绝。");
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { IdentityPreserved = false },
+            nameof(CountdownIncrementalRefreshGateResults.IdentityPreserved));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { FocusPreserved = false },
+            nameof(CountdownIncrementalRefreshGateResults.FocusPreserved));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { NonZeroScrollPreserved = false },
+            nameof(CountdownIncrementalRefreshGateResults.NonZeroScrollPreserved));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { PointerStatePreserved = false },
+            nameof(CountdownIncrementalRefreshGateResults.PointerStatePreserved));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { CollectionChangeRebuilt = false },
+            nameof(CountdownIncrementalRefreshGateResults.CollectionChangeRebuilt));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { FilterChangeRebuilt = false },
+            nameof(CountdownIncrementalRefreshGateResults.FilterChangeRebuilt));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { PrecisionChangeRebuilt = false },
+            nameof(CountdownIncrementalRefreshGateResults.PrecisionChangeRebuilt));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { ThemeChangeRebuilt = false },
+            nameof(CountdownIncrementalRefreshGateResults.ThemeChangeRebuilt));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { ExpiryChangeRebuilt = false },
+            nameof(CountdownIncrementalRefreshGateResults.ExpiryChangeRebuilt));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { ExpiryBackgroundFlipped = false },
+            nameof(CountdownIncrementalRefreshGateResults.ExpiryBackgroundFlipped));
+        VerifyOnlyCountdownIncrementalGateFails(
+            passing with { ExpiryRemainingTextFlipped = false },
+            nameof(CountdownIncrementalRefreshGateResults.ExpiryRemainingTextFlipped));
+        return true;
+    }
+
+    public static ConfirmationDialogGateResults EvaluateConfirmationDialogGates(
+        ConfirmationDialogGateInputs input) =>
+        new(
+            input.ButtonsVisible,
+            input.BodyReachable,
+            input.CancelIsSafeDefault,
+            input.ProductionMatrixComplete,
+            input.BodyEndReachable,
+            input.CenteredOnOwner,
+            input.EnterIsSafe,
+            input.CancelAndEscapeAreSafe);
+
+    public static bool RunConfirmationDialogGateIsolationBehavior()
+    {
+        var passing = new ConfirmationDialogGateInputs(
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+        Must(EvaluateConfirmationDialogGates(passing).AllPassed,
+            "删除确认对话框全通过夹具被错误拒绝。");
+        VerifyOnlyConfirmationGateFails(passing with { ButtonsVisible = false }, nameof(ConfirmationDialogGateResults.ButtonsVisible));
+        VerifyOnlyConfirmationGateFails(passing with { BodyReachable = false }, nameof(ConfirmationDialogGateResults.BodyReachable));
+        VerifyOnlyConfirmationGateFails(passing with { CancelIsSafeDefault = false }, nameof(ConfirmationDialogGateResults.CancelIsSafeDefault));
+        VerifyOnlyConfirmationGateFails(passing with { ProductionMatrixComplete = false }, nameof(ConfirmationDialogGateResults.ProductionMatrixComplete));
+        VerifyOnlyConfirmationGateFails(passing with { BodyEndReachable = false }, nameof(ConfirmationDialogGateResults.BodyEndReachable));
+        VerifyOnlyConfirmationGateFails(passing with { CenteredOnOwner = false }, nameof(ConfirmationDialogGateResults.CenteredOnOwner));
+        VerifyOnlyConfirmationGateFails(passing with { EnterIsSafe = false }, nameof(ConfirmationDialogGateResults.EnterIsSafe));
+        VerifyOnlyConfirmationGateFails(passing with { CancelAndEscapeAreSafe = false }, nameof(ConfirmationDialogGateResults.CancelAndEscapeAreSafe));
+        return true;
+    }
+
+    public static bool RunSecondaryWindowTypographyGateIsolationBehavior()
+    {
+        var passing = new SecondaryWindowTypographyGateInputs(true, true, true);
+        Must(
+            EvaluateSecondaryWindowTypographyGates(passing).AllPassed,
+            "次级窗口字号全通过夹具被错误拒绝。");
+        VerifyOnlySecondaryWindowTypographyGateFails(
+            passing with { RenderedScaleMatches = false },
+            nameof(SecondaryWindowTypographyGateResults.RenderedScaleMatches));
+        VerifyOnlySecondaryWindowTypographyGateFails(
+            passing with { ContentRootsDeclareFontSize = false },
+            nameof(SecondaryWindowTypographyGateResults.ContentRootsDeclareFontSize));
+        VerifyOnlySecondaryWindowTypographyGateFails(
+            passing with { FloatingTypographyUnchanged = false },
+            nameof(SecondaryWindowTypographyGateResults.FloatingTypographyUnchanged));
+        return true;
+    }
+
+    public static ReminderCenterKeyboardGateResults EvaluateReminderCenterKeyboardGates(
+        ReminderCenterKeyboardGateInputs input) =>
+        new(
+            input.TabTraversalWorks,
+            input.CloseGuardWorks,
+            input.InitialFocusAndAccessibleNameWork);
+
+    public static bool RunReminderCenterKeyboardGateIsolationBehavior()
+    {
+        var passing = new ReminderCenterKeyboardGateInputs(true, true, true);
+        Must(EvaluateReminderCenterKeyboardGates(passing).AllPassed,
+            "提醒中心键盘全通过夹具被错误拒绝。");
+        VerifyOnlyReminderCenterKeyboardGateFails(
+            passing with { TabTraversalWorks = false },
+            nameof(ReminderCenterKeyboardGateResults.TabTraversalWorks));
+        VerifyOnlyReminderCenterKeyboardGateFails(
+            passing with { CloseGuardWorks = false },
+            nameof(ReminderCenterKeyboardGateResults.CloseGuardWorks));
+        return true;
+    }
+
+    public static SecondaryWindowTypographyGateResults EvaluateSecondaryWindowTypographyGates(
+        SecondaryWindowTypographyGateInputs input) =>
+        new(
+            input.RenderedScaleMatches,
+            input.ContentRootsDeclareFontSize,
+            input.FloatingTypographyUnchanged);
+
+    public static bool RunMainShortcutGateIsolationBehavior()
+    {
+        var expectedCommands = new[]
+        {
+            "CountdownsWorkspace", "Filter", "Minimize", "NotesWorkspace",
+            "SaveCountdown", "SavePreferences", "TagManager", "Theme"
+        };
+        var passingCommands = expectedCommands.ToDictionary(
+            command => command,
+            _ => true,
+            StringComparer.Ordinal);
+        var passing = new MainShortcutGateInputs(
+            expectedCommands,
+            passingCommands,
+            true,
+            true,
+            true);
+        Must(EvaluateMainShortcutGates(passing).AllPassed,
+            "主窗口快捷键全通过夹具被错误拒绝。");
+
+        var missingMapping = passingCommands
+            .Where(pair => !string.Equals(pair.Key, "SaveCountdown", StringComparison.Ordinal))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        VerifyOnlyShortcutGateFails(
+            passing with { ObservedCommands = missingMapping },
+            nameof(MainShortcutGateResults.CommandsWork));
+        foreach (var command in expectedCommands)
+        {
+            var brokenEvent = passingCommands.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value,
+                StringComparer.Ordinal);
+            brokenEvent[command] = false;
+            VerifyOnlyShortcutGateFails(
+                passing with { ObservedCommands = brokenEvent },
+                nameof(MainShortcutGateResults.CommandsWork));
+        }
+        VerifyOnlyShortcutGateFails(
+            passing with { TextInputPreserved = false },
+            nameof(MainShortcutGateResults.TextInputPreserved));
+        VerifyOnlyShortcutGateFails(
+            passing with { PopupGuarded = false },
+            nameof(MainShortcutGateResults.PopupGuarded));
+        VerifyOnlyShortcutGateFails(
+            passing with { ModalOwnerGuarded = false },
+            nameof(MainShortcutGateResults.ModalOwnerGuarded));
+        return true;
+    }
+
+    public static MainShortcutGateResults EvaluateMainShortcutGates(MainShortcutGateInputs input)
+    {
+        var expected = input.ExpectedCommands.Order(StringComparer.Ordinal).ToArray();
+        var observed = input.ObservedCommands.Keys.Order(StringComparer.Ordinal).ToArray();
+        return new MainShortcutGateResults(
+            expected.Length == 8 &&
+                observed.SequenceEqual(expected, StringComparer.Ordinal) &&
+                input.ObservedCommands.Values.All(value => value),
+            input.TextInputPreserved,
+            input.PopupGuarded,
+            input.ModalOwnerGuarded);
+    }
+
+    public static MainKeyboardNavigationGateResults EvaluateMainKeyboardNavigationGates(
+        MainKeyboardNavigationGateInputs input) =>
+        new(input.InitialFocusSafe, input.CompleteTabSequence);
+
+    public static MainStructuralAnnouncementGateResults EvaluateMainStructuralAnnouncementGates(
+        MainStructuralAnnouncementGateInputs input) =>
+        new(
+            input.WorkspaceAnnouncements,
+            input.FilterResultAnnouncement,
+            input.EmptyStateAnnouncements,
+            input.ThemeAnnouncements);
+
+    public static bool RunMainStructuralAnnouncementGateIsolationBehavior()
+    {
+        var passing = new MainStructuralAnnouncementGateInputs(true, true, true, true);
+        Must(
+            EvaluateMainStructuralAnnouncementGates(passing).AllPassed,
+            "主窗口结构变化通知全通过夹具被错误拒绝。");
+        VerifyOnlyMainStructuralAnnouncementGateFails(
+            passing with { WorkspaceAnnouncements = false },
+            nameof(MainStructuralAnnouncementGateResults.WorkspaceAnnouncements));
+        VerifyOnlyMainStructuralAnnouncementGateFails(
+            passing with { FilterResultAnnouncement = false },
+            nameof(MainStructuralAnnouncementGateResults.FilterResultAnnouncement));
+        VerifyOnlyMainStructuralAnnouncementGateFails(
+            passing with { EmptyStateAnnouncements = false },
+            nameof(MainStructuralAnnouncementGateResults.EmptyStateAnnouncements));
+        VerifyOnlyMainStructuralAnnouncementGateFails(
+            passing with { ThemeAnnouncements = false },
+            nameof(MainStructuralAnnouncementGateResults.ThemeAnnouncements));
+        return true;
+    }
+
+    public static bool RunMainKeyboardNavigationGateIsolationBehavior()
+    {
+        var passing = new MainKeyboardNavigationGateInputs(true, true);
+        Must(
+            EvaluateMainKeyboardNavigationGates(passing).AllPassed,
+            "主窗口键盘导航全通过夹具被错误拒绝。");
+        VerifyOnlyMainKeyboardNavigationGateFails(
+            passing with { InitialFocusSafe = false },
+            nameof(MainKeyboardNavigationGateResults.InitialFocusSafe));
+        VerifyOnlyMainKeyboardNavigationGateFails(
+            passing with { CompleteTabSequence = false },
+            nameof(MainKeyboardNavigationGateResults.CompleteTabSequence));
+        return true;
+    }
+
     public static FloatingReferenceManifestGateResults EvaluateFloatingReferenceManifestGates(
         FloatingReferenceManifestGateInputs input) =>
         new(
@@ -4453,11 +4826,13 @@ internal static class ValidationExercises
             input.TextIsSingleLineAndUntrimmed &&
             input.TextFits &&
             input.FullyVisibleInViewport &&
+            input.SeparatedFromRemaining &&
             input.SeparatedFromActions);
 
     public static bool RunMainStressCountdownTitleGateIsolationBehavior()
     {
         var passing = new MainStressCountdownTitleGateInputs(
+            true,
             true,
             true,
             true,
@@ -4482,6 +4857,12 @@ internal static class ValidationExercises
         Must(
             truncatedOrOverlapping.ExactTitleRendered && !truncatedOrOverlapping.LayoutSafe,
             "主窗口 Stress 标题截断或重叠负夹具未单独让布局门禁变红。");
+
+        var remainingOverlap = EvaluateMainStressCountdownTitleGates(
+            passing with { SeparatedFromRemaining = false });
+        Must(
+            remainingOverlap.ExactTitleRendered && !remainingOverlap.LayoutSafe,
+            "主窗口 Stress 标题与剩余时间重叠负夹具未单独让布局门禁变红。");
 
         return true;
     }
@@ -4542,6 +4923,42 @@ internal static class ValidationExercises
                 result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal) &&
                 result.Diagnostics.Single().Check == target,
                 $"悬浮窗快速新增局部主题负向夹具未让 {target} 单独失败。");
+        }
+
+        return true;
+    }
+
+    public static bool RunFloatingQuickAddPaletteBindingIsolationBehavior()
+    {
+        var day = FloatingQuickAddPaletteBindings.Expected(ApplicationThemeMode.Day);
+        Must(
+            FloatingQuickAddPaletteBindings.Evaluate(day).Passed,
+            "悬浮窗快速新增日间 palette 固定映射未通过。");
+
+        var night = FloatingQuickAddPaletteBindings.Expected(ApplicationThemeMode.Night);
+        Must(
+            FloatingQuickAddPaletteBindings.Evaluate(night).Passed,
+            "悬浮窗快速新增夜间 palette 固定映射未通过。");
+
+        var historicalNightMiswirings = new[]
+        {
+            (
+                Mapping: night with { InputSurfaceResourceKey = "FloatingNightNoteCardBrush" },
+                FailedCheck: nameof(FloatingQuickAddPaletteBindingResult.InputSurfaceMatches)),
+            (
+                Mapping: night with { InputTextResourceKey = "FloatingNightTextBrush" },
+                FailedCheck: nameof(FloatingQuickAddPaletteBindingResult.InputTextMatches)),
+            (
+                Mapping: night with { ErrorTextResourceKey = "FloatingNightHeaderDangerBrush" },
+                FailedCheck: nameof(FloatingQuickAddPaletteBindingResult.ErrorTextMatches))
+        };
+        foreach (var fixture in historicalNightMiswirings)
+        {
+            var failing = FloatingQuickAddPaletteBindings.Evaluate(fixture.Mapping);
+            Must(
+                !failing.Passed &&
+                failing.FailedChecks.SequenceEqual([fixture.FailedCheck], StringComparer.Ordinal),
+                $"悬浮窗快速新增历史串线未只击穿 {fixture.FailedCheck}。");
         }
 
         return true;
@@ -4643,6 +5060,81 @@ internal static class ValidationExercises
         Must(
             sharedAccentToken.TextContrast && !sharedAccentToken.AccentSeparatedFromPlushGlow,
             "主倒计时与玩偶共享 token 的负向夹具未单独让语义分离门禁变红。");
+
+        return true;
+    }
+
+    public static NoteCompletedAuxiliaryContrastGateResults EvaluateNoteCompletedAuxiliaryContrastGates(
+        NoteCompletedAuxiliaryContrastGateInputs input) =>
+        new(
+            input.ContrastRatios.Count == 2 && input.ContrastRatios.All(ratio => ratio >= 4.5),
+            input.UsesDedicatedToken,
+            input.ActualBackgroundMatchesHeader,
+            input.MutedBrushUnchanged,
+            input.CompletedHeaderColorUnchanged);
+
+    public static bool RunNoteCompletedAuxiliaryContrastGateIsolationBehavior()
+    {
+        var passing = new NoteCompletedAuxiliaryContrastGateInputs(
+            new[] { 5.772, 7.466 },
+            true,
+            true,
+            true,
+            true);
+        var passingResult = EvaluateNoteCompletedAuxiliaryContrastGates(passing);
+        Must(
+            passingResult.AllPassed,
+            "已完成便签辅助说明日夜实际背景对比度全通过夹具被错误拒绝。");
+
+        var lowContrastResult = EvaluateNoteCompletedAuxiliaryContrastGates(
+            passing with { ContrastRatios = new[] { 4.34, 7.466 } });
+        Must(
+            !lowContrastResult.TextContrast &&
+            lowContrastResult.UsesDedicatedToken &&
+            lowContrastResult.ActualBackgroundMatchesHeader &&
+            lowContrastResult.MutedBrushUnchanged &&
+            lowContrastResult.CompletedHeaderColorUnchanged,
+            "已完成便签辅助说明 token 改回不达标值时未单独触发对比度负向门。");
+
+        var sharedMutedResult = EvaluateNoteCompletedAuxiliaryContrastGates(
+            passing with { UsesDedicatedToken = false });
+        Must(
+            sharedMutedResult.TextContrast &&
+            !sharedMutedResult.UsesDedicatedToken &&
+            sharedMutedResult.ActualBackgroundMatchesHeader &&
+            sharedMutedResult.MutedBrushUnchanged &&
+            sharedMutedResult.CompletedHeaderColorUnchanged,
+            "已完成便签辅助说明与 MutedBrush 串线时未单独触发语义 token 负向门。");
+
+        var backgroundResult = EvaluateNoteCompletedAuxiliaryContrastGates(
+            passing with { ActualBackgroundMatchesHeader = false });
+        Must(
+            backgroundResult.TextContrast &&
+            backgroundResult.UsesDedicatedToken &&
+            !backgroundResult.ActualBackgroundMatchesHeader &&
+            backgroundResult.MutedBrushUnchanged &&
+            backgroundResult.CompletedHeaderColorUnchanged,
+            "已完成便签辅助说明未对其实际标题背景校验时未单独触发负向门。");
+
+        var mutedChangedResult = EvaluateNoteCompletedAuxiliaryContrastGates(
+            passing with { MutedBrushUnchanged = false });
+        Must(
+            mutedChangedResult.TextContrast &&
+            mutedChangedResult.UsesDedicatedToken &&
+            mutedChangedResult.ActualBackgroundMatchesHeader &&
+            !mutedChangedResult.MutedBrushUnchanged &&
+            mutedChangedResult.CompletedHeaderColorUnchanged,
+            "MutedBrush 改动未单独触发已完成便签辅助说明隔离门。");
+
+        var headerChangedResult = EvaluateNoteCompletedAuxiliaryContrastGates(
+            passing with { CompletedHeaderColorUnchanged = false });
+        Must(
+            headerChangedResult.TextContrast &&
+            headerChangedResult.UsesDedicatedToken &&
+            headerChangedResult.ActualBackgroundMatchesHeader &&
+            headerChangedResult.MutedBrushUnchanged &&
+            !headerChangedResult.CompletedHeaderColorUnchanged,
+            "NoteCompletedHeaderColor 改动未单独触发已完成便签辅助说明隔离门。");
 
         return true;
     }
@@ -4806,6 +5298,100 @@ internal static class ValidationExercises
                 .Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
                 .All(pair => pair.Value),
             $"UI 质量门禁负向夹具 {target} 误伤无关契约。");
+    }
+
+    private static void VerifyOnlyCountdownEmptyStateGateFails(
+        CountdownEmptyStateGateInputs input,
+        string target)
+    {
+        var results = EvaluateCountdownEmptyStateGates(input).AsDictionary();
+        Must(results.TryGetValue(target, out var value) && !value,
+            $"倒计时空态负向夹具未让 {target} 单独失败。");
+        Must(results.Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"倒计时空态负向夹具 {target} 误伤无关契约。");
+    }
+
+    private static void VerifyOnlyMainNoteCompletionGateFails(
+        MainNoteCompletionGateInputs input,
+        string target)
+    {
+        var results = EvaluateMainNoteCompletionGates(input).AsDictionary();
+        Must(results.TryGetValue(target, out var value) && !value,
+            $"主窗口便签完成复选框负向夹具未让 {target} 单独失败。");
+        Must(results.Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"主窗口便签完成复选框负向夹具 {target} 误伤无关契约。");
+    }
+
+    private static void VerifyOnlyMainCountdownRemainingGateFails(
+        MainCountdownRemainingGateInputs input,
+        string target)
+    {
+        var results = EvaluateMainCountdownRemainingGates(input).AsDictionary();
+        Must(results.TryGetValue(target, out var value) && !value,
+            $"主窗口倒计时剩余时间负向夹具未让 {target} 单独失败。");
+        Must(results.Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"主窗口倒计时剩余时间负向夹具 {target} 误伤无关契约。");
+    }
+
+    private static void VerifyOnlyCountdownIncrementalGateFails(
+        CountdownIncrementalRefreshGateResults results,
+        string target)
+    {
+        Must(!results.AllPassed && results.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"倒计时增量刷新负向夹具未只击穿 {target}。");
+    }
+
+    private static void VerifyOnlyConfirmationGateFails(
+        ConfirmationDialogGateInputs input,
+        string target)
+    {
+        var result = EvaluateConfirmationDialogGates(input);
+        Must(!result.AllPassed && result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"删除确认对话框负向夹具未只击穿 {target}。");
+    }
+
+    private static void VerifyOnlySecondaryWindowTypographyGateFails(
+        SecondaryWindowTypographyGateInputs input,
+        string target)
+    {
+        var result = EvaluateSecondaryWindowTypographyGates(input);
+        Must(!result.AllPassed && result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"次级窗口字号负向夹具未只击穿 {target}。");
+    }
+
+    private static void VerifyOnlyReminderCenterKeyboardGateFails(
+        ReminderCenterKeyboardGateInputs input,
+        string target)
+    {
+        var result = EvaluateReminderCenterKeyboardGates(input);
+        Must(!result.AllPassed && result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"提醒中心键盘负向夹具未只击穿 {target}。");
+    }
+
+    private static void VerifyOnlyShortcutGateFails(MainShortcutGateInputs input, string target) =>
+        Must(!EvaluateMainShortcutGates(input).AllPassed &&
+             EvaluateMainShortcutGates(input).FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"主窗口快捷键负向夹具未只击穿 {target}。");
+
+    private static void VerifyOnlyMainKeyboardNavigationGateFails(
+        MainKeyboardNavigationGateInputs input,
+        string target)
+    {
+        var result = EvaluateMainKeyboardNavigationGates(input);
+        Must(!result.AllPassed && result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"主窗口键盘导航负向夹具未只击穿 {target}。");
+    }
+
+    private static void VerifyOnlyMainStructuralAnnouncementGateFails(
+        MainStructuralAnnouncementGateInputs input,
+        string target)
+    {
+        var result = EvaluateMainStructuralAnnouncementGates(input);
+        Must(!result.AllPassed && result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"主窗口结构变化通知负向夹具未只击穿 {target}。");
     }
 
     public static PersistenceFailureExerciseResult RunPersistenceFailures(
@@ -5254,6 +5840,28 @@ internal sealed record FloatingPrimaryCountdownContrastGateResults(
     bool TextContrast,
     bool AccentSeparatedFromPlushGlow);
 
+internal sealed record NoteCompletedAuxiliaryContrastGateInputs(
+    IReadOnlyList<double> ContrastRatios,
+    bool UsesDedicatedToken,
+    bool ActualBackgroundMatchesHeader,
+    bool MutedBrushUnchanged,
+    bool CompletedHeaderColorUnchanged);
+
+internal sealed record NoteCompletedAuxiliaryContrastGateResults(
+    bool TextContrast,
+    bool UsesDedicatedToken,
+    bool ActualBackgroundMatchesHeader,
+    bool MutedBrushUnchanged,
+    bool CompletedHeaderColorUnchanged)
+{
+    public bool AllPassed =>
+        TextContrast &&
+        UsesDedicatedToken &&
+        ActualBackgroundMatchesHeader &&
+        MutedBrushUnchanged &&
+        CompletedHeaderColorUnchanged;
+}
+
 internal sealed record FloatingReferenceManifestGateInputs(
     bool ManifestStructureValid,
     bool ExpectedCaptureFilesPresent,
@@ -5403,6 +6011,7 @@ internal sealed record MainStressCountdownTitleGateInputs(
     bool TextIsSingleLineAndUntrimmed,
     bool TextFits,
     bool FullyVisibleInViewport,
+    bool SeparatedFromRemaining,
     bool SeparatedFromActions);
 
 internal sealed record MainStressCountdownTitleGateResults(
@@ -5427,6 +6036,207 @@ internal sealed record FloatingSecondaryRemainingGateInputs(
 internal sealed record FloatingSecondaryRemainingGateResults(
     bool UnitSpacingMatches,
     bool FixedColumnLayoutMatches);
+
+internal sealed record MainCountdownRemainingGateInputs(
+    IReadOnlyList<string> ExpectedTexts,
+    IReadOnlyList<string> FormattedTexts,
+    IReadOnlyList<string> RenderedTexts,
+    bool HasExpectedSampleCount,
+    bool ColumnsAre300Pixels,
+    bool ActualColumnsAre300Pixels,
+    bool TextIsRightAligned,
+    bool TextIsSingleLineAndUntrimmed,
+    bool TextIsFullyVisible,
+    bool UsesTabularNumerals,
+    bool PrecisionSamplesAreSaved,
+    bool FontSizingMatches);
+
+internal sealed record MainCountdownRemainingGateResults(
+    bool UnitSpacingMatches,
+    bool FixedColumnLayoutMatches)
+{
+    public bool AllPassed => UnitSpacingMatches && FixedColumnLayoutMatches;
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(UnitSpacingMatches)] = UnitSpacingMatches,
+            [nameof(FixedColumnLayoutMatches)] = FixedColumnLayoutMatches
+        };
+}
+
+internal sealed record CountdownIncrementalRefreshGateResults(
+    bool IdentityPreserved,
+    bool FocusPreserved,
+    bool NonZeroScrollPreserved,
+    bool PointerStatePreserved,
+    bool CollectionChangeRebuilt,
+    bool FilterChangeRebuilt,
+    bool PrecisionChangeRebuilt,
+    bool ThemeChangeRebuilt,
+    bool ExpiryChangeRebuilt,
+    bool ExpiryBackgroundFlipped,
+    bool ExpiryRemainingTextFlipped)
+{
+    public bool ExpiryVisualsFlipTogether =>
+        ExpiryBackgroundFlipped && ExpiryRemainingTextFlipped;
+
+    public bool AllPassed => FailedChecks.Count == 0;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(IdentityPreserved), IdentityPreserved),
+        (nameof(FocusPreserved), FocusPreserved),
+        (nameof(NonZeroScrollPreserved), NonZeroScrollPreserved),
+        (nameof(PointerStatePreserved), PointerStatePreserved),
+        (nameof(CollectionChangeRebuilt), CollectionChangeRebuilt),
+        (nameof(FilterChangeRebuilt), FilterChangeRebuilt),
+        (nameof(PrecisionChangeRebuilt), PrecisionChangeRebuilt),
+        (nameof(ThemeChangeRebuilt), ThemeChangeRebuilt),
+        (nameof(ExpiryChangeRebuilt), ExpiryChangeRebuilt),
+        (nameof(ExpiryBackgroundFlipped), ExpiryBackgroundFlipped),
+        (nameof(ExpiryRemainingTextFlipped), ExpiryRemainingTextFlipped)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
+
+internal sealed record ConfirmationDialogGateInputs(
+    bool ButtonsVisible,
+    bool BodyReachable,
+    bool CancelIsSafeDefault,
+    bool ProductionMatrixComplete,
+    bool BodyEndReachable,
+    bool CenteredOnOwner,
+    bool EnterIsSafe,
+    bool CancelAndEscapeAreSafe);
+
+internal sealed record ConfirmationDialogGateResults(
+    bool ButtonsVisible,
+    bool BodyReachable,
+    bool CancelIsSafeDefault,
+    bool ProductionMatrixComplete,
+    bool BodyEndReachable,
+    bool CenteredOnOwner,
+    bool EnterIsSafe,
+    bool CancelAndEscapeAreSafe)
+{
+    public bool AllPassed => FailedChecks.Count == 0;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(ButtonsVisible), ButtonsVisible),
+        (nameof(BodyReachable), BodyReachable),
+        (nameof(CancelIsSafeDefault), CancelIsSafeDefault),
+        (nameof(ProductionMatrixComplete), ProductionMatrixComplete),
+        (nameof(BodyEndReachable), BodyEndReachable),
+        (nameof(CenteredOnOwner), CenteredOnOwner),
+        (nameof(EnterIsSafe), EnterIsSafe),
+        (nameof(CancelAndEscapeAreSafe), CancelAndEscapeAreSafe)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
+
+internal sealed record SecondaryWindowTypographyGateInputs(
+    bool RenderedScaleMatches,
+    bool ContentRootsDeclareFontSize,
+    bool FloatingTypographyUnchanged);
+
+internal sealed record SecondaryWindowTypographyGateResults(
+    bool RenderedScaleMatches,
+    bool ContentRootsDeclareFontSize,
+    bool FloatingTypographyUnchanged)
+{
+    public bool AllPassed => FailedChecks.Count == 0;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(RenderedScaleMatches), RenderedScaleMatches),
+        (nameof(ContentRootsDeclareFontSize), ContentRootsDeclareFontSize),
+        (nameof(FloatingTypographyUnchanged), FloatingTypographyUnchanged)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
+
+internal sealed record ReminderCenterKeyboardGateInputs(
+    bool TabTraversalWorks,
+    bool CloseGuardWorks,
+    bool InitialFocusAndAccessibleNameWork);
+
+internal sealed record ReminderCenterKeyboardGateResults(
+    bool TabTraversalWorks,
+    bool CloseGuardWorks,
+    bool InitialFocusAndAccessibleNameWork)
+{
+    public bool AllPassed => FailedChecks.Count == 0;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(TabTraversalWorks), TabTraversalWorks),
+        (nameof(CloseGuardWorks), CloseGuardWorks),
+        (nameof(InitialFocusAndAccessibleNameWork), InitialFocusAndAccessibleNameWork)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
+
+internal sealed record MainShortcutGateInputs(
+    IReadOnlyList<string> ExpectedCommands,
+    IReadOnlyDictionary<string, bool> ObservedCommands,
+    bool TextInputPreserved,
+    bool PopupGuarded,
+    bool ModalOwnerGuarded);
+
+internal sealed record MainShortcutGateResults(
+    bool CommandsWork,
+    bool TextInputPreserved,
+    bool PopupGuarded,
+    bool ModalOwnerGuarded)
+{
+    public bool AllPassed => CommandsWork && TextInputPreserved && PopupGuarded && ModalOwnerGuarded;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(CommandsWork), CommandsWork),
+        (nameof(TextInputPreserved), TextInputPreserved),
+        (nameof(PopupGuarded), PopupGuarded),
+        (nameof(ModalOwnerGuarded), ModalOwnerGuarded)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
+
+internal sealed record MainKeyboardNavigationGateInputs(
+    bool InitialFocusSafe,
+    bool CompleteTabSequence);
+
+internal sealed record MainKeyboardNavigationGateResults(
+    bool InitialFocusSafe,
+    bool CompleteTabSequence)
+{
+    public bool AllPassed => FailedChecks.Count == 0;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(InitialFocusSafe), InitialFocusSafe),
+        (nameof(CompleteTabSequence), CompleteTabSequence)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
+
+internal sealed record MainStructuralAnnouncementGateInputs(
+    bool WorkspaceAnnouncements,
+    bool FilterResultAnnouncement,
+    bool EmptyStateAnnouncements,
+    bool ThemeAnnouncements);
+
+internal sealed record MainStructuralAnnouncementGateResults(
+    bool WorkspaceAnnouncements,
+    bool FilterResultAnnouncement,
+    bool EmptyStateAnnouncements,
+    bool ThemeAnnouncements)
+{
+    public bool AllPassed => FailedChecks.Count == 0;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(WorkspaceAnnouncements), WorkspaceAnnouncements),
+        (nameof(FilterResultAnnouncement), FilterResultAnnouncement),
+        (nameof(EmptyStateAnnouncements), EmptyStateAnnouncements),
+        (nameof(ThemeAnnouncements), ThemeAnnouncements)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
 
 internal sealed record FloatingScrollBarGateInputs(
     bool LocalStylePresent,
@@ -5498,6 +6308,56 @@ internal sealed record UiQualityGateResults(
             [nameof(FloatingTitleUsesSemiBoldWeight)] = FloatingTitleUsesSemiBoldWeight,
             [nameof(FloatingNoteInputWraps)] = FloatingNoteInputWraps,
             [nameof(FloatingNoteInputScrolls)] = FloatingNoteInputScrolls
+        };
+}
+
+internal sealed record CountdownEmptyStateGateInputs(
+    bool EmptyStatesDistinguished,
+    bool PointerResetRestoresResults,
+    bool KeyboardResetRestoresResults,
+    bool DayNightTextContrast);
+
+internal sealed record CountdownEmptyStateGateResults(
+    bool EmptyStatesDistinguished,
+    bool PointerResetRestoresResults,
+    bool KeyboardResetRestoresResults,
+    bool DayNightTextContrast)
+{
+    public bool AllPassed => AsDictionary().Values.All(value => value);
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(EmptyStatesDistinguished)] = EmptyStatesDistinguished,
+            [nameof(PointerResetRestoresResults)] = PointerResetRestoresResults,
+            [nameof(KeyboardResetRestoresResults)] = KeyboardResetRestoresResults,
+            [nameof(DayNightTextContrast)] = DayNightTextContrast
+        };
+}
+
+internal sealed record MainNoteCompletionGateInputs(
+    bool DedicatedStyleApplied,
+    bool MainBoxAtLeast24Pixels,
+    bool MainTickScaled,
+    bool WarmTokensReused,
+    bool RoundedCornersPreserved,
+    bool CheckAndUncheckWork,
+    bool PersistenceFailureRollsBack,
+    bool AccessibleNamesUpdate,
+    bool TagSelectorSizeUnchanged,
+    bool FloatingSizeUnchanged);
+
+internal sealed record MainNoteCompletionGateResults(
+    bool MainTargetSizeAndBehavior,
+    bool OtherUserSizesUnchanged)
+{
+    public bool AllPassed => MainTargetSizeAndBehavior && OtherUserSizesUnchanged;
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(MainTargetSizeAndBehavior)] = MainTargetSizeAndBehavior,
+            [nameof(OtherUserSizesUnchanged)] = OtherUserSizesUnchanged
         };
 }
 

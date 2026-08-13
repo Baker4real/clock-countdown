@@ -65,6 +65,10 @@ $powerShellEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction 
 if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
     throw '未找到 pwsh.exe；本项目要求 PowerShell 7+，不支持 Windows PowerShell 5.1。'
 }
+$dotnetPath = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+if (-not (Test-Path -LiteralPath $dotnetPath -PathType Leaf)) {
+    throw "未找到验收套件所需的受管 dotnet：$dotnetPath"
+}
 $powerShellProcessName = [System.IO.Path]::GetFileName($powerShellEngine)
 Get-Service -Name W32Time -ErrorAction Stop | Out-Null
 
@@ -156,6 +160,7 @@ function Wait-CountdownNetworkTimeSource {
 $validationSuite = Invoke-CountdownValidationSuite `
     -Root $staging `
     -PowerShell7Path $powerShellEngine `
+    -DotnetPath $dotnetPath `
     -ParentTransactionMutexHeld:$ParentTransactionMutexHeld
 $testOutput = [string] $validationSuite.TestOutput
 $cSharpTestOutput = [string] $validationSuite.CSharpTestOutput

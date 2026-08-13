@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-06-v6\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -30,6 +30,46 @@ if (-not [string]::IsNullOrWhiteSpace(
 Add-Type -AssemblyName PresentationFramework
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
+
+function Test-ExactSymmetricTabTargets {
+    param(
+        [Parameter(Mandatory)] [string[]] $ExpectedForward,
+        [Parameter(Mandatory)] [string[]] $ActualForward,
+        [Parameter(Mandatory)] [string[]] $ActualBackward
+    )
+
+    $expectedBackward = [string[]] $ExpectedForward.Clone()
+    [array]::Reverse($expectedBackward)
+    return (
+        ($ActualForward -join ',') -ceq ($ExpectedForward -join ',') -and
+        ($ActualBackward -join ',') -ceq ($expectedBackward -join ','))
+}
+
+function Test-MainShortcutCommandResults {
+    param([Parameter(Mandatory)] [object] $CommandResults)
+
+    $properties = @($CommandResults.PSObject.Properties)
+    return (
+        $properties.Count -eq 8 -and
+        ((@($properties.Name) | Sort-Object) -join ',') -eq
+            'CountdownsWorkspace,Filter,Minimize,NotesWorkspace,SaveCountdown,SavePreferences,TagManager,Theme' -and
+        @($properties | Where-Object { -not [bool] $_.Value }).Count -eq 0)
+}
+
+function Test-MainShortcutCommandDiagnostics {
+    param([Parameter(Mandatory)] [object] $CommandDiagnostics)
+
+    $properties = @($CommandDiagnostics.PSObject.Properties)
+    return (
+        $properties.Count -eq 8 -and
+        ((@($properties.Name) | Sort-Object) -join ',') -eq
+            'CountdownsWorkspace,Filter,Minimize,NotesWorkspace,SaveCountdown,SavePreferences,TagManager,Theme' -and
+        @($properties | Where-Object {
+                -not [bool] $_.Value.Handled -or
+                -not [bool] $_.Value.EffectObserved
+            }).Count -eq 0)
+}
 
 $powerShellEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
@@ -265,16 +305,28 @@ $longNoteCaptures = @($validation.FloatingLongNotesCaptures)
 if ($longNoteCaptures.Count -ne 4 -or ((@($longNoteCaptures.CaptureId) | Sort-Object) -join ',') -ne ($expectedLongNoteCaptureIds -join ',')) { throw 'The actual WPF long-note capture inventory is incomplete.' }
 if (@($longNoteCaptures.PngSha256 | Sort-Object -Unique).Count -ne 4 -or @($longNoteCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count -ne 4) { throw 'Long-note frames or state fingerprints were reused across states.' }
 if ($floatingReferenceBaselineRequired) {
+    $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
+        ConvertFrom-Json -Depth 100
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-06-v6/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-13-v12/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-13-v12') { throw 'The floating reference manifest version does not match the pinned v12 path.' }
     $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
     if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
     if (@($validation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete long-note freshness gate is red.' }
     if (@($validation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count -ne 6) { throw 'The six-frame manifest reuses a PNG hash.' }
-    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-day').BaselineSha256 -ne '6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9') { throw 'The current day countdown PNG hash does not match the formal baseline.' }
-    if ([string] ($validation.FloatingReferenceBaselineCaptures | Where-Object CaptureId -eq 'floating-countdowns-night').BaselineSha256 -ne '2A3E246125832271AB26AAC6D90FE5B91A58D97049C20197282F2CD1A892E960') { throw 'The current night countdown PNG hash does not match the formal baseline.' }
+    if (@($floatingReferenceBaselineDefinition.captures).Count -ne 6) { throw 'The pinned floating reference manifest does not declare exactly six captures.' }
+    foreach ($expectedCapture in @($floatingReferenceBaselineDefinition.captures)) {
+        $reportedCapture = @($validation.FloatingReferenceBaselineCaptures |
+            Where-Object CaptureId -eq ([string] $expectedCapture.captureId))
+        if ($reportedCapture.Count -ne 1 -or
+            [string] $reportedCapture[0].Path -ne [string] $expectedCapture.path -or
+            [string] $reportedCapture[0].BaselineSha256 -ne [string] $expectedCapture.pngSha256 -or
+            [string] $reportedCapture[0].ActualSha256 -ne [string] $expectedCapture.pngSha256) {
+            throw "The floating capture is not bound to its v12 manifest entry: $($expectedCapture.captureId)."
+        }
+    }
     if (@($validation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count -ne 0) { throw 'A current floating frame exceeds the fixed pixel comparison thresholds.' }
 }
 elseif ($validation.FloatingReferenceBaselineRequested -or $validation.FloatingReferenceBaselineManifestAvailable -or $validation.FloatingReferenceBaselineValidated -or @($validation.FloatingReferenceBaselineCaptures).Count -ne 0) {
@@ -425,6 +477,41 @@ if (-not $validation.PopupKeyboardLifecycleWorks) { throw 'A filter or tag popup
 if (-not $validation.PopupOutsideFocusPreserved) { throw 'Closing a popup after outside focus steals focus back to its trigger.' }
 if (-not $validation.NoteEmptyStatesDistinguished) { throw 'The first-use sticky-note empty state is indistinguishable from filtered no-results.' }
 if (-not $validation.NoteNoResultsResetWorks) { throw 'The filtered no-results state cannot reset all sticky-note filters.' }
+if (-not $validation.CountdownEmptyStatesDistinguished) { throw 'Countdown first-use and filtered no-results empty states are not distinguished.' }
+if (-not $validation.CountdownNoResultsResetWorks -or -not $validation.CountdownEmptyPointerResetRestoresResults) { throw 'The countdown filtered no-results pointer reset does not restore default filters, rows, and summary.' }
+if (-not $validation.CountdownEmptyKeyboardResetRestoresResults) { throw 'The focused countdown filtered no-results reset cannot restore results through keyboard activation.' }
+if (-not $validation.CountdownEmptyStateTextContrast) { throw 'Countdown empty-state text does not meet 4.5:1 contrast against its actual day/night backdrop.' }
+$countdownEmptyContrastMeasurements = @($validation.CountdownEmptyStateContrastMeasurements)
+if ($countdownEmptyContrastMeasurements.Count -ne 2 -or ((@($countdownEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') -ne 'Day,Night') { throw 'Countdown empty-state contrast must contain exact day/night measurements.' }
+if (@($countdownEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count -ne 0) { throw 'A countdown empty-state contrast measurement did not use the actual visible backdrop or expected resource bindings.' }
+if (-not $validation.CountdownEmptyStateGateIsolationBehavior) { throw 'The countdown empty-state gates cannot fail independently.' }
+if (-not $validation.CountdownRemainingLayoutMatches) { throw 'Main-window countdown remaining text does not use the fixed tabular single-line column.' }
+if (-not $validation.CountdownIncrementalRefreshIdentityMatches) { throw 'Countdown clock ticks rebuilt row controls instead of updating existing text targets.' }
+if (-not $validation.CountdownExpiryVisualsFlipTogether) { throw 'Countdown expiry did not flip both the card background and remaining-text danger color.' }
+if (-not $validation.CountdownIncrementalRefreshGateIsolationBehavior) { throw 'Countdown incremental-refresh negative fixtures are not isolated.' }
+$countdownIncrementalRefresh = $validation.CountdownIncrementalRefresh
+if (-not $countdownIncrementalRefresh.FocusPreserved -or -not $countdownIncrementalRefresh.NonZeroScrollPreserved -or -not $countdownIncrementalRefresh.PointerStatePreserved) { throw 'Countdown ordinary tick did not preserve focus, non-zero scroll, and captured pointer state.' }
+if (-not $countdownIncrementalRefresh.TriggerMatrixRebuilt -or -not $countdownIncrementalRefresh.CollectionChangeRebuilt -or -not $countdownIncrementalRefresh.FilterChangeRebuilt -or -not $countdownIncrementalRefresh.PrecisionChangeRebuilt -or -not $countdownIncrementalRefresh.ThemeChangeRebuilt -or -not $countdownIncrementalRefresh.ExpiryChangeRebuilt) { throw 'Countdown collection/filter/precision/theme/expiry trigger matrix did not rebuild correctly.' }
+if (-not $countdownIncrementalRefresh.ExpiryBackgroundFlipped -or -not $countdownIncrementalRefresh.ExpiryRemainingTextFlipped) { throw 'Countdown expiry background and remaining-text gates did not both pass independently.' }
+if (-not $validation.CountdownRemainingUnitSpacingMatches) { throw 'Main-window countdown remaining text lost FormatRemaining unit spacing or sample coverage.' }
+if (-not $validation.CountdownRemainingGateIsolationBehavior) { throw 'Main-window countdown remaining gates cannot fail independently.' }
+$mainRemainingSamples = @($validation.CountdownRemainingSamples)
+if ($mainRemainingSamples.Count -ne 5) { throw "Expected 5 main-window remaining samples, got $($mainRemainingSamples.Count)." }
+if (@($mainRemainingSamples | Where-Object { $_.Precision -notin @('Day','Hour','Minute','Second','SecondLongDays') -or -not $_.IsRightAligned -or -not $_.IsSingleLineAndUntrimmed -or -not $_.IsFullyVisible -or -not $_.UsesTabularNumerals -or -not $_.PreferenceSaved }).Count -ne 0) { throw 'A main-window remaining-time precision sample failed the fixed-column visual contract.' }
+if (@($mainRemainingSamples | Where-Object { [Math]::Abs([double] $_.ColumnWidth - 300) -gt 0.01 -or [Math]::Abs([double] $_.ActualColumnWidth - 300) -gt 0.5 }).Count -ne 0) { throw 'A main-window remaining-time sample expanded outside its actual 300px fixed column.' }
+if ((@($mainRemainingSamples)[0..3].FontSize -join ';') -ne '20;20;20;20') { throw 'A normal main-window precision unexpectedly reduced the remaining-time font size.' }
+if ([double] @($mainRemainingSamples)[4].FontSize -lt 14 -or [double] @($mainRemainingSamples)[4].FontSize -ge 20) { throw 'The long-day main-window sample did not use bounded dynamic font fitting.' }
+if (-not $validation.MainNoteCompletionTargetSizeAndBehavior) { throw 'Main-window note completion checkbox does not meet its 24px template and interaction contract.' }
+if (-not $validation.MainNoteCompletionOtherUserSizesUnchanged) { throw 'Main-window note completion styling changed TagSelector or FloatingWindow checkbox dimensions.' }
+if (-not $validation.MainNoteCompletionGateIsolationBehavior) { throw 'Main-window note completion target and isolation gates cannot fail independently.' }
+$mainNoteCompletionMeasurements = @($validation.MainNoteCompletionMeasurements)
+if ($mainNoteCompletionMeasurements.Count -ne 3 -or ((@($mainNoteCompletionMeasurements.User) | Sort-Object) -join ',') -ne 'FloatingWindow,MainWindow,TagSelector') { throw 'Main note completion validation must report three real WPF checkbox users.' }
+$mainNoteCompletionMeasurement = @($mainNoteCompletionMeasurements | Where-Object User -eq 'MainWindow')[0]
+if ([double] $mainNoteCompletionMeasurement.BoxWidth -lt 24 -or [double] $mainNoteCompletionMeasurement.BoxHeight -lt 24 -or [double] $mainNoteCompletionMeasurement.TickWidth -lt 14 -or [double] $mainNoteCompletionMeasurement.TickHeight -lt 10 -or -not $mainNoteCompletionMeasurement.UsesDedicatedStyle -or -not $mainNoteCompletionMeasurement.UsesWarmTokens -or [double] $mainNoteCompletionMeasurement.CornerRadius -lt 6) { throw 'Main-window note completion template is smaller than the accepted box/tick geometry or lost its scoped warm style.' }
+if (@($mainNoteCompletionMeasurements | Where-Object { $_.User -ne 'MainWindow' -and ([math]::Abs([double] $_.BoxWidth - 18) -gt 0.5 -or [math]::Abs([double] $_.BoxHeight - 18) -gt 0.5 -or [math]::Abs([double] $_.TickWidth - 10) -gt 0.5 -or [math]::Abs([double] $_.TickHeight - 7) -gt 0.5 -or $_.UsesDedicatedStyle) }).Count -ne 0) { throw 'A non-main-window checkbox no longer uses the unchanged 18px global template.' }
+$mainNoteCompletionInteraction = $validation.MainNoteCompletionInteractionBehavior
+if (-not $mainNoteCompletionInteraction.Checked -or -not $mainNoteCompletionInteraction.Unchecked -or -not $mainNoteCompletionInteraction.PersistenceFailureRolledBack -or -not $mainNoteCompletionInteraction.AccessibleNamesUpdated) { throw 'Main-window note completion check, uncheck, rollback, or accessible-name behavior failed.' }
+if (-not $validation.MainNoteCompletionStyleScoped) { throw 'Compatibility note completion style gate must remain true.' }
 if (-not $validation.TransientPanelsOnDemand) { throw 'Filters, tag pickers, or tag management do not use the required on-demand interaction flow.' }
 if (-not $validation.WorkspaceDraftsRetained) { throw 'Switching workspaces discarded an unsaved countdown or sticky-note draft.' }
 if (-not $validation.HiddenCountdownSubmitDisabled) { throw 'A hidden countdown editor still exposes its default submit button.' }
@@ -467,7 +554,18 @@ if (-not $validation.MainWorkspaceResourcesFollowDayNightTheme) { throw 'The mai
 if (-not $validation.MainDynamicCountdownCardsUseThemeResources -or $validation.MainDynamicCountdownCardSampleCount -lt 1) { throw 'No qualifying dynamic countdown card sample uses the required theme resources.' }
 if (-not $validation.MainDynamicNoteCardsUseThemeResources -or $validation.MainDynamicNoteCardSampleCount -lt 1) { throw 'No qualifying dynamic sticky-note card sample uses the required theme resources.' }
 if (-not $validation.MainNightReferenceGeometryMatchesDay) { throw 'The main-window night character and wave geometry no longer matches the day reference.' }
-if ((@($validation.MainNightReferenceWaveColumnCounts) -join ',') -ne '1093,1079') { throw 'The main-window night wave contour is not continuous across the reference width.' }
+if ($mainReferenceBaselineRequired) {
+    if (-not $validation.MainDaySingleBorderGate) { throw 'The main-window control frame is not a single border after excluding declared ornament bands.' }
+    if (-not $validation.MainDaySingleBorderGateIsolationBehavior) { throw 'The main-window single-border negative fixtures cannot fail independently.' }
+    if ((@($validation.MainDaySingleBorderNegativeFixtures) -join ',') -ne 'unexpected-control-edge,label-intersection,missing-lower-ornament') { throw 'The main-window single-border negative-fixture inventory changed.' }
+    $singleBorderMeasurements = @($validation.MainDaySingleBorder.Measurements | Sort-Object StateId)
+    if ((@($singleBorderMeasurements.StateId) -join ',') -ne 'Countdown-Day,Countdown-Night,Notes-Day,Notes-Night') { throw 'The main-window single-border measurement matrix is incomplete.' }
+    if (@($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count -ne 0) { throw 'A main-window state failed its observed border, label-clearance, or declared lower-ornament measurement.' }
+    if ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';') -ne 'Countdown-Day:515/516/570/571:480:1105;Countdown-Night:515/516/570/571:480:1105;Notes-Day:448/449/515/516:416:900;Notes-Night:448/449/515/516:416:900') { throw 'The main-window control-edge rows or shared ornament-band boundaries drifted.' }
+    if (-not $validation.MainNightDerivationConsistencyGate -or -not $validation.MainNightDerivationConsistency.ByteIdentical -or -not $validation.MainNightDerivationConsistency.AlphaRangesMatch) { throw 'The checked-in night decoration assets no longer match an isolated derivation.' }
+    if ((@($validation.MainNightDerivationConsistency.AlphaRanges | Sort-Object Scene | ForEach-Object { "$($_.Scene):$($_.MinimumY)-$($_.MaximumY):$($_.MatchesExpected)" }) -join ';') -ne 'countdown:260-395:True;notes:264-415:True') { throw 'The night decoration alpha ranges moved.' }
+}
+if ((@($validation.MainNightReferenceWaveColumnCounts) -join ',') -ne '1094,1080') { throw 'The main-window night wave contour is not continuous across the reference width.' }
 if (-not $validation.MainReferenceDecorationsShareScaleAtMinimumAndWideSizes) { throw 'The main-window day reference decorations do not share the content scaling coordinate system at minimum and wide sizes.' }
 if (-not $validation.UiQualityGateIsolationBehavior) { throw 'A targeted UI quality-gate fixture failed to isolate its intended contract.' }
 if ((@($validation.MainThemeCharacterPanelColors) -join ',') -ne '#FFFFF7E8,#FF3B2B1D') { throw 'The main-window character scene does not switch to the expected day/night palette.' }
@@ -493,6 +591,57 @@ if (-not $validation.FloatingQuickAddDayResourcesFollowLocalTheme) { throw 'Floa
 if (-not $validation.FloatingQuickAddNightResourcesFollowLocalTheme) { throw 'Floating quick-add controls do not use the local warm night theme.' }
 if (-not $validation.FloatingQuickAddIndependentFromApplicationAutoTheme) { throw 'Floating quick-add controls still inherit the opposite application auto theme.' }
 if (-not $validation.FloatingQuickAddThemeResourceIsolationBehavior) { throw 'Floating quick-add resource checks cannot fail one control family at a time.' }
+if (-not $validation.FloatingQuickAddDayPaletteBindingsMatch) { throw 'Floating quick-add day controls do not bind to the dedicated day palette tokens.' }
+if (-not $validation.FloatingQuickAddNightPaletteBindingsMatch) { throw 'Floating quick-add night controls do not bind to the dedicated night palette tokens.' }
+if (-not $validation.FloatingQuickAddPaletteBindingIsolationBehavior) { throw 'Floating quick-add palette bindings cannot fail one control family at a time.' }
+$quickAddPaletteBindings = @($validation.FloatingQuickAddPaletteBindings)
+if ($quickAddPaletteBindings.Count -ne 2 -or ((@($quickAddPaletteBindings.Theme) | Sort-Object) -join ',') -ne 'Day,Night') { throw 'Floating quick-add palette report does not contain exact day/night bindings.' }
+$expectedQuickAddPaletteKeys = @{
+    Day = 'FloatingDayNoteInputBrush,FloatingDayNoteInputTextBrush,FloatingDayErrorBrush,FloatingDayNoteInputTextBrush,FloatingDayErrorBrush'
+    Night = 'FloatingNightNoteInputBrush,FloatingNightNoteInputTextBrush,FloatingNightErrorBrush,FloatingNightNoteInputTextBrush,FloatingNightErrorBrush'
+}
+$quickAddPaletteGateNames = @(
+    'InputSurfaceMatches',
+    'InputTextMatches',
+    'ErrorTextMatches'
+)
+foreach ($binding in $quickAddPaletteBindings) {
+    $expectedKeys = $expectedQuickAddPaletteKeys[[string] $binding.Theme]
+    $reportedExpected = @(
+        $binding.Expected.InputSurfaceResourceKey,
+        $binding.Expected.InputTextResourceKey,
+        $binding.Expected.ErrorTextResourceKey,
+        $binding.Expected.ReminderTextResourceKey,
+        $binding.Expected.ReminderErrorResourceKey
+    ) -join ','
+    $reportedActual = @(
+        $binding.Actual.InputSurfaceResourceKey,
+        $binding.Actual.InputTextResourceKey,
+        $binding.Actual.ErrorTextResourceKey,
+        $binding.Actual.ReminderTextResourceKey,
+        $binding.Actual.ReminderErrorResourceKey
+    ) -join ','
+    if ($reportedExpected -ne $expectedKeys -or $reportedActual -ne $expectedKeys) { throw "Floating quick-add $($binding.Theme) expected/actual resource keys are not fixed to the dedicated palette: expected=[$reportedExpected], actual=[$reportedActual]." }
+    if (@($quickAddPaletteGateNames | Where-Object { -not [bool] $binding.Gates.$_ }).Count -ne 0 -or
+        -not [bool] $binding.Gates.Passed -or
+        @($binding.Gates.FailedChecks).Count -ne 0) {
+        throw "Floating quick-add $($binding.Theme) has a failed concrete palette-binding gate."
+    }
+}
+$quickAddPaletteFailedChecksFixture = [pscustomobject]@{
+    InputSurfaceMatches = $true
+    InputTextMatches = $true
+    ErrorTextMatches = $true
+    Passed = $true
+    FailedChecks = @('InputSurfaceMatches')
+}
+$quickAddPaletteFailedChecksFixturePassed =
+    @($quickAddPaletteGateNames | Where-Object {
+            -not [bool] $quickAddPaletteFailedChecksFixture.$_
+        }).Count -eq 0 -and
+    [bool] $quickAddPaletteFailedChecksFixture.Passed -and
+    @($quickAddPaletteFailedChecksFixture.FailedChecks).Count -eq 0
+if ($quickAddPaletteFailedChecksFixturePassed) { throw 'A non-empty floating quick-add palette FailedChecks fixture was accepted.' }
 if ((@($validation.FloatingQuickAddLocalCanvasColors) -join ',') -ne '#FFFFFDFC,#FF473323') { throw 'Floating quick-add local surface colors are not warm day and night values.' }
 if ((@($validation.FloatingQuickAddLocalActiveColors) -join ',') -ne '#FFA24438,#FF6E492E') { throw 'Floating quick-add local active colors are not coral and warm brown.' }
 $quickAddThemeChecks = @(
@@ -526,11 +675,211 @@ if (-not $validation.ThemedInteractiveStates) { throw 'A themed interactive cont
 if (-not $validation.ThemeTextContrast) { throw 'The warm theme does not meet the required text-contrast pairs.' }
 if (-not $validation.DangerButtonContrast) { throw 'The destructive confirmation button loses required text contrast when hovered or pressed.' }
 if (-not $validation.DestructiveConfirmationIsSafe) { throw 'A destructive confirmation still makes deletion the Enter default action.' }
+if (-not $validation.MainInitialFocusIsSafeAndDeterministic) { throw 'The main window has no deterministic safe initial focus contract.' }
+if (-not $validation.MainTabSequenceStartsWithWorkspaceControls) { throw 'The main window workspace controls are not keyboard-traversable in order.' }
+if (-not $validation.MainKeyboardNavigationGates.InitialFocusSafe) { throw 'The main-window Loaded focus is not the observed safe initial focus.' }
+if (-not $validation.MainKeyboardNavigationGates.CompleteTabSequence) { throw 'The main-window Countdowns/Notes Tab paths are not complete, symmetric, and visibly focused.' }
+if (-not $validation.MainKeyboardNavigationGateIsolationBehavior) { throw 'The main-window initial-focus and complete-Tab gates cannot fail independently.' }
+if (-not $validation.MainKeyboardPathNegativeFixtures) { throw 'The complete Tab path negative fixtures did not reject a missing tag trigger, reordered target, asymmetric reverse path, or invisible focus.' }
+if (-not $validation.MainStructuralLiveRegionsUsePoliteSemantics) { throw 'Structural main-window announcements are not carried by polite visible live regions.' }
+if (-not $validation.MainShortcutScopeIsSafe) { throw 'Main-window shortcuts do not guard text-entry and popup scopes.' }
+if ([string] $validation.MainKeyboardBehavior.InitialFocusedAutomationId -ne 'CountdownTab') { throw 'The main window did not actually focus the countdown workspace after Loaded.' }
+if ((@($validation.MainKeyboardBehavior.TabSequence) -join ',') -ne 'CountdownTab,NotesTab,FilterButton,TagManagerButton') { throw 'The main-window real Tab prefix does not follow the visual workspace order.' }
+$countdownTabPath = $validation.MainKeyboardBehavior.CountdownTabPath
+$expectedCountdownTabPath = 'CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,StatusText'
+$expectedCountdownTabPathBackward = [string[]] ($expectedCountdownTabPath -split ',')
+[array]::Reverse($expectedCountdownTabPathBackward)
+if ((@($countdownTabPath.ExpectedSequence) -join ',') -ne $expectedCountdownTabPath -or (@($countdownTabPath.ForwardSequence) -join ',') -ne $expectedCountdownTabPath -or (@($countdownTabPath.BackwardSequence) -join ',') -ne ($expectedCountdownTabPathBackward -join ',') -or -not $countdownTabPath.FocusVisualsVisible) { throw 'The Countdowns workspace real Tab path is incomplete, asymmetric, or missing a visible focus style.' }
+$expectedCountdownFocusedTargets = [string[]] ($expectedCountdownTabPath -split ',')
+if (-not (Test-ExactSymmetricTabTargets `
+        -ExpectedForward $expectedCountdownFocusedTargets `
+        -ActualForward @($countdownTabPath.ForwardFocusedTargets) `
+        -ActualBackward @($countdownTabPath.BackwardFocusedTargets))) { throw 'The empty Countdowns workspace focus targets were not traversed symmetrically.' }
+$notesTabPath = $validation.MainKeyboardBehavior.NotesTabPath
+$expectedNotesTabPath = 'CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
+$expectedNotesTabPathBackward = [string[]] ($expectedNotesTabPath -split ',')
+[array]::Reverse($expectedNotesTabPathBackward)
+if ((@($notesTabPath.ExpectedSequence) -join ',') -ne $expectedNotesTabPath -or (@($notesTabPath.ForwardSequence) -join ',') -ne $expectedNotesTabPath -or (@($notesTabPath.BackwardSequence) -join ',') -ne ($expectedNotesTabPathBackward -join ',') -or -not $notesTabPath.FocusVisualsVisible) { throw 'The Notes workspace real Tab path is incomplete, asymmetric, or missing a visible focus style.' }
+$expectedNotesFocusedTargets = [string[]] ($expectedNotesTabPath -split ',')
+if (-not (Test-ExactSymmetricTabTargets `
+        -ExpectedForward $expectedNotesFocusedTargets `
+        -ActualForward @($notesTabPath.ForwardFocusedTargets) `
+        -ActualBackward @($notesTabPath.BackwardFocusedTargets))) { throw 'The empty Notes workspace focus targets were not traversed symmetrically.' }
+if ((Test-ExactSymmetricTabTargets `
+        -ExpectedForward $expectedCountdownFocusedTargets `
+        -ActualForward $expectedCountdownFocusedTargets `
+        -ActualBackward $expectedCountdownFocusedTargets) -or
+    (Test-ExactSymmetricTabTargets `
+        -ExpectedForward $expectedNotesFocusedTargets `
+        -ActualForward $expectedNotesFocusedTargets `
+        -ActualBackward $expectedNotesFocusedTargets)) {
+    throw 'An asymmetric main-window focused-target fixture was accepted.'
+}
+if (-not (Test-MainShortcutCommandResults -CommandResults $validation.MainKeyboardBehavior.CommandResults)) { throw 'The real main-window shortcut event path does not cover the exact eight commands.' }
+if (-not (Test-MainShortcutCommandDiagnostics -CommandDiagnostics $validation.MainKeyboardBehavior.CommandDiagnostics)) { throw 'A main-window shortcut was not both handled and observed through its real effect.' }
+if ([string] $validation.MainKeyboardBehavior.CommandDiagnostics.SaveCountdown.StatusText -ne '倒计时已保存。' -or [string] $validation.MainKeyboardBehavior.CommandDiagnostics.SavePreferences.StatusText -ne '偏好已保存。') { throw 'The save shortcuts did not report their real persisted success status.' }
+if (-not $validation.MainKeyboardBehavior.CommandsWork -or -not $validation.MainKeyboardBehavior.TextInputPreserved -or -not $validation.MainKeyboardBehavior.PopupGuarded -or -not $validation.MainKeyboardBehavior.ModalOwnerGuarded) { throw 'The real main-window shortcut behavior does not cover commands, text input, popup guards, and disabled modal owners.' }
+if (@($validation.MainKeyboardBehavior.InputGuards.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A TextBox, DatePicker, or ComboBox input guard allowed a main-window shortcut.' }
+if (@($validation.MainShortcutGates.FailedChecks).Count -ne 0) { throw 'A main-window shortcut evaluator gate is red.' }
+$missingMainShortcutCommandFixture = [pscustomobject][ordered]@{
+    CountdownsWorkspace = $true
+    NotesWorkspace = $true
+    Filter = $true
+    TagManager = $true
+    Theme = $true
+    SaveCountdown = $true
+    SavePreferences = $true
+}
+if (Test-MainShortcutCommandResults -CommandResults $missingMainShortcutCommandFixture) { throw 'A main-window shortcut report with a missing command was accepted.' }
+$falseMainShortcutEffectFixture = [pscustomobject][ordered]@{}
+foreach ($commandName in @('CountdownsWorkspace', 'NotesWorkspace', 'Filter', 'TagManager', 'Theme', 'Minimize', 'SaveCountdown', 'SavePreferences')) {
+    $falseMainShortcutEffectFixture | Add-Member -NotePropertyName $commandName -NotePropertyValue ([pscustomobject]@{
+            Handled = $true
+            EffectObserved = $commandName -ne 'Theme'
+        })
+}
+if (Test-MainShortcutCommandDiagnostics -CommandDiagnostics $falseMainShortcutEffectFixture) { throw 'A handled main-window shortcut without an observed effect was accepted.' }
+$structural = $validation.MainStructuralAnnouncements
+if (-not $structural.CountdownWorkspaceAnnounced -or -not $structural.NotesWorkspaceAnnounced) { throw 'A workspace switch is missing its visible polite announcement.' }
+if (-not $structural.FilterResultAnnounced) { throw 'A filter result is missing its visible polite announcement.' }
+if (-not $structural.CountdownFirstUseEmptyAnnounced -or -not $structural.NotesFirstUseEmptyAnnounced -or -not $structural.CountdownFilterEmptyAnnounced -or -not $structural.NotesFilterEmptyAnnounced) { throw 'A first-use or filtered empty state is missing its distinct visible polite announcement.' }
+if (-not $structural.DayThemeAnnounced -or -not $structural.NightThemeAnnounced) { throw 'A day/night theme switch is missing its visible polite announcement.' }
+$structuralGates = $validation.MainStructuralAnnouncementGates
+$structuralGateNames = @(
+    'WorkspaceAnnouncements',
+    'FilterResultAnnouncement',
+    'EmptyStateAnnouncements',
+    'ThemeAnnouncements'
+)
+if (@($structuralGateNames | Where-Object { -not [bool] $structuralGates.$_ }).Count -ne 0 -or
+    -not [bool] $structuralGates.AllPassed -or
+    @($structuralGates.FailedChecks).Count -ne 0) {
+    throw 'A main structural-announcement evaluator gate is red.'
+}
+$structuralFailedChecksFixture = [pscustomobject]@{
+    WorkspaceAnnouncements = $true
+    FilterResultAnnouncement = $true
+    EmptyStateAnnouncements = $true
+    ThemeAnnouncements = $true
+    AllPassed = $true
+    FailedChecks = @('WorkspaceAnnouncements')
+}
+$structuralFailedChecksFixturePassed =
+    @($structuralGateNames | Where-Object {
+            -not [bool] $structuralFailedChecksFixture.$_
+        }).Count -eq 0 -and
+    [bool] $structuralFailedChecksFixture.AllPassed -and
+    @($structuralFailedChecksFixture.FailedChecks).Count -eq 0
+if ($structuralFailedChecksFixturePassed) { throw 'A non-empty main structural-announcement FailedChecks fixture was accepted.' }
+if (-not $validation.MainStructuralAnnouncementGateIsolationBehavior) { throw 'Main structural-announcement gates cannot fail independently.' }
+$secondaryTypography = $validation.SecondaryWindowTypography
+$secondaryTypographyWindows = @($secondaryTypography.Windows)
+if ($secondaryTypographyWindows.Count -ne 3 -or ((@($secondaryTypographyWindows.Window) | Sort-Object) -join ',') -ne 'ConfirmationDialog,ReminderCenter,ReminderRulesEditor') { throw 'Secondary-window typography report does not contain the exact three real windows.' }
+foreach ($measurement in $secondaryTypographyWindows) {
+    if ([double] $measurement.TitleFontSize -ne 22 -or [double] $measurement.BodyFontSize -ne 16 -or [double] $measurement.ContentRootFontSize -ne 16 -or -not $measurement.ContentRootDeclaresFontSize) { throw "Secondary-window $($measurement.Window) does not render the shared 22/16 scale from a locally declared 16 DIP content root." }
+    if ($measurement.Window -ne 'ConfirmationDialog' -and ([double] $measurement.SectionFontSize -ne 18 -or [double] $measurement.MinorFontSize -ne 15)) { throw "Secondary-window $($measurement.Window) does not render the shared 18/15 section and minor scale." }
+    if ($measurement.Window -eq 'ConfirmationDialog' -and ($null -ne $measurement.SectionFontSize -or $null -ne $measurement.MinorFontSize)) { throw 'Confirmation dialog unexpectedly reports section or minor typography roles.' }
+}
+if (-not $secondaryTypography.RenderedScaleMatches -or -not $secondaryTypography.ContentRootsDeclareFontSize -or -not $secondaryTypography.FloatingTypographyUnchanged) { throw 'A concrete secondary-window typography gate is red.' }
+if ([double] $secondaryTypography.FloatingBodyFontSize -ne 13 -or [double] $secondaryTypography.FloatingReminderFontSize -ne 12) { throw 'Floating-window body/reminder typography changed from the fixed 13/12 DIP contract.' }
+$secondaryTypographyGateNames = @(
+    'RenderedScaleMatches',
+    'ContentRootsDeclareFontSize',
+    'FloatingTypographyUnchanged'
+)
+if (@($secondaryTypographyGateNames | Where-Object { -not [bool] $secondaryTypography.Gates.$_ }).Count -ne 0 -or
+    -not [bool] $secondaryTypography.Gates.AllPassed -or
+    @($secondaryTypography.Gates.FailedChecks).Count -ne 0) {
+    throw 'A concrete secondary-window typography evaluator gate is red.'
+}
+$secondaryTypographyFailedChecksFixture = [pscustomobject]@{
+    RenderedScaleMatches = $true
+    ContentRootsDeclareFontSize = $true
+    FloatingTypographyUnchanged = $true
+    AllPassed = $true
+    FailedChecks = @('RenderedScaleMatches')
+}
+$secondaryTypographyFailedChecksFixturePassed =
+    @($secondaryTypographyGateNames | Where-Object {
+            -not [bool] $secondaryTypographyFailedChecksFixture.$_
+        }).Count -eq 0 -and
+    [bool] $secondaryTypographyFailedChecksFixture.AllPassed -and
+    @($secondaryTypographyFailedChecksFixture.FailedChecks).Count -eq 0
+if ($secondaryTypographyFailedChecksFixturePassed) { throw 'A non-empty secondary-window typography FailedChecks fixture was accepted.' }
+if (-not $validation.SecondaryWindowTypographyGateIsolationBehavior) { throw 'Secondary-window typography gates cannot fail independently.' }
+if (-not $validation.MainShortcutGateIsolationBehavior) { throw 'Main-window shortcut negative fixtures are not isolated.' }
+if (-not $validation.ConfirmationDialogLongestButtonsVisible) { throw 'The longest confirmation dialog content pushes a destructive-dialog button outside the visible window.' }
+if (-not $validation.ConfirmationDialogLongestBodyReachable) { throw 'The longest confirmation dialog body is not wrapped or reachable through its scroller.' }
+if (-not $validation.ConfirmationDialogSafeDefaultActions) { throw 'The confirmation dialog does not keep cancel as the safe default action.' }
+if (-not $validation.ConfirmationDialogGateIsolationBehavior) { throw 'Confirmation dialog negative fixtures are not isolated.' }
+$confirmation = $validation.ConfirmationDialog
+$confirmationMeasurements = @($confirmation.Measurements)
+if ($confirmationMeasurements.Count -ne 4) { throw 'Confirmation dialog validation did not measure the exact 2 content kinds x 2 themes matrix.' }
+$expectedConfirmationStates = @('Countdown-Day', 'Countdown-Night', 'Note-Day', 'Note-Night')
+if ((@($confirmationMeasurements.StateId | Sort-Object) -join ',') -ne ($expectedConfirmationStates -join ',')) { throw 'Confirmation dialog validation matrix state IDs are not exact.' }
+foreach ($measurement in $confirmationMeasurements) {
+    $expectedSubjectLength = if ($measurement.ContentKind -eq 'Note') { 140 } elseif ($measurement.ContentKind -eq 'Countdown') { 30 } else { -1 }
+    if ([int] $measurement.SubjectLength -ne $expectedSubjectLength -or
+        [int] $measurement.MessageLength -ne ($expectedSubjectLength + 8) -or
+        -not [bool] $measurement.ProductionMessageExact) { throw "Confirmation dialog $($measurement.StateId) did not use the exact production prompt at its input limit." }
+    if (-not [bool] $measurement.ButtonsVisible -or -not [bool] $measurement.BodyReachable -or
+        -not [bool] $measurement.BodyEndReached -or -not [bool] $measurement.OwnerMatches -or
+        [string] $measurement.StartupLocation -ne 'CenterOwner' -or -not [bool] $measurement.CenteredOnOwner) { throw "Confirmation dialog $($measurement.StateId) did not preserve visible controls, reachable content, and real owner centering." }
+    if (-not [bool] $measurement.EnterDidNotConfirm -or -not [bool] $measurement.EscapeDidNotConfirm -or
+        -not [bool] $measurement.CancelDidNotConfirm) { throw "Confirmation dialog $($measurement.StateId) allowed a safe keyboard/cancel action to confirm deletion." }
+}
+$confirmationDialogGateNames = @(
+    'ButtonsVisible',
+    'BodyReachable',
+    'CancelIsSafeDefault',
+    'ProductionMatrixComplete',
+    'BodyEndReachable',
+    'CenteredOnOwner',
+    'EnterIsSafe',
+    'CancelAndEscapeAreSafe'
+)
+if (@($confirmationDialogGateNames | Where-Object { -not [bool] $confirmation.Gates.$_ }).Count -ne 0 -or
+    -not [bool] $confirmation.Gates.AllPassed -or
+    @($confirmation.Gates.FailedChecks).Count -ne 0) {
+    throw 'A concrete confirmation-dialog evaluator gate is red.'
+}
+$confirmationDialogFailedChecksFixture = [pscustomobject]@{
+    ButtonsVisible = $true
+    BodyReachable = $true
+    CancelIsSafeDefault = $true
+    ProductionMatrixComplete = $true
+    BodyEndReachable = $true
+    CenteredOnOwner = $true
+    EnterIsSafe = $true
+    CancelAndEscapeAreSafe = $true
+    AllPassed = $true
+    FailedChecks = @('ButtonsVisible')
+}
+$confirmationDialogFailedChecksFixturePassed =
+    @($confirmationDialogGateNames | Where-Object {
+            -not [bool] $confirmationDialogFailedChecksFixture.$_
+        }).Count -eq 0 -and
+    [bool] $confirmationDialogFailedChecksFixture.AllPassed -and
+    @($confirmationDialogFailedChecksFixture.FailedChecks).Count -eq 0
+if ($confirmationDialogFailedChecksFixturePassed) { throw 'A non-empty confirmation-dialog FailedChecks fixture was accepted.' }
 if (-not $validation.EffectiveThemeTextContrast) { throw 'Muted note or calendar text falls below the required effective contrast.' }
+$completedAuxiliaryContrast = $validation.NoteCompletedAuxiliaryContrast
+if (-not $completedAuxiliaryContrast.TextContrast -or
+    -not $completedAuxiliaryContrast.UsesDedicatedToken -or
+    -not $completedAuxiliaryContrast.ActualBackgroundMatchesHeader -or
+    -not $completedAuxiliaryContrast.MutedBrushUnchanged -or
+    -not $completedAuxiliaryContrast.CompletedHeaderColorUnchanged) {
+    throw 'Completed-note auxiliary text does not meet its actual day/night header-background contrast contract.'
+}
+if (-not $validation.NoteCompletedAuxiliaryContrastGateIsolationBehavior) { throw 'Completed-note auxiliary contrast and semantic-token negative fixtures cannot fail independently.' }
+$completedAuxiliaryMeasurements = @($completedAuxiliaryContrast.Measurements)
+if ($completedAuxiliaryMeasurements.Count -ne 2 -or ((@($completedAuxiliaryMeasurements.Theme) | Sort-Object) -join ',') -ne 'Day,Night') { throw 'Completed-note auxiliary contrast report must contain exact day/night measurements.' }
+if (@($completedAuxiliaryMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.UsesDedicatedToken -or -not $_.ActualBackgroundMatchesHeader -or -not $_.MutedBrushUnchanged -or -not $_.CompletedHeaderColorUnchanged }).Count -ne 0) { throw 'A completed-note auxiliary measurement failed the dedicated-token, actual-background, or unchanged-token contract.' }
 if (-not $validation.FormControlsHaveAccessibleNames) { throw 'A core form control is missing an explicit accessible name.' }
 if (-not $validation.StatusMessagesUseLiveRegions) { throw 'Dynamic status messages are not announced through live regions.' }
 if (-not $validation.ReminderCenterSupportsKeyboardNavigation) { throw 'The reminder center does not support complete keyboard traversal.' }
 if (-not $validation.ReminderCenterInitialFocusAndAccessibleNameWork) { throw 'The reminder center lacks its initial focus or accessible name.' }
+if (-not $validation.ReminderCenterKeyboardGateIsolationBehavior) { throw 'Reminder-center tab traversal and close-guard gates cannot fail independently.' }
 if (-not $validation.CompactActionTargetsAreUsable) { throw 'Compact tag and note actions are smaller than the desktop interaction target.' }
 
 $uiSettingsRoot = Join-Path `
@@ -542,9 +891,10 @@ $noteAddSettingsPath = Join-Path $uiSettingsRoot 'ui-note-add-test.settings.json
 $tagInteractionSettingsPath = Join-Path $uiSettingsRoot 'ui-tag-interaction.settings.json'
 $persistenceFailureSettingsPath = Join-Path $uiSettingsRoot 'ui-persistence-failure.settings.json'
 $persistenceFailureUnblockedSettingsPath = Join-Path $uiSettingsRoot 'ui-persistence-failure-unblocked.settings.json'
+$legacyV3SourcePath = Join-Path $uiSettingsRoot 'ui-test-v3.source.json'
 $legacyV3SettingsPath = Join-Path $uiSettingsRoot 'ui-test-v3.settings.json'
 try {
-    [System.IO.File]::WriteAllText($testSettingsPath, (@{
+    $testSettingsSeedJson = @{
         schemaVersion = 6
         timeZoneId = 'China Standard Time'
         displayPrecision = 'Second'
@@ -565,7 +915,16 @@ try {
             @{ id = 'note-completed-old'; text = '已完成旧日期'; date = '2026-07-18'; isCompleted = $true; tagIds = @() }
             @{ id = 'note-completed-new'; text = '已完成新日期'; date = '2026-07-22'; isCompleted = $true; tagIds = @() }
         )
-    } | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+    } | ConvertTo-Json -Depth 5
+    $testSettingsJson = ConvertTo-CountdownSettingsJson -State (
+        ConvertFrom-CountdownSettingsObject -Settings (
+            $testSettingsSeedJson | ConvertFrom-Json))
+    $testSettingsDocument = $testSettingsJson | ConvertFrom-Json
+    if ([int] $testSettingsDocument.schemaVersion -ne 10) { throw 'The UI fixture was not generated from the canonical schema-v10 settings contract.' }
+    [System.IO.File]::WriteAllText(
+        $testSettingsPath,
+        $testSettingsJson,
+        (New-Object System.Text.UTF8Encoding($false)))
     $settingsHashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $testSettingsPath).Hash
     $listValidationJson = & $powerShellEngine `
         -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
@@ -579,6 +938,24 @@ try {
     if (-not $listValidation.TagPersistenceRoundTrip) { throw 'Shared tag persistence round-trip failed.' }
     if ($listValidation.LoadedNotes -ne 5) { throw "Expected five loaded sticky notes, got $($listValidation.LoadedNotes)." }
     if ($listValidation.ActiveNoteCount -ne 3 -or $listValidation.CompletedNoteCount -ne 2) { throw "Unexpected sticky-note grouping: active=$($listValidation.ActiveNoteCount), completed=$($listValidation.CompletedNoteCount)." }
+    $dynamicCountdownFocusedTargets = [string[]] ('CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,CountdownListRegion.Edit,CountdownListRegion.Delete,CountdownListRegion.Edit,CountdownListRegion.Delete,StatusText' -split ',')
+    $dynamicCountdownTabPath = $listValidation.MainKeyboardBehavior.CountdownTabPath
+    if (-not $dynamicCountdownTabPath.FocusVisualsVisible -or
+        -not (Test-ExactSymmetricTabTargets `
+            -ExpectedForward $dynamicCountdownFocusedTargets `
+            -ActualForward @($dynamicCountdownTabPath.ForwardFocusedTargets) `
+            -ActualBackward @($dynamicCountdownTabPath.BackwardFocusedTargets))) {
+        throw 'The populated Countdowns workspace did not traverse both Edit/Delete controls for every row symmetrically with visible focus.'
+    }
+    $dynamicNotesFocusedTargets = [string[]] ('CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,NotesListRegion.ActiveSection,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.CompletedSection,NotesListRegion.RepeatButton,StatusText' -split ',')
+    $dynamicNotesTabPath = $listValidation.MainKeyboardBehavior.NotesTabPath
+    if (-not $dynamicNotesTabPath.FocusVisualsVisible -or
+        -not (Test-ExactSymmetricTabTargets `
+            -ExpectedForward $dynamicNotesFocusedTargets `
+            -ActualForward @($dynamicNotesTabPath.ForwardFocusedTargets) `
+            -ActualBackward @($dynamicNotesTabPath.BackwardFocusedTargets))) {
+        throw 'The populated Notes workspace did not traverse every section, date, completion, Edit, and Delete target symmetrically with visible focus.'
+    }
     if (-not $listValidation.NotePersistenceRoundTrip) { throw 'Sticky-note persistence round-trip failed.' }
     if (-not $listValidation.NoteActionsBoundByTag) { throw 'Sticky-note actions are not bound to their note ID.' }
     if (-not $listValidation.NoteStatusLabelsPresent) { throw 'Sticky-note status labels are missing from rendered rows.' }
@@ -609,6 +986,7 @@ try {
     if (-not $listValidation.CompletedNotesCollapsed) { throw 'Completed sticky notes should be collapsed by default.' }
     $settingsHashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $testSettingsPath).Hash
     if ($settingsHashAfterValidation -ne $settingsHashBeforeValidation) { throw 'ValidateOnly modified the supplied settings file.' }
+    if ($listValidation.SettingsWereMigrated) { throw 'The canonical UI fixture was unexpectedly treated as a legacy settings version.' }
     if (-not $listValidation.CardActionsBoundByTag) { throw 'Card edit/delete actions are not bound to their countdown ID.' }
     if ($listValidation.FloatingCountdownCount -ne 1) { throw "Expected one active floating countdown card, got $($listValidation.FloatingCountdownCount)." }
     if ((@($listValidation.FloatingCountdownTexts).Count -ne 1) -or $listValidation.FloatingCountdownTexts[0] -notmatch '天 .*小时 .*分钟 .*秒') { throw "Floating countdowns did not use the unified unit format: $(@($listValidation.FloatingCountdownTexts) -join ',')" }
@@ -705,7 +1083,7 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     $persistenceFailureHashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $persistenceFailureSettingsPath).Hash
     if ($persistenceFailureHashAfterValidation -ne $persistenceFailureHashBeforeValidation) { throw 'Persistence failure changed the supplied settings file.' }
 
-    [System.IO.File]::WriteAllText($legacyV3SettingsPath, (@{
+    [System.IO.File]::WriteAllText($legacyV3SourcePath, (@{
         schemaVersion = 3
         timeZoneId = 'China Standard Time'
         displayPrecision = 'Minute'
@@ -716,7 +1094,8 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
             @{ id = 'legacy-v3'; name = '旧版倒计时'; targetUtc = '2099-01-01T00:00:00Z' }
         )
     } | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
-    $legacyV3HashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SettingsPath).Hash
+    $legacyV3HashBeforeValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SourcePath).Hash
+    Copy-Item -LiteralPath $legacyV3SourcePath -Destination $legacyV3SettingsPath
     $legacyV3ValidationJson = & $powerShellEngine `
         -NoLogo -NoProfile -NonInteractive -STA -File (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') `
         -ValidateOnly -SettingsFile $legacyV3SettingsPath | Out-String
@@ -727,8 +1106,10 @@ if (-not $tagInteractionValidation.TagUntaggedAndCountdownStatus) { throw 'Untag
     if ($legacyV3Validation.LoadedNotes -ne 0) { throw 'Schema-v3 migration should initialize an empty sticky-note list.' }
     if (-not $legacyV3Validation.PersistenceRoundTrip -or -not $legacyV3Validation.NotePersistenceRoundTrip -or -not $legacyV3Validation.TagPersistenceRoundTrip) { throw 'Schema-v3 settings did not serialize as schema-v10.' }
     if ($legacyV3Validation.LoadedDisplayPrecision -ne 'Minute' -or ([decimal] $legacyV3Validation.LoadedMonthlySalary) -ne [decimal]12345 -or $legacyV3Validation.LoadedWorkStart -ne '08:30' -or $legacyV3Validation.LoadedWorkEnd -ne '17:30') { throw 'Schema-v3 preferences were not preserved.' }
-    $legacyV3HashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SettingsPath).Hash
-    if ($legacyV3HashAfterValidation -ne $legacyV3HashBeforeValidation) { throw 'ValidateOnly modified the supplied schema-v3 settings file.' }
+    $legacyV3MigratedSettings = [System.IO.File]::ReadAllText($legacyV3SettingsPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ([int] $legacyV3MigratedSettings.schemaVersion -ne 10) { throw 'Schema-v3 validation did not write its execution copy through the canonical schema-v10 contract.' }
+    $legacyV3HashAfterValidation = (Get-FileHash -Algorithm SHA256 -LiteralPath $legacyV3SourcePath).Hash
+    if ($legacyV3HashAfterValidation -ne $legacyV3HashBeforeValidation) { throw 'ValidateOnly modified the schema-v3 source fixture instead of its isolated execution copy.' }
 }
 finally {
     foreach ($diagnosticPath in @($diagnosticLogPath, "$diagnosticLogPath.1", "$diagnosticLogPath.2", "$diagnosticLogPath.3")) {
@@ -741,6 +1122,7 @@ finally {
             $tagInteractionSettingsPath,
             $persistenceFailureSettingsPath,
             $persistenceFailureUnblockedSettingsPath,
+            $legacyV3SourcePath,
             $legacyV3SettingsPath
         )) {
         foreach ($suffix in @('', '.tmp', '.backup1', '.backup2', '.backup2.tmp', '.backup2.rollback')) {

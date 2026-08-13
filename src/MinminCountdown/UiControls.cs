@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using MinminCountdown.Core;
@@ -424,12 +425,17 @@ internal static class ThemedDatePickerBehavior
 
 internal sealed class ConfirmationDialog : Window
 {
+    internal Button CancelButton { get; private set; } = null!;
+    internal Button ConfirmButton { get; private set; } = null!;
+    internal TextBlock BodyText { get; private set; } = null!;
+    internal ScrollViewer BodyScroller { get; private set; } = null!;
+
     public ConfirmationDialog(Window owner, string title, string message)
     {
         Owner = owner;
         Title = title;
         Width = 390;
-        Height = 210;
+        Height = Math.Min(360, Math.Max(240, SystemParameters.WorkArea.Height - 48));
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
@@ -446,6 +452,13 @@ internal sealed class ConfirmationDialog : Window
                 Style = (Style)FindResource("SecondaryButton")
             },
             "取消");
+        CancelButton = cancel;
+        AutomationProperties.SetAutomationId(cancel, "ConfirmationCancelButton");
+        cancel.Click += (_, _) =>
+        {
+            DialogResult = false;
+            Close();
+        };
         var confirm = UiAccessibility.Name(
             new Button
             {
@@ -456,6 +469,8 @@ internal sealed class ConfirmationDialog : Window
                 Style = (Style)FindResource("DangerButton")
             },
             "确认删除");
+        ConfirmButton = confirm;
+        AutomationProperties.SetAutomationId(confirm, "ConfirmationConfirmButton");
         confirm.Click += (_, _) =>
         {
             DialogResult = true;
@@ -471,26 +486,40 @@ internal sealed class ConfirmationDialog : Window
         actions.Children.Add(confirm);
 
         var layout = new Grid { Margin = new Thickness(24) };
+        layout.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");
+        AutomationProperties.SetAutomationId(layout, "ConfirmationContentRoot");
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition());
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var heading = new TextBlock
         {
             Text = title,
-            FontSize = 20,
             FontWeight = FontWeights.SemiBold
         };
+        heading.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowTitleFontSize");
+        AutomationProperties.SetAutomationId(heading, "ConfirmationHeading");
         var body = new TextBlock
         {
             Text = message,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 14, 0, 18),
-            VerticalAlignment = VerticalAlignment.Center
+            Margin = new Thickness(0, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Top
         };
-        Grid.SetRow(body, 1);
+        BodyText = body;
+        AutomationProperties.SetAutomationId(body, "ConfirmationBody");
+        var bodyScroller = new ScrollViewer
+        {
+            Content = body,
+            Margin = new Thickness(0, 14, 0, 18),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        BodyScroller = bodyScroller;
+        AutomationProperties.SetAutomationId(bodyScroller, "ConfirmationBodyScroller");
+        Grid.SetRow(bodyScroller, 1);
         Grid.SetRow(actions, 2);
         layout.Children.Add(heading);
-        layout.Children.Add(body);
+        layout.Children.Add(bodyScroller);
         layout.Children.Add(actions);
         var surface = new Border
         {

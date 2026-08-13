@@ -87,10 +87,90 @@ function Remove-CountdownIsolatedTestTree {
     Remove-Item -LiteralPath $resolvedPath -Force
 }
 
+function Get-CountdownValidationSettingsArtifactPaths {
+    param([Parameter(Mandatory)] [string] $SettingsPath)
+
+    @(
+        $SettingsPath,
+        "$SettingsPath.tmp",
+        "$SettingsPath.backup1",
+        "$SettingsPath.backup1.tmp",
+        "$SettingsPath.backup1.rollback",
+        "$SettingsPath.backup2",
+        "$SettingsPath.backup2.tmp",
+        "$SettingsPath.backup2.rollback"
+    )
+}
+
+function Remove-CountdownValidationSettingsArtifactFixture {
+    param([Parameter(Mandatory)] [string] $SettingsPath)
+
+    foreach ($path in Get-CountdownValidationSettingsArtifactPaths -SettingsPath $SettingsPath) {
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+    foreach ($path in Get-CountdownValidationSettingsArtifactPaths -SettingsPath $SettingsPath) {
+        if (Test-Path -LiteralPath $path -PathType Container) {
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+}
+
 if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $RemoteDeploymentOnly)) {
     $validationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-validation-tests'
     $validationTestRoot = Join-Path $validationEvidenceRoot ([guid]::NewGuid().ToString('N'))
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $originalFixtureRecord = $env:COUNTDOWN_FAKE_DOTNET_RECORD
+    $originalValidationOrder = $env:COUNTDOWN_VALIDATION_ORDER_PATH
+    $originalFixtureFailure = $env:COUNTDOWN_FAKE_DOTNET_FAIL
+    $originalDotnetCliHome = $env:DOTNET_CLI_HOME
+    $originalValidationArtifactMode = $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE
+    $originalValidationArtifactRecord = $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD
+    $originalValidationSiblingMarker = $env:COUNTDOWN_VALIDATION_SIBLING_MARKER
+    $validationArtifactRecord = Join-Path $validationTestRoot 'application-settings-path.txt'
+    $validationArtifactRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
+    $validationSiblingMarker = Join-Path $validationArtifactRoot (
+        'unrelated-sibling-' + [guid]::NewGuid().ToString('N') + '.marker')
+    $validationSettingsArtifactFixture = @'
+param(
+    [switch] $ValidateOnly,
+    [string] $SettingsFile,
+    [string] $DiagnosticLogPath
+)
+if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) {
+    [System.IO.File]::WriteAllText(
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD,
+        $SettingsFile,
+        [System.Text.UTF8Encoding]::new($false))
+    $artifactPaths = @(
+        $SettingsFile,
+        "$SettingsFile.tmp",
+        "$SettingsFile.backup1",
+        "$SettingsFile.backup1.tmp",
+        "$SettingsFile.backup1.rollback",
+        "$SettingsFile.backup2",
+        "$SettingsFile.backup2.tmp",
+        "$SettingsFile.backup2.rollback"
+    )
+    foreach ($artifactPath in $artifactPaths) {
+        if ($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE -eq 'directory-backup1' -and
+            $artifactPath -eq "$SettingsFile.backup1") {
+            [void] [System.IO.Directory]::CreateDirectory($artifactPath)
+        }
+        else {
+            [System.IO.File]::WriteAllText(
+                $artifactPath,
+                'validation artifact',
+                [System.Text.UTF8Encoding]::new($false))
+        }
+    }
+    [System.IO.File]::WriteAllText(
+        $env:COUNTDOWN_VALIDATION_SIBLING_MARKER,
+        'preserve sibling',
+        [System.Text.UTF8Encoding]::new($false))
+}
+'@
     try {
         New-Item -ItemType Directory -Path $validationTestRoot -Force | Out-Null
         $validationApplicationReport = [ordered]@{
@@ -289,6 +369,7 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
             'Countdown.Core.Tests.ps1' = "param([switch] `$ParentTransactionMutexHeld)`r`n'{`"Passed`":11,`"Failed`":0}'"
             'Countdown.CSharp.Tests.ps1' = @"
 param([string] `$OfficeDeploymentStagingRoot)
+[System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
 if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
     [System.IO.File]::WriteAllText(
         (Join-Path `$PSScriptRoot 'office-staging-argument.txt'),
@@ -298,7 +379,7 @@ if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
 '{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
 "@
             'Countdown.Ui.Tests.ps1' = "'{`"Passed`":17,`"Failed`":0}'"
-            '敏敏子倒计时.ps1' = "param([switch] `$ValidateOnly)`r`n'$validationApplicationFixture'"
+            '敏敏子倒计时.ps1' = $validationSettingsArtifactFixture + "`r`n'$validationApplicationFixture'"
         }
         foreach ($fixture in $validationFixtures.GetEnumerator()) {
             [System.IO.File]::WriteAllText(
@@ -306,13 +387,94 @@ if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
                 [string] $fixture.Value,
                 $utf8NoBom)
         }
+        $validationApplicationProject = Join-Path $validationTestRoot 'src\MinminCountdown\MinminCountdown.csproj'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $validationApplicationProject) -Force | Out-Null
+        [System.IO.File]::WriteAllText(
+            $validationApplicationProject,
+            '<Project Sdk="Microsoft.NET.Sdk"></Project>',
+            $utf8NoBom)
 
         $validationPowerShell = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop |
             Select-Object -First 1 -ExpandProperty Source)
+        $fixtureDotnetSource = Join-Path $validationTestRoot 'fake-dotnet-source'
+        $fixtureDotnetPublish = Join-Path $validationTestRoot 'fake-dotnet-publish'
+        New-Item -ItemType Directory -Path $fixtureDotnetSource -Force | Out-Null
+        [System.IO.File]::WriteAllText(
+            (Join-Path $fixtureDotnetSource 'FakeDotnet.csproj'),
+            @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseAppHost>true</UseAppHost>
+  </PropertyGroup>
+</Project>
+"@,
+            $utf8NoBom)
+        [System.IO.File]::WriteAllText(
+            (Join-Path $fixtureDotnetSource 'Program.cs'),
+            @"
+using System;
+using System.IO;
+using System.Text.Json;
+
+var recordPath = Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_RECORD")
+    ?? throw new InvalidOperationException("COUNTDOWN_FAKE_DOTNET_RECORD is required.");
+var orderPath = Environment.GetEnvironmentVariable("COUNTDOWN_VALIDATION_ORDER_PATH")
+    ?? throw new InvalidOperationException("COUNTDOWN_VALIDATION_ORDER_PATH is required.");
+if (args.Length < 2 || args[0] != "build" || !File.Exists(args[1]))
+{
+    throw new InvalidOperationException("The validation build project must exist.");
+}
+var record = new
+{
+    ProcessPath = Environment.ProcessPath,
+    Arguments = args,
+    DotnetRoot = Environment.GetEnvironmentVariable("DOTNET_ROOT"),
+    TelemetryOptOut = Environment.GetEnvironmentVariable("DOTNET_CLI_TELEMETRY_OPTOUT"),
+    CliHome = Environment.GetEnvironmentVariable("DOTNET_CLI_HOME")
+};
+File.AppendAllText(recordPath, JsonSerializer.Serialize(record) + Environment.NewLine);
+File.AppendAllText(orderPath, "build" + Environment.NewLine);
+return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ? 73 : 0;
+"@,
+            $utf8NoBom)
+        $fixtureCompiler = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+        $fixtureCompilerOutput = & $fixtureCompiler publish (Join-Path $fixtureDotnetSource 'FakeDotnet.csproj') `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --nologo `
+            -o $fixtureDotnetPublish 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            throw "Fake dotnet fixture compilation failed: exit=$LASTEXITCODE$([Environment]::NewLine)$fixtureCompilerOutput"
+        }
+        $fixtureDotnet = Join-Path $fixtureDotnetPublish 'FakeDotnet.exe'
+        $fixtureDotnetRecord = Join-Path $validationTestRoot 'fake-dotnet-record.jsonl'
+        $validationOrderPath = Join-Path $validationTestRoot 'validation-order.txt'
+        $env:COUNTDOWN_FAKE_DOTNET_RECORD = $fixtureDotnetRecord
+        $env:COUNTDOWN_VALIDATION_ORDER_PATH = $validationOrderPath
+        $env:COUNTDOWN_FAKE_DOTNET_FAIL = $null
+        $env:DOTNET_CLI_HOME = 'validation-parent-cli-home-sentinel'
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = 'files'
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD = $validationArtifactRecord
+        $env:COUNTDOWN_VALIDATION_SIBLING_MARKER = $validationSiblingMarker
         $validationResult = Invoke-CountdownValidationSuite `
             -Root $validationTestRoot `
             -PowerShell7Path $validationPowerShell `
+            -DotnetPath $fixtureDotnet `
             -ParentTransactionMutexHeld
+        $successfulValidationSettingsPath = [System.IO.File]::ReadAllText(
+            $validationArtifactRecord,
+            [System.Text.Encoding]::UTF8)
+        foreach ($artifactPath in Get-CountdownValidationSettingsArtifactPaths -SettingsPath $successfulValidationSettingsPath) {
+            Assert-Equal $false (Test-Path -LiteralPath $artifactPath) "Successful validation cleans exact settings artifact: $artifactPath"
+        }
+        Assert-Equal $true (Test-Path -LiteralPath $validationSiblingMarker -PathType Leaf) 'Successful validation preserves an unrelated sibling marker'
+        Remove-CountdownValidationSettingsArtifactFixture -SettingsPath $successfulValidationSettingsPath
+        Remove-Item -LiteralPath $validationSiblingMarker -Force -ErrorAction SilentlyContinue
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = $null
         Assert-Equal $true ([bool] $validationResult.Valid) 'Validation interface reports one stable success state'
         Assert-Equal 11 ([int] $validationResult.CoreTestsPassed) 'Validation interface exposes Core assertion count'
         Assert-Equal 13 ([int] $validationResult.CSharpTestsPassed) 'Validation interface exposes C# assertion count'
@@ -327,11 +489,55 @@ if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
             ([System.IO.Path]::GetFullPath((Split-Path -Parent $validationTestRoot))) `
             ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'office-staging-argument.txt'), [System.Text.Encoding]::UTF8)) `
             'Validation interface passes the current staging root to C# tests while the parent transaction mutex is held'
+        $fixtureInvocation = ([System.IO.File]::ReadAllLines($fixtureDotnetRecord, [System.Text.Encoding]::UTF8)[0] | ConvertFrom-Json)
+        $dotnetParameter = (Get-Command Invoke-CountdownValidationSuite).Parameters['DotnetPath']
+        $expectedApplicationProject = [System.IO.Path]::GetFullPath((Join-Path $validationTestRoot 'src\MinminCountdown\MinminCountdown.csproj'))
+        $buildArguments = @($fixtureInvocation.Arguments)
+        Assert-Equal $true `
+            ([bool] $dotnetParameter.Attributes.Mandatory -and
+                [string]::Equals([string] $fixtureInvocation.ProcessPath, $fixtureDotnet, [System.StringComparison]::OrdinalIgnoreCase) -and
+                $buildArguments.Count -eq 4 -and
+                $buildArguments[0] -eq 'build' -and
+                [string]::Equals([string] $buildArguments[1], $expectedApplicationProject, [System.StringComparison]::OrdinalIgnoreCase) -and
+                $buildArguments[2] -eq '--configuration' -and
+                $buildArguments[3] -eq 'Release' -and
+                '-NoRestore' -notin $buildArguments -and
+                '--no-restore' -notin $buildArguments) `
+            'Validation interface requires and invokes the supplied dotnet path for a restoring Release application build'
+        Assert-Equal `
+            'build,csharp' `
+            (([System.IO.File]::ReadAllLines($validationOrderPath, [System.Text.Encoding]::UTF8)) -join ',') `
+            'Validation interface builds the source application before C# regression'
+        Assert-Equal $true `
+            ([string]::Equals([string] $fixtureInvocation.DotnetRoot, (Split-Path -Parent $fixtureDotnet), [System.StringComparison]::OrdinalIgnoreCase) -and
+                [string] $fixtureInvocation.TelemetryOptOut -eq '1' -and
+                [string] $fixtureInvocation.CliHome -eq 'validation-parent-cli-home-sentinel') `
+            'Validation build sets DOTNET_ROOT and telemetry opt-out without setting DOTNET_CLI_HOME'
+
+        [System.IO.File]::WriteAllText($validationOrderPath, '', $utf8NoBom)
+        $env:COUNTDOWN_FAKE_DOTNET_FAIL = '1'
+        $buildFailureIsolated = $false
+        try {
+            Invoke-CountdownValidationSuite `
+                -Root $validationTestRoot `
+                -PowerShell7Path $validationPowerShell `
+                -DotnetPath $fixtureDotnet | Out-Null
+        }
+        catch {
+            $buildFailureIsolated =
+                $_.Exception.Message -match '源码应用 Release 构建 失败，退出码：73' -and
+                (([System.IO.File]::ReadAllLines($validationOrderPath, [System.Text.Encoding]::UTF8)) -join ',') -eq 'build'
+        }
+        finally {
+            $env:COUNTDOWN_FAKE_DOTNET_FAIL = $null
+        }
+        Assert-Equal $true $buildFailureIsolated 'Validation build failure propagates distinctly and prevents C# regression'
 
         [System.IO.File]::WriteAllText(
             (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
             @"
 param([string] `$OfficeDeploymentStagingRoot)
+[System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
 [System.IO.File]::WriteAllText(
     (Join-Path `$PSScriptRoot 'normal-office-staging-argument-present.txt'),
     [string] `$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot'),
@@ -344,7 +550,8 @@ param([string] `$OfficeDeploymentStagingRoot)
         try {
             $diagnosticValidationResult = Invoke-CountdownValidationSuite `
                 -Root $validationTestRoot `
-                -PowerShell7Path $validationPowerShell
+                -PowerShell7Path $validationPowerShell `
+                -DotnetPath $fixtureDotnet
             $successfulDiagnosticPreserved =
                 [bool] $diagnosticValidationResult.Valid -and
                 [string] $diagnosticValidationResult.CSharpTestOutput -eq '{"Passed":13,"Failed":0,"AdapterUiValidated":true}'
@@ -391,7 +598,8 @@ param([string] `$OfficeDeploymentStagingRoot)
         try {
             Invoke-CountdownValidationSuite `
                 -Root $validationTestRoot `
-                -PowerShell7Path $validationPowerShell | Out-Null
+                -PowerShell7Path $validationPowerShell `
+                -DotnetPath $fixtureDotnet | Out-Null
         }
         catch {
             $reportedFailureRejected = $_.Exception.Message -match '兼容 UI 回归报告包含 1 个失败'
@@ -410,7 +618,8 @@ param([string] `$OfficeDeploymentStagingRoot)
         try {
             Invoke-CountdownValidationSuite `
                 -Root $validationTestRoot `
-                -PowerShell7Path $validationPowerShell | Out-Null
+                -PowerShell7Path $validationPowerShell `
+                -DotnetPath $fixtureDotnet | Out-Null
         }
         catch {
             $adapterUiFailureRejected = $_.Exception.Message -match 'C# 回归未确认 adapter UI 验证'
@@ -423,20 +632,78 @@ param([string] `$OfficeDeploymentStagingRoot)
             $utf8NoBom)
         [System.IO.File]::WriteAllText(
             (Join-Path $validationTestRoot '敏敏子倒计时.ps1'),
-            "param([switch] `$ValidateOnly)`r`n'{`"Valid`":`"false`",`"FloatingWindowPresent`":true}'",
+            ($validationSettingsArtifactFixture + "`r`n'{`"Valid`":`"false`",`"FloatingWindowPresent`":true}'"),
             $utf8NoBom)
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = 'files'
         $stringBooleanRejected = $false
         try {
             Invoke-CountdownValidationSuite `
                 -Root $validationTestRoot `
-                -PowerShell7Path $validationPowerShell | Out-Null
+                -PowerShell7Path $validationPowerShell `
+                -DotnetPath $fixtureDotnet | Out-Null
         }
         catch {
             $stringBooleanRejected = $_.Exception.Message -match '应用 validate-only 报告未通过'
         }
+        $failedValidationSettingsPath = [System.IO.File]::ReadAllText(
+            $validationArtifactRecord,
+            [System.Text.Encoding]::UTF8)
+        foreach ($artifactPath in Get-CountdownValidationSettingsArtifactPaths -SettingsPath $failedValidationSettingsPath) {
+            Assert-Equal $false (Test-Path -LiteralPath $artifactPath) "Failed validation cleans exact settings artifact: $artifactPath"
+        }
+        Assert-Equal $true (Test-Path -LiteralPath $validationSiblingMarker -PathType Leaf) 'Failed validation preserves an unrelated sibling marker'
+        Remove-CountdownValidationSettingsArtifactFixture -SettingsPath $failedValidationSettingsPath
+        Remove-Item -LiteralPath $validationSiblingMarker -Force -ErrorAction SilentlyContinue
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = $null
         Assert-Equal $true $stringBooleanRejected 'Validation interface rejects string values that only coerce to true'
+
+        [System.IO.File]::WriteAllText(
+            (Join-Path $validationTestRoot '敏敏子倒计时.ps1'),
+            ($validationSettingsArtifactFixture + "`r`n'$validationApplicationFixture'"),
+            $utf8NoBom)
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = 'directory-backup1'
+        $nonFileArtifactRejected = $false
+        try {
+            Invoke-CountdownValidationSuite `
+                -Root $validationTestRoot `
+                -PowerShell7Path $validationPowerShell `
+                -DotnetPath $fixtureDotnet | Out-Null
+        }
+        catch {
+            $nonFileArtifactRejected = $_.Exception.Message -match '验证设置清理目标不是普通文件'
+        }
+        $nonFileValidationSettingsPath = [System.IO.File]::ReadAllText(
+            $validationArtifactRecord,
+            [System.Text.Encoding]::UTF8)
+        Assert-Equal $true $nonFileArtifactRejected 'Validation settings cleanup fails closed for a directory at an exact backup path'
+        foreach ($artifactPath in Get-CountdownValidationSettingsArtifactPaths -SettingsPath $nonFileValidationSettingsPath) {
+            Assert-Equal $true (Test-Path -LiteralPath $artifactPath) "Rejected cleanup preserves every exact settings artifact: $artifactPath"
+        }
+        Assert-Equal $true (Test-Path -LiteralPath "$nonFileValidationSettingsPath.backup1" -PathType Container) 'Rejected backup directory retains its original type as evidence'
+        Assert-Equal $true (Test-Path -LiteralPath $validationSiblingMarker -PathType Leaf) 'Rejected cleanup preserves an unrelated sibling marker'
+        Remove-CountdownValidationSettingsArtifactFixture -SettingsPath $nonFileValidationSettingsPath
+        Remove-Item -LiteralPath $validationSiblingMarker -Force -ErrorAction SilentlyContinue
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = $null
     }
     finally {
+        $env:COUNTDOWN_FAKE_DOTNET_RECORD = $originalFixtureRecord
+        $env:COUNTDOWN_VALIDATION_ORDER_PATH = $originalValidationOrder
+        $env:COUNTDOWN_FAKE_DOTNET_FAIL = $originalFixtureFailure
+        $env:DOTNET_CLI_HOME = $originalDotnetCliHome
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = $originalValidationArtifactMode
+        $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD = $originalValidationArtifactRecord
+        $env:COUNTDOWN_VALIDATION_SIBLING_MARKER = $originalValidationSiblingMarker
+        if (Test-Path -LiteralPath $validationSiblingMarker -PathType Leaf) {
+            Remove-Item -LiteralPath $validationSiblingMarker -Force
+        }
+        if (Test-Path -LiteralPath $validationArtifactRecord -PathType Leaf) {
+            $recordedSettingsPath = [System.IO.File]::ReadAllText(
+                $validationArtifactRecord,
+                [System.Text.Encoding]::UTF8)
+            if (-not [string]::IsNullOrWhiteSpace($recordedSettingsPath)) {
+                Remove-CountdownValidationSettingsArtifactFixture -SettingsPath $recordedSettingsPath
+            }
+        }
         Remove-CountdownIsolatedTestTree -Path $validationTestRoot -AllowedRoot $validationEvidenceRoot
     }
 
@@ -2763,8 +3030,9 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 53 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including its trust roots'
-Assert-Equal 50 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including deployment modules'
+Assert-Equal 101 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
+Assert-Equal 98 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
+Assert-Equal 56 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
 Assert-Equal 27 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'
 Assert-Equal 20 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
@@ -2777,6 +3045,91 @@ foreach ($deploymentModule in @('Countdown.Validation.psm1', 'Countdown.RemoteDe
     Assert-Equal $true ($deploymentModule -in @($releaseContract.PackageFiles)) "Deployment module is packaged: $deploymentModule"
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($deploymentModule) "Deployment module is integrity protected: $deploymentModule"
     Assert-Equal $false ($deploymentModule -in @($releaseContract.InstalledFiles)) "Deployment module is not installed as runtime: $deploymentModule"
+}
+Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
+foreach ($sourceBuildFile in $releaseContract.SourceBuildFiles) {
+    Assert-Equal $true ($sourceBuildFile -in @($releaseContract.PackageFiles)) "Source-build input is packaged: $sourceBuildFile"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($sourceBuildFile) "Source-build input is integrity protected: $sourceBuildFile"
+}
+Assert-Equal 0 `
+    @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `
+    'Project, C# and XAML source-build inputs are not installed as runtime files'
+$validationModuleSource = [System.IO.File]::ReadAllText(
+    (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
+Assert-Equal 2 ([regex]::Matches(
+        $validationModuleSource,
+        'assets\\ui-references\\(?:floating-window\\520x390|main-window\\1165x1350)\\2026-08-13-v12\\manifest\.json').Count) `
+    'Validation suite pins both visual manifest families to the current v12 baseline'
+Assert-Equal $false ($validationModuleSource.Contains('2026-08-13-v11')) `
+    'Validation suite no longer references the retired v11 visual baseline'
+Assert-Equal $false ($validationModuleSource.Contains('2026-08-06-v6')) `
+    'Validation suite no longer references the retired v6 visual baseline'
+$visualBaselineDefinitions = @(
+    [pscustomobject]@{
+        Name = 'Floating'
+        ManifestPath = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
+        ExpectedCaptureIds = @(
+            'floating-countdowns-day',
+            'floating-countdowns-night',
+            'long-notes-day-bottom',
+            'long-notes-day-top',
+            'long-notes-night-bottom',
+            'long-notes-night-top'
+        )
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-08-13-v12/'
+    },
+    [pscustomobject]@{
+        Name = 'Main'
+        ManifestPath = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-13-v12\manifest.json'
+        ExpectedCaptureIds = @(
+            'main-day-countdowns-empty',
+            'main-day-countdowns-representative',
+            'main-day-countdowns-stress',
+            'main-day-notes-empty',
+            'main-day-notes-representative',
+            'main-day-notes-stress',
+            'main-night-countdowns-empty',
+            'main-night-countdowns-representative',
+            'main-night-countdowns-stress',
+            'main-night-notes-empty',
+            'main-night-notes-representative',
+            'main-night-notes-stress'
+        )
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-08-13-v12/'
+    }
+)
+foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
+    $visualManifest = Get-Content -LiteralPath $visualBaselineDefinition.ManifestPath -Raw |
+        ConvertFrom-Json -Depth 100
+    $visualCaptures = @($visualManifest.captures)
+    Assert-Equal '2026-08-13-v12' ([string] $visualManifest.baselineVersion) `
+        "$($visualBaselineDefinition.Name) visual manifest declares the current v12 baseline"
+    Assert-Equal ($visualBaselineDefinition.ExpectedCaptureIds -join ',') `
+        ((@($visualCaptures.captureId) | Sort-Object) -join ',') `
+        "$($visualBaselineDefinition.Name) visual manifest declares the exact capture inventory"
+    Assert-Equal $visualCaptures.Count @($visualCaptures.path | Sort-Object -Unique).Count `
+        "$($visualBaselineDefinition.Name) visual manifest capture paths are unique"
+    Assert-Equal $visualCaptures.Count @($visualCaptures.pngSha256 | Sort-Object -Unique).Count `
+        "$($visualBaselineDefinition.Name) visual manifest capture hashes are unique"
+    foreach ($visualCapture in $visualCaptures) {
+        $visualCapturePath = [string] $visualCapture.path
+        $visualCaptureFile = Join-Path $PSScriptRoot ($visualCapturePath -replace '/', '\')
+        Assert-Equal $true $visualCapturePath.StartsWith(
+            $visualBaselineDefinition.ExpectedPathPrefix,
+            [System.StringComparison]::Ordinal) `
+            "$($visualBaselineDefinition.Name) capture path stays inside the v12 baseline: $($visualCapture.captureId)"
+        Assert-Equal ([string] $visualCapture.pngSha256) `
+            (Get-FileHash -LiteralPath $visualCaptureFile -Algorithm SHA256).Hash `
+            "$($visualBaselineDefinition.Name) capture SHA matches the formal PNG: $($visualCapture.captureId)"
+    }
+}
+foreach ($visualTool in @(
+        'tools\Build-MainDayOrnamentScene.ps1',
+        'tools\MainDecorationSceneBands.psd1',
+        'tools\Test-MainDayOrnamentScene.ps1')) {
+    Assert-Equal $true ($visualTool -in @($releaseContract.PackageFiles)) "Visual generator is packaged: $visualTool"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($visualTool) "Visual generator is integrity protected: $visualTool"
+    Assert-Equal $false ($visualTool -in @($releaseContract.InstalledFiles)) "Visual generator is not installed as runtime: $visualTool"
 }
 foreach ($trustRoot in @('Deploy-OfficeCountdown.ps1', 'Install-Countdown.ps1', 'Countdown.ReleaseContract.psm1')) {
     Assert-Equal $true ($trustRoot -in @($releaseContract.PackageTrustRoots)) "Release contract declares trust root $trustRoot"
@@ -3336,6 +3689,120 @@ try {
     Assert-Equal $true $missingPackageRejected 'Release package assertion rejects missing files'
 
     foreach ($relativePath in $releaseContract.PackageFiles) {
+        $sourcePath = Join-Path $PSScriptRoot $relativePath
+        $testPath = Join-Path $releaseContractTestRoot $relativePath
+        $testParent = Split-Path -Parent $testPath
+        if (-not (Test-Path -LiteralPath $testParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $testParent -Force | Out-Null
+        }
+        Copy-Item -LiteralPath $sourcePath -Destination $testPath -Force
+    }
+    $isolatedPackageFiles = @(
+        Get-ChildItem -LiteralPath $releaseContractTestRoot -File -Recurse |
+            ForEach-Object { $_.FullName.Substring($releaseContractTestRoot.Length + 1) }
+    )
+    Assert-Equal 0 @($isolatedPackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Isolated package starts without bin or obj outputs'
+    Assert-Equal `
+        ((@($releaseContract.PackageFiles) | Sort-Object) -join ',') `
+        (($isolatedPackageFiles | Sort-Object) -join ',') `
+        'Isolated package contains exactly the deployment ZIP allowlist'
+    $isolatedPackageValidation = Assert-CountdownReleasePackage -Root $releaseContractTestRoot
+    Assert-Equal $true ([bool] $isolatedPackageValidation.Valid) 'Isolated deployment package passes the release assertion'
+
+    $managedDotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+    $isolatedApplicationProject = Join-Path $releaseContractTestRoot 'src\MinminCountdown\MinminCountdown.csproj'
+    $evaluatedSourceBuildFiles = [System.Collections.Generic.List[string]]::new()
+    [void] $evaluatedSourceBuildFiles.Add('global.json')
+    $projectQueue = [System.Collections.Generic.Queue[string]]::new()
+    $projectQueue.Enqueue($isolatedApplicationProject)
+    $evaluatedProjects = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    while ($projectQueue.Count -gt 0) {
+        $projectPath = [System.IO.Path]::GetFullPath($projectQueue.Dequeue())
+        if (-not $evaluatedProjects.Add($projectPath)) {
+            continue
+        }
+        [void] $evaluatedSourceBuildFiles.Add($projectPath.Substring($releaseContractTestRoot.Length + 1))
+        $evaluatedJson = & $managedDotnet msbuild $projectPath '-getItem:Compile,ApplicationDefinition,Page,Content,ProjectReference' '-getProperty:ApplicationIcon' | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            throw "MSBuild source-closure evaluation failed: $projectPath"
+        }
+        $evaluatedProject = $evaluatedJson | ConvertFrom-Json
+        foreach ($itemType in @('Compile', 'ApplicationDefinition', 'Page', 'Content')) {
+            $itemProperty = $evaluatedProject.Items.PSObject.Properties[$itemType]
+            if ($null -eq $itemProperty) {
+                continue
+            }
+            foreach ($item in @($itemProperty.Value)) {
+                $fullPath = [System.IO.Path]::GetFullPath([string] $item.FullPath)
+                if ($fullPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase) -and
+                    $fullPath -notmatch '[\\/](bin|obj)[\\/]') {
+                    [void] $evaluatedSourceBuildFiles.Add($fullPath.Substring($releaseContractTestRoot.Length + 1))
+                }
+            }
+        }
+        $projectReferenceProperty = $evaluatedProject.Items.PSObject.Properties['ProjectReference']
+        foreach ($projectReference in @(
+                if ($null -ne $projectReferenceProperty) { $projectReferenceProperty.Value }
+            )) {
+            $referencedProjectPath = [System.IO.Path]::GetFullPath([string] $projectReference.FullPath)
+            if ($referencedProjectPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $projectQueue.Enqueue($referencedProjectPath)
+            }
+        }
+        $applicationIcon = [string] $evaluatedProject.Properties.ApplicationIcon
+        if (-not [string]::IsNullOrWhiteSpace($applicationIcon)) {
+            $applicationIconPath = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $projectPath) $applicationIcon))
+            if ($applicationIconPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+                [void] $evaluatedSourceBuildFiles.Add($applicationIconPath.Substring($releaseContractTestRoot.Length + 1))
+            }
+        }
+    }
+    Assert-Equal `
+        ((@($releaseContract.SourceBuildFiles) | Sort-Object) -join ',') `
+        ((@($evaluatedSourceBuildFiles) | Sort-Object -Unique) -join ',') `
+        'Release contract matches the MSBuild-evaluated project, Compile, WPF XAML, icon and Content closure'
+
+    $isolatedSourceDll = Join-Path $releaseContractTestRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
+    [System.IO.File]::WriteAllText(
+        (Join-Path $releaseContractTestRoot 'Countdown.Core.Tests.ps1'),
+        "if (Test-Path -LiteralPath '$($isolatedSourceDll.Replace("'", "''"))' -PathType Leaf) { throw 'Source DLL existed before the validation build.' }`r`n'{`"Passed`":1,`"Failed`":0}'",
+        [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText(
+        (Join-Path $releaseContractTestRoot 'Countdown.CSharp.Tests.ps1'),
+        "if (-not (Test-Path -LiteralPath '$($isolatedSourceDll.Replace("'", "''"))' -PathType Leaf)) { throw 'Source DLL was not built before C# regression.' }`r`n'{`"Passed`":1,`"Failed`":0,`"AdapterUiValidated`":true}'",
+        [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText(
+        (Join-Path $releaseContractTestRoot 'Countdown.Ui.Tests.ps1'),
+        "'{`"Passed`":1,`"Failed`":0}'",
+        [System.Text.UTF8Encoding]::new($false))
+    $isolatedValidation = Invoke-CountdownValidationSuite `
+        -Root $releaseContractTestRoot `
+        -PowerShell7Path (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source) `
+        -DotnetPath $managedDotnet
+    Assert-Equal 1 ([int] $isolatedValidation.CoreTestsPassed) 'Isolated validation runs the pre-build Core fixture'
+    Assert-Equal 1 ([int] $isolatedValidation.CSharpTestsPassed) 'Isolated validation runs C# regression after the real source build'
+    Assert-Equal 1 ([int] $isolatedValidation.UiTestsPassed) 'Isolated validation runs the narrow UI fixture'
+    Assert-Equal $true ([bool] $isolatedValidation.AdapterUiValidated) 'Isolated validation preserves adapter UI evidence'
+    Assert-Equal $true `
+        (Test-Path -LiteralPath $isolatedSourceDll -PathType Leaf) `
+        'Isolated source build produces the DLL required by C# regression'
+
+    foreach ($fixturePath in @('Countdown.Core.Tests.ps1', 'Countdown.CSharp.Tests.ps1', 'Countdown.Ui.Tests.ps1')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fixturePath) -Destination (Join-Path $releaseContractTestRoot $fixturePath) -Force
+    }
+    $isolatedCoreProject = Join-Path $releaseContractTestRoot 'src\MinminCountdown.Core\MinminCountdown.Core.csproj'
+    Remove-Item -LiteralPath $isolatedCoreProject -Force
+    $missingSourceBuildInputRejected = $false
+    try {
+        Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null
+    }
+    catch {
+        $missingSourceBuildInputRejected = $_.Exception.Message -match '缺少发布包文件：src\\MinminCountdown\.Core\\MinminCountdown\.Core\.csproj'
+    }
+    Assert-Equal $true $missingSourceBuildInputRejected 'Release assertion fails closed when a required project-graph input is missing'
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown.Core\MinminCountdown.Core.csproj') -Destination $isolatedCoreProject -Force
+
+    foreach ($relativePath in $releaseContract.PackageFiles) {
         $testPath = Join-Path $releaseContractTestRoot $relativePath
         $testParent = Split-Path -Parent $testPath
         if (-not (Test-Path -LiteralPath $testParent -PathType Container)) {
@@ -3816,9 +4283,16 @@ try {
     Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $startupRequest.launchToken)) 'Startup request has token'
     Assert-Equal $true ([bool] $startupRequest.acceptanceReadOnly) 'Startup request can hold the candidate application in acceptance read-only mode'
     Assert-Equal 'active' ([string] $startupRequest.acceptanceState) 'Startup request begins in active acceptance state'
+    $parsedRequestedAtUtc = [DateTimeOffset]::MinValue
+    Assert-Equal $true ([DateTimeOffset]::TryParseExact(
+            [string] $startupRequest.requestedAtUtc,
+            'o',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind,
+            [ref] $parsedRequestedAtUtc)) 'Startup request uses the exact round-trip timestamp format'
     Assert-Equal $false (Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken 'wrong-token') 'Startup request rejects release with a different token'
     Assert-Equal $true (Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken $startupRequest.launchToken) 'Startup request releases acceptance mode with the same token'
-    $releasedStartupRequest = Get-Content -LiteralPath $startupRequestTestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $releasedStartupRequest = Get-Content -LiteralPath $startupRequestTestPath -Raw -Encoding UTF8 | ConvertFrom-Json -DateKind String
     Assert-Equal 'released' ([string] $releasedStartupRequest.acceptanceState) 'Startup request persists explicit released acceptance state'
     Assert-Equal $true ([bool] $releasedStartupRequest.acceptanceReadOnly) 'Released startup request keeps the UI read-only until C# confirms migration'
     Assert-Equal 'released' ([string] (Wait-CountdownStartupRequestState -Path $startupRequestTestPath -LaunchToken $startupRequest.launchToken -ExpectedState released -TimeoutSeconds 0).acceptanceState) 'Startup request state wait validates token and state'
@@ -3838,6 +4312,18 @@ try {
     try { Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken 'unknown' | Out-Null }
     catch { $unknownSchemaRejected = $_.Exception.Message -match 'schemaVersion' }
     Assert-Equal $true $unknownSchemaRejected 'Startup request rejects unknown schema versions'
+    $nonRoundTripStartupRequest = [ordered]@{
+        schemaVersion = 1
+        launchToken = 'non-round-trip-token'
+        requestedAtUtc = '2026-08-13T12:34:56Z'
+        acceptanceReadOnly = $true
+        acceptanceState = 'active'
+    }
+    [System.IO.File]::WriteAllText($startupRequestTestPath, ($nonRoundTripStartupRequest | ConvertTo-Json -Compress), [System.Text.UTF8Encoding]::new($false))
+    $nonRoundTripTimestampRejected = $false
+    try { Complete-CountdownStartupRequest -Path $startupRequestTestPath -LaunchToken $nonRoundTripStartupRequest.launchToken | Out-Null }
+    catch { $nonRoundTripTimestampRejected = $_.Exception.Message -match 'requestedAtUtc' }
+    Assert-Equal $true $nonRoundTripTimestampRejected 'Startup request rejects valid ISO timestamps outside the exact round-trip format'
     $startupRequest = New-CountdownStartupRequest -Path $startupRequestTestPath -AcceptanceReadOnly
     Assert-Equal $false (Test-Path -LiteralPath "$startupRequestTestPath.tmp") 'Startup request leaves no fixed temporary file'
     $receipt = Write-CountdownWindowReadyReceipt -Path $runtimeStatusTestPath -LaunchToken $startupRequest.launchToken -ProcessId 4242 -SessionId 7 -ApplicationPath $runtimeApplicationPath -CalendarState Pending
@@ -4495,6 +4981,20 @@ Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('CommitState')
 $installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Install-Countdown.ps1'), [System.Text.Encoding]::UTF8)
 $buildSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1'), [System.Text.Encoding]::UTF8)
 $deploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
+Assert-Equal $true $buildSource.Contains("`$dotnetRoot = 'D:\Codex\tools\dotnet\10.0'") 'Build uses the canonical managed dotnet 10.0 root'
+Assert-Equal $false ([regex]::IsMatch($buildSource, 'dotnet\\10(?:\\|[''\"]|\s*$)')) 'Build contains no literal or dynamically joined dotnet 10 root without the minor version'
+$installerDotnetPathIndex = $installerSource.IndexOf("`$dotnetPath = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'")
+$installerDotnetCheckIndex = $installerSource.IndexOf('if (-not (Test-Path -LiteralPath $dotnetPath -PathType Leaf))', $installerDotnetPathIndex)
+$installerDotnetErrorIndex = $installerSource.IndexOf('未找到验收套件所需的受管 dotnet', $installerDotnetCheckIndex)
+$installerValidationSuiteIndex = $installerSource.IndexOf('$validationSuite = Invoke-CountdownValidationSuite')
+$installerDotnetPassIndex = $installerSource.IndexOf('-DotnetPath $dotnetPath', $installerValidationSuiteIndex)
+Assert-Equal $true `
+    ($installerDotnetPathIndex -ge 0 -and
+        $installerDotnetCheckIndex -gt $installerDotnetPathIndex -and
+        $installerDotnetErrorIndex -gt $installerDotnetCheckIndex -and
+        $installerValidationSuiteIndex -gt $installerDotnetErrorIndex -and
+        $installerDotnetPassIndex -gt $installerValidationSuiteIndex) `
+    'Installer validates and passes the canonical managed dotnet 10.0 executable before invoking the validation suite'
 Assert-Equal 2 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'Both self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
 $managedBuildIntermediates = @(
     'src\MinminCountdown.Core\bin',

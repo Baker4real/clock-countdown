@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -6,6 +7,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -19,7 +21,7 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
-    private const string FloatingReferenceBaselineVersion = "2026-08-06-v6";
+    private const string FloatingReferenceBaselineVersion = "2026-08-13-v12";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingReferenceStateFingerprintAlgorithm =
@@ -122,7 +124,7 @@ internal static class ValidationReport
             "Bottom",
             "long-notes-night-bottom.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-08-06-v6";
+    private const string MainReferenceBaselineVersion = "2026-08-13-v12";
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
     private const string MainReferenceStateFingerprintAlgorithm =
@@ -154,7 +156,10 @@ internal static class ValidationReport
         "src/MinminCountdown/MainWindow.xaml",
         "src/MinminCountdown/MainWindow.xaml.cs",
         "src/MinminCountdown/MinminCountdown.csproj",
-        "src/MinminCountdown/UiControls.cs"
+        "src/MinminCountdown/UiControls.cs",
+        "tools/Build-MainDayOrnamentScene.ps1",
+        "tools/MainDecorationSceneBands.psd1",
+        "tools/Test-MainDayOrnamentScene.ps1"
     };
     private static readonly string[] MainReferenceBaselineNegativeFixtures =
     {
@@ -208,6 +213,10 @@ internal static class ValidationReport
         floating.ShowInTaskbar = false;
         floating.Opacity = 0;
         main.Show();
+        PumpDispatcher();
+        var initialFocusedAutomationId = Keyboard.FocusedElement is DependencyObject focused
+            ? AutomationProperties.GetAutomationId(focused)
+            : string.Empty;
         floating.Show();
         PumpDispatcher();
         main.UpdateLayout();
@@ -222,6 +231,8 @@ internal static class ValidationReport
             floating);
         var floatingQuickAddThemeResourceIsolationBehavior =
             ValidationExercises.RunFloatingQuickAddThemeResourceIsolationBehavior();
+        var floatingQuickAddPaletteBindingIsolationBehavior =
+            ValidationExercises.RunFloatingQuickAddPaletteBindingIsolationBehavior();
 
         var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd);
         var noteExercise = mainWindowScenarios.NoteExercise;
@@ -229,6 +240,79 @@ internal static class ValidationReport
         var mainReminderModeExercise = mainWindowScenarios.ReminderModes;
         var floatingReminderModeExercise = floatingWindowScenarios.ReminderModes;
         var mainUiPolish = mainWindowScenarios.UiPolish;
+        var selector = Required<TagSelector>(main, "CountdownTags");
+        var mainNoteCompletionValidation = ValidateMainNoteCompletion(
+            main,
+            floating,
+            selector,
+            desktopWorkspace);
+        var mainNoteCompletionGates = ValidationExercises.EvaluateMainNoteCompletionGates(
+            new MainNoteCompletionGateInputs(
+                mainNoteCompletionValidation.Main.UsesDedicatedStyle,
+                mainNoteCompletionValidation.Main.BoxWidth >= 24 &&
+                    mainNoteCompletionValidation.Main.BoxHeight >= 24,
+                mainNoteCompletionValidation.Main.TickWidth >= 14 &&
+                    mainNoteCompletionValidation.Main.TickHeight >= 10,
+                mainNoteCompletionValidation.Main.UsesWarmTokens,
+                mainNoteCompletionValidation.Main.CornerRadius >= 6,
+                mainNoteCompletionValidation.Interaction.Checked &&
+                    mainNoteCompletionValidation.Interaction.Unchecked,
+                mainNoteCompletionValidation.Interaction.PersistenceFailureRolledBack,
+                mainNoteCompletionValidation.Interaction.AccessibleNamesUpdated,
+                mainNoteCompletionValidation.TagSelector.BoxWidth is >= 17.5 and <= 18.5 &&
+                    mainNoteCompletionValidation.TagSelector.BoxHeight is >= 17.5 and <= 18.5 &&
+                    mainNoteCompletionValidation.TagSelector.TickWidth is >= 9.5 and <= 10.5 &&
+                    mainNoteCompletionValidation.TagSelector.TickHeight is >= 6.5 and <= 7.5 &&
+                    !mainNoteCompletionValidation.TagSelector.UsesDedicatedStyle,
+                mainNoteCompletionValidation.Floating.BoxWidth is >= 17.5 and <= 18.5 &&
+                    mainNoteCompletionValidation.Floating.BoxHeight is >= 17.5 and <= 18.5 &&
+                    mainNoteCompletionValidation.Floating.TickWidth is >= 9.5 and <= 10.5 &&
+                    mainNoteCompletionValidation.Floating.TickHeight is >= 6.5 and <= 7.5 &&
+                    !mainNoteCompletionValidation.Floating.UsesDedicatedStyle));
+        var mainNoteCompletionGateIsolationBehavior =
+            ValidationExercises.RunMainNoteCompletionGateIsolationBehavior();
+        var mainShortcutGateIsolationBehavior =
+            ValidationExercises.RunMainShortcutGateIsolationBehavior();
+        var mainKeyboardNavigationGateIsolationBehavior =
+            ValidationExercises.RunMainKeyboardNavigationGateIsolationBehavior();
+        var mainKeyboardBehavior = ValidateMainKeyboardBehavior(
+            main,
+            desktopWorkspace,
+            initialFocusedAutomationId);
+        var mainKeyboardPathNegativeFixtures = ValidateMainKeyboardPathNegativeFixtures();
+        var mainShortcutGates = ValidationExercises.EvaluateMainShortcutGates(
+            new MainShortcutGateInputs(
+                new[]
+                {
+                    "CountdownsWorkspace", "Filter", "Minimize", "NotesWorkspace",
+                    "SaveCountdown", "SavePreferences", "TagManager", "Theme"
+                },
+                mainKeyboardBehavior.CommandResults,
+                mainKeyboardBehavior.TextInputPreserved,
+                mainKeyboardBehavior.PopupGuarded,
+                mainKeyboardBehavior.ModalOwnerGuarded));
+        var mainKeyboardNavigationGates = ValidationExercises.EvaluateMainKeyboardNavigationGates(
+            new MainKeyboardNavigationGateInputs(
+                mainKeyboardBehavior.InitialFocusSafe,
+                mainKeyboardBehavior.CountdownTabPath.AllPassed &&
+                    mainKeyboardBehavior.NotesTabPath.AllPassed));
+        var mainStructuralAnnouncements = ValidateMainStructuralAnnouncements(assetRoot);
+        var mainStructuralAnnouncementGates =
+            ValidationExercises.EvaluateMainStructuralAnnouncementGates(
+                new MainStructuralAnnouncementGateInputs(
+                    mainStructuralAnnouncements.CountdownWorkspaceAnnounced &&
+                        mainStructuralAnnouncements.NotesWorkspaceAnnounced,
+                    mainStructuralAnnouncements.FilterResultAnnounced,
+                    mainStructuralAnnouncements.CountdownFirstUseEmptyAnnounced &&
+                        mainStructuralAnnouncements.NotesFirstUseEmptyAnnounced &&
+                        mainStructuralAnnouncements.CountdownFilterEmptyAnnounced &&
+                        mainStructuralAnnouncements.NotesFilterEmptyAnnounced,
+                    mainStructuralAnnouncements.DayThemeAnnounced &&
+                        mainStructuralAnnouncements.NightThemeAnnounced));
+        var mainStructuralAnnouncementGateIsolationBehavior =
+            ValidationExercises.RunMainStructuralAnnouncementGateIsolationBehavior();
+        var countdownIncrementalRefreshGateIsolationBehavior =
+            ValidationExercises.RunCountdownIncrementalRefreshGateIsolationBehavior();
         var floatingUiPolish = floatingWindowScenarios.UiPolish;
         var tagExercise = options.ExerciseTagInteractions
             ? ValidationExercises.RunTagInteractions(desktopWorkspace)
@@ -318,6 +402,7 @@ internal static class ValidationReport
         datePicker.IsDropDownOpen = false;
 
         var dateBehaviorAttached = ThemedDatePickerBehavior.IsAttached(datePicker);
+        var productionDatePickers = ValidateProductionDatePickers(main, floating);
         var dateTextMetrics = MeasureTextFit(datePicker, "2031年12月31日");
         var calendarHeaderMetrics = MeasureTextFit(datePicker, "2031年12月");
         var workspaceDraftsRetained = mainWindowScenarios.WorkspaceDraftsRetained;
@@ -326,12 +411,29 @@ internal static class ValidationReport
         main.ShowWorkspace(WorkspaceKind.Notes);
         var hiddenCountdownSubmitDisabled = !Required<Button>(main, "SaveCountdownButton").IsEnabled;
         main.ShowWorkspace(WorkspaceKind.Countdowns);
+        PumpDispatcher();
+        main.UpdateLayout();
         var switchesToCountdown = Required<Canvas>(main, "CountdownWorkspace").Visibility == Visibility.Visible;
+        var mainContentProjection = Required<Grid>(main, "MainContentProjection");
+        var workspaceSwitcherBottom = new[]
+        {
+            BoundsIn(Required<ToggleButton>(main, "CountdownTab"), mainContentProjection).Bottom,
+            BoundsIn(Required<ToggleButton>(main, "NotesTab"), mainContentProjection).Bottom
+        }.Max();
+        var countdownEditorTop =
+            BoundsIn(Required<Border>(main, "CountdownEditorSurface"), mainContentProjection).Top;
         main.ShowWorkspace(WorkspaceKind.Notes);
+        PumpDispatcher();
+        main.UpdateLayout();
         var switchesToNotes = Required<Canvas>(main, "NotesWorkspace").Visibility == Visibility.Visible;
+        var noteEditorTop = BoundsIn(Required<Border>(main, "NoteEditorPanel"), mainContentProjection).Top;
+        var workspaceSwitcherBeforeEditors =
+            workspaceSwitcherBottom <= countdownEditorTop &&
+            workspaceSwitcherBottom <= noteEditorTop;
         main.ShowWorkspace(originalWorkspace);
+        PumpDispatcher();
+        main.UpdateLayout();
 
-        var selector = Required<TagSelector>(main, "CountdownTags");
         var createAppears = selector.ProbeCreateAction("验证新标签");
         var createCollapsed = !selector.ProbeCreateAction(string.Empty);
         var tagSearchDoesNotSubmit = !selector.CreateButtonIsDefault;
@@ -701,6 +803,8 @@ internal static class ValidationReport
             ValidationExercises.RunFloatingNightPlushEdgeGlowGateIsolationBehavior();
         var floatingPrimaryCountdownContrastGateIsolationBehavior =
             ValidationExercises.RunFloatingPrimaryCountdownContrastGateIsolationBehavior();
+        var noteCompletedAuxiliaryContrastGateIsolationBehavior =
+            ValidationExercises.RunNoteCompletedAuxiliaryContrastGateIsolationBehavior();
         var floatingSecondaryRemainingGateIsolationBehavior =
             ValidationExercises.RunFloatingSecondaryRemainingGateIsolationBehavior();
         var floatingScrollBarGateIsolationBehavior =
@@ -721,6 +825,8 @@ internal static class ValidationReport
             ValidateToolTipThemeTextContrast(theme, workspaceSnapshot.UtcNow);
         var tagChipTextContrast =
             ValidateTagChipTextContrast(theme, main, workspaceSnapshot.UtcNow);
+        var noteCompletedAuxiliaryContrast =
+            ValidateNoteCompletedAuxiliaryContrast(theme, main, workspaceSnapshot.UtcNow);
         var floatingManualPlacement = floatingWindowScenarios.ManualPlacement;
         var mainReferenceDecorationValidation = ValidateMainReferenceDecorationScaling(main);
         var mainNightReferenceGeometry = ValidateMainNightReferenceGeometry(main);
@@ -745,9 +851,41 @@ internal static class ValidationReport
                 floatingReferenceExercise.NoteInputScrolls));
         var uiQualityGateIsolationBehavior =
             ValidationExercises.RunUiQualityGateIsolationBehavior();
+        var countdownEmptyStateGateIsolationBehavior =
+            ValidationExercises.RunCountdownEmptyStateGateIsolationBehavior();
+        var countdownEmptyStateContrast =
+            ValidateCountdownEmptyStateContrast(theme, main);
+        var countdownEmptyStateGates = ValidationExercises.EvaluateCountdownEmptyStateGates(
+            new CountdownEmptyStateGateInputs(
+                mainUiPolish.CountdownEmptyStatesDistinguished,
+                mainUiPolish.CountdownEmptyPointerResetRestoresResults,
+                mainUiPolish.CountdownEmptyKeyboardResetRestoresResults,
+                countdownEmptyStateContrast.TextContrast));
+        var mainCountdownRemainingGateIsolationBehavior =
+            ValidationExercises.RunMainCountdownRemainingGateIsolationBehavior();
+        var mainCountdownRemainingSamples = mainUiPolish.CountdownRemainingSamples;
+        var mainCountdownRemainingGates = ValidationExercises.EvaluateMainCountdownRemainingGates(
+            new MainCountdownRemainingGateInputs(
+                mainCountdownRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
+                mainCountdownRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
+                mainCountdownRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
+                mainCountdownRemainingSamples.Count == 5,
+                mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ColumnWidth - 300) <= 0.01),
+                mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ActualColumnWidth - 300) <= 0.5),
+                mainCountdownRemainingSamples.All(sample => sample.IsRightAligned),
+                mainCountdownRemainingSamples.All(sample => sample.IsSingleLineAndUntrimmed),
+                mainCountdownRemainingSamples.All(sample => sample.IsFullyVisible),
+                mainCountdownRemainingSamples.All(sample => sample.UsesTabularNumerals),
+                mainCountdownRemainingSamples.All(sample => sample.PreferenceSaved),
+                mainCountdownRemainingSamples.Count == 5 &&
+                    mainCountdownRemainingSamples.Take(4).All(sample => Math.Abs(sample.FontSize - 20) <= 0.01) &&
+                    mainCountdownRemainingSamples[4].FontSize is >= 14 and < 20));
         var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
+        var daySingleBorder = ValidateDaySingleBorder();
+        var daySingleBorderGateIsolationBehavior = RunDaySingleBorderGateIsolationBehavior();
+        var nightDerivationConsistency = ValidateNightDerivationConsistency();
         var mainReferenceBaselineGateIsolationBehavior =
             ValidationExercises.RunMainReferenceManifestGateIsolationBehavior() &&
             visualReferenceBaselineInterfaceBehavior;
@@ -760,13 +898,31 @@ internal static class ValidationReport
             reminderCenterWindow.Content is Border reminderBorder &&
             Equals(reminderBorder.Background, Application.Current.FindResource("CanvasBrush"));
         var reminderKeyboardExercise = ValidateReminderCenterKeyboardNavigation();
-        var confirmationDialog = new ConfirmationDialog(main, "验证确认", "确认窗口主题验证");
-        var confirmationThemed =
-            confirmationDialog.WindowStyle == WindowStyle.None &&
-            !confirmationDialog.ShowInTaskbar &&
-            Equals(confirmationDialog.Background, Application.Current.FindResource("BackgroundBrush")) &&
-            confirmationDialog.Content is Border confirmationBorder &&
-            Equals(confirmationBorder.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
+        var reminderCenterKeyboardGates = ValidationExercises.EvaluateReminderCenterKeyboardGates(
+            new ReminderCenterKeyboardGateInputs(
+                reminderKeyboardExercise.TabTraversalWorks,
+                reminderKeyboardExercise.CloseGuardWorks,
+                reminderKeyboardExercise.InitialFocusAndAccessibleNameWork));
+        var reminderCenterKeyboardGateIsolationBehavior =
+            ValidationExercises.RunReminderCenterKeyboardGateIsolationBehavior();
+        var confirmationValidation = ValidateConfirmationDialog(
+            theme,
+            main,
+            workspaceSnapshot.UtcNow);
+        var confirmationThemed = confirmationValidation.Themed;
+        var confirmationDialogGateIsolationBehavior =
+            ValidationExercises.RunConfirmationDialogGateIsolationBehavior();
+        var confirmationButtonsVisible = confirmationValidation.Gates.ButtonsVisible;
+        var confirmationBodyReachable = confirmationValidation.Gates.BodyReachable;
+        var confirmationCancelSafeDefault = confirmationValidation.Gates.CancelIsSafeDefault;
+        var floatingTypographyMeasurements = floatingReferenceExercise.LongNotes.Measurements;
+        var secondaryWindowTypography = ValidateSecondaryWindowTypography(
+            main,
+            floatingReferenceExercise.LongNotes.TypographyMatches,
+            floatingTypographyMeasurements.FirstOrDefault()?.BodyFontSize ?? 0,
+            floatingTypographyMeasurements.FirstOrDefault()?.ReminderFontSize ?? 0);
+        var secondaryWindowTypographyGateIsolationBehavior =
+            ValidationExercises.RunSecondaryWindowTypographyGateIsolationBehavior();
 
         var countdownName = Required<TextBox>(main, "CountdownName");
         var countdownDate = Required<DatePicker>(main, "CountdownDate");
@@ -803,6 +959,23 @@ internal static class ValidationReport
                 workStart,
                 workEnd
             }.All(control => control.ActualHeight is >= 55 and <= 57);
+        var characterBackgroundImages = Required<Canvas>(main, "CharacterBackgroundLayer")
+            .Children
+            .OfType<Image>()
+            .ToArray();
+        var officialCharacterBackgroundCharactersExclusive =
+            characterBackgroundImages.Length == 3 &&
+            characterBackgroundImages.All(image => image.Source is not null) &&
+            characterBackgroundImages.Select(image => image.Name)
+                .Order(StringComparer.Ordinal)
+                .SequenceEqual(
+                    new[]
+                    {
+                        "CinnamorollBackground",
+                        "KuromiBackground",
+                        "MyMelodyBackground"
+                    },
+                    StringComparer.Ordinal);
         var countdownInputsUseProjectTheme = new Control[]
             {
                 countdownName,
@@ -946,6 +1119,9 @@ internal static class ValidationReport
                 floatingReferenceExercise.PrimaryCountdownContrast.Measurements,
             ["FloatingPrimaryCountdownContrastGateIsolationBehavior"] =
                 floatingPrimaryCountdownContrastGateIsolationBehavior,
+            ["NoteCompletedAuxiliaryContrast"] = noteCompletedAuxiliaryContrast,
+            ["NoteCompletedAuxiliaryContrastGateIsolationBehavior"] =
+                noteCompletedAuxiliaryContrastGateIsolationBehavior,
             ["FloatingPlushSceneFollowsDayNightTheme"] =
                 floatingThemeExercise.PlushSceneFollowsDayNightTheme,
             ["FloatingQuickAddDayResourceChecks"] = floatingQuickAddTheme.Day.Checks,
@@ -958,6 +1134,17 @@ internal static class ValidationReport
                 floatingQuickAddTheme.IndependentFromApplicationTheme,
             ["FloatingQuickAddThemeResourceIsolationBehavior"] =
                 floatingQuickAddThemeResourceIsolationBehavior,
+            ["FloatingQuickAddPaletteBindings"] = new[]
+            {
+                floatingQuickAddTheme.DayPaletteBindings,
+                floatingQuickAddTheme.NightPaletteBindings
+            },
+            ["FloatingQuickAddDayPaletteBindingsMatch"] =
+                floatingQuickAddTheme.DayPaletteBindingsMatch,
+            ["FloatingQuickAddNightPaletteBindingsMatch"] =
+                floatingQuickAddTheme.NightPaletteBindingsMatch,
+            ["FloatingQuickAddPaletteBindingIsolationBehavior"] =
+                floatingQuickAddPaletteBindingIsolationBehavior,
             ["FloatingQuickAddLocalCanvasColors"] = floatingQuickAddTheme.CanvasColors,
             ["FloatingQuickAddLocalActiveColors"] = floatingQuickAddTheme.ActiveColors,
             ["FloatingInitialWorkspaceStateMatches"] =
@@ -976,19 +1163,64 @@ internal static class ValidationReport
             ["ThemeTextContrast"] = contrast,
             ["DangerButtonContrast"] = dangerContrast,
             ["EffectiveThemeTextContrast"] = contrast,
-            ["DestructiveConfirmationIsSafe"] = confirmationThemed,
+            ["DestructiveConfirmationIsSafe"] = confirmationThemed && confirmationCancelSafeDefault,
+            ["ConfirmationDialogLongestButtonsVisible"] = confirmationButtonsVisible,
+            ["ConfirmationDialogLongestBodyReachable"] = confirmationBodyReachable,
+            ["ConfirmationDialogSafeDefaultActions"] = confirmationCancelSafeDefault,
+            ["ConfirmationDialogGateIsolationBehavior"] = confirmationDialogGateIsolationBehavior,
+            ["ConfirmationDialog"] = confirmationValidation,
             ["FormControlsHaveAccessibleNames"] = main.HasAccessibleCoreControls,
             ["StatusMessagesUseLiveRegions"] = main.HasLiveStatusRegions,
+            ["MainInitialFocusIsSafeAndDeterministic"] = main.InitialFocusIsSafeAndDeterministic,
+            ["MainTabSequenceStartsWithWorkspaceControls"] = main.TabSequenceStartsWithWorkspaceControls,
+            ["MainStructuralLiveRegionsUsePoliteSemantics"] =
+                AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyCountdownMessage")) == AutomationLiveSetting.Polite &&
+                AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyNotesMessage")) == AutomationLiveSetting.Polite &&
+                AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "StatusText")) == AutomationLiveSetting.Polite,
+            ["MainShortcutScopeIsSafe"] = main.MainShortcutScopeIsSafe,
+            ["MainShortcutGateIsolationBehavior"] = mainShortcutGateIsolationBehavior,
+            ["MainShortcutGates"] = mainShortcutGates,
+            ["MainKeyboardNavigationGates"] = mainKeyboardNavigationGates,
+            ["MainKeyboardNavigationGateIsolationBehavior"] =
+                mainKeyboardNavigationGateIsolationBehavior,
+            ["MainKeyboardBehavior"] = mainKeyboardBehavior,
+            ["MainKeyboardPathNegativeFixtures"] = mainKeyboardPathNegativeFixtures,
+            ["MainStructuralAnnouncements"] = mainStructuralAnnouncements,
+            ["MainStructuralAnnouncementGates"] = mainStructuralAnnouncementGates,
+            ["MainStructuralAnnouncementGateIsolationBehavior"] =
+                mainStructuralAnnouncementGateIsolationBehavior,
+            ["SecondaryWindowTypography"] = secondaryWindowTypography,
+            ["SecondaryWindowTypographyGateIsolationBehavior"] =
+                secondaryWindowTypographyGateIsolationBehavior,
             ["CompactActionTargetsAreUsable"] = Required<Button>(main, "SaveCountdownButton").MinHeight >= 32,
             ["RequiredControls"] = 10,
             ["DatePickerTemplateParts"] = dateParts.Count(part => part is not null),
             ["DatePickerText"] = dateTextBox?.Text,
-            ["DateInputReadOnly"] = dateTextBox?.IsReadOnly == true,
-            ["DatePickerButtonOpensCalendar"] = dateButtonOpens,
-            ["DatePickerTextOpensCalendar"] = dateBehaviorAttached,
-            ["DatePickerTextDefersCalendarUntilPointerRelease"] = dateBehaviorAttached,
-            ["DatePickerTextClicksUseTheme"] = dateBehaviorAttached && dateFamilyThemed,
-            ["DatePickerTextOpensThemedPopup"] = dateBehaviorAttached && livePopupThemed,
+            ["DateInputReadOnly"] = productionDatePickers.AllProductionInputsReadOnly,
+            ["DatePickerButtonOpensCalendar"] =
+                dateButtonOpens && productionDatePickers.ReminderCenter.ButtonOpensCalendar,
+            ["DatePickerTextOpensCalendar"] =
+                productionDatePickers.AttachedTextPointerWorks &&
+                productionDatePickers.AttachedKeyboardLifecycleWorks &&
+                productionDatePickers.UnattachedNegativeTextDoesNotOpen,
+            ["DatePickerTextDefersCalendarUntilPointerRelease"] =
+                productionDatePickers.AttachedTextDefersUntilRelease,
+            ["DatePickerTextClicksUseTheme"] =
+                dateBehaviorAttached &&
+                productionDatePickers.AllAttached &&
+                productionDatePickers.AttachedTextOpensThemedPopups &&
+                dateFamilyThemed,
+            ["DatePickerTextOpensThemedPopup"] =
+                productionDatePickers.AttachedTextOpensThemedPopups && livePopupThemed,
+            ["DatePickerEscapeClosesAndReturnsFocus"] =
+                productionDatePickers.AttachedKeyboardLifecycleWorks,
+            ["DatePickerProductionInputCount"] = productionDatePickers.ProductionInputCount,
+            ["DatePickerAttachedInputCount"] = productionDatePickers.Attached.Count,
+            ["DatePickerProductionMeasurements"] = productionDatePickers.Attached,
+            ["DatePickerReminderCenterMeasurement"] = productionDatePickers.ReminderCenter,
+            ["DatePickerUnattachedNegativeMeasurement"] = productionDatePickers.UnattachedNegative,
+            ["DatePickerUnattachedNegativeTextDoesNotOpen"] =
+                productionDatePickers.UnattachedNegativeTextDoesNotOpen,
             ["TimeDropDowns"] = 3,
             ["TimeOptionCounts"] = main.TimeOptionCounts,
             ["HasSetNowButton"] = main.FindName("SetNowButton") is Button,
@@ -1119,14 +1351,17 @@ internal static class ValidationReport
             ["NoteReminderDispatchWorks"] = reminderBehavior,
             ["ReminderCenterIsThemed"] = reminderThemed,
             ["ReminderCenterSupportsKeyboardNavigation"] =
-                reminderKeyboardExercise.KeyboardTraversalWorks,
+                reminderCenterKeyboardGates.AllPassed,
             ["ReminderCenterInitialFocusAndAccessibleNameWork"] =
-                reminderKeyboardExercise.InitialFocusAndAccessibleNameWork,
+                reminderCenterKeyboardGates.InitialFocusAndAccessibleNameWork,
+            ["ReminderCenterKeyboardGateIsolationBehavior"] =
+                reminderCenterKeyboardGateIsolationBehavior,
             ["OfficialCharacterBackgroundLoaded"] =
                 Required<Image>(main, "MyMelodyBackground").Source is not null &&
                 Required<Image>(main, "CinnamorollBackground").Source is not null &&
                 Required<Image>(main, "KuromiBackground").Source is not null,
-            ["OfficialCharacterBackgroundCharactersExclusive"] = true,
+            ["OfficialCharacterBackgroundCharactersExclusive"] =
+                officialCharacterBackgroundCharactersExclusive,
             ["OfficialCharacterBackgroundLowContrast"] = main.CharacterBackgroundRemainsSubtle,
             ["MainCharacterPanelDockCount"] = mainCharacterDocks.Length,
             ["MainCharacterPanelDocksIntegrateWithPanel"] = mainCharacterDocksIntegrateWithPanel,
@@ -1163,6 +1398,17 @@ internal static class ValidationReport
                 mainReferenceBaseline.ExecutableSha256,
             ["MainReferenceBaselineGates"] = mainReferenceBaseline.Gates.AsDictionary(),
             ["MainReferenceBaselineCaptures"] = mainReferenceBaseline.Captures,
+            ["MainDaySingleBorder"] = daySingleBorder,
+            ["MainDaySingleBorderGate"] = daySingleBorder.AllPassed,
+            ["MainDaySingleBorderGateIsolationBehavior"] = daySingleBorderGateIsolationBehavior,
+            ["MainDaySingleBorderNegativeFixtures"] = new[]
+            {
+                "unexpected-control-edge",
+                "label-intersection",
+                "missing-lower-ornament"
+            },
+            ["MainNightDerivationConsistency"] = nightDerivationConsistency,
+            ["MainNightDerivationConsistencyGate"] = nightDerivationConsistency.AllPassed,
             ["MainReferenceBaselineDiagnostics"] = mainReferenceBaseline.Diagnostics,
             ["MainReferenceBaselineNegativeFixtures"] = MainReferenceBaselineNegativeFixtures,
             ["MainStressCountdownTitleVisuals"] =
@@ -1189,6 +1435,35 @@ internal static class ValidationReport
             ["PopupOutsideFocusPreserved"] = mainUiPolish.PopupOutsideFocusPreserved,
             ["NoteEmptyStatesDistinguished"] = mainUiPolish.EmptyStatesDistinguished,
             ["NoteNoResultsResetWorks"] = mainUiPolish.NoResultsResetWorks,
+            ["CountdownEmptyStatesDistinguished"] = mainUiPolish.CountdownEmptyStatesDistinguished,
+            ["CountdownNoResultsResetWorks"] = mainUiPolish.CountdownEmptyPointerResetRestoresResults,
+            ["CountdownEmptyPointerResetRestoresResults"] =
+                mainUiPolish.CountdownEmptyPointerResetRestoresResults,
+            ["CountdownEmptyKeyboardResetRestoresResults"] =
+                mainUiPolish.CountdownEmptyKeyboardResetRestoresResults,
+            ["CountdownEmptyStateTextContrast"] = countdownEmptyStateGates.DayNightTextContrast,
+            ["CountdownEmptyStateContrastMeasurements"] = countdownEmptyStateContrast.Measurements,
+            ["CountdownEmptyStateGateIsolationBehavior"] = countdownEmptyStateGateIsolationBehavior,
+            ["CountdownRemainingLayoutMatches"] = mainCountdownRemainingGates.FixedColumnLayoutMatches,
+            ["CountdownRemainingUnitSpacingMatches"] = mainCountdownRemainingGates.UnitSpacingMatches,
+            ["CountdownRemainingGateIsolationBehavior"] = mainCountdownRemainingGateIsolationBehavior,
+            ["CountdownIncrementalRefreshIdentityMatches"] =
+                mainUiPolish.CountdownIncrementalRefresh.IdentityPreserved,
+            ["CountdownExpiryVisualsFlipTogether"] =
+                mainUiPolish.CountdownIncrementalRefresh.ExpiryVisualsFlipTogether,
+            ["CountdownIncrementalRefresh"] = mainUiPolish.CountdownIncrementalRefresh,
+            ["CountdownIncrementalRefreshGateIsolationBehavior"] =
+                countdownIncrementalRefreshGateIsolationBehavior,
+            ["CountdownRemainingSamples"] = mainUiPolish.CountdownRemainingSamples,
+            ["MainNoteCompletionTargetSizeAndBehavior"] =
+                mainNoteCompletionGates.MainTargetSizeAndBehavior,
+            ["MainNoteCompletionOtherUserSizesUnchanged"] =
+                mainNoteCompletionGates.OtherUserSizesUnchanged,
+            ["MainNoteCompletionGateIsolationBehavior"] =
+                mainNoteCompletionGateIsolationBehavior,
+            ["MainNoteCompletionMeasurements"] = mainNoteCompletionValidation.Measurements,
+            ["MainNoteCompletionInteractionBehavior"] = mainNoteCompletionValidation.Interaction,
+            ["MainNoteCompletionStyleScoped"] = mainNoteCompletionGates.AllPassed,
             ["TransientPanelsOnDemand"] = main.HasOnDemandPanels,
             ["TransientPanelsStartClosed"] = main.HasOnDemandPanels,
             ["CountdownTagPickerOpensOnDemand"] = !selector.IsPopupOpen,
@@ -1528,7 +1803,7 @@ internal static class ValidationReport
                 main.FindName("NotesTab") is ToggleButton &&
                 floating.FindName("FloatingNotesButton") is ToggleButton,
             ["UnifiedWorkspaceSwitches"] = switchesToCountdown && switchesToNotes,
-            ["WorkspaceSwitcherBeforeEditors"] = true,
+            ["WorkspaceSwitcherBeforeEditors"] = workspaceSwitcherBeforeEditors,
             ["HasPreferenceControls"] =
                 main.FindName("DisplayPrecision") is ComboBox &&
                 main.FindName("MonthlySalary") is TextBox &&
@@ -1559,7 +1834,6 @@ internal static class ValidationReport
         };
 
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
-
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
         floating.Hide();
@@ -1735,8 +2009,8 @@ internal static class ValidationReport
                 new Int32Rect(460, 260, 235, 115),
                 new Int32Rect(950, 250, 150, 130)
             },
-            330,
-            395);
+            330,  // WaveTop from MainDecorationSceneBands.psd1 countdown
+            395); // TopBandEnd from MainDecorationSceneBands.psd1 countdown
         var notes = InspectNightTopScene(
             Required<Image>(main, "NightNotesTopDecoration"),
             new[]
@@ -1745,8 +2019,8 @@ internal static class ValidationReport
                 new Int32Rect(450, 300, 250, 105),
                 new Int32Rect(940, 250, 170, 150)
             },
-            345,
-            415);
+            345,  // WaveTop from MainDecorationSceneBands.psd1 notes
+            415); // TopBandEnd from MainDecorationSceneBands.psd1 notes
         var expectedCountdownBounds = new[]
         {
             new Rect(65, 260, 125, 107),
@@ -2411,6 +2685,255 @@ internal static class ValidationReport
             string.Equals(capture.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal))).ToArray();
     }
 
+    private static MainDaySingleBorderValidation ValidateDaySingleBorder()
+    {
+        var sourceRoot = Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT");
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+        {
+            return MainDaySingleBorderValidation.NotRequested;
+        }
+
+        var bands = ReadMainDecorationBands(sourceRoot);
+        var specs = new[]
+        {
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 515, 516, 570, 571 }, 480, 510),
+            new MainDaySingleBorderSpec("Countdown-Night", "countdown", "main-night-countdowns-empty.png", 480, 580, new[] { 515, 516, 570, 571 }, 480, 510),
+            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 448, 449, 515, 516 }, 405, 440),
+            new MainDaySingleBorderSpec("Notes-Night", "notes", "main-night-notes-empty.png", 405, 525, new[] { 448, 449, 515, 516 }, 405, 440)
+        };
+        var directory = Path.Combine(
+            Path.GetFullPath(sourceRoot),
+            "assets", "ui-references", "main-window", "1165x1350", MainReferenceBaselineVersion);
+        var measurements = specs.Select(spec =>
+        {
+            var path = Path.Combine(directory, spec.FileName);
+            if (!File.Exists(path))
+            {
+                return new MainDaySingleBorderMeasurement(
+                    spec.StateId, spec.Scene, Array.Empty<int>(), false, false, false, 0, 0, 0);
+            }
+
+            var band = bands.Scenes[spec.Scene];
+            var source = DecodeBitmap(File.ReadAllBytes(path));
+            var (pixels, stride) = GetBgra32Pixels(source);
+            var edges = new List<int>();
+            var controlScanTop = Math.Max(spec.ScanTop, band.TopBandEnd + 1);
+            for (var y = controlScanTop; y <= spec.ScanBottom; y++)
+            {
+                var offset = y * stride + 200 * 4;
+                var next = offset + stride;
+                var delta = Math.Max(
+                    Math.Abs(pixels[offset] - pixels[next]),
+                    Math.Max(
+                        Math.Abs(pixels[offset + 1] - pixels[next + 1]),
+                        Math.Abs(pixels[offset + 2] - pixels[next + 2])));
+                if (delta >= 30)
+                {
+                    edges.Add(y);
+                }
+            }
+
+            var lowerDecorationPixelCount = 0;
+            for (var y = band.BottomBandStart; y < source.PixelHeight; y++)
+            {
+                var background = y * stride + bands.BackgroundSampleX * 4;
+                for (var x = 0; x < source.PixelWidth; x++)
+                {
+                    var sample = y * stride + x * 4;
+                    if (Math.Abs(pixels[sample] - pixels[background]) >= 4 ||
+                        Math.Abs(pixels[sample + 1] - pixels[background + 1]) >= 4 ||
+                        Math.Abs(pixels[sample + 2] - pixels[background + 2]) >= 4)
+                    {
+                        lowerDecorationPixelCount++;
+                    }
+                }
+            }
+
+            return new MainDaySingleBorderMeasurement(
+                spec.StateId,
+                spec.Scene,
+                edges,
+                edges.SequenceEqual(spec.ExpectedEdges),
+                edges.All(y => y < spec.LabelTop || y > spec.LabelBottom),
+                lowerDecorationPixelCount > 0,
+                controlScanTop,
+                band.BottomBandStart,
+                lowerDecorationPixelCount);
+        }).ToArray();
+        return EvaluateDaySingleBorder(measurements);
+    }
+
+    private static MainDaySingleBorderValidation EvaluateDaySingleBorder(
+        IReadOnlyList<MainDaySingleBorderMeasurement> measurements)
+    {
+        var day = measurements.Where(measurement => measurement.StateId.EndsWith("-Day", StringComparison.Ordinal)).ToArray();
+        var night = measurements.Where(measurement => measurement.StateId.EndsWith("-Night", StringComparison.Ordinal)).ToArray();
+        var lowerDecorationConsistent = measurements
+            .GroupBy(measurement => measurement.Scene, StringComparer.Ordinal)
+            .All(group => group.Count() == 2 &&
+                group.All(measurement => measurement.LowerDecorationPresent) &&
+                group.Select(measurement => measurement.DeclaredBottomBandStart).Distinct().Count() == 1);
+        return new MainDaySingleBorderValidation(
+            true,
+            day.Length == 2 && day.All(measurement => measurement.ExactControlEdges),
+            night.Length == 2 && night.All(measurement => measurement.ExactControlEdges),
+            measurements.Count == 4 && measurements.All(measurement => measurement.LabelsClear),
+            measurements.Count == 4 && lowerDecorationConsistent,
+            measurements);
+    }
+
+    private static bool RunDaySingleBorderGateIsolationBehavior()
+    {
+        var valid = new[]
+        {
+            new MainDaySingleBorderMeasurement("Countdown-Day", "countdown", new[] { 515, 516, 570, 571 }, true, true, true, 480, 1105, 1),
+            new MainDaySingleBorderMeasurement("Countdown-Night", "countdown", new[] { 515, 516, 570, 571 }, true, true, true, 480, 1105, 1),
+            new MainDaySingleBorderMeasurement("Notes-Day", "notes", new[] { 448, 449, 515, 516 }, true, true, true, 416, 900, 1),
+            new MainDaySingleBorderMeasurement("Notes-Night", "notes", new[] { 448, 449, 515, 516 }, true, true, true, 416, 900, 1)
+        };
+        return EvaluateDaySingleBorder(valid).AllPassed &&
+            !EvaluateDaySingleBorder(valid.Select((item, index) => index == 0 ? item with { ExactControlEdges = false } : item).ToArray()).AllPassed &&
+            !EvaluateDaySingleBorder(valid.Select((item, index) => index == 1 ? item with { LabelsClear = false } : item).ToArray()).AllPassed &&
+            !EvaluateDaySingleBorder(valid.Select((item, index) => index == 2 ? item with { LowerDecorationPresent = false } : item).ToArray()).AllPassed;
+    }
+
+    private static MainDecorationBands ReadMainDecorationBands(string sourceRoot)
+    {
+        var path = Path.Combine(sourceRoot, "tools", "MainDecorationSceneBands.psd1");
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "D:\\Codex\\tools\\PowerShell\\7.6.4\\pwsh.exe",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (var argument in new[]
+                 {
+                     "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+                     "& { param([string]$Path) Import-PowerShellDataFile -LiteralPath $Path | ConvertTo-Json -Depth 6 -Compress }",
+                     path
+                 })
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+        using var process = System.Diagnostics.Process.Start(startInfo) ??
+            throw new InvalidOperationException("无法读取主窗口装饰带定义。");
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"主窗口装饰带定义读取失败：{error}");
+        }
+        using var document = JsonDocument.Parse(output);
+        var root = document.RootElement;
+        var scenes = root.GetProperty("Scenes");
+        MainDecorationBand ReadScene(string name)
+        {
+            var scene = scenes.GetProperty(name);
+            return new MainDecorationBand(
+                scene.GetProperty("TopBandEnd").GetInt32(),
+                scene.GetProperty("BottomBandStart").GetInt32());
+        }
+        return new MainDecorationBands(
+            root.GetProperty("BackgroundSampleX").GetInt32(),
+            new Dictionary<string, MainDecorationBand>(StringComparer.Ordinal)
+            {
+                ["countdown"] = ReadScene("countdown"),
+                ["notes"] = ReadScene("notes")
+            });
+    }
+
+    private static MainNightDerivationValidation ValidateNightDerivationConsistency()
+    {
+        var sourceRoot = Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT");
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+        {
+            return MainNightDerivationValidation.NotRequested;
+        }
+
+        var root = Path.GetFullPath(sourceRoot);
+        var script = Path.Combine(root, "tools", "Build-MainNightTopScene.ps1");
+        var sceneRoot = Path.Combine(root, "assets", "main-decorations");
+        var outputRoot = Path.Combine(
+            "D:\\Codex\\.codex\\tmp\\clock-countdown-night-derivation",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outputRoot);
+        try
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "D:\\Codex\\tools\\PowerShell\\7.6.4\\pwsh.exe",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            foreach (var argument in new[]
+                     {
+                         "-NoLogo", "-NoProfile", "-NonInteractive", "-File", script,
+                         "-ProjectRoot", root, "-SourceRoot", sceneRoot, "-OutputRoot", outputRoot
+                     })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            using var process = System.Diagnostics.Process.Start(startInfo) ??
+                throw new InvalidOperationException("无法启动夜间派生验证脚本。");
+            var standardOutput = process.StandardOutput.ReadToEnd();
+            var standardError = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0)
+            {
+                return new MainNightDerivationValidation(true, false, false, Array.Empty<MainNightAlphaRange>(), $"exit={process.ExitCode}: {standardError}");
+            }
+
+            var ranges = new List<MainNightAlphaRange>();
+            var byteIdentical = true;
+            foreach (var scene in new[]
+                     {
+                         new { Name = "notes", File = "main-notes-top-night.png", Top = 264, Bottom = 415 },    // TopBandStart..TopBandEnd from MainDecorationSceneBands.psd1
+                         new { Name = "countdown", File = "main-countdown-top-night.png", Top = 260, Bottom = 395 } // TopBandStart..TopBandEnd from MainDecorationSceneBands.psd1
+                     })
+            {
+                var expected = File.ReadAllBytes(Path.Combine(sceneRoot, scene.File));
+                var actual = File.ReadAllBytes(Path.Combine(outputRoot, scene.File));
+                byteIdentical &= expected.AsSpan().SequenceEqual(actual);
+                var bitmap = DecodeBitmap(actual);
+                var (pixels, stride) = GetBgra32Pixels(bitmap);
+                var minY = bitmap.PixelHeight;
+                var maxY = -1;
+                for (var y = 0; y < bitmap.PixelHeight; y++)
+                {
+                    for (var x = 0; x < bitmap.PixelWidth; x++)
+                    {
+                        if (pixels[y * stride + x * 4 + 3] == 0)
+                        {
+                            continue;
+                        }
+                        minY = Math.Min(minY, y);
+                        maxY = Math.Max(maxY, y);
+                    }
+                }
+                ranges.Add(new MainNightAlphaRange(scene.Name, minY, maxY, minY == scene.Top && maxY == scene.Bottom));
+            }
+
+            return new MainNightDerivationValidation(
+                true,
+                byteIdentical,
+                ranges.Count == 2 && ranges.All(range => range.MatchesExpected),
+                ranges,
+                standardOutput.Trim());
+        }
+        finally
+        {
+            foreach (var file in Directory.EnumerateFiles(outputRoot))
+            {
+                File.Delete(file);
+            }
+            Directory.Delete(outputRoot);
+        }
+    }
+
     private static MainStressCountdownTitleMeasurement MeasureMainStressCountdownTitle(
         MainWindow main,
         MainReferenceCaptureSpec spec)
@@ -2437,6 +2960,12 @@ internal static class ValidationReport
                 panel.Children.OfType<Button>()
                     .Select(button => button.Content?.ToString() ?? string.Empty)
                     .SequenceEqual(new[] { "编辑", "删除" }, StringComparer.Ordinal));
+        var remaining = title.Parent is Grid layout
+            ? layout.Children.OfType<TextBlock>().SingleOrDefault(candidate =>
+                !ReferenceEquals(candidate, title) &&
+                Grid.GetColumn(candidate) == 1 &&
+                Grid.GetRow(candidate) == 1)
+            : null;
         var scrollViewer = FindVisualAncestor<ScrollViewer>(rows);
         var viewport = scrollViewer is null
             ? null
@@ -2445,7 +2974,7 @@ internal static class ValidationReport
                     candidate.IsVisible &&
                     candidate.ActualWidth > 0 &&
                     candidate.ActualHeight > 0);
-        if (actions is null || viewport is null)
+        if (actions is null || remaining is null || viewport is null)
         {
             return MainStressCountdownTitleMeasurement.Missing(
                 spec,
@@ -2458,6 +2987,7 @@ internal static class ValidationReport
 
         var titleBounds = BoundsIn(title, viewport);
         var actionsBounds = BoundsIn(actions, viewport);
+        var remainingBounds = BoundsIn(remaining, viewport);
         var viewportBounds = new Rect(new Point(0, 0), viewport.RenderSize);
         var textFit = MeasureTextFit(title, viewport);
         var fullyVisibleInViewport =
@@ -2470,6 +3000,11 @@ internal static class ValidationReport
             titleActionsIntersection.IsEmpty ||
             titleActionsIntersection.Width <= 0.5 ||
             titleActionsIntersection.Height <= 0.5;
+        var titleRemainingIntersection = Rect.Intersect(titleBounds, remainingBounds);
+        var separatedFromRemaining =
+            titleRemainingIntersection.IsEmpty ||
+            titleRemainingIntersection.Width <= 0.5 ||
+            titleRemainingIntersection.Height <= 0.5;
 
         return new MainStressCountdownTitleMeasurement(
             spec.CaptureId,
@@ -2485,6 +3020,8 @@ internal static class ValidationReport
             MainStressCountdownTitleBounds.From(titleBounds),
             MainStressCountdownTitleBounds.From(viewportBounds),
             fullyVisibleInViewport,
+            MainStressCountdownTitleBounds.From(remainingBounds),
+            separatedFromRemaining,
             MainStressCountdownTitleBounds.From(actionsBounds),
             separatedFromActions);
     }
@@ -7910,7 +8447,7 @@ internal static class ValidationReport
                     .Where(text => text.Text.StartsWith("长内容提醒", StringComparison.Ordinal))
                     .ToArray();
                 var scrollsLongContent =
-                    layoutWindow.UsesScrollableList &&
+                    scroller.Content is StackPanel &&
                     scroller.VerticalScrollBarVisibility == ScrollBarVisibility.Auto &&
                     scroller.ScrollableHeight > 0 &&
                     longBodies.Length == 12 &&
@@ -8989,8 +9526,28 @@ internal static class ValidationReport
                 .OfType<StackPanel>()
                 .Where(panel => !requirePrimaryColumn || Grid.GetColumn(panel) is 0 or 1)
                 .ToArray();
-            return bodies.Length > 0 &&
-                bodies.Any(body => body.Children.OfType<TextBlock>().Any()) &&
+            var directTexts = grid.Children
+                .OfType<TextBlock>()
+                .Where(text => !requirePrimaryColumn || Grid.GetColumn(text) is 0 or 1)
+                .ToArray();
+            var directTagTexts = grid.Children
+                .OfType<WrapPanel>()
+                .Where(panel => !requirePrimaryColumn || Grid.GetColumn(panel) is 0 or 1)
+                .SelectMany(panel => panel.Children.OfType<Border>())
+                .Select(chip => chip.Child)
+                .OfType<TextBlock>()
+                .ToArray();
+            return (directTexts.Length > 0 ||
+                    bodies.Any(body => body.Children.OfType<TextBlock>().Any())) &&
+                directTexts.All(text => UsesAnyResource(
+                    text,
+                    TextBlock.ForegroundProperty,
+                    "InkBrush",
+                    "BodyBrush",
+                    "MutedBrush",
+                    "DangerBrush")) &&
+                directTagTexts.All(text =>
+                    UsesResource(text, TextBlock.ForegroundProperty, "TagChipTextBrush")) &&
                 bodies.All(BodyTextUsesTheme) &&
                 bodies.All(TagTextUsesTheme);
         }
@@ -9322,6 +9879,1042 @@ internal static class ValidationReport
         }
     }
 
+    private static MainKeyboardBehaviorResult ValidateMainKeyboardBehavior(
+        MainWindow main,
+        DesktopWorkspace workspace,
+        string initialFocusedAutomationId)
+    {
+        var countdownTab = Required<ToggleButton>(main, "CountdownTab");
+        var closeButton = Required<Button>(main, "CloseButton");
+        var minimizeButton = Required<Button>(main, "MinimizeButton");
+        var initialFocusSafe =
+            string.Equals(initialFocusedAutomationId, "CountdownTab", StringComparison.Ordinal) &&
+            countdownTab.IsVisible &&
+            countdownTab.IsEnabled &&
+            !string.Equals(initialFocusedAutomationId, AutomationProperties.GetAutomationId(closeButton), StringComparison.Ordinal) &&
+            !string.Equals(initialFocusedAutomationId, AutomationProperties.GetAutomationId(minimizeButton), StringComparison.Ordinal);
+        var tabSequence = new List<string>();
+        countdownTab.Focus();
+        PumpDispatcher();
+        for (var index = 0; index < 4 && Keyboard.FocusedElement is UIElement focused; index++)
+        {
+            tabSequence.Add(AutomationProperties.GetAutomationId(focused));
+            if (index < 3)
+            {
+                focused.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                PumpDispatcher();
+            }
+        }
+
+        var countdownTabPath = ValidateMainWorkspaceTabPath(main, WorkspaceKind.Countdowns);
+        var notesTabPath = ValidateMainWorkspaceTabPath(main, WorkspaceKind.Notes);
+
+        var originalWorkspace = main.CurrentWorkspace;
+        var originalWindowState = main.WindowState;
+        var originalEnabled = main.IsEnabled;
+        var originalPreferences = workspace.Snapshot.Settings.Preferences;
+        var themeButton = Required<Button>(main, "ThemeModeButton");
+        var originalThemeLabel = themeButton.Content?.ToString() ?? string.Empty;
+        var status = Required<TextBlock>(main, "StatusText");
+        var commandResults = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var commandDiagnostics = new Dictionary<string, MainShortcutCommandDiagnostic>(StringComparer.Ordinal);
+        var commandsWork = false;
+        string? savedCountdownId = null;
+        bool RaiseShortcut(ModifierKeys modifiers, Key key)
+        {
+            countdownTab.Focus();
+            PumpDispatcher();
+            return WindowValidationInput.RaisePreviewKey(countdownTab, key, modifiers);
+        }
+
+        try
+        {
+            var notesWorkspaceHandled = RaiseShortcut(ModifierKeys.Control, Key.D2);
+            commandResults["NotesWorkspace"] =
+                notesWorkspaceHandled && main.CurrentWorkspace == WorkspaceKind.Notes;
+            commandDiagnostics["NotesWorkspace"] = new(
+                notesWorkspaceHandled,
+                main.CurrentWorkspace == WorkspaceKind.Notes,
+                string.Empty);
+            var countdownsWorkspaceHandled = RaiseShortcut(ModifierKeys.Control, Key.D1);
+            commandResults["CountdownsWorkspace"] =
+                countdownsWorkspaceHandled && main.CurrentWorkspace == WorkspaceKind.Countdowns;
+            commandDiagnostics["CountdownsWorkspace"] = new(
+                countdownsWorkspaceHandled,
+                main.CurrentWorkspace == WorkspaceKind.Countdowns,
+                string.Empty);
+            var filterHandled = RaiseShortcut(ModifierKeys.Control, Key.F);
+            var filterOpened = Required<Popup>(main, "FilterPopup").IsOpen;
+            commandResults["Filter"] = filterHandled && filterOpened;
+            commandDiagnostics["Filter"] = new(filterHandled, filterOpened, string.Empty);
+            Required<Popup>(main, "FilterPopup").IsOpen = false;
+            PumpDispatcher();
+            var tagManagerHandled = RaiseShortcut(ModifierKeys.Control, Key.T);
+            var tagManagerOpened = Required<Popup>(main, "TagManagerPopup").IsOpen;
+            commandResults["TagManager"] = tagManagerHandled && tagManagerOpened;
+            commandDiagnostics["TagManager"] = new(
+                tagManagerHandled,
+                tagManagerOpened,
+                string.Empty);
+            Required<Popup>(main, "TagManagerPopup").IsOpen = false;
+            PumpDispatcher();
+            var themeHandled = RaiseShortcut(ModifierKeys.Control | ModifierKeys.Shift, Key.T);
+            var themeChanged =
+                !string.Equals(themeButton.Content?.ToString(), originalThemeLabel, StringComparison.Ordinal);
+            commandResults["Theme"] = themeHandled && themeChanged;
+            commandDiagnostics["Theme"] = new(themeHandled, themeChanged, string.Empty);
+
+            var probeCountdownName = Required<TextBox>(main, "CountdownName");
+            var probeCountdownDate = Required<DatePicker>(main, "CountdownDate");
+            var probeCountdownHour = Required<ComboBox>(main, "CountdownHour");
+            var probeCountdownMinute = Required<ComboBox>(main, "CountdownMinute");
+            var probeCountdownSecond = Required<ComboBox>(main, "CountdownSecond");
+            var probeTarget = workspace.Snapshot.BeijingNow.AddDays(30);
+            var probeName = $"快捷键保存-{Guid.NewGuid():N}"[..30];
+            probeCountdownName.Text = probeName;
+            probeCountdownDate.SelectedDate = probeTarget.Date;
+            probeCountdownHour.SelectedItem = probeTarget.ToString("HH", CultureInfo.InvariantCulture);
+            probeCountdownMinute.SelectedItem = probeTarget.ToString("mm", CultureInfo.InvariantCulture);
+            probeCountdownSecond.SelectedItem = probeTarget.ToString("ss", CultureInfo.InvariantCulture);
+            var countdownHandled = RaiseShortcut(ModifierKeys.Control, Key.S);
+            var savedCountdown = workspace.Snapshot.Settings.Countdowns.SingleOrDefault(item =>
+                string.Equals(item.Name, probeName, StringComparison.Ordinal));
+            savedCountdownId = savedCountdown?.Id;
+            var countdownPersisted = savedCountdown is not null &&
+                DesktopWorkspace.Load(workspace.Snapshot.SettingsPath).Snapshot.Settings.Countdowns.Any(item =>
+                    string.Equals(item.Id, savedCountdown.Id, StringComparison.Ordinal));
+            commandResults["SaveCountdown"] =
+                countdownHandled &&
+                countdownPersisted &&
+                string.Equals(status.Text, "倒计时已保存。", StringComparison.Ordinal);
+            commandDiagnostics["SaveCountdown"] = new(
+                countdownHandled,
+                countdownPersisted,
+                status.Text);
+
+            var displayPrecision = Required<ComboBox>(main, "DisplayPrecision");
+            var monthlySalary = Required<TextBox>(main, "MonthlySalary");
+            var workStart = Required<TextBox>(main, "WorkStart");
+            var workEnd = Required<TextBox>(main, "WorkEnd");
+            displayPrecision.SelectedIndex = originalPreferences.DisplayPrecision == "Second" ? 2 : 3;
+            monthlySalary.Text = "43210";
+            workStart.Text = "08:15";
+            workEnd.Text = "18:45";
+            var preferencesHandled = RaiseShortcut(ModifierKeys.Control | ModifierKeys.Shift, Key.S);
+            var persistedPreferences = DesktopWorkspace.Load(workspace.Snapshot.SettingsPath).Snapshot.Settings.Preferences;
+            var preferencesPersisted =
+                persistedPreferences.DisplayPrecision == (displayPrecision.SelectedIndex == 2 ? "Minute" : "Second") &&
+                persistedPreferences.MonthlySalary == 43210m &&
+                persistedPreferences.WorkStart == new TimeSpan(8, 15, 0) &&
+                persistedPreferences.WorkEnd == new TimeSpan(18, 45, 0);
+            commandResults["SavePreferences"] =
+                preferencesHandled &&
+                preferencesPersisted &&
+                string.Equals(status.Text, "偏好已保存。", StringComparison.Ordinal);
+            commandDiagnostics["SavePreferences"] = new(
+                preferencesHandled,
+                preferencesPersisted,
+                status.Text);
+
+            var minimizeHandled = RaiseShortcut(ModifierKeys.Control, Key.M);
+            commandResults["Minimize"] =
+                minimizeHandled && main.WindowState == WindowState.Minimized;
+            commandDiagnostics["Minimize"] = new(
+                minimizeHandled,
+                main.WindowState == WindowState.Minimized,
+                string.Empty);
+            main.WindowState = WindowState.Normal;
+            PumpDispatcher();
+            commandsWork =
+                commandResults.Count == 8 &&
+                commandResults.Values.All(value => value);
+        }
+        finally
+        {
+            for (var attempt = 0;
+                 attempt < 3 &&
+                 !string.Equals(themeButton.Content?.ToString(), originalThemeLabel, StringComparison.Ordinal);
+                 attempt++)
+            {
+                RaiseShortcut(ModifierKeys.Control | ModifierKeys.Shift, Key.T);
+            }
+
+            if (savedCountdownId is not null)
+            {
+                workspace.Apply(new DeleteCountdownChange(savedCountdownId));
+            }
+
+            workspace.Apply(new SavePreferencesChange(
+                originalPreferences.DisplayPrecision,
+                originalPreferences.MonthlySalary,
+                originalPreferences.WorkStart,
+                originalPreferences.WorkEnd));
+            Required<ComboBox>(main, "DisplayPrecision").SelectedIndex =
+                originalPreferences.DisplayPrecision switch
+                {
+                    "Day" => 0,
+                    "Hour" => 1,
+                    "Minute" => 2,
+                    _ => 3
+                };
+            Required<TextBox>(main, "MonthlySalary").Text =
+                originalPreferences.MonthlySalary.ToString(CultureInfo.CurrentCulture);
+            Required<TextBox>(main, "WorkStart").Text =
+                originalPreferences.WorkStart.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
+            Required<TextBox>(main, "WorkEnd").Text =
+                originalPreferences.WorkEnd.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
+            Required<Popup>(main, "FilterPopup").IsOpen = false;
+            Required<Popup>(main, "TagManagerPopup").IsOpen = false;
+            main.WindowState = originalWindowState;
+            main.IsEnabled = originalEnabled;
+            main.ShowWorkspace(originalWorkspace);
+            countdownTab.Focus();
+            PumpDispatcher();
+        }
+
+        var countdownName = Required<TextBox>(main, "CountdownName");
+        var originalName = countdownName.Text;
+        var textSentinel = "快捷键输入保护";
+        main.ShowWorkspace(WorkspaceKind.Countdowns);
+        PumpDispatcher();
+        countdownName.Text = textSentinel;
+        var textBoxFocused = countdownName.Focus();
+        PumpDispatcher();
+        var workspaceBeforeTextShortcut = main.CurrentWorkspace;
+        var textBoxGuarded =
+            textBoxFocused &&
+            countdownName.IsKeyboardFocused &&
+            !WindowValidationInput.RaisePreviewKey(countdownName, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == workspaceBeforeTextShortcut &&
+            string.Equals(countdownName.Text, textSentinel, StringComparison.Ordinal);
+        countdownName.Text = originalName;
+
+        var countdownDateInput = Required<DatePicker>(main, "CountdownDate");
+        var datePickerFocused = countdownDateInput.Focus();
+        PumpDispatcher();
+        var datePickerGuarded =
+            datePickerFocused &&
+            countdownDateInput.IsKeyboardFocusWithin &&
+            !WindowValidationInput.RaisePreviewKey(countdownDateInput, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == workspaceBeforeTextShortcut;
+        var countdownHourInput = Required<ComboBox>(main, "CountdownHour");
+        var comboBoxFocused = countdownHourInput.Focus();
+        PumpDispatcher();
+        var comboBoxGuarded =
+            comboBoxFocused &&
+            countdownHourInput.IsKeyboardFocusWithin &&
+            !WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == workspaceBeforeTextShortcut;
+        var textInputPreserved = textBoxGuarded && datePickerGuarded && comboBoxGuarded;
+
+        countdownTab.Focus();
+        main.ShowWorkspace(WorkspaceKind.Countdowns);
+        var filterPopup = Required<Popup>(main, "FilterPopup");
+        filterPopup.IsOpen = true;
+        PumpDispatcher();
+        var popupGuarded =
+            !WindowValidationInput.RaisePreviewKey(countdownTab, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == WorkspaceKind.Countdowns &&
+            filterPopup.IsOpen;
+        filterPopup.IsOpen = false;
+
+        main.IsEnabled = false;
+        var modalOwnerGuarded =
+            !WindowValidationInput.RaisePreviewKey(countdownTab, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == WorkspaceKind.Countdowns;
+        main.IsEnabled = originalEnabled;
+        main.ShowWorkspace(originalWorkspace);
+        countdownTab.Focus();
+        PumpDispatcher();
+
+        return new MainKeyboardBehaviorResult(
+            initialFocusedAutomationId,
+            initialFocusSafe,
+            tabSequence,
+            countdownTabPath,
+            notesTabPath,
+            commandsWork,
+            commandResults,
+            commandDiagnostics,
+            textInputPreserved,
+            new MainShortcutInputGuardResult(
+                textBoxGuarded,
+                datePickerGuarded,
+                comboBoxGuarded),
+            popupGuarded,
+            modalOwnerGuarded);
+    }
+
+    private static MainWorkspaceTabPathResult ValidateMainWorkspaceTabPath(
+        MainWindow main,
+        WorkspaceKind workspace)
+    {
+        main.ShowWorkspace(workspace);
+        PumpDispatcher();
+        var expected = ExpectedMainWorkspaceTabPath(main, workspace);
+        var forward = TraverseMainWorkspaceTabPath(main, expected[0], expected[^1], FocusNavigationDirection.Next);
+        var backward = TraverseMainWorkspaceTabPath(main, expected[^1], expected[0], FocusNavigationDirection.Previous);
+        var evaluation = EvaluateMainWorkspaceTabPath(
+            expected,
+            forward.Sequence,
+            backward.Sequence,
+            forward.FocusVisualsVisible && backward.FocusVisualsVisible);
+        return new MainWorkspaceTabPathResult(
+            expected,
+            forward.Sequence,
+            backward.Sequence,
+            evaluation.ForwardMatches,
+            evaluation.BackwardSymmetric,
+            evaluation.FocusVisualsVisible,
+            forward.FocusedTargets,
+            backward.FocusedTargets);
+    }
+
+    private static MainWorkspaceTabPathEvaluation EvaluateMainWorkspaceTabPath(
+        IReadOnlyList<string> expected,
+        IReadOnlyList<string> forward,
+        IReadOnlyList<string> backward,
+        bool focusVisualsVisible) =>
+        new(
+            forward.SequenceEqual(expected, StringComparer.Ordinal),
+            backward.SequenceEqual(expected.Reverse(), StringComparer.Ordinal),
+            focusVisualsVisible);
+
+    private static IReadOnlyList<string> ExpectedMainWorkspaceTabPath(
+        MainWindow main,
+        WorkspaceKind workspace)
+    {
+        var ids = workspace == WorkspaceKind.Countdowns
+            ? new[]
+            {
+                "CountdownTab", "NotesTab", "FilterButton", "TagManagerButton",
+                "CountdownName", "CountdownDate", "CountdownHour", "CountdownMinute",
+                "CountdownSecond", "SetNowButton", "CountdownTags",
+                "ManageCountdownReminderRulesButton", "CancelCountdownEdit",
+                "SaveCountdownButton", "DisplayPrecision", "MonthlySalary", "WorkStart",
+                "WorkEnd", "SavePreferencesButton", "CountdownListRegion", "StatusText"
+            }
+            : new[]
+            {
+                "CountdownTab", "NotesTab", "FilterButton", "TagManagerButton",
+                "NoteText", "NoteDate", "SaveNoteButton", "CancelNoteEdit", "NoteReminder",
+                "ManageNoteReminderRulesButton", "NoteReminderInterval", "CustomReminderMinutes",
+                "NoteTags", "NoteSearch", "NoteReminderDate", "NoteReminderHour",
+                "NoteReminderMinute", "NotesListRegion", "StatusText"
+            };
+        return ids.Where(id =>
+        {
+            var element = id switch
+            {
+                "CountdownTags" => Required<TagSelector>(main, id).PopupTrigger,
+                "NoteTags" => Required<TagSelector>(main, id).PopupTrigger,
+                _ => Required<FrameworkElement>(main, id)
+            };
+            return element.IsVisible && element.IsEnabled && element.Focusable;
+        }).ToArray();
+    }
+
+    private static MainTabTraversalResult TraverseMainWorkspaceTabPath(
+        MainWindow main,
+        string startId,
+        string endId,
+        FocusNavigationDirection direction)
+    {
+        var start = Required<FrameworkElement>(main, startId);
+        start.Focus();
+        PumpDispatcher();
+        var sequence = new List<string>();
+        var focusedTargets = new List<string>();
+        var focusVisualsVisible = true;
+        for (var attempt = 0; attempt < 128 && Keyboard.FocusedElement is DependencyObject focused; attempt++)
+        {
+            var target = ResolveMainTabTarget(main, focused);
+            if (target.Id.Length == 0)
+            {
+                break;
+            }
+
+            if (sequence.Count == 0 || !string.Equals(sequence[^1], target.Id, StringComparison.Ordinal))
+            {
+                sequence.Add(target.Id);
+            }
+
+            var focusedTarget = DescribeMainFocusedTarget(main, target, focused);
+            if (focusedTargets.Count == 0 ||
+                !string.Equals(focusedTargets[^1], focusedTarget, StringComparison.Ordinal))
+            {
+                focusedTargets.Add(focusedTarget);
+            }
+            focusVisualsVisible &= HasVisibleMainKeyboardFocus(target, focused);
+
+            if (string.Equals(target.Id, endId, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (focused is not UIElement element ||
+                !element.MoveFocus(new TraversalRequest(direction)))
+            {
+                break;
+            }
+            PumpDispatcher();
+        }
+
+        return new MainTabTraversalResult(sequence, focusedTargets, focusVisualsVisible);
+    }
+
+    private static string DescribeMainFocusedTarget(
+        MainWindow main,
+        MainTabTarget target,
+        DependencyObject focused)
+    {
+        if (ReferenceEquals(focused, target.Element) ||
+            target.Id is not ("CountdownListRegion" or "NotesListRegion"))
+        {
+            return target.Id;
+        }
+
+        if (target.Id == "CountdownListRegion" && focused is Button countdownAction)
+        {
+            return countdownAction.Content?.ToString() switch
+            {
+                "编辑" => "CountdownListRegion.Edit",
+                "删除" => "CountdownListRegion.Delete",
+                _ => "CountdownListRegion.Button"
+            };
+        }
+
+        if (target.Id == "NotesListRegion")
+        {
+            if (ReferenceEquals(focused, Required<Button>(main, "ToggleActiveNotes")))
+            {
+                return "NotesListRegion.ActiveSection";
+            }
+
+            if (ReferenceEquals(focused, Required<Button>(main, "ToggleCompletedNotes")))
+            {
+                return "NotesListRegion.CompletedSection";
+            }
+
+            if (focused is Button { Uid: "NoteDateDisclosure" })
+            {
+                return "NotesListRegion.DateSection";
+            }
+
+            if (focused is CheckBox)
+            {
+                return "NotesListRegion.Completion";
+            }
+
+            if (focused is Button noteAction)
+            {
+                return noteAction.Content?.ToString() switch
+                {
+                    "编辑" => "NotesListRegion.Edit",
+                    "删除" => "NotesListRegion.Delete",
+                    _ => "NotesListRegion.Button"
+                };
+            }
+        }
+
+        return $"{target.Id}.{focused.GetType().Name}";
+    }
+
+    private static bool HasVisibleMainKeyboardFocus(
+        MainTabTarget target,
+        DependencyObject focused)
+    {
+        var focusOwner = target.Id is "CountdownListRegion" or "NotesListRegion" &&
+                focused is FrameworkElement focusedElement
+            ? focusedElement
+            : target.Element;
+        if (!focusOwner.IsKeyboardFocused && !focusOwner.IsKeyboardFocusWithin)
+        {
+            return false;
+        }
+
+        if (focusOwner.FocusVisualStyle is not null)
+        {
+            return true;
+        }
+
+        if (focusOwner is not Control control || control.Template is null)
+        {
+            return false;
+        }
+
+        control.ApplyTemplate();
+        return new[] { "FocusRing", "Box", "Surface" }
+            .Select(name => control.Template.FindName(name, control))
+            .OfType<Border>()
+            .Any(border =>
+                border.IsVisible &&
+                HasVisibleBrush(border.BorderBrush) &&
+                new[]
+                {
+                    border.BorderThickness.Left,
+                    border.BorderThickness.Top,
+                    border.BorderThickness.Right,
+                    border.BorderThickness.Bottom
+                }.Max() >= 2);
+    }
+
+    private static bool ValidateMainKeyboardPathNegativeFixtures()
+    {
+        var countdown = new[]
+        {
+            "CountdownTab", "NotesTab", "CountdownTags", "CountdownListRegion", "StatusText"
+        };
+        var notes = new[]
+        {
+            "CountdownTab", "NotesTab", "NoteTags", "NotesListRegion", "StatusText"
+        };
+
+        var swappedCountdown = countdown.ToArray();
+        (swappedCountdown[1], swappedCountdown[2]) = (swappedCountdown[2], swappedCountdown[1]);
+        return EvaluateMainWorkspaceTabPath(
+                countdown, countdown, countdown.Reverse().ToArray(), true).AllPassed &&
+            EvaluateMainWorkspaceTabPath(
+                notes, notes, notes.Reverse().ToArray(), true).AllPassed &&
+            !EvaluateMainWorkspaceTabPath(
+                countdown.Where(id => id != "CountdownTags").ToArray(),
+                countdown,
+                countdown.Reverse().ToArray(),
+                true).AllPassed &&
+            !EvaluateMainWorkspaceTabPath(
+                notes.Where(id => id != "NoteTags").ToArray(),
+                notes,
+                notes.Reverse().ToArray(),
+                true).AllPassed &&
+            !EvaluateMainWorkspaceTabPath(
+                countdown, swappedCountdown, countdown.Reverse().ToArray(), true).AllPassed &&
+            !EvaluateMainWorkspaceTabPath(
+                notes, notes, notes.Reverse().Skip(1).ToArray(), true).AllPassed &&
+            !EvaluateMainWorkspaceTabPath(
+                notes, notes, notes.Reverse().ToArray(), false).AllPassed;
+    }
+
+    private static MainTabTarget ResolveMainTabTarget(MainWindow main, DependencyObject focused)
+    {
+        var countdownList = Required<ScrollViewer>(main, "CountdownListRegion");
+        if (IsDescendantOrSelf(focused, countdownList))
+        {
+            return new MainTabTarget("CountdownListRegion", countdownList);
+        }
+
+        var notesList = Required<ScrollViewer>(main, "NotesListRegion");
+        if (IsDescendantOrSelf(focused, notesList))
+        {
+            return new MainTabTarget("NotesListRegion", notesList);
+        }
+
+        for (var current = focused; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            var id = AutomationProperties.GetAutomationId(current);
+            if (id.Length > 0 && current is FrameworkElement element)
+            {
+                return new MainTabTarget(id, element);
+            }
+        }
+
+        return new MainTabTarget(string.Empty, Required<ToggleButton>(main, "CountdownTab"));
+    }
+
+    private static bool IsDescendantOrSelf(DependencyObject candidate, DependencyObject ancestor)
+    {
+        for (var current = candidate; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static MainStructuralAnnouncementsResult ValidateMainStructuralAnnouncements(string assetRoot)
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-structural-announcements-{Guid.NewGuid():N}.settings.json");
+        MainWindow? window = null;
+        try
+        {
+            var workspace = DesktopWorkspace.Load(settingsPath);
+            using var calendar = new HolidayCalendar(assetRoot);
+            window = new MainWindow(
+                workspace,
+                calendar,
+                new DiagnosticLogger(settingsPath + ".diagnostic.jsonl"),
+                assetRoot)
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            window.Show();
+            PumpDispatcher();
+            var status = Required<TextBlock>(window, "StatusText");
+            var emptyCountdowns = Required<TextBlock>(window, "EmptyCountdownMessage");
+            var emptyNotes = Required<TextBlock>(window, "EmptyNotesMessage");
+
+            window.ShowWorkspace(WorkspaceKind.Countdowns);
+            PumpDispatcher();
+            var countdownWorkspaceAnnounced = VisiblePoliteTextEquals(
+                status,
+                "当前工作区：倒计时");
+            var countdownFirstUseEmptyAnnounced = VisiblePoliteTextEquals(
+                emptyCountdowns,
+                "还没有倒计时，先添加一个目标。");
+            window.ShowWorkspace(WorkspaceKind.Notes);
+            PumpDispatcher();
+            var notesWorkspaceAnnounced = VisiblePoliteTextEquals(
+                status,
+                "当前工作区：便签");
+            var notesFirstUseEmptyAnnounced = VisiblePoliteTextEquals(
+                emptyNotes,
+                "还没有便签，先写下一件想记住的事。");
+
+            var countdownSaved = workspace.Apply(new SaveCountdownChange(
+                null,
+                "结构变化通知倒计时探针",
+                workspace.Snapshot.UtcNow.AddDays(7),
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>())).Succeeded;
+            var noteSaved = workspace.Apply(new SaveNoteChange(
+                null,
+                "结构变化通知便签探针",
+                workspace.Snapshot.BeijingNow.Date,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance)).Succeeded;
+
+            window.ShowWorkspace(WorkspaceKind.Countdowns);
+            Required<ToggleButton>(window, "CountdownExpiredFilter").RaiseEvent(
+                new RoutedEventArgs(ButtonBase.ClickEvent));
+            PumpDispatcher();
+            var countdownFilterEmptyAnnounced = countdownSaved && VisiblePoliteTextEquals(
+                emptyCountdowns,
+                "没有符合当前筛选条件的倒计时。");
+            var countdownFilterResultAnnounced =
+                VisiblePoliteTextEquals(status, "筛选结果：0 个倒计时");
+
+            window.ShowWorkspace(WorkspaceKind.Notes);
+            Required<TextBox>(window, "NoteSearch").Text = "__validation_no_matching_note__";
+            PumpDispatcher();
+            var notesFilterEmptyAnnounced = noteSaved && VisiblePoliteTextEquals(
+                emptyNotes,
+                "没有符合当前筛选条件的便签。");
+            var notesFilterResultAnnounced =
+                VisiblePoliteTextEquals(status, "筛选结果：0 个待办");
+
+            window.ApplyTheme(ApplicationThemeMode.Day);
+            PumpDispatcher();
+            var dayThemeAnnounced = VisiblePoliteTextEquals(status, "当前主题：日间");
+            window.ApplyTheme(ApplicationThemeMode.Night);
+            PumpDispatcher();
+            var nightThemeAnnounced = VisiblePoliteTextEquals(status, "当前主题：夜间");
+
+            return new MainStructuralAnnouncementsResult(
+                countdownWorkspaceAnnounced,
+                notesWorkspaceAnnounced,
+                countdownFilterResultAnnounced && notesFilterResultAnnounced,
+                countdownFirstUseEmptyAnnounced,
+                notesFirstUseEmptyAnnounced,
+                countdownFilterEmptyAnnounced,
+                notesFilterEmptyAnnounced,
+                dayThemeAnnounced,
+                nightThemeAnnounced);
+        }
+        finally
+        {
+            window?.Close();
+            PumpDispatcher();
+            TryDeleteSettingsFiles(settingsPath);
+            TryDeleteFile(settingsPath + ".diagnostic.jsonl");
+        }
+    }
+
+    private static bool VisiblePoliteTextEquals(TextBlock textBlock, string expected) =>
+        textBlock.IsVisible &&
+        AutomationProperties.GetLiveSetting(textBlock) == AutomationLiveSetting.Polite &&
+        string.Equals(textBlock.Text, expected, StringComparison.Ordinal) &&
+        string.Equals(AutomationProperties.GetName(textBlock), expected, StringComparison.Ordinal);
+
+    private static ConfirmationDialogValidation ValidateConfirmationDialog(
+        ApplicationTheme theme,
+        MainWindow owner,
+        DateTimeOffset restoreUtc)
+    {
+        var scenarios = new[]
+        {
+            CreateConfirmationDialogScenario("Note", "删除便签", new string('签', 140)),
+            CreateConfirmationDialogScenario("Countdown", "删除倒计时", new string('时', 30))
+        };
+        var measurements = new List<ConfirmationDialogMeasurement>();
+        var originalOwnerLeft = owner.Left;
+        var originalOwnerTop = owner.Top;
+        try
+        {
+            var workArea = SystemParameters.WorkArea;
+            owner.Left = workArea.Left + Math.Max(24, (workArea.Width - owner.ActualWidth) / 2);
+            owner.Top = workArea.Top + Math.Max(24, (workArea.Height - owner.ActualHeight) / 2);
+            owner.UpdateLayout();
+            PumpDispatcher();
+
+            foreach (var mode in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
+            {
+                theme.Apply(mode);
+                foreach (var scenario in scenarios)
+                {
+                    var dialog = new ConfirmationDialog(owner, scenario.Title, scenario.Message)
+                    {
+                        ShowInTaskbar = false,
+                        Opacity = 0
+                    };
+                    try
+                    {
+                        dialog.Show();
+                        PumpDispatcher();
+                        dialog.UpdateLayout();
+                        var root = Descendants<FrameworkElement>(dialog).Single(element =>
+                            string.Equals(
+                                AutomationProperties.GetAutomationId(element),
+                                "ConfirmationContentRoot",
+                                StringComparison.Ordinal));
+                        var rootBounds = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
+                        var cancelBounds = dialog.CancelButton.TransformToAncestor(root).TransformBounds(
+                            new Rect(0, 0, dialog.CancelButton.ActualWidth, dialog.CancelButton.ActualHeight));
+                        var confirmBounds = dialog.ConfirmButton.TransformToAncestor(root).TransformBounds(
+                            new Rect(0, 0, dialog.ConfirmButton.ActualWidth, dialog.ConfirmButton.ActualHeight));
+                        var themed =
+                            dialog.WindowStyle == WindowStyle.None &&
+                            Equals(dialog.Background, Application.Current.FindResource("BackgroundBrush")) &&
+                            dialog.Content is Border border &&
+                            Equals(border.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
+                        var buttonsVisible =
+                            dialog.CancelButton.IsVisible &&
+                            dialog.ConfirmButton.IsVisible &&
+                            dialog.CancelButton.ActualWidth > 0 &&
+                            dialog.ConfirmButton.ActualWidth > 0 &&
+                            rootBounds.Contains(cancelBounds) &&
+                            rootBounds.Contains(confirmBounds);
+                        var bodyReachable =
+                            dialog.BodyText.TextWrapping == TextWrapping.Wrap &&
+                            dialog.BodyScroller.VerticalScrollBarVisibility == ScrollBarVisibility.Auto &&
+                            dialog.BodyScroller.ActualHeight > 0 &&
+                            (dialog.BodyText.ActualHeight <= dialog.BodyScroller.ActualHeight + 0.1 ||
+                             dialog.BodyScroller.ScrollableHeight > 0);
+                        dialog.BodyScroller.ScrollToEnd();
+                        dialog.BodyScroller.UpdateLayout();
+                        PumpDispatcher();
+                        var bodyEndReached =
+                            dialog.BodyScroller.ScrollableHeight <= 0.1 ||
+                            Math.Abs(dialog.BodyScroller.VerticalOffset - dialog.BodyScroller.ScrollableHeight) <= 0.1;
+                        var centeredOnOwner =
+                            Math.Abs(
+                                dialog.Left + dialog.ActualWidth / 2 -
+                                (owner.Left + owner.ActualWidth / 2)) <= 1 &&
+                            Math.Abs(
+                                dialog.Top + dialog.ActualHeight / 2 -
+                                (owner.Top + owner.ActualHeight / 2)) <= 1;
+                        var safeDefault =
+                            dialog.CancelButton.IsDefault &&
+                            dialog.CancelButton.IsCancel &&
+                            !dialog.ConfirmButton.IsDefault;
+
+                        dialog.Close();
+                        PumpDispatcher();
+                        var enterDidNotConfirm = RunConfirmationDialogAction(
+                            owner,
+                            scenario,
+                            ConfirmationDialogAction.Enter);
+                        var escapeDidNotConfirm = RunConfirmationDialogAction(
+                            owner,
+                            scenario,
+                            ConfirmationDialogAction.Escape);
+                        var cancelDidNotConfirm = RunConfirmationDialogAction(
+                            owner,
+                            scenario,
+                            ConfirmationDialogAction.Cancel);
+
+                        measurements.Add(new ConfirmationDialogMeasurement(
+                            $"{scenario.ContentKind}-{mode}",
+                            scenario.ContentKind,
+                            mode.ToString(),
+                            scenario.Subject.Length,
+                            scenario.Message.Length,
+                            string.Equals(dialog.BodyText.Text, scenario.Message, StringComparison.Ordinal),
+                            themed,
+                            buttonsVisible,
+                            bodyReachable,
+                            bodyEndReached,
+                            ReferenceEquals(dialog.Owner, owner),
+                            dialog.WindowStartupLocation.ToString(),
+                            centeredOnOwner,
+                            safeDefault,
+                            enterDidNotConfirm,
+                            escapeDidNotConfirm,
+                            cancelDidNotConfirm));
+                    }
+                    finally
+                    {
+                        if (dialog.IsVisible)
+                        {
+                            dialog.Close();
+                            PumpDispatcher();
+                        }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            owner.Left = originalOwnerLeft;
+            owner.Top = originalOwnerTop;
+            owner.UpdateLayout();
+            PumpDispatcher();
+            theme.Apply(restoreUtc);
+        }
+
+        var productionMatrixComplete =
+            measurements.Count == 4 &&
+            measurements.Select(measurement => measurement.StateId)
+                .Order(StringComparer.Ordinal)
+                .SequenceEqual(
+                    new[] { "Countdown-Day", "Countdown-Night", "Note-Day", "Note-Night" },
+                    StringComparer.Ordinal) &&
+            measurements.All(measurement => measurement.ProductionMessageExact);
+        var gates = ValidationExercises.EvaluateConfirmationDialogGates(
+            new ConfirmationDialogGateInputs(
+                measurements.Count == 4 && measurements.All(measurement => measurement.ButtonsVisible),
+                measurements.Count == 4 && measurements.All(measurement => measurement.BodyReachable),
+                measurements.Count == 4 && measurements.All(measurement => measurement.CancelIsSafeDefault),
+                productionMatrixComplete,
+                measurements.Count == 4 && measurements.All(measurement => measurement.BodyEndReached),
+                measurements.Count == 4 && measurements.All(measurement =>
+                    measurement.OwnerMatches &&
+                    string.Equals(measurement.StartupLocation, nameof(WindowStartupLocation.CenterOwner), StringComparison.Ordinal) &&
+                    measurement.CenteredOnOwner),
+                measurements.Count == 4 && measurements.All(measurement => measurement.EnterDidNotConfirm),
+                measurements.Count == 4 && measurements.All(measurement =>
+                    measurement.EscapeDidNotConfirm && measurement.CancelDidNotConfirm)));
+        return new ConfirmationDialogValidation(
+            measurements.Count == 4 && measurements.All(measurement => measurement.Themed),
+            measurements,
+            gates);
+    }
+
+    private static ConfirmationDialogScenario CreateConfirmationDialogScenario(
+        string contentKind,
+        string title,
+        string subject) =>
+        new(contentKind, title, subject, $"确定删除“{subject}”吗？");
+
+    private static bool RunConfirmationDialogAction(
+        Window owner,
+        ConfirmationDialogScenario scenario,
+        ConfirmationDialogAction action)
+    {
+        var actionDispatched = false;
+        var timedOut = false;
+        var dialog = new ConfirmationDialog(owner, scenario.Title, scenario.Message)
+        {
+            ShowInTaskbar = false,
+            Opacity = 0
+        };
+        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, dialog.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (dialog.IsVisible)
+            {
+                timedOut = true;
+                dialog.Close();
+            }
+        };
+        dialog.ContentRendered += (_, _) =>
+        {
+            dialog.Dispatcher.BeginInvoke(
+                DispatcherPriority.Input,
+                new Action(() =>
+                {
+                    if (action == ConfirmationDialogAction.Cancel)
+                    {
+                        actionDispatched = true;
+                        dialog.CancelButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        return;
+                    }
+
+                    dialog.Activate();
+                    dialog.CancelButton.Focus();
+                    var handle = new System.Windows.Interop.WindowInteropHelper(dialog).Handle;
+                    var virtualKey = action == ConfirmationDialogAction.Enter ? 0x0D : 0x1B;
+                    actionDispatched =
+                        handle != IntPtr.Zero &&
+                        NativeMethods.PostMessage(handle, 0x0100, new IntPtr(virtualKey), IntPtr.Zero) &&
+                        NativeMethods.PostMessage(handle, 0x0101, new IntPtr(virtualKey), IntPtr.Zero);
+                    if (!actionDispatched)
+                    {
+                        dialog.Close();
+                    }
+                }));
+            timer.Start();
+        };
+
+        try
+        {
+            var result = dialog.ShowDialog();
+            return actionDispatched && !timedOut && result != true;
+        }
+        finally
+        {
+            timer.Stop();
+            if (dialog.IsVisible)
+            {
+                dialog.Close();
+            }
+            PumpDispatcher();
+        }
+    }
+
+    private static SecondaryWindowTypographyResult ValidateSecondaryWindowTypography(
+        MainWindow owner,
+        bool floatingTypographyUnchanged,
+        double floatingBodyFontSize,
+        double floatingReminderFontSize)
+    {
+        var reminderKey = new ActiveReminderOccurrenceKey(
+            "typography-validation-rule",
+            new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+        var reminderCenter = new ReminderCenterWindow();
+        reminderCenter.AddEntry(new ReminderCenterItem(
+            reminderKey,
+            new NoteRecord(
+                "typography-validation-note",
+                "排版验证正文",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        var editor = new ReminderRulesEditorWindow(
+            Array.Empty<ReminderRule>(),
+            new ValidationClock(new DateTimeOffset(2031, 4, 5, 0, 0, 0, TimeSpan.Zero)))
+        {
+            Owner = owner
+        };
+        var confirmation = new ConfirmationDialog(owner, "排版验证", "排版验证正文");
+        var windows = new Window[] { reminderCenter, editor, confirmation };
+        foreach (var window in windows)
+        {
+            window.ShowInTaskbar = false;
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -20_000;
+            window.Top = -20_000;
+            window.Opacity = 0;
+        }
+
+        try
+        {
+            foreach (var window in windows)
+            {
+                window.Show();
+                PumpDispatcher();
+                window.UpdateLayout();
+            }
+
+            var measurements = new[]
+            {
+                MeasureSecondaryTypography(
+                    reminderCenter,
+                    "ReminderCenter",
+                    "ReminderCenterContentRoot",
+                    "提醒中心",
+                    "便签",
+                    "排版验证正文",
+                    reminderCenter.EntryCount == 1 ? "1 条" : string.Empty),
+                MeasureSecondaryTypography(
+                    editor,
+                    "ReminderRulesEditor",
+                    "ReminderRulesEditorContentRoot",
+                    "提醒规则",
+                    ":",
+                    "规则类型",
+                    "0 / 8 条"),
+                MeasureSecondaryTypography(
+                    confirmation,
+                    "ConfirmationDialog",
+                    "ConfirmationContentRoot",
+                    "排版验证",
+                    null,
+                    "排版验证正文",
+                    null)
+            };
+            var gates = ValidationExercises.EvaluateSecondaryWindowTypographyGates(
+                new SecondaryWindowTypographyGateInputs(
+                    measurements.All(measurement => measurement.RenderedScaleMatches),
+                    measurements.All(measurement => measurement.ContentRootDeclaresFontSize),
+                    floatingTypographyUnchanged &&
+                    Math.Abs(floatingBodyFontSize - 13) <= 0.1 &&
+                    Math.Abs(floatingReminderFontSize - 12) <= 0.1));
+            return new SecondaryWindowTypographyResult(
+                measurements,
+                gates,
+                floatingBodyFontSize,
+                floatingReminderFontSize);
+        }
+        finally
+        {
+            reminderCenter.ForceClose();
+            editor.Close();
+            confirmation.Close();
+            PumpDispatcher();
+        }
+    }
+
+    private static SecondaryWindowTypographyMeasurement MeasureSecondaryTypography(
+        Window window,
+        string name,
+        string rootAutomationId,
+        string titleText,
+        string? sectionText,
+        string bodyText,
+        string? minorText)
+    {
+        var root = Descendants<FrameworkElement>(window).Single(element =>
+            string.Equals(
+                AutomationProperties.GetAutomationId(element),
+                rootAutomationId,
+                StringComparison.Ordinal));
+        var texts = Descendants<TextBlock>(window).ToArray();
+        var title = texts.First(text => string.Equals(text.Text, titleText, StringComparison.Ordinal));
+        var section = sectionText is null
+            ? null
+            : texts.First(text => string.Equals(text.Text, sectionText, StringComparison.Ordinal));
+        var body = texts.First(text => string.Equals(text.Text, bodyText, StringComparison.Ordinal));
+        var minor = minorText is null
+            ? null
+            : texts.First(text => string.Equals(text.Text, minorText, StringComparison.Ordinal));
+        var rootFontSize = (double)root.GetValue(TextElement.FontSizeProperty);
+        var measurement = new SecondaryWindowTypographyMeasurement(
+            name,
+            rootAutomationId,
+            title.FontSize,
+            section?.FontSize,
+            body.FontSize,
+            minor?.FontSize,
+            rootFontSize,
+            root.ReadLocalValue(TextElement.FontSizeProperty) != DependencyProperty.UnsetValue);
+        return measurement;
+    }
+
     private static ReminderKeyboardExerciseResult ValidateReminderCenterKeyboardNavigation()
     {
         var key = new ActiveReminderOccurrenceKey(
@@ -9386,12 +10979,11 @@ internal static class ValidationReport
                 dispositionActionsTraverse &&
                 snoozeChoiceFocusable &&
                 snoozeActionsTraverse;
-            var closeWasGuarded = true;
             window.Close();
             PumpDispatcher();
-            closeWasGuarded &= window.IsVisible;
             return new ReminderKeyboardExerciseResult(
-                window.SupportsKeyboardNavigation && tabTraverses && closeWasGuarded,
+                tabTraverses,
+                window.IsVisible,
                 window.ShowActivated &&
                 !string.IsNullOrWhiteSpace(AutomationProperties.GetName(window)));
         }
@@ -9471,6 +11063,334 @@ internal static class ValidationReport
             PumpDispatcher();
         }
     }
+
+    private static NoteCompletedAuxiliaryContrastValidation ValidateNoteCompletedAuxiliaryContrast(
+        ApplicationTheme theme,
+        MainWindow main,
+        DateTimeOffset restoreUtc)
+    {
+        static bool HasColor(string key, string expected) =>
+            ColorConverter.ConvertFromString(expected) is Color expectedColor &&
+            Application.Current.FindResource(key) is Color actualColor &&
+            actualColor == expectedColor;
+
+        var completedToggle = Required<Button>(main, "ToggleCompletedNotes");
+        var auxiliaryText = Descendants<TextBlock>(completedToggle)
+            .SingleOrDefault(text => string.Equals(text.Text, "收好，但随时能找回", StringComparison.Ordinal));
+        var measurements = new List<NoteCompletedAuxiliaryContrastMeasurement>();
+        try
+        {
+            foreach (var checkpoint in new[]
+            {
+                (ApplicationThemeMode.Day, "#F7E9E2", "#765247", "Day"),
+                (ApplicationThemeMode.Night, "#493229", "#E7C99B", "Night")
+            })
+            {
+                theme.Apply(checkpoint.Item1);
+                main.ApplyTheme(checkpoint.Item1);
+                PumpDispatcher();
+                var background = completedToggle.Background as SolidColorBrush;
+                var foreground = auxiliaryText?.Foreground as SolidColorBrush;
+                var headerColorUnchanged = HasColor("NoteCompletedHeaderColor", checkpoint.Item2);
+                var mutedBrushUnchanged = checkpoint.Item4 == "Day"
+                    ? HasColor("MutedColor", "#87665A")
+                    : HasColor("MutedColor", "#D7B88C");
+                var usesDedicatedToken = auxiliaryText is not null &&
+                    ReferenceEquals(auxiliaryText.Foreground, Application.Current.FindResource("NoteCompletedAuxiliaryBrush")) &&
+                    !ReferenceEquals(auxiliaryText.Foreground, Application.Current.FindResource("MutedBrush"));
+                var actualBackgroundMatchesHeader =
+                    ReferenceEquals(completedToggle.Background, Application.Current.FindResource("NoteCompletedHeaderBrush"));
+                var ratio = background is not null && foreground is not null
+                    ? ContrastRatio(background.Color, foreground.Color)
+                    : 0;
+                measurements.Add(new NoteCompletedAuxiliaryContrastMeasurement(
+                    checkpoint.Item4,
+                    foreground?.Color.ToString() ?? string.Empty,
+                    background?.Color.ToString() ?? string.Empty,
+                    ratio,
+                    usesDedicatedToken,
+                    actualBackgroundMatchesHeader,
+                    mutedBrushUnchanged,
+                    headerColorUnchanged));
+            }
+
+            return new NoteCompletedAuxiliaryContrastValidation(
+                measurements.All(measurement => measurement.ContrastRatio >= 4.5),
+                measurements.All(measurement => measurement.UsesDedicatedToken),
+                measurements.All(measurement => measurement.ActualBackgroundMatchesHeader),
+                measurements.All(measurement => measurement.MutedBrushUnchanged),
+                measurements.All(measurement => measurement.CompletedHeaderColorUnchanged),
+                measurements);
+        }
+        finally
+        {
+            var restoreMode = theme.Apply(restoreUtc);
+            main.ApplyTheme(restoreMode);
+            PumpDispatcher();
+        }
+    }
+
+    private static MainNoteCompletionValidation ValidateMainNoteCompletion(
+        MainWindow main,
+        FloatingWindow floating,
+        TagSelector selector,
+        DesktopWorkspace workspace)
+    {
+        var originalMainWorkspace = main.CurrentWorkspace;
+        var originalFloatingWorkspace = floating.CurrentWorkspaceForValidation;
+        var originalFilter = workspace.Snapshot.Filter;
+        var originalTags = workspace.Snapshot.Settings.Tags;
+        var settingsTemporaryPath = workspace.Snapshot.SettingsPath + ".tmp";
+        var temporaryPathAlreadyBlocked = Directory.Exists(settingsTemporaryPath);
+        var probeText = $"便签完成复选框探针-{Guid.NewGuid():N}";
+        string? probeId = workspace.Snapshot.Settings.Notes.FirstOrDefault(note => !note.IsCompleted)?.Id;
+        var createdProbe = false;
+        var createdFailureBlock = false;
+        try
+        {
+            if (probeId is null && !temporaryPathAlreadyBlocked)
+            {
+                var saved = workspace.Apply(new SaveNoteChange(
+                    null,
+                    probeText,
+                    workspace.Snapshot.BeijingNow.Date,
+                    false,
+                    Array.Empty<string>(),
+                    Array.Empty<ReminderRule>()));
+                probeId = saved.Succeeded
+                    ? workspace.Snapshot.Settings.Notes.Single(note =>
+                        string.Equals(note.Text, probeText, StringComparison.Ordinal)).Id
+                    : null;
+                createdProbe = probeId is not null;
+            }
+
+            if (probeId is null)
+            {
+                return MainNoteCompletionValidation.Failed;
+            }
+
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            PumpDispatcher();
+            main.UpdateLayout();
+            floating.UpdateLayout();
+
+            CheckBox MainCheck() => Descendants<CheckBox>(main)
+                .Single(check => string.Equals(check.Tag as string, probeId, StringComparison.OrdinalIgnoreCase));
+            CheckBox FloatingCheck() => Descendants<CheckBox>(floating)
+                .Single(check => string.Equals(check.Tag as string, probeId, StringComparison.OrdinalIgnoreCase));
+
+            var probeTag = new TagRecord($"completion-style-{Guid.NewGuid():N}", "尺寸探针", "#F4B6A6");
+            selector.SetTags(originalTags.Concat([probeTag]).ToArray());
+            selector.IsPopupOpen = true;
+            PumpDispatcher();
+            selector.UpdateLayout();
+            var tagCheck = Descendants<CheckBox>(selector.Popup.Child)
+                .Single(check => string.Equals(check.Tag as string, probeTag.Id, StringComparison.OrdinalIgnoreCase));
+            var dedicatedStyle = Required<Grid>(main, "MainContentProjection")
+                .FindResource("MainNoteCompletionCheck") as Style;
+
+            var mainMeasurement = MeasureNoteCompletionCheckBox(
+                "MainWindow",
+                MainCheck(),
+                dedicatedStyle);
+            var tagMeasurement = MeasureNoteCompletionCheckBox(
+                "TagSelector",
+                tagCheck,
+                dedicatedStyle);
+            var floatingMeasurement = MeasureNoteCompletionCheckBox(
+                "FloatingWindow",
+                FloatingCheck(),
+                dedicatedStyle);
+
+            var noteText = workspace.Snapshot.Settings.Notes.Single(note =>
+                string.Equals(note.Id, probeId, StringComparison.OrdinalIgnoreCase)).Text;
+            var initialName = AutomationProperties.GetName(MainCheck());
+            MainCheck().IsChecked = true;
+            PumpDispatcher();
+            var checkedWorks = workspace.Snapshot.Settings.Notes.Single(note =>
+                string.Equals(note.Id, probeId, StringComparison.OrdinalIgnoreCase)).IsCompleted;
+            var checkedName = AutomationProperties.GetName(MainCheck());
+
+            MainCheck().IsChecked = false;
+            PumpDispatcher();
+            var uncheckedWorks = !workspace.Snapshot.Settings.Notes.Single(note =>
+                string.Equals(note.Id, probeId, StringComparison.OrdinalIgnoreCase)).IsCompleted;
+            var uncheckedName = AutomationProperties.GetName(MainCheck());
+
+            var rollbackWorks = false;
+            if (!temporaryPathAlreadyBlocked)
+            {
+                Directory.CreateDirectory(settingsTemporaryPath);
+                createdFailureBlock = true;
+                var failureCheck = MainCheck();
+                failureCheck.IsChecked = true;
+                PumpDispatcher();
+                rollbackWorks =
+                    failureCheck.IsChecked == false &&
+                    !workspace.Snapshot.Settings.Notes.Single(note =>
+                        string.Equals(note.Id, probeId, StringComparison.OrdinalIgnoreCase)).IsCompleted &&
+                    AutomationProperties.GetName(failureCheck) == $"完成便签 {noteText}";
+            }
+            else
+            {
+                var failureCheck = MainCheck();
+                failureCheck.IsChecked = true;
+                PumpDispatcher();
+                rollbackWorks =
+                    failureCheck.IsChecked == false &&
+                    !workspace.Snapshot.Settings.Notes.Single(note =>
+                        string.Equals(note.Id, probeId, StringComparison.OrdinalIgnoreCase)).IsCompleted;
+            }
+
+            var interaction = new MainNoteCompletionInteractionValidation(
+                checkedWorks,
+                uncheckedWorks,
+                rollbackWorks,
+                initialName == $"完成便签 {noteText}" &&
+                checkedName == $"恢复便签 {noteText}" &&
+                uncheckedName == $"完成便签 {noteText}");
+            return new MainNoteCompletionValidation(
+                mainMeasurement,
+                tagMeasurement,
+                floatingMeasurement,
+                interaction);
+        }
+        finally
+        {
+            if (createdFailureBlock && Directory.Exists(settingsTemporaryPath))
+            {
+                Directory.Delete(settingsTemporaryPath);
+            }
+
+            if (createdProbe && probeId is not null)
+            {
+                workspace.Apply(new DeleteNoteChange(probeId));
+            }
+
+            selector.IsPopupOpen = false;
+            selector.SetTags(originalTags);
+            workspace.ApplyFilter(originalFilter);
+            main.ShowWorkspace(originalMainWorkspace);
+            floating.ShowWorkspace(originalFloatingWorkspace);
+            PumpDispatcher();
+        }
+    }
+
+    private static MainNoteCompletionMeasurement MeasureNoteCompletionCheckBox(
+        string user,
+        CheckBox checkBox,
+        Style? dedicatedStyle)
+    {
+        checkBox.ApplyTemplate();
+        checkBox.UpdateLayout();
+        var box = checkBox.Template.FindName("Box", checkBox) as Border;
+        var tick = checkBox.Template.FindName("Tick", checkBox) as WpfPath;
+        return new MainNoteCompletionMeasurement(
+            user,
+            Math.Round(box?.ActualWidth ?? 0, 2),
+            Math.Round(box?.ActualHeight ?? 0, 2),
+            Math.Round(tick?.Width ?? 0, 2),
+            Math.Round(tick?.Height ?? 0, 2),
+            box?.CornerRadius.TopLeft ?? 0,
+            dedicatedStyle is not null && ReferenceEquals(checkBox.Style, dedicatedStyle),
+            box is not null && tick is not null &&
+            ReferenceEquals(box.Background, Application.Current.FindResource("CanvasBrush")) &&
+            ReferenceEquals(box.BorderBrush, Application.Current.FindResource("PeachLineBrush")) &&
+            ReferenceEquals(tick.Stroke, Application.Current.FindResource("MainActionTextBrush")));
+    }
+
+    private static CountdownEmptyStateContrastValidation ValidateCountdownEmptyStateContrast(
+        ApplicationTheme theme,
+        MainWindow main)
+    {
+        var emptyMessage = Required<TextBlock>(main, "EmptyCountdownMessage");
+        var workspace = Required<Canvas>(main, "CountdownWorkspace");
+        var backdrop = Required<Border>(main, "CountdownWorkspaceBackdrop");
+        var originalApplicationThemeMode = theme.ActiveMode;
+        var originalMainThemeMode = main.CurrentThemeMode;
+        var originalVisibility = emptyMessage.Visibility;
+        var measurements = new List<CountdownEmptyStateContrastMeasurement>();
+        try
+        {
+            emptyMessage.Visibility = Visibility.Visible;
+            foreach (var mode in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
+            {
+                theme.Apply(mode);
+                main.ApplyTheme(mode);
+                main.UpdateLayout();
+                PumpDispatcher();
+
+                var foreground = emptyMessage.Foreground as SolidColorBrush;
+                var background = backdrop.Background as SolidColorBrush;
+                var foregroundUsesMutedBrush =
+                    ReferenceEquals(emptyMessage.Foreground, Application.Current.FindResource("MutedBrush"));
+                var actualBackgroundMatchesBackdrop =
+                    ReferenceEquals(backdrop.Background, Application.Current.FindResource("BackgroundBrush"));
+                var transparentAncestors = EmptyStateAncestorsAreTransparent(emptyMessage, workspace);
+                var textBounds = BoundsIn(emptyMessage, main);
+                var backdropBounds = BoundsIn(backdrop, main);
+                var textWithinBackdrop = backdropBounds.Contains(textBounds);
+
+                measurements.Add(new CountdownEmptyStateContrastMeasurement(
+                    mode.ToString(),
+                    foreground?.Color.ToString() ?? string.Empty,
+                    background?.Color.ToString() ?? string.Empty,
+                    foreground is not null && background is not null
+                        ? Math.Round(ContrastRatio(foreground.Color, background.Color), 3)
+                        : 0,
+                    foregroundUsesMutedBrush,
+                    actualBackgroundMatchesBackdrop,
+                    transparentAncestors,
+                    textWithinBackdrop));
+            }
+
+            return new CountdownEmptyStateContrastValidation(
+                measurements.Count == 2 && measurements.All(measurement =>
+                    measurement.ContrastRatio >= 4.5 &&
+                    measurement.ForegroundUsesMutedBrush &&
+                    measurement.ActualBackgroundMatchesBackdrop &&
+                    measurement.TransparentAncestors &&
+                    measurement.TextWithinBackdrop),
+                measurements);
+        }
+        finally
+        {
+            emptyMessage.Visibility = originalVisibility;
+            theme.Apply(originalApplicationThemeMode);
+            main.ApplyTheme(originalMainThemeMode);
+            main.UpdateLayout();
+            PumpDispatcher();
+        }
+    }
+
+    private static bool EmptyStateAncestorsAreTransparent(
+        DependencyObject element,
+        DependencyObject stopAt)
+    {
+        for (var current = VisualTreeHelper.GetParent(element);
+             current is not null && !ReferenceEquals(current, stopAt);
+             current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is Panel { Background: { } panelBackground } &&
+                !IsTransparent(panelBackground))
+            {
+                return false;
+            }
+
+            if (current is Control { Background: { } controlBackground } &&
+                !IsTransparent(controlBackground))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsTransparent(Brush brush) =>
+        brush is SolidColorBrush solid && solid.Color.A == 0;
 
     private static string BrushColor(Brush? brush) =>
         brush is SolidColorBrush solidColorBrush
@@ -9918,6 +11838,168 @@ internal static class ValidationReport
         }
     }
 
+    private static ProductionDatePickerValidation ValidateProductionDatePickers(
+        MainWindow main,
+        FloatingWindow floating)
+    {
+        var attached = new List<DatePickerProductionMeasurement>();
+        var originalMainWorkspace = main.CurrentWorkspace;
+        var mainReminderSchedule = Required<Grid>(main, "NoteReminderSchedule");
+        var originalMainReminderVisibility = mainReminderSchedule.Visibility;
+        var filterPopup = Required<Popup>(main, "FilterPopup");
+        var originalFilterOpen = filterPopup.IsOpen;
+        var floatingReminderSchedule = Required<Grid>(floating, "FloatingReminderSchedule");
+        var originalFloatingReminderVisibility = floatingReminderSchedule.Visibility;
+        var floatingWasCountdowns =
+            Required<ToggleButton>(floating, "FloatingCountdownsButton").IsChecked == true;
+        ReminderRulesEditorWindow? rulesEditor = null;
+        ReminderCenterWindow? reminderCenter = null;
+        Window? negativeHost = null;
+        try
+        {
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            PumpDispatcher();
+            attached.Add(MeasureDatePicker("Main.CountdownDate", Required<DatePicker>(main, "CountdownDate")));
+
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            mainReminderSchedule.Visibility = Visibility.Visible;
+            filterPopup.IsOpen = true;
+            PumpDispatcher();
+            attached.Add(MeasureDatePicker("Main.NoteDate", Required<DatePicker>(main, "NoteDate")));
+            attached.Add(MeasureDatePicker(
+                "Main.NoteReminderDate",
+                Required<DatePicker>(main, "NoteReminderDate")));
+            filterPopup.IsOpen = true;
+            PumpDispatcher();
+            attached.Add(MeasureDatePicker(
+                "Main.NoteDateFilter",
+                Required<DatePicker>(main, "NoteDateFilter")));
+
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            floatingReminderSchedule.Visibility = Visibility.Visible;
+            PumpDispatcher();
+            attached.Add(MeasureDatePicker(
+                "Floating.NoteDate",
+                Required<DatePicker>(floating, "FloatingNoteDate")));
+            attached.Add(MeasureDatePicker(
+                "Floating.ReminderDate",
+                Required<DatePicker>(floating, "FloatingReminderDate")));
+
+            rulesEditor = new ReminderRulesEditorWindow(
+                Array.Empty<ReminderRule>(),
+                new ValidationClock(new DateTimeOffset(2031, 4, 5, 0, 0, 0, TimeSpan.Zero)))
+            {
+                Owner = main,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            rulesEditor.Show();
+            PumpDispatcher();
+            attached.Add(MeasureDatePicker(
+                "ReminderRules.FirstDueDate",
+                Descendants<DatePicker>(rulesEditor).Single()));
+
+            var reminderKey = new ActiveReminderOccurrenceKey(
+                "date-picker-validation-rule",
+                new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+            reminderCenter = new ReminderCenterWindow
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            reminderCenter.AddEntry(new ReminderCenterItem(
+                reminderKey,
+                new NoteRecord(
+                    "date-picker-validation-note",
+                    "日期控件验证",
+                    "2031-04-05",
+                    false,
+                    Array.Empty<string>(),
+                    NoReminder.Instance),
+                0,
+                0));
+            reminderCenter.Show();
+            PumpDispatcher();
+            var snoozeChoice = Descendants<ComboBox>(reminderCenter).Single(comboBox =>
+                AutomationProperties.GetName(comboBox).StartsWith(
+                    "稍后提醒时间：",
+                    StringComparison.Ordinal));
+            snoozeChoice.SelectedItem = snoozeChoice.Items
+                .OfType<ComboBoxItem>()
+                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            PumpDispatcher();
+            var reminderCenterMeasurement = MeasureDatePicker(
+                "ReminderCenter.CustomSnoozeDate",
+                Descendants<DatePicker>(reminderCenter).Single());
+
+            var negativePicker = new DatePicker();
+            negativeHost = new Window
+            {
+                Content = negativePicker,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0,
+                Width = 240,
+                Height = 100
+            };
+            negativeHost.Show();
+            PumpDispatcher();
+            var negativeMeasurement = MeasureDatePicker(
+                "Negative.UnattachedDatePicker",
+                negativePicker);
+
+            return new ProductionDatePickerValidation(
+                attached,
+                reminderCenterMeasurement,
+                negativeMeasurement);
+        }
+        finally
+        {
+            negativeHost?.Close();
+            rulesEditor?.Close();
+            reminderCenter?.ForceClose();
+            filterPopup.IsOpen = originalFilterOpen;
+            mainReminderSchedule.Visibility = originalMainReminderVisibility;
+            main.ShowWorkspace(originalMainWorkspace);
+            floatingReminderSchedule.Visibility = originalFloatingReminderVisibility;
+            floating.ShowWorkspace(
+                floatingWasCountdowns ? WorkspaceKind.Countdowns : WorkspaceKind.Notes);
+            PumpDispatcher();
+        }
+    }
+
+    private static DatePickerProductionMeasurement MeasureDatePicker(
+        string name,
+        DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        var textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
+        var pointer = WindowValidationInput.ExerciseDatePickerTextPointer(picker);
+        var buttonOpensCalendar = WindowValidationInput.ExerciseDatePickerButton(picker);
+        var attached = ThemedDatePickerBehavior.IsAttached(picker);
+        var keyboardLifecycleWorks = attached && WindowValidationInput.ExerciseDatePicker(picker);
+        picker.ApplyTemplate();
+        textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
+        return new DatePickerProductionMeasurement(
+            name,
+            attached,
+            textBox is not null,
+            textBox?.IsReadOnly == true,
+            textBox?.Focusable == false,
+            pointer,
+            buttonOpensCalendar,
+            keyboardLifecycleWorks,
+            AutomationProperties.GetName(picker));
+    }
+
     private static T Required<T>(FrameworkElement root, string name)
         where T : class
     {
@@ -9954,14 +12036,225 @@ internal static class ValidationReport
 
     private sealed record TextFit(bool Fits, double Available, double Required);
 
+    private sealed record MainKeyboardBehaviorResult(
+        string InitialFocusedAutomationId,
+        bool InitialFocusSafe,
+        IReadOnlyList<string> TabSequence,
+        MainWorkspaceTabPathResult CountdownTabPath,
+        MainWorkspaceTabPathResult NotesTabPath,
+        bool CommandsWork,
+        IReadOnlyDictionary<string, bool> CommandResults,
+        IReadOnlyDictionary<string, MainShortcutCommandDiagnostic> CommandDiagnostics,
+        bool TextInputPreserved,
+        MainShortcutInputGuardResult InputGuards,
+        bool PopupGuarded,
+        bool ModalOwnerGuarded);
+
+    private sealed record MainShortcutCommandDiagnostic(
+        bool Handled,
+        bool EffectObserved,
+        string StatusText);
+
+    private sealed record MainShortcutInputGuardResult(
+        bool TextBox,
+        bool DatePicker,
+        bool ComboBox);
+
+    private sealed record MainWorkspaceTabPathResult(
+        IReadOnlyList<string> ExpectedSequence,
+        IReadOnlyList<string> ForwardSequence,
+        IReadOnlyList<string> BackwardSequence,
+        bool ForwardMatches,
+        bool BackwardSymmetric,
+        bool FocusVisualsVisible,
+        IReadOnlyList<string> ForwardFocusedTargets,
+        IReadOnlyList<string> BackwardFocusedTargets)
+    {
+        public bool AllPassed => ForwardMatches && BackwardSymmetric && FocusVisualsVisible;
+    }
+
+    private sealed record MainWorkspaceTabPathEvaluation(
+        bool ForwardMatches,
+        bool BackwardSymmetric,
+        bool FocusVisualsVisible)
+    {
+        public bool AllPassed => ForwardMatches && BackwardSymmetric && FocusVisualsVisible;
+    }
+
+    private sealed record MainTabTraversalResult(
+        IReadOnlyList<string> Sequence,
+        IReadOnlyList<string> FocusedTargets,
+        bool FocusVisualsVisible);
+
+    private sealed record MainTabTarget(string Id, FrameworkElement Element);
+
+    private sealed record MainStructuralAnnouncementsResult(
+        bool CountdownWorkspaceAnnounced,
+        bool NotesWorkspaceAnnounced,
+        bool FilterResultAnnounced,
+        bool CountdownFirstUseEmptyAnnounced,
+        bool NotesFirstUseEmptyAnnounced,
+        bool CountdownFilterEmptyAnnounced,
+        bool NotesFilterEmptyAnnounced,
+        bool DayThemeAnnounced,
+        bool NightThemeAnnounced);
+
+    private sealed record ConfirmationDialogScenario(
+        string ContentKind,
+        string Title,
+        string Subject,
+        string Message);
+
+    private sealed record ConfirmationDialogMeasurement(
+        string StateId,
+        string ContentKind,
+        string Theme,
+        int SubjectLength,
+        int MessageLength,
+        bool ProductionMessageExact,
+        bool Themed,
+        bool ButtonsVisible,
+        bool BodyReachable,
+        bool BodyEndReached,
+        bool OwnerMatches,
+        string StartupLocation,
+        bool CenteredOnOwner,
+        bool CancelIsSafeDefault,
+        bool EnterDidNotConfirm,
+        bool EscapeDidNotConfirm,
+        bool CancelDidNotConfirm);
+
+    private sealed record ConfirmationDialogValidation(
+        bool Themed,
+        IReadOnlyList<ConfirmationDialogMeasurement> Measurements,
+        ConfirmationDialogGateResults Gates);
+
+    private enum ConfirmationDialogAction
+    {
+        Enter,
+        Escape,
+        Cancel
+    }
+
+    private static class NativeMethods
+    {
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(
+            IntPtr windowHandle,
+            uint message,
+            IntPtr wordParameter,
+            IntPtr longParameter);
+    }
+
+    private sealed record SecondaryWindowTypographyMeasurement(
+        string Window,
+        string ContentRootAutomationId,
+        double TitleFontSize,
+        double? SectionFontSize,
+        double BodyFontSize,
+        double? MinorFontSize,
+        double ContentRootFontSize,
+        bool ContentRootDeclaresFontSize)
+    {
+        public bool RenderedScaleMatches =>
+            Math.Abs(TitleFontSize - 22) <= 0.1 &&
+            (SectionFontSize is null || Math.Abs(SectionFontSize.Value - 18) <= 0.1) &&
+            Math.Abs(BodyFontSize - 16) <= 0.1 &&
+            (MinorFontSize is null || Math.Abs(MinorFontSize.Value - 15) <= 0.1) &&
+            Math.Abs(ContentRootFontSize - 16) <= 0.1;
+    }
+
+    private sealed record SecondaryWindowTypographyResult(
+        IReadOnlyList<SecondaryWindowTypographyMeasurement> Windows,
+        SecondaryWindowTypographyGateResults Gates,
+        double FloatingBodyFontSize,
+        double FloatingReminderFontSize)
+    {
+        public bool RenderedScaleMatches => Gates.RenderedScaleMatches;
+
+        public bool ContentRootsDeclareFontSize => Gates.ContentRootsDeclareFontSize;
+
+        public bool FloatingTypographyUnchanged => Gates.FloatingTypographyUnchanged;
+    }
+
     private sealed record FloatingTrayInteractionExerciseResult(
         bool ProductionControllerActive,
         bool MinimizeHidesWindowAndShowsIcon,
         bool RestoreShowsWindowAndHidesIcon,
         bool ExitRequestsApplicationExit);
 
+    private sealed record DatePickerProductionMeasurement(
+        string Name,
+        bool Attached,
+        bool TextBoxPresent,
+        bool IsReadOnly,
+        bool TextBoxIsNotFocusable,
+        DatePickerPointerExerciseResult Pointer,
+        bool ButtonOpensCalendar,
+        bool EscapeClosesAndReturnsFocus,
+        string AutomationName);
+
+    private sealed record ProductionDatePickerValidation(
+        IReadOnlyList<DatePickerProductionMeasurement> Attached,
+        DatePickerProductionMeasurement ReminderCenter,
+        DatePickerProductionMeasurement UnattachedNegative)
+    {
+        public int ProductionInputCount => Attached.Count + 1;
+
+        public bool AllProductionInputsReadOnly =>
+            ProductionInputCount == 8 &&
+            Attached.All(input =>
+                input.TextBoxPresent && input.IsReadOnly && input.TextBoxIsNotFocusable) &&
+            ReminderCenter is
+            {
+                Attached: false,
+                TextBoxPresent: true,
+                IsReadOnly: true,
+                TextBoxIsNotFocusable: true,
+                ButtonOpensCalendar: true
+            } &&
+            !string.IsNullOrWhiteSpace(ReminderCenter.AutomationName);
+
+        public bool AllAttached =>
+            Attached.Count == 7 && Attached.All(input => input.Attached);
+
+        public bool AttachedTextPointerWorks =>
+            AllAttached &&
+            Attached.All(input =>
+                input.Pointer.TextBoxPresent &&
+                input.Pointer.PressInjected &&
+                input.Pointer.ReleaseInjected &&
+                input.Pointer.ReleaseHandled &&
+                input.Pointer.ReleaseOpened);
+
+        public bool AttachedTextDefersUntilRelease =>
+            AllAttached && Attached.All(input => input.Pointer.PressDidNotOpen);
+
+        public bool AttachedTextOpensThemedPopups =>
+            AllAttached && Attached.All(input => input.Pointer.ThemedPopupOpened);
+
+        public bool AttachedKeyboardLifecycleWorks =>
+            AllAttached && Attached.All(input => input.EscapeClosesAndReturnsFocus);
+
+        public bool UnattachedNegativeTextDoesNotOpen =>
+            UnattachedNegative is
+            {
+                Attached: false,
+                TextBoxPresent: true,
+                IsReadOnly: true,
+                ButtonOpensCalendar: true
+            } &&
+            UnattachedNegative.Pointer.PressInjected &&
+            UnattachedNegative.Pointer.ReleaseInjected &&
+            UnattachedNegative.Pointer.PressDidNotOpen &&
+            !UnattachedNegative.Pointer.ReleaseOpened &&
+            !UnattachedNegative.Pointer.ReleaseHandled;
+    }
+
     private sealed record ReminderKeyboardExerciseResult(
-        bool KeyboardTraversalWorks,
+        bool TabTraversalWorks,
+        bool CloseGuardWorks,
         bool InitialFocusAndAccessibleNameWork);
 
     private sealed record ReminderDeliveryExerciseResult(
@@ -10112,6 +12405,7 @@ internal static class ValidationReport
                 floating.FindResource("CanvasBrush"),
                 Application.Current.FindResource("CanvasBrush"));
             var day = floating.ProbeQuickAddThemeResources();
+            var dayBindings = floating.ProbeQuickAddPaletteBindings();
             var dayCanvas = ResourceColor(floating, "CanvasBrush");
             var dayActive = ResourceColor(floating, "ActiveBrush");
 
@@ -10129,6 +12423,7 @@ internal static class ValidationReport
                 floating.FindResource("CanvasBrush"),
                 Application.Current.FindResource("CanvasBrush"));
             var night = floating.ProbeQuickAddThemeResources();
+            var nightBindings = floating.ProbeQuickAddPaletteBindings();
             var nightCanvas = ResourceColor(floating, "CanvasBrush");
             var nightActive = ResourceColor(floating, "ActiveBrush");
 
@@ -10144,7 +12439,9 @@ internal static class ValidationReport
                 dayCanvas == "#FFFFFDFC" &&
                 nightCanvas == "#FF473323" &&
                 dayActive == "#FFA24438" &&
-                nightActive == "#FF6E492E");
+                nightActive == "#FF6E492E",
+                dayBindings,
+                nightBindings);
         }
         finally
         {
@@ -10164,7 +12461,14 @@ internal static class ValidationReport
         FloatingQuickAddThemeProbeResult Night,
         IReadOnlyList<string> CanvasColors,
         IReadOnlyList<string> ActiveColors,
-        bool IndependentFromApplicationTheme);
+        bool IndependentFromApplicationTheme,
+        FloatingQuickAddPaletteBindingValidation DayPaletteBindings,
+        FloatingQuickAddPaletteBindingValidation NightPaletteBindings)
+    {
+        public bool DayPaletteBindingsMatch => DayPaletteBindings.Gates.Passed;
+
+        public bool NightPaletteBindingsMatch => NightPaletteBindings.Gates.Passed;
+    }
 
     private sealed record MainReferenceDecorationValidation(
         bool ScalingMatches,
@@ -10267,6 +12571,67 @@ internal static class ValidationReport
         MainReferenceContentRoi ContentRoi,
         MainStressCountdownTitleMeasurement? StressCountdownTitle);
 
+    private sealed record MainDaySingleBorderSpec(
+        string StateId,
+        string Scene,
+        string FileName,
+        int ScanTop,
+        int ScanBottom,
+        IReadOnlyList<int> ExpectedEdges,
+        int LabelTop,
+        int LabelBottom);
+
+    private sealed record MainDaySingleBorderMeasurement(
+        string StateId,
+        string Scene,
+        IReadOnlyList<int> EdgeRows,
+        bool ExactControlEdges,
+        bool LabelsClear,
+        bool LowerDecorationPresent,
+        int ControlScanTop,
+        int DeclaredBottomBandStart,
+        int LowerDecorationPixelCount);
+
+    private sealed record MainDecorationBands(
+        int BackgroundSampleX,
+        IReadOnlyDictionary<string, MainDecorationBand> Scenes);
+
+    private sealed record MainDecorationBand(int TopBandEnd, int BottomBandStart);
+
+    private sealed record MainDaySingleBorderValidation(
+        bool Requested,
+        bool DaySingleBorder,
+        bool NightSingleBorder,
+        bool LabelsClear,
+        bool LowerDecorationConsistent,
+        IReadOnlyList<MainDaySingleBorderMeasurement> Measurements)
+    {
+        public bool AllPassed => !Requested ||
+            DaySingleBorder && NightSingleBorder && LabelsClear && LowerDecorationConsistent;
+
+        public static MainDaySingleBorderValidation NotRequested { get; } =
+            new(false, false, false, false, false, Array.Empty<MainDaySingleBorderMeasurement>());
+    }
+
+    private sealed record MainNightAlphaRange(
+        string Scene,
+        int MinimumY,
+        int MaximumY,
+        bool MatchesExpected);
+
+    private sealed record MainNightDerivationValidation(
+        bool Requested,
+        bool ByteIdentical,
+        bool AlphaRangesMatch,
+        IReadOnlyList<MainNightAlphaRange> AlphaRanges,
+        string Evidence)
+    {
+        public bool AllPassed => !Requested || ByteIdentical && AlphaRangesMatch;
+
+        public static MainNightDerivationValidation NotRequested { get; } =
+            new(false, false, false, Array.Empty<MainNightAlphaRange>(), string.Empty);
+    }
+
     private sealed record MainStressCountdownTitleBounds(
         double X,
         double Y,
@@ -10297,6 +12662,8 @@ internal static class ValidationReport
         MainStressCountdownTitleBounds TitleBounds,
         MainStressCountdownTitleBounds ViewportBounds,
         bool FullyVisibleInViewport,
+        MainStressCountdownTitleBounds RemainingBounds,
+        bool SeparatedFromRemaining,
         MainStressCountdownTitleBounds ActionsBounds,
         bool SeparatedFromActions)
     {
@@ -10319,6 +12686,8 @@ internal static class ValidationReport
                 0,
                 false,
                 MainStressCountdownTitleBounds.Empty,
+                MainStressCountdownTitleBounds.Empty,
+                false,
                 MainStressCountdownTitleBounds.Empty,
                 false,
                 MainStressCountdownTitleBounds.Empty,
@@ -10409,6 +12778,7 @@ internal static class ValidationReport
                         string.Equals(measurement.TextTrimming, "None", StringComparison.Ordinal),
                         measurement.TextFits,
                         measurement.FullyVisibleInViewport,
+                        measurement.SeparatedFromRemaining,
                         measurement.SeparatedFromActions)).AllPassed);
 
         public static MainReferenceBaselineValidation NotRequested { get; } = new(
@@ -10683,6 +13053,70 @@ internal static class ValidationReport
     private sealed record FloatingPrimaryCountdownContrastValidation(
         FloatingPrimaryCountdownContrastGateResults Gates,
         IReadOnlyList<FloatingPrimaryCountdownContrastMeasurement> Measurements);
+
+    private sealed record NoteCompletedAuxiliaryContrastMeasurement(
+        string Theme,
+        string Foreground,
+        string CompositeBackground,
+        double ContrastRatio,
+        bool UsesDedicatedToken,
+        bool ActualBackgroundMatchesHeader,
+        bool MutedBrushUnchanged,
+        bool CompletedHeaderColorUnchanged);
+
+    private sealed record NoteCompletedAuxiliaryContrastValidation(
+        bool TextContrast,
+        bool UsesDedicatedToken,
+        bool ActualBackgroundMatchesHeader,
+        bool MutedBrushUnchanged,
+        bool CompletedHeaderColorUnchanged,
+        IReadOnlyList<NoteCompletedAuxiliaryContrastMeasurement> Measurements);
+
+    private sealed record CountdownEmptyStateContrastMeasurement(
+        string Theme,
+        string Foreground,
+        string ActualBackground,
+        double ContrastRatio,
+        bool ForegroundUsesMutedBrush,
+        bool ActualBackgroundMatchesBackdrop,
+        bool TransparentAncestors,
+        bool TextWithinBackdrop);
+
+    private sealed record CountdownEmptyStateContrastValidation(
+        bool TextContrast,
+        IReadOnlyList<CountdownEmptyStateContrastMeasurement> Measurements);
+
+    private sealed record MainNoteCompletionMeasurement(
+        string User,
+        double BoxWidth,
+        double BoxHeight,
+        double TickWidth,
+        double TickHeight,
+        double CornerRadius,
+        bool UsesDedicatedStyle,
+        bool UsesWarmTokens);
+
+    private sealed record MainNoteCompletionInteractionValidation(
+        bool Checked,
+        bool Unchecked,
+        bool PersistenceFailureRolledBack,
+        bool AccessibleNamesUpdated);
+
+    private sealed record MainNoteCompletionValidation(
+        MainNoteCompletionMeasurement Main,
+        MainNoteCompletionMeasurement TagSelector,
+        MainNoteCompletionMeasurement Floating,
+        MainNoteCompletionInteractionValidation Interaction)
+    {
+        public IReadOnlyList<MainNoteCompletionMeasurement> Measurements =>
+            [Main, TagSelector, Floating];
+
+        public static MainNoteCompletionValidation Failed { get; } = new(
+            new("MainWindow", 0, 0, 0, 0, 0, false, false),
+            new("TagSelector", 0, 0, 0, 0, 0, false, false),
+            new("FloatingWindow", 0, 0, 0, 0, 0, false, false),
+            new(false, false, false, false));
+    }
 
     private sealed record FloatingReferenceExerciseResult(
         bool AspectMatches,

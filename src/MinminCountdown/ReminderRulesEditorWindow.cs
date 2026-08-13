@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using MinminCountdown.Core;
@@ -216,14 +217,14 @@ internal sealed class ReminderRulesEditorWindow : Window
         var heading = new TextBlock
         {
             Text = "提醒规则",
-            FontSize = 22,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center
         };
+        heading.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowTitleFontSize");
         heading.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         _countText.Margin = new Thickness(12, 0, 0, 0);
         _countText.VerticalAlignment = VerticalAlignment.Center;
-        _countText.FontSize = 15;
+        _countText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
         _countText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         var header = new StackPanel { Orientation = Orientation.Horizontal };
         header.Children.Add(heading);
@@ -284,6 +285,8 @@ internal sealed class ReminderRulesEditorWindow : Window
         dialogActions.Children.Add(cancel);
 
         var layout = new Grid { Margin = new Thickness(20) };
+        layout.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");
+        AutomationProperties.SetAutomationId(layout, "ReminderRulesEditorContentRoot");
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition());
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -326,9 +329,9 @@ internal sealed class ReminderRulesEditorWindow : Window
         {
             Text = ":",
             Margin = new Thickness(6, 0, 6, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 18
+            VerticalAlignment = VerticalAlignment.Center
         };
+        separator.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
         separator.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         Grid.SetColumn(separator, 2);
         Grid.SetColumn(_firstDueMinute, 3);
@@ -380,9 +383,9 @@ internal sealed class ReminderRulesEditorWindow : Window
         {
             Text = label,
             Margin = new Thickness(0, rowIndex == 0 ? 0 : 10, 10, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 16
+            VerticalAlignment = VerticalAlignment.Center
         };
+        labelBlock.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
         labelBlock.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         input.SetValue(Grid.RowProperty, rowIndex * 2);
         input.SetValue(Grid.ColumnProperty, 1);
@@ -469,7 +472,8 @@ internal sealed class ReminderRulesEditorWindow : Window
         _countText.Text = $"{_rules.Count} / 8 条";
         if (_rules.Count == 0)
         {
-            var empty = new TextBlock { Text = "当前不提醒", FontSize = 15 };
+            var empty = new TextBlock { Text = "当前不提醒" };
+            empty.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
             empty.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             _rulesHost.Children.Add(empty);
             return;
@@ -482,8 +486,9 @@ internal sealed class ReminderRulesEditorWindow : Window
                 Text = Describe(rule),
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
-                FontSize = 15
+                FontWeight = FontWeights.Regular
             };
+            summary.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
             summary.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
             var edit = ActionButton("编辑", $"编辑规则 {Describe(rule)}");
             var copy = ActionButton("复制", $"复制规则 {Describe(rule)}");

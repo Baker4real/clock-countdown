@@ -12,6 +12,20 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         Background="{DynamicResource BackgroundBrush}">
+  <Window.Resources>
+    <Style x:Key="MainKeyboardFocusVisual">
+      <Setter Property="Control.Template">
+        <Setter.Value>
+          <ControlTemplate>
+            <Border Margin="-3"
+                    BorderBrush="{DynamicResource ActiveBrush}"
+                    BorderThickness="3"
+                    CornerRadius="8" />
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="58"
                         ResizeBorderThickness="6"
@@ -275,6 +289,52 @@
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="Box" Property="BorderThickness" Value="2" />
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+            <Style x:Key="MainNoteCompletionCheck" TargetType="{x:Type CheckBox}">
+              <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
+              <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type CheckBox}">
+                    <Grid Width="30" Height="30">
+                      <Border x:Name="Box"
+                              Width="24"
+                              Height="24"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Background="{DynamicResource CanvasBrush}"
+                              BorderBrush="{DynamicResource PeachLineBrush}"
+                              BorderThickness="1"
+                              CornerRadius="6">
+                        <Path x:Name="Tick"
+                              Width="14"
+                              Height="10"
+                              Stroke="{DynamicResource MainActionTextBrush}"
+                              StrokeThickness="2.5"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
+                              Data="M 1,5 L 5,9 L 13,1"
+                              Visibility="Collapsed" />
+                      </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="Box" Property="Background" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="Box" Property="BorderThickness" Value="2" />
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -643,13 +703,33 @@
                       Content="保存设置"
                       Style="{StaticResource MainPrimaryButton}" />
 
-              <ScrollViewer Canvas.Left="40"
+              <ScrollViewer x:Name="CountdownListRegion"
+                            Canvas.Left="40"
                             Canvas.Top="972"
                             Width="1085"
                             Height="316"
+                            FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
+                            Focusable="True"
+                            IsTabStop="True"
                             VerticalScrollBarVisibility="Auto"
                             HorizontalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="CountdownRows" />
+                <StackPanel>
+                  <StackPanel x:Name="CountdownRows" />
+                  <TextBlock x:Name="EmptyCountdownMessage"
+                             Margin="20,20,20,0"
+                             HorizontalAlignment="Center"
+                             FontSize="20"
+                             Foreground="{DynamicResource MutedBrush}"
+                             Text="还没有倒计时，先添加一个目标。"
+                             TextWrapping="Wrap"
+                             Visibility="Collapsed" />
+                  <Button x:Name="ResetEmptyCountdownFiltersButton"
+                          Margin="0,12,0,0"
+                          HorizontalAlignment="Center"
+                          Content="重置筛选"
+                          Visibility="Collapsed"
+                          Style="{StaticResource MainSecondaryButton}" />
+                </StackPanel>
               </ScrollViewer>
             </Canvas>
 
@@ -818,10 +898,14 @@
                          FontSize="18"
                          Foreground="{DynamicResource DangerBrush}"
                          TextWrapping="Wrap" />
-              <ScrollViewer Canvas.Left="46"
+              <ScrollViewer x:Name="NotesListRegion"
+                            Canvas.Left="46"
                             Canvas.Top="784"
                             Width="1072"
                             Height="486"
+                            FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
+                            Focusable="True"
+                            IsTabStop="True"
                             VerticalScrollBarVisibility="Auto"
                             HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
@@ -906,7 +990,7 @@
                                    Text="已完成" />
                         <TextBlock Margin="0,2,0,0"
                                    FontSize="16"
-                                   Foreground="{DynamicResource MutedBrush}"
+                                   Foreground="{DynamicResource NoteCompletedAuxiliaryBrush}"
                                    Text="收好，但随时能找回" />
                       </StackPanel>
                       <TextBlock x:Name="CompletedNotesCount"
@@ -968,6 +1052,9 @@
                        Width="320"
                        FontSize="18"
                        Foreground="{DynamicResource MutedBrush}"
+                       FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
+                       Focusable="True"
+                       KeyboardNavigation.IsTabStop="True"
                        TextAlignment="Right"
                        TextTrimming="CharacterEllipsis" />
 

@@ -1,12 +1,23 @@
 param(
     [Parameter(Mandatory = $false)]
-    [string] $ProjectRoot = (Split-Path -Parent $PSScriptRoot)
+    [string] $ProjectRoot = (Split-Path -Parent $PSScriptRoot),
+
+    [Parameter(Mandatory = $false)]
+    [string] $SourceRoot,
+
+    [Parameter(Mandatory = $false)]
+    [string] $OutputRoot
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName System.Drawing
+
+$definition = Import-PowerShellDataFile -LiteralPath (
+    Join-Path $PSScriptRoot 'MainDecorationSceneBands.psd1'
+)
+$rasterDpi = [single] 96
 
 function Add-TintedSubject {
     param(
@@ -169,6 +180,7 @@ function New-NightTopScene {
             1350,
             [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         try {
+            $target.SetResolution($rasterDpi, $rasterDpi)
             foreach ($box in $SubjectBoxes) {
                 Add-TintedSubject `
                     -Source $source `
@@ -199,8 +211,14 @@ function New-NightTopScene {
 }
 
 $sceneRoot = Join-Path $ProjectRoot 'assets\main-decorations'
-$countdownOutput = Join-Path $sceneRoot 'main-countdown-top-night.png'
-$notesOutput = Join-Path $sceneRoot 'main-notes-top-night.png'
+if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
+    $SourceRoot = $sceneRoot
+}
+if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+    $OutputRoot = $sceneRoot
+}
+$countdownOutput = Join-Path $OutputRoot 'main-countdown-top-night.png'
+$notesOutput = Join-Path $OutputRoot 'main-notes-top-night.png'
 
 $countdownBoxes = @(
     [pscustomobject]@{ X = 65; Y = 250; Width = 125; Height = 125 },
@@ -214,17 +232,17 @@ $notesBoxes = @(
 )
 
 New-NightTopScene `
-    -SourcePath (Join-Path $sceneRoot 'main-countdown-scene-day.png') `
+    -SourcePath (Join-Path $SourceRoot 'main-countdown-scene-day.png') `
     -OutputPath $countdownOutput `
     -SubjectBoxes $countdownBoxes `
-    -WaveTop 330 `
-    -WaveBottom 395
+    -WaveTop ([int] $definition.Scenes.countdown.WaveTop) `
+    -WaveBottom ([int] $definition.Scenes.countdown.TopBandEnd)
 New-NightTopScene `
-    -SourcePath (Join-Path $sceneRoot 'main-notes-scene-day.png') `
+    -SourcePath (Join-Path $SourceRoot 'main-notes-scene-day.png') `
     -OutputPath $notesOutput `
     -SubjectBoxes $notesBoxes `
-    -WaveTop 345 `
-    -WaveBottom 415
+    -WaveTop ([int] $definition.Scenes.notes.WaveTop) `
+    -WaveBottom ([int] $definition.Scenes.notes.TopBandEnd)
 
 @(
     [pscustomobject]@{
@@ -232,13 +250,19 @@ New-NightTopScene `
         path = $countdownOutput
         sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $countdownOutput).Hash
         subjectBoxes = $countdownBoxes
-        waveBand = @(330, 395)
+        waveBand = @(
+            [int] $definition.Scenes.countdown.WaveTop,
+            [int] $definition.Scenes.countdown.TopBandEnd
+        )
     },
     [pscustomobject]@{
         stateId = 'notes-night'
         path = $notesOutput
         sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $notesOutput).Hash
         subjectBoxes = $notesBoxes
-        waveBand = @(345, 415)
+        waveBand = @(
+            [int] $definition.Scenes.notes.WaveTop,
+            [int] $definition.Scenes.notes.TopBandEnd
+        )
     }
 ) | ConvertTo-Json -Depth 5

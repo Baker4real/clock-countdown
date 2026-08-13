@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -15,6 +16,11 @@ namespace MinminCountdown;
 
 public sealed partial class MainWindow : Window
 {
+    private const double CountdownRemainingColumnWidth = 300;
+    private const double CountdownRemainingLeftMargin = 16;
+    private const double CountdownRemainingBaseFontSize = 20;
+    private const double CountdownRemainingMinimumFontSize = 14;
+
     private static readonly string[] TagColors =
     {
         "#F4B6A6",
@@ -34,6 +40,10 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<string, CheckBox> _noteCompletionBoxes =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FrameworkElement> _countdownSourceRows =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TextBlock> _countdownRemainingTexts =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _countdownActiveStates =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Button> _countdownSourceFocusTargets =
         new(StringComparer.OrdinalIgnoreCase);
@@ -57,6 +67,52 @@ public sealed partial class MainWindow : Window
     private long _lastRenderedNoteMinuteUtc = -1;
     private string? _reminderSourceCountdownId;
     private string? _reminderSourceNoteId;
+    private string? _countdownRenderSignature;
+
+    internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
+    internal long CountdownRowRebuildGenerationForValidation { get; private set; }
+
+    internal static (string Message, bool ShowReset) CountdownEmptyStatePresentation(bool hasSavedCountdowns) =>
+        hasSavedCountdowns
+            ? ("没有符合当前筛选条件的倒计时。", true)
+            : ("还没有倒计时，先添加一个目标。", false);
+
+    internal bool CountdownRemainingLayoutMatches
+    {
+        get
+        {
+            if (_countdownRemainingTexts.Count == 0)
+            {
+                return true;
+            }
+
+            return _countdownRemainingTexts.All(pair =>
+                pair.Value.TextWrapping == TextWrapping.NoWrap &&
+                pair.Value.TextTrimming == TextTrimming.None &&
+                pair.Value.TextAlignment == TextAlignment.Right &&
+                pair.Value.HorizontalAlignment == HorizontalAlignment.Stretch &&
+                pair.Value.Typography.NumeralAlignment == FontNumeralAlignment.Tabular &&
+                pair.Value.Parent is Grid grid &&
+                grid.ColumnDefinitions.Count >= 2 &&
+                Math.Abs(grid.ColumnDefinitions[1].Width.Value - 300) <= 0.01);
+        }
+    }
+
+    internal IReadOnlyDictionary<string, TextBlock> CountdownRemainingTextsForValidation =>
+        _countdownRemainingTexts;
+
+    internal bool MainNoteCompletionStyleIsScoped
+    {
+        get
+        {
+            var mainBox = _noteCompletionBoxes.Values.FirstOrDefault();
+            var global = Application.Current.TryFindResource(typeof(CheckBox)) as Style;
+            return mainBox is null ||
+                (mainBox.Style is not null &&
+                 !ReferenceEquals(mainBox.Style, global) &&
+                 Math.Abs(mainBox.ActualWidth - 30) <= 1);
+        }
+    }
 
     internal MainWindow(
         DesktopWorkspace desktopWorkspace,
@@ -73,12 +129,17 @@ public sealed partial class MainWindow : Window
         LoadCharacterAssets(assetRoot);
         ConfigureControls();
         WireEvents();
+        PreviewKeyDown += OnPreviewKeyDown;
         _desktopWorkspace.StateChanged += OnWorkspaceStateChanged;
         ResetCountdownEditor();
         ResetNoteEditor();
         LoadPreferences();
         ShowWorkspace(WorkspaceKind.Countdowns);
         RefreshAll();
+        Loaded += (_, _) =>
+        {
+            CountdownTab.Focus();
+        };
     }
 
     public event EventHandler? CloseRequested;
@@ -109,6 +170,75 @@ public sealed partial class MainWindow : Window
         !TagManagerPopup.IsOpen &&
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen;
+
+    internal bool InitialFocusIsSafeAndDeterministic =>
+        CountdownTab.Focusable &&
+        CountdownTab.IsTabStop &&
+        !ReferenceEquals(CountdownTab, CloseButton) &&
+        !ReferenceEquals(CountdownTab, MinimizeButton);
+
+    internal bool TabSequenceStartsWithWorkspaceControls =>
+        CountdownTab.IsTabStop &&
+        NotesTab.IsTabStop &&
+        FilterButton.IsTabStop &&
+        TagManagerButton.IsTabStop;
+
+    internal bool MainShortcutScopeIsSafe =>
+        IsEnabled &&
+        !FilterPopup.IsOpen &&
+        !TagManagerPopup.IsOpen &&
+        !CountdownTags.IsPopupOpen &&
+        !NoteTags.IsPopupOpen &&
+        Keyboard.FocusedElement is not TextBoxBase and
+        not DatePicker and
+        not ComboBox;
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs args)
+    {
+        if (TryExecuteShortcut(MainShortcutInput.ResolveModifiers(args), args.Key))
+        {
+            args.Handled = true;
+        }
+    }
+
+    internal bool TryExecuteShortcut(ModifierKeys modifiers, Key key)
+    {
+        if (!MainShortcutScopeIsSafe || modifiers == ModifierKeys.None)
+        {
+            return false;
+        }
+
+        switch (modifiers, key)
+        {
+            case (ModifierKeys.Control, Key.D1):
+                ShowWorkspace(WorkspaceKind.Countdowns);
+                return true;
+            case (ModifierKeys.Control, Key.D2):
+                ShowWorkspace(WorkspaceKind.Notes);
+                return true;
+            case (ModifierKeys.Control, Key.F):
+                FilterPopup.IsOpen = true;
+                return true;
+            case (ModifierKeys.Control, Key.T):
+                RenderTagManager();
+                TagManagerPopup.IsOpen = true;
+                return true;
+            case (ModifierKeys.Control | ModifierKeys.Shift, Key.T):
+                CycleThemePreference();
+                return true;
+            case (ModifierKeys.Control, Key.M):
+                WindowState = WindowState.Minimized;
+                return true;
+            case (ModifierKeys.Control, Key.S) when _workspace == WorkspaceKind.Countdowns:
+                SaveCountdown();
+                return true;
+            case (ModifierKeys.Control | ModifierKeys.Shift, Key.S):
+                SavePreferences();
+                return true;
+            default:
+                return false;
+        }
+    }
 
     internal void PrepareInstanceActivationStateForTest()
     {
@@ -470,6 +600,7 @@ public sealed partial class MainWindow : Window
         SaveCountdownButton.IsEnabled = showCountdowns;
         UpdateReferenceDecorationVisibility();
         RenderVisibleWorkspace();
+        SetMessage(StatusText, workspace == WorkspaceKind.Countdowns ? "当前工作区：倒计时" : "当前工作区：便签", false);
     }
 
     internal bool OpenReminderSource(string noteId) =>
@@ -574,13 +705,13 @@ public sealed partial class MainWindow : Window
     {
         NowText.Text = $"当前北京时间：{beijingNow:yyyy年MM月dd日 HH:mm:ss}";
         RefreshDefaultNoteDate(beijingNow);
+        var nowUtc = beijingNow.ToUniversalTime();
         if (_workspace == WorkspaceKind.Countdowns)
         {
-            RenderCountdowns();
+            RenderCountdowns(nowUtc);
             return;
         }
 
-        var nowUtc = beijingNow.ToUniversalTime();
         var currentMinuteUtc = nowUtc.UtcDateTime.Ticks / TimeSpan.TicksPerMinute;
         if (_lastRenderedNoteMinuteUtc != currentMinuteUtc)
         {
@@ -593,6 +724,7 @@ public sealed partial class MainWindow : Window
         _themeMode = mode;
         CharacterBackgroundLayer.Opacity = mode == ApplicationThemeMode.Night ? 0.16 : 0.075;
         UpdateReferenceDecorationVisibility();
+        SetMessage(StatusText, mode == ApplicationThemeMode.Day ? "当前主题：日间" : "当前主题：夜间", false);
     }
 
     internal bool CharacterBackgroundRemainsSubtle =>
@@ -691,6 +823,7 @@ public sealed partial class MainWindow : Window
 
     private void ConfigureControls()
     {
+        var keyboardFocusVisual = (Style)FindResource("MainKeyboardFocusVisual");
         for (var hour = 0; hour < 24; hour++)
         {
             var text = hour.ToString("D2", CultureInfo.InvariantCulture);
@@ -749,10 +882,68 @@ public sealed partial class MainWindow : Window
         NameControl(NoteSearch, "搜索便签");
         NameControl(SaveNoteButton, "保存便签");
         NameControl(ResetEmptyNotesFiltersButton, "重置便签筛选");
+        NameControl(ResetEmptyCountdownFiltersButton, "重置倒计时筛选");
         NameControl(CountdownTab, "倒计时工作区");
         NameControl(NotesTab, "便签工作区");
         NameControl(FilterButton, "打开筛选");
         NameControl(TagManagerButton, "管理标签");
+        AutomationProperties.SetAutomationId(CountdownTab, "CountdownTab");
+        AutomationProperties.SetAutomationId(NotesTab, "NotesTab");
+        AutomationProperties.SetAutomationId(FilterButton, "FilterButton");
+        AutomationProperties.SetAutomationId(TagManagerButton, "TagManagerButton");
+        var keyboardPathControls = new FrameworkElement[]
+        {
+            ThemeModeButton, TopmostCheck, MinimizeButton, CloseButton,
+            CountdownTab, NotesTab, FilterButton, TagManagerButton,
+            CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
+            SetNowButton, CountdownTags.PopupTrigger, ManageCountdownReminderRulesButton,
+            CancelCountdownEdit, SaveCountdownButton, DisplayPrecision, MonthlySalary,
+            WorkStart, WorkEnd, SavePreferencesButton, CountdownListRegion,
+            NoteText, NoteDate, SaveNoteButton, CancelNoteEdit, NoteReminder,
+            ManageNoteReminderRulesButton, NoteReminderInterval, CustomReminderMinutes,
+            NoteTags.PopupTrigger, NoteSearch, NoteReminderDate, NoteReminderHour,
+            NoteReminderMinute, NotesListRegion, StatusText
+        };
+        foreach (var element in keyboardPathControls)
+        {
+            if (element is Control control)
+            {
+                control.FocusVisualStyle = keyboardFocusVisual;
+            }
+        }
+
+        SetAutomationIds(
+            (CountdownName, "CountdownName"),
+            (CountdownDate, "CountdownDate"),
+            (CountdownHour, "CountdownHour"),
+            (CountdownMinute, "CountdownMinute"),
+            (CountdownSecond, "CountdownSecond"),
+            (SetNowButton, "SetNowButton"),
+            (CountdownTags.PopupTrigger, "CountdownTags"),
+            (ManageCountdownReminderRulesButton, "ManageCountdownReminderRulesButton"),
+            (CancelCountdownEdit, "CancelCountdownEdit"),
+            (SaveCountdownButton, "SaveCountdownButton"),
+            (DisplayPrecision, "DisplayPrecision"),
+            (MonthlySalary, "MonthlySalary"),
+            (WorkStart, "WorkStart"),
+            (WorkEnd, "WorkEnd"),
+            (SavePreferencesButton, "SavePreferencesButton"),
+            (CountdownListRegion, "CountdownListRegion"),
+            (NoteText, "NoteText"),
+            (NoteDate, "NoteDate"),
+            (SaveNoteButton, "SaveNoteButton"),
+            (CancelNoteEdit, "CancelNoteEdit"),
+            (NoteReminder, "NoteReminder"),
+            (ManageNoteReminderRulesButton, "ManageNoteReminderRulesButton"),
+            (NoteReminderInterval, "NoteReminderInterval"),
+            (CustomReminderMinutes, "CustomReminderMinutes"),
+            (NoteTags.PopupTrigger, "NoteTags"),
+            (NoteSearch, "NoteSearch"),
+            (NoteReminderDate, "NoteReminderDate"),
+            (NoteReminderHour, "NoteReminderHour"),
+            (NoteReminderMinute, "NoteReminderMinute"),
+            (NotesListRegion, "NotesListRegion"),
+            (StatusText, "StatusText"));
         NameControl(NewTagInput, "新标签名称");
         NameControl(CreateTagButton, "新建标签");
         NameControl(NoteDateFilter, "按便签日期筛选");
@@ -765,6 +956,14 @@ public sealed partial class MainWindow : Window
         UiAccessibility.MarkLive(CountdownMessage);
         UiAccessibility.MarkLive(NoteMessage);
         UiAccessibility.MarkLive(TagManagerMessage);
+    }
+
+    private static void SetAutomationIds(params (DependencyObject Control, string Id)[] controls)
+    {
+        foreach (var (control, id) in controls)
+        {
+            AutomationProperties.SetAutomationId(control, id);
+        }
     }
 
     private void WireEvents()
@@ -904,6 +1103,7 @@ public sealed partial class MainWindow : Window
         };
         ClearFilterButton.Click += (_, _) => ClearFilters();
         ResetEmptyNotesFiltersButton.Click += (_, _) => ClearFilters();
+        ResetEmptyCountdownFiltersButton.Click += (_, _) => ClearFilters();
     }
 
     private void OnWorkspaceStateChanged(object? sender, EventArgs eventArgs)
@@ -936,12 +1136,10 @@ public sealed partial class MainWindow : Window
         UpdateFilterSummary();
     }
 
-    private void RenderCountdowns()
+    private void RenderCountdowns(DateTimeOffset? nowUtc = null)
     {
-        CountdownRows.Children.Clear();
-        _countdownSourceRows.Clear();
-        _countdownSourceFocusTargets.Clear();
         var snapshot = _desktopWorkspace.Snapshot;
+        var effectiveNowUtc = (nowUtc ?? snapshot.UtcNow).ToUniversalTime();
         var visibleIds = snapshot.VisibleCountdowns
             .Select(static countdown => countdown.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -956,14 +1154,71 @@ public sealed partial class MainWindow : Window
                         StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         RecordCountText.Text = $"{records.Count} 个倒计时";
+        var signature = string.Join(
+            "|",
+            records.Select(record =>
+                $"{record.Id}:{record.Name}:{record.TargetUtc.UtcTicks}:{string.Join(',', record.TagIds)}:{record.TargetUtc > effectiveNowUtc}:{snapshot.Settings.Preferences.DisplayPrecision}:{_themeMode}"));
+        var shouldRebuild = !string.Equals(
+            signature,
+            _countdownRenderSignature,
+            StringComparison.Ordinal);
         if (records.Count == 0)
         {
+            if (shouldRebuild)
+            {
+                CountdownRowsWereRebuiltForValidation = true;
+                CountdownRowRebuildGenerationForValidation++;
+                _countdownRenderSignature = signature;
+                CountdownRows.Children.Clear();
+                _countdownSourceRows.Clear();
+                _countdownSourceFocusTargets.Clear();
+                _countdownRemainingTexts.Clear();
+                _countdownActiveStates.Clear();
+            }
+
+            var hasSavedCountdowns = snapshot.Settings.Countdowns.Count > 0;
+            var emptyState = CountdownEmptyStatePresentation(hasSavedCountdowns);
+            EmptyCountdownMessage.Text = emptyState.Message;
+            AutomationProperties.SetLiveSetting(EmptyCountdownMessage, AutomationLiveSetting.Polite);
+            EmptyCountdownMessage.Visibility = Visibility.Visible;
+            ResetEmptyCountdownFiltersButton.Visibility = emptyState.ShowReset
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            AutomationProperties.SetName(EmptyCountdownMessage, EmptyCountdownMessage.Text);
+            return;
+        }
+        if (!shouldRebuild)
+        {
+            foreach (var record in records)
+            {
+                if (_countdownRemainingTexts.TryGetValue(record.Id, out var remaining))
+                {
+                    SetCountdownRemainingText(remaining, CountdownFormatting.FormatRemaining(
+                        record.TargetUtc,
+                        effectiveNowUtc,
+                        snapshot.Settings.Preferences.DisplayPrecision));
+                }
+            }
+
+            EmptyCountdownMessage.Visibility = Visibility.Collapsed;
+            ResetEmptyCountdownFiltersButton.Visibility = Visibility.Collapsed;
             return;
         }
 
+        CountdownRowsWereRebuiltForValidation = true;
+        CountdownRowRebuildGenerationForValidation++;
+        _countdownRenderSignature = signature;
+        CountdownRows.Children.Clear();
+        _countdownSourceRows.Clear();
+        _countdownSourceFocusTargets.Clear();
+        _countdownRemainingTexts.Clear();
+        _countdownActiveStates.Clear();
+        EmptyCountdownMessage.Visibility = Visibility.Collapsed;
+        ResetEmptyCountdownFiltersButton.Visibility = Visibility.Collapsed;
+
         foreach (var record in records)
         {
-            var active = record.TargetUtc > snapshot.UtcNow;
+            var active = record.TargetUtc > effectiveNowUtc;
             var edit = ActionButton("编辑", record.Id, "编辑倒计时");
             edit.Click += OnEditCountdown;
             var delete = ActionButton("删除", record.Id, "删除倒计时");
@@ -979,8 +1234,15 @@ public sealed partial class MainWindow : Window
 
             var layout = new Grid();
             layout.ColumnDefinitions.Add(new ColumnDefinition());
+            layout.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = new GridLength(CountdownRemainingColumnWidth),
+                MinWidth = CountdownRemainingColumnWidth,
+                MaxWidth = CountdownRemainingColumnWidth
+            });
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var text = new StackPanel();
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var name = new TextBlock
             {
                 Text = record.Name,
@@ -988,26 +1250,41 @@ public sealed partial class MainWindow : Window
                 FontWeight = FontWeights.SemiBold
             };
             name.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-            text.Children.Add(name);
             var remaining = new TextBlock
             {
-                Text = CountdownFormatting.FormatRemaining(
-                    record.TargetUtc,
-                    snapshot.UtcNow,
-                    snapshot.Settings.Preferences.DisplayPrecision),
-                Margin = new Thickness(0, 5, 0, 0)
+                Margin = new Thickness(CountdownRemainingLeftMargin, 5, 0, 0),
+                TextAlignment = TextAlignment.Right,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.None,
+                FontSize = CountdownRemainingBaseFontSize,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                MaxWidth = CountdownRemainingColumnWidth - CountdownRemainingLeftMargin
             };
+            SetCountdownRemainingText(remaining, CountdownFormatting.FormatRemaining(
+                record.TargetUtc,
+                effectiveNowUtc,
+                snapshot.Settings.Preferences.DisplayPrecision));
+            remaining.Typography.NumeralAlignment = FontNumeralAlignment.Tabular;
             remaining.SetResourceReference(
                 TextBlock.ForegroundProperty,
                 active ? "BodyBrush" : "DangerBrush");
-            text.Children.Add(remaining);
-            text.Children.Add(CreateTagChips(record.TagIds));
-            Grid.SetColumn(actions, 1);
-            layout.Children.Add(text);
+            var tagChips = CreateTagChips(record.TagIds);
+            Grid.SetColumnSpan(name, 2);
+            Grid.SetRow(tagChips, 1);
+            Grid.SetColumn(remaining, 1);
+            Grid.SetRow(remaining, 1);
+            Grid.SetColumn(actions, 2);
+            Grid.SetRowSpan(actions, 2);
+            layout.Children.Add(name);
+            layout.Children.Add(tagChips);
+            layout.Children.Add(remaining);
             layout.Children.Add(actions);
             var card = Card(layout, active ? "CardBrush" : "ExpiredBrush");
             _countdownSourceRows[record.Id] = card;
             _countdownSourceFocusTargets[record.Id] = edit;
+            _countdownRemainingTexts[record.Id] = remaining;
+            _countdownActiveStates[record.Id] = active;
             if (string.Equals(
                     record.Id,
                     _reminderSourceCountdownId,
@@ -1020,6 +1297,37 @@ public sealed partial class MainWindow : Window
 
             CountdownRows.Children.Add(card);
         }
+    }
+
+    private static void SetCountdownRemainingText(TextBlock textBlock, string text)
+    {
+        textBlock.Text = text;
+        textBlock.FontSize = CountdownRemainingBaseFontSize;
+        var availableWidth = CountdownRemainingColumnWidth - CountdownRemainingLeftMargin;
+        var dpi = VisualTreeHelper.GetDpi(textBlock);
+        var formatted = new FormattedText(
+            text,
+            CultureInfo.CurrentCulture,
+            textBlock.FlowDirection,
+            new Typeface(
+                textBlock.FontFamily,
+                textBlock.FontStyle,
+                textBlock.FontWeight,
+                textBlock.FontStretch),
+            CountdownRemainingBaseFontSize,
+            Brushes.Black,
+            dpi.PixelsPerDip);
+        var requiredWidth = formatted.WidthIncludingTrailingWhitespace +
+            Math.Max(0, formatted.OverhangTrailing) +
+            2 / dpi.DpiScaleX;
+        if (requiredWidth <= availableWidth)
+        {
+            return;
+        }
+
+        var fitted = Math.Floor(
+            CountdownRemainingBaseFontSize * availableWidth / requiredWidth * 4) / 4;
+        textBlock.FontSize = Math.Max(CountdownRemainingMinimumFontSize, fitted);
     }
 
     private void RenderNotes(DateTimeOffset? nowUtc = null)
@@ -1078,9 +1386,11 @@ public sealed partial class MainWindow : Window
         var noVisibleNotes = records.Count == 0;
         var emptyState = NoteEmptyStatePresentation(snapshot.Settings.Notes.Count > 0);
         EmptyNotesMessage.Text = emptyState.Message;
+        AutomationProperties.SetLiveSetting(EmptyNotesMessage, AutomationLiveSetting.Polite);
         EmptyNotesMessage.Visibility = noVisibleNotes
             ? Visibility.Visible
             : Visibility.Collapsed;
+        AutomationProperties.SetName(EmptyNotesMessage, EmptyNotesMessage.Text);
         ResetEmptyNotesFiltersButton.Visibility = noVisibleNotes && emptyState.ShowReset
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1344,7 +1654,8 @@ public sealed partial class MainWindow : Window
                 IsChecked = note.IsCompleted,
                 Tag = note.Id,
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 3, 10, 0)
+                Margin = new Thickness(0, 0, 10, 0),
+                Style = (Style)MainContentProjection.FindResource("MainNoteCompletionCheck")
             },
             note.IsCompleted ? $"恢复便签 {note.Text}" : $"完成便签 {note.Text}");
         completion.Checked += OnNoteCompletionChanged;
@@ -2193,6 +2504,7 @@ public sealed partial class MainWindow : Window
         var count = _desktopWorkspace.Snapshot.AppliedFilterCount;
         FilterButton.Content = count == 0 ? "筛选" : $"筛选 · {count}";
         AutomationProperties.SetName(FilterButton, count == 0 ? "打开筛选" : $"打开筛选，已应用 {count} 项");
+        SetMessage(StatusText, $"筛选结果：{RecordCountText.Text}", false);
     }
 
     private void RefreshDefaultNoteDate(DateTimeOffset beijingNow)
@@ -2376,6 +2688,7 @@ public sealed partial class MainWindow : Window
     private void SetMessage(TextBlock target, string text, bool isError)
     {
         target.Text = text;
+        AutomationProperties.SetName(target, text);
         target.SetResourceReference(
             TextBlock.ForegroundProperty,
             isError ? "DangerBrush" : "SuccessBrush");
@@ -2466,6 +2779,29 @@ public sealed partial class MainWindow : Window
         }
 
         public DateTimeOffset UtcNow { get; }
+    }
+}
+
+internal static class MainShortcutInput
+{
+    private static readonly ConditionalWeakTable<KeyEventArgs, ModifierKeysBox> InjectedModifiers = new();
+
+    public static ModifierKeys ResolveModifiers(KeyEventArgs args) =>
+        InjectedModifiers.TryGetValue(args, out var value)
+            ? value.Modifiers
+            : Keyboard.Modifiers;
+
+    public static IDisposable InjectModifiers(KeyEventArgs args, ModifierKeys modifiers)
+    {
+        InjectedModifiers.Add(args, new ModifierKeysBox(modifiers));
+        return new ModifierInjection(args);
+    }
+
+    private sealed record ModifierKeysBox(ModifierKeys Modifiers);
+
+    private sealed class ModifierInjection(KeyEventArgs args) : IDisposable
+    {
+        public void Dispose() => InjectedModifiers.Remove(args);
     }
 }
 

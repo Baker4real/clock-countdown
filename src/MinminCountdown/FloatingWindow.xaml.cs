@@ -111,6 +111,36 @@ public sealed partial class FloatingWindow : Window
         ReferenceEquals(CloseFloatingButton.Style, FindResource("FloatingHeaderIconButton")) &&
         PlushSceneFollowsActiveTheme;
 
+    internal FloatingQuickAddPaletteBindingValidation ProbeQuickAddPaletteBindings()
+    {
+        var mode = CurrentThemeMode;
+        var actual = new FloatingQuickAddPaletteMapping(
+            mode,
+            ResolveQuickAddPaletteResourceKey(FloatingNoteEntry.Background),
+            ResolveQuickAddPaletteResourceKey(FloatingNoteText.Foreground),
+            ResolveQuickAddPaletteResourceKey(FloatingNoteTextError.Foreground),
+            ResolveQuickAddPaletteResourceKey(FloatingReminderLabel.Foreground),
+            ResolveQuickAddPaletteResourceKey(FloatingReminderMessage.Foreground));
+        return new FloatingQuickAddPaletteBindingValidation(
+            mode.ToString(),
+            FloatingQuickAddPaletteBindings.Expected(mode),
+            actual,
+            FloatingQuickAddPaletteBindings.Evaluate(actual));
+    }
+
+    private string ResolveQuickAddPaletteResourceKey(Brush? brush)
+    {
+        foreach (var resourceKey in FloatingQuickAddPaletteBindings.KnownResourceKeys)
+        {
+            if (ReferenceEquals(brush, FindResource(resourceKey)))
+            {
+                return resourceKey;
+            }
+        }
+
+        return string.Empty;
+    }
+
     private bool SurfacesFollowActiveTheme => _activeTheme?.Mode == ApplicationThemeMode.Day
         ? FloatingDayRasterScene.Visibility == Visibility.Visible &&
           IsTransparent(TaskCard.Background) &&
@@ -1255,7 +1285,18 @@ public sealed partial class FloatingWindow : Window
     private bool TextBoxUsesQuickAddTheme(TextBox textBox)
     {
         textBox.ApplyTemplate();
-        return ControlUsesQuickAddSurface(textBox) &&
+        var surfaceMatches = textBox.Style is not null &&
+            textBox.Template is not null &&
+            Equals(textBox.Background, textBox.TryFindResource("CanvasBrush")) &&
+            Equals(
+                textBox.Foreground,
+                textBox.TryFindResource(
+                    ReferenceEquals(textBox, FloatingNoteText)
+                        ? "FloatingNoteInputTextBrush"
+                        : "InkBrush")) &&
+            Equals(textBox.BorderBrush, textBox.TryFindResource("PeachLineBrush")) &&
+            UsesQuickAddResources(textBox, "CanvasBrush", "InkBrush", "PeachLineBrush");
+        return surfaceMatches &&
             UsesQuickAddResources(textBox, "ActiveBrush", "CardBrush");
     }
 
@@ -2313,6 +2354,89 @@ internal sealed record FloatingQuickAddThemeProbeDiagnostic(
     string TemplateParts,
     string ElementState);
 
+internal sealed record FloatingQuickAddPaletteBindingResult(
+    bool InputSurfaceMatches,
+    bool InputTextMatches,
+    bool ErrorTextMatches)
+{
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(InputSurfaceMatches), InputSurfaceMatches),
+        (nameof(InputTextMatches), InputTextMatches),
+        (nameof(ErrorTextMatches), ErrorTextMatches)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+
+    public bool Passed => FailedChecks.Count == 0;
+}
+
+internal sealed record FloatingQuickAddPaletteMapping(
+    ApplicationThemeMode Mode,
+    string InputSurfaceResourceKey,
+    string InputTextResourceKey,
+    string ErrorTextResourceKey,
+    string ReminderTextResourceKey,
+    string ReminderErrorResourceKey);
+
+internal sealed record FloatingQuickAddPaletteBindingValidation(
+    string Theme,
+    FloatingQuickAddPaletteMapping Expected,
+    FloatingQuickAddPaletteMapping Actual,
+    FloatingQuickAddPaletteBindingResult Gates);
+
+internal static class FloatingQuickAddPaletteBindings
+{
+    private const string DayInputSurface = "FloatingDayNoteInputBrush";
+    private const string DayInputText = "FloatingDayNoteInputTextBrush";
+    private const string DayError = "FloatingDayErrorBrush";
+    private const string NightInputSurface = "FloatingNightNoteInputBrush";
+    private const string NightInputText = "FloatingNightNoteInputTextBrush";
+    private const string NightError = "FloatingNightErrorBrush";
+    internal static IReadOnlyList<string> KnownResourceKeys { get; } =
+    [
+        DayInputSurface,
+        DayInputText,
+        DayError,
+        NightInputSurface,
+        NightInputText,
+        NightError,
+        "FloatingNightNoteCardBrush",
+        "FloatingNightTextBrush",
+        "FloatingNightHeaderDangerBrush"
+    ];
+
+    internal static FloatingQuickAddPaletteMapping Expected(ApplicationThemeMode mode) =>
+        mode == ApplicationThemeMode.Day
+            ? new(mode, DayInputSurface, DayInputText, DayError, DayInputText, DayError)
+            : new(mode, NightInputSurface, NightInputText, NightError, NightInputText, NightError);
+
+    internal static FloatingQuickAddPaletteBindingResult Evaluate(
+        FloatingQuickAddPaletteMapping actual)
+    {
+        var expected = Expected(actual.Mode);
+        return new FloatingQuickAddPaletteBindingResult(
+            string.Equals(
+                actual.InputSurfaceResourceKey,
+                expected.InputSurfaceResourceKey,
+                StringComparison.Ordinal),
+            string.Equals(
+                actual.InputTextResourceKey,
+                expected.InputTextResourceKey,
+                StringComparison.Ordinal) &&
+            string.Equals(
+                actual.ReminderTextResourceKey,
+                expected.ReminderTextResourceKey,
+                StringComparison.Ordinal),
+            string.Equals(
+                actual.ErrorTextResourceKey,
+                expected.ErrorTextResourceKey,
+                StringComparison.Ordinal) &&
+            string.Equals(
+                actual.ReminderErrorResourceKey,
+                expected.ReminderErrorResourceKey,
+                StringComparison.Ordinal));
+    }
+}
+
 internal sealed record FloatingThemePalette(
     ApplicationThemeMode Mode,
     string PanelBrushKey,
@@ -2374,9 +2498,9 @@ internal sealed record FloatingThemePalette(
         "FloatingNightHeaderSelectedTextBrush",
         "FloatingNightSurfaceBrush",
         "FloatingNightNoteCardBrush",
-        "FloatingNightNoteCardBrush",
-        "FloatingNightTextBrush",
-        "FloatingNightHeaderDangerBrush",
+        "FloatingNightNoteInputBrush",
+        "FloatingNightNoteInputTextBrush",
+        "FloatingNightErrorBrush",
         "FloatingNightTextBrush",
         "FloatingNightMutedBrush",
         "FloatingNightPrimaryCountdownAccentBrush",

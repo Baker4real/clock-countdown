@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using MinminCountdown.Core;
 
 namespace MinminCountdown;
 
@@ -109,6 +110,47 @@ public sealed partial class MainWindow
                     ResetEmptyNotesFiltersButton.Visibility == Visibility.Collapsed;
             }
 
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            UpdateLayout();
+            var countdownEmptyStates =
+                MainWindow.CountdownEmptyStatePresentation(false);
+            var countdownNoResults =
+                MainWindow.CountdownEmptyStatePresentation(true);
+            var countdownEmptyStatesDistinguished =
+                !string.Equals(countdownEmptyStates.Message, countdownNoResults.Message, StringComparison.Ordinal) &&
+                !countdownEmptyStates.ShowReset &&
+                countdownNoResults.ShowReset;
+            var countdownEmptyPointerResetWorks = true;
+            var countdownEmptyKeyboardResetWorks = true;
+            if (_desktopWorkspace.Snapshot.Settings.Countdowns.Count > 0)
+            {
+                var savedSearch = NoteSearch.Text;
+                SetCountdownFilter(CountdownStatusFilter.Expired);
+                WindowValidationInput.Pump(Dispatcher);
+                countdownEmptyPointerResetWorks =
+                    EmptyCountdownMessage.Visibility == Visibility.Visible &&
+                    ResetEmptyCountdownFiltersButton.Visibility == Visibility.Visible &&
+                    string.Equals(EmptyCountdownMessage.Text, countdownNoResults.Message, StringComparison.Ordinal);
+                ResetEmptyCountdownFiltersButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+                countdownEmptyPointerResetWorks &= CountdownEmptyResetRestoredResults();
+
+                SetCountdownFilter(CountdownStatusFilter.Expired);
+                WindowValidationInput.Pump(Dispatcher);
+                ResetEmptyCountdownFiltersButton.Focus();
+                WindowValidationInput.Pump(Dispatcher);
+                countdownEmptyKeyboardResetWorks =
+                    ReferenceEquals(Keyboard.FocusedElement, ResetEmptyCountdownFiltersButton) &&
+                    WindowValidationInput.RaiseKey(ResetEmptyCountdownFiltersButton, Key.Space);
+                WindowValidationInput.Pump(Dispatcher);
+                countdownEmptyKeyboardResetWorks &= CountdownEmptyResetRestoredResults();
+                NoteSearch.Text = savedSearch;
+            }
+            var countdownLayoutMatches = CountdownRemainingLayoutMatches;
+            var countdownRemainingSamples = ProbeCountdownRemainingSamples();
+            var countdownIncrementalRefresh = ProbeCountdownIncrementalRefresh();
+            var noteCompletionStyleScoped = MainNoteCompletionStyleIsScoped;
+
             return new MainUiPolishScenarios(
                 editorFieldsDoNotOverlap,
                 editorLabelsVisible,
@@ -123,7 +165,14 @@ public sealed partial class MainWindow
                 tagManagerPopup.OutsideFocusPreserved &&
                 tagSelectorPopup.OutsideFocusPreserved,
                 emptyStatesDistinguished,
-                noResultsResetWorks);
+                noResultsResetWorks,
+                countdownEmptyStatesDistinguished,
+                countdownEmptyPointerResetWorks,
+                countdownEmptyKeyboardResetWorks,
+                countdownLayoutMatches,
+                countdownRemainingSamples,
+                countdownIncrementalRefresh,
+                noteCompletionStyleScoped);
         }
         finally
         {
@@ -160,6 +209,348 @@ public sealed partial class MainWindow
         }
     }
 
+    private bool CountdownEmptyResetRestoredResults()
+    {
+        var filter = _desktopWorkspace.Snapshot.Filter;
+        return
+            filter == DesktopWorkspaceFilter.Empty &&
+            _desktopWorkspace.Snapshot.VisibleCountdowns.Count > 0 &&
+            CountdownRows.Children.Count > 0 &&
+            EmptyCountdownMessage.Visibility == Visibility.Collapsed &&
+            ResetEmptyCountdownFiltersButton.Visibility == Visibility.Collapsed &&
+            string.Equals(FilterButton.Content?.ToString(), "筛选", StringComparison.Ordinal) &&
+            string.Equals(
+                AutomationProperties.GetName(FilterButton),
+                "打开筛选",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                StatusText.Text,
+                $"筛选结果：{RecordCountText.Text}",
+                StringComparison.Ordinal);
+    }
+
+    private CountdownIncrementalRefreshProbe ProbeCountdownIncrementalRefresh()
+    {
+        var originalWorkspace = _workspace;
+        var originalFilter = _desktopWorkspace.Snapshot.Filter;
+        var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+        var originalTheme = _themeMode;
+        var temporaryIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
+            var dueUtc = nowUtc.AddSeconds(10);
+            for (var index = 0; index < 10; index++)
+            {
+                var name = $"验证倒计时增量刷新-{index:D2}";
+                var result = _desktopWorkspace.Apply(new SaveCountdownChange(
+                    null,
+                    name,
+                    index == 0 ? dueUtc : nowUtc.AddDays(index + 1),
+                    Array.Empty<string>()));
+                if (!result.Succeeded)
+                {
+                    return CountdownIncrementalRefreshProbe.Failed;
+                }
+
+                var added = _desktopWorkspace.Snapshot.Settings.Countdowns
+                    .Single(item => string.Equals(item.Name, name, StringComparison.Ordinal));
+                temporaryIds.Add(added.Id);
+            }
+
+            var record = _desktopWorkspace.Snapshot.Settings.Countdowns
+                .Single(item => item.Id == temporaryIds[0]);
+            var pointerRecord = _desktopWorkspace.Snapshot.Settings.Countdowns
+                .Single(item => item.Id == temporaryIds[^1]);
+            if (record is null)
+            {
+                return CountdownIncrementalRefreshProbe.Failed;
+            }
+
+            var before = ChinaStandardTime.ToBeijingTime(dueUtc.AddSeconds(-1));
+            UpdateTime(before);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            if (!_countdownSourceRows.TryGetValue(record.Id, out var rowBefore) ||
+                !_countdownRemainingTexts.TryGetValue(record.Id, out var textBefore) ||
+                !_countdownSourceRows.TryGetValue(pointerRecord.Id, out var pointerRow) ||
+                !_countdownSourceFocusTargets.TryGetValue(pointerRecord.Id, out var focusTarget))
+            {
+                return CountdownIncrementalRefreshProbe.Failed;
+            }
+
+            var scrollViewer = FindVisualParent<ScrollViewer>(rowBefore);
+            scrollViewer?.ScrollToEnd();
+            WindowValidationInput.Pump(Dispatcher);
+            var offsetBefore = scrollViewer?.VerticalOffset ?? 0;
+            Keyboard.Focus(focusTarget);
+            WindowValidationInput.Pump(Dispatcher);
+            var pointerCaptured = Mouse.Capture(pointerRow, CaptureMode.SubTree);
+            UpdateTime(before.AddMilliseconds(250));
+            WindowValidationInput.Pump(Dispatcher);
+            var ordinaryIdentityPreserved =
+                ReferenceEquals(rowBefore, _countdownSourceRows.GetValueOrDefault(record.Id)) &&
+                ReferenceEquals(textBefore, _countdownRemainingTexts.GetValueOrDefault(record.Id));
+            var focusPreserved = ReferenceEquals(Keyboard.FocusedElement, focusTarget);
+            var nonZeroScrollPreserved =
+                offsetBefore > 0 &&
+                Math.Abs((scrollViewer?.VerticalOffset ?? 0) - offsetBefore) <= 0.1;
+            var pointerStatePreserved =
+                pointerCaptured && ReferenceEquals(Mouse.Captured, pointerRow);
+            if (ReferenceEquals(Mouse.Captured, pointerRow))
+            {
+                Mouse.Capture(null);
+            }
+
+            var generation = CountdownRowRebuildGenerationForValidation;
+            var collectionName = $"验证集合变化-{Guid.NewGuid():N}"[..27];
+            var collectionResult = _desktopWorkspace.Apply(new SaveCountdownChange(
+                null,
+                collectionName,
+                nowUtc.AddDays(20),
+                Array.Empty<string>()));
+            WindowValidationInput.Pump(Dispatcher);
+            var collectionRecord = _desktopWorkspace.Snapshot.Settings.Countdowns
+                .FirstOrDefault(item => string.Equals(item.Name, collectionName, StringComparison.Ordinal));
+            if (collectionRecord is not null)
+            {
+                temporaryIds.Add(collectionRecord.Id);
+            }
+            var collectionChangeRebuilt =
+                collectionResult.Succeeded &&
+                collectionRecord is not null &&
+                CountdownRowRebuildGenerationForValidation > generation &&
+                _countdownSourceRows.ContainsKey(collectionRecord.Id);
+
+            generation = CountdownRowRebuildGenerationForValidation;
+            _desktopWorkspace.ApplyFilter(originalFilter with { CountdownStatus = CountdownStatusFilter.Expired });
+            WindowValidationInput.Pump(Dispatcher);
+            var filterChangeRebuilt =
+                CountdownRowRebuildGenerationForValidation > generation &&
+                !_countdownSourceRows.ContainsKey(record.Id);
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            WindowValidationInput.Pump(Dispatcher);
+
+            generation = CountdownRowRebuildGenerationForValidation;
+            var nextPrecision = string.Equals(originalPreferences.DisplayPrecision, "Second", StringComparison.Ordinal)
+                ? "Minute"
+                : "Second";
+            var precisionSaved = _desktopWorkspace.Apply(new SavePreferencesChange(
+                nextPrecision,
+                originalPreferences.MonthlySalary,
+                originalPreferences.WorkStart,
+                originalPreferences.WorkEnd)).Succeeded;
+            WindowValidationInput.Pump(Dispatcher);
+            var precisionChangeRebuilt =
+                precisionSaved && CountdownRowRebuildGenerationForValidation > generation;
+
+            generation = CountdownRowRebuildGenerationForValidation;
+            var nextTheme = originalTheme == ApplicationThemeMode.Day
+                ? ApplicationThemeMode.Night
+                : ApplicationThemeMode.Day;
+            ApplyTheme(nextTheme);
+            UpdateTime(before.AddMilliseconds(500));
+            WindowValidationInput.Pump(Dispatcher);
+            var themeChangeRebuilt =
+                CountdownRowRebuildGenerationForValidation > generation &&
+                _countdownSourceRows.ContainsKey(record.Id);
+
+            generation = CountdownRowRebuildGenerationForValidation;
+            UpdateTime(ChinaStandardTime.ToBeijingTime(dueUtc.AddSeconds(1)));
+            WindowValidationInput.Pump(Dispatcher);
+            var expiryChangeRebuilt = CountdownRowRebuildGenerationForValidation > generation;
+            var expiryBackgroundFlipped =
+                _countdownSourceRows.TryGetValue(record.Id, out var rowAfter) &&
+                !ReferenceEquals(rowBefore, rowAfter) &&
+                rowAfter is Border expiredCard &&
+                ReferenceEquals(expiredCard.Background, FindResource("ExpiredBrush"));
+            var expiryRemainingTextFlipped =
+                _countdownRemainingTexts.TryGetValue(record.Id, out var textAfter) &&
+                !ReferenceEquals(textBefore, textAfter) &&
+                ReferenceEquals(textAfter.Foreground, FindResource("DangerBrush"));
+            return new CountdownIncrementalRefreshProbe(
+                ordinaryIdentityPreserved,
+                focusPreserved,
+                nonZeroScrollPreserved,
+                pointerStatePreserved,
+                collectionChangeRebuilt,
+                filterChangeRebuilt,
+                precisionChangeRebuilt,
+                themeChangeRebuilt,
+                expiryChangeRebuilt,
+                expiryBackgroundFlipped,
+                expiryRemainingTextFlipped);
+        }
+        finally
+        {
+            Mouse.Capture(null);
+            ApplyTheme(originalTheme);
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            _desktopWorkspace.Apply(new SavePreferencesChange(
+                originalPreferences.DisplayPrecision,
+                originalPreferences.MonthlySalary,
+                originalPreferences.WorkStart,
+                originalPreferences.WorkEnd));
+            foreach (var temporaryId in temporaryIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteCountdownChange(temporaryId));
+            }
+
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child)
+        where T : DependencyObject
+    {
+        while (child is not null)
+        {
+            child = VisualTreeHelper.GetParent(child);
+            if (child is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    private IReadOnlyList<MainCountdownRemainingMeasurement> ProbeCountdownRemainingSamples()
+    {
+        var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+        var originalWorkspace = _workspace;
+        var originalFilter = _desktopWorkspace.Snapshot.Filter;
+        var temporaryIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            var snapshot = _desktopWorkspace.Snapshot;
+            var nowUtc = snapshot.UtcNow;
+            var ordinaryName = "验证主窗口倒计时";
+            var ordinaryResult = _desktopWorkspace.Apply(new SaveCountdownChange(
+                null,
+                ordinaryName,
+                nowUtc.AddDays(4).AddHours(13).AddMinutes(18).AddSeconds(59),
+                Array.Empty<string>()));
+            if (ordinaryResult.Succeeded)
+            {
+                var added = _desktopWorkspace.Snapshot.Settings.Countdowns
+                    .FirstOrDefault(record => string.Equals(record.Name, ordinaryName, StringComparison.Ordinal));
+                if (added is not null)
+                {
+                    temporaryIds.Add(added.Id);
+                }
+            }
+
+            var longName = "验证主窗口超长天数倒计时";
+            var longResult = _desktopWorkspace.Apply(new SaveCountdownChange(
+                null,
+                longName,
+                nowUtc.AddDays(2_000_000),
+                Array.Empty<string>()));
+            if (longResult.Succeeded)
+            {
+                var added = _desktopWorkspace.Snapshot.Settings.Countdowns
+                    .FirstOrDefault(record => string.Equals(record.Name, longName, StringComparison.Ordinal));
+                if (added is not null)
+                {
+                    temporaryIds.Add(added.Id);
+                }
+            }
+
+            var samples = new List<MainCountdownRemainingMeasurement>();
+            foreach (var precision in new[] { "Day", "Hour", "Minute", "Second" })
+            {
+                var saved = _desktopWorkspace.Apply(new SavePreferencesChange(
+                    precision,
+                    originalPreferences.MonthlySalary,
+                    originalPreferences.WorkStart,
+                    originalPreferences.WorkEnd)).Succeeded;
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+                var current = _desktopWorkspace.Snapshot;
+                var record = current.Settings.Countdowns.FirstOrDefault(item =>
+                    temporaryIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase) &&
+                    string.Equals(item.Name, ordinaryName, StringComparison.Ordinal));
+                if (record is null)
+                {
+                    continue;
+                }
+                if (!CountdownRemainingTextsForValidation.TryGetValue(record.Id, out var text))
+                {
+                    continue;
+                }
+
+                var expected = CountdownFormatting.FormatRemaining(record.TargetUtc, current.UtcNow, precision);
+                samples.Add(CaptureMainCountdownRemaining(precision, record, expected, text, saved));
+            }
+
+            var longRecord = _desktopWorkspace.Snapshot.Settings.Countdowns.FirstOrDefault(item =>
+                string.Equals(item.Name, longName, StringComparison.Ordinal));
+            if (longRecord is not null && CountdownRemainingTextsForValidation.TryGetValue(longRecord.Id, out var longText))
+            {
+                var expected = CountdownFormatting.FormatRemaining(longRecord.TargetUtc, _desktopWorkspace.Snapshot.UtcNow, "Second");
+                samples.Add(CaptureMainCountdownRemaining("SecondLongDays", longRecord, expected, longText, longResult.Succeeded));
+            }
+
+            return samples;
+        }
+        finally
+        {
+            foreach (var id in temporaryIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteCountdownChange(id));
+            }
+            _desktopWorkspace.Apply(new SavePreferencesChange(
+                originalPreferences.DisplayPrecision,
+                originalPreferences.MonthlySalary,
+                originalPreferences.WorkStart,
+                originalPreferences.WorkEnd));
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private static MainCountdownRemainingMeasurement CaptureMainCountdownRemaining(
+        string precision,
+        CountdownRecord record,
+        string expected,
+        TextBlock text,
+        bool preferenceSaved)
+    {
+        var dpi = VisualTreeHelper.GetDpi(text);
+        var formatted = new FormattedText(
+            expected,
+            CultureInfo.CurrentCulture,
+            text.FlowDirection,
+            new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+            text.FontSize,
+            Brushes.Black,
+            dpi.PixelsPerDip);
+        var requiredWidth = formatted.WidthIncludingTrailingWhitespace +
+            Math.Max(0, formatted.OverhangTrailing) + 2 / dpi.DpiScaleX;
+        var columnWidth = (text.Parent as Grid)?.ColumnDefinitions.ElementAtOrDefault(1)?.Width.Value ?? 0;
+        var actualColumnWidth = (text.Parent as Grid)?.ColumnDefinitions.ElementAtOrDefault(1)?.ActualWidth ?? 0;
+        return new MainCountdownRemainingMeasurement(
+            precision,
+            record.Name,
+            expected,
+            text.Text,
+            Math.Round(columnWidth, 2),
+            Math.Round(actualColumnWidth, 2),
+            Math.Round(text.ActualWidth, 2),
+            Math.Round(requiredWidth, 2),
+            Math.Round(text.FontSize, 2),
+            text.TextAlignment == TextAlignment.Right && text.HorizontalAlignment == HorizontalAlignment.Stretch,
+            text.TextWrapping == TextWrapping.NoWrap && text.TextTrimming == TextTrimming.None,
+            requiredWidth <= text.ActualWidth + 0.5 && !text.Text.Contains('\n') && !text.Text.Contains('\r') && !text.Text.Contains('…'),
+            text.Typography.NumeralAlignment == FontNumeralAlignment.Tabular,
+            preferenceSaved);
+    }
+
     private Rect ValidationBounds(FrameworkElement element) =>
         element.TransformToAncestor(this).TransformBounds(
             new Rect(new Point(0, 0), element.RenderSize));
@@ -167,6 +558,8 @@ public sealed partial class MainWindow
 
 public sealed partial class FloatingWindow
 {
+    internal WorkspaceKind CurrentWorkspaceForValidation => _workspace;
+
     internal FloatingWindowValidationScenarios RunValidationScenarios(bool exerciseNoteAdd)
     {
         var originalWorkspace = _workspace;
@@ -568,7 +961,57 @@ internal sealed record MainUiPolishScenarios(
     bool PopupKeyboardLifecycleWorks,
     bool PopupOutsideFocusPreserved,
     bool EmptyStatesDistinguished,
-    bool NoResultsResetWorks);
+    bool NoResultsResetWorks,
+    bool CountdownEmptyStatesDistinguished,
+    bool CountdownEmptyPointerResetRestoresResults,
+    bool CountdownEmptyKeyboardResetRestoresResults,
+    bool CountdownRemainingLayoutMatches,
+    IReadOnlyList<MainCountdownRemainingMeasurement> CountdownRemainingSamples,
+    CountdownIncrementalRefreshProbe CountdownIncrementalRefresh,
+    bool MainNoteCompletionStyleScoped);
+
+internal sealed record CountdownIncrementalRefreshProbe(
+    bool IdentityPreserved,
+    bool FocusPreserved,
+    bool NonZeroScrollPreserved,
+    bool PointerStatePreserved,
+    bool CollectionChangeRebuilt,
+    bool FilterChangeRebuilt,
+    bool PrecisionChangeRebuilt,
+    bool ThemeChangeRebuilt,
+    bool ExpiryChangeRebuilt,
+    bool ExpiryBackgroundFlipped,
+    bool ExpiryRemainingTextFlipped)
+{
+    public bool ExpiryVisualsFlipTogether =>
+        ExpiryBackgroundFlipped && ExpiryRemainingTextFlipped;
+
+    public bool TriggerMatrixRebuilt =>
+        CollectionChangeRebuilt &&
+        FilterChangeRebuilt &&
+        PrecisionChangeRebuilt &&
+        ThemeChangeRebuilt &&
+        ExpiryChangeRebuilt;
+
+    public static CountdownIncrementalRefreshProbe Failed { get; } = new(
+        false, false, false, false, false, false, false, false, false, false, false);
+}
+
+internal sealed record MainCountdownRemainingMeasurement(
+    string Precision,
+    string RecordName,
+    string ExpectedText,
+    string RenderedText,
+    double ColumnWidth,
+    double ActualColumnWidth,
+    double ActualWidth,
+    double RequiredWidth,
+    double FontSize,
+    bool IsRightAligned,
+    bool IsSingleLineAndUntrimmed,
+    bool IsFullyVisible,
+    bool UsesTabularNumerals,
+    bool PreferenceSaved);
 
 internal sealed record FloatingUiPolishScenarios(
     bool DatePickerKeyboardLifecycleWorks,
@@ -578,6 +1021,15 @@ internal sealed record FloatingUiPolishScenarios(
 internal sealed record PopupFocusExerciseResult(
     bool EscapeReturnsFocus,
     bool OutsideFocusPreserved);
+
+internal sealed record DatePickerPointerExerciseResult(
+    bool TextBoxPresent,
+    bool PressInjected,
+    bool PressDidNotOpen,
+    bool ReleaseInjected,
+    bool ReleaseOpened,
+    bool ReleaseHandled,
+    bool ThemedPopupOpened);
 
 internal static class WindowValidationInput
 {
@@ -687,7 +1139,83 @@ internal static class WindowValidationInput
         }
     }
 
-    public static bool RaisePreviewKey(UIElement target, Key key)
+    public static DatePickerPointerExerciseResult ExerciseDatePickerTextPointer(DatePicker picker)
+    {
+        try
+        {
+            picker.BringIntoView();
+            Pump(picker.Dispatcher);
+            picker.IsDropDownOpen = false;
+            picker.ApplyTemplate();
+            var textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
+            if (textBox is null || PresentationSource.FromVisual(textBox) is null)
+            {
+                return new DatePickerPointerExerciseResult(
+                    false, false, false, false, false, false, false);
+            }
+
+            RaiseDateTextPointer(
+                picker,
+                textBox,
+                UIElement.PreviewMouseLeftButtonDownEvent);
+            Pump(picker.Dispatcher);
+            var pressDidNotOpen = !picker.IsDropDownOpen;
+            var releaseHandled = RaiseDateTextPointer(
+                picker,
+                textBox,
+                UIElement.PreviewMouseLeftButtonUpEvent);
+            Pump(picker.Dispatcher);
+            var calendar = ThemedDatePickerBehavior.GetCalendar(picker);
+            var releaseOpened = picker.IsDropDownOpen;
+            var themedPopupOpened =
+                releaseOpened &&
+                calendar?.Template is not null &&
+                ReferenceEquals(calendar.Style, picker.CalendarStyle);
+            return new DatePickerPointerExerciseResult(
+                true,
+                true,
+                pressDidNotOpen,
+                true,
+                releaseOpened,
+                releaseHandled,
+                themedPopupOpened);
+        }
+        finally
+        {
+            picker.IsDropDownOpen = false;
+            Pump(picker.Dispatcher);
+        }
+    }
+
+    public static bool ExerciseDatePickerButton(DatePicker picker)
+    {
+        try
+        {
+            picker.BringIntoView();
+            Pump(picker.Dispatcher);
+            picker.IsDropDownOpen = false;
+            picker.ApplyTemplate();
+            if (picker.Template.FindName("PART_Button", picker) is not Button button ||
+                PresentationSource.FromVisual(button) is null)
+            {
+                return false;
+            }
+
+            button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Pump(picker.Dispatcher);
+            return picker.IsDropDownOpen;
+        }
+        finally
+        {
+            picker.IsDropDownOpen = false;
+            Pump(picker.Dispatcher);
+        }
+    }
+
+    public static bool RaisePreviewKey(
+        UIElement target,
+        Key key,
+        ModifierKeys modifiers = ModifierKeys.None)
     {
         var source = PresentationSource.FromVisual(target);
         if (source is null)
@@ -703,7 +1231,57 @@ internal static class WindowValidationInput
         {
             RoutedEvent = Keyboard.PreviewKeyDownEvent
         };
-        target.RaiseEvent(eventArgs);
+        using (MainShortcutInput.InjectModifiers(eventArgs, modifiers))
+        {
+            target.RaiseEvent(eventArgs);
+        }
+        return eventArgs.Handled;
+    }
+
+    public static bool RaiseKey(UIElement target, Key key)
+    {
+        var source = PresentationSource.FromVisual(target);
+        if (source is null)
+        {
+            return false;
+        }
+
+        var keyDown = new KeyEventArgs(
+            Keyboard.PrimaryDevice,
+            source,
+            Environment.TickCount,
+            key)
+        {
+            RoutedEvent = Keyboard.KeyDownEvent
+        };
+        target.RaiseEvent(keyDown);
+
+        var keyUp = new KeyEventArgs(
+            Keyboard.PrimaryDevice,
+            source,
+            Environment.TickCount,
+            key)
+        {
+            RoutedEvent = Keyboard.KeyUpEvent
+        };
+        target.RaiseEvent(keyUp);
+        return keyDown.Handled && keyUp.Handled;
+    }
+
+    private static bool RaiseDateTextPointer(
+        DatePicker picker,
+        DatePickerTextBox textBox,
+        RoutedEvent routedEvent)
+    {
+        var eventArgs = new MouseButtonEventArgs(
+            Mouse.PrimaryDevice,
+            Environment.TickCount,
+            MouseButton.Left)
+        {
+            RoutedEvent = routedEvent,
+            Source = textBox
+        };
+        picker.RaiseEvent(eventArgs);
         return eventArgs.Handled;
     }
 

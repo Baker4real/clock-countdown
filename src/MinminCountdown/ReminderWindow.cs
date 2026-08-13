@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -36,17 +37,17 @@ internal sealed class ReminderCenterWindow : Window
         var heading = new TextBlock
         {
             Text = "提醒中心",
-            FontSize = 20,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center
         };
+        heading.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowTitleFontSize");
         heading.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         _countText = new TextBlock
         {
             Margin = new Thickness(12, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 14
+            VerticalAlignment = VerticalAlignment.Center
         };
+        _countText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
         _countText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         var header = new StackPanel
         {
@@ -67,6 +68,8 @@ internal sealed class ReminderCenterWindow : Window
         AutomationProperties.SetName(scroller, "提醒条目列表");
 
         var layout = new Grid { Margin = new Thickness(18) };
+        layout.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");
+        AutomationProperties.SetAutomationId(layout, "ReminderCenterContentRoot");
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition());
         Grid.SetRow(scroller, 1);
@@ -117,14 +120,10 @@ internal sealed class ReminderCenterWindow : Window
 
     internal event EventHandler<ReminderCenterEntryEventArgs>? OpenSourceRequested;
 
-    internal bool SupportsKeyboardNavigation => true;
-
     internal bool PersistenceFailureVisible =>
         _entries.Values.Any(entry => entry.Error.Visibility == Visibility.Visible);
 
     internal int EntryCount => _entries.Count;
-
-    internal bool UsesScrollableList => true;
 
     internal int RenderedEntryCount => _entries.Values.Count(entry => entry.RenderedRaised);
 
@@ -164,30 +163,27 @@ internal sealed class ReminderCenterWindow : Window
         var source = new TextBlock
         {
             Text = item.Source.Kind == ReminderSourceKind.Countdown ? "倒计时" : "便签",
-            FontSize = 13,
             FontWeight = FontWeights.SemiBold
         };
+        source.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
         source.SetResourceReference(TextBlock.ForegroundProperty, "ActiveBrush");
         var body = new TextBlock
         {
             Text = item.Source.DisplayText,
             Margin = new Thickness(0, 7, 0, 0),
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 15
+            TextWrapping = TextWrapping.Wrap
         };
         body.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         var scheduled = new TextBlock
         {
             Text = $"计划：{ChinaStandardTime.ToBeijingTime(item.Key.ScheduledUtc):yyyy年M月d日 HH:mm}（北京时间）",
-            Margin = new Thickness(0, 6, 0, 0),
-            FontSize = 13
+            Margin = new Thickness(0, 6, 0, 0)
         };
         scheduled.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         var error = new TextBlock
         {
             Margin = new Thickness(0, 8, 0, 0),
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 13,
             FontWeight = FontWeights.SemiBold,
             Visibility = Visibility.Collapsed
         };
@@ -262,7 +258,6 @@ internal sealed class ReminderCenterWindow : Window
         {
             Margin = new Thickness(0, 6, 0, 0),
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 13,
             FontWeight = FontWeights.SemiBold,
             Visibility = Visibility.Collapsed
         };

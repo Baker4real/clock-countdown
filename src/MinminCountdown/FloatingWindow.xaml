@@ -260,6 +260,7 @@
                 <TextBox x:Name="FloatingNoteText"
                          MaxHeight="88"
                          MaxLength="140"
+                         Foreground="{DynamicResource FloatingNoteInputTextBrush}"
                          TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Auto" />
                 <TextBlock x:Name="FloatingNoteTextError"

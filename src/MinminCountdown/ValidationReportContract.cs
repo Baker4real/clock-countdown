@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MinminCountdown;
 
@@ -43,6 +44,14 @@ internal static class ValidationReportContract
 {
     private const string ContractBehaviorField = "ValidationReportContractBehavior";
     private const string ModuleDepthField = "ValidationReportModuleDeep";
+    private const int MaximumDiagnosticCount = 12;
+    private const int MaximumDiagnosticLength = 240;
+    private static readonly Regex DiagnosticPathPattern = new(
+        @"(?i)(?:[a-z]:[\\/]|\\\\)[^\s,;|]+",
+        RegexOptions.CultureInvariant);
+    private static readonly Regex DiagnosticWhitespacePattern = new(
+        @"\s+",
+        RegexOptions.CultureInvariant);
 
     private static readonly string[] RequiredTrueBooleanFields =
     [
@@ -215,7 +224,12 @@ internal static class ValidationReportContract
             if (!manifestAvailable || !validated || captureCount == 0)
             {
                 throw new InvalidDataException(
-                    $"{prefix} 源码树模式必须有 manifest、通过验证并包含真实 capture。");
+                    BuildManifestFailureMessage(
+                        root,
+                        prefix,
+                        manifestAvailable,
+                        validated,
+                        captureCount));
             }
         }
         else if (manifestAvailable || validated || captureCount != 0)
@@ -226,6 +240,69 @@ internal static class ValidationReportContract
 
         return new ManifestMode(requested, manifestAvailable, validated);
     }
+
+    private static string BuildManifestFailureMessage(
+        JsonElement root,
+        string prefix,
+        bool manifestAvailable,
+        bool validated,
+        int captureCount)
+    {
+        var falseGates = ReadFalseGateNames(root, $"{prefix}Gates");
+        var diagnostics = ReadDiagnosticSummaries(root, $"{prefix}Diagnostics");
+        return $"{prefix} 源码树模式验证失败：" +
+               $"manifestAvailable={manifestAvailable.ToString().ToLowerInvariant()}, " +
+               $"validated={validated.ToString().ToLowerInvariant()}, " +
+               $"captureCount={captureCount}, " +
+               $"falseGates=[{FormatSummary(falseGates)}], " +
+               $"diagnostics=[{FormatSummary(diagnostics)}]。";
+    }
+
+    private static IReadOnlyList<string> ReadFalseGateNames(JsonElement root, string field)
+    {
+        if (!root.TryGetProperty(field, out var gates) || gates.ValueKind != JsonValueKind.Object)
+        {
+            return ["<unavailable>"];
+        }
+
+        return gates.EnumerateObject()
+            .Where(property =>
+                property.Value.ValueKind == JsonValueKind.False)
+            .Select(property => property.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> ReadDiagnosticSummaries(JsonElement root, string field)
+    {
+        if (!root.TryGetProperty(field, out var diagnostics) ||
+            diagnostics.ValueKind != JsonValueKind.Array)
+        {
+            return ["<unavailable>"];
+        }
+
+        return diagnostics.EnumerateArray()
+            .Take(MaximumDiagnosticCount)
+            .Select(element => element.ValueKind == JsonValueKind.String
+                ? SanitizeDiagnostic(element.GetString() ?? string.Empty)
+                : "<non-string>")
+            .ToArray();
+    }
+
+    private static string SanitizeDiagnostic(string value)
+    {
+        var sanitized = DiagnosticWhitespacePattern.Replace(value, " ").Trim();
+        sanitized = DiagnosticPathPattern.Replace(sanitized, "<path>");
+        if (sanitized.Length <= MaximumDiagnosticLength)
+        {
+            return sanitized;
+        }
+
+        return sanitized[..(MaximumDiagnosticLength - 3)] + "...";
+    }
+
+    private static string FormatSummary(IReadOnlyList<string> values) =>
+        values.Count == 0 ? "<none>" : string.Join(", ", values);
 
     private static bool ReadBoolean(
         IReadOnlyDictionary<string, object?> report,
@@ -325,6 +402,45 @@ internal static class ValidationReportContract
             report => report["FloatingReferenceBaselineCaptures"] = Array.Empty<object>(),
             true,
             "契约未拒绝源码树模式缺少悬浮窗 capture。");
+        MustRejectWithMessage(
+            report => report["MainReferenceBaselineManifestAvailable"] = false,
+            "MainReferenceBaseline 源码树模式验证失败：" +
+            "manifestAvailable=false, validated=true, captureCount=1, " +
+            "falseGates=[<none>], diagnostics=[<none>]。",
+            "manifest unavailable 异常未报告精确状态。");
+        MustRejectWithMessage(
+            report => report["MainReferenceBaselineValidated"] = false,
+            "MainReferenceBaseline 源码树模式验证失败：" +
+            "manifestAvailable=true, validated=false, captureCount=1, " +
+            "falseGates=[<none>], diagnostics=[<none>]。",
+            "validated false 异常未报告精确状态。");
+        MustRejectWithMessage(
+            report => report["MainReferenceBaselineCaptures"] = Array.Empty<object>(),
+            "MainReferenceBaseline 源码树模式验证失败：" +
+            "manifestAvailable=true, validated=true, captureCount=0, " +
+            "falseGates=[<none>], diagnostics=[<none>]。",
+            "capture empty 异常未报告精确状态。");
+        MustRejectWithMessage(
+            report =>
+            {
+                report["MainReferenceBaselineValidated"] = false;
+                report["MainReferenceBaselineGates"] = new Dictionary<string, bool>(StringComparer.Ordinal)
+                {
+                    ["SourceHashMatches"] = true,
+                    ["ExecutableHashMatches"] = false,
+                    ["PngHashMatches"] = false
+                };
+                report["MainReferenceBaselineDiagnostics"] = new[]
+                {
+                    "  first\r\ndiagnostic  ",
+                    @"source C:\private\visual\manifest.json mismatch"
+                };
+            },
+            "MainReferenceBaseline 源码树模式验证失败：" +
+            "manifestAvailable=true, validated=false, captureCount=1, " +
+            "falseGates=[ExecutableHashMatches, PngHashMatches], " +
+            "diagnostics=[first diagnostic, source <path> mismatch]。",
+            "false gate/diagnostic 异常未报告脱敏精确原因。");
         MustReject(
             report => report["MainStressCountdownTitleMeasurements"] = Array.Empty<object>(),
             true,
@@ -397,6 +513,13 @@ internal static class ValidationReportContract
             report.Add(
                 $"{prefix}Captures",
                 requested ? new object[] { new() } : Array.Empty<object>());
+            report.Add(
+                $"{prefix}Gates",
+                new Dictionary<string, bool>(StringComparer.Ordinal)
+                {
+                    ["ManifestAvailable"] = requested
+                });
+            report.Add($"{prefix}Diagnostics", Array.Empty<string>());
         }
 
         report.Add("MainStressCountdownTitleVisuals", requested);
@@ -419,6 +542,32 @@ internal static class ValidationReportContract
         }
 
         throw new InvalidOperationException(message);
+    }
+
+    private static void MustRejectWithMessage(
+        Action<Dictionary<string, object?>> mutate,
+        string expectedMessage,
+        string failureMessage)
+    {
+        var report = CreateBehaviorFixture(requested: true);
+        mutate(report);
+        try
+        {
+            SealCore(report);
+        }
+        catch (InvalidDataException exception)
+        {
+            if (string.Equals(exception.Message, expectedMessage, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"{failureMessage} expected=[{expectedMessage}] actual=[{exception.Message}]",
+                exception);
+        }
+
+        throw new InvalidOperationException(failureMessage);
     }
 
     private sealed record ManifestMode(

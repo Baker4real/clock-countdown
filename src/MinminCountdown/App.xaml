@@ -3,9 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
              xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
+             xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              Startup="OnStartup"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
+    <sys:Double x:Key="SecondaryWindowTitleFontSize">22</sys:Double>
+    <sys:Double x:Key="SecondaryWindowSectionFontSize">18</sys:Double>
+    <sys:Double x:Key="SecondaryWindowBodyFontSize">16</sys:Double>
+    <sys:Double x:Key="SecondaryWindowMinorFontSize">15</sys:Double>
+
     <Color x:Key="CanvasColor">#FFFDFC</Color>
     <Color x:Key="BackgroundColor">#FFF6EF</Color>
     <Color x:Key="CardColor">#FFF0E4</Color>
@@ -13,6 +19,7 @@
     <Color x:Key="NoteLineColor">#E7C781</Color>
     <Color x:Key="NoteStatusHeaderColor">#FFF0E4</Color>
     <Color x:Key="NoteCompletedHeaderColor">#F7E9E2</Color>
+    <Color x:Key="NoteCompletedAuxiliaryColor">#765247</Color>
     <Color x:Key="NoteActiveRailColor">#D55C47</Color>
     <Color x:Key="NoteCompletedRailColor">#B89E8E</Color>
     <Color x:Key="NoteTimelineColor">#E9C5B2</Color>
@@ -49,6 +56,7 @@
     <SolidColorBrush x:Key="NoteLineBrush" Color="{DynamicResource NoteLineColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteStatusHeaderBrush" Color="{DynamicResource NoteStatusHeaderColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteCompletedHeaderBrush" Color="{DynamicResource NoteCompletedHeaderColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="NoteCompletedAuxiliaryBrush" Color="{DynamicResource NoteCompletedAuxiliaryColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteActiveRailBrush" Color="{DynamicResource NoteActiveRailColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteCompletedRailBrush" Color="{DynamicResource NoteCompletedRailColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteTimelineBrush" Color="{DynamicResource NoteTimelineColor}" po:Freeze="False" />

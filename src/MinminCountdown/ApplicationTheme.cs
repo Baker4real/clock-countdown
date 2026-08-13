@@ -21,6 +21,7 @@ internal sealed class ApplicationTheme
         Token("NoteLineColor", "NoteLineBrush", "#E7C781", "#A77B4B"),
         Token("NoteStatusHeaderColor", "NoteStatusHeaderBrush", "#FFF0E4", "#423125"),
         Token("NoteCompletedHeaderColor", "NoteCompletedHeaderBrush", "#F7E9E2", "#493229"),
+        Token("NoteCompletedAuxiliaryColor", "NoteCompletedAuxiliaryBrush", "#765247", "#E7C99B"),
         Token("NoteActiveRailColor", "NoteActiveRailBrush", "#D55C47", "#C86F54"),
         Token("NoteCompletedRailColor", "NoteCompletedRailBrush", "#B89E8E", "#C6A17F"),
         Token("NoteTimelineColor", "NoteTimelineBrush", "#E9C5B2", "#8B6845"),

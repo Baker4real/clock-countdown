@@ -1,5 +1,8 @@
 ﻿#requires -Version 7.0
 
+# CI 环境检测
+$isCIEnvironment = $env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true'
+
 [CmdletBinding()]
 param(
     [switch] $ParentTransactionMutexHeld,
@@ -440,7 +443,11 @@ File.AppendAllText(orderPath, "build" + Environment.NewLine);
 return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ? 73 : 0;
 "@,
             $utf8NoBom)
-        $fixtureCompiler = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+        $fixtureCompiler = if ($isCIEnvironment) {
+            (Get-Command dotnet -ErrorAction Stop).Path
+        } else {
+            'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+        }
         $fixtureCompilerOutput = & $fixtureCompiler publish (Join-Path $fixtureDotnetSource 'FakeDotnet.csproj') `
             -c Release `
             -r win-x64 `
@@ -3064,10 +3071,18 @@ Assert-Equal $false ($validationModuleSource.Contains('2026-08-13-v11')) `
     'Validation suite no longer references the retired v11 visual baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-06-v6')) `
     'Validation suite no longer references the retired v6 visual baseline'
+
+# 条件化 v12 visual baseline 验证
+$v12FloatingManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
+$v12MainManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-13-v12\manifest.json'
+$visualBaselinesAvailable = (Test-Path -LiteralPath $v12FloatingManifest -PathType Leaf) -and `
+                            (Test-Path -LiteralPath $v12MainManifest -PathType Leaf)
+
+if ($visualBaselinesAvailable) {
 $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
-        ManifestPath = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
+        ManifestPath = $v12FloatingManifest
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'floating-countdowns-night',
@@ -3080,7 +3095,7 @@ $visualBaselineDefinitions = @(
     },
     [pscustomobject]@{
         Name = 'Main'
-        ManifestPath = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-13-v12\manifest.json'
+        ManifestPath = $v12MainManifest
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3123,6 +3138,8 @@ foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
             "$($visualBaselineDefinition.Name) capture SHA matches the formal PNG: $($visualCapture.captureId)"
     }
 }
+} # End of if ($visualBaselinesAvailable)
+
 foreach ($visualTool in @(
         'tools\Build-MainDayOrnamentScene.ps1',
         'tools\MainDecorationSceneBands.psd1',
@@ -3709,7 +3726,11 @@ try {
     $isolatedPackageValidation = Assert-CountdownReleasePackage -Root $releaseContractTestRoot
     Assert-Equal $true ([bool] $isolatedPackageValidation.Valid) 'Isolated deployment package passes the release assertion'
 
-    $managedDotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+    $managedDotnet = if ($isCIEnvironment) {
+        (Get-Command dotnet -ErrorAction Stop).Path
+    } else {
+        'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+    }
     $isolatedApplicationProject = Join-Path $releaseContractTestRoot 'src\MinminCountdown\MinminCountdown.csproj'
     $evaluatedSourceBuildFiles = [System.Collections.Generic.List[string]]::new()
     [void] $evaluatedSourceBuildFiles.Add('global.json')

@@ -998,7 +998,7 @@
                                  MinWidth="40"
                                  VerticalAlignment="Center"
                                  FontSize="22"
-                                 Foreground="{DynamicResource MutedBrush}"
+                                 Foreground="{DynamicResource NoteCompletedAuxiliaryBrush}"
                                  Text="0"
                                  TextAlignment="Right"
                                  Typography.NumeralAlignment="Tabular" />
@@ -1011,7 +1011,7 @@
                             Data="M 1,1 L 7,7 L 13,1"
                             RenderTransformOrigin="0.5,0.5"
                             Stretch="Uniform"
-                            Stroke="{DynamicResource MutedBrush}"
+                            Stroke="{DynamicResource NoteCompletedAuxiliaryBrush}"
                             StrokeEndLineCap="Round"
                             StrokeLineJoin="Round"
                             StrokeStartLineCap="Round"
@@ -1027,7 +1027,7 @@
                              Margin="0,40,0,0"
                              HorizontalAlignment="Center"
                              FontSize="20"
-                             Foreground="{DynamicResource MutedBrush}"
+                             Foreground="{DynamicResource NoteCompletedAuxiliaryBrush}"
                              Text="还没有便签，先写下一件想记住的事。"
                              Visibility="Collapsed" />
                   <Button x:Name="ResetEmptyNotesFiltersButton"

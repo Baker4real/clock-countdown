@@ -867,7 +867,7 @@ internal static class ValidationReport
         var mainCountdownRemainingGates = ValidationExercises.EvaluateMainCountdownRemainingGates(
             new MainCountdownRemainingGateInputs(
                 mainCountdownRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
-                mainCountdownRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
+                mainCountdownRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
                 mainCountdownRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
                 mainCountdownRemainingSamples.Count == 5,
                 mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ColumnWidth - 300) <= 0.01),

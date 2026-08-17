@@ -794,9 +794,15 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
                 [pscustomobject]@{
                     AcceptanceState = 'finalized-ready'
                     RuntimeProcessId = 4242
-                    TaskState = 'Running'
+                    TaskState = 'Ready'
+                    LastTaskResult = 0
                     SettingsHashBefore = ('A' * 64)
                     SettingsHashAfter = ('B' * 64)
+                    SettingsLengthBefore = 1
+                    SettingsLengthAfter = 2
+                    SettingsMtimeUtcBefore = '2026-01-01T00:00:00.0000000Z'
+                    SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+                    SettingsUnchanged = $false
                 }
             }
             Rollback = {
@@ -1197,9 +1203,15 @@ function Invoke-CountdownTransactionAcceptance {
     [pscustomobject]@{
         AcceptanceState = 'finalized-ready'
         RuntimeProcessId = 4242
-        TaskState = 'Running'
+        TaskState = 'Ready'
+        LastTaskResult = 0
         SettingsHashBefore = ('A' * 64)
         SettingsHashAfter = ('B' * 64)
+        SettingsLengthBefore = 1
+        SettingsLengthAfter = 2
+        SettingsMtimeUtcBefore = '2026-01-01T00:00:00.0000000Z'
+        SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+        SettingsUnchanged = $false
     }
 }
 
@@ -1609,9 +1621,15 @@ function Invoke-CountdownTransactionAcceptance {
     [pscustomobject]@{
         AcceptanceState = 'finalized-ready'
         RuntimeProcessId = 4242
-        TaskState = 'Running'
+        TaskState = 'Ready'
+        LastTaskResult = 0
         SettingsHashBefore = ('A' * 64)
         SettingsHashAfter = ('B' * 64)
+        SettingsLengthBefore = 1
+        SettingsLengthAfter = 2
+        SettingsMtimeUtcBefore = '2026-01-01T00:00:00.0000000Z'
+        SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+        SettingsUnchanged = $false
     }
 }
 
@@ -1994,7 +2012,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $expectedFixtureTokenHash = [Convert]::ToHexString(
             [System.Security.Cryptography.SHA256]::HashData(
                 [System.Text.UTF8Encoding]::new($false).GetBytes('sensitive-launch-token-sentinel')))
-        Assert-Equal 14 @($bindingResult.PSObject.Properties).Count 'Deployment binding does not change the strict success receipt schema'
+        Assert-Equal 20 @($bindingResult.PSObject.Properties).Count 'Deployment binding does not change the strict success receipt schema'
         Assert-Equal 4 @($bindingDocument.PSObject.Properties).Count 'Deployment binding sidecar uses the exact independent schema'
         Assert-Equal $expectedDeploymentBindingHash ([string] $bindingDocument.DeploymentBindingSha256) 'Deployment binding sidecar preserves the locally generated nonce hash'
         Assert-Equal $expectedFixtureTokenHash ([string] $bindingDocument.TokenSha256) 'Deployment binding sidecar binds the committed launch token hash'
@@ -2025,10 +2043,19 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
 
         $successReceiptJson = $successResult | ConvertTo-Json -Compress -Depth 4
         $normalizedSuccessReceipt = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $successReceiptJson
-        Assert-Equal 14 @($normalizedSuccessReceipt.PSObject.Properties).Count 'Success receipt parser returns the exact schema field set'
-        Assert-Equal 'Running' ([string] $normalizedSuccessReceipt.TaskState) 'Success receipt parser requires the running task state'
+        Assert-Equal 20 @($normalizedSuccessReceipt.PSObject.Properties).Count 'Success receipt parser returns the exact schema field set'
+        Assert-Equal 'Ready' ([string] $normalizedSuccessReceipt.TaskState) 'Success receipt parser requires the ready task state'
+        Assert-Equal 0 ([int] $normalizedSuccessReceipt.LastTaskResult) 'Success receipt parser requires lastTaskResult 0'
         Assert-Equal 'window-ready' ([string] $normalizedSuccessReceipt.RuntimeStage) 'Success receipt parser requires window-ready runtime state'
         Assert-Equal $false ($normalizedSuccessReceipt.PSObject.Properties.Name -contains 'LaunchToken') 'Success receipt schema excludes the raw launch token'
+        $unchangedTrueReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $unchangedTrueReceipt.SettingsHashAfter = $unchangedTrueReceipt.SettingsHashBefore
+        $unchangedTrueReceipt.SettingsLengthAfter = $unchangedTrueReceipt.SettingsLengthBefore
+        $unchangedTrueReceipt.SettingsMtimeUtcAfter = $unchangedTrueReceipt.SettingsMtimeUtcBefore
+        $unchangedTrueReceipt.SettingsUnchanged = $true
+        $acceptedUnchangedReceipt = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson `
+            -Json ($unchangedTrueReceipt | ConvertTo-Json -Compress)
+        Assert-Equal $true ([bool] $acceptedUnchangedReceipt.SettingsUnchanged) 'Success receipt parser accepts SettingsUnchanged computed from identical fingerprints'
 
         $invalidSuccessReceiptCases = [ordered]@{}
         $missingFieldReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
@@ -2056,6 +2083,33 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $invalidStateReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
         $invalidStateReceipt.AcceptanceState = 'accepted'
         $invalidSuccessReceiptCases['invalid state'] = $invalidStateReceipt | ConvertTo-Json -Compress
+        $runningTaskReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $runningTaskReceipt.TaskState = 'Running'
+        $invalidSuccessReceiptCases['task state running'] = $runningTaskReceipt | ConvertTo-Json -Compress
+        $nonzeroLastTaskReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $nonzeroLastTaskReceipt.LastTaskResult = 1
+        $invalidSuccessReceiptCases['nonzero lastTaskResult'] = $nonzeroLastTaskReceipt | ConvertTo-Json -Compress
+        $missingLastTaskReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        [void] $missingLastTaskReceipt.Remove('LastTaskResult')
+        $invalidSuccessReceiptCases['missing lastTaskResult'] = $missingLastTaskReceipt | ConvertTo-Json -Compress
+        $missingSettingsLengthReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        [void] $missingSettingsLengthReceipt.Remove('SettingsLengthBefore')
+        $invalidSuccessReceiptCases['missing settings length'] = $missingSettingsLengthReceipt | ConvertTo-Json -Compress
+        $missingSettingsMtimeReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        [void] $missingSettingsMtimeReceipt.Remove('SettingsMtimeUtcBefore')
+        $invalidSuccessReceiptCases['missing settings mtime'] = $missingSettingsMtimeReceipt | ConvertTo-Json -Compress
+        $missingSettingsUnchangedReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        [void] $missingSettingsUnchangedReceipt.Remove('SettingsUnchanged')
+        $invalidSuccessReceiptCases['missing settings unchanged'] = $missingSettingsUnchangedReceipt | ConvertTo-Json -Compress
+        $unchangedMismatchReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $unchangedMismatchReceipt.SettingsUnchanged = $true
+        $invalidSuccessReceiptCases['settings unchanged mismatch'] = $unchangedMismatchReceipt | ConvertTo-Json -Compress
+        $unchangedFalseOnIdenticalReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $unchangedFalseOnIdenticalReceipt.SettingsHashAfter = $unchangedFalseOnIdenticalReceipt.SettingsHashBefore
+        $unchangedFalseOnIdenticalReceipt.SettingsLengthAfter = $unchangedFalseOnIdenticalReceipt.SettingsLengthBefore
+        $unchangedFalseOnIdenticalReceipt.SettingsMtimeUtcAfter = $unchangedFalseOnIdenticalReceipt.SettingsMtimeUtcBefore
+        $unchangedFalseOnIdenticalReceipt.SettingsUnchanged = $false
+        $invalidSuccessReceiptCases['settings unchanged false on identical fingerprint'] = $unchangedFalseOnIdenticalReceipt | ConvertTo-Json -Compress
         foreach ($case in $invalidSuccessReceiptCases.GetEnumerator()) {
             $rejected = $false
             try {
@@ -2076,7 +2130,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         Assert-Equal $true (Test-Path -LiteralPath $successReceiptEvidencePath -PathType Leaf) 'Success receipt writer atomically publishes one evidence file'
         Assert-Equal $false ($persistedSuccessBytes.Length -ge 3 -and $persistedSuccessBytes[0] -eq 0xEF -and $persistedSuccessBytes[1] -eq 0xBB -and $persistedSuccessBytes[2] -eq 0xBF) 'Success receipt evidence is UTF-8 without BOM'
         Assert-Equal $false ($persistedSuccessText -match 'Credential|LaunchToken|sensitive-launch-token-sentinel') 'Success receipt evidence excludes credentials and raw launch tokens'
-        Assert-Equal 14 @($persistedSuccessReceipt.PSObject.Properties).Count 'Success receipt writer returns the normalized exact schema'
+        Assert-Equal 20 @($persistedSuccessReceipt.PSObject.Properties).Count 'Success receipt writer returns the normalized exact schema'
         [void] (ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $persistedSuccessText)
         $persistedSuccessHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $successReceiptEvidencePath).Hash
 
@@ -2113,7 +2167,8 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             UserIdentityMatch = $true
             RemoteMachineNameSha256 = 'A' * 64
             RemoteUserNameSha256 = 'B' * 64
-            TaskState = 'Running'
+            TaskState = 'Ready'
+            LastTaskResult = 0
             TaskExecuteMatch = $true
             TaskArgumentsMatch = $true
             TaskWorkingDirectoryMatch = $true
@@ -2138,6 +2193,9 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             ExecutableHashMatch = $true
             SettingsSha256 = $expectedReadbackSettingsHash
             SettingsHashMatch = $true
+            SettingsLength = 2
+            SettingsMtimeUtc = '2026-01-02T00:00:00.0000000Z'
+            SettingsUnchanged = $false
         }
         $validReadbackJson = $validReadback | ConvertTo-Json -Compress
         $normalizedReadback = ConvertFrom-CountdownRemoteDeploymentReadbackJson `
@@ -2146,7 +2204,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
             -ExpectedTokenSha256 ('E' * 64) `
             -ExpectedSettingsSha256 $expectedReadbackSettingsHash
-        Assert-Equal 31 @($normalizedReadback.PSObject.Properties).Count 'Independent readback parser returns the exact schema field set'
+        Assert-Equal 35 @($normalizedReadback.PSObject.Properties).Count 'Independent readback parser returns the exact schema field set'
         Assert-Equal $true ([bool] $normalizedReadback.Valid) 'Independent readback parser accepts a fully cross-bound receipt'
         Assert-Equal $false ($normalizedReadback.PSObject.Properties.Name -contains 'LaunchToken') 'Independent readback schema excludes the raw launch token'
 
@@ -2167,8 +2225,23 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             $invalidReadbackCases["identity $field"] = $caseValue | ConvertTo-Json -Compress
         }
         $readbackTaskState = $validReadbackJson | ConvertFrom-Json -AsHashtable
-        $readbackTaskState.TaskState = 'Ready'
+        $readbackTaskState.TaskState = 'Running'
         $invalidReadbackCases['task state'] = $readbackTaskState | ConvertTo-Json -Compress
+        $readbackLastTaskResult = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        $readbackLastTaskResult.LastTaskResult = 1
+        $invalidReadbackCases['nonzero lastTaskResult'] = $readbackLastTaskResult | ConvertTo-Json -Compress
+        $readbackMissingLastTaskResult = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        [void] $readbackMissingLastTaskResult.Remove('LastTaskResult')
+        $invalidReadbackCases['missing lastTaskResult'] = $readbackMissingLastTaskResult | ConvertTo-Json -Compress
+        $readbackMissingSettingsLength = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        [void] $readbackMissingSettingsLength.Remove('SettingsLength')
+        $invalidReadbackCases['missing settings length'] = $readbackMissingSettingsLength | ConvertTo-Json -Compress
+        $readbackMissingSettingsMtime = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        [void] $readbackMissingSettingsMtime.Remove('SettingsMtimeUtc')
+        $invalidReadbackCases['missing settings mtime'] = $readbackMissingSettingsMtime | ConvertTo-Json -Compress
+        $readbackMissingSettingsUnchanged = $validReadbackJson | ConvertFrom-Json -AsHashtable
+        [void] $readbackMissingSettingsUnchanged.Remove('SettingsUnchanged')
+        $invalidReadbackCases['missing settings unchanged'] = $readbackMissingSettingsUnchanged | ConvertTo-Json -Compress
         foreach ($field in @('TaskExecuteMatch', 'TaskArgumentsMatch', 'TaskWorkingDirectoryMatch')) {
             $caseValue = $validReadbackJson | ConvertFrom-Json -AsHashtable
             $caseValue[$field] = $false
@@ -2242,7 +2315,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $persistedReadbackText = [System.Text.UTF8Encoding]::new($false, $true).GetString($persistedReadbackBytes)
         Assert-Equal $true (Test-Path -LiteralPath $readbackEvidencePath -PathType Leaf) 'Independent readback writer atomically publishes one evidence file'
         Assert-Equal $false ($persistedReadbackText -match 'LaunchToken|sensitive-launch-token-sentinel') 'Independent readback evidence never persists the raw token'
-        Assert-Equal 31 @($persistedReadback.PSObject.Properties).Count 'Independent readback writer returns the normalized exact schema'
+        Assert-Equal 35 @($persistedReadback.PSObject.Properties).Count 'Independent readback writer returns the normalized exact schema'
         $readbackEvidenceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $readbackEvidencePath).Hash
         $existingReadbackRejected = $false
         try {
@@ -2924,6 +2997,9 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             -SuccessReceipt ([pscustomobject]@{
                     RuntimeProcessId = 4242
                     SettingsHashAfter = $expectedReadbackSettingsHash
+                    SettingsLengthAfter = 2
+                    SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+                    SettingsUnchanged = $false
                 }) `
             -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
             -ExpectedRemoteHost 'fixture-host' `
@@ -2973,6 +3049,9 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
                 -SuccessReceipt ([pscustomobject]@{
                         RuntimeProcessId = 4242
                         SettingsHashAfter = $expectedReadbackSettingsHash
+                        SettingsLengthAfter = 2
+                        SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+                        SettingsUnchanged = $false
                     }) `
                 -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
                 -ExpectedRemoteHost 'fixture-host' `
@@ -3867,7 +3946,8 @@ $acceptanceExpectedContext = [pscustomobject]@{
     Desktop = 'D:\AcceptanceDesktop'
 }
 $acceptanceAdapterState = [pscustomobject]@{ Completed = 0; Removed = 0 }
-$acceptanceTaskState = 'Running'
+$acceptanceTaskState = 'Ready'
+$acceptanceLastTaskResult = 0
 $acceptanceTaskIdentity = 'scheduled-task-v1'
 $acceptanceJobs = [System.Collections.ArrayList]::new()
 function Reset-CountdownAcceptanceTestCase {
@@ -3877,7 +3957,8 @@ function Reset-CountdownAcceptanceTestCase {
     Copy-Item -LiteralPath $acceptanceSettingsSnapshotPath -Destination $acceptanceSettingsPath -Force
     $acceptanceAdapterState.Completed = 0
     $acceptanceAdapterState.Removed = 0
-    $script:acceptanceTaskState = 'Running'
+    $script:acceptanceTaskState = 'Ready'
+    $script:acceptanceLastTaskResult = 0
     $script:acceptanceTaskIdentity = 'scheduled-task-v1'
     $request = New-CountdownStartupRequest -Path $acceptanceStartupRequestPath -AcceptanceReadOnly
     [void] (Write-CountdownWindowReadyReceipt -Path $acceptanceRuntimeStatusPath -LaunchToken $request.launchToken -ProcessId $RuntimeProcessId -SessionId 7 -ApplicationPath $acceptanceApplicationPath -CalendarState Ready)
@@ -3967,7 +4048,7 @@ function Invoke-CountdownAcceptanceTestCase {
             $reportedTaskState = $acceptanceTaskState
             if ($reportedTaskState -eq 'StopAfterReady') {
                 $startupState = [string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)
-                $reportedTaskState = if ($startupState -in @('ready', 'finalized')) { 'Ready' } else { 'Running' }
+                $reportedTaskState = if ($startupState -in @('ready', 'finalized')) { 'Disabled' } else { 'Ready' }
             }
             $reportedTaskIdentity = $acceptanceTaskIdentity
             if ($reportedTaskIdentity -eq 'DriftAfterReady') {
@@ -3979,6 +4060,10 @@ function Invoke-CountdownAcceptanceTestCase {
         -GetScheduledTaskIdentity {
             param([object] $ScheduledTask)
             [string] $ScheduledTask.Identity
+        } `
+        -GetScheduledTaskInfo {
+            param([string] $TaskName)
+            [pscustomobject]@{ LastTaskResult = $acceptanceLastTaskResult }
         } `
         -CompleteTransaction {
             $acceptanceAdapterState.Completed++
@@ -4011,6 +4096,12 @@ try {
     Assert-Equal 1 $acceptanceResult.Count 'Transaction acceptance returns one stable result object'
     Assert-Equal 'finalized-ready' ([string] $acceptanceResult[0].AcceptanceState) 'Transaction acceptance returns finalized-ready only after application unlock confirmation'
     Assert-Equal 4242 ([int] $acceptanceResult[0].RuntimeProcessId) 'Transaction acceptance retains the original managed process identity'
+    Assert-Equal 'Ready' ([string] $acceptanceResult[0].TaskState) 'Transaction acceptance reports Ready from the scheduled task'
+    Assert-Equal 0 ([int] $acceptanceResult[0].LastTaskResult) 'Transaction acceptance reports LastTaskResult from GetScheduledTaskInfo'
+    Assert-Equal $true ([bool] $acceptanceResult[0].SettingsUnchanged) 'Identical live settings fingerprints compute SettingsUnchanged=true'
+    Assert-Equal ([string] $acceptanceResult[0].SettingsHashBefore) ([string] $acceptanceResult[0].SettingsHashAfter) 'Unchanged settings keep the same SHA-256'
+    Assert-Equal ([long] $acceptanceResult[0].SettingsLengthBefore) ([long] $acceptanceResult[0].SettingsLengthAfter) 'Unchanged settings keep the same length'
+    Assert-Equal ([string] $acceptanceResult[0].SettingsMtimeUtcBefore) ([string] $acceptanceResult[0].SettingsMtimeUtcAfter) 'Unchanged settings keep the same LastWriteTimeUtc'
     Assert-Equal 1 $acceptanceAdapterState.Completed 'Transaction acceptance commits the transaction once'
     Assert-Equal 1 $acceptanceAdapterState.Removed 'Transaction acceptance removes rollback evidence only after finalized-ready'
     Assert-Equal 'finalized' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'Transaction acceptance leaves the startup request finalized'
@@ -4085,8 +4176,53 @@ try {
         -SettingsJsonAfterRelease $acceptanceMigratedJson
     $frozenMigrationResult = @(Invoke-CountdownAcceptanceTestCase -StartupRequest $frozenMigrationRequest)
     Assert-Equal 'finalized-ready' ([string] $frozenMigrationResult[0].AcceptanceState) 'Transaction acceptance uses one frozen migration instant across the C# handoff'
+    Assert-Equal $false ([bool] $frozenMigrationResult[0].SettingsUnchanged) 'Allowed schema migration records SettingsUnchanged=false'
+    Assert-Equal $true ([string] $frozenMigrationResult[0].SettingsHashBefore -match '\A[0-9A-F]{64}\z') 'Allowed migration keeps the before SHA-256 fingerprint'
+    Assert-Equal $true ([string] $frozenMigrationResult[0].SettingsHashAfter -match '\A[0-9A-F]{64}\z') 'Allowed migration keeps the after SHA-256 fingerprint'
+    Assert-Equal $false ([string] $frozenMigrationResult[0].SettingsHashBefore -eq [string] $frozenMigrationResult[0].SettingsHashAfter) 'Allowed migration changes the live settings SHA-256'
+    Assert-Equal $true ([long] $frozenMigrationResult[0].SettingsLengthBefore -ge 0) 'Allowed migration keeps the before length fingerprint'
+    Assert-Equal $true ([long] $frozenMigrationResult[0].SettingsLengthAfter -ge 0) 'Allowed migration keeps the after length fingerprint'
+    Assert-Equal $false ([string]::IsNullOrWhiteSpace([string] $frozenMigrationResult[0].SettingsMtimeUtcBefore)) 'Allowed migration keeps the before LastWriteTimeUtc fingerprint'
+    Assert-Equal $false ([string]::IsNullOrWhiteSpace([string] $frozenMigrationResult[0].SettingsMtimeUtcAfter)) 'Allowed migration keeps the after LastWriteTimeUtc fingerprint'
     Wait-Job -Job $frozenMigrationJob -Timeout 5 | Out-Null
     Assert-Equal 'Completed' ([string] $frozenMigrationJob.State) 'Frozen migration acceptance completes the release protocol'
+
+    $canonicalV10AcceptanceSettings = ConvertTo-CountdownSettingsJson -State (
+        ConvertFrom-CountdownSettingsObject -Settings ([pscustomobject]@{
+                schemaVersion = 10
+                timeZoneId = 'China Standard Time'
+                displayPrecision = 'Second'
+                monthlySalary = 0
+                workStart = '09:00'
+                workEnd = '18:00'
+                themePreference = 'Auto'
+                tags = @()
+                countdowns = @()
+                notes = @()
+                reminderStates = [pscustomobject]@{}
+            }))
+    Assert-Equal $false ((ConvertFrom-CountdownSettingsObject -Settings ($canonicalV10AcceptanceSettings | ConvertFrom-Json)).Migrated) 'Canonical v10 acceptance fixture is not a migration'
+    [System.IO.File]::WriteAllText($acceptanceSettingsSnapshotPath, $canonicalV10AcceptanceSettings, [System.Text.UTF8Encoding]::new($false))
+    $canonicalV10Request = Reset-CountdownAcceptanceTestCase
+    $canonicalV10BeforeItem = Get-Item -LiteralPath $acceptanceSettingsPath
+    $canonicalV10BeforeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $acceptanceSettingsPath).Hash
+    $canonicalV10BeforeLength = [long] $canonicalV10BeforeItem.Length
+    $canonicalV10BeforeMtime = $canonicalV10BeforeItem.LastWriteTimeUtc.ToUniversalTime().ToString('o')
+    $canonicalV10Job = Start-CountdownAcceptanceTestApplication -StartupRequest $canonicalV10Request
+    $canonicalV10Result = @(Invoke-CountdownAcceptanceTestCase -StartupRequest $canonicalV10Request)
+    $canonicalV10AfterItem = Get-Item -LiteralPath $acceptanceSettingsPath
+    Assert-Equal $true ([bool] $canonicalV10Result[0].SettingsUnchanged) 'Already-canonical v10 keeps SettingsUnchanged=true'
+    Assert-Equal $canonicalV10BeforeHash ([string] $canonicalV10Result[0].SettingsHashBefore) 'Already-canonical v10 before hash is the live file SHA-256'
+    Assert-Equal $canonicalV10BeforeHash ([string] $canonicalV10Result[0].SettingsHashAfter) 'Already-canonical v10 after hash stays the live file SHA-256'
+    Assert-Equal $canonicalV10BeforeLength ([long] $canonicalV10Result[0].SettingsLengthBefore) 'Already-canonical v10 before length is the live file length'
+    Assert-Equal $canonicalV10BeforeLength ([long] $canonicalV10Result[0].SettingsLengthAfter) 'Already-canonical v10 after length stays the live file length'
+    Assert-Equal $canonicalV10BeforeMtime ([string] $canonicalV10Result[0].SettingsMtimeUtcBefore) 'Already-canonical v10 before mtime is the live file LastWriteTimeUtc'
+    Assert-Equal $canonicalV10BeforeMtime ([string] $canonicalV10Result[0].SettingsMtimeUtcAfter) 'Already-canonical v10 after mtime stays the live file LastWriteTimeUtc'
+    Assert-Equal $canonicalV10BeforeHash (Get-FileHash -Algorithm SHA256 -LiteralPath $acceptanceSettingsPath).Hash 'Already-canonical v10 deploy path does not rewrite settings.json bytes'
+    Assert-Equal $canonicalV10BeforeLength ([long] $canonicalV10AfterItem.Length) 'Already-canonical v10 deploy path does not change settings.json length'
+    Assert-Equal $canonicalV10BeforeMtime $canonicalV10AfterItem.LastWriteTimeUtc.ToUniversalTime().ToString('o') 'Already-canonical v10 deploy path does not change settings.json LastWriteTimeUtc'
+    Wait-Job -Job $canonicalV10Job -Timeout 5 | Out-Null
+    Assert-Equal 'Completed' ([string] $canonicalV10Job.State) 'Already-canonical v10 acceptance completes the release protocol'
 
     $pidDriftRequest = Reset-CountdownAcceptanceTestCase -RuntimeProcessId 5252
     $pidDriftRejected = $false
@@ -4104,15 +4240,41 @@ try {
     Assert-Equal 'active' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'PID drift leaves the candidate application read-only and unreleased'
 
     $taskStoppedRequest = Reset-CountdownAcceptanceTestCase
-    $acceptanceTaskState = 'Ready'
+    $acceptanceTaskState = 'Disabled'
     $taskStoppedRejected = $false
     try {
         Invoke-CountdownAcceptanceTestCase -StartupRequest $taskStoppedRequest | Out-Null
     }
     catch {
-        $taskStoppedRejected = $_.Exception.Message -match '验收提交前计划任务未运行：Ready'
+        $taskStoppedRejected = $_.Exception.Message -match '验收提交前计划任务未回到 Ready 且 lastTaskResult=0：state=Disabled'
     }
-    Assert-Equal $true $taskStoppedRejected 'A non-running scheduled task blocks transaction acceptance before release'
+    Assert-Equal $true $taskStoppedRejected 'A non-ready scheduled task blocks transaction acceptance before release'
+
+    $taskRunningRequest = Reset-CountdownAcceptanceTestCase
+    $acceptanceTaskState = 'Running'
+    $taskRunningRejected = $false
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $taskRunningRequest | Out-Null
+    }
+    catch {
+        $taskRunningRejected = $_.Exception.Message -match '验收提交前计划任务未回到 Ready 且 lastTaskResult=0：state=Running lastTaskResult=0'
+    }
+    Assert-Equal $true $taskRunningRejected 'A still-running scheduled task cannot impersonate Ready'
+    Assert-Equal 0 $acceptanceAdapterState.Completed 'A still-running scheduled task does not commit the transaction'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'A still-running scheduled task preserves rollback evidence'
+
+    $nonzeroTaskResultRequest = Reset-CountdownAcceptanceTestCase
+    $acceptanceLastTaskResult = 267
+    $nonzeroTaskResultRejected = $false
+    try {
+        Invoke-CountdownAcceptanceTestCase -StartupRequest $nonzeroTaskResultRequest | Out-Null
+    }
+    catch {
+        $nonzeroTaskResultRejected = $_.Exception.Message -match '验收提交前计划任务未回到 Ready 且 lastTaskResult=0：state=Ready lastTaskResult=267'
+    }
+    Assert-Equal $true $nonzeroTaskResultRejected 'A non-zero LastTaskResult from GetScheduledTaskInfo blocks transaction acceptance'
+    Assert-Equal 0 $acceptanceAdapterState.Completed 'A non-zero LastTaskResult does not commit the transaction'
+    Assert-Equal 0 $acceptanceAdapterState.Removed 'A non-zero LastTaskResult preserves rollback evidence'
     Assert-Equal 0 $acceptanceAdapterState.Completed 'A non-running scheduled task does not commit the transaction'
     Assert-Equal 0 $acceptanceAdapterState.Removed 'A non-running scheduled task preserves rollback evidence'
     Assert-Equal 'active' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'A non-running scheduled task leaves the candidate application read-only and unreleased'
@@ -4125,7 +4287,7 @@ try {
         Invoke-CountdownAcceptanceTestCase -StartupRequest $taskDriftRequest | Out-Null
     }
     catch {
-        $taskDriftRejected = $_.Exception.Message -match 'schema 迁移确认后计划任务未运行：Ready'
+        $taskDriftRejected = $_.Exception.Message -match 'schema 迁移确认后计划任务未回到 Ready 且 lastTaskResult=0：state=Disabled'
     }
     Wait-Job -Job $taskDriftJob -Timeout 5 | Out-Null
     Assert-Equal $true $taskDriftRejected 'Scheduled task drift after release blocks transaction acceptance'
@@ -5060,6 +5222,14 @@ Assert-Equal $true ($deploymentSource.Contains('Get-OfficeRemoteDeploymentFailur
 $installTreeGuardIndex = $installerSource.IndexOf('Assert-CountdownInstallTreeHasNoReparsePoints -Path $install', $payloadCaptureIndex)
 $payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force', $installTreeGuardIndex)
 Assert-Equal $true ($installTreeGuardIndex -gt $payloadCaptureIndex -and $payloadCopyIndex -gt $installTreeGuardIndex) 'Installer rechecks the install tree after the stable snapshot and before writing payload files'
+$adapterSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '敏敏子倒计时.ps1'), [System.Text.Encoding]::UTF8)
+$adapterWaitForExitIndex = $adapterSource.IndexOf('$process.WaitForExit()')
+$adapterStayAttachedIndex = $adapterSource.IndexOf('$stayAttached = $ValidateOnly.IsPresent')
+$adapterAliveProbeIndex = $adapterSource.IndexOf('Start-Sleep -Milliseconds 200')
+$adapterHasExitedIndex = $adapterSource.IndexOf('$process.HasExited')
+Assert-Equal $true ($adapterStayAttachedIndex -ge 0 -and $adapterWaitForExitIndex -gt $adapterStayAttachedIndex) 'Production adapter waits for exit only in validate/exercise/test modes'
+Assert-Equal $true ($adapterAliveProbeIndex -gt $adapterWaitForExitIndex -and $adapterHasExitedIndex -gt $adapterAliveProbeIndex) 'Production adapter detaches after confirming the C# host stayed alive'
+Assert-Equal $true ($adapterSource.Contains('Win32_Process') -and $adapterSource.Contains('MethodName Create') -and $adapterSource.Contains('脱离计划任务作业')) 'Production adapter starts the C# host outside the scheduled-task job'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script required by remote core tests'
 Assert-Equal $true ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the build script required by remote core tests'
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
@@ -5120,6 +5290,18 @@ try {
     $savedSettings = [System.IO.File]::ReadAllText($settingsModuleTestPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
     Assert-Equal 10 $savedSettings.schemaVersion 'Settings module writes canonical schema'
     Assert-Equal $false (Test-Path -LiteralPath "$settingsModuleTestPath.tmp") 'Settings module cleans temporary file'
+    $canonicalV10Reload = ConvertFrom-CountdownSettingsObject -Settings $savedSettings
+    Assert-Equal $false $canonicalV10Reload.Migrated 'Saved canonical v10 is not marked for migration'
+    $canonicalV10Item = Get-Item -LiteralPath $settingsModuleTestPath
+    $canonicalV10Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsModuleTestPath).Hash
+    $canonicalV10Length = [long] $canonicalV10Item.Length
+    $canonicalV10Mtime = $canonicalV10Item.LastWriteTimeUtc.ToUniversalTime().ToString('o')
+    Start-Sleep -Milliseconds 20
+    Save-CountdownSettings -Path $settingsModuleTestPath -State $canonicalV10Reload
+    $resavedV10Item = Get-Item -LiteralPath $settingsModuleTestPath
+    Assert-Equal $canonicalV10Hash (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsModuleTestPath).Hash 'Re-saving already-canonical v10 does not change SHA-256'
+    Assert-Equal $canonicalV10Length ([long] $resavedV10Item.Length) 'Re-saving already-canonical v10 does not change length'
+    Assert-Equal $canonicalV10Mtime $resavedV10Item.LastWriteTimeUtc.ToUniversalTime().ToString('o') 'Re-saving already-canonical v10 does not change LastWriteTimeUtc'
 }
 finally {
     Remove-Item -LiteralPath $settingsModuleTestPath -Force -ErrorAction SilentlyContinue

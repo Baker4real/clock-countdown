@@ -365,6 +365,10 @@ try {
             param([object] $ScheduledTask)
             [string] (Export-ScheduledTask -InputObject $ScheduledTask -ErrorAction Stop)
         }
+        $getAcceptanceScheduledTaskInfo = {
+            param([string] $ExpectedTaskName)
+            Get-ScheduledTaskInfo -TaskName $ExpectedTaskName -ErrorAction Stop
+        }
         $completeAcceptanceTransaction = {
             Complete-CountdownInstallTransaction -TransactionPath $transaction.transactionPath -ExpectedInstallPath $install -ExpectedTaskName $taskName -ExpectedLegacyTaskName $legacyTaskName -ExpectedLauncherPath $launcherPath -ExpectedLegacyLauncherPath $legacyLauncherPath -ExpectedLauncherTempPath $launcherTempPath
         }
@@ -388,6 +392,7 @@ try {
                 -GetInteractiveContext $getAcceptanceInteractiveContext `
                 -GetScheduledTask $getAcceptanceScheduledTask `
                 -GetScheduledTaskIdentity $getAcceptanceScheduledTaskIdentity `
+                -GetScheduledTaskInfo $getAcceptanceScheduledTaskInfo `
                 -CompleteTransaction $completeAcceptanceTransaction `
                 -RemoveCommittedTransaction $removeAcceptedTransaction)
         $transactionCompleted = $true

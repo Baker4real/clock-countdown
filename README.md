@@ -42,7 +42,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 
 ## 文件说明
 
-- `敏敏子倒计时.ps1`：C# 应用的薄启动 adapter；映射既有参数并传播真实退出码，不回退旧 PowerShell WPF
+- `敏敏子倒计时.ps1`：C# 应用的薄启动 adapter；映射既有参数。生产启动用 `Win32_Process.Create` 脱离计划任务作业，确认 C# 仍存活后退出 0；validate/exercise 仍等待并传播退出码。不回退旧 PowerShell WPF
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
 - `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序

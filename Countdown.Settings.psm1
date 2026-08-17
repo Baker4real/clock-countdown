@@ -1189,11 +1189,19 @@ function Save-CountdownSettings {
     )
 
     $payload = ConvertTo-CountdownSettingsJson -State $State
+    $payloadBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($payload)
     $temporaryPath = "$Path.tmp"
     $settingsMutex = $null
     try {
         $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $Path
-        [System.IO.File]::WriteAllText($temporaryPath, $payload, (New-Object System.Text.UTF8Encoding($false)))
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            $existingBytes = [System.IO.File]::ReadAllBytes($Path)
+            if ($existingBytes.Length -eq $payloadBytes.Length -and
+                [System.BitConverter]::ToString($existingBytes) -eq [System.BitConverter]::ToString($payloadBytes)) {
+                return
+            }
+        }
+        [System.IO.File]::WriteAllBytes($temporaryPath, $payloadBytes)
         Move-Item -LiteralPath $temporaryPath -Destination $Path -Force
     }
     finally {

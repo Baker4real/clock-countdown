@@ -564,7 +564,7 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         SchemaVersion = 1; Valid = $true
         HostIdentityMatch = $true; UserIdentityMatch = $true
         RemoteMachineNameSha256 = '1' * 64; RemoteUserNameSha256 = '2' * 64
-        TaskState = 'Running'; TaskExecuteMatch = $true; TaskArgumentsMatch = $true
+        TaskState = 'Ready'; LastTaskResult = 0; TaskExecuteMatch = $true; TaskArgumentsMatch = $true
         TaskWorkingDirectoryMatch = $true; StartupSchemaVersion = 1
         StartupAcceptanceState = 'finalized'; RuntimeSchemaVersion = 4
         RuntimeStage = 'window-ready'; AcceptanceSchemaVersion = 1
@@ -575,6 +575,8 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         ProcessExecutablePathMatch = $true; ExecutableSha256 = $expectedReadbackExecutableHash
         ExecutableHashMatch = $true; SettingsSha256 = $expectedReadbackSettingsHash
         SettingsHashMatch = $true
+        SettingsLength = 2; SettingsMtimeUtc = '2026-01-02T00:00:00.0000000Z'
+        SettingsUnchanged = $false
     } | ConvertTo-Json -Compress
     $unexpectedTokenBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($readbackWithUnexpectedToken)
     $unexpectedTokenRunner = {
@@ -643,7 +645,7 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         SchemaVersion = 1; Valid = $true
         HostIdentityMatch = $true; UserIdentityMatch = $true
         RemoteMachineNameSha256 = '5' * 64; RemoteUserNameSha256 = '6' * 64
-        TaskState = 'Running'; TaskExecuteMatch = $true; TaskArgumentsMatch = $true
+        TaskState = 'Ready'; LastTaskResult = 0; TaskExecuteMatch = $true; TaskArgumentsMatch = $true
         TaskWorkingDirectoryMatch = $true; StartupSchemaVersion = 1
         StartupAcceptanceState = 'finalized'; RuntimeSchemaVersion = 4
         RuntimeStage = 'window-ready'; AcceptanceSchemaVersion = 1
@@ -654,6 +656,8 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         ProcessExecutablePathMatch = $true; ExecutableSha256 = $behaviorExecutableHash
         ExecutableHashMatch = $true; SettingsSha256 = $behaviorSettingsHash
         SettingsHashMatch = $true
+        SettingsLength = 2; SettingsMtimeUtc = '2026-01-02T00:00:00.0000000Z'
+        SettingsUnchanged = $false
     }
     $behaviorReadbackJson = $behaviorReadback | ConvertTo-Json -Compress
     $behaviorReadbackBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($behaviorReadbackJson)
@@ -700,7 +704,13 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
             -IndependentReadbackEvidencePath $readbackEvidencePath `
             -RemoteDeploymentBindingPath 'D:\Codex\deploy\fixture\deployment-binding.json' `
             -DeploymentBindingSha256 $behaviorBindingHash `
-            -SuccessReceipt ([pscustomobject]@{ RuntimeProcessId = 4242; SettingsHashAfter = $behaviorSettingsHash }) `
+            -SuccessReceipt ([pscustomobject]@{
+                RuntimeProcessId = 4242
+                SettingsHashAfter = $behaviorSettingsHash
+                SettingsLengthAfter = 2
+                SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+                SettingsUnchanged = $false
+            }) `
             -ExpectedExecutableSha256 $behaviorExecutableHash `
             -ExpectedRemoteHost 'office-host' `
             -ExpectedRemoteUser 'replicator' `
@@ -756,7 +766,13 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         -IndependentReadbackEvidencePath $readbackEvidencePath `
         -RemoteDeploymentBindingPath 'D:\Codex\deploy\fixture\deployment-binding.json' `
         -DeploymentBindingSha256 $behaviorBindingHash `
-        -SuccessReceipt ([pscustomobject]@{ RuntimeProcessId = 4242; SettingsHashAfter = $behaviorSettingsHash }) `
+        -SuccessReceipt ([pscustomobject]@{
+            RuntimeProcessId = 4242
+            SettingsHashAfter = $behaviorSettingsHash
+            SettingsLengthAfter = 2
+            SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+            SettingsUnchanged = $false
+        }) `
         -ExpectedExecutableSha256 $behaviorExecutableHash `
         -ExpectedRemoteHost 'office-host' `
         -ExpectedRemoteUser 'replicator' `
@@ -772,7 +788,7 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
     Assert-Equal $true (Test-Path -LiteralPath $readbackEvidencePath -PathType Leaf) '同名其他路径 TransferLedger module 未劫持已按绝对路径选择的命令绑定'
     Assert-Equal 0 @(Get-ChildItem -LiteralPath $testRoot -File -Filter 'behavior-*.json.*.tmp').Count '成功 twin 不残留 evidence 临时文件'
     $persistedReadback = [System.IO.File]::ReadAllText($readbackEvidencePath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    Assert-Equal 31 @($persistedReadback.PSObject.Properties).Count '成功 twin 保持 readback 精确 31 字段 schema'
+    Assert-Equal 35 @($persistedReadback.PSObject.Properties).Count '成功 twin 保持 readback 精确 35 字段 schema'
 
     $validLedgerBytes = [System.IO.File]::ReadAllBytes($ledgerPath)
     $validLedgerText = [System.Text.UTF8Encoding]::new($false, $true).GetString($validLedgerBytes)

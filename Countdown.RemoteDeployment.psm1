@@ -210,9 +210,11 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
 
         $expectedNames = [string[]] @(
             'SchemaVersion', 'Valid', 'CoreTests', 'CSharpTests', 'UiTests',
-            'UiValid', 'AdapterUiValidated', 'TaskState', 'RuntimeProcessId',
-            'RuntimeStage', 'CalendarState', 'AcceptanceState',
-            'SettingsHashBefore', 'SettingsHashAfter'
+            'UiValid', 'AdapterUiValidated', 'TaskState', 'LastTaskResult',
+            'RuntimeProcessId', 'RuntimeStage', 'CalendarState', 'AcceptanceState',
+            'SettingsHashBefore', 'SettingsHashAfter', 'SettingsLengthBefore',
+            'SettingsLengthAfter', 'SettingsMtimeUtcBefore', 'SettingsMtimeUtcAfter',
+            'SettingsUnchanged'
         )
         $expectedSet = [System.Collections.Generic.HashSet[string]]::new(
             $expectedNames,
@@ -266,16 +268,40 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
             throw '远程部署成功回执 RuntimeProcessId 无效。'
         }
 
+        $lastTaskResult = 0L
+        if ($properties.LastTaskResult.ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+            -not $properties.LastTaskResult.TryGetInt64([ref] $lastTaskResult) -or
+            $lastTaskResult -ne 0) {
+            throw '远程部署成功回执 LastTaskResult 必须是 0。'
+        }
+        $settingsLengths = [ordered]@{}
+        foreach ($name in @('SettingsLengthBefore', 'SettingsLengthAfter')) {
+            $value = 0L
+            if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+                -not $properties[$name].TryGetInt64([ref] $value) -or
+                $value -lt 0 -or $value -gt [int]::MaxValue) {
+                throw "远程部署成功回执 $name 必须是非负整数。"
+            }
+            $settingsLengths[$name] = [long] $value
+        }
+        if ($properties.SettingsUnchanged.ValueKind -notin @(
+                [System.Text.Json.JsonValueKind]::True,
+                [System.Text.Json.JsonValueKind]::False)) {
+            throw '远程部署成功回执 SettingsUnchanged 必须是 bool。'
+        }
+        $settingsUnchanged = $properties.SettingsUnchanged.ValueKind -eq [System.Text.Json.JsonValueKind]::True
+
         $strings = [ordered]@{}
         foreach ($name in @(
                 'TaskState', 'RuntimeStage', 'CalendarState', 'AcceptanceState',
-                'SettingsHashBefore', 'SettingsHashAfter')) {
+                'SettingsHashBefore', 'SettingsHashAfter',
+                'SettingsMtimeUtcBefore', 'SettingsMtimeUtcAfter')) {
             if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::String) {
                 throw "远程部署成功回执 $name 必须是 string。"
             }
             $strings[$name] = $properties[$name].GetString()
         }
-        if ($strings.TaskState -ne 'Running') { throw '远程部署成功回执 TaskState 必须是 Running。' }
+        if ($strings.TaskState -ne 'Ready') { throw '远程部署成功回执 TaskState 必须是 Ready。' }
         if ($strings.RuntimeStage -ne 'window-ready') { throw '远程部署成功回执 RuntimeStage 必须是 window-ready。' }
         if ($strings.CalendarState -notin @('Pending', 'Ready', 'Unavailable')) {
             throw '远程部署成功回执 CalendarState 无效。'
@@ -290,6 +316,12 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
             }
             $strings[$name] = $value.ToUpperInvariant()
         }
+        $computedUnchanged = [string] $strings.SettingsHashBefore -eq [string] $strings.SettingsHashAfter -and
+            $settingsLengths.SettingsLengthBefore -eq $settingsLengths.SettingsLengthAfter -and
+            [string] $strings.SettingsMtimeUtcBefore -eq [string] $strings.SettingsMtimeUtcAfter
+        if ($settingsUnchanged -ne $computedUnchanged) {
+            throw '远程部署成功回执 SettingsUnchanged 与指纹前后对照不一致。'
+        }
 
         [pscustomobject][ordered]@{
             SchemaVersion = 1
@@ -300,12 +332,18 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
             UiValid = $true
             AdapterUiValidated = $true
             TaskState = $strings.TaskState
+            LastTaskResult = [long] $lastTaskResult
             RuntimeProcessId = [int] $runtimeProcessId
             RuntimeStage = $strings.RuntimeStage
             CalendarState = $strings.CalendarState
             AcceptanceState = $strings.AcceptanceState
             SettingsHashBefore = $strings.SettingsHashBefore
             SettingsHashAfter = $strings.SettingsHashAfter
+            SettingsLengthBefore = $settingsLengths.SettingsLengthBefore
+            SettingsLengthAfter = $settingsLengths.SettingsLengthAfter
+            SettingsMtimeUtcBefore = $strings.SettingsMtimeUtcBefore
+            SettingsMtimeUtcAfter = $strings.SettingsMtimeUtcAfter
+            SettingsUnchanged = [bool] $settingsUnchanged
         }
     }
     finally {
@@ -528,13 +566,15 @@ function ConvertFrom-CountdownRemoteDeploymentReadbackJson {
     $expectedNames = [string[]] @(
         'SchemaVersion', 'Valid', 'HostIdentityMatch', 'UserIdentityMatch',
         'RemoteMachineNameSha256', 'RemoteUserNameSha256', 'TaskState',
-        'TaskExecuteMatch', 'TaskArgumentsMatch', 'TaskWorkingDirectoryMatch',
+        'LastTaskResult', 'TaskExecuteMatch', 'TaskArgumentsMatch',
+        'TaskWorkingDirectoryMatch',
         'StartupSchemaVersion', 'StartupAcceptanceState', 'RuntimeSchemaVersion',
         'RuntimeStage', 'AcceptanceSchemaVersion', 'AcceptanceStage', 'TokenSha256',
         'TokenMatch', 'RuntimeProcessId', 'AcceptanceProcessId', 'ProcessIdMatch',
         'RuntimeSessionId', 'AcceptanceSessionId', 'ProcessSessionId', 'SessionIdMatch',
         'ApplicationPathMatch', 'ProcessExecutablePathMatch', 'ExecutableSha256',
-        'ExecutableHashMatch', 'SettingsSha256', 'SettingsHashMatch'
+        'ExecutableHashMatch', 'SettingsSha256', 'SettingsHashMatch',
+        'SettingsLength', 'SettingsMtimeUtc', 'SettingsUnchanged'
     )
     $options = [System.Text.Json.JsonDocumentOptions]::new()
     $options.AllowTrailingCommas = $false
@@ -565,7 +605,9 @@ function ConvertFrom-CountdownRemoteDeploymentReadbackJson {
                 @('AcceptanceProcessId', 1L, [long] [int]::MaxValue),
                 @('RuntimeSessionId', 1L, [long] [int]::MaxValue),
                 @('AcceptanceSessionId', 1L, [long] [int]::MaxValue),
-                @('ProcessSessionId', 1L, [long] [int]::MaxValue))) {
+                @('ProcessSessionId', 1L, [long] [int]::MaxValue),
+                @('LastTaskResult', 0L, 0L),
+                @('SettingsLength', 0L, [long] [int]::MaxValue))) {
             $name = [string] $definition[0]
             $value = 0L
             if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
@@ -597,13 +639,13 @@ function ConvertFrom-CountdownRemoteDeploymentReadbackJson {
         foreach ($name in @(
                 'RemoteMachineNameSha256', 'RemoteUserNameSha256', 'TaskState',
                 'StartupAcceptanceState', 'RuntimeStage', 'AcceptanceStage',
-                'TokenSha256', 'ExecutableSha256', 'SettingsSha256')) {
+                'TokenSha256', 'ExecutableSha256', 'SettingsSha256', 'SettingsMtimeUtc')) {
             if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::String) {
                 throw "独立回读 $name 必须是 string。"
             }
             $strings[$name] = $properties[$name].GetString()
         }
-        if ($strings.TaskState -ne 'Running') { throw '独立回读计划任务未运行。' }
+        if ($strings.TaskState -ne 'Ready') { throw '独立回读计划任务未回到 Ready。' }
         if ($strings.StartupAcceptanceState -ne 'finalized') { throw '独立回读 startup 未达到 finalized。' }
         if ($strings.RuntimeStage -ne 'window-ready') { throw '独立回读 runtime 未达到 window-ready。' }
         if ($strings.AcceptanceStage -ne 'finalized-ready') { throw '独立回读 acceptance 未达到 finalized-ready。' }
@@ -617,13 +659,20 @@ function ConvertFrom-CountdownRemoteDeploymentReadbackJson {
         if ($strings.ExecutableSha256 -ne $expectedExecutableHash) { throw '独立回读运行 EXE 哈希与发布合同不一致。' }
         if ($strings.TokenSha256 -ne $expectedTokenHash) { throw '独立回读 token 哈希与本次部署 binding 不一致。' }
         if ($settingsHash -ne $expectedSettingsHash) { throw '独立回读 settings 哈希与成功回执不一致。' }
+        if ($properties.SettingsUnchanged.ValueKind -notin @(
+                [System.Text.Json.JsonValueKind]::True,
+                [System.Text.Json.JsonValueKind]::False)) {
+            throw '独立回读 SettingsUnchanged 必须是 bool。'
+        }
+        $settingsUnchanged = $properties.SettingsUnchanged.ValueKind -eq [System.Text.Json.JsonValueKind]::True
 
         [pscustomobject][ordered]@{
             SchemaVersion = 1; Valid = $true
             HostIdentityMatch = $true; UserIdentityMatch = $true
             RemoteMachineNameSha256 = $strings.RemoteMachineNameSha256
             RemoteUserNameSha256 = $strings.RemoteUserNameSha256
-            TaskState = $strings.TaskState; TaskExecuteMatch = $true
+            TaskState = $strings.TaskState; LastTaskResult = $integerValues.LastTaskResult
+            TaskExecuteMatch = $true
             TaskArgumentsMatch = $true; TaskWorkingDirectoryMatch = $true
             StartupSchemaVersion = 1; StartupAcceptanceState = $strings.StartupAcceptanceState
             RuntimeSchemaVersion = 4; RuntimeStage = $strings.RuntimeStage
@@ -637,6 +686,9 @@ function ConvertFrom-CountdownRemoteDeploymentReadbackJson {
             ApplicationPathMatch = $true; ProcessExecutablePathMatch = $true
             ExecutableSha256 = $strings.ExecutableSha256; ExecutableHashMatch = $true
             SettingsSha256 = $settingsHash; SettingsHashMatch = $true
+            SettingsLength = $integerValues.SettingsLength
+            SettingsMtimeUtc = $strings.SettingsMtimeUtc
+            SettingsUnchanged = [bool] $settingsUnchanged
         }
     }
     finally { $document.Dispose() }
@@ -892,7 +944,11 @@ function Invoke-CountdownRemoteDeploymentReadbackProbe {
         [System.IO.Path]::GetFullPath([string] $taskAction.WorkingDirectory).TrimEnd('\'),
         [System.IO.Path]::GetFullPath([string] $Expected.InstallPath).TrimEnd('\'),
         [System.StringComparison]::OrdinalIgnoreCase)
-    if ([string] $task.State -ne 'Running') { throw "独立回读计划任务未运行：$($task.State)" }
+    $taskInfo = Get-ScheduledTaskInfo -TaskName ([string] $Expected.TaskName) -ErrorAction Stop
+    $lastTaskResult = [long] $taskInfo.LastTaskResult
+    if ([string] $task.State -ne 'Ready' -or $lastTaskResult -ne 0) {
+        throw "独立回读计划任务未回到 Ready 且 lastTaskResult=0：state=$($task.State) lastTaskResult=$lastTaskResult"
+    }
     if (-not $taskExecuteMatch) { throw '独立回读计划任务未使用当前 PowerShell 7 pwsh.exe。' }
     if (-not $taskArgumentsMatch) { throw '独立回读计划任务未使用受管 pwsh.exe -STA 薄 adapter 参数。' }
     if (-not $taskWorkingDirectoryMatch) { throw '独立回读计划任务工作目录不一致。' }
@@ -1011,19 +1067,30 @@ function Invoke-CountdownRemoteDeploymentReadbackProbe {
 
     $settingsPath = Join-Path ([string] $Expected.InstallPath) 'settings.json'
     $settingsSha256 = ''
+    $settingsLength = 0L
+    $settingsMtimeUtc = ''
     if (Test-Path -LiteralPath $settingsPath) {
         $settingsItem = Assert-CountdownRemoteDeploymentReadbackOrdinaryFile -Path $settingsPath
         $settingsSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsItem.FullName).Hash
+        $settingsLength = [long] $settingsItem.Length
+        $settingsMtimeUtc = $settingsItem.LastWriteTimeUtc.ToUniversalTime().ToString('o')
     }
     $settingsHashMatch = [string]::Equals($settingsSha256, [string] $Expected.ExpectedSettingsSha256, [System.StringComparison]::OrdinalIgnoreCase)
     if (-not $settingsHashMatch) { throw '独立回读 settings 哈希与成功回执不一致。' }
+    if ([long] $settingsLength -ne [long] $Expected.ExpectedSettingsLength) {
+        throw '独立回读 settings 长度与成功回执不一致。'
+    }
+    if (-not [string]::Equals($settingsMtimeUtc, [string] $Expected.ExpectedSettingsMtimeUtc, [System.StringComparison]::Ordinal)) {
+        throw '独立回读 settings mtime 与成功回执不一致。'
+    }
 
     $result = [pscustomobject][ordered]@{
         SchemaVersion = 1; Valid = $true
         HostIdentityMatch = $hostIdentityMatch; UserIdentityMatch = $userIdentityMatch
         RemoteMachineNameSha256 = Get-CountdownRemoteDeploymentReadbackSha256Text -Text ([Environment]::MachineName)
         RemoteUserNameSha256 = Get-CountdownRemoteDeploymentReadbackSha256Text -Text $windowsIdentity
-        TaskState = [string] $task.State; TaskExecuteMatch = $taskExecuteMatch
+        TaskState = [string] $task.State; LastTaskResult = $lastTaskResult
+        TaskExecuteMatch = $taskExecuteMatch
         TaskArgumentsMatch = $taskArgumentsMatch; TaskWorkingDirectoryMatch = $taskWorkingDirectoryMatch
         StartupSchemaVersion = [int] $startup.schemaVersion; StartupAcceptanceState = [string] $startup.acceptanceState
         RuntimeSchemaVersion = [int] $runtime.schemaVersion; RuntimeStage = [string] $runtime.stage
@@ -1036,6 +1103,9 @@ function Invoke-CountdownRemoteDeploymentReadbackProbe {
         ProcessExecutablePathMatch = $processExecutablePathMatch; ExecutableSha256 = $executableSha256
         ExecutableHashMatch = $executableHashMatch; SettingsSha256 = $settingsSha256
         SettingsHashMatch = $settingsHashMatch
+        SettingsLength = $settingsLength
+        SettingsMtimeUtc = $settingsMtimeUtc
+        SettingsUnchanged = [bool] $Expected.ExpectedSettingsUnchanged
     }
     $resultJson = $result | ConvertTo-Json -Compress -Depth 4
     [Console]::Out.Write(
@@ -1054,6 +1124,9 @@ function Invoke-CountdownRemoteDeploymentIndependentRead {
         [Parameter(Mandatory)] [string] $ExpectedDeploymentBindingSha256,
         [Parameter(Mandatory)] [string] $DeploymentBindingPath,
         [AllowEmptyString()] [string] $ExpectedSettingsSha256 = '',
+        [long] $ExpectedSettingsLength = 0,
+        [AllowEmptyString()] [string] $ExpectedSettingsMtimeUtc = '',
+        [bool] $ExpectedSettingsUnchanged = $false,
         [scriptblock] $CommandRunner
     )
 
@@ -1066,6 +1139,9 @@ function Invoke-CountdownRemoteDeploymentIndependentRead {
         ExpectedDeploymentBindingSha256 = $ExpectedDeploymentBindingSha256
         DeploymentBindingPath = $DeploymentBindingPath
         ExpectedSettingsSha256 = $ExpectedSettingsSha256
+        ExpectedSettingsLength = $ExpectedSettingsLength
+        ExpectedSettingsMtimeUtc = $ExpectedSettingsMtimeUtc
+        ExpectedSettingsUnchanged = [bool] $ExpectedSettingsUnchanged
         InstallPath = 'D:\敏敏子倒计时'
         TaskName = 'Minmin Countdown'
         ApplicationPath = 'D:\敏敏子倒计时\敏敏子倒计时.ps1'
@@ -1199,6 +1275,24 @@ function New-CountdownRemoteDeploymentReadbackSshAdapter {
             ExpectedDeploymentBindingSha256 = [string] $Context.ExpectedDeploymentBindingSha256
             DeploymentBindingPath = [string] $Context.DeploymentBindingPath
             ExpectedSettingsSha256 = [string] $Context.ExpectedSettingsSha256
+            ExpectedSettingsLength = [long] $(
+                if ($Context.PSObject.Properties.Name -contains 'ExpectedSettingsLength') {
+                    $Context.ExpectedSettingsLength
+                }
+                else { 0 }
+            )
+            ExpectedSettingsMtimeUtc = [string] $(
+                if ($Context.PSObject.Properties.Name -contains 'ExpectedSettingsMtimeUtc') {
+                    $Context.ExpectedSettingsMtimeUtc
+                }
+                else { '' }
+            )
+            ExpectedSettingsUnchanged = [bool] $(
+                if ($Context.PSObject.Properties.Name -contains 'ExpectedSettingsUnchanged') {
+                    $Context.ExpectedSettingsUnchanged
+                }
+                else { $false }
+            )
         }
         if ($null -ne $capturedCommandRunner) { $arguments.CommandRunner = $capturedCommandRunner }
         & $independentReadCommand @arguments
@@ -1234,6 +1328,9 @@ function Invoke-CountdownRemoteDeploymentIndependentReadback {
         }
         $runtimeProcessId = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'RuntimeProcessId' -Required)
         $settingsHashAfter = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'SettingsHashAfter' -Required)
+        $settingsLengthAfter = [long] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'SettingsLengthAfter' -Required)
+        $settingsMtimeUtcAfter = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'SettingsMtimeUtcAfter' -Required)
+        $settingsUnchanged = [bool] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'SettingsUnchanged' -Required)
         $bindingContext = [pscustomobject]@{
             RemotePath = $RemoteDeploymentBindingPath
             ExpectedDeploymentBindingSha256 = $DeploymentBindingSha256
@@ -1281,6 +1378,9 @@ function Invoke-CountdownRemoteDeploymentIndependentReadback {
             ExpectedDeploymentBindingSha256 = $DeploymentBindingSha256
             DeploymentBindingPath = $RemoteDeploymentBindingPath
             ExpectedSettingsSha256 = $settingsHashAfter
+            ExpectedSettingsLength = $settingsLengthAfter
+            ExpectedSettingsMtimeUtc = $settingsMtimeUtcAfter
+            ExpectedSettingsUnchanged = $settingsUnchanged
         }
         $independentReader = {
             $readerResult = & $independentReaderOperation $readbackContext
@@ -2277,7 +2377,6 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 }
 
             $AdapterState.Stage = '等待窗口就绪回执'
-            $task = Get-ScheduledTask -TaskName $Context.TaskName -ErrorAction Stop
             $runtimeStatusPath = Join-Path $Context.InstallPath 'runtime-status.json'
             $runtimeStatus = Wait-CountdownWindowReady `
                 -Path $runtimeStatusPath `
@@ -2286,9 +2385,18 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 -ExpectedApplicationPath $applicationPath `
                 -TimeoutSeconds 5 `
                 -PollMilliseconds 250
-            if ([string] $task.State -ne 'Running') {
-                throw "计划任务未运行：$($task.State)"
-            }
+            $readyDeadline = [datetime]::UtcNow.AddSeconds(5)
+            do {
+                $task = Get-ScheduledTask -TaskName $Context.TaskName -ErrorAction Stop
+                $taskInfo = Get-ScheduledTaskInfo -TaskName $Context.TaskName -ErrorAction Stop
+                if ([string] $task.State -eq 'Ready' -and [long] $taskInfo.LastTaskResult -eq 0) {
+                    break
+                }
+                if ([datetime]::UtcNow -ge $readyDeadline) {
+                    throw "计划任务未回到 Ready 且 lastTaskResult=0：state=$($task.State) lastTaskResult=$($taskInfo.LastTaskResult)"
+                }
+                Start-Sleep -Milliseconds 250
+            } while ($true)
             $AdapterState.Stage = '复核计划任务引擎'
             if (-not [string]::Equals(
                     [System.IO.Path]::GetFullPath([string] $task.Actions.Execute),
@@ -2350,6 +2458,10 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 param([object] $ScheduledTask)
                 [string] (Export-ScheduledTask -InputObject $ScheduledTask -ErrorAction Stop)
             }
+            $getScheduledTaskInfo = {
+                param([string] $ExpectedTaskName)
+                Get-ScheduledTaskInfo -TaskName $ExpectedTaskName -ErrorAction Stop
+            }
             $completeTransaction = {
                 $AdapterState.Stage = '提交安装事务'
                 Complete-CountdownInstallTransaction `
@@ -2395,6 +2507,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 GetInteractiveContext = $getInteractiveContext
                 GetScheduledTask = $getScheduledTask
                 GetScheduledTaskIdentity = $getScheduledTaskIdentity
+                GetScheduledTaskInfo = $getScheduledTaskInfo
                 CompleteTransaction = $completeTransaction
                 RemoveCommittedTransaction = $removeCommittedTransaction
             }
@@ -2657,12 +2770,18 @@ function Invoke-CountdownRemoteDeployment {
                 UiValid = $true
                 AdapterUiValidated = $true
                 TaskState = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'TaskState' -Required)
+                LastTaskResult = [long] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'LastTaskResult' -Required)
                 RuntimeProcessId = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'RuntimeProcessId' -Required)
                 RuntimeStage = $runtimeStage
                 CalendarState = $calendarState
                 AcceptanceState = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'AcceptanceState' -Required)
                 SettingsHashBefore = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsHashBefore' -Required)
                 SettingsHashAfter = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsHashAfter' -Required)
+                SettingsLengthBefore = [long] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsLengthBefore' -Required)
+                SettingsLengthAfter = [long] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsLengthAfter' -Required)
+                SettingsMtimeUtcBefore = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsMtimeUtcBefore' -Required)
+                SettingsMtimeUtcAfter = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsMtimeUtcAfter' -Required)
+                SettingsUnchanged = [bool] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'SettingsUnchanged' -Required)
             }
             $result = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson `
                 -Json ($result | ConvertTo-Json -Compress -Depth 4)

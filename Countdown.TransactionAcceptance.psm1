@@ -10,12 +10,20 @@ function Get-CountdownAcceptanceSettingsState {
     param([Parameter(Mandatory)] [string] $Path)
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        return [pscustomobject]@{ Hash = $null; Json = $null }
+        return [pscustomobject]@{
+            Hash = ''
+            Json = $null
+            Length = 0L
+            LastWriteTimeUtc = ''
+        }
     }
 
+    $item = Get-Item -LiteralPath $Path
     [pscustomobject]@{
         Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
         Json = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+        Length = [long] $item.Length
+        LastWriteTimeUtc = $item.LastWriteTimeUtc.ToUniversalTime().ToString('o')
     }
 }
 
@@ -44,6 +52,7 @@ function Assert-CountdownAcceptanceEnvironment {
         [Parameter(Mandatory)] [scriptblock] $GetInteractiveContext,
         [Parameter(Mandatory)] [scriptblock] $GetScheduledTask,
         [Parameter(Mandatory)] [scriptblock] $GetScheduledTaskIdentity,
+        [Parameter(Mandatory)] [scriptblock] $GetScheduledTaskInfo,
         [AllowNull()] [scriptblock] $ProcessProbe,
         [switch] $SkipRuntimeReceipt
     )
@@ -70,9 +79,16 @@ function Assert-CountdownAcceptanceEnvironment {
     }
 
     $task = & $GetScheduledTask $TaskName
-    if ($null -eq $task -or [string] $task.State -ne 'Running') {
-        $taskState = if ($null -eq $task) { 'Missing' } else { [string] $task.State }
-        throw "${Phase}计划任务未运行：$taskState"
+    $taskInfo = & $GetScheduledTaskInfo $TaskName
+    $taskState = if ($null -eq $task) { 'Missing' } else { [string] $task.State }
+    $lastTaskResult = if ($null -eq $taskInfo -or $null -eq $taskInfo.LastTaskResult) {
+        $null
+    }
+    else {
+        [long] $taskInfo.LastTaskResult
+    }
+    if ($null -eq $task -or $taskState -ne 'Ready' -or $null -eq $lastTaskResult -or $lastTaskResult -ne 0) {
+        throw "${Phase}计划任务未回到 Ready 且 lastTaskResult=0：state=$taskState lastTaskResult=$lastTaskResult"
     }
 
     try {
@@ -85,7 +101,11 @@ function Assert-CountdownAcceptanceEnvironment {
         throw "${Phase}计划任务定义已变化；拒绝提交事务。"
     }
 
-    $task
+    [pscustomobject]@{
+        Task = $task
+        State = $taskState
+        LastTaskResult = [long] $lastTaskResult
+    }
 }
 
 function Invoke-CountdownTransactionAcceptance {
@@ -106,6 +126,7 @@ function Invoke-CountdownTransactionAcceptance {
         [Parameter(Mandatory)] [scriptblock] $GetInteractiveContext,
         [Parameter(Mandatory)] [scriptblock] $GetScheduledTask,
         [Parameter(Mandatory)] [scriptblock] $GetScheduledTaskIdentity,
+        [Parameter(Mandatory)] [scriptblock] $GetScheduledTaskInfo,
         [Parameter(Mandatory)] [scriptblock] $CompleteTransaction,
         [Parameter(Mandatory)] [scriptblock] $RemoveCommittedTransaction,
         [AllowNull()] [scriptblock] $ProcessProbe,
@@ -116,13 +137,14 @@ function Invoke-CountdownTransactionAcceptance {
     $migrationUtc = Get-CountdownStartupRequestMigrationUtc `
         -Path $StartupRequestPath `
         -LaunchToken $LaunchToken
-    $settingsBefore = Get-CountdownAcceptanceSettingsState -Path $SettingsSnapshotPath
+    $settingsBaseline = Get-CountdownAcceptanceSettingsState -Path $SettingsSnapshotPath
+    $settingsBefore = $null
     $settingsAfter = $null
     $settingsMutex = $null
     try {
         $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $SettingsPath -TimeoutSeconds 10
-        $settingsCandidate = Get-CountdownAcceptanceSettingsState -Path $SettingsPath
-        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBefore.Hash -AfterHash $settingsCandidate.Hash -BeforeJson $settingsBefore.Json -AfterJson $settingsCandidate.Json -MigrationUtc $migrationUtc)) {
+        $settingsBefore = Get-CountdownAcceptanceSettingsState -Path $SettingsPath
+        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBaseline.Hash -AfterHash $settingsBefore.Hash -BeforeJson $settingsBaseline.Json -AfterJson $settingsBefore.Json -MigrationUtc $migrationUtc)) {
             throw '验收前 settings.json 超出允许的数据等价范围。'
         }
 
@@ -139,6 +161,7 @@ function Invoke-CountdownTransactionAcceptance {
             -GetInteractiveContext $GetInteractiveContext `
             -GetScheduledTask $GetScheduledTask `
             -GetScheduledTaskIdentity $GetScheduledTaskIdentity `
+            -GetScheduledTaskInfo $GetScheduledTaskInfo `
             -ProcessProbe $ProcessProbe)
 
         if (-not (Complete-CountdownStartupRequest -Path $StartupRequestPath -LaunchToken $LaunchToken)) {
@@ -157,7 +180,7 @@ function Invoke-CountdownTransactionAcceptance {
     try {
         $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $SettingsPath -TimeoutSeconds 10
         $settingsAfter = Get-CountdownAcceptanceSettingsState -Path $SettingsPath
-        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBefore.Hash -AfterHash $settingsAfter.Hash -BeforeJson $settingsBefore.Json -AfterJson $settingsAfter.Json -MigrationUtc $migrationUtc)) {
+        if (-not (Test-CountdownSettingsDeploymentTransition -BeforeHash $settingsBaseline.Hash -AfterHash $settingsAfter.Hash -BeforeJson $settingsBaseline.Json -AfterJson $settingsAfter.Json -MigrationUtc $migrationUtc)) {
             throw 'C# schema 迁移超出允许的数据等价范围。'
         }
 
@@ -174,6 +197,7 @@ function Invoke-CountdownTransactionAcceptance {
             -GetInteractiveContext $GetInteractiveContext `
             -GetScheduledTask $GetScheduledTask `
             -GetScheduledTaskIdentity $GetScheduledTaskIdentity `
+            -GetScheduledTaskInfo $GetScheduledTaskInfo `
             -ProcessProbe $ProcessProbe)
 
         [void] (& $CompleteTransaction)
@@ -196,7 +220,7 @@ function Invoke-CountdownTransactionAcceptance {
             throw '应用解锁确认的进程与 window-ready 进程不一致。'
         }
 
-        $finalTask = Assert-CountdownAcceptanceEnvironment `
+        $finalEnvironment = Assert-CountdownAcceptanceEnvironment `
             -Phase '应用解锁确认后' `
             -ExpectedInteractiveContext $ExpectedInteractiveContext `
             -ExpectedProcessId $ExpectedProcessId `
@@ -209,16 +233,26 @@ function Invoke-CountdownTransactionAcceptance {
             -GetInteractiveContext $GetInteractiveContext `
             -GetScheduledTask $GetScheduledTask `
             -GetScheduledTaskIdentity $GetScheduledTaskIdentity `
+            -GetScheduledTaskInfo $GetScheduledTaskInfo `
             -ProcessProbe $ProcessProbe `
             -SkipRuntimeReceipt
 
         [void] (& $RemoveCommittedTransaction)
+        $settingsUnchanged = [string] $settingsBefore.Hash -eq [string] $settingsAfter.Hash -and
+            $settingsBefore.Length -eq $settingsAfter.Length -and
+            [string] $settingsBefore.LastWriteTimeUtc -eq [string] $settingsAfter.LastWriteTimeUtc
         [pscustomobject]@{
             AcceptanceState = 'finalized-ready'
             RuntimeProcessId = $ExpectedProcessId
-            TaskState = [string] $finalTask.State
+            TaskState = [string] $finalEnvironment.State
+            LastTaskResult = [long] $finalEnvironment.LastTaskResult
             SettingsHashBefore = $settingsBefore.Hash
             SettingsHashAfter = $settingsAfter.Hash
+            SettingsLengthBefore = $settingsBefore.Length
+            SettingsLengthAfter = $settingsAfter.Length
+            SettingsMtimeUtcBefore = $settingsBefore.LastWriteTimeUtc
+            SettingsMtimeUtcAfter = $settingsAfter.LastWriteTimeUtc
+            SettingsUnchanged = [bool] $settingsUnchanged
         }
     }
     finally {

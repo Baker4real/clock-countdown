@@ -62,28 +62,76 @@ if ($PSBoundParameters.ContainsKey('DiagnosticLogPath')) {
     $applicationArguments.Add($DiagnosticLogPath)
 }
 
-$startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-$startInfo.FileName = $applicationPath
-$startInfo.UseShellExecute = $false
-$startInfo.WorkingDirectory = $PSScriptRoot
-$startInfo.RedirectStandardOutput = $false
-$startInfo.RedirectStandardError = $false
-foreach ($argument in $applicationArguments) {
-    $startInfo.ArgumentList.Add($argument)
-}
+$stayAttached = $ValidateOnly.IsPresent -or
+    $ExerciseNoteAdd.IsPresent -or
+    $ExerciseThemePreference.IsPresent -or
+    $ExercisePersistenceFailures.IsPresent -or
+    $ExerciseTagInteractions.IsPresent -or
+    $ExerciseFatalDiagnostic.IsPresent -or
+    $ExitAfterReadyForTest.IsPresent
 
-$process = [System.Diagnostics.Process]::new()
-try {
-    $process.StartInfo = $startInfo
-    if (-not $process.Start()) {
-        throw "无法启动 C# 应用宿主：$applicationPath"
+function ConvertTo-Win32ProcessCommandLine {
+    param([Parameter(Mandatory)] [string] $Value)
+
+    if ($Value -notmatch '[\s"]') {
+        return $Value
     }
 
-    $process.WaitForExit()
-    $exitCode = $process.ExitCode
+    '"' + ($Value -replace '\\', '\\' -replace '"', '\"') + '"'
+}
+
+$process = $null
+try {
+    if ($stayAttached) {
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $applicationPath
+        $startInfo.UseShellExecute = $false
+        $startInfo.WorkingDirectory = $PSScriptRoot
+        $startInfo.RedirectStandardOutput = $false
+        $startInfo.RedirectStandardError = $false
+        foreach ($argument in $applicationArguments) {
+            $startInfo.ArgumentList.Add($argument)
+        }
+
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) {
+            throw "无法启动 C# 应用宿主：$applicationPath"
+        }
+
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+    }
+    else {
+        # Win32_Process.Create 不会加入计划任务作业，adapter 退出后任务可回 Ready。
+        $commandLine = ConvertTo-Win32ProcessCommandLine -Value $applicationPath
+        foreach ($argument in $applicationArguments) {
+            $commandLine += ' ' + (ConvertTo-Win32ProcessCommandLine -Value $argument)
+        }
+
+        $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+            CommandLine = $commandLine
+            CurrentDirectory = $PSScriptRoot
+        }
+        if ([int] $created.ReturnValue -ne 0 -or [int] $created.ProcessId -lt 1) {
+            throw "无法脱离计划任务作业启动 C# 应用宿主：$applicationPath return=$($created.ReturnValue)"
+        }
+
+        $process = [System.Diagnostics.Process]::GetProcessById([int] $created.ProcessId)
+        Start-Sleep -Milliseconds 200
+        $process.Refresh()
+        if ($process.HasExited) {
+            $exitCode = $process.ExitCode
+        }
+        else {
+            $exitCode = 0
+        }
+    }
 }
 finally {
-    $process.Dispose()
+    if ($null -ne $process) {
+        $process.Dispose()
+    }
 }
 
 exit $exitCode

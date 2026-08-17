@@ -390,6 +390,31 @@ internal static class ThemedDatePickerBehavior
             }
         };
         picker.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(picker);
+        picker.Loaded += (_, _) => LockReadOnlyTextBox(picker);
+        picker.GotKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
+        picker.LostKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
+        picker.CalendarClosed += (_, _) => LockReadOnlyTextBox(picker);
+        if (picker.IsLoaded)
+        {
+            LockReadOnlyTextBox(picker);
+        }
+    }
+
+    internal static void LockReadOnlyTextBox(DatePicker picker)
+    {
+        if (!picker.IsLoaded && picker.Template is null)
+        {
+            return;
+        }
+
+        picker.ApplyTemplate();
+        if (picker.Template?.FindName("PART_TextBox", picker) is not DatePickerTextBox textBox)
+        {
+            return;
+        }
+
+        textBox.IsReadOnly = true;
+        textBox.Focusable = false;
     }
 
     public static bool IsAttached(DatePicker picker) => Attached.Contains(picker);

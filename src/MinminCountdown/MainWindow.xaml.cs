@@ -144,6 +144,8 @@ public sealed partial class MainWindow : Window
 
     public event EventHandler? CloseRequested;
 
+    public event EventHandler? MinimizeToTrayRequested;
+
     internal event EventHandler? ThemePreferenceChanged;
 
     internal WorkspaceKind CurrentWorkspace => _workspace;
@@ -171,27 +173,13 @@ public sealed partial class MainWindow : Window
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen;
 
-    internal bool InitialFocusIsSafeAndDeterministic =>
-        CountdownTab.Focusable &&
-        CountdownTab.IsTabStop &&
-        !ReferenceEquals(CountdownTab, CloseButton) &&
-        !ReferenceEquals(CountdownTab, MinimizeButton);
-
-    internal bool TabSequenceStartsWithWorkspaceControls =>
-        CountdownTab.IsTabStop &&
-        NotesTab.IsTabStop &&
-        FilterButton.IsTabStop &&
-        TagManagerButton.IsTabStop;
-
     internal bool MainShortcutScopeIsSafe =>
         IsEnabled &&
         !FilterPopup.IsOpen &&
         !TagManagerPopup.IsOpen &&
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen &&
-        Keyboard.FocusedElement is not TextBoxBase and
-        not DatePicker and
-        not ComboBox;
+        !IsTextEntryFocus(Keyboard.FocusedElement);
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
@@ -227,7 +215,7 @@ public sealed partial class MainWindow : Window
                 CycleThemePreference();
                 return true;
             case (ModifierKeys.Control, Key.M):
-                WindowState = WindowState.Minimized;
+                MinimizeToTray();
                 return true;
             case (ModifierKeys.Control, Key.S) when _workspace == WorkspaceKind.Countdowns:
                 SaveCountdown();
@@ -913,6 +901,10 @@ public sealed partial class MainWindow : Window
         }
 
         SetAutomationIds(
+            (ThemeModeButton, "ThemeModeButton"),
+            (TopmostCheck, "TopmostCheck"),
+            (MinimizeButton, "MinimizeButton"),
+            (CloseButton, "CloseButton"),
             (CountdownName, "CountdownName"),
             (CountdownDate, "CountdownDate"),
             (CountdownHour, "CountdownHour"),
@@ -958,6 +950,29 @@ public sealed partial class MainWindow : Window
         UiAccessibility.MarkLive(TagManagerMessage);
     }
 
+    private void MinimizeToTray() => MinimizeToTrayRequested?.Invoke(this, EventArgs.Empty);
+
+    private static bool IsTextEntryFocus(IInputElement? focused)
+    {
+        if (focused is ComboBoxItem or DatePickerTextBox or System.Windows.Controls.Calendar or CalendarDayButton)
+        {
+            return true;
+        }
+
+        for (var node = focused as DependencyObject; node is not null;)
+        {
+            if (node is TextBoxBase or DatePicker or ComboBox)
+            {
+                return true;
+            }
+
+            var visualParent = node is Visual ? VisualTreeHelper.GetParent(node) : null;
+            node = visualParent ?? LogicalTreeHelper.GetParent(node);
+        }
+
+        return false;
+    }
+
     private static void SetAutomationIds(params (DependencyObject Control, string Id)[] controls)
     {
         foreach (var (control, id) in controls)
@@ -969,7 +984,7 @@ public sealed partial class MainWindow : Window
     private void WireEvents()
     {
         CloseButton.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
-        MinimizeButton.Click += (_, _) => WindowState = WindowState.Minimized;
+        MinimizeButton.Click += (_, _) => MinimizeToTray();
         TopmostCheck.Checked += (_, _) => Topmost = true;
         TopmostCheck.Unchecked += (_, _) => Topmost = false;
         CountdownTab.Click += (_, _) => ShowWorkspace(WorkspaceKind.Countdowns);
@@ -2683,6 +2698,7 @@ public sealed partial class MainWindow : Window
                 Source = datePicker,
                 StringFormat = "{0:yyyy/M/d}"
             });
+        ThemedDatePickerBehavior.LockReadOnlyTextBox(datePicker);
     }
 
     private void SetMessage(TextBlock target, string text, bool isError)

@@ -1,8 +1,5 @@
 ﻿#requires -Version 7.0
 
-# CI 环境检测
-$isCIEnvironment = $env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true'
-
 [CmdletBinding()]
 param(
     [switch] $ParentTransactionMutexHeld,
@@ -11,6 +8,9 @@ param(
     [switch] $ValidationOnly,
     [switch] $RemoteDeploymentOnly
 )
+
+# CI 环境检测
+$isCIEnvironment = $env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true'
 
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
@@ -3065,7 +3065,7 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 2 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\(?:floating-window\\520x390|main-window\\1165x1350)\\2026-08-13-v12\\manifest\.json').Count) `
+        'assets\\ui-references\\(?:floating-window\\520x390|main-window\\1165x1350)\\2026-08-16-v14\\manifest\.json').Count) `
     'Validation suite pins both visual manifest families to the current v12 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-13-v11')) `
     'Validation suite no longer references the retired v11 visual baseline'
@@ -3073,8 +3073,8 @@ Assert-Equal $false ($validationModuleSource.Contains('2026-08-06-v6')) `
     'Validation suite no longer references the retired v6 visual baseline'
 
 # 条件化 v12 visual baseline 验证
-$v12FloatingManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
-$v12MainManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-13-v12\manifest.json'
+$v12FloatingManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-16-v14\manifest.json'
+$v12MainManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-16-v14\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $v12FloatingManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $v12MainManifest -PathType Leaf)
 
@@ -3091,7 +3091,7 @@ $visualBaselineDefinitions = @(
             'long-notes-night-bottom',
             'long-notes-night-top'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-08-13-v12/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-08-16-v14/'
     },
     [pscustomobject]@{
         Name = 'Main'
@@ -3110,14 +3110,14 @@ $visualBaselineDefinitions = @(
             'main-night-notes-representative',
             'main-night-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-08-13-v12/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-08-16-v14/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
     $visualManifest = Get-Content -LiteralPath $visualBaselineDefinition.ManifestPath -Raw |
         ConvertFrom-Json -Depth 100
     $visualCaptures = @($visualManifest.captures)
-    Assert-Equal '2026-08-13-v12' ([string] $visualManifest.baselineVersion) `
+    Assert-Equal '2026-08-16-v14' ([string] $visualManifest.baselineVersion) `
         "$($visualBaselineDefinition.Name) visual manifest declares the current v12 baseline"
     Assert-Equal ($visualBaselineDefinition.ExpectedCaptureIds -join ',') `
         ((@($visualCaptures.captureId) | Sort-Object) -join ',') `

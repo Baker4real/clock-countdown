@@ -16,7 +16,7 @@ internal sealed class FloatingTrayController : IDisposable
         Func<bool>? canTransition = null)
     {
         _floatingWindow = floatingWindow;
-        _canTransition = canTransition ?? (() => true);
+        _canTransition = canTransition ?? (() => true); // Production default: allow tray transitions unless a host supplies a guard.
         _trayIcon = new TrayIconHost(
             iconPath,
             floatingWindow.Dispatcher,
@@ -63,7 +63,9 @@ internal sealed class FloatingTrayController : IDisposable
         return RestoreCore();
     }
 
-    internal void MinimizeToTrayForActivationTest() => OnMinimizeRequested(this, EventArgs.Empty);
+    internal void MinimizeToTray() => OnMinimizeRequested(this, EventArgs.Empty);
+
+    internal void MinimizeToTrayForActivationTest() => MinimizeToTray();
 
     public void Dispose()
     {

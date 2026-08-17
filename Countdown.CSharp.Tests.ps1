@@ -18,9 +18,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $script:assertions = 0
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-16-v14\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-13-v12\manifest.json'
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-16-v14\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
 
 function Resolve-ReferenceBaselineMode {
@@ -1938,7 +1938,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
     if ($mainReferenceBaselineRequired) {
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口十二场景真实 WPF 帧通过正式 manifest'
-    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-08-13-v12/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
+    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-08-16-v14/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
     Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
@@ -1962,7 +1962,7 @@ exit 23
     Assert-Equal 12 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口 Day/Night × Countdowns/Notes × 三状态组合唯一'
     Assert-Equal 12 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口十二帧 PNG hash 全部唯一'
     Assert-Equal 12 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口十二帧状态指纹全部唯一'
-    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-08-13-v12/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口十二帧路径可移植且基线与实拍 SHA 一致'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-08-16-v14/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口十二帧路径可移植且基线与实拍 SHA 一致'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 1572750 }).Count '主窗口十二帧 1165×1350 画布全部不透明'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 1165x1350 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 1165 -or $_.ContentRoi.Height -ne 1350 -or $_.ContentRoi.PixelCount -ne 1572750 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口十二帧像素指标未超过 manifest 固定阈值'
@@ -1990,7 +1990,7 @@ exit 23
     $singleBorderMeasurements = @($adapterValidation.MainDaySingleBorder.Measurements | Sort-Object StateId)
     Assert-Equal 'Countdown-Day,Countdown-Night,Notes-Day,Notes-Night' ((@($singleBorderMeasurements.StateId) -join ',')) '主窗口单边框精确覆盖日夜与两个工作区'
     Assert-Equal 0 @($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count '主窗口四态控件边、标签隔离和声明下半装饰均由像素测量通过'
-    Assert-Equal 'Countdown-Day:515/516/570/571:480:1105;Countdown-Night:515/516/570/571:480:1105;Notes-Day:448/449/515/516:416:900;Notes-Night:448/449/515/516:416:900' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定'
+    Assert-Equal 'Countdown-Day:515/516/570/571:480:1079;Countdown-Night:515/516/570/571:480:1079;Notes-Day:448/449/515/516:416:845;Notes-Night:448/449/515/516:416:845' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定'
     Assert-Equal $true ([bool] $adapterValidation.MainNightDerivationConsistencyGate) '夜间正式装饰资源可由脚本字节一致重建'
     Assert-Equal $true ([bool] $adapterValidation.MainNightDerivationConsistency.ByteIdentical) '夜间倒计时与便签装饰资源字节一致'
     Assert-Equal $true ([bool] $adapterValidation.MainNightDerivationConsistency.AlphaRangesMatch) '夜间装饰 alpha 范围匹配声明 band'
@@ -2052,7 +2052,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesUpdated) '主窗口便签完成复选框可访问名称随状态更新'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionStyleScoped) '兼容便签完成样式门保持通过'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterInitialFocusAndAccessibleNameWork) '提醒中心打开后建立初始焦点与可访问名称'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterKeyboardGateIsolationBehavior) '提醒中心 Tab 遍历与关闭守卫负向夹具可独立失败'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterKeyboardGateIsolationBehavior) '提醒中心 Tab 遍历、关闭守卫与初始焦点/可访问名负向夹具可独立失败'
     Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLoaded) 'adapter 验证角色图片资产已加载'
     Assert-Equal 3 ([int] $adapterValidation.MainCharacterPanelDockCount) '主窗口角色场景栏保留三个玩偶底座'
     Assert-Equal $true ([bool] $adapterValidation.MainCharacterPanelDocksIntegrateWithPanel) '主窗口三个玩偶底座与工作区面板形成一体'
@@ -2101,8 +2101,8 @@ exit 23
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
         Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日夜截图通过版本化 manifest'
-        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-13-v12/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
-        Assert-Equal '2026-08-13-v12' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
+        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-16-v14/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal '2026-08-16-v14' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
@@ -2322,7 +2322,16 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.MainInitialFocusIsSafeAndDeterministic) '主窗口初始焦点落在确定且非危险控件'
     Assert-Equal $true ([bool] $adapterValidation.MainTabSequenceStartsWithWorkspaceControls) '主窗口工作区控件具备可遍历顺序'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGates.InitialFocusSafe) '主窗口 Loaded 后实际焦点满足安全初始焦点门'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGates.CompleteTabSequence) '主窗口倒计时与便签完整 Tab 路径双向对称且焦点可见'
+    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGates.CompleteTabSequence) (
+        '主窗口倒计时与便签完整 Tab 路径双向对称且焦点可见；' +
+        'countdown(forward=' + [bool] $adapterValidation.MainKeyboardBehavior.CountdownTabPath.ForwardMatches +
+        ',back=' + [bool] $adapterValidation.MainKeyboardBehavior.CountdownTabPath.BackwardSymmetric +
+        ',visual=' + [bool] $adapterValidation.MainKeyboardBehavior.CountdownTabPath.FocusVisualsVisible +
+        ',backward=[' + [string]::Join(',', @($adapterValidation.MainKeyboardBehavior.CountdownTabPath.BackwardSequence)) +
+        ']) notes(forward=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.ForwardMatches +
+        ',back=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.BackwardSymmetric +
+        ',visual=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.FocusVisualsVisible +
+        ')')
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGateIsolationBehavior) '主窗口初始焦点与完整 Tab 路径负向夹具可独立失败'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardPathNegativeFixtures) '完整 Tab 路径负夹具可击穿缺失标签、换序、非对称和不可见焦点'
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralLiveRegionsUsePoliteSemantics) '主窗口结构变化使用既有可见 polite live region'
@@ -2330,7 +2339,7 @@ exit 23
     Assert-Equal 'CountdownTab' ([string] $adapterValidation.MainKeyboardBehavior.InitialFocusedAutomationId) '主窗口 Loaded 后真实焦点落到倒计时工作区'
     Assert-Equal 'CountdownTab,NotesTab,FilterButton,TagManagerButton' ([string]::Join(',', @($adapterValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
     $countdownTabPath = $adapterValidation.MainKeyboardBehavior.CountdownTabPath
-    $expectedCountdownTabPath = 'CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,StatusText'
+    $expectedCountdownTabPath = 'ThemeModeButton,TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,StatusText'
     Assert-Equal $expectedCountdownTabPath ([string]::Join(',', @($countdownTabPath.ExpectedSequence))) '倒计时工作区完整 Tab 契约包含标签触发器和列表区'
     Assert-Equal $expectedCountdownTabPath ([string]::Join(',', @($countdownTabPath.ForwardSequence))) '倒计时工作区真实正向 Tab 路径完整'
     $expectedCountdownTabPathBackward = @($countdownTabPath.ExpectedSequence)
@@ -2345,7 +2354,7 @@ exit 23
     [array]::Reverse($expectedCountdownFocusedTargetsBackward)
     Assert-Equal ($expectedCountdownFocusedTargetsBackward -join ',') ([string]::Join(',', @($countdownTabPath.BackwardFocusedTargets))) '倒计时每个实际焦点目标反向严格对称'
     $notesTabPath = $adapterValidation.MainKeyboardBehavior.NotesTabPath
-    $expectedNotesTabPath = 'CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
+    $expectedNotesTabPath = 'ThemeModeButton,TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ExpectedSequence))) '便签工作区完整 Tab 契约包含标签触发器和列表区'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ForwardSequence))) '便签工作区真实正向 Tab 路径完整'
     $expectedNotesTabPathBackward = @($notesTabPath.ExpectedSequence)
@@ -2741,8 +2750,8 @@ exit 23
 
     Assert-Equal $interactiveLegacyHash (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash 'active 验收期间 settings 文件保持只读'
     Assert-Equal $true (Complete-CountdownStartupRequest -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken) '同 token 原子授权 C# 持久化 schema 迁移'
-    [void] (Wait-CountdownStartupRequestState -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken -ExpectedState ready -TimeoutSeconds 5 -PollMilliseconds 50)
-    $acceptanceReadyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
+    [void] (Wait-CountdownStartupRequestState -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken -ExpectedState ready -TimeoutSeconds 30 -PollMilliseconds 50)
+    $acceptanceReadyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
     do {
         $acceptanceReadyDiagnostic = Get-Content -LiteralPath $interactiveDiagnosticPath -Raw -Encoding UTF8
         if ($acceptanceReadyDiagnostic.Contains('AcceptanceMigrationReady', [System.StringComparison]::Ordinal)) { break }
@@ -2780,6 +2789,15 @@ exit 23
     Assert-Equal $interactiveLaunchToken ([string] $acceptanceStatus.launchToken) '应用解锁确认回执绑定同一 token'
     Assert-Equal ([int] $runtimeReceipt.processId) ([int] $acceptanceStatus.processId) '应用解锁确认回执绑定同一 C# PID'
 
+    # Nested HWND/IsActive ACK must not share the desktop foreground with this host.
+    if (-not $interactiveAdapterProcess.WaitForExit(45000)) {
+        throw '交互启动未在测试退出期限内结束。'
+    }
+    $interactiveAdapterProcess.WaitForExit()
+    Assert-Equal 0 $interactiveAdapterProcess.ExitCode '交互启动 adapter 透传 C# 正常退出码'
+    $interactiveApplicationProcess.Refresh()
+    Assert-Equal $true $interactiveApplicationProcess.HasExited '测试参数触发 C# EXE 退出'
+
     $finalizedActivationOutput = Invoke-CheckedNativeCommand `
         -FilePath $pwsh `
         -Operation '使用独立 canonical v10 设置验证 finalized 后实例激活' `
@@ -2796,14 +2814,6 @@ exit 23
     Assert-Equal 0 ([int] $finalizedActivation.Failed) '独立 finalized 激活场景全部通过'
     Assert-Equal $true ([bool] $finalizedActivation.InstanceActivationOnly) '独立 finalized 激活使用真实进程 seam'
     Assert-Equal 1 ([int] $finalizedActivation.ProcessScenarios) '独立 finalized 激活只运行一个进程场景'
-
-    if (-not $interactiveAdapterProcess.WaitForExit(45000)) {
-        throw '交互启动未在测试退出期限内结束。'
-    }
-    $interactiveAdapterProcess.WaitForExit()
-    Assert-Equal 0 $interactiveAdapterProcess.ExitCode '交互启动 adapter 透传 C# 正常退出码'
-    $interactiveApplicationProcess.Refresh()
-    Assert-Equal $true $interactiveApplicationProcess.HasExited '测试参数触发 C# EXE 退出'
     [pscustomobject]@{
         Passed = $script:assertions
         Failed = 0

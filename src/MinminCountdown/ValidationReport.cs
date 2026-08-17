@@ -21,7 +21,7 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
-    private const string FloatingReferenceBaselineVersion = "2026-08-13-v12";
+    private const string FloatingReferenceBaselineVersion = "2026-08-16-v14";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingReferenceStateFingerprintAlgorithm =
@@ -124,7 +124,7 @@ internal static class ValidationReport
             "Bottom",
             "long-notes-night-bottom.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-08-13-v12";
+    private const string MainReferenceBaselineVersion = "2026-08-16-v14";
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
     private const string MainReferenceStateFingerprintAlgorithm =
@@ -213,6 +213,7 @@ internal static class ValidationReport
         floating.ShowInTaskbar = false;
         floating.Opacity = 0;
         main.Show();
+        main.Activate();
         PumpDispatcher();
         var initialFocusedAutomationId = Keyboard.FocusedElement is DependencyObject focused
             ? AutomationProperties.GetAutomationId(focused)
@@ -275,27 +276,6 @@ internal static class ValidationReport
             ValidationExercises.RunMainShortcutGateIsolationBehavior();
         var mainKeyboardNavigationGateIsolationBehavior =
             ValidationExercises.RunMainKeyboardNavigationGateIsolationBehavior();
-        var mainKeyboardBehavior = ValidateMainKeyboardBehavior(
-            main,
-            desktopWorkspace,
-            initialFocusedAutomationId);
-        var mainKeyboardPathNegativeFixtures = ValidateMainKeyboardPathNegativeFixtures();
-        var mainShortcutGates = ValidationExercises.EvaluateMainShortcutGates(
-            new MainShortcutGateInputs(
-                new[]
-                {
-                    "CountdownsWorkspace", "Filter", "Minimize", "NotesWorkspace",
-                    "SaveCountdown", "SavePreferences", "TagManager", "Theme"
-                },
-                mainKeyboardBehavior.CommandResults,
-                mainKeyboardBehavior.TextInputPreserved,
-                mainKeyboardBehavior.PopupGuarded,
-                mainKeyboardBehavior.ModalOwnerGuarded));
-        var mainKeyboardNavigationGates = ValidationExercises.EvaluateMainKeyboardNavigationGates(
-            new MainKeyboardNavigationGateInputs(
-                mainKeyboardBehavior.InitialFocusSafe,
-                mainKeyboardBehavior.CountdownTabPath.AllPassed &&
-                    mainKeyboardBehavior.NotesTabPath.AllPassed));
         var mainStructuralAnnouncements = ValidateMainStructuralAnnouncements(assetRoot);
         var mainStructuralAnnouncementGates =
             ValidationExercises.EvaluateMainStructuralAnnouncementGates(
@@ -323,9 +303,6 @@ internal static class ValidationReport
                 desktopWorkspace.Snapshot.SettingsPath)
             : PersistenceFailureExerciseResult.NotRun;
 
-        var themePreferenceExercise = options.ExerciseThemePreference
-            ? RunThemePreferenceButtonExercise(main, floating, desktopWorkspace)
-            : ThemePreferenceButtonExerciseResult.NotRun;
         var workspaceSnapshot = desktopWorkspace.Snapshot;
 
         var minimizeToTrayButton = Required<Button>(floating, "MinimizeToTrayButton");
@@ -363,10 +340,6 @@ internal static class ValidationReport
         PumpDispatcher();
         floating.ExitRequested -= exitHandler;
         var floatingHeaderIconClickCommandsWork = managerOpenedViaClick && exitRequested;
-        var floatingTrayInteraction = RunFloatingTrayInteractionExercise(
-            floating,
-            minimizeToTrayButton,
-            floatingTrayController);
         var floatingDragInteraction = floatingWindowScenarios.DragInteraction;
 
         var datePicker = Required<DatePicker>(main, "CountdownDate");
@@ -867,7 +840,6 @@ internal static class ValidationReport
         var mainCountdownRemainingGates = ValidationExercises.EvaluateMainCountdownRemainingGates(
             new MainCountdownRemainingGateInputs(
                 mainCountdownRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
-                mainCountdownRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
                 mainCountdownRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
                 mainCountdownRemainingSamples.Count == 5,
                 mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ColumnWidth - 300) <= 0.01),
@@ -883,6 +855,37 @@ internal static class ValidationReport
         var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
+        var themePreferenceExercise = options.ExerciseThemePreference
+            ? RunThemePreferenceButtonExercise(main, floating, desktopWorkspace)
+            : ThemePreferenceButtonExerciseResult.NotRun;
+        var floatingTrayInteraction = RunFloatingTrayInteractionExercise(
+            floating,
+            minimizeToTrayButton,
+            floatingTrayController);
+        var mainKeyboardBehavior = ValidateMainKeyboardBehavior(
+            main,
+            floating,
+            floatingTrayController,
+            desktopWorkspace,
+            initialFocusedAutomationId);
+        var mainShortcutScopeIsSafe = main.MainShortcutScopeIsSafe;
+        var mainKeyboardPathNegativeFixtures = ValidateMainKeyboardPathNegativeFixtures();
+        var mainShortcutGates = ValidationExercises.EvaluateMainShortcutGates(
+            new MainShortcutGateInputs(
+                new[]
+                {
+                    "CountdownsWorkspace", "Filter", "Minimize", "NotesWorkspace",
+                    "SaveCountdown", "SavePreferences", "TagManager", "Theme"
+                },
+                mainKeyboardBehavior.CommandResults,
+                mainKeyboardBehavior.TextInputPreserved,
+                mainKeyboardBehavior.PopupGuarded,
+                mainKeyboardBehavior.ModalOwnerGuarded));
+        var mainKeyboardNavigationGates = ValidationExercises.EvaluateMainKeyboardNavigationGates(
+            new MainKeyboardNavigationGateInputs(
+                mainKeyboardBehavior.InitialFocusSafe,
+                mainKeyboardBehavior.CountdownTabPath.AllPassed &&
+                    mainKeyboardBehavior.NotesTabPath.AllPassed));
         var daySingleBorder = ValidateDaySingleBorder();
         var daySingleBorderGateIsolationBehavior = RunDaySingleBorderGateIsolationBehavior();
         var nightDerivationConsistency = ValidateNightDerivationConsistency();
@@ -1171,13 +1174,15 @@ internal static class ValidationReport
             ["ConfirmationDialog"] = confirmationValidation,
             ["FormControlsHaveAccessibleNames"] = main.HasAccessibleCoreControls,
             ["StatusMessagesUseLiveRegions"] = main.HasLiveStatusRegions,
-            ["MainInitialFocusIsSafeAndDeterministic"] = main.InitialFocusIsSafeAndDeterministic,
-            ["MainTabSequenceStartsWithWorkspaceControls"] = main.TabSequenceStartsWithWorkspaceControls,
+            ["MainInitialFocusIsSafeAndDeterministic"] = mainKeyboardBehavior.InitialFocusSafe,
+            ["MainTabSequenceStartsWithWorkspaceControls"] =
+                string.Join(',', mainKeyboardBehavior.TabSequence) ==
+                    "CountdownTab,NotesTab,FilterButton,TagManagerButton",
             ["MainStructuralLiveRegionsUsePoliteSemantics"] =
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyCountdownMessage")) == AutomationLiveSetting.Polite &&
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyNotesMessage")) == AutomationLiveSetting.Polite &&
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "StatusText")) == AutomationLiveSetting.Polite,
-            ["MainShortcutScopeIsSafe"] = main.MainShortcutScopeIsSafe,
+            ["MainShortcutScopeIsSafe"] = mainShortcutScopeIsSafe,
             ["MainShortcutGateIsolationBehavior"] = mainShortcutGateIsolationBehavior,
             ["MainShortcutGates"] = mainShortcutGates,
             ["MainKeyboardNavigationGates"] = mainKeyboardNavigationGates,
@@ -2786,10 +2791,10 @@ internal static class ValidationReport
     {
         var valid = new[]
         {
-            new MainDaySingleBorderMeasurement("Countdown-Day", "countdown", new[] { 515, 516, 570, 571 }, true, true, true, 480, 1105, 1),
-            new MainDaySingleBorderMeasurement("Countdown-Night", "countdown", new[] { 515, 516, 570, 571 }, true, true, true, 480, 1105, 1),
-            new MainDaySingleBorderMeasurement("Notes-Day", "notes", new[] { 448, 449, 515, 516 }, true, true, true, 416, 900, 1),
-            new MainDaySingleBorderMeasurement("Notes-Night", "notes", new[] { 448, 449, 515, 516 }, true, true, true, 416, 900, 1)
+            new MainDaySingleBorderMeasurement("Countdown-Day", "countdown", new[] { 515, 516, 570, 571 }, true, true, true, 480, 1079, 1),
+            new MainDaySingleBorderMeasurement("Countdown-Night", "countdown", new[] { 515, 516, 570, 571 }, true, true, true, 480, 1079, 1),
+            new MainDaySingleBorderMeasurement("Notes-Day", "notes", new[] { 448, 449, 515, 516 }, true, true, true, 416, 845, 1),
+            new MainDaySingleBorderMeasurement("Notes-Night", "notes", new[] { 448, 449, 515, 516 }, true, true, true, 416, 845, 1)
         };
         return EvaluateDaySingleBorder(valid).AllPassed &&
             !EvaluateDaySingleBorder(valid.Select((item, index) => index == 0 ? item with { ExactControlEdges = false } : item).ToArray()).AllPassed &&
@@ -6609,7 +6614,7 @@ internal static class ValidationReport
         {
             null => false,
             SolidColorBrush solid => solid.Color.A > 0,
-            _ => true
+            _ => true // Non-solid brushes have no single alpha; treat them as visible.
         };
 
     private static FloatingViewportState CaptureFloatingViewportState(
@@ -9881,6 +9886,8 @@ internal static class ValidationReport
 
     private static MainKeyboardBehaviorResult ValidateMainKeyboardBehavior(
         MainWindow main,
+        FloatingWindow floating,
+        FloatingTrayController trayController,
         DesktopWorkspace workspace,
         string initialFocusedAutomationId)
     {
@@ -10016,13 +10023,44 @@ internal static class ValidationReport
                 preferencesPersisted,
                 status.Text);
 
+            var mainLeft = main.Left;
+            var mainTop = main.Top;
+            var mainOpacity = main.Opacity;
+            var floatingOpacity = floating.Opacity;
+            var floatingWasVisible = floating.IsVisible;
             var minimizeHandled = RaiseShortcut(ModifierKeys.Control, Key.M);
-            commandResults["Minimize"] =
-                minimizeHandled && main.WindowState == WindowState.Minimized;
+            PumpDispatcher();
+            var minimizedToTray =
+                minimizeHandled &&
+                !main.IsVisible &&
+                !floating.IsVisible &&
+                trayController.IsTrayIconVisible;
+            commandResults["Minimize"] = minimizedToTray;
             commandDiagnostics["Minimize"] = new(
                 minimizeHandled,
-                main.WindowState == WindowState.Minimized,
+                minimizedToTray,
                 string.Empty);
+            if (trayController.IsTrayIconVisible)
+            {
+                trayController.InvokeRestoreForValidation();
+                PumpDispatcher();
+            }
+
+            if (!main.IsVisible)
+            {
+                main.Show();
+                main.Left = mainLeft;
+                main.Top = mainTop;
+                main.Opacity = mainOpacity;
+                main.ShowInTaskbar = false;
+            }
+
+            if (floatingWasVisible && !floating.IsVisible)
+            {
+                floating.Show();
+            }
+
+            floating.Opacity = floatingOpacity;
             main.WindowState = WindowState.Normal;
             PumpDispatcher();
             commandsWork =
@@ -10085,7 +10123,9 @@ internal static class ValidationReport
             textBoxFocused &&
             countdownName.IsKeyboardFocused &&
             !WindowValidationInput.RaisePreviewKey(countdownName, Key.D2, ModifierKeys.Control) &&
+            !WindowValidationInput.RaisePreviewKey(countdownName, Key.F, ModifierKeys.None) &&
             main.CurrentWorkspace == workspaceBeforeTextShortcut &&
+            !Required<Popup>(main, "FilterPopup").IsOpen &&
             string.Equals(countdownName.Text, textSentinel, StringComparison.Ordinal);
         countdownName.Text = originalName;
 
@@ -10096,7 +10136,10 @@ internal static class ValidationReport
             datePickerFocused &&
             countdownDateInput.IsKeyboardFocusWithin &&
             !WindowValidationInput.RaisePreviewKey(countdownDateInput, Key.D2, ModifierKeys.Control) &&
-            main.CurrentWorkspace == workspaceBeforeTextShortcut;
+            !WindowValidationInput.RaisePreviewKey(countdownDateInput, Key.A, ModifierKeys.None) &&
+            main.CurrentWorkspace == workspaceBeforeTextShortcut &&
+            !Required<Popup>(main, "FilterPopup").IsOpen &&
+            !countdownDateInput.IsDropDownOpen;
         var countdownHourInput = Required<ComboBox>(main, "CountdownHour");
         var comboBoxFocused = countdownHourInput.Focus();
         PumpDispatcher();
@@ -10104,7 +10147,9 @@ internal static class ValidationReport
             comboBoxFocused &&
             countdownHourInput.IsKeyboardFocusWithin &&
             !WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.D2, ModifierKeys.Control) &&
-            main.CurrentWorkspace == workspaceBeforeTextShortcut;
+            !WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.A, ModifierKeys.None) &&
+            main.CurrentWorkspace == workspaceBeforeTextShortcut &&
+            !Required<Popup>(main, "FilterPopup").IsOpen;
         var textInputPreserved = textBoxGuarded && datePickerGuarded && comboBoxGuarded;
 
         countdownTab.Focus();
@@ -10150,6 +10195,7 @@ internal static class ValidationReport
         WorkspaceKind workspace)
     {
         main.ShowWorkspace(workspace);
+        main.Activate();
         PumpDispatcher();
         var expected = ExpectedMainWorkspaceTabPath(main, workspace);
         var forward = TraverseMainWorkspaceTabPath(main, expected[0], expected[^1], FocusNavigationDirection.Next);
@@ -10187,6 +10233,7 @@ internal static class ValidationReport
         var ids = workspace == WorkspaceKind.Countdowns
             ? new[]
             {
+                "ThemeModeButton", "TopmostCheck", "MinimizeButton", "CloseButton",
                 "CountdownTab", "NotesTab", "FilterButton", "TagManagerButton",
                 "CountdownName", "CountdownDate", "CountdownHour", "CountdownMinute",
                 "CountdownSecond", "SetNowButton", "CountdownTags",
@@ -10196,6 +10243,7 @@ internal static class ValidationReport
             }
             : new[]
             {
+                "ThemeModeButton", "TopmostCheck", "MinimizeButton", "CloseButton",
                 "CountdownTab", "NotesTab", "FilterButton", "TagManagerButton",
                 "NoteText", "NoteDate", "SaveNoteButton", "CancelNoteEdit", "NoteReminder",
                 "ManageNoteReminderRulesButton", "NoteReminderInterval", "CustomReminderMinutes",
@@ -10221,12 +10269,15 @@ internal static class ValidationReport
         FocusNavigationDirection direction)
     {
         var start = Required<FrameworkElement>(main, startId);
+        main.Activate();
         start.Focus();
         PumpDispatcher();
         var sequence = new List<string>();
         var focusedTargets = new List<string>();
         var focusVisualsVisible = true;
-        for (var attempt = 0; attempt < 128 && Keyboard.FocusedElement is DependencyObject focused; attempt++)
+        var attemptLimit = 64 + Descendants<UIElement>(main).Count(element =>
+            element.Focusable && element.IsVisible && element.IsEnabled);
+        for (var attempt = 0; attempt < attemptLimit && Keyboard.FocusedElement is DependencyObject focused; attempt++)
         {
             var target = ResolveMainTabTarget(main, focused);
             if (target.Id.Length == 0)
@@ -10328,7 +10379,7 @@ internal static class ValidationReport
                 focused is FrameworkElement focusedElement
             ? focusedElement
             : target.Element;
-        if (!focusOwner.IsKeyboardFocused && !focusOwner.IsKeyboardFocusWithin)
+        if (!ReferenceEquals(focused, focusOwner) && !IsDescendantOrSelf(focused, focusOwner))
         {
             return false;
         }
@@ -11987,6 +12038,7 @@ internal static class ValidationReport
         var attached = ThemedDatePickerBehavior.IsAttached(picker);
         var keyboardLifecycleWorks = attached && WindowValidationInput.ExerciseDatePicker(picker);
         picker.ApplyTemplate();
+        ThemedDatePickerBehavior.LockReadOnlyTextBox(picker);
         textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
         return new DatePickerProductionMeasurement(
             name,

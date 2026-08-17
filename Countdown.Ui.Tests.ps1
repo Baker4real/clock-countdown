@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-13-v12\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-16-v14\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -309,8 +309,8 @@ if ($floatingReferenceBaselineRequired) {
         ConvertFrom-Json -Depth 100
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-13-v12/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
-    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-13-v12') { throw 'The floating reference manifest version does not match the pinned v12 path.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-16-v14/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-16-v14') { throw 'The floating reference manifest version does not match the pinned v12 path.' }
     $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
     if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
@@ -561,7 +561,7 @@ if ($mainReferenceBaselineRequired) {
     $singleBorderMeasurements = @($validation.MainDaySingleBorder.Measurements | Sort-Object StateId)
     if ((@($singleBorderMeasurements.StateId) -join ',') -ne 'Countdown-Day,Countdown-Night,Notes-Day,Notes-Night') { throw 'The main-window single-border measurement matrix is incomplete.' }
     if (@($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count -ne 0) { throw 'A main-window state failed its observed border, label-clearance, or declared lower-ornament measurement.' }
-    if ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';') -ne 'Countdown-Day:515/516/570/571:480:1105;Countdown-Night:515/516/570/571:480:1105;Notes-Day:448/449/515/516:416:900;Notes-Night:448/449/515/516:416:900') { throw 'The main-window control-edge rows or shared ornament-band boundaries drifted.' }
+    if ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';') -ne 'Countdown-Day:515/516/570/571:480:1079;Countdown-Night:515/516/570/571:480:1079;Notes-Day:448/449/515/516:416:845;Notes-Night:448/449/515/516:416:845') { throw 'The main-window control-edge rows or shared ornament-band boundaries drifted.' }
     if (-not $validation.MainNightDerivationConsistencyGate -or -not $validation.MainNightDerivationConsistency.ByteIdentical -or -not $validation.MainNightDerivationConsistency.AlphaRangesMatch) { throw 'The checked-in night decoration assets no longer match an isolated derivation.' }
     if ((@($validation.MainNightDerivationConsistency.AlphaRanges | Sort-Object Scene | ForEach-Object { "$($_.Scene):$($_.MinimumY)-$($_.MaximumY):$($_.MatchesExpected)" }) -join ';') -ne 'countdown:260-395:True;notes:264-415:True') { throw 'The night decoration alpha ranges moved.' }
 }
@@ -686,7 +686,7 @@ if (-not $validation.MainShortcutScopeIsSafe) { throw 'Main-window shortcuts do 
 if ([string] $validation.MainKeyboardBehavior.InitialFocusedAutomationId -ne 'CountdownTab') { throw 'The main window did not actually focus the countdown workspace after Loaded.' }
 if ((@($validation.MainKeyboardBehavior.TabSequence) -join ',') -ne 'CountdownTab,NotesTab,FilterButton,TagManagerButton') { throw 'The main-window real Tab prefix does not follow the visual workspace order.' }
 $countdownTabPath = $validation.MainKeyboardBehavior.CountdownTabPath
-$expectedCountdownTabPath = 'CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,StatusText'
+$expectedCountdownTabPath = 'ThemeModeButton,TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,StatusText'
 $expectedCountdownTabPathBackward = [string[]] ($expectedCountdownTabPath -split ',')
 [array]::Reverse($expectedCountdownTabPathBackward)
 if ((@($countdownTabPath.ExpectedSequence) -join ',') -ne $expectedCountdownTabPath -or (@($countdownTabPath.ForwardSequence) -join ',') -ne $expectedCountdownTabPath -or (@($countdownTabPath.BackwardSequence) -join ',') -ne ($expectedCountdownTabPathBackward -join ',') -or -not $countdownTabPath.FocusVisualsVisible) { throw 'The Countdowns workspace real Tab path is incomplete, asymmetric, or missing a visible focus style.' }
@@ -696,7 +696,7 @@ if (-not (Test-ExactSymmetricTabTargets `
         -ActualForward @($countdownTabPath.ForwardFocusedTargets) `
         -ActualBackward @($countdownTabPath.BackwardFocusedTargets))) { throw 'The empty Countdowns workspace focus targets were not traversed symmetrically.' }
 $notesTabPath = $validation.MainKeyboardBehavior.NotesTabPath
-$expectedNotesTabPath = 'CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
+$expectedNotesTabPath = 'ThemeModeButton,TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
 $expectedNotesTabPathBackward = [string[]] ($expectedNotesTabPath -split ',')
 [array]::Reverse($expectedNotesTabPathBackward)
 if ((@($notesTabPath.ExpectedSequence) -join ',') -ne $expectedNotesTabPath -or (@($notesTabPath.ForwardSequence) -join ',') -ne $expectedNotesTabPath -or (@($notesTabPath.BackwardSequence) -join ',') -ne ($expectedNotesTabPathBackward -join ',') -or -not $notesTabPath.FocusVisualsVisible) { throw 'The Notes workspace real Tab path is incomplete, asymmetric, or missing a visible focus style.' }
@@ -879,7 +879,7 @@ if (-not $validation.FormControlsHaveAccessibleNames) { throw 'A core form contr
 if (-not $validation.StatusMessagesUseLiveRegions) { throw 'Dynamic status messages are not announced through live regions.' }
 if (-not $validation.ReminderCenterSupportsKeyboardNavigation) { throw 'The reminder center does not support complete keyboard traversal.' }
 if (-not $validation.ReminderCenterInitialFocusAndAccessibleNameWork) { throw 'The reminder center lacks its initial focus or accessible name.' }
-if (-not $validation.ReminderCenterKeyboardGateIsolationBehavior) { throw 'Reminder-center tab traversal and close-guard gates cannot fail independently.' }
+if (-not $validation.ReminderCenterKeyboardGateIsolationBehavior) { throw 'Reminder-center tab traversal, close-guard, and initial-focus/accessible-name gates cannot fail independently.' }
 if (-not $validation.CompactActionTargetsAreUsable) { throw 'Compact tag and note actions are smaller than the desktop interaction target.' }
 
 $uiSettingsRoot = Join-Path `
@@ -938,7 +938,7 @@ try {
     if (-not $listValidation.TagPersistenceRoundTrip) { throw 'Shared tag persistence round-trip failed.' }
     if ($listValidation.LoadedNotes -ne 5) { throw "Expected five loaded sticky notes, got $($listValidation.LoadedNotes)." }
     if ($listValidation.ActiveNoteCount -ne 3 -or $listValidation.CompletedNoteCount -ne 2) { throw "Unexpected sticky-note grouping: active=$($listValidation.ActiveNoteCount), completed=$($listValidation.CompletedNoteCount)." }
-    $dynamicCountdownFocusedTargets = [string[]] ('CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,CountdownListRegion.Edit,CountdownListRegion.Delete,CountdownListRegion.Edit,CountdownListRegion.Delete,StatusText' -split ',')
+    $dynamicCountdownFocusedTargets = [string[]] ('ThemeModeButton,TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,SetNowButton,CountdownTags,ManageCountdownReminderRulesButton,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,CountdownListRegion.Edit,CountdownListRegion.Delete,CountdownListRegion.Edit,CountdownListRegion.Delete,StatusText' -split ',')
     $dynamicCountdownTabPath = $listValidation.MainKeyboardBehavior.CountdownTabPath
     if (-not $dynamicCountdownTabPath.FocusVisualsVisible -or
         -not (Test-ExactSymmetricTabTargets `
@@ -947,7 +947,7 @@ try {
             -ActualBackward @($dynamicCountdownTabPath.BackwardFocusedTargets))) {
         throw 'The populated Countdowns workspace did not traverse both Edit/Delete controls for every row symmetrically with visible focus.'
     }
-    $dynamicNotesFocusedTargets = [string[]] ('CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,NotesListRegion.ActiveSection,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.CompletedSection,NotesListRegion.RepeatButton,StatusText' -split ',')
+    $dynamicNotesFocusedTargets = [string[]] ('ThemeModeButton,TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,NotesListRegion.ActiveSection,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.CompletedSection,NotesListRegion.RepeatButton,StatusText' -split ',')
     $dynamicNotesTabPath = $listValidation.MainKeyboardBehavior.NotesTabPath
     if (-not $dynamicNotesTabPath.FocusVisualsVisible -or
         -not (Test-ExactSymmetricTabTargets `

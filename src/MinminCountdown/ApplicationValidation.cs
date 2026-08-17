@@ -45,7 +45,13 @@ internal static class ApplicationValidation
             floatingTrayController = new FloatingTrayController(
                 floatingWindow,
                 Path.Combine(applicationRoot, "countdown-icon.ico"),
+                // Validate-only must be allowed to exercise tray transitions; this is not an acceptance gate.
                 static () => true);
+            mainWindow.MinimizeToTrayRequested += (_, _) =>
+            {
+                mainWindow.Hide();
+                floatingTrayController.MinimizeToTray();
+            };
 
             void ApplyCurrentTheme()
             {

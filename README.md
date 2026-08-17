@@ -87,7 +87,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 pwsh.exe -NoLogo -NoProfile -File .\Build-CountdownApplication.ps1 -Clean
 .\verification\MinminCountdown.Verification.exe
 pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1
-& 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -File .\Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
+& 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
 pwsh.exe -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.Ui.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -STA -File .\Invoke-CountdownSourceValidation.ps1

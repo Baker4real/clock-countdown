@@ -4091,7 +4091,6 @@ internal static class ValidationExercises
         MainCountdownRemainingGateInputs input) =>
         new(
             input.ExpectedTexts.Count == 5 &&
-                input.FormattedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal) &&
                 input.RenderedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal),
                 input.HasExpectedSampleCount &&
                 input.ColumnsAre300Pixels &&
@@ -4114,7 +4113,6 @@ internal static class ValidationExercises
             "2000000 天 00 小时 00 分钟 00 秒"
         };
         var passing = new MainCountdownRemainingGateInputs(
-            expected,
             expected,
             expected,
             true,
@@ -4242,6 +4240,25 @@ internal static class ValidationExercises
         return true;
     }
 
+    // #35 tautology inventory (src/). Each item is one of:
+    //   已删除 / 已改为真实检查 / 明确保留但非验收证据
+    // 已删除:
+    //   ReminderCenterWindow.SupportsKeyboardNavigation => true (0208b1e).
+    // 已改为真实检查:
+    //   ReminderCenterWindow.UsesScrollableList => true — replaced by
+    //   ValidationReport.ValidateReminderCenterBehavior scrollsLongContent
+    //   (Auto ScrollViewer, ScrollableHeight > 0, 12 wrapping bodies) and
+    //   ReminderCenterScrollsLongContent.
+    //   MainCountdownRemaining FormattedTexts.SequenceEqual(ExpectedTexts) after
+    //   both sides were ExpectedText — report now compares RenderedTexts to
+    //   independent ExpectedTexts.
+    //   MainWindow.InitialFocusIsSafeAndDeterministic /
+    //   TabSequenceStartsWithWorkspaceControls — report fields bind observed
+    //   Loaded focus and the real workspace Tab prefix.
+    // 明确保留但非验收证据:
+    //   isolation passing fixtures; validate-only/production tray () => true;
+    //   HasVisibleBrush non-solid fallback; floating secondary FormattedText
+    //   from FormatRemaining; Core calendar/JSON => true matches.
     public static ReminderCenterKeyboardGateResults EvaluateReminderCenterKeyboardGates(
         ReminderCenterKeyboardGateInputs input) =>
         new(
@@ -4260,6 +4277,9 @@ internal static class ValidationExercises
         VerifyOnlyReminderCenterKeyboardGateFails(
             passing with { CloseGuardWorks = false },
             nameof(ReminderCenterKeyboardGateResults.CloseGuardWorks));
+        VerifyOnlyReminderCenterKeyboardGateFails(
+            passing with { InitialFocusAndAccessibleNameWork = false },
+            nameof(ReminderCenterKeyboardGateResults.InitialFocusAndAccessibleNameWork));
         return true;
     }
 
@@ -6039,7 +6059,6 @@ internal sealed record FloatingSecondaryRemainingGateResults(
 
 internal sealed record MainCountdownRemainingGateInputs(
     IReadOnlyList<string> ExpectedTexts,
-    IReadOnlyList<string> FormattedTexts,
     IReadOnlyList<string> RenderedTexts,
     bool HasExpectedSampleCount,
     bool ColumnsAre300Pixels,

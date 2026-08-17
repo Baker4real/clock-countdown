@@ -315,6 +315,11 @@ public sealed partial class App : Application
         }
 
         _mainWindow.CloseRequested += (_, _) => _mainWindow.Hide();
+        _mainWindow.MinimizeToTrayRequested += (_, _) =>
+        {
+            _mainWindow.Hide();
+            _floatingTrayController.MinimizeToTray();
+        };
         _mainWindow.Closing += (_, eventArgs) =>
         {
             if (_shuttingDown)

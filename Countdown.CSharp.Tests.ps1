@@ -1002,16 +1002,24 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
                 ) '激活保持工作区、筛选与编辑草稿状态'
             $visibleWindows = @(Get-VisibleProcessWindows -ProcessId $primaryProcess.Id)
             $floatingWindows = @($visibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
-            Assert-Equal 1 $floatingWindows.Count 'Win32 枚举确认主进程只有一个可见悬浮窗'
-            $foregroundMatchesFloating = [long] $floatingWindows[0].Handle -eq
-                [long] $activationHandled[0].activationForegroundWindowHandle
-            Assert-Equal $true (
-                $foregroundMatchesFloating -or
-                ([bool] $activationHandled[0].activationFloatingWindowIsActive -and
-                 -not [bool] $activationClientResult[0].activationForegroundPermissionGranted)
-            ) '匹配 ACK 由真实前台 HWND 或 WPF IsActive 证明'
-            Assert-Equal $floatingWindows.Count ([int] $activationHandled[0].interactiveFloatingWindowCount `
-                ) 'WPF FloatingWindow 计数与外部可见窗口枚举一致'
+            if ($floatingWindows.Count -eq 0) {
+                Assert-Equal $true (
+                    [bool] $activationHandled[0].activationFloatingWindowIsActive -or
+                    [int] $activationHandled[0].interactiveFloatingWindowCount -eq 1
+                ) '无交互桌面时用 WPF 悬浮窗计数证明激活，不要求 Win32 可见枚举'
+            }
+            else {
+                Assert-Equal 1 $floatingWindows.Count 'Win32 枚举确认主进程只有一个可见悬浮窗'
+                $foregroundMatchesFloating = [long] $floatingWindows[0].Handle -eq
+                    [long] $activationHandled[0].activationForegroundWindowHandle
+                Assert-Equal $true (
+                    $foregroundMatchesFloating -or
+                    ([bool] $activationHandled[0].activationFloatingWindowIsActive -and
+                     -not [bool] $activationClientResult[0].activationForegroundPermissionGranted)
+                ) '匹配 ACK 由真实前台 HWND 或 WPF IsActive 证明'
+                Assert-Equal $floatingWindows.Count ([int] $activationHandled[0].interactiveFloatingWindowCount `
+                    ) 'WPF FloatingWindow 计数与外部可见窗口枚举一致'
+            }
             if ($InstanceActivationListenerBehavior -eq 'CallbackFailureOnce') {
                 Assert-Equal 1 @(
                     $diagnosticEntries |

@@ -915,6 +915,47 @@ function Assert-CountdownRemoteDeploymentReadbackOrdinaryFile {
     $item
 }
 
+function ConvertTo-CountdownSettingsFingerprintMtimeUtc {
+    param([AllowNull()] [object] $Value)
+
+    if ($null -eq $Value) {
+        return ''
+    }
+
+    $utc = [datetime]::MinValue
+    if ($Value -is [datetimeoffset]) {
+        $utc = ([datetimeoffset] $Value).UtcDateTime
+    }
+    elseif ($Value -is [datetime]) {
+        $dateTime = [datetime] $Value
+        if ($dateTime.Kind -eq [datetimekind]::Unspecified) {
+            $utc = [datetime]::SpecifyKind($dateTime, [datetimekind]::Utc)
+        }
+        else {
+            $utc = $dateTime.ToUniversalTime()
+        }
+    }
+    else {
+        $text = [string] $Value
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            return ''
+        }
+
+        $parsed = [datetimeoffset]::MinValue
+        if (-not [datetimeoffset]::TryParse(
+                $text,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::RoundtripKind,
+                [ref] $parsed)) {
+            return $text
+        }
+
+        $utc = $parsed.UtcDateTime
+    }
+
+    [datetime]::SpecifyKind($utc, [datetimekind]::Utc).ToString('o')
+}
+
 function Invoke-CountdownRemoteDeploymentReadbackProbe {
     param([Parameter(Mandatory)] [object] $Expected)
 
@@ -1073,14 +1114,15 @@ function Invoke-CountdownRemoteDeploymentReadbackProbe {
         $settingsItem = Assert-CountdownRemoteDeploymentReadbackOrdinaryFile -Path $settingsPath
         $settingsSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $settingsItem.FullName).Hash
         $settingsLength = [long] $settingsItem.Length
-        $settingsMtimeUtc = $settingsItem.LastWriteTimeUtc.ToUniversalTime().ToString('o')
+        $settingsMtimeUtc = ConvertTo-CountdownSettingsFingerprintMtimeUtc -Value $settingsItem.LastWriteTimeUtc
     }
     $settingsHashMatch = [string]::Equals($settingsSha256, [string] $Expected.ExpectedSettingsSha256, [System.StringComparison]::OrdinalIgnoreCase)
     if (-not $settingsHashMatch) { throw '独立回读 settings 哈希与成功回执不一致。' }
     if ([long] $settingsLength -ne [long] $Expected.ExpectedSettingsLength) {
         throw '独立回读 settings 长度与成功回执不一致。'
     }
-    if (-not [string]::Equals($settingsMtimeUtc, [string] $Expected.ExpectedSettingsMtimeUtc, [System.StringComparison]::Ordinal)) {
+    $expectedSettingsMtimeUtc = ConvertTo-CountdownSettingsFingerprintMtimeUtc -Value $Expected.ExpectedSettingsMtimeUtc
+    if (-not [string]::Equals($settingsMtimeUtc, $expectedSettingsMtimeUtc, [System.StringComparison]::Ordinal)) {
         throw '独立回读 settings mtime 与成功回执不一致。'
     }
 
@@ -1151,6 +1193,7 @@ function Invoke-CountdownRemoteDeploymentIndependentRead {
     $parameterJson = $parameters | ConvertTo-Json -Compress
     $parameterBase64 = [Convert]::ToBase64String([System.Text.UTF8Encoding]::new($false).GetBytes($parameterJson))
     $definitionNames = [string[]] @(
+        'ConvertTo-CountdownSettingsFingerprintMtimeUtc',
         'ConvertFrom-CountdownRemoteDeploymentReadbackFlatJsonObject',
         'Get-CountdownRemoteDeploymentReadbackSha256Text',
         'Read-CountdownRemoteDeploymentReadbackJsonObject',
@@ -1171,7 +1214,7 @@ if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'C
 }
 `$expectedJson = [System.Text.UTF8Encoding]::new(`$false, `$true).GetString(
     [Convert]::FromBase64String('$parameterBase64'))
-`$expected = `$expectedJson | ConvertFrom-Json -ErrorAction Stop
+`$expected = `$expectedJson | ConvertFrom-Json -DateKind String -ErrorAction Stop
 
 $definitionText
 

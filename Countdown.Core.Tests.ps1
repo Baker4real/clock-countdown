@@ -5230,6 +5230,13 @@ $adapterHasExitedIndex = $adapterSource.IndexOf('$process.HasExited')
 Assert-Equal $true ($adapterStayAttachedIndex -ge 0 -and $adapterWaitForExitIndex -gt $adapterStayAttachedIndex) 'Production adapter waits for exit only in validate/exercise/test modes'
 Assert-Equal $true ($adapterAliveProbeIndex -gt $adapterWaitForExitIndex -and $adapterHasExitedIndex -gt $adapterAliveProbeIndex) 'Production adapter detaches after confirming the C# host stayed alive'
 Assert-Equal $true ($adapterSource.Contains('Win32_Process') -and $adapterSource.Contains('MethodName Create') -and $adapterSource.Contains('脱离计划任务作业')) 'Production adapter starts the C# host outside the scheduled-task job'
+$remoteDeploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1'), [System.Text.Encoding]::UTF8)
+Assert-Equal $true ($remoteDeploymentSource.Contains('ConvertFrom-Json -DateKind String') -and $remoteDeploymentSource.Contains('ConvertTo-CountdownSettingsFingerprintMtimeUtc')) 'Independent readback keeps settings mtime as a string and normalizes ConvertFrom-Json DateTime coercion'
+$mtimeSample = '2026-08-17T05:20:04.4405459Z'
+$mtimeJson = (@{ ExpectedSettingsMtimeUtc = $mtimeSample } | ConvertTo-Json -Compress)
+$coercedMtime = ($mtimeJson | ConvertFrom-Json).ExpectedSettingsMtimeUtc
+$keptMtime = ($mtimeJson | ConvertFrom-Json -DateKind String).ExpectedSettingsMtimeUtc
+Assert-Equal $true ($coercedMtime -is [datetime] -or [string] $keptMtime -eq $mtimeSample) 'ConvertFrom-Json either keeps the settings mtime string or yields a DateTime the fingerprint helper can normalize'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script required by remote core tests'
 Assert-Equal $true ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the build script required by remote core tests'
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'

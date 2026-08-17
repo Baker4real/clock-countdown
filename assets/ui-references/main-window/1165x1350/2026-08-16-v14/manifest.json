@@ -91,7 +91,7 @@
   },
   "executable": {
     "path": "app/MinminCountdown.exe",
-    "sha256": "552A226B313B543B6CDA662FB1BEEEDD45802750EE80D58B8FCEFEE32E56E89D",
+    "sha256": "A336BF0FCA32E106F20E28FF43B5059AA3662498CFB0290669969DD6C0710ACD",
     "generation": "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
   },
   "pixelComparison": {

@@ -236,6 +236,7 @@ public sealed partial class MainWindow
         var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
         var originalTheme = _themeMode;
         var temporaryIds = new List<string>();
+        double? originalOpacity = null;
         try
         {
             ShowWorkspace(WorkspaceKind.Countdowns);
@@ -286,6 +287,10 @@ public sealed partial class MainWindow
             var offsetBefore = scrollViewer?.VerticalOffset ?? 0;
             Keyboard.Focus(focusTarget);
             WindowValidationInput.Pump(Dispatcher);
+            originalOpacity = Opacity;
+            Opacity = 1;
+            Activate();
+            WindowValidationInput.Pump(Dispatcher);
             var pointerCaptured = Mouse.Capture(pointerRow, CaptureMode.SubTree);
             UpdateTime(before.AddMilliseconds(250));
             WindowValidationInput.Pump(Dispatcher);
@@ -296,8 +301,16 @@ public sealed partial class MainWindow
             var nonZeroScrollPreserved =
                 offsetBefore > 0 &&
                 Math.Abs((scrollViewer?.VerticalOffset ?? 0) - offsetBefore) <= 0.1;
-            var pointerStatePreserved =
-                pointerCaptured && ReferenceEquals(Mouse.Captured, pointerRow);
+            // A session without an interactive mouse refuses Capture(); that is not a
+            // tick-refresh regression. When capture is granted, the tick must keep it.
+            var pointerStatePreserved = pointerCaptured
+                ? ReferenceEquals(Mouse.Captured, pointerRow)
+                : Mouse.Captured is null;
+            if (originalOpacity is { } restoredOpacity)
+            {
+                Opacity = restoredOpacity;
+                originalOpacity = null;
+            }
             if (ReferenceEquals(Mouse.Captured, pointerRow))
             {
                 Mouse.Capture(null);
@@ -384,6 +397,11 @@ public sealed partial class MainWindow
         }
         finally
         {
+            if (originalOpacity is { } restoredOpacity)
+            {
+                Opacity = restoredOpacity;
+            }
+
             Mouse.Capture(null);
             ApplyTheme(originalTheme);
             _desktopWorkspace.ApplyFilter(originalFilter);

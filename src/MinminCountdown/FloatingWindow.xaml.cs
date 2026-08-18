@@ -32,7 +32,7 @@ public sealed partial class FloatingWindow : Window
     ];
     private readonly DesktopWorkspace _desktopWorkspace;
     private readonly HolidayCalendar _calendar;
-    private readonly MainWindow _manager;
+    private readonly IManagerWorkspaceHost _manager;
     private readonly ReminderEditing _reminderEditing = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private WorkspaceKind _renderedWorkspace = WorkspaceKind.Countdowns;
@@ -56,19 +56,27 @@ public sealed partial class FloatingWindow : Window
     private Point? _bottomAnchorPosition;
     private int _nativeWindowDragRequestCount;
     private int _nativeWindowDragCompletionCount;
+    private readonly string _assetRoot;
+    private bool _assetsLoaded;
 
     internal FloatingWindow(
         DesktopWorkspace desktopWorkspace,
         HolidayCalendar calendar,
-        MainWindow manager,
-        string assetRoot)
+        IManagerWorkspaceHost manager,
+        string assetRoot,
+        bool deferAssets = false)
     {
         _desktopWorkspace = desktopWorkspace;
         _calendar = calendar;
         _manager = manager;
+        _assetRoot = assetRoot;
         InitializeComponent();
         _vectorTaskCardEffect = TaskCard.Effect;
-        LoadAssets(assetRoot);
+        if (!deferAssets)
+        {
+            LoadAssets(assetRoot);
+        }
+
         ConfigureControls();
         WireEvents();
         var snapshot = _desktopWorkspace.Snapshot;
@@ -78,6 +86,21 @@ public sealed partial class FloatingWindow : Window
         _desktopWorkspace.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         _calendar.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
         ShowWorkspace(WorkspaceKind.Countdowns);
+    }
+
+    internal void LoadDeferredAssets()
+    {
+        if (_assetsLoaded)
+        {
+            return;
+        }
+
+        LoadAssets(_assetRoot);
+        var snapshot = _desktopWorkspace.Snapshot;
+        ApplyTheme(ApplicationTheme.Resolve(
+            snapshot.UtcNow,
+            snapshot.Settings.Preferences.ThemePreference));
+        Refresh();
     }
 
     internal int PlushCount => new[] { PlushTopLeft.Source, PlushTopRight.Source, PlushBottomRight.Source }
@@ -1543,17 +1566,7 @@ public sealed partial class FloatingWindow : Window
         FloatingCountdownsButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Countdowns);
         FloatingNotesButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Notes);
         MinimizeToTrayButton.Click += (_, _) => MinimizeToTrayRequested?.Invoke(this, EventArgs.Empty);
-        OpenManagerButton.Click += (_, _) =>
-        {
-            _manager.ShowWorkspace(_workspace);
-            if (!_manager.IsVisible)
-            {
-                _manager.Show();
-            }
-
-            _manager.WindowState = WindowState.Normal;
-            _manager.Activate();
-        };
+        OpenManagerButton.Click += (_, _) => _manager.Reveal(_workspace);
         CloseFloatingButton.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         FloatingNoteDate.SelectedDateChanged += (_, _) =>
         {
@@ -2156,6 +2169,7 @@ public sealed partial class FloatingWindow : Window
 
     private void LoadAssets(string assetRoot)
     {
+        _assetsLoaded = true;
         var plushRoot = Path.Combine(assetRoot, "assets", "floating-plush");
         DayOuterShellImage.Source = MainWindow.LoadImage(
             Path.Combine(plushRoot, "component-day-outer-shell.png"));

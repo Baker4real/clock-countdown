@@ -23,8 +23,10 @@ public sealed partial class App : Application
     private DesktopWorkspace? _desktopWorkspace;
     private ApplicationTheme? _theme;
     private HolidayCalendar? _calendar;
+    private ManagerWindowLifecycle? _managerLifecycle;
     private MainWindow? _mainWindow;
     private FloatingWindow? _floatingWindow;
+    private IntPtr _startupFloatingShell;
     private FloatingTrayController? _floatingTrayController;
     private ReminderDeliveryCoordinator? _reminderDeliveryCoordinator;
     private SingleInstanceMutexLease? _singleInstanceLease;
@@ -38,6 +40,7 @@ public sealed partial class App : Application
     private bool _activationTestStateApplied;
     private int _activationCallbackFailureInjected;
     private bool _runtimeReceiptWritten;
+    private bool _firstFrameWorkStarted;
     private bool _shuttingDown;
 
     private void OnStartup(object sender, StartupEventArgs eventArgs)
@@ -126,6 +129,12 @@ public sealed partial class App : Application
                     LogInstanceActivationListenerFailure);
             }
 
+            if (_options.ActivationTestState is null && !_acceptanceReadOnly)
+            {
+                ShowStartupFloatingShell();
+                WriteFirstFloatingFrameReady();
+            }
+
             _desktopWorkspace = DesktopWorkspace.Load(
                 settingsPath,
                 chooseRecovery: ShowSettingsRecoveryPrompt,
@@ -135,24 +144,24 @@ public sealed partial class App : Application
             var initialSnapshot = desktopWorkspace.Snapshot;
             _theme = new ApplicationTheme(Resources);
             _theme.Apply(initialSnapshot.UtcNow, initialSnapshot.Settings.Preferences.ThemePreference);
-            _calendar = new HolidayCalendar(_applicationRoot);
-            _mainWindow = new MainWindow(desktopWorkspace, _calendar, _logger, AppContext.BaseDirectory);
-            _mainWindow.ApplyTheme(_theme.ActiveMode);
+            var calendar = new HolidayCalendar(_applicationRoot);
+            _calendar = calendar;
+            var logger = _logger ??
+                         throw new InvalidOperationException("诊断日志尚未初始化。");
+            var managerLifecycle = new ManagerWindowLifecycle(
+                () => new MainWindow(desktopWorkspace, calendar, logger, AppContext.BaseDirectory),
+                AttachManagerWindow);
+            _managerLifecycle = managerLifecycle;
             _reminderDeliveryCoordinator = new ReminderDeliveryCoordinator(
                 desktopWorkspace,
                 _logger,
-                (sourceKind, sourceId) => _mainWindow.OpenReminderSource(sourceKind, sourceId));
+                (sourceKind, sourceId) => managerLifecycle.OpenReminderSource(sourceKind, sourceId));
             _floatingWindow = new FloatingWindow(
                 desktopWorkspace,
                 _calendar,
-                _mainWindow,
-                AppContext.BaseDirectory);
-            _floatingTrayController = new FloatingTrayController(
-                _floatingWindow,
-                Path.Combine(_applicationRoot, "countdown-icon.ico"),
-                () => !_shuttingDown);
-            _mainWindow.ThemePreferenceChanged +=
-                (_, _) => ApplyCurrentTheme(desktopWorkspace.Snapshot.UtcNow);
+                _managerLifecycle,
+                AppContext.BaseDirectory,
+                deferAssets: true);
             ApplyCurrentTheme(initialSnapshot.UtcNow);
 
             if (!_acceptanceReadOnly)
@@ -222,7 +231,6 @@ public sealed partial class App : Application
     private InstanceActivationHandlingResult HandleInstanceActivationCore(string requestId)
     {
         if (_floatingTrayController is null ||
-            _mainWindow is null ||
             _instanceActivationScope is null ||
             _shuttingDown)
         {
@@ -239,10 +247,11 @@ public sealed partial class App : Application
         }
 
         var stateBefore = _floatingTrayController.ActivationState;
-        var mainWindowVisibleBefore = _mainWindow.IsVisible;
-        var managerStateBefore = _mainWindow.CaptureInstanceActivationState();
+        var mainWindowVisibleBefore = _mainWindow?.IsVisible == true;
+        var managerStateBefore = _mainWindow?.CaptureInstanceActivationState();
         var activated = _floatingTrayController.RestoreAndActivateFromExternalRequest();
-        var managerStatePreserved = managerStateBefore == _mainWindow.CaptureInstanceActivationState();
+        var managerStatePreserved = _mainWindow is null ||
+            managerStateBefore == _mainWindow.CaptureInstanceActivationState();
         var result = new InstanceActivationHandlingResult(
             activated,
             stateBefore,
@@ -251,7 +260,7 @@ public sealed partial class App : Application
             _floatingTrayController.ForegroundWindowHandle,
             _floatingTrayController.FloatingWindowIsActive,
             mainWindowVisibleBefore,
-            _mainWindow.IsVisible,
+            _mainWindow?.IsVisible == true,
             managerStatePreserved);
         _logger?.Activation(
             "InstanceActivationHandled",
@@ -300,27 +309,20 @@ public sealed partial class App : Application
                 "ListenerFailed"));
     }
 
-    private void StartInteractiveHost()
+    private void AttachManagerWindow(MainWindow window)
     {
-        if (_mainWindow is null ||
-            _floatingWindow is null ||
-            _desktopWorkspace is null ||
-            _calendar is null ||
-            _theme is null ||
-            _startupProtocol is null ||
-            _applicationRoot is null ||
-            _floatingTrayController is null)
+        if (_theme is not null)
         {
-            throw new InvalidOperationException("应用宿主尚未初始化。");
+            window.ApplyTheme(_theme.ActiveMode);
         }
 
-        _mainWindow.CloseRequested += (_, _) => _mainWindow.Hide();
-        _mainWindow.MinimizeToTrayRequested += (_, _) =>
+        window.CloseRequested += (_, _) => window.Hide();
+        window.MinimizeToTrayRequested += (_, _) =>
         {
-            _mainWindow.Hide();
-            _floatingTrayController.MinimizeToTray();
+            window.Hide();
+            _floatingTrayController?.MinimizeToTray();
         };
-        _mainWindow.Closing += (_, eventArgs) =>
+        window.Closing += (_, eventArgs) =>
         {
             if (_shuttingDown)
             {
@@ -328,13 +330,36 @@ public sealed partial class App : Application
             }
 
             eventArgs.Cancel = true;
-            _mainWindow.Hide();
+            window.Hide();
         };
-        _floatingTrayController.Minimized +=
-            (_, _) => _logger?.Info("FloatingWindowMinimizedToTray");
-        _floatingTrayController.Restored +=
-            (_, _) => _logger?.Info("FloatingWindowRestoredFromTray");
-        _floatingTrayController.ExitRequested += (_, _) => ShutdownInteractiveHost();
+        window.ThemePreferenceChanged += (_, _) =>
+        {
+            if (_desktopWorkspace is not null)
+            {
+                ApplyCurrentTheme(_desktopWorkspace.Snapshot.UtcNow);
+            }
+        };
+        if (_acceptanceReadOnly)
+        {
+            window.IsEnabled = false;
+        }
+
+        _mainWindow = window;
+    }
+
+    private void StartInteractiveHost()
+    {
+        if (_managerLifecycle is null ||
+            _floatingWindow is null ||
+            _desktopWorkspace is null ||
+            _calendar is null ||
+            _theme is null ||
+            _startupProtocol is null ||
+            _applicationRoot is null)
+        {
+            throw new InvalidOperationException("应用宿主尚未初始化。");
+        }
+
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
         _floatingWindow.Closed += (_, _) =>
         {
@@ -346,9 +371,81 @@ public sealed partial class App : Application
         _floatingWindow.ContentRendered += OnFloatingContentRendered;
         if (_acceptanceReadOnly)
         {
-            _mainWindow.IsEnabled = false;
             _floatingWindow.IsEnabled = false;
             _logger?.Info("AcceptanceReadOnlyEnabled");
+        }
+
+        _floatingWindow.Show();
+        WriteFirstFloatingFrameReady();
+        CloseStartupFloatingShell();
+    }
+
+    private void ShowStartupFloatingShell()
+    {
+        if (_startupFloatingShell != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _startupFloatingShell = NativeStartupFrame.Show();
+    }
+
+    private void CloseStartupFloatingShell()
+    {
+        if (_startupFloatingShell == IntPtr.Zero)
+        {
+            return;
+        }
+
+        NativeStartupFrame.Close(_startupFloatingShell);
+        _startupFloatingShell = IntPtr.Zero;
+    }
+
+    private void WriteFirstFloatingFrameReady()
+    {
+        if (_runtimeReceiptWritten ||
+            _startupProtocol is null ||
+            _options is null)
+        {
+            return;
+        }
+
+        if (_options.ActivationTestState is InstanceActivationTestState.Tray)
+        {
+            EnsureFloatingTrayController();
+        }
+
+        ApplyInstanceActivationTestState();
+        _startupProtocol.WriteWindowReady("Pending");
+        _runtimeReceiptWritten = true;
+        _logger?.Info("WindowReady");
+    }
+
+    private void EnsureFloatingTrayController()
+    {
+        if (_floatingTrayController is not null ||
+            _floatingWindow is null ||
+            _applicationRoot is null)
+        {
+            return;
+        }
+
+        _floatingTrayController = new FloatingTrayController(
+            _floatingWindow,
+            Path.Combine(_applicationRoot, "countdown-icon.ico"),
+            () => !_shuttingDown);
+        _floatingTrayController.Minimized +=
+            (_, _) => _logger?.Info("FloatingWindowMinimizedToTray");
+        _floatingTrayController.Restored +=
+            (_, _) => _logger?.Info("FloatingWindowRestoredFromTray");
+        _floatingTrayController.ExitRequested += (_, _) => ShutdownInteractiveHost();
+    }
+
+    private void StartInteractiveClock()
+    {
+        if (_clockTimer is not null)
+        {
+            return;
         }
 
         _clockTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -358,24 +455,22 @@ public sealed partial class App : Application
         _clockTimer.Tick += (_, _) => UpdateInteractiveState();
         _clockTimer.Start();
         UpdateInteractiveState();
-        _floatingWindow.Show();
     }
 
     private void OnFloatingContentRendered(object? sender, EventArgs eventArgs)
     {
-        if (_runtimeReceiptWritten ||
-            _startupProtocol is null ||
+        if (_firstFrameWorkStarted ||
             _options is null ||
             _desktopWorkspace is null)
         {
             return;
         }
 
-        ApplyInstanceActivationTestState();
+        _firstFrameWorkStarted = true;
 
-        _startupProtocol.WriteWindowReady("Pending");
-        _runtimeReceiptWritten = true;
-        _logger?.Info("WindowReady");
+        _floatingWindow?.LoadDeferredAssets();
+        EnsureFloatingTrayController();
+        StartInteractiveClock();
 
         if (_options.ExitAfterReadyForTest)
         {
@@ -397,20 +492,24 @@ public sealed partial class App : Application
     private void ApplyInstanceActivationTestState()
     {
         if (_activationTestStateApplied ||
-            _options?.ActivationTestState is null ||
+            _options?.ActivationTestState is null)
+        {
+            return;
+        }
+
+        if (_options.ActivationTestState is InstanceActivationTestState.Tray &&
             _floatingTrayController is null)
         {
             return;
         }
 
         _activationTestStateApplied = true;
-        _mainWindow?.PrepareInstanceActivationStateForTest();
         switch (_options.ActivationTestState)
         {
             case InstanceActivationTestState.FloatingVisible:
                 break;
             case InstanceActivationTestState.Tray:
-                _floatingTrayController.MinimizeToTrayForActivationTest();
+                _floatingTrayController!.MinimizeToTrayForActivationTest();
                 break;
             case InstanceActivationTestState.Hidden:
                 _floatingWindow?.Hide();
@@ -422,6 +521,8 @@ public sealed partial class App : Application
                 }
                 break;
             case InstanceActivationTestState.MainVisible:
+                _managerLifecycle?.EnsureCreated();
+                _mainWindow?.PrepareInstanceActivationStateForTest();
                 _mainWindow?.Show();
                 break;
             default:
@@ -466,7 +567,6 @@ public sealed partial class App : Application
     private void UpdateInteractiveState()
     {
         if (_desktopWorkspace is null ||
-            _mainWindow is null ||
             _floatingWindow is null ||
             _theme is null ||
             _reminderDeliveryCoordinator is null)
@@ -481,7 +581,7 @@ public sealed partial class App : Application
             _ = RefreshHolidayCalendarAsync(nowUtc);
         }
         ApplyCurrentTheme(nowUtc);
-        _mainWindow.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
+        _mainWindow?.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
         _floatingWindow.UpdateTime(nowUtc);
         if (_acceptanceReadOnly)
         {
@@ -501,7 +601,6 @@ public sealed partial class App : Application
     private void ApplyCurrentTheme(DateTimeOffset nowUtc)
     {
         if (_desktopWorkspace is null ||
-            _mainWindow is null ||
             _floatingWindow is null ||
             _theme is null)
         {
@@ -511,7 +610,7 @@ public sealed partial class App : Application
         var mode = _theme.Apply(
             nowUtc,
             _desktopWorkspace.Snapshot.Settings.Preferences.ThemePreference);
-        _mainWindow.ApplyTheme(mode);
+        _mainWindow?.ApplyTheme(mode);
         _floatingWindow.ApplyTheme(mode);
     }
 
@@ -519,7 +618,6 @@ public sealed partial class App : Application
     {
         if (!_acceptanceReadOnly ||
             _desktopWorkspace is null ||
-            _mainWindow is null ||
             _floatingWindow is null ||
             _startupProtocol is null)
         {
@@ -544,7 +642,11 @@ public sealed partial class App : Application
             return;
         }
 
-        _mainWindow.IsEnabled = true;
+        if (_mainWindow is not null)
+        {
+            _mainWindow.IsEnabled = true;
+        }
+
         _floatingWindow.IsEnabled = true;
         try
         {
@@ -552,7 +654,11 @@ public sealed partial class App : Application
         }
         catch
         {
-            _mainWindow.IsEnabled = false;
+            if (_mainWindow is not null)
+            {
+                _mainWindow.IsEnabled = false;
+            }
+
             _floatingWindow.IsEnabled = false;
             throw;
         }
@@ -631,6 +737,53 @@ public sealed partial class App : Application
         _logger?.Warning("UnobservedTaskException", eventArgs.Exception);
         eventArgs.SetObserved();
     }
+}
+
+internal interface IManagerWorkspaceHost
+{
+    void Reveal(WorkspaceKind workspace);
+}
+
+internal sealed class ManagerWindowLifecycle : IManagerWorkspaceHost
+{
+    private readonly Func<MainWindow> _create;
+    private readonly Action<MainWindow> _attach;
+    private MainWindow? _window;
+
+    public ManagerWindowLifecycle(Func<MainWindow> create, Action<MainWindow> attach)
+    {
+        _create = create;
+        _attach = attach;
+    }
+
+    public MainWindow? Window => _window;
+
+    public MainWindow EnsureCreated()
+    {
+        if (_window is not null)
+        {
+            return _window;
+        }
+
+        MainWindow? window = null;
+        try
+        {
+            window = _create();
+            _attach(window);
+            _window = window;
+            return window;
+        }
+        catch
+        {
+            window?.Close();
+            throw;
+        }
+    }
+
+    public void Reveal(WorkspaceKind workspace) => EnsureCreated().Reveal(workspace);
+
+    public bool OpenReminderSource(ReminderSourceKind sourceKind, string sourceId) =>
+        EnsureCreated().OpenReminderSource(sourceKind, sourceId);
 }
 
 internal sealed class ReminderDeliveryCoordinator : IDisposable

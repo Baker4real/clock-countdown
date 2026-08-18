@@ -128,8 +128,8 @@ if ($Clean) {
 }
 
 & $dotnet publish $applicationProject -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:PublishSingleFile=false `
+    -p:PublishReadyToRun=true `
     -p:IncludeSourceRevisionInInformationalVersion=false `
     -p:DebugType=None `
     -p:DebugSymbols=false `
@@ -213,6 +213,43 @@ $sourcesMetadata = Join-Path $applicationAssetsOutput 'floating-plush\SOURCES.md
 if (Test-Path -LiteralPath $sourcesMetadata) {
     throw "发布不得包含资产来源说明：$sourcesMetadata"
 }
+
+$payloadFiles = @(
+    Get-ChildItem -LiteralPath $applicationOutput -File -Recurse |
+        Where-Object { $_.Name -ne 'published-payload.json' } |
+        ForEach-Object {
+            $relative = [System.IO.Path]::GetRelativePath($applicationOutput, $_.FullName)
+            [pscustomobject]@{
+                path = ('app\' + ($relative -replace '/', '\'))
+                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+            }
+        } |
+        Sort-Object -Property path
+)
+$payloadAggregateBuilder = [System.Text.StringBuilder]::new()
+foreach ($payloadFile in $payloadFiles) {
+    [void]$payloadAggregateBuilder.Append($payloadFile.path)
+    [void]$payloadAggregateBuilder.Append([char]0)
+    [void]$payloadAggregateBuilder.Append($payloadFile.sha256)
+    [void]$payloadAggregateBuilder.Append([char]10)
+}
+$payloadAggregate = [BitConverter]::ToString(
+    [System.Security.Cryptography.SHA256]::HashData(
+        [System.Text.Encoding]::UTF8.GetBytes($payloadAggregateBuilder.ToString()))
+).Replace('-', '')
+$payloadManifestPath = Join-Path $applicationOutput 'published-payload.json'
+$payloadDocument = [ordered]@{
+    schemaVersion = 1
+    aggregateSha256 = $payloadAggregate
+    files = @($payloadFiles | ForEach-Object { [ordered]@{ path = $_.path; sha256 = $_.sha256 } })
+}
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[System.IO.File]::WriteAllText(
+    $payloadManifestPath,
+    ($payloadDocument | ConvertTo-Json -Depth 6),
+    $utf8NoBom)
+Write-Output "PUBLISHED_PAYLOAD_COUNT=$($payloadFiles.Count)"
+Write-Output "PUBLISHED_PAYLOAD_AGGREGATE=$payloadAggregate"
 
 & $dotnet publish $verificationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `

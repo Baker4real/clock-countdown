@@ -59,6 +59,212 @@ internal static class ValidationExercises
                productionDefaultPreserved;
     }
 
+    public static bool RunLazyManagerLifecycleBehavior()
+    {
+        AssertLazyManagerFailureRecovery();
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-lazy-manager-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var preexistingWindows = Application.Current.Windows.Cast<Window>().ToHashSet();
+        HolidayCalendar? calendar = null;
+        try
+        {
+            var workspace = DesktopWorkspace.Load(settingsPath);
+            MustApply(workspace, new SaveNoteChange(
+                null,
+                "懒加载来源便签",
+                new DateTime(2031, 4, 5),
+                false,
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            var lifecycle = new ManagerWindowLifecycle(
+                () => new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory),
+                PrepareOffscreenValidationWindow);
+            var floating = new FloatingWindow(
+                workspace,
+                calendar,
+                lifecycle,
+                AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(floating);
+            floating.Show();
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(floating.Dispatcher);
+
+            Must(
+                Application.Current.Windows.OfType<MainWindow>().All(preexistingWindows.Contains) &&
+                lifecycle.Window is null,
+                "普通启动后 Windows 集合不应包含管理窗口。");
+
+            var openManager = floating.FindName("OpenManagerButton") as Button ??
+                              throw new InvalidOperationException("悬浮窗缺少 OpenManagerButton。");
+            openManager.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            var created = CurrentCreatedMainWindows(preexistingWindows);
+            Must(
+                created.Length == 1 &&
+                ReferenceEquals(created[0], lifecycle.Window) &&
+                created[0].IsVisible &&
+                created[0].WindowState == WindowState.Normal &&
+                created[0].CurrentWorkspace == floating.CurrentWorkspaceForValidation,
+                "第一次管理没有创建唯一可见管理窗口或未沿用当前工作区。");
+
+            var first = created[0];
+            openManager.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                CurrentCreatedMainWindows(preexistingWindows).Length == 1 &&
+                ReferenceEquals(first, lifecycle.Window),
+                "重复打开管理产生了第二个管理窗口。");
+
+            var draft = (TextBox)first.FindName("CountdownName");
+            draft.Text = "应保留的倒计时草稿";
+            first.Hide();
+            WindowValidationInput.Pump(first.Dispatcher);
+            Must(
+                lifecycle.OpenReminderSource(ReminderSourceKind.Note, note.Id),
+                "打开来源失败。");
+            WindowValidationInput.Pump(first.Dispatcher);
+            Must(
+                ReferenceEquals(first, lifecycle.Window) &&
+                first.IsVisible &&
+                first.WindowState == WindowState.Normal &&
+                first.CurrentWorkspace == WorkspaceKind.Notes &&
+                string.Equals(draft.Text, "应保留的倒计时草稿", StringComparison.Ordinal) &&
+                Keyboard.FocusedElement is Button { Tag: string focusedId } &&
+                string.Equals(focusedId, note.Id, StringComparison.OrdinalIgnoreCase),
+                "打开来源没有揭示准确来源或覆盖了草稿。");
+            return true;
+        }
+        finally
+        {
+            foreach (var window in Application.Current.Windows.Cast<Window>().ToArray())
+            {
+                if (!preexistingWindows.Contains(window))
+                {
+                    window.Close();
+                }
+            }
+
+            calendar?.Dispose();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    private static void PrepareOffscreenValidationWindow(Window window)
+    {
+        window.ShowInTaskbar = false;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = -20_000;
+        window.Top = -20_000;
+        window.Opacity = 0;
+    }
+
+    private static MainWindow[] CurrentCreatedMainWindows(HashSet<Window> preexistingWindows) =>
+        Application.Current.Windows
+            .OfType<MainWindow>()
+            .Where(window => !preexistingWindows.Contains(window))
+            .ToArray();
+
+    private static void AssertLazyManagerFailureRecovery()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-lazy-manager-fail-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var preexistingWindows = Application.Current.Windows.Cast<Window>().ToHashSet();
+        HolidayCalendar? calendar = null;
+        try
+        {
+            var workspace = DesktopWorkspace.Load(settingsPath);
+            MustApply(workspace, new SaveNoteChange(
+                null,
+                "失败回滚隔离便签",
+                new DateTime(2031, 4, 5),
+                false,
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            var settingsBytesBefore = File.ReadAllBytes(settingsPath);
+            var baselineCount = Application.Current.Windows.OfType<MainWindow>().Count();
+            MainWindow? hostField = null;
+            var failAttach = true;
+            var lifecycle = new ManagerWindowLifecycle(
+                () => new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory),
+                window =>
+                {
+                    if (failAttach)
+                    {
+                        hostField = window;
+                        throw new InvalidOperationException("附加管理窗口失败。");
+                    }
+
+                    PrepareOffscreenValidationWindow(window);
+                    hostField = window;
+                });
+
+            var originalThrown = false;
+            try
+            {
+                lifecycle.EnsureCreated();
+            }
+            catch (InvalidOperationException exception) when (
+                string.Equals(exception.Message, "附加管理窗口失败。", StringComparison.Ordinal))
+            {
+                originalThrown = true;
+            }
+
+            WindowValidationInput.Pump(Application.Current.Dispatcher);
+            var createdAfterFailure = CurrentCreatedMainWindows(preexistingWindows);
+            Must(originalThrown, "attach 失败没有抛出原异常。");
+            Must(lifecycle.Window is null, "attach 失败后 lifecycle.Window 应为空。");
+            Must(
+                Application.Current.Windows.OfType<MainWindow>().Count() == baselineCount &&
+                createdAfterFailure.Length == 0,
+                "attach 失败后管理窗口计数没有回到基线。");
+            Must(
+                hostField is null ||
+                !Application.Current.Windows.OfType<MainWindow>().Contains(hostField),
+                "attach 先写 hostField 再失败后仍指向活孤儿。");
+            Must(
+                File.Exists(settingsPath) &&
+                File.ReadAllBytes(settingsPath).AsSpan().SequenceEqual(settingsBytesBefore),
+                "attach 失败改写了隔离 settings 文件。");
+
+            failAttach = false;
+            lifecycle.Reveal(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Application.Current.Dispatcher);
+            var recovered = CurrentCreatedMainWindows(preexistingWindows);
+            Must(
+                recovered.Length == 1 &&
+                ReferenceEquals(recovered[0], lifecycle.Window) &&
+                ReferenceEquals(hostField, lifecycle.Window) &&
+                recovered[0].IsVisible &&
+                recovered[0].WindowState == WindowState.Normal &&
+                recovered[0].CurrentWorkspace == WorkspaceKind.Notes,
+                "失败后重入没有恢复成恰好一扇可用管理窗口。");
+        }
+        finally
+        {
+            foreach (var window in Application.Current.Windows.Cast<Window>().ToArray())
+            {
+                if (!preexistingWindows.Contains(window))
+                {
+                    window.Close();
+                }
+            }
+
+            calendar?.Dispose();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
     public static bool RunSettingsRecoveryWindowBehavior()
     {
         var window = SettingsRecoveryWindow.CreateForValidation(

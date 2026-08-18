@@ -5,6 +5,7 @@ param(
     [string] $OfficeDeploymentStagingRoot,
     [switch] $InstanceActivationOnly,
     [switch] $InstanceActivationMatrix,
+    [switch] $DesktopLauncherOnly,
     [switch] $MigrationParityOnly,
     [ValidateSet('FloatingVisible', 'Tray', 'Hidden', 'Minimized', 'MainVisible')]
     [string] $InstanceActivationTestState = 'FloatingVisible',
@@ -1096,6 +1097,757 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
     }
 }
 
+function Test-DesktopLauncherByteSequenceContains {
+    param(
+        [Parameter(Mandatory)] [byte[]] $Haystack,
+        [Parameter(Mandatory)] [byte[]] $Needle
+    )
+
+    if ($Needle.Length -eq 0 -or $Haystack.Length -lt $Needle.Length) {
+        return $false
+    }
+
+    $limit = $Haystack.Length - $Needle.Length
+    for ($index = 0; $index -le $limit; $index++) {
+        $matched = $true
+        for ($offset = 0; $offset -lt $Needle.Length; $offset++) {
+            if ($Haystack[$index + $offset] -ne $Needle[$offset]) {
+                $matched = $false
+                break
+            }
+        }
+        if ($matched) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Assert-DesktopLauncherSourceLocks {
+    $launcherSourcePath = Join-Path $PSScriptRoot 'CountdownLauncher.cs'
+    $installerSourcePath = Join-Path $PSScriptRoot 'Install-Countdown.ps1'
+    if (-not (Test-Path -LiteralPath $launcherSourcePath -PathType Leaf)) {
+        throw "未找到启动器源码：$launcherSourcePath"
+    }
+    if (-not (Test-Path -LiteralPath $installerSourcePath -PathType Leaf)) {
+        throw "未找到安装脚本：$installerSourcePath"
+    }
+
+    $launcherSource = [System.IO.File]::ReadAllText($launcherSourcePath)
+    $installerSource = [System.IO.File]::ReadAllText($installerSourcePath)
+
+    Assert-Equal $false $launcherSource.Contains('schtasks', [System.StringComparison]::OrdinalIgnoreCase) `
+        'CountdownLauncher.cs 不再包含 schtasks'
+    Assert-Equal $true $launcherSource.Contains('D:\敏敏子倒计时\app\MinminCountdown.exe') `
+        'CountdownLauncher.cs 仍包含正式安装宿主回退路径'
+
+    $desktopLauncherPathIndex = $installerSource.IndexOf("`$launcherPath = Join-Path `$desktop '敏敏子倒计时.exe'")
+    $payloadDestinationIndex = $installerSource.IndexOf('(Join-Path $install $file)')
+    $payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force')
+    $launcherMoveIndex = $installerSource.IndexOf('Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force')
+
+    Assert-Equal $true ($desktopLauncherPathIndex -ge 0) '安装脚本仍把启动器目标定为桌面 敏敏子倒计时.exe'
+    Assert-Equal $true ($payloadDestinationIndex -ge 0) '安装脚本仍把 payload 写到安装根'
+    Assert-Equal $true ($payloadCopyIndex -ge 0) '安装脚本仍复制 payload 到安装根目标'
+    Assert-Equal $true (
+        $launcherMoveIndex -gt $payloadCopyIndex -and
+        $payloadCopyIndex -gt $payloadDestinationIndex
+    ) '安装脚本先写安装根 payload，再把启动器搬到桌面'
+    Assert-Equal $true (
+        $installerSource.Contains('-STA -File `"$appPath`"') -and
+        $installerSource.Contains('New-ScheduledTaskAction -Execute $powerShellEngine -Argument $arguments')
+    ) '登录任务仍用 pwsh 执行 adapter，而不是桌面启动器'
+}
+
+function Get-DesktopLauncherWin32Process {
+    param([Parameter(Mandatory)] [int] $ProcessId)
+
+    Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$ProcessId" -OperationTimeoutSec 5 -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+}
+
+function Get-DesktopLauncherProcessRecords {
+    param([Parameter(Mandatory)] [string] $ExecutablePath)
+
+    $normalized = [System.IO.Path]::GetFullPath($ExecutablePath)
+    return @(
+        Get-CimInstance -ClassName Win32_Process -Filter "Name='MinminCountdown.exe'" -OperationTimeoutSec 5 -ErrorAction Stop |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace([string] $_.ExecutablePath) -and
+                [string]::Equals(
+                    [System.IO.Path]::GetFullPath([string] $_.ExecutablePath),
+                    $normalized,
+                    [System.StringComparison]::OrdinalIgnoreCase)
+            }
+    )
+}
+
+function Get-DesktopLauncherChildProcessRecords {
+    param([Parameter(Mandatory)] [int] $ParentProcessId)
+
+    return @(
+        Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId=$ParentProcessId" -OperationTimeoutSec 5 -ErrorAction Stop
+    )
+}
+
+function Assert-DesktopLauncherCommandLineAvoidsAdapter {
+    param(
+        [AllowNull()] [string] $CommandLine,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $text = [string] $CommandLine
+    foreach ($token in @('schtasks', 'pwsh', '敏敏子倒计时.ps1', '--require-startup-request')) {
+        Assert-Equal $false $text.Contains($token, [System.StringComparison]::OrdinalIgnoreCase) `
+            "$Name 命令行不含 $token"
+    }
+}
+
+function Stop-DesktopLauncherOwnedProcess {
+    param([AllowNull()] $Process)
+
+    if ($null -eq $Process) {
+        return
+    }
+
+    try {
+        if (-not $Process.HasExited) {
+            $Process.Kill($true)
+            [void] $Process.WaitForExit(5000)
+        }
+    }
+    catch {
+        if ($_.Exception -isnot [System.InvalidOperationException]) {
+            throw
+        }
+    }
+    finally {
+        $Process.Dispose()
+    }
+}
+
+function Stop-DesktopLauncherHostProcesses {
+    param([Parameter(Mandatory)] [string] $ExecutablePath)
+
+    foreach ($record in @(Get-DesktopLauncherProcessRecords -ExecutablePath $ExecutablePath)) {
+        try {
+            $process = [System.Diagnostics.Process]::GetProcessById([int] $record.ProcessId)
+        }
+        catch {
+            continue
+        }
+
+        try {
+            if (-not $process.HasExited) {
+                $process.Kill($true)
+                [void] $process.WaitForExit(5000)
+            }
+        }
+        catch {
+            if ($_.Exception -isnot [System.InvalidOperationException]) {
+                throw
+            }
+        }
+        finally {
+            $process.Dispose()
+        }
+    }
+}
+
+function Read-DesktopLauncherRuntimeReceipt {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+}
+
+function Wait-DesktopLauncherWindowReadyReceipt {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [System.Diagnostics.Stopwatch] $Clock,
+        [Parameter(Mandatory)] [int] $TimeoutMilliseconds
+    )
+
+    # 日历刷新会覆盖同一回执，必须抓住第一次 window-ready。
+    $lastStage = 'missing'
+    do {
+        $receipt = Read-DesktopLauncherRuntimeReceipt -Path $Path
+        if ($null -ne $receipt) {
+            $lastStage = [string] $receipt.stage
+            if ($lastStage -eq 'window-ready') {
+                return [pscustomobject]@{
+                    Receipt = $receipt
+                    ElapsedMilliseconds = [int] $Clock.ElapsedMilliseconds
+                }
+            }
+        }
+
+        if ($Clock.ElapsedMilliseconds -ge $TimeoutMilliseconds) {
+            throw "window-ready 回执超时：elapsed=$($Clock.ElapsedMilliseconds)ms stage=$lastStage"
+        }
+
+        Start-Sleep -Milliseconds 10
+    } while ($true)
+}
+
+function Assert-DesktopLauncherWindowReadyReceipt {
+    param(
+        [Parameter(Mandatory)] $Receipt,
+        [Parameter(Mandatory)] [int] $ExpectedProcessId,
+        [Parameter(Mandatory)] [int] $ExpectedSessionId,
+        [Parameter(Mandatory)] [string] $ExpectedHostPath,
+        [Parameter(Mandatory)] [string] $ExpectedAdapterPath,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    Assert-Equal 4 ([int] $Receipt.schemaVersion) "$Name schemaVersion"
+    Assert-Equal 'window-ready' ([string] $Receipt.stage) "$Name stage"
+    Assert-Equal 'Pending' ([string] $Receipt.calendarState) "$Name calendarState 保持 Pending"
+    Assert-Equal 'China Standard Time' ([string] $Receipt.timeZoneId) "$Name timeZoneId"
+    Assert-Equal $false ([string]::IsNullOrWhiteSpace([string] $Receipt.launchToken)) "$Name launchToken"
+    Assert-Equal $ExpectedProcessId ([int] $Receipt.processId) "$Name processId"
+    Assert-Equal $ExpectedSessionId ([int] $Receipt.sessionId) "$Name sessionId"
+    Assert-Equal (
+        [System.IO.Path]::GetFullPath($ExpectedAdapterPath)
+    ) (
+        [System.IO.Path]::GetFullPath([string] $Receipt.applicationPath)
+    ) "$Name applicationPath"
+
+    $process = Get-DesktopLauncherWin32Process -ProcessId $ExpectedProcessId
+    Assert-Equal $true ($null -ne $process) "$Name 回执进程仍存在"
+    Assert-Equal $ExpectedSessionId ([int] $process.SessionId) "$Name 宿主属于当前交互会话"
+    Assert-Equal (
+        [System.IO.Path]::GetFullPath($ExpectedHostPath)
+    ) (
+        [System.IO.Path]::GetFullPath([string] $process.ExecutablePath)
+    ) "$Name 宿主是隔离 fixture 内受管 C# EXE"
+    Assert-DesktopLauncherCommandLineAvoidsAdapter `
+        -CommandLine ([string] $process.CommandLine) `
+        -Name $Name
+
+    $evaluation = Test-CountdownWindowReadyReceipt `
+        -Receipt $Receipt `
+        -ExpectedLaunchToken ([string] $Receipt.launchToken) `
+        -ExpectedSessionId $ExpectedSessionId `
+        -ExpectedApplicationPath $ExpectedAdapterPath
+    Assert-Equal $true ([bool] $evaluation.Ready) "$Name 官方回执认定受管 C# 宿主"
+}
+
+function Assert-DesktopLauncherFirstFrameWindows {
+    param(
+        [Parameter(Mandatory)] [int] $ProcessId,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(2)
+    $visibleWindows = @()
+    $floatingWindows = @()
+    $managerWindows = @()
+    $interactiveWindows = @()
+    do {
+        $visibleWindows = @(Get-VisibleProcessWindows -ProcessId $ProcessId)
+        $floatingWindows = @($visibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
+        $managerWindows = @($visibleWindows | Where-Object Title -eq '敏敏子倒计时')
+        $interactiveWindows = @($visibleWindows | Where-Object {
+                $_.Title -eq '敏敏子悬浮窗' -or $_.Title -eq '敏敏子倒计时'
+            })
+        if ($floatingWindows.Count -eq 1 -and
+            $managerWindows.Count -eq 0 -and
+            $interactiveWindows.Count -eq 1) {
+            break
+        }
+        Start-Sleep -Milliseconds 20
+    } while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    Assert-Equal 1 $floatingWindows.Count "$Name 可见悬浮窗"
+    Assert-Equal 0 $managerWindows.Count "$Name 管理窗口不可见"
+    Assert-Equal 1 $interactiveWindows.Count "$Name 没有重复交互窗口"
+    return [pscustomobject]@{
+        FloatingCount = $floatingWindows.Count
+        ManagerCount = $managerWindows.Count
+        InteractiveCount = $interactiveWindows.Count
+        Titles = @($visibleWindows | ForEach-Object { [string] $_.Title })
+    }
+}
+
+function Invoke-DesktopLauncherNoSidecarFallbackProcessTest {
+    param(
+        [Parameter(Mandatory)] [string] $FixtureRoot,
+        [Parameter(Mandatory)] [string] $RepoHost,
+        [Parameter(Mandatory)] [string] $RepoAdapter,
+        [Parameter(Mandatory)] [string] $RepoLauncherSource,
+        [Parameter(Mandatory)] [string] $RepoIcon,
+        [Parameter(Mandatory)] [string] $RepoLauncher,
+        [Parameter(Mandatory)] [int] $CurrentSessionId
+    )
+
+    $productionHost = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\app\MinminCountdown.exe')
+    $productionSettingsPath = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\settings.json')
+    $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    $launcherDir = Join-Path $FixtureRoot 'desktop'
+    $installRoot = Join-Path $FixtureRoot 'install'
+    $installHostDirectory = Join-Path $installRoot 'app'
+    $installHost = [System.IO.Path]::GetFullPath((Join-Path $installHostDirectory 'MinminCountdown.exe'))
+    $installAdapter = Join-Path $installRoot '敏敏子倒计时.ps1'
+    $installSettings = Join-Path $installRoot 'settings.json'
+    $sourceDir = Join-Path $FixtureRoot 'src'
+    $patchedSource = Join-Path $sourceDir 'CountdownLauncher.cs'
+    $isolatedLauncher = Join-Path $launcherDir 'CountdownLauncher.exe'
+    $fallbackLauncher = $null
+
+    if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+        throw "未找到启动器编译器：$compiler"
+    }
+    if (-not (Test-Path -LiteralPath $RepoLauncherSource -PathType Leaf)) {
+        throw "未找到启动器源码：$RepoLauncherSource"
+    }
+    if (-not (Test-Path -LiteralPath $RepoIcon -PathType Leaf)) {
+        throw "未找到启动器图标：$RepoIcon"
+    }
+
+    New-Item -ItemType Directory -Path $launcherDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $installHostDirectory -Force | Out-Null
+    New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
+    Copy-DesktopLauncherHostPayload -SourceHost $RepoHost -DestinationHost $installHost
+    Copy-Item -LiteralPath $RepoAdapter -Destination $installAdapter
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText(
+        $installSettings,
+        '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}',
+        $utf8NoBom)
+
+    $originalSource = [System.IO.File]::ReadAllText($RepoLauncherSource)
+    $productionConst = 'private const string InstalledHostPath = @"D:\敏敏子倒计时\app\MinminCountdown.exe";'
+    $isolatedConst = "private const string InstalledHostPath = @`"$installHost`";"
+    Assert-Equal $true $originalSource.Contains($productionConst) '仓库启动器源码仍声明正式安装宿主常量'
+    $patchedText = $originalSource.Replace($productionConst, $isolatedConst)
+    Assert-Equal $false $patchedText.Contains('D:\敏敏子倒计时\app\MinminCountdown.exe') '隔离启动器源码已去掉生产宿主路径'
+    Assert-Equal $true $patchedText.Contains($isolatedConst) '隔离启动器源码回退到隔离安装宿主'
+    [System.IO.File]::WriteAllText($patchedSource, $patchedText, $utf8NoBom)
+
+    Assert-Equal $false (
+        [string]::Equals(
+            [System.IO.Path]::GetFullPath($isolatedLauncher),
+            [System.IO.Path]::GetFullPath($RepoLauncher),
+            [System.StringComparison]::OrdinalIgnoreCase)
+    ) '无 sidecar 回退不使用仓库现役 CountdownLauncher.exe'
+    Assert-Equal $false (Test-Path -LiteralPath (Join-Path $launcherDir 'app')) '隔离启动器目录没有 sidecar app'
+
+    $null = Invoke-CheckedNativeCommand `
+        -FilePath $compiler `
+        -ArgumentList @(
+            '/nologo',
+            '/target:winexe',
+            "/win32icon:$RepoIcon",
+            "/out:$isolatedLauncher",
+            $patchedSource
+        ) `
+        -Operation '编译隔离无 sidecar 启动器'
+    Assert-Equal $true (Test-Path -LiteralPath $isolatedLauncher -PathType Leaf) '隔离启动器已编译'
+
+    $isolatedBytes = [System.IO.File]::ReadAllBytes($isolatedLauncher)
+    $productionHostUtf16 = [System.Text.Encoding]::Unicode.GetBytes('D:\敏敏子倒计时\app\MinminCountdown.exe')
+    $isolatedHostUtf16 = [System.Text.Encoding]::Unicode.GetBytes($installHost)
+    Assert-Equal $false (
+        Test-DesktopLauncherByteSequenceContains -Haystack $isolatedBytes -Needle $productionHostUtf16
+    ) '隔离启动器二进制不含生产宿主路径'
+    Assert-Equal $true (
+        Test-DesktopLauncherByteSequenceContains -Haystack $isolatedBytes -Needle $isolatedHostUtf16
+    ) '隔离启动器二进制包含隔离安装宿主路径'
+
+    $productionSettingsHashBefore = $null
+    if (Test-Path -LiteralPath $productionSettingsPath -PathType Leaf) {
+        $productionSettingsHashBefore = (Get-FileHash -LiteralPath $productionSettingsPath -Algorithm SHA256).Hash
+    }
+
+    Assert-Equal 0 @(Get-DesktopLauncherProcessRecords -ExecutablePath $productionHost).Count `
+        '回退启动前生产宿主进程数为 0'
+
+    try {
+        $fallbackLauncher = Start-Process -FilePath $isolatedLauncher -WorkingDirectory $launcherDir -PassThru -WindowStyle Hidden
+        $hostDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        $isolatedHostRecords = @()
+        do {
+            $isolatedHostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $installHost)
+            if ($isolatedHostRecords.Count -gt 0) {
+                break
+            }
+            Start-Sleep -Milliseconds 20
+        } while ([DateTimeOffset]::UtcNow -lt $hostDeadline)
+
+        if (-not $fallbackLauncher.HasExited -and -not $fallbackLauncher.WaitForExit(10000)) {
+            throw "无 sidecar 回退启动器未在有界期限内返回：PID=$($fallbackLauncher.Id)"
+        }
+        $fallbackLauncher.WaitForExit()
+        Assert-Equal 0 $fallbackLauncher.ExitCode '无 sidecar 回退启动器在宿主启动后立即成功返回'
+        Assert-Equal 1 $isolatedHostRecords.Count '无 sidecar 回退只启动隔离安装宿主'
+        $isolatedHostRecord = $isolatedHostRecords[0]
+        Assert-Equal $fallbackLauncher.Id ([int] $isolatedHostRecord.ParentProcessId) '无 sidecar 回退宿主由隔离启动器直接创建'
+        Assert-Equal $CurrentSessionId ([int] $isolatedHostRecord.SessionId) '无 sidecar 回退宿主属于当前交互会话'
+        Assert-Equal $installHost (
+            [System.IO.Path]::GetFullPath([string] $isolatedHostRecord.ExecutablePath)
+        ) '无 sidecar 回退子进程是隔离安装 exe'
+        Assert-DesktopLauncherCommandLineAvoidsAdapter `
+            -CommandLine ([string] $isolatedHostRecord.CommandLine) `
+            -Name '无 sidecar 回退宿主'
+
+        $childNames = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($child in @(Get-DesktopLauncherChildProcessRecords -ParentProcessId $fallbackLauncher.Id)) {
+            if (-not [string]::IsNullOrWhiteSpace([string] $child.Name)) {
+                [void] $childNames.Add([string] $child.Name)
+            }
+        }
+        Assert-Equal $false $childNames.Contains('schtasks.exe') '无 sidecar 回退未创建 schtasks 子进程'
+        Assert-Equal $false $childNames.Contains('pwsh.exe') '无 sidecar 回退未创建 pwsh 子进程'
+
+        Assert-Equal 0 @(Get-DesktopLauncherProcessRecords -ExecutablePath $productionHost).Count `
+            '无 sidecar 回退未启动生产宿主'
+        if ($null -ne $productionSettingsHashBefore) {
+            Assert-Equal $productionSettingsHashBefore (
+                Get-FileHash -LiteralPath $productionSettingsPath -Algorithm SHA256
+            ).Hash '无 sidecar 回退不改生产 settings'
+        }
+    }
+    finally {
+        Stop-DesktopLauncherOwnedProcess -Process $fallbackLauncher
+        Stop-DesktopLauncherHostProcesses -ExecutablePath $installHost
+        Stop-DesktopLauncherHostProcesses -ExecutablePath $productionHost
+    }
+
+    return $installHost
+}
+
+function Copy-DesktopLauncherHostPayload {
+    param(
+        [Parameter(Mandatory)] [string] $SourceHost,
+        [Parameter(Mandatory)] [string] $DestinationHost
+    )
+
+    $sourceApp = [System.IO.Path]::GetFullPath((Split-Path -Parent $SourceHost))
+    $destinationApp = [System.IO.Path]::GetFullPath((Split-Path -Parent $DestinationHost))
+    if (-not (Test-Path -LiteralPath $sourceApp -PathType Container)) {
+        throw "未找到发布宿主目录：$sourceApp"
+    }
+
+    Remove-DesktopLauncherHostPayload -DestinationHost $DestinationHost
+    $parent = Split-Path -Parent $destinationApp
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    New-Item -ItemType Junction -Path $destinationApp -Target $sourceApp | Out-Null
+    if (-not (Test-Path -LiteralPath $DestinationHost -PathType Leaf)) {
+        throw "发布宿主未连接到隔离目录：$DestinationHost"
+    }
+}
+
+function Remove-DesktopLauncherHostPayload {
+    param([Parameter(Mandatory)] [string] $DestinationHost)
+
+    $destinationApp = [System.IO.Path]::GetFullPath((Split-Path -Parent $DestinationHost))
+    if (Test-Path -LiteralPath $destinationApp) {
+        [System.IO.Directory]::Delete($destinationApp)
+    }
+}
+
+function Invoke-DesktopLauncherProcessTests {
+    Assert-DesktopLauncherSourceLocks
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
+    $testGroupRoot = Join-Path $testCapabilityRoot 'clock-countdown-desktop-launcher-tests'
+    $testRoot = [System.IO.Path]::GetFullPath(
+        (Join-Path $testGroupRoot ("run-" + [guid]::NewGuid().ToString('N')))
+    )
+    $repoLauncher = Join-Path $PSScriptRoot 'CountdownLauncher.exe'
+    $repoLauncherSource = Join-Path $PSScriptRoot 'CountdownLauncher.cs'
+    $repoIcon = Join-Path $PSScriptRoot 'countdown-icon.ico'
+    $repoHost = Join-Path $PSScriptRoot 'app\MinminCountdown.exe'
+    $repoAdapter = Join-Path $PSScriptRoot '敏敏子倒计时.ps1'
+    $fixtureLauncher = Join-Path $testRoot 'CountdownLauncher.exe'
+    $fixtureHostDirectory = Join-Path $testRoot 'app'
+    $fixtureHost = Join-Path $fixtureHostDirectory 'MinminCountdown.exe'
+    $fixtureAdapter = Join-Path $testRoot '敏敏子倒计时.ps1'
+    $fallbackRoot = Join-Path $testRoot 'fallback-no-sidecar'
+    $fallbackHost = Join-Path $fallbackRoot 'install\app\MinminCountdown.exe'
+    $runtimeStatusPath = Join-Path $testRoot 'runtime-status.json'
+    $firstLauncher = $null
+    $secondLauncher = $null
+    $warmLauncher = $null
+    $currentSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+    Import-Module -Name (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
+
+    if (-not (Test-Path -LiteralPath $repoLauncher -PathType Leaf)) {
+        throw "未找到仓库启动器：$repoLauncher"
+    }
+    if (-not (Test-Path -LiteralPath $repoHost -PathType Leaf)) {
+        throw "未找到发布宿主：$repoHost"
+    }
+    if (-not (Test-Path -LiteralPath $repoAdapter -PathType Leaf)) {
+        throw "未找到 adapter 脚本：$repoAdapter"
+    }
+    if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
+        throw "未找到受管测试目录清理入口：$safeTreeDelete"
+    }
+
+    try {
+        New-Item -ItemType Directory -Path $fixtureHostDirectory -Force | Out-Null
+        Copy-Item -LiteralPath $repoLauncher -Destination $fixtureLauncher
+        Copy-DesktopLauncherHostPayload -SourceHost $repoHost -DestinationHost $fixtureHost
+        Copy-Item -LiteralPath $repoAdapter -Destination $fixtureAdapter
+
+        $isolatedSettingsPath = Join-Path $testRoot 'settings.json'
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText(
+            $isolatedSettingsPath,
+            '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}',
+            $utf8NoBom)
+        $repoSettingsPath = Join-Path $PSScriptRoot 'settings.json'
+        $repoSettingsHashBefore = $null
+        if (Test-Path -LiteralPath $repoSettingsPath -PathType Leaf) {
+            $repoSettingsHashBefore = (Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256).Hash
+        }
+
+        $coldClock = [System.Diagnostics.Stopwatch]::StartNew()
+        $firstLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
+        $firstLauncherSessionId = [int] $firstLauncher.SessionId
+        $firstLauncherRecord = Get-DesktopLauncherWin32Process -ProcessId $firstLauncher.Id
+        $observedChildNames = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $coldReady = Wait-DesktopLauncherWindowReadyReceipt `
+            -Path $runtimeStatusPath `
+            -Clock $coldClock `
+            -TimeoutMilliseconds 10000
+        if (-not $firstLauncher.HasExited -and -not $firstLauncher.WaitForExit(10000)) {
+            throw "桌面启动器未在有界期限内返回：PID=$($firstLauncher.Id)"
+        }
+        $firstLauncher.WaitForExit()
+        foreach ($child in @(Get-DesktopLauncherChildProcessRecords -ParentProcessId $firstLauncher.Id)) {
+            if (-not [string]::IsNullOrWhiteSpace([string] $child.Name)) {
+                [void] $observedChildNames.Add([string] $child.Name)
+            }
+        }
+        Assert-Equal 0 $firstLauncher.ExitCode '桌面启动器在宿主启动后立即成功返回'
+        Assert-Equal (
+            [System.IO.Path]::GetFullPath($fixtureLauncher)
+        ) (
+            [System.IO.Path]::GetFullPath([string] $firstLauncher.StartInfo.FileName)
+        ) '测试直接启动隔离 fixture 启动器'
+        Assert-Equal 0 @($firstLauncher.StartInfo.ArgumentList).Count '启动器进程没有 schtasks 或 adapter 参数'
+        Assert-Equal $currentSessionId $firstLauncherSessionId '桌面启动器属于当前交互会话'
+        if ($null -ne $firstLauncherRecord) {
+            $firstParent = Get-DesktopLauncherWin32Process -ProcessId ([int] $firstLauncherRecord.ParentProcessId)
+            Assert-Equal $PID ([int] $firstLauncherRecord.ParentProcessId) '桌面启动器由当前测试进程直接创建'
+            Assert-Equal $false (
+                $null -ne $firstParent -and
+                [string]::Equals([string] $firstParent.Name, 'schtasks.exe', [System.StringComparison]::OrdinalIgnoreCase)
+            ) '桌面启动器不是通过 schtasks 拉起'
+            Assert-DesktopLauncherCommandLineAvoidsAdapter `
+                -CommandLine ([string] $firstLauncherRecord.CommandLine) `
+                -Name '桌面启动器'
+            Assert-Equal $currentSessionId ([int] $firstLauncherRecord.SessionId) 'Win32 启动器会话与当前交互会话一致'
+        }
+        else {
+            Assert-Equal $true ($firstLauncher.Id -gt 0) '启动器进程由当前测试会话直接创建，而不是 schtasks'
+        }
+        Assert-Equal $false $observedChildNames.Contains('schtasks.exe') '启动器未创建 schtasks 子进程'
+        Assert-Equal $false $observedChildNames.Contains('pwsh.exe') '启动器未创建 pwsh 子进程'
+
+        $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
+        Assert-Equal 1 $hostRecords.Count '首次启动只创建隔离 fixture 内的一个宿主'
+        $firstHost = $hostRecords[0]
+        Assert-Equal $firstLauncher.Id ([int] $firstHost.ParentProcessId) '宿主由启动器直接创建'
+        Assert-Equal $currentSessionId ([int] $firstHost.SessionId) '宿主属于当前交互会话'
+        Assert-Equal (
+            [System.IO.Path]::GetFullPath($fixtureHost)
+        ) (
+            [System.IO.Path]::GetFullPath([string] $firstHost.ExecutablePath)
+        ) '宿主可执行路径是隔离 fixture 的 MinminCountdown.exe'
+        Assert-DesktopLauncherCommandLineAvoidsAdapter `
+            -CommandLine ([string] $firstHost.CommandLine) `
+            -Name '首次宿主'
+        Assert-Equal $true (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) `
+            '首次启动后宿主写出隔离 runtime-status'
+        Assert-Equal $true (Test-Path -LiteralPath $isolatedSettingsPath -PathType Leaf) `
+            '桌面启动使用隔离应用根内的设置文件'
+        if ($null -ne $repoSettingsHashBefore) {
+            Assert-Equal $repoSettingsHashBefore (
+                Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256
+            ).Hash '桌面启动不写仓库设置'
+        }
+        Assert-DesktopLauncherWindowReadyReceipt `
+            -Receipt $coldReady.Receipt `
+            -ExpectedProcessId ([int] $firstHost.ProcessId) `
+            -ExpectedSessionId $currentSessionId `
+            -ExpectedHostPath $fixtureHost `
+            -ExpectedAdapterPath $fixtureAdapter `
+            -Name '冷启动首帧回执'
+        $coldWindows = Assert-DesktopLauncherFirstFrameWindows `
+            -ProcessId ([int] $firstHost.ProcessId) `
+            -Name '冷启动首帧窗口'
+
+        $firstHostPid = [int] $firstHost.ProcessId
+        $secondLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
+        if (-not $secondLauncher.WaitForExit(10000)) {
+            throw "第二次启动器未在有界期限内返回：PID=$($secondLauncher.Id)"
+        }
+        $secondLauncher.WaitForExit()
+        Assert-Equal 0 $secondLauncher.ExitCode '已有实例时启动器仍直接拉起宿主并成功返回'
+
+        $singleHostDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        do {
+            $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
+            $duplicateHosts = @(
+                $hostRecords |
+                    Where-Object { [int] $_.ProcessId -ne $firstHostPid }
+            )
+            if ($duplicateHosts.Count -eq 0 -and $hostRecords.Count -eq 1) {
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        } while ([DateTimeOffset]::UtcNow -lt $singleHostDeadline)
+
+        Assert-Equal 1 $hostRecords.Count '再次启动启动器不会留下第二个长期宿主'
+        Assert-Equal $firstHostPid ([int] $hostRecords[0].ProcessId) '第二次启动后仍是同一个长期宿主'
+        $survivingHost = Get-Process -Id $firstHostPid -ErrorAction SilentlyContinue
+        Assert-Equal $true ($null -ne $survivingHost -and -not $survivingHost.HasExited) '首次宿主在第二次启动后仍存活'
+        if ($null -ne $survivingHost) {
+            $survivingHost.Dispose()
+        }
+
+        Stop-DesktopLauncherHostProcesses -ExecutablePath $fixtureHost
+        $hostGoneDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
+        do {
+            $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
+            if ($hostRecords.Count -eq 0) {
+                break
+            }
+            Start-Sleep -Milliseconds 20
+        } while ([DateTimeOffset]::UtcNow -lt $hostGoneDeadline)
+        Assert-Equal 0 $hostRecords.Count '暖启动前隔离宿主已退出'
+        if (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) {
+            Remove-Item -LiteralPath $runtimeStatusPath -Force
+        }
+        Assert-Equal $false (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) `
+            '暖启动前已清除旧 window-ready 回执'
+
+        $warmClock = [System.Diagnostics.Stopwatch]::StartNew()
+        $warmLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
+        $warmReady = Wait-DesktopLauncherWindowReadyReceipt `
+            -Path $runtimeStatusPath `
+            -Clock $warmClock `
+            -TimeoutMilliseconds 10000
+        if (-not $warmLauncher.HasExited -and -not $warmLauncher.WaitForExit(10000)) {
+            throw "暖启动启动器未在有界期限内返回：PID=$($warmLauncher.Id)"
+        }
+        $warmLauncher.WaitForExit()
+        Assert-Equal 0 $warmLauncher.ExitCode '暖启动启动器在宿主启动后立即成功返回'
+
+        $warmHostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
+        Assert-Equal 1 $warmHostRecords.Count '暖启动只创建隔离 fixture 内的一个宿主'
+        $warmHost = $warmHostRecords[0]
+        Assert-Equal $false ([int] $warmHost.ProcessId -eq $firstHostPid) '暖启动是新的宿主进程'
+        Assert-Equal $warmLauncher.Id ([int] $warmHost.ParentProcessId) '暖启动宿主由启动器直接创建'
+        Assert-DesktopLauncherCommandLineAvoidsAdapter `
+            -CommandLine ([string] $warmHost.CommandLine) `
+            -Name '暖启动宿主'
+        Assert-DesktopLauncherWindowReadyReceipt `
+            -Receipt $warmReady.Receipt `
+            -ExpectedProcessId ([int] $warmHost.ProcessId) `
+            -ExpectedSessionId $currentSessionId `
+            -ExpectedHostPath $fixtureHost `
+            -ExpectedAdapterPath $fixtureAdapter `
+            -Name '暖启动首帧回执'
+        $warmWindows = Assert-DesktopLauncherFirstFrameWindows `
+            -ProcessId ([int] $warmHost.ProcessId) `
+            -Name '暖启动首帧窗口'
+        if ($null -ne $repoSettingsHashBefore) {
+            Assert-Equal $repoSettingsHashBefore (
+                Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256
+            ).Hash '暖启动不写仓库设置'
+        }
+
+        Stop-DesktopLauncherHostProcesses -ExecutablePath $fixtureHost
+        $sidecarHostGoneDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
+        do {
+            $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
+            if ($hostRecords.Count -eq 0) {
+                break
+            }
+            Start-Sleep -Milliseconds 20
+        } while ([DateTimeOffset]::UtcNow -lt $sidecarHostGoneDeadline)
+        Assert-Equal 0 $hostRecords.Count '无 sidecar 回退前 sidecar 宿主已退出'
+
+        $null = Invoke-DesktopLauncherNoSidecarFallbackProcessTest `
+            -FixtureRoot $fallbackRoot `
+            -RepoHost $repoHost `
+            -RepoAdapter $repoAdapter `
+            -RepoLauncherSource $repoLauncherSource `
+            -RepoIcon $repoIcon `
+            -RepoLauncher $repoLauncher `
+            -CurrentSessionId $currentSessionId
+
+        Assert-Equal $true (
+            $coldReady.ElapsedMilliseconds -le 2000 -and
+            $warmReady.ElapsedMilliseconds -le 1000
+        ) (
+            '冷启动<=2000ms 且暖启动<=1000ms：cold={0} warm={1} coldWindows={2} warmWindows={3}' -f `
+                $coldReady.ElapsedMilliseconds,
+                $warmReady.ElapsedMilliseconds,
+                (($coldWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
+                (($warmWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|')
+        )
+
+        [pscustomobject]@{
+            Passed = $script:assertions
+            Failed = 0
+            DesktopLauncherOnly = $true
+            ProcessScenarios = 3
+            FallbackNoSidecar = $true
+            ColdStartMilliseconds = [int] $coldReady.ElapsedMilliseconds
+            WarmStartMilliseconds = [int] $warmReady.ElapsedMilliseconds
+        } | ConvertTo-Json
+    }
+    finally {
+        Stop-DesktopLauncherOwnedProcess -Process $warmLauncher
+        Stop-DesktopLauncherOwnedProcess -Process $secondLauncher
+        Stop-DesktopLauncherOwnedProcess -Process $firstLauncher
+        Stop-DesktopLauncherHostProcesses -ExecutablePath $fixtureHost
+        Stop-DesktopLauncherHostProcesses -ExecutablePath $fallbackHost
+        Stop-DesktopLauncherHostProcesses -ExecutablePath (
+            [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\app\MinminCountdown.exe'))
+        Remove-DesktopLauncherHostPayload -DestinationHost $fixtureHost
+        Remove-DesktopLauncherHostPayload -DestinationHost $fallbackHost
+
+        if (Test-Path -LiteralPath $testRoot -PathType Container) {
+            $cleanupJson = & $safeTreeDelete `
+                -Mode BatchPurge `
+                -TargetPaths $testRoot `
+                -CapabilityRoot $testCapabilityRoot `
+                -ConfirmApply `
+                -ConfirmPurge `
+                -Json | Out-String
+            if ($LASTEXITCODE -ne 0) {
+                throw "受管桌面启动器测试目录清理失败：$testRoot"
+            }
+            $cleanup = $cleanupJson | ConvertFrom-Json
+            if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
+                throw "受管桌面启动器测试目录未完成清理：$testRoot"
+            }
+        }
+    }
+}
+
 function Invoke-InstanceActivationMatrixTests {
     $pwsh = 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe'
     $scenarios = @(
@@ -1158,6 +1910,14 @@ function Invoke-InstanceActivationMatrixTests {
         MatrixScenarios = $scenarios.Count
         ProcessScenarios = $processScenarios
     } | ConvertTo-Json
+}
+
+if ($DesktopLauncherOnly) {
+    if ($InstanceActivationOnly -or $InstanceActivationMatrix) {
+        throw '-DesktopLauncherOnly 不能与实例激活开关组合。'
+    }
+    Invoke-DesktopLauncherProcessTests
+    exit 0
 }
 
 if ($InstanceActivationMatrix) {
@@ -1321,6 +2081,8 @@ if ($MigrationParityOnly) {
         }
     }
 }
+
+Assert-DesktopLauncherSourceLocks
 
 if (-not ('MinminCountdown.Tests.BundleAssetProbe' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -1901,9 +2663,9 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.ValidateOnlySettingsIsolationBehavior) 'validate-only 强制使用显式非根 settings 路径且不改变生产默认路径'
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    Assert-Equal 543 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容'
+    Assert-Equal 544 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
-    Assert-Equal 'EA42248766412AC69F68B239318EF2EDA0940F5F0E575E4EDBC861536DFB0038' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
+    Assert-Equal '90FBEA1B0FA31FA661AC299881039ACB8ACA3DDA28B40FB93F40F6F1B72D8BB7' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusDisclosureVisuals) 'validate-only 验证便签状态披露视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureAccessibility) 'validate-only 验证便签披露控件无障碍契约'
@@ -2600,7 +3362,7 @@ exit 23
     Assert-Equal $true (@($noteExerciseSettings.notes | Where-Object text -eq '验证快速跨天提醒').Count -eq 1) '悬浮跨天提醒真实写入隔离设置'
 
     New-Item -ItemType Directory -Path $interactiveApplicationDirectory | Out-Null
-    Copy-Item -LiteralPath $application -Destination $interactiveApplicationPath
+    Copy-DesktopLauncherHostPayload -SourceHost $application -DestinationHost $interactiveApplicationPath
     Copy-Item -LiteralPath $adapter -Destination $interactiveAdapterPath
     $requiredRequestProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList @('--require-startup-request') `
         -PassThru -Wait -WindowStyle Hidden `
@@ -2873,6 +3635,9 @@ finally {
     if (Test-Path -LiteralPath $testRoot -PathType Container) {
         if (-not $testRoot.StartsWith($testCapabilityRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw "拒绝清理受管测试证据根外的 C# 测试数据：$testRoot"
+        }
+        if (Test-Path -LiteralPath $interactiveApplicationPath -PathType Leaf) {
+            Remove-DesktopLauncherHostPayload -DestinationHost $interactiveApplicationPath
         }
         $cleanupJson = & $safeTreeDelete `
             -Mode BatchPurge `

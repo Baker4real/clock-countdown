@@ -24,6 +24,11 @@ internal static class ApplicationValidation
                 throw new InvalidOperationException("设置恢复窗口或失败呈现路由验证失败。");
             }
 
+            if (!ValidationExercises.RunLazyManagerLifecycleBehavior())
+            {
+                throw new InvalidOperationException("懒加载管理窗口生命周期验证失败。");
+            }
+
             var desktopWorkspace = DesktopWorkspace.Load(settingsPath);
             var initialSnapshot = desktopWorkspace.Snapshot;
             var theme = new ApplicationTheme(resources);

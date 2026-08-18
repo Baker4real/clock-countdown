@@ -429,6 +429,8 @@ internal static class ValidationReport
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
         var validateOnlySettingsIsolation =
             ValidationExercises.RunValidateOnlySettingsIsolationBehavior();
+        var lazyManagerLifecycle =
+            ValidationExercises.RunLazyManagerLifecycleBehavior();
         var countdownReminderWpf =
             ValidationExercises.RunCountdownReminderWpfBehavior();
         var reminderDelivery = ValidateReminderDeliveryCoordinator();
@@ -1350,6 +1352,7 @@ internal static class ValidationReport
                 reminderCenterDeliveryFailureActionGate,
             ["ValidateOnlySettingsIsolationBehavior"] =
                 validateOnlySettingsIsolation,
+            ["LazyManagerLifecycleBehavior"] = lazyManagerLifecycle,
             ["CountdownReminderWpfBehavior"] = countdownReminderWpf,
             ["ReminderAcknowledgementMonotonicAcrossOccurrences"] =
                 repeatingReminderDelivery.AcknowledgementMonotonicAcrossOccurrences,

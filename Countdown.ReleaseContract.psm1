@@ -151,6 +151,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\MainWindow.xaml',
     'src\MinminCountdown\MainWindow.xaml.cs',
     'src\MinminCountdown\MinminCountdown.csproj',
+    'src\MinminCountdown\NativeStartupFrame.cs',
     'src\MinminCountdown\ReminderEditing.cs',
     'src\MinminCountdown\ReminderRulesEditorWindow.cs',
     'src\MinminCountdown\ReminderWindow.cs',
@@ -170,7 +171,7 @@ $script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @('countdown-ic
 )
 
 $script:nonAssetHashes = [ordered]@{
-    'Build-CountdownApplication.ps1' = 'F055EB0F34C5A809F0DE115964F200917A60AF7E3B864960149CB5F4B8E92AE9'
+    'Build-CountdownApplication.ps1' = 'E2320715E1813DD97FA32A8F5C17644E09CDE235E775F7A7FDD19CA699A0F8FF'
     'Countdown.App.psm1' = '6F40387744A2DF43A41A6A95B3DD02AF748CE7C3B00F532FC1588FB33B5994AF'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = '5A9FAAE019095134D53586886A83581F3794654B9790102A17751860B157B08E'
@@ -182,17 +183,16 @@ $script:nonAssetHashes = [ordered]@{
     'Countdown.Runtime.psm1' = 'FF9F9FFE54FA267F83379526B2D488412EF25B800F5FAB3734F59290676B8511'
     'Countdown.Settings.psm1' = 'E3F02C90D7153AEF7492708B758CF21CD777C73ED1CF19BEB3B2F8D0D14EB16D'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = 'B30BD150D7EEF52EBF59486B18B94C28F0EE81E36D4C79CB0EEAEA0E7F57E8D7'
+    'Countdown.Core.Tests.ps1' = '3362CEACC595E751FEFD3C1024DE73254CFADE4B4059E9992510AAF0A7EEE3F2'
     'Countdown.Ui.Tests.ps1' = '780CB3E2F8AD89CAD5968F6A36F7D9AFCF642F88A5F0DAC5BE18083CDA92C6AC'
-    'Countdown.CSharp.Tests.ps1' = '4FBC6AC1A53A52A2979F86BC4AEC462D7D096245D7A543525587B8EDF42236D7'
+    'Countdown.CSharp.Tests.ps1' = 'F4F44C326FF639EEDC5D28B69D3F41D0413AD270F48B19569ADB6D6F5DE58577'
     'tools\Build-MainDayOrnamentScene.ps1' = '1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036'
     'tools\MainDecorationSceneBands.psd1' = '9DAEDF905F2FD6A0E8396E8718A06B115566EA4A8799354347E3A30D2E41C6B7'
     'tools\Test-MainDayOrnamentScene.ps1' = '2291AA01AB03161F8500B98E68335F55BD2946795EBE0341687480179563BF81'
     '敏敏子倒计时.ps1' = '9B21349384679A1F46767DC86BCAA144656EA5C25154ACCFEEF525B6246B967F'
-    'CountdownLauncher.exe' = '195A228F647E4541AE4EEF7358BF2BDD478F705FA23D1981C0D96E8DD835CC00'
+    'CountdownLauncher.exe' = '4B4C66274278049FF185C7824685D1B5A85F5DA10557F70A1D7E458778066440'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'verification\MinminCountdown.Verification.exe' = 'E6FFEA7881638D3D81A444D3137401E5E11E66229FF18239FD105086EC69D720'
-    'app\MinminCountdown.exe' = 'A336BF0FCA32E106F20E28FF43B5059AA3662498CFB0290669969DD6C0710ACD'
     'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
     'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
     'assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
@@ -209,10 +209,10 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown.Core\SettingsStore.cs' = 'F7EA0C2323F1EF20AFF03E15E6AC34286BA0746517AD8D151AC96FA72AB0AD32'
     'src\MinminCountdown.Core\SettingsSynchronization.cs' = '0B313C7A4236ACCE0DB1E3EAF464DC10C22C15E4A5EC5357389B9BDA6510B003'
     'src\MinminCountdown\App.xaml' = 'F0D3777A7415FFDB0D44008BFD317E44408FD639400B1BCD9B08F5C7F93BC920'
-    'src\MinminCountdown\App.xaml.cs' = '8B048AD3C5D1AE21224896DA897B256DCA4B73FA69F83F32E5F69FC1E2A1419C'
+    'src\MinminCountdown\App.xaml.cs' = '662B48284B43A21C6ABC23E22DC524C34C7AEA332182F7573582879A3A67D3A5'
     'src\MinminCountdown\ApplicationSession.cs' = '03419A2795D8A7E2D03B03E77EF32A0891C41E392D3576B6BF53762AC38236C7'
     'src\MinminCountdown\ApplicationTheme.cs' = 'F45DCBD945D98B0E14F17A21DED73369CE8563FDA49A51990B723B24908E83E3'
-    'src\MinminCountdown\ApplicationValidation.cs' = '85414435D44ABFB7A186CFFFC907A5E65DB527F149C9C3DD29A45C75F3A868A1'
+    'src\MinminCountdown\ApplicationValidation.cs' = '5CBD3CD7D5BEC35C851243B4761CA91D2BDD69FD5661F8AC5E517D7A4BF9B218'
     'src\MinminCountdown\DesktopWorkspace.cs' = '59AB6FF62DCE3DFE30F41EA15E15871063F2ADC0FDB17CD057A63EA1D609FA13'
     'src\MinminCountdown\DiagnosticLogger.cs' = '234EB941A3F13FF23DB6D58B96A1783FD7C9D7A23BA2B87EAAC0D0CE4762A241'
     'src\MinminCountdown\DomainLogic.cs' = '0672AAE0BDF61DE7265899A114CEF77746BDFCE97F627C9F741ACFDD19246C68'
@@ -220,14 +220,15 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\FloatingWindow.Countdowns.cs' = '37A7790B9EB756B35640213C0C2612A0F7B19ACDE4368A6755C2FB817B70FD3E'
     'src\MinminCountdown\FloatingWindow.Notes.cs' = '0CEE735F51707B81214A93305B137C566AC1452EA342909A5C223B1CBDFC40C2'
     'src\MinminCountdown\FloatingWindow.xaml' = '5A35CE689DEA03472AAA41A1A43A8E41C2D015FC574769ECFC2CB3B668A2D2F9'
-    'src\MinminCountdown\FloatingWindow.xaml.cs' = 'D9CFFABFD571C57B6AFB559D407FE02012261DD8F7723526DCB16FAAFCC538FA'
+    'src\MinminCountdown\FloatingWindow.xaml.cs' = '551B1C187014BE35CC765C088059671A4D9F1B075ACCBF5173108DAE762C6855'
     'src\MinminCountdown\GlobalUsings.cs' = '9EB56B713F4BD450C169F140E74FF7B6D5E456F3742A30188B947223D01628E4'
     'src\MinminCountdown\HolidayCalendar.cs' = 'F0E6E2F4E269A4E21979C1C75E107E865EDCD105F9B5D0455A3EDC0CB10FF147'
     'src\MinminCountdown\HostOptions.cs' = '6C37F0C367FC10A7A22B21631880F121463CCA6C425BF2E080CFC14B6DB1767B'
     'src\MinminCountdown\InstanceActivation.cs' = '26A31C9A31EC7FF860E3102DBE23EFD840810CD31FDE0F232B91421B2F16D7CE'
     'src\MinminCountdown\MainWindow.xaml' = 'F06A97C01B739FA8490A3386D89179C58CE930024AEC6C9E7DA77BA919F30F2C'
-    'src\MinminCountdown\MainWindow.xaml.cs' = '73B4B3C4A3108DD381CD73ED72916DE5222206EF9143AA373B3EF4DDA24AF4F4'
+    'src\MinminCountdown\MainWindow.xaml.cs' = 'CF7B3FCE6694CBF4E0AA9016C0A0804E8B869D7B8F144CE2CB383CF7A6BE5554'
     'src\MinminCountdown\MinminCountdown.csproj' = '8FB22B6846D254F2F33D4D73598FC9BEF3146C434ADC4C791B1E0FB067D7CA4C'
+    'src\MinminCountdown\NativeStartupFrame.cs' = '381A886B97E3E6B2E1C37A5A5318DD668B9E9D94801405D3C7AE45AB97E38C2F'
     'src\MinminCountdown\ReminderEditing.cs' = '952F7935F4971A7BDFA145938525A7E7D14F8CE4305EA8ECEC52F4AA5E2FB138'
     'src\MinminCountdown\ReminderRulesEditorWindow.cs' = '329BC0AE2A50E06E6F3C41F164C6B4AD69567034396F83913A12029DADE3BD8A'
     'src\MinminCountdown\ReminderWindow.cs' = '5359BE0C04E0FE06E7C1D74744A7D1203A7C4AA71F82FDB452030D3B44CB1BB7'
@@ -235,8 +236,8 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\SettingsRecoveryWindow.cs' = '9A6B0C7464C9970F9E4AC6305FD75A719AD5350C559A94A155CD07F83DF6BD48'
     'src\MinminCountdown\TrayIconHost.cs' = 'A40BEA846B2E396122BDB4461865B04617EE4495951349FB4AB033DD14D09E4A'
     'src\MinminCountdown\UiControls.cs' = '0C391BA6B62E91EF40E59AE0F08EBA6CC0E9F27FDBCBC39C9B4FC5AA7F020250'
-    'src\MinminCountdown\ValidationExercises.cs' = 'F8B482F2C1D8AC40438432C0D23F075BBF670C558C7A22D5C90AC30E15406195'
-    'src\MinminCountdown\ValidationReport.cs' = '4780CD499D49A1F9C1F16D621405684C3F7050E499D0B125E7F6261318D74FD2'
+    'src\MinminCountdown\ValidationExercises.cs' = '8D54FD4A2B42BABCCC9B274F132396BE86A475AF1A26E3497B72E0D33A207601'
+    'src\MinminCountdown\ValidationReport.cs' = 'E48917261D37BB57571045B3715A7E2EBE7AC42878B2604504197AAAC59E8008'
     'src\MinminCountdown\ValidationReportContract.cs' = '890BA433D24D7BAC1A8468BD5D4AACD1B067EACD3B153C12FF7357C7BD112F49'
     'src\MinminCountdown\VisualReferenceBaseline.cs' = 'DF0E749EA0D7234AFB6E850AF9F17B46BBB5EE0ACDE11083725FD2B08008FB61'
     'src\MinminCountdown\WindowValidationScenarios.cs' = '8489CF96A30EC1A440F106375F7D28652D253B3E0067DF62B5D00EBE8DE1DED3'
@@ -264,8 +265,7 @@ $script:nonAssetIntegrityPaths = @(
     '敏敏子倒计时.ps1',
     'CountdownLauncher.exe',
     'countdown-icon.ico',
-    'verification\MinminCountdown.Verification.exe',
-    'app\MinminCountdown.exe'
+    'verification\MinminCountdown.Verification.exe'
 ) + @($script:sourceBuildNonAssetFiles)
 
 function Assert-CountdownReleaseRelativePath {
@@ -308,6 +308,34 @@ function Assert-CountdownUniqueReleasePaths {
     }
 }
 
+function Get-CountdownPublishedPayload {
+    $manifestPath = Join-Path $PSScriptRoot 'app\published-payload.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        return [pscustomobject]@{
+            AggregateSha256 = ''
+            Files = @()
+        }
+    }
+
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $files = @(
+        foreach ($file in @($manifest.files)) {
+            [pscustomobject]@{
+                Path = [string] $file.path
+                SHA256 = [string] $file.sha256
+            }
+        }
+    )
+    if ($files.Count -lt 2) {
+        throw "发布载荷清单文件数无效：$($files.Count)"
+    }
+
+    [pscustomobject]@{
+        AggregateSha256 = [string] $manifest.aggregateSha256
+        Files = $files
+    }
+}
+
 function Get-CountdownReleaseHashByPath {
     param([Parameter(Mandatory)] [string] $Path)
 
@@ -319,6 +347,12 @@ function Get-CountdownReleaseHashByPath {
         if ([string]::Equals($Path, [string] $asset.SourcePath, [System.StringComparison]::OrdinalIgnoreCase) -or
             [string]::Equals($Path, [string] $asset.PublishedPath, [System.StringComparison]::OrdinalIgnoreCase)) {
             return [string] $asset.SHA256
+        }
+    }
+
+    foreach ($payloadFile in @(Get-CountdownPublishedPayload).Files) {
+        if ([string]::Equals($Path, [string] $payloadFile.Path, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return [string] $payloadFile.SHA256
         }
     }
 
@@ -339,6 +373,15 @@ function New-CountdownReleaseIntegrityMap {
             ForEach-Object { $_.SourcePath }
     )
     $integrityPaths += @($script:buildAssetDefinitions | ForEach-Object { $_.PublishedPath })
+    $integrityPaths += @(Get-CountdownPublishedPayload | ForEach-Object { $_.Files } | ForEach-Object { $_.Path })
+    $uniqueIntegrity = [System.Collections.Generic.List[string]]::new()
+    $seenIntegrity = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $integrityPaths) {
+        if ($seenIntegrity.Add($path)) {
+            $uniqueIntegrity.Add($path)
+        }
+    }
+    $integrityPaths = @($uniqueIntegrity)
     Assert-CountdownUniqueReleasePaths -Name 'IntegrityHashes' -Paths $integrityPaths
 
     $hashes = [ordered]@{}
@@ -372,12 +415,21 @@ function New-CountdownReleaseContractSnapshot {
         'Countdown.Runtime.psm1',
         'Countdown.Settings.psm1',
         'Countdown.Tags.psm1',
-        '敏敏子倒计时.ps1',
-        'app\MinminCountdown.exe'
-    ) + $applicationAssets + @(
+        '敏敏子倒计时.ps1'
+    ) + @(
         'CountdownLauncher.exe',
         'countdown-icon.ico'
-    ) + $officialCharacterAssets
+    ) + $officialCharacterAssets + $applicationAssets + @(
+        Get-CountdownPublishedPayload | ForEach-Object { $_.Files } | ForEach-Object { $_.Path }
+    )
+    $uniqueInstalled = [System.Collections.Generic.List[string]]::new()
+    $seenInstalled = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $installedFiles) {
+        if ($seenInstalled.Add($path)) {
+            $uniqueInstalled.Add($path)
+        }
+    }
+    $installedFiles = @($uniqueInstalled)
     $retiredRuntimeFiles = @('Countdown.App.psm1') + $script:floatingPlushAssets + @(
         'app\assets\floating-plush\floating-plush-mymelody-front.png',
         'app\assets\floating-plush\floating-plush-mymelody-pose.png',

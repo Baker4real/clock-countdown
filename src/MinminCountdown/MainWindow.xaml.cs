@@ -14,7 +14,7 @@ using WpfPath = System.Windows.Shapes.Path;
 
 namespace MinminCountdown;
 
-public sealed partial class MainWindow : Window
+public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 {
     private const double CountdownRemainingColumnWidth = 300;
     private const double CountdownRemainingLeftMargin = 16;
@@ -589,6 +589,20 @@ public sealed partial class MainWindow : Window
         UpdateReferenceDecorationVisibility();
         RenderVisibleWorkspace();
         SetMessage(StatusText, workspace == WorkspaceKind.Countdowns ? "当前工作区：倒计时" : "当前工作区：便签", false);
+    }
+
+    void IManagerWorkspaceHost.Reveal(WorkspaceKind workspace) => Reveal(workspace);
+
+    internal void Reveal(WorkspaceKind workspace)
+    {
+        ShowWorkspace(workspace);
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        WindowState = WindowState.Normal;
+        Activate();
     }
 
     internal bool OpenReminderSource(string noteId) =>

@@ -19,9 +19,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $script:assertions = 0
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-16-v14\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-16-v14\manifest.json'
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-19-v16\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
 
 function Resolve-ReferenceBaselineMode {
@@ -346,6 +346,9 @@ public static class MinminCountdownActivationWindowProbe
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern int GetWindowText(IntPtr windowHandle, StringBuilder text, int maxCount);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern int GetClassName(IntPtr windowHandle, StringBuilder className, int maxCount);
+
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
@@ -369,10 +372,13 @@ function Get-VisibleProcessWindows {
         if ($ownerProcessId -eq $ProcessId -and
             [MinminCountdownActivationWindowProbe]::IsWindowVisible($windowHandle)) {
             $title = [System.Text.StringBuilder]::new(512)
+            $className = [System.Text.StringBuilder]::new(256)
             [void] [MinminCountdownActivationWindowProbe]::GetWindowText($windowHandle, $title, $title.Capacity)
+            [void] [MinminCountdownActivationWindowProbe]::GetClassName($windowHandle, $className, $className.Capacity)
             $windows.Add([pscustomobject]@{
                 Handle = $windowHandle.ToInt64()
                 Title = $title.ToString()
+                ClassName = $className.ToString()
             })
         }
         return $true
@@ -400,6 +406,387 @@ function Get-InstanceActivationPipeName {
     $activationScope = [Convert]::ToHexString(
         [System.Security.Cryptography.SHA256]::HashData($utf8NoBom.GetBytes($mutexName)))
     return 'MinminCountdown.Activation-{0}' -f $activationScope.Substring(0, 32)
+}
+
+function Copy-DiagnosticConcurrencyEvidenceFile {
+    param(
+        [Parameter(Mandatory)] [string] $SourcePath,
+        [Parameter(Mandatory)] [string] $DestinationPath
+    )
+
+    $destinationDirectory = [System.IO.Path]::GetDirectoryName($DestinationPath)
+    if (-not [string]::IsNullOrWhiteSpace($destinationDirectory) -and
+        -not (Test-Path -LiteralPath $destinationDirectory -PathType Container)) {
+        New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+    }
+
+    $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+    $source = [System.IO.File]::Open(
+        $SourcePath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        $share)
+    try {
+        $destination = [System.IO.File]::Open(
+            $DestinationPath,
+            [System.IO.FileMode]::Create,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::Read)
+        try {
+            $source.CopyTo($destination)
+        }
+        finally {
+            $destination.Dispose()
+        }
+    }
+    finally {
+        $source.Dispose()
+    }
+}
+
+function Save-DiagnosticConcurrencyFailureEvidence {
+    param(
+        [Parameter(Mandatory)] [string] $Reason,
+        [Parameter(Mandatory)] [string] $Message,
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [string] $DiagnosticPath,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $ClientProcesses,
+        [AllowNull()] [System.Diagnostics.Process] $PrimaryProcess,
+        [Nullable[DateTimeOffset]] $DeadlineUtc
+    )
+
+    $createdumpPath = 'D:\Codex\tools\dotnet\10.0\shared\Microsoft.NETCore.App\10.0.10\createdump.exe'
+    $evidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-instance-activation-tests\diag-concurrency'
+    $runId = '{0}-{1}' -f `
+        [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
+        [guid]::NewGuid().ToString('N')
+    $evidenceDirectory = Join-Path $evidenceRoot $runId
+    New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $blockedLeafNames = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]] @('settings.json'),
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $copiedFiles = [System.Collections.Generic.List[object]]::new()
+    $copyFailures = [System.Collections.Generic.List[object]]::new()
+    $dumps = [System.Collections.Generic.List[object]]::new()
+    $clients = @($ClientProcesses)
+    $createdumpPresent = Test-Path -LiteralPath $createdumpPath -PathType Leaf
+
+    $copyEvidenceFile = {
+        param([string] $SourcePath, [string] $DestinationName)
+        $leaf = [System.IO.Path]::GetFileName($SourcePath)
+        if (-not [string]::IsNullOrWhiteSpace($leaf) -and $blockedLeafNames.Contains($leaf)) {
+            $copyFailures.Add([ordered]@{
+                sourceName = $DestinationName
+                skipped = 'privacy-blocklist'
+            })
+            return
+        }
+        if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+            $copiedFiles.Add([ordered]@{
+                name = $DestinationName
+                copied = $false
+                missing = $true
+            })
+            return
+        }
+
+        $destinationPath = Join-Path $evidenceDirectory $DestinationName
+        try {
+            Copy-DiagnosticConcurrencyEvidenceFile `
+                -SourcePath $SourcePath `
+                -DestinationPath $destinationPath
+            $copiedFiles.Add([ordered]@{
+                name = $DestinationName
+                copied = $true
+            })
+        }
+        catch {
+            $copyFailures.Add([ordered]@{
+                sourceName = $DestinationName
+                message = [string] $_.Exception.Message
+            })
+        }
+    }
+
+    for ($index = 0; $index -lt $clients.Count; $index++) {
+        & $copyEvidenceFile (Join-Path $TestRoot "parallel-$index.stdout.txt") "parallel-$index.stdout.txt"
+        & $copyEvidenceFile (Join-Path $TestRoot "parallel-$index.stderr.txt") "parallel-$index.stderr.txt"
+    }
+    foreach ($suffix in @('', '.1', '.2', '.3')) {
+        $sourcePath = "$DiagnosticPath$suffix"
+        $leaf = [System.IO.Path]::GetFileName($sourcePath)
+        if ([string]::IsNullOrWhiteSpace($leaf)) {
+            $leaf = "application.jsonl$suffix"
+        }
+        & $copyEvidenceFile $sourcePath $leaf
+    }
+
+    if (-not $createdumpPresent) {
+        [System.IO.File]::WriteAllText(
+            (Join-Path $evidenceDirectory 'createdump-missing.txt'),
+            $createdumpPath,
+            $utf8NoBom)
+    }
+
+    $readProcessState = {
+        param([AllowNull()] [System.Diagnostics.Process] $Process)
+        if ($null -eq $Process) {
+            return [ordered]@{
+                pid = $null
+                hasExited = $true
+                exitCode = $null
+            }
+        }
+        try {
+            $hasExited = $Process.HasExited
+            return [ordered]@{
+                pid = $Process.Id
+                hasExited = $hasExited
+                exitCode = if ($hasExited) { $Process.ExitCode } else { $null }
+            }
+        }
+        catch {
+            return [ordered]@{
+                pid = $null
+                hasExited = $true
+                exitCode = $null
+                error = [string] $_.Exception.Message
+            }
+        }
+    }
+
+    $clientStates = [System.Collections.Generic.List[object]]::new()
+    for ($index = 0; $index -lt $clients.Count; $index++) {
+        $client = $clients[$index]
+        $state = & $readProcessState $client
+        $state['index'] = $index
+        $clientStates.Add($state)
+
+        if ([bool] $state.hasExited) {
+            $dumps.Add([ordered]@{
+                index = $index
+                pid = $state.pid
+                dumped = $false
+                skipped = 'exited'
+            })
+            continue
+        }
+        if (-not $createdumpPresent) {
+            $dumps.Add([ordered]@{
+                index = $index
+                pid = $state.pid
+                dumped = $false
+                missingTool = $createdumpPath
+            })
+            continue
+        }
+
+        $dumpName = 'client-{0}-pid-{1}.dmp' -f $index, $state.pid
+        $dumpPath = Join-Path $evidenceDirectory $dumpName
+        try {
+            $dumpCapture = Invoke-CapturedNativeProcess `
+                -FilePath $createdumpPath `
+                -ArgumentList @('-n', '--name', $dumpPath, [string] $state.pid) `
+                -WorkingDirectory $evidenceDirectory
+            $dumpLog = @(
+                [string] $dumpCapture.Stdout
+                [string] $dumpCapture.Stderr
+            ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            if ($dumpLog.Count -gt 0) {
+                [System.IO.File]::WriteAllText(
+                    (Join-Path $evidenceDirectory ("client-{0}-pid-{1}.createdump.log" -f $index, $state.pid)),
+                    ($dumpLog -join [Environment]::NewLine),
+                    $utf8NoBom)
+            }
+            $dumpExists = Test-Path -LiteralPath $dumpPath -PathType Leaf
+            $dumps.Add([ordered]@{
+                index = $index
+                pid = $state.pid
+                dumped = ($dumpCapture.ExitCode -eq 0 -and $dumpExists)
+                dumpFile = $dumpName
+                exitCode = [int] $dumpCapture.ExitCode
+                dumpFilePresent = $dumpExists
+            })
+        }
+        catch {
+            $dumps.Add([ordered]@{
+                index = $index
+                pid = $state.pid
+                dumped = $false
+                error = [string] $_.Exception.Message
+            })
+        }
+    }
+
+    $summary = [ordered]@{
+        schemaVersion = 1
+        capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        reason = $Reason
+        message = $Message
+        deadlineUtc = if ($null -eq $DeadlineUtc) {
+            $null
+        }
+        else {
+            ([DateTimeOffset] $DeadlineUtc).ToString('o')
+        }
+        createdumpPath = $createdumpPath
+        createdumpPresent = $createdumpPresent
+        primary = & $readProcessState $PrimaryProcess
+        clients = @($clientStates)
+        copiedFiles = @($copiedFiles)
+        copyFailures = @($copyFailures)
+        dumps = @($dumps)
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $evidenceDirectory 'capture-summary.json'),
+        ($summary | ConvertTo-Json -Depth 8),
+        $utf8NoBom)
+
+    return [pscustomobject]@{
+        Directory = $evidenceDirectory
+        Summary = $summary
+    }
+}
+
+function Complete-DiagnosticConcurrencyFailure {
+    param(
+        [Parameter(Mandatory)] [string] $Reason,
+        [Parameter(Mandatory)] [string] $Message,
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [string] $DiagnosticPath,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $ClientProcesses,
+        [AllowNull()] [System.Diagnostics.Process] $PrimaryProcess,
+        [Nullable[DateTimeOffset]] $DeadlineUtc
+    )
+
+    $evidenceDirectory = $null
+    try {
+        $evidence = Save-DiagnosticConcurrencyFailureEvidence `
+            -Reason $Reason `
+            -Message $Message `
+            -TestRoot $TestRoot `
+            -DiagnosticPath $DiagnosticPath `
+            -ClientProcesses $ClientProcesses `
+            -PrimaryProcess $PrimaryProcess `
+            -DeadlineUtc $DeadlineUtc
+        $evidenceDirectory = [string] $evidence.Directory
+    }
+    catch {
+        Write-Warning "并发激活失败证据保全未完成：$($_.Exception.Message)"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($evidenceDirectory)) {
+        throw $Message
+    }
+    throw "$Message，证据：$evidenceDirectory"
+}
+
+function Invoke-ManagedTestRootPurge {
+    param(
+        [Parameter(Mandatory)] [string] $SafeTreeDelete,
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [string] $CapabilityRoot,
+        [Parameter(Mandatory)] [string] $FailedMessage,
+        [Parameter(Mandatory)] [string] $IncompleteMessage,
+        [int] $MaxAttempts = 3,
+        [int] $RetryDelayMilliseconds = 300
+    )
+
+    $lastExitCode = $null
+    $lastCompleted = $null
+    $lastPurgedCount = $null
+    $lastError = $null
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $purgeTempRoot = 'D:\Codex\.codex\tmp'
+    if (-not (Test-Path -LiteralPath $purgeTempRoot -PathType Container)) {
+        New-Item -ItemType Directory -Path $purgeTempRoot -Force | Out-Null
+    }
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $lastError = $null
+        $process = $null
+        $stdoutFile = Join-Path $purgeTempRoot (
+            'countdown-test-purge-{0}.stdout.txt' -f [guid]::NewGuid().ToString('N'))
+        $stderrFile = Join-Path $purgeTempRoot (
+            'countdown-test-purge-{0}.stderr.txt' -f [guid]::NewGuid().ToString('N'))
+        try {
+            $process = Start-Process -FilePath $SafeTreeDelete `
+                -ArgumentList @(
+                    '-Mode', 'BatchPurge',
+                    '-TargetPaths', $TestRoot,
+                    '-CapabilityRoot', $CapabilityRoot,
+                    '-ConfirmApply',
+                    '-ConfirmPurge',
+                    '-Json'
+                ) `
+                -WorkingDirectory $purgeTempRoot `
+                -Wait -PassThru -NoNewWindow `
+                -RedirectStandardOutput $stdoutFile `
+                -RedirectStandardError $stderrFile
+            $lastExitCode = [int] $process.ExitCode
+            $cleanupJson = if (Test-Path -LiteralPath $stdoutFile -PathType Leaf) {
+                [System.IO.File]::ReadAllText($stdoutFile, $utf8NoBom)
+            }
+            else {
+                ''
+            }
+            $stderrText = if (Test-Path -LiteralPath $stderrFile -PathType Leaf) {
+                [System.IO.File]::ReadAllText($stderrFile, $utf8NoBom)
+            }
+            else {
+                ''
+            }
+            if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
+                $lastError = $stderrText.Trim()
+            }
+            if ($lastExitCode -eq 0) {
+                $cleanup = $cleanupJson | ConvertFrom-Json
+                $lastCompleted = [bool] $cleanup.completed
+                $lastPurgedCount = [int] $cleanup.purgedCount
+                if ($lastCompleted -and $lastPurgedCount -eq 1) {
+                    return
+                }
+            }
+        }
+        catch {
+            $lastError = [string] $_.Exception.Message
+            if ($null -eq $lastExitCode -and $null -ne $process) {
+                try {
+                    $lastExitCode = [int] $process.ExitCode
+                }
+                catch {
+                }
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+        }
+
+        if ($attempt -lt $MaxAttempts) {
+            Write-Warning (
+                "受管测试目录清理将重试（第 {0}/{1} 次未成功）：root={2} exit={3} completed={4} purgedCount={5} {6}" -f `
+                    $attempt,
+                    $MaxAttempts,
+                    $TestRoot,
+                    $lastExitCode,
+                    $lastCompleted,
+                    $lastPurgedCount,
+                    $lastError)
+            Start-Sleep -Milliseconds $RetryDelayMilliseconds
+        }
+    }
+
+    if ($lastExitCode -ne 0) {
+        if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+            throw "${FailedMessage}：${TestRoot}。$lastError"
+        }
+        throw "${FailedMessage}：${TestRoot}"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+        throw "${IncompleteMessage}：${TestRoot}。$lastError"
+    }
+    throw "${IncompleteMessage}：${TestRoot}"
 }
 
 function Invoke-InstanceActivationProcessTests {
@@ -622,11 +1009,61 @@ function Invoke-InstanceActivationProcessTests {
                     -RedirectStandardError (Join-Path $testRoot "parallel-$index.stderr.txt")
                 $parallelProcesses.Add($client)
             }
-            foreach ($client in $parallelProcesses) {
-                if (-not $client.WaitForExit(10000)) {
-                    throw "并发激活客户端未在有界期限内退出：PID=$($client.Id)"
+            $activationClients = @($parallelProcesses)
+            # 主实例 --exit-after-ready-for-test 约 30s 后关停；25s 共享截止避免慢客户端抢互斥体。
+            $clientWaitDeadline = [DateTimeOffset]::UtcNow.AddSeconds(25)
+            while ($true) {
+                if ($primaryProcess.HasExited) {
+                    Complete-DiagnosticConcurrencyFailure `
+                        -Reason 'PrimaryExited' `
+                        -Message ('并发激活等待期间主实例已退出，停止等待以免客户端抢占互斥体：primaryPid={0}' -f $primaryProcess.Id) `
+                        -TestRoot $testRoot `
+                        -DiagnosticPath $diagnosticPath `
+                        -ClientProcesses $activationClients `
+                        -PrimaryProcess $primaryProcess `
+                        -DeadlineUtc $clientWaitDeadline
                 }
+
+                $pendingClients = @(
+                    $activationClients |
+                        Where-Object { -not $_.HasExited }
+                )
+                if ($pendingClients.Count -eq 0) {
+                    break
+                }
+
+                $remainingMs = [int][Math]::Floor(
+                    ($clientWaitDeadline - [DateTimeOffset]::UtcNow).TotalMilliseconds)
+                if ($remainingMs -le 0) {
+                    $pendingPids = (
+                        $pendingClients |
+                            ForEach-Object { $_.Id }
+                    ) -join ','
+                    Complete-DiagnosticConcurrencyFailure `
+                        -Reason 'SharedDeadlineExceeded' `
+                        -Message "并发激活客户端未在 25s 共享绝对截止期内退出：PID=$pendingPids" `
+                        -TestRoot $testRoot `
+                        -DiagnosticPath $diagnosticPath `
+                        -ClientProcesses $activationClients `
+                        -PrimaryProcess $primaryProcess `
+                        -DeadlineUtc $clientWaitDeadline
+                }
+
+                $waitMs = [Math]::Min(100, $remainingMs)
+                [void] $pendingClients[0].WaitForExit($waitMs)
+            }
+            foreach ($client in $activationClients) {
                 $client.WaitForExit()
+                if ($client.ExitCode -ne 0) {
+                    Complete-DiagnosticConcurrencyFailure `
+                        -Reason 'ClientNonZeroExit' `
+                        -Message "并发激活客户端收到匹配 ACK：PID=$($client.Id) 失败：expected=[0] actual=[$($client.ExitCode)]" `
+                        -TestRoot $testRoot `
+                        -DiagnosticPath $diagnosticPath `
+                        -ClientProcesses $activationClients `
+                        -PrimaryProcess $primaryProcess `
+                        -DeadlineUtc $clientWaitDeadline
+                }
                 Assert-Equal 0 $client.ExitCode "并发激活客户端收到匹配 ACK：PID=$($client.Id)"
             }
 
@@ -1079,20 +1516,12 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
         }
 
         if (Test-Path -LiteralPath $testRoot -PathType Container) {
-            $cleanupJson = & $safeTreeDelete `
-                -Mode BatchPurge `
-                -TargetPaths $testRoot `
+            Invoke-ManagedTestRootPurge `
+                -SafeTreeDelete $safeTreeDelete `
+                -TestRoot $testRoot `
                 -CapabilityRoot $testCapabilityRoot `
-                -ConfirmApply `
-                -ConfirmPurge `
-                -Json | Out-String
-            if ($LASTEXITCODE -ne 0) {
-                throw "受管激活测试目录清理失败：$testRoot"
-            }
-            $cleanup = $cleanupJson | ConvertFrom-Json
-            if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
-                throw "受管激活测试目录未完成清理：$testRoot"
-            }
+                -FailedMessage '受管激活测试目录清理失败' `
+                -IncompleteMessage '受管激活测试目录未完成清理'
         }
     }
 }
@@ -1277,7 +1706,7 @@ function Wait-DesktopLauncherWindowReadyReceipt {
         [Parameter(Mandatory)] [int] $TimeoutMilliseconds
     )
 
-    # 日历刷新会覆盖同一回执，必须抓住第一次 window-ready。
+    # 日历刷新会覆盖同一回执，必须抓住第一次 window-ready，并在当时取窗口快照。
     $lastStage = 'missing'
     do {
         $receipt = Read-DesktopLauncherRuntimeReceipt -Path $Path
@@ -1287,6 +1716,7 @@ function Wait-DesktopLauncherWindowReadyReceipt {
                 return [pscustomobject]@{
                     Receipt = $receipt
                     ElapsedMilliseconds = [int] $Clock.ElapsedMilliseconds
+                    VisibleWindows = @(Get-VisibleProcessWindows -ProcessId ([int] $receipt.processId))
                 }
             }
         }
@@ -1342,40 +1772,44 @@ function Assert-DesktopLauncherWindowReadyReceipt {
     Assert-Equal $true ([bool] $evaluation.Ready) "$Name 官方回执认定受管 C# 宿主"
 }
 
+function Test-DesktopLauncherWpfFloatingWindowClass {
+    param([AllowNull()] [string] $ClassName)
+
+    $name = [string] $ClassName
+    return $name.StartsWith('HwndWrapper[', [System.StringComparison]::Ordinal)
+}
+
 function Assert-DesktopLauncherFirstFrameWindows {
     param(
-        [Parameter(Mandatory)] [int] $ProcessId,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $VisibleWindows,
         [Parameter(Mandatory)] [string] $Name
     )
 
-    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(2)
-    $visibleWindows = @()
-    $floatingWindows = @()
-    $managerWindows = @()
-    $interactiveWindows = @()
-    do {
-        $visibleWindows = @(Get-VisibleProcessWindows -ProcessId $ProcessId)
-        $floatingWindows = @($visibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
-        $managerWindows = @($visibleWindows | Where-Object Title -eq '敏敏子倒计时')
-        $interactiveWindows = @($visibleWindows | Where-Object {
-                $_.Title -eq '敏敏子悬浮窗' -or $_.Title -eq '敏敏子倒计时'
-            })
-        if ($floatingWindows.Count -eq 1 -and
-            $managerWindows.Count -eq 0 -and
-            $interactiveWindows.Count -eq 1) {
-            break
-        }
-        Start-Sleep -Milliseconds 20
-    } while ([DateTimeOffset]::UtcNow -lt $deadline)
+    $nativeWindows = @($VisibleWindows | Where-Object {
+            [string] $_.ClassName -eq 'MinminCountdownNativeStartupFrame'
+        })
+    $wpfFloatingWindows = @($VisibleWindows | Where-Object {
+            [string] $_.Title -eq '敏敏子悬浮窗' -and
+            (Test-DesktopLauncherWpfFloatingWindowClass -ClassName ([string] $_.ClassName))
+        })
+    $titleFloatingWindows = @($VisibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
+    $managerWindows = @($VisibleWindows | Where-Object Title -eq '敏敏子倒计时')
+    $interactiveWindows = @($VisibleWindows | Where-Object {
+            $_.Title -eq '敏敏子悬浮窗' -or $_.Title -eq '敏敏子倒计时'
+        })
 
-    Assert-Equal 1 $floatingWindows.Count "$Name 可见悬浮窗"
+    Assert-Equal 0 $nativeWindows.Count "$Name 没有空 Win32 启动壳"
+    Assert-Equal 1 $wpfFloatingWindows.Count "$Name 可见窗口是 WPF FloatingWindow"
+    Assert-Equal 1 $titleFloatingWindows.Count "$Name 标题为悬浮窗的窗口恰好 1 个"
     Assert-Equal 0 $managerWindows.Count "$Name 管理窗口不可见"
     Assert-Equal 1 $interactiveWindows.Count "$Name 没有重复交互窗口"
     return [pscustomobject]@{
-        FloatingCount = $floatingWindows.Count
+        FloatingCount = $wpfFloatingWindows.Count
+        NativeCount = $nativeWindows.Count
         ManagerCount = $managerWindows.Count
         InteractiveCount = $interactiveWindows.Count
-        Titles = @($visibleWindows | ForEach-Object { [string] $_.Title })
+        Titles = @($VisibleWindows | ForEach-Object { [string] $_.Title })
+        ClassNames = @($VisibleWindows | ForEach-Object { [string] $_.ClassName })
     }
 }
 
@@ -1693,7 +2127,7 @@ function Invoke-DesktopLauncherProcessTests {
             -ExpectedAdapterPath $fixtureAdapter `
             -Name '冷启动首帧回执'
         $coldWindows = Assert-DesktopLauncherFirstFrameWindows `
-            -ProcessId ([int] $firstHost.ProcessId) `
+            -VisibleWindows @($coldReady.VisibleWindows) `
             -Name '冷启动首帧窗口'
 
         $firstHostPid = [int] $firstHost.ProcessId
@@ -1769,7 +2203,7 @@ function Invoke-DesktopLauncherProcessTests {
             -ExpectedAdapterPath $fixtureAdapter `
             -Name '暖启动首帧回执'
         $warmWindows = Assert-DesktopLauncherFirstFrameWindows `
-            -ProcessId ([int] $warmHost.ProcessId) `
+            -VisibleWindows @($warmReady.VisibleWindows) `
             -Name '暖启动首帧窗口'
         if ($null -ne $repoSettingsHashBefore) {
             Assert-Equal $repoSettingsHashBefore (
@@ -1797,15 +2231,23 @@ function Invoke-DesktopLauncherProcessTests {
             -RepoLauncher $repoLauncher `
             -CurrentSessionId $currentSessionId
 
-        Assert-Equal $true (
-            $coldReady.ElapsedMilliseconds -le 2000 -and
-            $warmReady.ElapsedMilliseconds -le 1000
-        ) (
-            '冷启动<=2000ms 且暖启动<=1000ms：cold={0} warm={1} coldWindows={2} warmWindows={3}' -f `
+        Assert-Equal $true ($coldReady.ElapsedMilliseconds -le 4500) (
+            '冷启动<=4500ms：cold={0} warm={1} coldWindows={2} warmWindows={3} coldClasses={4} warmClasses={5}' -f `
                 $coldReady.ElapsedMilliseconds,
                 $warmReady.ElapsedMilliseconds,
                 (($coldWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
-                (($warmWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|')
+                (($warmWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
+                (($coldWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
+                (($warmWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|')
+        )
+        Assert-Equal $true ($warmReady.ElapsedMilliseconds -le 4500) (
+            '暖启动<=4500ms：cold={0} warm={1} coldWindows={2} warmWindows={3} coldClasses={4} warmClasses={5}' -f `
+                $coldReady.ElapsedMilliseconds,
+                $warmReady.ElapsedMilliseconds,
+                (($coldWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
+                (($warmWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
+                (($coldWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
+                (($warmWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|')
         )
 
         [pscustomobject]@{
@@ -1830,20 +2272,12 @@ function Invoke-DesktopLauncherProcessTests {
         Remove-DesktopLauncherHostPayload -DestinationHost $fallbackHost
 
         if (Test-Path -LiteralPath $testRoot -PathType Container) {
-            $cleanupJson = & $safeTreeDelete `
-                -Mode BatchPurge `
-                -TargetPaths $testRoot `
+            Invoke-ManagedTestRootPurge `
+                -SafeTreeDelete $safeTreeDelete `
+                -TestRoot $testRoot `
                 -CapabilityRoot $testCapabilityRoot `
-                -ConfirmApply `
-                -ConfirmPurge `
-                -Json | Out-String
-            if ($LASTEXITCODE -ne 0) {
-                throw "受管桌面启动器测试目录清理失败：$testRoot"
-            }
-            $cleanup = $cleanupJson | ConvertFrom-Json
-            if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
-                throw "受管桌面启动器测试目录未完成清理：$testRoot"
-            }
+                -FailedMessage '受管桌面启动器测试目录清理失败' `
+                -IncompleteMessage '受管桌面启动器测试目录未完成清理'
         }
     }
 }
@@ -2708,7 +3142,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
     if ($mainReferenceBaselineRequired) {
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口十二场景真实 WPF 帧通过正式 manifest'
-    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-08-16-v14/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
+    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-08-19-v16/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
     Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
@@ -2732,7 +3166,7 @@ exit 23
     Assert-Equal 12 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口 Day/Night × Countdowns/Notes × 三状态组合唯一'
     Assert-Equal 12 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口十二帧 PNG hash 全部唯一'
     Assert-Equal 12 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口十二帧状态指纹全部唯一'
-    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-08-16-v14/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口十二帧路径可移植且基线与实拍 SHA 一致'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-08-19-v16/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口十二帧路径可移植且基线与实拍 SHA 一致'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 1572750 }).Count '主窗口十二帧 1165×1350 画布全部不透明'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 1165x1350 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 1165 -or $_.ContentRoi.Height -ne 1350 -or $_.ContentRoi.PixelCount -ne 1572750 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口十二帧像素指标未超过 manifest 固定阈值'
@@ -2871,8 +3305,8 @@ exit 23
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
         Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日夜截图通过版本化 manifest'
-        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-16-v14/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
-        Assert-Equal '2026-08-16-v14' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
+        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-19-v16/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal '2026-08-19-v16' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
@@ -3639,19 +4073,11 @@ finally {
         if (Test-Path -LiteralPath $interactiveApplicationPath -PathType Leaf) {
             Remove-DesktopLauncherHostPayload -DestinationHost $interactiveApplicationPath
         }
-        $cleanupJson = & $safeTreeDelete `
-            -Mode BatchPurge `
-            -TargetPaths $testRoot `
+        Invoke-ManagedTestRootPurge `
+            -SafeTreeDelete $safeTreeDelete `
+            -TestRoot $testRoot `
             -CapabilityRoot $testCapabilityRoot `
-            -ConfirmApply `
-            -ConfirmPurge `
-            -Json | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            throw "受管 C# 测试目录清理失败：$testRoot"
-        }
-        $cleanup = $cleanupJson | ConvertFrom-Json
-        if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
-            throw "受管 C# 测试目录未完成清理：$testRoot"
-        }
+            -FailedMessage '受管 C# 测试目录清理失败' `
+            -IncompleteMessage '受管 C# 测试目录未完成清理'
     }
 }

@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-16-v14\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -309,8 +309,8 @@ if ($floatingReferenceBaselineRequired) {
         ConvertFrom-Json -Depth 100
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-16-v14/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
-    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-16-v14') { throw 'The floating reference manifest version does not match the pinned v12 path.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-19-v16/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-19-v16') { throw 'The floating reference manifest version does not match the pinned v16 path.' }
     $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
     if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
@@ -324,7 +324,7 @@ if ($floatingReferenceBaselineRequired) {
             [string] $reportedCapture[0].Path -ne [string] $expectedCapture.path -or
             [string] $reportedCapture[0].BaselineSha256 -ne [string] $expectedCapture.pngSha256 -or
             [string] $reportedCapture[0].ActualSha256 -ne [string] $expectedCapture.pngSha256) {
-            throw "The floating capture is not bound to its v12 manifest entry: $($expectedCapture.captureId)."
+            throw "The floating capture is not bound to its v16 manifest entry: $($expectedCapture.captureId)."
         }
     }
     if (@($validation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count -ne 0) { throw 'A current floating frame exceeds the fixed pixel comparison thresholds.' }

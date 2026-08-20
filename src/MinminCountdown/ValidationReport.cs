@@ -21,7 +21,7 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
-    private const string FloatingReferenceBaselineVersion = "2026-08-16-v14";
+    private const string FloatingReferenceBaselineVersion = "2026-08-19-v16";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingReferenceStateFingerprintAlgorithm =
@@ -124,7 +124,7 @@ internal static class ValidationReport
             "Bottom",
             "long-notes-night-bottom.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-08-16-v14";
+    private const string MainReferenceBaselineVersion = "2026-08-19-v16";
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
     private const string MainReferenceStateFingerprintAlgorithm =

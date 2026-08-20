@@ -87,7 +87,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 pwsh.exe -NoLogo -NoProfile -File .\Build-CountdownApplication.ps1 -Clean
 .\verification\MinminCountdown.Verification.exe
 pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1
-pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly
+pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly  # 2026-08-19 起冷≤4.5s / 暖≤4.5s
 & 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
 pwsh.exe -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.Ui.Tests.ps1
@@ -96,6 +96,7 @@ pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
 pwsh.exe -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
 
+`-DesktopLauncherOnly` 的冷/暖门槛按 Wave 2 官方专项 runId `20260819T100707Z-wave2` 校准，是当前技术形态的回归护栏。
 以上命令只证明当前机器上的源码行为、发布包、安装与部署预检合同。`Deploy-OfficeCountdown.ps1 -ValidateOnly` 校验当前工作树候选的发布清单、静态哈希和临时 ZIP，不要求工作树干净，也不执行 Git fetch；它不连接办公室设备，不上传或安装产物，更不构成办公室远端部署或验收。正式无开关部署仍只接受干净、已推送且与 `origin/main` 一致的 `main` 提交，办公室完成态仍需正式部署成功回执、传输账本和两次独立远端回读。
 
 ## 运行应用

@@ -26,7 +26,6 @@ public sealed partial class App : Application
     private ManagerWindowLifecycle? _managerLifecycle;
     private MainWindow? _mainWindow;
     private FloatingWindow? _floatingWindow;
-    private IntPtr _startupFloatingShell;
     private FloatingTrayController? _floatingTrayController;
     private ReminderDeliveryCoordinator? _reminderDeliveryCoordinator;
     private SingleInstanceMutexLease? _singleInstanceLease;
@@ -127,12 +126,6 @@ public sealed partial class App : Application
                     _options.ActivationListenerBehavior,
                     LogInstanceActivationRequestReceived,
                     LogInstanceActivationListenerFailure);
-            }
-
-            if (_options.ActivationTestState is null && !_acceptanceReadOnly)
-            {
-                ShowStartupFloatingShell();
-                WriteFirstFloatingFrameReady();
             }
 
             _desktopWorkspace = DesktopWorkspace.Load(
@@ -376,29 +369,6 @@ public sealed partial class App : Application
         }
 
         _floatingWindow.Show();
-        WriteFirstFloatingFrameReady();
-        CloseStartupFloatingShell();
-    }
-
-    private void ShowStartupFloatingShell()
-    {
-        if (_startupFloatingShell != IntPtr.Zero)
-        {
-            return;
-        }
-
-        _startupFloatingShell = NativeStartupFrame.Show();
-    }
-
-    private void CloseStartupFloatingShell()
-    {
-        if (_startupFloatingShell == IntPtr.Zero)
-        {
-            return;
-        }
-
-        NativeStartupFrame.Close(_startupFloatingShell);
-        _startupFloatingShell = IntPtr.Zero;
     }
 
     private void WriteFirstFloatingFrameReady()
@@ -461,13 +431,15 @@ public sealed partial class App : Application
     {
         if (_firstFrameWorkStarted ||
             _options is null ||
-            _desktopWorkspace is null)
+            _desktopWorkspace is null ||
+            !ReferenceEquals(sender, _floatingWindow))
         {
             return;
         }
 
         _firstFrameWorkStarted = true;
 
+        WriteFirstFloatingFrameReady();
         _floatingWindow?.LoadDeferredAssets();
         EnsureFloatingTrayController();
         StartInteractiveClock();

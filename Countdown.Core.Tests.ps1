@@ -3116,9 +3116,9 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 576 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
-Assert-Equal 573 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
-Assert-Equal 57 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal 575 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
+Assert-Equal 572 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
+Assert-Equal 56 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
 Assert-Equal 501 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'
 Assert-Equal 20 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
@@ -3144,16 +3144,16 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 2 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\(?:floating-window\\520x390|main-window\\1165x1350)\\2026-08-16-v14\\manifest\.json').Count) `
-    'Validation suite pins both visual manifest families to the current v12 baseline'
+        'assets\\ui-references\\(?:floating-window\\520x390|main-window\\1165x1350)\\2026-08-19-v16\\manifest\.json').Count) `
+    'Validation suite pins both visual manifest families to the current v16 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-13-v11')) `
     'Validation suite no longer references the retired v11 visual baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-06-v6')) `
     'Validation suite no longer references the retired v6 visual baseline'
 
-# 条件化 v12 visual baseline 验证
-$v12FloatingManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-16-v14\manifest.json'
-$v12MainManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-16-v14\manifest.json'
+# 条件化 v16 visual baseline 验证
+$v12FloatingManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
+$v12MainManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-19-v16\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $v12FloatingManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $v12MainManifest -PathType Leaf)
 
@@ -3170,7 +3170,7 @@ $visualBaselineDefinitions = @(
             'long-notes-night-bottom',
             'long-notes-night-top'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-08-16-v14/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-08-19-v16/'
     },
     [pscustomobject]@{
         Name = 'Main'
@@ -3189,15 +3189,15 @@ $visualBaselineDefinitions = @(
             'main-night-notes-representative',
             'main-night-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-08-16-v14/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-08-19-v16/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
     $visualManifest = Get-Content -LiteralPath $visualBaselineDefinition.ManifestPath -Raw |
         ConvertFrom-Json -Depth 100
     $visualCaptures = @($visualManifest.captures)
-    Assert-Equal '2026-08-16-v14' ([string] $visualManifest.baselineVersion) `
-        "$($visualBaselineDefinition.Name) visual manifest declares the current v12 baseline"
+    Assert-Equal '2026-08-19-v16' ([string] $visualManifest.baselineVersion) `
+        "$($visualBaselineDefinition.Name) visual manifest declares the current v16 baseline"
     Assert-Equal ($visualBaselineDefinition.ExpectedCaptureIds -join ',') `
         ((@($visualCaptures.captureId) | Sort-Object) -join ',') `
         "$($visualBaselineDefinition.Name) visual manifest declares the exact capture inventory"
@@ -3211,7 +3211,7 @@ foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
         Assert-Equal $true $visualCapturePath.StartsWith(
             $visualBaselineDefinition.ExpectedPathPrefix,
             [System.StringComparison]::Ordinal) `
-            "$($visualBaselineDefinition.Name) capture path stays inside the v12 baseline: $($visualCapture.captureId)"
+            "$($visualBaselineDefinition.Name) capture path stays inside the v16 baseline: $($visualCapture.captureId)"
         Assert-Equal ([string] $visualCapture.pngSha256) `
             (Get-FileHash -LiteralPath $visualCaptureFile -Algorithm SHA256).Hash `
             "$($visualBaselineDefinition.Name) capture SHA matches the formal PNG: $($visualCapture.captureId)"

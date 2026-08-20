@@ -841,6 +841,14 @@ $powerShell7 = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop 
         if ($LASTEXITCODE -ne 0) { throw '无法从当前 main 提交重建 C# 部署产物。' }
     })
 
+# 构建会在快照目录生成 app 载荷与 published-payload.json；契约的 PackageFiles
+# 依赖该清单，因此必须在构建后重新取契约快照，打包和 ZIP 复核才用同一份文件集。
+$releaseContract = Get-CountdownReleaseContract
+$requiredFiles = [string[]] @($releaseContract.PackageFiles)
+if ($requiredFiles -notcontains 'app\published-payload.json') {
+    throw '构建后：发布契约未包含运行时载荷清单，拒绝打包。'
+}
+
 [void] (Assert-CountdownDeploymentRepositoryState `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `

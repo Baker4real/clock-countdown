@@ -182,7 +182,7 @@ $script:nonAssetHashes = [ordered]@{
     'Countdown.Runtime.psm1' = 'FF9F9FFE54FA267F83379526B2D488412EF25B800F5FAB3734F59290676B8511'
     'Countdown.Settings.psm1' = 'E3F02C90D7153AEF7492708B758CF21CD777C73ED1CF19BEB3B2F8D0D14EB16D'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '6E5F6629344A282CEF7FF47B292B200BCE71A3FBBCEB7AB606785B73B33DCACE'
+    'Countdown.Core.Tests.ps1' = '2F584DD6C243781D2D1FB40AB9047D690A7A12C38C7AEBED7A72660EF9FBDD3E'
     'Countdown.Ui.Tests.ps1' = '22C890DC8F45100529B68B93D4A6B3DCDCDB78FFFAD425ECE5E713DE7BFF33B1'
     'Countdown.CSharp.Tests.ps1' = '9ABBDC8259CF81CFD3CEC131020996447387C15DFDC0F4F426B703EF98861983'
     'tools\Build-MainDayOrnamentScene.ps1' = '1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036'
@@ -354,6 +354,13 @@ function Get-CountdownReleaseHashByPath {
         }
     }
 
+    if ([string]::Equals($Path, 'app\published-payload.json', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $manifestPath = Join-Path $PSScriptRoot 'app\published-payload.json'
+        if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+            return [string] (Get-FileHash -Algorithm SHA256 -LiteralPath $manifestPath).Hash
+        }
+    }
+
     throw "发布契约缺少静态 SHA-256：$Path"
 }
 
@@ -371,7 +378,12 @@ function New-CountdownReleaseIntegrityMap {
             ForEach-Object { $_.SourcePath }
     )
     $integrityPaths += @($script:buildAssetDefinitions | ForEach-Object { $_.PublishedPath })
-    $integrityPaths += @(Get-CountdownPublishedPayload | ForEach-Object { $_.Files } | ForEach-Object { $_.Path })
+    $publishedPayloadFiles = @(Get-CountdownPublishedPayload | ForEach-Object { $_.Files })
+    $integrityPaths += @($publishedPayloadFiles | ForEach-Object { $_.Path })
+    if ($publishedPayloadFiles.Count -gt 0) {
+        # 载荷清单文件本身必须随包传输并受哈希保护，远端解包后才能重建同一份含载荷的契约。
+        $integrityPaths += 'app\published-payload.json'
+    }
     $uniqueIntegrity = [System.Collections.Generic.List[string]]::new()
     $seenIntegrity = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($path in $integrityPaths) {

@@ -3117,8 +3117,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 576 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
-Assert-Equal 573 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
+Assert-Equal 577 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
+Assert-Equal 574 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
 Assert-Equal 56 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
 Assert-Equal 501 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'

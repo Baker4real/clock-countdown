@@ -582,7 +582,8 @@ param([string] `$OfficeDeploymentStagingRoot)
                 -File $cSharpTestScript `
                 -OfficeDeploymentStagingRoot $invalidOfficeStagingRoot 2>&1)
         $invalidSourceExitCode = $LASTEXITCODE
-        Assert-Equal $true ($invalidSourceExitCode -ne 0 -and ($invalidSourceOutput -join "`n") -match '不属于指定的办公室部署 staging') 'C# tests reject an office staging that does not own the script source before creating test data'
+        # 跨进程捕获的中文错误文本会被 SSH/console 编码边界破坏，断言只匹配 ASCII 标记。
+        Assert-Equal $true ($invalidSourceExitCode -ne 0 -and ($invalidSourceOutput -join "`n") -match 'office-staging-source-mismatch') 'C# tests reject an office staging that does not own the script source before creating test data'
         Assert-Equal $false (Test-Path -LiteralPath $invalidOfficeStagingRoot) 'Rejected office staging validation creates no directory'
 
         $nestedOfficeStagingRoot = Join-Path $invalidOfficeStagingRoot 'nested'
@@ -594,7 +595,7 @@ param([string] `$OfficeDeploymentStagingRoot)
                 -File $cSharpTestScript `
                 -OfficeDeploymentStagingRoot $nestedOfficeStagingRoot 2>&1)
         $nestedStagingExitCode = $LASTEXITCODE
-        Assert-Equal $true ($nestedStagingExitCode -ne 0 -and ($nestedStagingOutput -join "`n") -match '必须是受管根的直接子目录') 'C# tests reject a nested office staging before creating test data'
+        Assert-Equal $true ($nestedStagingExitCode -ne 0 -and ($nestedStagingOutput -join "`n") -match 'office-staging-root-invalid') 'C# tests reject a nested office staging before creating test data'
         Assert-Equal $false (Test-Path -LiteralPath $invalidOfficeStagingRoot) 'Rejected nested staging validation creates no parent directory'
 
         [System.IO.File]::WriteAllText(

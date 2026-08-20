@@ -2644,13 +2644,13 @@ if (-not [string]::IsNullOrWhiteSpace($OfficeDeploymentStagingRoot)) {
             [System.IO.Path]::GetDirectoryName($resolvedStagingRoot),
             $officeDeploymentRoot,
             [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "办公室部署 staging 必须是受管根的直接子目录：$resolvedStagingRoot"
+        throw "办公室部署 staging 必须是受管根的直接子目录 [office-staging-root-invalid]：$resolvedStagingRoot"
     }
     if (-not [string]::Equals(
             $resolvedSourceRoot,
             $expectedSourceRoot,
             [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "C# 测试脚本不属于指定的办公室部署 staging：$resolvedSourceRoot"
+        throw "C# 测试脚本不属于指定的办公室部署 staging [office-staging-source-mismatch]：$resolvedSourceRoot"
     }
 }
 $testCapabilityRootPrefix = $testCapabilityRoot.TrimEnd(

@@ -856,6 +856,14 @@ internal sealed class ReminderRulesEditorWindow : Window
     {
         var relative = _mode.SelectedIndex == 2 && _countdownTargetUtc is not null;
         var calendar = _mode.SelectedIndex == CalendarModeIndex;
+        if (_firstDueElements.Count > 0 && _firstDueElements[0] is TextBlock firstDueLabel)
+        {
+            firstDueLabel.Text = calendar ? "开始日期" : "首次提醒";
+        }
+
+        NameControl(_firstDueDate, calendar ? "开始日期" : "首次提醒日期");
+        NameControl(_firstDueHour, calendar ? "本地时刻小时" : "首次提醒小时");
+        NameControl(_firstDueMinute, calendar ? "本地时刻分钟" : "首次提醒分钟");
         SetVisibility(_firstDueElements, relative ? Visibility.Collapsed : Visibility.Visible);
         SetVisibility(
             _intervalElements,

@@ -132,11 +132,13 @@ public sealed partial class FloatingWindow
             Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M月d日 HH:mm}",
             Margin = new Thickness(0, 3, 0, 0),
             FontSize = 11,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextTrimming = TextTrimming.None,
+            TextWrapping = TextWrapping.NoWrap,
             Foreground = _floatingMutedBrush
         });
 
         var remainingText = CountdownRemainingText(remaining, 16, FontWeights.SemiBold);
+        FitSingleLineText(remainingText, PrimaryRemainingWidth);
         remainingText.Width = PrimaryRemainingWidth;
         remainingText.MaxHeight = 20;
         remainingText.Margin = new Thickness(4, 0, 0, 0);

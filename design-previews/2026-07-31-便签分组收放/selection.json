@@ -1,1 +1,8 @@
-{}
+{
+  "direction": "B",
+  "title": "暖纸时间轴",
+  "selectedAt": "2026-07-31",
+  "rationale": "状态与日期独立收放，暖纸、轻时间轴和克制层级；可见标题固定为未完成/已完成，数量与箭头承担扫描。",
+  "prototype": "design-previews/2026-07-31-便签分组收放/index.html",
+  "contract": "DESIGN.md"
+}

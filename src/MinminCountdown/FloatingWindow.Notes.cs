@@ -9,7 +9,7 @@ namespace MinminCountdown;
 
 public sealed partial class FloatingWindow
 {
-    // Current row origins are x=59 by day and x=58 by night; 337 keeps the card at x <= 396.
+    // Current row origins are x=60 by day and x=59 by night; card width 319 keeps x <= 396.
     private const double CalendarIndexNoteCardWidth = 319;
     private const double CalendarIndexDateStampWidth = 48;
     private const double CalendarIndexRuleSpacing = 24;

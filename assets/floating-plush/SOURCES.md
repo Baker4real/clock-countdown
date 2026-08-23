@@ -33,7 +33,7 @@ intent: 记录悬浮窗玩偶素材的官方来源、派生过程和校验值。
 
 ## 参考图派生姿态
 
-以下三张角色姿态与后述日间外框、标题栏、角色无文字组件共同组成现役 `520 x 390` 运行时源资产和派生输入。悬浮窗整体视觉验收以 [DESIGN.md](../../DESIGN.md) 及其中绑定的 v12 manifest 为准；`component-day-card-blank.png` 继续随正式 `app` 发布并参与视觉回归，但方向 B 的倒计时暖纸层级和便签台历索引不再把它渲染为卡片背景。
+以下三张角色姿态与后述日间外框、标题栏、角色无文字组件共同组成现役 `520 x 390` 运行时源资产和派生输入。悬浮窗整体视觉验收以 [DESIGN.md](../../DESIGN.md) 绑定的现役 manifest 为准；`component-day-card-blank.png` 继续随正式 `app` 发布并参与视觉回归，但方向 B 的倒计时暖纸层级和便签台历索引不再把它渲染为卡片背景。
 
 - 参考图：`D:\Codex\.codex\run-evidence\nodesek-image-generation\20260727\floating-window-three-mascots-integration.png`
 - 参考图生成方式：Nodesek `gpt-image-2` 图片编辑接口；请求元数据保存在同目录的 `floating-window-three-mascots-integration.metadata.json`。

@@ -3143,26 +3143,47 @@ Assert-Equal 0 `
     'Project, C# and XAML source-build inputs are not installed as runtime files'
 $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
-Assert-Equal 2 ([regex]::Matches(
+Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\(?:floating-window\\520x390|main-window\\1165x1350)\\2026-08-19-v16\\manifest\.json').Count) `
-    'Validation suite pins both visual manifest families to the current v16 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-08-19-v16\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v16 baseline'
+Assert-Equal 1 ([regex]::Matches(
+        $validationModuleSource,
+        'assets\\ui-references\\main-window\\1165x1350\\2026-08-23-v17\\manifest\.json').Count) `
+    'Validation suite pins the main-window visual manifest to the current v17 baseline'
+Assert-Equal $false ($validationModuleSource.Contains(
+        'assets\ui-references\main-window\1165x1350\2026-08-19-v16\manifest.json')) `
+    'Validation suite no longer references the retired main-window v16 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-13-v11')) `
     'Validation suite no longer references the retired v11 visual baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-06-v6')) `
     'Validation suite no longer references the retired v6 visual baseline'
+$floatingPlushSources = [System.IO.File]::ReadAllText(
+    (Join-Path $PSScriptRoot 'assets\floating-plush\SOURCES.md'))
+Assert-Equal $true ($floatingPlushSources.Contains('DESIGN.md') -and $floatingPlushSources.Contains('现役 manifest')) `
+    '玩偶素材来源文档指向 DESIGN.md 绑定的现役 manifest'
+foreach ($retiredBaseline in @(
+        '2026-08-13-v12',
+        '2026-08-13-v11',
+        '2026-08-06-v6',
+        'v12 manifest'
+    )) {
+    Assert-Equal $false ($floatingPlushSources.Contains($retiredBaseline)) `
+        "玩偶素材来源文档不再写死退役基线：$retiredBaseline"
+}
 
-# 条件化 v16 visual baseline 验证
-$v12FloatingManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
-$v12MainManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-19-v16\manifest.json'
-$visualBaselinesAvailable = (Test-Path -LiteralPath $v12FloatingManifest -PathType Leaf) -and `
-                            (Test-Path -LiteralPath $v12MainManifest -PathType Leaf)
+# 条件化现役 visual baseline 验证
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json'
+$visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
+                            (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
 if ($visualBaselinesAvailable) {
 $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
-        ManifestPath = $v12FloatingManifest
+        ManifestPath = $floatingVisualManifest
+        ExpectedVersion = '2026-08-19-v16'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'floating-countdowns-night',
@@ -3175,7 +3196,8 @@ $visualBaselineDefinitions = @(
     },
     [pscustomobject]@{
         Name = 'Main'
-        ManifestPath = $v12MainManifest
+        ManifestPath = $mainVisualManifest
+        ExpectedVersion = '2026-08-23-v17'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3190,15 +3212,15 @@ $visualBaselineDefinitions = @(
             'main-night-notes-representative',
             'main-night-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-08-19-v16/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-08-23-v17/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
     $visualManifest = Get-Content -LiteralPath $visualBaselineDefinition.ManifestPath -Raw |
         ConvertFrom-Json -Depth 100
     $visualCaptures = @($visualManifest.captures)
-    Assert-Equal '2026-08-19-v16' ([string] $visualManifest.baselineVersion) `
-        "$($visualBaselineDefinition.Name) visual manifest declares the current v16 baseline"
+    Assert-Equal ([string] $visualBaselineDefinition.ExpectedVersion) ([string] $visualManifest.baselineVersion) `
+        "$($visualBaselineDefinition.Name) visual manifest declares the current baseline version"
     Assert-Equal ($visualBaselineDefinition.ExpectedCaptureIds -join ',') `
         ((@($visualCaptures.captureId) | Sort-Object) -join ',') `
         "$($visualBaselineDefinition.Name) visual manifest declares the exact capture inventory"
@@ -3212,7 +3234,7 @@ foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
         Assert-Equal $true $visualCapturePath.StartsWith(
             $visualBaselineDefinition.ExpectedPathPrefix,
             [System.StringComparison]::Ordinal) `
-            "$($visualBaselineDefinition.Name) capture path stays inside the v16 baseline: $($visualCapture.captureId)"
+            "$($visualBaselineDefinition.Name) capture path stays inside the pinned baseline: $($visualCapture.captureId)"
         Assert-Equal ([string] $visualCapture.pngSha256) `
             (Get-FileHash -LiteralPath $visualCaptureFile -Algorithm SHA256).Hash `
             "$($visualBaselineDefinition.Name) capture SHA matches the formal PNG: $($visualCapture.captureId)"
@@ -4601,7 +4623,7 @@ finally {
 $transactionModule = Get-Module -Name 'Countdown.InstallTransaction'
 $installPathGuardCommand = Get-Command Assert-CountdownInstallPathOnDDrive -Module Countdown.InstallTransaction -ErrorAction SilentlyContinue
 Assert-Equal $true ($null -ne $installPathGuardCommand) 'Installer-facing D-drive path guard is exported by the transaction module'
-Assert-Equal 'D:\Codex\projects\时钟倒计时\expected-desktop' (Assert-CountdownInstallPathOnDDrive -Path 'D:\Codex\projects\时钟倒计时\expected-desktop') 'Installer-facing D-drive path guard normalizes a safe expected desktop path'
+Assert-Equal 'D:\agents\projects\时钟倒计时\expected-desktop' (Assert-CountdownInstallPathOnDDrive -Path 'D:\agents\projects\时钟倒计时\expected-desktop') 'Installer-facing D-drive path guard normalizes a safe expected desktop path'
 $outsideDDriveRejected = $false
 try {
     Assert-CountdownInstallPathOnDDrive -Path 'C:\unexpected-desktop' | Out-Null

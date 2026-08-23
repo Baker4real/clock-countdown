@@ -33,7 +33,6 @@ public sealed partial class FloatingWindow : Window
     private readonly DesktopWorkspace _desktopWorkspace;
     private readonly HolidayCalendar _calendar;
     private readonly IManagerWorkspaceHost _manager;
-    private readonly ReminderEditing _reminderEditing = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private WorkspaceKind _renderedWorkspace = WorkspaceKind.Countdowns;
     private readonly Dictionary<WorkspaceKind, double> _workspaceScrollOffsets = new();
@@ -120,9 +119,7 @@ public sealed partial class FloatingWindow : Window
         _activeTheme is not null &&
         SurfacesFollowActiveTheme &&
         ReferenceEquals(FloatingTitle.Foreground, FindResource(_activeTheme.HeaderTextBrushKey)) &&
-        ReferenceEquals(FloatingReminderLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
-        ReferenceEquals(FloatingReminderIntervalLabel.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
-        ReferenceEquals(FloatingReminderSeparator.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
+        ReferenceEquals(FloatingReminderRulesSummary.Foreground, FindResource(_activeTheme.NoteInputTextBrushKey)) &&
         ReferenceEquals(FloatingNoteTextError.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
         ReferenceEquals(FloatingNoteDateError.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
         ReferenceEquals(FloatingReminderMessage.Foreground, FindResource(_activeTheme.ErrorBrushKey)) &&
@@ -142,7 +139,7 @@ public sealed partial class FloatingWindow : Window
             ResolveQuickAddPaletteResourceKey(FloatingNoteEntry.Background),
             ResolveQuickAddPaletteResourceKey(FloatingNoteText.Foreground),
             ResolveQuickAddPaletteResourceKey(FloatingNoteTextError.Foreground),
-            ResolveQuickAddPaletteResourceKey(FloatingReminderLabel.Foreground),
+            ResolveQuickAddPaletteResourceKey(FloatingReminderRulesSummary.Foreground),
             ResolveQuickAddPaletteResourceKey(FloatingReminderMessage.Foreground));
         return new FloatingQuickAddPaletteBindingValidation(
             mode.ToString(),
@@ -353,7 +350,7 @@ public sealed partial class FloatingWindow : Window
                 FloatingBodyScroller,
                 FloatingNoteText,
                 FloatingNoteDate,
-                FloatingReminder,
+                FloatingManageReminderRules,
                 FloatingTags,
                 FloatingAddNote
             };
@@ -833,19 +830,12 @@ public sealed partial class FloatingWindow : Window
         yield return FloatingBodyScroller.Resources;
         yield return FloatingNoteEntry.Resources;
         yield return FloatingNoteDate.Resources;
-        yield return FloatingReminder.Resources;
-        yield return FloatingReminderDate.Resources;
-        yield return FloatingReminderHour.Resources;
-        yield return FloatingReminderMinute.Resources;
-        yield return FloatingReminderInterval.Resources;
         yield return FloatingTags.Resources;
     }
 
     internal FloatingQuickAddThemeProbeResult ProbeQuickAddThemeResources()
     {
         var originalWorkspace = _workspace;
-        var originalReminderMode = FloatingReminder.SelectedIndex;
-        var originalReminderInterval = FloatingReminderInterval.SelectedIndex;
         var originalTags = _desktopWorkspace.Snapshot.Settings.Tags;
         var originalSelection = FloatingTags.SelectedTagIds.ToArray();
         var originalOffset = FloatingBodyScroller.VerticalOffset;
@@ -856,22 +846,14 @@ public sealed partial class FloatingWindow : Window
         try
         {
             ShowWorkspace(WorkspaceKind.Notes);
-            FloatingReminder.SelectedIndex = 2;
-            FloatingReminderInterval.SelectedIndex = 3;
             FloatingTags.SetTags(originalTags.Concat([probeTag]).ToArray());
             FloatingTags.SetSelection([probeTag.Id]);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
 
-            var textBoxes = new[] { FloatingNoteText, FloatingCustomReminderMinutes };
-            var datePickers = new[] { FloatingNoteDate, FloatingReminderDate };
-            var comboBoxes = new[]
-            {
-                FloatingReminder,
-                FloatingReminderHour,
-                FloatingReminderMinute,
-                FloatingReminderInterval
-            };
+            var textBoxes = new[] { FloatingNoteText };
+            var datePickers = new[] { FloatingNoteDate };
+            var comboBoxes = Array.Empty<ComboBox>();
 
             var checks = QuickAddThemeCheckNames.ToDictionary(
                 name => name,
@@ -959,15 +941,8 @@ public sealed partial class FloatingWindow : Window
         {
             FloatingTags.IsPopupOpen = false;
             FloatingNoteDate.IsDropDownOpen = false;
-            FloatingReminderDate.IsDropDownOpen = false;
-            FloatingReminder.IsDropDownOpen = false;
-            FloatingReminderHour.IsDropDownOpen = false;
-            FloatingReminderMinute.IsDropDownOpen = false;
-            FloatingReminderInterval.IsDropDownOpen = false;
             FloatingTags.SetTags(originalTags);
             FloatingTags.SetSelection(originalSelection);
-            FloatingReminder.SelectedIndex = originalReminderMode;
-            FloatingReminderInterval.SelectedIndex = originalReminderInterval;
             ShowWorkspace(originalWorkspace);
             FloatingBodyScroller.ScrollToVerticalOffset(originalOffset);
             WindowValidationInput.Pump(Dispatcher);
@@ -1518,25 +1493,6 @@ public sealed partial class FloatingWindow : Window
 
     private void ConfigureControls()
     {
-        for (var hour = 0; hour < 24; hour++)
-        {
-            FloatingReminderHour.Items.Add(hour.ToString("D2", CultureInfo.InvariantCulture));
-        }
-
-        for (var minute = 0; minute < 60; minute++)
-        {
-            FloatingReminderMinute.Items.Add(minute.ToString("D2", CultureInfo.InvariantCulture));
-        }
-
-        FloatingReminder.Items.Add("不提醒");
-        FloatingReminder.Items.Add("仅一次");
-        FloatingReminder.Items.Add("重复提醒");
-        FloatingReminderInterval.Items.Add("15 分钟");
-        FloatingReminderInterval.Items.Add("30 分钟");
-        FloatingReminderInterval.Items.Add("60 分钟");
-        FloatingReminderInterval.Items.Add("自定义");
-        FloatingReminder.SelectedIndex = 0;
-        FloatingReminderInterval.SelectedIndex = 1;
         FloatingTags.SetTags(_desktopWorkspace.Snapshot.Settings.Tags);
         AutomationProperties.SetName(FloatingCountdownsButton, "显示悬浮倒计时");
         AutomationProperties.SetName(FloatingNotesButton, "显示悬浮便签");
@@ -1545,16 +1501,9 @@ public sealed partial class FloatingWindow : Window
         AutomationProperties.SetName(CloseFloatingButton, "退出应用");
         AutomationProperties.SetName(FloatingNoteText, "快速便签内容");
         AutomationProperties.SetName(FloatingNoteDate, "快速便签日期");
-        AutomationProperties.SetName(FloatingReminder, "快速便签提醒模式");
-        AutomationProperties.SetName(FloatingReminderInterval, "快速便签重复提醒间隔");
-        AutomationProperties.SetName(FloatingCustomReminderMinutes, "快速便签自定义提醒分钟");
-        AutomationProperties.SetName(FloatingReminderDate, "快速便签首次提醒日期");
-        AutomationProperties.SetName(FloatingReminderHour, "快速便签首次提醒小时");
-        AutomationProperties.SetName(FloatingReminderMinute, "快速便签首次提醒分钟");
         AutomationProperties.SetName(FloatingManageReminderRules, "管理快速便签提醒规则");
         AutomationProperties.SetName(FloatingAddNote, "添加快速便签");
         ThemedDatePickerBehavior.Attach(FloatingNoteDate);
-        ThemedDatePickerBehavior.Attach(FloatingReminderDate);
         UiAccessibility.MarkLive(FloatingNoteTextError);
         UiAccessibility.MarkLive(FloatingNoteDateError);
         UiAccessibility.MarkLive(FloatingReminderMessage);
@@ -1580,26 +1529,6 @@ public sealed partial class FloatingWindow : Window
         FloatingNoteDate.CalendarOpened += (_, _) =>
             ApplyQuickAddThemeToDatePickerPopup(FloatingNoteDate);
         FloatingNoteText.TextChanged += (_, _) => ClearNoteFieldError(FloatingNoteTextError);
-        FloatingReminder.SelectionChanged += (_, _) =>
-        {
-            ClearNoteFieldError(FloatingReminderMessage);
-            UpdateReminderSchedule();
-        };
-        FloatingReminderInterval.SelectionChanged += (_, _) =>
-        {
-            ClearNoteFieldError(FloatingReminderMessage);
-            UpdateReminderInterval();
-        };
-        FloatingReminderDate.SelectedDateChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
-        FloatingReminderDate.CalendarOpened += (_, _) =>
-            ApplyQuickAddThemeToDatePickerPopup(FloatingReminderDate);
-        FloatingReminderHour.SelectionChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
-        FloatingReminderMinute.SelectionChanged += (_, _) => ClearNoteFieldError(FloatingReminderMessage);
-        FloatingCustomReminderMinutes.TextChanged += (_, _) =>
-        {
-            ClearNoteFieldError(FloatingReminderMessage);
-            SetDefaultReminderSchedule();
-        };
         FloatingManageReminderRules.Click += (_, _) => OpenFloatingReminderRulesEditor();
         FloatingAddNote.Click += (_, _) => AddNote();
         FloatingTags.CreateRequested += (_, name) =>
@@ -1825,30 +1754,8 @@ public sealed partial class FloatingWindow : Window
         _settingDefaultDate = false;
         _floatingReminderRules = Array.Empty<ReminderRule>();
         UpdateFloatingReminderRulesSummary();
-        SetDefaultReminderSchedule();
         ClearNoteFieldErrors();
         SetNoteMessage(string.Empty);
-    }
-
-    private void UpdateReminderSchedule()
-    {
-        var enabled = FloatingReminder.SelectedIndex > 0;
-        var repeating = FloatingReminder.SelectedIndex == 2;
-        FloatingReminderSchedule.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-        FloatingReminderIntervalPanel.Visibility =
-            repeating ? Visibility.Visible : Visibility.Collapsed;
-        FloatingCustomReminderMinutes.Visibility =
-            repeating && FloatingReminderInterval.SelectedIndex == 3
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        if (enabled)
-        {
-            SetDefaultReminderSchedule();
-        }
-        else
-        {
-            SetReminderSchedule(null);
-        }
     }
 
     private void OpenFloatingReminderRulesEditor(
@@ -1882,60 +1789,6 @@ public sealed partial class FloatingWindow : Window
             FloatingReminderRulesSummary,
             $"快速便签提醒规则摘要：{FloatingReminderRulesSummary.Text}");
     }
-
-    private void UpdateReminderInterval()
-    {
-        FloatingCustomReminderMinutes.Visibility =
-            FloatingReminder.SelectedIndex == 2 && FloatingReminderInterval.SelectedIndex == 3
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        if (FloatingReminder.SelectedIndex == 2)
-        {
-            SetDefaultReminderSchedule();
-        }
-    }
-
-    private void SetDefaultReminderSchedule()
-    {
-        if (FloatingReminder.SelectedIndex == 0)
-        {
-            return;
-        }
-
-        var result = _reminderEditing.GetDefaultFirstDueBeijing(
-            SelectedReminderMode(),
-            SelectedReminderInterval(),
-            FloatingCustomReminderMinutes.Text,
-            _desktopWorkspace.Snapshot.UtcNow);
-        if (result.Succeeded)
-        {
-            SetReminderSchedule(result.FirstDueBeijing);
-        }
-    }
-
-    private void SetReminderSchedule(DateTimeOffset? beijing)
-    {
-        FloatingReminderDate.SelectedDate = beijing?.Date;
-        FloatingReminderHour.SelectedIndex = beijing?.Hour ?? -1;
-        FloatingReminderMinute.SelectedIndex = beijing?.Minute ?? -1;
-    }
-
-    private ReminderEditingMode SelectedReminderMode() => FloatingReminder.SelectedIndex switch
-    {
-        0 => ReminderEditingMode.None,
-        1 => ReminderEditingMode.Once,
-        2 => ReminderEditingMode.Repeating,
-        _ => (ReminderEditingMode)(-1)
-    };
-
-    private ReminderIntervalSelection SelectedReminderInterval() =>
-        FloatingReminderInterval.SelectedIndex switch
-        {
-            0 => ReminderIntervalSelection.FifteenMinutes,
-            1 => ReminderIntervalSelection.ThirtyMinutes,
-            2 => ReminderIntervalSelection.SixtyMinutes,
-            _ => ReminderIntervalSelection.Custom
-        };
 
     private void SetNoteMessage(string text)
     {
@@ -1993,57 +1846,8 @@ public sealed partial class FloatingWindow : Window
     {
         yield return FloatingNoteText;
         yield return FloatingNoteDate;
-        yield return FloatingReminder;
-        yield return FloatingReminderInterval;
-        yield return FloatingCustomReminderMinutes;
-        yield return FloatingReminderDate;
-        yield return FloatingReminderHour;
-        yield return FloatingReminderMinute;
+        yield return FloatingManageReminderRules;
     }
-
-    private Control FirstInvalidReminderControl()
-    {
-        var mode = SelectedReminderMode();
-        if (mode == ReminderEditingMode.Repeating)
-        {
-            if (FloatingReminderInterval.SelectedIndex is < 0 or > 3)
-            {
-                return FloatingReminderInterval;
-            }
-
-            if (FloatingReminderInterval.SelectedIndex == 3 && !HasValidCustomReminderMinutes())
-            {
-                return FloatingCustomReminderMinutes;
-            }
-        }
-
-        if (mode is not (ReminderEditingMode.Once or ReminderEditingMode.Repeating))
-        {
-            return FloatingReminder;
-        }
-
-        if (FloatingReminderDate.SelectedDate is null)
-        {
-            return FloatingReminderDate;
-        }
-
-        if (FloatingReminderHour.SelectedIndex < 0)
-        {
-            return FloatingReminderHour;
-        }
-
-        return FloatingReminderMinute.SelectedIndex < 0
-            ? FloatingReminderMinute
-            : FloatingReminderDate;
-    }
-
-    private bool HasValidCustomReminderMinutes() =>
-        int.TryParse(
-            FloatingCustomReminderMinutes.Text,
-            NumberStyles.None,
-            CultureInfo.InvariantCulture,
-            out var minutes) &&
-        minutes is >= 1 and <= 1440;
 
     private string? FocusedFloatingNoteTag()
     {

@@ -124,7 +124,8 @@ internal static class ValidationReport
             "Bottom",
             "long-notes-night-bottom.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-08-19-v16";
+    private const string MainReferenceBaselineVersion = "2026-08-23-v17";
+    private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
     private const string MainReferenceStateFingerprintAlgorithm =
@@ -551,7 +552,9 @@ internal static class ValidationReport
             renderedDateSections.All(section =>
                 HasNoteDisclosureAccessibleName(
                     section.Toggle,
-                    GetNoteDateLabel(section.Toggle)?.Text ?? string.Empty));
+                    GetNoteDateLabel(section.Toggle)?.Text ?? string.Empty)) &&
+            HasNoteRowActionAccessibleNames(activeNoteRows) &&
+            HasNoteRowActionAccessibleNames(completedNoteRows);
         var activeNotesGrouped =
             activeNoteRows.Parent is StackPanel noteSections &&
             noteSections.Children.IndexOf(activeNotesToggle) >= 0 &&
@@ -1234,40 +1237,34 @@ internal static class ValidationReport
             ["HasCountdownList"] = countdownRows is not null,
             ["HasNameEditor"] = main.FindName("CountdownName") is TextBox,
             ["HasNoteReminderControls"] =
-                main.FindName("NoteReminder") is ComboBox &&
-                main.FindName("NoteReminderInterval") is ComboBox &&
-                main.FindName("CustomReminderMinutes") is TextBox &&
-                main.FindName("NoteReminderDate") is DatePicker &&
-                main.FindName("NoteReminderHour") is ComboBox &&
-                main.FindName("NoteReminderMinute") is ComboBox &&
-                floating.FindName("FloatingReminderDate") is DatePicker &&
-                floating.FindName("FloatingReminderHour") is ComboBox &&
-                floating.FindName("FloatingReminderMinute") is ComboBox &&
-                floating.FindName("FloatingReminderInterval") is ComboBox &&
-                floating.FindName("FloatingCustomReminderMinutes") is TextBox,
+                main.FindName("ManageNoteReminderRulesButton") is Button &&
+                main.FindName("NoteReminderRulesSummary") is TextBlock &&
+                floating.FindName("FloatingManageReminderRules") is Button &&
+                floating.FindName("FloatingReminderRulesSummary") is TextBlock &&
+                main.FindName("NoteReminder") is null &&
+                main.FindName("NoteReminderSchedule") is null &&
+                floating.FindName("FloatingReminder") is null &&
+                floating.FindName("FloatingReminderSchedule") is null,
             ["NoteReminderControlsWork"] =
-                Required<ComboBox>(main, "NoteReminder").Items.Count == 3 &&
-                Required<ComboBox>(main, "NoteReminderInterval").Items.Count == 4 &&
-                Required<ComboBox>(floating, "FloatingReminder").Items.Count == 3 &&
-                Required<ComboBox>(floating, "FloatingReminderInterval").Items.Count == 4,
+                reminderRulesEditorSharedEntryWorks,
             ["ReminderRulesEditorSharedEntryWorks"] =
                 reminderRulesEditorSharedEntryWorks &&
                 Required<Button>(main, "ManageNoteReminderRulesButton").Visibility == Visibility.Visible &&
                 Required<TextBlock>(main, "NoteReminderRulesSummary").Visibility == Visibility.Visible &&
-                Required<ComboBox>(main, "NoteReminder").Visibility == Visibility.Collapsed &&
+                main.FindName("NoteReminder") is null &&
                 Required<Button>(floating, "FloatingManageReminderRules").Visibility == Visibility.Visible &&
                 Required<TextBlock>(floating, "FloatingReminderRulesSummary").Visibility == Visibility.Visible &&
-                Required<ComboBox>(floating, "FloatingReminder").Visibility == Visibility.Collapsed,
+                floating.FindName("FloatingReminder") is null,
+            ["CalendarReminderStartLabelsUseCalendarSemantics"] =
+                ProbeCalendarReminderStartLabels(),
             ["FloatingReminderRulesEntryStaysCompact"] =
                 Math.Abs(floating.Width - 520) <= 0.1 &&
                 floating.Height <= 391 &&
                 Required<Button>(floating, "FloatingManageReminderRules").Width <= 116,
             ["NoteReminderTimeOptionCounts"] = new[]
             {
-                Required<ComboBox>(main, "NoteReminderHour").Items.Count,
-                Required<ComboBox>(main, "NoteReminderMinute").Items.Count,
-                Required<ComboBox>(floating, "FloatingReminderHour").Items.Count,
-                Required<ComboBox>(floating, "FloatingReminderMinute").Items.Count
+                productionDatePickers.ReminderHourOptionCount,
+                productionDatePickers.ReminderMinuteOptionCount
             },
             ["CrossDayReminderSelectionWorks"] = crossDayReminderBehavior,
             ["ReminderSummaryAdvancesAfterFirstDue"] = reminderSummaryAdvances,
@@ -1425,6 +1422,12 @@ internal static class ValidationReport
                 mainStressCountdownTitleGateIsolationBehavior,
             ["MainStressCountdownTitleMeasurements"] =
                 mainReferenceBaseline.StressCountdownTitleMeasurements,
+            ["MainNoteCardReminderFontSizeDip"] =
+                mainReferenceBaseline.NoteCardReminderFontSizeDip,
+            ["MainNoteCardReminderFontSizeMeetsContract"] =
+                mainReferenceBaseline.NoteCardReminderFontSizeMeetsContract,
+            ["MainNoteCardReminderFontMeasurements"] =
+                mainReferenceBaseline.NoteCardReminderFontMeasurements,
             ["LegacyMigrationSupported"] = legacyMigration,
             ["DuplicateSettingsRejected"] = duplicateRejected,
             ["InvalidNotesRejected"] = invalidNotesRejected,
@@ -1437,6 +1440,8 @@ internal static class ValidationReport
                 main.FindName("CountdownWorkspace") is Canvas &&
                 main.FindName("DisplayPrecision") is ComboBox,
             ["MainNoteEditorFieldsDoNotOverlap"] = mainUiPolish.NoteEditorFieldsDoNotOverlap,
+            ["LegacyInlineReminderControlsStayHidden"] =
+                mainUiPolish.LegacyInlineReminderControlsStayHidden,
             ["MainNoteEditorLabelsVisible"] = mainUiPolish.NoteEditorLabelsVisible,
             ["MainMinimumSizeMatchesDefault"] = mainUiPolish.MinimumSizeMatchesDefault,
             ["PopupKeyboardLifecycleWorks"] = mainUiPolish.PopupKeyboardLifecycleWorks,
@@ -1685,6 +1690,10 @@ internal static class ValidationReport
             ["FloatingReferenceScenarioMatches"] = floatingReferenceExercise.ScenarioMatches,
             ["FloatingPrimaryDeadlineTextFullyVisible"] =
                 floatingReferenceExercise.PrimaryDeadlineTextFullyVisible,
+            ["FloatingPrimaryExtremeRemainingShrinks"] =
+                floatingReferenceExercise.PrimaryExtremeRemainingShrinks,
+            ["FloatingPrimaryDeadlineMeasurements"] =
+                floatingReferenceExercise.PrimaryDeadlineMeasurements,
             ["FloatingReferenceViewportStatesMatch"] = floatingReferenceExercise.ViewportStatesMatch,
             ["FloatingViewportScrollAndFocusRestored"] =
                 floatingReferenceExercise.ViewportScrollAndFocusRestored,
@@ -2632,6 +2641,10 @@ internal static class ValidationReport
                                 ? MeasureMainStressCountdownTitle(validationMain, spec)
                                 : null;
                         var pngBytes = EncodePng(CaptureOpaqueMainSurface(root));
+                        var noteCardReminderFont =
+                            workspaceKind == WorkspaceKind.Notes
+                                ? MeasureMainNoteCardReminderFont(validationMain, spec)
+                                : null;
                         var metrics = MeasureMainReferenceCapture(pngBytes);
                         if (metrics.Width != captureWidth || metrics.Height != captureHeight)
                         {
@@ -2655,7 +2668,8 @@ internal static class ValidationReport
                             fingerprint,
                             metrics.Alpha,
                             metrics.ContentRoi,
-                            stressCountdownTitle));
+                            stressCountdownTitle,
+                            noteCardReminderFont));
                     }
                 }
                 finally
@@ -2940,6 +2954,91 @@ internal static class ValidationReport
             }
             Directory.Delete(outputRoot);
         }
+    }
+
+    private static MainNoteCardReminderFontMeasurement? MeasureMainNoteCardReminderFont(
+        MainWindow main,
+        MainReferenceCaptureSpec spec)
+    {
+        var originalWidth = main.Width;
+        var originalHeight = main.Height;
+        try
+        {
+            main.Width = main.MinWidth;
+            main.Height = main.MinHeight;
+            PumpDispatcher();
+            main.UpdateLayout();
+
+            var summaries = CollectNoteCardReminderSummaries(main);
+            if (summaries.Length == 0)
+            {
+                return null;
+            }
+
+            var fontSizeDip = summaries
+                .Select(text => Math.Round(MeasureRenderedFontSizeDip(text, main), 2))
+                .Min();
+            return new MainNoteCardReminderFontMeasurement(
+                spec.CaptureId,
+                spec.Theme,
+                spec.State,
+                summaries.Length,
+                fontSizeDip,
+                fontSizeDip >= MainNoteCardReminderMinimumFontSizeDip);
+        }
+        finally
+        {
+            main.Width = originalWidth;
+            main.Height = originalHeight;
+            PumpDispatcher();
+            main.UpdateLayout();
+        }
+    }
+
+    private static double MeasureRenderedFontSizeDip(TextBlock text, Visual ancestor)
+    {
+        var transform = text.TransformToAncestor(ancestor);
+        var origin = transform.Transform(new Point(0, 0));
+        var unitX = transform.Transform(new Point(1, 0));
+        var unitY = transform.Transform(new Point(0, 1));
+        var scaleX = Math.Abs(unitX.X - origin.X);
+        var scaleY = Math.Abs(unitY.Y - origin.Y);
+        return text.FontSize * Math.Min(scaleX, scaleY);
+    }
+
+    private static TextBlock[] CollectNoteCardReminderSummaries(MainWindow main)
+    {
+        var sections = Descendants<StackPanel>(Required<StackPanel>(main, "ActiveNoteRows"))
+            .Concat(Descendants<StackPanel>(Required<StackPanel>(main, "CompletedNoteRows")))
+            .Where(panel =>
+                panel.IsVisible &&
+                string.Equals(panel.Uid, "NoteDateRows", StringComparison.Ordinal));
+        var summaries = new List<TextBlock>();
+        foreach (var card in sections.SelectMany(section => section.Children.OfType<Border>()))
+        {
+            if (!card.IsVisible || card.Child is not Grid grid)
+            {
+                continue;
+            }
+
+            var body = grid.Children.OfType<StackPanel>().FirstOrDefault();
+            if (body is null)
+            {
+                continue;
+            }
+
+            var marked = body.Children.OfType<TextBlock>().FirstOrDefault(text =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(text),
+                    MainWindow.NoteCardReminderSummaryAutomationId,
+                    StringComparison.Ordinal));
+            if (marked is not null)
+            {
+                summaries.Add(marked);
+            }
+        }
+
+        return summaries.ToArray();
     }
 
     private static MainStressCountdownTitleMeasurement MeasureMainStressCountdownTitle(
@@ -3505,6 +3604,11 @@ internal static class ValidationReport
                 .OfType<MainStressCountdownTitleMeasurement>()
                 .OrderBy(measurement => measurement.CaptureId, StringComparer.Ordinal)
                 .ToArray();
+            var noteCardReminderFontMeasurements = actualCaptures
+                .Select(capture => capture.NoteCardReminderFont)
+                .OfType<MainNoteCardReminderFontMeasurement>()
+                .OrderBy(measurement => measurement.CaptureId, StringComparer.Ordinal)
+                .ToArray();
             return new MainReferenceBaselineValidation(
                 true,
                 true,
@@ -3514,6 +3618,7 @@ internal static class ValidationReport
                 gates,
                 measurements,
                 stressCountdownTitleMeasurements,
+                noteCardReminderFontMeasurements,
                 diagnostics);
         }
         catch (Exception exception) when (exception is IOException or JsonException or
@@ -4339,6 +4444,37 @@ internal static class ValidationReport
             referenceWindow.UpdateTime(afterWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
 
+            var extremePrimaryUtc = referenceUtc.AddDays(2_000_000);
+            var extremePrimaryAdded = referenceSession.TrySaveCountdown(
+                "reference-extreme-primary",
+                "极端长剩余时间",
+                extremePrimaryUtc,
+                Array.Empty<string>(),
+                out _);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
+            var extremePrimaryRemaining = FindFloatingSecondaryRemaining(rows, "极端长剩余时间");
+            var extremePrimaryExpected = CountdownFormatting.FormatRemaining(
+                extremePrimaryUtc,
+                afterWorkdayUtc,
+                "Second");
+            var primaryExtremeRemainingShrinks =
+                extremePrimaryAdded &&
+                extremePrimaryRemaining is not null &&
+                string.Equals(extremePrimaryRemaining.Text, extremePrimaryExpected, StringComparison.Ordinal) &&
+                Math.Abs(extremePrimaryRemaining.Width - 194) <= 0.01 &&
+                extremePrimaryRemaining.FontSize is >= 10 and < 16 &&
+                extremePrimaryRemaining.TextWrapping == TextWrapping.NoWrap &&
+                extremePrimaryRemaining.TextTrimming == TextTrimming.None &&
+                extremePrimaryRemaining.TextAlignment == TextAlignment.Right &&
+                TextBlockLinesFit(extremePrimaryRemaining);
+            var extremePrimaryDeleted = referenceSession.TryDeleteCountdown(
+                "reference-extreme-primary",
+                out _);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
+            primaryExtremeRemainingShrinks &= extremePrimaryDeleted;
+
             const string primaryDeadlineText = "12月31日 23:59";
             var primaryDeadlineUtc = new DateTimeOffset(
                 2030,
@@ -4361,9 +4497,11 @@ internal static class ValidationReport
                 referenceWindow,
                 root,
                 rows);
+            var primaryDeadlineWithoutScrollbarMeasurement =
+                MeasurePrimaryDeadline(rows, primaryDeadlineText, false);
             var primaryDeadlineTextFullyVisibleWithoutScrollbar =
                 !primaryDeadlineWithoutScrollbar.VerticalScrollBarVisible &&
-                PrimaryDeadlineTextFullyVisible(rows, primaryDeadlineText);
+                primaryDeadlineWithoutScrollbarMeasurement.FullyVisible;
 
             var primaryDeadlineOverflowIds = Enumerable.Range(1, 8)
                 .Select(index => $"reference-primary-deadline-overflow-{index}")
@@ -4386,9 +4524,11 @@ internal static class ValidationReport
                 referenceWindow,
                 root,
                 rows);
+            var primaryDeadlineWithScrollbarMeasurement =
+                MeasurePrimaryDeadline(rows, primaryDeadlineText, true);
             var primaryDeadlineTextFullyVisibleWithScrollbar =
                 primaryDeadlineWithScrollbar.VerticalScrollBarVisible &&
-                PrimaryDeadlineTextFullyVisible(rows, primaryDeadlineText);
+                primaryDeadlineWithScrollbarMeasurement.FullyVisible;
 
             var primaryDeadlineOverflowDeleted = true;
             foreach (var id in primaryDeadlineOverflowIds)
@@ -4500,7 +4640,6 @@ internal static class ValidationReport
                 restoredFocusedNote is not null &&
                 ReferenceEquals(Keyboard.FocusedElement, restoredFocusedNote);
 
-            Required<ComboBox>(referenceWindow, "FloatingReminder").SelectedIndex = 2;
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             viewportStates.Add(
                 CaptureFloatingViewportState("repeating-reminder", referenceWindow, root, rows));
@@ -4657,7 +4796,7 @@ internal static class ValidationReport
                 viewportStates[3].VerticalScrollBarVisible &&
                 viewportStates[4].RenderedCardCount == 6 &&
                 viewportStates[4].RenderedMultilineNoteCount == 6 &&
-                viewportStates[5].RepeatingReminderPanelVisible &&
+                !viewportStates[5].RepeatingReminderPanelVisible &&
                 viewportStates[5].ScrollableHeight > 0 &&
                 viewportStates[6].ScrollableHeight > 0 &&
                 viewportStates[6].VerticalOffset > 0;
@@ -4833,6 +4972,12 @@ internal static class ValidationReport
                 workdayCountdownUsesPrimaryVisual,
                 scenarioMatches,
                 primaryDeadlineTextFullyVisible,
+                primaryExtremeRemainingShrinks,
+                new[]
+                {
+                    primaryDeadlineWithoutScrollbarMeasurement,
+                    primaryDeadlineWithScrollbarMeasurement
+                },
                 viewportStatesMatch,
                 rasterCardStatesMatch,
                 dynamicCardContentRemainsWpf,
@@ -6634,7 +6779,7 @@ internal static class ValidationReport
         var verticalScrollBarBounds = verticalScrollBar is null
             ? Rect.Empty
             : BoundsIn(verticalScrollBar, root);
-        var repeatingReminderPanel = Required<StackPanel>(window, "FloatingReminderIntervalPanel");
+        var repeatingReminderPanel = window.FindName("FloatingReminderIntervalPanel") as FrameworkElement;
         var bodyViewport = BoundsIn(bodyScroller, root);
         var bodyContentRight = bodyViewport.X + bodyScroller.ViewportWidth;
         var protectedHeaderContent = new[]
@@ -6755,7 +6900,7 @@ internal static class ValidationReport
             Descendants<TextBlock>(rows).Count(element => element.IsVisible),
             Descendants<CheckBox>(rows).Count(element => element.IsVisible),
             renderedMultilineNoteCount,
-            repeatingReminderPanel.IsVisible && repeatingReminderPanel.ActualHeight > 0,
+            repeatingReminderPanel is { IsVisible: true, ActualHeight: > 0 },
             Math.Round(bodyScroller.ScrollableHeight, 2),
             Math.Round(bodyScroller.VerticalOffset, 2),
             verticalScrollBar?.IsVisible == true,
@@ -8238,10 +8383,8 @@ internal static class ValidationReport
             sourceWindow.ShowWorkspace(WorkspaceKind.Countdowns);
             var draftText = Required<TextBox>(sourceWindow, "NoteText");
             var draftDate = Required<DatePicker>(sourceWindow, "NoteDate");
-            var draftReminder = Required<ComboBox>(sourceWindow, "NoteReminder");
             draftText.Text = "必须保留的便签草稿";
             draftDate.SelectedDate = new DateTime(2031, 5, 9);
-            draftReminder.SelectedIndex = 2;
             sourceWindow.Show();
             PumpDispatcher();
             sourceWindow.WindowState = WindowState.Minimized;
@@ -8328,7 +8471,6 @@ internal static class ValidationReport
                 FiltersEqual(filterBeforeOpen, filterAfterOpen) &&
                 string.Equals(draftText.Text, "必须保留的便签草稿", StringComparison.Ordinal) &&
                 draftDate.SelectedDate == new DateTime(2031, 5, 9) &&
-                draftReminder.SelectedIndex == 2 &&
                 sourceWindow.CurrentWorkspace == WorkspaceKind.Notes &&
                 center?.EntryCount == 2;
             var openSourceRestoresMinimizedWindow =
@@ -9017,14 +9159,30 @@ internal static class ValidationReport
     private static bool HasNoteDisclosureAccessibleName(Button toggle, string expectedObject)
     {
         var name = AutomationProperties.GetName(toggle);
-        var helpText = AutomationProperties.GetHelpText(toggle);
         return
             !string.IsNullOrWhiteSpace(name) &&
             (name.StartsWith("展开", StringComparison.Ordinal) ||
              name.StartsWith("收起", StringComparison.Ordinal)) &&
+            (name.Contains("当前展开", StringComparison.Ordinal) ||
+             name.Contains("当前收起", StringComparison.Ordinal)) &&
             name.Contains(expectedObject, StringComparison.Ordinal) &&
-            name.Contains("条", StringComparison.Ordinal) &&
-            helpText is "当前展开" or "当前收起";
+            name.Contains("条", StringComparison.Ordinal);
+    }
+
+    private static bool HasNoteRowActionAccessibleNames(DependencyObject root)
+    {
+        var actions = Descendants<Button>(root)
+            .Where(button =>
+                button.Content is "编辑" or "删除")
+            .ToArray();
+        return actions.Length == 0 ||
+               actions.All(button =>
+               {
+                   var action = (string)button.Content;
+                   var name = AutomationProperties.GetName(button);
+                   return name.StartsWith($"{action}便签 ", StringComparison.Ordinal) &&
+                          name.Length > $"{action}便签 ".Length;
+               });
     }
 
     private static bool DisclosureChevronMatches(Button toggle, bool isExpanded)
@@ -9329,7 +9487,7 @@ internal static class ValidationReport
         var segmentSelectedTextContrast = true;
         var characterPanelDocksFollowTheme = true;
         var referenceDecorationsFollowTheme = true;
-        var reminderLabel = Required<TextBlock>(main, "NoteReminderLabel");
+        var reminderLabel = Required<TextBlock>(main, "NoteReminderModeLabel");
         var characterPanel = Required<Border>(main, "CharacterPanelSurface");
         var originalWorkspace = main.CurrentWorkspace;
 
@@ -9345,7 +9503,7 @@ internal static class ValidationReport
                 main.UpdateLayout();
                 modes.Add(mode.ToString());
                 reminderLabelFollowsTheme &=
-                    ReferenceEquals(reminderLabel.Foreground, Application.Current.FindResource("InkBrush"));
+                    ReferenceEquals(reminderLabel.Foreground, Application.Current.FindResource("BodyBrush"));
                 segmentSelectedTextContrast &= MainSegmentButtonsHaveAccessibleSelectedStates(main);
                 characterPanelDocksFollowTheme &= main.CharacterPanelDocksFollowActiveTheme;
                 referenceDecorationsFollowTheme &= main.MainReferenceDecorationsFollowActiveTheme;
@@ -10248,10 +10406,9 @@ internal static class ValidationReport
             {
                 "ThemeModeButton", "TopmostCheck", "MinimizeButton", "CloseButton",
                 "CountdownTab", "NotesTab", "FilterButton", "TagManagerButton",
-                "NoteText", "NoteDate", "SaveNoteButton", "CancelNoteEdit", "NoteReminder",
-                "ManageNoteReminderRulesButton", "NoteReminderInterval", "CustomReminderMinutes",
-                "NoteTags", "NoteSearch", "NoteReminderDate", "NoteReminderHour",
-                "NoteReminderMinute", "NotesListRegion", "StatusText"
+                "NoteText", "NoteDate", "SaveNoteButton", "CancelNoteEdit",
+                "ManageNoteReminderRulesButton",
+                "NoteTags", "NoteSearch", "NotesListRegion", "StatusText"
             };
         return ids.Where(id =>
         {
@@ -11834,12 +11991,50 @@ internal static class ValidationReport
         DependencyObject rows,
         string expectedText)
     {
+        return MeasurePrimaryDeadline(rows, expectedText, scrollbarVisible: false).FullyVisible;
+    }
+
+    private static FloatingPrimaryDeadlineMeasurement MeasurePrimaryDeadline(
+        DependencyObject rows,
+        string expectedText,
+        bool scrollbarVisible)
+    {
         var text = Descendants<TextBlock>(rows).SingleOrDefault(candidate =>
             candidate.Text.StartsWith(expectedText, StringComparison.Ordinal));
-        return text is not null &&
-               string.Equals(text.Text, expectedText, StringComparison.Ordinal) &&
-               text.TextWrapping == TextWrapping.NoWrap &&
-               TextBlockLinesFit(text);
+        if (text is null)
+        {
+            return new FloatingPrimaryDeadlineMeasurement(
+                scrollbarVisible,
+                string.Empty,
+                0,
+                0,
+                false);
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(text);
+        var formatted = new FormattedText(
+            text.Text,
+            CultureInfo.CurrentCulture,
+            text.FlowDirection,
+            new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+            text.FontSize,
+            Brushes.Black,
+            dpi.PixelsPerDip);
+        var requiredWidth = formatted.WidthIncludingTrailingWhitespace +
+                            Math.Max(0, formatted.OverhangTrailing);
+        var fullyVisible =
+            string.Equals(text.Text, expectedText, StringComparison.Ordinal) &&
+            text.TextWrapping == TextWrapping.NoWrap &&
+            text.TextTrimming == TextTrimming.None &&
+            !text.Text.Contains('…') &&
+            text.ActualWidth + 0.01 >= requiredWidth &&
+            TextBlockLinesFit(text);
+        return new FloatingPrimaryDeadlineMeasurement(
+            scrollbarVisible,
+            text.Text,
+            Math.Round(text.ActualWidth, 2),
+            Math.Round(requiredWidth, 2),
+            fullyVisible);
     }
 
     private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(
@@ -11892,23 +12087,88 @@ internal static class ValidationReport
         }
     }
 
+    private static bool ProbeCalendarReminderStartLabels()
+    {
+        var editor = new ReminderRulesEditorWindow(
+            Array.Empty<ReminderRule>(),
+            new ValidationClock(new DateTimeOffset(2031, 4, 5, 0, 0, 0, TimeSpan.Zero)))
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        editor.Show();
+        PumpDispatcher();
+        try
+        {
+            var mode = Descendants<ComboBox>(editor).Single(comboBox =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(comboBox),
+                    "ReminderRuleMode",
+                    StringComparison.Ordinal));
+            var date = Descendants<DatePicker>(editor).Single();
+            var hour = Descendants<ComboBox>(editor).Single(comboBox =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(comboBox),
+                    "ReminderRuleFirstDueHour",
+                    StringComparison.Ordinal));
+            var minute = Descendants<ComboBox>(editor).Single(comboBox =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(comboBox),
+                    "ReminderRuleFirstDueMinute",
+                    StringComparison.Ordinal));
+            var onceLabelsMatch =
+                FirstDueRowLabel(editor) == "首次提醒" &&
+                AutomationProperties.GetName(date) == "首次提醒日期" &&
+                AutomationProperties.GetName(hour) == "首次提醒小时" &&
+                AutomationProperties.GetName(minute) == "首次提醒分钟";
+            mode.SelectedIndex = 2;
+            PumpDispatcher();
+            var calendarLabelsMatch =
+                FirstDueRowLabel(editor) == "开始日期" &&
+                AutomationProperties.GetName(date) == "开始日期" &&
+                AutomationProperties.GetName(hour) == "本地时刻小时" &&
+                AutomationProperties.GetName(minute) == "本地时刻分钟";
+            mode.SelectedIndex = 1;
+            PumpDispatcher();
+            var intervalLabelsMatch =
+                FirstDueRowLabel(editor) == "首次提醒" &&
+                AutomationProperties.GetName(date) == "首次提醒日期";
+            return onceLabelsMatch && calendarLabelsMatch && intervalLabelsMatch;
+        }
+        finally
+        {
+            editor.Close();
+            PumpDispatcher();
+        }
+    }
+
+    private static string FirstDueRowLabel(ReminderRulesEditorWindow editor)
+    {
+        return Descendants<TextBlock>(editor)
+            .Select(text => text.Text)
+            .FirstOrDefault(value =>
+                value is "首次提醒" or "开始日期") ??
+               string.Empty;
+    }
+
     private static ProductionDatePickerValidation ValidateProductionDatePickers(
         MainWindow main,
         FloatingWindow floating)
     {
         var attached = new List<DatePickerProductionMeasurement>();
         var originalMainWorkspace = main.CurrentWorkspace;
-        var mainReminderSchedule = Required<Grid>(main, "NoteReminderSchedule");
-        var originalMainReminderVisibility = mainReminderSchedule.Visibility;
         var filterPopup = Required<Popup>(main, "FilterPopup");
         var originalFilterOpen = filterPopup.IsOpen;
-        var floatingReminderSchedule = Required<Grid>(floating, "FloatingReminderSchedule");
-        var originalFloatingReminderVisibility = floatingReminderSchedule.Visibility;
         var floatingWasCountdowns =
             Required<ToggleButton>(floating, "FloatingCountdownsButton").IsChecked == true;
         ReminderRulesEditorWindow? rulesEditor = null;
         ReminderCenterWindow? reminderCenter = null;
         Window? negativeHost = null;
+        var reminderHourOptionCount = 0;
+        var reminderMinuteOptionCount = 0;
         try
         {
             main.ShowWorkspace(WorkspaceKind.Countdowns);
@@ -11916,13 +12176,9 @@ internal static class ValidationReport
             attached.Add(MeasureDatePicker("Main.CountdownDate", Required<DatePicker>(main, "CountdownDate")));
 
             main.ShowWorkspace(WorkspaceKind.Notes);
-            mainReminderSchedule.Visibility = Visibility.Visible;
             filterPopup.IsOpen = true;
             PumpDispatcher();
             attached.Add(MeasureDatePicker("Main.NoteDate", Required<DatePicker>(main, "NoteDate")));
-            attached.Add(MeasureDatePicker(
-                "Main.NoteReminderDate",
-                Required<DatePicker>(main, "NoteReminderDate")));
             filterPopup.IsOpen = true;
             PumpDispatcher();
             attached.Add(MeasureDatePicker(
@@ -11930,14 +12186,10 @@ internal static class ValidationReport
                 Required<DatePicker>(main, "NoteDateFilter")));
 
             floating.ShowWorkspace(WorkspaceKind.Notes);
-            floatingReminderSchedule.Visibility = Visibility.Visible;
             PumpDispatcher();
             attached.Add(MeasureDatePicker(
                 "Floating.NoteDate",
                 Required<DatePicker>(floating, "FloatingNoteDate")));
-            attached.Add(MeasureDatePicker(
-                "Floating.ReminderDate",
-                Required<DatePicker>(floating, "FloatingReminderDate")));
 
             rulesEditor = new ReminderRulesEditorWindow(
                 Array.Empty<ReminderRule>(),
@@ -11955,6 +12207,20 @@ internal static class ValidationReport
             attached.Add(MeasureDatePicker(
                 "ReminderRules.FirstDueDate",
                 Descendants<DatePicker>(rulesEditor).Single()));
+            reminderHourOptionCount = Descendants<ComboBox>(rulesEditor)
+                .Single(comboBox =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(comboBox),
+                        "ReminderRuleFirstDueHour",
+                        StringComparison.Ordinal))
+                .Items.Count;
+            reminderMinuteOptionCount = Descendants<ComboBox>(rulesEditor)
+                .Single(comboBox =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(comboBox),
+                        "ReminderRuleFirstDueMinute",
+                        StringComparison.Ordinal))
+                .Items.Count;
 
             var reminderKey = new ActiveReminderOccurrenceKey(
                 "date-picker-validation-rule",
@@ -12013,7 +12279,9 @@ internal static class ValidationReport
             return new ProductionDatePickerValidation(
                 attached,
                 reminderCenterMeasurement,
-                negativeMeasurement);
+                negativeMeasurement,
+                reminderHourOptionCount,
+                reminderMinuteOptionCount);
         }
         finally
         {
@@ -12021,9 +12289,7 @@ internal static class ValidationReport
             rulesEditor?.Close();
             reminderCenter?.ForceClose();
             filterPopup.IsOpen = originalFilterOpen;
-            mainReminderSchedule.Visibility = originalMainReminderVisibility;
             main.ShowWorkspace(originalMainWorkspace);
-            floatingReminderSchedule.Visibility = originalFloatingReminderVisibility;
             floating.ShowWorkspace(
                 floatingWasCountdowns ? WorkspaceKind.Countdowns : WorkspaceKind.Notes);
             PumpDispatcher();
@@ -12253,12 +12519,14 @@ internal static class ValidationReport
     private sealed record ProductionDatePickerValidation(
         IReadOnlyList<DatePickerProductionMeasurement> Attached,
         DatePickerProductionMeasurement ReminderCenter,
-        DatePickerProductionMeasurement UnattachedNegative)
+        DatePickerProductionMeasurement UnattachedNegative,
+        int ReminderHourOptionCount,
+        int ReminderMinuteOptionCount)
     {
         public int ProductionInputCount => Attached.Count + 1;
 
         public bool AllProductionInputsReadOnly =>
-            ProductionInputCount == 8 &&
+            ProductionInputCount == 6 &&
             Attached.All(input =>
                 input.TextBoxPresent && input.IsReadOnly && input.TextBoxIsNotFocusable) &&
             ReminderCenter is
@@ -12272,7 +12540,7 @@ internal static class ValidationReport
             !string.IsNullOrWhiteSpace(ReminderCenter.AutomationName);
 
         public bool AllAttached =>
-            Attached.Count == 7 && Attached.All(input => input.Attached);
+            Attached.Count == 5 && Attached.All(input => input.Attached);
 
         public bool AttachedTextPointerWorks =>
             AllAttached &&
@@ -12624,7 +12892,8 @@ internal static class ValidationReport
         MainReferenceStateFingerprint StateFingerprint,
         MainReferenceAlphaMetrics Alpha,
         MainReferenceContentRoi ContentRoi,
-        MainStressCountdownTitleMeasurement? StressCountdownTitle);
+        MainStressCountdownTitleMeasurement? StressCountdownTitle,
+        MainNoteCardReminderFontMeasurement? NoteCardReminderFont);
 
     private sealed record MainDaySingleBorderSpec(
         string StateId,
@@ -12702,6 +12971,14 @@ internal static class ValidationReport
                 Math.Round(bounds.Width, 2),
                 Math.Round(bounds.Height, 2));
     }
+
+    private sealed record MainNoteCardReminderFontMeasurement(
+        string CaptureId,
+        string Theme,
+        string State,
+        int SampleCount,
+        double FontSizeDip,
+        bool MeetsContract);
 
     private sealed record MainStressCountdownTitleMeasurement(
         string CaptureId,
@@ -12787,6 +13064,7 @@ internal static class ValidationReport
         MainReferenceManifestGateResults Gates,
         IReadOnlyList<MainReferenceBaselineCaptureMeasurement> Captures,
         IReadOnlyList<MainStressCountdownTitleMeasurement> StressCountdownTitleMeasurements,
+        IReadOnlyList<MainNoteCardReminderFontMeasurement> NoteCardReminderFontMeasurements,
         IReadOnlyList<string> Diagnostics)
     {
         private static MainReferenceManifestGateResults FailedGates { get; } = new(
@@ -12836,6 +13114,15 @@ internal static class ValidationReport
                         measurement.SeparatedFromRemaining,
                         measurement.SeparatedFromActions)).AllPassed);
 
+        public double NoteCardReminderFontSizeDip =>
+            NoteCardReminderFontMeasurements.Count == 0
+                ? 0
+                : NoteCardReminderFontMeasurements.Min(measurement => measurement.FontSizeDip);
+
+        public bool NoteCardReminderFontSizeMeetsContract =>
+            NoteCardReminderFontMeasurements.Count > 0 &&
+            NoteCardReminderFontMeasurements.All(measurement => measurement.MeetsContract);
+
         public static MainReferenceBaselineValidation NotRequested { get; } = new(
             false,
             false,
@@ -12845,6 +13132,7 @@ internal static class ValidationReport
             FailedGates,
             Array.Empty<MainReferenceBaselineCaptureMeasurement>(),
             Array.Empty<MainStressCountdownTitleMeasurement>(),
+            Array.Empty<MainNoteCardReminderFontMeasurement>(),
             new[] { "未设置 MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT；运行时发布包不携带主窗口参考图。" });
 
         public static MainReferenceBaselineValidation Invalid(
@@ -12861,6 +13149,7 @@ internal static class ValidationReport
                 FailedGates,
                 Array.Empty<MainReferenceBaselineCaptureMeasurement>(),
                 Array.Empty<MainStressCountdownTitleMeasurement>(),
+                Array.Empty<MainNoteCardReminderFontMeasurement>(),
                 new[] { diagnostic });
     }
 
@@ -13193,6 +13482,8 @@ internal static class ValidationReport
         bool WorkdayCountdownUsesPrimaryVisual,
         bool ScenarioMatches,
         bool PrimaryDeadlineTextFullyVisible,
+        bool PrimaryExtremeRemainingShrinks,
+        IReadOnlyList<FloatingPrimaryDeadlineMeasurement> PrimaryDeadlineMeasurements,
         bool ViewportStatesMatch,
         bool RasterCardStatesMatch,
         bool DynamicCardContentRemainsWpf,
@@ -13205,6 +13496,13 @@ internal static class ValidationReport
         FloatingScrollBarValidation ScrollBar,
         IReadOnlyList<double> ActualSize,
         string CapturePath);
+
+    private sealed record FloatingPrimaryDeadlineMeasurement(
+        bool ScrollbarVisible,
+        string Text,
+        double ActualWidth,
+        double RequiredWidth,
+        bool FullyVisible);
 
     private sealed record FloatingSecondaryRemainingMeasurement(
         string Precision,

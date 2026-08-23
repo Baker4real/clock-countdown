@@ -306,6 +306,8 @@ public static class ReminderRuleIdentity
 
 public static class ReminderRuleCompatibility
 {
+    // Unique remaining use: settings schema migration and shared-editor/save compatibility
+    // conversion. Inline first-reminder controls no longer call this path.
     public static IReadOnlyList<ReminderRule> FromLegacy(string noteId, NoteReminder reminder)
     {
         return reminder switch

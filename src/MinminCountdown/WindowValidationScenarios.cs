@@ -34,34 +34,25 @@ public sealed partial class MainWindow
     private MainUiPolishScenarios ProbeUiPolishScenarios()
     {
         var originalWorkspace = _workspace;
-        var originalReminderMode = NoteReminder.SelectedIndex;
-        var originalReminderInterval = NoteReminderInterval.SelectedIndex;
-        var originalCustomMinutes = CustomReminderMinutes.Text;
         var originalSearch = NoteSearch.Text;
         var originalFilter = _desktopWorkspace.Snapshot.Filter;
         try
         {
             ShowWorkspace(WorkspaceKind.Notes);
-            NoteReminder.SelectedIndex = 2;
-            NoteReminderInterval.SelectedIndex = 3;
-            CustomReminderMinutes.Text = "45";
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
 
-            var intervalBounds = ValidationBounds(NoteReminderInterval);
-            var customBounds = ValidationBounds(CustomReminderMinutes);
-            var scheduleBounds = ValidationBounds(NoteReminderSchedule);
+            var manageBounds = ValidationBounds(ManageNoteReminderRulesButton);
+            var summaryBounds = ValidationBounds(NoteReminderRulesSummary);
             var messageBounds = ValidationBounds(NoteMessage);
             var editorFieldsDoNotOverlap =
-                NoteReminderInterval.IsVisible &&
-                CustomReminderMinutes.IsVisible &&
-                NoteReminderSchedule.IsVisible &&
-                !intervalBounds.IntersectsWith(customBounds) &&
-                !intervalBounds.IntersectsWith(scheduleBounds) &&
-                !customBounds.IntersectsWith(scheduleBounds) &&
-                !intervalBounds.IntersectsWith(messageBounds) &&
-                !customBounds.IntersectsWith(messageBounds) &&
-                !scheduleBounds.IntersectsWith(messageBounds);
+                ManageNoteReminderRulesButton.IsVisible &&
+                NoteReminderRulesSummary.IsVisible &&
+                !manageBounds.IntersectsWith(summaryBounds) &&
+                !manageBounds.IntersectsWith(messageBounds) &&
+                !summaryBounds.IntersectsWith(messageBounds);
+            var legacyInlineReminderControlsStayHidden =
+                ProbeLegacyInlineReminderControlsStayHidden();
             var editorLabelsVisible = new[]
             {
                 NoteTextLabel,
@@ -153,6 +144,7 @@ public sealed partial class MainWindow
 
             return new MainUiPolishScenarios(
                 editorFieldsDoNotOverlap,
+                legacyInlineReminderControlsStayHidden,
                 editorLabelsVisible,
                 Width >= MinWidth &&
                 Height >= MinHeight &&
@@ -179,9 +171,6 @@ public sealed partial class MainWindow
             FilterPopup.IsOpen = false;
             TagManagerPopup.IsOpen = false;
             NoteTags.IsPopupOpen = false;
-            NoteReminder.SelectedIndex = originalReminderMode;
-            NoteReminderInterval.SelectedIndex = originalReminderInterval;
-            CustomReminderMinutes.Text = originalCustomMinutes;
             _desktopWorkspace.ApplyFilter(originalFilter);
             AnyTagMode.IsChecked = originalFilter.MatchMode == TagMatchMode.Any;
             AllTagMode.IsChecked = originalFilter.MatchMode == TagMatchMode.All;
@@ -206,6 +195,118 @@ public sealed partial class MainWindow
             UpdateFilterSummary();
             ShowWorkspace(originalWorkspace);
             WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private bool ProbeLegacyInlineReminderControlsStayHidden()
+    {
+        var originalEditingId = _editingNoteId;
+        ShowWorkspace(WorkspaceKind.Notes);
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        try
+        {
+            var snapshot = _desktopWorkspace.Snapshot;
+            var noteDate = snapshot.BeijingNow.AddDays(2).Date;
+            var onceDue = snapshot.BeijingNow.AddDays(3);
+            onceDue = new DateTimeOffset(
+                onceDue.Year,
+                onceDue.Month,
+                onceDue.Day,
+                9,
+                10,
+                0,
+                onceDue.Offset);
+            var dateText = noteDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var onceNote = new NoteRecord(
+                Guid.NewGuid().ToString("N"),
+                "验证主窗仅一次",
+                dateText,
+                false,
+                Array.Empty<string>(),
+                new ReminderRule[]
+                {
+                    new AbsoluteOnceReminderRule(
+                        Guid.NewGuid().ToString("N"),
+                        onceDue.ToUniversalTime())
+                });
+            var intervalNote = new NoteRecord(
+                Guid.NewGuid().ToString("N"),
+                "验证主窗重复提醒",
+                dateText,
+                false,
+                Array.Empty<string>(),
+                new ReminderRule[]
+                {
+                    new FixedIntervalReminderRule(
+                        Guid.NewGuid().ToString("N"),
+                        onceDue.AddDays(1).AddMinutes(20).ToUniversalTime(),
+                        new ReminderInterval(30))
+                });
+            return LegacyInlineReminderEditorStaysCollapsed(onceNote) &&
+                   LegacyInlineReminderEditorStaysCollapsed(intervalNote);
+        }
+        finally
+        {
+            NoteDate.IsDropDownOpen = false;
+            ResetNoteEditor();
+            _editingNoteId = originalEditingId;
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private bool LegacyInlineReminderEditorStaysCollapsed(NoteRecord note)
+    {
+        LoadNoteIntoEditor(note);
+        NoteDate.IsDropDownOpen = false;
+        UpdateLayout();
+        WindowValidationInput.Pump(Dispatcher);
+        var retiredNames = new[]
+        {
+            "NoteReminder",
+            "NoteReminderInterval",
+            "CustomReminderMinutes",
+            "NoteReminderSchedule",
+            "NoteReminderDate",
+            "NoteReminderHour",
+            "NoteReminderMinute",
+            "NoteReminderIntervalLabel",
+            "NoteReminderLabel"
+        };
+        var retiredHidden = retiredNames.All(name =>
+            FindName(name) is not FrameworkElement element || !element.IsVisible);
+        var summaryBounds = ValidationBounds(NoteReminderRulesSummary);
+        var obscured = retiredNames
+            .Select(name => FindName(name) as FrameworkElement)
+            .OfType<FrameworkElement>()
+            .Where(element => element.IsVisible)
+            .Select(element => ValidationBounds(element))
+            .Any(bounds => bounds.IntersectsWith(summaryBounds));
+        return
+            retiredHidden &&
+            !obscured &&
+            ManageNoteReminderRulesButton.IsVisible &&
+            NoteReminderRulesSummary.IsVisible &&
+            NoteReminderRulesSummary.ActualHeight > 0 &&
+            note.ReminderRules.Count > 0 &&
+            NoteReminderRulesSummary.Text.Contains("条提醒规则", StringComparison.Ordinal);
+    }
+
+    private static IEnumerable<T> MainValidationDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in MainValidationDescendants<T>(child))
+            {
+                yield return descendant;
+            }
         }
     }
 
@@ -835,12 +936,6 @@ public sealed partial class FloatingWindow
         var originalWorkspace = _workspace;
         var originalText = FloatingNoteText.Text;
         var originalDate = FloatingNoteDate.SelectedDate;
-        var originalReminderMode = FloatingReminder.SelectedIndex;
-        var originalReminderInterval = FloatingReminderInterval.SelectedIndex;
-        var originalCustomMinutes = FloatingCustomReminderMinutes.Text;
-        var originalReminderDate = FloatingReminderDate.SelectedDate;
-        var originalReminderHour = FloatingReminderHour.SelectedIndex;
-        var originalReminderMinute = FloatingReminderMinute.SelectedIndex;
         var originalSettingDefaultDate = _settingDefaultDate;
         var originalDateDirty = _dateDirty;
         var originalNotesScrollOffset = _workspaceScrollOffsets.TryGetValue(
@@ -851,14 +946,11 @@ public sealed partial class FloatingWindow
         try
         {
             ShowWorkspace(WorkspaceKind.Notes);
-            FloatingReminder.SelectedIndex = 1;
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
             var datePickerKeyboardLifecycleWorks =
-                WindowValidationInput.ExerciseDatePicker(FloatingNoteDate) &&
-                WindowValidationInput.ExerciseDatePicker(FloatingReminderDate);
+                WindowValidationInput.ExerciseDatePicker(FloatingNoteDate);
 
-            FloatingReminder.SelectedIndex = 0;
             FloatingNoteText.Text = string.Empty;
             FloatingAddNote.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(Dispatcher);
@@ -903,15 +995,9 @@ public sealed partial class FloatingWindow
         finally
         {
             FloatingNoteText.Text = originalText;
-            FloatingReminder.SelectedIndex = originalReminderMode;
-            FloatingReminderInterval.SelectedIndex = originalReminderInterval;
-            FloatingCustomReminderMinutes.Text = originalCustomMinutes;
             FloatingBodyScroller.ScrollToVerticalOffset(originalNotesScrollOffset);
             WindowValidationInput.Pump(Dispatcher);
             ShowWorkspace(originalWorkspace);
-            FloatingReminderDate.SelectedDate = originalReminderDate;
-            FloatingReminderHour.SelectedIndex = originalReminderHour;
-            FloatingReminderMinute.SelectedIndex = originalReminderMinute;
             _settingDefaultDate = true;
             FloatingNoteDate.SelectedDate = originalDate;
             _settingDefaultDate = originalSettingDefaultDate;
@@ -974,6 +1060,7 @@ internal sealed record WindowValidationTextFit(
 
 internal sealed record MainUiPolishScenarios(
     bool NoteEditorFieldsDoNotOverlap,
+    bool LegacyInlineReminderControlsStayHidden,
     bool NoteEditorLabelsVisible,
     bool MinimumSizeMatchesDefault,
     bool PopupKeyboardLifecycleWorks,

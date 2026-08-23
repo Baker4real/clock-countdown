@@ -274,11 +274,6 @@
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
                   <DatePicker x:Name="FloatingNoteDate" />
-                  <ComboBox x:Name="FloatingReminder"
-                            Grid.Column="1"
-                            Width="116"
-                            Margin="8,0,0,0"
-                            Visibility="Collapsed" />
                   <Button x:Name="FloatingManageReminderRules"
                           Grid.Column="1"
                           Width="116"
@@ -296,67 +291,6 @@
                            Foreground="{DynamicResource FloatingNoteInputTextBrush}"
                            Text="不提醒"
                            TextWrapping="Wrap" />
-                <Grid x:Name="FloatingReminderSchedule"
-                      Margin="0,8,0,0"
-                      Visibility="Collapsed">
-                  <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                  </Grid.RowDefinitions>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-                  <TextBlock x:Name="FloatingReminderLabel"
-                             Grid.ColumnSpan="4"
-                             Margin="0,0,0,5"
-                             VerticalAlignment="Center"
-                             Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                             Text="首次提醒（北京时间）" />
-                  <DatePicker x:Name="FloatingReminderDate"
-                              Grid.Row="1"
-                              ToolTip="首次提醒日期（北京时间）" />
-                  <ComboBox x:Name="FloatingReminderHour"
-                            Grid.Row="1"
-                            Grid.Column="1"
-                            Width="64"
-                            Margin="8,0,0,0"
-                            ToolTip="首次提醒小时" />
-                  <TextBlock x:Name="FloatingReminderSeparator"
-                             Grid.Row="1"
-                             Grid.Column="2"
-                             Margin="4,0"
-                             VerticalAlignment="Center"
-                             Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                             Text=":" />
-                  <ComboBox x:Name="FloatingReminderMinute"
-                             Grid.Row="1"
-                             Grid.Column="3"
-                             Width="64"
-                             ToolTip="首次提醒分钟" />
-                  <StackPanel x:Name="FloatingReminderIntervalPanel"
-                              Grid.Row="2"
-                              Grid.ColumnSpan="4"
-                              Margin="0,8,0,0"
-                              Orientation="Horizontal"
-                              Visibility="Collapsed">
-                    <TextBlock x:Name="FloatingReminderIntervalLabel"
-                               Margin="0,0,8,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                               Text="重复间隔" />
-                    <ComboBox x:Name="FloatingReminderInterval" Width="116" />
-                    <TextBox x:Name="FloatingCustomReminderMinutes"
-                             Width="70"
-                             Margin="8,0,0,0"
-                             MaxLength="4"
-                             ToolTip="输入 1 到 1440 的分钟数"
-                             Visibility="Collapsed" />
-                  </StackPanel>
-                </Grid>
                 <TextBlock x:Name="FloatingReminderMessage"
                            Margin="2,4,2,0"
                            Foreground="{DynamicResource FloatingErrorBrush}"

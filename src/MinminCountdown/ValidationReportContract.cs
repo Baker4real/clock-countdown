@@ -194,6 +194,12 @@ internal static class ValidationReportContract
         var stressMeasurementCount = ReadArrayLength(
             root,
             "MainStressCountdownTitleMeasurements");
+        var noteCardReminderMeasurementCount = ReadArrayLength(
+            root,
+            "MainNoteCardReminderFontMeasurements");
+        var noteCardReminderMeetsContract = ReadBoolean(
+            report,
+            "MainNoteCardReminderFontSizeMeetsContract");
         if (mainMode.Requested)
         {
             if (!stressVisuals || stressMeasurementCount != 2)
@@ -201,11 +207,28 @@ internal static class ValidationReportContract
                 throw new InvalidDataException(
                     "源码树模式必须包含 Day/Night 两份主窗口 Stress 标题真实测量。");
             }
+
+            if (noteCardReminderMeasurementCount == 0)
+            {
+                throw new InvalidDataException(
+                    "源码树模式必须包含主窗口便签卡提醒摘要真实 DIP 测量。");
+            }
+
+            if (!noteCardReminderMeetsContract)
+            {
+                throw new InvalidDataException(
+                    "源码树模式必须证明主窗口便签卡提醒摘要真实渲染达到 12 DIP。");
+            }
         }
         else if (stressVisuals || stressMeasurementCount != 0)
         {
             throw new InvalidDataException(
                 "发布包模式不能伪造主窗口 Stress 标题视觉结果或测量。");
+        }
+        else if (noteCardReminderMeetsContract || noteCardReminderMeasurementCount != 0)
+        {
+            throw new InvalidDataException(
+                "发布包模式不能伪造主窗口便签卡提醒摘要测量。");
         }
     }
 
@@ -250,12 +273,84 @@ internal static class ValidationReportContract
     {
         var falseGates = ReadFalseGateNames(root, $"{prefix}Gates");
         var diagnostics = ReadDiagnosticSummaries(root, $"{prefix}Diagnostics");
+        var comparisons = ReadCaptureComparisons(root, $"{prefix}Captures");
+        var comparisonSuffix = comparisons.Count == 0
+            ? string.Empty
+            : $" comparison=[{string.Join("; ", comparisons)}]";
         return $"{prefix} 源码树模式验证失败：" +
                $"manifestAvailable={manifestAvailable.ToString().ToLowerInvariant()}, " +
                $"validated={validated.ToString().ToLowerInvariant()}, " +
                $"captureCount={captureCount}, " +
                $"falseGates=[{FormatSummary(falseGates)}], " +
-               $"diagnostics=[{FormatSummary(diagnostics)}]。";
+               $"diagnostics=[{FormatSummary(diagnostics)}]。" +
+               comparisonSuffix;
+    }
+
+    private static IReadOnlyList<string> ReadCaptureComparisons(JsonElement root, string field)
+    {
+        if (!root.TryGetProperty(field, out var captures) ||
+            captures.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var lines = new List<string>();
+        foreach (var capture in captures.EnumerateArray())
+        {
+            if (capture.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            if (!TryReadString(capture, "CaptureId", out var captureId) &&
+                !TryReadString(capture, "captureId", out captureId))
+            {
+                continue;
+            }
+
+            if (!TryGetProperty(capture, "Comparison", out var comparison) &&
+                !TryGetProperty(capture, "comparison", out comparison) ||
+                comparison.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            lines.Add(
+                $"{captureId}:" +
+                $"max={ReadNumber(comparison, "MaxAbsoluteChannelDelta", "maxAbsoluteChannelDelta")}/" +
+                $"mae={ReadNumber(comparison, "MeanAbsoluteError", "meanAbsoluteError")}/" +
+                $"rmse={ReadNumber(comparison, "RootMeanSquareError", "rootMeanSquareError")}/" +
+                $"changed={ReadNumber(comparison, "ChangedPixelCount", "changedPixelCount")}");
+        }
+
+        return lines;
+    }
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement value) =>
+        element.TryGetProperty(name, out value);
+
+    private static bool TryReadString(JsonElement element, string name, out string value)
+    {
+        value = string.Empty;
+        if (!element.TryGetProperty(name, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        value = property.GetString() ?? string.Empty;
+        return value.Length > 0;
+    }
+
+    private static string ReadNumber(JsonElement element, string pascalName, string camelName)
+    {
+        if (element.TryGetProperty(pascalName, out var value) ||
+            element.TryGetProperty(camelName, out value))
+        {
+            return value.ValueKind == JsonValueKind.Number ? value.ToString() : value.ValueKind.ToString();
+        }
+
+        return "?";
     }
 
     private static IReadOnlyList<string> ReadFalseGateNames(JsonElement root, string field)
@@ -457,6 +552,18 @@ internal static class ValidationReportContract
             report => report["MainStressCountdownTitleVisuals"] = true,
             false,
             "契约未拒绝发布包伪造 Stress 标题视觉结果。");
+        MustReject(
+            report => report["MainNoteCardReminderFontMeasurements"] = Array.Empty<object>(),
+            true,
+            "契约未拒绝源码树模式缺少便签卡提醒摘要测量。");
+        MustReject(
+            report => report["MainNoteCardReminderFontSizeMeetsContract"] = false,
+            true,
+            "契约未拒绝源码树模式便签卡提醒摘要未达 12 DIP。");
+        MustReject(
+            report => report["MainNoteCardReminderFontMeasurements"] = new object[] { new() },
+            false,
+            "契约未拒绝发布包伪造便签卡提醒摘要测量。");
 
         var sourceSnapshot = SealCore(CreateBehaviorFixture(requested: true));
         var firstJson = JsonSerializer.Serialize(sourceSnapshot);
@@ -526,6 +633,10 @@ internal static class ValidationReportContract
         report.Add(
             "MainStressCountdownTitleMeasurements",
             requested ? new object[] { new(), new() } : Array.Empty<object>());
+        report.Add("MainNoteCardReminderFontSizeMeetsContract", requested);
+        report.Add(
+            "MainNoteCardReminderFontMeasurements",
+            requested ? new object[] { new(), new(), new(), new() } : Array.Empty<object>());
         return report;
     }
 

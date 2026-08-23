@@ -120,6 +120,16 @@ function Remove-CountdownValidationSettingsArtifactFixture {
     }
 }
 
+function Get-IndependentCountdownDiagnosticMutexName {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path).ToUpperInvariant()
+    $hex = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [System.Text.UTF8Encoding]::new($false).GetBytes($normalizedPath)))
+    "Local\MinminCountdown.Diagnostic-$($hex.Substring(0, 32))"
+}
+
 if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $RemoteDeploymentOnly)) {
     $validationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-validation-tests'
     $validationTestRoot = Join-Path $validationEvidenceRoot ([guid]::NewGuid().ToString('N'))
@@ -4615,6 +4625,237 @@ try {
     }
     Assert-Equal $true (Test-Path -LiteralPath "$diagnosticLogTestPath.1" -PathType Leaf) 'Diagnostic log rotates at the size bound'
     Assert-Equal $true ((Get-Item -LiteralPath $diagnosticLogTestPath).Length -lt 1024) 'Diagnostic current log remains bounded after rotation'
+
+    $utf8NoBomDiagnostic = [System.Text.UTF8Encoding]::new($false)
+    $runtimeModulePath = Join-Path $PSScriptRoot 'Countdown.Runtime.psm1'
+    $runtimeModuleForDiagnostic = Get-Module -Name 'Countdown.Runtime'
+    $diagnosticMutexGuardPath = Join-Path $PSScriptRoot 'diagnostic-mutex-name-guard.jsonl'
+    $expectedDiagnosticMutexName = Get-IndependentCountdownDiagnosticMutexName -Path $diagnosticMutexGuardPath
+    $actualDiagnosticMutexName = ''
+    try {
+        $actualDiagnosticMutexName = [string] (& $runtimeModuleForDiagnostic {
+                param($Path)
+                Get-CountdownDiagnosticMutexName -Path $Path
+            } $diagnosticMutexGuardPath)
+    }
+    catch {
+        $actualDiagnosticMutexName = ''
+    }
+    Assert-Equal $expectedDiagnosticMutexName $actualDiagnosticMutexName 'Diagnostic mutex name follows the C# path-hash rule'
+    $mixedCaseDiagnosticMutexName = ''
+    $aliasDiagnosticMutexName = ''
+    try {
+        $mixedCaseDiagnosticMutexName = [string] (& $runtimeModuleForDiagnostic {
+                param($Path)
+                Get-CountdownDiagnosticMutexName -Path $Path
+            } $diagnosticMutexGuardPath.ToLowerInvariant())
+        $aliasDiagnosticMutexName = [string] (& $runtimeModuleForDiagnostic {
+                param($Path)
+                Get-CountdownDiagnosticMutexName -Path $Path
+            } (Join-Path $PSScriptRoot 'mutex-alias\..\diagnostic-mutex-name-guard.jsonl'))
+    }
+    catch {
+        $mixedCaseDiagnosticMutexName = ''
+        $aliasDiagnosticMutexName = ''
+    }
+    Assert-Equal $expectedDiagnosticMutexName $mixedCaseDiagnosticMutexName 'Diagnostic mutex name normalizes path case'
+    Assert-Equal $expectedDiagnosticMutexName $aliasDiagnosticMutexName 'Diagnostic mutex name uses the resolved full path'
+
+    $diagnosticTimeoutLogPath = Join-Path $runtimeTestRoot 'logs\timeout.jsonl'
+    $expectedTimeoutMutexName = Get-IndependentCountdownDiagnosticMutexName -Path $diagnosticTimeoutLogPath
+    $timeoutProbePath = Join-Path $runtimeTestRoot 'diagnostic-timeout-probe.ps1'
+    $timeoutStdoutPath = Join-Path $runtimeTestRoot 'diagnostic-timeout.stdout.txt'
+    $timeoutStderrPath = Join-Path $runtimeTestRoot 'diagnostic-timeout.stderr.txt'
+    $timeoutProbe = @'
+param(
+    [Parameter(Mandatory)] [string] $RuntimeModulePath,
+    [Parameter(Mandatory)] [string] $LogPath
+)
+$ErrorActionPreference = 'Stop'
+Import-Module -Name $RuntimeModulePath -Force
+$threw = $false
+$result = $null
+$started = [DateTimeOffset]::UtcNow
+try {
+    $result = Write-CountdownDiagnosticEvent -Path $LogPath -Level Info -Event 'DiagnosticMutexTimeoutDrop' -TimeoutSeconds 1
+}
+catch {
+    $threw = $true
+}
+[pscustomobject]@{
+    Threw = $threw
+    Result = $result
+    ElapsedMilliseconds = [int] ([DateTimeOffset]::UtcNow - $started).TotalMilliseconds
+} | ConvertTo-Json -Compress
+'@
+    [System.IO.File]::WriteAllText($timeoutProbePath, $timeoutProbe, $utf8NoBomDiagnostic)
+    $heldDiagnosticMutex = [System.Threading.Mutex]::new($false, $expectedTimeoutMutexName)
+    $heldDiagnosticMutexAcquired = $false
+    $timeoutProbeProcess = $null
+    try {
+        $heldDiagnosticMutexAcquired = $heldDiagnosticMutex.WaitOne([TimeSpan]::FromSeconds(5))
+        Assert-Equal $true $heldDiagnosticMutexAcquired 'Diagnostic timeout fixture acquired the independently derived mutex'
+        $diagnosticPwsh = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
+        $timeoutProbeProcess = Start-Process -FilePath $diagnosticPwsh -ArgumentList @(
+            '-NoLogo',
+            '-NoProfile',
+            '-File',
+            $timeoutProbePath,
+            '-RuntimeModulePath',
+            $runtimeModulePath,
+            '-LogPath',
+            $diagnosticTimeoutLogPath
+        ) -WorkingDirectory $runtimeTestRoot -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $timeoutStdoutPath `
+            -RedirectStandardError $timeoutStderrPath
+        $timeoutProbeExited = $timeoutProbeProcess.WaitForExit(8000)
+        if (-not $timeoutProbeExited) {
+            if ($heldDiagnosticMutexAcquired) {
+                $heldDiagnosticMutex.ReleaseMutex()
+                $heldDiagnosticMutexAcquired = $false
+            }
+            if (-not $timeoutProbeProcess.WaitForExit(8000)) {
+                Stop-Process -Id $timeoutProbeProcess.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+        else {
+            $timeoutProbeProcess.WaitForExit()
+        }
+        Assert-Equal $true $timeoutProbeExited 'Diagnostic write wait stays within a 1-second bound'
+        Assert-Equal 0 $timeoutProbeProcess.ExitCode 'Diagnostic timeout probe exits without throwing'
+        $timeoutProbeSummary = Get-Content -LiteralPath $timeoutStdoutPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-Equal $false ([bool] $timeoutProbeSummary.Threw) 'Diagnostic mutex timeout does not throw to the caller'
+        Assert-Equal $false ([bool] $timeoutProbeSummary.Result) 'Diagnostic mutex timeout silently drops the line'
+        Assert-Equal $true (
+            [int] $timeoutProbeSummary.ElapsedMilliseconds -ge 500 -and
+            [int] $timeoutProbeSummary.ElapsedMilliseconds -le 4000
+        ) 'Diagnostic mutex wait uses the requested 1-second timeout'
+        Assert-Equal $false (Test-Path -LiteralPath $diagnosticTimeoutLogPath -PathType Leaf) 'Dropped diagnostic line is not written'
+    }
+    finally {
+        if ($heldDiagnosticMutexAcquired) {
+            $heldDiagnosticMutex.ReleaseMutex()
+        }
+        $heldDiagnosticMutex.Dispose()
+        if ($null -ne $timeoutProbeProcess) {
+            $timeoutProbeProcess.Dispose()
+        }
+    }
+    $afterTimeoutWrite = $false
+    $afterTimeoutThrew = $false
+    try {
+        $afterTimeoutWrite = Write-CountdownDiagnosticEvent -Path $diagnosticTimeoutLogPath -Level Info -Event 'DiagnosticMutexTimeoutRecovered' -TimeoutSeconds 1
+    }
+    catch {
+        $afterTimeoutThrew = $true
+    }
+    Assert-Equal $false $afterTimeoutThrew 'Diagnostic write after mutex release does not throw'
+    Assert-Equal $true $afterTimeoutWrite 'Diagnostic write succeeds after the mutex is released'
+
+    $diagnosticConcurrentLogPath = Join-Path $runtimeTestRoot 'logs\concurrent.jsonl'
+    $diagnosticConcurrentBarrierPath = Join-Path $runtimeTestRoot 'diagnostic-concurrent.start'
+    $diagnosticConcurrentProbePath = Join-Path $runtimeTestRoot 'diagnostic-concurrent-probe.ps1'
+    $concurrentProbe = @'
+param(
+    [Parameter(Mandatory)] [string] $RuntimeModulePath,
+    [Parameter(Mandatory)] [string] $LogPath,
+    [Parameter(Mandatory)] [string] $BarrierPath,
+    [Parameter(Mandatory)] [int] $Worker,
+    [Parameter(Mandatory)] [int] $WriteCount
+)
+$ErrorActionPreference = 'Stop'
+Import-Module -Name $RuntimeModulePath -Force
+while (-not (Test-Path -LiteralPath $BarrierPath -PathType Leaf)) {
+    Start-Sleep -Milliseconds 5
+}
+$failed = 0
+for ($index = 0; $index -lt $WriteCount; $index++) {
+    $written = Write-CountdownDiagnosticEvent -Path $LogPath -Level Info -Event "DiagnosticMutexWorker$Worker-$index" -MaxBytes 4096 -MaxArchives 3
+    if (-not $written) { $failed++ }
+}
+if ($failed -ne 0) { exit 1 }
+'@
+    [System.IO.File]::WriteAllText($diagnosticConcurrentProbePath, $concurrentProbe, $utf8NoBomDiagnostic)
+    $diagnosticPwsh = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
+    $concurrentProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+    $concurrentWorkerCount = 2
+    $concurrentWritesPerWorker = 30
+    try {
+        for ($worker = 0; $worker -lt $concurrentWorkerCount; $worker++) {
+            $probeLogPath = if ($worker -eq 0) {
+                $diagnosticConcurrentLogPath
+            }
+            else {
+                Join-Path $runtimeTestRoot 'logs\..\logs\concurrent.jsonl'
+            }
+            $probe = Start-Process -FilePath $diagnosticPwsh -ArgumentList @(
+                '-NoLogo',
+                '-NoProfile',
+                '-File',
+                $diagnosticConcurrentProbePath,
+                '-RuntimeModulePath',
+                $runtimeModulePath,
+                '-LogPath',
+                $probeLogPath,
+                '-BarrierPath',
+                $diagnosticConcurrentBarrierPath,
+                '-Worker',
+                $worker,
+                '-WriteCount',
+                $concurrentWritesPerWorker
+            ) -WorkingDirectory $runtimeTestRoot -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput (Join-Path $runtimeTestRoot "diagnostic-concurrent-$worker.stdout.txt") `
+                -RedirectStandardError (Join-Path $runtimeTestRoot "diagnostic-concurrent-$worker.stderr.txt")
+            [void] $concurrentProcesses.Add($probe)
+        }
+        Start-Sleep -Milliseconds 300
+        [System.IO.File]::WriteAllText($diagnosticConcurrentBarrierPath, 'start', $utf8NoBomDiagnostic)
+        foreach ($probe in $concurrentProcesses) {
+            $exited = $probe.WaitForExit(30000)
+            if (-not $exited) {
+                Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+            }
+            else {
+                $probe.WaitForExit()
+            }
+            Assert-Equal $true $exited "Diagnostic concurrent probe exited in time: PID=$($probe.Id)"
+            Assert-Equal 0 $probe.ExitCode "Diagnostic concurrent probe wrote every event: PID=$($probe.Id)"
+        }
+        $concurrentEntries = [System.Collections.Generic.List[object]]::new()
+        $concurrentParseFailures = 0
+        foreach ($path in @(
+                $diagnosticConcurrentLogPath,
+                "$diagnosticConcurrentLogPath.1",
+                "$diagnosticConcurrentLogPath.2",
+                "$diagnosticConcurrentLogPath.3"
+            )) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+            foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                try {
+                    $concurrentEntries.Add(($line | ConvertFrom-Json))
+                }
+                catch {
+                    $concurrentParseFailures++
+                }
+            }
+        }
+        Assert-Equal 0 $concurrentParseFailures 'Concurrent diagnostic writes do not interleave or corrupt JSONL'
+        $concurrentWorkerEvents = @(
+            $concurrentEntries |
+                Where-Object { $_.event -like 'DiagnosticMutexWorker*' }
+        )
+        Assert-Equal ($concurrentWorkerCount * $concurrentWritesPerWorker) $concurrentWorkerEvents.Count 'Concurrent diagnostic writes persist every event'
+        Assert-Equal $concurrentWorkerEvents.Count @($concurrentWorkerEvents.event | Sort-Object -Unique).Count 'Concurrent diagnostic writes persist unique events'
+    }
+    finally {
+        foreach ($probe in $concurrentProcesses) {
+            if (-not $probe.HasExited) {
+                Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+            }
+            $probe.Dispose()
+        }
+    }
 }
 finally {
     Remove-Item -LiteralPath $runtimeTestRoot -Recurse -Force -ErrorAction SilentlyContinue

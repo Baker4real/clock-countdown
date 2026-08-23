@@ -144,6 +144,21 @@ function Rotate-CountdownDiagnosticLog {
     }
 }
 
+function Get-CountdownDiagnosticMutexName {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path).ToUpperInvariant()
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $pathHash = $sha256.ComputeHash([System.Text.UTF8Encoding]::new($false).GetBytes($normalizedPath))
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    $hex = [System.BitConverter]::ToString($pathHash).Replace('-', '')
+    "Local\MinminCountdown.Diagnostic-$($hex.Substring(0, 32))"
+}
+
 function Write-CountdownDiagnosticEvent {
     [CmdletBinding()]
     param(
@@ -153,15 +168,12 @@ function Write-CountdownDiagnosticEvent {
         [AllowNull()] [System.Exception] $Exception,
         [AllowNull()] [AllowEmptyString()] [string] $ScriptStackTrace,
         [ValidateRange(256, 104857600)] [long] $MaxBytes = 1048576,
-        [ValidateRange(1, 10)] [int] $MaxArchives = 3
+        [ValidateRange(1, 10)] [int] $MaxArchives = 3,
+        [ValidateRange(1, 60)] [int] $TimeoutSeconds = 5
     )
 
     try {
         $resolvedPath = ConvertTo-CountdownRuntimeFullPath -Path $Path
-        $directory = Split-Path -Parent $resolvedPath
-        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
-            New-Item -ItemType Directory -Path $directory -Force | Out-Null
-        }
         $entry = [ordered]@{
             schemaVersion = 1
             timestampUtc = [DateTimeOffset]::UtcNow.ToString('o')
@@ -180,9 +192,35 @@ function Write-CountdownDiagnosticEvent {
             $entry.scriptStackTrace = ConvertTo-CountdownDiagnosticText -Value $ScriptStackTrace -MaxLength 4096
         }
         $line = $entry | ConvertTo-Json -Depth 4 -Compress
-        Rotate-CountdownDiagnosticLog -Path $resolvedPath -NextLine $line -MaxBytes $MaxBytes -MaxArchives $MaxArchives
-        [System.IO.File]::AppendAllText($resolvedPath, $line + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
-        $true
+        $mutex = $null
+        $acquired = $false
+        try {
+            $mutex = [System.Threading.Mutex]::new($false, (Get-CountdownDiagnosticMutexName -Path $resolvedPath))
+            try {
+                $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds($TimeoutSeconds))
+            }
+            catch [System.Threading.AbandonedMutexException] {
+                $acquired = $true
+            }
+            if (-not $acquired) {
+                return $false
+            }
+            $directory = Split-Path -Parent $resolvedPath
+            if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+                New-Item -ItemType Directory -Path $directory -Force | Out-Null
+            }
+            Rotate-CountdownDiagnosticLog -Path $resolvedPath -NextLine $line -MaxBytes $MaxBytes -MaxArchives $MaxArchives
+            [System.IO.File]::AppendAllText($resolvedPath, $line + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+            return $true
+        }
+        finally {
+            if ($acquired -and $null -ne $mutex) {
+                try { [void] $mutex.ReleaseMutex() } catch { }
+            }
+            if ($null -ne $mutex) {
+                $mutex.Dispose()
+            }
+        }
     }
     catch {
         $false

@@ -91,6 +91,8 @@ intent: 定义时钟倒计时项目的统一领域词汇和时间语义。
 
 应用目录 `logs\application.jsonl` 中的本机滚动 JSONL 事件流，用于确认启动、正常退出、窗口就绪、单实例激活结果、节假日日历状态和致命异常。激活事件只保存散列 scope identity、随机 request identity、结果和窗口状态；日志不保存筛选值、编辑草稿、便签正文、倒计时名称、标签名称、工资、设置 JSON、设置备份、恢复证据或设备凭据。
 
+C# 与 PowerShell 诊断写入器使用同一跨进程命名互斥体：日志路径经 `GetFullPath`、`ToUpperInvariant` 后取 UTF-8 SHA-256 十六进制前 32 位，名称形如 `Local\MinminCountdown.Diagnostic-{前32}`。C# 诊断 logger 持锁时使用无超时 `WaitOne`，遇 `AbandonedMutexException` 视为已获取，失败吞掉。PowerShell 诊断写入器等待有界（秒级）；等待超时或异常时静默丢行、不阻塞调用方。
+
 ## 设置备份与确认恢复
 
 每次替换严格合法的主设置前，应用在同一设置写锁内维护两代设备本地合法版本：`settings.json.backup1` 是上一代，`settings.json.backup2` 是上上代；无效主文件不会进入备份历史。启动时不存在主文件表示合法首次运行；任何可读且严格合法的主文件始终优先，不用记录数量与备份比较新旧。

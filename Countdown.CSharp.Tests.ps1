@@ -408,6 +408,38 @@ function Get-InstanceActivationPipeName {
     return 'MinminCountdown.Activation-{0}' -f $activationScope.Substring(0, 32)
 }
 
+function Read-SharedTestEvidenceText {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return ''
+    }
+
+    $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+    $source = [System.IO.File]::Open(
+        $Path,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        $share)
+    try {
+        $reader = [System.IO.StreamReader]::new(
+            $source,
+            [System.Text.UTF8Encoding]::new($false),
+            $true,
+            1024,
+            $true)
+        try {
+            return $reader.ReadToEnd()
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+    finally {
+        $source.Dispose()
+    }
+}
+
 function Copy-DiagnosticConcurrencyEvidenceFile {
     param(
         [Parameter(Mandatory)] [string] $SourcePath,
@@ -452,7 +484,9 @@ function Save-DiagnosticConcurrencyFailureEvidence {
         [Parameter(Mandatory)] [string] $DiagnosticPath,
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $ClientProcesses,
         [AllowNull()] [System.Diagnostics.Process] $PrimaryProcess,
-        [Nullable[DateTimeOffset]] $DeadlineUtc
+        [Nullable[DateTimeOffset]] $DeadlineUtc,
+        [AllowNull()] $ProbeCompletionCounts,
+        [AllowEmptyCollection()] [object[]] $WorkerOutputs
     )
 
     $createdumpPath = 'D:\Codex\tools\dotnet\10.0\shared\Microsoft.NETCore.App\10.0.10\createdump.exe'
@@ -513,6 +547,19 @@ function Save-DiagnosticConcurrencyFailureEvidence {
     for ($index = 0; $index -lt $clients.Count; $index++) {
         & $copyEvidenceFile (Join-Path $TestRoot "parallel-$index.stdout.txt") "parallel-$index.stdout.txt"
         & $copyEvidenceFile (Join-Path $TestRoot "parallel-$index.stderr.txt") "parallel-$index.stderr.txt"
+    }
+    foreach ($prefix in @('logger', 'isolation-logger', 'isolation-pass')) {
+        for ($index = 0; $index -lt 8; $index++) {
+            $stdoutPath = Join-Path $TestRoot ("{0}-{1}.stdout.txt" -f $prefix, $index)
+            $stderrPath = Join-Path $TestRoot ("{0}-{1}.stderr.txt" -f $prefix, $index)
+            if ($prefix -ne 'logger' -and
+                -not (Test-Path -LiteralPath $stdoutPath -PathType Leaf) -and
+                -not (Test-Path -LiteralPath $stderrPath -PathType Leaf)) {
+                continue
+            }
+            & $copyEvidenceFile $stdoutPath ("{0}-{1}.stdout.txt" -f $prefix, $index)
+            & $copyEvidenceFile $stderrPath ("{0}-{1}.stderr.txt" -f $prefix, $index)
+        }
     }
     foreach ($suffix in @('', '.1', '.2', '.3')) {
         $sourcePath = "$DiagnosticPath$suffix"
@@ -635,6 +682,19 @@ function Save-DiagnosticConcurrencyFailureEvidence {
         createdumpPresent = $createdumpPresent
         primary = & $readProcessState $PrimaryProcess
         clients = @($clientStates)
+        probeCompletionCounts = $ProbeCompletionCounts
+        workerOutputs = @(
+            @($WorkerOutputs | Where-Object { $null -ne $_ }) |
+                ForEach-Object {
+                    [ordered]@{
+                        index = $_.Index
+                        stdoutLength = ([string] $_.Stdout).Length
+                        stderrLength = ([string] $_.Stderr).Length
+                        stdout = [string] $_.Stdout
+                        stderr = [string] $_.Stderr
+                    }
+                }
+        )
         copiedFiles = @($copiedFiles)
         copyFailures = @($copyFailures)
         dumps = @($dumps)
@@ -658,7 +718,9 @@ function Complete-DiagnosticConcurrencyFailure {
         [Parameter(Mandatory)] [string] $DiagnosticPath,
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $ClientProcesses,
         [AllowNull()] [System.Diagnostics.Process] $PrimaryProcess,
-        [Nullable[DateTimeOffset]] $DeadlineUtc
+        [Nullable[DateTimeOffset]] $DeadlineUtc,
+        [AllowNull()] $ProbeCompletionCounts,
+        [AllowEmptyCollection()] [object[]] $WorkerOutputs
     )
 
     $evidenceDirectory = $null
@@ -670,7 +732,9 @@ function Complete-DiagnosticConcurrencyFailure {
             -DiagnosticPath $DiagnosticPath `
             -ClientProcesses $ClientProcesses `
             -PrimaryProcess $PrimaryProcess `
-            -DeadlineUtc $DeadlineUtc
+            -DeadlineUtc $DeadlineUtc `
+            -ProbeCompletionCounts $ProbeCompletionCounts `
+            -WorkerOutputs @($WorkerOutputs)
         $evidenceDirectory = [string] $evidence.Directory
     }
     catch {
@@ -681,6 +745,701 @@ function Complete-DiagnosticConcurrencyFailure {
         throw $Message
     }
     throw "$Message，证据：$evidenceDirectory"
+}
+
+$script:DesktopLauncherColdBudgetMilliseconds = 4700
+$script:DesktopLauncherWarmBudgetMilliseconds = 4500
+$script:DesktopLauncherLatencyProbeEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-desktop-launcher-tests\probe'
+# #62 probe 共享截止：8×100 强制 1MB 滚动写 5 次实测 [4635, 3077, 4181, 4458, 5629] p95/max=5629ms，+20% 取整 6800ms。
+$script:DiagnosticConcurrencyProbeDeadlineMilliseconds = 6800
+
+function Get-DesktopLauncherJsonProperty {
+    param(
+        $Object,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
+function ConvertTo-DesktopLauncherUtcOffset {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    if ($Value -is [DateTimeOffset]) {
+        return ([DateTimeOffset] $Value).ToUniversalTime()
+    }
+
+    if ($Value -is [DateTime]) {
+        $dt = [DateTime] $Value
+        switch ($dt.Kind) {
+            'Utc' { return [DateTimeOffset]::new($dt, [TimeSpan]::Zero) }
+            'Local' { return [DateTimeOffset]::new($dt).ToUniversalTime() }
+            default {
+                return [DateTimeOffset]::new(
+                    [DateTime]::SpecifyKind($dt, [DateTimeKind]::Local)
+                ).ToUniversalTime()
+            }
+        }
+    }
+
+    $parsed = [datetimeoffset]::MinValue
+    if ([DateTimeOffset]::TryParse(
+            [string] $Value,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind,
+            [ref] $parsed)) {
+        return $parsed.ToUniversalTime()
+    }
+
+    return $null
+}
+
+function Get-DesktopLauncherUtcMilliseconds {
+    param(
+        $From,
+        $To
+    )
+
+    $fromUtc = ConvertTo-DesktopLauncherUtcOffset -Value $From
+    $toUtc = ConvertTo-DesktopLauncherUtcOffset -Value $To
+    if ($null -eq $fromUtc -or $null -eq $toUtc) {
+        return $null
+    }
+
+    return [Math]::Round(($toUtc - $fromUtc).TotalMilliseconds, 3)
+}
+
+function Format-DesktopLauncherMilliseconds {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return 'n/a'
+    }
+
+    return [string] $Value
+}
+
+function New-DesktopLauncherLatencySegmentSample {
+    param(
+        [Parameter(Mandatory)] [double] $T0ToT1,
+        [Parameter(Mandatory)] [double] $T1ToT2,
+        [Parameter(Mandatory)] [double] $T2ToT3,
+        [Parameter(Mandatory)] [double] $T3ToT4
+    )
+
+    return [pscustomobject]@{
+        T0ToT1 = $T0ToT1
+        T1ToT2 = $T1ToT2
+        T2ToT3 = $T2ToT3
+        T3ToT4 = $T3ToT4
+        T0ToT4 = $T0ToT1 + $T1ToT2 + $T2ToT3 + $T3ToT4
+        StopwatchMilliseconds = $null
+    }
+}
+
+function Test-DesktopLauncherLatencyBudget {
+    param(
+        [Parameter(Mandatory)] [double] $ElapsedMilliseconds,
+        [Parameter(Mandatory)] [int] $BudgetMilliseconds
+    )
+
+    return ([int] [Math]::Ceiling($ElapsedMilliseconds) -le $BudgetMilliseconds)
+}
+
+function Assert-DesktopLauncherLatencyGateIsolationBehavior {
+    # #60 冷/暖分段 Σp95：3850.485 / 3682.618。膨胀 T2→T3 使总值越出门禁。
+    $passingCold = New-DesktopLauncherLatencySegmentSample -T0ToT1 329.163 -T1ToT2 653.208 -T2ToT3 2839.375 -T3ToT4 28.739
+    $passingWarm = New-DesktopLauncherLatencySegmentSample -T0ToT1 186.539 -T1ToT2 662.431 -T2ToT3 2820.218 -T3ToT4 13.43
+    $inflatedCold = New-DesktopLauncherLatencySegmentSample -T0ToT1 329.163 -T1ToT2 653.208 -T2ToT3 4839.375 -T3ToT4 28.739
+    $inflatedWarm = New-DesktopLauncherLatencySegmentSample -T0ToT1 186.539 -T1ToT2 662.431 -T2ToT3 4820.218 -T3ToT4 13.43
+    $tinyCold = New-DesktopLauncherLatencySegmentSample -T0ToT1 329.163 -T1ToT2 653.208 -T2ToT3 2839.375 -T3ToT4 29.739
+
+    Assert-Equal $true (
+        Test-DesktopLauncherLatencyBudget `
+            -ElapsedMilliseconds $passingCold.T0ToT4 `
+            -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
+    ) '未膨胀冷启动分段不超过 4700ms'
+    Assert-Equal $true (
+        Test-DesktopLauncherLatencyBudget `
+            -ElapsedMilliseconds $passingWarm.T0ToT4 `
+            -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds
+    ) '未膨胀暖启动分段不超过 4500ms'
+    Assert-Equal $false (
+        Test-DesktopLauncherLatencyBudget `
+            -ElapsedMilliseconds $inflatedCold.T0ToT4 `
+            -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
+    ) '膨胀冷启动 T2→T3 后门禁变红'
+    Assert-Equal $false (
+        Test-DesktopLauncherLatencyBudget `
+            -ElapsedMilliseconds $inflatedWarm.T0ToT4 `
+            -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds
+    ) '膨胀暖启动 T2→T3 后门禁变红'
+    Assert-Equal $true (
+        Test-DesktopLauncherLatencyBudget `
+            -ElapsedMilliseconds $tinyCold.T0ToT4 `
+            -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
+    ) '未把总值推出预算的分段微调仍通过'
+}
+
+function Read-DesktopLauncherDiagnosticEvent {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [int] $ProcessId,
+        [Parameter(Mandatory)] [string] $EventName
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $null
+    }
+
+    foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        try {
+            $entry = $line | ConvertFrom-Json
+        }
+        catch {
+            continue
+        }
+
+        $eventValue = [string] (Get-DesktopLauncherJsonProperty -Object $entry -Name 'event')
+        $processValue = Get-DesktopLauncherJsonProperty -Object $entry -Name 'processId'
+        if ($eventValue -eq $EventName -and $null -ne $processValue -and [int] $processValue -eq $ProcessId) {
+            return $entry
+        }
+    }
+
+    return $null
+}
+
+function Find-DesktopLauncherDiagnosticEvent {
+    param(
+        [Parameter(Mandatory)] [string] $DiagnosticPath,
+        [Parameter(Mandatory)] [int] $ProcessId,
+        [Parameter(Mandatory)] [string] $EventName
+    )
+
+    foreach ($path in @($DiagnosticPath, "$DiagnosticPath.1", "$DiagnosticPath.2", "$DiagnosticPath.3")) {
+        $entry = Read-DesktopLauncherDiagnosticEvent `
+            -Path $path `
+            -ProcessId $ProcessId `
+            -EventName $EventName
+        if ($null -ne $entry) {
+            return $entry
+        }
+    }
+
+    return $null
+}
+
+function Resolve-DesktopLauncherLatencySegments {
+    param(
+        [Parameter(Mandatory)] [DateTimeOffset] $T0,
+        $T4,
+        [Parameter(Mandatory)] [int] $StopwatchMilliseconds,
+        $HostCreationDate,
+        [Parameter(Mandatory)] [string] $DiagnosticPath,
+        [Parameter(Mandatory)] [int] $ProcessId
+    )
+
+    $t1 = ConvertTo-DesktopLauncherUtcOffset -Value $HostCreationDate
+    $started = Find-DesktopLauncherDiagnosticEvent `
+        -DiagnosticPath $DiagnosticPath `
+        -ProcessId $ProcessId `
+        -EventName 'ProcessStarted'
+    $windowReady = Find-DesktopLauncherDiagnosticEvent `
+        -DiagnosticPath $DiagnosticPath `
+        -ProcessId $ProcessId `
+        -EventName 'WindowReady'
+    $t2 = ConvertTo-DesktopLauncherUtcOffset (
+        Get-DesktopLauncherJsonProperty -Object $started -Name 'timestampUtc')
+    $t3 = ConvertTo-DesktopLauncherUtcOffset (
+        Get-DesktopLauncherJsonProperty -Object $windowReady -Name 'timestampUtc')
+    $t4 = ConvertTo-DesktopLauncherUtcOffset -Value $T4
+
+    return [pscustomobject]@{
+        T0ToT1 = Get-DesktopLauncherUtcMilliseconds -From $T0 -To $t1
+        T1ToT2 = Get-DesktopLauncherUtcMilliseconds -From $t1 -To $t2
+        T2ToT3 = Get-DesktopLauncherUtcMilliseconds -From $t2 -To $t3
+        T3ToT4 = Get-DesktopLauncherUtcMilliseconds -From $t3 -To $t4
+        T0ToT4 = Get-DesktopLauncherUtcMilliseconds -From $T0 -To $t4
+        StopwatchMilliseconds = $StopwatchMilliseconds
+    }
+}
+
+function Format-DesktopLauncherLatencyBudgetMessage {
+    param(
+        [Parameter(Mandatory)] [string] $Kind,
+        [Parameter(Mandatory)] [int] $BudgetMilliseconds,
+        $ColdElapsedMilliseconds,
+        $WarmElapsedMilliseconds,
+        $ColdSegments,
+        $WarmSegments
+    )
+
+    $segments = if ($Kind -eq 'Cold') { $ColdSegments } else { $WarmSegments }
+    return (
+        '{0}启动<={1}ms：cold={2} warm={3} T0→T1={4} T1→T2={5} T2→T3={6} T3→T4={7} stopwatch={8} 口径=ContentRendered 探针样本={9}' -f `
+            $(if ($Kind -eq 'Cold') { '冷' } else { '暖' }),
+            $BudgetMilliseconds,
+            (Format-DesktopLauncherMilliseconds -Value $ColdElapsedMilliseconds),
+            (Format-DesktopLauncherMilliseconds -Value $WarmElapsedMilliseconds),
+            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T0ToT1')),
+            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T1ToT2')),
+            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T2ToT3')),
+            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T3ToT4')),
+            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'StopwatchMilliseconds')),
+            $script:DesktopLauncherLatencyProbeEvidenceRoot
+    )
+}
+
+function Save-DesktopLauncherFailureEvidence {
+    param(
+        [Parameter(Mandatory)] [string] $Reason,
+        [Parameter(Mandatory)] [string] $Message,
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [string] $RuntimeStatusPath,
+        [Parameter(Mandatory)] [string] $DiagnosticPath,
+        $ColdReady,
+        $WarmReady,
+        $ColdSegments,
+        $WarmSegments
+    )
+
+    $evidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-desktop-launcher-tests'
+    $runId = '{0}-{1}' -f `
+        [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
+        [guid]::NewGuid().ToString('N')
+    $evidenceDirectory = Join-Path $evidenceRoot ("attempt-" + $runId)
+    New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $blockedLeafNames = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]] @('settings.json'),
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $copiedFiles = [System.Collections.Generic.List[object]]::new()
+    $copyFailures = [System.Collections.Generic.List[object]]::new()
+
+    $copyEvidenceFile = {
+        param([string] $SourcePath, [string] $DestinationName)
+        $leaf = [System.IO.Path]::GetFileName($SourcePath)
+        if (-not [string]::IsNullOrWhiteSpace($leaf) -and $blockedLeafNames.Contains($leaf)) {
+            $copyFailures.Add([ordered]@{
+                sourceName = $DestinationName
+                skipped = 'privacy-blocklist'
+            })
+            return
+        }
+        if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+            $copiedFiles.Add([ordered]@{
+                name = $DestinationName
+                copied = $false
+                missing = $true
+            })
+            return
+        }
+
+        $destinationPath = Join-Path $evidenceDirectory $DestinationName
+        try {
+            Copy-DiagnosticConcurrencyEvidenceFile `
+                -SourcePath $SourcePath `
+                -DestinationPath $destinationPath
+            $copiedFiles.Add([ordered]@{
+                name = $DestinationName
+                copied = $true
+            })
+        }
+        catch {
+            $copyFailures.Add([ordered]@{
+                sourceName = $DestinationName
+                message = [string] $_.Exception.Message
+            })
+        }
+    }
+
+    & $copyEvidenceFile $RuntimeStatusPath 'runtime-status.json'
+    foreach ($suffix in @('', '.1', '.2', '.3')) {
+        $sourcePath = "$DiagnosticPath$suffix"
+        $leaf = [System.IO.Path]::GetFileName($sourcePath)
+        if ([string]::IsNullOrWhiteSpace($leaf)) {
+            $leaf = "application.jsonl$suffix"
+        }
+        & $copyEvidenceFile $sourcePath $leaf
+    }
+
+    $summary = [ordered]@{
+        schemaVersion = 1
+        capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        reason = $Reason
+        message = $Message
+        probeSampleDirectory = $script:DesktopLauncherLatencyProbeEvidenceRoot
+        windowReadyContract = 'WPF ContentRendered / Local\CountdownDesktopLauncherWindowReady'
+        budgetsMilliseconds = [ordered]@{
+            cold = $script:DesktopLauncherColdBudgetMilliseconds
+            warm = $script:DesktopLauncherWarmBudgetMilliseconds
+        }
+        coldElapsedMilliseconds = if ($null -eq $ColdReady) {
+            $null
+        }
+        else {
+            [int] $ColdReady.ElapsedMilliseconds
+        }
+        warmElapsedMilliseconds = if ($null -eq $WarmReady) {
+            $null
+        }
+        else {
+            [int] $WarmReady.ElapsedMilliseconds
+        }
+        coldSegments = $ColdSegments
+        warmSegments = $WarmSegments
+        copiedFiles = @($copiedFiles)
+        copyFailures = @($copyFailures)
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $evidenceDirectory 'capture-summary.json'),
+        ($summary | ConvertTo-Json -Depth 8),
+        $utf8NoBom)
+
+    return [pscustomobject]@{
+        Directory = $evidenceDirectory
+        Summary = $summary
+    }
+}
+
+function Get-IndependentTestDiagnosticMutexName {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path).ToUpperInvariant()
+    $hex = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(
+            [System.Text.UTF8Encoding]::new($false).GetBytes($normalizedPath)))
+    "Local\MinminCountdown.Diagnostic-$($hex.Substring(0, 32))"
+}
+
+function Get-DiagnosticConcurrencyProbeCompletionCounts {
+    param(
+        [Parameter(Mandatory)] [string] $DiagnosticPath,
+        [Parameter(Mandatory)] [int] $WorkerCount
+    )
+
+    $counts = New-Object int[] $WorkerCount
+    foreach ($path in @($DiagnosticPath, "$DiagnosticPath.1", "$DiagnosticPath.2", "$DiagnosticPath.3")) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            continue
+        }
+
+        foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+            if ([string]::IsNullOrWhiteSpace($line)) {
+                continue
+            }
+
+            try {
+                $entry = $line | ConvertFrom-Json
+            }
+            catch {
+                continue
+            }
+
+            $eventName = [string] (Get-DesktopLauncherJsonProperty -Object $entry -Name 'event')
+            if ($eventName -match '^InstanceActivationListenerFailedWorker(\d+)-(\d+)$') {
+                $worker = [int] $Matches[1]
+                if ($worker -ge 0 -and $worker -lt $WorkerCount) {
+                    $counts[$worker]++
+                }
+            }
+        }
+    }
+
+    return ,$counts
+}
+
+function Read-DiagnosticConcurrencyWorkerOutputs {
+    param(
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [int] $WorkerCount,
+        [string] $Prefix = 'logger'
+    )
+
+    $items = [System.Collections.Generic.List[object]]::new()
+    for ($index = 0; $index -lt $WorkerCount; $index++) {
+        $stdoutPath = Join-Path $TestRoot ("{0}-{1}.stdout.txt" -f $Prefix, $index)
+        $stderrPath = Join-Path $TestRoot ("{0}-{1}.stderr.txt" -f $Prefix, $index)
+        $stdout = Read-SharedTestEvidenceText -Path $stdoutPath
+        $stderr = Read-SharedTestEvidenceText -Path $stderrPath
+        $items.Add([pscustomobject]@{
+            Index = $index
+            Stdout = $stdout
+            Stderr = $stderr
+        })
+    }
+
+    return @($items)
+}
+
+function Wait-DiagnosticConcurrencyWriterProcesses {
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Diagnostics.Process[]] $Processes,
+        [Parameter(Mandatory)] [int] $TimeoutMilliseconds,
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [string] $DiagnosticPath,
+        [Parameter(Mandatory)] [int] $WorkerCount,
+        [AllowNull()] [System.Diagnostics.Process] $PrimaryProcess,
+        [string] $OutputPrefix = 'logger'
+    )
+
+    $deadline = [DateTimeOffset]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    $writers = @($Processes)
+    while ($true) {
+        $pending = @(
+            $writers |
+                Where-Object { $null -ne $_ -and -not $_.HasExited }
+        )
+        if ($pending.Count -eq 0) {
+            break
+        }
+
+        $remainingMs = [int] [Math]::Floor(
+            ($deadline - [DateTimeOffset]::UtcNow).TotalMilliseconds)
+        if ($remainingMs -le 0) {
+            $outputs = Read-DiagnosticConcurrencyWorkerOutputs `
+                -TestRoot $TestRoot `
+                -WorkerCount $WorkerCount `
+                -Prefix $OutputPrefix
+            $counts = Get-DiagnosticConcurrencyProbeCompletionCounts `
+                -DiagnosticPath $DiagnosticPath `
+                -WorkerCount $WorkerCount
+            $pendingPids = (
+                $pending |
+                    ForEach-Object { $_.Id }
+            ) -join ','
+            $countText = @($counts) -join ','
+            $outputText = (
+                $outputs |
+                    ForEach-Object {
+                        'worker{0} stdoutChars={1} stderrChars={2} stderr={3}' -f `
+                            $_.Index,
+                            ([string] $_.Stdout).Length,
+                            ([string] $_.Stderr).Length,
+                            (([string] $_.Stderr) -replace '\s+', ' ').Trim()
+                    }
+            ) -join '; '
+            Complete-DiagnosticConcurrencyFailure `
+                -Reason 'ProbeSharedDeadlineExceeded' `
+                -Message (
+                    "诊断并发 probe 未在 ${TimeoutMilliseconds}ms 共享截止期内退出：pendingPid=$pendingPids 完成计数=$countText $outputText"
+                ) `
+                -TestRoot $TestRoot `
+                -DiagnosticPath $DiagnosticPath `
+                -ClientProcesses $writers `
+                -PrimaryProcess $PrimaryProcess `
+                -DeadlineUtc $deadline `
+                -ProbeCompletionCounts @($counts) `
+                -WorkerOutputs $outputs
+        }
+
+        $waitMs = [Math]::Min(100, $remainingMs)
+        [void] $pending[0].WaitForExit($waitMs)
+    }
+
+    foreach ($process in $writers) {
+        if ($null -eq $process) {
+            continue
+        }
+        $process.WaitForExit()
+        if ($process.ExitCode -ne 0) {
+            $outputs = Read-DiagnosticConcurrencyWorkerOutputs `
+                -TestRoot $TestRoot `
+                -WorkerCount $WorkerCount `
+                -Prefix $OutputPrefix
+            $counts = Get-DiagnosticConcurrencyProbeCompletionCounts `
+                -DiagnosticPath $DiagnosticPath `
+                -WorkerCount $WorkerCount
+            $countText = @($counts) -join ','
+            Complete-DiagnosticConcurrencyFailure `
+                -Reason 'ProbeNonZeroExit' `
+                -Message (
+                    "诊断并发 probe 退出码非零：PID=$($process.Id) expected=[0] actual=[$($process.ExitCode)] 完成计数=$countText"
+                ) `
+                -TestRoot $TestRoot `
+                -DiagnosticPath $DiagnosticPath `
+                -ClientProcesses $writers `
+                -PrimaryProcess $PrimaryProcess `
+                -DeadlineUtc $deadline `
+                -ProbeCompletionCounts @($counts) `
+                -WorkerOutputs $outputs
+        }
+        Assert-Equal 0 $process.ExitCode "诊断并发 probe 正常退出：PID=$($process.Id)"
+    }
+}
+
+function Start-DiagnosticConcurrencyIsolationWorker {
+    param(
+        [Parameter(Mandatory)] [string] $PwshPath,
+        [Parameter(Mandatory)] [string] $ProbePath,
+        [Parameter(Mandatory)] [string] $AssemblyPath,
+        [Parameter(Mandatory)] [string] $LogPath,
+        [Parameter(Mandatory)] [string] $BarrierPath,
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [string] $OutputPrefix,
+        [Parameter(Mandatory)] [int] $WriteCount
+    )
+
+    return Start-Process -FilePath $PwshPath -ArgumentList @(
+        '-NoLogo',
+        '-NoProfile',
+        '-File',
+        $ProbePath,
+        '-AssemblyPath',
+        $AssemblyPath,
+        '-LogPath',
+        $LogPath,
+        '-BarrierPath',
+        $BarrierPath,
+        '-Worker',
+        0,
+        '-WriteCount',
+        $WriteCount
+    ) -WorkingDirectory $TestRoot -PassThru -WindowStyle Hidden `
+        -RedirectStandardOutput (Join-Path $TestRoot "$OutputPrefix-0.stdout.txt") `
+        -RedirectStandardError (Join-Path $TestRoot "$OutputPrefix-0.stderr.txt")
+}
+
+function Assert-DiagnosticConcurrencyProbeGateIsolationBehavior {
+    param(
+        [Parameter(Mandatory)] [string] $AssemblyPath,
+        [Parameter(Mandatory)] [string] $TestRoot,
+        [Parameter(Mandatory)] [string] $PwshPath
+    )
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $probePath = Join-Path $TestRoot 'isolation-logger-probe.ps1'
+    $probe = @'
+param(
+    [Parameter(Mandatory)] [string] $AssemblyPath,
+    [Parameter(Mandatory)] [string] $LogPath,
+    [Parameter(Mandatory)] [string] $BarrierPath,
+    [Parameter(Mandatory)] [int] $Worker,
+    [Parameter(Mandatory)] [int] $WriteCount
+)
+$assembly = [System.Reflection.Assembly]::LoadFrom($AssemblyPath)
+$loggerType = $assembly.GetType('MinminCountdown.DiagnosticLogger', $true)
+$logger = [Activator]::CreateInstance($loggerType, [object[]] @($LogPath))
+$info = $loggerType.GetMethod('Info')
+while (-not (Test-Path -LiteralPath $BarrierPath -PathType Leaf)) {
+    Start-Sleep -Milliseconds 5
+}
+for ($index = 0; $index -lt $WriteCount; $index++) {
+    [void] $info.Invoke($logger, [object[]] @("InstanceActivationListenerFailedWorker$Worker-$index"))
+}
+'@
+    [System.IO.File]::WriteAllText($probePath, $probe, $utf8NoBom)
+
+    $passLog = Join-Path $TestRoot 'isolation-pass.jsonl'
+    $passBarrier = Join-Path $TestRoot 'isolation-pass.start'
+    $passWorker = Start-DiagnosticConcurrencyIsolationWorker `
+        -PwshPath $PwshPath `
+        -ProbePath $probePath `
+        -AssemblyPath $AssemblyPath `
+        -LogPath $passLog `
+        -BarrierPath $passBarrier `
+        -TestRoot $TestRoot `
+        -OutputPrefix 'isolation-pass' `
+        -WriteCount 1
+    try {
+        Start-Sleep -Milliseconds 200
+        [System.IO.File]::WriteAllText($passBarrier, 'start', $utf8NoBom)
+        Wait-DiagnosticConcurrencyWriterProcesses `
+            -Processes @($passWorker) `
+            -TimeoutMilliseconds 5000 `
+            -TestRoot $TestRoot `
+            -DiagnosticPath $passLog `
+            -WorkerCount 1 `
+            -PrimaryProcess $null `
+            -OutputPrefix 'isolation-pass'
+        Assert-Equal 0 $passWorker.ExitCode '未占用互斥体时 isolation probe 通过'
+    }
+    finally {
+        if ($null -ne $passWorker -and -not $passWorker.HasExited) {
+            $passWorker.Kill($true)
+            [void] $passWorker.WaitForExit(2000)
+        }
+        if ($null -ne $passWorker) {
+            $passWorker.Dispose()
+        }
+    }
+
+    $blockLog = Join-Path $TestRoot 'isolation-block.jsonl'
+    $blockBarrier = Join-Path $TestRoot 'isolation-block.start'
+    $mutexName = Get-IndependentTestDiagnosticMutexName -Path $blockLog
+    $mutex = [System.Threading.Mutex]::new($false, $mutexName)
+    $held = $mutex.WaitOne(1000)
+    Assert-Equal $true $held '隔离夹具占用同名诊断互斥体'
+    $blockWorker = $null
+    try {
+        $blockWorker = Start-DiagnosticConcurrencyIsolationWorker `
+            -PwshPath $PwshPath `
+            -ProbePath $probePath `
+            -AssemblyPath $AssemblyPath `
+            -LogPath $blockLog `
+            -BarrierPath $blockBarrier `
+            -TestRoot $TestRoot `
+            -OutputPrefix 'isolation-logger' `
+            -WriteCount 1
+        Start-Sleep -Milliseconds 200
+        [System.IO.File]::WriteAllText($blockBarrier, 'start', $utf8NoBom)
+        $timedOut = $false
+        $timeoutMessage = ''
+        try {
+            Wait-DiagnosticConcurrencyWriterProcesses `
+                -Processes @($blockWorker) `
+                -TimeoutMilliseconds 3000 `
+                -TestRoot $TestRoot `
+                -DiagnosticPath $blockLog `
+                -WorkerCount 1 `
+                -PrimaryProcess $null `
+                -OutputPrefix 'isolation-logger'
+        }
+        catch {
+            $timeoutMessage = [string] $_.Exception.Message
+            if (-not $timeoutMessage.Contains('共享截止')) {
+                throw
+            }
+            $timedOut = $true
+        }
+        Assert-Equal $true $timedOut '占用同名互斥体时 probe 共享截止门禁变红'
+        Assert-Equal $true $timeoutMessage.Contains('完成计数') '超时消息包含完成计数'
+        Assert-Equal $true (
+            $timeoutMessage.Contains('stdoutChars') -or $timeoutMessage.Contains('stderrChars')
+        ) '超时先读取 worker stdout/stderr'
+    }
+    finally {
+        if ($null -ne $blockWorker -and -not $blockWorker.HasExited) {
+            $blockWorker.Kill($true)
+            [void] $blockWorker.WaitForExit(2000)
+        }
+        if ($null -ne $blockWorker) {
+            $blockWorker.Dispose()
+        }
+        if ($held) {
+            try { [void] $mutex.ReleaseMutex() } catch { }
+        }
+        $mutex.Dispose()
+    }
 }
 
 function Invoke-ManagedTestRootPurge {
@@ -992,6 +1751,10 @@ function Invoke-InstanceActivationProcessTests {
         }
 
         if ($InstanceActivationClientMode -eq 'DiagnosticConcurrency') {
+            Assert-DiagnosticConcurrencyProbeGateIsolationBehavior `
+                -AssemblyPath $sourceApplication `
+                -TestRoot $testRoot `
+                -PwshPath 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe'
             $padding = [ordered]@{
                 schemaVersion = 1
                 event = 'Padding'
@@ -1151,13 +1914,14 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
             }
             Start-Sleep -Milliseconds 300
             [System.IO.File]::WriteAllText($loggerBarrierPath, 'start', $utf8NoBom)
-            foreach ($probe in @($parallelProcesses | Select-Object -Last $loggerWorkerCount)) {
-                if (-not $probe.WaitForExit(10000)) {
-                    throw "诊断并发 probe 未在有界期限内退出：PID=$($probe.Id)"
-                }
-                $probe.WaitForExit()
-                Assert-Equal 0 $probe.ExitCode "诊断并发 probe 正常退出：PID=$($probe.Id)"
-            }
+            Wait-DiagnosticConcurrencyWriterProcesses `
+                -Processes @($parallelProcesses | Select-Object -Last $loggerWorkerCount) `
+                -TimeoutMilliseconds $script:DiagnosticConcurrencyProbeDeadlineMilliseconds `
+                -TestRoot $testRoot `
+                -DiagnosticPath $diagnosticPath `
+                -WorkerCount $loggerWorkerCount `
+                -PrimaryProcess $primaryProcess `
+                -OutputPrefix 'logger'
             $probeEntries = [System.Collections.Generic.List[object]]::new()
             foreach ($path in @($diagnosticPath, "$diagnosticPath.1", "$diagnosticPath.2", "$diagnosticPath.3")) {
                 if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -1715,6 +2479,7 @@ function Wait-DesktopLauncherWindowReadyReceipt {
             if ($lastStage -eq 'window-ready') {
                 return [pscustomobject]@{
                     Receipt = $receipt
+                    T4 = [DateTimeOffset]::UtcNow
                     ElapsedMilliseconds = [int] $Clock.ElapsedMilliseconds
                     VisibleWindows = @(Get-VisibleProcessWindows -ProcessId ([int] $receipt.processId))
                 }
@@ -2015,9 +2780,14 @@ function Invoke-DesktopLauncherProcessTests {
     $fallbackRoot = Join-Path $testRoot 'fallback-no-sidecar'
     $fallbackHost = Join-Path $fallbackRoot 'install\app\MinminCountdown.exe'
     $runtimeStatusPath = Join-Path $testRoot 'runtime-status.json'
+    $diagnosticLogPath = Join-Path $testRoot 'logs\application.jsonl'
     $firstLauncher = $null
     $secondLauncher = $null
     $warmLauncher = $null
+    $coldReady = $null
+    $warmReady = $null
+    $coldSegments = $null
+    $warmSegments = $null
     $currentSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
     Import-Module -Name (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 
@@ -2035,6 +2805,7 @@ function Invoke-DesktopLauncherProcessTests {
     }
 
     try {
+        Assert-DesktopLauncherLatencyGateIsolationBehavior
         New-Item -ItemType Directory -Path $fixtureHostDirectory -Force | Out-Null
         Copy-Item -LiteralPath $repoLauncher -Destination $fixtureLauncher
         Copy-DesktopLauncherHostPayload -SourceHost $repoHost -DestinationHost $fixtureHost
@@ -2052,16 +2823,17 @@ function Invoke-DesktopLauncherProcessTests {
             $repoSettingsHashBefore = (Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256).Hash
         }
 
+        $coldT0 = [DateTimeOffset]::UtcNow
         $coldClock = [System.Diagnostics.Stopwatch]::StartNew()
         $firstLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
         $firstLauncherSessionId = [int] $firstLauncher.SessionId
-        $firstLauncherRecord = Get-DesktopLauncherWin32Process -ProcessId $firstLauncher.Id
         $observedChildNames = [System.Collections.Generic.HashSet[string]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
         $coldReady = Wait-DesktopLauncherWindowReadyReceipt `
             -Path $runtimeStatusPath `
             -Clock $coldClock `
             -TimeoutMilliseconds 10000
+        $firstLauncherRecord = Get-DesktopLauncherWin32Process -ProcessId $firstLauncher.Id
         if (-not $firstLauncher.HasExited -and -not $firstLauncher.WaitForExit(10000)) {
             throw "桌面启动器未在有界期限内返回：PID=$($firstLauncher.Id)"
         }
@@ -2129,6 +2901,13 @@ function Invoke-DesktopLauncherProcessTests {
         $coldWindows = Assert-DesktopLauncherFirstFrameWindows `
             -VisibleWindows @($coldReady.VisibleWindows) `
             -Name '冷启动首帧窗口'
+        $coldSegments = Resolve-DesktopLauncherLatencySegments `
+            -T0 $coldT0 `
+            -T4 $coldReady.T4 `
+            -StopwatchMilliseconds ([int] $coldReady.ElapsedMilliseconds) `
+            -HostCreationDate $firstHost.CreationDate `
+            -DiagnosticPath $diagnosticLogPath `
+            -ProcessId ([int] $firstHost.ProcessId)
 
         $firstHostPid = [int] $firstHost.ProcessId
         $secondLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
@@ -2175,6 +2954,7 @@ function Invoke-DesktopLauncherProcessTests {
         Assert-Equal $false (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) `
             '暖启动前已清除旧 window-ready 回执'
 
+        $warmT0 = [DateTimeOffset]::UtcNow
         $warmClock = [System.Diagnostics.Stopwatch]::StartNew()
         $warmLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
         $warmReady = Wait-DesktopLauncherWindowReadyReceipt `
@@ -2205,6 +2985,13 @@ function Invoke-DesktopLauncherProcessTests {
         $warmWindows = Assert-DesktopLauncherFirstFrameWindows `
             -VisibleWindows @($warmReady.VisibleWindows) `
             -Name '暖启动首帧窗口'
+        $warmSegments = Resolve-DesktopLauncherLatencySegments `
+            -T0 $warmT0 `
+            -T4 $warmReady.T4 `
+            -StopwatchMilliseconds ([int] $warmReady.ElapsedMilliseconds) `
+            -HostCreationDate $warmHost.CreationDate `
+            -DiagnosticPath $diagnosticLogPath `
+            -ProcessId ([int] $warmHost.ProcessId)
         if ($null -ne $repoSettingsHashBefore) {
             Assert-Equal $repoSettingsHashBefore (
                 Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256
@@ -2231,23 +3018,31 @@ function Invoke-DesktopLauncherProcessTests {
             -RepoLauncher $repoLauncher `
             -CurrentSessionId $currentSessionId
 
-        Assert-Equal $true ($coldReady.ElapsedMilliseconds -le 4500) (
-            '冷启动<=4500ms：cold={0} warm={1} coldWindows={2} warmWindows={3} coldClasses={4} warmClasses={5}' -f `
-                $coldReady.ElapsedMilliseconds,
-                $warmReady.ElapsedMilliseconds,
-                (($coldWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
-                (($warmWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
-                (($coldWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
-                (($warmWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|')
+        Assert-Equal $true (
+            Test-DesktopLauncherLatencyBudget `
+                -ElapsedMilliseconds $coldReady.ElapsedMilliseconds `
+                -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
+        ) (
+            Format-DesktopLauncherLatencyBudgetMessage `
+                -Kind Cold `
+                -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds `
+                -ColdElapsedMilliseconds $coldReady.ElapsedMilliseconds `
+                -WarmElapsedMilliseconds $warmReady.ElapsedMilliseconds `
+                -ColdSegments $coldSegments `
+                -WarmSegments $warmSegments
         )
-        Assert-Equal $true ($warmReady.ElapsedMilliseconds -le 4500) (
-            '暖启动<=4500ms：cold={0} warm={1} coldWindows={2} warmWindows={3} coldClasses={4} warmClasses={5}' -f `
-                $coldReady.ElapsedMilliseconds,
-                $warmReady.ElapsedMilliseconds,
-                (($coldWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
-                (($warmWindows.Titles | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
-                (($coldWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|'),
-                (($warmWindows.ClassNames | ForEach-Object { if ([string]::IsNullOrWhiteSpace($_)) { '<empty>' } else { $_ } }) -join '|')
+        Assert-Equal $true (
+            Test-DesktopLauncherLatencyBudget `
+                -ElapsedMilliseconds $warmReady.ElapsedMilliseconds `
+                -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds
+        ) (
+            Format-DesktopLauncherLatencyBudgetMessage `
+                -Kind Warm `
+                -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds `
+                -ColdElapsedMilliseconds $coldReady.ElapsedMilliseconds `
+                -WarmElapsedMilliseconds $warmReady.ElapsedMilliseconds `
+                -ColdSegments $coldSegments `
+                -WarmSegments $warmSegments
         )
 
         [pscustomobject]@{
@@ -2259,6 +3054,32 @@ function Invoke-DesktopLauncherProcessTests {
             ColdStartMilliseconds = [int] $coldReady.ElapsedMilliseconds
             WarmStartMilliseconds = [int] $warmReady.ElapsedMilliseconds
         } | ConvertTo-Json
+    }
+    catch {
+        $originalError = $_
+        $originalMessage = [string] $_.Exception.Message
+        $evidenceDirectory = $null
+        try {
+            $evidence = Save-DesktopLauncherFailureEvidence `
+                -Reason 'DesktopLauncherOnlyFailed' `
+                -Message $originalMessage `
+                -TestRoot $testRoot `
+                -RuntimeStatusPath $runtimeStatusPath `
+                -DiagnosticPath $diagnosticLogPath `
+                -ColdReady $coldReady `
+                -WarmReady $warmReady `
+                -ColdSegments $coldSegments `
+                -WarmSegments $warmSegments
+            $evidenceDirectory = [string] $evidence.Directory
+        }
+        catch {
+            Write-Warning "桌面启动器失败证据保全未完成：$($_.Exception.Message)"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($evidenceDirectory)) {
+            throw $originalError
+        }
+        throw "${originalMessage}，证据：$evidenceDirectory"
     }
     finally {
         Stop-DesktopLauncherOwnedProcess -Process $warmLauncher

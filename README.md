@@ -96,7 +96,7 @@ pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
 pwsh.exe -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
 
-`-DesktopLauncherOnly` 的冷/暖门槛按 2026-08-23 现役探针五对 runId `ca1179d53398413abb236fc0f4d7b490`、`58c35833a6bf4b5ebbab9e3dab973c2a`、`eb12765e030d413a8520bcbf78c4938c`、`9d6ff40ee86745aab70f4dd96522ce60`、`9cf91f34b4f242b5a93c3b04a2fe1f23` 校准。口径是真实首帧 WPF `ContentRendered`（命名事件 `Local\CountdownDesktopLauncherWindowReady`）；测量钟在首次 window-ready 之后才查询 `Win32_Process`。探针 stopwatch T0→T4 冷 p95/max=3776ms、暖 p95/max=3439ms，分段 Σp95+20% 取整为冷 4700ms、暖 4500ms。机器：BAKER / i5-14600KF / 可用内存约 7.3GiB / CPU 中低 / 2026-08-23 16:46–16:49 +08。样本只用于归因，不汇入门槛样本池。
+`-DesktopLauncherOnly` 的冷/暖门槛按 2026-08-23 现役探针五对 runId `ca1179d53398413abb236fc0f4d7b490`、`58c35833a6bf4b5ebbab9e3dab973c2a`、`eb12765e030d413a8520bcbf78c4938c`、`9d6ff40ee86745aab70f4dd96522ce60`、`9cf91f34b4f242b5a93c3b04a2fe1f23` 校准。口径是真实首帧 WPF `ContentRendered`（命名事件 `Local\CountdownDesktopLauncherWindowReady`）；测量钟在首次 window-ready 之后才查询 `Win32_Process`。探针 stopwatch T0→T4 冷 p95/max=3776ms、暖 p95/max=3439ms，分段 Σp95+20% 取整为冷 4700ms、暖 4500ms。机器：BAKER / i5-14600KF / 可用内存约 7.3GiB / CPU 中低 / 2026-08-23 16:46–16:49 +08。样本只用于归因，不汇入门槛样本池。`-InstanceActivationMatrix` 的 6800ms 共享截止按隔离 8×100 强制滚动写标定；2026-08-23 连续三轮完整本机验证组合中，诊断并发 probe 均超过该截止（完成计数约 43–86/100），不能把隔离绿灯当成连续全套件绿灯。
 以上命令只证明当前机器上的源码行为、发布包、安装与部署预检合同。`Deploy-OfficeCountdown.ps1 -ValidateOnly` 校验当前工作树候选的发布清单、静态哈希和临时 ZIP，不要求工作树干净，也不执行 Git fetch；它不连接办公室设备，不上传或安装产物，更不构成办公室远端部署或验收。正式无开关部署仍只接受干净、已推送且与 `origin/main` 一致的 `main` 提交，办公室完成态仍需正式部署成功回执、传输账本和两次独立远端回读。
 
 ## 运行应用

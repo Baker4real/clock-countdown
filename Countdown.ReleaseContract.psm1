@@ -182,7 +182,7 @@ $script:nonAssetHashes = [ordered]@{
     'Countdown.Runtime.psm1' = '6EAD9634FAB49CED2C588D74DC62541FEC6852F0DE694EBC53147FD967CD3A88'
     'Countdown.Settings.psm1' = 'E3F02C90D7153AEF7492708B758CF21CD777C73ED1CF19BEB3B2F8D0D14EB16D'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '4F5442DA1AF93A2269B4AFF97E27B58F8D06EB488CD70AE3DF79F144B7D496C5'
+    'Countdown.Core.Tests.ps1' = 'BD80DB0827C7B697B8EB60A6EF3B99A210C304601307869BF7DF60380887F409'
     'Countdown.Ui.Tests.ps1' = '22C890DC8F45100529B68B93D4A6B3DCDCDB78FFFAD425ECE5E713DE7BFF33B1'
     'Countdown.CSharp.Tests.ps1' = '88C49D91B81693B8A8E205553D0A20472C88DDDD5F3E0B87745F3CFCF736E955'
     'tools\Build-MainDayOrnamentScene.ps1' = '1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036'
@@ -193,6 +193,7 @@ $script:nonAssetHashes = [ordered]@{
     'CountdownLauncher.cs' = 'FF4602D8C63A42C1237855B7CF787F47A8F09CEA4F49D9006F777A367BBFDC42'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'verification\MinminCountdown.Verification.exe' = 'E6FFEA7881638D3D81A444D3137401E5E11E66229FF18239FD105086EC69D720'
+    'assets\floating-plush\SOURCES.md' = '7B6A95A1EADEA0ED9A9FD4C44128BBE2F05F9D2C2675AF37998133C6228F5846'
     'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
     'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
     'assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
@@ -265,7 +266,8 @@ $script:nonAssetIntegrityPaths = @(
     'CountdownLauncher.exe',
     'CountdownLauncher.cs',
     'countdown-icon.ico',
-    'verification\MinminCountdown.Verification.exe'
+    'verification\MinminCountdown.Verification.exe',
+    'assets\floating-plush\SOURCES.md'
 ) + @($script:sourceBuildNonAssetFiles)
 
 function Assert-CountdownReleaseRelativePath {

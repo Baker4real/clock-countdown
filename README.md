@@ -73,6 +73,8 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试
+- `Invoke-CountdownSourceValidation.ps1`：本机验证组合中的 C# validate-only 源码契约验证入口
+- `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化收口验证 runner 与桌面启动 T0–T4 分段时延探针；探针样本只用于归因，不汇入门槛样本池
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
 迁移决策、module/seam 划分和候选语言比较见 [架构与语言迁移](docs/架构与语言迁移.md)。

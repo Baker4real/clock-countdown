@@ -72,7 +72,7 @@ if (($projectAssetMappings -join ',') -ne ($contractAssetMappings -join ',')) {
 
 if ($Clean) {
     $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-    $runEvidenceCapabilityRoot = 'D:\Codex\.codex\run-evidence'
+    $runEvidenceCapabilityRoot = 'D:\agents\run-evidence'
     if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
         throw "未找到受管构建目录清理入口：$safeTreeDelete"
     }

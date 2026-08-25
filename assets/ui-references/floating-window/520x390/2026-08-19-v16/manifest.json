@@ -9,7 +9,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "A129F6642211CBF5907C77A6351BE0DEBB014963D640C0C56EDE5F628EF5054E",
+    "aggregateSha256": "63E2B32FCB6D2D2D72E1B53049F5E0127F3A61AC48B88652A86DE3EA59EBB2AA",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -53,7 +53,7 @@
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Countdowns.cs",
-        "sha256": "6F8EC4BAB4F43D92EF2D349763CE2555DF9DFE273175FB9B4A418215C8FB7507"
+        "sha256": "EAF406D71C894D4F22EE1033319114E19C053A403D517B4864CF6E3484ADDF8E"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Notes.cs",
@@ -73,7 +73,7 @@
       },
       {
         "path": "src/MinminCountdown/UiControls.cs",
-        "sha256": "0C391BA6B62E91EF40E59AE0F08EBA6CC0E9F27FDBCBC39C9B4FC5AA7F020250"
+        "sha256": "EFAF87283729A9A9CE6E0F8FADE44CC77F7537D1A703DC987E45E7D4C31B866C"
       }
     ]
   },

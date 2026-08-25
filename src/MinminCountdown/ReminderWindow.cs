@@ -323,7 +323,7 @@ internal sealed class ReminderCenterWindow : Window
         };
         row.SetResourceReference(Border.BackgroundProperty, "NoteBrush");
         row.SetResourceReference(Border.BorderBrushProperty, "NoteLineBrush");
-        AutomationProperties.SetName(
+        UiAccessibility.Name(
             row,
             $"{(item.Source.Kind == ReminderSourceKind.Countdown ? "倒计时" : "便签")}提醒：{item.Source.DisplayText}；计划 {ChinaStandardTime.ToBeijingTime(item.Key.ScheduledUtc):yyyy年M月d日 HH:mm} 北京时间");
 

@@ -49,7 +49,7 @@ public sealed partial class FloatingWindow
             Margin = new Thickness(0),
             Background = Brushes.Transparent
         };
-        AutomationProperties.SetName(
+        UiAccessibility.Name(
             root,
             isPrimary ? $"主要倒计时 {record.Name}，{remaining}" : $"倒计时 {record.Name}，{remaining}");
 

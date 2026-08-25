@@ -5,7 +5,7 @@
     标准化 12 步收口验证 runner。单目录、单次不间断全绿。
 
 .DESCRIPTION
-    在 D:\Codex\.codex\run-evidence\clock-countdown-verification\<namespace>\<runId>\
+    在 D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
     写入本次 attempt 证据。先创建目录并拷贝 runner，再写入 meta.json（status=running，含 runnerSha256），随后补 endUtc / 终态。
 
     约束：
@@ -77,7 +77,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
-$script:EvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-verification'
+$script:EvidenceRoot = 'D:\agents\run-evidence\clock-countdown-verification'
 $script:ManagedPwshPreferred = 'D:\Codex\tools\PowerShell\7.6.5\pwsh.exe'
 $script:MatrixPwsh = 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe'
 $script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
@@ -119,7 +119,7 @@ SYNOPSIS
     12. deploy-validate             pwsh -NoLogo -NoProfile -File Deploy-OfficeCountdown.ps1 -ValidateOnly
 
 证据根
-    D:\Codex\.codex\run-evidence\clock-countdown-verification\<namespace>\<runId>\
+    D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
 '@
 }
 

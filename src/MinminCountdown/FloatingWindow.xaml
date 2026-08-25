@@ -58,6 +58,7 @@
       <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Border x:Name="FloatingHeaderSurface"
@@ -157,8 +158,52 @@
           </Grid>
         </Border>
 
+        <Grid x:Name="FloatingNoteSearchSlot"
+              Grid.Row="1"
+              Margin="8,8,11,0"
+              Visibility="Collapsed">
+          <Grid x:Name="FloatingNoteSearchInputRow"
+                Visibility="Collapsed">
+            <TextBox x:Name="FloatingNoteSearch"
+                     MaxLength="140"
+                     MinHeight="28"
+                     VerticalContentAlignment="Center"
+                     Background="{DynamicResource CanvasBrush}"
+                     BorderBrush="{DynamicResource PeachLineBrush}"
+                     Foreground="{DynamicResource FloatingNoteInputTextBrush}" />
+            <TextBlock x:Name="FloatingNoteSearchPlaceholder"
+                       Margin="8,6,8,0"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource FloatingMutedBrush}"
+                       FontSize="12"
+                       Text="搜索便签"
+                       IsHitTestVisible="False"
+                       Visibility="Collapsed" />
+          </Grid>
+          <Grid x:Name="FloatingNoteSearchHint"
+                Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button x:Name="FloatingNoteSearchHintTerm"
+                    HorizontalAlignment="Left"
+                    HorizontalContentAlignment="Left"
+                    FontSize="12"
+                    Style="{DynamicResource SecondaryButton}" />
+            <Button x:Name="FloatingNoteSearchHintClear"
+                    Grid.Column="1"
+                    Width="28"
+                    MinWidth="28"
+                    Margin="8,0,0,0"
+                    Content="✕"
+                    FontSize="12"
+                    Style="{DynamicResource SecondaryButton}" />
+          </Grid>
+        </Grid>
+
         <ScrollViewer x:Name="FloatingBodyScroller"
-                      Grid.Row="1"
+                      Grid.Row="2"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
           <ScrollViewer.Resources>
@@ -300,6 +345,7 @@
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
                   <local:TagSelector x:Name="FloatingTags" HorizontalAlignment="Stretch" />
                   <Button x:Name="FloatingAddNote"
@@ -308,6 +354,22 @@
                           Margin="8,0,0,0"
                           Content="添加"
                           Style="{DynamicResource PrimaryButton}" />
+                  <Button x:Name="FloatingSearchNotes"
+                          Grid.Column="2"
+                          Width="36"
+                          MinWidth="36"
+                          Margin="8,0,0,0"
+                          Style="{DynamicResource SecondaryButton}"
+                          Visibility="Collapsed">
+                    <Viewbox Width="14" Height="14">
+                      <Path Data="M 6,6 m -3.6,0 a 3.6,3.6 0 1 1 7.2,0 a 3.6,3.6 0 1 1 -7.2,0 M 8.7,8.7 L 12.2,12.2"
+                            Fill="Transparent"
+                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                            StrokeThickness="1.6"
+                            StrokeStartLineCap="Round"
+                            StrokeEndLineCap="Round" />
+                    </Viewbox>
+                  </Button>
                 </Grid>
                 <TextBlock x:Name="FloatingNoteMessage"
                            Margin="2,6,2,0"

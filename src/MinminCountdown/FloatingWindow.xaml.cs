@@ -40,6 +40,8 @@ public sealed partial class FloatingWindow : Window
     private int _floatingRowsRenderVersion;
     private bool _settingDefaultDate;
     private bool _dateDirty;
+    private bool _searchExpanded;
+    private bool _syncingSearch;
     private IReadOnlyList<ReminderRule> _floatingReminderRules = Array.Empty<ReminderRule>();
     private FloatingThemePalette? _activeTheme;
     private Brush _floatingPrimaryBrush = Brushes.Black;
@@ -78,6 +80,7 @@ public sealed partial class FloatingWindow : Window
 
         ConfigureControls();
         WireEvents();
+        PreviewKeyDown += OnPreviewKeyDown;
         var snapshot = _desktopWorkspace.Snapshot;
         ApplyTheme(ApplicationTheme.Resolve(
             snapshot.UtcNow,
@@ -566,6 +569,7 @@ public sealed partial class FloatingWindow : Window
         UpdateFloatingBodyScrollBarPlacement();
         FloatingNoteEntry.Visibility =
             workspace == WorkspaceKind.Notes ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSearchPresentation();
         if (workspace == WorkspaceKind.Notes)
         {
             var snapshot = _desktopWorkspace.Snapshot;
@@ -828,6 +832,7 @@ public sealed partial class FloatingWindow : Window
     {
         yield return Resources;
         yield return FloatingBodyScroller.Resources;
+        yield return FloatingNoteSearchSlot.Resources;
         yield return FloatingNoteEntry.Resources;
         yield return FloatingNoteDate.Resources;
         yield return FloatingTags.Resources;
@@ -839,6 +844,7 @@ public sealed partial class FloatingWindow : Window
         var originalTags = _desktopWorkspace.Snapshot.Settings.Tags;
         var originalSelection = FloatingTags.SelectedTagIds.ToArray();
         var originalOffset = FloatingBodyScroller.VerticalOffset;
+        var originalExpanded = _searchExpanded;
         var probeTag = new TagRecord(
             $"floating-theme-probe-{Guid.NewGuid():N}",
             "主题探针",
@@ -846,12 +852,13 @@ public sealed partial class FloatingWindow : Window
         try
         {
             ShowWorkspace(WorkspaceKind.Notes);
+            ExpandNoteSearch(focus: false);
             FloatingTags.SetTags(originalTags.Concat([probeTag]).ToArray());
             FloatingTags.SetSelection([probeTag.Id]);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
 
-            var textBoxes = new[] { FloatingNoteText };
+            var textBoxes = new[] { FloatingNoteText, FloatingNoteSearch };
             var datePickers = new[] { FloatingNoteDate };
             var comboBoxes = Array.Empty<ComboBox>();
 
@@ -939,6 +946,7 @@ public sealed partial class FloatingWindow : Window
         }
         finally
         {
+            _searchExpanded = originalExpanded;
             FloatingTags.IsPopupOpen = false;
             FloatingNoteDate.IsDropDownOpen = false;
             FloatingTags.SetTags(originalTags);
@@ -1289,7 +1297,8 @@ public sealed partial class FloatingWindow : Window
             Equals(
                 textBox.Foreground,
                 textBox.TryFindResource(
-                    ReferenceEquals(textBox, FloatingNoteText)
+                    ReferenceEquals(textBox, FloatingNoteText) ||
+                    ReferenceEquals(textBox, FloatingNoteSearch)
                         ? "FloatingNoteInputTextBrush"
                         : "InkBrush")) &&
             Equals(textBox.BorderBrush, textBox.TryFindResource("PeachLineBrush")) &&
@@ -1503,6 +1512,10 @@ public sealed partial class FloatingWindow : Window
         AutomationProperties.SetName(FloatingNoteDate, "快速便签日期");
         AutomationProperties.SetName(FloatingManageReminderRules, "管理快速便签提醒规则");
         AutomationProperties.SetName(FloatingAddNote, "添加快速便签");
+        UiAccessibility.Name(FloatingSearchNotes, "搜索便签");
+        UiAccessibility.Name(FloatingNoteSearch, "搜索便签");
+        UiAccessibility.Name(FloatingNoteSearchHintClear, "清除搜索");
+        FloatingNoteSearch.IsTabStop = false;
         ThemedDatePickerBehavior.Attach(FloatingNoteDate);
         UiAccessibility.MarkLive(FloatingNoteTextError);
         UiAccessibility.MarkLive(FloatingNoteDateError);
@@ -1531,6 +1544,10 @@ public sealed partial class FloatingWindow : Window
         FloatingNoteText.TextChanged += (_, _) => ClearNoteFieldError(FloatingNoteTextError);
         FloatingManageReminderRules.Click += (_, _) => OpenFloatingReminderRulesEditor();
         FloatingAddNote.Click += (_, _) => AddNote();
+        FloatingSearchNotes.Click += (_, _) => ToggleNoteSearch();
+        FloatingNoteSearch.TextChanged += (_, _) => OnNoteSearchTextChanged();
+        FloatingNoteSearchHintTerm.Click += (_, _) => ExpandNoteSearch(focus: true);
+        FloatingNoteSearchHintClear.Click += (_, _) => ClearNoteSearch();
         FloatingTags.CreateRequested += (_, name) =>
         {
             var result = _desktopWorkspace.Apply(new CreateTagChange(name, "#F4B6A6"));
@@ -1621,7 +1638,9 @@ public sealed partial class FloatingWindow : Window
     {
         var snapshot = _desktopWorkspace.Snapshot;
         FloatingTags.SetTags(snapshot.Settings.Tags);
+        SyncNoteSearchFromFilter();
         RenderRows(snapshot.UtcNow);
+        UpdateSearchPresentation();
         Reanchor();
     }
 
@@ -1683,7 +1702,14 @@ public sealed partial class FloatingWindow : Window
 
             if (notes.Count == 0)
             {
-                FloatingRows.Children.Add(EmptyText("今天还没有待办便签。"));
+                if (!string.IsNullOrWhiteSpace(snapshot.Filter.NoteSearch))
+                {
+                    FloatingRows.Children.Add(BuildNoteSearchEmptyState());
+                }
+                else
+                {
+                    FloatingRows.Children.Add(EmptyText("今天还没有待办便签。"));
+                }
             }
         }
 
@@ -1706,6 +1732,219 @@ public sealed partial class FloatingWindow : Window
         HorizontalAlignment = HorizontalAlignment.Center,
         Foreground = _floatingMutedBrush
     };
+
+    private FrameworkElement BuildNoteSearchEmptyState()
+    {
+        var panel = new StackPanel
+        {
+            Margin = new Thickness(2, 8, 2, 8)
+        };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "没有匹配的便签。",
+            Margin = new Thickness(0, 0, 0, 8),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _floatingMutedBrush
+        });
+        var clear = UiAccessibility.Name(
+            new Button
+            {
+                Content = "清除搜索",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Style = TryFindResource("SecondaryButton") as Style
+            },
+            "清除搜索");
+        clear.Click += (_, _) => ClearNoteSearch();
+        panel.Children.Add(clear);
+        return panel;
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs args)
+    {
+        var modifiers = MainShortcutInput.ResolveModifiers(args);
+        if (modifiers == ModifierKeys.Control && args.Key == Key.F)
+        {
+            if (FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen)
+            {
+                return;
+            }
+
+            ExpandNoteSearchFromShortcut();
+            args.Handled = true;
+            return;
+        }
+
+        if (args.Key != Key.Escape ||
+            modifiers != ModifierKeys.None ||
+            !_searchExpanded && string.IsNullOrWhiteSpace(_desktopWorkspace.Snapshot.Filter.NoteSearch) ||
+            FloatingTags.IsPopupOpen ||
+            FloatingNoteDate.IsDropDownOpen)
+        {
+            return;
+        }
+
+        ClearNoteSearch();
+        args.Handled = true;
+    }
+
+    private void ToggleNoteSearch()
+    {
+        if (_searchExpanded)
+        {
+            _searchExpanded = false;
+            UpdateSearchPresentation();
+            return;
+        }
+
+        ExpandNoteSearch(focus: true);
+    }
+
+    private void ExpandNoteSearchFromShortcut()
+    {
+        if (_workspace != WorkspaceKind.Notes)
+        {
+            ShowWorkspace(WorkspaceKind.Notes);
+        }
+
+        ExpandNoteSearch(focus: true);
+    }
+
+    private void ExpandNoteSearch(bool focus)
+    {
+        _searchExpanded = true;
+        UpdateSearchPresentation();
+        if (!focus)
+        {
+            return;
+        }
+
+        WindowValidationInput.Pump(Dispatcher);
+        Keyboard.Focus(FloatingNoteSearch);
+    }
+
+    private void ClearNoteSearch()
+    {
+        _searchExpanded = false;
+        if (FloatingNoteSearch.Text.Length > 0)
+        {
+            FloatingNoteSearch.Clear();
+        }
+        else
+        {
+            ApplyNoteSearchTerm(string.Empty);
+        }
+
+        UpdateSearchPresentation();
+    }
+
+    private void OnNoteSearchTextChanged()
+    {
+        ApplyNoteSearchTerm(FloatingNoteSearch.Text);
+        UpdateSearchPresentation();
+    }
+
+    private void ApplyNoteSearchTerm(string term)
+    {
+        if (_syncingSearch)
+        {
+            return;
+        }
+
+        var current = _desktopWorkspace.Snapshot.Filter;
+        if (string.Equals(current.NoteSearch, term, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _desktopWorkspace.ApplyFilter(current with { NoteSearch = term });
+    }
+
+    private void SyncNoteSearchFromFilter()
+    {
+        var term = _desktopWorkspace.Snapshot.Filter.NoteSearch ?? string.Empty;
+        if (string.Equals(FloatingNoteSearch.Text, term, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _syncingSearch = true;
+        try
+        {
+            FloatingNoteSearch.Text = term;
+        }
+        finally
+        {
+            _syncingSearch = false;
+        }
+
+        if (string.IsNullOrWhiteSpace(term) && !_searchExpanded)
+        {
+            _searchExpanded = false;
+        }
+    }
+
+    private void UpdateSearchPresentation()
+    {
+        var notesWorkspace = _workspace == WorkspaceKind.Notes;
+        FloatingSearchNotes.Visibility = notesWorkspace ? Visibility.Visible : Visibility.Collapsed;
+        FloatingSearchNotes.IsTabStop = notesWorkspace;
+        var term = FloatingNoteSearch.Text;
+        if (!notesWorkspace)
+        {
+            FloatingNoteSearchSlot.Visibility = Visibility.Collapsed;
+            FloatingNoteSearchInputRow.Visibility = Visibility.Collapsed;
+            FloatingNoteSearchHint.Visibility = Visibility.Collapsed;
+            FloatingNoteSearchPlaceholder.Visibility = Visibility.Collapsed;
+            FloatingNoteSearch.IsTabStop = false;
+            ReleaseCollapsedSearchFocus();
+            return;
+        }
+
+        if (_searchExpanded)
+        {
+            FloatingNoteSearchSlot.Visibility = Visibility.Visible;
+            FloatingNoteSearchInputRow.Visibility = Visibility.Visible;
+            FloatingNoteSearchHint.Visibility = Visibility.Collapsed;
+            FloatingNoteSearchPlaceholder.Visibility =
+                string.IsNullOrEmpty(term) ? Visibility.Visible : Visibility.Collapsed;
+            FloatingNoteSearch.IsTabStop = true;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            FloatingNoteSearchSlot.Visibility = Visibility.Visible;
+            FloatingNoteSearchInputRow.Visibility = Visibility.Collapsed;
+            FloatingNoteSearchHint.Visibility = Visibility.Visible;
+            FloatingNoteSearchPlaceholder.Visibility = Visibility.Collapsed;
+            FloatingNoteSearchHintTerm.Content = $"搜索:{term}";
+            UiAccessibility.Name(FloatingNoteSearchHintTerm, $"搜索:{term}");
+            FloatingNoteSearch.IsTabStop = false;
+            ReleaseCollapsedSearchFocus();
+            return;
+        }
+
+        FloatingNoteSearchSlot.Visibility = Visibility.Collapsed;
+        FloatingNoteSearchInputRow.Visibility = Visibility.Collapsed;
+        FloatingNoteSearchHint.Visibility = Visibility.Collapsed;
+        FloatingNoteSearchPlaceholder.Visibility = Visibility.Collapsed;
+        FloatingNoteSearch.IsTabStop = false;
+        ReleaseCollapsedSearchFocus();
+    }
+
+    private void ReleaseCollapsedSearchFocus()
+    {
+        if (!FloatingNoteSearch.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        var fallback = FloatingSearchNotes.IsVisible
+            ? (IInputElement)FloatingSearchNotes
+            : FloatingNotesButton;
+        Keyboard.Focus(fallback);
+    }
 
     private void AddNote()
     {

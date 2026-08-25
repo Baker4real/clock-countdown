@@ -83,6 +83,8 @@ internal static class ValidationReportContract
         "FloatingInitialWorkspaceStateMatches",
         "FloatingWorkspaceSwitchingStaysSynchronized",
         "FloatingCountdownSelectionSurvivesDayNightThemes",
+        "FloatingNoteSearchScenariosPass",
+        "NoteSearchSyncsFromSharedFilter",
         "FloatingQuickAddDayResourcesFollowLocalTheme",
         "FloatingQuickAddNightResourcesFollowLocalTheme",
         "FloatingQuickAddIndependentFromApplicationAutoTheme",

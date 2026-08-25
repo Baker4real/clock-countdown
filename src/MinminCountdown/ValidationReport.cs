@@ -21,7 +21,7 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
-    private const string FloatingReferenceBaselineVersion = "2026-08-19-v16";
+    private const string FloatingReferenceBaselineVersion = "2026-08-25-v17";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingReferenceStateFingerprintAlgorithm =
@@ -273,6 +273,8 @@ internal static class ValidationReport
                     !mainNoteCompletionValidation.Floating.UsesDedicatedStyle));
         var mainNoteCompletionGateIsolationBehavior =
             ValidationExercises.RunMainNoteCompletionGateIsolationBehavior();
+        var accessibleNameWhitespaceIsolationBehavior =
+            ValidationExercises.RunAccessibleNameWhitespaceIsolationBehavior();
         var mainShortcutGateIsolationBehavior =
             ValidationExercises.RunMainShortcutGateIsolationBehavior();
         var mainKeyboardNavigationGateIsolationBehavior =
@@ -1161,6 +1163,11 @@ internal static class ValidationReport
                 floatingWorkspace.SwitchingStaysSynchronized,
             ["FloatingCountdownSelectionSurvivesDayNightThemes"] =
                 floatingWorkspace.CountdownSelectionSurvivesDayNightThemes,
+            ["FloatingNoteSearch"] = floatingWindowScenarios.NoteSearch,
+            ["FloatingNoteSearchScenariosPass"] =
+                floatingWindowScenarios.NoteSearch.AllPassed &&
+                mainUiPolish.NoteSearchSyncsFromSharedFilter,
+            ["NoteSearchSyncsFromSharedFilter"] = mainUiPolish.NoteSearchSyncsFromSharedFilter,
             ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
             ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
             ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
@@ -1243,8 +1250,10 @@ internal static class ValidationReport
                 floating.FindName("FloatingReminderRulesSummary") is TextBlock &&
                 main.FindName("NoteReminder") is null &&
                 main.FindName("NoteReminderSchedule") is null &&
+                main.FindName("FloatingReminderIntervalPanel") is null &&
                 floating.FindName("FloatingReminder") is null &&
-                floating.FindName("FloatingReminderSchedule") is null,
+                floating.FindName("FloatingReminderSchedule") is null &&
+                floating.FindName("FloatingReminderIntervalPanel") is null,
             ["NoteReminderControlsWork"] =
                 reminderRulesEditorSharedEntryWorks,
             ["ReminderRulesEditorSharedEntryWorks"] =
@@ -1252,9 +1261,13 @@ internal static class ValidationReport
                 Required<Button>(main, "ManageNoteReminderRulesButton").Visibility == Visibility.Visible &&
                 Required<TextBlock>(main, "NoteReminderRulesSummary").Visibility == Visibility.Visible &&
                 main.FindName("NoteReminder") is null &&
+                main.FindName("NoteReminderSchedule") is null &&
+                main.FindName("FloatingReminderIntervalPanel") is null &&
                 Required<Button>(floating, "FloatingManageReminderRules").Visibility == Visibility.Visible &&
                 Required<TextBlock>(floating, "FloatingReminderRulesSummary").Visibility == Visibility.Visible &&
-                floating.FindName("FloatingReminder") is null,
+                floating.FindName("FloatingReminder") is null &&
+                floating.FindName("FloatingReminderSchedule") is null &&
+                floating.FindName("FloatingReminderIntervalPanel") is null,
             ["CalendarReminderStartLabelsUseCalendarSemantics"] =
                 ProbeCalendarReminderStartLabels(),
             ["FloatingReminderRulesEntryStaysCompact"] =
@@ -1475,7 +1488,11 @@ internal static class ValidationReport
             ["MainNoteCompletionGateIsolationBehavior"] =
                 mainNoteCompletionGateIsolationBehavior,
             ["MainNoteCompletionMeasurements"] = mainNoteCompletionValidation.Measurements,
-            ["MainNoteCompletionInteractionBehavior"] = mainNoteCompletionValidation.Interaction,
+            ["MainNoteCompletionInteractionBehavior"] =
+                mainNoteCompletionValidation.Interaction with
+                {
+                    AccessibleNamesHaveNoLineBreaks = accessibleNameWhitespaceIsolationBehavior
+                },
             ["MainNoteCompletionStyleScoped"] = mainNoteCompletionGates.AllPassed,
             ["TransientPanelsOnDemand"] = main.HasOnDemandPanels,
             ["TransientPanelsStartClosed"] = main.HasOnDemandPanels,
@@ -4796,7 +4813,7 @@ internal static class ValidationReport
                 viewportStates[3].VerticalScrollBarVisible &&
                 viewportStates[4].RenderedCardCount == 6 &&
                 viewportStates[4].RenderedMultilineNoteCount == 6 &&
-                !viewportStates[5].RepeatingReminderPanelVisible &&
+                referenceWindow.FindName("FloatingReminderIntervalPanel") is null &&
                 viewportStates[5].ScrollableHeight > 0 &&
                 viewportStates[6].ScrollableHeight > 0 &&
                 viewportStates[6].VerticalOffset > 0;
@@ -5019,7 +5036,29 @@ internal static class ValidationReport
     {
         var bodyScroller = Required<ScrollViewer>(window, "FloatingBodyScroller");
         var noteEntry = Required<Border>(window, "FloatingNoteEntry");
-        noteEntry.Visibility = Visibility.Collapsed;
+        var searchButton = Required<Button>(window, "FloatingSearchNotes");
+        var addButton = Required<Button>(window, "FloatingAddNote");
+        noteEntry.Visibility = Visibility.Visible;
+        searchButton.Visibility = Visibility.Visible;
+        addButton.Visibility = Visibility.Visible;
+        var compactComposer = new FrameworkElement[]
+        {
+            Required<TextBox>(window, "FloatingNoteText"),
+            Required<TextBlock>(window, "FloatingNoteTextError"),
+            Required<DatePicker>(window, "FloatingNoteDate"),
+            Required<TextBlock>(window, "FloatingNoteDateError"),
+            Required<TextBlock>(window, "FloatingReminderRulesSummary"),
+            Required<TextBlock>(window, "FloatingReminderMessage"),
+            Required<Button>(window, "FloatingManageReminderRules"),
+            Required<FrameworkElement>(window, "FloatingTags"),
+            Required<TextBlock>(window, "FloatingNoteMessage")
+        };
+        var compactOriginal = compactComposer.Select(element => element.Visibility).ToArray();
+        foreach (var element in compactComposer)
+        {
+            element.Visibility = Visibility.Collapsed;
+        }
+
         PumpDispatcher();
         window.UpdateLayout();
         bodyScroller.ApplyTemplate();
@@ -5150,6 +5189,10 @@ internal static class ValidationReport
         bodyScroller.ScrollToTop();
         WaitForStableFloatingReferenceLayout(window, root, rows, notes.Count);
         noteEntry.Visibility = Visibility.Visible;
+        for (var index = 0; index < compactComposer.Length; index++)
+        {
+            compactComposer[index].Visibility = compactOriginal[index];
+        }
         PumpDispatcher();
         window.UpdateLayout();
 
@@ -5317,14 +5360,20 @@ internal static class ValidationReport
                    text.Bottom <= card.Bottom + 0.5;
         });
         var noteEntry = Required<Border>(window, "FloatingNoteEntry");
+        var searchButton = Required<Button>(window, "FloatingSearchNotes");
+        var addButton = Required<Button>(window, "FloatingAddNote");
         var fixtureTagsRemainBound = bindings.All(binding =>
             binding.Note.TagIds.SequenceEqual(new[] { "reference-warm-tag" }, StringComparer.Ordinal));
-        var quickAddIsClosedForLongNoteViewport = noteEntry.Visibility == Visibility.Collapsed;
+        var composerKeepsSearchForLongNoteFrames =
+            noteEntry.Visibility == Visibility.Visible &&
+            searchButton.Visibility == Visibility.Visible &&
+            addButton.Visibility == Visibility.Visible &&
+            Required<TextBox>(window, "FloatingNoteText").Visibility == Visibility.Collapsed;
         return cardsStayInsideRightSafeArea &&
                adjacentCardsDoNotOverlap &&
                cardInternalsDoNotOverlap &&
                fixtureTagsRemainBound &&
-               quickAddIsClosedForLongNoteViewport;
+               composerKeepsSearchForLongNoteFrames;
     }
 
     private static bool TextWouldNaturallyWrap(TextBlock text)
@@ -6779,7 +6828,6 @@ internal static class ValidationReport
         var verticalScrollBarBounds = verticalScrollBar is null
             ? Rect.Empty
             : BoundsIn(verticalScrollBar, root);
-        var repeatingReminderPanel = window.FindName("FloatingReminderIntervalPanel") as FrameworkElement;
         var bodyViewport = BoundsIn(bodyScroller, root);
         var bodyContentRight = bodyViewport.X + bodyScroller.ViewportWidth;
         var protectedHeaderContent = new[]
@@ -6900,7 +6948,6 @@ internal static class ValidationReport
             Descendants<TextBlock>(rows).Count(element => element.IsVisible),
             Descendants<CheckBox>(rows).Count(element => element.IsVisible),
             renderedMultilineNoteCount,
-            repeatingReminderPanel is { IsVisible: true, ActualHeight: > 0 },
             Math.Round(bodyScroller.ScrollableHeight, 2),
             Math.Round(bodyScroller.VerticalOffset, 2),
             verticalScrollBar?.IsVisible == true,
@@ -9180,8 +9227,8 @@ internal static class ValidationReport
                {
                    var action = (string)button.Content;
                    var name = AutomationProperties.GetName(button);
-                   return name.StartsWith($"{action}便签 ", StringComparison.Ordinal) &&
-                          name.Length > $"{action}便签 ".Length;
+                   var prefix = $"{action}便签 ";
+                   return ValidationExercises.IsWellFormedAccessibleName(name, prefix);
                });
     }
 
@@ -10055,6 +10102,14 @@ internal static class ValidationReport
         var countdownTab = Required<ToggleButton>(main, "CountdownTab");
         var closeButton = Required<Button>(main, "CloseButton");
         var minimizeButton = Required<Button>(main, "MinimizeButton");
+        if (Keyboard.FocusedElement is DependencyObject focusedOutside &&
+            !ReferenceEquals(Window.GetWindow(focusedOutside), main))
+        {
+            Keyboard.ClearFocus();
+        }
+
+        main.Activate();
+        PumpDispatcher();
         var initialFocusSafe =
             string.Equals(initialFocusedAutomationId, "CountdownTab", StringComparison.Ordinal) &&
             countdownTab.IsVisible &&
@@ -13444,7 +13499,8 @@ internal static class ValidationReport
         bool Checked,
         bool Unchecked,
         bool PersistenceFailureRolledBack,
-        bool AccessibleNamesUpdated);
+        bool AccessibleNamesUpdated,
+        bool AccessibleNamesHaveNoLineBreaks = false);
 
     private sealed record MainNoteCompletionValidation(
         MainNoteCompletionMeasurement Main,
@@ -13598,6 +13654,8 @@ internal static class ValidationReport
             string.Empty);
     }
 
+    // Private nested capture only; these fields are not validate-only top-level JSON keys.
+    // Top-level shape grows when a new public validate-only field is added on purpose.
     private sealed record FloatingViewportState(
         string Name,
         double WindowWidth,
@@ -13610,7 +13668,6 @@ internal static class ValidationReport
         int DynamicTextElementCount,
         int DynamicCheckBoxCount,
         int RenderedMultilineNoteCount,
-        bool RepeatingReminderPanelVisible,
         double ScrollableHeight,
         double VerticalOffset,
         bool VerticalScrollBarVisible,

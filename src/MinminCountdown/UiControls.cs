@@ -1,3 +1,4 @@
+using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -14,8 +15,37 @@ internal static class UiAccessibility
     public static T Name<T>(T element, string name)
         where T : FrameworkElement
     {
-        AutomationProperties.SetName(element, name);
+        AutomationProperties.SetName(element, FoldAccessibleName(name));
         return element;
+    }
+
+    internal static string FoldAccessibleName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return name ?? string.Empty;
+        }
+
+        var builder = new StringBuilder(name.Length);
+        var pendingSpace = false;
+        foreach (var ch in name)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                pendingSpace = true;
+                continue;
+            }
+
+            if (pendingSpace && builder.Length > 0)
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(ch);
+            pendingSpace = false;
+        }
+
+        return builder.ToString();
     }
 
     public static void MarkLive(TextBlock textBlock)
@@ -313,7 +343,7 @@ internal sealed class TagSelector : Grid
         var fullSelection = string.Join("、", names);
         _trigger.Content = text;
         _trigger.ToolTip = names.Length == 0 ? "选择标签" : $"已选标签：{fullSelection}";
-        AutomationProperties.SetName(_trigger, names.Length == 0 ? "选择标签" : $"已选标签：{fullSelection}");
+        UiAccessibility.Name(_trigger, names.Length == 0 ? "选择标签" : $"已选标签：{fullSelection}");
     }
 }
 

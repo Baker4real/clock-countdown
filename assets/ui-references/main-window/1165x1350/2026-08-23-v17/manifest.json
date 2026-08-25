@@ -17,7 +17,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
-    "aggregateSha256": "1CC61CA9411447C9A94297F79F8AE8919A3357606397AC2B1CFE9858B546A673",
+    "aggregateSha256": "185392E65519B68AE4362304BF102E8AFF64DEF7EED434B2F7FD8D64B0C65DBC",
     "files": [
       {
         "path": "assets/main-decorations/main-countdown-scene-day.png",
@@ -65,7 +65,7 @@
       },
       {
         "path": "src/MinminCountdown/MainWindow.xaml.cs",
-        "sha256": "A02D632F4DB00E39E30CDF253F4797E3D6A874CDD2AAF50BFC3EB7CE55397729"
+        "sha256": "50998ECA512A1B4E5377481D7B62FFE1B7C4A1E3D0ECA64D79D4F83A1473AF37"
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
@@ -73,7 +73,7 @@
       },
       {
         "path": "src/MinminCountdown/UiControls.cs",
-        "sha256": "0C391BA6B62E91EF40E59AE0F08EBA6CC0E9F27FDBCBC39C9B4FC5AA7F020250"
+        "sha256": "EFAF87283729A9A9CE6E0F8FADE44CC77F7537D1A703DC987E45E7D4C31B866C"
       },
       {
         "path": "tools/Build-MainDayOrnamentScene.ps1",

@@ -19,7 +19,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $script:assertions = 0
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-25-v17\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 $mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
@@ -263,7 +263,7 @@ function Write-AdapterFailureDiagnosticEvidence {
         }
     }
 
-    $evidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-csharp-adapter-failures'
+    $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-csharp-adapter-failures'
     [void] [System.IO.Directory]::CreateDirectory($evidenceRoot)
     $evidenceName = '{0}-{1}.json' -f `
         [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
@@ -490,7 +490,7 @@ function Save-DiagnosticConcurrencyFailureEvidence {
     )
 
     $createdumpPath = 'D:\Codex\tools\dotnet\10.0\shared\Microsoft.NETCore.App\10.0.10\createdump.exe'
-    $evidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-instance-activation-tests\diag-concurrency'
+    $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-instance-activation-tests\diag-concurrency'
     $runId = '{0}-{1}' -f `
         [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
         [guid]::NewGuid().ToString('N')
@@ -749,9 +749,9 @@ function Complete-DiagnosticConcurrencyFailure {
 
 $script:DesktopLauncherColdBudgetMilliseconds = 4700
 $script:DesktopLauncherWarmBudgetMilliseconds = 4500
-$script:DesktopLauncherLatencyProbeEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-desktop-launcher-tests\probe'
-# #62 probe 共享截止：8×100 强制 1MB 滚动写 5 次实测 [4635, 3077, 4181, 4458, 5629] p95/max=5629ms，+20% 取整 6800ms。
-$script:DiagnosticConcurrencyProbeDeadlineMilliseconds = 6800
+$script:DesktopLauncherLatencyProbeEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-desktop-launcher-tests\probe'
+# #62 probe 共享截止：真实矩阵 Wait（barrier 后 8×100 强制 1MB 滚动写），不是隔离 5 次。2026-08-24 五次完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 矩阵超时证据 20260823T1510260920479Z 完成计数 [27, 24, 25, 34, 27, 32, 23, 21]，最慢写手 21/100 @ 6800ms 线性外推 32381ms。取最差 32381 +20% 取整 38900ms（未过 40s 上限）。
+$script:DiagnosticConcurrencyProbeDeadlineMilliseconds = 38900
 
 function Get-DesktopLauncherJsonProperty {
     param(
@@ -1021,7 +1021,7 @@ function Save-DesktopLauncherFailureEvidence {
         $WarmSegments
     )
 
-    $evidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-desktop-launcher-tests'
+    $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-desktop-launcher-tests'
     $runId = '{0}-{1}' -f `
         [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
         [guid]::NewGuid().ToString('N')
@@ -1552,8 +1552,8 @@ function Invoke-InstanceActivationProcessTests {
     $dotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
     $sourceApplication = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
     $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-    $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
-    $testGroupRoot = Join-Path $testCapabilityRoot 'clock-countdown-instance-activation-tests'
+    $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
+    $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-instance-activation-tests'
     $testRoot = [System.IO.Path]::GetFullPath(
         (Join-Path $testGroupRoot ("run-" + [guid]::NewGuid().ToString('N')))
     )
@@ -2763,8 +2763,8 @@ function Remove-DesktopLauncherHostPayload {
 function Invoke-DesktopLauncherProcessTests {
     Assert-DesktopLauncherSourceLocks
     $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-    $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
-    $testGroupRoot = Join-Path $testCapabilityRoot 'clock-countdown-desktop-launcher-tests'
+    $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
+    $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-desktop-launcher-tests'
     $testRoot = [System.IO.Path]::GetFullPath(
         (Join-Path $testGroupRoot ("run-" + [guid]::NewGuid().ToString('N')))
     )
@@ -3236,7 +3236,7 @@ $referenceBaselineMode = Resolve-ReferenceBaselineMode `
 )
 
 if ($MigrationParityOnly) {
-    $migrationParityRoot = Join-Path 'D:\Codex\.codex\run-evidence\clock-countdown-migration-parity' ([guid]::NewGuid().ToString('N'))
+    $migrationParityRoot = Join-Path 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-migration-parity' ([guid]::NewGuid().ToString('N'))
     $migrationSettingsModule = Join-Path $PSScriptRoot 'Countdown.Settings.psm1'
     $migrationDotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
     $migrationVerificationDll = Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\bin\Release\net10.0-windows\MinminCountdown.Verification.dll'
@@ -3453,9 +3453,9 @@ if (-not [string]::Equals(
 }
 
 $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-$defaultTestCapabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
+$defaultTestCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
 $testCapabilityRoot = $defaultTestCapabilityRoot
-$testGroupRoot = Join-Path $testCapabilityRoot 'clock-countdown-csharp-tests'
+$testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-csharp-tests'
 if (-not [string]::IsNullOrWhiteSpace($OfficeDeploymentStagingRoot)) {
     $officeDeploymentRoot = [System.IO.Path]::GetFullPath('D:\Codex\deploy')
     $resolvedStagingRoot = [System.IO.Path]::GetFullPath($OfficeDeploymentStagingRoot)
@@ -3867,7 +3867,9 @@ exit 23
         )
     }
     finally {
-        Remove-Item -LiteralPath $blockedTemporaryPath -Force
+        if (Test-Path -LiteralPath $blockedTemporaryPath) {
+            Remove-Item -LiteralPath $blockedTemporaryPath -Force -Recurse
+        }
     }
     Assert-Equal 0 $failedValidationResult.ExitCode 'validate-only 受控持久化失败演练退出码'
     $persistenceFailureValidation = $failedValidationResult.Output | ConvertFrom-Json
@@ -3918,7 +3920,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.ValidateOnlySettingsIsolationBehavior) 'validate-only 强制使用显式非根 settings 路径且不改变生产默认路径'
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    Assert-Equal 551 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容'
+    Assert-Equal 554 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容（变化即误增删顶层键）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusDisclosureVisuals) 'validate-only 验证便签状态披露视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4039,7 +4041,7 @@ exit 23
         Assert-Equal $false ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '发布包不伪造便签卡提醒摘要 12 DIP 门'
         Assert-Equal 0 @($adapterValidation.MainNoteCardReminderFontMeasurements).Count '发布包不伪造便签卡提醒摘要测量'
     }
-    Assert-Equal '3F6723C4EA950693EF78926AE42B6C00DD8D651D230787CF32D19BA09A7362AE' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容'
+    Assert-Equal '5CAC18EDCDBC98A52772CF1E8E8F6D22E512F8F1BA421E0B1B0A1FA94B3EC7C9' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容（554 字段；变化即误增删顶层键）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.NoteEmptyStatesDistinguished) '首次空态与筛选无结果状态具有不同反馈'
@@ -4088,6 +4090,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.Unchecked) '主窗口真实复选框可取消'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.PersistenceFailureRolledBack) '主窗口便签完成写盘失败时 UI 与状态回滚'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesUpdated) '主窗口便签完成复选框可访问名称随状态更新'
+    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesHaveNoLineBreaks) 'settings JSON 注入含换行便签后可访问名称不含换行'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionStyleScoped) '兼容便签完成样式门保持通过'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterInitialFocusAndAccessibleNameWork) '提醒中心打开后建立初始焦点与可访问名称'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterKeyboardGateIsolationBehavior) '提醒中心 Tab 遍历、关闭守卫与初始焦点/可访问名负向夹具可独立失败'
@@ -4139,8 +4142,8 @@ exit 23
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
         Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日夜截图通过版本化 manifest'
-        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-19-v16/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
-        Assert-Equal '2026-08-19-v16' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
+        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-08-25-v17/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal '2026-08-25-v17' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
@@ -4182,6 +4185,8 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.FloatingInitialWorkspaceStateMatches) '悬浮窗首次显示立即同步倒计时选中态、标题、输入区和内容'
     Assert-Equal $true ([bool] $adapterValidation.FloatingWorkspaceSwitchingStaysSynchronized) '悬浮窗往返切换后始终恰有一个工作区并同步表面'
     Assert-Equal $true ([bool] $adapterValidation.FloatingCountdownSelectionSurvivesDayNightThemes) '悬浮窗倒计时首次选中态跨日夜边界保持'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearchScenariosPass) '悬浮窗折叠搜索主链路、空态、Ctrl+F 与主题 token 通过'
+    Assert-Equal $true ([bool] $adapterValidation.NoteSearchSyncsFromSharedFilter) '主窗口搜索框回填共享筛选态'
     Assert-Equal 0 ([int] $adapterValidation.FloatingReferenceContentOverlapCount) '悬浮窗参考场景没有角色与内容墨迹重叠'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceCaptureWritten) '悬浮窗参考场景可由 RenderTargetBitmap 写出非空 PNG'
     Assert-Equal $true ([bool] $adapterValidation.FloatingWorkdayCountdownUsesPrimaryVisual) '距离下班在首行使用唯一主项的 Automation 语义、暖纸底、珊瑚轨、字体和强调色'

@@ -770,7 +770,7 @@ $deploymentBindingNonce = [guid]::NewGuid().ToString('N')
 $deploymentBindingSha256 = [Convert]::ToHexString(
     [System.Security.Cryptography.SHA256]::HashData(
         [System.Text.UTF8Encoding]::new($false).GetBytes($deploymentBindingNonce)))
-$evidenceRoot = "D:\Codex\.codex\run-evidence\clock-countdown-deploy\$shortCommit\$runId"
+$evidenceRoot = "D:\agents\run-evidence\clock-countdown-deploy\$shortCommit\$runId"
 $sourceArchive = Join-Path $evidenceRoot 'commit-source.zip'
 $sourceRoot = Join-Path $evidenceRoot 'commit-source'
 $packageRoot = Join-Path $evidenceRoot 'windows-package'

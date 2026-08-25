@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-25-v17\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -141,7 +141,7 @@ finally {
 }
 if (-not $validation.DatePickerTextDefersCalendarUntilPointerRelease) { throw 'Clicking the date text opens the calendar before the pointer is released.' }
 
-$runtimeIntegrationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-ui-tests'
+$runtimeIntegrationEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-ui-tests'
 $runtimeIntegrationRoot = Join-Path $runtimeIntegrationEvidenceRoot ("ui-runtime-integration-" + [guid]::NewGuid().ToString('N'))
 $runtimeIntegrationProcess = $null
 $floatingPlushAssetFiles = @(
@@ -309,8 +309,8 @@ if ($floatingReferenceBaselineRequired) {
         ConvertFrom-Json -Depth 100
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-19-v16/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
-    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-19-v16') { throw 'The floating reference manifest version does not match the pinned v16 path.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-25-v17/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-25-v17') { throw 'The floating reference manifest version does not match the pinned v17 path.' }
     $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
     if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
@@ -324,7 +324,7 @@ if ($floatingReferenceBaselineRequired) {
             [string] $reportedCapture[0].Path -ne [string] $expectedCapture.path -or
             [string] $reportedCapture[0].BaselineSha256 -ne [string] $expectedCapture.pngSha256 -or
             [string] $reportedCapture[0].ActualSha256 -ne [string] $expectedCapture.pngSha256) {
-            throw "The floating capture is not bound to its v16 manifest entry: $($expectedCapture.captureId)."
+            throw "The floating capture is not bound to its v17 manifest entry: $($expectedCapture.captureId)."
         }
     }
     if (@($validation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count -ne 0) { throw 'A current floating frame exceeds the fixed pixel comparison thresholds.' }
@@ -349,6 +349,15 @@ if (-not $validation.FloatingTitleUsesSemiBoldWeight) { throw 'The floating titl
 if (-not $validation.FloatingNoteInputWraps) { throw 'The floating sticky-note input does not preserve independent text wrapping.' }
 if (-not $validation.FloatingNoteInputScrolls) { throw 'The floating sticky-note input does not preserve independent vertical scrolling.' }
 if (-not $validation.FloatingInitialWorkspaceStateMatches) { throw 'The floating window does not initialize through the synchronized countdown workspace state.' }
+if (-not $validation.FloatingNoteSearchScenariosPass) { throw 'The floating note search scenarios did not pass.' }
+$floatingNoteSearch = $validation.FloatingNoteSearch
+if (-not $floatingNoteSearch.HiddenInCountdowns -or -not $floatingNoteSearch.VisibleInNotes) { throw 'The floating search button is not exclusive to the notes workspace.' }
+if (-not $floatingNoteSearch.ExpandsAndFocuses -or -not $floatingNoteSearch.FiltersRenderedIds -or -not $floatingNoteSearch.CollapseKeepsTerm -or -not $floatingNoteSearch.HintReexpands -or -not $floatingNoteSearch.EscapeClears) { throw 'The floating collapsed-search main path (expand, filter, hint, Esc) did not pass.' }
+if (-not $floatingNoteSearch.EmptyState -or -not $floatingNoteSearch.EmptyDoesNotOverlap -or -not $floatingNoteSearch.ClearRestores) { throw 'The floating search empty state, overlap, or clear-restore contract did not pass.' }
+if (-not $floatingNoteSearch.AddThenSearchTab -or -not $floatingNoteSearch.SearchBeforeFirstCard) { throw 'The floating search Tab order contract did not pass.' }
+if (-not $floatingNoteSearch.CtrlFFromCountdowns) { throw 'Ctrl+F did not switch the floating window to notes search.' }
+if (-not $floatingNoteSearch.UsesQuickAddTheme) { throw 'The floating search input does not follow local quick-add theme tokens.' }
+if (-not $validation.NoteSearchSyncsFromSharedFilter) { throw 'The main-window search box does not sync from the shared filter.' }
 if (-not $validation.FloatingWorkspaceSwitchingStaysSynchronized) { throw 'Floating workspace switches do not preserve exactly one selected button, matching chrome, and matching content.' }
 if (-not $validation.FloatingCountdownSelectionSurvivesDayNightThemes) { throw 'The initial floating countdown selection is not recognized across day and night themes.' }
 if (-not $validation.FloatingReferenceCaptureWritten) { throw 'The floating reference scene did not produce a non-empty RenderTargetBitmap PNG.' }
@@ -510,7 +519,7 @@ $mainNoteCompletionMeasurement = @($mainNoteCompletionMeasurements | Where-Objec
 if ([double] $mainNoteCompletionMeasurement.BoxWidth -lt 24 -or [double] $mainNoteCompletionMeasurement.BoxHeight -lt 24 -or [double] $mainNoteCompletionMeasurement.TickWidth -lt 14 -or [double] $mainNoteCompletionMeasurement.TickHeight -lt 10 -or -not $mainNoteCompletionMeasurement.UsesDedicatedStyle -or -not $mainNoteCompletionMeasurement.UsesWarmTokens -or [double] $mainNoteCompletionMeasurement.CornerRadius -lt 6) { throw 'Main-window note completion template is smaller than the accepted box/tick geometry or lost its scoped warm style.' }
 if (@($mainNoteCompletionMeasurements | Where-Object { $_.User -ne 'MainWindow' -and ([math]::Abs([double] $_.BoxWidth - 18) -gt 0.5 -or [math]::Abs([double] $_.BoxHeight - 18) -gt 0.5 -or [math]::Abs([double] $_.TickWidth - 10) -gt 0.5 -or [math]::Abs([double] $_.TickHeight - 7) -gt 0.5 -or $_.UsesDedicatedStyle) }).Count -ne 0) { throw 'A non-main-window checkbox no longer uses the unchanged 18px global template.' }
 $mainNoteCompletionInteraction = $validation.MainNoteCompletionInteractionBehavior
-if (-not $mainNoteCompletionInteraction.Checked -or -not $mainNoteCompletionInteraction.Unchecked -or -not $mainNoteCompletionInteraction.PersistenceFailureRolledBack -or -not $mainNoteCompletionInteraction.AccessibleNamesUpdated) { throw 'Main-window note completion check, uncheck, rollback, or accessible-name behavior failed.' }
+if (-not $mainNoteCompletionInteraction.Checked -or -not $mainNoteCompletionInteraction.Unchecked -or -not $mainNoteCompletionInteraction.PersistenceFailureRolledBack -or -not $mainNoteCompletionInteraction.AccessibleNamesUpdated -or -not $mainNoteCompletionInteraction.AccessibleNamesHaveNoLineBreaks) { throw 'Main-window note completion check, uncheck, rollback, accessible-name, or newline-injection behavior failed.' }
 if (-not $validation.MainNoteCompletionStyleScoped) { throw 'Compatibility note completion style gate must remain true.' }
 if (-not $validation.TransientPanelsOnDemand) { throw 'Filters, tag pickers, or tag management do not use the required on-demand interaction flow.' }
 if (-not $validation.WorkspaceDraftsRetained) { throw 'Switching workspaces discarded an unsaved countdown or sticky-note draft.' }

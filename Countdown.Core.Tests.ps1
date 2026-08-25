@@ -131,7 +131,7 @@ function Get-IndependentCountdownDiagnosticMutexName {
 }
 
 if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $RemoteDeploymentOnly)) {
-    $validationEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-validation-tests'
+    $validationEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-validation-tests'
     $validationTestRoot = Join-Path $validationEvidenceRoot ([guid]::NewGuid().ToString('N'))
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     $originalFixtureRecord = $env:COUNTDOWN_FAKE_DOTNET_RECORD
@@ -214,6 +214,8 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
                 'FloatingInitialWorkspaceStateMatches',
                 'FloatingWorkspaceSwitchingStaysSynchronized',
                 'FloatingCountdownSelectionSurvivesDayNightThemes',
+                'FloatingNoteSearchScenariosPass',
+                'NoteSearchSyncsFromSharedFilter',
                 'FloatingQuickAddDayResourcesFollowLocalTheme',
                 'FloatingQuickAddNightResourcesFollowLocalTheme',
                 'FloatingQuickAddIndependentFromApplicationAutoTheme',
@@ -736,7 +738,7 @@ param([string] `$OfficeDeploymentStagingRoot)
 }
 
 if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $ValidationOnly)) {
-    $remoteDeploymentEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-remote-deployment-tests'
+    $remoteDeploymentEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-remote-deployment-tests'
     $remoteDeploymentTestRoot = Join-Path $remoteDeploymentEvidenceRoot ([guid]::NewGuid().ToString('N'))
     $remoteDeploymentSource = Join-Path $remoteDeploymentTestRoot 'source'
     $remoteDeploymentInstall = Join-Path $remoteDeploymentTestRoot 'install'
@@ -3157,8 +3159,8 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-08-19-v16\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v16 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-08-25-v17\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
         'assets\\ui-references\\main-window\\1165x1350\\2026-08-23-v17\\manifest\.json').Count) `
@@ -3185,7 +3187,7 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-19-v16\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-25-v17\manifest.json'
 $mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
@@ -3195,7 +3197,7 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-08-19-v16'
+        ExpectedVersion = '2026-08-25-v17'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'floating-countdowns-night',
@@ -3204,7 +3206,7 @@ $visualBaselineDefinitions = @(
             'long-notes-night-bottom',
             'long-notes-night-top'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-08-19-v16/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-08-25-v17/'
     },
     [pscustomobject]@{
         Name = 'Main'
@@ -3416,7 +3418,7 @@ $deploymentGateFunctions = @(
         }, $true)
 )
 Assert-Equal $deploymentGateFunctionNames.Count $deploymentGateFunctions.Count 'Office deployment exposes every gate function required by isolated fixtures'
-$deploymentGateEvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-deployment-gate-tests'
+$deploymentGateEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-deployment-gate-tests'
 $deploymentGateTestRoot = Join-Path $deploymentGateEvidenceRoot ([guid]::NewGuid().ToString('N'))
 $deploymentGateModulePath = Join-Path $deploymentGateTestRoot 'Countdown.DeploymentGate.Fixture.psm1'
 try {
@@ -5460,7 +5462,7 @@ Assert-Equal $true $buildSource.Contains('$managedCleanCandidates = @($applicati
 Assert-Equal $true $buildSource.Contains('$projectDirectories = @($coreProject, $applicationProject, $verificationProject)') 'Clean build derives intermediate candidates from all actual C# project paths'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build rejects absolute removal targets outside the repository root'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath -notin $expectedCleanPaths') 'Clean build validates every absolute removal target against its exact allowlist'
-Assert-Equal $true $buildSource.Contains("`$runEvidenceCapabilityRoot = 'D:\Codex\.codex\run-evidence'") 'Clean build uses the governed run-evidence capability root for isolated release clones'
+Assert-Equal $true $buildSource.Contains("`$runEvidenceCapabilityRoot = 'D:\agents\run-evidence'") 'Clean build uses the governed run-evidence capability root for isolated release clones'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($runEvidenceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build detects output paths inside the governed run-evidence tree'
 Assert-Equal $true $buildSource.Contains('-CapabilityRoot $cleanupCapabilityRoot') 'Clean build passes the resolved stable capability root to safe-delete'
 $installerCommittedRecoveryMessageIndex = $installerSource.IndexOf('检测到已提交但未完成应用解锁确认的事务')

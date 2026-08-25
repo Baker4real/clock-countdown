@@ -158,6 +158,7 @@ internal static class ValidationExercises
     private static void PrepareOffscreenValidationWindow(Window window)
     {
         window.ShowInTaskbar = false;
+        window.ShowActivated = false;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Left = -20_000;
         window.Top = -20_000;
@@ -4291,6 +4292,196 @@ internal static class ValidationExercises
         }
 
         return true;
+    }
+
+    internal const int AccessibleNameMaxLength = 512;
+
+    internal static bool IsWellFormedAccessibleName(string name, string prefix)
+    {
+        return name.StartsWith(prefix, StringComparison.Ordinal) &&
+               name.Length > prefix.Length &&
+               name.IndexOf('\n') < 0 &&
+               name.IndexOf('\r') < 0 &&
+               name.Length <= AccessibleNameMaxLength;
+    }
+
+    public static bool RunAccessibleNameWhitespaceIsolationBehavior()
+    {
+        const string completePrefix = "完成便签 ";
+        Must(
+            !IsWellFormedAccessibleName("完成便签 第一行\n第二行", completePrefix),
+            "含换行的可访问名称没有被弱约束拒绝。");
+        Must(
+            IsWellFormedAccessibleName("完成便签 验证完成交互", completePrefix),
+            "无异常空白的可访问名称被弱约束误伤。");
+        Must(
+            IsWellFormedAccessibleName("知道了：验证完成交互", "知道了："),
+            "全角冒号前缀的可访问名称被弱约束误伤。");
+
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-accessible-name-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var preexistingWindows = Application.Current.Windows.Cast<Window>().ToHashSet();
+        MainWindow? main = null;
+        FloatingWindow? floating = null;
+        ReminderCenterWindow? reminder = null;
+        HolidayCalendar? calendar = null;
+        try
+        {
+            const string noteId = "note-newline";
+            const string countdownId = "countdown-newline";
+            const string tagId = "tag-newline";
+            const string noteText = "第一行\n第二行";
+            const string countdownName = "主线\n倒计时";
+            const string tagName = "标\n签";
+            var settings = new CountdownSettings(
+                new[]
+                {
+                    new CountdownRecord(
+                        countdownId,
+                        countdownName,
+                        new DateTimeOffset(2031, 5, 1, 12, 0, 0, TimeSpan.Zero),
+                        Array.Empty<string>())
+                },
+                new[]
+                {
+                    new NoteRecord(
+                        noteId,
+                        noteText,
+                        "2031-04-05",
+                        false,
+                        new[] { tagId },
+                        NoReminder.Instance)
+                },
+                new[] { new TagRecord(tagId, tagName, "#F4B6A6") },
+                CountdownSettings.Empty.Preferences);
+            new SettingsStore().Save(settingsPath, settings);
+            var workspace = DesktopWorkspace.Load(settingsPath);
+            calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            floating = new FloatingWindow(
+                workspace,
+                calendar,
+                main,
+                AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(floating);
+            reminder = new ReminderCenterWindow();
+            PrepareOffscreenValidationWindow(reminder);
+
+            main.Show();
+            floating.Show();
+            reminder.Show();
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.UpdateLayout();
+            floating.UpdateLayout();
+
+            var noteTags = main.FindName("NoteTags") as TagSelector
+                ?? throw new InvalidOperationException("主窗口缺少 NoteTags。");
+            noteTags.SetTags(workspace.Snapshot.Settings.Tags);
+            noteTags.SetSelection(new[] { tagId });
+            reminder.AddEntry(new ReminderCenterItem(
+                new ActiveReminderOccurrenceKey("rule-newline", DateTimeOffset.UtcNow),
+                workspace.Snapshot.Settings.Notes.Single(),
+                0,
+                0));
+            WindowValidationInput.Pump(main.Dispatcher);
+            WindowValidationInput.Pump(reminder.Dispatcher);
+
+            var mainCompletion = AutomationProperties.GetName(
+                VisualDescendants<CheckBox>(main).Single(box =>
+                    string.Equals(box.Tag as string, noteId, StringComparison.OrdinalIgnoreCase)));
+            var mainActions = VisualDescendants<Button>(main)
+                .Where(button =>
+                    button.Content is "编辑" or "删除" &&
+                    string.Equals(button.Tag as string, noteId, StringComparison.OrdinalIgnoreCase))
+                .Select(AutomationProperties.GetName)
+                .ToArray();
+            var floatingCompletion = AutomationProperties.GetName(
+                VisualDescendants<CheckBox>(floating).Single(box =>
+                    string.Equals(box.Tag as string, noteId, StringComparison.OrdinalIgnoreCase)));
+            floating.ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(floating.Dispatcher);
+            floating.UpdateLayout();
+            var floatingCountdownNames = VisualDescendants<FrameworkElement>(floating)
+                .Select(AutomationProperties.GetName)
+                .Where(name => name.Contains("倒计时", StringComparison.Ordinal) &&
+                               name.Contains("主线", StringComparison.Ordinal))
+                .ToArray();
+            var reminderNames = VisualDescendants<FrameworkElement>(reminder)
+                .Select(AutomationProperties.GetName)
+                .Where(name => name.Contains("第一行", StringComparison.Ordinal))
+                .ToArray();
+            var selectedTagName = AutomationProperties.GetName(noteTags.PopupTrigger);
+
+            Must(
+                mainCompletion.Contains("第一行", StringComparison.Ordinal) &&
+                mainCompletion.Contains("第二行", StringComparison.Ordinal),
+                "主窗口完成名称没有嵌入 settings JSON 便签正文。");
+            Must(mainActions.Length == 2, "主窗口编辑/删除按钮没有渲染。");
+            Must(
+                floatingCompletion.Contains("第一行", StringComparison.Ordinal),
+                "悬浮窗完成名称没有嵌入 settings JSON 便签正文。");
+            Must(floatingCountdownNames.Length > 0, "悬浮窗倒计时名称没有嵌入 settings JSON 倒计时名。");
+            Must(reminderNames.Length > 0, "提醒中心名称没有嵌入 settings JSON 便签正文。");
+            Must(
+                selectedTagName.Contains("标", StringComparison.Ordinal) &&
+                selectedTagName.Contains("签", StringComparison.Ordinal),
+                "已选标签名称没有嵌入 settings JSON 标签名。");
+
+            var names = new[] { mainCompletion, floatingCompletion, selectedTagName }
+                .Concat(mainActions)
+                .Concat(floatingCountdownNames)
+                .Concat(reminderNames)
+                .ToArray();
+            return names.All(name => name.IndexOf('\n') < 0 && name.IndexOf('\r') < 0);
+        }
+        finally
+        {
+            foreach (var window in Application.Current.Windows.Cast<Window>().ToArray())
+            {
+                if (preexistingWindows.Contains(window))
+                {
+                    continue;
+                }
+
+                if (window is ReminderCenterWindow reminderCenter)
+                {
+                    reminderCenter.ForceClose();
+                }
+                else
+                {
+                    window.Close();
+                }
+            }
+
+            for (var attempt = 0; attempt < 8; attempt++)
+            {
+                WindowValidationInput.Pump(Application.Current.Dispatcher);
+                if (Application.Current.Windows.Cast<Window>().All(window =>
+                        preexistingWindows.Contains(window) || !window.IsVisible))
+                {
+                    break;
+                }
+            }
+
+            var preexistingMain = Application.Current.Windows
+                .OfType<MainWindow>()
+                .FirstOrDefault(window => preexistingWindows.Contains(window) && window.IsVisible);
+            if (preexistingMain is not null)
+            {
+                preexistingMain.Activate();
+                WindowValidationInput.Pump(preexistingMain.Dispatcher);
+            }
+
+            calendar?.Dispose();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
     }
 
     public static MainCountdownRemainingGateResults EvaluateMainCountdownRemainingGates(

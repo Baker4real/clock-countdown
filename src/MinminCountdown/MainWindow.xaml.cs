@@ -61,6 +61,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _completedNotesExpanded;
     private bool _settingDefaultDate;
     private bool _noteDateDirty;
+    private bool _syncingNoteSearch;
     private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();
     private IReadOnlyList<ReminderRule> _noteReminderRules = Array.Empty<ReminderRule>();
     private long _lastRenderedNoteMinuteUtc = -1;
@@ -975,6 +976,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ManageNoteReminderRulesButton.Click += (_, _) => OpenNoteReminderRulesEditor();
         NoteSearch.TextChanged += (_, _) =>
         {
+            if (_syncingNoteSearch)
+            {
+                return;
+            }
+
             UpdateFilter(filter => filter with { NoteSearch = NoteSearch.Text });
             RenderNotes();
             UpdateFilterSummary();
@@ -1094,10 +1100,30 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var snapshot = _desktopWorkspace.Snapshot;
         CountdownTags.SetTags(snapshot.Settings.Tags);
         NoteTags.SetTags(snapshot.Settings.Tags);
+        SyncNoteSearchFromFilter();
         RenderFilterTags();
         RenderTagManager();
         RenderVisibleWorkspace();
         LoadPreferences();
+    }
+
+    private void SyncNoteSearchFromFilter()
+    {
+        var term = _desktopWorkspace.Snapshot.Filter.NoteSearch ?? string.Empty;
+        if (string.Equals(NoteSearch.Text, term, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _syncingNoteSearch = true;
+        try
+        {
+            NoteSearch.Text = term;
+        }
+        finally
+        {
+            _syncingNoteSearch = false;
+        }
     }
 
     private void RenderVisibleWorkspace()
@@ -1270,7 +1296,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 card.BorderThickness = new Thickness(2);
                 card.SetResourceReference(Border.BorderBrushProperty, "ActiveBrush");
-                AutomationProperties.SetName(card, $"当前提醒来源倒计时：{record.Name}");
+                UiAccessibility.Name(card, $"当前提醒来源倒计时：{record.Name}");
             }
 
             CountdownRows.Children.Add(card);
@@ -1679,7 +1705,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             };
             detailText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             AutomationProperties.SetAutomationId(detailText, NoteCardReminderSummaryAutomationId);
-            AutomationProperties.SetName(detailText, $"便签卡提醒摘要：{details}");
+            UiAccessibility.Name(detailText, $"便签卡提醒摘要：{details}");
             body.Children.Add(detailText);
         }
         body.Children.Add(CreateTagChips(note.TagIds));
@@ -1700,7 +1726,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             card.BorderThickness = new Thickness(2);
             card.SetResourceReference(Border.BorderBrushProperty, "ActiveBrush");
-            AutomationProperties.SetName(card, $"当前提醒来源便签：{note.Text}");
+            UiAccessibility.Name(card, $"当前提醒来源便签：{note.Text}");
         }
 
         return card;
@@ -2499,7 +2525,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     }
 
     private static void NameControl(FrameworkElement control, string name) =>
-        AutomationProperties.SetName(control, name);
+        UiAccessibility.Name(control, name);
 
     private static void UseShortDateText(DatePicker datePicker)
     {

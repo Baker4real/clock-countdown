@@ -9,7 +9,7 @@ param(
     [int] $SampleCount = 1,
     [ValidateSet('Cold', 'Warm', 'Both')]
     [string] $StartKind = 'Both',
-    [string] $EvidenceRoot = 'D:\Codex\.codex\run-evidence\clock-countdown-desktop-launcher-tests\probe',
+    [string] $EvidenceRoot = 'D:\agents\run-evidence\clock-countdown-desktop-launcher-tests\probe',
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [switch] $SelfCheck,
     [int] $TimeoutMilliseconds = 10000
@@ -38,7 +38,7 @@ if ($TimeoutMilliseconds -lt 1) {
 
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-$capabilityRoot = [System.IO.Path]::GetFullPath('D:\Codex\.codex\run-evidence')
+$capabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
 $productionHost = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\app\MinminCountdown.exe')
 $productionSettingsPath = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\settings.json')
 $isolatedSettingsJson = '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}'

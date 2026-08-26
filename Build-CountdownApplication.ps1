@@ -2,6 +2,7 @@
 
 [CmdletBinding()]
 param(
+    [string] $DotnetExe,
     [switch] $Clean
 )
 
@@ -9,13 +10,27 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $dotnetRoot = 'D:\Codex\tools\dotnet\10.0'
-$dotnet = Join-Path $dotnetRoot 'dotnet.exe'
+$dotnet = if ($DotnetExe) {
+    $DotnetExe
+}
+elseif ($env:COUNTDOWN_DOTNET_EXE) {
+    $env:COUNTDOWN_DOTNET_EXE
+}
+else {
+    Join-Path $dotnetRoot 'dotnet.exe'
+}
 if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
-    throw "未找到受管 .NET SDK：$dotnet"
+    $pathDotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if ($null -eq $pathDotnet) {
+        throw "未找到受管 .NET SDK：$dotnet"
+    }
+    $dotnet = $pathDotnet.Source
 }
 
-$env:DOTNET_ROOT = $dotnetRoot
-$env:DOTNET_CLI_HOME = 'D:\Codex\.dotnet-cli'
+$env:DOTNET_ROOT = Split-Path -Parent $dotnet
+if (-not $env:DOTNET_CLI_HOME -and (Test-Path -LiteralPath 'D:\Codex\.dotnet-cli' -PathType Container)) {
+    $env:DOTNET_CLI_HOME = 'D:\Codex\.dotnet-cli'
+}
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $coreProject = Join-Path $PSScriptRoot 'src\MinminCountdown.Core\MinminCountdown.Core.csproj'
 $applicationProject = Join-Path $PSScriptRoot 'src\MinminCountdown\MinminCountdown.csproj'

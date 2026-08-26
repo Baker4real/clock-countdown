@@ -30,40 +30,12 @@ jobs:
         with:
           dotnet-version: '10.0.302'
 
-      - name: Publish C# test artifacts
+      - name: Build C# artifacts
         shell: pwsh
         run: |
-          $applicationArgs = @(
-            'publish', '.\src\MinminCountdown\MinminCountdown.csproj',
-            '--configuration', 'Release',
-            '--runtime', 'win-x64',
-            '--self-contained', 'true',
-            '-p:PublishSingleFile=true',
-            '-p:IncludeNativeLibrariesForSelfExtract=true',
-            '-p:IncludeSourceRevisionInInformationalVersion=false',
-            '-p:DebugType=None',
-            '-p:DebugSymbols=false',
-            '--output', '.\app'
-          )
-          dotnet @applicationArgs
-          $applicationExit = $LASTEXITCODE
-          if ($applicationExit -ne 0) { exit $applicationExit }
-
-          $verificationArgs = @(
-            'publish', '.\src\MinminCountdown.Verification\MinminCountdown.Verification.csproj',
-            '--configuration', 'Release',
-            '--runtime', 'win-x64',
-            '--self-contained', 'true',
-            '-p:PublishSingleFile=true',
-            '-p:IncludeNativeLibrariesForSelfExtract=true',
-            '-p:IncludeSourceRevisionInInformationalVersion=false',
-            '-p:DebugType=None',
-            '-p:DebugSymbols=false',
-            '--output', '.\verification'
-          )
-          dotnet @verificationArgs
-          $verificationExit = $LASTEXITCODE
-          if ($verificationExit -ne 0) { exit $verificationExit }
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Build-CountdownApplication.ps1
+          $buildExit = $LASTEXITCODE
+          if ($buildExit -ne 0) { exit $buildExit }
 
       - name: Test release contract
         shell: pwsh

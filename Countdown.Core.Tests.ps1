@@ -3791,11 +3791,245 @@ $recordedTransferCallCount = [regex]::Matches(
     $deploySource,
     '(?m)^\s*Invoke-CountdownRecordedScpTransfer\b').Count
 Assert-Equal 2 $recordedTransferCallCount 'Office deploy records both SCP commands through the transfer ledger interface'
+$recordedScpCalls = @(
+    $deploymentAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -eq 'Invoke-CountdownRecordedScpTransfer'
+        }, $true)
+)
+Assert-Equal 2 $recordedScpCalls.Count 'Office deploy AST finds both recorded SCP transfer calls'
+foreach ($recordedScpCall in $recordedScpCalls) {
+    $scpParameterNames = @(
+        $recordedScpCall.CommandElements |
+            Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } |
+            ForEach-Object { [string] $_.ParameterName }
+    )
+    Assert-Equal $true ($scpParameterNames -contains 'ScpExecutablePath') 'Office deploy passes the resolved SCP executable path into the transfer ledger'
+    Assert-Equal $true ($scpParameterNames -contains 'ScpOptions') 'Office deploy keeps strict SCP options on the transfer ledger call'
+}
 $recordedSshReadCallCount = [regex]::Matches(
     $deploySource,
     '\bInvoke-CountdownRecordedSshRead\b').Count
 Assert-Equal 2 $recordedSshReadCallCount 'Office deploy directly records both failure evidence reads; committed binding/readback are owned by the RemoteDeployment interface'
 Assert-Equal $false $deploySource.Contains('& scp.exe') 'Office deploy has no direct SCP call that bypasses the transfer ledger'
+$directSshScpCommands = @(
+    $deploymentAst.FindAll({
+            param($node)
+            if ($node -isnot [System.Management.Automation.Language.CommandAst]) { return $false }
+            $commandName = $node.GetCommandName()
+            $commandName -in @('ssh', 'ssh.exe', 'scp', 'scp.exe')
+        }, $true)
+)
+Assert-Equal 0 $directSshScpCommands.Count 'Office deploy has no bare ssh/scp command names; resolved absolute paths own every process start'
+$validateOnlyBlockEnd = if ($deployValidationExitIndex -ge 0) {
+    $deploySource.IndexOf('exit 0', $deployValidationExitIndex)
+}
+else { -1 }
+$validateOnlyBlock = if ($deployValidationExitIndex -ge 0 -and $validateOnlyBlockEnd -gt $deployValidationExitIndex) {
+    $deploySource.Substring($deployValidationExitIndex, $validateOnlyBlockEnd - $deployValidationExitIndex)
+}
+else { '' }
+Assert-Equal $false $validateOnlyBlock.Contains('Resolve-OfficeSshClientIdentity') 'ValidateOnly does not resolve SSH client identity'
+Assert-Equal $false $validateOnlyBlock.Contains('Invoke-OfficeSshEchoBehaviorProbe') 'ValidateOnly does not run the SSH echo probe'
+Assert-Equal $false $validateOnlyBlock.Contains('Use-OfficeSshHelper.ps1') 'ValidateOnly does not load the managed SSH helper'
+Assert-Equal $false $validateOnlyBlock.Contains('tailscale') 'ValidateOnly does not touch Tailscale'
+$tailscalePingIndex = $deploySource.IndexOf('& tailscale.exe ping')
+$firstRecordedScpIndex = $deploySource.IndexOf('Invoke-CountdownRecordedScpTransfer')
+$identityResolveIndex = $deploySource.IndexOf('Resolve-OfficeSshClientIdentity', $credentialImportIndex)
+$echoProbeIndex = $deploySource.IndexOf('Invoke-OfficeSshEchoBehaviorProbe', $credentialImportIndex)
+Assert-Equal $true (
+    $tailscalePingIndex -gt $credentialImportIndex -and
+    $identityResolveIndex -gt $tailscalePingIndex -and
+    $echoProbeIndex -gt $identityResolveIndex -and
+    $firstRecordedScpIndex -gt $echoProbeIndex
+) 'Formal deploy resolves SSH identity and runs the echo probe after Tailscale and before the first SCP transfer'
+$adapterCalls = @(
+    $deploymentAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -eq 'New-CountdownRemoteDeploymentReadbackSshAdapter'
+        }, $true)
+)
+Assert-Equal 1 $adapterCalls.Count 'Office deploy constructs one independent readback SSH adapter'
+$adapterParameterNames = @(
+    $adapterCalls[0].CommandElements |
+        Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } |
+        ForEach-Object { [string] $_.ParameterName }
+)
+Assert-Equal $true ($adapterParameterNames -contains 'CommandRunner') 'Independent readback adapter uses the resolved SSH executable through CommandRunner'
+
+$officeSshProbeOptions = @(
+    '-i', 'D:\fixture\id_ed25519',
+    '-o', 'BatchMode=yes',
+    '-o', 'IdentitiesOnly=yes',
+    '-o', 'ConnectTimeout=10',
+    '-o', 'ConnectionAttempts=1',
+    '-o', 'StrictHostKeyChecking=yes',
+    '-o', 'UserKnownHostsFile=D:\fixture\known_hosts',
+    '-o', 'KexAlgorithms=curve25519-sha256'
+)
+. (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1') -LoadFunctionsOnly
+$truncatedEcho = 'truncated-echo'
+$officeSshProbeTruncationLocked = $false
+$officeSshProbeTruncationMessage = 'truncated SSH echo probe was accepted'
+try {
+    $truncationRunner = {
+        param($FileName, $Arguments)
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = $truncatedEcho
+            StandardError = ''
+            ProcessId = 4242
+        }
+    }.GetNewClosure()
+    Invoke-OfficeSshEchoBehaviorProbe `
+        -SshExecutablePath 'D:\OpenSSH\ssh.exe' `
+        -SshVersion 'OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2' `
+        -Options $officeSshProbeOptions `
+        -Destination 'replicator@office-host' `
+        -ProbeCharacterCount 22644 `
+        -CommandRunner $truncationRunner
+}
+catch {
+    $officeSshProbeTruncationLocked = $true
+    $officeSshProbeTruncationMessage = $_.Exception.Message
+}
+Assert-Equal $true $officeSshProbeTruncationLocked 'Truncated SSH echo probe fails closed'
+Assert-Equal $true ($officeSshProbeTruncationMessage -match [regex]::Escape('D:\OpenSSH\ssh.exe')) 'Truncated SSH echo probe error includes resolved binary path'
+Assert-Equal $true ($officeSshProbeTruncationMessage -match [regex]::Escape('OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2')) 'Truncated SSH echo probe error includes SSH version'
+Assert-Equal $true ($officeSshProbeTruncationMessage -match '实测截断长度：14') 'Truncated SSH echo probe error includes measured truncated length'
+
+$officeSshProbeCompleteCapture = [pscustomobject]@{ FileName = $null; RemoteCommandLength = 0 }
+$officeSshProbeSpec = New-OfficeSshEchoProbeCommand -ProbeCharacterCount 22644
+$officeSshProbeCompleteMessage = $null
+try {
+    $completeRunner = {
+        param($FileName, $Arguments)
+        $officeSshProbeCompleteCapture.FileName = $FileName
+        $officeSshProbeCompleteCapture.RemoteCommandLength = [int] $Arguments[-1].Length
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = [string] $officeSshProbeSpec.ExpectedOutput
+            StandardError = ''
+            ProcessId = 4242
+        }
+    }.GetNewClosure()
+    Invoke-OfficeSshEchoBehaviorProbe `
+        -SshExecutablePath 'D:\OpenSSH\ssh.exe' `
+        -SshVersion 'OpenSSH_for_Windows_9.5p2, LibreSSL 3.8.2' `
+        -Options $officeSshProbeOptions `
+        -Destination 'replicator@office-host' `
+        -ProbeCharacterCount 22644 `
+        -CommandRunner $completeRunner
+}
+catch {
+    $officeSshProbeCompleteMessage = $_.Exception.Message
+}
+Assert-Equal $null $officeSshProbeCompleteMessage 'Complete SSH echo probe round-trip is accepted'
+Assert-Equal 'D:\OpenSSH\ssh.exe' ([string] $officeSshProbeCompleteCapture.FileName) 'SSH echo probe starts the resolved ssh executable'
+Assert-Equal 22644 ([int] $officeSshProbeCompleteCapture.RemoteCommandLength) 'SSH echo probe remote command covers the 22644-character readback floor'
+
+$officeSshNoCandidateMessage = $null
+try {
+    Resolve-OfficeSshClientIdentity `
+        -SystemRoot (Join-Path ([System.IO.Path]::GetTempPath()) 'countdown-missing-openssh') `
+        -ApplicationCommandLookup { param($Name) @() } `
+        -VersionReader { param($SshPath) '<none>' } | Out-Null
+}
+catch {
+    $officeSshNoCandidateMessage = $_.Exception.Message
+}
+Assert-Equal $true ($officeSshNoCandidateMessage -match '未找到可配对的 ssh/scp 候选') 'Missing ssh/scp pair fails closed'
+Assert-Equal $true ($officeSshNoCandidateMessage -match '二进制路径：<none>') 'Missing ssh/scp pair error includes binary path field'
+Assert-Equal $true ($officeSshNoCandidateMessage -match '版本：<none>') 'Missing ssh/scp pair error includes version field'
+Assert-Equal $true ($officeSshNoCandidateMessage -match '实测截断长度：n/a') 'Missing ssh/scp pair error includes measured truncation field'
+
+$officeSshIdentityFixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "countdown-ssh-identity-$([guid]::NewGuid().ToString('N'))"
+$officeSshOpenSshDirectory = Join-Path $officeSshIdentityFixtureRoot 'System32\OpenSSH'
+New-Item -ItemType Directory -Path $officeSshOpenSshDirectory -Force | Out-Null
+[System.IO.File]::WriteAllText((Join-Path $officeSshOpenSshDirectory 'ssh.exe'), 'ssh-fixture')
+[System.IO.File]::WriteAllText((Join-Path $officeSshOpenSshDirectory 'scp.exe'), 'scp-fixture')
+$pathSsh = Join-Path $officeSshIdentityFixtureRoot 'path-ssh.exe'
+$pathScp = Join-Path $officeSshIdentityFixtureRoot 'path-scp.exe'
+[System.IO.File]::WriteAllText($pathSsh, 'path-ssh')
+[System.IO.File]::WriteAllText($pathScp, 'path-scp')
+$officeSshIdentity = Resolve-OfficeSshClientIdentity `
+    -SystemRoot $officeSshIdentityFixtureRoot `
+    -ApplicationCommandLookup {
+        param($Name)
+        if ($Name -eq 'ssh.exe') {
+            [pscustomobject]@{ Source = $pathSsh }
+        }
+        elseif ($Name -eq 'scp.exe') {
+            [pscustomobject]@{ Source = $pathScp }
+        }
+        else { @() }
+    } `
+    -VersionReader { param($SshPath) 'OpenSSH_fixture' }
+Assert-Equal ([System.IO.Path]::GetFullPath((Join-Path $officeSshOpenSshDirectory 'ssh.exe'))) ([string] $officeSshIdentity.SshPath) 'Windows OpenSSH directory pair is preferred over PATH'
+Assert-Equal ([System.IO.Path]::GetFullPath((Join-Path $officeSshOpenSshDirectory 'scp.exe'))) ([string] $officeSshIdentity.ScpPath) 'Windows OpenSSH directory keeps ssh/scp paired'
+Assert-Equal 'windows-openssh' ([string] $officeSshIdentity.Source) 'Windows OpenSSH candidate records its source'
+Assert-Equal 'OpenSSH_fixture' ([string] $officeSshIdentity.Version) 'SSH identity uses the injected version reader'
+Remove-Item -LiteralPath (Join-Path $officeSshOpenSshDirectory 'ssh.exe') -Force
+Remove-Item -LiteralPath (Join-Path $officeSshOpenSshDirectory 'scp.exe') -Force
+Remove-Item -LiteralPath $officeSshOpenSshDirectory -Force
+Remove-Item -LiteralPath (Join-Path $officeSshIdentityFixtureRoot 'System32') -Force
+$officeSshPathIdentity = Resolve-OfficeSshClientIdentity `
+    -SystemRoot $officeSshIdentityFixtureRoot `
+    -ApplicationCommandLookup {
+        param($Name)
+        if ($Name -eq 'ssh.exe') {
+            [pscustomobject]@{ Source = $pathSsh }
+        }
+        elseif ($Name -eq 'scp.exe') {
+            [pscustomobject]@{ Source = $pathScp }
+        }
+        else { @() }
+    } `
+    -VersionReader { param($SshPath) 'PATH_fixture' }
+Assert-Equal ([System.IO.Path]::GetFullPath($pathSsh)) ([string] $officeSshPathIdentity.SshPath) 'PATH ssh/scp pair is used when OpenSSH is incomplete'
+Assert-Equal ([System.IO.Path]::GetFullPath($pathScp)) ([string] $officeSshPathIdentity.ScpPath) 'PATH candidate keeps ssh/scp paired'
+Assert-Equal 'path' ([string] $officeSshPathIdentity.Source) 'PATH candidate records its source'
+Remove-Item -LiteralPath $pathSsh -Force
+Remove-Item -LiteralPath $pathScp -Force
+Remove-Item -LiteralPath $officeSshIdentityFixtureRoot -Force
+
+$officeSshStartabilityDestinations = [System.Collections.Generic.List[string]]::new()
+$officeDestinationFixture = 'replicator@office-host'
+$officeSshProbeSize = Resolve-OfficeSshEchoProbeCharacterCount `
+    -SshExecutablePath 'D:\OpenSSH\ssh.exe' `
+    -SshVersion 'OpenSSH_fixture' `
+    -Options $officeSshProbeOptions `
+    -DestinationLength $officeDestinationFixture.Length `
+    -StartabilityProbe {
+        param($FileName, $Arguments)
+        $destinationArgument = [string] $Arguments[-2]
+        [void] $officeSshStartabilityDestinations.Add($destinationArgument)
+        ([string] $Arguments[-1]).Length -le 30000
+    }
+Assert-Equal $true ($officeSshProbeSize -ge 22644) 'Probe size never silently shrinks below the 22644-character readback floor'
+Assert-Equal $true ($officeSshProbeSize -le 30000) 'Probe size uses the largest ArgumentList that can start'
+Assert-Equal $true ($officeSshStartabilityDestinations.Count -gt 0) 'Size discovery StartabilityProbe actually runs'
+Assert-Equal 0 @($officeSshStartabilityDestinations | Where-Object { $_ -eq $officeDestinationFixture }).Count 'Size discovery StartabilityProbe does not receive the office destination'
+Assert-Equal $officeDestinationFixture.Length $officeSshStartabilityDestinations[0].Length 'Size discovery dummy destination preserves office destination length'
+$resolveProbeCalls = @(
+    $deploymentAst.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -eq 'Resolve-OfficeSshEchoProbeCharacterCount'
+        }, $true)
+)
+Assert-Equal 1 $resolveProbeCalls.Count 'Office deploy resolves echo probe size once'
+$resolveProbeParameterNames = @(
+    $resolveProbeCalls[0].CommandElements |
+        Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } |
+        ForEach-Object { [string] $_.ParameterName }
+)
+Assert-Equal $true ($resolveProbeParameterNames -contains 'DestinationLength') 'Probe size discovery takes destination length, not the office destination string'
+Assert-Equal $false ($resolveProbeParameterNames -contains 'Destination') 'Probe size discovery does not take the office destination for Start'
+Assert-Equal $true $deploySource.Contains('ssh-client-identity.json') 'Resolved SSH identity is written to a run-evidence sidecar'
+Set-StrictMode -Off
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'
 Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath -like '*ui-references*' }).Count 'UI references stay outside build targets'

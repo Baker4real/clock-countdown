@@ -211,14 +211,27 @@ function Invoke-CountdownScpProcess {
     param(
         [Parameter(Mandatory)] [string[]] $Options,
         [Parameter(Mandatory)] [string] $SourcePath,
-        [Parameter(Mandatory)] [string] $Destination
+        [Parameter(Mandatory)] [string] $Destination,
+        [string] $ExecutablePath,
+        [scriptblock] $CommandRunner
     )
 
+    $fileName = if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
+        'scp.exe'
+    }
+    else {
+        $ExecutablePath
+    }
+    $arguments = [string[]] (@($Options) + @($SourcePath, $Destination))
+    if ($null -ne $CommandRunner) {
+        return [int] (& $CommandRunner $fileName $arguments)
+    }
+
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = 'scp.exe'
+    $startInfo.FileName = $fileName
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    foreach ($argument in @($Options) + @($SourcePath, $Destination)) {
+    foreach ($argument in $arguments) {
         [void] $startInfo.ArgumentList.Add($argument)
     }
 
@@ -226,7 +239,7 @@ function Invoke-CountdownScpProcess {
     $process.StartInfo = $startInfo
     try {
         if (-not $process.Start()) {
-            throw '无法启动 scp.exe。'
+            throw "无法启动 scp 进程：$fileName"
         }
         $process.WaitForExit()
         $process.ExitCode
@@ -247,7 +260,9 @@ function Invoke-CountdownRecordedScpTransfer {
         [string[]] $ScpOptions = @(),
         [scriptblock] $ScpInvoker,
         [scriptblock] $RemoteBytesProbe,
-        [scriptblock] $StopwatchFactory
+        [scriptblock] $StopwatchFactory,
+        [string] $ScpExecutablePath,
+        [scriptblock] $ScpCommandRunner
     )
 
     $resolvedLedgerPath = [System.IO.Path]::GetFullPath($LedgerPath)
@@ -264,7 +279,9 @@ function Invoke-CountdownRecordedScpTransfer {
             Invoke-CountdownScpProcess `
                 -Options $Options `
                 -SourcePath $LocalSourcePath `
-                -Destination $RemoteDestination
+                -Destination $RemoteDestination `
+                -ExecutablePath $ScpExecutablePath `
+                -CommandRunner $ScpCommandRunner
         }
     }
     $stopwatch = if ($null -eq $StopwatchFactory) {
@@ -423,7 +440,8 @@ function Invoke-CountdownSshBase64CommandRead {
         [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $RemoteCommand,
         [Parameter(Mandatory)] [ValidateRange(1, 32768)] [int] $MaximumDecodedBytes,
         [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Description,
-        [scriptblock] $CommandRunner
+        [scriptblock] $CommandRunner,
+        [string] $SshExecutablePath
     )
 
     if ($Destination -notmatch '\A[^@\s]+@[^@\s]+\z') {
@@ -470,8 +488,14 @@ function Invoke-CountdownSshBase64CommandRead {
         }
     }
     $arguments = [string[]] (@($Options) + @($Destination, $RemoteCommand))
+    $sshFileName = if ([string]::IsNullOrWhiteSpace($SshExecutablePath)) {
+        'ssh.exe'
+    }
+    else {
+        $SshExecutablePath
+    }
     try {
-        $runnerOutput = @(& $CommandRunner 'ssh.exe' $arguments)
+        $runnerOutput = @(& $CommandRunner $sshFileName $arguments)
         if ($runnerOutput.Count -ne 1) { throw '严格 SSH command runner 必须返回一个结果对象。' }
         $runnerResult = $runnerOutput[0]
         foreach ($name in @('ExitCode', 'StandardOutput', 'StandardError', 'ProcessId')) {

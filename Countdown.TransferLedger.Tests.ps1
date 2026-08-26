@@ -491,6 +491,58 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
     Assert-Equal 'ssh.exe' ([string] $commandCapture.FileName) '严格 SSH command seam 只启动 ssh.exe'
     Assert-Equal (($strictOptions + @('replicator@office-host', 'pwsh.exe -NoLogo -NoProfile -EncodedCommand fixture')) -join "`n") (@($commandCapture.Arguments) -join "`n") '严格 SSH command seam 保留完整且有序的参数边界'
     Assert-Equal ([Convert]::ToHexString($commandPayload)) ([Convert]::ToHexString([byte[]] $commandResult.Bytes)) '严格 SSH command seam 返回解码后的精确 bytes'
+    Assert-Equal 16 $strictOptions.Count '严格 SSH 选项保持 16 元素，可执行路径不是第 17 项'
+
+    $injectedSsh = 'D:\injected-openssh\ssh.exe'
+    $injectedSshCapture = [pscustomobject]@{ FileName = $null; Arguments = $null }
+    $injectedSshRunner = {
+        param($FileName, $Arguments)
+        $injectedSshCapture.FileName = $FileName
+        $injectedSshCapture.Arguments = [string[]] $Arguments
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = [Convert]::ToBase64String($commandPayload)
+            StandardError = ''
+            ProcessId = $PID + 1
+        }
+    }.GetNewClosure()
+    $injectedSshResult = Invoke-CountdownSshBase64CommandRead `
+        -Options $strictOptions `
+        -Destination 'replicator@office-host' `
+        -RemoteCommand 'pwsh.exe -NoLogo -NoProfile -EncodedCommand fixture' `
+        -MaximumDecodedBytes 4096 `
+        -Description '注入 SSH 可执行路径' `
+        -SshExecutablePath $injectedSsh `
+        -CommandRunner $injectedSshRunner
+    Assert-Equal $true ([bool] $injectedSshResult.Success) '注入 SSH 绝对路径时仍返回 payload'
+    Assert-Equal $injectedSsh ([string] $injectedSshCapture.FileName) '注入 SSH 绝对路径时进程 FileName 使用该路径'
+    Assert-Equal (($strictOptions + @('replicator@office-host', 'pwsh.exe -NoLogo -NoProfile -EncodedCommand fixture')) -join "`n") (@($injectedSshCapture.Arguments) -join "`n") '注入 SSH 绝对路径时不把可执行路径写入 Options'
+
+    $injectedScp = 'D:\injected-openssh\scp.exe'
+    $injectedScpCapture = [pscustomobject]@{ FileName = $null; Arguments = $null }
+    $injectedScpRunner = {
+        param($FileName, $Arguments)
+        $injectedScpCapture.FileName = $FileName
+        $injectedScpCapture.Arguments = [string[]] $Arguments
+        0
+    }.GetNewClosure()
+    Invoke-CountdownRecordedScpTransfer `
+        -LedgerPath $ledgerPath `
+        -Id 'scp-executable-identity' `
+        -SourcePath $firstSource `
+        -Destination 'replicator@office:D:/deploy/injected-scp.bin' `
+        -RemotePath 'D:\deploy\injected-scp.bin' `
+        -ScpOptions $strictOptions `
+        -ScpExecutablePath $injectedScp `
+        -ScpCommandRunner $injectedScpRunner `
+        -StopwatchFactory {
+            New-FakeStopwatch -ElapsedSeconds 1 -Events ([System.Collections.Generic.List[string]]::new())
+        } | Out-Null
+    Assert-Equal $injectedScp ([string] $injectedScpCapture.FileName) '注入 SCP 绝对路径时进程 FileName 使用该路径'
+    Assert-Equal (($strictOptions + @($firstSource, 'replicator@office:D:/deploy/injected-scp.bin')) -join "`n") (@($injectedScpCapture.Arguments) -join "`n") '注入 SCP 绝对路径时不把可执行路径写入 Options'
+    $ledgerAfterIdentity = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8)
+    Assert-Equal $false $ledgerAfterIdentity.Contains('injected-openssh') '可执行路径不进入传输账本'
+    Assert-Equal $false $ledgerAfterIdentity.Contains('UserKnownHostsFile') '注入可执行路径后 SSH 参数仍不进入账本'
 
     $pwshPath = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
     $childProcess = Invoke-CountdownExternalCommandProcess `

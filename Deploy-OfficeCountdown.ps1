@@ -10,13 +10,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = $PSScriptRoot
+$script:sshExecutablePath = $null
+$script:scpExecutablePath = $null
 
 function Invoke-OfficeEncodedCommand {
     param([Parameter(Mandatory)] [string] $ScriptText)
 
     $runtimeGuard = "`$ErrorActionPreference = 'Stop'; if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') { throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。' }"
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("$runtimeGuard`r`n$ScriptText"))
-    $output = @(& ssh.exe @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded" 2>&1)
+    $output = @(& $script:sshExecutablePath @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded" 2>&1)
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         $diagnostic = (@($output) | ForEach-Object { [string] $_ }) -join "`n"
@@ -41,7 +43,7 @@ if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) {
 "@
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probeScript))
     try {
-        $output = & ssh.exe @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
+        $output = & $script:sshExecutablePath @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
         $exitCode = $LASTEXITCODE
     }
     catch {
@@ -78,7 +80,7 @@ if (`$length -gt 32768) {
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($receiptScript))
     $exitCode = -1
     try {
-        $output = & ssh.exe @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
+        $output = & $script:sshExecutablePath @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
         $exitCode = $LASTEXITCODE
     }
     catch {
@@ -162,7 +164,7 @@ if ([long] `$item.Length -gt 32768) { throw "rollback 前诊断超过远端读�
 "@
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($readerScript))
     try {
-        $output = & ssh.exe @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
+        $output = & $script:sshExecutablePath @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
         $exitCode = $LASTEXITCODE
     }
     catch {
@@ -717,6 +719,358 @@ function Assert-CountdownRemoteInstallScript {
     }
 }
 
+function New-OfficeSshEchoProbeCommand {
+    param(
+        [Parameter(Mandatory)] [ValidateRange(22644, 32768)] [int] $ProbeCharacterCount
+    )
+
+    $begin = 'COUNTDOWN-SSH-ECHO-PROBE-BEGIN:'
+    $end = ':COUNTDOWN-SSH-ECHO-PROBE-END'
+    $prefix = 'pwsh.exe -NoLogo -NoProfile -Command "Write-Output '''
+    $suffix = '''"'
+    $fixedLength = $prefix.Length + $begin.Length + $end.Length + $suffix.Length
+    $padLength = $ProbeCharacterCount - $fixedLength
+    if ($padLength -lt 32) {
+        throw "SSH 行为探针命令固定开销过大，无法在 $ProbeCharacterCount 字符内放入有效载荷。"
+    }
+    $pad = 'P' * $padLength
+    $expectedOutput = $begin + $pad + $end
+    $remoteCommand = $prefix + $expectedOutput + $suffix
+    if ($remoteCommand.Length -ne $ProbeCharacterCount) {
+        throw "SSH 行为探针命令长度不是 ${ProbeCharacterCount}：$($remoteCommand.Length)"
+    }
+    [pscustomobject]@{
+        RemoteCommand = $remoteCommand
+        ExpectedOutput = $expectedOutput
+        ProbeCharacterCount = $ProbeCharacterCount
+    }
+}
+
+function New-OfficeSshStartabilityDummyDestination {
+    param([Parameter(Mandatory)] [ValidateRange(1, 4096)] [int] $Length)
+
+    $token = 'countdown-ssh-startability'
+    if ($Length -le $token.Length) {
+        return $token.Substring(0, $Length)
+    }
+    $token + ('x' * ($Length - $token.Length))
+}
+
+function Add-OfficeWindowsProcessCommandLineArgument {
+    param(
+        [Parameter(Mandatory)] [System.Text.StringBuilder] $Builder,
+        [AllowEmptyString()] [string] $Argument
+    )
+
+    if ($Builder.Length -gt 0) {
+        [void] $Builder.Append(' ')
+    }
+    $needsQuoting = $Argument.Length -eq 0 -or $Argument.IndexOfAny([char[]] @(' ', "`t", "`n", [char] 11, '"')) -ge 0
+    if (-not $needsQuoting) {
+        [void] $Builder.Append($Argument)
+        return
+    }
+
+    [void] $Builder.Append('"')
+    $index = 0
+    while ($index -lt $Argument.Length) {
+        $character = $Argument[$index]
+        $index++
+        if ($character -eq [char] '\') {
+            $backslashCount = 1
+            while ($index -lt $Argument.Length -and $Argument[$index] -eq [char] '\') {
+                $index++
+                $backslashCount++
+            }
+            if ($index -eq $Argument.Length) {
+                [void] $Builder.Append([char] '\', $backslashCount * 2)
+            }
+            elseif ($Argument[$index] -eq [char] '"') {
+                [void] $Builder.Append([char] '\', $backslashCount * 2 + 1)
+                [void] $Builder.Append('"')
+                $index++
+            }
+            else {
+                [void] $Builder.Append([char] '\', $backslashCount)
+            }
+        }
+        elseif ($character -eq [char] '"') {
+            [void] $Builder.Append('\"')
+        }
+        else {
+            [void] $Builder.Append($character)
+        }
+    }
+    [void] $Builder.Append('"')
+}
+
+function ConvertTo-OfficeWindowsProcessCommandLine {
+    param(
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $FileName,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]] $Arguments
+    )
+
+    $builder = [System.Text.StringBuilder]::new()
+    [void] $builder.Append('"').Append($FileName).Append('"')
+    foreach ($argument in $Arguments) {
+        Add-OfficeWindowsProcessCommandLineArgument -Builder $builder -Argument $argument
+    }
+    $builder.ToString()
+}
+
+function Test-OfficeSshProcessArgumentListCanStart {
+    param(
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $FileName,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]] $Arguments
+    )
+
+    $commandLine = ConvertTo-OfficeWindowsProcessCommandLine -FileName $FileName -Arguments $Arguments
+    $commandLine.Length -le 32766
+}
+
+function Get-OfficeSshClientVersion {
+    param([Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $SshExecutablePath)
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $SshExecutablePath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    [void] $startInfo.ArgumentList.Add('-V')
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) { return '<unknown>' }
+        $standardOutput = $process.StandardOutput.ReadToEndAsync()
+        $standardError = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $text = (
+            [string] $standardError.GetAwaiter().GetResult() +
+            [string] $standardOutput.GetAwaiter().GetResult()
+        ).Trim()
+        if ([string]::IsNullOrWhiteSpace($text)) { '<unknown>' } else { $text }
+    }
+    catch {
+        '<unknown>'
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
+function Resolve-OfficeSshClientIdentity {
+    param(
+        [string] $SystemRoot = $env:SystemRoot,
+        [scriptblock] $ApplicationCommandLookup,
+        [scriptblock] $VersionReader
+    )
+
+    if ($null -eq $ApplicationCommandLookup) {
+        $ApplicationCommandLookup = {
+            param([Parameter(Mandatory)] [string] $Name)
+            @(Get-Command -Name $Name -CommandType Application -All -ErrorAction SilentlyContinue)
+        }
+    }
+    if ($null -eq $VersionReader) {
+        $VersionReader = {
+            param([Parameter(Mandatory)] [string] $SshPath)
+            Get-OfficeSshClientVersion -SshExecutablePath $SshPath
+        }
+    }
+
+    $candidates = [System.Collections.Generic.List[object]]::new()
+    $openSshDirectory = Join-Path $SystemRoot 'System32\OpenSSH'
+    $openSshSsh = Join-Path $openSshDirectory 'ssh.exe'
+    $openSshScp = Join-Path $openSshDirectory 'scp.exe'
+    if ((Test-Path -LiteralPath $openSshSsh -PathType Leaf) -and
+        (Test-Path -LiteralPath $openSshScp -PathType Leaf)) {
+        [void] $candidates.Add([pscustomobject]@{
+                SshPath = [System.IO.Path]::GetFullPath($openSshSsh)
+                ScpPath = [System.IO.Path]::GetFullPath($openSshScp)
+                Source = 'windows-openssh'
+            })
+    }
+
+    $scpByDirectory = [System.Collections.Generic.Dictionary[string, string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($scpCommand in @(& $ApplicationCommandLookup 'scp.exe')) {
+        $scpPath = [string] $scpCommand.Source
+        if ([string]::IsNullOrWhiteSpace($scpPath) -or
+            -not (Test-Path -LiteralPath $scpPath -PathType Leaf)) {
+            continue
+        }
+        $fullScp = [System.IO.Path]::GetFullPath($scpPath)
+        $directory = [System.IO.Path]::GetDirectoryName($fullScp)
+        if (-not $scpByDirectory.ContainsKey($directory)) {
+            $scpByDirectory[$directory] = $fullScp
+        }
+    }
+    foreach ($sshCommand in @(& $ApplicationCommandLookup 'ssh.exe')) {
+        $sshPath = [string] $sshCommand.Source
+        if ([string]::IsNullOrWhiteSpace($sshPath) -or
+            -not (Test-Path -LiteralPath $sshPath -PathType Leaf)) {
+            continue
+        }
+        $fullSsh = [System.IO.Path]::GetFullPath($sshPath)
+        $directory = [System.IO.Path]::GetDirectoryName($fullSsh)
+        if (-not $scpByDirectory.ContainsKey($directory)) { continue }
+        $alreadySelected = $false
+        foreach ($existing in $candidates) {
+            if ([string]::Equals(
+                    [string] $existing.SshPath,
+                    $fullSsh,
+                    [System.StringComparison]::OrdinalIgnoreCase)) {
+                $alreadySelected = $true
+                break
+            }
+        }
+        if ($alreadySelected) { continue }
+        [void] $candidates.Add([pscustomobject]@{
+                SshPath = $fullSsh
+                ScpPath = $scpByDirectory[$directory]
+                Source = 'path'
+            })
+    }
+
+    if ($candidates.Count -lt 1) {
+        throw '未找到可配对的 ssh/scp 候选。二进制路径：<none>；版本：<none>；实测截断长度：n/a'
+    }
+
+    $selected = $candidates[0]
+    $version = [string] (& $VersionReader $selected.SshPath)
+    [pscustomobject]@{
+        SshPath = [string] $selected.SshPath
+        ScpPath = [string] $selected.ScpPath
+        Source = [string] $selected.Source
+        Version = $version
+    }
+}
+
+function Resolve-OfficeSshEchoProbeCharacterCount {
+    param(
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $SshExecutablePath,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $SshVersion,
+        [Parameter(Mandatory)] [string[]] $Options,
+        [Parameter(Mandatory)] [ValidateRange(1, 4096)] [int] $DestinationLength,
+        [scriptblock] $StartabilityProbe
+    )
+
+    $target = 32768
+    $minimum = 22644
+    $dummyDestination = New-OfficeSshStartabilityDummyDestination -Length $DestinationLength
+    if ($null -eq $StartabilityProbe) {
+        $StartabilityProbe = {
+            param($FileName, $Arguments)
+            Test-OfficeSshProcessArgumentListCanStart -FileName $FileName -Arguments $Arguments
+        }
+    }
+
+    $testSize = {
+        param([int] $Size)
+        $command = New-OfficeSshEchoProbeCommand -ProbeCharacterCount $Size
+        $arguments = [string[]] (@($Options) + @($dummyDestination, $command.RemoteCommand))
+        [bool] (& $StartabilityProbe $SshExecutablePath $arguments)
+    }
+
+    if (& $testSize $target) { return $target }
+    if (-not (& $testSize $minimum)) {
+        throw "SSH 行为探针无法在本机 ProcessStartInfo/ArgumentList 下启动。二进制路径：$SshExecutablePath；版本：$SshVersion；实测截断长度：n/a；最小探针字符数：$minimum"
+    }
+
+    $low = $minimum
+    $high = $target
+    $maxStartable = $minimum
+    while ($low -le $high) {
+        $mid = [int] (($low + $high) / 2)
+        if (& $testSize $mid) {
+            $maxStartable = $mid
+            $low = $mid + 1
+        }
+        else {
+            $high = $mid - 1
+        }
+    }
+    $maxStartable
+}
+
+function Invoke-OfficeSshEchoBehaviorProbe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $SshExecutablePath,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $SshVersion,
+        [Parameter(Mandatory)] [string[]] $Options,
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Destination,
+        [Parameter(Mandatory)] [ValidateRange(22644, 32768)] [int] $ProbeCharacterCount,
+        [scriptblock] $CommandRunner
+    )
+
+    $probe = New-OfficeSshEchoProbeCommand -ProbeCharacterCount $ProbeCharacterCount
+    if ($null -eq $CommandRunner) {
+        $CommandRunner = {
+            param($FileName, $Arguments)
+            Invoke-CountdownExternalCommandProcess -FileName $FileName -Arguments $Arguments
+        }
+    }
+    $arguments = [string[]] (@($Options) + @($Destination, $probe.RemoteCommand))
+    try {
+        $runnerOutput = @(& $CommandRunner $SshExecutablePath $arguments)
+        if ($runnerOutput.Count -ne 1) {
+            throw 'SSH 行为探针 command runner 必须返回一个结果对象。'
+        }
+        $runnerResult = $runnerOutput[0]
+        foreach ($name in @('ExitCode', 'StandardOutput', 'StandardError')) {
+            if ($null -eq $runnerResult.PSObject.Properties[$name]) {
+                throw "SSH 行为探针 command runner 缺少字段：$name"
+            }
+        }
+        $exitCode = [int] $runnerResult.ExitCode
+        $actual = ([string] $runnerResult.StandardOutput).Trim()
+        if ($exitCode -ne 0 -or $actual -ne $probe.ExpectedOutput) {
+            throw "办公室 SSH 行为探针截断或失败。二进制路径：$SshExecutablePath；版本：$SshVersion；实测截断长度：$($actual.Length)；期望长度：$($probe.ExpectedOutput.Length)；退出码：$exitCode"
+        }
+    }
+    catch {
+        if ($_.Exception.Message -like '办公室 SSH 行为探针截断或失败。*') { throw }
+        throw "办公室 SSH 行为探针截断或失败。二进制路径：$SshExecutablePath；版本：$SshVersion；实测截断长度：n/a；$($_.Exception.Message)"
+    }
+}
+
+function Write-OfficeSshClientIdentityEvidence {
+    param(
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $EvidenceRoot,
+        [Parameter(Mandatory)] [object] $Identity,
+        [Parameter(Mandatory)] [ValidateRange(22644, 32768)] [int] $ProbeCharacterCount
+    )
+
+    if (-not (Test-Path -LiteralPath $EvidenceRoot -PathType Container)) {
+        New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
+    }
+    $path = Join-Path $EvidenceRoot 'ssh-client-identity.json'
+    $payload = [ordered]@{
+        sshPath = [string] $Identity.SshPath
+        scpPath = [string] $Identity.ScpPath
+        source = [string] $Identity.Source
+        version = [string] $Identity.Version
+        probeCharacterCount = [int] $ProbeCharacterCount
+    }
+    $temporaryPath = "$path.tmp-$([guid]::NewGuid().ToString('N'))"
+    try {
+        [System.IO.File]::WriteAllText(
+            $temporaryPath,
+            ($payload | ConvertTo-Json),
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        [System.IO.File]::Move($temporaryPath, $path, $true)
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            [System.IO.File]::Delete($temporaryPath)
+        }
+    }
+    $path
+}
+
 if ($LoadFunctionsOnly) { return }
 
 if ($ValidateOnly) {
@@ -959,6 +1313,24 @@ $script:sshOptions = @(
     '-o', "UserKnownHostsFile=$env:REPLICATOR_OFFICE_SSH_USER_KNOWN_HOSTS_FILE",
     '-o', "KexAlgorithms=$env:REPLICATOR_OFFICE_SSH_KEX_ALGORITHMS"
 )
+$officeSshIdentity = Resolve-OfficeSshClientIdentity
+$script:sshExecutablePath = [string] $officeSshIdentity.SshPath
+$script:scpExecutablePath = [string] $officeSshIdentity.ScpPath
+$officeSshProbeCharacterCount = Resolve-OfficeSshEchoProbeCharacterCount `
+    -SshExecutablePath $script:sshExecutablePath `
+    -SshVersion ([string] $officeSshIdentity.Version) `
+    -Options $script:sshOptions `
+    -DestinationLength $officeDestination.Length
+Write-OfficeSshClientIdentityEvidence `
+    -EvidenceRoot $evidenceRoot `
+    -Identity $officeSshIdentity `
+    -ProbeCharacterCount $officeSshProbeCharacterCount | Out-Null
+Invoke-OfficeSshEchoBehaviorProbe `
+    -SshExecutablePath $script:sshExecutablePath `
+    -SshVersion ([string] $officeSshIdentity.Version) `
+    -Options $script:sshOptions `
+    -Destination $officeDestination `
+    -ProbeCharacterCount $officeSshProbeCharacterCount
 $remoteRoot = "D:\Codex\deploy\clock-countdown-$shortCommit-$runId"
 $remoteBytesProbe = {
     param([string] $RemotePath)
@@ -973,6 +1345,7 @@ Invoke-CountdownRecordedScpTransfer `
     -Destination "$($env:REPLICATOR_OFFICE_SSH_DESTINATION):D:/Codex/deploy/clock-countdown-$shortCommit-$runId/clock-countdown.zip" `
     -RemotePath $archiveRemotePath `
     -ScpOptions $script:sshOptions `
+    -ScpExecutablePath $script:scpExecutablePath `
     -RemoteBytesProbe $remoteBytesProbe | Out-Null
 
 $expectedFileManifestJson = $packageManifest | ConvertTo-Json -Compress
@@ -1070,6 +1443,7 @@ Invoke-CountdownRecordedScpTransfer `
     -Destination "$($env:REPLICATOR_OFFICE_SSH_DESTINATION):$remoteInstallDestination" `
     -RemotePath $remoteInstallPath `
     -ScpOptions $script:sshOptions `
+    -ScpExecutablePath $script:scpExecutablePath `
     -RemoteBytesProbe $remoteBytesProbe | Out-Null
 $remoteInstallInvocation = @"
 `$item = Get-Item -LiteralPath '$remoteInstallPath' -Force -ErrorAction Stop
@@ -1178,7 +1552,11 @@ $successReceipt = Write-CountdownRemoteDeploymentSuccessReceipt `
 $expectedExecutableSha256 = [string] $releaseContract.IntegrityHashes['app\MinminCountdown.exe']
 $postDeploymentReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
     -Options $script:sshOptions `
-    -Destination $officeDestination
+    -Destination $officeDestination `
+    -CommandRunner {
+        param($FileName, $Arguments)
+        Invoke-CountdownExternalCommandProcess -FileName $script:sshExecutablePath -Arguments $Arguments
+    }
 [void] (Invoke-CountdownRemoteDeploymentIndependentReadback `
         -LedgerPath $transferLedgerPath `
         -DeploymentBindingEvidencePath $deploymentBindingEvidencePath `

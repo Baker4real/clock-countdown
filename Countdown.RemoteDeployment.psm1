@@ -68,10 +68,31 @@ $recordedSshReadExport =
     $transferLedgerModule.ExportedCommands['Invoke-CountdownRecordedSshRead']
 $sshBase64CommandReadExport =
     $transferLedgerModule.ExportedCommands['Invoke-CountdownSshBase64CommandRead']
+$recordedScpTransferExport =
+    $transferLedgerModule.ExportedCommands['Invoke-CountdownRecordedScpTransfer']
 if ($recordedSshReadExport -isnot [System.Management.Automation.FunctionInfo] -or
-    $sshBase64CommandReadExport -isnot [System.Management.Automation.FunctionInfo]) {
+    $sshBase64CommandReadExport -isnot [System.Management.Automation.FunctionInfo] -or
+    $recordedScpTransferExport -isnot [System.Management.Automation.FunctionInfo]) {
     throw "受信传输账本模块缺少远端回读命令：$script:transferLedgerModulePath"
 }
+$script:recordedScpTransferCommand = $transferLedgerModule.NewBoundScriptBlock({
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)] [string] $LedgerPath,
+            [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Id,
+            [Parameter(Mandatory)] [string] $SourcePath,
+            [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Destination,
+            [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $RemotePath,
+            [string[]] $ScpOptions = @(),
+            [scriptblock] $ScpInvoker,
+            [scriptblock] $RemoteBytesProbe,
+            [scriptblock] $StopwatchFactory,
+            [string] $ScpExecutablePath,
+            [scriptblock] $ScpCommandRunner
+        )
+
+        Invoke-CountdownRecordedScpTransfer @PSBoundParameters
+    })
 $script:recordedSshReadCommand = $transferLedgerModule.NewBoundScriptBlock({
         [CmdletBinding()]
         param(
@@ -1154,10 +1175,8 @@ function Invoke-CountdownRemoteDeploymentReadbackProbe {
         [Convert]::ToBase64String([System.Text.UTF8Encoding]::new($false).GetBytes($resultJson)))
 }
 
-function Invoke-CountdownRemoteDeploymentIndependentRead {
+function New-CountdownRemoteDeploymentIndependentReadbackScript {
     param(
-        [Parameter(Mandatory)] [string[]] $Options,
-        [Parameter(Mandatory)] [string] $Destination,
         [Parameter(Mandatory)] [string] $ExpectedRemoteHost,
         [Parameter(Mandatory)] [string] $ExpectedRemoteUser,
         [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId,
@@ -1168,8 +1187,7 @@ function Invoke-CountdownRemoteDeploymentIndependentRead {
         [AllowEmptyString()] [string] $ExpectedSettingsSha256 = '',
         [long] $ExpectedSettingsLength = 0,
         [AllowEmptyString()] [string] $ExpectedSettingsMtimeUtc = '',
-        [bool] $ExpectedSettingsUnchanged = $false,
-        [scriptblock] $CommandRunner
+        [bool] $ExpectedSettingsUnchanged = $false
     )
 
     $parameters = [ordered]@{
@@ -1220,44 +1238,63 @@ $definitionText
 
 Invoke-CountdownRemoteDeploymentReadbackProbe -Expected `$expected
 "@
-
-    $readerScriptBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($readerScript)
-    $compressedStream = [System.IO.MemoryStream]::new()
-    try {
-        $gzipStream = [System.IO.Compression.GZipStream]::new(
-            $compressedStream,
-            [System.IO.Compression.CompressionLevel]::Optimal,
-            $true)
-        try {
-            $gzipStream.Write($readerScriptBytes, 0, $readerScriptBytes.Length)
-        }
-        finally {
-            $gzipStream.Dispose()
-        }
-        $compressedBase64 = [Convert]::ToBase64String($compressedStream.ToArray())
-    }
-    finally {
-        $compressedStream.Dispose()
-    }
-    $bootstrap = @"
-`$compressed = [Convert]::FromBase64String('$compressedBase64')
-`$inputStream = [System.IO.MemoryStream]::new(`$compressed, `$false)
-try {
-    `$gzipStream = [System.IO.Compression.GZipStream]::new(`$inputStream, [System.IO.Compression.CompressionMode]::Decompress)
-    try {
-        `$outputStream = [System.IO.MemoryStream]::new()
-        try {
-            `$gzipStream.CopyTo(`$outputStream)
-            `$scriptText = [System.Text.UTF8Encoding]::new(`$false, `$true).GetString(`$outputStream.ToArray())
-        }
-        finally { `$outputStream.Dispose() }
-    }
-    finally { `$gzipStream.Dispose() }
+    $readerScript
 }
-finally { `$inputStream.Dispose() }
-& ([scriptblock]::Create(`$scriptText))
+
+function Invoke-CountdownRemoteDeploymentIndependentRead {
+    param(
+        [Parameter(Mandatory)] [string[]] $Options,
+        [Parameter(Mandatory)] [string] $Destination,
+        [Parameter(Mandatory)] [string] $RemoteScriptPath,
+        [Parameter(Mandatory)] [ValidatePattern('^[0-9A-Fa-f]{64}$')] [string] $ExpectedScriptSha256,
+        [Parameter(Mandatory)] [string] $ExpectedRemoteHost,
+        [Parameter(Mandatory)] [string] $ExpectedRemoteUser,
+        [Parameter(Mandatory)] [ValidateRange(1, 2147483647)] [int] $ExpectedProcessId,
+        [Parameter(Mandatory)] [string] $ExpectedExecutableSha256,
+        [Parameter(Mandatory)] [string] $ExpectedTokenSha256,
+        [Parameter(Mandatory)] [string] $ExpectedDeploymentBindingSha256,
+        [Parameter(Mandatory)] [string] $DeploymentBindingPath,
+        [AllowEmptyString()] [string] $ExpectedSettingsSha256 = '',
+        [long] $ExpectedSettingsLength = 0,
+        [AllowEmptyString()] [string] $ExpectedSettingsMtimeUtc = '',
+        [bool] $ExpectedSettingsUnchanged = $false,
+        [scriptblock] $CommandRunner
+    )
+
+    $escapedRemoteScriptPath = $RemoteScriptPath.Replace("'", "''")
+    $wrapperScript = @"
+`$ErrorActionPreference = 'Stop'
+if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') {
+    throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。'
+}
+`$item = Get-Item -LiteralPath '$escapedRemoteScriptPath' -Force -ErrorAction Stop
+if (`$item -isnot [System.IO.FileInfo] -or
+    (`$item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw '独立回读脚本必须是非 reparse point 的普通文件。'
+}
+`$stream = [System.IO.FileStream]::new(
+    `$item.FullName,
+    [System.IO.FileMode]::Open,
+    [System.IO.FileAccess]::Read,
+    [System.IO.FileShare]::Read)
+try {
+    `$actualSha256 = [Convert]::ToHexString(
+        [System.Security.Cryptography.SHA256]::HashData(`$stream))
+    `$stream.Position = 0
+    if (-not [string]::Equals(
+            `$actualSha256,
+            '$ExpectedScriptSha256',
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw '独立回读脚本哈希不匹配。'
+    }
+    & (Join-Path `$PSHOME 'pwsh.exe') -NoLogo -NoProfile -NonInteractive -File `$item.FullName
+    if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }
+}
+finally {
+    `$stream.Dispose()
+}
 "@
-    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($bootstrap))
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($wrapperScript))
     $remoteCommand = "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
     if ($remoteCommand.Length -gt 30000) {
         return [pscustomobject]@{
@@ -1283,14 +1320,51 @@ function New-CountdownRemoteDeploymentReadbackSshAdapter {
     param(
         [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string[]] $Options,
         [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $Destination,
-        [scriptblock] $CommandRunner
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $RemoteRoot,
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string] $ScpExecutablePath,
+        [Parameter(Mandatory)] [ValidateNotNullOrEmpty()] [string[]] $ScpOptions,
+        [scriptblock] $RemoteBytesProbe,
+        [scriptblock] $CommandRunner,
+        [scriptblock] $ScpCommandRunner
     )
 
     $capturedOptions = [string[]] @($Options)
     $capturedDestination = $Destination
     $capturedCommandRunner = $CommandRunner
+    $capturedRemoteReadbackScriptPath = Join-Path $RemoteRoot 'post-deployment-independent-readback.ps1'
+    $capturedScpDestination = "${Destination}:$($capturedRemoteReadbackScriptPath.Replace('\', '/'))"
+    $capturedScpOptions = [string[]] @($ScpOptions)
+    $capturedScpExecutablePath = $ScpExecutablePath
+    $capturedRemoteBytesProbe = $RemoteBytesProbe
+    $capturedScpCommandRunner = $ScpCommandRunner
+    $recordedScpTransferCommand = $script:recordedScpTransferCommand
     $bindingReadCommand = Get-Command Invoke-CountdownRemoteDeploymentBindingRead -CommandType Function -ErrorAction Stop
     $independentReadCommand = Get-Command Invoke-CountdownRemoteDeploymentIndependentRead -CommandType Function -ErrorAction Stop
+    $uploadIndependentReadbackScript = {
+        param([Parameter(Mandatory)] [object] $Context)
+
+        $optionalUploadArguments = @{}
+        if ($null -ne $capturedRemoteBytesProbe) {
+            $optionalUploadArguments.RemoteBytesProbe = $capturedRemoteBytesProbe
+        }
+        if ($null -ne $capturedScpCommandRunner) {
+            $optionalUploadArguments.ScpCommandRunner = $capturedScpCommandRunner
+        }
+        $stopwatchFactoryProperty = $Context.PSObject.Properties['StopwatchFactory']
+        if ($null -ne $stopwatchFactoryProperty -and $null -ne $stopwatchFactoryProperty.Value) {
+            $optionalUploadArguments.StopwatchFactory = $stopwatchFactoryProperty.Value
+        }
+        [void] (& $recordedScpTransferCommand `
+                -LedgerPath ([string] $Context.LedgerPath) `
+                -Id 'post-deployment-independent-readback-script' `
+                -SourcePath ([string] $Context.SourcePath) `
+                -Destination $capturedScpDestination `
+                -RemotePath $capturedRemoteReadbackScriptPath `
+                -ScpOptions $capturedScpOptions `
+                -ScpExecutablePath $capturedScpExecutablePath `
+                @optionalUploadArguments)
+        $capturedRemoteReadbackScriptPath
+    }.GetNewClosure()
     $bindingReader = {
         param([Parameter(Mandatory)] [object] $Context)
 
@@ -1310,6 +1384,8 @@ function New-CountdownRemoteDeploymentReadbackSshAdapter {
         $arguments = @{
             Options = $capturedOptions
             Destination = $capturedDestination
+            RemoteScriptPath = [string] $Context.RemoteScriptPath
+            ExpectedScriptSha256 = [string] $Context.ExpectedScriptSha256
             ExpectedRemoteHost = [string] $Context.ExpectedRemoteHost
             ExpectedRemoteUser = [string] $Context.ExpectedRemoteUser
             ExpectedProcessId = [int] $Context.ExpectedProcessId
@@ -1343,6 +1419,7 @@ function New-CountdownRemoteDeploymentReadbackSshAdapter {
 
     [pscustomobject]@{
         ReadDeploymentBinding = $bindingReader
+        UploadIndependentReadbackScript = $uploadIndependentReadbackScript
         ReadIndependentReadback = $independentReader
     }
 }
@@ -1366,7 +1443,11 @@ function Invoke-CountdownRemoteDeploymentIndependentReadback {
     try {
         $bindingReaderOperation = Get-CountdownRemoteDeploymentProperty -InputObject $Adapter -Name 'ReadDeploymentBinding' -Required
         $independentReaderOperation = Get-CountdownRemoteDeploymentProperty -InputObject $Adapter -Name 'ReadIndependentReadback' -Required
-        if ($bindingReaderOperation -isnot [scriptblock] -or $independentReaderOperation -isnot [scriptblock]) {
+        $uploadIndependentReadbackScriptOperation =
+            Get-CountdownRemoteDeploymentProperty -InputObject $Adapter -Name 'UploadIndependentReadbackScript' -Required
+        if ($bindingReaderOperation -isnot [scriptblock] -or
+            $independentReaderOperation -isnot [scriptblock] -or
+            $uploadIndependentReadbackScriptOperation -isnot [scriptblock]) {
             throw '提交后独立回读 adapter 的 reader 必须是 scriptblock。'
         }
         $runtimeProcessId = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $SuccessReceipt -Name 'RuntimeProcessId' -Required)
@@ -1412,6 +1493,32 @@ function Invoke-CountdownRemoteDeploymentIndependentReadback {
             -ExpectedDeploymentBindingSha256 $DeploymentBindingSha256 `
             -ExpectedProcessId $runtimeProcessId
 
+        $readerScript = New-CountdownRemoteDeploymentIndependentReadbackScript `
+            -ExpectedRemoteHost $ExpectedRemoteHost `
+            -ExpectedRemoteUser $ExpectedRemoteUser `
+            -ExpectedProcessId $runtimeProcessId `
+            -ExpectedExecutableSha256 $ExpectedExecutableSha256 `
+            -ExpectedTokenSha256 ([string] $deploymentBinding.TokenSha256) `
+            -ExpectedDeploymentBindingSha256 $DeploymentBindingSha256 `
+            -DeploymentBindingPath $RemoteDeploymentBindingPath `
+            -ExpectedSettingsSha256 $settingsHashAfter `
+            -ExpectedSettingsLength $settingsLengthAfter `
+            -ExpectedSettingsMtimeUtc $settingsMtimeUtcAfter `
+            -ExpectedSettingsUnchanged $settingsUnchanged
+        $readbackScriptEvidencePath = Join-Path (
+            Split-Path -Parent $IndependentReadbackEvidencePath) 'post-deployment-independent-readback.ps1'
+        [System.IO.File]::WriteAllText(
+            $readbackScriptEvidencePath,
+            $readerScript,
+            [System.Text.UTF8Encoding]::new($false))
+        $readbackScriptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $readbackScriptEvidencePath).Hash
+        $uploadContext = [pscustomobject]@{
+            LedgerPath = $LedgerPath
+            SourcePath = $readbackScriptEvidencePath
+            StopwatchFactory = $StopwatchFactory
+        }
+        [string] $remoteReadbackScriptPath = & $uploadIndependentReadbackScriptOperation $uploadContext
+
         $readbackContext = [pscustomobject]@{
             ExpectedRemoteHost = $ExpectedRemoteHost
             ExpectedRemoteUser = $ExpectedRemoteUser
@@ -1424,6 +1531,8 @@ function Invoke-CountdownRemoteDeploymentIndependentReadback {
             ExpectedSettingsLength = $settingsLengthAfter
             ExpectedSettingsMtimeUtc = $settingsMtimeUtcAfter
             ExpectedSettingsUnchanged = $settingsUnchanged
+            RemoteScriptPath = $remoteReadbackScriptPath
+            ExpectedScriptSha256 = $readbackScriptSha256
         }
         $independentReader = {
             $readerResult = & $independentReaderOperation $readbackContext

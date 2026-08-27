@@ -46,6 +46,7 @@ $firstSource = Join-Path $testRoot 'first.bin'
 $secondSource = Join-Path $testRoot 'second.bin'
 $bindingEvidencePath = Join-Path $testRoot 'behavior-deployment-binding.json'
 $readbackEvidencePath = Join-Path $testRoot 'behavior-independent-readback.json'
+$readbackScriptEvidencePath = Join-Path $testRoot 'post-deployment-independent-readback.ps1'
 $alternateTransferLedgerPath = Join-Path $testRoot 'Countdown.TransferLedger.psm1'
 
 try {
@@ -493,6 +494,47 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
     Assert-Equal ([Convert]::ToHexString($commandPayload)) ([Convert]::ToHexString([byte[]] $commandResult.Bytes)) '严格 SSH command seam 返回解码后的精确 bytes'
     Assert-Equal 16 $strictOptions.Count '严格 SSH 选项保持 16 元素，可执行路径不是第 17 项'
 
+    $lengthGateRunnerState = [pscustomobject]@{ Called = $false }
+    $lengthGateRunner = {
+        param($FileName, $Arguments)
+        $lengthGateRunnerState.Called = $true
+        [pscustomobject]@{
+            ExitCode = 0
+            StandardOutput = ''
+            StandardError = ''
+            ProcessId = $PID + 1
+        }
+    }.GetNewClosure()
+    $lengthGateResult = Invoke-CountdownSshBase64CommandRead `
+        -Options $strictOptions `
+        -Destination 'replicator@office-host' `
+        -RemoteCommand ('pwsh.exe -NoLogo -NoProfile -EncodedCommand ' + ('A' * 30001)) `
+        -MaximumDecodedBytes 4096 `
+        -Description '超长命令安全门' `
+        -CommandRunner $lengthGateRunner
+    Assert-Equal $false ([bool] $lengthGateResult.Success) '超过 30000 字符的远程命令被安全门拦截为失败'
+    Assert-Equal -1 ([int] $lengthGateResult.ExitCode) '安全门拦截的失败退出码为 -1'
+    Assert-Equal $true ($lengthGateResult.FailureMessage -match '超过安全长度') '安全门失败消息包含长度原因'
+    Assert-Equal $false ([bool] $lengthGateRunnerState.Called) '安全门在启动外部命令前拦截'
+
+    $startFailureRunnerState = [pscustomobject]@{ Called = $false }
+    $startFailureRunner = {
+        param($FileName, $Arguments)
+        $startFailureRunnerState.Called = $true
+        throw '模拟 ssh.exe 无法启动。'
+    }.GetNewClosure()
+    $startFailureResult = Invoke-CountdownSshBase64CommandRead `
+        -Options $strictOptions `
+        -Destination 'replicator@office-host' `
+        -RemoteCommand 'pwsh.exe -NoLogo -NoProfile -EncodedCommand fixture' `
+        -MaximumDecodedBytes 4096 `
+        -Description '无法启动的严格 SSH 读取' `
+        -CommandRunner $startFailureRunner
+    Assert-Equal $false ([bool] $startFailureResult.Success) 'command runner 抛异常时严格 SSH 读取返回失败'
+    Assert-Equal -1 ([int] $startFailureResult.ExitCode) '无法启动的严格 SSH 读取退出码为 -1'
+    Assert-Equal $true ($startFailureResult.FailureMessage -match '无法启动 无法启动的严格 SSH 读取.*模拟 ssh\.exe 无法启动') '无法启动的失败消息保留描述与原始原因'
+    Assert-Equal $true ([bool] $startFailureRunnerState.Called) '无法启动场景确实到达了 command runner'
+
     $injectedSsh = 'D:\injected-openssh\ssh.exe'
     $injectedSshCapture = [pscustomobject]@{ FileName = $null; Arguments = $null }
     $injectedSshRunner = {
@@ -729,6 +771,23 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
             FailureMessage = $null
         }
     }.GetNewClosure()
+    $failureUploadRemotePath = 'D:\Codex\deploy\fixture\post-deployment-independent-readback.ps1'
+    $failureUploadReader = {
+        param($Context)
+        [void] $failureCallOrder.Add('upload')
+        $uploadStopwatchFactory = $Context.PSObject.Properties['StopwatchFactory'].Value
+        Invoke-CountdownRecordedScpTransfer `
+            -LedgerPath ([string] $Context.LedgerPath) `
+            -Id 'post-deployment-independent-readback-script' `
+            -SourcePath ([string] $Context.SourcePath) `
+            -Destination 'replicator@office-host:D:/Codex/deploy/fixture/post-deployment-independent-readback.ps1' `
+            -RemotePath $failureUploadRemotePath `
+            -ScpOptions $strictOptions `
+            -ScpExecutablePath 'D:\fixture\scp.exe' `
+            -ScpInvoker { 0 } `
+            -StopwatchFactory $uploadStopwatchFactory | Out-Null
+        $failureUploadRemotePath
+    }.GetNewClosure()
     $failureReadbackReader = {
         param($Context)
         [void] $failureCallOrder.Add('readback')
@@ -741,6 +800,7 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
     }.GetNewClosure()
     $failureAdapter = [pscustomobject]@{
         ReadDeploymentBinding = $failureBindingReader
+        UploadIndependentReadbackScript = $failureUploadReader
         ReadIndependentReadback = $failureReadbackReader
     }
     $behaviorStopwatchFactory = {
@@ -773,15 +833,18 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         $failureMessage = $_.Exception.Message
     }
     $failureLedger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    $failureAttempts = @($failureLedger.attempts)[-2..-1]
-    Assert-Equal 'binding,readback' ($failureCallOrder -join ',') '提交后 module 按 binding/readback 顺序调用合成 adapter'
+    $failureAttempts = @($failureLedger.attempts)[-3..-1]
+    Assert-Equal 'binding,upload,readback' ($failureCallOrder -join ',') '提交后 module 按 binding/upload/readback 顺序调用合成 adapter'
     Assert-Equal $false ($null -ne $failureAdapter.PSObject.Properties['Rollback']) '提交后合成 adapter 不暴露 rollback capability'
     Assert-Equal 'remote-deployment-binding' ([string] $failureAttempts[0].id) '提交后 module 保留 binding ledger ID'
     Assert-Equal 'succeeded' ([string] $failureAttempts[0].status) '合法 binding 先通过 production parser 与 ledger'
-    Assert-Equal 'post-deployment-independent-readback' ([string] $failureAttempts[1].id) '提交后 module 保留 readback ledger ID'
-    Assert-Equal 'failed' ([string] $failureAttempts[1].status) 'RuntimeStage 单项漂移记录 failed attempt'
-    Assert-Equal $true ([bool] $failureAttempts[1].bytesVerified) 'RuntimeStage 单项漂移保留已验证 payload bytes 状态'
-    Assert-Equal $runtimeStageDriftBytes.Length ([long] $failureAttempts[1].metrics.bytes) 'RuntimeStage 单项漂移记录实际 UTF-8 payload bytes'
+    Assert-Equal 'post-deployment-independent-readback-script' ([string] $failureAttempts[1].id) '提交后 module 用独立 scp 条目记录回读脚本上传'
+    Assert-Equal 'scp' ([string] $failureAttempts[1].method) '回读脚本上传使用 scp 账本类型'
+    Assert-Equal 'succeeded' ([string] $failureAttempts[1].status) '回读脚本上传成功记录为 succeeded'
+    Assert-Equal 'post-deployment-independent-readback' ([string] $failureAttempts[2].id) '提交后 module 保留 readback ledger ID'
+    Assert-Equal 'failed' ([string] $failureAttempts[2].status) 'RuntimeStage 单项漂移记录 failed attempt'
+    Assert-Equal $true ([bool] $failureAttempts[2].bytesVerified) 'RuntimeStage 单项漂移保留已验证 payload bytes 状态'
+    Assert-Equal $runtimeStageDriftBytes.Length ([long] $failureAttempts[2].metrics.bytes) 'RuntimeStage 单项漂移记录实际 UTF-8 payload bytes'
     Assert-Equal $true ($failureMessage -match '部署已提交但独立验证不完整，未回滚.*runtime 未达到 window-ready') 'RuntimeStage 单项漂移报告已提交且未回滚'
     Assert-Equal $true (Test-Path -LiteralPath $bindingEvidencePath -PathType Leaf) '失败切片先持久化已验证 binding evidence'
     Assert-Equal $false (Test-Path -LiteralPath $readbackEvidencePath) '失败切片不发布 readback evidence'
@@ -807,9 +870,22 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
             ProcessId = $PID + 1
         }
     }.GetNewClosure()
+    $behaviorScpRunnerState = [pscustomobject]@{ Calls = 0; FileName = $null; SourceArgument = $null; LastArgument = $null }
+    $behaviorScpRunner = {
+        param($FileName, $Arguments)
+        $behaviorScpRunnerState.Calls++
+        $behaviorScpRunnerState.FileName = $FileName
+        $behaviorScpRunnerState.SourceArgument = [string] $Arguments[-2]
+        $behaviorScpRunnerState.LastArgument = [string] $Arguments[-1]
+        0
+    }.GetNewClosure()
     $productionAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
         -Options $strictOptions `
         -Destination 'replicator@office-host' `
+        -RemoteRoot 'D:\Codex\deploy\fixture' `
+        -ScpExecutablePath 'D:\fixture\scp.exe' `
+        -ScpOptions $strictOptions `
+        -ScpCommandRunner $behaviorScpRunner `
         -CommandRunner $behaviorRunner
     Assert-Equal $false ($null -ne $productionAdapter.PSObject.Properties['Rollback']) 'Production readback adapter 不暴露 rollback capability'
     Invoke-CountdownRemoteDeploymentIndependentReadback `
@@ -831,10 +907,15 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         -Adapter $productionAdapter `
         -StopwatchFactory $behaviorStopwatchFactory | Out-Null
     $successLedger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-    $successAttempts = @($successLedger.attempts)[-2..-1]
-    Assert-Equal 2 ([int] $behaviorRunnerState.Calls) '成功 twin 通过 production adapter 执行 binding/readback 两次读取'
-    Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback' (($successAttempts.id) -join ',') '成功 twin 保留两个 ledger ID 与顺序'
-    Assert-Equal 'succeeded,succeeded' (($successAttempts.status) -join ',') '成功 twin 的两个 ledger attempt 均成功'
+    $successAttempts = @($successLedger.attempts)[-3..-1]
+    Assert-Equal 2 ([int] $behaviorRunnerState.Calls) '成功 twin 通过 production adapter 执行 binding/readback 两次 ssh 读取'
+    Assert-Equal 1 ([int] $behaviorScpRunnerState.Calls) '成功 twin 经注入的假 scp runner 上传一次回读脚本'
+    Assert-Equal 'D:\fixture\scp.exe' ([string] $behaviorScpRunnerState.FileName) '成功 twin 的 scp 进程使用注入的绝对路径'
+    Assert-Equal $readbackScriptEvidencePath ([string] $behaviorScpRunnerState.SourceArgument) '成功 twin 的 scp 上传源是落盘的回读脚本 evidence'
+    Assert-Equal 'replicator@office-host:D:/Codex/deploy/fixture/post-deployment-independent-readback.ps1' ([string] $behaviorScpRunnerState.LastArgument) '成功 twin 的 scp 上传目标是固定远端脚本名'
+    Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback-script,post-deployment-independent-readback' (($successAttempts.id) -join ',') '成功 twin 保留三个 ledger ID 与顺序'
+    Assert-Equal 'ssh,scp,ssh' (($successAttempts.method) -join ',') '成功 twin 的 scp 条目夹在两次 ssh 读取之间'
+    Assert-Equal 'succeeded,succeeded,succeeded' (($successAttempts.status) -join ',') '成功 twin 的三个 ledger attempt 均成功'
     Assert-Equal $true (Test-Path -LiteralPath $bindingEvidencePath -PathType Leaf) '成功 twin 发布 binding evidence'
     Assert-Equal $true (Test-Path -LiteralPath $readbackEvidencePath -PathType Leaf) '成功 twin 发布 readback evidence'
     Assert-Equal $true (Test-Path -LiteralPath $readbackEvidencePath -PathType Leaf) '同名其他路径 TransferLedger module 未劫持已按绝对路径选择的命令绑定'
@@ -892,7 +973,9 @@ catch {
     [void] $failures.Add($_.Exception.Message)
 }
 finally {
-    foreach ($path in @($ledgerPath, $firstSource, $secondSource, $bindingEvidencePath, $readbackEvidencePath, $alternateTransferLedgerPath)) {
+    foreach ($path in @(
+            $ledgerPath, $firstSource, $secondSource, $bindingEvidencePath, $readbackEvidencePath,
+            $alternateTransferLedgerPath, $readbackScriptEvidencePath)) {
         if (Test-Path -LiteralPath $path -PathType Leaf) {
             Remove-Item -LiteralPath $path -Force
         }

@@ -2974,7 +2974,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             '-o', 'UserKnownHostsFile=D:\fixture\known_hosts',
             '-o', 'KexAlgorithms=curve25519-sha256'
         )
-        $publicReadbackRunnerState = [pscustomobject]@{ Calls = 0 }
+        $publicReadbackRunnerState = [pscustomobject]@{ Calls = 0; ReadbackRemoteCommand = $null }
         $publicReadbackRunner = {
             param($FileName, $Arguments)
             $publicReadbackRunnerState.Calls++
@@ -2982,6 +2982,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
                 $publicReadbackBindingBytes
             }
             else {
+                $publicReadbackRunnerState.ReadbackRemoteCommand = [string] $Arguments[-1]
                 $publicReadbackBytes
             }
             [pscustomobject]@{
@@ -2991,9 +2992,22 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
                 ProcessId = $PID + 1
             }
         }.GetNewClosure()
+        $publicReadbackScpRunnerState = [pscustomobject]@{ Calls = 0; FileName = $null; SourceArgument = $null; LastArgument = $null }
+        $publicReadbackScpRunner = {
+            param($FileName, $Arguments)
+            $publicReadbackScpRunnerState.Calls++
+            $publicReadbackScpRunnerState.FileName = $FileName
+            $publicReadbackScpRunnerState.SourceArgument = [string] $Arguments[-2]
+            $publicReadbackScpRunnerState.LastArgument = [string] $Arguments[-1]
+            0
+        }.GetNewClosure()
         $publicReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
             -Options $publicReadbackOptions `
             -Destination 'replicator@fixture-host' `
+            -RemoteRoot 'D:\fixture\readback-root' `
+            -ScpExecutablePath 'D:\fixture\scp.exe' `
+            -ScpOptions $publicReadbackOptions `
+            -ScpCommandRunner $publicReadbackScpRunner `
             -CommandRunner $publicReadbackRunner
         Assert-Equal $false ($null -ne $publicReadbackAdapter.PSObject.Properties['Rollback']) 'Independent readback adapter does not expose Rollback capability'
         Assert-Equal $false ($null -ne $publicReadbackAdapter.PSObject.Properties['RollbackAction']) 'Independent readback adapter does not expose RollbackAction capability'
@@ -3019,11 +3033,114 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             -ExpectedRemoteUser 'fixture-user' `
             -Adapter $publicReadbackAdapter
         $publicReadbackLedgerDocument = Get-Content -LiteralPath $publicReadbackLedger -Raw | ConvertFrom-Json
-        Assert-Equal 2 ([int] $publicReadbackRunnerState.Calls) 'Independent readback public adapter executes binding and readback once each'
-        Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback' ((@($publicReadbackLedgerDocument.attempts).id) -join ',') 'Independent readback public interface preserves ledger IDs and order'
-        Assert-Equal 'succeeded,succeeded' ((@($publicReadbackLedgerDocument.attempts).status) -join ',') 'Independent readback public interface records both successful reads'
+        Assert-Equal 2 ([int] $publicReadbackRunnerState.Calls) 'Independent readback public adapter executes the binding and readback ssh reads once each'
+        Assert-Equal 1 ([int] $publicReadbackScpRunnerState.Calls) 'Independent readback public adapter uploads the reader script exactly once'
+        Assert-Equal 'D:\fixture\scp.exe' ([string] $publicReadbackScpRunnerState.FileName) 'Independent readback scp upload starts the injected executable path'
+        Assert-Equal 'replicator@fixture-host:D:/fixture/readback-root/post-deployment-independent-readback.ps1' ([string] $publicReadbackScpRunnerState.LastArgument) 'Independent readback scp upload targets the fixed remote script name'
+        Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback-script,post-deployment-independent-readback' ((@($publicReadbackLedgerDocument.attempts).id) -join ',') 'Independent readback public interface preserves ledger IDs and order including the scp script entry'
+        Assert-Equal 'ssh,scp,ssh' ((@($publicReadbackLedgerDocument.attempts).method) -join ',') 'Independent readback public interface records the scp script channel between both ssh reads'
+        Assert-Equal 'succeeded,succeeded,succeeded' ((@($publicReadbackLedgerDocument.attempts).status) -join ',') 'Independent readback public interface records all three attempts successful'
         Assert-Equal $true (Test-Path -LiteralPath $publicReadbackBindingEvidence -PathType Leaf) 'Independent readback public interface publishes binding evidence'
         Assert-Equal $true (Test-Path -LiteralPath $publicReadbackEvidence -PathType Leaf) 'Independent readback public interface publishes readback evidence'
+        $publicReadbackScriptEvidence = Join-Path $remoteDeploymentTestRoot 'post-deployment-independent-readback.ps1'
+        Assert-Equal $true (Test-Path -LiteralPath $publicReadbackScriptEvidence -PathType Leaf) 'Independent readback public interface persists the uploaded reader script to run evidence'
+        Assert-Equal $publicReadbackScriptEvidence ([string] $publicReadbackScpRunnerState.SourceArgument) 'Independent readback scp upload sources the persisted run-evidence reader script'
+        $publicReadbackScriptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $publicReadbackScriptEvidence).Hash
+        Assert-Equal $true ((([string] $publicReadbackRunnerState.ReadbackRemoteCommand).Length -gt 0) -and (([string] $publicReadbackRunnerState.ReadbackRemoteCommand).Length -lt 8000)) 'Independent readback ssh remote command length stays bounded regardless of reader script size'
+        $publicReadbackEncodedCommand = [regex]::Match(
+            [string] $publicReadbackRunnerState.ReadbackRemoteCommand,
+            '-EncodedCommand\s+(\S+)').Groups[1].Value
+        $publicReadbackWrapper = [System.Text.Encoding]::Unicode.GetString(
+            [Convert]::FromBase64String($publicReadbackEncodedCommand))
+        Assert-Equal $true ($publicReadbackWrapper.Contains($publicReadbackScriptSha256)) 'Independent readback short command pins the uploaded script SHA-256'
+        Assert-Equal $true ($publicReadbackWrapper.Contains('D:\fixture\readback-root\post-deployment-independent-readback.ps1')) 'Independent readback short command pins the remote script path'
+        Assert-Equal $false ($publicReadbackWrapper.Contains('Invoke-CountdownRemoteDeploymentReadbackProbe')) 'Independent readback short command does not inline the reader definitions'
+
+        $wrapperExecutionRoot = Join-Path $remoteDeploymentTestRoot 'wrapper-execution'
+        New-Item -ItemType Directory -Path $wrapperExecutionRoot -Force | Out-Null
+        $uploadedWrapperChildPath = Join-Path $wrapperExecutionRoot 'post-deployment-independent-readback.ps1'
+        [System.IO.File]::WriteAllText(
+            $uploadedWrapperChildPath,
+            "[Console]::Out.Write('wrapper-child-marker')",
+            [System.Text.UTF8Encoding]::new($false))
+        $uploadedWrapperChildSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $uploadedWrapperChildPath).Hash
+        $wrapperCapture = [pscustomobject]@{ RemoteCommand = $null }
+        $wrapperCaptureRunner = {
+            param($FileName, $Arguments)
+            $wrapperCapture.RemoteCommand = [string] $Arguments[-1]
+            [pscustomobject]@{
+                ExitCode = 0
+                StandardOutput = ''
+                StandardError = ''
+                ProcessId = $PID + 1
+            }
+        }.GetNewClosure()
+        $wrapperParameters = @{
+            Options = $publicReadbackOptions
+            Destination = 'replicator@fixture-host'
+            RemoteScriptPath = $uploadedWrapperChildPath
+            ExpectedScriptSha256 = ('0' * 64)
+            ExpectedRemoteHost = 'fixture-host'
+            ExpectedRemoteUser = 'fixture-user'
+            ExpectedProcessId = 4242
+            ExpectedExecutableSha256 = $expectedReadbackExecutableHash
+            ExpectedTokenSha256 = 'E' * 64
+            ExpectedDeploymentBindingSha256 = $publicReadbackBindingHash
+            DeploymentBindingPath = 'D:\fixture\deployment-binding.json'
+            CommandRunner = $wrapperCaptureRunner
+        }
+        $wrapperEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
+        $wrapperFilePath = Join-Path $wrapperExecutionRoot 'executed-wrapper.ps1'
+        $wrapperStdoutPath = Join-Path $wrapperExecutionRoot 'executed-wrapper.stdout.txt'
+        $wrapperStderrPath = Join-Path $wrapperExecutionRoot 'executed-wrapper.stderr.txt'
+        foreach ($wrapperCase in @(
+                @{ Name = 'hash-mismatch'; ExpectedScriptSha256 = ('0' * 64); UploadedText = "[Console]::Out.Write('wrapper-child-marker')"; ExpectedExitCode = -1 },
+                @{ Name = 'case-insensitive-hash'; ExpectedScriptSha256 = $uploadedWrapperChildSha256.ToLowerInvariant(); UploadedText = "[Console]::Out.Write('wrapper-child-marker')"; ExpectedExitCode = 0 },
+                @{ Name = 'child-exit-passthrough'; ExpectedScriptSha256 = $null; UploadedText = 'exit 5'; ExpectedExitCode = 5 }
+            )) {
+            if ($null -ne $wrapperCase.ExpectedScriptSha256) {
+                $wrapperParameters.ExpectedScriptSha256 = [string] $wrapperCase.ExpectedScriptSha256
+            }
+            else {
+                [System.IO.File]::WriteAllText(
+                    $uploadedWrapperChildPath,
+                    [string] $wrapperCase.UploadedText,
+                    [System.Text.UTF8Encoding]::new($false))
+                $wrapperParameters.ExpectedScriptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $uploadedWrapperChildPath).Hash
+            }
+            $wrapperCapture.RemoteCommand = $null
+            [void] (& $remoteDeploymentModule { Invoke-CountdownRemoteDeploymentIndependentRead @wrapperParameters })
+            $wrapperEncoded = [regex]::Match(
+                [string] $wrapperCapture.RemoteCommand,
+                '-EncodedCommand\s+(\S+)').Groups[1].Value
+            $wrapperScriptText = [System.Text.Encoding]::Unicode.GetString(
+                [Convert]::FromBase64String($wrapperEncoded))
+            [System.IO.File]::WriteAllText(
+                $wrapperFilePath,
+                $wrapperScriptText,
+                [System.Text.UTF8Encoding]::new($false))
+            $wrapperProcess = Start-Process -FilePath $wrapperEngine -ArgumentList @(
+                '-NoLogo', '-NoProfile', '-File', $wrapperFilePath
+            ) -WorkingDirectory $wrapperExecutionRoot -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput $wrapperStdoutPath `
+                -RedirectStandardError $wrapperStderrPath
+            $wrapperProcess.WaitForExit()
+            $wrapperStdout = [System.IO.File]::ReadAllText($wrapperStdoutPath, [System.Text.Encoding]::UTF8)
+            $wrapperStderr = [System.Text.Encoding]::GetEncoding([Console]::OutputEncoding.CodePage).GetString(
+                [System.IO.File]::ReadAllBytes($wrapperStderrPath)) -replace "`e\[[0-9;]*m", ''
+            if ($wrapperCase.Name -eq 'hash-mismatch') {
+                Assert-Equal $true ($wrapperProcess.ExitCode -ne 0) 'Wrapper aborts with a nonzero exit code on an uploaded script hash mismatch'
+                Assert-Equal $true ($wrapperStderr -match '独立回读脚本哈希不匹配') 'Wrapper reports the hash mismatch reason on stderr'
+                Assert-Equal $false ($wrapperStdout.Contains('wrapper-child-marker')) 'Wrapper never executes the uploaded script after a hash mismatch'
+            }
+            elseif ($wrapperCase.Name -eq 'case-insensitive-hash') {
+                Assert-Equal 0 ([int] $wrapperProcess.ExitCode) 'Wrapper accepts a lowercase hex script hash'
+                Assert-Equal $true ($wrapperStdout.Contains('wrapper-child-marker')) 'Wrapper executes the uploaded script when the hash matches case-insensitively'
+            }
+            else {
+                Assert-Equal 5 ([int] $wrapperProcess.ExitCode) 'Wrapper propagates the reader child exit code'
+            }
+        }
 
         $failedPublicReadback = $validReadbackJson | ConvertFrom-Json -AsHashtable
         $failedPublicReadback.RuntimeStage = 'starting'
@@ -3049,6 +3166,10 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $failedPublicReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
             -Options $publicReadbackOptions `
             -Destination 'replicator@fixture-host' `
+            -RemoteRoot 'D:\fixture\readback-root' `
+            -ScpExecutablePath 'D:\fixture\scp.exe' `
+            -ScpOptions $publicReadbackOptions `
+            -ScpCommandRunner { param($FileName, $Arguments) 0 } `
             -CommandRunner $failedPublicReadbackRunner
         $failedPublicReadbackMessage = $null
         $failedPublicReadbackEvidence = Join-Path $remoteDeploymentTestRoot 'failed-public-independent-readback.json'
@@ -3077,6 +3198,183 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         Assert-Equal $false ($null -ne $failedPublicReadbackAdapter.PSObject.Properties['RollbackAction']) 'Failed independent readback adapter still exposes no RollbackAction capability'
         Assert-Equal $true ($failedPublicReadbackMessage -match '部署已提交但独立验证不完整，未回滚.*runtime 未达到 window-ready') 'Independent readback public interface reports post-commit failure without a rollback claim'
         Assert-Equal $false (Test-Path -LiteralPath $failedPublicReadbackEvidence) 'Failed independent readback never publishes readback evidence'
+        $failedPublicReadbackLedgerDocument = Get-Content -LiteralPath (Join-Path $remoteDeploymentTestRoot 'failed-public-readback-transfer-attempts.json') -Raw | ConvertFrom-Json
+        Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback-script,post-deployment-independent-readback' ((@($failedPublicReadbackLedgerDocument.attempts).id) -join ',') 'Contract-drift independent readback still records the three-step ledger sequence'
+        Assert-Equal 'succeeded,succeeded,failed' ((@($failedPublicReadbackLedgerDocument.attempts).status) -join ',') 'Contract-drift independent readback marks only the final ssh read failed'
+
+        $remoteHashMismatchRunnerState = [pscustomobject]@{ Calls = 0 }
+        $remoteHashMismatchRunner = {
+            param($FileName, $Arguments)
+            $remoteHashMismatchRunnerState.Calls++
+            if ($remoteHashMismatchRunnerState.Calls -eq 1) {
+                [pscustomobject]@{
+                    ExitCode = 0
+                    StandardOutput = [Convert]::ToBase64String([byte[]] $publicReadbackBindingBytes)
+                    StandardError = ''
+                    ProcessId = $PID + 1
+                }
+            }
+            else {
+                [pscustomobject]@{
+                    ExitCode = 1
+                    StandardOutput = ''
+                    StandardError = '独立回读脚本哈希不匹配。'
+                    ProcessId = $PID + 1
+                }
+            }
+        }.GetNewClosure()
+        $remoteHashMismatchScpRunnerState = [pscustomobject]@{ Calls = 0 }
+        $remoteHashMismatchScpRunner = {
+            param($FileName, $Arguments)
+            $remoteHashMismatchScpRunnerState.Calls++
+            0
+        }.GetNewClosure()
+        $remoteHashMismatchAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
+            -Options $publicReadbackOptions `
+            -Destination 'replicator@fixture-host' `
+            -RemoteRoot 'D:\fixture\readback-root' `
+            -ScpExecutablePath 'D:\fixture\scp.exe' `
+            -ScpOptions $publicReadbackOptions `
+            -ScpCommandRunner $remoteHashMismatchScpRunner `
+            -CommandRunner $remoteHashMismatchRunner
+        $remoteHashMismatchMessage = $null
+        $remoteHashMismatchEvidence = Join-Path $remoteDeploymentTestRoot 'remote-hash-mismatch-readback.json'
+        try {
+            Invoke-CountdownRemoteDeploymentIndependentReadback `
+                -LedgerPath (Join-Path $remoteDeploymentTestRoot 'remote-hash-mismatch-transfer-attempts.json') `
+                -DeploymentBindingEvidencePath (Join-Path $remoteDeploymentTestRoot 'remote-hash-mismatch-binding.json') `
+                -IndependentReadbackEvidencePath $remoteHashMismatchEvidence `
+                -RemoteDeploymentBindingPath 'D:\fixture\deployment-binding.json' `
+                -DeploymentBindingSha256 $publicReadbackBindingHash `
+                -SuccessReceipt ([pscustomobject]@{
+                        RuntimeProcessId = 4242
+                        SettingsHashAfter = $expectedReadbackSettingsHash
+                        SettingsLengthAfter = 2
+                        SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+                        SettingsUnchanged = $false
+                    }) `
+                -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+                -ExpectedRemoteHost 'fixture-host' `
+                -ExpectedRemoteUser 'fixture-user' `
+                -Adapter $remoteHashMismatchAdapter | Out-Null
+        }
+        catch {
+            $remoteHashMismatchMessage = $_.Exception.Message
+        }
+        Assert-Equal 1 ([int] $remoteHashMismatchScpRunnerState.Calls) 'Remote hash-mismatch fixture still uploads the reader script first'
+        Assert-Equal $true ($remoteHashMismatchMessage -match '部署已提交但独立验证不完整，未回滚.*独立回读脚本哈希不匹配') 'Remote script hash mismatch aborts before execution and reports post-commit verification incomplete'
+        Assert-Equal $false (Test-Path -LiteralPath $remoteHashMismatchEvidence) 'Remote hash mismatch never publishes readback evidence'
+        $remoteHashMismatchLedgerDocument = Get-Content -LiteralPath (Join-Path $remoteDeploymentTestRoot 'remote-hash-mismatch-transfer-attempts.json') -Raw | ConvertFrom-Json
+        Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback-script,post-deployment-independent-readback' ((@($remoteHashMismatchLedgerDocument.attempts).id) -join ',') 'Remote hash mismatch records the full three-step ledger sequence'
+        Assert-Equal 'succeeded,succeeded,failed-bytes-unverified' ((@($remoteHashMismatchLedgerDocument.attempts).status) -join ',') 'Remote hash mismatch maps to scp succeeded plus ssh failed-bytes-unverified'
+        Assert-Equal 1 ([int] @($remoteHashMismatchLedgerDocument.attempts)[-1].exitCode) 'Remote hash mismatch propagates the nonzero remote exit code'
+
+        $uploadFailureRunnerState = [pscustomobject]@{ Calls = 0 }
+        $uploadFailureRunner = {
+            param($FileName, $Arguments)
+            $uploadFailureRunnerState.Calls++
+            [pscustomobject]@{
+                ExitCode = 0
+                StandardOutput = [Convert]::ToBase64String([byte[]] $publicReadbackBindingBytes)
+                StandardError = ''
+                ProcessId = $PID + 1
+            }
+        }.GetNewClosure()
+        $uploadFailureAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
+            -Options $publicReadbackOptions `
+            -Destination 'replicator@fixture-host' `
+            -RemoteRoot 'D:\fixture\readback-root' `
+            -ScpExecutablePath 'D:\fixture\scp.exe' `
+            -ScpOptions $publicReadbackOptions `
+            -ScpCommandRunner { param($FileName, $Arguments) 7 } `
+            -CommandRunner $uploadFailureRunner
+        $uploadFailureMessage = $null
+        $uploadFailureEvidence = Join-Path $remoteDeploymentTestRoot 'upload-failure-readback.json'
+        try {
+            Invoke-CountdownRemoteDeploymentIndependentReadback `
+                -LedgerPath (Join-Path $remoteDeploymentTestRoot 'upload-failure-transfer-attempts.json') `
+                -DeploymentBindingEvidencePath (Join-Path $remoteDeploymentTestRoot 'upload-failure-binding.json') `
+                -IndependentReadbackEvidencePath $uploadFailureEvidence `
+                -RemoteDeploymentBindingPath 'D:\fixture\deployment-binding.json' `
+                -DeploymentBindingSha256 $publicReadbackBindingHash `
+                -SuccessReceipt ([pscustomobject]@{
+                        RuntimeProcessId = 4242
+                        SettingsHashAfter = $expectedReadbackSettingsHash
+                        SettingsLengthAfter = 2
+                        SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+                        SettingsUnchanged = $false
+                    }) `
+                -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+                -ExpectedRemoteHost 'fixture-host' `
+                -ExpectedRemoteUser 'fixture-user' `
+                -Adapter $uploadFailureAdapter | Out-Null
+        }
+        catch {
+            $uploadFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal 1 ([int] $uploadFailureRunnerState.Calls) 'Upload failure runs only the binding ssh read before failing'
+        Assert-Equal $true ($uploadFailureMessage -match '部署已提交但独立验证不完整，未回滚.*SCP 传输失败，退出码：7') 'Upload failure reports post-commit verification incomplete with the scp exit code'
+        Assert-Equal $false (Test-Path -LiteralPath $uploadFailureEvidence) 'Upload failure never publishes readback evidence'
+        $uploadFailureLedgerDocument = Get-Content -LiteralPath (Join-Path $remoteDeploymentTestRoot 'upload-failure-transfer-attempts.json') -Raw | ConvertFrom-Json
+        Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback-script' ((@($uploadFailureLedgerDocument.attempts).id) -join ',') 'Upload failure records binding plus the scp attempt without any ssh readback entry'
+        Assert-Equal 'succeeded,failed-bytes-unverified' ((@($uploadFailureLedgerDocument.attempts).status) -join ',') 'Upload failure maps the scp attempt to the failed-bytes-unverified ledger state'
+        Assert-Equal 7 ([int] @($uploadFailureLedgerDocument.attempts)[-1].exitCode) 'Upload failure preserves the scp exit code in the ledger'
+
+        $sshStartFailureRunnerState = [pscustomobject]@{ Calls = 0 }
+        $sshStartFailureRunner = {
+            param($FileName, $Arguments)
+            $sshStartFailureRunnerState.Calls++
+            if ($sshStartFailureRunnerState.Calls -eq 1) {
+                [pscustomobject]@{
+                    ExitCode = 0
+                    StandardOutput = [Convert]::ToBase64String([byte[]] $publicReadbackBindingBytes)
+                    StandardError = ''
+                    ProcessId = $PID + 1
+                }
+            }
+            else {
+                throw '模拟 ssh.exe 无法启动。'
+            }
+        }.GetNewClosure()
+        $sshStartFailureAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
+            -Options $publicReadbackOptions `
+            -Destination 'replicator@fixture-host' `
+            -RemoteRoot 'D:\fixture\readback-root' `
+            -ScpExecutablePath 'D:\fixture\scp.exe' `
+            -ScpOptions $publicReadbackOptions `
+            -ScpCommandRunner { param($FileName, $Arguments) 0 } `
+            -CommandRunner $sshStartFailureRunner
+        $sshStartFailureMessage = $null
+        $sshStartFailureEvidence = Join-Path $remoteDeploymentTestRoot 'ssh-start-failure-readback.json'
+        try {
+            Invoke-CountdownRemoteDeploymentIndependentReadback `
+                -LedgerPath (Join-Path $remoteDeploymentTestRoot 'ssh-start-failure-transfer-attempts.json') `
+                -DeploymentBindingEvidencePath (Join-Path $remoteDeploymentTestRoot 'ssh-start-failure-binding.json') `
+                -IndependentReadbackEvidencePath $sshStartFailureEvidence `
+                -RemoteDeploymentBindingPath 'D:\fixture\deployment-binding.json' `
+                -DeploymentBindingSha256 $publicReadbackBindingHash `
+                -SuccessReceipt ([pscustomobject]@{
+                        RuntimeProcessId = 4242
+                        SettingsHashAfter = $expectedReadbackSettingsHash
+                        SettingsLengthAfter = 2
+                        SettingsMtimeUtcAfter = '2026-01-02T00:00:00.0000000Z'
+                        SettingsUnchanged = $false
+                    }) `
+                -ExpectedExecutableSha256 $expectedReadbackExecutableHash `
+                -ExpectedRemoteHost 'fixture-host' `
+                -ExpectedRemoteUser 'fixture-user' `
+                -Adapter $sshStartFailureAdapter | Out-Null
+        }
+        catch {
+            $sshStartFailureMessage = $_.Exception.Message
+        }
+        Assert-Equal 2 ([int] $sshStartFailureRunnerState.Calls) 'ssh start failure attempts both ssh reads before failing'
+        Assert-Equal $true ($sshStartFailureMessage -match '部署已提交但独立验证不完整，未回滚.*退出码：-1.*无法启动 部署后独立回读') 'ssh start failure reports post-commit verification incomplete with exit code -1'
+        Assert-Equal $false (Test-Path -LiteralPath $sshStartFailureEvidence) 'ssh start failure never publishes readback evidence'
+        $sshStartFailureLedgerDocument = Get-Content -LiteralPath (Join-Path $remoteDeploymentTestRoot 'ssh-start-failure-transfer-attempts.json') -Raw | ConvertFrom-Json
+        Assert-Equal 'remote-deployment-binding,post-deployment-independent-readback-script,post-deployment-independent-readback' ((@($sshStartFailureLedgerDocument.attempts).id) -join ',') 'ssh start failure records the full three-step ledger sequence'
+        Assert-Equal 'succeeded,succeeded,failed-bytes-unverified' ((@($sshStartFailureLedgerDocument.attempts).status) -join ',') 'ssh start failure maps to scp succeeded plus ssh failed-bytes-unverified'
+        Assert-Equal -1 ([int] @($sshStartFailureLedgerDocument.attempts)[-1].exitCode) 'ssh start failure records exit code -1 in the ssh ledger entry'
     }
     finally {
         Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
@@ -3858,6 +4156,66 @@ $adapterParameterNames = @(
         ForEach-Object { [string] $_.ParameterName }
 )
 Assert-Equal $true ($adapterParameterNames -contains 'CommandRunner') 'Independent readback adapter uses the resolved SSH executable through CommandRunner'
+Assert-Equal $true ($adapterParameterNames -contains 'RemoteRoot') 'Independent readback adapter takes the remote staging root for the uploaded script'
+Assert-Equal $true ($adapterParameterNames -contains 'ScpExecutablePath') 'Independent readback adapter takes the resolved SCP executable path'
+Assert-Equal $true ($adapterParameterNames -contains 'ScpOptions') 'Independent readback adapter keeps strict SCP options'
+Assert-Equal $true ($adapterParameterNames -contains 'RemoteBytesProbe') 'Independent readback adapter probes remote bytes on failed uploads'
+
+$remoteDeploymentModuleSource = [System.IO.File]::ReadAllText(
+    (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1'),
+    [System.Text.Encoding]::UTF8)
+$remoteDeploymentModuleAst = [System.Management.Automation.Language.Parser]::ParseInput(
+    $remoteDeploymentModuleSource,
+    [ref] $null,
+    [ref] $null)
+$moduleRecordedScpInvocations = @(
+    $remoteDeploymentModuleAst.FindAll({
+            param($node)
+            if ($node -isnot [System.Management.Automation.Language.CommandAst]) { return $false }
+            if ($node.CommandElements.Count -lt 1 -or
+                $node.CommandElements[0] -isnot [System.Management.Automation.Language.VariableExpressionAst] -or
+                [string] $node.CommandElements[0].VariablePath.UserPath -ne 'recordedScpTransferCommand') {
+                return $false
+            }
+            $true
+        }, $true)
+)
+Assert-Equal 1 $moduleRecordedScpInvocations.Count 'Remote deployment module uploads the readback script through the trusted recorded SCP transfer binding'
+foreach ($moduleScpInvocation in $moduleRecordedScpInvocations) {
+    $moduleScpInvocationParameterNames = @(
+        $moduleScpInvocation.CommandElements |
+            Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } |
+            ForEach-Object { [string] $_.ParameterName }
+    )
+    Assert-Equal $true ($moduleScpInvocationParameterNames -contains 'ScpExecutablePath') 'Remote deployment module passes the resolved SCP executable path explicitly'
+    Assert-Equal $true ($moduleScpInvocationParameterNames -contains 'ScpOptions') 'Remote deployment module passes strict SCP options explicitly'
+}
+$moduleDirectSshScpCommands = @(
+    $remoteDeploymentModuleAst.FindAll({
+            param($node)
+            if ($node -isnot [System.Management.Automation.Language.CommandAst]) { return $false }
+            $commandName = $node.GetCommandName()
+            $commandName -in @('ssh', 'ssh.exe', 'scp', 'scp.exe')
+        }, $true)
+)
+Assert-Equal 0 $moduleDirectSshScpCommands.Count 'Remote deployment module has no bare ssh/scp command names'
+$wrapperTemplateStartIndex = $remoteDeploymentModuleSource.IndexOf('$wrapperScript = @"')
+$wrapperTemplateEndIndex = if ($wrapperTemplateStartIndex -ge 0) {
+    $remoteDeploymentModuleSource.IndexOf('"@', $wrapperTemplateStartIndex + '$wrapperScript = @"'.Length)
+}
+else { -1 }
+Assert-Equal $true ($wrapperTemplateStartIndex -ge 0 -and $wrapperTemplateEndIndex -gt $wrapperTemplateStartIndex) 'Remote deployment module keeps exactly one independent readback wrapper template'
+$wrapperTemplateSource = if ($wrapperTemplateEndIndex -gt $wrapperTemplateStartIndex) {
+    $remoteDeploymentModuleSource.Substring($wrapperTemplateStartIndex, $wrapperTemplateEndIndex - $wrapperTemplateStartIndex)
+}
+else { '' }
+Assert-Equal $true ($wrapperTemplateSource.Contains('[System.IO.FileAttributes]::ReparsePoint') -and
+    $wrapperTemplateSource.Contains('[System.IO.FileShare]::Read')) 'Independent readback wrapper opens the uploaded script as a non-reparse ordinary file with FileShare.Read before hashing'
+Assert-Equal $true $wrapperTemplateSource.Contains('[System.StringComparison]::OrdinalIgnoreCase') 'Independent readback wrapper compares the script hash case-insensitively'
+Assert-Equal $true $wrapperTemplateSource.Contains('if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }') 'Independent readback wrapper propagates the reader child exit code'
+$wrapperHashGateIndex = $wrapperTemplateSource.IndexOf('独立回读脚本哈希不匹配')
+$wrapperExecuteIndex = $wrapperTemplateSource.IndexOf('& (Join-Path `$PSHOME ''pwsh.exe'')')
+Assert-Equal $true ($wrapperHashGateIndex -ge 0 -and $wrapperExecuteIndex -gt $wrapperHashGateIndex) 'Independent readback wrapper rechecks the hash before executing the uploaded script'
 
 $officeSshProbeOptions = @(
     '-i', 'D:\fixture\id_ed25519',

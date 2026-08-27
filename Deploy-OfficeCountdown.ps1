@@ -1553,6 +1553,10 @@ $expectedExecutableSha256 = [string] $releaseContract.IntegrityHashes['app\Minmi
 $postDeploymentReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
     -Options $script:sshOptions `
     -Destination $officeDestination `
+    -RemoteRoot $remoteRoot `
+    -ScpExecutablePath $script:scpExecutablePath `
+    -ScpOptions $script:sshOptions `
+    -RemoteBytesProbe $remoteBytesProbe `
     -CommandRunner {
         param($FileName, $Arguments)
         Invoke-CountdownExternalCommandProcess -FileName $script:sshExecutablePath -Arguments $Arguments

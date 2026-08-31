@@ -7,13 +7,15 @@ intent: 记录部署后独立回读 SCP 化（issue #78）的设计决策、目�
 
 # 回读长命令 SCP 化方案
 
+> 文档状态：这是 2026-08-26 的 #78 设计记录，2026-08-27 已按文末五条验收并关闭（实现 `df0a454`，端到端 runId `20260827214221918-811d1ca7`）。现役部署合同以 [办公室部署](办公室部署.md) 为准。下文「现状机制」与「测试与验证计划」描述改动前代码和当时实施清单，不是未完成待办。
+
 ## 背景与问题
 
 issue #78（2026-08-27 已按本方案验收并关闭，实现提交 df0a454，端到端验收 runId 20260827214221918-811d1ca7；父项 #74 已全部收口关闭）。2026-08-26 正式部署中，Git 自带 MSYS2 ssh（OpenSSH_10.5p1）把约 8KB 以上的远程命令确定性截断：22644 字符的部署后独立回读命令被截断，远端 `pwsh` 报 `-EncodedCommand` 编码错误。同一二进制在 08-24 对同长度命令还正常，行为漂移无任何预警。
 
 身份层防线（#75 候选优先级解析 + #76 约 32KB 只读 echo 探针）只能识别并闭锁截断型实现，不能消除对 ssh 远程命令长度行为的依赖本身。#78 要求把部署后独立回读（及任何超长远程命令）SCP 化：脚本经 SCP 上传到远端临时路径，再用短 ssh 命令执行并回读结果，使命令长度退出威胁模型。
 
-issue 验收草案：回读 SCP 化；身份门探针语义不变；传输账本 schema 与严格 SSH 参数集不变；全套件与 `-ValidateOnly` 全绿且 `git diff --check` 无错误；一次真实办公室正式部署端到端验收。Out of scope：MSYS2 截断根因修复、办公室 sshd/服务端改动。
+验收合同（2026-08-27 已全部通过）：回读 SCP 化；身份门探针语义不变；传输账本 schema 与严格 SSH 参数集不变；全套件与 `-ValidateOnly` 全绿且 `git diff --check` 无错误；一次真实办公室正式部署端到端验收。Out of scope：MSYS2 截断根因修复、办公室 sshd/服务端改动。
 
 ## 第一性原理分析
 
@@ -123,7 +125,7 @@ issue 验收草案：回读 SCP 化；身份门探针语义不变；传输账本
 4. `-ValidateOnly` 边界不变。
 5. AST 禁裸 ssh/scp 合同持续生效：新增 SCP 上传调用点位于 `Countdown.RemoteDeployment.psm1` 模块内，必须经注入拿到候选解析出的绝对路径，并在调用点显式传 `ScpExecutablePath`/`ScpOptions`，不得依赖 `Countdown.TransferLedger.psm1:219-224` 的裸名 `scp.exe` 默认。
 6. 部署验收形态不变：成功回执、deployment binding、两次独立回读字段级匹配（Host/User/Token/ProcessId/ExecutableHash/SettingsHash）、账本全 Valid；既有账本条目 `post-deployment-independent-readback` 的记录结构不变。
-7. `docs/办公室部署.md` 第 50、56、58 行以「回读 = ssh 远程命令」为合同前提，实现时需同步修订；`README.md:102` 只述「两次独立远端回读」与探针描述、通道无关，降级为可选同步点。
+7. 现役合同已改为回读脚本 SCP 上传 + 短 ssh 执行；`docs/办公室部署.md` 与 `README.md` 以落地后文本为准，不再把回读写成内嵌远程命令。
 
 ## 测试与验证计划
 
@@ -133,8 +135,8 @@ issue 验收草案：回读 SCP 化；身份门探针语义不变；传输账本
 - 新增负向夹具：远端哈希不匹配 → 执行前中止（scp=`succeeded` + ssh=`failed-bytes-unverified`）；SCP 上传失败 → 账本四态映射正确（仅 scp 条目、无 ssh 条目）。
 - 探针尺寸语义测试（3872-4020）保持。
 - README 本机验证 10 条（8 条套件 + 97/98 两个 `-ValidateOnly`）全绿 + `git diff --check` 无错误；本改动属共享逻辑/发布边界变化，按 AGENTS.md 跑完整组合。`Countdown.TransferLedger.Tests.ps1` 不在 runner 内，实现后须手动运行。
-- 文档同步点：`docs/办公室部署.md` 第 50、56、58 行（必改）；`README.md:102`（可选）。
-- 端到端：一次真实办公室正式部署验收（issue 验收草案第 5 条）。
+- 文档同步点：`docs/办公室部署.md` 第 50、56、58 行与 `README.md` 回读口径已随 `df0a454` / `a763519` 落地，现役文本以那两份为准。
+- 端到端：2026-08-27 runId `20260827214221918-811d1ca7` 已按第 5 条验收；同通道在后续正式部署中继续使用，不在本设计文缓存现役 commit。
 
 ## 验收标准建议稿
 
@@ -148,9 +150,9 @@ issue 验收草案：回读 SCP 化；身份门探针语义不变；传输账本
 
 ## 风险与未决项
 
-- 账本 attempts 由 4 条变 5 条，schema 不变但验收基线（条目计数、id 与顺序）需经 issue 验收确认。
+- 账本 attempts 由 4 条变 5 条：schema 未改，条目计数与 id 顺序已在 2026-08-27 端到端验收确认。
 - #74/#77 存在与关闭状态矛盾的 2026-08-27 补充评论，以 CLOSED 状态与 17:02 收口证据为准。
-- 远端暂存 `$remoteRoot` 清理属在案卫生事项，本期未执行、不新增义务。
-- 实现排期前提「#74 已收口」当前满足；若 #74 状态回摆，本方案的合同引用需重新核对。
+- 远端暂存 `$remoteRoot` 清理属在案卫生事项，#78 未新增清理义务；失败候选目录仍可能留在办公室 `D:\Codex\deploy\`。
+- 实现排期前提「#74 已收口」在 #78 关闭时已满足。
 - 回读脚本在部署后新落盘，被杀软/索引扫描锁定的窗口比 remote-install 更现实（远端以 `FileShare.Read` 打开，`Deploy-OfficeCountdown.ps1:1454-1458`）；其失败表现为回读失败（「已提交但独立验证不完整，未回滚」）而非部署失败。
 - stdout 纯度：新形态下 wrapper 或 `pwsh -File` 的任何额外 stdout（进度流/警告）会使 Base64 解码失败（`Countdown.TransferLedger.psm1:521-527`），wrapper 必须零额外输出；切勿把 remote-install 经 `Invoke-OfficeEncodedCommand` 的 `2>&1` 合并流（`Deploy-OfficeCountdown.ps1:21`）带进回读通道。

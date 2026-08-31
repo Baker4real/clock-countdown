@@ -359,8 +359,11 @@ public static class MinminCountdownActivationWindowProbe
 '@
 }
 
-function Get-VisibleProcessWindows {
-    param([Parameter(Mandatory)] [int] $ProcessId)
+function Get-ProcessTopLevelWindows {
+    param(
+        [Parameter(Mandatory)] [int] $ProcessId,
+        [switch] $VisibleOnly
+    )
 
     $windows = [System.Collections.Generic.List[object]]::new()
     $callback = [MinminCountdownActivationWindowProbe+EnumWindowsProc] {
@@ -370,7 +373,8 @@ function Get-VisibleProcessWindows {
             $windowHandle,
             [ref] $ownerProcessId)
         if ($ownerProcessId -eq $ProcessId -and
-            [MinminCountdownActivationWindowProbe]::IsWindowVisible($windowHandle)) {
+            (-not $VisibleOnly -or
+             [MinminCountdownActivationWindowProbe]::IsWindowVisible($windowHandle))) {
             $title = [System.Text.StringBuilder]::new(512)
             $className = [System.Text.StringBuilder]::new(256)
             [void] [MinminCountdownActivationWindowProbe]::GetWindowText($windowHandle, $title, $title.Capacity)
@@ -385,6 +389,12 @@ function Get-VisibleProcessWindows {
     }
     [void] [MinminCountdownActivationWindowProbe]::EnumWindows($callback, [IntPtr]::Zero)
     return @($windows)
+}
+
+function Get-VisibleProcessWindows {
+    param([Parameter(Mandatory)] [int] $ProcessId)
+
+    return @(Get-ProcessTopLevelWindows -ProcessId $ProcessId -VisibleOnly)
 }
 
 function Close-InstanceActivationFailurePrompt {
@@ -429,8 +439,10 @@ function Close-InstanceActivationFailurePrompt {
     $deadline = [DateTimeOffset]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
     $promptWindow = $null
     while ([DateTimeOffset]::UtcNow -lt $deadline -and -not $Process.HasExited) {
+        # 次实例 ShowDialog 在无交互桌面（办公室 SSH）上可以已创建且标题正确，但
+        # IsWindowVisible=false。与悬浮窗激活成功路径相同：不要求 Win32 可见枚举。
         $promptWindow = @(
-            Get-VisibleProcessWindows -ProcessId $Process.Id |
+            Get-ProcessTopLevelWindows -ProcessId $Process.Id |
                 Where-Object Title -eq '敏敏子倒计时'
         ) | Select-Object -First 1
         if ($null -ne $promptWindow) {
@@ -444,6 +456,45 @@ function Close-InstanceActivationFailurePrompt {
         0x0010,
         [IntPtr]::Zero,
         [IntPtr]::Zero)) '向激活失败提示窗口发送 WM_CLOSE'
+}
+
+function Assert-HiddenTopLevelWindowEnumeration {
+    Add-Type -AssemblyName PresentationFramework
+    $probeTitle = 'MinminCountdownHiddenWindowEnumProbe'
+    $window = $null
+    try {
+        $window = [System.Windows.Window]::new()
+        $window.Title = $probeTitle
+        $window.ShowInTaskbar = $false
+        $window.Width = 120
+        $window.Height = 80
+        $window.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+        $window.Left = -32000
+        $window.Top = -32000
+        $window.ShowActivated = $false
+        [void] $window.Show()
+        $window.Hide()
+        $processId = [System.Diagnostics.Process]::GetCurrentProcess().Id
+        $visible = @(
+            Get-VisibleProcessWindows -ProcessId $processId |
+                Where-Object Title -eq $probeTitle
+        )
+        $all = @(
+            Get-ProcessTopLevelWindows -ProcessId $processId |
+                Where-Object Title -eq $probeTitle
+        )
+        Assert-Equal 0 $visible.Count '隐藏顶层窗口不出现在 Win32 可见枚举中'
+        Assert-Equal 1 $all.Count '隐藏顶层窗口仍出现在全部顶层窗口枚举中'
+    }
+    finally {
+        if ($null -ne $window) {
+            $window.Close()
+        }
+    }
+}
+
+if (-not $DesktopLauncherOnly) {
+    Assert-HiddenTopLevelWindowEnumeration
 }
 
 function Get-InstanceActivationPipeName {

@@ -24,6 +24,16 @@ internal static class ApplicationValidation
                 throw new InvalidOperationException("设置恢复窗口或失败呈现路由验证失败。");
             }
 
+            if (!ValidationExercises.RunInstanceActivationFailurePromptBehavior())
+            {
+                throw new InvalidOperationException("实例激活失败提示窗口验证失败。");
+            }
+
+            if (!ValidationExercises.RunInstanceActivationStateEqualityBehavior())
+            {
+                throw new InvalidOperationException("实例激活状态相等性验证失败。");
+            }
+
             if (!ValidationExercises.RunLazyManagerLifecycleBehavior())
             {
                 throw new InvalidOperationException("懒加载管理窗口生命周期验证失败。");

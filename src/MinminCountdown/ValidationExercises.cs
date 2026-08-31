@@ -302,6 +302,8 @@ internal static class ValidationExercises
                 new SettingsRecoveryException(failureMessage),
                 presentedMessages.Add);
 
+            var aclDeniedRecovered = RunAclDeniedMainRecoveryWiringProbe();
+
             return defaultDecisionIsExit &&
                    closeKeepsExit &&
                    buttons.Length == 2 &&
@@ -309,6 +311,7 @@ internal static class ValidationExercises
                    exit is { IsCancel: true, IsEnabled: true } &&
                    !declinedPresented &&
                    failurePresented &&
+                   aclDeniedRecovered &&
                    presentedMessages.SequenceEqual(new[] { failureMessage }, StringComparer.Ordinal);
         }
         finally
@@ -318,6 +321,127 @@ internal static class ValidationExercises
                 window.Close();
             }
         }
+    }
+
+    private static bool RunAclDeniedMainRecoveryWiringProbe()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-acl-recovery-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            File.WriteAllBytes(settingsPath, Encoding.UTF8.GetBytes("{acl-denied-main"));
+            File.WriteAllBytes(
+                settingsPath + ".backup1",
+                Encoding.UTF8.GetBytes(SettingsContract.SerializeCanonical(
+                    CountdownSettings.Empty with
+                    {
+                        Preferences = CountdownSettings.Empty.Preferences with { MonthlySalary = 2468m }
+                    })));
+            var fileOperations = new AclDeniedMainSettingsFileOperations(settingsPath);
+            var promptCount = 0;
+            var workspace = DesktopWorkspace.Load(
+                settingsPath,
+                new SettingsStore(fileOperations: fileOperations),
+                _ =>
+                {
+                    promptCount++;
+                    return SettingsRecoveryDecision.RecoverBackup;
+                });
+
+            return promptCount == 1 &&
+                   workspace.Snapshot.Settings.Preferences.MonthlySalary == 2468m &&
+                   fileOperations.DenialClearedByReplace;
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    public static bool RunInstanceActivationFailurePromptBehavior()
+    {
+        var window = InstanceActivationFailureWindow.CreateForValidation();
+        try
+        {
+            var body = window.Content as StackPanel;
+            var texts = body?.Children.OfType<TextBlock>().ToArray() ?? Array.Empty<TextBlock>();
+            var commands = body?.Children
+                .OfType<StackPanel>()
+                .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
+            var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
+            var dismiss = buttons.SingleOrDefault(button =>
+                string.Equals(
+                    AutomationProperties.GetName(button),
+                    InstanceActivationFailureWindow.DismissButtonText,
+                    StringComparison.Ordinal));
+
+            return window.Title == InstanceActivationFailureWindow.PromptTitle &&
+                   texts.Any(text =>
+                       string.Equals(
+                           text.Text,
+                           InstanceActivationFailureWindow.PromptHeading,
+                           StringComparison.Ordinal)) &&
+                   texts.Any(text =>
+                       string.Equals(
+                           text.Text,
+                           InstanceActivationFailureWindow.PromptMessage,
+                           StringComparison.Ordinal)) &&
+                   buttons.Length == 1 &&
+                   dismiss is { IsDefault: true, IsCancel: true, IsEnabled: true };
+        }
+        finally
+        {
+            if (!window.Dispatcher.HasShutdownStarted)
+            {
+                window.Close();
+            }
+        }
+    }
+
+    public static bool RunInstanceActivationStateEqualityBehavior()
+    {
+        var filterA = DesktopWorkspaceFilter.Empty with
+        {
+            SelectedTagIds = new[] { "instance-activation-tag-a", "instance-activation-tag-b" }
+        };
+        var filterB = DesktopWorkspaceFilter.Empty with
+        {
+            SelectedTagIds = new[] { "INSTANCE-ACTIVATION-TAG-A", "INSTANCE-ACTIVATION-TAG-B" }
+        };
+        var stateA = new MainWindowActivationState(
+            WorkspaceKind.Notes,
+            filterA,
+            "instance-activation-countdown-draft",
+            "instance-activation-note-draft",
+            "instance-activation-search",
+            new DateTime(2031, 4, 5),
+            null,
+            null);
+        var stateB = stateA with { Filter = filterB };
+
+        var sameContentEquals = stateA == stateB;
+        var tagChangeBreaks = stateA != stateA with
+        {
+            Filter = filterA with
+            {
+                SelectedTagIds = new[] { "instance-activation-tag-a", "instance-activation-tag-c" }
+            }
+        };
+        var tagCountChangeBreaks = stateA != stateA with
+        {
+            Filter = filterA with { SelectedTagIds = new[] { "instance-activation-tag-a" } }
+        };
+        var draftChangeBreaks = stateA != stateA with { CountdownDraft = "changed-draft" };
+        var searchChangeBreaks = stateA != stateA with { NoteSearch = "changed-search" };
+
+        return sameContentEquals &&
+               tagChangeBreaks &&
+               tagCountChangeBreaks &&
+               draftChangeBreaks &&
+               searchChangeBreaks;
     }
 
     public static bool RunCountdownReminderTransactionBehavior()
@@ -999,6 +1123,245 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunReminderSnoozeSuppressesBaseCyclesBehavior()
+    {
+        RunFixedIntervalSnoozeSuppressesBaseCycles();
+        RunCalendarSnoozeSuppressesBaseCycles();
+        RunDeliveryFailureSuppressesNewBaseCycles();
+        return true;
+    }
+
+    private static void RunFixedIntervalSnoozeSuppressesBaseCycles()
+    {
+        var firstDueUtc = new DateTimeOffset(2036, 6, 9, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-snooze-base-cycle-{Guid.NewGuid():N}.settings.json");
+        try
+        {
+            var clock = new AdvancingValidationClock(firstDueUtc.AddMinutes(-1));
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                workspace.Apply(new SaveNoteChange(
+                    null,
+                    "稍后抑制基础周期探针",
+                    new DateTime(2036, 6, 9),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(firstDueUtc, 15))).Succeeded,
+                "无法建立稍后抑制基础周期探针。");
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            var rule = note.ReminderRules.Single();
+            var key = ReminderOccurrenceKey.Create(rule, firstDueUtc).ToString();
+            clock.UtcNow = firstDueUtc;
+            Must(
+                workspace.ConfirmReminderDisplayed(note, rule.Id, firstDueUtc).Succeeded,
+                "稍后抑制探针无法确认真实送达。");
+
+            clock.UtcNow = firstDueUtc.AddMinutes(5);
+            Must(
+                workspace.SnoozeReminder(
+                    note,
+                    rule.Id,
+                    firstDueUtc,
+                    ReminderSnoozeOption.ThirtyMinutes,
+                    customBeijing: null).Succeeded,
+                "稍后抑制探针无法建立跨过基础周期的活动稍后。");
+
+            clock.UtcNow = firstDueUtc.AddMinutes(16);
+            Must(
+                workspace.GetDueReminderOccurrences(clock.UtcNow).Count == 0,
+                "活动稍后未到期时固定间隔规则跨过基础周期仍弹出新条目。");
+            var restartedDuringSnooze = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                restartedDuringSnooze.GetDueReminderOccurrences(clock.UtcNow).Count == 0,
+                "重启后活动稍后未到期时固定间隔规则跨过基础周期仍弹出新条目。");
+
+            clock.UtcNow = firstDueUtc.AddMinutes(31);
+            var retainedSnooze = workspace.Snapshot.Settings.ReminderStates[rule.Id].ActiveSnooze;
+            Must(
+                workspace.GetDueReminderOccurrences(clock.UtcNow).Count == 0 &&
+                retainedSnooze is { } snooze &&
+                snooze.OccurrenceKey == key &&
+                snooze.SnoozeUntilUtc == firstDueUtc.AddMinutes(35),
+                "活动稍后被新基础周期送达静默丢弃。");
+
+            clock.UtcNow = firstDueUtc.AddMinutes(35);
+            var redelivered = workspace.GetDueReminderOccurrences(clock.UtcNow).Single();
+            Must(
+                ReminderOccurrenceKey.Create(redelivered.Rule, redelivered.ScheduledUtc).ToString() == key &&
+                redelivered.ScheduledUtc == firstDueUtc,
+                "稍后到期后没有按原 occurrence 的计划时刻重新送达。");
+
+            Must(
+                workspace.AcknowledgeReminder(note, rule.Id, firstDueUtc).Succeeded,
+                "稍后抑制探针无法处置恢复的原 occurrence。");
+            clock.UtcNow = firstDueUtc.AddMinutes(36);
+            var collapsed = workspace.GetDueReminderOccurrences(clock.UtcNow).Single();
+            Must(
+                collapsed.Rule.Id == rule.Id &&
+                collapsed.ScheduledUtc == firstDueUtc.AddMinutes(30),
+                "稍后解决后没有只出现 cursor 之后的最新周期。");
+
+            Must(
+                workspace.ConfirmReminderDisplayed(note, rule.Id, firstDueUtc.AddMinutes(30)).Succeeded &&
+                workspace.AcknowledgeReminder(note, rule.Id, firstDueUtc.AddMinutes(30)).Succeeded,
+                "稍后抑制探针无法处置补齐的最新周期。");
+            clock.UtcNow = firstDueUtc.AddMinutes(44);
+            Must(
+                workspace.GetDueReminderOccurrences(clock.UtcNow).Count == 0,
+                "稍后解决后在下一个基础周期之前产生了新条目。");
+            clock.UtcNow = firstDueUtc.AddMinutes(45);
+            var nextCycle = workspace.GetDueReminderOccurrences(clock.UtcNow).Single();
+            Must(
+                nextCycle.Rule.Id == rule.Id &&
+                nextCycle.ScheduledUtc == firstDueUtc.AddMinutes(45),
+                "稍后解决后固定间隔规则没有恢复正常周期节奏。");
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    private static void RunCalendarSnoozeSuppressesBaseCycles()
+    {
+        var firstDueUtc = new DateTimeOffset(2036, 6, 10, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-calendar-snooze-cycle-{Guid.NewGuid():N}.settings.json");
+        try
+        {
+            var clock = new AdvancingValidationClock(firstDueUtc.AddMinutes(-1));
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var localDue = ChinaStandardTime.ToBeijingTime(firstDueUtc);
+            var rule = new CalendarReminderRule(
+                "calendar-snooze-suppression",
+                CalendarFrequency.Daily,
+                1,
+                DateOnly.FromDateTime(localDue.Date),
+                TimeOnly.FromDateTime(localDue.DateTime),
+                new DailyCalendarSelector());
+            Must(
+                workspace.Apply(new SaveNoteChange(
+                    null,
+                    "日历稍后抑制探针",
+                    localDue.Date,
+                    false,
+                    Array.Empty<string>(),
+                    new ReminderRule[] { rule })).Succeeded,
+                "无法建立日历稍后抑制探针。");
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            var key = ReminderOccurrenceKey.Create(rule, firstDueUtc).ToString();
+            clock.UtcNow = firstDueUtc;
+            Must(
+                workspace.ConfirmReminderDisplayed(note, rule.Id, firstDueUtc).Succeeded,
+                "日历稍后抑制探针无法确认真实送达。");
+
+            clock.UtcNow = firstDueUtc.AddHours(1);
+            var snoozeUntilUtc = firstDueUtc.AddDays(2);
+            Must(
+                workspace.SnoozeReminder(
+                    note,
+                    rule.Id,
+                    firstDueUtc,
+                    ReminderSnoozeOption.Custom,
+                    ChinaStandardTime.ToBeijingTime(snoozeUntilUtc)).Succeeded,
+                "日历稍后抑制探针无法建立跨过日程周期的自定义稍后。");
+
+            clock.UtcNow = firstDueUtc.AddDays(1).AddMinutes(1);
+            Must(
+                workspace.GetDueReminderOccurrences(clock.UtcNow).Count == 0,
+                "日历规则的自定义稍后跨过下一个日程周期时仍弹出新条目。");
+            var restartedDuringSnooze = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var retainedState = restartedDuringSnooze.Snapshot.Settings.ReminderStates[rule.Id];
+            Must(
+                restartedDuringSnooze.GetDueReminderOccurrences(clock.UtcNow).Count == 0 &&
+                retainedState.ActiveSnooze is { } snooze &&
+                snooze.OccurrenceKey == key &&
+                snooze.SnoozeUntilUtc == snoozeUntilUtc,
+                "重启后日历规则的活动稍后记录没有保留或仍弹出新条目。");
+
+            clock.UtcNow = snoozeUntilUtc;
+            var redelivered = restartedDuringSnooze.GetDueReminderOccurrences(clock.UtcNow).Single();
+            Must(
+                ReminderOccurrenceKey.Create(redelivered.Rule, redelivered.ScheduledUtc).ToString() == key &&
+                redelivered.ScheduledUtc == firstDueUtc,
+                "日历稍后到期后没有按原 occurrence 的计划时刻重新送达。");
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    private static void RunDeliveryFailureSuppressesNewBaseCycles()
+    {
+        var dueUtc = new DateTimeOffset(2036, 6, 11, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-delivery-failure-cycle-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(session.TrySaveNote(
+                    null,
+                    "送达失败抑制新基础周期探针",
+                    new DateTime(2036, 6, 11),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立送达失败抑制探针。");
+            var note = session.Current.Notes.Single();
+            var rule = note.ReminderRules.Single();
+            var key = new ActiveReminderOccurrenceKey(rule.Id, dueUtc);
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(clock.UtcNow);
+            var window = coordinator.ActiveWindow;
+            window?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var center = window ?? throw new InvalidOperationException("提醒中心未打开。");
+            Must(
+                center.IsFailureVisible(key) && coordinator.ActiveEntryCount == 1,
+                "送达失败抑制探针没有进入真实写盘失败状态。");
+
+            clock.UtcNow = dueUtc.AddMinutes(16);
+            coordinator.Tick(clock.UtcNow);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 1 &&
+                center.IsFailureVisible(key) &&
+                coordinator.HasPendingPersistenceRetry,
+                "送达失败期间同规则新基础周期没有被既有条目抑制。");
+
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            clock.UtcNow = dueUtc.AddMinutes(16).AddSeconds(11);
+            coordinator.Tick(clock.UtcNow);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.IsSnoozeEnabled(key) &&
+                coordinator.ActiveEntryCount == 1 &&
+                !coordinator.HasPendingPersistenceRetry &&
+                session.Current.ReminderStates[rule.Id].LastDeliveredOccurrenceKey ==
+                    ReminderOccurrenceKey.Create(rule, dueUtc).ToString(),
+                "送达失败恢复后原 occurrence 没有完成送达确认。");
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
     public static bool RunReminderCompletionAndReopenBehavior()
     {
         var firstDueUtc = new DateTimeOffset(2036, 4, 10, 1, 0, 0, TimeSpan.Zero);
@@ -1145,6 +1508,11 @@ internal static class ValidationExercises
                 coordinator.ActiveEntryCount == 1 &&
                 session.SerializeCurrent() == beforeInvalidCustom,
                 "无效自定义稍后没有在来源控件显示错误或改变了状态。");
+            Must(
+                FindReminderEntryControl<DatePicker>(center, key, "自定义稍后日期：").IsVisible &&
+                FindReminderEntryControl<ComboBox>(center, key, "自定义稍后小时：").IsVisible &&
+                FindReminderEntryControl<ComboBox>(center, key, "自定义稍后分钟：").IsVisible,
+                "无效自定义稍后的来源控件未真实展开。");
             Must(center.RequestSnooze(key, ReminderSnoozeOption.TenMinutes),
                 "更正后无法点击 10 分钟稍后控件。");
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
@@ -1590,6 +1958,848 @@ internal static class ValidationExercises
             DeleteFileIfPresent(settingsPath + ".tmp");
         }
     }
+
+    public static bool RunReminderCenterEnterActsOnFocusedEntryBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 5, 14, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-enter-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心 Enter 焦点条目甲",
+                    new DateTime(2036, 5, 14),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立 Enter 焦点条目甲。");
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心 Enter 焦点条目乙",
+                    new DateTime(2036, 5, 14),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立 Enter 焦点条目乙。");
+            var ruleAlpha = session.Current.Notes
+                .Single(note => note.Text == "提醒中心 Enter 焦点条目甲")
+                .ReminderRules.Single();
+            var ruleBeta = session.Current.Notes
+                .Single(note => note.Text == "提醒中心 Enter 焦点条目乙")
+                .ReminderRules.Single();
+            var keyAlpha = new ActiveReminderOccurrenceKey(ruleAlpha.Id, dueUtc);
+            var keyBeta = new ActiveReminderOccurrenceKey(ruleBeta.Id, dueUtc);
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            center.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsAcknowledgeEnabled(keyAlpha) &&
+                center.IsSnoozeEnabled(keyBeta),
+                "两条到点提醒没有全部进入可处置状态。");
+            Must(
+                VisualDescendants<Button>(center).All(button => !button.IsDefault),
+                "提醒中心按钮不应再声明 IsDefault 默认按钮。");
+
+            var snoozeBeta = FindReminderEntryButton(center, keyBeta, "稍后提醒：");
+            Keyboard.Focus(snoozeBeta);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                ReferenceEquals(Keyboard.FocusedElement, snoozeBeta),
+                "Enter 前键盘焦点未落在条目乙的稍后提醒按钮。");
+            WindowValidationInput.RaiseKey(center, Key.Enter);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var stateBeta = session.Current.ReminderStates[ruleBeta.Id];
+            Must(
+                coordinator.ActiveEntryCount == 1 &&
+                stateBeta.ActiveSnooze?.OccurrenceKey ==
+                    ReminderOccurrenceKey.Create(ruleBeta, dueUtc).ToString() &&
+                stateBeta.ActiveSnooze.SnoozeUntilUtc == dueUtc.AddMinutes(10),
+                "焦点条目上的 Enter 没有触发该条目的 10 分钟稍后提醒。");
+            Must(
+                session.Current.ReminderStates[ruleAlpha.Id].ActiveSnooze is null &&
+                center.IsAcknowledgeEnabled(keyAlpha),
+                "焦点外条目甲被 Enter 误处置。");
+
+            var acknowledgeAlpha = FindReminderEntryButton(center, keyAlpha, "知道了：");
+            Keyboard.Focus(acknowledgeAlpha);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            WindowValidationInput.RaiseKey(center, Key.Enter);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 0 &&
+                coordinator.ActiveWindowCount == 0 &&
+                session.Current.ReminderStates[ruleAlpha.Id].LastDispositionOccurrenceKey ==
+                    ReminderOccurrenceKey.Create(ruleAlpha, dueUtc).ToString(),
+                "焦点知道了按钮上的 Enter 没有确认最后一条并收起空中心。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterSnoozeGatedDuringCompletionRetryBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 5, 15, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-snooze-gate-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "完成重试期间稍后互斥探针",
+                    new DateTime(2036, 5, 15),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立完成重试期间稍后互斥探针。");
+            var note = session.Current.Notes.Single();
+            var rule = note.ReminderRules.Single();
+            var key = new ActiveReminderOccurrenceKey(rule.Id, dueUtc);
+            var workspace = new DesktopWorkspace(session);
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(workspace, logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            center.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.IsCompleteEnabled(key) && center.IsSnoozeEnabled(key),
+                "探针条目未进入可处置状态。");
+
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            try
+            {
+                Must(center.RequestComplete(key), "无法点击真实完成便签控件。");
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+                const string completionFailure =
+                    "完成便签状态保存失败，正在自动重试。便签与提醒条目均保持不变。";
+                Must(
+                    center.IsFailureVisible(key) &&
+                    !center.IsCompleteEnabled(key) &&
+                    !center.IsSnoozeEnabled(key) &&
+                    !center.IsAcknowledgeEnabled(key),
+                    "完成保存失败没有禁用处置动作并展示失败反馈。");
+                Must(
+                    !center.RequestSnooze(key, ReminderSnoozeOption.TenMinutes, null),
+                    "完成等待重试期间稍后提醒探针应被拒绝。");
+                Must(
+                    !coordinator.InvokeSnoozeRequestForValidation(
+                        key,
+                        ReminderSnoozeOption.TenMinutes,
+                        null),
+                    "完成等待重试期间直达调度器的稍后提醒请求应被互斥门拒绝。");
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+                Must(
+                    VisualDescendants<TextBlock>(center).Count(text =>
+                        string.Equals(
+                            AutomationProperties.GetName(text),
+                            completionFailure,
+                            StringComparison.Ordinal)) == 1 &&
+                    center.IsFailureVisible(key),
+                    "互斥门拒绝后完成失败反馈应原样保留。");
+                Must(
+                    coordinator.ActiveEntryCount == 1 &&
+                    session.Current.ReminderStates[rule.Id].ActiveSnooze is null &&
+                    !session.Current.Notes.Single().IsCompleted,
+                    "互斥门拒绝后条目与便签状态应保持不变。");
+            }
+            finally
+            {
+                DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            }
+
+            clock.UtcNow = dueUtc.AddSeconds(6);
+            coordinator.Tick(clock.UtcNow);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 0 &&
+                session.Current.Notes.Single().IsCompleted,
+                "完成重试成功后条目应收起并持久化完成状态。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterCustomSnoozeErrorRoutesByCodeBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 5, 16, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-snooze-code-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "自定义稍后错误码探针",
+                    new DateTime(2036, 5, 16),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立自定义稍后错误码探针。");
+            var note = session.Current.Notes.Single();
+            var rule = note.ReminderRules.Single();
+            var workspace = new DesktopWorkspace(session);
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(workspace, logger: null);
+            coordinator.Tick(dueUtc);
+            coordinator.ActiveWindow?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveOccurrenceConfirmed,
+                "探针 occurrence 未确认送达。");
+
+            var expiredBeijing = ChinaStandardTime.ToBeijingTime(dueUtc.AddMinutes(-30));
+            var viaWorkspace = workspace.SnoozeReminder(
+                ReminderSourceKind.Note,
+                note.Id,
+                rule.Id,
+                dueUtc,
+                ReminderSnoozeOption.Custom,
+                expiredBeijing);
+            Must(
+                !viaWorkspace.Succeeded &&
+                string.Equals(
+                    viaWorkspace.Error,
+                    "自定义稍后时间必须晚于当前北京时间。",
+                    StringComparison.Ordinal),
+                "过期自定义稍后的拒绝文案不应变化。");
+            Must(
+                viaWorkspace.SnoozeErrorCode == ReminderSnoozeErrorCode.CustomSnoozeNotInFuture,
+                "过期自定义稍后要携带结构化错误码。");
+            var viaSession = session.TrySnoozeReminder(
+                ReminderSourceKind.Note,
+                note.Id,
+                rule.Id,
+                dueUtc,
+                ReminderSnoozeOption.Custom,
+                expiredBeijing,
+                out var sessionError,
+                out var sessionErrorCode);
+            Must(
+                !viaSession &&
+                string.Equals(sessionError, viaWorkspace.Error, StringComparison.Ordinal) &&
+                sessionErrorCode == ReminderSnoozeErrorCode.CustomSnoozeNotInFuture,
+                "会话层过期自定义稍后要给出同一文案与结构化错误码。");
+
+            Must(
+                ReminderDeliveryCoordinator.RoutesToCustomSnoozeError(
+                    ReminderSnoozeOption.Custom,
+                    new DesktopWorkspaceChangeResult(
+                        false,
+                        "改写后的任意文案",
+                        SnoozeErrorCode: ReminderSnoozeErrorCode.CustomSnoozeNotInFuture)),
+                "结构化错误码命中时必须路由到自定义稍后错误样式，与文案无关。");
+            Must(
+                !ReminderDeliveryCoordinator.RoutesToCustomSnoozeError(
+                    ReminderSnoozeOption.Custom,
+                    new DesktopWorkspaceChangeResult(
+                        false,
+                        "自定义稍后时间必须晚于当前北京时间。")),
+                "错误码缺失时不得仅凭历史文案路由。");
+            Must(
+                !ReminderDeliveryCoordinator.RoutesToCustomSnoozeError(
+                    ReminderSnoozeOption.TenMinutes,
+                    new DesktopWorkspaceChangeResult(
+                        false,
+                        "任意文案",
+                        SnoozeErrorCode: ReminderSnoozeErrorCode.CustomSnoozeNotInFuture)),
+                "非自定义稍后选项不得路由到自定义错误样式。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterShowFailureRollsBackBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 5, 17, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-show-rollback-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心展示失败回滚探针",
+                    new DateTime(2036, 5, 17),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立展示失败回滚探针。");
+            var rule = session.Current.Notes.Single().ReminderRules.Single();
+            var closedWindow = new ReminderCenterWindow
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            closedWindow.Show();
+            closedWindow.ForceClose();
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(
+                new DesktopWorkspace(session),
+                logger: null,
+                windowFactory: () => closedWindow);
+            var threw = false;
+            try
+            {
+                coordinator.Tick(dueUtc);
+            }
+            catch (InvalidOperationException)
+            {
+                threw = true;
+            }
+
+            Must(threw, "提醒中心展示失败应继续向宿主抛出。");
+            Must(
+                coordinator.ActiveWindow is null && coordinator.ActiveEntryCount == 0,
+                "展示失败后调度器不应缓存半建窗口或未展示条目。");
+            Must(
+                closedWindow.EntryCount == 0,
+                "展示失败后失败窗口上的条目应被回滚清空。");
+            var reloaded = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                !reloaded.Current.ReminderStates.TryGetValue(rule.Id, out var reloadedState) ||
+                (reloadedState.LastDeliveredOccurrenceKey is null &&
+                 reloadedState.ActiveSnooze is null),
+                "展示失败不应改写提醒设置。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterCustomSnoozeControlsVisibilityBehavior()
+    {
+        var key = new ActiveReminderOccurrenceKey(
+            "custom-snooze-visibility-rule",
+            new DateTimeOffset(2036, 6, 20, 1, 0, 0, TimeSpan.Zero));
+        var window = new ReminderCenterWindow();
+        PrepareOffscreenValidationWindow(window);
+        window.AddEntry(new ReminderCenterItem(
+            key,
+            new NoteRecord(
+                "custom-snooze-visibility-note",
+                "自定义稍后控件可见性探针",
+                "2036-06-20",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        try
+        {
+            window.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var snoozeChoice = FindReminderEntryControl<ComboBox>(window, key, "稍后提醒时间：");
+            var customDate = FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：");
+            var customHour = FindReminderEntryControl<ComboBox>(window, key, "自定义稍后小时：");
+            var customMinute = FindReminderEntryControl<ComboBox>(window, key, "自定义稍后分钟：");
+            var customFields = customDate.Parent as WrapPanel
+                ?? throw new InvalidOperationException("自定义稍后日期不在自定义稍后控件容器内。");
+            Must(
+                ReferenceEquals(customHour.Parent, customFields) &&
+                ReferenceEquals(customMinute.Parent, customFields),
+                "自定义稍后小时和分钟必须与日期共用同一容器。");
+            Must(
+                customFields.Visibility == Visibility.Collapsed &&
+                customDate.Visibility == Visibility.Collapsed &&
+                customHour.Visibility == Visibility.Collapsed &&
+                customMinute.Visibility == Visibility.Collapsed &&
+                !customDate.IsVisible &&
+                !customHour.IsVisible &&
+                !customMinute.IsVisible,
+                "初始预设项下自定义稍后容器与三个子控件必须全部折叠。");
+
+            snoozeChoice.SelectedItem = snoozeChoice.Items
+                .OfType<ComboBoxItem>()
+                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                customFields.Visibility == Visibility.Visible &&
+                customDate.Visibility == Visibility.Visible &&
+                customHour.Visibility == Visibility.Visible &&
+                customMinute.Visibility == Visibility.Visible &&
+                customDate.IsVisible &&
+                customHour.IsVisible &&
+                customMinute.IsVisible,
+                "选择「自定义」后自定义稍后三个子控件必须随容器真实展开。");
+
+            snoozeChoice.SelectedIndex = 0;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                customFields.Visibility == Visibility.Collapsed &&
+                customDate.Visibility == Visibility.Collapsed &&
+                customHour.Visibility == Visibility.Collapsed &&
+                customMinute.Visibility == Visibility.Collapsed &&
+                !customDate.IsVisible &&
+                !customHour.IsVisible &&
+                !customMinute.IsVisible,
+                "切回预设项后自定义稍后三个子控件必须随容器恢复折叠。");
+
+            snoozeChoice.SelectedItem = snoozeChoice.Items
+                .OfType<ComboBoxItem>()
+                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                customDate.IsVisible && customHour.IsVisible && customMinute.IsVisible,
+                "再次选择「自定义」后三个子控件必须重新可见。");
+            return true;
+        }
+        finally
+        {
+            if (window.IsVisible)
+            {
+                window.ForceClose();
+            }
+        }
+    }
+
+    public static bool RunReminderCenterCustomSnoozeCalendarBehavior()
+    {
+        var key = new ActiveReminderOccurrenceKey(
+            "custom-snooze-calendar-rule",
+            new DateTimeOffset(2036, 6, 21, 1, 0, 0, TimeSpan.Zero));
+        var window = new ReminderCenterWindow();
+        PrepareOffscreenValidationWindow(window);
+        window.AddEntry(new ReminderCenterItem(
+            key,
+            new NoteRecord(
+                "custom-snooze-calendar-note",
+                "自定义稍后日历行为探针",
+                "2036-06-21",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        try
+        {
+            window.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var snoozeChoice = FindReminderEntryControl<ComboBox>(window, key, "稍后提醒时间：");
+            var customDate = FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：");
+            snoozeChoice.SelectedItem = snoozeChoice.Items
+                .OfType<ComboBoxItem>()
+                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            window.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                customDate.Visibility == Visibility.Visible && customDate.IsVisible,
+                "自定义稍后日历未处于真实可见状态，挂接断言无效。");
+            Must(
+                ThemedDatePickerBehavior.IsAttached(customDate),
+                "自定义稍后日历未挂接全应用统一日历行为。");
+            customDate.ApplyTemplate();
+            Must(
+                customDate.Template.FindName("PART_TextBox", customDate) is DatePickerTextBox
+                {
+                    IsReadOnly: true,
+                    Focusable: false
+                },
+                "自定义稍后日历文本框未保持全应用统一只读。");
+            Must(
+                WindowValidationInput.ExerciseDatePicker(customDate),
+                "自定义稍后日历未实现打开聚焦、Esc 关闭并回收焦点的统一行为。");
+            customDate.ApplyTemplate();
+            Must(
+                customDate.Template.FindName("PART_TextBox", customDate) is DatePickerTextBox
+                {
+                    IsReadOnly: true,
+                    Focusable: false
+                },
+                "自定义稍后日历弹层关闭后未恢复只读锁定。");
+            return true;
+        }
+        finally
+        {
+            if (window.IsVisible)
+            {
+                window.ForceClose();
+            }
+        }
+    }
+
+    public static bool RunReminderCenterShowFailureRollbackSurvivesEntryFailureBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 5, 18, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-rollback-atomic-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心回滚原子性探针",
+                    new DateTime(2036, 5, 18),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立回滚原子性探针。");
+            var rule = session.Current.Notes.Single().ReminderRules.Single();
+            var closedWindow = new ReminderCenterWindow
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0,
+                RemoveEntryThrowsForValidation = true
+            };
+            closedWindow.Show();
+            closedWindow.ForceClose();
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(
+                new DesktopWorkspace(session),
+                logger: null,
+                windowFactory: () => closedWindow);
+            var threw = false;
+            try
+            {
+                coordinator.Tick(dueUtc);
+            }
+            catch (InvalidOperationException)
+            {
+                threw = true;
+            }
+
+            Must(threw, "条目回滚失败仍应把展示失败抛给宿主。");
+            Must(
+                closedWindow.EntryCount == 1,
+                "注入的条目回滚失败未命中，回滚原子性断言无效。");
+            Must(
+                coordinator.ActiveWindow is null && coordinator.ActiveEntryCount == 0,
+                "条目回滚抛异常时协调器仍必须清理缓存窗口与活动条目。");
+            var reloaded = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                !reloaded.Current.ReminderStates.TryGetValue(rule.Id, out var reloadedState) ||
+                (reloadedState.LastDeliveredOccurrenceKey is null &&
+                 reloadedState.ActiveSnooze is null),
+                "条目回滚失败不应改写提醒设置。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterOpenSourcePreservesNoteGroupStateBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-open-source-groups-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var nowUtc = new DateTimeOffset(2038, 7, 9, 1, 0, 0, TimeSpan.Zero);
+        var clock = new AdvancingValidationClock(nowUtc);
+        var store = new SettingsStore(clock: clock);
+        var workspace = DesktopWorkspace.Load(settingsPath, store);
+        var dueUtc = nowUtc.AddMinutes(10);
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "来源保持-甲",
+            new DateTime(2038, 7, 10),
+            false,
+            Array.Empty<string>(),
+            ReminderSchedule.CreateOnce(dueUtc)));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "来源保持-乙",
+            new DateTime(2038, 7, 10),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "来源保持-丙",
+            new DateTime(2038, 7, 9),
+            true,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        var relative = new CountdownRelativeReminderRule("open-source-groups-relative", 0);
+        MustApply(workspace, new SaveCountdownChange(
+            null,
+            "来源保持-丁",
+            dueUtc,
+            Array.Empty<string>(),
+            new ReminderRule[] { relative }));
+        var noteAlpha = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "来源保持-甲");
+        var noteGamma = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "来源保持-丙");
+        var keyAlpha = new ActiveReminderOccurrenceKey(noteAlpha.ReminderRules.Single().Id, dueUtc);
+        var keyCountdown = new ActiveReminderOccurrenceKey(relative.Id, dueUtc);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory)
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        var coordinator = new ReminderDeliveryCoordinator(
+            workspace,
+            logger,
+            (kind, id) => main.OpenReminderSource(kind, id));
+        try
+        {
+            main.Show();
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            FindNoteDateDisclosure(main, noteAlpha.Date, isCompleted: false)
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var activeToggle = (Button)main.FindName("ToggleActiveNotes");
+            activeToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                NoteStatusSectionIsCollapsed(main, false) &&
+                !NoteDateSectionIsExpanded(main, noteAlpha.Date, false) &&
+                main.CompletedNotesAreCollapsed,
+                "初始分组收放状态未建立。");
+
+            clock.UtcNow = dueUtc;
+            coordinator.Tick(dueUtc);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            Must(
+                coordinator.ActiveEntryCount == 2,
+                "便签甲与倒计时丁应同时到点入队。");
+
+            Must(center.RequestOpenSource(keyAlpha), "未接受便签来源打开请求。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                main.CurrentWorkspace == WorkspaceKind.Notes &&
+                NoteReminderHighlightVisible(main, noteAlpha) &&
+                NoteStatusSectionIsExpanded(main, false) &&
+                NoteDateSectionIsExpanded(main, noteAlpha.Date, false) &&
+                Keyboard.FocusedElement is Button { Tag: string focusedNote } &&
+                string.Equals(focusedNote, noteAlpha.Id, StringComparison.OrdinalIgnoreCase),
+                "打开来源应临时揭示、高亮并聚焦来源便签。");
+
+            clock.UtcNow = dueUtc.AddMinutes(1);
+            main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                NoteStatusSectionIsCollapsed(main, false) &&
+                !NoteDateSectionIsExpanded(main, noteAlpha.Date, false) &&
+                main.CompletedNotesAreCollapsed &&
+                !NoteReminderHighlightVisible(main, noteAlpha),
+                "重渲染后来源揭示应还原为用户保持的分组收放状态。");
+
+            Must(
+                main.OpenReminderSource(ReminderSourceKind.Note, noteGamma.Id),
+                "未能直接打开已完成便签来源。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                NoteReminderHighlightVisible(main, noteGamma) &&
+                NoteStatusSectionIsExpanded(main, true) &&
+                main.CompletedNotesAreCollapsed,
+                "已完成便签来源应临时揭示且不改写持久收放状态。");
+
+            clock.UtcNow = clock.UtcNow.AddMinutes(1);
+            main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                NoteStatusSectionIsCollapsed(main, true) &&
+                main.CompletedNotesAreCollapsed &&
+                !NoteReminderHighlightVisible(main, noteGamma),
+                "重渲染后已完成组应恢复收起。");
+
+            Must(center.RequestOpenSource(keyCountdown), "未接受倒计时来源打开请求。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                main.CurrentWorkspace == WorkspaceKind.Countdowns &&
+                NoteStatusSectionIsCollapsed(main, false) &&
+                main.CompletedNotesAreCollapsed,
+                "倒计时来源路径不应影响便签分组收放。");
+            return true;
+        }
+        finally
+        {
+            coordinator.Dispose();
+            if (main.IsVisible)
+            {
+                main.Close();
+            }
+
+            foreach (var window in Application.Current.Windows
+                         .OfType<ReminderCenterWindow>()
+                         .ToArray())
+            {
+                window.ForceClose();
+            }
+
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    private static Button FindReminderEntryButton(
+        ReminderCenterWindow center,
+        ActiveReminderOccurrenceKey key,
+        string automationNamePrefix)
+    {
+        foreach (var row in VisualDescendants<Border>(center))
+        {
+            if (row.Tag is not ActiveReminderOccurrenceKey rowKey || rowKey != key)
+            {
+                continue;
+            }
+
+            foreach (var button in VisualDescendants<Button>(row))
+            {
+                if (AutomationProperties.GetName(button)?.StartsWith(
+                        automationNamePrefix,
+                        StringComparison.Ordinal) == true)
+                {
+                    return button;
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"提醒中心缺少条目 {key.RuleId} 的 {automationNamePrefix} 按钮。");
+    }
+
+    private static T FindReminderEntryControl<T>(
+        ReminderCenterWindow center,
+        ActiveReminderOccurrenceKey key,
+        string automationNamePrefix)
+        where T : FrameworkElement
+    {
+        foreach (var row in VisualDescendants<Border>(center))
+        {
+            if (row.Tag is not ActiveReminderOccurrenceKey rowKey || rowKey != key)
+            {
+                continue;
+            }
+
+            foreach (var control in VisualDescendants<T>(row))
+            {
+                if (AutomationProperties.GetName(control)?.StartsWith(
+                        automationNamePrefix,
+                        StringComparison.Ordinal) == true)
+                {
+                    return control;
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"提醒中心缺少条目 {key.RuleId} 的 {automationNamePrefix} 控件。");
+    }
+
+    private static Button FindNoteDateDisclosure(
+        MainWindow main,
+        string? noteDate,
+        bool isCompleted)
+    {
+        var status = isCompleted ? "已完成" : "未完成";
+        foreach (var button in VisualDescendants<Button>(main))
+        {
+            if (button.Uid == "NoteDateDisclosure" &&
+                button.Tag is string tag &&
+                string.Equals(tag, noteDate ?? string.Empty, StringComparison.Ordinal) &&
+                AutomationProperties.GetName(button)?.Contains(
+                    $"{status}便签",
+                    StringComparison.Ordinal) == true)
+            {
+                return button;
+            }
+        }
+
+        throw new InvalidOperationException($"找不到 {noteDate} 的{status}便签日期分组按钮。");
+    }
+
+    private static bool NoteDateSectionIsExpanded(MainWindow main, string? noteDate, bool isCompleted) =>
+        AutomationProperties.GetName(FindNoteDateDisclosure(main, noteDate, isCompleted))
+            ?.Contains("当前展开", StringComparison.Ordinal) == true;
+
+    private static bool NoteStatusSectionIsExpanded(MainWindow main, bool isCompleted)
+    {
+        var rows = (StackPanel)main.FindName(isCompleted ? "CompletedNoteRows" : "ActiveNoteRows");
+        var toggle = (Button)main.FindName(isCompleted ? "ToggleCompletedNotes" : "ToggleActiveNotes");
+        return rows.Visibility == Visibility.Visible &&
+            AutomationProperties.GetName(toggle)?.Contains("当前展开", StringComparison.Ordinal) == true;
+    }
+
+    private static bool NoteStatusSectionIsCollapsed(MainWindow main, bool isCompleted)
+    {
+        var rows = (StackPanel)main.FindName(isCompleted ? "CompletedNoteRows" : "ActiveNoteRows");
+        var toggle = (Button)main.FindName(isCompleted ? "ToggleCompletedNotes" : "ToggleActiveNotes");
+        return rows.Visibility == Visibility.Collapsed &&
+            AutomationProperties.GetName(toggle)?.Contains("当前收起", StringComparison.Ordinal) == true;
+    }
+
+    private static bool NoteReminderHighlightVisible(MainWindow main, NoteRecord note) =>
+        VisualDescendants<Border>(main).Any(border =>
+            string.Equals(
+                AutomationProperties.GetName(border),
+                $"当前提醒来源便签：{note.Text}",
+                StringComparison.Ordinal));
 
     public static bool RunReminderEditingInterfaceBehavior()
     {
@@ -4033,6 +5243,13 @@ internal static class ValidationExercises
                     calendar.GetWorkdayEndCountdown(nonWorkdayNowUtc, preferences) is null &&
                     calendar.GetEarnings(nonWorkdayNowUtc, preferences) == 0m,
                     "工作日历 interface 未在非工作日停止派生结果。");
+                var unsetSalaryPreferences = preferences with { MonthlySalary = 0m };
+                var negativeSalaryPreferences = preferences with { MonthlySalary = -1m };
+                Must(
+                    calendar.GetEarnings(workdayNowUtc, unsetSalaryPreferences) is null &&
+                    calendar.GetEarnings(nonWorkdayNowUtc, unsetSalaryPreferences) is null &&
+                    calendar.GetEarnings(workdayNowUtc, negativeSalaryPreferences) is null,
+                    "工作日历 interface 在月薪未输入或为负时必须停止派生今日收入。");
 
                 var sameYearRefresh = calendar
                     .RefreshAsync(nonWorkdayNowUtc, CancellationToken.None)
@@ -4239,6 +5456,111 @@ internal static class ValidationExercises
         VerifyOnlyCountdownEmptyStateGateFails(
             passing with { DayNightTextContrast = false },
             nameof(CountdownEmptyStateGateResults.DayNightTextContrast));
+        return true;
+    }
+
+    public static NoteVisualTokenGateResults EvaluateNoteVisualTokenGates(
+        NoteVisualTokenGateInputs input) =>
+        new(
+            input.CompactInputPaddingAligned,
+            input.StatusCountsUseMutedToken,
+            input.EmptyStateTextContrast);
+
+    public static bool RunNoteVisualTokenGateIsolationBehavior()
+    {
+        var passing = new NoteVisualTokenGateInputs(true, true, true);
+        Must(EvaluateNoteVisualTokenGates(passing).AllPassed,
+            "主窗口便签视觉合同全通过夹具被错误拒绝。");
+        VerifyOnlyNoteVisualTokenGateFails(
+            passing with { CompactInputPaddingAligned = false },
+            nameof(NoteVisualTokenGateResults.CompactInputPaddingAligned));
+        VerifyOnlyNoteVisualTokenGateFails(
+            passing with { StatusCountsUseMutedToken = false },
+            nameof(NoteVisualTokenGateResults.StatusCountsUseMutedToken));
+        VerifyOnlyNoteVisualTokenGateFails(
+            passing with { EmptyStateTextContrast = false },
+            nameof(NoteVisualTokenGateResults.EmptyStateTextContrast));
+        return true;
+    }
+
+    public static bool RunFloatingEmptyStateTextIsolationBehavior()
+    {
+        var clearFilter = DesktopWorkspaceFilter.Empty;
+        Must(
+            string.Equals(
+                FloatingWindow.CountdownEmptyStateText(clearFilter),
+                "没有未到期的倒计时。",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                FloatingWindow.NoteEmptyStateText(clearFilter),
+                "今天还没有待办便签。",
+                StringComparison.Ordinal),
+            "悬浮窗无筛选空态文案漂移。");
+
+        var taggedFilter = clearFilter with
+        {
+            SelectedTagIds = Array.AsReadOnly(new[] { "floating-empty-gate-tag" })
+        };
+        var untaggedFilter = clearFilter with { UntaggedOnly = true };
+        var countdownStatusFilter = clearFilter with { CountdownStatus = CountdownStatusFilter.Expired };
+        var noteStatusFilter = clearFilter with { NoteStatus = NoteStatusFilter.Completed };
+        var noteDateFilter = clearFilter with { NoteDate = "2032-02-03" };
+        var undatedNotesFilter = clearFilter with { UndatedNotesOnly = true };
+        foreach (var countdownConstrained in new[] { taggedFilter, untaggedFilter, countdownStatusFilter })
+        {
+            Must(
+                string.Equals(
+                    FloatingWindow.CountdownEmptyStateText(countdownConstrained),
+                    "没有匹配的倒计时。",
+                    StringComparison.Ordinal),
+                "悬浮窗倒计时筛选无匹配空态未使用匹配口径文案。");
+        }
+
+        foreach (var noteConstrained in new[]
+                 {
+                     taggedFilter, untaggedFilter, noteStatusFilter, noteDateFilter, undatedNotesFilter
+                 })
+        {
+            Must(
+                string.Equals(
+                    FloatingWindow.NoteEmptyStateText(noteConstrained),
+                    "没有匹配的便签。",
+                    StringComparison.Ordinal),
+                "悬浮窗便签筛选无匹配空态未使用匹配口径文案。");
+        }
+
+        // 搜索词空态由 BuildNoteSearchEmptyState 单独接管，仅搜索词不触发筛选无匹配文案。
+        var searchOnlyFilter = clearFilter with { NoteSearch = "悬浮空态搜索词" };
+        Must(
+            string.Equals(
+                FloatingWindow.CountdownEmptyStateText(searchOnlyFilter),
+                "没有未到期的倒计时。",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                FloatingWindow.NoteEmptyStateText(searchOnlyFilter),
+                "今天还没有待办便签。",
+                StringComparison.Ordinal),
+            "仅搜索词不应触发悬浮窗筛选无匹配文案。");
+
+        // 便签侧约束不影响倒计时文案，倒计时侧约束不影响便签文案。
+        Must(
+            string.Equals(
+                FloatingWindow.CountdownEmptyStateText(noteStatusFilter),
+                "没有未到期的倒计时。",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                FloatingWindow.CountdownEmptyStateText(noteDateFilter),
+                "没有未到期的倒计时。",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                FloatingWindow.CountdownEmptyStateText(undatedNotesFilter),
+                "没有未到期的倒计时。",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                FloatingWindow.NoteEmptyStateText(countdownStatusFilter),
+                "今天还没有待办便签。",
+                StringComparison.Ordinal),
+            "悬浮窗两工作区筛选约束不应串扰空态文案。");
         return true;
     }
 
@@ -5729,6 +7051,18 @@ internal static class ValidationExercises
             $"倒计时空态负向夹具 {target} 误伤无关契约。");
     }
 
+    private static void VerifyOnlyNoteVisualTokenGateFails(
+        NoteVisualTokenGateInputs input,
+        string target)
+    {
+        var results = EvaluateNoteVisualTokenGates(input).AsDictionary();
+        Must(results.TryGetValue(target, out var value) && !value,
+            $"主窗口便签视觉合同负向夹具未让 {target} 单独失败。");
+        Must(results.Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"主窗口便签视觉合同负向夹具 {target} 误伤无关契约。");
+    }
+
     private static void VerifyOnlyMainNoteCompletionGateFails(
         MainNoteCompletionGateInputs input,
         string target)
@@ -6135,6 +7469,84 @@ internal static class ValidationExercises
         {
             Directory.Delete(path);
         }
+    }
+
+    private sealed class AclDeniedMainSettingsFileOperations : ISettingsFileOperations
+    {
+        private static readonly UTF8Encoding Utf8NoBom = new(false);
+        private readonly string _settingsPath;
+        private bool _denialActive = true;
+
+        public AclDeniedMainSettingsFileOperations(string settingsPath)
+        {
+            _settingsPath = Path.GetFullPath(settingsPath);
+        }
+
+        public bool DenialClearedByReplace { get; private set; }
+
+        public SettingsPathState GetPathState(string path) =>
+            IsDenied(path)
+                ? throw new UnauthorizedAccessException("验证注入的设置路径状态探测 ACL 拒绝。")
+                : File.Exists(path)
+                    ? SettingsPathState.RegularFile
+                    : Directory.Exists(path)
+                        ? SettingsPathState.Occupied
+                        : SettingsPathState.Absent;
+
+        public bool FileExists(string path) => File.Exists(path);
+
+        public string ReadUtf8Text(string path) =>
+            IsDenied(path)
+                ? throw new UnauthorizedAccessException("验证注入的设置读取 ACL 拒绝。")
+                : File.ReadAllText(path, Utf8NoBom);
+
+        public byte[] ReadFileBytes(string path) =>
+            IsDenied(path)
+                ? throw new UnauthorizedAccessException("验证注入的设置字节读取 ACL 拒绝。")
+                : File.ReadAllBytes(path);
+
+        public DateTime GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
+
+        public void WriteUtf8NoBomText(string path, string content) =>
+            File.WriteAllText(path, content, Utf8NoBom);
+
+        public void CopyFile(string sourcePath, string destinationPath, bool overwrite) =>
+            File.Copy(sourcePath, destinationPath, overwrite);
+
+        public void MoveFile(string sourcePath, string destinationPath, bool overwrite) =>
+            File.Move(sourcePath, destinationPath, overwrite);
+
+        public void ReplaceFile(
+            string sourcePath,
+            string destinationPath,
+            string? backupPath,
+            bool ignoreMetadataErrors)
+        {
+            File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+            if (string.Equals(Path.GetFullPath(destinationPath), _settingsPath, StringComparison.OrdinalIgnoreCase) &&
+                backupPath is not null &&
+                backupPath.Contains(".recovery-rollback-", StringComparison.Ordinal))
+            {
+                // 恢复替换生成的新主文件继承父目录 ACL，原文件级拒绝随之消失。
+                _denialActive = false;
+                DenialClearedByReplace = true;
+            }
+        }
+
+        public void DeleteFile(string path) => File.Delete(path);
+
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+
+        public void WriteNewFileAndFlush(string path, ReadOnlySpan<byte> content)
+        {
+            using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            stream.Write(content);
+            stream.Flush(flushToDisk: true);
+        }
+
+        private bool IsDenied(string path) =>
+            _denialActive &&
+            string.Equals(Path.GetFullPath(path), _settingsPath, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class WorkspaceValidationClock : IClock
@@ -6748,6 +8160,27 @@ internal sealed record CountdownEmptyStateGateResults(
             [nameof(PointerResetRestoresResults)] = PointerResetRestoresResults,
             [nameof(KeyboardResetRestoresResults)] = KeyboardResetRestoresResults,
             [nameof(DayNightTextContrast)] = DayNightTextContrast
+        };
+}
+
+internal sealed record NoteVisualTokenGateInputs(
+    bool CompactInputPaddingAligned,
+    bool StatusCountsUseMutedToken,
+    bool EmptyStateTextContrast);
+
+internal sealed record NoteVisualTokenGateResults(
+    bool CompactInputPaddingAligned,
+    bool StatusCountsUseMutedToken,
+    bool EmptyStateTextContrast)
+{
+    public bool AllPassed => AsDictionary().Values.All(value => value);
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(CompactInputPaddingAligned)] = CompactInputPaddingAligned,
+            [nameof(StatusCountsUseMutedToken)] = StatusCountsUseMutedToken,
+            [nameof(EmptyStateTextContrast)] = EmptyStateTextContrast
         };
 }
 

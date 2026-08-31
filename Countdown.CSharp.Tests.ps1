@@ -387,6 +387,65 @@ function Get-VisibleProcessWindows {
     return @($windows)
 }
 
+function Close-InstanceActivationFailurePrompt {
+    param(
+        [Parameter(Mandatory)] [System.Diagnostics.Process] $Process,
+        [Parameter(Mandatory)] [string] $DiagnosticLogPath,
+        [int] $FailureEventTimeoutMilliseconds = 20000,
+        [int] $TimeoutMilliseconds = 6000
+    )
+
+    # 先锚定应用自身的激活失败诊断事件，再轮询提示窗。固定墙钟窗口从进程创建起算会
+    # 把冷启动与协议等待的方差计入提示窗预算：2026-08-31 高负载实测 ProcessStarted
+    # 1156-2691ms、InstanceActivationTimedOut 固定 +3000ms、首窗可见再 +1500-2600ms，
+    # 合计 6194-7860ms，稳定越过从进程创建起算的 6000ms 窗口；锚定失败事件后，
+    # 6s 轮询预算只需覆盖事件到窗口可见（实测最差 2.6s，余量约 2.3 倍）。
+    $failureEventDeadline = [DateTimeOffset]::UtcNow.AddMilliseconds($FailureEventTimeoutMilliseconds)
+    $failureEventObserved = $false
+    while ([DateTimeOffset]::UtcNow -lt $failureEventDeadline -and -not $Process.HasExited) {
+        if (Test-Path -LiteralPath $DiagnosticLogPath -PathType Leaf) {
+            $failureEventObserved = @(
+                Get-Content -LiteralPath $DiagnosticLogPath -Encoding UTF8 |
+                    ForEach-Object { try { $_ | ConvertFrom-Json } catch { $null } } |
+                    Where-Object {
+                        $null -ne $_ -and
+                        $_.processId -eq $Process.Id -and
+                        $_.event -in @(
+                            'InstanceActivationTimedOut',
+                            'InstanceActivationProtocolMismatch',
+                            'InstanceActivationListenerFailed',
+                            'InstanceActivationRejected'
+                        )
+                    }
+            ).Count -gt 0
+        }
+        if ($failureEventObserved) {
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    Assert-Equal $true $failureEventObserved '激活失败的第二实例记录激活失败诊断事件'
+
+    $deadline = [DateTimeOffset]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    $promptWindow = $null
+    while ([DateTimeOffset]::UtcNow -lt $deadline -and -not $Process.HasExited) {
+        $promptWindow = @(
+            Get-VisibleProcessWindows -ProcessId $Process.Id |
+                Where-Object Title -eq '敏敏子倒计时'
+        ) | Select-Object -First 1
+        if ($null -ne $promptWindow) {
+            break
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    Assert-Equal $true ($null -ne $promptWindow) '激活失败的第二实例显示模态提示窗口'
+    Assert-Equal $true ([MinminCountdownActivationWindowProbe]::PostMessage(
+        [IntPtr]::new([long] $promptWindow.Handle),
+        0x0010,
+        [IntPtr]::Zero,
+        [IntPtr]::Zero)) '向激活失败提示窗口发送 WM_CLOSE'
+}
+
 function Get-InstanceActivationPipeName {
     param(
         [Parameter(Mandatory)] [string] $ApplicationRoot,
@@ -2068,6 +2127,7 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
             $firstSecondaryProcess = Start-Process -FilePath $dotnet -ArgumentList $secondaryArguments `
                 -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
                 -RedirectStandardOutput $firstSecondaryOutputPath -RedirectStandardError $firstSecondaryErrorPath
+            Close-InstanceActivationFailurePrompt -Process $firstSecondaryProcess -DiagnosticLogPath $diagnosticPath
             if (-not $firstSecondaryProcess.WaitForExit(7000)) {
                 throw '回调故障场景的首次第二实例未在有界期限内退出。'
             }
@@ -2078,14 +2138,18 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
         $secondaryProcess = Start-Process -FilePath $dotnet -ArgumentList $secondaryArguments `
             -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
             -RedirectStandardOutput $secondaryOutputPath -RedirectStandardError $secondaryErrorPath
-        if (-not $secondaryProcess.WaitForExit(7000)) {
-            throw '真实第二个普通实例未在有界激活期限内退出。'
-        }
-        $secondaryProcess.WaitForExit()
         $expectedSecondaryExitCode = if (
             $InstanceActivationListenerBehavior -in @('Normal', 'CallbackFailureOnce') -and
             $InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')
         ) { 0 } else { 1 }
+        if ($expectedSecondaryExitCode -eq 1 -and
+            $InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')) {
+            Close-InstanceActivationFailurePrompt -Process $secondaryProcess -DiagnosticLogPath $diagnosticPath
+        }
+        if (-not $secondaryProcess.WaitForExit(7000)) {
+            throw '真实第二个普通实例未在有界激活期限内退出。'
+        }
+        $secondaryProcess.WaitForExit()
         Assert-Equal $expectedSecondaryExitCode $secondaryProcess.ExitCode '第二实例只在匹配激活 ACK 后成功退出'
         $primaryProcess.Refresh()
         Assert-Equal $false $primaryProcess.HasExited '第二实例请求结束后主实例仍存活'
@@ -3920,7 +3984,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.ValidateOnlySettingsIsolationBehavior) 'validate-only 强制使用显式非根 settings 路径且不改变生产默认路径'
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    Assert-Equal 554 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容（变化即误增删顶层键）'
+    Assert-Equal 582 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容（变化即误增删顶层键）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusDisclosureVisuals) 'validate-only 验证便签状态披露视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4041,7 +4105,7 @@ exit 23
         Assert-Equal $false ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '发布包不伪造便签卡提醒摘要 12 DIP 门'
         Assert-Equal 0 @($adapterValidation.MainNoteCardReminderFontMeasurements).Count '发布包不伪造便签卡提醒摘要测量'
     }
-    Assert-Equal '5CAC18EDCDBC98A52772CF1E8E8F6D22E512F8F1BA421E0B1B0A1FA94B3EC7C9' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容（554 字段；变化即误增删顶层键）'
+    Assert-Equal 'FC9FA7CCD5F980AAF2619FAFC6E3ADC034254B971E4313277765888EB1751720' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容（582 字段；变化即误增删顶层键）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.NoteEmptyStatesDistinguished) '首次空态与筛选无结果状态具有不同反馈'
@@ -4055,6 +4119,14 @@ exit 23
     Assert-Equal 2 $countdownEmptyContrastMeasurements.Count '倒计时空态对比度精确覆盖日夜两态'
     Assert-Equal 'Day,Night' ((@($countdownEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '倒计时空态对比度主题集合固定'
     Assert-Equal 0 @($countdownEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '倒计时空态使用真实可见背景与动态主题资源'
+    Assert-Equal $true ([bool] $adapterValidation.CompactInputHorizontalPaddingAligned) '倒计时编辑区与设置区三类输入内部横向留白对齐设计坐标 16px'
+    Assert-Equal $true ([bool] $adapterValidation.NoteStatusCountsUseMutedToken) '便签状态章节数量日夜两态使用 MutedBrush 辅助色 token'
+    Assert-Equal $true ([bool] $adapterValidation.NoteEmptyStateTextContrast) '便签空态文字对实际日夜背景达到 4.5:1 并使用 MutedBrush'
+    $noteEmptyContrastMeasurements = @($adapterValidation.NoteEmptyStateContrastMeasurements)
+    Assert-Equal 2 $noteEmptyContrastMeasurements.Count '便签空态对比度精确覆盖日夜两态'
+    Assert-Equal 'Day,Night' ((@($noteEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '便签空态对比度主题集合固定'
+    Assert-Equal 0 @($noteEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '便签空态使用真实可见背景与 MutedBrush 动态主题资源'
+    Assert-Equal $true ([bool] $adapterValidation.NoteVisualTokenGateIsolationBehavior) '主窗口便签视觉合同负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $true ([bool] $adapterValidation.CountdownRemainingLayoutMatches) '主窗口倒计时剩余时间使用固定列、表格数字和单行布局'
     Assert-Equal $true ([bool] $adapterValidation.CountdownIncrementalRefreshIdentityMatches) '主窗口倒计时 tick 保留行控件与文字目标实例'
     Assert-Equal $true ([bool] $adapterValidation.CountdownExpiryVisualsFlipTogether) '主窗口倒计时到期同时翻转卡片背景和危险文字色'
@@ -4101,6 +4173,8 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonTextFits) '设置保存按钮文字完整显示'
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisible) '设置保存按钮完整位于主窗口内'
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisibleAtMinimumWidth) '最小主窗口宽度下设置保存按钮仍完整可见'
+    Assert-Equal $true ([bool] $adapterValidation.NegativeMonthlySalaryRejectedKeepsDraft) '负月薪保存被拒绝、原偏好与草稿文本保留并提示月薪不能小于 0'
+    Assert-Equal $true ([bool] $adapterValidation.ZeroMonthlySalaryStillSavesAsUnset) '月薪 0 仍合法保存为未输入状态'
     Assert-Equal $true ([bool] $adapterValidation.FloatingPlushUsesReferencePoses) '悬浮窗使用原始三位角色的姿势素材'
     Assert-Equal $true ([bool] $adapterValidation.FloatingPlushAnchorsIntegrateWithPanel) '三个玩偶锚点在面板上方形成不拦截交互的场景层'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceAspectMatches) '悬浮窗参考场景保持 520×390 的 4:3 比例'
@@ -4185,7 +4259,13 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.FloatingInitialWorkspaceStateMatches) '悬浮窗首次显示立即同步倒计时选中态、标题、输入区和内容'
     Assert-Equal $true ([bool] $adapterValidation.FloatingWorkspaceSwitchingStaysSynchronized) '悬浮窗往返切换后始终恰有一个工作区并同步表面'
     Assert-Equal $true ([bool] $adapterValidation.FloatingCountdownSelectionSurvivesDayNightThemes) '悬浮窗倒计时首次选中态跨日夜边界保持'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeHiddenWithoutSalary) '悬浮窗月薪未输入时不渲染今日已赚金额行且日历未就绪仍显示状态'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeRestoredWithSalary) '悬浮窗恢复正数月薪后今日已赚金额行还原'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearchScenariosPass) '悬浮窗折叠搜索主链路、空态、Ctrl+F 与主题 token 通过'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.HintNamesDescribeAction) '悬浮窗提示条词按钮可访问名称含展开动作语义且可见文本与清除钮名称不变'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) '悬浮窗 140 字搜索词在提示条省略显示且不溢出槽位或清除钮'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.NoteFilterEmptyStateDistinguished) '悬浮窗便签筛选无匹配空态与无数据空态文案区分'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.CountdownFilterEmptyStateDistinguished) '悬浮窗倒计时筛选无匹配空态与无数据空态文案区分'
     Assert-Equal $true ([bool] $adapterValidation.NoteSearchSyncsFromSharedFilter) '主窗口搜索框回填共享筛选态'
     Assert-Equal 0 ([int] $adapterValidation.FloatingReferenceContentOverlapCount) '悬浮窗参考场景没有角色与内容墨迹重叠'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceCaptureWritten) '悬浮窗参考场景可由 RenderTargetBitmap 写出非空 PNG'
@@ -4256,6 +4336,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayMinimizeHidesWindowAndShowsIcon) '悬浮窗缩小按钮隐藏窗口并显示系统托盘图标'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayRestoreShowsWindowAndHidesIcon) '系统托盘打开命令恢复悬浮窗并隐藏托盘图标'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayExitRequestsApplicationExit) '系统托盘退出命令触发应用退出请求'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry) '恢复判定失败时托盘图标保留且可再次恢复'
     Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleReceivesPointerGestures) '悬浮窗标题拖动区接收真实 WPF 左键手势'
     Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleRequestsNativeWindowDrag) '悬浮窗标题拖动区经 WPF 左键路由请求原生窗口拖动'
     Assert-Equal $true ([bool] $adapterValidation.FloatingSyntheticDragDoesNotClaimPhysicalCompletion) '悬浮窗合成拖动验收不会把被 WPF 拒绝的 DragMove 误报为物理拖动成功'
@@ -4610,6 +4691,9 @@ exit 23
         )) {
         Assert-Equal $true ([bool] $adapterValidation.$field) "提醒中心验证字段通过：$field"
     }
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCustomSnoozeControlsVisibility) '提醒中心自定义稍后子控件随选项真实展开与收起'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCustomSnoozeCalendarBehavior) '提醒中心自定义稍后日历保持统一只读、Esc 关闭与聚焦行为'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterShowFailureRollbackSurvivesEntryFailure) '提醒中心展示失败回滚在条目回滚抛异常时仍清理协调器状态'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'adapter validate-only 保持设置不变'
 
     [System.IO.File]::Copy($roundTripPath, $noteExercisePath)
@@ -4774,6 +4858,7 @@ exit 23
         -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $duplicateApplicationOutputPath `
         -RedirectStandardError $duplicateApplicationErrorPath
+    Close-InstanceActivationFailurePrompt -Process $duplicateApplicationProcess -DiagnosticLogPath $interactiveDiagnosticPath
     if (-not $duplicateApplicationProcess.WaitForExit(7000)) {
         $duplicateError = if (Test-Path -LiteralPath $duplicateApplicationErrorPath -PathType Leaf) {
             Get-Content -LiteralPath $duplicateApplicationErrorPath -Raw

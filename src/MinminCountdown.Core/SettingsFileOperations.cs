@@ -6,7 +6,8 @@ public enum SettingsPathState
 {
     Absent,
     RegularFile,
-    Occupied
+    Occupied,
+    Unreadable
 }
 
 public interface ISettingsFileOperations
@@ -66,6 +67,11 @@ internal sealed class SystemSettingsFileOperations : ISettingsFileOperations
         catch (DirectoryNotFoundException)
         {
             return SettingsPathState.Absent;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // ACL 拒绝（文件或父目录）按“主文件存在但不可读”处理，交由启动恢复流程。
+            return SettingsPathState.Unreadable;
         }
     }
 

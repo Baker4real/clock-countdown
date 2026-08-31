@@ -50,6 +50,8 @@ internal static class VerificationSuite
         Run(results, "startup-main-disappearance-after-prompt-never-starts-empty", VerifyStartupMainDisappearanceAfterPromptNeverStartsEmpty);
         Run(results, "startup-refusal-or-no-backup-never-writes", VerifyStartupRefusalOrNoBackupNeverWrites);
         Run(results, "startup-readonly-or-unreadable-main-never-overwrites", VerifyStartupReadOnlyOrUnreadableMainNeverOverwrites);
+        Run(results, "startup-acl-denied-main-enters-backup-recovery", VerifyStartupAclDeniedMainEntersBackupRecovery);
+        Run(results, "startup-real-filesystem-acl-denial-enters-recovery", VerifyStartupRealFilesystemAclDenialEntersRecovery);
         Run(results, "invalid-main-never-enters-backup-history", VerifyInvalidMainNeverEntersBackupHistory);
         Run(results, "replacement-failure-preserves-main-and-backup-generations", VerifyReplacementFailurePreservesMainAndBackupGenerations);
         Run(results, "failed-backup-rollback-preserves-artifact-and-blocks-next-save", VerifyFailedBackupRollbackPreservesArtifactAndBlocksNextSave);
@@ -1341,7 +1343,7 @@ internal static class VerificationSuite
             Equal(0, promptCount, "目录占用 settingsPath 的恢复提示次数");
             Equal(true, Directory.Exists(settingsPath), "目录占用 settingsPath 保持原样");
 
-            Throws<UnauthorizedAccessException>(
+            Throws<SettingsRecoveryUnavailableException>(
                 () => new SettingsStore(fileOperations: new AccessDeniedPathStateSettingsFileOperations())
                     .LoadForStartup(
                         Path.Combine(directory, "inaccessible-settings.json"),
@@ -1350,9 +1352,207 @@ internal static class VerificationSuite
                             promptCount++;
                             return SettingsRecoveryDecision.RecoverBackup;
                         }),
-                "settingsPath 状态探测 access denied");
+                "settingsPath 状态探测 access denied 进入无合法备份退出");
             Equal(0, promptCount, "settingsPath access denied 的恢复提示次数");
         });
+    }
+
+    private static void VerifyStartupAclDeniedMainEntersBackupRecovery()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var deniedMainBytes = Encoding.UTF8.GetBytes("{acl-denied-main");
+            var backupBytes = CanonicalSettingsBytesWithSalary(2468m);
+
+            var approvePath = Path.Combine(directory, "settings-approve.json");
+            File.WriteAllBytes(approvePath, deniedMainBytes);
+            File.WriteAllBytes(approvePath + ".backup1", backupBytes);
+            var approveOperations = new AclDeniedSettingsFileOperations(
+                approvePath,
+                denyWholeDirectory: false);
+            var approveStore = new SettingsStore(fileOperations: approveOperations);
+            var approvePromptCount = 0;
+            var loaded = approveStore.LoadForStartup(
+                approvePath,
+                prompt =>
+                {
+                    approvePromptCount++;
+                    Equal(1, prompt.BackupGeneration, "ACL 拒绝主设置后提供的备份代次");
+                    return SettingsRecoveryDecision.RecoverBackup;
+                });
+
+            Equal(1, approvePromptCount, "ACL 拒绝主设置的恢复提示次数");
+            Equal(2468m, loaded.Settings.Preferences.MonthlySalary, "ACL 拒绝后恢复返回设置");
+            Equal(
+                2468m,
+                approveStore.Load(approvePath).Settings.Preferences.MonthlySalary,
+                "ACL 拒绝恢复后的主路径回读");
+            Equal(
+                true,
+                backupBytes.AsSpan().SequenceEqual(File.ReadAllBytes(approvePath + ".backup1")),
+                "ACL 恢复不改写 backup 1");
+            Equal(
+                false,
+                Directory.Exists(Path.Combine(directory, "settings-recovery-evidence")),
+                "ACL 拒绝主字节不可读时不产生恢复证据");
+            Equal(true, approveOperations.DenialClearedByReplace, "ACL 恢复替换完成后解除拒绝");
+
+            var declinePath = Path.Combine(directory, "settings-decline.json");
+            File.WriteAllBytes(declinePath, deniedMainBytes);
+            File.WriteAllBytes(declinePath + ".backup1", backupBytes);
+            var declineStore = new SettingsStore(fileOperations: new AclDeniedSettingsFileOperations(
+                declinePath,
+                denyWholeDirectory: false));
+            var declinePromptCount = 0;
+            Throws<SettingsRecoveryDeclinedException>(
+                () => declineStore.LoadForStartup(
+                    declinePath,
+                    _ =>
+                    {
+                        declinePromptCount++;
+                        return SettingsRecoveryDecision.Exit;
+                    }),
+                "ACL 拒绝主设置后拒绝恢复");
+            Equal(1, declinePromptCount, "ACL 拒绝后拒绝恢复的提示次数");
+            Equal(
+                true,
+                deniedMainBytes.AsSpan().SequenceEqual(File.ReadAllBytes(declinePath)),
+                "拒绝恢复后原主设置字节保持");
+            Equal(
+                true,
+                backupBytes.AsSpan().SequenceEqual(File.ReadAllBytes(declinePath + ".backup1")),
+                "拒绝恢复后 backup 1 字节保持");
+
+            var deniedDirectory = Path.Combine(directory, "denied-parent");
+            Directory.CreateDirectory(deniedDirectory);
+            var deniedPath = Path.Combine(deniedDirectory, "settings.json");
+            File.WriteAllBytes(deniedPath, deniedMainBytes);
+            File.WriteAllBytes(deniedPath + ".backup1", backupBytes);
+            var noBackupStore = new SettingsStore(fileOperations: new AclDeniedSettingsFileOperations(
+                deniedPath,
+                denyWholeDirectory: true));
+            var noBackupPromptCount = 0;
+            Throws<SettingsRecoveryUnavailableException>(
+                () => noBackupStore.LoadForStartup(
+                    deniedPath,
+                    _ =>
+                    {
+                        noBackupPromptCount++;
+                        return SettingsRecoveryDecision.RecoverBackup;
+                    }),
+                "ACL 父目录拒绝且无合法备份");
+            Equal(0, noBackupPromptCount, "ACL 父目录拒绝时不提供恢复提示");
+            Equal(
+                true,
+                deniedMainBytes.AsSpan().SequenceEqual(File.ReadAllBytes(deniedPath)),
+                "无合法备份时原主设置字节保持");
+        });
+    }
+
+    private static void VerifyStartupRealFilesystemAclDenialEntersRecovery()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var backupBytes = CanonicalSettingsBytesWithSalary(1357m);
+
+            var fileDeniedPath = Path.Combine(directory, "file-denied-settings.json");
+            File.WriteAllBytes(fileDeniedPath, Encoding.UTF8.GetBytes("{real-acl-denied-main"));
+            File.WriteAllBytes(fileDeniedPath + ".backup1", backupBytes);
+            var fileDenyRule = DenyCurrentUserRead(fileDeniedPath);
+            try
+            {
+                var filePromptCount = 0;
+                Throws<SettingsRecoveryDeclinedException>(
+                    () => new SettingsStore().LoadForStartup(
+                        fileDeniedPath,
+                        prompt =>
+                        {
+                            filePromptCount++;
+                            Equal(1, prompt.BackupGeneration, "真实 ACL 文件拒绝后提供的备份代次");
+                            return SettingsRecoveryDecision.Exit;
+                        }),
+                    "真实 ACL 文件拒绝进入恢复提示而非穿透退出");
+                Equal(1, filePromptCount, "真实 ACL 文件拒绝的恢复提示次数");
+            }
+            finally
+            {
+                RestoreCurrentUserAccess(fileDeniedPath, fileDenyRule);
+            }
+
+            var deniedDirectory = Path.Combine(directory, "real-denied-parent");
+            Directory.CreateDirectory(deniedDirectory);
+            var directoryDenyRule = DenyCurrentUserRead(deniedDirectory);
+            var dirDeniedPath = Path.Combine(deniedDirectory, "settings.json");
+            File.WriteAllBytes(dirDeniedPath, Encoding.UTF8.GetBytes("{real-acl-denied-main"));
+            File.WriteAllBytes(dirDeniedPath + ".backup1", backupBytes);
+            try
+            {
+                var directoryPromptCount = 0;
+                Throws<SettingsRecoveryUnavailableException>(
+                    () => new SettingsStore().LoadForStartup(
+                        dirDeniedPath,
+                        _ =>
+                        {
+                            directoryPromptCount++;
+                            return SettingsRecoveryDecision.RecoverBackup;
+                        }),
+                    "真实 ACL 父目录拒绝进入无合法备份退出而非穿透");
+                Equal(0, directoryPromptCount, "真实 ACL 父目录拒绝的恢复提示次数");
+            }
+            finally
+            {
+                RestoreCurrentUserAccess(deniedDirectory, directoryDenyRule);
+            }
+        });
+    }
+
+    private static System.Security.AccessControl.FileSystemAccessRule DenyCurrentUserRead(string path)
+    {
+        var identity = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+        if (File.Exists(path))
+        {
+            var rule = new System.Security.AccessControl.FileSystemAccessRule(
+                identity,
+                System.Security.AccessControl.FileSystemRights.Read,
+                System.Security.AccessControl.AccessControlType.Deny);
+            var fileInfo = new FileInfo(path);
+            var security = fileInfo.GetAccessControl();
+            security.AddAccessRule(rule);
+            fileInfo.SetAccessControl(security);
+            return rule;
+        }
+
+        var directoryRule = new System.Security.AccessControl.FileSystemAccessRule(
+            identity,
+            System.Security.AccessControl.FileSystemRights.Read,
+            System.Security.AccessControl.InheritanceFlags.ContainerInherit |
+                System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+            System.Security.AccessControl.PropagationFlags.None,
+            System.Security.AccessControl.AccessControlType.Deny);
+        var directoryInfo = new DirectoryInfo(path);
+        var directorySecurity = directoryInfo.GetAccessControl();
+        directorySecurity.AddAccessRule(directoryRule);
+        directoryInfo.SetAccessControl(directorySecurity);
+        return directoryRule;
+    }
+
+    private static void RestoreCurrentUserAccess(
+        string path,
+        System.Security.AccessControl.FileSystemAccessRule rule)
+    {
+        if (File.Exists(path))
+        {
+            var fileInfo = new FileInfo(path);
+            var security = fileInfo.GetAccessControl();
+            security.RemoveAccessRuleSpecific(rule);
+            fileInfo.SetAccessControl(security);
+            return;
+        }
+
+        var directoryInfo = new DirectoryInfo(path);
+        var directorySecurity = directoryInfo.GetAccessControl();
+        directorySecurity.RemoveAccessRuleSpecific(rule);
+        directoryInfo.SetAccessControl(directorySecurity);
     }
 
     private static void VerifyStartupFailedReadbackAndRollbackPreservesOriginalMainArtifact()
@@ -2170,16 +2370,118 @@ internal sealed class RecoveryRollbackFailingSettingsFileOperations : ISettingsF
                 : SettingsPathState.Absent;
 }
 
+internal sealed class AclDeniedSettingsFileOperations : ISettingsFileOperations
+{
+    private static readonly UTF8Encoding Utf8NoBom = new(false);
+    private readonly string _settingsPath;
+    private readonly string _deniedDirectoryPrefix;
+    private readonly bool _denyWholeDirectory;
+    private bool _denialActive = true;
+
+    public AclDeniedSettingsFileOperations(string settingsPath, bool denyWholeDirectory)
+    {
+        _settingsPath = Path.GetFullPath(settingsPath);
+        _denyWholeDirectory = denyWholeDirectory;
+        _deniedDirectoryPrefix =
+            (Path.GetDirectoryName(_settingsPath)
+                ?? throw new VerificationException("ACL 拒绝替身缺少设置父目录。")) +
+            Path.DirectorySeparatorChar;
+    }
+
+    public bool DenialClearedByReplace { get; private set; }
+
+    public SettingsPathState GetPathState(string path) =>
+        IsDenied(path)
+            ? throw new UnauthorizedAccessException("Injected ACL denial during settings path state probe.")
+            : GetTestPathState(path);
+
+    public bool FileExists(string path) => File.Exists(path);
+
+    public string ReadUtf8Text(string path) =>
+        IsDenied(path)
+            ? throw new UnauthorizedAccessException("Injected ACL denial during settings read.")
+            : File.ReadAllText(path, Utf8NoBom);
+
+    public byte[] ReadFileBytes(string path) =>
+        IsDenied(path)
+            ? throw new UnauthorizedAccessException("Injected ACL denial during settings bytes read.")
+            : File.ReadAllBytes(path);
+
+    public DateTime GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
+
+    public void WriteUtf8NoBomText(string path, string content) =>
+        File.WriteAllText(path, content, Utf8NoBom);
+
+    public void CopyFile(string sourcePath, string destinationPath, bool overwrite) =>
+        File.Copy(sourcePath, destinationPath, overwrite);
+
+    public void MoveFile(string sourcePath, string destinationPath, bool overwrite) =>
+        File.Move(sourcePath, destinationPath, overwrite);
+
+    public void ReplaceFile(
+        string sourcePath,
+        string destinationPath,
+        string? backupPath,
+        bool ignoreMetadataErrors)
+    {
+        File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+        if (string.Equals(Path.GetFullPath(destinationPath), _settingsPath, StringComparison.OrdinalIgnoreCase) &&
+            backupPath is not null &&
+            backupPath.Contains(".recovery-rollback-", StringComparison.Ordinal))
+        {
+            // 替换生成的新主文件继承父目录 ACL，恢复后原文件级拒绝不再存在。
+            _denialActive = false;
+            DenialClearedByReplace = true;
+        }
+    }
+
+    public void DeleteFile(string path) => File.Delete(path);
+
+    public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+
+    public void WriteNewFileAndFlush(string path, ReadOnlySpan<byte> content)
+    {
+        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        stream.Write(content);
+        stream.Flush(flushToDisk: true);
+    }
+
+    private bool IsDenied(string path)
+    {
+        if (!_denialActive)
+        {
+            return false;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        if (_denyWholeDirectory)
+        {
+            return fullPath.StartsWith(_deniedDirectoryPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(fullPath, _settingsPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static SettingsPathState GetTestPathState(string path) =>
+        File.Exists(path)
+            ? SettingsPathState.RegularFile
+            : Directory.Exists(path)
+                ? SettingsPathState.Occupied
+                : SettingsPathState.Absent;
+}
+
 internal sealed class AccessDeniedPathStateSettingsFileOperations : ISettingsFileOperations
 {
     public SettingsPathState GetPathState(string path) =>
         throw new UnauthorizedAccessException("Injected settings path access denial.");
 
-    public bool FileExists(string path) => throw Unexpected();
+    public bool FileExists(string path) => File.Exists(path);
 
-    public string ReadUtf8Text(string path) => throw Unexpected();
+    public string ReadUtf8Text(string path) =>
+        throw new UnauthorizedAccessException("Injected settings read access denial.");
 
-    public byte[] ReadFileBytes(string path) => throw Unexpected();
+    public byte[] ReadFileBytes(string path) =>
+        throw new UnauthorizedAccessException("Injected settings bytes access denial.");
 
     public DateTime GetLastWriteTimeUtc(string path) => throw Unexpected();
 

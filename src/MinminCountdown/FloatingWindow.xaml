@@ -190,7 +190,14 @@
                     HorizontalAlignment="Left"
                     HorizontalContentAlignment="Left"
                     FontSize="12"
-                    Style="{DynamicResource SecondaryButton}" />
+                    Style="{DynamicResource SecondaryButton}">
+              <Button.ContentTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding}"
+                             TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </Button.ContentTemplate>
+            </Button>
             <Button x:Name="FloatingNoteSearchHintClear"
                     Grid.Column="1"
                     Width="28"

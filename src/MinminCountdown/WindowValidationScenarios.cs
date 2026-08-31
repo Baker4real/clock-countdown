@@ -28,7 +28,274 @@ public sealed partial class MainWindow
             ProbeNoteDateBehavior(),
             ProbeCrossDayReminderBehavior(),
             ProbeReminderSummaryAdvancesAfterFirstDue(),
-            ProbeUiPolishScenarios());
+            ProbeUiPolishScenarios(),
+            ProbeSettingsDraftRetention(),
+            ProbeUndatedNoteEditRetention());
+    }
+
+    private UndatedNoteEditProbe ProbeUndatedNoteEditRetention()
+    {
+        var originalWorkspace = _workspace;
+        var temporaryNoteIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher);
+
+            // 新建路径：空日期仍被拒绝且草稿保留
+            ResetNoteEditor();
+            WindowValidationInput.Pump(Dispatcher);
+            NoteText.Text = "无日期新建拒绝探针";
+            _settingDefaultDate = true;
+            NoteDate.SelectedDate = null;
+            _settingDefaultDate = false;
+            _noteDateDirty = true;
+            var noteCountBeforeNewReject = _desktopWorkspace.Snapshot.Settings.Notes.Count;
+            SaveNoteButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var newPathMessage = NoteMessage.Text;
+            var newNoteRejectsEmptyDate =
+                _desktopWorkspace.Snapshot.Settings.Notes.Count == noteCountBeforeNewReject &&
+                newPathMessage.Contains("请选择便签日期", StringComparison.Ordinal) &&
+                string.Equals(NoteText.Text, "无日期新建拒绝探针", StringComparison.Ordinal);
+
+            // 编辑既存无日期便签：日期留空可保存，保存后仍保持未设置日期
+            var undatedText = $"无日期编辑探针-{Guid.NewGuid():N}"[..24];
+            var addUndated = _desktopWorkspace.Apply(new SaveNoteChange(
+                null,
+                undatedText,
+                null,
+                false,
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            var undatedNote = _desktopWorkspace.Snapshot.Settings.Notes
+                .FirstOrDefault(note => string.Equals(note.Text, undatedText, StringComparison.Ordinal));
+            if (undatedNote is not null)
+            {
+                temporaryNoteIds.Add(undatedNote.Id);
+            }
+
+            var undatedEditSavesWithoutDate = false;
+            if (addUndated.Succeeded && undatedNote is not null)
+            {
+                LoadNoteIntoEditor(undatedNote);
+                WindowValidationInput.Pump(Dispatcher);
+                NoteText.Text = $"{undatedText}-已编辑";
+                SaveNoteButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+                var savedUndated = _desktopWorkspace.Snapshot.Settings.Notes
+                    .FirstOrDefault(note => note.Id == undatedNote.Id);
+                undatedEditSavesWithoutDate =
+                    savedUndated is not null &&
+                    savedUndated.Date is null &&
+                    string.Equals(savedUndated.Text, $"{undatedText}-已编辑", StringComparison.Ordinal) &&
+                    string.Equals(StatusText.Text, "便签已保存。", StringComparison.Ordinal);
+            }
+
+            // 编辑既有日期便签：清空日期被拒绝，草稿保留，文案与新建路径可区分
+            var datedText = $"有日期编辑探针-{Guid.NewGuid():N}"[..24];
+            var addDated = _desktopWorkspace.Apply(new SaveNoteChange(
+                null,
+                datedText,
+                _desktopWorkspace.Snapshot.BeijingNow.Date,
+                false,
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            var datedNote = _desktopWorkspace.Snapshot.Settings.Notes
+                .FirstOrDefault(note => string.Equals(note.Text, datedText, StringComparison.Ordinal));
+            if (datedNote is not null)
+            {
+                temporaryNoteIds.Add(datedNote.Id);
+            }
+
+            var datedEditRejectsClearedDate = false;
+            var editPathMessage = string.Empty;
+            if (addDated.Succeeded && datedNote is not null)
+            {
+                LoadNoteIntoEditor(datedNote);
+                WindowValidationInput.Pump(Dispatcher);
+                NoteText.Text = $"{datedText}-已编辑";
+                _settingDefaultDate = true;
+                NoteDate.SelectedDate = null;
+                _settingDefaultDate = false;
+                _noteDateDirty = true;
+                SaveNoteButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+                editPathMessage = NoteMessage.Text;
+                var unchangedDated = _desktopWorkspace.Snapshot.Settings.Notes
+                    .FirstOrDefault(note => note.Id == datedNote.Id);
+                datedEditRejectsClearedDate =
+                    unchangedDated is not null &&
+                    string.Equals(unchangedDated.Text, datedText, StringComparison.Ordinal) &&
+                    string.Equals(unchangedDated.Date, datedNote.Date, StringComparison.Ordinal) &&
+                    editPathMessage.Contains("不能清空日期", StringComparison.Ordinal) &&
+                    string.Equals(NoteText.Text, $"{datedText}-已编辑", StringComparison.Ordinal) &&
+                    string.Equals(_editingNoteId, datedNote.Id, StringComparison.Ordinal);
+            }
+
+            var messagesDistinguished =
+                !string.IsNullOrEmpty(newPathMessage) &&
+                !string.IsNullOrEmpty(editPathMessage) &&
+                !string.Equals(newPathMessage, editPathMessage, StringComparison.Ordinal);
+
+            return new UndatedNoteEditProbe(
+                newNoteRejectsEmptyDate,
+                undatedEditSavesWithoutDate,
+                datedEditRejectsClearedDate,
+                messagesDistinguished);
+        }
+        finally
+        {
+            foreach (var temporaryNoteId in temporaryNoteIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(temporaryNoteId));
+            }
+
+            ResetNoteEditor();
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private SettingsDraftRetentionProbe ProbeSettingsDraftRetention()
+    {
+        var originalWorkspace = _workspace;
+        var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+        var originalThemeLabel = ThemeModeButton.Content?.ToString();
+        var temporaryNoteIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+
+            var draftPrecisionIndex = string.Equals(
+                originalPreferences.DisplayPrecision,
+                "Second",
+                StringComparison.Ordinal)
+                ? 2
+                : 3;
+            const string draftSalary = "98765";
+            const string draftWorkStart = "07:30";
+            const string draftWorkEnd = "19:45";
+            DisplayPrecision.SelectedIndex = draftPrecisionIndex;
+            MonthlySalary.Text = draftSalary;
+            WorkStart.Text = draftWorkStart;
+            WorkEnd.Text = draftWorkEnd;
+
+            // 后台刷新来源一：筛选切换
+            var filter = _desktopWorkspace.Snapshot.Filter;
+            _desktopWorkspace.ApplyFilter(filter with { NoteSearch = "settings-draft-probe" });
+            WindowValidationInput.Pump(Dispatcher);
+            _desktopWorkspace.ApplyFilter(filter);
+            WindowValidationInput.Pump(Dispatcher);
+
+            // 后台刷新来源二：快速新增便签写盘（与悬浮窗快速新增共用同一工作区变更）
+            var probeNoteText = $"设置草稿探针便签-{Guid.NewGuid():N}"[..24];
+            var addResult = _desktopWorkspace.Apply(new SaveNoteChange(
+                null,
+                probeNoteText,
+                _desktopWorkspace.Snapshot.BeijingNow.Date,
+                false,
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            WindowValidationInput.Pump(Dispatcher);
+            var probeNote = _desktopWorkspace.Snapshot.Settings.Notes.FirstOrDefault(note =>
+                string.Equals(note.Text, probeNoteText, StringComparison.Ordinal));
+            if (probeNote is not null)
+            {
+                temporaryNoteIds.Add(probeNote.Id);
+            }
+
+            // 后台刷新来源三：便签勾选完成写盘
+            if (probeNote is not null)
+            {
+                _desktopWorkspace.Apply(new SetNoteCompletionChange(probeNote.Id, true));
+                WindowValidationInput.Pump(Dispatcher);
+            }
+
+            var inputsRetainedOnRefresh =
+                DisplayPrecision.SelectedIndex == draftPrecisionIndex &&
+                string.Equals(MonthlySalary.Text, draftSalary, StringComparison.Ordinal) &&
+                string.Equals(WorkStart.Text, draftWorkStart, StringComparison.Ordinal) &&
+                string.Equals(WorkEnd.Text, draftWorkEnd, StringComparison.Ordinal);
+            var themeSelectionRetainedOnRefresh = string.Equals(
+                ThemeModeButton.Content?.ToString(),
+                originalThemeLabel,
+                StringComparison.Ordinal);
+
+            SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var savedPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+            var savedPrecisionIndex = savedPreferences.DisplayPrecision switch
+            {
+                "Day" => 0,
+                "Hour" => 1,
+                "Minute" => 2,
+                _ => 3
+            };
+            var savedValuesReflectedAfterSave =
+                addResult.Succeeded &&
+                savedPreferences.MonthlySalary == 98765m &&
+                savedPreferences.WorkStart == new TimeSpan(7, 30, 0) &&
+                savedPreferences.WorkEnd == new TimeSpan(19, 45, 0) &&
+                DisplayPrecision.SelectedIndex == savedPrecisionIndex &&
+                string.Equals(
+                    MonthlySalary.Text,
+                    savedPreferences.MonthlySalary.ToString(CultureInfo.CurrentCulture),
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    WorkStart.Text,
+                    CountdownFormatting.FormatWorkTime(savedPreferences.WorkStart),
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    WorkEnd.Text,
+                    CountdownFormatting.FormatWorkTime(savedPreferences.WorkEnd),
+                    StringComparison.Ordinal);
+
+            MonthlySalary.Text = "-500";
+            SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var negativeSalaryRejectedKeepsDraft =
+                _desktopWorkspace.Snapshot.Settings.Preferences.MonthlySalary == 98765m &&
+                string.Equals(MonthlySalary.Text, "-500", StringComparison.Ordinal) &&
+                string.Equals(StatusText.Text, "月薪不能小于 0。", StringComparison.Ordinal);
+
+            MonthlySalary.Text = "0";
+            SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var zeroSalaryStillSavesAsUnset =
+                _desktopWorkspace.Snapshot.Settings.Preferences.MonthlySalary == 0m &&
+                string.Equals(StatusText.Text, "偏好已保存。", StringComparison.Ordinal);
+
+            return new SettingsDraftRetentionProbe(
+                inputsRetainedOnRefresh,
+                themeSelectionRetainedOnRefresh,
+                savedValuesReflectedAfterSave,
+                negativeSalaryRejectedKeepsDraft,
+                zeroSalaryStillSavesAsUnset);
+        }
+        finally
+        {
+            foreach (var temporaryNoteId in temporaryNoteIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(temporaryNoteId));
+            }
+
+            var currentPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+            if (currentPreferences != originalPreferences)
+            {
+                _desktopWorkspace.Apply(new SavePreferencesChange(
+                    originalPreferences.DisplayPrecision,
+                    originalPreferences.MonthlySalary,
+                    originalPreferences.WorkStart,
+                    originalPreferences.WorkEnd));
+            }
+
+            _settingsDraftDirty = false;
+            LoadPreferences();
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
     }
 
     private MainUiPolishScenarios ProbeUiPolishScenarios()
@@ -782,6 +1049,50 @@ public sealed partial class FloatingWindow
         var countdownSelectionSurvivesDayNightThemes =
             InitialCountdownSelectionSurvivesDayNightThemes();
 
+        var incomePreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+        var originalIncomeText = IncomeText;
+        var originalIncomeVisibility = FloatingIncome.Visibility;
+        var incomeHiddenWithoutSalary = false;
+        var incomeRestoredWithSalary = false;
+        try
+        {
+            var zeroSalaryApplied = _desktopWorkspace.Apply(new SavePreferencesChange(
+                incomePreferences.DisplayPrecision,
+                0m,
+                incomePreferences.WorkStart,
+                incomePreferences.WorkEnd)).Succeeded;
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            // 月薪未输入：不渲染金额；日历未就绪路径保持状态文本，就绪路径整行收起。
+            incomeHiddenWithoutSalary =
+                zeroSalaryApplied &&
+                !(IncomeText ?? string.Empty).StartsWith("今日已赚", StringComparison.Ordinal) &&
+                (FloatingIncome.Visibility == Visibility.Collapsed &&
+                    string.IsNullOrEmpty(IncomeText) ||
+                 FloatingIncome.Visibility == Visibility.Visible &&
+                    string.Equals(IncomeText, _calendar.StatusText, StringComparison.Ordinal));
+        }
+        finally
+        {
+            var currentPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+            if (currentPreferences.MonthlySalary != incomePreferences.MonthlySalary)
+            {
+                _desktopWorkspace.Apply(new SavePreferencesChange(
+                    incomePreferences.DisplayPrecision,
+                    incomePreferences.MonthlySalary,
+                    incomePreferences.WorkStart,
+                    incomePreferences.WorkEnd));
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+            }
+
+            incomeRestoredWithSalary =
+                _desktopWorkspace.Snapshot.Settings.Preferences.MonthlySalary ==
+                    incomePreferences.MonthlySalary &&
+                FloatingIncome.Visibility == originalIncomeVisibility &&
+                string.Equals(IncomeText, originalIncomeText, StringComparison.Ordinal);
+        }
+
         return new FloatingWorkspaceValidationScenarios(
             initialStateMatches,
             notesStateMatches &&
@@ -797,7 +1108,9 @@ public sealed partial class FloatingWindow
             FloatingCountdownCount,
             FloatingCountdownTexts,
             IncomeText,
-            renderedNoteIds);
+            renderedNoteIds,
+            incomeHiddenWithoutSalary,
+            incomeRestoredWithSalary);
     }
 
     private bool FloatingWorkspacePresentationMatches(
@@ -932,6 +1245,16 @@ public sealed partial class FloatingWindow
                 FloatingNoteSearchHint.Visibility == Visibility.Visible &&
                 string.Equals(hintText, $"搜索:{matchTerm}", StringComparison.Ordinal) &&
                 GetFloatingRenderedNoteIds().SequenceEqual(expectedMatchIds, StringComparer.Ordinal);
+            var hintNamesDescribeAction =
+                string.Equals(
+                    AutomationProperties.GetName(FloatingNoteSearchHintTerm),
+                    $"展开搜索：{matchTerm}",
+                    StringComparison.Ordinal) &&
+                string.Equals(hintText, $"搜索:{matchTerm}", StringComparison.Ordinal) &&
+                string.Equals(
+                    AutomationProperties.GetName(FloatingNoteSearchHintClear),
+                    "清除搜索",
+                    StringComparison.Ordinal);
 
             FloatingNoteSearchHintTerm.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(Dispatcher);
@@ -946,6 +1269,37 @@ public sealed partial class FloatingWindow
                 FloatingNoteSearchSlot.Visibility == Visibility.Collapsed &&
                 string.IsNullOrEmpty(FloatingNoteSearch.Text) &&
                 string.IsNullOrWhiteSpace(_desktopWorkspace.Snapshot.Filter.NoteSearch);
+
+            FloatingSearchNotes.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var longTerm = new string('长', 140);
+            FloatingNoteSearch.Text = longTerm;
+            WindowValidationInput.Pump(Dispatcher);
+            FloatingSearchNotes.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var hintTermTextBlock = ValidationDescendants<TextBlock>(FloatingNoteSearchHintTerm)
+                .FirstOrDefault();
+            var longHintBounds = ValidationBounds(FloatingNoteSearchHintTerm);
+            var longHintSlotBounds = ValidationBounds(FloatingNoteSearchHint);
+            var longHintClearBounds = ValidationBounds(FloatingNoteSearchHintClear);
+            var longHintTermTrimsWithinSlot =
+                FloatingNoteSearchHint.Visibility == Visibility.Visible &&
+                hintTermTextBlock is not null &&
+                hintTermTextBlock.TextTrimming == TextTrimming.CharacterEllipsis &&
+                longHintBounds.Right <= longHintSlotBounds.Right + 0.5 &&
+                !longHintBounds.IntersectsWith(longHintClearBounds) &&
+                string.Equals(
+                    FloatingNoteSearchHintTerm.Content as string,
+                    $"搜索:{longTerm}",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    AutomationProperties.GetName(FloatingNoteSearchHintTerm),
+                    $"展开搜索：{longTerm}",
+                    StringComparison.Ordinal);
+            WindowValidationInput.RaisePreviewKey(this, Key.Escape);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
 
             Keyboard.Focus(FloatingAddNote);
             WindowValidationInput.Pump(Dispatcher);
@@ -1077,6 +1431,39 @@ public sealed partial class FloatingWindow
                 firstCheckbox is null ||
                 ReferenceEquals(Keyboard.FocusedElement, firstCheckbox);
 
+            ClearNoteSearch();
+            WindowValidationInput.Pump(Dispatcher);
+            _desktopWorkspace.ApplyFilter(originalFilter with
+            {
+                SelectedTagIds = Array.AsReadOnly(new[] { "__floating_filter_miss_tag__" })
+            });
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var noteFilterEmptyMessages = FloatingRows.Children
+                .OfType<TextBlock>()
+                .Select(text => text.Text)
+                .ToArray();
+            var noteFilterEmptyStateDistinguished =
+                noteFilterEmptyMessages.SequenceEqual(new[] { "没有匹配的便签。" }) &&
+                !ValidationDescendants<Button>(FloatingRows).Any() &&
+                FloatingNoteSearchSlot.Visibility == Visibility.Collapsed;
+
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var countdownFilterEmptyMessages = FloatingRows.Children
+                .OfType<TextBlock>()
+                .Select(text => text.Text)
+                .ToArray();
+            var countdownFilterEmptyStateDistinguished =
+                countdownFilterEmptyMessages.SequenceEqual(new[] { "没有匹配的倒计时。" });
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+
             ApplyTheme(ApplicationThemeMode.Night);
             WindowValidationInput.Pump(Dispatcher);
             var usesQuickAddThemeNight = TextBoxUsesQuickAddTheme(FloatingNoteSearch);
@@ -1101,7 +1488,11 @@ public sealed partial class FloatingWindow
                 addThenSearchTab && collapsedOmitsSearchInput,
                 searchBeforeFirstCard,
                 ctrlFFromCountdowns && ctrlFFromNotes && ctrlFKeepsFocusWhenExpanded,
-                usesQuickAddTheme);
+                usesQuickAddTheme,
+                hintNamesDescribeAction,
+                longHintTermTrimsWithinSlot,
+                noteFilterEmptyStateDistinguished,
+                countdownFilterEmptyStateDistinguished);
         }
         finally
         {
@@ -1310,7 +1701,22 @@ internal sealed record MainWindowValidationScenarios(
     (bool TracksBeijingDay, bool PreservesChosenDate) NoteDateBehavior,
     bool CrossDayReminderBehavior,
     bool ReminderSummaryAdvances,
-    MainUiPolishScenarios UiPolish);
+    MainUiPolishScenarios UiPolish,
+    SettingsDraftRetentionProbe SettingsDrafts,
+    UndatedNoteEditProbe UndatedNoteEdit);
+
+internal sealed record SettingsDraftRetentionProbe(
+    bool InputsRetainedOnRefresh,
+    bool ThemeSelectionRetainedOnRefresh,
+    bool SavedValuesReflectedAfterSave,
+    bool NegativeSalaryRejectedKeepsDraft,
+    bool ZeroSalaryStillSavesAsUnset);
+
+internal sealed record UndatedNoteEditProbe(
+    bool NewNoteRejectsEmptyDate,
+    bool UndatedEditSavesWithoutDate,
+    bool DatedEditRejectsClearedDate,
+    bool ValidationMessagesDistinguished);
 
 internal sealed record FloatingWindowValidationScenarios(
     bool CrossDayReminderAdded,
@@ -1334,7 +1740,9 @@ internal sealed record FloatingWorkspaceValidationScenarios(
     int CountdownCount,
     IReadOnlyList<string> CountdownTexts,
     string IncomeText,
-    IReadOnlyList<string> RenderedNoteIds);
+    IReadOnlyList<string> RenderedNoteIds,
+    bool IncomeHiddenWithoutSalary,
+    bool IncomeRestoredWithSalary);
 
 internal sealed record FloatingNoteSearchValidationScenarios(
     bool HiddenInCountdowns,
@@ -1350,7 +1758,11 @@ internal sealed record FloatingNoteSearchValidationScenarios(
     bool AddThenSearchTab,
     bool SearchBeforeFirstCard,
     bool CtrlFFromCountdowns,
-    bool UsesQuickAddTheme)
+    bool UsesQuickAddTheme,
+    bool HintNamesDescribeAction,
+    bool LongHintTermTrimsWithinSlot,
+    bool NoteFilterEmptyStateDistinguished,
+    bool CountdownFilterEmptyStateDistinguished)
 {
     public bool AllPassed =>
         HiddenInCountdowns &&
@@ -1366,7 +1778,11 @@ internal sealed record FloatingNoteSearchValidationScenarios(
         AddThenSearchTab &&
         SearchBeforeFirstCard &&
         CtrlFFromCountdowns &&
-        UsesQuickAddTheme;
+        UsesQuickAddTheme &&
+        HintNamesDescribeAction &&
+        LongHintTermTrimsWithinSlot &&
+        NoteFilterEmptyStateDistinguished &&
+        CountdownFilterEmptyStateDistinguished;
 }
 
 internal sealed record WindowValidationTextFit(

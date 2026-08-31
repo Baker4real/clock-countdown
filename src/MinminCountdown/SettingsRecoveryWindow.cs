@@ -119,6 +119,85 @@ internal sealed class SettingsRecoveryWindow : Window
     }
 }
 
+internal sealed class InstanceActivationFailureWindow : Window
+{
+    internal const string PromptTitle = "敏敏子倒计时";
+    internal const string PromptHeading = "主程序未响应";
+    internal const string PromptMessage = "请稍后重试，或检查已在运行的倒计时程序状态。";
+    internal const string DismissButtonText = "知道了";
+
+    private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFF, 0xFB, 0xF7));
+    private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x4A, 0x2D, 0x24));
+    private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x87, 0x66, 0x5A));
+    private static readonly SolidColorBrush AccentBrush = new(Color.FromRgb(0xD5, 0x5C, 0x47));
+
+    private InstanceActivationFailureWindow()
+    {
+        Title = PromptTitle;
+        Width = 520;
+        SizeToContent = SizeToContent.Height;
+        MinHeight = 200;
+        ResizeMode = ResizeMode.NoResize;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        ShowInTaskbar = true;
+        Background = CanvasBrush;
+        Foreground = InkBrush;
+        FontFamily = new FontFamily("Microsoft YaHei UI");
+
+        var body = new StackPanel
+        {
+            Margin = new Thickness(28)
+        };
+        body.Children.Add(new TextBlock
+        {
+            Text = PromptHeading,
+            FontSize = 22,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = InkBrush
+        });
+        body.Children.Add(new TextBlock
+        {
+            Text = PromptMessage,
+            Margin = new Thickness(0, 14, 0, 22),
+            FontSize = 16,
+            LineHeight = 25,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = MutedBrush
+        });
+
+        var commands = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        var dismiss = new Button
+        {
+            Content = DismissButtonText,
+            MinWidth = 112,
+            Height = 44,
+            Margin = new Thickness(10, 0, 0, 0),
+            Padding = new Thickness(16, 0, 16, 0),
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brushes.White,
+            Background = AccentBrush,
+            BorderBrush = AccentBrush,
+            BorderThickness = new Thickness(1),
+            IsDefault = true,
+            IsCancel = true
+        };
+        dismiss.Click += (_, _) => Close();
+        AutomationProperties.SetName(dismiss, DismissButtonText);
+        commands.Children.Add(dismiss);
+        body.Children.Add(commands);
+        Content = body;
+    }
+
+    public static void ShowPrompt() => new InstanceActivationFailureWindow().ShowDialog();
+
+    internal static InstanceActivationFailureWindow CreateForValidation() => new();
+}
+
 internal static class SettingsRecoveryFailurePresentation
 {
     public static bool TryPresent(

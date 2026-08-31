@@ -296,6 +296,8 @@ internal static class ValidationReport
             ValidationExercises.RunMainStructuralAnnouncementGateIsolationBehavior();
         var countdownIncrementalRefreshGateIsolationBehavior =
             ValidationExercises.RunCountdownIncrementalRefreshGateIsolationBehavior();
+        var floatingEmptyStateTextIsolationBehavior =
+            ValidationExercises.RunFloatingEmptyStateTextIsolationBehavior();
         var floatingUiPolish = floatingWindowScenarios.UiPolish;
         var tagExercise = options.ExerciseTagInteractions
             ? ValidationExercises.RunTagInteractions(desktopWorkspace)
@@ -382,6 +384,8 @@ internal static class ValidationReport
         var dateTextMetrics = MeasureTextFit(datePicker, "2031年12月31日");
         var calendarHeaderMetrics = MeasureTextFit(datePicker, "2031年12月");
         var workspaceDraftsRetained = mainWindowScenarios.WorkspaceDraftsRetained;
+        var settingsDrafts = mainWindowScenarios.SettingsDrafts;
+        var undatedNoteEdit = mainWindowScenarios.UndatedNoteEdit;
         var noteDateBehavior = mainWindowScenarios.NoteDateBehavior;
         var originalWorkspace = main.CurrentWorkspace;
         main.ShowWorkspace(WorkspaceKind.Notes);
@@ -420,16 +424,34 @@ internal static class ValidationReport
             ValidationExercises.RunReminderDispositionAndSnoozeBehavior();
         var reminderCompletionAndReopen =
             ValidationExercises.RunReminderCompletionAndReopenBehavior();
+        var reminderCenterCustomSnoozeControlsVisibility =
+            ValidationExercises.RunReminderCenterCustomSnoozeControlsVisibilityBehavior();
+        var reminderCenterCustomSnoozeCalendarBehavior =
+            ValidationExercises.RunReminderCenterCustomSnoozeCalendarBehavior();
         var reminderCenterSnoozeClick =
             ValidationExercises.RunReminderCenterSnoozeClickBehavior();
         var reminderCenterExpiredCustomSnoozeRetry =
             ValidationExercises.RunReminderCenterExpiredCustomSnoozeRetryBehavior();
         var reminderCenterStaleRetryAfterCompleteReopen =
             ValidationExercises.RunReminderCenterStaleRetryAfterCompleteReopenBehavior();
+        var reminderSnoozeSuppressesBaseCycles =
+            ValidationExercises.RunReminderSnoozeSuppressesBaseCyclesBehavior();
         var reminderCenterCompleteClick =
             ValidationExercises.RunReminderCenterCompleteClickBehavior();
         var reminderCenterDeliveryFailureActionGate =
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
+        var reminderCenterEnterActsOnFocusedEntry =
+            ValidationExercises.RunReminderCenterEnterActsOnFocusedEntryBehavior();
+        var reminderCenterSnoozeGatedDuringCompletionRetry =
+            ValidationExercises.RunReminderCenterSnoozeGatedDuringCompletionRetryBehavior();
+        var reminderCenterCustomSnoozeErrorRoutesByCode =
+            ValidationExercises.RunReminderCenterCustomSnoozeErrorRoutesByCodeBehavior();
+        var reminderCenterShowFailureRollsBack =
+            ValidationExercises.RunReminderCenterShowFailureRollsBackBehavior();
+        var reminderCenterShowFailureRollbackSurvivesEntryFailure =
+            ValidationExercises.RunReminderCenterShowFailureRollbackSurvivesEntryFailureBehavior();
+        var reminderCenterOpenSourcePreservesNoteGroupState =
+            ValidationExercises.RunReminderCenterOpenSourcePreservesNoteGroupStateBehavior();
         var validateOnlySettingsIsolation =
             ValidationExercises.RunValidateOnlySettingsIsolationBehavior();
         var lazyManagerLifecycle =
@@ -1002,6 +1024,24 @@ internal static class ValidationReport
                 ReferenceEquals(control.Background, Application.Current.FindResource("CanvasBrush")) &&
                 ReferenceEquals(control.BorderBrush, Application.Current.FindResource("PeachLineBrush")) &&
                 ReferenceEquals(control.Foreground, Application.Current.FindResource("InkBrush")));
+        countdownDate.ApplyTemplate();
+        var compactInputHorizontalPaddingAligned =
+            new[] { countdownName, monthlySalary, workStart, workEnd }
+                .All(textBox => textBox.Padding.Left == 16 && textBox.Padding.Right == 16) &&
+            new[] { countdownHour, countdownMinute, countdownSecond, displayPrecision }
+                .All(comboBox => comboBox.Padding.Left == 16) &&
+            countdownDate.Template?.FindName("PART_TextBox", countdownDate) is TextBox dateInputTextBox &&
+            dateInputTextBox.Padding.Left == 16 &&
+            dateInputTextBox.Padding.Right == 16;
+        var noteEmptyStateContrast = ValidateNoteEmptyStateContrast(theme, main);
+        var noteStatusCountsUseMutedToken = ValidateNoteStatusCountsUseMutedToken(theme, main);
+        var noteVisualTokenGates = ValidationExercises.EvaluateNoteVisualTokenGates(
+            new NoteVisualTokenGateInputs(
+                compactInputHorizontalPaddingAligned,
+                noteStatusCountsUseMutedToken,
+                noteEmptyStateContrast.TextContrast));
+        var noteVisualTokenGateIsolationBehavior =
+            ValidationExercises.RunNoteVisualTokenGateIsolationBehavior();
         var countdownReminderTransactionBehavior =
             ValidationExercises.RunCountdownReminderTransactionBehavior();
         var desktopWorkspaceInterfaceBehavior =
@@ -1046,6 +1086,7 @@ internal static class ValidationReport
             ["CompactSelectionFieldLayout"] = compactSelection,
             ["CompactPreferenceFieldLayout"] = compactPreferences,
             ["CountdownInputsUseProjectTheme"] = countdownInputsUseProjectTheme,
+            ["CompactInputHorizontalPaddingAligned"] = noteVisualTokenGates.CompactInputPaddingAligned,
             ["CountdownInputHeight"] = countdownName.ActualHeight,
             ["CountdownPreferenceInputHeight"] = displayPrecision.ActualHeight,
             ["CountdownNameWidth"] = countdownName.ActualWidth,
@@ -1168,6 +1209,7 @@ internal static class ValidationReport
                 floatingWindowScenarios.NoteSearch.AllPassed &&
                 mainUiPolish.NoteSearchSyncsFromSharedFilter,
             ["NoteSearchSyncsFromSharedFilter"] = mainUiPolish.NoteSearchSyncsFromSharedFilter,
+            ["FloatingEmptyStateTextIsolationBehavior"] = floatingEmptyStateTextIsolationBehavior,
             ["TagPopupFollowsDayNightTheme"] = tagPopupFollowsDayNightTheme,
             ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
             ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
@@ -1238,6 +1280,8 @@ internal static class ValidationReport
             ["DatePickerUnattachedNegativeMeasurement"] = productionDatePickers.UnattachedNegative,
             ["DatePickerUnattachedNegativeTextDoesNotOpen"] =
                 productionDatePickers.UnattachedNegativeTextDoesNotOpen,
+            ["ReminderCenterComboBoxesUseThemedDropDowns"] =
+                productionDatePickers.ReminderCenterComboBoxesUseThemedDropDowns,
             ["TimeDropDowns"] = 3,
             ["TimeOptionCounts"] = main.TimeOptionCounts,
             ["HasSetNowButton"] = main.FindName("SetNowButton") is Button,
@@ -1356,10 +1400,28 @@ internal static class ValidationReport
                 reminderCenterExpiredCustomSnoozeRetry,
             ["ReminderCenterCompleteReopenDiscardsStaleRetries"] =
                 reminderCenterStaleRetryAfterCompleteReopen,
+            ["ReminderSnoozeSuppressesBaseCyclesUntilExpiry"] =
+                reminderSnoozeSuppressesBaseCycles,
             ["ReminderCenterCompleteClickIsAtomic"] =
                 reminderCenterCompleteClick,
             ["ReminderCenterDeliveryFailureDisablesDispositions"] =
                 reminderCenterDeliveryFailureActionGate,
+            ["ReminderCenterEnterActsOnFocusedEntry"] =
+                reminderCenterEnterActsOnFocusedEntry,
+            ["ReminderCenterSnoozeGatedDuringCompletionRetry"] =
+                reminderCenterSnoozeGatedDuringCompletionRetry,
+            ["ReminderCenterCustomSnoozeErrorRoutesByCode"] =
+                reminderCenterCustomSnoozeErrorRoutesByCode,
+            ["ReminderCenterShowFailureRollsBack"] =
+                reminderCenterShowFailureRollsBack,
+            ["ReminderCenterShowFailureRollbackSurvivesEntryFailure"] =
+                reminderCenterShowFailureRollbackSurvivesEntryFailure,
+            ["ReminderCenterCustomSnoozeControlsVisibility"] =
+                reminderCenterCustomSnoozeControlsVisibility,
+            ["ReminderCenterCustomSnoozeCalendarBehavior"] =
+                reminderCenterCustomSnoozeCalendarBehavior,
+            ["ReminderCenterOpenSourcePreservesNoteGroupState"] =
+                reminderCenterOpenSourcePreservesNoteGroupState,
             ["ValidateOnlySettingsIsolationBehavior"] =
                 validateOnlySettingsIsolation,
             ["LazyManagerLifecycleBehavior"] = lazyManagerLifecycle,
@@ -1470,6 +1532,10 @@ internal static class ValidationReport
             ["CountdownEmptyStateTextContrast"] = countdownEmptyStateGates.DayNightTextContrast,
             ["CountdownEmptyStateContrastMeasurements"] = countdownEmptyStateContrast.Measurements,
             ["CountdownEmptyStateGateIsolationBehavior"] = countdownEmptyStateGateIsolationBehavior,
+            ["NoteStatusCountsUseMutedToken"] = noteVisualTokenGates.StatusCountsUseMutedToken,
+            ["NoteEmptyStateTextContrast"] = noteVisualTokenGates.EmptyStateTextContrast,
+            ["NoteEmptyStateContrastMeasurements"] = noteEmptyStateContrast.Measurements,
+            ["NoteVisualTokenGateIsolationBehavior"] = noteVisualTokenGateIsolationBehavior,
             ["CountdownRemainingLayoutMatches"] = mainCountdownRemainingGates.FixedColumnLayoutMatches,
             ["CountdownRemainingUnitSpacingMatches"] = mainCountdownRemainingGates.UnitSpacingMatches,
             ["CountdownRemainingGateIsolationBehavior"] = mainCountdownRemainingGateIsolationBehavior,
@@ -1501,6 +1567,20 @@ internal static class ValidationReport
             ["TagManagerOpensOnDemand"] = !Required<Popup>(main, "TagManagerPopup").IsOpen,
             ["NoteTagPickerOpensOnDemand"] = !Required<TagSelector>(main, "NoteTags").IsPopupOpen,
             ["WorkspaceDraftsRetained"] = workspaceDraftsRetained,
+            ["SettingsDraftsRetainedOnRefresh"] = settingsDrafts.InputsRetainedOnRefresh,
+            ["SettingsThemeSelectionRetainedOnRefresh"] =
+                settingsDrafts.ThemeSelectionRetainedOnRefresh,
+            ["SettingsSavedValuesReflectedAfterSave"] =
+                settingsDrafts.SavedValuesReflectedAfterSave,
+            ["NegativeMonthlySalaryRejectedKeepsDraft"] =
+                settingsDrafts.NegativeSalaryRejectedKeepsDraft,
+            ["ZeroMonthlySalaryStillSavesAsUnset"] =
+                settingsDrafts.ZeroSalaryStillSavesAsUnset,
+            ["NewNoteRejectsEmptyDate"] = undatedNoteEdit.NewNoteRejectsEmptyDate,
+            ["UndatedNoteEditSavesWithoutDate"] = undatedNoteEdit.UndatedEditSavesWithoutDate,
+            ["DatedNoteEditRejectsClearedDate"] = undatedNoteEdit.DatedEditRejectsClearedDate,
+            ["NoteDateValidationMessagesDistinguished"] =
+                undatedNoteEdit.ValidationMessagesDistinguished,
             ["HiddenCountdownSubmitDisabled"] = hiddenCountdownSubmitDisabled,
             ["WorkspaceTabsUseSelectionSemantics"] =
                 main.FindName("CountdownTab") is ToggleButton &&
@@ -1782,6 +1862,8 @@ internal static class ValidationReport
                 floatingTrayInteraction.RestoreShowsWindowAndHidesIcon,
             ["FloatingTrayExitRequestsApplicationExit"] =
                 floatingTrayInteraction.ExitRequestsApplicationExit,
+            ["FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry"] =
+                floatingTrayInteraction.FailedRestoreKeepsTrayStateAndAllowsRetry,
             ["FloatingReferenceActualSize"] = floatingReferenceExercise.ActualSize,
             ["FloatingReferenceCapturePath"] = floatingReferenceExercise.CapturePath,
             ["FloatingPlushCardIsUnobscured"] = visiblePlushDoesNotObscureTaskCardContent,
@@ -1820,6 +1902,10 @@ internal static class ValidationReport
                 false,
             ["FloatingCountdownTexts"] = floatingWorkspace.CountdownTexts,
             ["FloatingIncomeText"] = floatingWorkspace.IncomeText,
+            ["FloatingIncomeHiddenWithoutSalary"] =
+                floatingWorkspace.IncomeHiddenWithoutSalary,
+            ["FloatingIncomeRestoredWithSalary"] =
+                floatingWorkspace.IncomeRestoredWithSalary,
             ["FloatingManagerButtonPresent"] = floating.FindName("OpenManagerButton") is Button,
             ["HasUnifiedNoteEntry"] =
                 main.FindName("CountdownTab") is ToggleButton &&
@@ -9903,7 +9989,7 @@ internal static class ValidationReport
         var day = new DateTimeOffset(2030, 1, 15, 7, 0, 0, TimeSpan.FromHours(8));
         var night = new DateTimeOffset(2030, 1, 15, 19, 0, 0, TimeSpan.FromHours(8));
         var defaultTagColorsMatch = MainWindow.DefaultTagColors.SequenceEqual(
-            new[] { "#F4B6A6", "#F4D58D", "#F1D5C5", "#F9DFDB", "#FFF0E4", "#E8B4C8" },
+            new[] { "#F4B6A6", "#F4D58D", "#F1D5C5", "#F9DFDB", "#FFF0E4" },
             StringComparer.OrdinalIgnoreCase);
         try
         {
@@ -11245,6 +11331,88 @@ internal static class ValidationReport
                 dispositionActionsTraverse &&
                 snoozeChoiceFocusable &&
                 snoozeActionsTraverse;
+
+            // #86 AC1 回归：选中「自定义」后日期、小时、分钟进入 Tab 链且不跳出当前条目。
+            var entryRow = Descendants<Border>(window).Single(border =>
+                border.Tag is ActiveReminderOccurrenceKey rowKey && rowKey == key);
+            snoozeChoice.SelectedItem = snoozeChoice.Items
+                .OfType<ComboBoxItem>()
+                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            PumpDispatcher();
+            var customDate = Descendants<DatePicker>(entryRow).Single();
+            var customHour = Descendants<ComboBox>(entryRow).Single(comboBox =>
+                AutomationProperties.GetName(comboBox).StartsWith(
+                    "自定义稍后小时：",
+                    StringComparison.Ordinal));
+            var customMinute = Descendants<ComboBox>(entryRow).Single(comboBox =>
+                AutomationProperties.GetName(comboBox).StartsWith(
+                    "自定义稍后分钟：",
+                    StringComparison.Ordinal));
+            snooze.Focus();
+            var customVisible =
+                customDate.IsVisible && customHour.IsVisible && customMinute.IsVisible;
+            // 主题 ComboBox 模板内的 ToggleButton 可聚焦，会为每个下拉多占一步 Tab；
+            // 因此只要求焦点按 日期→小时→分钟→知道了 的顺序前进、允许控件内部件占步，且步步留在条目内。
+            var customStage = 0; // 0=待进日期 1=日期 2=小时 3=分钟 4=已到知道了
+            var customChainStaysInEntry = customVisible;
+            UIElement? customMover = snooze;
+            for (var step = 0; step < 12 && customStage < 4 && customChainStaysInEntry; step++)
+            {
+                if (customMover?.MoveFocus(tabRequest) != true ||
+                    Keyboard.FocusedElement is not DependencyObject customFocused ||
+                    !(ReferenceEquals(customFocused, entryRow) || entryRow.IsAncestorOf(customFocused)))
+                {
+                    customChainStaysInEntry = false;
+                    break;
+                }
+                if (FocusStaysWithin(entryRow, customDate))
+                {
+                    customChainStaysInEntry = customStage <= 1;
+                    customStage = Math.Max(customStage, 1);
+                }
+                else if (FocusStaysWithin(entryRow, customHour))
+                {
+                    customChainStaysInEntry = customStage is 1 or 2;
+                    customStage = 2;
+                }
+                else if (FocusStaysWithin(entryRow, customMinute))
+                {
+                    customChainStaysInEntry = customStage is 2 or 3;
+                    customStage = 3;
+                }
+                else if (ReferenceEquals(customFocused, acknowledge))
+                {
+                    customChainStaysInEntry = customStage == 3;
+                    customStage = 4;
+                }
+                else
+                {
+                    customChainStaysInEntry = false;
+                }
+                customMover = customFocused as UIElement;
+            }
+            customChainStaysInEntry = customChainStaysInEntry && customStage == 4;
+
+            // 切回预设项后自定义控件退出 Tab 链；条目末尾动作之后 Tab 仍绕回当前条目。
+            snoozeChoice.SelectedIndex = 0;
+            PumpDispatcher();
+            snooze.Focus();
+            var presetChainRestored =
+                !customDate.IsVisible &&
+                !customHour.IsVisible &&
+                !customMinute.IsVisible &&
+                snooze.MoveFocus(tabRequest) &&
+                ReferenceEquals(Keyboard.FocusedElement, acknowledge);
+            openSource.Focus();
+            var tabStaysInEntry =
+                openSource.MoveFocus(tabRequest) &&
+                Keyboard.FocusedElement is DependencyObject wrapped &&
+                entryRow.IsAncestorOf(wrapped);
+            tabTraverses =
+                tabTraverses &&
+                customChainStaysInEntry &&
+                presetChainRestored &&
+                tabStaysInEntry;
             window.Close();
             PumpDispatcher();
             return new ReminderKeyboardExerciseResult(
@@ -11627,6 +11795,102 @@ internal static class ValidationReport
             theme.Apply(originalApplicationThemeMode);
             main.ApplyTheme(originalMainThemeMode);
             main.UpdateLayout();
+            PumpDispatcher();
+        }
+    }
+
+    private static NoteEmptyStateContrastValidation ValidateNoteEmptyStateContrast(
+        ApplicationTheme theme,
+        MainWindow main)
+    {
+        var emptyMessage = Required<TextBlock>(main, "EmptyNotesMessage");
+        var workspace = Required<Canvas>(main, "NotesWorkspace");
+        var originalApplicationThemeMode = theme.ActiveMode;
+        var originalMainThemeMode = main.CurrentThemeMode;
+        var originalVisibility = emptyMessage.Visibility;
+        var measurements = new List<CountdownEmptyStateContrastMeasurement>();
+        try
+        {
+            emptyMessage.Visibility = Visibility.Visible;
+            foreach (var mode in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
+            {
+                theme.Apply(mode);
+                main.ApplyTheme(mode);
+                main.UpdateLayout();
+                PumpDispatcher();
+
+                var foreground = emptyMessage.Foreground as SolidColorBrush;
+                var background = main.Background as SolidColorBrush;
+                var foregroundUsesMutedBrush =
+                    ReferenceEquals(emptyMessage.Foreground, Application.Current.FindResource("MutedBrush"));
+                var actualBackgroundMatchesBackdrop =
+                    ReferenceEquals(main.Background, Application.Current.FindResource("BackgroundBrush"));
+                var transparentAncestors = EmptyStateAncestorsAreTransparent(emptyMessage, workspace);
+                var textBounds = BoundsIn(emptyMessage, main);
+                var backdropBounds = BoundsIn(workspace, main);
+                var textWithinBackdrop = backdropBounds.Contains(textBounds);
+
+                measurements.Add(new CountdownEmptyStateContrastMeasurement(
+                    mode.ToString(),
+                    foreground?.Color.ToString() ?? string.Empty,
+                    background?.Color.ToString() ?? string.Empty,
+                    foreground is not null && background is not null
+                        ? Math.Round(ContrastRatio(foreground.Color, background.Color), 3)
+                        : 0,
+                    foregroundUsesMutedBrush,
+                    actualBackgroundMatchesBackdrop,
+                    transparentAncestors,
+                    textWithinBackdrop));
+            }
+
+            return new NoteEmptyStateContrastValidation(
+                measurements.Count == 2 && measurements.All(measurement =>
+                    measurement.ContrastRatio >= 4.5 &&
+                    measurement.ForegroundUsesMutedBrush &&
+                    measurement.ActualBackgroundMatchesBackdrop &&
+                    measurement.TransparentAncestors &&
+                    measurement.TextWithinBackdrop),
+                measurements);
+        }
+        finally
+        {
+            emptyMessage.Visibility = originalVisibility;
+            theme.Apply(originalApplicationThemeMode);
+            main.ApplyTheme(originalMainThemeMode);
+            main.UpdateLayout();
+            PumpDispatcher();
+        }
+    }
+
+    private static bool ValidateNoteStatusCountsUseMutedToken(
+        ApplicationTheme theme,
+        MainWindow main)
+    {
+        var activeCount = Required<TextBlock>(main, "ActiveNotesCount");
+        var completedCount = Required<TextBlock>(main, "CompletedNotesCount");
+        var originalApplicationThemeMode = theme.ActiveMode;
+        var originalMainThemeMode = main.CurrentThemeMode;
+        try
+        {
+            foreach (var mode in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
+            {
+                theme.Apply(mode);
+                main.ApplyTheme(mode);
+                PumpDispatcher();
+                var mutedBrush = Application.Current.FindResource("MutedBrush");
+                if (!ReferenceEquals(activeCount.Foreground, mutedBrush) ||
+                    !ReferenceEquals(completedCount.Foreground, mutedBrush))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            theme.Apply(originalApplicationThemeMode);
+            main.ApplyTheme(originalMainThemeMode);
             PumpDispatcher();
         }
     }
@@ -12124,7 +12388,8 @@ internal static class ValidationReport
                 trayController.IsActive,
                 minimizeWorks,
                 restoreWorks,
-                exitRequested);
+                exitRequested,
+                RunFailedRestoreKeepsTrayStateProbe(floating));
         }
         finally
         {
@@ -12138,6 +12403,44 @@ internal static class ValidationReport
             if (wasVisible && !floating.IsVisible)
             {
                 floating.Show();
+            }
+        }
+    }
+
+    private static bool RunFailedRestoreKeepsTrayStateProbe(FloatingWindow floating)
+    {
+        var interop = new GatedTrayForegroundInterop();
+        var controller = new FloatingTrayController(
+            floating,
+            Path.Combine(AppContext.BaseDirectory, "countdown-icon.ico"),
+            static () => true,
+            interop);
+        try
+        {
+            controller.MinimizeToTray();
+            PumpDispatcher();
+            var failureReturnsFalse = !controller.RestoreAndActivateFromExternalRequest();
+            PumpDispatcher();
+            var trayIconKeptAfterFailure = controller.IsTrayIconVisible;
+
+            interop.AllowRestores();
+            var retrySucceeded = controller.RestoreAndActivateFromExternalRequest();
+            PumpDispatcher();
+            var retryRestoresFully =
+                retrySucceeded &&
+                floating.IsVisible &&
+                floating.WindowState == WindowState.Normal &&
+                !controller.IsTrayIconVisible;
+
+            return failureReturnsFalse && trayIconKeptAfterFailure && retryRestoresFully;
+        }
+        finally
+        {
+            controller.Dispose();
+            if (!floating.IsVisible)
+            {
+                floating.Show();
+                PumpDispatcher();
             }
         }
     }
@@ -12312,6 +12615,8 @@ internal static class ValidationReport
             var reminderCenterMeasurement = MeasureDatePicker(
                 "ReminderCenter.CustomSnoozeDate",
                 Descendants<DatePicker>(reminderCenter).Single());
+            var reminderCenterComboBoxes = Descendants<ComboBox>(reminderCenter).ToArray();
+            var reminderCenterComboBoxThemedCount = reminderCenterComboBoxes.Count(HasTemplate);
 
             var negativePicker = new DatePicker();
             negativeHost = new Window
@@ -12336,7 +12641,9 @@ internal static class ValidationReport
                 reminderCenterMeasurement,
                 negativeMeasurement,
                 reminderHourOptionCount,
-                reminderMinuteOptionCount);
+                reminderMinuteOptionCount,
+                reminderCenterComboBoxes.Length,
+                reminderCenterComboBoxThemedCount);
         }
         finally
         {
@@ -12400,6 +12707,11 @@ internal static class ValidationReport
             }
         }
     }
+
+    private static bool FocusStaysWithin(Visual scope, UIElement expected) =>
+        expected.IsKeyboardFocusWithin &&
+        Keyboard.FocusedElement is DependencyObject focused &&
+        (ReferenceEquals(focused, scope) || scope.IsAncestorOf(focused));
 
     private static void PumpDispatcher()
     {
@@ -12558,7 +12870,8 @@ internal static class ValidationReport
         bool ProductionControllerActive,
         bool MinimizeHidesWindowAndShowsIcon,
         bool RestoreShowsWindowAndHidesIcon,
-        bool ExitRequestsApplicationExit);
+        bool ExitRequestsApplicationExit,
+        bool FailedRestoreKeepsTrayStateAndAllowsRetry);
 
     private sealed record DatePickerProductionMeasurement(
         string Name,
@@ -12576,7 +12889,9 @@ internal static class ValidationReport
         DatePickerProductionMeasurement ReminderCenter,
         DatePickerProductionMeasurement UnattachedNegative,
         int ReminderHourOptionCount,
-        int ReminderMinuteOptionCount)
+        int ReminderMinuteOptionCount,
+        int ReminderCenterComboBoxCount,
+        int ReminderCenterComboBoxThemedCount)
     {
         public int ProductionInputCount => Attached.Count + 1;
 
@@ -12586,13 +12901,17 @@ internal static class ValidationReport
                 input.TextBoxPresent && input.IsReadOnly && input.TextBoxIsNotFocusable) &&
             ReminderCenter is
             {
-                Attached: false,
+                Attached: true,
                 TextBoxPresent: true,
                 IsReadOnly: true,
                 TextBoxIsNotFocusable: true,
                 ButtonOpensCalendar: true
             } &&
             !string.IsNullOrWhiteSpace(ReminderCenter.AutomationName);
+
+        public bool ReminderCenterComboBoxesUseThemedDropDowns =>
+            ReminderCenterComboBoxCount == 3 &&
+            ReminderCenterComboBoxThemedCount == ReminderCenterComboBoxCount;
 
         public bool AllAttached =>
             Attached.Count == 5 && Attached.All(input => input.Attached);
@@ -13485,6 +13804,10 @@ internal static class ValidationReport
         bool TextContrast,
         IReadOnlyList<CountdownEmptyStateContrastMeasurement> Measurements);
 
+    private sealed record NoteEmptyStateContrastValidation(
+        bool TextContrast,
+        IReadOnlyList<CountdownEmptyStateContrastMeasurement> Measurements);
+
     private sealed record MainNoteCompletionMeasurement(
         string User,
         double BoxWidth,
@@ -13717,6 +14040,22 @@ internal static class ValidationReport
         IReadOnlyList<Rect?> Bounds);
 
     private sealed record NamedBounds(string Name, Rect Bounds);
+
+    private sealed class GatedTrayForegroundInterop : TrayForegroundInterop
+    {
+        private bool _allow;
+
+        public void AllowRestores() => _allow = true;
+
+        internal override bool Activate(FloatingWindow window) => _allow && base.Activate(window);
+
+        internal override bool Focus(FloatingWindow window) => _allow && base.Focus(window);
+
+        internal override bool TrySetForeground(IntPtr handle) => _allow && base.TrySetForeground(handle);
+
+        internal override bool IsForegroundOrActive(FloatingWindow window, IntPtr handle) =>
+            _allow && base.IsForegroundOrActive(window, handle);
+    }
 
     private sealed class ValidationClock : IClock
     {

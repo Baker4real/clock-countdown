@@ -432,6 +432,13 @@ internal static class ThemedDatePickerBehavior
 
     internal static void LockReadOnlyTextBox(DatePicker picker)
     {
+        // 折叠控件不提前套模板：模板样式已保证只读与不可聚焦，
+        // 控件真实可见后由 GotKeyboardFocus/CalendarClosed 再补本地锁定（如提醒中心自定义稍后日期）。
+        if (picker.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
         if (!picker.IsLoaded && picker.Template is null)
         {
             return;

@@ -114,6 +114,12 @@ public sealed partial class App : Application
                         activation.Outcome.ToString(),
                         activation.ServerProcessId,
                         activation.ForegroundPermissionGranted));
+                if (activation.Outcome != InstanceActivationClientOutcome.Succeeded)
+                {
+                    // 交互次实例激活失败必须给出明确模态提示，不能静默退出。
+                    InstanceActivationFailureWindow.ShowPrompt();
+                }
+
                 Shutdown(activation.Outcome == InstanceActivationClientOutcome.Succeeded ? 0 : 1);
                 return;
             }
@@ -763,6 +769,7 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
     private readonly DesktopWorkspace _workspace;
     private readonly DiagnosticLogger? _logger;
     private readonly Action<ReminderSourceKind, string>? _openSource;
+    private readonly Func<ReminderCenterWindow>? _windowFactory;
     private readonly Dictionary<ActiveReminderOccurrenceKey, ActiveReminder> _active = new();
     private ReminderCenterWindow? _window;
     private bool _persistenceWriteInFlight;
@@ -771,11 +778,13 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
     public ReminderDeliveryCoordinator(
         DesktopWorkspace workspace,
         DiagnosticLogger? logger,
-        Action<ReminderSourceKind, string>? openSource = null)
+        Action<ReminderSourceKind, string>? openSource = null,
+        Func<ReminderCenterWindow>? windowFactory = null)
     {
         _workspace = workspace;
         _logger = logger;
         _openSource = openSource;
+        _windowFactory = windowFactory;
         _workspace.StateChanged += OnWorkspaceStateChanged;
     }
 
@@ -950,7 +959,7 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             return _window;
         }
 
-        var window = new ReminderCenterWindow();
+        var window = _windowFactory?.Invoke() ?? new ReminderCenterWindow();
         _window = window;
         window.EntryRendered += (_, args) => OnEntryRendered(args.Key);
         window.AcknowledgeRequested += (_, args) => OnAcknowledgeRequested(args.Key);
@@ -976,8 +985,20 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
         }
         catch
         {
-            _active.Clear();
-            _window = null;
+            try
+            {
+                foreach (var key in _active.Keys)
+                {
+                    window.RemoveEntry(key);
+                }
+            }
+            finally
+            {
+                // 条目回滚自身抛异常时也必须清理协调器状态，否则会缓存半建窗口。
+                _active.Clear();
+                _window = null;
+            }
+
             throw;
         }
     }
@@ -1092,16 +1113,32 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             new IOException(result.Error));
     }
 
-    private void OnSnoozeRequested(ReminderCenterSnoozeEventArgs args)
+    private bool OnSnoozeRequested(ReminderCenterSnoozeEventArgs args)
     {
         if (_active.TryGetValue(args.Key, out var active) &&
             active.Confirmed &&
             active.NextAcknowledgementRetryUtc is null &&
-            active.NextSnoozeRetryUtc is null)
+            active.NextSnoozeRetryUtc is null &&
+            active.NextCompletionRetryUtc is null)
         {
             Snooze(active, args.Option, args.CustomBeijing, _workspace.Snapshot.UtcNow);
+            return true;
         }
+
+        return false;
     }
+
+    internal bool InvokeSnoozeRequestForValidation(
+        ActiveReminderOccurrenceKey key,
+        ReminderSnoozeOption option,
+        DateTimeOffset? customBeijing) =>
+        OnSnoozeRequested(new ReminderCenterSnoozeEventArgs(key, option, customBeijing));
+
+    internal static bool RoutesToCustomSnoozeError(
+        ReminderSnoozeOption option,
+        DesktopWorkspaceChangeResult result) =>
+        option == ReminderSnoozeOption.Custom &&
+        result.SnoozeErrorCode == ReminderSnoozeErrorCode.CustomSnoozeNotInFuture;
 
     private void Snooze(
         ActiveReminder active,
@@ -1146,11 +1183,7 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             return;
         }
 
-        if (option == ReminderSnoozeOption.Custom &&
-            string.Equals(
-                result.Error,
-                "自定义稍后时间必须晚于当前北京时间。",
-                StringComparison.Ordinal))
+        if (RoutesToCustomSnoozeError(option, result))
         {
             active.PendingSnoozeOption = ReminderSnoozeOption.TenMinutes;
             active.PendingCustomSnoozeBeijing = null;

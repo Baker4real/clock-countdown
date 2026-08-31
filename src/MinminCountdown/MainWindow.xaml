@@ -370,11 +370,13 @@
                    TargetType="{x:Type ComboBox}"
                    BasedOn="{StaticResource {x:Type ComboBox}}">
               <Setter Property="Height" Value="56" />
+              <Setter Property="Padding" Value="16,0" />
             </Style>
             <Style x:Key="MainCompactDateInput"
                    TargetType="{x:Type DatePicker}"
                    BasedOn="{StaticResource {x:Type DatePicker}}">
               <Setter Property="Height" Value="56" />
+              <Setter Property="Padding" Value="16,0" />
             </Style>
           </Grid.Resources>
 
@@ -883,7 +885,7 @@
                                  MinWidth="40"
                                  VerticalAlignment="Center"
                                  FontSize="22"
-                                 Foreground="{DynamicResource BodyBrush}"
+                                 Foreground="{DynamicResource MutedBrush}"
                                  Text="0"
                                  TextAlignment="Right"
                                  Typography.NumeralAlignment="Tabular" />
@@ -941,7 +943,7 @@
                                  MinWidth="40"
                                  VerticalAlignment="Center"
                                  FontSize="22"
-                                 Foreground="{DynamicResource NoteCompletedAuxiliaryBrush}"
+                                 Foreground="{DynamicResource MutedBrush}"
                                  Text="0"
                                  TextAlignment="Right"
                                  Typography.NumeralAlignment="Tabular" />
@@ -970,7 +972,7 @@
                              Margin="0,40,0,0"
                              HorizontalAlignment="Center"
                              FontSize="20"
-                             Foreground="{DynamicResource NoteCompletedAuxiliaryBrush}"
+                             Foreground="{DynamicResource MutedBrush}"
                              Text="还没有便签，先写下一件想记住的事。"
                              Visibility="Collapsed" />
                   <Button x:Name="ResetEmptyNotesFiltersButton"

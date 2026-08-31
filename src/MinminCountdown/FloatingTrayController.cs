@@ -8,15 +8,26 @@ internal sealed class FloatingTrayController : IDisposable
     private readonly FloatingWindow _floatingWindow;
     private readonly TrayIconHost _trayIcon;
     private readonly Func<bool> _canTransition;
+    private readonly TrayForegroundInterop _foregroundInterop;
     private bool _disposed;
 
     public FloatingTrayController(
         FloatingWindow floatingWindow,
         string iconPath,
         Func<bool>? canTransition = null)
+        : this(floatingWindow, iconPath, canTransition, foregroundInterop: null)
+    {
+    }
+
+    internal FloatingTrayController(
+        FloatingWindow floatingWindow,
+        string iconPath,
+        Func<bool>? canTransition,
+        TrayForegroundInterop? foregroundInterop)
     {
         _floatingWindow = floatingWindow;
         _canTransition = canTransition ?? (() => true); // Production default: allow tray transitions unless a host supplies a guard.
+        _foregroundInterop = foregroundInterop ?? TrayForegroundInterop.System;
         _trayIcon = new TrayIconHost(
             iconPath,
             floatingWindow.Dispatcher,
@@ -109,21 +120,27 @@ internal sealed class FloatingTrayController : IDisposable
         }
 
         _floatingWindow.WindowState = System.Windows.WindowState.Normal;
-        var activateAccepted = _floatingWindow.Activate();
-        var focusAccepted = _floatingWindow.Focus();
+        var activateAccepted = _foregroundInterop.Activate(_floatingWindow);
+        var focusAccepted = _foregroundInterop.Focus(_floatingWindow);
         var handle = new WindowInteropHelper(_floatingWindow).Handle;
         var foregroundAccepted = false;
         if (handle != IntPtr.Zero)
         {
-            foregroundAccepted = SetForegroundWindow(handle);
+            foregroundAccepted = _foregroundInterop.TrySetForeground(handle);
         }
-        _trayIcon.Hide();
-        var isForeground = handle != IntPtr.Zero &&
-            (GetForegroundWindow() == handle || _floatingWindow.IsActive);
-        return _floatingWindow.IsVisible &&
+
+        var isForeground = _foregroundInterop.IsForegroundOrActive(_floatingWindow, handle);
+        var restored = _floatingWindow.IsVisible &&
                _floatingWindow.WindowState == System.Windows.WindowState.Normal &&
                isForeground &&
                (activateAccepted || focusAccepted || foregroundAccepted || isForeground);
+        if (restored)
+        {
+            // 判定恢复成功才隐藏托盘图标；失败时保留图标让外部请求可再次重试。
+            _trayIcon.Hide();
+        }
+
+        return restored;
     }
 
     private void RequestExit()
@@ -135,6 +152,24 @@ internal sealed class FloatingTrayController : IDisposable
     }
 
     private bool CanTransition() => !_disposed && _canTransition();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+}
+
+// RestoreCore 判定成功所依赖的 shell 交互 seam；验证替身可注入确定性失败。
+internal class TrayForegroundInterop
+{
+    internal static TrayForegroundInterop System { get; } = new();
+
+    internal virtual bool Activate(FloatingWindow window) => window.Activate();
+
+    internal virtual bool Focus(FloatingWindow window) => window.Focus();
+
+    internal virtual bool TrySetForeground(IntPtr handle) => SetForegroundWindow(handle);
+
+    internal virtual bool IsForegroundOrActive(FloatingWindow window, IntPtr handle) =>
+        handle != IntPtr.Zero && (GetForegroundWindow() == handle || window.IsActive);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -150,6 +150,11 @@ internal sealed class HolidayCalendar : IDisposable
 
     public decimal? GetEarnings(DateTimeOffset nowUtc, CountdownPreferences preferences)
     {
+        if (preferences.MonthlySalary <= 0)
+        {
+            return null;
+        }
+
         var beijing = ChinaStandardTime.ToBeijingTime(nowUtc);
         if (!TryGetWorkdayMap(beijing.Year, out var workdayMap))
         {

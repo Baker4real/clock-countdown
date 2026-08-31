@@ -101,6 +101,18 @@ internal sealed class ReminderCenterWindow : Window
                 args.Cancel = true;
             }
         };
+        KeyDown += (_, args) =>
+        {
+            if (args.Key != Key.Enter ||
+                Keyboard.FocusedElement is not Button { IsEnabled: true } focused ||
+                !_itemsHost.IsAncestorOf(focused))
+            {
+                return;
+            }
+
+            args.Handled = true;
+            focused.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, focused));
+        };
         Loaded += (_, _) =>
         {
             var workArea = SystemParameters.WorkArea;
@@ -153,6 +165,8 @@ internal sealed class ReminderCenterWindow : Window
         _entries.TryGetValue(key, out var entry) &&
         entry.CustomError.Visibility == Visibility.Visible;
 
+    internal bool RemoveEntryThrowsForValidation { get; set; }
+
     internal void AddEntry(ReminderCenterItem item)
     {
         if (_entries.ContainsKey(item.Key))
@@ -194,7 +208,6 @@ internal sealed class ReminderCenterWindow : Window
             new Button
             {
                 Content = "知道了",
-                IsDefault = true,
                 MinWidth = 82,
                 IsEnabled = false,
                 Style = (Style)FindResource("PrimaryButton")
@@ -232,6 +245,7 @@ internal sealed class ReminderCenterWindow : Window
                 Visibility = Visibility.Collapsed
             },
             $"自定义稍后日期：{item.Source.DisplayText}");
+        ThemedDatePickerBehavior.Attach(customDate);
         var customHour = UiAccessibility.Name(
             new ComboBox
             {
@@ -346,7 +360,11 @@ internal sealed class ReminderCenterWindow : Window
         snoozeChoice.SelectionChanged += (_, _) =>
         {
             var isCustom = SelectedSnoozeOption(entry) == ReminderSnoozeOption.Custom;
-            customFields.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+            var customVisibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+            customFields.Visibility = customVisibility;
+            customDate.Visibility = customVisibility;
+            customHour.Visibility = customVisibility;
+            customMinute.Visibility = customVisibility;
             if (!isCustom)
             {
                 ClearCustomError(entry);
@@ -387,6 +405,11 @@ internal sealed class ReminderCenterWindow : Window
 
     internal void RemoveEntry(ActiveReminderOccurrenceKey key)
     {
+        if (RemoveEntryThrowsForValidation)
+        {
+            throw new InvalidOperationException("注入的条目回滚失败。");
+        }
+
         if (!_entries.Remove(key, out var entry))
         {
             return;

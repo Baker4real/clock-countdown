@@ -9,7 +9,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "8AA13E806B6D2D15CF09E793F79FEA6E9FC5A64FB31510E68151B727B4F97804",
+    "aggregateSha256": "63B9F377BE52AB0D8D0661D41EEF31E5E5A8CD90FEED1825DF4AB61D988669CC",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -41,7 +41,7 @@
       },
       {
         "path": "src/MinminCountdown/App.xaml",
-        "sha256": "F0D3777A7415FFDB0D44008BFD317E44408FD639400B1BCD9B08F5C7F93BC920"
+        "sha256": "08E3FA7B8DDC04F49E876169DFE8B6F7A26BD0E428D73D634476B13C01F8E8D2"
       },
       {
         "path": "src/MinminCountdown/ApplicationTheme.cs",
@@ -49,7 +49,7 @@
       },
       {
         "path": "src/MinminCountdown/DomainLogic.cs",
-        "sha256": "0672AAE0BDF61DE7265899A114CEF77746BDFCE97F627C9F741ACFDD19246C68"
+        "sha256": "FBFB34378DF7468B8FF911038268BCEEAE8F64D975A5D229A72282BC95DE8248"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Countdowns.cs",
@@ -61,11 +61,11 @@
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml",
-        "sha256": "41CA90C021562FD9FE3E856BD022014F9A845B2970F3E0D1489EEF22C2433CFF"
+        "sha256": "6613858C83917408FDAA8723AB9BF6091D127050DD6178CC89441D78DCDF4C3F"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml.cs",
-        "sha256": "DCF5521B5AB7CC7B9E815DC738EEA83C5601B507716087D997275E76DE003DF2"
+        "sha256": "9DE0422F64D17CA1BC8A3D3B9852163345411FD08867FFB5818B4D8EA651C509"
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
@@ -73,7 +73,7 @@
       },
       {
         "path": "src/MinminCountdown/UiControls.cs",
-        "sha256": "9451A2588BF5D6DC55C9E67245539D01920B1FD85A5484F1EAE0C87D434DC613"
+        "sha256": "954A1B531385BCEAFF18136400452BB7C99095A7FC294A3C215272A8C7F03DE2"
       }
     ]
   },

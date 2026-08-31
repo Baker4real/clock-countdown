@@ -520,6 +520,7 @@
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
       <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="10,0,0,0" />
       <Setter Property="MinHeight" Value="40" />
       <Setter Property="ItemContainerStyle" Value="{DynamicResource {x:Type ComboBoxItem}}" />
       <Setter Property="Template">
@@ -536,7 +537,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="36" />
                   </Grid.ColumnDefinitions>
-                  <ContentPresenter Margin="10,0,0,0"
+                  <ContentPresenter Margin="{TemplateBinding Padding}"
                                     VerticalAlignment="Center"
                                     Content="{TemplateBinding SelectionBoxItem}"
                                     ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
@@ -612,6 +613,7 @@
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
       <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="11,0" />
       <Setter Property="CalendarStyle" Value="{DynamicResource {x:Type Calendar}}" />
       <Setter Property="MinHeight" Value="40" />
       <Setter Property="Template">
@@ -626,6 +628,7 @@
                                             Grid.Column="0"
                                             Style="{StaticResource DatePickerTextBoxStyle}"
                                             BorderThickness="1,1,0,1"
+                                            Padding="{TemplateBinding Padding}"
                                             Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, StringFormat={}{0:yyyy年M月d日}}" />
               <Button x:Name="PART_Button"
                       Grid.Column="1"

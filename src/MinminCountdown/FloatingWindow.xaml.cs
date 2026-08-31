@@ -1688,7 +1688,7 @@ public sealed partial class FloatingWindow : Window
 
             if (records.Count == 0)
             {
-                FloatingRows.Children.Add(EmptyText("没有未到期的倒计时。"));
+                FloatingRows.Children.Add(EmptyText(CountdownEmptyStateText(snapshot.Filter)));
             }
         }
         else
@@ -1708,15 +1708,29 @@ public sealed partial class FloatingWindow : Window
                 }
                 else
                 {
-                    FloatingRows.Children.Add(EmptyText("今天还没有待办便签。"));
+                    FloatingRows.Children.Add(EmptyText(NoteEmptyStateText(snapshot.Filter)));
                 }
             }
         }
 
         var earnings = _calendar.GetEarnings(nowUtc, snapshot.Settings.Preferences);
-        FloatingIncome.Text = earnings is null
-            ? _calendar.StatusText
-            : $"今日已赚 ￥{earnings.Value:N2}";
+        if (earnings is not null)
+        {
+            FloatingIncome.Text = $"今日已赚 ￥{earnings.Value:N2}";
+            FloatingIncome.Visibility = Visibility.Visible;
+        }
+        else if (snapshot.Settings.Preferences.MonthlySalary <= 0 &&
+                 string.Equals(_calendar.State, "Ready", StringComparison.Ordinal))
+        {
+            // 月薪未输入：日历已就绪时不再渲染「今日已赚 ￥0.00」，整行收起。
+            FloatingIncome.Text = string.Empty;
+            FloatingIncome.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            FloatingIncome.Text = _calendar.StatusText;
+            FloatingIncome.Visibility = Visibility.Visible;
+        }
         _renderedWorkspace = workspace;
         RestoreFloatingViewportAfterRender(
             workspace,
@@ -1732,6 +1746,24 @@ public sealed partial class FloatingWindow : Window
         HorizontalAlignment = HorizontalAlignment.Center,
         Foreground = _floatingMutedBrush
     };
+
+    internal static bool CountdownConstraintsActive(DesktopWorkspaceFilter filter) =>
+        filter.SelectedTagIds.Count > 0 ||
+        filter.UntaggedOnly ||
+        filter.CountdownStatus != CountdownStatusFilter.All;
+
+    internal static bool NoteConstraintsActive(DesktopWorkspaceFilter filter) =>
+        filter.SelectedTagIds.Count > 0 ||
+        filter.UntaggedOnly ||
+        filter.NoteStatus != NoteStatusFilter.All ||
+        filter.NoteDate is not null ||
+        filter.UndatedNotesOnly;
+
+    internal static string CountdownEmptyStateText(DesktopWorkspaceFilter filter) =>
+        CountdownConstraintsActive(filter) ? "没有匹配的倒计时。" : "没有未到期的倒计时。";
+
+    internal static string NoteEmptyStateText(DesktopWorkspaceFilter filter) =>
+        NoteConstraintsActive(filter) ? "没有匹配的便签。" : "今天还没有待办便签。";
 
     private FrameworkElement BuildNoteSearchEmptyState()
     {
@@ -1919,7 +1951,7 @@ public sealed partial class FloatingWindow : Window
             FloatingNoteSearchHint.Visibility = Visibility.Visible;
             FloatingNoteSearchPlaceholder.Visibility = Visibility.Collapsed;
             FloatingNoteSearchHintTerm.Content = $"搜索:{term}";
-            UiAccessibility.Name(FloatingNoteSearchHintTerm, $"搜索:{term}");
+            UiAccessibility.Name(FloatingNoteSearchHintTerm, $"展开搜索：{term}");
             FloatingNoteSearch.IsTabStop = false;
             ReleaseCollapsedSearchFocus();
             return;

@@ -29,8 +29,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         "#F4D58D",
         "#F1D5C5",
         "#F9DFDB",
-        "#FFF0E4",
-        "#E8B4C8"
+        "#FFF0E4"
     };
 
     internal static IReadOnlyList<string> DefaultTagColors => TagColors;
@@ -61,6 +60,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _completedNotesExpanded;
     private bool _settingDefaultDate;
     private bool _noteDateDirty;
+    private bool _settingsDraftDirty;
+    private bool _loadingPreferences;
     private bool _syncingNoteSearch;
     private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();
     private IReadOnlyList<ReminderRule> _noteReminderRules = Array.Empty<ReminderRule>();
@@ -232,6 +233,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         ShowWorkspace(WorkspaceKind.Notes);
         SetNoteFilter(NoteStatusFilter.Completed);
+        UpdateFilter(filter => filter with
+        {
+            SelectedTagIds = new[] { "instance-activation-tag-a", "instance-activation-tag-b" }
+        });
         NoteSearch.Text = "instance-activation-search";
         NoteDateFilter.SelectedDate = new DateTime(2031, 4, 5);
         CountdownName.Text = "instance-activation-countdown-draft";
@@ -604,16 +609,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _reminderSourceNoteId = note.Id;
         try
         {
-            if (note.IsCompleted)
-            {
-                _completedNotesExpanded = true;
-            }
-            else
-            {
-                _activeNotesExpanded = true;
-            }
-
-            _collapsedNoteDateSections.Remove((note.IsCompleted, note.Date));
             ShowWorkspace(WorkspaceKind.Notes);
             if (!IsVisible)
             {
@@ -970,6 +965,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
+        DisplayPrecision.SelectionChanged += (_, _) => MarkSettingsDraftDirty();
+        MonthlySalary.TextChanged += (_, _) => MarkSettingsDraftDirty();
+        WorkStart.TextChanged += (_, _) => MarkSettingsDraftDirty();
+        WorkEnd.TextChanged += (_, _) => MarkSettingsDraftDirty();
         ThemeModeButton.Click += (_, _) => CycleThemePreference();
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
@@ -1356,9 +1355,16 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 .ToArray();
         var active = records.Where(note => !note.IsCompleted).ToArray();
         var completed = records.Where(note => note.IsCompleted).ToArray();
+        var revealNoteId = _reminderSourceNoteId;
+        var revealActive = revealNoteId is not null &&
+            active.Any(note =>
+                string.Equals(note.Id, revealNoteId, StringComparison.OrdinalIgnoreCase));
+        var revealCompleted = revealNoteId is not null &&
+            completed.Any(note =>
+                string.Equals(note.Id, revealNoteId, StringComparison.OrdinalIgnoreCase));
         RecordCountText.Text = $"{active.Length} 个待办";
-        AddNotesGroupedByDay(ActiveNoteRows, active, isCompleted: false, effectiveNowUtc);
-        AddNotesGroupedByDay(CompletedNoteRows, completed, isCompleted: true, effectiveNowUtc);
+        AddNotesGroupedByDay(ActiveNoteRows, active, isCompleted: false, effectiveNowUtc, revealNoteId);
+        AddNotesGroupedByDay(CompletedNoteRows, completed, isCompleted: true, effectiveNowUtc, revealNoteId);
         ActiveNotesCount.Text = active.Length.ToString(CultureInfo.InvariantCulture);
         CompletedNotesCount.Text = completed.Length.ToString(CultureInfo.InvariantCulture);
         ToggleActiveNotes.Visibility = active.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1369,14 +1375,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             ActiveNotesChevron,
             "未完成",
             ActiveNotesCount.Text,
-            _activeNotesExpanded);
+            _activeNotesExpanded || revealActive);
         SetNoteStatusSectionState(
             ToggleCompletedNotes,
             CompletedNoteRows,
             CompletedNotesChevron,
             "已完成",
             CompletedNotesCount.Text,
-            _completedNotesExpanded);
+            _completedNotesExpanded || revealCompleted);
         if (active.Length == 0)
         {
             ActiveNoteRows.Visibility = Visibility.Collapsed;
@@ -1430,7 +1436,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         Panel target,
         IReadOnlyList<NoteRecord> notes,
         bool isCompleted,
-        DateTimeOffset nowUtc)
+        DateTimeOffset nowUtc,
+        string? revealNoteId = null)
     {
         foreach (var group in notes.GroupBy(note => note.Date, StringComparer.Ordinal))
         {
@@ -1444,7 +1451,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 sectionRows.Children.Add(CreateNoteRow(note, nowUtc));
             }
 
-            var isExpanded = !_collapsedNoteDateSections.Contains(sectionKey);
+            var isExpanded = !_collapsedNoteDateSections.Contains(sectionKey) ||
+                (revealNoteId is not null &&
+                 groupedNotes.Any(note =>
+                     string.Equals(note.Id, revealNoteId, StringComparison.OrdinalIgnoreCase)));
             var chevronRotation = new RotateTransform(isExpanded ? 0 : -90);
             var sectionToggle = new Button
             {
@@ -1828,16 +1838,25 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        if (NoteDate.SelectedDate is null)
-        {
-            SetMessage(NoteMessage, "请选择便签日期，当前草稿已保留。", true);
-            return;
-        }
-
         var existing = _editingNoteId is null
             ? null
             : _desktopWorkspace.Snapshot.Settings.Notes
                 .FirstOrDefault(note => note.Id == _editingNoteId);
+        if (NoteDate.SelectedDate is null)
+        {
+            if (existing is null)
+            {
+                SetMessage(NoteMessage, "请选择便签日期，当前草稿已保留。", true);
+                return;
+            }
+
+            if (existing.Date is not null)
+            {
+                SetMessage(NoteMessage, "该便签已设置日期，不能清空日期保存，当前草稿已保留。", true);
+                return;
+            }
+        }
+
         var result = _desktopWorkspace.Apply(new SaveNoteChange(
             _editingNoteId,
             NoteText.Text,
@@ -1870,6 +1889,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
+        if (salary < 0)
+        {
+            SetMessage(StatusText, "月薪不能小于 0。", true);
+            return;
+        }
+
         if (!TimeSpan.TryParseExact(WorkStart.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workStart) ||
             !TimeSpan.TryParseExact(WorkEnd.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workEnd))
         {
@@ -1895,6 +1920,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
+        _settingsDraftDirty = false;
+        LoadPreferences();
         SetMessage(StatusText, "偏好已保存。", false);
     }
 
@@ -2057,19 +2084,68 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownSecond.SelectedIndex = beijing.Second;
     }
 
+    private void MarkSettingsDraftDirty()
+    {
+        if (!_loadingPreferences)
+        {
+            _settingsDraftDirty = true;
+        }
+    }
+
+    private bool HasUnsavedSettingsEdits(CountdownPreferences preferences)
+    {
+        if (!_settingsDraftDirty)
+        {
+            return false;
+        }
+
+        return
+            DisplayPrecision.SelectedIndex != PrecisionIndex(preferences.DisplayPrecision) ||
+            !string.Equals(
+                MonthlySalary.Text,
+                preferences.MonthlySalary.ToString(CultureInfo.CurrentCulture),
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                WorkStart.Text,
+                CountdownFormatting.FormatWorkTime(preferences.WorkStart),
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                WorkEnd.Text,
+                CountdownFormatting.FormatWorkTime(preferences.WorkEnd),
+                StringComparison.Ordinal);
+    }
+
+    private static int PrecisionIndex(string displayPrecision) => displayPrecision switch
+    {
+        "Day" => 0,
+        "Hour" => 1,
+        "Minute" => 2,
+        _ => 3
+    };
+
     private void LoadPreferences()
     {
         var preferences = _desktopWorkspace.Snapshot.Settings.Preferences;
-        DisplayPrecision.SelectedIndex = preferences.DisplayPrecision switch
+        if (HasUnsavedSettingsEdits(preferences))
         {
-            "Day" => 0,
-            "Hour" => 1,
-            "Minute" => 2,
-            _ => 3
-        };
-        MonthlySalary.Text = preferences.MonthlySalary.ToString(CultureInfo.CurrentCulture);
-        WorkStart.Text = CountdownFormatting.FormatWorkTime(preferences.WorkStart);
-        WorkEnd.Text = CountdownFormatting.FormatWorkTime(preferences.WorkEnd);
+            UpdateThemePreferenceButton(preferences.ThemePreference);
+            return;
+        }
+
+        _settingsDraftDirty = false;
+        _loadingPreferences = true;
+        try
+        {
+            DisplayPrecision.SelectedIndex = PrecisionIndex(preferences.DisplayPrecision);
+            MonthlySalary.Text = preferences.MonthlySalary.ToString(CultureInfo.CurrentCulture);
+            WorkStart.Text = CountdownFormatting.FormatWorkTime(preferences.WorkStart);
+            WorkEnd.Text = CountdownFormatting.FormatWorkTime(preferences.WorkEnd);
+        }
+        finally
+        {
+            _loadingPreferences = false;
+        }
+
         UpdateThemePreferenceButton(preferences.ThemePreference);
     }
 

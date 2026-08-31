@@ -423,6 +423,11 @@ internal sealed class ReminderScheduler
                     continue;
                 }
 
+                if (HasActiveSnooze(settings, rule, nowUtc))
+                {
+                    continue;
+                }
+
                 if (rule is AbsoluteOnceReminderRule once)
                 {
                     if (nowUtc >= once.ScheduledUtc && !WasHandled(settings, once))
@@ -547,6 +552,14 @@ internal sealed class ReminderScheduler
         scheduledUtc = delivered.ScheduledUtc;
         return true;
     }
+
+    private static bool HasActiveSnooze(
+        CountdownSettings settings,
+        ReminderRule rule,
+        DateTimeOffset nowUtc) =>
+        settings.ReminderStates.TryGetValue(rule.Id, out var state) &&
+        state.ActiveSnooze is { } snooze &&
+        nowUtc < snooze.SnoozeUntilUtc;
 
     public void ConfirmDisplayed(NoteRecord note, DateTimeOffset displayedAtUtc)
     {
@@ -719,4 +732,10 @@ internal enum ReminderSnoozeOption
     SixtyMinutes,
     TomorrowAtNine,
     Custom
+}
+
+internal enum ReminderSnoozeErrorCode
+{
+    None,
+    CustomSnoozeNotInFuture
 }

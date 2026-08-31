@@ -233,6 +233,7 @@ if (-not $validation.CompactPreferenceFieldLayout) {
     throw "Preference fields should stay compact at default and expanded window widths: height=$($validation.CountdownPreferenceInputHeight); default(precision=$($validation.DisplayPrecisionWidth), salary=$($validation.MonthlySalaryWidth), start=$($validation.WorkStartWidth), end=$($validation.WorkEndWidth)); expanded(precision=$($validation.ExpandedDisplayPrecisionWidth), salary=$($validation.ExpandedMonthlySalaryWidth), start=$($validation.ExpandedWorkStartWidth), end=$($validation.ExpandedWorkEndWidth))."
 }
 if (-not $validation.CountdownInputsUseProjectTheme) { throw 'Countdown inputs are not using the shared day/night Canvas, PeachLine, and Ink theme resources.' }
+if (-not $validation.CompactInputHorizontalPaddingAligned) { throw 'Countdown editor and settings inputs do not share the 16px design-coordinate horizontal padding across text, date, and selection controls.' }
 if (-not $validation.HasSetNowButton) { throw 'Set-now action is missing.' }
 if (-not $validation.HasCountdownList) { throw 'Multiple-countdown list is missing.' }
 if (-not $validation.HasNameEditor) { throw 'Countdown name editor is missing.' }
@@ -426,6 +427,7 @@ if (-not $validation.FloatingTrayProductionControllerActive) { throw 'The applic
 if (-not $validation.FloatingTrayMinimizeHidesWindowAndShowsIcon) { throw 'The floating tray button does not hide the window and show the notification-area icon.' }
 if (-not $validation.FloatingTrayRestoreShowsWindowAndHidesIcon) { throw 'The notification-area restore command does not show the floating window and hide the icon.' }
 if (-not $validation.FloatingTrayExitRequestsApplicationExit) { throw 'The notification-area exit command does not request application shutdown.' }
+if (-not $validation.FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry) { throw 'A failed restore determination hides the notification-area icon or blocks retry.' }
 if (-not $validation.FloatingDragHandleReceivesPointerGestures) { throw 'The floating drag handle does not receive a routed left-button gesture.' }
 if (-not $validation.FloatingDragHandleRequestsNativeWindowDrag) { throw 'The floating drag handle does not route input to WPF DragMove.' }
 if (-not $validation.FloatingSyntheticDragDoesNotClaimPhysicalCompletion) { throw 'A rejected synthetic DragMove is being reported as a completed physical drag.' }
@@ -494,6 +496,12 @@ $countdownEmptyContrastMeasurements = @($validation.CountdownEmptyStateContrastM
 if ($countdownEmptyContrastMeasurements.Count -ne 2 -or ((@($countdownEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') -ne 'Day,Night') { throw 'Countdown empty-state contrast must contain exact day/night measurements.' }
 if (@($countdownEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count -ne 0) { throw 'A countdown empty-state contrast measurement did not use the actual visible backdrop or expected resource bindings.' }
 if (-not $validation.CountdownEmptyStateGateIsolationBehavior) { throw 'The countdown empty-state gates cannot fail independently.' }
+if (-not $validation.NoteStatusCountsUseMutedToken) { throw 'Note status section counts do not use the MutedBrush auxiliary token in both day and night themes.' }
+if (-not $validation.NoteEmptyStateTextContrast) { throw 'Note empty-state text does not meet 4.5:1 contrast against its actual day/night backdrop or lost the MutedBrush token.' }
+$noteEmptyContrastMeasurements = @($validation.NoteEmptyStateContrastMeasurements)
+if ($noteEmptyContrastMeasurements.Count -ne 2 -or ((@($noteEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') -ne 'Day,Night') { throw 'Note empty-state contrast must contain exact day/night measurements.' }
+if (@($noteEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count -ne 0) { throw 'A note empty-state contrast measurement did not use the actual visible backdrop or the MutedBrush token.' }
+if (-not $validation.NoteVisualTokenGateIsolationBehavior) { throw 'The note visual-contract gates cannot fail independently.' }
 if (-not $validation.CountdownRemainingLayoutMatches) { throw 'Main-window countdown remaining text does not use the fixed tabular single-line column.' }
 if (-not $validation.CountdownIncrementalRefreshIdentityMatches) { throw 'Countdown clock ticks rebuilt row controls instead of updating existing text targets.' }
 if (-not $validation.CountdownExpiryVisualsFlipTogether) { throw 'Countdown expiry did not flip both the card background and remaining-text danger color.' }
@@ -523,6 +531,11 @@ if (-not $mainNoteCompletionInteraction.Checked -or -not $mainNoteCompletionInte
 if (-not $validation.MainNoteCompletionStyleScoped) { throw 'Compatibility note completion style gate must remain true.' }
 if (-not $validation.TransientPanelsOnDemand) { throw 'Filters, tag pickers, or tag management do not use the required on-demand interaction flow.' }
 if (-not $validation.WorkspaceDraftsRetained) { throw 'Switching workspaces discarded an unsaved countdown or sticky-note draft.' }
+if (-not $validation.SettingsDraftsRetainedOnRefresh) { throw 'A background state refresh discarded unsaved settings-area edits (precision, salary, or work hours).' }
+if (-not $validation.SettingsThemeSelectionRetainedOnRefresh) { throw 'A background state refresh reset the theme tri-state button selection.' }
+if (-not $validation.SettingsSavedValuesReflectedAfterSave) { throw 'The settings area did not reflect persisted values immediately after a successful save.' }
+if (-not $validation.NegativeMonthlySalaryRejectedKeepsDraft) { throw 'A negative monthly salary was not rejected with the original preferences and draft text kept.' }
+if (-not $validation.ZeroMonthlySalaryStillSavesAsUnset) { throw 'A zero monthly salary no longer saves as the unset state.' }
 if (-not $validation.HiddenCountdownSubmitDisabled) { throw 'A hidden countdown editor still exposes its default submit button.' }
 if (-not $validation.WorkspaceTabsUseSelectionSemantics) { throw 'Workspace tabs do not expose an accessible selected state.' }
 if (-not $validation.TagUiAccessible) { throw 'Tag search labels or icon-button accessible names are missing.' }
@@ -889,6 +902,9 @@ if (-not $validation.StatusMessagesUseLiveRegions) { throw 'Dynamic status messa
 if (-not $validation.ReminderCenterSupportsKeyboardNavigation) { throw 'The reminder center does not support complete keyboard traversal.' }
 if (-not $validation.ReminderCenterInitialFocusAndAccessibleNameWork) { throw 'The reminder center lacks its initial focus or accessible name.' }
 if (-not $validation.ReminderCenterKeyboardGateIsolationBehavior) { throw 'Reminder-center tab traversal, close-guard, and initial-focus/accessible-name gates cannot fail independently.' }
+if (-not $validation.ReminderCenterCustomSnoozeControlsVisibility) { throw 'Custom snooze date/hour/minute controls do not expand and collapse with the custom option.' }
+if (-not $validation.ReminderCenterCustomSnoozeCalendarBehavior) { throw 'Custom snooze calendar lost the unified read-only, Escape-close, and focus behavior.' }
+if (-not $validation.ReminderCenterShowFailureRollbackSurvivesEntryFailure) { throw 'Reminder-center show-failure rollback no longer cleans coordinator state when entry removal fails.' }
 if (-not $validation.CompactActionTargetsAreUsable) { throw 'Compact tag and note actions are smaller than the desktop interaction target.' }
 
 $uiSettingsRoot = Join-Path `
@@ -1000,6 +1016,13 @@ try {
     if ($listValidation.FloatingCountdownCount -ne 1) { throw "Expected one active floating countdown card, got $($listValidation.FloatingCountdownCount)." }
     if ((@($listValidation.FloatingCountdownTexts).Count -ne 1) -or $listValidation.FloatingCountdownTexts[0] -notmatch '天 .*小时 .*分钟 .*秒') { throw "Floating countdowns did not use the unified unit format: $(@($listValidation.FloatingCountdownTexts) -join ',')" }
     if ($listValidation.FloatingIncomeText -notmatch '今日已赚 ￥|节假日日历未就绪') { throw "Floating income text is missing: $($listValidation.FloatingIncomeText)" }
+    if (-not $listValidation.FloatingNoteSearch.HintNamesDescribeAction) { throw 'Floating search hint accessible name lost the expand action semantics.' }
+    if (-not $listValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) { throw 'A 140-character search term did not trim inside the floating search hint slot.' }
+    if (-not $listValidation.FloatingNoteSearch.NoteFilterEmptyStateDistinguished) { throw 'Floating notes workspace did not distinguish filter-no-match from no-data empty state.' }
+    if (-not $listValidation.FloatingNoteSearch.CountdownFilterEmptyStateDistinguished) { throw 'Floating countdowns workspace did not distinguish filter-no-match from no-data empty state.' }
+    if (-not $listValidation.FloatingEmptyStateTextIsolationBehavior) { throw 'Floating empty-state text mapping isolation behavior failed.' }
+    if (-not $listValidation.FloatingIncomeHiddenWithoutSalary) { throw 'Floating income row still renders when monthly salary is unset.' }
+    if (-not $listValidation.FloatingIncomeRestoredWithSalary) { throw 'Floating income row did not restore after restoring a positive monthly salary.' }
 
     Copy-Item -LiteralPath $testSettingsPath -Destination $noteAddSettingsPath -Force
     $noteExerciseDateBefore = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
@@ -1012,6 +1035,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Sticky-note add click validation failed: $noteAddValidationJson" }
     $noteAddValidation = $noteAddValidationJson | ConvertFrom-Json
     if (-not $noteAddValidation.NoteDateRequired) { throw 'The sticky-note add flow accepted a missing calendar date or discarded the draft.' }
+    if (-not $noteAddValidation.NewNoteRejectsEmptyDate) { throw 'The new-note path accepted an empty date or discarded the draft.' }
+    if (-not $noteAddValidation.UndatedNoteEditSavesWithoutDate) { throw 'Editing an undated sticky note without assigning a date failed to save or fabricated a date.' }
+    if (-not $noteAddValidation.DatedNoteEditRejectsClearedDate) { throw 'Editing a dated sticky note accepted clearing the date or discarded the draft.' }
+    if (-not $noteAddValidation.NoteDateValidationMessagesDistinguished) { throw 'New-note and edit-path date validation messages are not distinguishable.' }
     if (-not $noteAddValidation.NoteAddViaClick) { throw 'Clicking Add did not create an active sticky note and retain the application validation flow.' }
     if (-not $noteAddValidation.NoteDateViaPicker) { throw 'Clicking Add did not preserve the selected sticky-note calendar date.' }
     if (-not $noteAddValidation.NoteReminderViaSelector) { throw 'Clicking Add did not preserve the selected sticky-note reminder interval and start time.' }

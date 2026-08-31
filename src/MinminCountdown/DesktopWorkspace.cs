@@ -206,8 +206,10 @@ internal sealed class DesktopWorkspace
                 scheduledUtc,
                 option,
                 customBeijing,
-                out var error),
-            error);
+                out var error,
+                out var errorCode),
+            error,
+            errorCode);
 
     public void PersistMigrationIfNeeded() => _session.PersistMigrationIfNeeded();
 
@@ -305,6 +307,12 @@ internal sealed class DesktopWorkspace
 
     private static DesktopWorkspaceChangeResult Result(bool succeeded, string error) =>
         new(succeeded, error);
+
+    private static DesktopWorkspaceChangeResult Result(
+        bool succeeded,
+        string error,
+        ReminderSnoozeErrorCode snoozeErrorCode) =>
+        new(succeeded, error, SnoozeErrorCode: snoozeErrorCode);
 
     private void OnSessionStateChanged(object? sender, EventArgs eventArgs) =>
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -467,7 +475,8 @@ internal sealed record DesktopWorkspaceChangeResult(
     bool Succeeded,
     string Error,
     TagRecord? CreatedTag = null,
-    ReminderRuleEditingErrorTarget ReminderRuleErrorTarget = ReminderRuleEditingErrorTarget.None);
+    ReminderRuleEditingErrorTarget ReminderRuleErrorTarget = ReminderRuleEditingErrorTarget.None,
+    ReminderSnoozeErrorCode SnoozeErrorCode = ReminderSnoozeErrorCode.None);
 
 internal sealed record DesktopWorkspaceFilter(
     IReadOnlyList<string> SelectedTagIds,
@@ -505,6 +514,48 @@ internal sealed record DesktopWorkspaceFilter(
         (NoteStatus != NoteStatusFilter.All ? 1 : 0) +
         (!string.IsNullOrWhiteSpace(NoteSearch) ? 1 : 0) +
         (NoteDate is not null || UndatedNotesOnly ? 1 : 0);
+
+    // record 默认相等对 IReadOnlyList 退化为引用相等；激活状态前后两次快照的标签序列
+    // 是不同实例，必须按序号逐元素比较（与应用内标签 ID 语义一致的序号忽略大小写）。
+    public bool Equals(DesktopWorkspaceFilter? other)
+    {
+        if (other is null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(this, other))
+        {
+            return true;
+        }
+
+        return SelectedTagIds.SequenceEqual(other.SelectedTagIds, StringComparer.OrdinalIgnoreCase) &&
+               MatchMode == other.MatchMode &&
+               UntaggedOnly == other.UntaggedOnly &&
+               CountdownStatus == other.CountdownStatus &&
+               NoteStatus == other.NoteStatus &&
+               string.Equals(NoteSearch, other.NoteSearch, StringComparison.Ordinal) &&
+               string.Equals(NoteDate, other.NoteDate, StringComparison.Ordinal) &&
+               UndatedNotesOnly == other.UndatedNotesOnly;
+    }
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var tagId in SelectedTagIds)
+        {
+            hash.Add(tagId, StringComparer.OrdinalIgnoreCase);
+        }
+
+        hash.Add(MatchMode);
+        hash.Add(UntaggedOnly);
+        hash.Add(CountdownStatus);
+        hash.Add(NoteStatus);
+        hash.Add(NoteSearch, StringComparer.Ordinal);
+        hash.Add(NoteDate, StringComparer.Ordinal);
+        hash.Add(UndatedNotesOnly);
+        return hash.ToHashCode();
+    }
 }
 
 internal sealed record DesktopWorkspaceSnapshot(

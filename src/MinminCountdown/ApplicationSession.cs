@@ -653,7 +653,8 @@ internal sealed class ApplicationSession
         DateTimeOffset scheduledUtc,
         ReminderSnoozeOption option,
         DateTimeOffset? customBeijing,
-        out string error) =>
+        out string error,
+        out ReminderSnoozeErrorCode errorCode) =>
         TrySnoozeReminder(
             ReminderSourceKind.Note,
             noteId,
@@ -661,7 +662,8 @@ internal sealed class ApplicationSession
             scheduledUtc,
             option,
             customBeijing,
-            out error);
+            out error,
+            out errorCode);
 
     public bool TrySnoozeReminder(
         ReminderSourceKind sourceKind,
@@ -670,8 +672,10 @@ internal sealed class ApplicationSession
         DateTimeOffset scheduledUtc,
         ReminderSnoozeOption option,
         DateTimeOffset? customBeijing,
-        out string error)
+        out string error,
+        out ReminderSnoozeErrorCode errorCode)
     {
+        errorCode = ReminderSnoozeErrorCode.None;
         var rule = FindReminderRule(sourceKind, sourceId, ruleId, out var countdownTargetUtc);
         Current.ReminderStates.TryGetValue(ruleId, out var knownState);
         if (rule is null ||
@@ -712,6 +716,7 @@ internal sealed class ApplicationSession
         if (snoozeUntilUtc <= actionUtc)
         {
             error = "自定义稍后时间必须晚于当前北京时间。";
+            errorCode = ReminderSnoozeErrorCode.CustomSnoozeNotInFuture;
             return false;
         }
 

@@ -47,7 +47,17 @@ public sealed class SettingsStore
         }
 
         ArgumentNullException.ThrowIfNull(chooseRecovery);
-        var pathState = _files.GetPathState(settingsPath);
+        SettingsPathState pathState;
+        try
+        {
+            pathState = _files.GetPathState(settingsPath);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // ACL 拒绝（文件或父目录）按“主文件存在但不可读”处理，继续走恢复候选流程。
+            pathState = SettingsPathState.Unreadable;
+        }
+
         if (pathState == SettingsPathState.Absent)
         {
             return new SettingsLoadResult(
@@ -56,7 +66,7 @@ public sealed class SettingsStore
                 Migrated: false);
         }
 
-        if (pathState != SettingsPathState.RegularFile)
+        if (pathState == SettingsPathState.Occupied)
         {
             throw new SettingsRecoveryException(
                 "设置路径已被目录、reparse point 或其他非普通文件对象占用，应用将退出且不会以空设置继续。");

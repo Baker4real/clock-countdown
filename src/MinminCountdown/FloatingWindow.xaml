@@ -366,16 +366,29 @@
                           Width="36"
                           MinWidth="36"
                           Margin="8,0,0,0"
+                          Padding="0"
+                          FocusVisualStyle="{x:Null}"
                           Style="{DynamicResource SecondaryButton}"
+                          ToolTip="搜索便签"
                           Visibility="Collapsed">
-                    <Viewbox Width="14" Height="14">
-                      <Path Data="M 6,6 m -3.6,0 a 3.6,3.6 0 1 1 7.2,0 a 3.6,3.6 0 1 1 -7.2,0 M 8.7,8.7 L 12.2,12.2"
-                            Fill="Transparent"
+                    <Grid Width="16" Height="16">
+                      <Ellipse Width="9"
+                               Height="9"
+                               Margin="1,1,0,0"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Top"
+                               Fill="Transparent"
+                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                               StrokeThickness="1.6" />
+                      <Line X1="8.2"
+                            Y1="8.2"
+                            X2="14.5"
+                            Y2="14.5"
                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
                             StrokeThickness="1.6"
                             StrokeStartLineCap="Round"
                             StrokeEndLineCap="Round" />
-                    </Viewbox>
+                    </Grid>
                   </Button>
                 </Grid>
                 <TextBlock x:Name="FloatingNoteMessage"

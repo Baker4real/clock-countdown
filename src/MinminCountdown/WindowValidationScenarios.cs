@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using MinminCountdown.Core;
 
@@ -1207,6 +1208,7 @@ public sealed partial class FloatingWindow
                     AutomationProperties.GetName(FloatingNoteSearch),
                     "搜索便签",
                     StringComparison.Ordinal);
+            var searchButtonShowsClosedMagnifier = ProbeSearchButtonShowsClosedMagnifier();
 
             Keyboard.Focus(FloatingAddNote);
             WindowValidationInput.Pump(Dispatcher);
@@ -1492,7 +1494,8 @@ public sealed partial class FloatingWindow
                 hintNamesDescribeAction,
                 longHintTermTrimsWithinSlot,
                 noteFilterEmptyStateDistinguished,
-                countdownFilterEmptyStateDistinguished);
+                countdownFilterEmptyStateDistinguished,
+                searchButtonShowsClosedMagnifier);
         }
         finally
         {
@@ -1509,6 +1512,55 @@ public sealed partial class FloatingWindow
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
         }
+    }
+
+    private bool ProbeSearchButtonShowsClosedMagnifier()
+    {
+        if (FloatingSearchNotes.Visibility != Visibility.Visible)
+        {
+            return false;
+        }
+
+        FloatingSearchNotes.ApplyTemplate();
+        FloatingSearchNotes.UpdateLayout();
+
+        Ellipse? lens = null;
+        Line? handle = null;
+        if (FloatingSearchNotes.Content is Grid icon)
+        {
+            lens = icon.Children.OfType<Ellipse>().FirstOrDefault();
+            handle = icon.Children.OfType<Line>().FirstOrDefault();
+        }
+
+        lens ??= ValidationDescendants<Ellipse>(FloatingSearchNotes).FirstOrDefault();
+        handle ??= ValidationDescendants<Line>(FloatingSearchNotes).FirstOrDefault();
+        if (lens is null || handle is null)
+        {
+            return false;
+        }
+
+        var contentWidth = FloatingSearchNotes.ActualWidth -
+            FloatingSearchNotes.Padding.Left -
+            FloatingSearchNotes.Padding.Right -
+            FloatingSearchNotes.BorderThickness.Left -
+            FloatingSearchNotes.BorderThickness.Right;
+        var contentHeight = FloatingSearchNotes.ActualHeight -
+            FloatingSearchNotes.Padding.Top -
+            FloatingSearchNotes.Padding.Bottom -
+            FloatingSearchNotes.BorderThickness.Top -
+            FloatingSearchNotes.BorderThickness.Bottom;
+        if (contentWidth + 0.5 < 16 || contentHeight + 0.5 < 16)
+        {
+            return false;
+        }
+
+        var lensWidth = lens.ActualWidth > 0 ? lens.ActualWidth : lens.Width;
+        var lensHeight = lens.ActualHeight > 0 ? lens.ActualHeight : lens.Height;
+        return lensWidth >= 8 &&
+            lensHeight >= 8 &&
+            Math.Abs(lensWidth - lensHeight) <= 1 &&
+            handle.X2 > handle.X1 &&
+            handle.Y2 > handle.Y1;
     }
 
     private Rect ValidationBounds(FrameworkElement element) =>
@@ -1762,7 +1814,8 @@ internal sealed record FloatingNoteSearchValidationScenarios(
     bool HintNamesDescribeAction,
     bool LongHintTermTrimsWithinSlot,
     bool NoteFilterEmptyStateDistinguished,
-    bool CountdownFilterEmptyStateDistinguished)
+    bool CountdownFilterEmptyStateDistinguished,
+    bool SearchButtonShowsClosedMagnifier)
 {
     public bool AllPassed =>
         HiddenInCountdowns &&
@@ -1782,7 +1835,8 @@ internal sealed record FloatingNoteSearchValidationScenarios(
         HintNamesDescribeAction &&
         LongHintTermTrimsWithinSlot &&
         NoteFilterEmptyStateDistinguished &&
-        CountdownFilterEmptyStateDistinguished;
+        CountdownFilterEmptyStateDistinguished &&
+        SearchButtonShowsClosedMagnifier;
 }
 
 internal sealed record WindowValidationTextFit(

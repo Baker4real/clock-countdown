@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-08-25-v17\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-09-01-v18\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -310,8 +310,8 @@ if ($floatingReferenceBaselineRequired) {
         ConvertFrom-Json -Depth 100
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-08-25-v17/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
-    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-08-25-v17') { throw 'The floating reference manifest version does not match the pinned v17 path.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-09-01-v18/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-09-01-v18') { throw 'The floating reference manifest version does not match the pinned v18 path.' }
     $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
     if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
@@ -353,6 +353,7 @@ if (-not $validation.FloatingInitialWorkspaceStateMatches) { throw 'The floating
 if (-not $validation.FloatingNoteSearchScenariosPass) { throw 'The floating note search scenarios did not pass.' }
 $floatingNoteSearch = $validation.FloatingNoteSearch
 if (-not $floatingNoteSearch.HiddenInCountdowns -or -not $floatingNoteSearch.VisibleInNotes) { throw 'The floating search button is not exclusive to the notes workspace.' }
+if (-not $floatingNoteSearch.SearchButtonShowsClosedMagnifier) { throw 'The floating search button does not render a closed magnifier glyph.' }
 if (-not $floatingNoteSearch.ExpandsAndFocuses -or -not $floatingNoteSearch.FiltersRenderedIds -or -not $floatingNoteSearch.CollapseKeepsTerm -or -not $floatingNoteSearch.HintReexpands -or -not $floatingNoteSearch.EscapeClears) { throw 'The floating collapsed-search main path (expand, filter, hint, Esc) did not pass.' }
 if (-not $floatingNoteSearch.EmptyState -or -not $floatingNoteSearch.EmptyDoesNotOverlap -or -not $floatingNoteSearch.ClearRestores) { throw 'The floating search empty state, overlap, or clear-restore contract did not pass.' }
 if (-not $floatingNoteSearch.AddThenSearchTab -or -not $floatingNoteSearch.SearchBeforeFirstCard) { throw 'The floating search Tab order contract did not pass.' }

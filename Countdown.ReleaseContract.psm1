@@ -182,7 +182,7 @@ $script:nonAssetHashes = [ordered]@{
     'Countdown.Runtime.psm1' = '6EAD9634FAB49CED2C588D74DC62541FEC6852F0DE694EBC53147FD967CD3A88'
     'Countdown.Settings.psm1' = 'E3F02C90D7153AEF7492708B758CF21CD777C73ED1CF19BEB3B2F8D0D14EB16D'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '277D96053A0D53460F032254872A2525CDC6A0190061CBFE3CFC5ECF26BEA9A3'
+    'Countdown.Core.Tests.ps1' = '22E3E72B679C7806E503A3B60A40A2D1DDA53B9A98D3D5F336DDEE891F462DBD'
     'Countdown.Ui.Tests.ps1' = 'DD057691DC87CE762397FC8B44D10C8EF3508528079A8B77F8B8BD0A61F07ED8'
     'Countdown.CSharp.Tests.ps1' = '00CFC61B173A6B3FF301FED46DAC180C916026F545B31A7F652D658D68BFEFC3'
     'tools\Build-MainDayOrnamentScene.ps1' = '1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036'
@@ -192,7 +192,6 @@ $script:nonAssetHashes = [ordered]@{
     'CountdownLauncher.exe' = '4B4C66274278049FF185C7824685D1B5A85F5DA10557F70A1D7E458778066440'
     'CountdownLauncher.cs' = 'FF4602D8C63A42C1237855B7CF787F47A8F09CEA4F49D9006F777A367BBFDC42'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
-    'verification\MinminCountdown.Verification.exe' = '2FE538B80C97850F385CF9F2BA7CB01F7FF5D9EADE14E0CDBA4355350963F999'
     'assets\floating-plush\SOURCES.md' = '7B6A95A1EADEA0ED9A9FD4C44128BBE2F05F9D2C2675AF37998133C6228F5846'
     'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
     'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
@@ -266,9 +265,13 @@ $script:nonAssetIntegrityPaths = @(
     'CountdownLauncher.exe',
     'CountdownLauncher.cs',
     'countdown-icon.ico',
-    'verification\MinminCountdown.Verification.exe',
     'assets\floating-plush\SOURCES.md'
 ) + @($script:sourceBuildNonAssetFiles)
+
+# 构建产物（如验证程序 exe）跨环境字节不可复现，不进静态哈希钉死；仍必须随发布包传输。
+$script:buildOutputPackageFiles = @(
+    'verification\MinminCountdown.Verification.exe'
+)
 
 function Assert-CountdownReleaseRelativePath {
     param([Parameter(Mandatory)] [string] $Path)
@@ -453,7 +456,7 @@ function New-CountdownReleaseContractSnapshot {
         'app\assets\floating-plush\floating-plush-kuromi-pose.png'
     )
     $compatibilityFixtures = @('Countdown.App.psm1') + $officialCharacterAssets + $script:legacyFloatingRegressionAssets
-    $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys)
+    $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys) + @($script:buildOutputPackageFiles)
 
     $hashCopy = [ordered]@{}
     foreach ($entry in $integrityHashes.GetEnumerator()) {

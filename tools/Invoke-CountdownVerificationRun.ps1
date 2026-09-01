@@ -19,7 +19,7 @@
     1. env-pre：Countdown.ReleaseContract.psm1 IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
     2. git-diff-check：git diff --check
     3. build：pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
-    4. pin-after-build：verification\MinminCountdown.Verification.exe 静态 pin 与 app\MinminCountdown.exe 现役条目（fail-fast；本 runner 不改 ReleaseContract）
+    4. pin-after-build：verification\MinminCountdown.Verification.exe 静态 pin（契约已钉时核对，未钉则跳过）与 app\MinminCountdown.exe 现役条目（fail-fast；本 runner 不改 ReleaseContract）
     5. desktop-launcher：pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly
     6. csharp-default：pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
     7. instance-activation-matrix：钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
@@ -107,7 +107,7 @@ SYNOPSIS
     1. env-pre                      IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
     2. git-diff-check               git diff --check
     3. build                        pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
-    4. pin-after-build              verification\MinminCountdown.Verification.exe 静态 pin
+    4. pin-after-build              verification\MinminCountdown.Verification.exe 静态 pin（契约已钉时核对，未钉则跳过）
                                     与 app\MinminCountdown.exe 现役哈希（fail-fast；不改 ReleaseContract）
     5. desktop-launcher             pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly
     6. csharp-default               pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
@@ -428,7 +428,7 @@ function Invoke-CountdownEnvPre {
     Write-CountdownUtf8File -LiteralPath $mismatchPath -Content (ConvertTo-Json -InputObject @($mismatches) -Depth 6)
 
     if ([string]::IsNullOrWhiteSpace($verificationExpected)) {
-        [void] $stderr.AppendLine("契约缺少静态 pin：$verificationKey")
+        [void] $stdout.AppendLine('verificationPinSkipped=契约未钉 verification exe（构建产物不再静态 pin），跳过该项。')
     }
     if ([string]::IsNullOrWhiteSpace($appHostExpected)) {
         [void] $stderr.AppendLine("契约缺少现役条目：$appHostKey")
@@ -441,7 +441,6 @@ function Invoke-CountdownEnvPre {
     }
 
     $failed = ($mismatches.Count -gt 0) -or
-        [string]::IsNullOrWhiteSpace($verificationExpected) -or
         [string]::IsNullOrWhiteSpace($appHostExpected)
     [pscustomobject]@{
         ExitCode = $(if ($failed) { 1 } else { 0 })
@@ -472,7 +471,10 @@ function Invoke-CountdownPinAfterBuild {
     $drift = [System.Collections.Generic.List[object]]::new()
 
     $verificationActual = ''
-    if (-not (Test-Path -LiteralPath $verificationPath -PathType Leaf)) {
+    if ([string]::IsNullOrWhiteSpace($verificationExpected)) {
+        [void] $stdout.AppendLine('verificationPinSkipped=契约未钉 verification exe（构建产物不再静态 pin），跳过该项。')
+    }
+    elseif (-not (Test-Path -LiteralPath $verificationPath -PathType Leaf)) {
         $drift.Add([pscustomobject]@{ path = $verificationRelative; reason = 'missing'; expectedSha256 = $verificationExpected; actualSha256 = '' })
     }
     else {

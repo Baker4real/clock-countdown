@@ -1264,6 +1264,8 @@ function Invoke-CountdownRemoteDeploymentIndependentRead {
     $escapedRemoteScriptPath = $RemoteScriptPath.Replace("'", "''")
     $wrapperScript = @"
 `$ErrorActionPreference = 'Stop'
+# 证据链按 UTF-8 解码 stderr；控制台默认码页（936/437）无法表示中文，先切 UTF-8。
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(`$false) } catch { }
 if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') {
     throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。'
 }

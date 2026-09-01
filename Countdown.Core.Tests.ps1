@@ -3126,7 +3126,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
                 -RedirectStandardError $wrapperStderrPath
             $wrapperProcess.WaitForExit()
             $wrapperStdout = [System.IO.File]::ReadAllText($wrapperStdoutPath, [System.Text.Encoding]::UTF8)
-            $wrapperStderr = [System.Text.Encoding]::GetEncoding([Console]::OutputEncoding.CodePage).GetString(
+            $wrapperStderr = [System.Text.Encoding]::UTF8.GetString(
                 [System.IO.File]::ReadAllBytes($wrapperStderrPath)) -replace "`e\[[0-9;]*m", ''
             if ($wrapperCase.Name -eq 'hash-mismatch') {
                 Assert-Equal $true ($wrapperProcess.ExitCode -ne 0) 'Wrapper aborts with a nonzero exit code on an uploaded script hash mismatch'

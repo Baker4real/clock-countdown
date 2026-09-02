@@ -1219,7 +1219,12 @@ foreach ($file in $requiredFiles) {
         $packageManifest[$file] = [string] $controlManifest[$file]
     }
     else {
-        throw "发布包文件缺少提交或发布契约身份：$file"
+        # 构建产物（verification exe）不进静态 IntegrityHashes，按本次构建字节锁定。
+        $builtPath = Join-Path $sourceRoot $file
+        if (-not (Test-Path -LiteralPath $builtPath -PathType Leaf)) {
+            throw "发布包文件缺少提交或发布契约身份：$file"
+        }
+        $packageManifest[$file] = [string] (Get-FileHash -Algorithm SHA256 -LiteralPath $builtPath).Hash
     }
 }
 [void] (Assert-CountdownDeploymentRepositoryState `

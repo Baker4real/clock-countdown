@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Media;
 using MinminCountdown.Core;
 
@@ -77,6 +79,7 @@ internal sealed class ApplicationTheme
     {
         if (_activeMode == nextMode)
         {
+            ThemeModeObserver.Instance.Set(nextMode);
             return nextMode;
         }
 
@@ -88,6 +91,7 @@ internal sealed class ApplicationTheme
         }
 
         _activeMode = nextMode;
+        ThemeModeObserver.Instance.Set(nextMode);
         return nextMode;
     }
 
@@ -151,4 +155,31 @@ internal sealed class ApplicationTheme
         string BrushKey,
         Color DayColor,
         Color NightColor);
+}
+
+internal sealed class ThemeModeObserver : System.ComponentModel.INotifyPropertyChanged
+{
+    public static ThemeModeObserver Instance { get; } = new();
+
+    public ApplicationThemeMode Mode { get; private set; } = ApplicationThemeMode.Day;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    internal void Set(ApplicationThemeMode mode)
+    {
+        Mode = mode;
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Mode)));
+    }
+}
+
+internal sealed class ThemeKeyboardFocusBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var key = value is ApplicationThemeMode.Night ? "MainActionFocusBrush" : "ActiveBrush";
+        return Application.Current?.TryFindResource(key) ?? DependencyProperty.UnsetValue;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
 }

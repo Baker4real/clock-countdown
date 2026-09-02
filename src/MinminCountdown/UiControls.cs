@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -396,6 +397,7 @@ internal static class ThemedDatePickerBehavior
                 System.Windows.Threading.DispatcherPriority.ContextIdle,
                 new Action(() =>
                 {
+                    ApplyCalendarNavigationAccessibleNames(picker);
                     if (picker.IsDropDownOpen)
                     {
                         Keyboard.Focus(calendar);
@@ -468,6 +470,54 @@ internal static class ThemedDatePickerBehavior
         return picker.Template.FindName("PART_Calendar", picker) as Calendar;
     }
 
+    internal static void ApplyCalendarNavigationAccessibleNames(DatePicker picker)
+    {
+        var calendar = GetCalendar(picker);
+        if (calendar is null)
+        {
+            return;
+        }
+
+        calendar.ApplyTemplate();
+        var item = calendar.Template.FindName("PART_CalendarItem", calendar) as CalendarItem;
+        item?.ApplyTemplate();
+        var previous = item?.Template.FindName("PART_PreviousButton", item) as Button;
+        var next = item?.Template.FindName("PART_NextButton", item) as Button;
+        previous ??= FindNamedCalendarButton(calendar, "上一个月");
+        next ??= FindNamedCalendarButton(calendar, "下一个月");
+        if (previous is not null)
+        {
+            AutomationProperties.SetName(previous, "上一个月");
+        }
+
+        if (next is not null)
+        {
+            AutomationProperties.SetName(next, "下一个月");
+        }
+    }
+
+    private static Button? FindNamedCalendarButton(DependencyObject root, string name)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is Button button &&
+                (string.Equals(button.ToolTip as string, name, StringComparison.Ordinal) ||
+                 string.Equals(button.Name, name == "上一个月" ? "PART_PreviousButton" : "PART_NextButton", StringComparison.Ordinal)))
+            {
+                return button;
+            }
+
+            var nested = FindNamedCalendarButton(child, name);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
     private static bool IsDateTextSource(DependencyObject? source)
     {
         var cursor = source;
@@ -483,6 +533,212 @@ internal static class ThemedDatePickerBehavior
 
         return false;
     }
+}
+
+internal static class ThemedComboBoxBehavior
+{
+    private static readonly HashSet<ComboBox> Attached = new();
+    private static readonly HashSet<ComboBox> PointerPressedOnText = new();
+
+    public static void Attach(ComboBox comboBox)
+    {
+        ArgumentNullException.ThrowIfNull(comboBox);
+        if (!Attached.Add(comboBox))
+        {
+            return;
+        }
+
+        comboBox.PreviewMouseLeftButtonDown += (_, eventArgs) =>
+        {
+            if (IsComboTextSource(comboBox, eventArgs.OriginalSource as DependencyObject))
+            {
+                PointerPressedOnText.Add(comboBox);
+            }
+        };
+        comboBox.PreviewMouseLeftButtonUp += (_, eventArgs) =>
+        {
+            if (PointerPressedOnText.Remove(comboBox) &&
+                comboBox.IsEnabled &&
+                IsComboTextSource(comboBox, eventArgs.OriginalSource as DependencyObject))
+            {
+                eventArgs.Handled = true;
+                comboBox.Dispatcher.BeginInvoke(
+                    DispatcherPriority.Input,
+                    () =>
+                    {
+                        if (comboBox.IsEnabled)
+                        {
+                            comboBox.IsDropDownOpen = true;
+                        }
+                    });
+            }
+        };
+        comboBox.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(comboBox);
+        comboBox.PreviewKeyDown += (_, eventArgs) =>
+        {
+            if (!comboBox.IsEnabled)
+            {
+                return;
+            }
+
+            var isDown = eventArgs.Key == Key.Down || eventArgs.SystemKey == Key.Down;
+            if (!isDown ||
+                (MainShortcutInput.ResolveModifiers(eventArgs) & ModifierKeys.Alt) != ModifierKeys.Alt)
+            {
+                return;
+            }
+
+            comboBox.IsDropDownOpen = !comboBox.IsDropDownOpen;
+            eventArgs.Handled = true;
+        };
+    }
+
+    public static bool IsAttached(ComboBox comboBox) => Attached.Contains(comboBox);
+
+    internal static ToggleButton? GetArrowToggle(ComboBox comboBox)
+    {
+        comboBox.ApplyTemplate();
+        return FindDescendant<ToggleButton>(comboBox, static candidate =>
+            candidate.ClickMode == ClickMode.Press &&
+            !IsInsidePopup(candidate));
+    }
+
+    internal static ContentPresenter? GetSelectionPresenter(ComboBox comboBox)
+    {
+        comboBox.ApplyTemplate();
+        return FindDescendant<ContentPresenter>(comboBox, static candidate =>
+            !IsInsidePopup(candidate));
+    }
+
+    internal static bool HasUnchangedArrowColumn(ComboBox comboBox)
+    {
+        comboBox.ApplyTemplate();
+        var columns = FindDescendant<Grid>(comboBox, static candidate =>
+            candidate.ColumnDefinitions.Count == 2 &&
+            !IsInsidePopup(candidate))?.ColumnDefinitions;
+        return columns is { Count: 2 } &&
+            columns[1].Width.IsAbsolute &&
+            Math.Abs(columns[1].Width.Value - 36) < 0.01;
+    }
+
+    private static bool IsComboTextSource(ComboBox comboBox, DependencyObject? source)
+    {
+        if (source is null || IsInsidePopup(source) || !comboBox.IsEnabled)
+        {
+            return false;
+        }
+
+        var cursor = source;
+        while (cursor is not null && !ReferenceEquals(cursor, comboBox))
+        {
+            if (cursor is ToggleButton)
+            {
+                return false;
+            }
+
+            cursor = VisualTreeHelper.GetParent(cursor);
+        }
+
+        return ReferenceEquals(cursor, comboBox);
+    }
+
+    private static bool IsInsidePopup(DependencyObject source)
+    {
+        var cursor = source;
+        while (cursor is not null)
+        {
+            if (cursor is Popup)
+            {
+                return true;
+            }
+
+            cursor = VisualTreeHelper.GetParent(cursor);
+        }
+
+        return false;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root, Func<T, bool> predicate)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match && predicate(match))
+            {
+                return match;
+            }
+
+            var nested = FindDescendant(child, predicate);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+}
+
+internal static class SecondaryWindowChrome
+{
+    public static bool IsInteractiveDragSource(DependencyObject source, DependencyObject headerRoot)
+    {
+        for (DependencyObject? current = source;
+             current is not null && !ReferenceEquals(current, headerRoot);
+             current = InputParent(current))
+        {
+            if (current is Control)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static void DragFromHeader(
+        Window window,
+        MouseButtonEventArgs eventArgs,
+        DependencyObject headerRoot,
+        Action markManual,
+        ref int nativeDragRequestCount,
+        ref int nativeDragCompletionCount)
+    {
+        if (eventArgs.ChangedButton != MouseButton.Left)
+        {
+            return;
+        }
+
+        if (eventArgs.OriginalSource is DependencyObject source &&
+            IsInteractiveDragSource(source, headerRoot))
+        {
+            return;
+        }
+
+        eventArgs.Handled = true;
+        nativeDragRequestCount++;
+        try
+        {
+            window.DragMove();
+            nativeDragCompletionCount++;
+        }
+        catch (InvalidOperationException)
+        {
+            // Synthetic or canceled gestures cannot establish a completed physical drag.
+        }
+        finally
+        {
+            markManual();
+        }
+    }
+
+    private static DependencyObject? InputParent(DependencyObject current) => current switch
+    {
+        Visual => VisualTreeHelper.GetParent(current),
+        FrameworkContentElement content => content.Parent,
+        _ => LogicalTreeHelper.GetParent(current)
+    };
 }
 
 internal sealed class ConfirmationDialog : Window

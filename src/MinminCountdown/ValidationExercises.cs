@@ -6812,6 +6812,52 @@ internal static class ValidationExercises
             input.MutedBrushUnchanged,
             input.CompletedHeaderColorUnchanged);
 
+    public static AuditContrastGateResults EvaluateAuditContrastGates(AuditContrastGateInputs input) =>
+        new(
+            input.SourceLabelRatios.Count == 4 && input.SourceLabelRatios.All(ratio => ratio >= 4.5),
+            input.SourceUsesInkBrush,
+            input.SourceEmphasisPreserved,
+            input.DialogRatios.Count == 2 && input.DialogRatios.All(ratio => ratio >= 4.5),
+            input.NightFocusRatios.Count == 3 && input.NightFocusRatios.All(ratio => ratio >= 3));
+
+    public static bool RunAuditContrastGateIsolationBehavior()
+    {
+        var passing = new AuditContrastGateInputs(
+            new[] { 11.49, 11.49, 10.0, 10.0 },
+            true,
+            true,
+            new[] { 6.05, 6.05 },
+            new[] { 8.1, 8.4, 8.2 });
+        var passingResult = EvaluateAuditContrastGates(passing);
+        Must(passingResult.AllPassed, "审计对比度全通过夹具被错误拒绝。");
+
+        var sourceLow = EvaluateAuditContrastGates(
+            passing with { SourceLabelRatios = new[] { 1.90, 11.49, 10.0, 10.0 } });
+        Must(
+            !sourceLow.SourceLabelContrast &&
+            sourceLow.DialogContrast &&
+            sourceLow.NightFocusContrast,
+            "来源标签不达标时未单独触发对比度负向门。");
+
+        var dialogLow = EvaluateAuditContrastGates(
+            passing with { DialogRatios = new[] { 3.85, 6.05 } });
+        Must(
+            dialogLow.SourceLabelContrast &&
+            !dialogLow.DialogContrast &&
+            dialogLow.NightFocusContrast,
+            "系统对话框主按钮不达标时未单独触发对比度负向门。");
+
+        var focusLow = EvaluateAuditContrastGates(
+            passing with { NightFocusRatios = new[] { 1.90, 8.4, 8.2 } });
+        Must(
+            focusLow.SourceLabelContrast &&
+            focusLow.DialogContrast &&
+            !focusLow.NightFocusContrast,
+            "夜间焦点环不达标时未单独触发对比度负向门。");
+
+        return true;
+    }
+
     public static bool RunNoteCompletedAuxiliaryContrastGateIsolationBehavior()
     {
         var passing = new NoteCompletedAuxiliaryContrastGateInputs(
@@ -7668,6 +7714,28 @@ internal sealed record FloatingPrimaryCountdownContrastGateInputs(
 internal sealed record FloatingPrimaryCountdownContrastGateResults(
     bool TextContrast,
     bool AccentSeparatedFromPlushGlow);
+
+internal sealed record AuditContrastGateInputs(
+    IReadOnlyList<double> SourceLabelRatios,
+    bool SourceUsesInkBrush,
+    bool SourceEmphasisPreserved,
+    IReadOnlyList<double> DialogRatios,
+    IReadOnlyList<double> NightFocusRatios);
+
+internal sealed record AuditContrastGateResults(
+    bool SourceLabelContrast,
+    bool SourceUsesInkBrush,
+    bool SourceEmphasisPreserved,
+    bool DialogContrast,
+    bool NightFocusContrast)
+{
+    public bool AllPassed =>
+        SourceLabelContrast &&
+        SourceUsesInkBrush &&
+        SourceEmphasisPreserved &&
+        DialogContrast &&
+        NightFocusContrast;
+}
 
 internal sealed record NoteCompletedAuxiliaryContrastGateInputs(
     IReadOnlyList<double> ContrastRatios,

@@ -698,6 +698,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     internal void ApplyTheme(ApplicationThemeMode mode)
     {
         _themeMode = mode;
+        ThemeModeObserver.Instance.Set(mode);
         CharacterBackgroundLayer.Opacity = mode == ApplicationThemeMode.Night ? 0.16 : 0.075;
         UpdateReferenceDecorationVisibility();
         SetMessage(StatusText, mode == ApplicationThemeMode.Day ? "当前主题：日间" : "当前主题：夜间", false);
@@ -908,6 +909,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ThemedDatePickerBehavior.Attach(CountdownDate);
         ThemedDatePickerBehavior.Attach(NoteDate);
         ThemedDatePickerBehavior.Attach(NoteDateFilter);
+        ThemedComboBoxBehavior.Attach(CountdownHour);
+        ThemedComboBoxBehavior.Attach(CountdownMinute);
+        ThemedComboBoxBehavior.Attach(CountdownSecond);
+        ThemedComboBoxBehavior.Attach(DisplayPrecision);
         UseShortDateText(NoteDate);
         UiAccessibility.MarkLive(StatusText);
         UiAccessibility.MarkLive(CountdownMessage);

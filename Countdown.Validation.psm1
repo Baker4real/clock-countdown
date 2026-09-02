@@ -383,7 +383,7 @@ function Invoke-CountdownValidationSuite {
 
     $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-09-01-v18\manifest.json'
     $floatingBaselineRequired = Test-Path -LiteralPath $floatingBaselineManifest -PathType Leaf
-    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json'
+    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\1165x1350\2026-09-02-v18\manifest.json'
     $mainBaselineRequired = Test-Path -LiteralPath $mainBaselineManifest -PathType Leaf
     $visualBaselinesRequired = $floatingBaselineRequired -and $mainBaselineRequired
     $applicationEnvironment = @{

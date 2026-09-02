@@ -11,7 +11,8 @@ internal sealed class SettingsRecoveryWindow : Window
     private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFF, 0xFB, 0xF7));
     private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x4A, 0x2D, 0x24));
     private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x87, 0x66, 0x5A));
-    private static readonly SolidColorBrush AccentBrush = new(Color.FromRgb(0xD5, 0x5C, 0x47));
+    private static readonly SolidColorBrush AccentBrush = new(Color.FromRgb(0xA2, 0x44, 0x38));
+    private static readonly SolidColorBrush PrimaryButtonTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
 
     private SettingsRecoveryDecision _decision = SettingsRecoveryDecision.Exit;
 
@@ -111,7 +112,7 @@ internal sealed class SettingsRecoveryWindow : Window
             Padding = new Thickness(16, 0, 16, 0),
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
-            Foreground = isPrimary ? Brushes.White : InkBrush,
+            Foreground = isPrimary ? PrimaryButtonTextBrush : InkBrush,
             Background = isPrimary ? AccentBrush : Brushes.White,
             BorderBrush = isPrimary ? AccentBrush : MutedBrush,
             BorderThickness = new Thickness(1)
@@ -129,7 +130,8 @@ internal sealed class InstanceActivationFailureWindow : Window
     private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFF, 0xFB, 0xF7));
     private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x4A, 0x2D, 0x24));
     private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x87, 0x66, 0x5A));
-    private static readonly SolidColorBrush AccentBrush = new(Color.FromRgb(0xD5, 0x5C, 0x47));
+    private static readonly SolidColorBrush AccentBrush = new(Color.FromRgb(0xA2, 0x44, 0x38));
+    private static readonly SolidColorBrush PrimaryButtonTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
 
     private InstanceActivationFailureWindow()
     {
@@ -179,7 +181,7 @@ internal sealed class InstanceActivationFailureWindow : Window
             Padding = new Thickness(16, 0, 16, 0),
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
+            Foreground = PrimaryButtonTextBrush,
             Background = AccentBrush,
             BorderBrush = AccentBrush,
             BorderThickness = new Thickness(1),

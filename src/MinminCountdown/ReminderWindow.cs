@@ -14,9 +14,13 @@ internal sealed class ReminderCenterWindow : Window
     private readonly StackPanel _itemsHost;
     private readonly TextBlock _countText;
     private readonly Dictionary<ActiveReminderOccurrenceKey, ReminderCenterEntry> _entries = new();
+    private readonly Border _dragHeader;
     private bool _contentRendered;
     private bool _coordinatorCloseRequested;
     private bool _initialFocusAssigned;
+    private bool _hasManualWindowPlacement;
+    private int _nativeWindowDragRequestCount;
+    private int _nativeWindowDragCompletionCount;
 
     public ReminderCenterWindow()
     {
@@ -49,13 +53,23 @@ internal sealed class ReminderCenterWindow : Window
         };
         _countText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
         _countText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-        var header = new StackPanel
+        var titleRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 0, 0, 14)
+            VerticalAlignment = VerticalAlignment.Center
         };
-        header.Children.Add(heading);
-        header.Children.Add(_countText);
+        titleRow.Children.Add(heading);
+        titleRow.Children.Add(_countText);
+        _dragHeader = new Border
+        {
+            Child = titleRow,
+            Background = Brushes.Transparent,
+            Cursor = Cursors.SizeAll,
+            Margin = new Thickness(0, 0, 0, 14),
+            Padding = new Thickness(0, 4, 0, 4)
+        };
+        AutomationProperties.SetAutomationId(_dragHeader, "ReminderCenterDragHeader");
+        _dragHeader.MouseLeftButtonDown += OnHeaderMouseLeftButtonDown;
 
         _itemsHost = new StackPanel();
         var scroller = new ScrollViewer
@@ -73,7 +87,7 @@ internal sealed class ReminderCenterWindow : Window
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition());
         Grid.SetRow(scroller, 1);
-        layout.Children.Add(header);
+        layout.Children.Add(_dragHeader);
         layout.Children.Add(scroller);
 
         var surface = new Border
@@ -113,13 +127,41 @@ internal sealed class ReminderCenterWindow : Window
             args.Handled = true;
             focused.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, focused));
         };
-        Loaded += (_, _) =>
-        {
-            var workArea = SystemParameters.WorkArea;
-            Left = workArea.Right - ActualWidth - 18;
-            Top = workArea.Top + 18;
-        };
+        Loaded += (_, _) => ApplyAutomaticPlacementIfNeeded();
         UpdateCount();
+    }
+
+    internal bool HasManualWindowPlacement => _hasManualWindowPlacement;
+
+    internal int NativeWindowDragRequestCount => _nativeWindowDragRequestCount;
+
+    internal int NativeWindowDragCompletionCount => _nativeWindowDragCompletionCount;
+
+    internal Border DragHeader => _dragHeader;
+
+    internal void ReapplyPlacement() => ApplyAutomaticPlacementIfNeeded();
+
+    private void ApplyAutomaticPlacementIfNeeded()
+    {
+        if (_hasManualWindowPlacement)
+        {
+            return;
+        }
+
+        var workArea = SystemParameters.WorkArea;
+        Left = workArea.Right - ActualWidth - 18;
+        Top = workArea.Top + 18;
+    }
+
+    private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)
+    {
+        SecondaryWindowChrome.DragFromHeader(
+            this,
+            eventArgs,
+            _dragHeader,
+            () => _hasManualWindowPlacement = true,
+            ref _nativeWindowDragRequestCount,
+            ref _nativeWindowDragCompletionCount);
     }
 
     internal event EventHandler<ReminderCenterEntryEventArgs>? EntryRendered;
@@ -180,7 +222,7 @@ internal sealed class ReminderCenterWindow : Window
             FontWeight = FontWeights.SemiBold
         };
         source.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
-        source.SetResourceReference(TextBlock.ForegroundProperty, "ActiveBrush");
+        source.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         var body = new TextBlock
         {
             Text = item.Source.DisplayText,
@@ -237,6 +279,7 @@ internal sealed class ReminderCenterWindow : Window
         }
 
         snoozeChoice.SelectedIndex = 0;
+        ThemedComboBoxBehavior.Attach(snoozeChoice);
         var customDate = UiAccessibility.Name(
             new DatePicker
             {
@@ -264,6 +307,8 @@ internal sealed class ReminderCenterWindow : Window
                 Visibility = Visibility.Collapsed
             },
             $"自定义稍后分钟：{item.Source.DisplayText}");
+        ThemedComboBoxBehavior.Attach(customHour);
+        ThemedComboBoxBehavior.Attach(customMinute);
         var customFields = new WrapPanel { Visibility = Visibility.Collapsed };
         customFields.Children.Add(customDate);
         customFields.Children.Add(customHour);

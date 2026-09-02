@@ -8,8 +8,8 @@
     "metricDpi": 96
   },
   "sourceBinding": {
-    "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "930432E4D3072E41674A1AFEF9CF6230DE2437BD4E7F002AEC3B0E136384AA82",
+    "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
+    "aggregateSha256": "9ECB0B01DB1A487017F6743E55C5748E7AA8EF4887D6831BE8C766E2F6023D2C",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -41,11 +41,11 @@
       },
       {
         "path": "src/MinminCountdown/App.xaml",
-        "sha256": "08E3FA7B8DDC04F49E876169DFE8B6F7A26BD0E428D73D634476B13C01F8E8D2"
+        "sha256": "4A7398B0B7EAFF4669A47B1C7EB9FDD435DD748FA0CF62C8DA3E3A51E3BFF2E7"
       },
       {
         "path": "src/MinminCountdown/ApplicationTheme.cs",
-        "sha256": "F45DCBD945D98B0E14F17A21DED73369CE8563FDA49A51990B723B24908E83E3"
+        "sha256": "58C95052835C9790A831C755E21874C5C523CE0691C015CA7F27D75A3022ECC6"
       },
       {
         "path": "src/MinminCountdown/DomainLogic.cs",
@@ -73,7 +73,7 @@
       },
       {
         "path": "src/MinminCountdown/UiControls.cs",
-        "sha256": "954A1B531385BCEAFF18136400452BB7C99095A7FC294A3C215272A8C7F03DE2"
+        "sha256": "F7A6A8C35FCE5E4A9F505F87445F77346ECB255F7A6BEB2E7CF1051C4CFBB744"
       }
     ]
   },
@@ -135,8 +135,8 @@
         "viewportState": "Baseline",
         "verticalOffset": 0,
         "scrollableHeight": 0,
-        "firstVisibleAnchor": "\u8DDD\u79BB\u4E0B\u73ED",
-        "lastVisibleAnchor": "\u4E03\u6708\u5012\u8BA1\u65F6"
+        "firstVisibleAnchor": "距离下班",
+        "lastVisibleAnchor": "七月倒计时"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -147,7 +147,7 @@
         "opaquePixelCount": 151258
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -181,8 +181,8 @@
         "viewportState": "Baseline",
         "verticalOffset": 0,
         "scrollableHeight": 0,
-        "firstVisibleAnchor": "\u8DDD\u79BB\u4E0B\u73ED",
-        "lastVisibleAnchor": "\u4E03\u6708\u5012\u8BA1\u65F6"
+        "firstVisibleAnchor": "距离下班",
+        "lastVisibleAnchor": "七月倒计时"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -193,7 +193,7 @@
         "opaquePixelCount": 150664
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -227,8 +227,8 @@
         "viewportState": "Top",
         "verticalOffset": 0,
         "scrollableHeight": 779.84,
-        "firstVisibleAnchor": "reference-note-1:\u9996\u951A\u70B9\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709\u624B\u5DE5",
-        "lastVisibleAnchor": "reference-note-2:\u53F7 2 \u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\u3002"
+        "firstVisibleAnchor": "reference-note-1:首锚点：这是一条没有手工",
+        "lastVisibleAnchor": "reference-note-2:号 2 的末尾校验文字。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -239,7 +239,7 @@
         "opaquePixelCount": 151089
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -273,8 +273,8 @@
         "viewportState": "Bottom",
         "verticalOffset": 779.84,
         "scrollableHeight": 779.84,
-        "firstVisibleAnchor": "reference-note-6:\u4E2D\u6BB5\u951A\u70B96\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709",
-        "lastVisibleAnchor": "reference-note-6:\u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\uFF0C\u5C3E\u951A\u70B9\u3002"
+        "firstVisibleAnchor": "reference-note-6:中段锚点6：这是一条没有",
+        "lastVisibleAnchor": "reference-note-6:的末尾校验文字，尾锚点。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -285,7 +285,7 @@
         "opaquePixelCount": 151089
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -319,8 +319,8 @@
         "viewportState": "Top",
         "verticalOffset": 0,
         "scrollableHeight": 779.84,
-        "firstVisibleAnchor": "reference-note-1:\u9996\u951A\u70B9\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709\u624B\u5DE5",
-        "lastVisibleAnchor": "reference-note-2:\u53F7 2 \u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\u3002"
+        "firstVisibleAnchor": "reference-note-1:首锚点：这是一条没有手工",
+        "lastVisibleAnchor": "reference-note-2:号 2 的末尾校验文字。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -331,7 +331,7 @@
         "opaquePixelCount": 150664
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,
@@ -365,8 +365,8 @@
         "viewportState": "Bottom",
         "verticalOffset": 779.84,
         "scrollableHeight": 779.84,
-        "firstVisibleAnchor": "reference-note-6:\u4E2D\u6BB5\u951A\u70B96\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709",
-        "lastVisibleAnchor": "reference-note-6:\u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\uFF0C\u5C3E\u951A\u70B9\u3002"
+        "firstVisibleAnchor": "reference-note-6:中段锚点6：这是一条没有",
+        "lastVisibleAnchor": "reference-note-6:的末尾校验文字，尾锚点。"
       },
       "alpha": {
         "algorithm": "BGRA8 alpha scan",
@@ -377,7 +377,7 @@
         "opaquePixelCount": 150664
       },
       "contentRoi": {
-        "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
         "alphaThreshold": 32,
         "x": 7,
         "y": 4,

@@ -696,6 +696,70 @@ if (-not $validation.ToolTipThemeTextContrast) { throw 'The themed tooltip loses
 if (-not $validation.TagChipTextContrast) { throw 'Tag chips lose readable warm-ink text contrast across the day/night transition.' }
 if (-not $validation.ThemedInteractiveStates) { throw 'A themed interactive control is missing visual state feedback.' }
 if (-not $validation.ThemeTextContrast) { throw 'The warm theme does not meet the required text-contrast pairs.' }
+$sourceLabelContrast = $validation.ReminderCenterSourceLabelContrast
+if (-not $sourceLabelContrast.TextContrast -or -not $sourceLabelContrast.UsesInkBrush -or -not $sourceLabelContrast.EmphasisPreserved -or -not $sourceLabelContrast.NoteCardBackground) {
+    throw 'Reminder-center source labels do not meet InkBrush, emphasis, or 4.5:1 note-card contrast in day and night.'
+}
+$sourceLabelMeasurements = @($sourceLabelContrast.Measurements)
+if ($sourceLabelMeasurements.Count -ne 4 -or ((@($sourceLabelMeasurements.Theme) | Sort-Object -Unique) -join ',') -ne 'Day,Night') {
+    throw 'Reminder-center source-label contrast must contain day/night measurements for both source kinds.'
+}
+if (@($sourceLabelMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.UsesInkBrush -or -not $_.EmphasisPreserved -or -not $_.NoteCardBackground }).Count -ne 0) {
+    throw 'A reminder-center source-label measurement failed InkBrush, chapter emphasis, or 4.5:1 contrast against the note card.'
+}
+$dialogContrast = $validation.SystemDialogPrimaryButtonContrast
+if (-not $dialogContrast.TextContrast -or -not $dialogContrast.UsesDaytimeMainActionColors) {
+    throw 'Settings-restore or activation-failure primary buttons do not use daytime main-action #A24438 with primary button text at 4.5:1.'
+}
+$dialogMeasurements = @($dialogContrast.Measurements)
+if ($dialogMeasurements.Count -ne 2 -or ((@($dialogMeasurements.Window) | Sort-Object) -join ',') -ne 'InstanceActivationFailure,SettingsRecovery') {
+    throw 'System-dialog primary-button contrast must measure the settings-restore and activation-failure windows.'
+}
+if (@($dialogMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or [string] $_.Background -ne '#FFA24438' -or [string] $_.Foreground -ne '#FFFFFDFC' }).Count -ne 0) {
+    throw 'A system-dialog primary button is not #A24438 on #FFFDFC at 4.5:1.'
+}
+$nightFocus = $validation.NightKeyboardFocusContrast
+if (-not $nightFocus.NightPairsMeetContrast -or -not $nightFocus.RingsUseExpectedTokens -or -not $nightFocus.PinKeepsWarmGold -or -not $nightFocus.HoverTokenDistinctAtNight) {
+    throw 'Night keyboard focus rings do not use warm-gold at 3:1, or day/pin/hover semantics drifted.'
+}
+$nightFocusMeasurements = @($nightFocus.Measurements)
+if ($nightFocusMeasurements.Count -ne 3 -or ((@($nightFocusMeasurements.Surface) | Sort-Object) -join ',') -ne 'Canvas,Note,NoteStatusHeader') {
+    throw 'Night keyboard-focus contrast must measure canvas, status header, and note-card pairs.'
+}
+if (@($nightFocusMeasurements | Where-Object { [double] $_.ContrastRatio -lt 3 }).Count -ne 0) {
+    throw 'A night keyboard-focus pair is below the 3:1 non-text contrast gate.'
+}
+$focusRings = @($nightFocus.Rings)
+if ($focusRings.Count -ne 2 -or ((@($focusRings.Theme) | Sort-Object) -join ',') -ne 'Day,Night') {
+    throw 'Keyboard focus-ring measurements must contain exact day/night samples.'
+}
+if (@($focusRings | Where-Object { -not $_.UsesExpectedToken -or -not $_.RingVisible }).Count -ne 0) {
+    throw 'A keyboard focus ring is missing or not bound to ActiveBrush by day / MainActionFocusBrush by night.'
+}
+$comboClick = $validation.ComboBoxTextClick
+if (-not $comboClick.TextClickOpens -or -not $comboClick.ArrowPressOpens -or -not $comboClick.KeyboardPathsWork -or -not $comboClick.DisabledClickDoesNotOpen -or -not $comboClick.PopupItemClickSelects) {
+    throw 'ComboBox text-surface click, arrow Press, keyboard, disabled, or popup item paths failed.'
+}
+if ([int] $comboClick.ComboCount -lt 14) {
+    throw "ComboBox text-click coverage is incomplete: $($comboClick.ComboCount)"
+}
+if (@($comboClick.Measurements | Where-Object { -not $_.ReleaseOpened -or -not $_.Attached -or -not $_.ArrowColumnUnchanged }).Count -ne 0) {
+    throw 'A production ComboBox did not open from its text surface or changed arrow-column geometry.'
+}
+$secondaryDrag = $validation.SecondaryWindowHeaderDrag
+if (-not $secondaryDrag.HeaderRequestsDrag -or -not $secondaryDrag.ManualPositionPersists -or -not $secondaryDrag.InteractiveControlsDoNotDrag -or -not $secondaryDrag.ReminderCenterFirstAppearanceTopRight -or -not $secondaryDrag.CloseCancelledWithItems -or -not $secondaryDrag.ResizeGripUnchanged) {
+    throw 'Reminder-center or rules-editor header drag, first-show placement, close-cancel, or resize-grip contract failed.'
+}
+if (-not $validation.CalendarNavigationAccessibleNames) {
+    throw "Calendar month buttons are not named 上一个月/下一个月 (previous='$($validation.CalendarPreviousMonthAccessibleName)', next='$($validation.CalendarNextMonthAccessibleName)')."
+}
+if ($validation.NightKeyboardFocusBaselineFramesAffected) {
+    throw 'Night keyboard-focus pixel baseline frames were marked affected without regenerating manifests.'
+}
+if ([string] $validation.NightKeyboardFocusBaselineEvidence -notmatch '2026-09-02-v18') {
+    throw 'Night keyboard-focus baseline evidence does not record the regenerated 2026-09-02-v18 frames.'
+}
+if (-not $validation.AuditContrastGateIsolationBehavior) { throw 'Audit contrast negative fixtures cannot fail independently.' }
 if (-not $validation.DangerButtonContrast) { throw 'The destructive confirmation button loses required text contrast when hovered or pressed.' }
 if (-not $validation.DestructiveConfirmationIsSafe) { throw 'A destructive confirmation still makes deletion the Enter default action.' }
 if (-not $validation.MainInitialFocusIsSafeAndDeterministic) { throw 'The main window has no deterministic safe initial focus contract.' }

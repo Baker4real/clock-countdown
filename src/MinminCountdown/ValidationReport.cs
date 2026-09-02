@@ -124,7 +124,7 @@ internal static class ValidationReport
             "Bottom",
             "long-notes-night-bottom.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-08-23-v17";
+    private const string MainReferenceBaselineVersion = "2026-09-02-v18";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -502,7 +502,7 @@ internal static class ValidationReport
         var toolTip = new ToolTip { Content = "主题提示" };
         toolTip.ApplyTemplate();
         var toolTipMaterializes = toolTip.Template is not null;
-        var contrast = ValidateThemeContrast();
+        var contrast = ValidateThemeContrast(theme, workspaceSnapshot.UtcNow);
         var dangerContrast = ContrastRatio(
             (Color)Application.Current.FindResource("CanvasColor"),
             (Color)Application.Current.FindResource("DangerColor")) >= 4.5;
@@ -829,6 +829,16 @@ internal static class ValidationReport
             ValidateTagChipTextContrast(theme, main, workspaceSnapshot.UtcNow);
         var noteCompletedAuxiliaryContrast =
             ValidateNoteCompletedAuxiliaryContrast(theme, main, workspaceSnapshot.UtcNow);
+        var reminderCenterSourceLabelContrast =
+            ValidateReminderCenterSourceLabelContrast(theme, workspaceSnapshot.UtcNow);
+        var systemDialogPrimaryButtonContrast = ValidateSystemDialogPrimaryButtonContrast();
+        var nightKeyboardFocusContrast =
+            ValidateNightKeyboardFocusContrast(theme, main, workspaceSnapshot.UtcNow);
+        var comboBoxTextClick = ValidateComboBoxTextClick(main);
+        var secondaryWindowDrag = ValidateSecondaryWindowDrag(main);
+        var calendarNavigationNames = WindowValidationInput.ReadCalendarNavigationNames(datePicker);
+        var auditContrastGateIsolationBehavior =
+            ValidationExercises.RunAuditContrastGateIsolationBehavior();
         var floatingManualPlacement = floatingWindowScenarios.ManualPlacement;
         var mainReferenceDecorationValidation = ValidateMainReferenceDecorationScaling(main);
         var mainNightReferenceGeometry = ValidateMainNightReferenceGeometry(main);
@@ -1218,6 +1228,20 @@ internal static class ValidationReport
             ["TagChipTextContrast"] = tagChipTextContrast,
             ["ThemedInteractiveStates"] = mainThemeTemplate && comboThemed && dateFamilyThemed,
             ["ThemeTextContrast"] = contrast,
+            ["ReminderCenterSourceLabelContrast"] = reminderCenterSourceLabelContrast,
+            ["SystemDialogPrimaryButtonContrast"] = systemDialogPrimaryButtonContrast,
+            ["NightKeyboardFocusContrast"] = nightKeyboardFocusContrast,
+            ["ComboBoxTextClick"] = comboBoxTextClick,
+            ["SecondaryWindowHeaderDrag"] = secondaryWindowDrag,
+            ["CalendarPreviousMonthAccessibleName"] = calendarNavigationNames.Previous,
+            ["CalendarNextMonthAccessibleName"] = calendarNavigationNames.Next,
+            ["CalendarNavigationAccessibleNames"] =
+                string.Equals(calendarNavigationNames.Previous, "上一个月", StringComparison.Ordinal) &&
+                string.Equals(calendarNavigationNames.Next, "下一个月", StringComparison.Ordinal),
+            ["NightKeyboardFocusBaselineFramesAffected"] = false,
+            ["NightKeyboardFocusBaselineEvidence"] =
+                "Night 12-frame captures include the initial CountdownTab keyboard focus ring, so night frames were regenerated into 2026-09-02-v18; day frames were recaptured with unchanged ActiveBrush focus color.",
+            ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["EffectiveThemeTextContrast"] = contrast,
             ["DestructiveConfirmationIsSafe"] = confirmationThemed && confirmationCancelSafeDefault,
@@ -11927,22 +11951,540 @@ internal static class ValidationReport
             ? solidColorBrush.Color.ToString()
             : string.Empty;
 
-    private static bool ValidateThemeContrast()
+    private static bool BrushMatchesExpected(Brush? actual, object expected) =>
+        ReferenceEquals(actual, expected) ||
+        (actual is SolidColorBrush actualBrush &&
+         expected is SolidColorBrush expectedBrush &&
+         actualBrush.Color == expectedBrush.Color);
+
+    private static bool ValidateThemeContrast(ApplicationTheme theme, DateTimeOffset restoreUtc)
     {
-        var canvas = (Color)Application.Current.FindResource("CanvasColor");
-        var ink = (Color)Application.Current.FindResource("InkColor");
-        var body = (Color)Application.Current.FindResource("BodyColor");
-        var muted = (Color)Application.Current.FindResource("MutedColor");
-        var tag = (Color)Application.Current.FindResource("TagColor");
-        var segmentSelected = (Color)Application.Current.FindResource("SegmentSelectedColor");
-        var segmentSelectedForeground =
-            (Color)Application.Current.FindResource("SegmentSelectedForegroundColor");
-        return
-            ContrastRatio(canvas, ink) >= 7 &&
-            ContrastRatio(canvas, body) >= 4.5 &&
-            ContrastRatio(canvas, muted) >= 4.5 &&
-            ContrastRatio(tag, (Color)Application.Current.FindResource("TagChipTextColor")) >= 4.5 &&
-            ContrastRatio(segmentSelected, segmentSelectedForeground) >= 4.5;
+        var dialogForeground = Color.FromRgb(0xFF, 0xFD, 0xFC);
+        var dialogBackground = Color.FromRgb(0xA2, 0x44, 0x38);
+        var dialogPair = ContrastRatio(dialogForeground, dialogBackground) >= 4.5;
+        try
+        {
+            foreach (var mode in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
+            {
+                theme.Apply(mode);
+                var canvas = (Color)Application.Current.FindResource("CanvasColor");
+                var ink = (Color)Application.Current.FindResource("InkColor");
+                var body = (Color)Application.Current.FindResource("BodyColor");
+                var muted = (Color)Application.Current.FindResource("MutedColor");
+                var tag = (Color)Application.Current.FindResource("TagColor");
+                var note = (Color)Application.Current.FindResource("NoteColor");
+                var noteStatusHeader = (Color)Application.Current.FindResource("NoteStatusHeaderColor");
+                var segmentSelected = (Color)Application.Current.FindResource("SegmentSelectedColor");
+                var segmentSelectedForeground =
+                    (Color)Application.Current.FindResource("SegmentSelectedForegroundColor");
+                var pairs =
+                    ContrastRatio(canvas, ink) >= 7 &&
+                    ContrastRatio(canvas, body) >= 4.5 &&
+                    ContrastRatio(canvas, muted) >= 4.5 &&
+                    ContrastRatio(note, ink) >= 4.5 &&
+                    ContrastRatio(tag, (Color)Application.Current.FindResource("TagChipTextColor")) >= 4.5 &&
+                    ContrastRatio(segmentSelected, segmentSelectedForeground) >= 4.5;
+                if (!pairs)
+                {
+                    return false;
+                }
+
+                if (mode == ApplicationThemeMode.Night)
+                {
+                    var focus = (Color)Application.Current.FindResource("MainActionFocusColor");
+                    if (ContrastRatio(focus, canvas) < 3 ||
+                        ContrastRatio(focus, noteStatusHeader) < 3 ||
+                        ContrastRatio(focus, note) < 3)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return dialogPair;
+        }
+        finally
+        {
+            theme.Apply(restoreUtc);
+        }
+    }
+
+    private static ReminderCenterSourceLabelContrastValidation ValidateReminderCenterSourceLabelContrast(
+        ApplicationTheme theme,
+        DateTimeOffset restoreUtc)
+    {
+        var window = new ReminderCenterWindow
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        window.AddEntry(new ReminderCenterItem(
+            new ActiveReminderOccurrenceKey(
+                "source-label-note-rule",
+                new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero)),
+            new NoteRecord(
+                "source-label-note",
+                "来源标签验证便签",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        window.AddEntry(new ReminderCenterItem(
+            new ActiveReminderOccurrenceKey(
+                "source-label-countdown-rule",
+                new DateTimeOffset(2031, 4, 5, 2, 0, 0, TimeSpan.Zero)),
+            new CountdownReminderSource(new CountdownRecord(
+                "source-label-countdown",
+                "来源标签验证倒计时",
+                new DateTimeOffset(2031, 5, 1, 0, 0, 0, TimeSpan.Zero),
+                Array.Empty<string>())),
+            1,
+            0));
+        var measurements = new List<ReminderCenterSourceLabelContrastMeasurement>();
+        try
+        {
+            window.Show();
+            PumpDispatcher();
+            foreach (var checkpoint in new[]
+                     {
+                         (ApplicationThemeMode.Day, "Day"),
+                         (ApplicationThemeMode.Night, "Night")
+                     })
+            {
+                theme.Apply(checkpoint.Item1);
+                PumpDispatcher();
+                var expectedFontSize = (double)Application.Current.FindResource("SecondaryWindowSectionFontSize");
+                var ink = Application.Current.FindResource("InkBrush");
+                var note = Application.Current.FindResource("NoteBrush");
+                foreach (var kind in new[] { "便签", "倒计时" })
+                {
+                    var label = Descendants<TextBlock>(window)
+                        .Single(text => string.Equals(text.Text, kind, StringComparison.Ordinal));
+                    var card = FindAncestor<Border>(label);
+                    var foreground = label.Foreground as SolidColorBrush;
+                    var background = card?.Background as SolidColorBrush;
+                    var ratio = foreground is not null && background is not null
+                        ? ContrastRatio(foreground.Color, background.Color)
+                        : 0;
+                    measurements.Add(new ReminderCenterSourceLabelContrastMeasurement(
+                        checkpoint.Item2,
+                        kind,
+                        foreground?.Color.ToString() ?? string.Empty,
+                        background?.Color.ToString() ?? string.Empty,
+                        ratio,
+                        ReferenceEquals(label.Foreground, ink),
+                        label.FontWeight == FontWeights.SemiBold &&
+                            Math.Abs(label.FontSize - expectedFontSize) < 0.01,
+                        ReferenceEquals(card?.Background, note)));
+                }
+            }
+
+            return new ReminderCenterSourceLabelContrastValidation(
+                measurements.Count == 4 &&
+                    measurements.All(measurement => measurement.ContrastRatio >= 4.5),
+                measurements.All(measurement => measurement.UsesInkBrush),
+                measurements.All(measurement => measurement.EmphasisPreserved),
+                measurements.All(measurement => measurement.NoteCardBackground),
+                measurements);
+        }
+        finally
+        {
+            theme.Apply(restoreUtc);
+            window.ForceClose();
+        }
+    }
+
+    private static SystemDialogPrimaryButtonContrastValidation ValidateSystemDialogPrimaryButtonContrast()
+    {
+        var recovery = SettingsRecoveryWindow.CreateForValidation("设置恢复对比度验证", true);
+        var activation = InstanceActivationFailureWindow.CreateForValidation();
+        try
+        {
+            var recoveryButton = LogicalDescendants<Button>(recovery)
+                .Single(button =>
+                    string.Equals(AutomationProperties.GetName(button), "恢复备份", StringComparison.Ordinal));
+            var activationButton = LogicalDescendants<Button>(activation)
+                .Single(button =>
+                    string.Equals(
+                        AutomationProperties.GetName(button),
+                        InstanceActivationFailureWindow.DismissButtonText,
+                        StringComparison.Ordinal));
+            var measurements = new[]
+            {
+                MeasureSystemDialogPrimaryButton("SettingsRecovery", recoveryButton),
+                MeasureSystemDialogPrimaryButton("InstanceActivationFailure", activationButton)
+            };
+            return new SystemDialogPrimaryButtonContrastValidation(
+                measurements.All(measurement => measurement.ContrastRatio >= 4.5),
+                measurements.All(measurement =>
+                    string.Equals(measurement.Background, "#FFA24438", StringComparison.Ordinal) &&
+                    string.Equals(measurement.Foreground, "#FFFFFDFC", StringComparison.Ordinal)),
+                measurements);
+        }
+        finally
+        {
+            recovery.Close();
+            activation.Close();
+        }
+    }
+
+    private static SystemDialogPrimaryButtonContrastMeasurement MeasureSystemDialogPrimaryButton(
+        string window,
+        Button button)
+    {
+        var background = button.Background as SolidColorBrush;
+        var foreground = button.Foreground as SolidColorBrush;
+        var ratio = background is not null && foreground is not null
+            ? ContrastRatio(background.Color, foreground.Color)
+            : 0;
+        return new SystemDialogPrimaryButtonContrastMeasurement(
+            window,
+            foreground?.Color.ToString() ?? string.Empty,
+            background?.Color.ToString() ?? string.Empty,
+            ratio);
+    }
+
+    private static NightKeyboardFocusContrastValidation ValidateNightKeyboardFocusContrast(
+        ApplicationTheme theme,
+        MainWindow main,
+        DateTimeOffset restoreUtc)
+    {
+        var probe = new Button { Content = "焦点环验证", MinWidth = 80 };
+        var host = new Window
+        {
+            Content = probe,
+            Width = 200,
+            Height = 80,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        var measurements = new List<NightKeyboardFocusContrastMeasurement>();
+        var ringMeasurements = new List<KeyboardFocusRingMeasurement>();
+        try
+        {
+            host.Show();
+            host.Activate();
+            PumpDispatcher();
+            foreach (var checkpoint in new[]
+                     {
+                         (ApplicationThemeMode.Day, "Day"),
+                         (ApplicationThemeMode.Night, "Night")
+                     })
+            {
+                theme.Apply(checkpoint.Item1);
+                main.ApplyTheme(checkpoint.Item1);
+                PumpDispatcher();
+                var expected = checkpoint.Item1 == ApplicationThemeMode.Night
+                    ? Application.Current.FindResource("MainActionFocusBrush")
+                    : Application.Current.FindResource("ActiveBrush");
+                Keyboard.Focus(probe);
+                PumpDispatcher();
+                probe.ApplyTemplate();
+                var surface = probe.Template?.FindName("Surface", probe) as Border;
+                var probeUsesExpected = BrushMatchesExpected(surface?.BorderBrush, expected);
+                var countdownTab = Required<ToggleButton>(main, "CountdownTab");
+                main.Activate();
+                Keyboard.Focus(countdownTab);
+                PumpDispatcher();
+                countdownTab.ApplyTemplate();
+                var tabSurface = countdownTab.Template?.FindName("Surface", countdownTab) as Border;
+                var usesExpected =
+                    probeUsesExpected &&
+                    BrushMatchesExpected(tabSurface?.BorderBrush, expected);
+                ringMeasurements.Add(new KeyboardFocusRingMeasurement(
+                    checkpoint.Item2,
+                    BrushColor(tabSurface?.BorderBrush),
+                    usesExpected,
+                    tabSurface is not null &&
+                        new[]
+                        {
+                            tabSurface.BorderThickness.Left,
+                            tabSurface.BorderThickness.Top,
+                            tabSurface.BorderThickness.Right,
+                            tabSurface.BorderThickness.Bottom
+                        }.Max() >= 2));
+
+                if (checkpoint.Item1 == ApplicationThemeMode.Night &&
+                    tabSurface?.BorderBrush is SolidColorBrush focusBrush)
+                {
+                    foreach (var pair in new[]
+                             {
+                                 ("Canvas", (Color)Application.Current.FindResource("CanvasColor")),
+                                 ("NoteStatusHeader", (Color)Application.Current.FindResource("NoteStatusHeaderColor")),
+                                 ("Note", (Color)Application.Current.FindResource("NoteColor"))
+                             })
+                    {
+                        measurements.Add(new NightKeyboardFocusContrastMeasurement(
+                            pair.Item1,
+                            ContrastRatio(focusBrush.Color, pair.Item2)));
+                    }
+                }
+            }
+
+            var pin = Required<CheckBox>(main, "TopmostCheck");
+            theme.Apply(ApplicationThemeMode.Night);
+            main.ApplyTheme(ApplicationThemeMode.Night);
+            PumpDispatcher();
+            main.Activate();
+            Keyboard.Focus(pin);
+            PumpDispatcher();
+            pin.ApplyTemplate();
+            var pinBox = pin.Template?.FindName("Box", pin) as Border;
+            var pinKeepsWarmGold =
+                pinBox?.BorderBrush is SolidColorBrush pinBrush &&
+                Application.Current.FindResource("MainActionFocusBrush") is SolidColorBrush pinExpected &&
+                pinBrush.Color == pinExpected.Color;
+
+            var hoverUnchanged =
+                Application.Current.FindResource("ActiveBrush") is SolidColorBrush active &&
+                Application.Current.FindResource("MainActionFocusBrush") is SolidColorBrush nightFocus &&
+                active.Color != nightFocus.Color;
+
+            return new NightKeyboardFocusContrastValidation(
+                measurements.Count == 3 && measurements.All(measurement => measurement.ContrastRatio >= 3),
+                ringMeasurements.All(measurement => measurement.UsesExpectedToken && measurement.RingVisible),
+                pinKeepsWarmGold,
+                hoverUnchanged,
+                measurements,
+                ringMeasurements);
+        }
+        finally
+        {
+            var restoreMode = theme.Apply(restoreUtc);
+            main.ApplyTheme(restoreMode);
+            host.Close();
+            PumpDispatcher();
+        }
+    }
+
+    private static ComboBoxTextClickValidation ValidateComboBoxTextClick(MainWindow main)
+    {
+        ReminderCenterWindow? reminderCenter = null;
+        ReminderRulesEditorWindow? rulesEditor = null;
+        try
+        {
+            var mainResults = new[]
+            {
+                MeasureCombo("Main.CountdownHour", Required<ComboBox>(main, "CountdownHour")),
+                MeasureCombo("Main.CountdownMinute", Required<ComboBox>(main, "CountdownMinute")),
+                MeasureCombo("Main.CountdownSecond", Required<ComboBox>(main, "CountdownSecond")),
+                MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision"))
+            };
+
+            reminderCenter = new ReminderCenterWindow
+            {
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            reminderCenter.AddEntry(new ReminderCenterItem(
+                new ActiveReminderOccurrenceKey(
+                    "combo-click-rule",
+                    new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero)),
+                new NoteRecord(
+                    "combo-click-note",
+                    "下拉点击验证",
+                    "2031-04-05",
+                    false,
+                    Array.Empty<string>(),
+                    NoReminder.Instance),
+                0,
+                0));
+            reminderCenter.Show();
+            PumpDispatcher();
+            var snoozeChoice = Descendants<ComboBox>(reminderCenter).Single(comboBox =>
+                AutomationProperties.GetName(comboBox).StartsWith("稍后提醒时间：", StringComparison.Ordinal));
+            snoozeChoice.SelectedItem = snoozeChoice.Items
+                .OfType<ComboBoxItem>()
+                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            PumpDispatcher();
+            var reminderResults = Descendants<ComboBox>(reminderCenter)
+                .Select(comboBox => MeasureCombo(AutomationProperties.GetName(comboBox), comboBox))
+                .ToArray();
+
+            rulesEditor = new ReminderRulesEditorWindow(
+                Array.Empty<ReminderRule>(),
+                new ValidationClock(new DateTimeOffset(2031, 4, 5, 0, 0, 0, TimeSpan.Zero)))
+            {
+                Owner = main,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            rulesEditor.Show();
+            PumpDispatcher();
+            var editorResults = Descendants<ComboBox>(rulesEditor)
+                .Select(comboBox =>
+                    MeasureCombo(AutomationProperties.GetAutomationId(comboBox), comboBox))
+                .ToArray();
+
+            var all = mainResults.Concat(reminderResults).Concat(editorResults).ToArray();
+            return new ComboBoxTextClickValidation(
+                all.All(result => result.ReleaseOpened && result.Attached && result.ArrowColumnUnchanged),
+                all.All(result => result.ArrowPressOpens),
+                all.All(result => result.KeyboardF4Opens && result.KeyboardAltDownOpens && result.KeyboardArrowsKeepOpen),
+                all.All(result => result.DisabledClickDoesNotOpen),
+                all.All(result => result.PopupItemClickSelects),
+                all.Length,
+                all);
+        }
+        finally
+        {
+            rulesEditor?.Close();
+            reminderCenter?.ForceClose();
+        }
+    }
+
+    private static ComboBoxPointerExerciseResult MeasureCombo(string name, ComboBox comboBox)
+    {
+        _ = name;
+        return WindowValidationInput.ExerciseComboBox(comboBox);
+    }
+
+    private static SecondaryWindowHeaderDragValidation ValidateSecondaryWindowDrag(MainWindow main)
+    {
+        var reminder = new ReminderCenterWindow
+        {
+            ShowInTaskbar = false,
+            Opacity = 0
+        };
+        reminder.AddEntry(new ReminderCenterItem(
+            new ActiveReminderOccurrenceKey(
+                "header-drag-rule",
+                new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero)),
+            new NoteRecord(
+                "header-drag-note",
+                "头部拖动验证",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        var editor = new ReminderRulesEditorWindow(
+            Array.Empty<ReminderRule>(),
+            new ValidationClock(new DateTimeOffset(2031, 4, 5, 0, 0, 0, TimeSpan.Zero)))
+        {
+            Owner = main,
+            ShowInTaskbar = false,
+            Opacity = 0
+        };
+        try
+        {
+            reminder.Show();
+            PumpDispatcher();
+            reminder.UpdateLayout();
+            var workArea = SystemParameters.WorkArea;
+            var firstLeft = reminder.Left;
+            var firstTop = reminder.Top;
+            var firstAppearanceTopRight =
+                Math.Abs(firstLeft - (workArea.Right - reminder.ActualWidth - 18)) <= 1.5 &&
+                Math.Abs(firstTop - (workArea.Top + 18)) <= 1.5;
+
+            var reminderRequestsBefore = reminder.NativeWindowDragRequestCount;
+            reminder.DragHeader.RaiseEvent(CreateHeaderDragGesture());
+            PumpDispatcher();
+            var reminderHeaderRequestsDrag =
+                reminder.NativeWindowDragRequestCount == reminderRequestsBefore + 1 &&
+                reminder.NativeWindowDragCompletionCount == 0;
+            var movedLeft = workArea.Left + 48;
+            var movedTop = workArea.Top + 64;
+            reminder.Left = movedLeft;
+            reminder.Top = movedTop;
+            reminder.ReapplyPlacement();
+            PumpDispatcher();
+            var reminderKeepsManual =
+                reminder.HasManualWindowPlacement &&
+                Math.Abs(reminder.Left - movedLeft) <= 0.5 &&
+                Math.Abs(reminder.Top - movedTop) <= 0.5;
+
+            var interactive = Descendants<Button>(reminder).First();
+            interactive.RaiseEvent(CreateHeaderDragGesture());
+            PumpDispatcher();
+            var reminderInteractiveDoesNotDrag =
+                reminder.NativeWindowDragRequestCount == reminderRequestsBefore + 1;
+
+            var closingCancelled = false;
+            reminder.Closing += (_, args) => closingCancelled = args.Cancel;
+            reminder.Close();
+            PumpDispatcher();
+            var closeCancelledWithItems = closingCancelled && reminder.IsVisible && reminder.EntryCount > 0;
+
+            editor.Show();
+            PumpDispatcher();
+            editor.UpdateLayout();
+            var editorRequestsBefore = editor.NativeWindowDragRequestCount;
+            editor.DragHeader.RaiseEvent(CreateHeaderDragGesture());
+            PumpDispatcher();
+            var editorHeaderRequestsDrag =
+                editor.NativeWindowDragRequestCount == editorRequestsBefore + 1 &&
+                editor.NativeWindowDragCompletionCount == 0;
+            var editorMovedLeft = workArea.Left + 72;
+            editor.Left = editorMovedLeft;
+            editor.ReapplyPlacement();
+            PumpDispatcher();
+            var editorKeepsManual =
+                editor.HasManualWindowPlacement &&
+                Math.Abs(editor.Left - editorMovedLeft) <= 0.5;
+            var editorAccept = Descendants<Button>(editor).First(button =>
+                string.Equals(button.Content?.ToString(), "完成", StringComparison.Ordinal));
+            var editorRequestsBeforeInteractive = editor.NativeWindowDragRequestCount;
+            editorAccept.RaiseEvent(CreateHeaderDragGesture());
+            PumpDispatcher();
+            var editorInteractiveDoesNotDrag =
+                editor.NativeWindowDragRequestCount == editorRequestsBeforeInteractive;
+            var resizeModeUnchanged =
+                reminder.ResizeMode == ResizeMode.CanResizeWithGrip &&
+                editor.ResizeMode == ResizeMode.CanResizeWithGrip;
+
+            return new SecondaryWindowHeaderDragValidation(
+                reminderHeaderRequestsDrag && editorHeaderRequestsDrag,
+                reminderKeepsManual && editorKeepsManual,
+                reminderInteractiveDoesNotDrag && editorInteractiveDoesNotDrag,
+                firstAppearanceTopRight,
+                closeCancelledWithItems,
+                resizeModeUnchanged);
+        }
+        finally
+        {
+            editor.Close();
+            reminder.ForceClose();
+        }
+    }
+
+    private static MouseButtonEventArgs CreateHeaderDragGesture() =>
+        new(
+            Mouse.PrimaryDevice,
+            Environment.TickCount,
+            MouseButton.Left)
+        {
+            RoutedEvent = UIElement.MouseLeftButtonDownEvent
+        };
+
+    private static T? FindAncestor<T>(DependencyObject source)
+        where T : DependencyObject
+    {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
     }
 
     private static bool MainSegmentButtonsHaveAccessibleSelectedStates(MainWindow main)
@@ -12688,6 +13230,23 @@ internal static class ValidationReport
     {
         return root.FindName(name) as T
             ?? throw new InvalidOperationException($"验证控件缺失：{name}");
+    }
+
+    private static IEnumerable<T> LogicalDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+        {
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in LogicalDescendants<T>(child))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root)
@@ -14056,6 +14615,69 @@ internal static class ValidationReport
         internal override bool IsForegroundOrActive(FloatingWindow window, IntPtr handle) =>
             _allow && base.IsForegroundOrActive(window, handle);
     }
+
+    private sealed record ReminderCenterSourceLabelContrastMeasurement(
+        string Theme,
+        string SourceKind,
+        string Foreground,
+        string Background,
+        double ContrastRatio,
+        bool UsesInkBrush,
+        bool EmphasisPreserved,
+        bool NoteCardBackground);
+
+    private sealed record ReminderCenterSourceLabelContrastValidation(
+        bool TextContrast,
+        bool UsesInkBrush,
+        bool EmphasisPreserved,
+        bool NoteCardBackground,
+        IReadOnlyList<ReminderCenterSourceLabelContrastMeasurement> Measurements);
+
+    private sealed record SystemDialogPrimaryButtonContrastMeasurement(
+        string Window,
+        string Foreground,
+        string Background,
+        double ContrastRatio);
+
+    private sealed record SystemDialogPrimaryButtonContrastValidation(
+        bool TextContrast,
+        bool UsesDaytimeMainActionColors,
+        IReadOnlyList<SystemDialogPrimaryButtonContrastMeasurement> Measurements);
+
+    private sealed record NightKeyboardFocusContrastMeasurement(
+        string Surface,
+        double ContrastRatio);
+
+    private sealed record KeyboardFocusRingMeasurement(
+        string Theme,
+        string BorderColor,
+        bool UsesExpectedToken,
+        bool RingVisible);
+
+    private sealed record NightKeyboardFocusContrastValidation(
+        bool NightPairsMeetContrast,
+        bool RingsUseExpectedTokens,
+        bool PinKeepsWarmGold,
+        bool HoverTokenDistinctAtNight,
+        IReadOnlyList<NightKeyboardFocusContrastMeasurement> Measurements,
+        IReadOnlyList<KeyboardFocusRingMeasurement> Rings);
+
+    private sealed record ComboBoxTextClickValidation(
+        bool TextClickOpens,
+        bool ArrowPressOpens,
+        bool KeyboardPathsWork,
+        bool DisabledClickDoesNotOpen,
+        bool PopupItemClickSelects,
+        int ComboCount,
+        IReadOnlyList<ComboBoxPointerExerciseResult> Measurements);
+
+    private sealed record SecondaryWindowHeaderDragValidation(
+        bool HeaderRequestsDrag,
+        bool ManualPositionPersists,
+        bool InteractiveControlsDoNotDrag,
+        bool ReminderCenterFirstAppearanceTopRight,
+        bool CloseCancelledWithItems,
+        bool ResizeGripUnchanged);
 
     private sealed class ValidationClock : IClock
     {

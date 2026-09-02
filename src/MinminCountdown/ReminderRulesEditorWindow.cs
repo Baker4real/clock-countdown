@@ -61,6 +61,10 @@ internal sealed class ReminderRulesEditorWindow : Window
         Margin = new Thickness(8, 0, 0, 0),
         Visibility = Visibility.Collapsed
     };
+    private Border _dragHeader = null!;
+    private bool _hasManualWindowPlacement;
+    private int _nativeWindowDragRequestCount;
+    private int _nativeWindowDragCompletionCount;
 
     internal ReminderRulesEditorWindow(
         IReadOnlyList<ReminderRule> initialRules,
@@ -102,6 +106,33 @@ internal sealed class ReminderRulesEditorWindow : Window
     }
 
     internal IReadOnlyList<ReminderRule> ResultRules { get; private set; }
+
+    internal bool HasManualWindowPlacement => _hasManualWindowPlacement;
+
+    internal int NativeWindowDragRequestCount => _nativeWindowDragRequestCount;
+
+    internal int NativeWindowDragCompletionCount => _nativeWindowDragCompletionCount;
+
+    internal Border DragHeader => _dragHeader;
+
+    internal void ReapplyPlacement()
+    {
+        if (_hasManualWindowPlacement)
+        {
+            return;
+        }
+    }
+
+    private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)
+    {
+        SecondaryWindowChrome.DragFromHeader(
+            this,
+            eventArgs,
+            _dragHeader,
+            () => _hasManualWindowPlacement = true,
+            ref _nativeWindowDragRequestCount,
+            ref _nativeWindowDragCompletionCount);
+    }
 
     private void ConfigureControls()
     {
@@ -166,6 +197,13 @@ internal sealed class ReminderRulesEditorWindow : Window
         }
         BuildCalendarSelector();
         ThemedDatePickerBehavior.Attach(_firstDueDate);
+        ThemedComboBoxBehavior.Attach(_mode);
+        ThemedComboBoxBehavior.Attach(_firstDueHour);
+        ThemedComboBoxBehavior.Attach(_firstDueMinute);
+        ThemedComboBoxBehavior.Attach(_interval);
+        ThemedComboBoxBehavior.Attach(_calendarFrequency);
+        ThemedComboBoxBehavior.Attach(_calendarMonth);
+        ThemedComboBoxBehavior.Attach(_calendarDay);
 
         NameControl(_mode, "提醒规则类型");
         NameControl(_firstDueDate, "首次提醒日期");
@@ -226,9 +264,22 @@ internal sealed class ReminderRulesEditorWindow : Window
         _countText.VerticalAlignment = VerticalAlignment.Center;
         _countText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
         _countText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-        var header = new StackPanel { Orientation = Orientation.Horizontal };
-        header.Children.Add(heading);
-        header.Children.Add(_countText);
+        var titleRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        titleRow.Children.Add(heading);
+        titleRow.Children.Add(_countText);
+        _dragHeader = new Border
+        {
+            Child = titleRow,
+            Background = Brushes.Transparent,
+            Cursor = Cursors.SizeAll,
+            Padding = new Thickness(0, 4, 0, 4)
+        };
+        AutomationProperties.SetAutomationId(_dragHeader, "ReminderRulesEditorDragHeader");
+        _dragHeader.MouseLeftButtonDown += OnHeaderMouseLeftButtonDown;
 
         var scroller = new ScrollViewer
         {
@@ -296,7 +347,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         Grid.SetRow(form, 2);
         Grid.SetRow(ruleActions, 3);
         Grid.SetRow(dialogActions, 4);
-        layout.Children.Add(header);
+        layout.Children.Add(_dragHeader);
         layout.Children.Add(scroller);
         layout.Children.Add(form);
         layout.Children.Add(ruleActions);

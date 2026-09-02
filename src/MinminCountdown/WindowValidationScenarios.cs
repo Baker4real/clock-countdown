@@ -1923,6 +1923,22 @@ internal sealed record DatePickerPointerExerciseResult(
     bool ReleaseHandled,
     bool ThemedPopupOpened);
 
+internal sealed record ComboBoxPointerExerciseResult(
+    bool TextSurfacePresent,
+    bool PressInjected,
+    bool PressDidNotOpen,
+    bool ReleaseInjected,
+    bool ReleaseOpened,
+    bool ReleaseHandled,
+    bool ArrowPressOpens,
+    bool KeyboardF4Opens,
+    bool KeyboardAltDownOpens,
+    bool KeyboardArrowsKeepOpen,
+    bool DisabledClickDoesNotOpen,
+    bool PopupItemClickSelects,
+    bool Attached,
+    bool ArrowColumnUnchanged);
+
 internal static class WindowValidationInput
 {
     public static void Pump(Dispatcher dispatcher)
@@ -2130,7 +2146,10 @@ internal static class WindowValidationInput
         return eventArgs.Handled;
     }
 
-    public static bool RaiseKey(UIElement target, Key key)
+    public static bool RaiseKey(UIElement target, Key key) =>
+        RaiseKey(target, key, ModifierKeys.None);
+
+    public static bool RaiseKey(UIElement target, Key key, ModifierKeys modifiers)
     {
         var source = PresentationSource.FromVisual(target);
         if (source is null)
@@ -2146,8 +2165,6 @@ internal static class WindowValidationInput
         {
             RoutedEvent = Keyboard.KeyDownEvent
         };
-        target.RaiseEvent(keyDown);
-
         var keyUp = new KeyEventArgs(
             Keyboard.PrimaryDevice,
             source,
@@ -2156,8 +2173,272 @@ internal static class WindowValidationInput
         {
             RoutedEvent = Keyboard.KeyUpEvent
         };
-        target.RaiseEvent(keyUp);
+        if (modifiers == ModifierKeys.None)
+        {
+            target.RaiseEvent(keyDown);
+            target.RaiseEvent(keyUp);
+        }
+        else
+        {
+            using (MainShortcutInput.InjectModifiers(keyDown, modifiers))
+            {
+                target.RaiseEvent(keyDown);
+            }
+
+            using (MainShortcutInput.InjectModifiers(keyUp, modifiers))
+            {
+                target.RaiseEvent(keyUp);
+            }
+        }
+
         return keyDown.Handled && keyUp.Handled;
+    }
+
+    public static ComboBoxPointerExerciseResult ExerciseComboBox(ComboBox comboBox)
+    {
+        var attached = ThemedComboBoxBehavior.IsAttached(comboBox);
+        var arrowColumnUnchanged = ThemedComboBoxBehavior.HasUnchangedArrowColumn(comboBox);
+        var presenter = ThemedComboBoxBehavior.GetSelectionPresenter(comboBox);
+        var arrow = ThemedComboBoxBehavior.GetArrowToggle(comboBox);
+        if (presenter is null || PresentationSource.FromVisual(comboBox) is null)
+        {
+            return new ComboBoxPointerExerciseResult(
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                attached,
+                arrowColumnUnchanged);
+        }
+
+        comboBox.BringIntoView();
+        Pump(comboBox.Dispatcher);
+        var originalEnabled = comboBox.IsEnabled;
+        var originalIndex = comboBox.SelectedIndex;
+        try
+        {
+            comboBox.IsEnabled = true;
+            comboBox.IsDropDownOpen = false;
+            Pump(comboBox.Dispatcher);
+            RaiseComboTextPointer(comboBox, presenter, UIElement.PreviewMouseLeftButtonDownEvent);
+            Pump(comboBox.Dispatcher);
+            var pressDidNotOpen = !comboBox.IsDropDownOpen;
+            var releaseHandled = RaiseComboTextPointer(
+                comboBox,
+                presenter,
+                UIElement.PreviewMouseLeftButtonUpEvent);
+            Pump(comboBox.Dispatcher);
+            var releaseOpened = comboBox.IsDropDownOpen;
+
+            comboBox.IsDropDownOpen = false;
+            Pump(comboBox.Dispatcher);
+            var arrowPressOpens = false;
+            if (arrow is not null && PresentationSource.FromVisual(arrow) is not null)
+            {
+                arrow.RaiseEvent(new MouseButtonEventArgs(
+                    Mouse.PrimaryDevice,
+                    Environment.TickCount,
+                    MouseButton.Left)
+                {
+                    RoutedEvent = UIElement.MouseLeftButtonDownEvent
+                });
+                Pump(comboBox.Dispatcher);
+                arrowPressOpens = comboBox.IsDropDownOpen;
+            }
+
+            comboBox.IsDropDownOpen = false;
+            Pump(comboBox.Dispatcher);
+            Keyboard.Focus(comboBox);
+            Pump(comboBox.Dispatcher);
+            RaiseKey(comboBox, Key.F4);
+            Pump(comboBox.Dispatcher);
+            var f4Opened = comboBox.IsDropDownOpen;
+
+            comboBox.IsDropDownOpen = false;
+            Pump(comboBox.Dispatcher);
+            Keyboard.Focus(comboBox);
+            Pump(comboBox.Dispatcher);
+            RaisePreviewKey(comboBox, Key.Down, ModifierKeys.Alt);
+            Pump(comboBox.Dispatcher);
+            RaiseKey(comboBox, Key.Down, ModifierKeys.Alt);
+            Pump(comboBox.Dispatcher);
+            var altDownOpened = comboBox.IsDropDownOpen;
+
+            comboBox.IsDropDownOpen = true;
+            Pump(comboBox.Dispatcher);
+            RaiseKey(comboBox, Key.Down);
+            Pump(comboBox.Dispatcher);
+            var arrowsKeepOpen = comboBox.IsDropDownOpen;
+
+            comboBox.IsDropDownOpen = false;
+            Pump(comboBox.Dispatcher);
+            comboBox.IsEnabled = false;
+            RaiseComboTextPointer(comboBox, presenter, UIElement.PreviewMouseLeftButtonDownEvent);
+            Pump(comboBox.Dispatcher);
+            var disabledHandled = RaiseComboTextPointer(
+                comboBox,
+                presenter,
+                UIElement.PreviewMouseLeftButtonUpEvent);
+            Pump(comboBox.Dispatcher);
+            var disabledClickDoesNotOpen = !comboBox.IsDropDownOpen && !disabledHandled;
+            comboBox.IsEnabled = true;
+
+            comboBox.IsDropDownOpen = true;
+            Pump(comboBox.Dispatcher);
+            comboBox.ApplyTemplate();
+            comboBox.UpdateLayout();
+            Pump(comboBox.Dispatcher);
+            var itemIndex = comboBox.Items.Count > 1 ? 1 : 0;
+            var item = comboBox.ItemContainerGenerator.ContainerFromIndex(itemIndex) as ComboBoxItem;
+            var popupItemClickSelects = false;
+            if (item is not null)
+            {
+                item.RaiseEvent(new MouseButtonEventArgs(
+                    Mouse.PrimaryDevice,
+                    Environment.TickCount,
+                    MouseButton.Left)
+                {
+                    RoutedEvent = UIElement.MouseLeftButtonDownEvent
+                });
+                item.RaiseEvent(new MouseButtonEventArgs(
+                    Mouse.PrimaryDevice,
+                    Environment.TickCount,
+                    MouseButton.Left)
+                {
+                    RoutedEvent = UIElement.MouseLeftButtonUpEvent
+                });
+                Pump(comboBox.Dispatcher);
+                popupItemClickSelects =
+                    comboBox.SelectedIndex == itemIndex ||
+                    Equals(comboBox.SelectedItem, comboBox.Items[itemIndex]);
+            }
+
+            return new ComboBoxPointerExerciseResult(
+                true,
+                true,
+                pressDidNotOpen,
+                true,
+                releaseOpened,
+                releaseHandled,
+                arrowPressOpens,
+                f4Opened,
+                altDownOpened,
+                arrowsKeepOpen,
+                disabledClickDoesNotOpen,
+                popupItemClickSelects,
+                attached,
+                arrowColumnUnchanged);
+        }
+        finally
+        {
+            comboBox.IsEnabled = originalEnabled;
+            comboBox.IsDropDownOpen = false;
+            if (originalIndex >= 0 && originalIndex < comboBox.Items.Count)
+            {
+                comboBox.SelectedIndex = originalIndex;
+            }
+
+            Pump(comboBox.Dispatcher);
+        }
+    }
+
+    public static (string Previous, string Next) ReadCalendarNavigationNames(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        var originalOpen = picker.IsDropDownOpen;
+        picker.IsDropDownOpen = true;
+        Pump(picker.Dispatcher);
+        picker.ApplyTemplate();
+        picker.UpdateLayout();
+        Pump(picker.Dispatcher);
+        if (!picker.IsDropDownOpen &&
+            picker.Template.FindName("PART_Button", picker) is Button button)
+        {
+            button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Pump(picker.Dispatcher);
+        }
+
+        var calendar = ThemedDatePickerBehavior.GetCalendar(picker);
+        calendar?.ApplyTemplate();
+        calendar?.UpdateLayout();
+        Pump(picker.Dispatcher);
+        Pump(picker.Dispatcher);
+        var item = calendar?.Template.FindName("PART_CalendarItem", calendar) as CalendarItem;
+        item ??= calendar is null ? null : FindVisualDescendant<CalendarItem>(calendar);
+        item?.ApplyTemplate();
+        item?.UpdateLayout();
+        var previous = item?.Template.FindName("PART_PreviousButton", item) as Button
+            ?? FindCalendarNavigationButton(calendar, "上一个月");
+        var next = item?.Template.FindName("PART_NextButton", item) as Button
+            ?? FindCalendarNavigationButton(calendar, "下一个月");
+        var names = (
+            previous is null ? string.Empty : AutomationProperties.GetName(previous),
+            next is null ? string.Empty : AutomationProperties.GetName(next));
+        picker.IsDropDownOpen = originalOpen;
+        Pump(picker.Dispatcher);
+        return names;
+    }
+
+    private static Button? FindCalendarNavigationButton(DependencyObject? root, string name)
+    {
+        if (root is null)
+        {
+            return null;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is Button button &&
+                (string.Equals(AutomationProperties.GetName(button), name, StringComparison.Ordinal) ||
+                 string.Equals(button.ToolTip as string, name, StringComparison.Ordinal)))
+            {
+                return button;
+            }
+
+            var nested = FindCalendarNavigationButton(child, name);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private static T? FindVisualDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var nested = FindVisualDescendant<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool RaiseComboTextPointer(
+        ComboBox comboBox,
+        ContentPresenter presenter,
+        RoutedEvent routedEvent)
+    {
+        var eventArgs = new MouseButtonEventArgs(
+            Mouse.PrimaryDevice,
+            Environment.TickCount,
+            MouseButton.Left)
+        {
+            RoutedEvent = routedEvent,
+            Source = presenter
+        };
+        comboBox.RaiseEvent(eventArgs);
+        return eventArgs.Handled;
     }
 
     private static bool RaiseDateTextPointer(

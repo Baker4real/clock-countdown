@@ -18,7 +18,7 @@
         <Setter.Value>
           <ControlTemplate>
             <Border Margin="-3"
-                    BorderBrush="{DynamicResource ActiveBrush}"
+                    BorderBrush="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}"
                     BorderThickness="3"
                     CornerRadius="8" />
           </ControlTemplate>
@@ -128,7 +128,7 @@
                         <Setter TargetName="Surface" Property="Opacity" Value="0.92" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
                       </Trigger>
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
@@ -178,7 +178,7 @@
                         <Setter TargetName="Surface" Property="Opacity" Value="0.9" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -334,7 +334,7 @@
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="Box" Property="BorderThickness" Value="2" />
-                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>

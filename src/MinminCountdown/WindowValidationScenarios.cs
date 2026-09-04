@@ -1229,9 +1229,21 @@ public sealed partial class FloatingWindow
                 : sampleNote.Text.Length <= 2
                     ? sampleNote.Text
                     : sampleNote.Text[..Math.Min(4, sampleNote.Text.Length)];
+            var placementLeft = Left;
+            var placementTop = Top;
+            var placementWidth = ActualWidth;
+            var placementHeight = ActualHeight;
             FloatingNoteSearch.Text = matchTerm;
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+            var searchSizeUnchanged =
+                Math.Abs(ActualWidth - placementWidth) <= 0.5 &&
+                Math.Abs(ActualHeight - placementHeight) <= 0.5;
+            var searchRefreshLeavesPlacementUnchanged =
+                !searchSizeUnchanged ||
+                (Math.Abs(Left - placementLeft) <= 0.5 &&
+                 Math.Abs(Top - placementTop) <= 0.5);
             var expectedMatchIds = _desktopWorkspace.Snapshot.VisibleActiveNotes
                 .Select(note => note.Id)
                 .ToArray();
@@ -1495,7 +1507,8 @@ public sealed partial class FloatingWindow
                 longHintTermTrimsWithinSlot,
                 noteFilterEmptyStateDistinguished,
                 countdownFilterEmptyStateDistinguished,
-                searchButtonShowsClosedMagnifier);
+                searchButtonShowsClosedMagnifier,
+                searchRefreshLeavesPlacementUnchanged);
         }
         finally
         {
@@ -1815,7 +1828,8 @@ internal sealed record FloatingNoteSearchValidationScenarios(
     bool LongHintTermTrimsWithinSlot,
     bool NoteFilterEmptyStateDistinguished,
     bool CountdownFilterEmptyStateDistinguished,
-    bool SearchButtonShowsClosedMagnifier)
+    bool SearchButtonShowsClosedMagnifier,
+    bool SearchRefreshLeavesPlacementUnchanged)
 {
     public bool AllPassed =>
         HiddenInCountdowns &&
@@ -1836,7 +1850,8 @@ internal sealed record FloatingNoteSearchValidationScenarios(
         LongHintTermTrimsWithinSlot &&
         NoteFilterEmptyStateDistinguished &&
         CountdownFilterEmptyStateDistinguished &&
-        SearchButtonShowsClosedMagnifier;
+        SearchButtonShowsClosedMagnifier &&
+        SearchRefreshLeavesPlacementUnchanged;
 }
 
 internal sealed record WindowValidationTextFit(

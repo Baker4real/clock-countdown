@@ -427,7 +427,14 @@ public sealed partial class FloatingWindow : Window
 
             Left = workArea.Right + 24;
             Top = workArea.Bottom + 24;
+            var displacedLeft = Left;
+            var displacedTop = Top;
             Refresh();
+            var refreshLeavesManualDisplacement =
+                Math.Abs(Left - displacedLeft) <= 0.5 &&
+                Math.Abs(Top - displacedTop) <= 0.5;
+
+            Reanchor();
 
             var remainsWithinWorkArea =
                 Left >= minimumLeft - 0.5 &&
@@ -436,7 +443,7 @@ public sealed partial class FloatingWindow : Window
                 Top <= maximumTop + 0.5;
 
             return new FloatingManualPlacementExerciseResult(
-                manualPositionPersists && remainsWithinWorkArea);
+                manualPositionPersists && refreshLeavesManualDisplacement && remainsWithinWorkArea);
         }
         finally
         {
@@ -1562,6 +1569,13 @@ public sealed partial class FloatingWindow : Window
             }
         };
         SizeChanged += (_, _) => Reanchor();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible)
+            {
+                Reanchor();
+            }
+        };
         Loaded += (_, _) =>
         {
             UpdateFloatingBodyScrollBarPlacement();
@@ -1641,7 +1655,6 @@ public sealed partial class FloatingWindow : Window
         SyncNoteSearchFromFilter();
         RenderRows(snapshot.UtcNow);
         UpdateSearchPresentation();
-        Reanchor();
     }
 
     private void RenderRows(DateTimeOffset nowUtc)
@@ -2158,7 +2171,6 @@ public sealed partial class FloatingWindow : Window
             var restoredOffset = ClampScrollOffset(targetScrollOffset);
             FloatingBodyScroller.ScrollToVerticalOffset(restoredOffset);
             _workspaceScrollOffsets[workspace] = FloatingBodyScroller.VerticalOffset;
-            Reanchor();
         }), DispatcherPriority.Loaded);
     }
 

@@ -4318,6 +4318,7 @@ exit 23
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) '悬浮窗 140 字搜索词在提示条省略显示且不溢出槽位或清除钮'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.NoteFilterEmptyStateDistinguished) '悬浮窗便签筛选无匹配空态与无数据空态文案区分'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.CountdownFilterEmptyStateDistinguished) '悬浮窗倒计时筛选无匹配空态与无数据空态文案区分'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.SearchRefreshLeavesPlacementUnchanged) '悬浮窗搜索词刷新在 ActualSize 不变时不改 Left/Top'
     Assert-Equal $true ([bool] $adapterValidation.NoteSearchSyncsFromSharedFilter) '主窗口搜索框回填共享筛选态'
     Assert-Equal 0 ([int] $adapterValidation.FloatingReferenceContentOverlapCount) '悬浮窗参考场景没有角色与内容墨迹重叠'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceCaptureWritten) '悬浮窗参考场景可由 RenderTargetBitmap 写出非空 PNG'

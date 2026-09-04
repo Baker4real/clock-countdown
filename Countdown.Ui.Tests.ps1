@@ -355,6 +355,7 @@ $floatingNoteSearch = $validation.FloatingNoteSearch
 if (-not $floatingNoteSearch.HiddenInCountdowns -or -not $floatingNoteSearch.VisibleInNotes) { throw 'The floating search button is not exclusive to the notes workspace.' }
 if (-not $floatingNoteSearch.SearchButtonShowsClosedMagnifier) { throw 'The floating search button does not render a closed magnifier glyph.' }
 if (-not $floatingNoteSearch.ExpandsAndFocuses -or -not $floatingNoteSearch.FiltersRenderedIds -or -not $floatingNoteSearch.CollapseKeepsTerm -or -not $floatingNoteSearch.HintReexpands -or -not $floatingNoteSearch.EscapeClears) { throw 'The floating collapsed-search main path (expand, filter, hint, Esc) did not pass.' }
+if (-not $floatingNoteSearch.SearchRefreshLeavesPlacementUnchanged) { throw 'Assigning a floating note search term moved Left/Top even though ActualWidth/ActualHeight were unchanged.' }
 if (-not $floatingNoteSearch.EmptyState -or -not $floatingNoteSearch.EmptyDoesNotOverlap -or -not $floatingNoteSearch.ClearRestores) { throw 'The floating search empty state, overlap, or clear-restore contract did not pass.' }
 if (-not $floatingNoteSearch.AddThenSearchTab -or -not $floatingNoteSearch.SearchBeforeFirstCard) { throw 'The floating search Tab order contract did not pass.' }
 if (-not $floatingNoteSearch.CtrlFFromCountdowns) { throw 'Ctrl+F did not switch the floating window to notes search.' }
@@ -1085,6 +1086,7 @@ try {
     if (-not $listValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) { throw 'A 140-character search term did not trim inside the floating search hint slot.' }
     if (-not $listValidation.FloatingNoteSearch.NoteFilterEmptyStateDistinguished) { throw 'Floating notes workspace did not distinguish filter-no-match from no-data empty state.' }
     if (-not $listValidation.FloatingNoteSearch.CountdownFilterEmptyStateDistinguished) { throw 'Floating countdowns workspace did not distinguish filter-no-match from no-data empty state.' }
+    if (-not $listValidation.FloatingNoteSearch.SearchRefreshLeavesPlacementUnchanged) { throw 'Floating note search refresh moved Left/Top even though ActualWidth/ActualHeight were unchanged.' }
     if (-not $listValidation.FloatingEmptyStateTextIsolationBehavior) { throw 'Floating empty-state text mapping isolation behavior failed.' }
     if (-not $listValidation.FloatingIncomeHiddenWithoutSalary) { throw 'Floating income row still renders when monthly salary is unset.' }
     if (-not $listValidation.FloatingIncomeRestoredWithSalary) { throw 'Floating income row did not restore after restoring a positive monthly salary.' }

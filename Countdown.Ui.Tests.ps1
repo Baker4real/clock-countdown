@@ -222,22 +222,24 @@ finally {
 
 $popupUiaRoot = Join-Path $runtimeIntegrationEvidenceRoot ("ui-popup-trigger-uia-" + [guid]::NewGuid().ToString('N'))
 $popupUiaProcess = $null
-try {
-    New-Item -ItemType Directory -Path $popupUiaRoot -Force | Out-Null
-    foreach ($file in @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'countdown-icon.ico', 'sanrio-official-mymelody.png', 'sanrio-official-cinnamoroll.png', 'sanrio-official-kuromi.png')) {
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $popupUiaRoot $file) -Force
-    }
-    $popupUiaFloatingPlushRoot = Join-Path $popupUiaRoot 'assets\floating-plush'
-    New-Item -ItemType Directory -Path $popupUiaFloatingPlushRoot -Force | Out-Null
-    foreach ($file in $floatingPlushAssetFiles) {
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot "assets\floating-plush\$file") -Destination (Join-Path $popupUiaFloatingPlushRoot $file) -Force
-    }
-    $popupUiaHostPath = Join-Path $popupUiaRoot 'Countdown.App.psm1'
-    $popupUiaEntry = Join-Path $popupUiaRoot 'popup-uia-harness.ps1'
-    $popupUiaRequestPath = Join-Path $popupUiaRoot 'startup-request.json'
-    $popupUiaStatusPath = Join-Path $popupUiaRoot 'runtime-status.json'
-    $popupUiaHostLiteral = $popupUiaHostPath.Replace("'", "''")
-    $popupUiaHarness = @"
+$popupUiaSkipEvidence = $null
+if ([Environment]::UserInteractive) {
+    try {
+        New-Item -ItemType Directory -Path $popupUiaRoot -Force | Out-Null
+        foreach ($file in @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'countdown-icon.ico', 'sanrio-official-mymelody.png', 'sanrio-official-cinnamoroll.png', 'sanrio-official-kuromi.png')) {
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $popupUiaRoot $file) -Force
+        }
+        $popupUiaFloatingPlushRoot = Join-Path $popupUiaRoot 'assets\floating-plush'
+        New-Item -ItemType Directory -Path $popupUiaFloatingPlushRoot -Force | Out-Null
+        foreach ($file in $floatingPlushAssetFiles) {
+            Copy-Item -LiteralPath (Join-Path $PSScriptRoot "assets\floating-plush\$file") -Destination (Join-Path $popupUiaFloatingPlushRoot $file) -Force
+        }
+        $popupUiaHostPath = Join-Path $popupUiaRoot 'Countdown.App.psm1'
+        $popupUiaEntry = Join-Path $popupUiaRoot 'popup-uia-harness.ps1'
+        $popupUiaRequestPath = Join-Path $popupUiaRoot 'startup-request.json'
+        $popupUiaStatusPath = Join-Path $popupUiaRoot 'runtime-status.json'
+        $popupUiaHostLiteral = $popupUiaHostPath.Replace("'", "''")
+        $popupUiaHarness = @"
 `$ErrorActionPreference = 'Stop'
 trap {
     [Console]::Error.WriteLine("HARNESS_ERROR: `$(`$_.Exception.Message)")
@@ -251,95 +253,100 @@ Import-Module -Name '$popupUiaHostLiteral' -Force
 }
 Start-CountdownApplication -ApplicationPath `$PSCommandPath -HolidayCalendarTaskFactory `$calendarTaskFactory
 "@
-    [System.IO.File]::WriteAllText($popupUiaEntry, $popupUiaHarness, (New-Object System.Text.UTF8Encoding($false)))
-    $popupUiaRequest = New-CountdownStartupRequest -Path $popupUiaRequestPath
-    $popupUiaOutputPath = Join-Path $popupUiaRoot 'app.stdout.txt'
-    $popupUiaErrorPath = Join-Path $popupUiaRoot 'app.stderr.txt'
-    $popupUiaArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', ('"{0}"' -f $popupUiaEntry))
-    $popupUiaProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $popupUiaArguments -PassThru -RedirectStandardOutput $popupUiaOutputPath -RedirectStandardError $popupUiaErrorPath
-    $popupUiaReceipt = Wait-CountdownWindowReady -Path $popupUiaStatusPath -LaunchToken $popupUiaRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $popupUiaEntry -TimeoutSeconds 20 -PollMilliseconds 100 -AllowLegacyPowerShellAdapter
-    if ($popupUiaReceipt.stage -ne 'window-ready') { throw 'Popup UIA launch did not emit a window-ready receipt.' }
+        [System.IO.File]::WriteAllText($popupUiaEntry, $popupUiaHarness, (New-Object System.Text.UTF8Encoding($false)))
+        $popupUiaRequest = New-CountdownStartupRequest -Path $popupUiaRequestPath
+        $popupUiaOutputPath = Join-Path $popupUiaRoot 'app.stdout.txt'
+        $popupUiaErrorPath = Join-Path $popupUiaRoot 'app.stderr.txt'
+        $popupUiaArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', ('"{0}"' -f $popupUiaEntry))
+        $popupUiaProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $popupUiaArguments -PassThru -RedirectStandardOutput $popupUiaOutputPath -RedirectStandardError $popupUiaErrorPath
+        $popupUiaReceipt = Wait-CountdownWindowReady -Path $popupUiaStatusPath -LaunchToken $popupUiaRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $popupUiaEntry -TimeoutSeconds 20 -PollMilliseconds 100 -AllowLegacyPowerShellAdapter
+        if ($popupUiaReceipt.stage -ne 'window-ready') { throw 'Popup UIA launch did not emit a window-ready receipt.' }
 
-    Add-Type -AssemblyName UIAutomationClient
-    Add-Type -AssemblyName UIAutomationTypes
-    $uiaProcessId = [int] $popupUiaReceipt.processId
-    $uiaProcessCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $uiaProcessId)
-    $uiaWindowCondition = New-Object System.Windows.Automation.AndCondition(
-        $uiaProcessCondition,
-        (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-            [System.Windows.Automation.ControlType]::Window)))
-    $uiaDesktop = [System.Windows.Automation.AutomationElement]::RootElement
+        Add-Type -AssemblyName UIAutomationClient
+        Add-Type -AssemblyName UIAutomationTypes
+        $uiaProcessId = [int] $popupUiaReceipt.processId
+        $uiaProcessCondition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $uiaProcessId)
+        $uiaWindowCondition = New-Object System.Windows.Automation.AndCondition(
+            $uiaProcessCondition,
+            (New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::Window)))
+        $uiaDesktop = [System.Windows.Automation.AutomationElement]::RootElement
 
-    $uiaOpenManagerButton = $null
-    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
-    while ($null -eq $uiaOpenManagerButton -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
-        foreach ($uiaWindow in @($uiaDesktop.FindAll([System.Windows.Automation.TreeScope]::Children, $uiaWindowCondition))) {
-            $uiaOpenManagerButton = $uiaWindow.FindFirst(
-                [System.Windows.Automation.TreeScope]::Descendants,
-                (New-Object System.Windows.Automation.PropertyCondition(
-                    [System.Windows.Automation.AutomationElement]::NameProperty, '打开管理窗口')))
-            if ($null -ne $uiaOpenManagerButton) { break }
-        }
-        if ($null -eq $uiaOpenManagerButton) { Start-Sleep -Milliseconds 100 }
-    }
-    if ($null -eq $uiaOpenManagerButton) { throw 'UIA could not find the floating open-manager button in the real app.' }
-    $uiaOpenManagerInvoke = $uiaOpenManagerButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) -as [System.Windows.Automation.InvokePattern]
-    if ($null -eq $uiaOpenManagerInvoke) { throw 'The floating open-manager button does not expose the UIA invoke pattern.' }
-    $uiaOpenManagerInvoke.Invoke()
-
-    $uiaMainWindow = $null
-    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
-    while ($null -eq $uiaMainWindow -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
-        foreach ($uiaWindow in @($uiaDesktop.FindAll([System.Windows.Automation.TreeScope]::Children, $uiaWindowCondition))) {
-            if ([string] $uiaWindow.Current.Name -eq '敏敏子倒计时') {
-                $uiaMainWindow = $uiaWindow
-                break
+        $uiaOpenManagerButton = $null
+        $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        while ($null -eq $uiaOpenManagerButton -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+            foreach ($uiaWindow in @($uiaDesktop.FindAll([System.Windows.Automation.TreeScope]::Children, $uiaWindowCondition))) {
+                $uiaOpenManagerButton = $uiaWindow.FindFirst(
+                    [System.Windows.Automation.TreeScope]::Descendants,
+                    (New-Object System.Windows.Automation.PropertyCondition(
+                        [System.Windows.Automation.AutomationElement]::NameProperty, '打开管理窗口')))
+                if ($null -ne $uiaOpenManagerButton) { break }
             }
+            if ($null -eq $uiaOpenManagerButton) { Start-Sleep -Milliseconds 100 }
         }
-        if ($null -eq $uiaMainWindow) { Start-Sleep -Milliseconds 100 }
-    }
-    if ($null -eq $uiaMainWindow) { throw 'UIA could not find the real main window after invoking the open-manager button.' }
+        if ($null -eq $uiaOpenManagerButton) { throw 'UIA could not find the floating open-manager button in the real app.' }
+        $uiaOpenManagerInvoke = $uiaOpenManagerButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) -as [System.Windows.Automation.InvokePattern]
+        if ($null -eq $uiaOpenManagerInvoke) { throw 'The floating open-manager button does not expose the UIA invoke pattern.' }
+        $uiaOpenManagerInvoke.Invoke()
 
-    $uiaFilterButton = $uiaMainWindow.FindFirst(
-        [System.Windows.Automation.TreeScope]::Descendants,
-        (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FilterToggleButton')))
-    if ($null -eq $uiaFilterButton) { throw 'UIA could not find the main-window filter trigger button in the real app.' }
-    $uiaFilterInvoke = $uiaFilterButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) -as [System.Windows.Automation.InvokePattern]
-    if ($null -eq $uiaFilterInvoke) { throw 'The main-window filter trigger does not expose the UIA invoke pattern.' }
-    $uiaPopupMarkerCondition = New-Object System.Windows.Automation.AndCondition(
-        $uiaProcessCondition,
-        (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::NameProperty, '筛选当前视图')))
+        $uiaMainWindow = $null
+        $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        while ($null -eq $uiaMainWindow -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+            foreach ($uiaWindow in @($uiaDesktop.FindAll([System.Windows.Automation.TreeScope]::Children, $uiaWindowCondition))) {
+                if ([string] $uiaWindow.Current.Name -eq '敏敏子倒计时') {
+                    $uiaMainWindow = $uiaWindow
+                    break
+                }
+            }
+            if ($null -eq $uiaMainWindow) { Start-Sleep -Milliseconds 100 }
+        }
+        if ($null -eq $uiaMainWindow) { throw 'UIA could not find the real main window after invoking the open-manager button.' }
 
-    $uiaFilterInvoke.Invoke()
-    $uiaPopupOpen = $false
-    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
-    while (-not $uiaPopupOpen -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
-        $uiaPopupOpen = $null -ne $uiaDesktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $uiaPopupMarkerCondition)
-        if (-not $uiaPopupOpen) { Start-Sleep -Milliseconds 100 }
-    }
-    if (-not $uiaPopupOpen) { throw 'A UIA invoke on the filter trigger did not open the filter popup in the real app.' }
+        $uiaFilterButton = $uiaMainWindow.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FilterToggleButton')))
+        if ($null -eq $uiaFilterButton) { throw 'UIA could not find the main-window filter trigger button in the real app.' }
+        $uiaFilterInvoke = $uiaFilterButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) -as [System.Windows.Automation.InvokePattern]
+        if ($null -eq $uiaFilterInvoke) { throw 'The main-window filter trigger does not expose the UIA invoke pattern.' }
+        $uiaPopupMarkerCondition = New-Object System.Windows.Automation.AndCondition(
+            $uiaProcessCondition,
+            (New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::NameProperty, '筛选当前视图')))
 
-    $uiaFilterInvoke.Invoke()
-    $uiaPopupClosed = $false
-    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
-    while (-not $uiaPopupClosed -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
-        $uiaPopupClosed = $null -eq $uiaDesktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $uiaPopupMarkerCondition)
-        if (-not $uiaPopupClosed) { Start-Sleep -Milliseconds 100 }
+        $uiaFilterInvoke.Invoke()
+        $uiaPopupOpen = $false
+        $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        while (-not $uiaPopupOpen -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+            $uiaPopupOpen = $null -ne $uiaDesktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $uiaPopupMarkerCondition)
+            if (-not $uiaPopupOpen) { Start-Sleep -Milliseconds 100 }
+        }
+        if (-not $uiaPopupOpen) { throw 'A UIA invoke on the filter trigger did not open the filter popup in the real app.' }
+
+        $uiaFilterInvoke.Invoke()
+        $uiaPopupClosed = $false
+        $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+        while (-not $uiaPopupClosed -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+            $uiaPopupClosed = $null -eq $uiaDesktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $uiaPopupMarkerCondition)
+            if (-not $uiaPopupClosed) { Start-Sleep -Milliseconds 100 }
+        }
+        if (-not $uiaPopupClosed) { throw 'A second UIA invoke on the filter trigger did not close the filter popup in the real app.' }
     }
-    if (-not $uiaPopupClosed) { throw 'A second UIA invoke on the filter trigger did not close the filter popup in the real app.' }
+    finally {
+        if ($null -ne $popupUiaProcess -and -not $popupUiaProcess.HasExited) {
+            Stop-Process -Id $popupUiaProcess.Id -Force -ErrorAction Stop
+            if (-not $popupUiaProcess.WaitForExit(5000)) { throw 'Popup UIA child process did not exit during cleanup.' }
+        }
+        if (Test-Path -LiteralPath $popupUiaRoot) {
+            Remove-Item -LiteralPath $popupUiaRoot -Recurse -Force -ErrorAction Stop
+        }
+    }
 }
-finally {
-    if ($null -ne $popupUiaProcess -and -not $popupUiaProcess.HasExited) {
-        Stop-Process -Id $popupUiaProcess.Id -Force -ErrorAction Stop
-        if (-not $popupUiaProcess.WaitForExit(5000)) { throw 'Popup UIA child process did not exit during cleanup.' }
-    }
-    if (Test-Path -LiteralPath $popupUiaRoot) {
-        Remove-Item -LiteralPath $popupUiaRoot -Recurse -Force -ErrorAction Stop
-    }
+else {
+    $popupUiaSkipEvidence = 'skipped-non-interactive-session'
+    [Console]::Error.WriteLine('UIA-GATE-SKIP: popup-trigger UIA gate skipped because this session is non-interactive ([Environment]::UserInteractive is false, e.g. an office SSH session without an interactive desktop); the gate runs unchanged and fail-closed on interactive desktops.')
 }
 
 if (-not $validation.DateInputReadOnly) { throw 'Date selection still accepts free-text input.' }
@@ -447,7 +454,7 @@ if ($floatingReferenceBaselineRequired) {
             [string] $reportedCapture[0].Path -ne [string] $expectedCapture.path -or
             [string] $reportedCapture[0].BaselineSha256 -ne [string] $expectedCapture.pngSha256 -or
             [string] $reportedCapture[0].ActualSha256 -ne [string] $expectedCapture.pngSha256) {
-            throw "The floating capture is not bound to its v17 manifest entry: $($expectedCapture.captureId)."
+            throw "The floating capture is not bound to its v21 manifest entry: $($expectedCapture.captureId)."
         }
     }
     if (@($validation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count -ne 0) { throw 'A current floating frame exceeds the fixed pixel comparison thresholds.' }
@@ -1431,9 +1438,13 @@ finally {
     [System.IO.Directory]::Delete($uiSettingsRoot, $false)
 }
 
-[pscustomobject]@{
+$report = [pscustomobject]@{
     Passed = 152
     Failed = 0
     SelectedDateType = $picker.SelectedDate.GetType().FullName
     ApplicationValidation = $validation.Valid
-} | ConvertTo-Json
+}
+if ($null -ne $popupUiaSkipEvidence) {
+    Add-Member -InputObject $report -NotePropertyName PopupUiaGate -NotePropertyValue $popupUiaSkipEvidence
+}
+$report | ConvertTo-Json

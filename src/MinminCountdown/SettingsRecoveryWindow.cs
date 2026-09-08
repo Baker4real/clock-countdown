@@ -72,6 +72,10 @@ internal sealed class SettingsRecoveryWindow : Window
 
         var exit = CreateButton("退出", isPrimary: false);
         exit.IsCancel = true;
+        if (!canRecover)
+        {
+            exit.IsDefault = true;
+        }
         exit.Click += (_, _) =>
         {
             _decision = SettingsRecoveryDecision.Exit;
@@ -113,7 +117,7 @@ internal sealed class SettingsRecoveryWindow : Window
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
             Foreground = isPrimary ? PrimaryButtonTextBrush : InkBrush,
-            Background = isPrimary ? AccentBrush : Brushes.White,
+            Background = isPrimary ? AccentBrush : CanvasBrush,
             BorderBrush = isPrimary ? AccentBrush : MutedBrush,
             BorderThickness = new Thickness(1)
         };

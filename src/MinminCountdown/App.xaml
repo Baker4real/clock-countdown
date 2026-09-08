@@ -202,7 +202,7 @@
     <Style x:Key="PrimaryButton"
            TargetType="{x:Type Button}"
            BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
       <Setter Property="Background" Value="{DynamicResource ActiveBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -444,7 +444,7 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type CheckBox}">
-            <Grid>
+            <Grid x:Name="Surface" Background="Transparent">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -460,7 +460,7 @@
                 <Path x:Name="Tick"
                       Width="10"
                       Height="7"
-                      Stroke="White"
+                      Stroke="{DynamicResource MainActionTextBrush}"
                       StrokeThickness="2"
                       StrokeStartLineCap="Round"
                       StrokeEndLineCap="Round"
@@ -483,6 +483,9 @@
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Box" Property="BorderThickness" Value="2" />
                 <Setter TargetName="Box" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -545,6 +548,8 @@
                                     ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
                   <ToggleButton Grid.Column="1"
                                 ClickMode="Press"
+                                Focusable="False"
+                                IsTabStop="False"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
@@ -572,7 +577,7 @@
                      Placement="Bottom"
                      AllowsTransparency="True"
                      Focusable="False"
-                     PopupAnimation="Fade"
+                     PopupAnimation="None"
                      IsOpen="{TemplateBinding IsDropDownOpen}">
                 <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                         MaxHeight="260"
@@ -596,6 +601,9 @@
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
                 <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -636,7 +644,8 @@
                       Grid.Column="1"
                       Padding="0"
                       BorderThickness="1"
-                      ToolTip="打开日历">
+                      ToolTip="打开日历"
+                      AutomationProperties.Name="打开日历">
                 <Path Width="10" Height="6" Fill="{DynamicResource BodyBrush}" Data="M 0,0 L 10,0 L 5,6 Z" />
               </Button>
               <Popup x:Name="PART_Popup"
@@ -645,7 +654,7 @@
                      StaysOpen="False"
                      AllowsTransparency="True"
                      Focusable="False"
-                     PopupAnimation="Fade"
+                     PopupAnimation="None"
                      IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                 <Calendar x:Name="PART_Calendar"
                           Margin="0,5,0,0"
@@ -678,6 +687,8 @@
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
       <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CalendarDayButtonStyle" Value="{DynamicResource {x:Type primitives:CalendarDayButton}}" />
+      <Setter Property="CalendarButtonStyle" Value="{DynamicResource {x:Type primitives:CalendarButton}}" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type Calendar}">
@@ -756,7 +767,9 @@
                     BorderBrush="Transparent"
                     BorderThickness="1"
                     CornerRadius="5">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                TextElement.Foreground="{TemplateBinding Foreground}" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -767,10 +780,6 @@
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveBrush}" />
-                <Setter Property="Foreground" Value="White" />
-              </Trigger>
-              <Trigger Property="IsInactive" Value="True">
-                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
               </Trigger>
               <Trigger Property="IsBlackedOut" Value="True">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.32" />
@@ -783,6 +792,14 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsInactive" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+        </Trigger>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+        </Trigger>
+      </Style.Triggers>
     </Style>
 
     <Style TargetType="{x:Type primitives:CalendarButton}">
@@ -799,7 +816,9 @@
                     BorderBrush="Transparent"
                     BorderThickness="1"
                     CornerRadius="5">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                TextElement.Foreground="{TemplateBinding Foreground}" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -807,10 +826,6 @@
               </Trigger>
               <Trigger Property="HasSelectedDays" Value="True">
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveBrush}" />
-                <Setter Property="Foreground" Value="White" />
-              </Trigger>
-              <Trigger Property="IsInactive" Value="True">
-                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
@@ -819,6 +834,14 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsInactive" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+        </Trigger>
+        <Trigger Property="HasSelectedDays" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+        </Trigger>
+      </Style.Triggers>
     </Style>
 
     <Style TargetType="{x:Type ScrollBar}">

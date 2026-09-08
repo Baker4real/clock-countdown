@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -303,12 +304,14 @@ internal static class ValidationExercises
                 presentedMessages.Add);
 
             var aclDeniedRecovered = RunAclDeniedMainRecoveryWiringProbe();
+            var failureExitIsDefault = ProbeSettingsRecoveryFailureExitIsDefault();
 
             return defaultDecisionIsExit &&
                    closeKeepsExit &&
                    buttons.Length == 2 &&
                    recover is { IsDefault: true, IsEnabled: true } &&
-                   exit is { IsCancel: true, IsEnabled: true } &&
+                   exit is { IsCancel: true, IsEnabled: true, IsDefault: false } &&
+                   failureExitIsDefault &&
                    !declinedPresented &&
                    failurePresented &&
                    aclDeniedRecovered &&
@@ -321,6 +324,1025 @@ internal static class ValidationExercises
                 window.Close();
             }
         }
+    }
+
+    public static bool ProbeSettingsRecoveryFailureExitIsDefault()
+    {
+        var window = SettingsRecoveryWindow.CreateForValidation(
+            "设置恢复失败退出验证",
+            canRecover: false);
+        try
+        {
+            var body = window.Content as StackPanel;
+            var commands = body?.Children
+                .OfType<StackPanel>()
+                .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
+            var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
+            var recover = buttons.SingleOrDefault(button =>
+                string.Equals(
+                    AutomationProperties.GetName(button),
+                    "恢复备份",
+                    StringComparison.Ordinal));
+            var exit = buttons.SingleOrDefault(button =>
+                string.Equals(
+                    AutomationProperties.GetName(button),
+                    "退出",
+                    StringComparison.Ordinal));
+            return recover is null &&
+                   buttons.Length == 1 &&
+                   exit is { IsDefault: true, IsCancel: true, IsEnabled: true };
+        }
+        finally
+        {
+            if (!window.Dispatcher.HasShutdownStarted)
+            {
+                window.Close();
+            }
+        }
+    }
+
+    public static bool ProbeRuleEditorInlineDeleteUsesDangerButton()
+    {
+        var editor = new ReminderRulesEditorWindow(
+            [
+                new AbsoluteOnceReminderRule(
+                    "danger-delete-probe",
+                    new DateTimeOffset(2031, 1, 1, 1, 0, 0, TimeSpan.Zero))
+            ],
+            new AdvancingValidationClock(new DateTimeOffset(2031, 1, 1, 0, 0, 0, TimeSpan.Zero)));
+        PrepareOffscreenValidationWindow(editor);
+        try
+        {
+            editor.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            editor.UpdateLayout();
+            var expected = editor.TryFindResource("DangerButton") as Style;
+            var deleteButtons = VisualDescendants<Button>(editor)
+                .Where(button => string.Equals(button.Content?.ToString(), "删除", StringComparison.Ordinal))
+                .ToArray();
+            return expected is not null &&
+                   deleteButtons.Length > 0 &&
+                   deleteButtons.All(button => ReferenceEquals(button.Style, expected));
+        }
+        finally
+        {
+            if (!editor.Dispatcher.HasShutdownStarted)
+            {
+                editor.Close();
+            }
+        }
+    }
+
+    public static bool ProbeSettingsRecoverySecondaryUsesCanvas()
+    {
+        var expected = Color.FromRgb(0xFF, 0xFB, 0xF7);
+        var failure = SettingsRecoveryWindow.CreateForValidation("次级按钮暖白验证", canRecover: false);
+        var recoverable = SettingsRecoveryWindow.CreateForValidation("次级按钮暖白验证", canRecover: true);
+        try
+        {
+            return UsesCanvasSecondary(failure, expected, expectExitIsDefault: true) &&
+                   UsesCanvasSecondary(recoverable, expected, expectExitIsDefault: false);
+        }
+        finally
+        {
+            if (!failure.Dispatcher.HasShutdownStarted)
+            {
+                failure.Close();
+            }
+
+            if (!recoverable.Dispatcher.HasShutdownStarted)
+            {
+                recoverable.Close();
+            }
+        }
+
+        static bool UsesCanvasSecondary(
+            SettingsRecoveryWindow window,
+            Color expected,
+            bool expectExitIsDefault)
+        {
+            var body = window.Content as StackPanel;
+            var commands = body?.Children
+                .OfType<StackPanel>()
+                .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
+            var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
+            var recover = buttons.SingleOrDefault(button =>
+                string.Equals(AutomationProperties.GetName(button), "恢复备份", StringComparison.Ordinal));
+            var exit = buttons.SingleOrDefault(button =>
+                string.Equals(AutomationProperties.GetName(button), "退出", StringComparison.Ordinal));
+            var exitUsesCanvas = exit?.Background is SolidColorBrush exitBrush &&
+                                 exitBrush.Color == expected;
+            if (expectExitIsDefault)
+            {
+                return recover is null &&
+                       exit is { IsDefault: true, IsCancel: true } &&
+                       exitUsesCanvas;
+            }
+
+            return recover is { IsDefault: true } &&
+                   exit is { IsDefault: false, IsCancel: true } &&
+                   exitUsesCanvas &&
+                   recover.Background is SolidColorBrush recoverBrush &&
+                   recoverBrush.Color != expected;
+        }
+    }
+
+    public static bool ProbeReminderCenterSnoozeRowAlignsWithActions()
+    {
+        var key = new ActiveReminderOccurrenceKey(
+            "snooze-align-probe-rule",
+            new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+        var window = new ReminderCenterWindow();
+        PrepareOffscreenValidationWindow(window);
+        window.AddEntry(new ReminderCenterItem(
+            key,
+            new NoteRecord(
+                "snooze-align-probe-note",
+                "稍后提醒对齐探针",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        try
+        {
+            window.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            window.UpdateLayout();
+            var snooze = VisualDescendants<Button>(window).Single(button =>
+                string.Equals(button.Content?.ToString(), "稍后提醒", StringComparison.Ordinal));
+            var acknowledge = VisualDescendants<Button>(window).Single(button =>
+                string.Equals(button.Content?.ToString(), "知道了", StringComparison.Ordinal));
+            var complete = VisualDescendants<Button>(window).Single(button =>
+                string.Equals(button.Content?.ToString(), "完成便签", StringComparison.Ordinal));
+            var openSource = VisualDescendants<Button>(window).Single(button =>
+                string.Equals(button.Content?.ToString(), "打开来源", StringComparison.Ordinal));
+            var snoozeChoice = VisualDescendants<ComboBox>(window).Single(comboBox =>
+                comboBox.IsVisible &&
+                AutomationProperties.GetName(comboBox).StartsWith(
+                    "稍后提醒时间：",
+                    StringComparison.Ordinal));
+            var customDate = VisualDescendants<DatePicker>(window).Single(datePicker =>
+                AutomationProperties.GetName(datePicker).StartsWith(
+                    "自定义稍后日期：",
+                    StringComparison.Ordinal));
+            if (acknowledge.Parent is not WrapPanel actionRow ||
+                customDate.Parent is not WrapPanel customRow ||
+                actionRow.Parent is not Panel content)
+            {
+                return false;
+            }
+
+            var actionChildren = actionRow.Children.Cast<UIElement>().ToArray();
+            return actionRow.HorizontalAlignment == HorizontalAlignment.Right &&
+                   ReferenceEquals(snoozeChoice.Parent, actionRow) &&
+                   ReferenceEquals(snooze.Parent, actionRow) &&
+                   ReferenceEquals(complete.Parent, actionRow) &&
+                   ReferenceEquals(openSource.Parent, actionRow) &&
+                   !ReferenceEquals(customRow, actionRow) &&
+                   content.Children.IndexOf(customRow) > content.Children.IndexOf(actionRow) &&
+                   actionChildren.Length == 5 &&
+                   ReferenceEquals(actionChildren[0], acknowledge) &&
+                   ReferenceEquals(actionChildren[1], snoozeChoice) &&
+                   ReferenceEquals(actionChildren[2], snooze) &&
+                   ReferenceEquals(actionChildren[3], complete) &&
+                   ReferenceEquals(actionChildren[4], openSource);
+        }
+        finally
+        {
+            if (!window.Dispatcher.HasShutdownStarted)
+            {
+                window.Close();
+            }
+        }
+    }
+
+    public static bool ProbeFivePopupsUseInstantAnimation(MainWindow main)
+    {
+        var combo = (ComboBox)main.FindName("DisplayPrecision");
+        combo.ApplyTemplate();
+        var comboPopup = combo.Template.FindName("PART_Popup", combo) as Popup;
+        var datePicker = (DatePicker)main.FindName("CountdownDate");
+        datePicker.ApplyTemplate();
+        var datePopup = datePicker.Template.FindName("PART_Popup", datePicker) as Popup;
+        var filterPopup = (Popup)main.FindName("FilterPopup");
+        var tagManagerPopup = (Popup)main.FindName("TagManagerPopup");
+        var selector = (TagSelector)main.FindName("CountdownTags");
+        return comboPopup is { PopupAnimation: PopupAnimation.None } &&
+               datePopup is { PopupAnimation: PopupAnimation.None } &&
+               filterPopup is { PopupAnimation: PopupAnimation.None } &&
+               tagManagerPopup is { PopupAnimation: PopupAnimation.None } &&
+               selector.Popup.PopupAnimation == PopupAnimation.None;
+    }
+
+    public static bool ProbeActionForegroundsUseMainActionText(MainWindow main)
+    {
+        var expected = Application.Current.FindResource("MainActionTextBrush");
+        var primary = new Button
+        {
+            Style = Application.Current.FindResource("PrimaryButton") as Style
+        };
+        var probe = new CheckBox();
+        var host = new Window
+        {
+            Width = 160,
+            Height = 80,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0,
+            Content = new StackPanel
+            {
+                Children = { primary, probe }
+            }
+        };
+        try
+        {
+            host.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            probe.ApplyTemplate();
+            var tick = probe.Template?.FindName("Tick", probe) as System.Windows.Shapes.Path;
+            return BrushEqualsResource(primary.Foreground, expected) &&
+                   tick is not null &&
+                   BrushEqualsResource(tick.Stroke, expected) &&
+                   CalendarSelectedForegroundUsesToken(main, expected);
+        }
+        finally
+        {
+            host.Close();
+        }
+    }
+
+    public static bool ProbeDisabledSelectionControlsUseButtonOpacity(MainWindow main)
+    {
+        var projection = (FrameworkElement)main.FindName("MainContentProjection");
+        var disabledCheck = new CheckBox { IsEnabled = false };
+        var disabledCombo = new ComboBox { IsEnabled = false };
+        var disabledNoteCheck = new CheckBox
+        {
+            IsEnabled = false,
+            Style = projection?.TryFindResource("MainNoteCompletionCheck") as Style
+        };
+        var disabledTopmostCheck = new CheckBox
+        {
+            IsEnabled = false,
+            Style = projection?.TryFindResource("MainTopmostCheck") as Style
+        };
+        var host = new Window
+        {
+            Width = 160,
+            Height = 80,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0,
+            Content = new StackPanel
+            {
+                Children =
+                {
+                    disabledCheck,
+                    disabledCombo,
+                    disabledNoteCheck,
+                    disabledTopmostCheck
+                }
+            }
+        };
+        try
+        {
+            host.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            return disabledNoteCheck.Style is not null &&
+                   disabledTopmostCheck.Style is not null &&
+                   DisabledTemplateSurfaceMatchesButtons(disabledCheck) &&
+                   DisabledTemplateSurfaceMatchesButtons(disabledCombo) &&
+                   DisabledTemplateSurfaceMatchesButtons(disabledNoteCheck) &&
+                   DisabledTemplateSurfaceMatchesButtons(disabledTopmostCheck);
+        }
+        finally
+        {
+            host.Close();
+        }
+    }
+
+    private static bool CalendarSelectedForegroundUsesToken(MainWindow main, object expected)
+    {
+        var datePicker = (DatePicker)main.FindName("CountdownDate");
+        datePicker.ApplyTemplate();
+        var wasOpen = datePicker.IsDropDownOpen;
+        var originalDate = datePicker.SelectedDate;
+        try
+        {
+            datePicker.SelectedDate ??= DateTime.Today;
+            if (datePicker.SelectedDate is DateTime selectedDate)
+            {
+                datePicker.DisplayDate = selectedDate;
+            }
+
+            datePicker.IsDropDownOpen = true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var calendar = ThemedDatePickerBehavior.GetCalendar(datePicker);
+            if (calendar is not null && datePicker.SelectedDate is DateTime visibleDate)
+            {
+                calendar.DisplayDate = visibleDate;
+            }
+
+            calendar?.ApplyTemplate();
+            calendar?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var selected = calendar is null
+                ? Array.Empty<System.Windows.Controls.Primitives.CalendarDayButton>()
+                : VisualDescendants<System.Windows.Controls.Primitives.CalendarDayButton>(calendar)
+                    .Where(button => button.IsSelected)
+                    .ToArray();
+            return selected.Length >= 1 &&
+                   selected.All(button => BrushEqualsResource(button.Foreground, expected));
+        }
+        finally
+        {
+            datePicker.SelectedDate = originalDate;
+            datePicker.IsDropDownOpen = wasOpen;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    private static bool BrushEqualsResource(Brush? actual, object? expected) =>
+        ReferenceEquals(actual, expected) ||
+        (actual is SolidColorBrush actualBrush &&
+         expected is SolidColorBrush expectedBrush &&
+         actualBrush.Color == expectedBrush.Color);
+
+    private static bool DisabledTemplateSurfaceMatchesButtons(Control control)
+    {
+        control.ApplyTemplate();
+        control.UpdateLayout();
+        WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        return control.Template?.FindName("Surface", control) is FrameworkElement surface &&
+               Math.Abs(surface.Opacity - 0.45) < 0.001;
+    }
+
+    public static bool ProbeFloatingTypographyWeightWhitelist(
+        FloatingWindow floating,
+        DesktopWorkspace workspace) =>
+        WithFloatingDateStamps(
+            floating,
+            workspace,
+            (stamps, _) => stamps.Length > 0 &&
+                           VisualDescendants<TextBlock>(floating).All(IsWhitelistedFontWeight));
+
+    public static bool ProbeFloatingDateStampTypography(
+        FloatingWindow floating,
+        DesktopWorkspace workspace) =>
+        WithFloatingDateStamps(
+            floating,
+            workspace,
+            (stamps, createdDatedAndUndated) =>
+                stamps.Length > 0 &&
+                stamps.All(StampTypographyMatches) &&
+                (!createdDatedAndUndated ||
+                 (stamps.Any(stamp => StampShowsUndatedFallback(stamp)) &&
+                  stamps.Any(stamp => !StampShowsUndatedFallback(stamp)))));
+
+    public static bool ProbeFloatingDateStampDensity(
+        FloatingWindow floating,
+        DesktopWorkspace workspace) =>
+        WithFloatingDateStamps(
+            floating,
+            workspace,
+            (stamps, _) => stamps.Length > 0 && stamps.All(StampDensityMatches));
+
+    private static bool WithFloatingDateStamps(
+        FloatingWindow floating,
+        DesktopWorkspace workspace,
+        Func<Border[], bool, bool> evaluate)
+    {
+        var restore = floating.FloatingCountdownsButton.IsChecked == true
+            ? WorkspaceKind.Countdowns
+            : WorkspaceKind.Notes;
+        var createdIds = new List<string>();
+        try
+        {
+            var addedDated = TryAddProbeNote(
+                workspace,
+                "印记排版探针",
+                new DateTime(2031, 4, 5),
+                createdIds);
+            if (!addedDated && workspace.Snapshot.Settings.Notes.Count == 0)
+            {
+                return false;
+            }
+
+            var addedUndated = TryAddProbeNote(workspace, "无日期印记探针", date: null, createdIds) ||
+                TryAddUndatedProbeNote(workspace, createdIds);
+            if (!addedUndated && workspace.Snapshot.Settings.Notes.Count == 0)
+            {
+                return false;
+            }
+
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            var stamps = FindFloatingDateStamps(floating);
+            if (stamps.Length == 0)
+            {
+                stamps = VisualDescendants<Border>(floating)
+                    .Where(border =>
+                        !border.IsHitTestVisible &&
+                        !border.Focusable &&
+                        border.BorderThickness.Left >= 1.5 &&
+                        (border.Child as StackPanel)?.Children.OfType<TextBlock>().Count() == 3)
+                    .ToArray();
+            }
+
+            return evaluate(stamps, addedDated && addedUndated);
+        }
+        finally
+        {
+            foreach (var id in createdIds)
+            {
+                workspace.Apply(new DeleteNoteChange(id));
+            }
+
+            floating.ShowWorkspace(restore);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    private static bool TryAddProbeNote(
+        DesktopWorkspace workspace,
+        string text,
+        DateTime? date,
+        List<string> createdIds)
+    {
+        var result = workspace.Apply(
+            new SaveNoteChange(
+                null,
+                text,
+                date,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance));
+        if (!result.Succeeded)
+        {
+            return false;
+        }
+
+        var note = workspace.Snapshot.Settings.Notes.Single(candidate =>
+            string.Equals(candidate.Text, text, StringComparison.Ordinal));
+        createdIds.Add(note.Id);
+        return true;
+    }
+
+    private static bool TryUseExistingNote(DesktopWorkspace workspace, List<string> createdIds)
+    {
+        _ = createdIds;
+        return workspace.Snapshot.Settings.Notes.Count > 0;
+    }
+
+    private static string? ResolveProbeNoteId(DesktopWorkspace workspace, List<string> createdIds)
+    {
+        if (createdIds.Count > 0)
+        {
+            return createdIds[0];
+        }
+
+        return (workspace.Snapshot.Settings.Notes.FirstOrDefault(candidate => !candidate.IsCompleted)
+            ?? workspace.Snapshot.Settings.Notes.FirstOrDefault())?.Id;
+    }
+
+    private static bool TryAddUndatedProbeNote(DesktopWorkspace workspace, List<string> createdIds)
+    {
+        if (!TryAddProbeNote(
+                workspace,
+                "无日期印记探针",
+                new DateTime(2031, 4, 6),
+                createdIds))
+        {
+            return false;
+        }
+
+        var id = createdIds[^1];
+        var cleared = workspace.Apply(
+            new SaveNoteChange(
+                id,
+                "无日期印记探针",
+                date: null,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance));
+        return cleared.Succeeded &&
+               workspace.Snapshot.Settings.Notes.Single(note =>
+                   string.Equals(note.Id, id, StringComparison.Ordinal)).Date is null;
+    }
+
+    private static Border[] FindFloatingDateStamps(FloatingWindow floating)
+    {
+        var rows = floating.FindName("FloatingRows") as StackPanel;
+        if (rows is null)
+        {
+            return Array.Empty<Border>();
+        }
+
+        return rows.Children.OfType<Border>()
+            .SelectMany(VisualDescendants<Border>)
+            .Where(border =>
+                Math.Abs(border.ActualWidth - 48) <= 0.5 &&
+                border.BorderThickness.Left >= 1.5)
+            .ToArray();
+    }
+
+    private static bool StampShowsUndatedFallback(Border stamp)
+    {
+        var labels = (stamp.Child as StackPanel)?.Children.OfType<TextBlock>().ToArray()
+            ?? Array.Empty<TextBlock>();
+        return labels.Length == 3 &&
+               string.Equals(labels[0].Text, "无日期", StringComparison.Ordinal) &&
+               string.Equals(labels[1].Text, "--", StringComparison.Ordinal) &&
+               string.Equals(labels[2].Text, " ", StringComparison.Ordinal);
+    }
+
+    private static bool StampTypographyMatches(Border stamp)
+    {
+        if (stamp.Child is not StackPanel stack ||
+            stamp.Parent is not Grid layout ||
+            layout.Background is not DrawingBrush ruleBrush)
+        {
+            return false;
+        }
+
+        var labels = stack.Children.OfType<TextBlock>().ToArray();
+        if (labels.Length != 3)
+        {
+            return false;
+        }
+
+        var dayFamily = labels[1].FontFamily?.Source ?? string.Empty;
+        return labels[0].FontWeight == FontWeights.Regular &&
+               labels[1].FontWeight == FontWeights.SemiBold &&
+               labels[2].FontWeight == FontWeights.Regular &&
+               dayFamily.Contains("Bahnschrift SemiCondensed", StringComparison.Ordinal) &&
+               dayFamily.Contains("Bahnschrift", StringComparison.Ordinal) &&
+               dayFamily.Contains("Microsoft YaHei UI", StringComparison.Ordinal) &&
+               Typography.GetNumeralAlignment(labels[1]) == FontNumeralAlignment.Tabular &&
+               Math.Abs(ruleBrush.Viewport.Height - 18) <= 0.1 &&
+               !stamp.IsHitTestVisible &&
+               !stamp.Focusable &&
+               Math.Abs(stamp.ActualWidth - 48) <= 0.5;
+    }
+
+    private static bool StampDensityMatches(Border stamp)
+    {
+        if (stamp.Child is not StackPanel stack)
+        {
+            return false;
+        }
+
+        var labels = stack.Children.OfType<TextBlock>().ToArray();
+        if (labels.Length != 3)
+        {
+            return false;
+        }
+
+        var padding = stamp.Padding;
+        var firstBottom = labels[0].TranslatePoint(new Point(0, labels[0].ActualHeight), stamp).Y;
+        var secondTop = labels[1].TranslatePoint(new Point(0, 0), stamp).Y;
+        var secondBottom = labels[1].TranslatePoint(new Point(0, labels[1].ActualHeight), stamp).Y;
+        var thirdTop = labels[2].TranslatePoint(new Point(0, 0), stamp).Y;
+        var gap1 = secondTop - firstBottom;
+        var gap2 = thirdTop - secondBottom;
+        return Math.Abs(padding.Left - 4) <= 0.1 &&
+               Math.Abs(padding.Right - 4) <= 0.1 &&
+               Math.Abs(padding.Top - 8) <= 0.1 &&
+               Math.Abs(padding.Bottom - 8) <= 0.1 &&
+               gap1 is >= 1.5 and <= 3.5 &&
+               gap2 is >= 1.5 and <= 3.5;
+    }
+
+    private static bool IsWhitelistedFontWeight(TextBlock label) =>
+        label.FontWeight == FontWeights.Regular ||
+        label.FontWeight == FontWeights.SemiBold;
+
+    public static bool ProbeNoteCancelFitsEditorPanel(MainWindow main)
+    {
+        var originalWorkspace = main.CurrentWorkspace;
+        var cancel = (Button)main.FindName("CancelNoteEdit");
+        var save = (Button)main.FindName("SaveNoteButton");
+        var panel = (Border)main.FindName("NoteEditorPanel");
+        var surface = (Canvas)main.FindName("MainLayoutSurface");
+        var originalVisibility = cancel.Visibility;
+        try
+        {
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            cancel.Visibility = Visibility.Visible;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            main.UpdateLayout();
+            var panelBounds = BoundsOn(panel, surface);
+            var cancelBounds = BoundsOn(cancel, surface);
+            var saveBounds = BoundsOn(save, surface);
+            return cancel.IsVisible &&
+                   cancelBounds.Right <= panelBounds.Right + 0.5 &&
+                   cancelBounds.Left >= saveBounds.Right - 0.5 &&
+                   Math.Abs(cancelBounds.Top - saveBounds.Top) <= 0.5 &&
+                   Math.Abs(cancel.Height - save.Height) <= 0.5;
+        }
+        finally
+        {
+            cancel.Visibility = originalVisibility;
+            main.ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    public static bool ProbePopupRightInsetIsEightFromCanvas(MainWindow main)
+    {
+        var canvas = (Canvas)main.FindName("MainLayoutSurface");
+        var filter = (Popup)main.FindName("FilterPopup");
+        var tagManager = (Popup)main.FindName("TagManagerPopup");
+        var selector = (TagSelector)main.FindName("NoteTags");
+        var originalWorkspace = main.CurrentWorkspace;
+        try
+        {
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            main.UpdateLayout();
+            return PopupRightInsetIsEight(filter, canvas, requireExact: true) &&
+                   PopupRightInsetIsEight(tagManager, canvas, requireExact: true) &&
+                   PopupRightInsetIsEight(selector.Popup, canvas, requireExact: true);
+        }
+        finally
+        {
+            filter.IsOpen = false;
+            tagManager.IsOpen = false;
+            selector.IsPopupOpen = false;
+            main.ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    public static bool ProbeFilterPopupScrollsLongTagList(
+        MainWindow main,
+        DesktopWorkspace workspace)
+    {
+        _ = workspace;
+        var filter = (Popup)main.FindName("FilterPopup");
+        var options = (WrapPanel)main.FindName("FilterTagOptions");
+        var originalChildren = options.Children.Cast<UIElement>().ToArray();
+        var originalWorkspace = main.CurrentWorkspace;
+        try
+        {
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            main.UpdateLayout();
+            for (var index = 0; index < 56; index++)
+            {
+                options.Children.Add(new ToggleButton
+                {
+                    Content = new string('测', 28) + index.ToString("00", CultureInfo.InvariantCulture),
+                    Margin = new Thickness(0, 0, 6, 6),
+                    Style = (Style)main.FindResource("TagToggleButton")
+                });
+            }
+
+            filter.IsOpen = true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            if (filter.Child is not Border border)
+            {
+                return false;
+            }
+
+            border.UpdateLayout();
+            var viewer = VisualDescendants<ScrollViewer>(border).FirstOrDefault();
+            return Math.Abs(border.MaxHeight - 520) <= 0.1 &&
+                   border.ActualHeight <= 520.5 &&
+                   viewer is { MaxHeight: 480 } &&
+                   viewer.ScrollableHeight > 0;
+        }
+        finally
+        {
+            filter.IsOpen = false;
+            options.Children.Clear();
+            foreach (var child in originalChildren)
+            {
+                options.Children.Add(child);
+            }
+
+            main.ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    public static bool ProbeMainCheckboxHitCoversSlot(
+        MainWindow main,
+        DesktopWorkspace workspace)
+    {
+        var originalWorkspace = main.CurrentWorkspace;
+        var createdIds = new List<string>();
+        try
+        {
+            if (!TryAddProbeNote(workspace, "复选命中探针便签", new DateTime(2031, 4, 5), createdIds) &&
+                !TryUseExistingNote(workspace, createdIds))
+            {
+                return false;
+            }
+
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            main.UpdateLayout();
+            var noteId = ResolveProbeNoteId(workspace, createdIds);
+            if (string.IsNullOrWhiteSpace(noteId))
+            {
+                return false;
+            }
+
+            var check = VisualDescendants<CheckBox>(main).SingleOrDefault(candidate =>
+                string.Equals(candidate.Tag as string, noteId, StringComparison.OrdinalIgnoreCase));
+            if (check is null)
+            {
+                return false;
+            }
+
+            check.UpdateLayout();
+            var topLeft = check.InputHitTest(new Point(1, 1));
+            var bottomRight = check.InputHitTest(new Point(
+                Math.Max(1, check.ActualWidth - 1),
+                Math.Max(1, check.ActualHeight - 1)));
+            return Math.Abs(check.ActualWidth - 30) <= 1 &&
+                   Math.Abs(check.ActualHeight - 30) <= 1 &&
+                   check.Tag as string == noteId &&
+                   IsSelfOrVisualDescendant(check, topLeft as DependencyObject) &&
+                   IsSelfOrVisualDescendant(check, bottomRight as DependencyObject);
+        }
+        finally
+        {
+            foreach (var id in createdIds)
+            {
+                workspace.Apply(new DeleteNoteChange(id));
+            }
+
+            main.ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    public static bool ProbeFloatingSearchSlotRightIs396(FloatingWindow floating)
+    {
+        var restore = floating.FloatingCountdownsButton.IsChecked == true
+            ? WorkspaceKind.Countdowns
+            : WorkspaceKind.Notes;
+        var search = (Button)floating.FindName("FloatingSearchNotes");
+        var slot = (FrameworkElement)floating.FindName("FloatingNoteSearchSlot");
+        try
+        {
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            if (slot.Visibility != Visibility.Visible)
+            {
+                search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            }
+
+            floating.UpdateLayout();
+            slot.UpdateLayout();
+            var right = slot.TranslatePoint(new Point(slot.ActualWidth, 0), floating).X;
+            return Math.Abs(right - 396) <= 1.5;
+        }
+        finally
+        {
+            if (slot.Visibility == Visibility.Visible)
+            {
+                var inputRow = (FrameworkElement)floating.FindName("FloatingNoteSearchInputRow");
+                if (inputRow.Visibility == Visibility.Visible)
+                {
+                    search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+                }
+            }
+
+            floating.ShowWorkspace(restore);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    public static bool ProbeFloatingSearchHintMatchesInputHeight(FloatingWindow floating)
+    {
+        var restore = floating.FloatingCountdownsButton.IsChecked == true
+            ? WorkspaceKind.Countdowns
+            : WorkspaceKind.Notes;
+        var search = (Button)floating.FindName("FloatingSearchNotes");
+        var input = (TextBox)floating.FindName("FloatingNoteSearch");
+        var inputRow = (FrameworkElement)floating.FindName("FloatingNoteSearchInputRow");
+        var hint = (FrameworkElement)floating.FindName("FloatingNoteSearchHint");
+        var scroller = (ScrollViewer)floating.FindName("FloatingBodyScroller");
+        var originalText = input.Text;
+        try
+        {
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            if (inputRow.Visibility != Visibility.Visible)
+            {
+                search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            }
+
+            floating.UpdateLayout();
+            var inputHeight = inputRow.ActualHeight;
+            var expandedScrollerHeight = scroller.ActualHeight;
+            input.Text = "布局等高探针";
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            return hint.Visibility == Visibility.Visible &&
+                   Math.Abs(hint.ActualHeight - inputHeight) <= 1 &&
+                   Math.Abs(scroller.ActualHeight - expandedScrollerHeight) <= 1;
+        }
+        finally
+        {
+            input.Text = originalText;
+            if (hint.Visibility == Visibility.Visible)
+            {
+                search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            }
+
+            if (inputRow.Visibility == Visibility.Visible)
+            {
+                search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            }
+
+            floating.ShowWorkspace(restore);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    public static bool ProbeFloatingQuickAddAlignsWithNoteCards(
+        FloatingWindow floating,
+        DesktopWorkspace workspace)
+    {
+        var restore = floating.FloatingCountdownsButton.IsChecked == true
+            ? WorkspaceKind.Countdowns
+            : WorkspaceKind.Notes;
+        var createdIds = new List<string>();
+        try
+        {
+            if (!TryAddProbeNote(workspace, "快速新增对齐探针", new DateTime(2031, 4, 5), createdIds) &&
+                !TryUseExistingNote(workspace, createdIds))
+            {
+                return false;
+            }
+
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            var entry = (FrameworkElement)floating.FindName("FloatingNoteEntry");
+            var rows = (Panel)floating.FindName("FloatingRows");
+            var card = rows.Children.OfType<FrameworkElement>().FirstOrDefault();
+            if (card is null || !entry.IsVisible)
+            {
+                return false;
+            }
+
+            var cardRight = card.TranslatePoint(new Point(card.ActualWidth, 0), floating).X;
+            var entryRight = entry.TranslatePoint(new Point(entry.ActualWidth, 0), floating).X;
+            return Math.Abs(cardRight - entryRight) <= 1.5 &&
+                   Math.Abs(card.ActualWidth - 319) <= 0.5;
+        }
+        finally
+        {
+            foreach (var id in createdIds)
+            {
+                workspace.Apply(new DeleteNoteChange(id));
+            }
+
+            floating.ShowWorkspace(restore);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    public static bool ProbeFloatingCheckboxHitCoversSlot(
+        FloatingWindow floating,
+        DesktopWorkspace workspace)
+    {
+        var restore = floating.FloatingCountdownsButton.IsChecked == true
+            ? WorkspaceKind.Countdowns
+            : WorkspaceKind.Notes;
+        var createdIds = new List<string>();
+        try
+        {
+            if (!TryAddProbeNote(workspace, "悬浮复选命中探针", new DateTime(2031, 4, 5), createdIds) &&
+                !TryUseExistingNote(workspace, createdIds))
+            {
+                return false;
+            }
+
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            var noteId = ResolveProbeNoteId(workspace, createdIds);
+            if (string.IsNullOrWhiteSpace(noteId))
+            {
+                return false;
+            }
+
+            var check = VisualDescendants<CheckBox>(floating).SingleOrDefault(candidate =>
+                string.Equals(candidate.Tag as string, noteId, StringComparison.OrdinalIgnoreCase));
+            if (check is null || VisualTreeHelper.GetParent(check) is not Grid layout)
+            {
+                return false;
+            }
+
+            layout.UpdateLayout();
+            var slotWidth = layout.ColumnDefinitions[0].ActualWidth;
+            var topLeft = layout.InputHitTest(new Point(2, 12));
+            var slotEdge = layout.InputHitTest(new Point(Math.Max(2, slotWidth - 2), 12));
+            var stampHit = layout.InputHitTest(new Point(layout.ActualWidth - 8, 12));
+            return slotWidth >= 33.5 &&
+                   check.ActualWidth >= 32 &&
+                   check.Tag as string == noteId &&
+                   IsSelfOrVisualDescendant(check, topLeft as DependencyObject) &&
+                   IsSelfOrVisualDescendant(check, slotEdge as DependencyObject) &&
+                   !IsSelfOrVisualDescendant(check, stampHit as DependencyObject);
+        }
+        finally
+        {
+            foreach (var id in createdIds)
+            {
+                workspace.Apply(new DeleteNoteChange(id));
+            }
+
+            floating.ShowWorkspace(restore);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    private static bool PopupRightInsetIsEight(Popup popup, Canvas canvas, bool requireExact)
+    {
+        var wasOpen = popup.IsOpen;
+        try
+        {
+            popup.IsOpen = true;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            if (popup.Child is not FrameworkElement child)
+            {
+                return false;
+            }
+
+            child.UpdateLayout();
+            canvas.UpdateLayout();
+            if (popup.PlacementTarget is not FrameworkElement target)
+            {
+                return false;
+            }
+
+            target.UpdateLayout();
+            var dip = VisualTreeHelper.GetDpi(child).PixelsPerDip;
+            if (dip <= 0)
+            {
+                dip = 1;
+            }
+
+            var desiredRight = canvas.PointToScreen(new Point(canvas.ActualWidth - 8, 0)).X;
+            var canvasRight = canvas.PointToScreen(new Point(canvas.ActualWidth, 0)).X;
+            var targetLeft = target.PointToScreen(new Point(0, 0)).X;
+            var childRight = targetLeft + (popup.HorizontalOffset * dip) + (child.ActualWidth * dip);
+            var delta = childRight - desiredRight;
+            return childRight <= canvasRight + 0.5 &&
+                   (requireExact ? Math.Abs(delta) <= 1.5 : delta <= 1.5);
+        }
+        finally
+        {
+            popup.IsOpen = wasOpen;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    private static bool IsSelfOrVisualDescendant(DependencyObject root, DependencyObject? node)
+    {
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, root))
+            {
+                return true;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+
+        return false;
+    }
+
+    private static Rect BoundsOn(FrameworkElement element, Visual ancestor)
+    {
+        element.UpdateLayout();
+        return element.TransformToVisual(ancestor).TransformBounds(
+            new Rect(0, 0, element.ActualWidth, element.ActualHeight));
     }
 
     private static bool RunAclDeniedMainRecoveryWiringProbe()

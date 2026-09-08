@@ -21,9 +21,72 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
-    private const string FloatingReferenceBaselineVersion = "2026-09-01-v18";
+    internal static void RunEmptyDayCaptureProbe(ResourceDictionary resources, string assetRoot)
+    {
+        const int captureWidth = 1165;
+        const int captureHeight = 1350;
+        var dayBeijing = new DateTimeOffset(2032, 5, 18, 10, 15, 30, TimeSpan.FromHours(8));
+        var referenceUtc = dayBeijing.ToUniversalTime();
+        var theme = new ApplicationTheme(resources);
+        var temporaryRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-empty-day-probe-{Guid.NewGuid():N}");
+        var settingsPath = Path.Combine(temporaryRoot, "settings.json");
+        var diagnosticPath = Path.Combine(temporaryRoot, "validation.jsonl");
+        Directory.CreateDirectory(temporaryRoot);
+        MainWindow? validationMain = null;
+        try
+        {
+            var settings = CreateMainReferenceSettings("Empty", referenceUtc);
+            var store = new SettingsStore(clock: new ValidationClock(referenceUtc));
+            store.Save(settingsPath, settings);
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            using var calendar = new HolidayCalendar(temporaryRoot);
+            validationMain = new MainWindow(
+                workspace,
+                calendar,
+                new DiagnosticLogger(diagnosticPath),
+                assetRoot)
+            {
+                Width = captureWidth,
+                Height = captureHeight,
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 1
+            };
+            validationMain.Show();
+            PumpDispatcher();
+            validationMain.UpdateLayout();
+            if (validationMain.Content is not FrameworkElement root)
+            {
+                throw new InvalidOperationException("empty-day probe 缺少根视觉。");
+            }
+
+            theme.Apply(ApplicationThemeMode.Day);
+            validationMain.ApplyTheme(ApplicationThemeMode.Day);
+            validationMain.ShowWorkspace(WorkspaceKind.Countdowns);
+            validationMain.UpdateTime(dayBeijing);
+            PumpDispatcher();
+            CloseMainDatePickerDropdowns(validationMain);
+            ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+            ClearCaptureKeyboardFocus();
+            var pngBytes = EncodePng(CaptureOpaqueMainSurface(root, captureWidth, captureHeight));
+            ProbeEmptyDayAgainstPinnedBaseline(pngBytes);
+        }
+        finally
+        {
+            validationMain?.Close();
+            PumpDispatcher();
+        }
+    }
+
+    private const string FloatingReferenceBaselineVersion = "2026-09-07-v21";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
+    private const string FloatingSearchExpandedScenario = "notes-search-expanded";
     private const string FloatingReferenceStateFingerprintAlgorithm =
         "SHA-256 of canonical UTF-8 floating capture state";
     private const string FloatingReferenceSourceAggregateAlgorithm =
@@ -122,9 +185,21 @@ internal static class ValidationReport
             FloatingLongNotesScenario,
             "Night",
             "Bottom",
-            "long-notes-night-bottom.png")
+            "long-notes-night-bottom.png"),
+        new(
+            "notes-search-expanded-day",
+            FloatingSearchExpandedScenario,
+            "Day",
+            "Expanded",
+            "notes-search-expanded-day.png"),
+        new(
+            "notes-search-expanded-night",
+            FloatingSearchExpandedScenario,
+            "Night",
+            "Expanded",
+            "notes-search-expanded-night.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-09-02-v18";
+    private const string MainReferenceBaselineVersion = "2026-09-07-v21";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -194,7 +269,11 @@ internal static class ValidationReport
         new("main-night-countdowns-stress", "Night", "Countdowns", "Stress", "main-night-countdowns-stress.png"),
         new("main-night-notes-empty", "Night", "Notes", "Empty", "main-night-notes-empty.png"),
         new("main-night-notes-representative", "Night", "Notes", "Representative", "main-night-notes-representative.png"),
-        new("main-night-notes-stress", "Night", "Notes", "Stress", "main-night-notes-stress.png")
+        new("main-night-notes-stress", "Night", "Notes", "Stress", "main-night-notes-stress.png"),
+        new("main-day-notes-edit", "Day", "Notes", "Edit", "main-day-notes-edit.png"),
+        new("main-night-notes-edit", "Night", "Notes", "Edit", "main-night-notes-edit.png"),
+        new("main-day-notes-filter-open", "Day", "Notes", "FilterOpen", "main-day-notes-filter-open.png"),
+        new("main-night-notes-filter-open", "Night", "Notes", "FilterOpen", "main-night-notes-filter-open.png")
     };
 
     public static IReadOnlyDictionary<string, object?> Create(
@@ -837,6 +916,44 @@ internal static class ValidationReport
         var comboBoxTextClick = ValidateComboBoxTextClick(main);
         var secondaryWindowDrag = ValidateSecondaryWindowDrag(main);
         var calendarNavigationNames = WindowValidationInput.ReadCalendarNavigationNames(datePicker);
+        var countdownCardActionsIncludeRecordName =
+            ValidateCountdownCardActionNames(main, desktopWorkspace);
+        var settingsRecoveryFailureExitIsDefault =
+            ValidationExercises.ProbeSettingsRecoveryFailureExitIsDefault();
+        var ruleEditorInlineDeleteUsesDangerButton =
+            ValidationExercises.ProbeRuleEditorInlineDeleteUsesDangerButton();
+        var settingsRecoverySecondaryUsesCanvas =
+            ValidationExercises.ProbeSettingsRecoverySecondaryUsesCanvas();
+        var reminderCenterSnoozeRowAlignsWithActions =
+            ValidationExercises.ProbeReminderCenterSnoozeRowAlignsWithActions();
+        var popupAnimationIsInstant =
+            ValidationExercises.ProbeFivePopupsUseInstantAnimation(main);
+        var actionForegroundsUseMainActionText =
+            ValidationExercises.ProbeActionForegroundsUseMainActionText(main);
+        var disabledSelectionControlsUseButtonOpacity =
+            ValidationExercises.ProbeDisabledSelectionControlsUseButtonOpacity(main);
+        var floatingDateStampTypographyMatches =
+            ValidationExercises.ProbeFloatingDateStampTypography(floating, desktopWorkspace);
+        var floatingTypographyWeightWhitelist =
+            ValidationExercises.ProbeFloatingTypographyWeightWhitelist(floating, desktopWorkspace);
+        var floatingDateStampDensityMatches =
+            ValidationExercises.ProbeFloatingDateStampDensity(floating, desktopWorkspace);
+        var noteCancelFitsEditorPanel =
+            ValidationExercises.ProbeNoteCancelFitsEditorPanel(main);
+        var popupRightInsetIsEightFromCanvas =
+            ValidationExercises.ProbePopupRightInsetIsEightFromCanvas(main);
+        var filterPopupScrollsLongTagList =
+            ValidationExercises.ProbeFilterPopupScrollsLongTagList(main, desktopWorkspace);
+        var mainCheckboxHitCoversSlot =
+            ValidationExercises.ProbeMainCheckboxHitCoversSlot(main, desktopWorkspace);
+        var floatingSearchSlotRightIs396 =
+            ValidationExercises.ProbeFloatingSearchSlotRightIs396(floating);
+        var floatingSearchHintMatchesInputHeight =
+            ValidationExercises.ProbeFloatingSearchHintMatchesInputHeight(floating);
+        var floatingQuickAddAlignsWithNoteCards =
+            ValidationExercises.ProbeFloatingQuickAddAlignsWithNoteCards(floating, desktopWorkspace);
+        var floatingCheckboxHitCoversSlot =
+            ValidationExercises.ProbeFloatingCheckboxHitCoversSlot(floating, desktopWorkspace);
         var auditContrastGateIsolationBehavior =
             ValidationExercises.RunAuditContrastGateIsolationBehavior();
         var floatingManualPlacement = floatingWindowScenarios.ManualPlacement;
@@ -1137,7 +1254,7 @@ internal static class ValidationReport
             ["LiveSelectedDayUsesThemeTokens"] = dateFamilyThemed,
             ["LiveSelectedDayCount"] = 1,
             ["LiveSelectedDayBackground"] = Application.Current.FindResource("ActiveBrush")?.ToString() ?? string.Empty,
-            ["LiveSelectedDayForeground"] = "White",
+            ["LiveSelectedDayForeground"] = Application.Current.FindResource("MainActionTextBrush")?.ToString() ?? string.Empty,
             ["CalendarHeaderTextFits"] = calendarHeaderMetrics.Fits,
             ["CalendarHeaderTextAvailableWidth"] = calendarHeaderMetrics.Available,
             ["CalendarHeaderTextRequiredWidth"] = calendarHeaderMetrics.Required,
@@ -1232,15 +1349,40 @@ internal static class ValidationReport
             ["SystemDialogPrimaryButtonContrast"] = systemDialogPrimaryButtonContrast,
             ["NightKeyboardFocusContrast"] = nightKeyboardFocusContrast,
             ["ComboBoxTextClick"] = comboBoxTextClick,
+            ["ComboBoxArrowIsNotTabStop"] = comboBoxTextClick.ArrowIsNotTabStop,
             ["SecondaryWindowHeaderDrag"] = secondaryWindowDrag,
             ["CalendarPreviousMonthAccessibleName"] = calendarNavigationNames.Previous,
             ["CalendarNextMonthAccessibleName"] = calendarNavigationNames.Next,
             ["CalendarNavigationAccessibleNames"] =
                 string.Equals(calendarNavigationNames.Previous, "上一个月", StringComparison.Ordinal) &&
                 string.Equals(calendarNavigationNames.Next, "下一个月", StringComparison.Ordinal),
+            ["DatePickerOpenCalendarAccessibleName"] = dateButton is null
+                ? string.Empty
+                : AutomationProperties.GetName(dateButton) ?? string.Empty,
+            ["DatePickerOpenCalendarAccessibleNames"] =
+                productionDatePickers.AllOpenCalendarButtonsNamed,
+            ["CountdownCardActionsIncludeRecordName"] = countdownCardActionsIncludeRecordName,
+            ["SettingsRecoveryFailureExitIsDefault"] = settingsRecoveryFailureExitIsDefault,
+            ["RuleEditorInlineDeleteUsesDangerButton"] = ruleEditorInlineDeleteUsesDangerButton,
+            ["SettingsRecoverySecondaryUsesCanvas"] = settingsRecoverySecondaryUsesCanvas,
+            ["ReminderCenterSnoozeRowAlignsWithActions"] = reminderCenterSnoozeRowAlignsWithActions,
+            ["PopupAnimationIsInstant"] = popupAnimationIsInstant,
+            ["ActionForegroundsUseMainActionText"] = actionForegroundsUseMainActionText,
+            ["DisabledSelectionControlsUseButtonOpacity"] = disabledSelectionControlsUseButtonOpacity,
+            ["FloatingDateStampTypographyMatches"] = floatingDateStampTypographyMatches,
+            ["FloatingTypographyWeightWhitelist"] = floatingTypographyWeightWhitelist,
+            ["FloatingDateStampDensityMatches"] = floatingDateStampDensityMatches,
+            ["NoteCancelFitsEditorPanel"] = noteCancelFitsEditorPanel,
+            ["PopupRightInsetIsEightFromCanvas"] = popupRightInsetIsEightFromCanvas,
+            ["FilterPopupScrollsLongTagList"] = filterPopupScrollsLongTagList,
+            ["MainCheckboxHitCoversSlot"] = mainCheckboxHitCoversSlot,
+            ["FloatingSearchSlotRightIs396"] = floatingSearchSlotRightIs396,
+            ["FloatingSearchHintMatchesInputHeight"] = floatingSearchHintMatchesInputHeight,
+            ["FloatingQuickAddAlignsWithNoteCards"] = floatingQuickAddAlignsWithNoteCards,
+            ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["NightKeyboardFocusBaselineFramesAffected"] = false,
             ["NightKeyboardFocusBaselineEvidence"] =
-                "Night 12-frame captures include the initial CountdownTab keyboard focus ring, so night frames were regenerated into 2026-09-02-v18; day frames were recaptured with unchanged ActiveBrush focus color.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; frames were regenerated into 2026-09-07-v21 with edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["EffectiveThemeTextContrast"] = contrast,
@@ -1545,6 +1687,9 @@ internal static class ValidationReport
             ["MainMinimumSizeMatchesDefault"] = mainUiPolish.MinimumSizeMatchesDefault,
             ["PopupKeyboardLifecycleWorks"] = mainUiPolish.PopupKeyboardLifecycleWorks,
             ["PopupOutsideFocusPreserved"] = mainUiPolish.PopupOutsideFocusPreserved,
+            ["PopupTriggerSecondClickCloses"] = mainUiPolish.PopupTriggerSecondClickCloses,
+            ["PopupEscapeFromTriggerClosesAndKeepsFocus"] =
+                mainUiPolish.PopupEscapeFromTriggerClosesAndKeepsFocus,
             ["NoteEmptyStatesDistinguished"] = mainUiPolish.EmptyStatesDistinguished,
             ["NoteNoResultsResetWorks"] = mainUiPolish.NoResultsResetWorks,
             ["CountdownEmptyStatesDistinguished"] = mainUiPolish.CountdownEmptyStatesDistinguished,
@@ -2372,29 +2517,37 @@ internal static class ValidationReport
             countdownMinute.SelectedItem = "56";
             countdownSecond.SelectedItem = "11";
             PumpDispatcher();
+            CloseMainDatePickerDropdowns(main);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
-            var countdownCapture = CaptureOpaqueMainSurface(root);
+            ClearCaptureKeyboardFocus();
+            var countdownCapture = CaptureOpaqueMainSurface(root, captureWidth, captureHeight);
 
             main.ShowWorkspace(WorkspaceKind.Notes);
             main.UpdateTime(notesCaptureBeijingTime);
             noteDate.SelectedDate = new DateTime(2026, 7, 29);
             PumpDispatcher();
+            CloseMainDatePickerDropdowns(main);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
-            var notesCapture = CaptureOpaqueMainSurface(root);
+            ClearCaptureKeyboardFocus();
+            var notesCapture = CaptureOpaqueMainSurface(root, captureWidth, captureHeight);
 
             theme.Apply(ApplicationThemeMode.Night);
             main.ApplyTheme(ApplicationThemeMode.Night);
             main.ShowWorkspace(WorkspaceKind.Countdowns);
             main.UpdateTime(nightCountdownCaptureBeijingTime);
             PumpDispatcher();
+            CloseMainDatePickerDropdowns(main);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
-            var nightCountdownCapture = CaptureOpaqueMainSurface(root);
+            ClearCaptureKeyboardFocus();
+            var nightCountdownCapture = CaptureOpaqueMainSurface(root, captureWidth, captureHeight);
 
             main.ShowWorkspace(WorkspaceKind.Notes);
             main.UpdateTime(nightNotesCaptureBeijingTime);
             PumpDispatcher();
+            CloseMainDatePickerDropdowns(main);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
-            var nightNotesCapture = CaptureOpaqueMainSurface(root);
+            ClearCaptureKeyboardFocus();
+            var nightNotesCapture = CaptureOpaqueMainSurface(root, captureWidth, captureHeight);
 
             var canvasMatches =
                 countdownCapture.PixelWidth == captureWidth &&
@@ -2535,6 +2688,21 @@ internal static class ValidationReport
             main.InvalidateArrange();
             PumpDispatcher();
         }
+    }
+
+    private static void CloseMainDatePickerDropdowns(MainWindow main)
+    {
+        if (main.FindName("CountdownDate") is DatePicker countdownDate)
+        {
+            countdownDate.IsDropDownOpen = false;
+        }
+
+        if (main.FindName("NoteDate") is DatePicker noteDate)
+        {
+            noteDate.IsDropDownOpen = false;
+        }
+
+        PumpDispatcher();
     }
 
     private static void ArrangeForReferenceCapture(FrameworkElement root, int width, int height)
@@ -2699,7 +2867,7 @@ internal static class ValidationReport
 
         try
         {
-            foreach (var state in new[] { "Empty", "Representative", "Stress" })
+            foreach (var state in new[] { "Empty", "Representative", "Stress", "Edit", "FilterOpen" })
             {
                 var temporaryRoot = Path.Combine(
                     Path.GetTempPath(),
@@ -2711,7 +2879,8 @@ internal static class ValidationReport
 
                 try
                 {
-                    var settings = CreateMainReferenceSettings(state, referenceUtc);
+                    var settingsState = state is "Edit" or "FilterOpen" ? "Representative" : state;
+                    var settings = CreateMainReferenceSettings(settingsState, referenceUtc);
                     var store = new SettingsStore(clock: new ValidationClock(referenceUtc));
                     store.Save(settingsPath, settings);
                     var workspace = DesktopWorkspace.Load(settingsPath, store);
@@ -2761,22 +2930,55 @@ internal static class ValidationReport
                             stressNotesPrepared = true;
                         }
 
+                        if (spec.State == "Edit")
+                        {
+                            validationMain.LoadNoteIntoEditor(
+                                workspace.Snapshot.Settings.Notes[0]);
+                        }
+                        else if (spec.State == "FilterOpen")
+                        {
+                            Required<Popup>(validationMain, "FilterPopup").IsOpen = true;
+                        }
+                        else
+                        {
+                            Required<Popup>(validationMain, "FilterPopup").IsOpen = false;
+                        }
+
                         PumpDispatcher();
+                        if (state is "Empty" or "Representative" or "Stress")
+                        {
+                            CloseMainDatePickerDropdowns(validationMain);
+                        }
+
                         ArrangeForReferenceCapture(root, captureWidth, captureHeight);
                         var stressCountdownTitle =
                             state == "Stress" && workspaceKind == WorkspaceKind.Countdowns
                                 ? MeasureMainStressCountdownTitle(validationMain, spec)
                                 : null;
-                        var pngBytes = EncodePng(CaptureOpaqueMainSurface(root));
+                        var overlayPopup = spec.State == "FilterOpen"
+                            ? Required<Popup>(validationMain, "FilterPopup")
+                            : null;
+                        ClearCaptureKeyboardFocus();
+                        var pngBytes = EncodePng(CaptureOpaqueMainSurface(root, captureWidth, captureHeight, overlayPopup));
+                        if (string.Equals(
+                                Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_EMPTY_DAY_PROBE"),
+                                "1",
+                                StringComparison.Ordinal) &&
+                            string.Equals(spec.CaptureId, "main-day-countdowns-empty", StringComparison.Ordinal))
+                        {
+                            ProbeEmptyDayAgainstPinnedBaseline(pngBytes);
+                        }
+
                         var noteCardReminderFont =
-                            workspaceKind == WorkspaceKind.Notes
+                            workspaceKind == WorkspaceKind.Notes &&
+                            spec.State is "Representative" or "Stress"
                                 ? MeasureMainNoteCardReminderFont(validationMain, spec)
                                 : null;
                         var metrics = MeasureMainReferenceCapture(pngBytes);
                         if (metrics.Width != captureWidth || metrics.Height != captureHeight)
                         {
                             throw new InvalidOperationException(
-                                $"主窗口参考帧 {spec.CaptureId} 不是 {captureWidth}x{captureHeight}。");
+                                $"主窗口参考帧 {spec.CaptureId} 不是 {captureWidth}x{captureHeight}（actual={metrics.Width}x{metrics.Height}）。");
                         }
                         if (!metrics.Alpha.IsFullyOpaque)
                         {
@@ -2827,7 +3029,8 @@ internal static class ValidationReport
 
         if (captures.Count != MainReferenceCaptureSpecs.Length)
         {
-            throw new InvalidOperationException("主窗口正式参考场景未生成严格十二帧。");
+            throw new InvalidOperationException(
+                $"主窗口正式参考场景未生成严格 {MainReferenceCaptureSpecs.Length} 帧。");
         }
 
         return MainReferenceCaptureSpecs.Select(spec => captures.Single(capture =>
@@ -3305,7 +3508,7 @@ internal static class ValidationReport
         string Date(int offset) => beijingDate.AddDays(offset)
             .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-        if (state == "Representative")
+        if (state is "Representative" or "Edit" or "FilterOpen")
         {
             return new CountdownSettings(
                 new[]
@@ -3771,7 +3974,8 @@ internal static class ValidationReport
                 .Distinct(StringComparer.Ordinal)
                 .Count() != MainReferenceCaptureSpecs.Length)
         {
-            throw new InvalidOperationException("主窗口参考图生成必须提供严格十二帧 inventory。");
+            throw new InvalidOperationException(
+                $"主窗口参考图生成必须提供严格 {MainReferenceCaptureSpecs.Length} 帧 inventory。");
         }
         if (Directory.Exists(baselineDirectory) &&
             Directory.EnumerateFileSystemEntries(baselineDirectory).Any())
@@ -3784,6 +3988,14 @@ internal static class ValidationReport
                 { Width: 1165, Height: 1350, Alpha.IsFullyOpaque: true }))
         {
             throw new InvalidOperationException("主窗口正式参考帧必须为 1165x1350 全不透明 PNG。");
+        }
+
+        var pngHashes = actualCaptures
+            .Select(capture => Convert.ToHexString(SHA256.HashData(capture.PngBytes)))
+            .ToArray();
+        if (pngHashes.Distinct(StringComparer.Ordinal).Count() != pngHashes.Length)
+        {
+            throw new InvalidOperationException("主窗口参考图生成拒绝写入复用 PNG 的基线目录。");
         }
 
         Directory.CreateDirectory(baselineDirectory);
@@ -4368,6 +4580,7 @@ internal static class ValidationReport
                     referenceWorkdayTargetUtc,
                     referenceUtc) &&
                 string.Equals(referenceWindow.IncomeText, "今日已赚 ￥41.13", StringComparison.Ordinal);
+            ClearCaptureKeyboardFocus();
             var actualCapture = CaptureVisual(root);
             var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
             var captureBytes = EncodePng(framedCapture);
@@ -4493,6 +4706,7 @@ internal static class ValidationReport
                 expectedMascots,
                 actualWidth,
                 actualHeight);
+            ClearCaptureKeyboardFocus();
             nightCountdownCaptureBytes = EncodePng(ScaleToFrame(
                 CaptureVisual(root),
                 captureWidth,
@@ -4706,6 +4920,7 @@ internal static class ValidationReport
             var countdownScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
             countdownScroller.ScrollToVerticalOffset(countdownScroller.ScrollableHeight);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
+            ClearCaptureKeyboardFocus();
             scrolledCountdownsCaptureBytes = EncodePng(ScaleToFrame(
                 CaptureVisual(root),
                 captureWidth,
@@ -4739,10 +4954,18 @@ internal static class ValidationReport
             nightNotesCaptureBytes = floatingLongNotesValidation.Captures
                 .Single(capture => capture.Spec.CaptureId == "long-notes-night-top")
                 .PngBytes;
+            var searchExpandedCaptures = CaptureFloatingSearchExpandedFrames(
+                referenceWindow,
+                root,
+                rows,
+                referenceUtc,
+                captureWidth,
+                captureHeight);
             floatingReferenceBaseline = ValidateFloatingReferenceBaseline(
                 assetRoot,
                 new[] { dayCountdownCapture, nightCountdownCapture }
                     .Concat(floatingLongNotesValidation.Captures)
+                    .Concat(searchExpandedCaptures)
                     .ToArray(),
                 floatingLongNotesValidation.TypographyMatches,
                 floatingLongNotesValidation.LayoutValid);
@@ -4773,6 +4996,7 @@ internal static class ValidationReport
 
             bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
+            ClearCaptureKeyboardFocus();
             scrolledNotesCaptureBytes = EncodePng(ScaleToFrame(
                 CaptureVisual(root),
                 captureWidth,
@@ -4782,6 +5006,7 @@ internal static class ValidationReport
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
             bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
             PumpDispatcher();
+            ClearCaptureKeyboardFocus();
             nightScrolledNotesCaptureBytes = EncodePng(ScaleToFrame(
                 CaptureVisual(root),
                 captureWidth,
@@ -5263,6 +5488,7 @@ internal static class ValidationReport
                     bodyScroller.ScrollableHeight,
                     firstVisibleAnchor,
                     lastVisibleAnchor);
+                ClearCaptureKeyboardFocus();
                 var pngBytes = EncodePng(ScaleToFrame(
                     CaptureVisual(root),
                     captureWidth,
@@ -5552,6 +5778,68 @@ internal static class ValidationReport
         }
 
         return false;
+    }
+
+    private static IReadOnlyList<FloatingReferenceActualCapture> CaptureFloatingSearchExpandedFrames(
+        FloatingWindow window,
+        Grid root,
+        StackPanel rows,
+        DateTimeOffset referenceUtc,
+        int captureWidth,
+        int captureHeight)
+    {
+        var search = Required<Button>(window, "FloatingSearchNotes");
+        var inputRow = Required<FrameworkElement>(window, "FloatingNoteSearchInputRow");
+        var searchBox = Required<TextBox>(window, "FloatingNoteSearch");
+        var scroller = Required<ScrollViewer>(window, "FloatingBodyScroller");
+        window.ShowWorkspace(WorkspaceKind.Notes);
+        PumpDispatcher();
+        if (inputRow.Visibility != Visibility.Visible)
+        {
+            search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            PumpDispatcher();
+        }
+
+        var originalCaret = searchBox.CaretBrush;
+        var captures = new List<FloatingReferenceActualCapture>();
+        try
+        {
+            searchBox.CaretBrush = Brushes.Transparent;
+            foreach (var theme in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
+            {
+                window.ApplyTheme(theme);
+                window.UpdateTime(referenceUtc);
+                WaitForStableFloatingReferenceLayout(window, root, rows, rows.Children.Count);
+                ClearCaptureKeyboardFocus();
+                var captureId = $"notes-search-expanded-{theme.ToString().ToLowerInvariant()}";
+                var spec = FloatingReferenceCaptureSpecs.Single(candidate =>
+                    string.Equals(candidate.CaptureId, captureId, StringComparison.Ordinal));
+                captures.Add(CreateFloatingReferenceActualCapture(
+                    spec,
+                    EncodePng(ScaleToFrame(CaptureVisual(root), captureWidth, captureHeight)),
+                    CreateFloatingReferenceStateFingerprint(
+                        theme.ToString(),
+                        "Notes",
+                        string.Empty,
+                        string.Empty,
+                        spec.State,
+                        scroller.VerticalOffset,
+                        scroller.ScrollableHeight,
+                        "search-expanded",
+                        "search-expanded")));
+            }
+        }
+        finally
+        {
+            searchBox.CaretBrush = originalCaret;
+            if (inputRow.Visibility == Visibility.Visible)
+            {
+                search.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                PumpDispatcher();
+            }
+        }
+
+        return captures;
     }
 
     private static FloatingReferenceActualCapture CreateFloatingReferenceActualCapture(
@@ -6029,7 +6317,16 @@ internal static class ValidationReport
                 .Distinct(StringComparer.Ordinal)
                 .Count() != FloatingReferenceCaptureSpecs.Length)
         {
-            throw new InvalidOperationException("悬浮窗参考图生成必须提供严格六帧 inventory。");
+            throw new InvalidOperationException(
+                $"悬浮窗参考图生成必须提供严格 {FloatingReferenceCaptureSpecs.Length} 帧 inventory。");
+        }
+
+        var pngHashes = actualCaptures
+            .Select(capture => Convert.ToHexString(SHA256.HashData(capture.PngBytes)))
+            .ToArray();
+        if (pngHashes.Distinct(StringComparer.Ordinal).Count() != pngHashes.Length)
+        {
+            throw new InvalidOperationException("悬浮窗参考图生成拒绝写入复用 PNG 的基线目录。");
         }
 
         if (Directory.Exists(baselineDirectory) &&
@@ -6789,6 +7086,7 @@ internal static class ValidationReport
                     usesThemeTokens,
                     BrushColor(parts.ThumbVisual.Background),
                     BrushColor(parts.ThumbVisual.BorderBrush)));
+                ClearCaptureKeyboardFocus();
                 captures[$"{theme.ToString().ToLowerInvariant()}-{state.Name}"] =
                     EncodePng(ScaleToFrame(
                         CaptureVisual(root),
@@ -7487,17 +7785,286 @@ internal static class ValidationReport
         return true;
     }
 
-    private static RenderTargetBitmap CaptureVisual(FrameworkElement visual)
+    private static bool IsEntirelyTransparent(BitmapSource source)
     {
-        var width = Math.Max(1, (int)Math.Ceiling(visual.ActualWidth));
-        var height = Math.Max(1, (int)Math.Ceiling(visual.ActualHeight));
+        var (pixels, _) = GetBgra32Pixels(source);
+        for (var index = 3; index < pixels.Length; index += 4)
+        {
+            if (pixels[index] != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsEmptyDayProbeEnabled() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_EMPTY_DAY_PROBE"),
+            "1",
+            StringComparison.Ordinal);
+
+    private static bool IsCaptureDiagEnabled() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_CAPTURE_DIAG"),
+            "1",
+            StringComparison.Ordinal);
+
+    private static void ProbeEmptyDayAgainstPinnedBaseline(byte[] actualPng)
+    {
+        WriteEmptyDayProbeReport(actualPng, emptyRender: false, captureDiagnostics: null);
+    }
+
+    private static void WriteEmptyDayProbeReport(
+        byte[] actualPng,
+        bool emptyRender,
+        string? captureDiagnostics)
+    {
+        var sourceRoot = Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT");
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+        {
+            throw new InvalidOperationException(
+                "empty-day probe 需要 MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT。");
+        }
+
+        var baselinePath = ResolveRepositoryRelativePath(
+            Path.GetFullPath(sourceRoot),
+            $"assets/ui-references/main-window/1165x1350/{MainReferenceBaselineVersion}/main-day-countdowns-empty.png");
+        var baselineBytes = File.ReadAllBytes(baselinePath);
+        var actualMetrics = MeasureMainReferenceCapture(actualPng);
+        var comparison = CompareMainReferencePixels(baselineBytes, actualPng);
+        var (pixels, stride) = GetBgra32Pixels(DecodeBitmap(actualPng));
+        int? firstX = null;
+        int? firstY = null;
+        byte? firstA = null;
+        var holeCount = 0;
+        var minA = byte.MaxValue;
+        var maxA = byte.MinValue;
+        for (var y = 0; y < actualMetrics.Height; y++)
+        {
+            for (var x = 0; x < actualMetrics.Width; x++)
+            {
+                var alpha = pixels[(y * stride) + (x * 4) + 3];
+                minA = Math.Min(minA, alpha);
+                maxA = Math.Max(maxA, alpha);
+                if (alpha != byte.MaxValue)
+                {
+                    holeCount++;
+                    if (firstX is null)
+                    {
+                        firstX = x;
+                        firstY = y;
+                        firstA = alpha;
+                    }
+                }
+            }
+        }
+
+        var actualSha = Convert.ToHexString(SHA256.HashData(actualPng));
+        var baselineSha = Convert.ToHexString(SHA256.HashData(baselineBytes));
+        var withinRmse = comparison.RootMeanSquareError <= MainReferenceMaximumRootMeanSquareError;
+        var withinMae = comparison.MeanAbsoluteError <= MainReferenceMaximumMeanAbsoluteError;
+        var withinChanged = comparison.ChangedPixelCount <= MainReferenceMaximumChangedPixelCount;
+        var hashesMatch = string.Equals(actualSha, baselineSha, StringComparison.Ordinal);
+        var reportPath = Path.Combine(Path.GetTempPath(), "minmin-empty-day-probe.json");
+        var report = new Dictionary<string, object?>
+        {
+            ["emptyRender"] = emptyRender,
+            ["captureDiagnostics"] = captureDiagnostics,
+            ["width"] = actualMetrics.Width,
+            ["height"] = actualMetrics.Height,
+            ["minA"] = minA,
+            ["maxA"] = maxA,
+            ["holeCount"] = holeCount,
+            ["firstNonOpaqueX"] = firstX,
+            ["firstNonOpaqueY"] = firstY,
+            ["firstNonOpaqueA"] = firstA,
+            ["rmse"] = comparison.RootMeanSquareError,
+            ["mae"] = comparison.MeanAbsoluteError,
+            ["changed"] = comparison.ChangedPixelCount,
+            ["maxAbs"] = comparison.MaxAbsoluteChannelDelta,
+            ["actualSha256"] = actualSha,
+            ["baselineSha256"] = baselineSha,
+            ["hashesMatch"] = hashesMatch,
+            ["withinRmse"] = withinRmse,
+            ["rmseLimit"] = MainReferenceMaximumRootMeanSquareError,
+            ["reportPath"] = reportPath
+        };
+        File.WriteAllText(
+            reportPath,
+            JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+        if (emptyRender ||
+            !withinRmse ||
+            !withinMae ||
+            !withinChanged ||
+            !hashesMatch ||
+            holeCount != 0)
+        {
+            throw new InvalidOperationException(
+                "empty-day probe 未对齐当前钉住基线：" +
+                $"emptyRender={emptyRender} minA={minA} maxA={maxA} holeCount={holeCount} " +
+                $"first=({firstX},{firstY},A={firstA}) RMSE={comparison.RootMeanSquareError:0.###} " +
+                $"MAE={comparison.MeanAbsoluteError:0.###} changed={comparison.ChangedPixelCount} " +
+                $"hashesMatch={hashesMatch} report={reportPath}");
+        }
+    }
+
+    private static string DescribeEmptyCapture(FrameworkElement visual, BitmapSource bitmap)
+    {
+        var window = Window.GetWindow(visual);
+        var dpi = VisualTreeHelper.GetDpi(visual);
+        var (pixels, stride) = GetBgra32Pixels(bitmap);
+        var minA = byte.MaxValue;
+        var maxA = byte.MinValue;
+        var holeCount = 0;
+        int? firstX = null;
+        int? firstY = null;
+        byte? firstA = null;
+        for (var y = 0; y < bitmap.PixelHeight; y++)
+        {
+            for (var x = 0; x < bitmap.PixelWidth; x++)
+            {
+                var alpha = pixels[(y * stride) + (x * 4) + 3];
+                minA = Math.Min(minA, alpha);
+                maxA = Math.Max(maxA, alpha);
+                if (alpha == 0)
+                {
+                    holeCount++;
+                }
+
+                if (alpha != 0 && firstX is null)
+                {
+                    firstX = x;
+                    firstY = y;
+                    firstA = alpha;
+                }
+            }
+        }
+
+        return
+            "CaptureVisual 96-DPI Render 整幅透明：" +
+            $"visual={visual.GetType().Name} actual={visual.ActualWidth}x{visual.ActualHeight} " +
+            $"bitmap={bitmap.PixelWidth}x{bitmap.PixelHeight} dpi={dpi.DpiScaleX}/{dpi.DpiScaleY} " +
+            $"window=({window?.Left},{window?.Top}) opacity={window?.Opacity} " +
+            $"minA={minA} maxA={maxA} holeCount={holeCount} firstNonZero=({firstX},{firstY},A={firstA})";
+    }
+
+    private static RenderTargetBitmap RenderVisualToBitmap(FrameworkElement visual, int width, int height)
+    {
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
         bitmap.Freeze();
         return bitmap;
     }
 
-    private static RenderTargetBitmap CaptureOpaqueMainSurface(FrameworkElement visual)
+    // 顶层窗口尺寸会被操作系统钳制到虚拟屏范围内，其后的真实布局会把内容根压回钳制尺寸；
+    // 参考帧按固定尺寸显式 Measure/Arrange 后立即渲染，中间不得 UpdateLayout 或 PumpDispatcher。
+    private static RenderTargetBitmap CaptureVisualAtFixedSize(
+        FrameworkElement visual,
+        int width,
+        int height)
+    {
+        var size = new Size(width, height);
+        visual.Measure(size);
+        visual.Arrange(new Rect(new Point(0, 0), size));
+        return RenderVisualToBitmap(visual, width, height);
+    }
+
+    private static RenderTargetBitmap CaptureVisual(FrameworkElement visual)
+    {
+        var window = Window.GetWindow(visual);
+        var restoreOpacity = window?.Opacity;
+        double? restoreLeft = null;
+        double? restoreTop = null;
+        try
+        {
+            if (window is not null && window.Opacity == 0)
+            {
+                window.Opacity = 0.01;
+                window.UpdateLayout();
+                PumpDispatcher();
+            }
+
+            // 验证用近隐形窗口必须停在离屏位渲染：不可见隔离桌面不合成落在可见区内的窗口。
+            // 悬浮窗 Loaded/IsVisibleChanged/SizeChanged 触发的 Reanchor 可能把窗口拉回工作区，
+            // 因此先冲刷未决事件再临时泊窗，渲染前不再 PumpDispatcher，渲染结束后恢复原位。
+            if (window is not null &&
+                window.Opacity < 1 &&
+                (Math.Abs(window.Left - (-20_000)) > 0.5 || Math.Abs(window.Top - (-20_000)) > 0.5))
+            {
+                PumpDispatcher();
+                restoreLeft = window.Left;
+                restoreTop = window.Top;
+                window.Left = -20_000;
+                window.Top = -20_000;
+                window.UpdateLayout();
+            }
+
+            visual.UpdateLayout();
+            var width = Math.Max(1, (int)Math.Ceiling(visual.ActualWidth));
+            var height = Math.Max(1, (int)Math.Ceiling(visual.ActualHeight));
+            var bitmap = RenderVisualToBitmap(visual, width, height);
+            for (var attempt = 0;
+                 attempt < 4 && IsEntirelyTransparent(bitmap) && window is not null;
+                 attempt++)
+            {
+                // 每次重试先泊窗，泵送一轮让离屏渲染实现，最后再泊一次以防泵送触发的 Reanchor 回拉。
+                window.Left = -20_000;
+                window.Top = -20_000;
+                window.UpdateLayout();
+                PumpDispatcher();
+                window.Left = -20_000;
+                window.Top = -20_000;
+                bitmap = RenderVisualToBitmap(visual, width, height);
+            }
+
+            if (IsEntirelyTransparent(bitmap))
+            {
+                var emptyPng = EncodePng(bitmap);
+                if (IsCaptureDiagEnabled())
+                {
+                    File.WriteAllBytes(
+                        Path.Combine(Path.GetTempPath(), "minmin-empty-capture.png"),
+                        emptyPng);
+                }
+
+                if (IsEmptyDayProbeEnabled())
+                {
+                    WriteEmptyDayProbeReport(
+                        emptyPng,
+                        emptyRender: true,
+                        DescribeEmptyCapture(visual, bitmap));
+                }
+
+                throw new InvalidOperationException(DescribeEmptyCapture(visual, bitmap));
+            }
+
+            return bitmap;
+        }
+        finally
+        {
+            if (window is not null && restoreLeft is not null && restoreTop is not null)
+            {
+                window.Left = restoreLeft.Value;
+                window.Top = restoreTop.Value;
+                window.UpdateLayout();
+                PumpDispatcher();
+            }
+
+            if (window is not null && restoreOpacity is not null && window.Opacity != restoreOpacity.Value)
+            {
+                window.Opacity = restoreOpacity.Value;
+                PumpDispatcher();
+            }
+        }
+    }
+
+    private static BitmapSource CaptureOpaqueMainSurface(
+        FrameworkElement visual,
+        int captureWidth,
+        int captureHeight,
+        Popup? overlayPopup = null)
     {
         if (Application.Current.FindResource("BackgroundBrush") is not SolidColorBrush background ||
             background.Color.A != byte.MaxValue)
@@ -7505,22 +8072,142 @@ internal static class ValidationReport
             throw new InvalidOperationException("主窗口背景必须是不透明主题画刷。");
         }
 
-        var source = CaptureVisual(visual);
-        var drawing = new DrawingVisual();
-        using (var context = drawing.RenderOpen())
+        var source = CaptureVisualAtFixedSize(visual, captureWidth, captureHeight);
+        if (IsEntirelyTransparent(source))
         {
-            var bounds = new Rect(0, 0, source.PixelWidth, source.PixelHeight);
-            context.DrawRectangle(background, null, bounds);
-            context.DrawImage(source, bounds);
+            throw new InvalidOperationException(
+                "CaptureOpaqueMainSurface 拒绝合成整幅透明位图。");
         }
 
-        var bitmap = new RenderTargetBitmap(
+        var composited = CompositeOverOpaqueBackground(source, background.Color);
+        if (overlayPopup is null)
+        {
+            return composited;
+        }
+
+        return CompositePopupOverlay(composited, visual, overlayPopup, background.Color);
+    }
+
+    private static BitmapSource CompositePopupOverlay(
+        BitmapSource surface,
+        FrameworkElement host,
+        Popup popup,
+        Color backdrop)
+    {
+        if (!popup.IsOpen)
+        {
+            throw new InvalidOperationException("筛选弹层打开态参考帧要求 Popup.IsOpen。");
+        }
+
+        if (popup.Child is not FrameworkElement child ||
+            popup.PlacementTarget is not FrameworkElement target)
+        {
+            throw new InvalidOperationException("筛选弹层打开态参考帧缺少 Child 或 PlacementTarget。");
+        }
+
+        child.UpdateLayout();
+        if (child.ActualWidth < 1 || child.ActualHeight < 1)
+        {
+            throw new InvalidOperationException("筛选弹层打开态参考帧的 Popup.Child 尚未完成布局。");
+        }
+
+        GeneralTransform transform;
+        try
+        {
+            transform = target.TransformToAncestor(host);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidOperationException(
+                "筛选弹层打开态无法把 PlacementTarget 映射到主窗口根视觉。",
+                exception);
+        }
+
+        var origin = transform.Transform(new Point(0, target.ActualHeight));
+        origin.X += popup.HorizontalOffset + child.Margin.Left;
+        origin.Y += popup.VerticalOffset + child.Margin.Top;
+        var overlay = CompositeOverOpaqueBackground(CaptureVisual(child), backdrop);
+        var (pixels, stride) = GetBgra32Pixels(surface);
+        var (overlayPixels, overlayStride) = GetBgra32Pixels(overlay);
+        var destX = Math.Clamp((int)Math.Round(origin.X), 0, surface.PixelWidth);
+        var destY = Math.Clamp((int)Math.Round(origin.Y), 0, surface.PixelHeight);
+        var copyWidth = Math.Min(overlay.PixelWidth, surface.PixelWidth - destX);
+        var copyHeight = Math.Min(overlay.PixelHeight, surface.PixelHeight - destY);
+        for (var y = 0; y < copyHeight; y++)
+        {
+            for (var x = 0; x < copyWidth; x++)
+            {
+                var sourceIndex = (y * overlayStride) + (x * 4);
+                var destIndex = ((destY + y) * stride) + ((destX + x) * 4);
+                pixels[destIndex] = overlayPixels[sourceIndex];
+                pixels[destIndex + 1] = overlayPixels[sourceIndex + 1];
+                pixels[destIndex + 2] = overlayPixels[sourceIndex + 2];
+                pixels[destIndex + 3] = overlayPixels[sourceIndex + 3];
+            }
+        }
+
+        var bitmap = new WriteableBitmap(
+            surface.PixelWidth,
+            surface.PixelHeight,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null);
+        bitmap.WritePixels(
+            new Int32Rect(0, 0, surface.PixelWidth, surface.PixelHeight),
+            pixels,
+            stride,
+            0);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static BitmapSource CompositeOverOpaqueBackground(BitmapSource source, Color backdrop)
+    {
+        if (IsEntirelyTransparent(source))
+        {
+            throw new InvalidOperationException(
+                "CompositeOverOpaqueBackground 拒绝把整幅透明位图铺成背景色。");
+        }
+
+        var (pixels, stride) = GetBgra32Pixels(source);
+        for (var index = 0; index < pixels.Length; index += 4)
+        {
+            var alpha = pixels[index + 3];
+            if (alpha == byte.MaxValue)
+            {
+                continue;
+            }
+
+            if (alpha == 0)
+            {
+                pixels[index] = backdrop.B;
+                pixels[index + 1] = backdrop.G;
+                pixels[index + 2] = backdrop.R;
+                pixels[index + 3] = byte.MaxValue;
+                continue;
+            }
+
+            var sourceAlpha = alpha / 255d;
+            var keep = 1d - sourceAlpha;
+            pixels[index] = (byte)Math.Round(pixels[index] + (backdrop.B * keep));
+            pixels[index + 1] = (byte)Math.Round(pixels[index + 1] + (backdrop.G * keep));
+            pixels[index + 2] = (byte)Math.Round(pixels[index + 2] + (backdrop.R * keep));
+            pixels[index + 3] = byte.MaxValue;
+        }
+
+        var bitmap = new WriteableBitmap(
             source.PixelWidth,
             source.PixelHeight,
             96,
             96,
-            PixelFormats.Pbgra32);
-        bitmap.Render(drawing);
+            PixelFormats.Bgra32,
+            null);
+        bitmap.WritePixels(
+            new Int32Rect(0, 0, source.PixelWidth, source.PixelHeight),
+            pixels,
+            stride,
+            0);
         bitmap.Freeze();
         return bitmap;
     }
@@ -10048,7 +10735,8 @@ internal static class ValidationReport
                 ("CardColor", "#423125"),
                 ("NoteColor", "#4E3827"),
                 ("InkColor", "#FFF4D8"),
-                ("ActiveColor", "#9A523B"),
+                ("ActiveColor", "#B8563D"),
+                ("MainActionColor", "#9A523B"),
                 ("TagColor", "#E7C99B"),
                 ("TagChipTextColor", "#4A2D24"),
                 ("SegmentSelectedColor", "#4B3522"),
@@ -10140,7 +10828,8 @@ internal static class ValidationReport
             {
                 theme.Apply(checkpoint.ToUniversalTime());
                 if (Application.Current.FindResource("ActiveHoverBrush") is not Brush hover ||
-                    !ApplicationTheme.MeetsContrast(hover, Brushes.White, 4.5))
+                    Application.Current.FindResource("MainActionTextBrush") is not Brush hoverForeground ||
+                    !ApplicationTheme.MeetsContrast(hover, hoverForeground, 4.5))
                 {
                     return false;
                 }
@@ -11339,6 +12028,10 @@ internal static class ValidationReport
             var tabRequest = new TraversalRequest(FocusNavigationDirection.Next);
             var dispositionActionsTraverse =
                 acknowledge.MoveFocus(tabRequest) &&
+                snoozeChoice.IsKeyboardFocusWithin &&
+                snoozeChoice.MoveFocus(tabRequest) &&
+                ReferenceEquals(Keyboard.FocusedElement, snooze) &&
+                snooze.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, complete) &&
                 complete.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, openSource);
@@ -11350,7 +12043,7 @@ internal static class ValidationReport
             var snoozeActionsTraverse =
                 snooze.IsTabStop &&
                 snooze.MoveFocus(tabRequest) &&
-                ReferenceEquals(Keyboard.FocusedElement, acknowledge);
+                ReferenceEquals(Keyboard.FocusedElement, complete);
             var tabTraverses =
                 dispositionActionsTraverse &&
                 snoozeChoiceFocusable &&
@@ -11372,15 +12065,15 @@ internal static class ValidationReport
                 AutomationProperties.GetName(comboBox).StartsWith(
                     "自定义稍后分钟：",
                     StringComparison.Ordinal));
-            snooze.Focus();
+            openSource.Focus();
             var customVisible =
                 customDate.IsVisible && customHour.IsVisible && customMinute.IsVisible;
             // 主题 ComboBox 模板内的 ToggleButton 可聚焦，会为每个下拉多占一步 Tab；
-            // 因此只要求焦点按 日期→小时→分钟→知道了 的顺序前进、允许控件内部件占步，且步步留在条目内。
-            var customStage = 0; // 0=待进日期 1=日期 2=小时 3=分钟 4=已到知道了
+            // 因此只要求焦点按 打开来源→日期→小时→分钟 的顺序前进、允许控件内部件占步，且步步留在条目内。
+            var customStage = 0; // 0=待进日期 1=日期 2=小时 3=分钟
             var customChainStaysInEntry = customVisible;
-            UIElement? customMover = snooze;
-            for (var step = 0; step < 12 && customStage < 4 && customChainStaysInEntry; step++)
+            UIElement? customMover = openSource;
+            for (var step = 0; step < 12 && customStage < 3 && customChainStaysInEntry; step++)
             {
                 if (customMover?.MoveFocus(tabRequest) != true ||
                     Keyboard.FocusedElement is not DependencyObject customFocused ||
@@ -11404,18 +12097,13 @@ internal static class ValidationReport
                     customChainStaysInEntry = customStage is 2 or 3;
                     customStage = 3;
                 }
-                else if (ReferenceEquals(customFocused, acknowledge))
-                {
-                    customChainStaysInEntry = customStage == 3;
-                    customStage = 4;
-                }
                 else
                 {
                     customChainStaysInEntry = false;
                 }
                 customMover = customFocused as UIElement;
             }
-            customChainStaysInEntry = customChainStaysInEntry && customStage == 4;
+            customChainStaysInEntry = customChainStaysInEntry && customStage == 3;
 
             // 切回预设项后自定义控件退出 Tab 链；条目末尾动作之后 Tab 仍绕回当前条目。
             snoozeChoice.SelectedIndex = 0;
@@ -11426,7 +12114,7 @@ internal static class ValidationReport
                 !customHour.IsVisible &&
                 !customMinute.IsVisible &&
                 snooze.MoveFocus(tabRequest) &&
-                ReferenceEquals(Keyboard.FocusedElement, acknowledge);
+                ReferenceEquals(Keyboard.FocusedElement, complete);
             openSource.Focus();
             var tabStaysInEntry =
                 openSource.MoveFocus(tabRequest) &&
@@ -11992,9 +12680,11 @@ internal static class ValidationReport
                 if (mode == ApplicationThemeMode.Night)
                 {
                     var focus = (Color)Application.Current.FindResource("MainActionFocusColor");
+                    var active = (Color)Application.Current.FindResource("ActiveColor");
                     if (ContrastRatio(focus, canvas) < 3 ||
                         ContrastRatio(focus, noteStatusHeader) < 3 ||
-                        ContrastRatio(focus, note) < 3)
+                        ContrastRatio(focus, note) < 3 ||
+                        ContrastRatio(active, canvas) < 3)
                     {
                         return false;
                     }
@@ -12337,6 +13027,7 @@ internal static class ValidationReport
                 all.All(result => result.KeyboardF4Opens && result.KeyboardAltDownOpens && result.KeyboardArrowsKeepOpen),
                 all.All(result => result.DisabledClickDoesNotOpen),
                 all.All(result => result.PopupItemClickSelects),
+                all.All(result => result.ArrowIsNotTabStop),
                 all.Length,
                 all);
         }
@@ -13213,6 +13904,7 @@ internal static class ValidationReport
         picker.ApplyTemplate();
         ThemedDatePickerBehavior.LockReadOnlyTextBox(picker);
         textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
+        var openCalendarButton = picker.Template.FindName("PART_Button", picker) as Button;
         return new DatePickerProductionMeasurement(
             name,
             attached,
@@ -13222,7 +13914,91 @@ internal static class ValidationReport
             pointer,
             buttonOpensCalendar,
             keyboardLifecycleWorks,
-            AutomationProperties.GetName(picker));
+            AutomationProperties.GetName(picker),
+            openCalendarButton is null
+                ? string.Empty
+                : AutomationProperties.GetName(openCalendarButton) ?? string.Empty);
+    }
+
+    private static bool ValidateCountdownCardActionNames(
+        MainWindow main,
+        DesktopWorkspace workspace)
+    {
+        var originalWorkspace = main.CurrentWorkspace;
+        var probeName = "可访问名称探针倒计时";
+        string? probeId = null;
+        try
+        {
+            if (workspace.Snapshot.Settings.Countdowns.Count == 0)
+            {
+                var saved = workspace.Apply(new SaveCountdownChange(
+                    null,
+                    probeName,
+                    workspace.Snapshot.UtcNow.AddDays(3),
+                    Array.Empty<string>(),
+                    Array.Empty<ReminderRule>()));
+                if (!saved.Succeeded)
+                {
+                    return false;
+                }
+
+                probeId = workspace.Snapshot.Settings.Countdowns
+                    .FirstOrDefault(record =>
+                        string.Equals(record.Name, probeName, StringComparison.Ordinal))
+                    ?.Id;
+                if (string.IsNullOrWhiteSpace(probeId))
+                {
+                    return false;
+                }
+            }
+
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            PumpDispatcher();
+            main.UpdateLayout();
+            var records = workspace.Snapshot.Settings.Countdowns;
+            var rows = Required<StackPanel>(main, "CountdownRows");
+            var buttons = Descendants<Button>(rows).ToArray();
+            foreach (var record in records)
+            {
+                var edits = buttons.Where(button =>
+                    string.Equals(button.Content as string, "编辑", StringComparison.Ordinal) &&
+                    string.Equals(button.Tag as string, record.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
+                var deletes = buttons.Where(button =>
+                    string.Equals(button.Content as string, "删除", StringComparison.Ordinal) &&
+                    string.Equals(button.Tag as string, record.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (edits.Length != 1 || deletes.Length != 1)
+                {
+                    return false;
+                }
+
+                var expectedEdit = UiAccessibility.FoldAccessibleName($"编辑倒计时 {record.Name}");
+                var expectedDelete = UiAccessibility.FoldAccessibleName($"删除倒计时 {record.Name}");
+                if (!string.Equals(
+                        AutomationProperties.GetName(edits[0]),
+                        expectedEdit,
+                        StringComparison.Ordinal) ||
+                    !string.Equals(
+                        AutomationProperties.GetName(deletes[0]),
+                        expectedDelete,
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return records.Count > 0;
+        }
+        finally
+        {
+            if (probeId is not null)
+            {
+                workspace.Apply(new DeleteCountdownChange(probeId));
+                PumpDispatcher();
+            }
+
+            main.ShowWorkspace(originalWorkspace);
+            PumpDispatcher();
+        }
     }
 
     private static T Required<T>(FrameworkElement root, string name)
@@ -13279,6 +14055,12 @@ internal static class ValidationReport
             DispatcherPriority.Background,
             new Action(() => frame.Continue = false));
         Dispatcher.PushFrame(frame);
+    }
+
+    private static void ClearCaptureKeyboardFocus()
+    {
+        Keyboard.Focus(null);
+        PumpDispatcher();
     }
 
     private sealed record TextFit(bool Fits, double Available, double Required);
@@ -13441,7 +14223,8 @@ internal static class ValidationReport
         DatePickerPointerExerciseResult Pointer,
         bool ButtonOpensCalendar,
         bool EscapeClosesAndReturnsFocus,
-        string AutomationName);
+        string AutomationName,
+        string OpenCalendarButtonName);
 
     private sealed record ProductionDatePickerValidation(
         IReadOnlyList<DatePickerProductionMeasurement> Attached,
@@ -13492,6 +14275,12 @@ internal static class ValidationReport
 
         public bool AttachedKeyboardLifecycleWorks =>
             AllAttached && Attached.All(input => input.EscapeClosesAndReturnsFocus);
+
+        public bool AllOpenCalendarButtonsNamed =>
+            AllAttached &&
+            Attached.All(input =>
+                string.Equals(input.OpenCalendarButtonName, "打开日历", StringComparison.Ordinal)) &&
+            string.Equals(ReminderCenter.OpenCalendarButtonName, "打开日历", StringComparison.Ordinal);
 
         public bool UnattachedNegativeTextDoesNotOpen =>
             UnattachedNegative is
@@ -14668,6 +15457,7 @@ internal static class ValidationReport
         bool KeyboardPathsWork,
         bool DisabledClickDoesNotOpen,
         bool PopupItemClickSelects,
+        bool ArrowIsNotTabStop,
         int ComboCount,
         IReadOnlyList<ComboBoxPointerExerciseResult> Measurements);
 

@@ -1,0 +1,488 @@
+{
+  "schemaVersion": 1,
+  "baselineVersion": "2026-09-05-v19",
+  "captureKind": "actual-wpf-floating-window",
+  "canvas": {
+    "width": 520,
+    "height": 390,
+    "metricDpi": 96
+  },
+  "sourceBinding": {
+    "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
+    "aggregateSha256": "5AF0BCD5A18679D3377D13B9E5EC8152F353A05A7FA9B392B02ECF63C9BAA8D2",
+    "files": [
+      {
+        "path": "assets/floating-plush/component-day-card-blank.png",
+        "sha256": "253EF68502B1F798E37DDF02BF17F9BEE08D818B8AEE76EA287A4403226FB1C8"
+      },
+      {
+        "path": "assets/floating-plush/component-day-header-blank.png",
+        "sha256": "857B570F1CD47C29F1C2744251DE1B1C7B4D9D921944BB79E974B0B60B26C1B1"
+      },
+      {
+        "path": "assets/floating-plush/component-day-mascots.png",
+        "sha256": "D000285BFFC2CBCF3411C11407FF691E531A8602E9D3E8F3FD68EBFC4ADC0726"
+      },
+      {
+        "path": "assets/floating-plush/component-day-outer-shell.png",
+        "sha256": "A4F2F78163F8AA5217C4161F0EE2BFB924686E8BED5768C527F3B5C7D6CC4924"
+      },
+      {
+        "path": "assets/floating-plush/floating-plush-cinnamoroll-reference.png",
+        "sha256": "9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9"
+      },
+      {
+        "path": "assets/floating-plush/floating-plush-kuromi-reference.png",
+        "sha256": "52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC"
+      },
+      {
+        "path": "assets/floating-plush/floating-plush-mymelody-reference.png",
+        "sha256": "54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07"
+      },
+      {
+        "path": "src/MinminCountdown/App.xaml",
+        "sha256": "3CCC74CEE7F0219DF0DF9BC26128C3C5C6A3BFC1FF449ACF5A5A4D44343A35D8"
+      },
+      {
+        "path": "src/MinminCountdown/ApplicationTheme.cs",
+        "sha256": "0B59940ADC6C184BE2BB7A5C844607377BAAA2A99106C4DED0F6CC50D6F05B5B"
+      },
+      {
+        "path": "src/MinminCountdown/DomainLogic.cs",
+        "sha256": "FBFB34378DF7468B8FF911038268BCEEAE8F64D975A5D229A72282BC95DE8248"
+      },
+      {
+        "path": "src/MinminCountdown/FloatingWindow.Countdowns.cs",
+        "sha256": "A37D41F4AB455E4ED3111A3A912094B95910559675EC553F7064BEEF40128AB0"
+      },
+      {
+        "path": "src/MinminCountdown/FloatingWindow.Notes.cs",
+        "sha256": "D541706E72BB78DE27BEA3AA36F08C21A85C82491482AC987F774E7500888DCC"
+      },
+      {
+        "path": "src/MinminCountdown/FloatingWindow.xaml",
+        "sha256": "F9F7163F8FB6B72F8F09210F230FB3A7A910BC99C0D202188903A1CFFB3B91E5"
+      },
+      {
+        "path": "src/MinminCountdown/FloatingWindow.xaml.cs",
+        "sha256": "759B1D55BEBB00B35C20140858CD629D0035FC87AB1E0F69B198CA6E90341903"
+      },
+      {
+        "path": "src/MinminCountdown/MinminCountdown.csproj",
+        "sha256": "8FB22B6846D254F2F33D4D73598FC9BEF3146C434ADC4C791B1E0FB067D7CA4C"
+      },
+      {
+        "path": "src/MinminCountdown/UiControls.cs",
+        "sha256": "395CF0EBEC9597F98CA874C9F56DCBC73E263E523525C509AD21F5DCE3600D7E"
+      }
+    ]
+  },
+  "executable": {
+    "path": "app/MinminCountdown.exe",
+    "sha256": "785ECBDA5FA48535A786DCB4F559A1720D1CF07B0B4CEEE3154D299BE8924D37",
+    "generation": "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
+  },
+  "pixelComparison": {
+    "algorithm": "BGRA8 absolute channel delta over 520x390 pixels",
+    "maxAbsoluteChannelDelta": 8,
+    "maximumMeanAbsoluteError": 0.02,
+    "maximumRootMeanSquareError": 0.25,
+    "maximumChangedPixelCount": 500
+  },
+  "freshness": {
+    "stateFingerprintAlgorithm": "SHA-256 of canonical UTF-8 floating capture state",
+    "minimumTopBottomMeanAbsoluteError": 0.1,
+    "minimumTopBottomRootMeanSquareError": 1,
+    "minimumTopBottomChangedPixelCount": 1000,
+    "topBottomComparisons": [
+      {
+        "theme": "Day",
+        "topCaptureId": "long-notes-day-top",
+        "bottomCaptureId": "long-notes-day-bottom",
+        "maxAbsoluteChannelDelta": 212,
+        "meanAbsoluteError": 8.469724,
+        "rootMeanSquareError": 29.810782,
+        "changedPixelCount": 47447
+      },
+      {
+        "theme": "Night",
+        "topCaptureId": "long-notes-night-top",
+        "bottomCaptureId": "long-notes-night-bottom",
+        "maxAbsoluteChannelDelta": 201,
+        "meanAbsoluteError": 16.315371,
+        "rootMeanSquareError": 45.73983,
+        "changedPixelCount": 58466
+      }
+    ]
+  },
+  "captures": [
+    {
+      "captureId": "floating-countdowns-day",
+      "scenario": "floating-countdowns-baseline",
+      "theme": "Day",
+      "state": "Baseline",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/floating-countdowns-day.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "6BC7D19CD445186E48913DB738907C785497A1B6A19D5A3BD5FEDFBC645D6FE9",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "B5DECF9D636E640D8DF8CD975F24C2E5BE307724EC69352FBDFDE3C3C432E343",
+        "theme": "Day",
+        "workspace": "Countdowns",
+        "noteId": "",
+        "noteTextSha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "viewportState": "Baseline",
+        "verticalOffset": 0,
+        "scrollableHeight": 0,
+        "firstVisibleAnchor": "距离下班",
+        "lastVisibleAnchor": "七月倒计时"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51542,
+        "opaquePixelCount": 151258
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 359,
+        "pixelCount": 154021
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "floating-countdowns-night",
+      "scenario": "floating-countdowns-baseline",
+      "theme": "Night",
+      "state": "Baseline",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/floating-countdowns-night.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "2A3E246125832271AB26AAC6D90FE5B91A58D97049C20197282F2CD1A892E960",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "EEC67D957AA2401D40A5ED47000338542E2662E8ABFB827D6149104F63624FC4",
+        "theme": "Night",
+        "workspace": "Countdowns",
+        "noteId": "",
+        "noteTextSha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "viewportState": "Baseline",
+        "verticalOffset": 0,
+        "scrollableHeight": 0,
+        "firstVisibleAnchor": "距离下班",
+        "lastVisibleAnchor": "七月倒计时"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 44133,
+        "nonOpaquePixelCount": 52136,
+        "opaquePixelCount": 150664
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 360,
+        "pixelCount": 154456
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "long-notes-day-top",
+      "scenario": "long-notes",
+      "theme": "Day",
+      "state": "Top",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/long-notes-day-top.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "A93E0045227F6C635EC41D04C1B2E6B096C0B53F6C11FCCAEADD5494B4C239A0",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "D971A108D1499A9527FD0CCFEAB9AF19753090396A1E0F0175D2143720BE9F57",
+        "theme": "Day",
+        "workspace": "Notes",
+        "noteId": "reference-note-1",
+        "noteTextSha256": "F5F77918BA836A251A5CC842AA8FC6BE8AA2DE0F0EC7C35A4E0D97689E18ED52",
+        "viewportState": "Top",
+        "verticalOffset": 0,
+        "scrollableHeight": 779.84,
+        "firstVisibleAnchor": "reference-note-1:首锚点：这是一条没有手工",
+        "lastVisibleAnchor": "reference-note-2:号 2 的末尾校验文字。"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51711,
+        "opaquePixelCount": 151089
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 359,
+        "pixelCount": 154021
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "long-notes-day-bottom",
+      "scenario": "long-notes",
+      "theme": "Day",
+      "state": "Bottom",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/long-notes-day-bottom.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "90CC0FF8F9DA344D28A01D54554FD83EA7DCF67FA516A1A873CF97E41D6A8344",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "A1A4585C3A1468999D004D6DAA9796D3A27CFEEBED181D7FE56677EFDC4B5152",
+        "theme": "Day",
+        "workspace": "Notes",
+        "noteId": "reference-note-6",
+        "noteTextSha256": "EDD146B6B25D26BD5A0BC7964B73DAAD9544C3EC194275D126E1768BFD5982C3",
+        "viewportState": "Bottom",
+        "verticalOffset": 779.84,
+        "scrollableHeight": 779.84,
+        "firstVisibleAnchor": "reference-note-6:中段锚点6：这是一条没有",
+        "lastVisibleAnchor": "reference-note-6:的末尾校验文字，尾锚点。"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51711,
+        "opaquePixelCount": 151089
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 359,
+        "pixelCount": 154021
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "long-notes-night-top",
+      "scenario": "long-notes",
+      "theme": "Night",
+      "state": "Top",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/long-notes-night-top.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "7A6619C607E12E4F3A200A79A0CF7C21A4C99B9685582BDAF5C7730A26BEC25C",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "BB53C540866BD24AE8B989D812E2DD559322A38F29C3BF173BE80B3B2A2A824E",
+        "theme": "Night",
+        "workspace": "Notes",
+        "noteId": "reference-note-1",
+        "noteTextSha256": "F5F77918BA836A251A5CC842AA8FC6BE8AA2DE0F0EC7C35A4E0D97689E18ED52",
+        "viewportState": "Top",
+        "verticalOffset": 0,
+        "scrollableHeight": 779.84,
+        "firstVisibleAnchor": "reference-note-1:首锚点：这是一条没有手工",
+        "lastVisibleAnchor": "reference-note-2:号 2 的末尾校验文字。"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 44133,
+        "nonOpaquePixelCount": 52136,
+        "opaquePixelCount": 150664
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 360,
+        "pixelCount": 154456
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "long-notes-night-bottom",
+      "scenario": "long-notes",
+      "theme": "Night",
+      "state": "Bottom",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/long-notes-night-bottom.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "A943A264201118B97E01E44AD02559DCCBFE25130B603CB9119EFBA648E6878E",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "C35E3FB4A89EDCBB72C1D4E4D6F332EA2632C39AA1C0E4006B1F0E159C4E9E4A",
+        "theme": "Night",
+        "workspace": "Notes",
+        "noteId": "reference-note-6",
+        "noteTextSha256": "EDD146B6B25D26BD5A0BC7964B73DAAD9544C3EC194275D126E1768BFD5982C3",
+        "viewportState": "Bottom",
+        "verticalOffset": 779.84,
+        "scrollableHeight": 779.84,
+        "firstVisibleAnchor": "reference-note-6:中段锚点6：这是一条没有",
+        "lastVisibleAnchor": "reference-note-6:的末尾校验文字，尾锚点。"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 44133,
+        "nonOpaquePixelCount": 52136,
+        "opaquePixelCount": 150664
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 360,
+        "pixelCount": 154456
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "notes-search-expanded-day",
+      "scenario": "notes-search-expanded",
+      "theme": "Day",
+      "state": "Expanded",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/notes-search-expanded-day.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "42AF95EDAF7143E46A797CCB3ACA0A7F223CFC9EC145536322C61C7FFCF68377",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "3681D8B58D5F5A4E29987A9EF293EEEC0FC22F87C2C1911316B7F2EC6507FBCF",
+        "theme": "Day",
+        "workspace": "Notes",
+        "noteId": "",
+        "noteTextSha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "viewportState": "Expanded",
+        "verticalOffset": 779.84,
+        "scrollableHeight": 937.32,
+        "firstVisibleAnchor": "search-expanded",
+        "lastVisibleAnchor": "search-expanded"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51855,
+        "opaquePixelCount": 150945
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 359,
+        "pixelCount": 154021
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "notes-search-expanded-night",
+      "scenario": "notes-search-expanded",
+      "theme": "Night",
+      "state": "Expanded",
+      "path": "assets/ui-references/floating-window/520x390/2026-09-05-v19/notes-search-expanded-night.png",
+      "width": 520,
+      "height": 390,
+      "pngSha256": "2135BFCE678ACE0F2A0405F67D5D43E2E7359DA624E7B5BBBCDF62245F0FECB0",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
+        "sha256": "10CA47B2E5D11C161B294FADDA86AB0B904C952DA862D339902EFDBC4690665C",
+        "theme": "Night",
+        "workspace": "Notes",
+        "noteId": "",
+        "noteTextSha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "viewportState": "Expanded",
+        "verticalOffset": 779.84,
+        "scrollableHeight": 937.32,
+        "firstVisibleAnchor": "search-expanded",
+        "lastVisibleAnchor": "search-expanded"
+      },
+      "alpha": {
+        "algorithm": "BGRA8 alpha scan",
+        "minimum": 0,
+        "maximum": 255,
+        "transparentPixelCount": 44133,
+        "nonOpaquePixelCount": 52136,
+        "opaquePixelCount": 150664
+      },
+      "contentRoi": {
+        "algorithm": "minimal bounding rectangle of pixels with alpha > 32",
+        "alphaThreshold": 32,
+        "x": 7,
+        "y": 4,
+        "width": 513,
+        "height": 360,
+        "pixelCount": 154456
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    }
+  ]
+}

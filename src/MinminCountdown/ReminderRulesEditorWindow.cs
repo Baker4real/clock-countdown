@@ -547,6 +547,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             edit.Tag = rule.Id;
             copy.Tag = rule.Id;
             delete.Tag = rule.Id;
+            delete.Style = (Style)FindResource("DangerButton");
             edit.Click += (_, _) => BeginEditRule(rule, copy: false);
             copy.Click += (_, _) => BeginEditRule(rule, copy: true);
             delete.Click += (_, _) => DeleteRule(rule.Id);

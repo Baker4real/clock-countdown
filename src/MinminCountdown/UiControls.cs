@@ -58,6 +58,7 @@ internal static class UiAccessibility
 internal static class PopupFocusLifecycle
 {
     private static readonly HashSet<Popup> Attached = new();
+    private static readonly Dictionary<Popup, FrameworkElement> ClipTargets = new();
 
     public static void Attach(
         Popup popup,
@@ -78,8 +79,45 @@ internal static class PopupFocusLifecycle
             throw new InvalidOperationException("弹层必须先设置可聚焦的内容容器。");
         }
 
+        var suppressClickToggle = false;
+        trigger.AddHandler(
+            UIElement.PreviewMouseLeftButtonDownEvent,
+            new MouseButtonEventHandler((_, _) =>
+            {
+                suppressClickToggle = popup.IsOpen;
+            }),
+            true);
+        trigger.AddHandler(
+            ButtonBase.ClickEvent,
+            new RoutedEventHandler((_, eventArgs) =>
+            {
+                if (!suppressClickToggle)
+                {
+                    return;
+                }
+
+                suppressClickToggle = false;
+                popup.IsOpen = false;
+                eventArgs.Handled = true;
+            }),
+            true);
+        trigger.AddHandler(
+            Keyboard.PreviewKeyDownEvent,
+            new KeyEventHandler((_, eventArgs) =>
+            {
+                if (eventArgs.Key != Key.Escape || !popup.IsOpen)
+                {
+                    return;
+                }
+
+                popup.IsOpen = false;
+                eventArgs.Handled = true;
+            }),
+            true);
+
         popup.Opened += (_, _) =>
         {
+            ClampPopupToCanvas(popup);
             popup.Dispatcher.BeginInvoke(
                 System.Windows.Threading.DispatcherPriority.Input,
                 new Action(() =>
@@ -94,33 +132,122 @@ internal static class PopupFocusLifecycle
             Keyboard.PreviewKeyDownEvent,
             new KeyEventHandler((_, eventArgs) =>
             {
-                if (eventArgs.Key == Key.Escape && popup.IsOpen)
+                if (eventArgs.Key != Key.Escape || !popup.IsOpen)
                 {
-                    popup.IsOpen = false;
-                    eventArgs.Handled = true;
-                    trigger.Dispatcher.BeginInvoke(
-                        System.Windows.Threading.DispatcherPriority.Input,
-                        new Action(() =>
-                        {
-                            if (!trigger.IsVisible || !trigger.IsEnabled)
-                            {
-                                return;
-                            }
-
-                            if (Window.GetWindow(trigger) is { } window)
-                            {
-                                window.Activate();
-                                FocusManager.SetFocusedElement(window, trigger);
-                            }
-
-                            Keyboard.Focus(trigger);
-                        }));
+                    return;
                 }
+
+                if (HasOpenNestedDropDown(surface))
+                {
+                    return;
+                }
+
+                popup.IsOpen = false;
+                eventArgs.Handled = true;
+                trigger.Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Input,
+                    new Action(() =>
+                    {
+                        if (!trigger.IsVisible || !trigger.IsEnabled)
+                        {
+                            return;
+                        }
+
+                        if (Window.GetWindow(trigger) is { } window)
+                        {
+                            window.Activate();
+                            FocusManager.SetFocusedElement(window, trigger);
+                        }
+
+                        Keyboard.Focus(trigger);
+                    }));
             }),
             true);
     }
 
+    public static void ClipToCanvas(Popup popup, FrameworkElement canvas)
+    {
+        ArgumentNullException.ThrowIfNull(popup);
+        ArgumentNullException.ThrowIfNull(canvas);
+        ClipTargets[popup] = canvas;
+    }
+
+    private static void ClampPopupToCanvas(Popup popup)
+    {
+        if (!ClipTargets.TryGetValue(popup, out var canvas) ||
+            popup.Child is not FrameworkElement child)
+        {
+            return;
+        }
+
+        void Apply()
+        {
+            if (!popup.IsOpen || popup.PlacementTarget is not FrameworkElement target)
+            {
+                return;
+            }
+
+            canvas.UpdateLayout();
+            child.UpdateLayout();
+            target.UpdateLayout();
+            if (canvas.ActualWidth <= 0 || child.ActualWidth <= 0)
+            {
+                return;
+            }
+
+            var dip = VisualTreeHelper.GetDpi(child).PixelsPerDip;
+            if (dip <= 0)
+            {
+                dip = 1;
+            }
+
+            popup.HorizontalOffset = 0;
+            Point desired;
+            Point targetLeft;
+            try
+            {
+                desired = canvas.PointToScreen(new Point(canvas.ActualWidth - 8, 0));
+                targetLeft = target.PointToScreen(new Point(0, 0));
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+
+            var childRight = targetLeft.X + (child.ActualWidth * dip);
+            var overflow = childRight - desired.X;
+            popup.HorizontalOffset = -overflow / dip;
+        }
+
+        Apply();
+        popup.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, Apply);
+        popup.Dispatcher.BeginInvoke(DispatcherPriority.Render, Apply);
+    }
+
     internal static bool IsAttached(Popup popup) => Attached.Contains(popup);
+
+    private static bool HasOpenNestedDropDown(DependencyObject root)
+    {
+        var pending = new Queue<DependencyObject>();
+        pending.Enqueue(root);
+        while (pending.Count > 0)
+        {
+            var current = pending.Dequeue();
+            if (current is DatePicker { IsDropDownOpen: true } ||
+                current is ComboBox { IsDropDownOpen: true })
+            {
+                return true;
+            }
+
+            var childCount = VisualTreeHelper.GetChildrenCount(current);
+            for (var index = 0; index < childCount; index++)
+            {
+                pending.Enqueue(VisualTreeHelper.GetChild(current, index));
+            }
+        }
+
+        return false;
+    }
 }
 
 internal sealed class TagSelector : Grid
@@ -185,6 +312,7 @@ internal sealed class TagSelector : Grid
         {
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(0, 8, 0, 0),
             Child = panel,
             MinWidth = 230
         };
@@ -196,7 +324,7 @@ internal sealed class TagSelector : Grid
             Placement = PlacementMode.Bottom,
             AllowsTransparency = true,
             StaysOpen = false,
-            PopupAnimation = PopupAnimation.Fade,
+            PopupAnimation = PopupAnimation.None,
             Child = _surface
         };
         PopupFocusLifecycle.Attach(_popup, _trigger, () => _search);
@@ -423,6 +551,13 @@ internal static class ThemedDatePickerBehavior
         };
         picker.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(picker);
         picker.Loaded += (_, _) => LockReadOnlyTextBox(picker);
+        picker.IsVisibleChanged += (_, eventArgs) =>
+        {
+            if (eventArgs.NewValue is true)
+            {
+                LockReadOnlyTextBox(picker);
+            }
+        };
         picker.GotKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
         picker.LostKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
         picker.CalendarClosed += (_, _) => LockReadOnlyTextBox(picker);
@@ -454,6 +589,16 @@ internal static class ThemedDatePickerBehavior
 
         textBox.IsReadOnly = true;
         textBox.Focusable = false;
+        ApplyOpenCalendarAccessibleName(picker);
+    }
+
+    internal static void ApplyOpenCalendarAccessibleName(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        if (picker.Template.FindName("PART_Button", picker) is Button button)
+        {
+            AutomationProperties.SetName(button, "打开日历");
+        }
     }
 
     public static bool IsAttached(DatePicker picker) => Attached.Contains(picker);

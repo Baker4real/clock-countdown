@@ -339,9 +339,6 @@ internal sealed class ReminderCenterWindow : Window
                 IsEnabled = false
             },
             $"完成便签：{item.Source.DisplayText}");
-        var snoozeActions = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-        snoozeActions.Children.Add(snoozeChoice);
-        snoozeActions.Children.Add(snooze);
         var openSource = UiAccessibility.Name(
             new Button
             {
@@ -356,6 +353,8 @@ internal sealed class ReminderCenterWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right
         };
         actions.Children.Add(acknowledge);
+        actions.Children.Add(snoozeChoice);
+        actions.Children.Add(snooze);
         if (item.CanComplete)
         {
             actions.Children.Add(complete);
@@ -367,10 +366,9 @@ internal sealed class ReminderCenterWindow : Window
         content.Children.Add(body);
         content.Children.Add(scheduled);
         content.Children.Add(error);
-        content.Children.Add(snoozeActions);
+        content.Children.Add(actions);
         content.Children.Add(customFields);
         content.Children.Add(customError);
-        content.Children.Add(actions);
         var row = new Border
         {
             Tag = item.Key,

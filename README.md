@@ -76,6 +76,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试
 - `Invoke-CountdownSourceValidation.ps1`：本机验证组合中的 C# validate-only 源码契约验证入口
 - `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化收口验证 runner 与桌面启动 T0–T4 分段时延探针；探针样本只用于归因，不汇入门槛样本池
+- `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + `-IsolatedDesktop` 不可见 Win32 桌面隔离 + 红即停），六阶段套件默认入口；配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
 迁移决策、module/seam 划分和候选语言比较见 [架构与语言迁移](docs/架构与语言迁移.md)。
@@ -85,6 +86,14 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 ## 本机验证
 
 硬约束：本项目的 PowerShell adapter、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF adapter 入口仍必须使用 `-STA`。
+
+硬约束：套件的默认运行前提是用户正在使用这台电脑。Build / Core / CSharp / Ui / SourceValidation / InstallValidate 六个阶段必须经低影响启动器运行，禁止非隔离直跑：整棵进程树 BelowNormal，`-IsolatedDesktop` 把控制台与 WPF 窗口都放进不可见 Win32 桌面（窗口不上用户屏幕、不抢焦点），任一阶段红即停，日志落在 `logs\suite-runs\`。启动器逐字转发下方官方命令行，命令本身不变：
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -File .\tools\Invoke-CountdownSuiteLowImpact.ps1 -IsolatedDesktop -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
+```
+
+启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-DesktopLauncherOnly`、`-InstanceActivationMatrix`、`Deploy-OfficeCountdown.ps1 -ValidateOnly`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行。下方为启动器转发的官方命令及未覆盖项全表：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File .\Build-CountdownApplication.ps1 -Clean

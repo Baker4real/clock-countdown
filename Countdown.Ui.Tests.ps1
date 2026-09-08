@@ -1,4 +1,4 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 
 $ErrorActionPreference = 'Stop'
 [Environment]::SetEnvironmentVariable(
@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-09-01-v18\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-09-07-v21\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -220,6 +220,128 @@ finally {
     }
 }
 
+$popupUiaRoot = Join-Path $runtimeIntegrationEvidenceRoot ("ui-popup-trigger-uia-" + [guid]::NewGuid().ToString('N'))
+$popupUiaProcess = $null
+try {
+    New-Item -ItemType Directory -Path $popupUiaRoot -Force | Out-Null
+    foreach ($file in @('Countdown.App.psm1', 'Countdown.Core.psm1', 'Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Runtime.psm1', 'Countdown.Settings.psm1', 'countdown-icon.ico', 'sanrio-official-mymelody.png', 'sanrio-official-cinnamoroll.png', 'sanrio-official-kuromi.png')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $popupUiaRoot $file) -Force
+    }
+    $popupUiaFloatingPlushRoot = Join-Path $popupUiaRoot 'assets\floating-plush'
+    New-Item -ItemType Directory -Path $popupUiaFloatingPlushRoot -Force | Out-Null
+    foreach ($file in $floatingPlushAssetFiles) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot "assets\floating-plush\$file") -Destination (Join-Path $popupUiaFloatingPlushRoot $file) -Force
+    }
+    $popupUiaHostPath = Join-Path $popupUiaRoot 'Countdown.App.psm1'
+    $popupUiaEntry = Join-Path $popupUiaRoot 'popup-uia-harness.ps1'
+    $popupUiaRequestPath = Join-Path $popupUiaRoot 'startup-request.json'
+    $popupUiaStatusPath = Join-Path $popupUiaRoot 'runtime-status.json'
+    $popupUiaHostLiteral = $popupUiaHostPath.Replace("'", "''")
+    $popupUiaHarness = @"
+`$ErrorActionPreference = 'Stop'
+trap {
+    [Console]::Error.WriteLine("HARNESS_ERROR: `$(`$_.Exception.Message)")
+    [Console]::Error.WriteLine(`$_.ScriptStackTrace)
+    exit 1
+}
+Import-Module -Name '$popupUiaHostLiteral' -Force
+`$calendarTaskFactory = {
+    param([uri] `$Uri)
+    [System.Threading.Tasks.Task]::Delay(10000)
+}
+Start-CountdownApplication -ApplicationPath `$PSCommandPath -HolidayCalendarTaskFactory `$calendarTaskFactory
+"@
+    [System.IO.File]::WriteAllText($popupUiaEntry, $popupUiaHarness, (New-Object System.Text.UTF8Encoding($false)))
+    $popupUiaRequest = New-CountdownStartupRequest -Path $popupUiaRequestPath
+    $popupUiaOutputPath = Join-Path $popupUiaRoot 'app.stdout.txt'
+    $popupUiaErrorPath = Join-Path $popupUiaRoot 'app.stderr.txt'
+    $popupUiaArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', ('"{0}"' -f $popupUiaEntry))
+    $popupUiaProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $popupUiaArguments -PassThru -RedirectStandardOutput $popupUiaOutputPath -RedirectStandardError $popupUiaErrorPath
+    $popupUiaReceipt = Wait-CountdownWindowReady -Path $popupUiaStatusPath -LaunchToken $popupUiaRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $popupUiaEntry -TimeoutSeconds 20 -PollMilliseconds 100 -AllowLegacyPowerShellAdapter
+    if ($popupUiaReceipt.stage -ne 'window-ready') { throw 'Popup UIA launch did not emit a window-ready receipt.' }
+
+    Add-Type -AssemblyName UIAutomationClient
+    Add-Type -AssemblyName UIAutomationTypes
+    $uiaProcessId = [int] $popupUiaReceipt.processId
+    $uiaProcessCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $uiaProcessId)
+    $uiaWindowCondition = New-Object System.Windows.Automation.AndCondition(
+        $uiaProcessCondition,
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Window)))
+    $uiaDesktop = [System.Windows.Automation.AutomationElement]::RootElement
+
+    $uiaOpenManagerButton = $null
+    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+    while ($null -eq $uiaOpenManagerButton -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+        foreach ($uiaWindow in @($uiaDesktop.FindAll([System.Windows.Automation.TreeScope]::Children, $uiaWindowCondition))) {
+            $uiaOpenManagerButton = $uiaWindow.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition(
+                    [System.Windows.Automation.AutomationElement]::NameProperty, '打开管理窗口')))
+            if ($null -ne $uiaOpenManagerButton) { break }
+        }
+        if ($null -eq $uiaOpenManagerButton) { Start-Sleep -Milliseconds 100 }
+    }
+    if ($null -eq $uiaOpenManagerButton) { throw 'UIA could not find the floating open-manager button in the real app.' }
+    $uiaOpenManagerInvoke = $uiaOpenManagerButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) -as [System.Windows.Automation.InvokePattern]
+    if ($null -eq $uiaOpenManagerInvoke) { throw 'The floating open-manager button does not expose the UIA invoke pattern.' }
+    $uiaOpenManagerInvoke.Invoke()
+
+    $uiaMainWindow = $null
+    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+    while ($null -eq $uiaMainWindow -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+        foreach ($uiaWindow in @($uiaDesktop.FindAll([System.Windows.Automation.TreeScope]::Children, $uiaWindowCondition))) {
+            if ([string] $uiaWindow.Current.Name -eq '敏敏子倒计时') {
+                $uiaMainWindow = $uiaWindow
+                break
+            }
+        }
+        if ($null -eq $uiaMainWindow) { Start-Sleep -Milliseconds 100 }
+    }
+    if ($null -eq $uiaMainWindow) { throw 'UIA could not find the real main window after invoking the open-manager button.' }
+
+    $uiaFilterButton = $uiaMainWindow.FindFirst(
+        [System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'FilterToggleButton')))
+    if ($null -eq $uiaFilterButton) { throw 'UIA could not find the main-window filter trigger button in the real app.' }
+    $uiaFilterInvoke = $uiaFilterButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) -as [System.Windows.Automation.InvokePattern]
+    if ($null -eq $uiaFilterInvoke) { throw 'The main-window filter trigger does not expose the UIA invoke pattern.' }
+    $uiaPopupMarkerCondition = New-Object System.Windows.Automation.AndCondition(
+        $uiaProcessCondition,
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty, '筛选当前视图')))
+
+    $uiaFilterInvoke.Invoke()
+    $uiaPopupOpen = $false
+    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+    while (-not $uiaPopupOpen -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+        $uiaPopupOpen = $null -ne $uiaDesktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $uiaPopupMarkerCondition)
+        if (-not $uiaPopupOpen) { Start-Sleep -Milliseconds 100 }
+    }
+    if (-not $uiaPopupOpen) { throw 'A UIA invoke on the filter trigger did not open the filter popup in the real app.' }
+
+    $uiaFilterInvoke.Invoke()
+    $uiaPopupClosed = $false
+    $uiaDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
+    while (-not $uiaPopupClosed -and [DateTimeOffset]::UtcNow -lt $uiaDeadline) {
+        $uiaPopupClosed = $null -eq $uiaDesktop.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $uiaPopupMarkerCondition)
+        if (-not $uiaPopupClosed) { Start-Sleep -Milliseconds 100 }
+    }
+    if (-not $uiaPopupClosed) { throw 'A second UIA invoke on the filter trigger did not close the filter popup in the real app.' }
+}
+finally {
+    if ($null -ne $popupUiaProcess -and -not $popupUiaProcess.HasExited) {
+        Stop-Process -Id $popupUiaProcess.Id -Force -ErrorAction Stop
+        if (-not $popupUiaProcess.WaitForExit(5000)) { throw 'Popup UIA child process did not exit during cleanup.' }
+    }
+    if (Test-Path -LiteralPath $popupUiaRoot) {
+        Remove-Item -LiteralPath $popupUiaRoot -Recurse -Force -ErrorAction Stop
+    }
+}
+
 if (-not $validation.DateInputReadOnly) { throw 'Date selection still accepts free-text input.' }
 if (-not $validation.DatePickerButtonOpensCalendar) { throw 'Clicking the date picker drop-down button did not open a calendar popup.' }
 if (-not $validation.DatePickerTextOpensCalendar) { throw 'Clicking the date text does not open every themed calendar.' }
@@ -310,14 +432,14 @@ if ($floatingReferenceBaselineRequired) {
         ConvertFrom-Json -Depth 100
     if (-not $validation.FloatingReferenceBaselineRequested -or -not $validation.FloatingReferenceBaselineManifestAvailable) { throw 'The versioned floating reference manifest was not loaded from the source tree.' }
     if (-not $validation.FloatingReferenceBaselineValidated) { throw "The current WPF day/night frames failed the versioned floating reference manifest: $(@($validation.FloatingReferenceBaselineDiagnostics) -join ',')." }
-    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-09-01-v18/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
-    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-09-01-v18') { throw 'The floating reference manifest version does not match the pinned v18 path.' }
-    $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night') + $expectedLongNoteCaptureIds
-    if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 6 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict six-frame inventory.' }
+    if ([string] $validation.FloatingReferenceBaselineManifestPath -ne 'assets/ui-references/floating-window/520x390/2026-09-07-v21/manifest.json') { throw 'The floating reference manifest path is not portable and repository-relative.' }
+    if ([string] $floatingReferenceBaselineDefinition.baselineVersion -ne '2026-09-07-v21') { throw 'The floating reference manifest version does not match the pinned v21 path.' }
+    $expectedBaselineCaptureIds = @('floating-countdowns-day','floating-countdowns-night','notes-search-expanded-day','notes-search-expanded-night') + $expectedLongNoteCaptureIds
+    if (@($validation.FloatingReferenceBaselineCaptures).Count -ne 8 -or ((@($validation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') -ne (($expectedBaselineCaptureIds | Sort-Object) -join ',')) { throw 'The floating reference manifest does not bind the strict eight-frame inventory.' }
     if (@($validation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete floating reference manifest gate is red.' }
     if (@($validation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count -ne 0) { throw 'A concrete long-note freshness gate is red.' }
-    if (@($validation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count -ne 6) { throw 'The six-frame manifest reuses a PNG hash.' }
-    if (@($floatingReferenceBaselineDefinition.captures).Count -ne 6) { throw 'The pinned floating reference manifest does not declare exactly six captures.' }
+    if (@($validation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count -ne 8) { throw 'The eight-frame manifest reuses a PNG hash.' }
+    if (@($floatingReferenceBaselineDefinition.captures).Count -ne 8) { throw 'The pinned floating reference manifest does not declare exactly eight captures.' }
     foreach ($expectedCapture in @($floatingReferenceBaselineDefinition.captures)) {
         $reportedCapture = @($validation.FloatingReferenceBaselineCaptures |
             Where-Object CaptureId -eq ([string] $expectedCapture.captureId))
@@ -488,6 +610,8 @@ if (-not $validation.MainNoteEditorLabelsVisible) { throw 'A main-window sticky-
 if (-not $validation.MainMinimumSizeMatchesDefault) { throw 'The main-window default size is smaller than its supported minimum layout.' }
 if (-not $validation.PopupKeyboardLifecycleWorks) { throw 'A filter or tag popup cannot close with Escape and return focus to its trigger.' }
 if (-not $validation.PopupOutsideFocusPreserved) { throw 'Closing a popup after outside focus steals focus back to its trigger.' }
+if (-not $validation.PopupTriggerSecondClickCloses) { throw 'Clicking a popup trigger a second time reopens the popup instead of closing it.' }
+if (-not $validation.PopupEscapeFromTriggerClosesAndKeepsFocus) { throw 'Escape on a popup trigger does not close the popup and keep trigger focus.' }
 if (-not $validation.NoteEmptyStatesDistinguished) { throw 'The first-use sticky-note empty state is indistinguishable from filtered no-results.' }
 if (-not $validation.NoteNoResultsResetWorks) { throw 'The filtered no-results state cannot reset all sticky-note filters.' }
 if (-not $validation.CountdownEmptyStatesDistinguished) { throw 'Countdown first-use and filtered no-results empty states are not distinguished.' }
@@ -747,6 +871,9 @@ if ([int] $comboClick.ComboCount -lt 14) {
 if (@($comboClick.Measurements | Where-Object { -not $_.ReleaseOpened -or -not $_.Attached -or -not $_.ArrowColumnUnchanged }).Count -ne 0) {
     throw 'A production ComboBox did not open from its text surface or changed arrow-column geometry.'
 }
+if (-not $comboClick.ArrowIsNotTabStop -or -not $validation.ComboBoxArrowIsNotTabStop -or @($comboClick.Measurements | Where-Object { -not $_.ArrowIsNotTabStop }).Count -ne 0) {
+    throw 'A production ComboBox arrow remains a Tab stop or can take keyboard focus.'
+}
 $secondaryDrag = $validation.SecondaryWindowHeaderDrag
 if (-not $secondaryDrag.HeaderRequestsDrag -or -not $secondaryDrag.ManualPositionPersists -or -not $secondaryDrag.InteractiveControlsDoNotDrag -or -not $secondaryDrag.ReminderCenterFirstAppearanceTopRight -or -not $secondaryDrag.CloseCancelledWithItems -or -not $secondaryDrag.ResizeGripUnchanged) {
     throw 'Reminder-center or rules-editor header drag, first-show placement, close-cancel, or resize-grip contract failed.'
@@ -754,11 +881,71 @@ if (-not $secondaryDrag.HeaderRequestsDrag -or -not $secondaryDrag.ManualPositio
 if (-not $validation.CalendarNavigationAccessibleNames) {
     throw "Calendar month buttons are not named 上一个月/下一个月 (previous='$($validation.CalendarPreviousMonthAccessibleName)', next='$($validation.CalendarNextMonthAccessibleName)')."
 }
+if ([string] $validation.DatePickerOpenCalendarAccessibleName -ne '打开日历' -or -not $validation.DatePickerOpenCalendarAccessibleNames) {
+    throw "DatePicker open-calendar buttons are unnamed (name='$($validation.DatePickerOpenCalendarAccessibleName)')."
+}
+if (-not $validation.CountdownCardActionsIncludeRecordName) {
+    throw 'Countdown card edit/delete accessible names do not include the record name.'
+}
+if (-not $validation.SettingsRecoveryFailureExitIsDefault) {
+    throw 'Settings-recovery failure Exit is not the Enter default button.'
+}
+if (-not $validation.RuleEditorInlineDeleteUsesDangerButton) {
+    throw 'Rules-editor inline Delete does not use DangerButton.'
+}
+if (-not $validation.SettingsRecoverySecondaryUsesCanvas) {
+    throw 'Settings-recovery secondary buttons are not static warm canvas #FFFBF7.'
+}
+if (-not $validation.ReminderCenterSnoozeRowAlignsWithActions) {
+    throw 'Reminder-center actions are not a single right-aligned row in DESIGN order.'
+}
+if (-not $validation.PopupAnimationIsInstant) {
+    throw 'A production popup still uses system fade animation instead of appearing instantly.'
+}
+if (-not $validation.ActionForegroundsUseMainActionText) {
+    throw 'PrimaryButton, CheckBox tick, or calendar selected foreground does not use MainActionTextBrush.'
+}
+if (-not $validation.DisabledSelectionControlsUseButtonOpacity) {
+    throw 'Disabled CheckBox/ComboBox surface opacity is not 0.45.'
+}
+if (-not $validation.FloatingTypographyWeightWhitelist) {
+    throw 'Floating-window text uses a font weight outside the DESIGN section 3 Regular/SemiBold whitelist.'
+}
+if (-not $validation.FloatingDateStampTypographyMatches) {
+    throw 'Floating date-stamp typography does not match DESIGN section 3 Regular/SemiBold, fallback fonts, tabular numerals, or 18px rule spacing.'
+}
+if (-not $validation.FloatingDateStampDensityMatches) {
+    throw 'Floating date-stamp padding or inter-line gaps remain cramped.'
+}
+if (-not $validation.NoteCancelFitsEditorPanel) {
+    throw 'Note-edit Cancel still overhangs the editor panel or is not aligned with Save.'
+}
+if (-not $validation.PopupRightInsetIsEightFromCanvas) {
+    throw 'Filter, tag-manager, or tag-selector popup is not inset 8px from the content canvas inner edge.'
+}
+if (-not $validation.FilterPopupScrollsLongTagList) {
+    throw 'Filter popup does not cap height and scroll a long tag list.'
+}
+if (-not $validation.MainCheckboxHitCoversSlot) {
+    throw 'Main-window note checkbox hit box does not cover the 30px slot or lost Tag=note.Id.'
+}
+if (-not $validation.FloatingSearchSlotRightIs396) {
+    throw 'Floating search slot right edge is not aligned to x=396.'
+}
+if (-not $validation.FloatingSearchHintMatchesInputHeight) {
+    throw 'Floating search hint row is not the same height as the input row, or expanding search jumps the viewport.'
+}
+if (-not $validation.FloatingQuickAddAlignsWithNoteCards) {
+    throw 'Floating quick-add right edge is not aligned with the measured note-card column.'
+}
+if (-not $validation.FloatingCheckboxHitCoversSlot) {
+    throw 'Floating note checkbox hit box does not cover the 34px slot, lost Tag=note.Id, or covers the date stamp.'
+}
 if ($validation.NightKeyboardFocusBaselineFramesAffected) {
     throw 'Night keyboard-focus pixel baseline frames were marked affected without regenerating manifests.'
 }
-if ([string] $validation.NightKeyboardFocusBaselineEvidence -notmatch '2026-09-02-v18') {
-    throw 'Night keyboard-focus baseline evidence does not record the regenerated 2026-09-02-v18 frames.'
+if ([string] $validation.NightKeyboardFocusBaselineEvidence -notmatch '2026-09-07-v21') {
+    throw 'Night keyboard-focus baseline evidence does not record the regenerated 2026-09-07-v21 frames.'
 }
 if (-not $validation.AuditContrastGateIsolationBehavior) { throw 'Audit contrast negative fixtures cannot fail independently.' }
 if (-not $validation.DangerButtonContrast) { throw 'The destructive confirmation button loses required text contrast when hovered or pressed.' }

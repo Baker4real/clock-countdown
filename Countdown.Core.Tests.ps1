@@ -1,4 +1,4 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 
 [CmdletBinding()]
 param(
@@ -3457,14 +3457,14 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-09-01-v18\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v18 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-09-07-v21\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v21 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-09-02-v18\\manifest\.json').Count) `
-    'Validation suite pins the main-window visual manifest to the current v18 baseline'
+        'assets\\ui-references\\main-window\\1165x1350\\2026-09-07-v21\\manifest\.json').Count) `
+    'Validation suite pins the main-window visual manifest to the current v21 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
     'Validation suite no longer references the retired main-window v17 baseline'
@@ -3490,8 +3490,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-09-01-v18\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-09-02-v18\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-09-07-v21\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-09-07-v21\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3500,36 +3500,42 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-09-01-v18'
+        ExpectedVersion = '2026-09-07-v21'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'floating-countdowns-night',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'long-notes-night-bottom',
-            'long-notes-night-top'
+            'long-notes-night-top',
+            'notes-search-expanded-day',
+            'notes-search-expanded-night'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-09-01-v18/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-09-07-v21/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-09-02-v18'
+        ExpectedVersion = '2026-09-07-v21'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
             'main-day-countdowns-stress',
+            'main-day-notes-edit',
             'main-day-notes-empty',
+            'main-day-notes-filter-open',
             'main-day-notes-representative',
             'main-day-notes-stress',
             'main-night-countdowns-empty',
             'main-night-countdowns-representative',
             'main-night-countdowns-stress',
+            'main-night-notes-edit',
             'main-night-notes-empty',
+            'main-night-notes-filter-open',
             'main-night-notes-representative',
             'main-night-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-09-02-v18/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-09-07-v21/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {

@@ -250,7 +250,7 @@
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type CheckBox}">
-                    <Grid>
+                    <Grid x:Name="Surface" Background="Transparent">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -290,6 +290,9 @@
                         <Setter TargetName="Box" Property="BorderThickness" Value="2" />
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                       </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+                      </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -302,7 +305,7 @@
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type CheckBox}">
-                    <Grid Width="30" Height="30">
+                    <Grid x:Name="Surface" Width="30" Height="30" Background="Transparent">
                       <Border x:Name="Box"
                               Width="24"
                               Height="24"
@@ -335,6 +338,9 @@
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="Box" Property="BorderThickness" Value="2" />
                         <Setter TargetName="Box" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -775,18 +781,18 @@
               <DatePicker x:Name="NoteDate"
                           Canvas.Left="675"
                           Canvas.Top="449"
-                          Width="282"
+                          Width="244"
                           Height="68"
                           SelectedDateFormat="Short" />
               <Button x:Name="SaveNoteButton"
-                      Canvas.Left="970"
+                      Canvas.Left="926"
                       Canvas.Top="449"
                       Width="118"
                       Height="68"
                       Content="添加"
                       Style="{StaticResource MainPrimaryButton}" />
               <Button x:Name="CancelNoteEdit"
-                      Canvas.Left="1095"
+                      Canvas.Left="1052"
                       Canvas.Top="449"
                       Width="66"
                       Height="68"
@@ -1008,14 +1014,18 @@
                    Placement="Bottom"
                    StaysOpen="False"
                    AllowsTransparency="True"
-                   PopupAnimation="Fade">
+                   PopupAnimation="None">
               <Border MinWidth="480"
+                      MaxHeight="520"
                       Margin="0,8,0,0"
                       Padding="20"
                       Background="{DynamicResource CanvasBrush}"
                       BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
                       CornerRadius="12">
+                <ScrollViewer MaxHeight="480"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                   <TextBlock Text="标签匹配" FontSize="18" FontWeight="SemiBold" />
                   <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
@@ -1055,6 +1065,7 @@
                           Content="重置筛选"
                           Style="{DynamicResource SecondaryButton}" />
                 </StackPanel>
+                </ScrollViewer>
               </Border>
             </Popup>
 
@@ -1063,7 +1074,7 @@
                    Placement="Bottom"
                    StaysOpen="False"
                    AllowsTransparency="True"
-                   PopupAnimation="Fade">
+                   PopupAnimation="None">
               <Border MinWidth="430"
                       MaxHeight="520"
                       Margin="0,8,0,0"

@@ -30,7 +30,7 @@ internal sealed class ApplicationTheme
         Token("InkColor", "InkBrush", "#4A2D24", "#FFF4D8"),
         Token("BodyColor", "BodyBrush", "#765247", "#E7C99B"),
         Token("MutedColor", "MutedBrush", "#87665A", "#D7B88C"),
-        Token("ActiveColor", "ActiveBrush", "#B8533D", "#9A523B"),
+        Token("ActiveColor", "ActiveBrush", "#B8533D", "#B8563D"),
         Token("ActiveHoverColor", "ActiveHoverBrush", "#B34B36", "#86442F"),
         Token("MainActionColor", "MainActionBrush", "#A24438", "#9A523B"),
         Token("MainActionHoverColor", "MainActionHoverBrush", "#8E392F", "#86442F"),

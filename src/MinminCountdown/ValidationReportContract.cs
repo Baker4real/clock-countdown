@@ -110,7 +110,31 @@ internal static class ValidationReportContract
         "FloatingScrollBarInputPathsWork",
         "FloatingScrollBarGateIsolationBehavior",
         "FloatingScrollBarDayNightStateCapturesReady",
-        "UiQualityGateIsolationBehavior"
+        "UiQualityGateIsolationBehavior",
+        "ComboBoxArrowIsNotTabStop",
+        "DatePickerOpenCalendarAccessibleNames",
+        "DatePickerTextOpensCalendar",
+        "CountdownCardActionsIncludeRecordName",
+        "SettingsRecoveryFailureExitIsDefault",
+        "PopupTriggerSecondClickCloses",
+        "PopupEscapeFromTriggerClosesAndKeepsFocus",
+        "RuleEditorInlineDeleteUsesDangerButton",
+        "SettingsRecoverySecondaryUsesCanvas",
+        "ReminderCenterSnoozeRowAlignsWithActions",
+        "PopupAnimationIsInstant",
+        "ActionForegroundsUseMainActionText",
+        "DisabledSelectionControlsUseButtonOpacity",
+        "FloatingDateStampTypographyMatches",
+        "FloatingTypographyWeightWhitelist",
+        "FloatingDateStampDensityMatches",
+        "NoteCancelFitsEditorPanel",
+        "PopupRightInsetIsEightFromCanvas",
+        "FilterPopupScrollsLongTagList",
+        "MainCheckboxHitCoversSlot",
+        "FloatingSearchSlotRightIs396",
+        "FloatingSearchHintMatchesInputHeight",
+        "FloatingQuickAddAlignsWithNoteCards",
+        "FloatingCheckboxHitCoversSlot"
     ];
 
     private static readonly string[] RequiredPositiveIntegerFields =

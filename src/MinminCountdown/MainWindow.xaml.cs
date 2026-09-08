@@ -127,6 +127,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         InitializeComponent();
         PopupFocusLifecycle.Attach(FilterPopup, FilterButton, () => AnyTagMode);
         PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput);
+        PopupFocusLifecycle.ClipToCanvas(FilterPopup, MainLayoutSurface);
+        PopupFocusLifecycle.ClipToCanvas(TagManagerPopup, MainLayoutSurface);
+        PopupFocusLifecycle.ClipToCanvas(NoteTags.Popup, MainLayoutSurface);
+        PopupFocusLifecycle.ClipToCanvas(CountdownTags.Popup, MainLayoutSurface);
         LoadCharacterAssets(assetRoot);
         ConfigureControls();
         WireEvents();
@@ -1227,9 +1231,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         foreach (var record in records)
         {
             var active = record.TargetUtc > effectiveNowUtc;
-            var edit = ActionButton("编辑", record.Id, "编辑倒计时");
+            var edit = ActionButton("编辑", record.Id, $"编辑倒计时 {record.Name}");
             edit.Click += OnEditCountdown;
-            var delete = ActionButton("删除", record.Id, "删除倒计时");
+            var delete = ActionButton("删除", record.Id, $"删除倒计时 {record.Name}");
             delete.Style = (Style)FindResource("DangerButton");
             delete.Click += OnDeleteCountdown;
             var actions = new StackPanel

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using MinminCountdown.Core;
 
@@ -12,7 +13,7 @@ public sealed partial class FloatingWindow
     // Current row origins are x=60 by day and x=59 by night; card width 319 keeps x <= 396.
     private const double CalendarIndexNoteCardWidth = 319;
     private const double CalendarIndexDateStampWidth = 48;
-    private const double CalendarIndexRuleSpacing = 24;
+    private const double CalendarIndexRuleSpacing = 18;
 
     private FrameworkElement BuildCalendarIndexNoteCard(NoteRecord note, DateTimeOffset nowUtc)
     {
@@ -30,8 +31,9 @@ public sealed partial class FloatingWindow
             new CheckBox
             {
                 Tag = note.Id,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(12, 12, 6, 0),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Margin = new Thickness(0, 0, 1, 0),
                 Foreground = _floatingPrimaryBrush
             },
             $"完成便签 {note.Text}");
@@ -156,20 +158,21 @@ public sealed partial class FloatingWindow
         stamp.Children.Add(CalendarIndexStampText(
             date is null ? "无日期" : $"{date.Value.Month} 月",
             10,
-            FontWeights.Medium,
+            FontWeights.Regular,
             _floatingMutedBrush));
         stamp.Children.Add(CalendarIndexStampText(
             date is null ? "--" : date.Value.Day.ToString("D2", CultureInfo.InvariantCulture),
             22,
             FontWeights.SemiBold,
             _floatingPrimaryBrush,
-            new FontFamily("Bahnschrift SemiCondensed")));
+            new FontFamily("Bahnschrift SemiCondensed, Bahnschrift, Microsoft YaHei UI"),
+            new Thickness(0, 2, 0, 2)));
         stamp.Children.Add(CalendarIndexStampText(
             date is null
                 ? " "
                 : culture.DateTimeFormat.GetAbbreviatedDayName(date.Value.DayOfWeek),
             10,
-            FontWeights.Medium,
+            FontWeights.Regular,
             _floatingMutedBrush));
 
         var dateStamp = new Border
@@ -178,7 +181,7 @@ public sealed partial class FloatingWindow
             Background = _floatingSurfaceBrush,
             BorderBrush = _floatingBorderBrush,
             BorderThickness = new Thickness(2, 0, 0, 0),
-            Padding = new Thickness(4, 6, 4, 6),
+            Padding = new Thickness(4, 8, 4, 8),
             IsHitTestVisible = false,
             Focusable = false
         };
@@ -190,7 +193,8 @@ public sealed partial class FloatingWindow
         double fontSize,
         FontWeight fontWeight,
         Brush foreground,
-        FontFamily? fontFamily = null)
+        FontFamily? fontFamily = null,
+        Thickness? margin = null)
     {
         var label = new TextBlock
         {
@@ -201,9 +205,15 @@ public sealed partial class FloatingWindow
             HorizontalAlignment = HorizontalAlignment.Center,
             TextAlignment = TextAlignment.Center
         };
+        if (margin is { } value)
+        {
+            label.Margin = value;
+        }
+
         if (fontFamily is not null)
         {
             label.FontFamily = fontFamily;
+            Typography.SetNumeralAlignment(label, FontNumeralAlignment.Tabular);
         }
 
         return label;

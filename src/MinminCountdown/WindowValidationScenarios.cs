@@ -437,6 +437,12 @@ public sealed partial class MainWindow
                 filterPopup.OutsideFocusPreserved &&
                 tagManagerPopup.OutsideFocusPreserved &&
                 tagSelectorPopup.OutsideFocusPreserved,
+                filterPopup.TriggerSecondClickCloses &&
+                tagManagerPopup.TriggerSecondClickCloses &&
+                tagSelectorPopup.TriggerSecondClickCloses,
+                filterPopup.EscapeFromTriggerClosesAndKeepsFocus &&
+                tagManagerPopup.EscapeFromTriggerClosesAndKeepsFocus &&
+                tagSelectorPopup.EscapeFromTriggerClosesAndKeepsFocus,
                 emptyStatesDistinguished,
                 noResultsResetWorks,
                 countdownEmptyStatesDistinguished,
@@ -1866,6 +1872,8 @@ internal sealed record MainUiPolishScenarios(
     bool MinimumSizeMatchesDefault,
     bool PopupKeyboardLifecycleWorks,
     bool PopupOutsideFocusPreserved,
+    bool PopupTriggerSecondClickCloses,
+    bool PopupEscapeFromTriggerClosesAndKeepsFocus,
     bool EmptyStatesDistinguished,
     bool NoResultsResetWorks,
     bool CountdownEmptyStatesDistinguished,
@@ -1927,7 +1935,9 @@ internal sealed record FloatingUiPolishScenarios(
 
 internal sealed record PopupFocusExerciseResult(
     bool EscapeReturnsFocus,
-    bool OutsideFocusPreserved);
+    bool OutsideFocusPreserved,
+    bool TriggerSecondClickCloses,
+    bool EscapeFromTriggerClosesAndKeepsFocus);
 
 internal sealed record DatePickerPointerExerciseResult(
     bool TextBoxPresent,
@@ -1952,7 +1962,8 @@ internal sealed record ComboBoxPointerExerciseResult(
     bool DisabledClickDoesNotOpen,
     bool PopupItemClickSelects,
     bool Attached,
-    bool ArrowColumnUnchanged);
+    bool ArrowColumnUnchanged,
+    bool ArrowIsNotTabStop);
 
 internal static class WindowValidationInput
 {
@@ -1973,6 +1984,8 @@ internal static class WindowValidationInput
     {
         var escapeReturnsFocus = false;
         var outsideFocusPreserved = false;
+        var triggerSecondClickCloses = false;
+        var escapeFromTriggerClosesAndKeepsFocus = false;
         var popupOpened = false;
         var focusEntered = false;
         var escapeHandled = false;
@@ -2001,6 +2014,38 @@ internal static class WindowValidationInput
 
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Pump(popup.Dispatcher);
+            var openedForSecondClick = popup.IsOpen;
+            Keyboard.Focus(trigger);
+            Pump(popup.Dispatcher);
+            trigger.RaiseEvent(new MouseButtonEventArgs(
+                Mouse.PrimaryDevice,
+                Environment.TickCount,
+                MouseButton.Left)
+            {
+                RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent
+            });
+            Pump(popup.Dispatcher);
+            popup.IsOpen = false;
+            Pump(popup.Dispatcher);
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Pump(popup.Dispatcher);
+            triggerSecondClickCloses = openedForSecondClick && !popup.IsOpen;
+
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Pump(popup.Dispatcher);
+            var openedForTriggerEscape = popup.IsOpen;
+            Keyboard.Focus(trigger);
+            Pump(popup.Dispatcher);
+            var triggerEscapeHandled = RaisePreviewKey(trigger, Key.Escape);
+            Pump(popup.Dispatcher);
+            escapeFromTriggerClosesAndKeepsFocus =
+                openedForTriggerEscape &&
+                triggerEscapeHandled &&
+                !popup.IsOpen &&
+                trigger.IsKeyboardFocusWithin;
+
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Pump(popup.Dispatcher);
             Keyboard.Focus(outsideFocus);
             popup.IsOpen = false;
             Pump(popup.Dispatcher);
@@ -2013,7 +2058,11 @@ internal static class WindowValidationInput
             Pump(popup.Dispatcher);
         }
 
-        return new PopupFocusExerciseResult(escapeReturnsFocus, outsideFocusPreserved);
+        return new PopupFocusExerciseResult(
+            escapeReturnsFocus,
+            outsideFocusPreserved,
+            triggerSecondClickCloses,
+            escapeFromTriggerClosesAndKeepsFocus);
     }
 
     public static bool ExerciseDatePicker(DatePicker picker)
@@ -2220,7 +2269,8 @@ internal static class WindowValidationInput
             return new ComboBoxPointerExerciseResult(
                 false, false, false, false, false, false, false, false, false, false, false, false,
                 attached,
-                arrowColumnUnchanged);
+                arrowColumnUnchanged,
+                false);
         }
 
         comboBox.BringIntoView();
@@ -2325,6 +2375,11 @@ internal static class WindowValidationInput
                     Equals(comboBox.SelectedItem, comboBox.Items[itemIndex]);
             }
 
+            comboBox.IsDropDownOpen = false;
+            comboBox.IsEnabled = true;
+            Pump(comboBox.Dispatcher);
+            var arrowIsNotTabStop = MeasureComboBoxArrowIsNotTabStop(comboBox, arrow);
+
             return new ComboBoxPointerExerciseResult(
                 true,
                 true,
@@ -2339,7 +2394,8 @@ internal static class WindowValidationInput
                 disabledClickDoesNotOpen,
                 popupItemClickSelects,
                 attached,
-                arrowColumnUnchanged);
+                arrowColumnUnchanged,
+                arrowIsNotTabStop);
         }
         finally
         {
@@ -2352,6 +2408,31 @@ internal static class WindowValidationInput
 
             Pump(comboBox.Dispatcher);
         }
+    }
+
+    private static bool MeasureComboBoxArrowIsNotTabStop(ComboBox comboBox, ToggleButton? arrow)
+    {
+        if (arrow is null || PresentationSource.FromVisual(arrow) is null)
+        {
+            return false;
+        }
+
+        var owner = Window.GetWindow(comboBox);
+        owner?.Activate();
+        Keyboard.Focus(comboBox);
+        Pump(comboBox.Dispatcher);
+        comboBox.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+        Pump(comboBox.Dispatcher);
+        var nextFocused = Keyboard.FocusedElement as DependencyObject;
+        var nextIsArrow =
+            nextFocused is not null &&
+            (ReferenceEquals(nextFocused, arrow) || arrow.IsAncestorOf(nextFocused));
+        Keyboard.Focus(comboBox);
+        Pump(comboBox.Dispatcher);
+
+        return !arrow.Focusable &&
+               !arrow.IsTabStop &&
+               !nextIsArrow;
     }
 
     public static (string Previous, string Next) ReadCalendarNavigationNames(DatePicker picker)

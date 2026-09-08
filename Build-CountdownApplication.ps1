@@ -133,11 +133,11 @@ if ($Clean) {
             -ConfirmPurge `
             -Json | Out-String
         if ($LASTEXITCODE -ne 0) {
-            throw "受管构建目录清理失败：$resolvedCleanPath"
+            throw "受管构建目录清理失败：$resolvedCleanPath（退出码 $LASTEXITCODE）：$($cleanupJson.Trim())"
         }
         $cleanup = $cleanupJson | ConvertFrom-Json
         if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
-            throw "受管构建目录未完成清理：$resolvedCleanPath"
+            throw "受管构建目录未完成清理：$resolvedCleanPath：$($cleanupJson.Trim())"
         }
     }
 }

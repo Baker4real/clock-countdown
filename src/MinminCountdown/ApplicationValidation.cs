@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Windows;
 
 namespace MinminCountdown;
@@ -19,6 +20,18 @@ internal static class ApplicationValidation
 
         try
         {
+            if (string.Equals(
+                    Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_EMPTY_DAY_PROBE"),
+                    "1",
+                    StringComparison.Ordinal))
+            {
+                ValidationReport.RunEmptyDayCaptureProbe(resources, AppContext.BaseDirectory);
+                return new Dictionary<string, object?>
+                {
+                    ["EmptyDayProbeAligned"] = true
+                };
+            }
+
             if (!ValidationExercises.RunSettingsRecoveryWindowBehavior())
             {
                 throw new InvalidOperationException("设置恢复窗口或失败呈现路由验证失败。");

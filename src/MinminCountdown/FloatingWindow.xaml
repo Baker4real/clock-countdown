@@ -160,7 +160,7 @@
 
         <Grid x:Name="FloatingNoteSearchSlot"
               Grid.Row="1"
-              Margin="8,8,11,0"
+              Margin="8,8,76,0"
               Visibility="Collapsed">
           <Grid x:Name="FloatingNoteSearchInputRow"
                 Visibility="Collapsed">
@@ -189,6 +189,9 @@
             <Button x:Name="FloatingNoteSearchHintTerm"
                     HorizontalAlignment="Left"
                     HorizontalContentAlignment="Left"
+                    MinHeight="28"
+                    Height="28"
+                    Padding="8,0"
                     FontSize="12"
                     Style="{DynamicResource SecondaryButton}">
               <Button.ContentTemplate>
@@ -202,6 +205,9 @@
                     Grid.Column="1"
                     Width="28"
                     MinWidth="28"
+                    MinHeight="28"
+                    Height="28"
+                    Padding="0"
                     Margin="8,0,0,0"
                     Content="✕"
                     FontSize="12"
@@ -295,7 +301,9 @@
                         Margin="8,13,11,0" />
 
             <Border x:Name="FloatingNoteEntry"
-                    Margin="8,10,1,0"
+                    Width="319"
+                    HorizontalAlignment="Left"
+                    Margin="8,10,11,0"
                     Padding="10"
                     Background="{DynamicResource FloatingDayNoteInputBrush}"
                     BorderBrush="{DynamicResource FloatingDayBorderBrush}"

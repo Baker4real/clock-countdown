@@ -93,6 +93,10 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 pwsh.exe -NoLogo -NoProfile -File .\tools\Invoke-CountdownSuiteLowImpact.ps1 -IsolatedDesktop -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
 ```
 
+标注：六阶段套件与 12 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/6/8/9/10/11 步与六阶段逐字相同，连跑等于整套跑两遍。
+
+标注：`pwsh.exe -NoLogo -NoProfile -File .\Build-CountdownApplication.ps1 -Incremental` 是开发者本地迭代手动工具（显式非默认开关：跳过受管清理、保留增量编译），不属于六阶段套件；直跑时须保持 BelowNormal 等低影响等价措施。增量产物不用于发布收口，收口仍走全量 `-Clean` + R2R 与六阶段套件。
+
 启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-DesktopLauncherOnly`、`-InstanceActivationMatrix`、`Deploy-OfficeCountdown.ps1 -ValidateOnly`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行。下方为启动器转发的官方命令及未覆盖项全表：
 
 ```powershell
@@ -107,6 +111,8 @@ pwsh.exe -NoLogo -NoProfile -STA -File .\Invoke-CountdownSourceValidation.ps1
 pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
 pwsh.exe -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
+
+标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用（`Countdown.Core.Tests.ps1` 与 `Install-Countdown.ps1 -ValidateOnly`）是有意双轨：前者是阶段级红即停门禁，后者带合同断言；重复成本约 10 秒，不合并。
 
 `-DesktopLauncherOnly` 的冷/暖门槛按 2026-08-23 现役探针五对 runId `ca1179d53398413abb236fc0f4d7b490`、`58c35833a6bf4b5ebbab9e3dab973c2a`、`eb12765e030d413a8520bcbf78c4938c`、`9d6ff40ee86745aab70f4dd96522ce60`、`9cf91f34b4f242b5a93c3b04a2fe1f23` 校准。口径是真实首帧 WPF `ContentRendered`（命名事件 `Local\CountdownDesktopLauncherWindowReady`）；测量钟在首次 window-ready 之后才查询 `Win32_Process`。探针 stopwatch T0→T4 冷 p95/max=3776ms、暖 p95/max=3439ms，分段 Σp95+20% 取整为冷 4700ms、暖 4500ms。机器：BAKER / i5-14600KF / 可用内存约 7.3GiB / CPU 中低 / 2026-08-23 16:46–16:49 +08。样本只用于归因，不汇入门槛样本池。`-InstanceActivationMatrix` 的 38900ms 共享截止按真实矩阵 8×100 强制滚动写标定：2026-08-24 五次 Wait 完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 超时证据 run `20260823T1510260920479Z` 最慢写手 21/100 @ 6800ms，线性外推 32381ms，取最差 +20% 取整。样本只用于归因，不汇入门槛样本池。2026-08-23 连续三轮完整本机验证组合中诊断并发 probe 曾在 6800ms 内只完成约 43–86/100；不能把隔离绿灯当成矩阵或连续全套件绿灯。
 以上命令只证明当前机器上的源码行为、发布包、安装与部署预检合同。`Deploy-OfficeCountdown.ps1 -ValidateOnly` 校验当前工作树候选的发布清单、`IntegrityHashes` 静态哈希和临时 ZIP，不要求工作树干净，也不执行 Git fetch；它不连接办公室设备，不上传或安装产物，更不构成办公室远端部署或验收。正式无开关部署仍只接受干净、已推送且与 `origin/main` 一致的 `main` 提交，办公室完成态仍需正式部署成功回执、传输账本和两次独立远端回读。正式部署在首次传输前会解析 Windows 内置 OpenSSH 或 PATH 中成对的 ssh/scp 绝对路径，并用选定 ssh 做约 32KB 只读 echo 行为探针；截断或找不到候选即闭锁。`-ValidateOnly` 不跑该解析和探针。构建产物 `verification\MinminCountdown.Verification.exe` 的字节由正式部署按本次构建锁定，不在 `-ValidateOnly` 里对照跨环境静态钉。

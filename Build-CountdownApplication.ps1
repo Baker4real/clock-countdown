@@ -3,11 +3,27 @@
 [CmdletBinding()]
 param(
     [string] $DotnetExe,
-    [switch] $Clean
+    [switch] $Clean,
+    [switch] $Incremental
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($Incremental -and $Clean) {
+    throw '-Incremental 与 -Clean 互斥：增量构建不清理受管构建目录，发布收口仍走全量 -Clean。'
+}
+if ($Incremental) {
+    Write-Output 'BUILD_MODE=incremental（本地迭代开发：跳过受管清理、保留增量编译；产物不用于发布收口，收口仍走全量 -Clean + R2R）'
+}
+
+function Write-BuildSegmentTiming {
+    param([Parameter(Mandatory)] [string] $Name)
+    $now = $script:buildSegmentStopwatch.Elapsed
+    $seconds = ($now - $script:buildSegmentStart).TotalSeconds
+    $script:buildSegmentStart = $now
+    Write-Output ("BUILD_SEGMENT_SECONDS {0}={1}" -f $Name, $seconds.ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture))
+}
 
 $dotnetRoot = 'D:\Codex\tools\dotnet\10.0'
 $dotnet = if ($DotnetExe) {
@@ -85,6 +101,9 @@ if (($projectAssetMappings -join ',') -ne ($contractAssetMappings -join ',')) {
     throw 'C# 项目必须显式打包发布契约声明的十四个应用资产，且不得使用通配。'
 }
 
+$buildSegmentStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$buildSegmentStart = $buildSegmentStopwatch.Elapsed
+
 if ($Clean) {
     $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
     $runEvidenceCapabilityRoot = 'D:\agents\run-evidence'
@@ -141,6 +160,7 @@ if ($Clean) {
         }
     }
 }
+Write-BuildSegmentTiming -Name 'ManagedClean'
 
 & $dotnet publish $applicationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=false `
@@ -157,6 +177,7 @@ $application = Join-Path $applicationOutput 'MinminCountdown.exe'
 if (-not (Test-Path -LiteralPath $application -PathType Leaf)) {
     throw "发布未生成应用程序：$application"
 }
+Write-BuildSegmentTiming -Name 'ApplicationPublish'
 
 # Keep a framework-dependent source DLL beside the project output for the
 # source validate-only contract. The self-contained publish remains the
@@ -169,6 +190,7 @@ $sourceApplicationDll = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release
 if (-not (Test-Path -LiteralPath $sourceApplicationDll -PathType Leaf)) {
     throw "源码构建未生成 validate-only DLL：$sourceApplicationDll"
 }
+Write-BuildSegmentTiming -Name 'SourceDllBuild'
 
 foreach ($asset in $assetManifest) {
     $target = $asset.Target
@@ -265,6 +287,7 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     $utf8NoBom)
 Write-Output "PUBLISHED_PAYLOAD_COUNT=$($payloadFiles.Count)"
 Write-Output "PUBLISHED_PAYLOAD_AGGREGATE=$payloadAggregate"
+Write-BuildSegmentTiming -Name 'AssetValidationAndPayloadHash'
 
 & $dotnet publish $verificationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `
@@ -281,6 +304,7 @@ $verification = Join-Path $verificationOutput 'MinminCountdown.Verification.exe'
 if (-not (Test-Path -LiteralPath $verification -PathType Leaf)) {
     throw "发布未生成验证程序：$verification"
 }
+Write-BuildSegmentTiming -Name 'VerificationPublish'
 
 Get-Item -LiteralPath $application, $verification | Select-Object FullName, Length, LastWriteTime
 $assetResults

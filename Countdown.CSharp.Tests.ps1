@@ -3867,7 +3867,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true $hostOptionsContract.MissingValueMessage.Contains(
         '缺少秒数值',
         [System.StringComparison]::Ordinal) '自退间隔拒绝缺少秒数值'
-    [Console]::Out.WriteLine('HOST_OPTIONS_PARSE_CONTRACT_SECONDS_ASSERTED=10')
+    [Console]::Error.WriteLine('HOST_OPTIONS_PARSE_CONTRACT_SECONDS_ASSERTED=10')
     Write-TestSegmentTiming -Name 'HostOptionsParseProbe'
 
     $powerShellMutex = Enter-CountdownSettingsWriteMutex -Path $mutexSettingsPath -TimeoutSeconds 1
@@ -5463,8 +5463,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         throw ("交互启动从窗口就绪到自退耗时 {0:F1}s；-ExitAfterReadyForTestSeconds 15 下应约 15 秒量级。" -f `
                 $interactiveReadyToExitSeconds)
     }
-    [Console]::Out.WriteLine(("CSHARP_INTERACTIVE_PURE_WAIT_SECONDS={0:F1}" -f $interactiveSelfExitWait.Elapsed.TotalSeconds))
-    [Console]::Out.WriteLine(("CSHARP_INTERACTIVE_READY_TO_EXIT_SECONDS={0:F1}" -f $interactiveReadyToExitSeconds))
+    [Console]::Error.WriteLine(("CSHARP_INTERACTIVE_PURE_WAIT_SECONDS={0:F1}" -f $interactiveSelfExitWait.Elapsed.TotalSeconds))
+    [Console]::Error.WriteLine(("CSHARP_INTERACTIVE_READY_TO_EXIT_SECONDS={0:F1}" -f $interactiveReadyToExitSeconds))
     $interactiveAdapterProcess.WaitForExit()
     Assert-Equal 0 $interactiveAdapterProcess.ExitCode '交互启动 adapter 透传 C# 正常退出码'
     $interactiveApplicationProcess.Refresh()

@@ -282,7 +282,7 @@ Start-CountdownApplication -ExitAfterReadyForTest -ExitAfterReadyForTestSeconds 
     if ($runtimeIntegrationSelfExitWait.Elapsed.TotalSeconds -ge 10) {
         throw ("Real WPF launch self-exit wait regressed to {0:F1}s; expected about 3s via -ExitAfterReadyForTestSeconds 3." -f $runtimeIntegrationSelfExitWait.Elapsed.TotalSeconds)
     }
-    [Console]::Out.WriteLine(("UI_RUNTIME_INTEGRATION_SELF_EXIT_WAIT_SECONDS={0:F1}" -f $runtimeIntegrationSelfExitWait.Elapsed.TotalSeconds))
+    [Console]::Error.WriteLine(("UI_RUNTIME_INTEGRATION_SELF_EXIT_WAIT_SECONDS={0:F1}" -f $runtimeIntegrationSelfExitWait.Elapsed.TotalSeconds))
 }
 finally {
     if ($null -ne $runtimeIntegrationProcess -and -not $runtimeIntegrationProcess.HasExited) {

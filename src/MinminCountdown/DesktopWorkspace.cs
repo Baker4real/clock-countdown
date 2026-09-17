@@ -74,9 +74,6 @@ internal sealed class DesktopWorkspace
             _session.TryDeleteTag(deleteTag.Id, out var error),
             error),
         SavePreferencesChange savePreferences => ApplySavePreferences(savePreferences),
-        SaveThemePreferenceChange saveTheme => Result(
-            _session.TrySaveThemePreference(saveTheme.Preference, out var error),
-            error),
         _ => throw new ArgumentOutOfRangeException(nameof(change))
     };
 
@@ -175,6 +172,12 @@ internal sealed class DesktopWorkspace
                 ruleId,
                 scheduledUtc,
                 out var error),
+            error);
+
+    public DesktopWorkspaceChangeResult AcknowledgeReminders(
+        IReadOnlyList<ReminderAcknowledgementRequest> requests) =>
+        Result(
+            _session.TryAcknowledgeReminders(requests, out var error),
             error);
 
     public DesktopWorkspaceChangeResult SnoozeReminder(
@@ -468,8 +471,6 @@ internal sealed record SavePreferencesChange(
     decimal MonthlySalary,
     TimeSpan WorkStart,
     TimeSpan WorkEnd) : DesktopWorkspaceChange;
-
-internal sealed record SaveThemePreferenceChange(ThemePreferenceMode Preference) : DesktopWorkspaceChange;
 
 internal sealed record DesktopWorkspaceChangeResult(
     bool Succeeded,

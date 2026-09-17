@@ -381,13 +381,14 @@ public static class SettingsContract
 
     private static ThemePreferenceMode ParseThemePreference(string value)
     {
-        if (!ValidThemePreferences.TryGetValue(value, out var canonical) ||
-            !Enum.TryParse<ThemePreferenceMode>(canonical, out var preference))
+        if (ValidThemePreferences.TryGetValue(value, out var canonical) &&
+            Enum.TryParse<ThemePreferenceMode>(canonical, out var preference))
         {
-            throw new SettingsValidationException("设置中包含无效的主题偏好。");
+            return preference;
         }
 
-        return preference;
+        // 应用固定为单一日间主题：未知主题值不报错，一律按日间解释。
+        return ThemePreferenceMode.Day;
     }
 
     private static IReadOnlyList<TagRecord> ReadTags(JsonObjectProperties root)
@@ -921,7 +922,13 @@ public static class SettingsContract
 
         if (!Enum.IsDefined(preferences.ThemePreference))
         {
-            throw new SettingsValidationException("设置中包含无效的主题偏好。");
+            // 应用固定为单一日间主题：未知主题值不报错，一律按日间解释。
+            return new CountdownPreferences(
+                displayPrecision,
+                preferences.MonthlySalary,
+                workStart,
+                workEnd,
+                ThemePreferenceMode.Day);
         }
 
         return new CountdownPreferences(

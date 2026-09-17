@@ -18,7 +18,7 @@ internal static class VerificationSuite
         }
 
         Run(results, "legacy-theme-preference-defaults-to-auto-and-v9-is-preserved", VerifyLegacyThemePreferenceDefaultsToAuto);
-        Run(results, "theme-preference-resolves-auto-boundaries-and-manual-overrides", VerifyThemePreferenceResolution);
+        Run(results, "any-theme-preference-value-loads-without-error", VerifyAnyThemePreferenceValueLoadsWithoutError);
         Run(results, "canonical-v10-is-stable", VerifyCanonicalVersionSevenIsStable);
         Run(results, "schema-v7-reminder-migrates-to-v10-fixed-interval", VerifyVersionSevenReminderMigration);
         Run(results, "schema-v8-reminder-branches-reject-foreign-fields", VerifyVersionEightReminderBranchesAreStrict);
@@ -273,19 +273,46 @@ internal static class VerificationSuite
         }
     }
 
-    private static void VerifyThemePreferenceResolution()
+    private static void VerifyAnyThemePreferenceValueLoadsWithoutError()
     {
-        var beforeDay = new DateTimeOffset(2030, 1, 14, 22, 59, 59, TimeSpan.Zero);
-        var dayStart = new DateTimeOffset(2030, 1, 14, 23, 0, 0, TimeSpan.Zero);
-        var beforeNight = new DateTimeOffset(2030, 1, 15, 10, 59, 59, TimeSpan.Zero);
-        var nightStart = new DateTimeOffset(2030, 1, 15, 11, 0, 0, TimeSpan.Zero);
+        // 主题迁移：Auto/Night 及未知值都按日间解释，启动不报错、不丢数据。
+        var settings = SettingsFixtures.VersionTen;
+        foreach (var preference in new[] { "Auto", "Day", "Night", "Nightfall", "" })
+        {
+            var json = SetThemePreference(settings, preference);
+            var loaded = SettingsContract.Deserialize(json);
+            var canonical = SettingsContract.SerializeCanonical(loaded.Settings);
+            var reloaded = SettingsContract.Deserialize(canonical);
+            Equal(
+                SettingsContract.SerializeCanonical(reloaded.Settings),
+                canonical,
+                $"主题偏好 {preference} 规范化结果稳定");
+        }
+    }
 
-        Equal(EffectiveThemeMode.Night, ThemePreferenceResolver.Resolve(beforeDay, ThemePreferenceMode.Auto), "07:00 前自动夜间");
-        Equal(EffectiveThemeMode.Day, ThemePreferenceResolver.Resolve(dayStart, ThemePreferenceMode.Auto), "07:00 起自动日间");
-        Equal(EffectiveThemeMode.Day, ThemePreferenceResolver.Resolve(beforeNight, ThemePreferenceMode.Auto), "19:00 前自动日间");
-        Equal(EffectiveThemeMode.Night, ThemePreferenceResolver.Resolve(nightStart, ThemePreferenceMode.Auto), "19:00 起自动夜间");
-        Equal(EffectiveThemeMode.Day, ThemePreferenceResolver.Resolve(nightStart, ThemePreferenceMode.Day), "手动日间覆盖时间");
-        Equal(EffectiveThemeMode.Night, ThemePreferenceResolver.Resolve(dayStart, ThemePreferenceMode.Night), "手动夜间覆盖时间");
+    private static string SetThemePreference(string json, string preference)
+    {
+        using var document = JsonDocument.Parse(json);
+        var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "themePreference", StringComparison.Ordinal))
+                {
+                    writer.WriteString("themePreference", preference);
+                }
+                else
+                {
+                    property.WriteTo(writer);
+                }
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
     private static void VerifyCanonicalVersionSevenIsStable()

@@ -4,11 +4,11 @@
 param(
     [switch] $ValidateOnly,
     [switch] $ExerciseNoteAdd,
-    [switch] $ExerciseThemePreference,
     [switch] $ExercisePersistenceFailures,
     [switch] $ExerciseTagInteractions,
     [switch] $ExerciseFatalDiagnostic,
     [switch] $ExitAfterReadyForTest,
+    [int] $ExitAfterReadyForTestSeconds,
     [string] $SettingsFile,
     [string] $DiagnosticLogPath
 )
@@ -38,9 +38,6 @@ else {
 if ($ExerciseNoteAdd.IsPresent) {
     $applicationArguments.Add('--exercise-note-add')
 }
-if ($ExerciseThemePreference.IsPresent) {
-    $applicationArguments.Add('--exercise-theme-preference')
-}
 if ($ExercisePersistenceFailures.IsPresent) {
     $applicationArguments.Add('--exercise-persistence-failures')
 }
@@ -53,6 +50,13 @@ if ($ExerciseFatalDiagnostic.IsPresent) {
 if ($ExitAfterReadyForTest.IsPresent) {
     $applicationArguments.Add('--exit-after-ready-for-test')
 }
+if ($PSBoundParameters.ContainsKey('ExitAfterReadyForTestSeconds')) {
+    if (-not $ExitAfterReadyForTest.IsPresent) {
+        throw '-ExitAfterReadyForTestSeconds 只能与 -ExitAfterReadyForTest 一起使用。'
+    }
+    $applicationArguments.Add('--exit-after-ready-seconds')
+    $applicationArguments.Add([string] $ExitAfterReadyForTestSeconds)
+}
 if ($PSBoundParameters.ContainsKey('SettingsFile')) {
     $applicationArguments.Add('--settings-file')
     $applicationArguments.Add($SettingsFile)
@@ -64,7 +68,6 @@ if ($PSBoundParameters.ContainsKey('DiagnosticLogPath')) {
 
 $stayAttached = $ValidateOnly.IsPresent -or
     $ExerciseNoteAdd.IsPresent -or
-    $ExerciseThemePreference.IsPresent -or
     $ExercisePersistenceFailures.IsPresent -or
     $ExerciseTagInteractions.IsPresent -or
     $ExerciseFatalDiagnostic.IsPresent -or

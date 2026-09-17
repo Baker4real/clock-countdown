@@ -13,6 +13,7 @@ function Start-CountdownApplication {
         [switch] $ExerciseTagInteractions,
         [switch] $ExerciseFatalDiagnostic,
         [switch] $ExitAfterReadyForTest,
+        [int] $ExitAfterReadyForTestSeconds = 30,
         [string] $SettingsFile,
         [string] $ApplicationPath,
         [string] $DiagnosticLogPath,
@@ -109,6 +110,7 @@ $script:displayPrecision = 'Second'
 $script:salary = [decimal]0
 $script:workStart = [TimeSpan]::FromHours(9)
 $script:workEnd = [TimeSpan]::FromHours(18)
+$script:themePreference = 'Auto'
 $script:workdayMap = $null
 $script:holidayCalendarStatus = '节假日日历未就绪'
 $script:workdayEndSignature = ''
@@ -1981,6 +1983,7 @@ function Get-CurrentSettingsState {
             MonthlySalary = $script:salary
             WorkStart = $script:workStart
             WorkEnd = $script:workEnd
+            ThemePreference = $script:themePreference
         }
     }
 }
@@ -3589,6 +3592,7 @@ if (Test-Path -LiteralPath $settingsPath) {
         $script:salary = $loaded.Preferences.MonthlySalary
         $script:workStart = $loaded.Preferences.WorkStart
         $script:workEnd = $loaded.Preferences.WorkEnd
+        $script:themePreference = [string] $loaded.Preferences.ThemePreference
         $script:settingsWereMigrated = $loaded.Migrated
         if ($loaded.Migrated -and -not $ValidateOnly) { Save-Settings }
     }
@@ -3603,7 +3607,7 @@ $savePreferencesButton.Add_Click({
         Set-PreferencesMessage -Text ''
         [decimal] $salary = 0
         if (-not [decimal]::TryParse($monthlySalary.Text.Trim(), [System.Globalization.NumberStyles]::Number, [System.Globalization.CultureInfo]::InvariantCulture, [ref] $salary)) { throw '月薪请输入 0 或更大的数字。' }
-        $preferences = New-CountdownPreferences -Precision ([string] $displayPrecisionInput.SelectedValue) -MonthlySalary $salary -WorkStartText $workStartInput.Text -WorkEndText $workEndInput.Text
+        $preferences = New-CountdownPreferences -Precision ([string] $displayPrecisionInput.SelectedValue) -MonthlySalary $salary -WorkStartText $workStartInput.Text -WorkEndText $workEndInput.Text -ThemePreference $script:themePreference
         $candidate = New-CurrentSettingsCandidate
         $candidate.Preferences = $preferences
         Save-Settings -State $candidate
@@ -3772,7 +3776,8 @@ $floatingWindow.Add_ContentRendered({
     if ($ExitAfterReadyForTest) {
         $script:testCloseTimer = New-Object Windows.Threading.DispatcherTimer
         # Keep the test process alive beyond the receipt waiter's 20-second deadline on a busy host.
-        $script:testCloseTimer.Interval = [TimeSpan]::FromSeconds(30)
+        # 30 秒只是测试默认；套件经 -ExitAfterReadyForTestSeconds 传更短值压缩纯等待（#122）。
+        $script:testCloseTimer.Interval = [TimeSpan]::FromSeconds([Math]::Max(1, $ExitAfterReadyForTestSeconds))
         $script:testCloseTimer.Add_Tick({
             $script:testCloseTimer.Stop()
             $floatingWindow.Close()

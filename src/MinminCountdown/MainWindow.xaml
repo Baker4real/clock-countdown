@@ -18,7 +18,7 @@
         <Setter.Value>
           <ControlTemplate>
             <Border Margin="-3"
-                    BorderBrush="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}"
+                    BorderBrush="{DynamicResource ActiveBrush}"
                     BorderThickness="3"
                     CornerRadius="8" />
           </ControlTemplate>
@@ -38,6 +38,8 @@
     <Viewbox x:Name="MainScaleViewport"
              Stretch="Uniform"
              StretchDirection="Both">
+      <!-- 1165 x 1350 设计坐标锚点：只承担 Viewbox 缩放原点与 Popup 裁剪基准，
+           不参与业务内容的布局测量（issue #135）。 -->
       <Canvas x:Name="MainLayoutSurface"
               Width="1165"
               Height="1350"
@@ -54,12 +56,6 @@
                  IsHitTestVisible="False"
                  Visibility="Collapsed" />
           <Image x:Name="NotesReferenceDecoration"
-                 Width="1165"
-                 Height="1350"
-                 Stretch="Fill"
-                 IsHitTestVisible="False"
-                 Visibility="Collapsed" />
-          <Image x:Name="NightCountdownTopDecoration"
                  Width="1165"
                  Height="1350"
                  Stretch="Fill"
@@ -88,39 +84,37 @@
               <Setter Property="FontSize" Value="20" />
               <Setter Property="Padding" Value="18,0" />
             </Style>
-            <Style x:Key="MainNoteStatusDisclosureButton" TargetType="{x:Type Button}">
-              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-              <Setter Property="Background" Value="{DynamicResource NoteStatusHeaderBrush}" />
-              <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
-              <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="Padding" Value="12,9" />
-              <Setter Property="MinHeight" Value="66" />
-              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Style x:Key="MainNoteSegmentButton" TargetType="{x:Type ToggleButton}">
+              <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderThickness" Value="0" />
+              <Setter Property="FontSize" Value="22" />
+              <Setter Property="Padding" Value="0" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
-                  <ControlTemplate TargetType="{x:Type Button}">
-                    <Grid x:Name="InteractionSurface">
+                  <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Grid x:Name="InteractionSurface" Background="Transparent">
                       <Border x:Name="FocusRing"
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="10">
-                        <Border x:Name="Surface"
-                                Margin="2"
-                                Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8">
-                          <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                            VerticalAlignment="Center"
-                                            RecognizesAccessKey="True" />
-                        </Border>
+                              CornerRadius="17" />
+                      <Border x:Name="Surface"
+                              Margin="2"
+                              Padding="{TemplateBinding Padding}"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="Transparent"
+                              BorderThickness="1"
+                              CornerRadius="15">
+                        <ContentPresenter VerticalAlignment="Center" />
                       </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
+                      <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PeachTintBrush}" />
+                      </Trigger>
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
@@ -128,7 +122,7 @@
                         <Setter TargetName="Surface" Property="Opacity" Value="0.92" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
@@ -178,7 +172,7 @@
                         <Setter TargetName="Surface" Property="Opacity" Value="0.9" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -228,12 +222,78 @@
                 </Setter.Value>
               </Setter>
             </Style>
-            <Style x:Key="MainSegmentButton"
-                   TargetType="{x:Type ToggleButton}"
-                   BasedOn="{StaticResource SegmentButton}">
+            <Style x:Key="MainSegmentButton" TargetType="{x:Type ToggleButton}">
+              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderBrush" Value="Transparent" />
+              <Setter Property="BorderThickness" Value="1" />
               <Setter Property="FontSize" Value="20" />
               <Setter Property="Height" Value="60" />
               <Setter Property="Padding" Value="18,0" />
+              <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border x:Name="Surface"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="14"
+                            Padding="{TemplateBinding Padding}">
+                      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PinkTintSoftBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PinkTintBrush}" />
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource PinkTintBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+            <Style x:Key="MainNotesSegmentButton"
+                   TargetType="{x:Type ToggleButton}"
+                   BasedOn="{StaticResource MainSegmentButton}">
+              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border x:Name="Surface"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="14"
+                            Padding="{TemplateBinding Padding}">
+                      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PeachTintBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PeachTintBrush}" />
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource PeachTintBrush}" />
+                        <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
             </Style>
             <Style x:Key="MainIconButton"
                    TargetType="{x:Type Button}"
@@ -261,7 +321,7 @@
                               Background="{DynamicResource CanvasBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
                               BorderThickness="1"
-                              CornerRadius="7"
+                              CornerRadius="8"
                               VerticalAlignment="Center">
                         <Path x:Name="Tick"
                               Width="15"
@@ -337,7 +397,7 @@
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="Box" Property="BorderThickness" Value="2" />
-                        <Setter TargetName="Box" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
@@ -384,8 +444,103 @@
               <Setter Property="Height" Value="56" />
               <Setter Property="Padding" Value="16,0" />
             </Style>
+            <Style x:Key="MainReminderModeRadio" TargetType="{x:Type RadioButton}">
+              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+              <Setter Property="FontSize" Value="20" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type RadioButton}">
+                    <Grid x:Name="Surface" Background="{TemplateBinding Background}">
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="2"
+                              CornerRadius="12" />
+                      <StackPanel Orientation="Horizontal"
+                                  HorizontalAlignment="Left"
+                                  Margin="12,0,0,0"
+                                  VerticalAlignment="Center">
+                        <Grid Width="22" Height="22">
+                          <Ellipse x:Name="Ring"
+                                   Fill="Transparent"
+                                   Stroke="{DynamicResource PeachLineBrush}"
+                                   StrokeThickness="2" />
+                          <Ellipse x:Name="Dot"
+                                   Width="10"
+                                   Height="10"
+                                   Fill="{DynamicResource IconAccentBrush}"
+                                   Visibility="Collapsed" />
+                        </Grid>
+                        <ContentPresenter Margin="8,0,12,0"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                      </StackPanel>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+                        <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource IconAccentBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+            <Style x:Key="MainReminderHelpButton" TargetType="{x:Type Button}">
+              <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderBrush" Value="Transparent" />
+              <Setter Property="BorderThickness" Value="1" />
+              <Setter Property="FontSize" Value="17" />
+              <Setter Property="FontWeight" Value="SemiBold" />
+              <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type Button}">
+                    <Grid x:Name="Surface" Background="Transparent">
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="2"
+                              CornerRadius="15" />
+                      <Ellipse x:Name="Circle"
+                               Width="26"
+                               Height="26"
+                               Stroke="{DynamicResource MutedBrush}"
+                               StrokeThickness="1.6" />
+                      <TextBlock HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"
+                                 Text="?" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Circle" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
           </Grid.Resources>
 
+          <!-- 锚点 Canvas：只承载装饰层与工作台骨架，业务内容全部由骨架内的
+               Grid / StackPanel / UniformGrid / ScrollViewer 承载（issue #135）。 -->
           <Canvas x:Name="MainContentSurface"
                   Width="1165"
                   Height="1350"
@@ -400,102 +555,6 @@
               <Image x:Name="CinnamorollBackground" Canvas.Left="390" Canvas.Top="1060" Width="380" Height="220" Stretch="Uniform" />
               <Image x:Name="KuromiBackground" Canvas.Left="815" Canvas.Top="1010" Width="270" Height="290" Stretch="Uniform" />
             </Canvas>
-
-            <TextBlock Canvas.Left="40"
-                       Canvas.Top="47"
-                       Text="敏敏子的时光小屋"
-                       FontSize="44"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource InkBrush}" />
-            <TextBlock Canvas.Left="40"
-                       Canvas.Top="111"
-                       Text="重要时刻和今日努力，都在这里慢慢长大"
-                       FontSize="20"
-                       Foreground="{DynamicResource MutedBrush}" />
-
-            <Button x:Name="ThemeModeButton"
-                    Canvas.Left="714"
-                    Canvas.Top="59"
-                    Width="142"
-                    Height="48"
-                    Content="◐ 自动"
-                    FontSize="20"
-                    Style="{StaticResource MainSecondaryButton}"
-                    ToolTip="主题模式：自动；点击切换为日间"
-                    shell:WindowChrome.IsHitTestVisibleInChrome="True" />
-            <CheckBox x:Name="TopmostCheck"
-                      Canvas.Left="872"
-                      Canvas.Top="59"
-                      Width="132"
-                      Height="48"
-                      Content="窗口置顶"
-                      IsChecked="True"
-                      FontSize="20"
-                      Style="{StaticResource MainTopmostCheck}"
-                      VerticalContentAlignment="Center"
-                      shell:WindowChrome.IsHitTestVisibleInChrome="True" />
-            <Button x:Name="MinimizeButton"
-                    Canvas.Left="1019"
-                    Canvas.Top="48"
-                    Width="57"
-                    Height="58"
-                    Content="−"
-                    Style="{StaticResource MainIconButton}"
-                    ToolTip="最小化"
-                    shell:WindowChrome.IsHitTestVisibleInChrome="True" />
-            <Button x:Name="CloseButton"
-                    Canvas.Left="1086"
-                    Canvas.Top="48"
-                    Width="57"
-                    Height="58"
-                    Content="×"
-                    Foreground="{DynamicResource DangerBrush}"
-                    Style="{StaticResource MainIconButton}"
-                    ToolTip="关闭"
-                    shell:WindowChrome.IsHitTestVisibleInChrome="True" />
-
-            <Border Canvas.Left="40"
-                    Canvas.Top="176"
-                    Width="255"
-                    Height="69"
-                    Padding="4"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
-                    BorderThickness="1"
-                    CornerRadius="14">
-              <StackPanel Orientation="Horizontal">
-                <ToggleButton x:Name="CountdownTab"
-                              Width="133"
-                              Content="倒计时"
-                              Style="{StaticResource MainSegmentButton}" />
-                <ToggleButton x:Name="NotesTab"
-                              Width="111"
-                              Margin="2,0,0,0"
-                              Content="便签"
-                              Style="{StaticResource MainSegmentButton}" />
-              </StackPanel>
-            </Border>
-            <Button x:Name="FilterButton"
-                    Canvas.Left="755"
-                    Canvas.Top="176"
-                    Width="133"
-                    Height="69"
-                    Content="筛选"
-                    Style="{StaticResource MainSecondaryButton}" />
-            <Button x:Name="TagManagerButton"
-                    Canvas.Left="899"
-                    Canvas.Top="176"
-                    Width="132"
-                    Height="69"
-                    Content="标签"
-                    Style="{StaticResource MainSecondaryButton}" />
-            <TextBlock x:Name="RecordCountText"
-                       Canvas.Left="1047"
-                       Canvas.Top="198"
-                       Width="110"
-                       FontSize="20"
-                       Foreground="{DynamicResource MutedBrush}"
-                       TextAlignment="Center" />
 
             <Canvas x:Name="CharacterPanelLayer"
                     Canvas.Left="38"
@@ -553,461 +612,1132 @@
                       ClipToBounds="True"><Image x:Name="KuromiPanelCharacter" Height="160" Stretch="Uniform" /></Border>
             </Canvas>
 
-            <Canvas x:Name="CountdownWorkspace"
-                    Width="1165"
-                    Height="1350">
-              <Border x:Name="CountdownWorkspaceBackdrop"
-                      Canvas.Left="38"
-                      Canvas.Top="402"
-                      Width="1088"
-                      Height="886"
-                      Background="{DynamicResource BackgroundBrush}"
-                      BorderBrush="{DynamicResource PeachLineBrush}"
-                      BorderThickness="0"
-                      CornerRadius="16"
-                      IsHitTestVisible="False" />
-              <Border x:Name="CountdownEditorSurface"
-                      Canvas.Left="38"
-                      Canvas.Top="402"
-                      Width="1088"
-                      Height="384"
-                      Background="{DynamicResource BackgroundBrush}"
-                      BorderBrush="{DynamicResource PeachLineBrush}"
-                      BorderThickness="1"
-                      CornerRadius="16" />
-              <TextBlock x:Name="CountdownEditorTitle"
-                         Canvas.Left="73"
-                         Canvas.Top="432"
-                         Text="新增倒计时"
-                         FontSize="27"
-                         FontWeight="SemiBold"
-                         Foreground="{DynamicResource InkBrush}" />
+            <!-- 工作台骨架：顶部身份区 / 命令栏 / 当前工作区主卡与列表区 / 底部动作区（issue #131 #135）。 -->
+            <Grid x:Name="MainWorkbenchLayout"
+                  Width="1165"
+                  Height="1350">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="176" />
+                <RowDefinition Height="116" />
+                <RowDefinition Height="996" />
+                <RowDefinition Height="62" />
+              </Grid.RowDefinitions>
 
-              <TextBlock Canvas.Left="74" Canvas.Top="488" Text="名称" Style="{StaticResource MainCompactFieldLabel}" />
-              <TextBlock Canvas.Left="711" Canvas.Top="488" Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
-              <TextBox x:Name="CountdownName"
-                       Canvas.Left="73"
-                       Canvas.Top="516"
-                       Width="615"
-                       Style="{StaticResource MainCompactTextInput}"
-                       MaxLength="30" />
-              <DatePicker x:Name="CountdownDate"
-                          Canvas.Left="707"
-                          Canvas.Top="516"
-                          Width="384"
-                          Style="{StaticResource MainCompactDateInput}" />
-
-              <TextBlock Canvas.Left="74" Canvas.Top="592" Text="时" Style="{StaticResource MainCompactFieldLabel}" />
-              <TextBlock Canvas.Left="288" Canvas.Top="592" Text="分" Style="{StaticResource MainCompactFieldLabel}" />
-              <TextBlock Canvas.Left="493" Canvas.Top="592" Text="秒" Style="{StaticResource MainCompactFieldLabel}" />
-              <ComboBox x:Name="CountdownHour"
-                        Canvas.Left="74"
-                        Canvas.Top="620"
-                        Width="195"
-                        Style="{StaticResource MainCompactSelectionInput}" />
-              <ComboBox x:Name="CountdownMinute"
-                        Canvas.Left="288"
-                        Canvas.Top="620"
-                        Width="188"
-                        Style="{StaticResource MainCompactSelectionInput}" />
-              <ComboBox x:Name="CountdownSecond"
-                        Canvas.Left="493"
-                        Canvas.Top="620"
-                        Width="188"
-                        Style="{StaticResource MainCompactSelectionInput}" />
-              <Button x:Name="SetNowButton"
-                      Canvas.Left="701"
-                      Canvas.Top="620"
-                      Width="142"
-                      Height="56"
-                      Content="设为现在"
-                      Style="{StaticResource MainSecondaryButton}" />
-              <local:TagSelector x:Name="CountdownTags"
-                                 Canvas.Left="861"
-                                 Canvas.Top="620"
-                                 Width="222"
-                                 Height="56" />
-              <TextBlock x:Name="CountdownMessage"
-                         Canvas.Left="74"
-                         Canvas.Top="704"
-                         Width="370"
-                         MaxHeight="56"
-                         FontSize="18"
-                         VerticalAlignment="Center"
-                         Foreground="{DynamicResource DangerBrush}"
-                         TextWrapping="Wrap" />
-              <Button x:Name="ManageCountdownReminderRulesButton"
-                      Canvas.Left="460"
-                      Canvas.Top="704"
-                      Width="170"
-                      Height="56"
-                      Content="提醒规则"
-                      Style="{StaticResource MainSecondaryButton}" />
-              <TextBlock x:Name="CountdownReminderRulesSummary"
-                         Canvas.Left="642"
-                         Canvas.Top="704"
-                         Width="132"
-                         Height="56"
-                         FontSize="16"
-                         VerticalAlignment="Center"
-                         Foreground="{DynamicResource MutedBrush}"
-                         TextWrapping="Wrap" />
-              <Button x:Name="CancelCountdownEdit"
-                      Canvas.Left="786"
-                      Canvas.Top="704"
-                      Width="72"
-                      Height="56"
-                      Content="取消"
-                      Visibility="Collapsed"
-                      Style="{StaticResource MainSecondaryButton}" />
-              <Button x:Name="SaveCountdownButton"
-                      Canvas.Left="866"
-                      Canvas.Top="704"
-                      Width="221"
-                      Height="56"
-                      MinHeight="56"
-                      Content="添加倒计时"
-                      Style="{StaticResource MainPrimaryButton}" />
-
-              <Border x:Name="CountdownPreferencesSurface"
-                      Canvas.Left="38"
-                      Canvas.Top="810"
-                      Width="1088"
-                      Height="140"
-                      Background="{DynamicResource BackgroundBrush}"
-                      BorderBrush="{DynamicResource PeachLineBrush}"
-                      BorderThickness="1"
-                      CornerRadius="16" />
-              <TextBlock Canvas.Left="74" Canvas.Top="832" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
-              <TextBlock Canvas.Left="309" Canvas.Top="832" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
-              <TextBlock Canvas.Left="571" Canvas.Top="832" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
-              <TextBlock Canvas.Left="778" Canvas.Top="832" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
-              <ComboBox x:Name="DisplayPrecision"
-                        Canvas.Left="73"
-                        Canvas.Top="860"
-                        Width="210"
-                        Style="{StaticResource MainCompactSelectionInput}" />
-              <TextBox x:Name="MonthlySalary"
-                       Canvas.Left="306"
-                       Canvas.Top="860"
-                       Width="243"
-                       Style="{StaticResource MainCompactTextInput}" />
-              <TextBox x:Name="WorkStart"
-                       Canvas.Left="568"
-                       Canvas.Top="860"
-                       Width="187"
-                       Style="{StaticResource MainCompactTextInput}" />
-              <TextBox x:Name="WorkEnd"
-                       Canvas.Left="773"
-                       Canvas.Top="860"
-                       Width="172"
-                       Style="{StaticResource MainCompactTextInput}" />
-              <Button x:Name="SavePreferencesButton"
-                      Canvas.Left="961"
-                      Canvas.Top="860"
-                      Width="140"
-                      Height="56"
-                      MinHeight="56"
-                      Content="保存设置"
-                      Style="{StaticResource MainPrimaryButton}" />
-
-              <ScrollViewer x:Name="CountdownListRegion"
-                            Canvas.Left="40"
-                            Canvas.Top="972"
-                            Width="1085"
-                            Height="316"
-                            FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
-                            Focusable="True"
-                            IsTabStop="True"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Disabled">
-                <StackPanel>
-                  <StackPanel x:Name="CountdownRows" />
-                  <TextBlock x:Name="EmptyCountdownMessage"
-                             Margin="20,20,20,0"
-                             HorizontalAlignment="Center"
+              <!-- 顶部身份区：标题 + 副标题 + 窗口控制 -->
+              <Grid x:Name="MainIdentityZone" Grid.Row="0" Margin="40,47,22,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel x:Name="MainTitleZone">
+                  <StackPanel Orientation="Horizontal">
+                    <!-- 便签页目标图标题左侧的房子标识；倒计时页保持标题右侧心形（§12 各页对齐各自 AI 图）。 -->
+                    <Path Width="44"
+                          Height="40"
+                          Margin="0,0,16,6"
+                          VerticalAlignment="Center"
+                          Data="M 22,3 L 41,18.5 L 36.5,18.5 L 36.5,32.5 C 36.5,34.7 34.7,36.5 32.5,36.5 L 11.5,36.5 C 9.3,36.5 7.5,34.7 7.5,32.5 L 7.5,18.5 L 3,18.5 Z M 17,36.5 L 17,25 C 17,23.9 17.9,23 19,23 L 25,23 C 26.1,23 27,23.9 27,25 L 27,36.5 Z"
+                          Fill="{DynamicResource InkBrush}"
+                          IsHitTestVisible="False">
+                      <Path.Style>
+                        <Style TargetType="{x:Type Path}">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=NotesTab}" Value="True">
+                              <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Path.Style>
+                    </Path>
+                    <TextBlock Text="敏敏子的时光小屋"
+                               FontSize="44"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource InkBrush}" />
+                    <Path Width="32"
+                          Height="28"
+                          Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Data="M 16,26.5 C 7.5,20 2,14.2 2,8.6 C 2,4.4 5.2,1.8 8.5,1.8 C 11.6,1.8 14.4,3.9 16,6.8 C 17.6,3.9 20.4,1.8 23.5,1.8 C 26.8,1.8 30,4.4 30,8.6 C 30,14.2 24.5,20 16,26.5 Z"
+                          Stroke="{DynamicResource IconAccentBrush}"
+                          StrokeThickness="2.6"
+                          StrokeLineJoin="Round"
+                          IsHitTestVisible="False">
+                      <Path.Style>
+                        <Style TargetType="{x:Type Path}">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=CountdownTab}" Value="True">
+                              <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Path.Style>
+                    </Path>
+                  </StackPanel>
+                  <TextBlock Margin="0,6,0,0"
+                             Text="重要时刻和今日努力，都在这里慢慢长大"
                              FontSize="20"
-                             Foreground="{DynamicResource MutedBrush}"
-                             Text="还没有倒计时，先添加一个目标。"
-                             TextWrapping="Wrap"
-                             Visibility="Collapsed" />
-                  <Button x:Name="ResetEmptyCountdownFiltersButton"
-                          Margin="0,12,0,0"
-                          HorizontalAlignment="Center"
-                          Content="重置筛选"
-                          Visibility="Collapsed"
-                          Style="{StaticResource MainSecondaryButton}" />
+                             Foreground="{DynamicResource MutedBrush}" />
                 </StackPanel>
-              </ScrollViewer>
-            </Canvas>
+                <Grid x:Name="MainWindowControls" Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="15" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <Border x:Name="DayThemeBadge"
+                          Grid.Column="0"
+                          Height="48"
+                          Margin="0,11,0,0"
+                          Padding="16,0"
+                          VerticalAlignment="Top"
+                          Background="{DynamicResource CardBrush}"
+                          BorderBrush="{DynamicResource PeachLineBrush}"
+                          BorderThickness="1"
+                          CornerRadius="14"
+                          Focusable="False"
+                          IsHitTestVisible="False"
+                          AutomationProperties.Name="当前主题：日间">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <Path Width="22"
+                            Height="22"
+                            Data="M 6.2,11 A 4.8,4.8 0 1 0 15.8,11 A 4.8,4.8 0 1 0 6.2,11 Z M 11,0.8 L 11,3 M 11,19 L 11,21.2 M 0.8,11 L 3,11 M 19,11 L 21.2,11 M 3.8,3.8 L 5.4,5.4 M 16.6,16.6 L 18.2,18.2 M 18.2,3.8 L 16.6,5.4 M 5.4,16.6 L 3.8,18.2"
+                            Stroke="{DynamicResource IconAccentBrush}"
+                            StrokeThickness="1.7"
+                            StrokeStartLineCap="Round"
+                            StrokeEndLineCap="Round"
+                            VerticalAlignment="Center" />
+                      <TextBlock Margin="9,0,0,0"
+                                 Text="日间"
+                                 VerticalAlignment="Center"
+                                 FontSize="20"
+                                 Foreground="{DynamicResource BodyBrush}" />
+                    </StackPanel>
+                  </Border>
+                  <CheckBox x:Name="TopmostCheck"
+                            Grid.Column="2"
+                            Width="132"
+                            Height="48"
+                            Margin="0,11,0,0"
+                            Content="窗口置顶"
+                            IsChecked="True"
+                            FontSize="20"
+                            Style="{StaticResource MainTopmostCheck}"
+                            VerticalContentAlignment="Center"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                  <Button x:Name="MinimizeButton"
+                          Grid.Column="4"
+                          Width="57"
+                          Height="58"
+                          Content="−"
+                          Style="{StaticResource MainIconButton}"
+                          ToolTip="最小化"
+                          shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                  <Button x:Name="CloseButton"
+                          Grid.Column="6"
+                          Width="57"
+                          Height="58"
+                          Content="×"
+                          Foreground="{DynamicResource DangerBrush}"
+                          Style="{StaticResource MainIconButton}"
+                          ToolTip="关闭"
+                          shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                </Grid>
+              </Grid>
 
-            <Canvas x:Name="NotesWorkspace"
-                    Width="1165"
-                    Height="1350"
-                    Visibility="Collapsed">
-              <Border x:Name="NoteEditorPanel"
-                      Canvas.Left="46"
-                      Canvas.Top="368"
-                      Width="1072"
-                      Height="400"
-                      Panel.ZIndex="-2"
-                      Background="{DynamicResource WorkspacePanelBrush}"
-                      BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
-                      BorderThickness="1"
-                      CornerRadius="40" />
-              <Image x:Name="NightNotesTopDecoration"
-                     Width="1165"
-                     Height="1350"
-                     Panel.ZIndex="-1"
-                     Stretch="Fill"
-                     IsHitTestVisible="False"
-                     Visibility="Collapsed" />
-              <TextBlock x:Name="NoteTextLabel"
-                         Canvas.Left="72"
-                         Canvas.Top="412"
-                         Text="便签内容"
-                         Style="{StaticResource MainFieldLabel}" />
-              <TextBlock x:Name="NoteDateLabel"
-                         Canvas.Left="675"
-                         Canvas.Top="412"
-                         Text="便签日期"
-                         Style="{StaticResource MainFieldLabel}" />
-              <TextBox x:Name="NoteText"
-                       Canvas.Left="72"
-                       Canvas.Top="449"
-                       Width="588"
-                       Height="68"
-                       MaxLength="140" />
-              <DatePicker x:Name="NoteDate"
-                          Canvas.Left="675"
-                          Canvas.Top="449"
-                          Width="244"
-                          Height="68"
-                          SelectedDateFormat="Short" />
-              <Button x:Name="SaveNoteButton"
-                      Canvas.Left="926"
-                      Canvas.Top="449"
-                      Width="118"
-                      Height="68"
-                      Content="添加"
-                      Style="{StaticResource MainPrimaryButton}" />
-              <Button x:Name="CancelNoteEdit"
-                      Canvas.Left="1052"
-                      Canvas.Top="449"
-                      Width="66"
-                      Height="68"
-                      Content="取消"
-                      Visibility="Collapsed"
-                      Style="{StaticResource MainSecondaryButton}" />
-              <TextBlock x:Name="NoteReminderModeLabel"
-                         Canvas.Left="72"
-                         Canvas.Top="526"
-                         Text="提醒规则"
-                         Style="{StaticResource MainFieldLabel}" />
-              <TextBlock x:Name="NoteTagsLabel"
-                         Canvas.Left="289"
-                         Canvas.Top="526"
-                         Text="标签"
-                         Style="{StaticResource MainFieldLabel}" />
-              <TextBlock x:Name="NoteSearchLabel"
-                         Canvas.Left="867"
-                         Canvas.Top="526"
-                         Text="搜索便签"
-                         Style="{StaticResource MainFieldLabel}" />
-              <Button x:Name="ManageNoteReminderRulesButton"
-                      Canvas.Left="72"
-                      Canvas.Top="556"
-                      Width="202"
-                      Height="69"
-                      Content="管理提醒规则"
-                      Style="{StaticResource MainSecondaryButton}" />
-              <TextBlock x:Name="NoteReminderRulesSummary"
-                         Canvas.Left="72"
-                         Canvas.Top="632"
-                         Width="790"
-                         Height="38"
-                         FontSize="17"
-                         Foreground="{DynamicResource MutedBrush}"
-                         TextWrapping="Wrap"
-                         Text="不提醒" />
-              <local:TagSelector x:Name="NoteTags"
-                                 Canvas.Left="289"
-                                 Canvas.Top="556"
-                                 Width="172"
-                                 Height="69" />
-              <TextBox x:Name="NoteSearch"
-                       Canvas.Left="867"
-                       Canvas.Top="556"
-                       Width="220"
-                       Height="69"
-                       MaxLength="140" />
-              <TextBlock x:Name="NoteMessage"
-                         Canvas.Left="72"
-                         Canvas.Top="720"
-                         Width="790"
-                         Height="42"
-                         FontSize="18"
-                         Foreground="{DynamicResource DangerBrush}"
-                         TextWrapping="Wrap" />
-              <ScrollViewer x:Name="NotesListRegion"
-                            Canvas.Left="46"
-                            Canvas.Top="784"
-                            Width="1072"
-                            Height="486"
-                            FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
-                            Focusable="True"
-                            IsTabStop="True"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Disabled">
-                <StackPanel>
-                  <Button x:Name="ToggleActiveNotes"
-                          Visibility="Collapsed"
-                          Style="{StaticResource MainNoteStatusDisclosureButton}">
-                    <Grid>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="6" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <Border Width="5"
-                              Height="34"
-                              HorizontalAlignment="Left"
-                              VerticalAlignment="Center"
-                              Background="{DynamicResource NoteActiveRailBrush}"
-                              CornerRadius="3" />
-                      <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="ActiveNotesLabel"
-                                   FontSize="22"
-                                   FontWeight="SemiBold"
-                                   Text="未完成" />
-                        <TextBlock Margin="0,2,0,0"
-                                   FontSize="16"
+              <!-- 命令栏：工作区页签 + 筛选 / 标签 / 数量 -->
+              <Grid x:Name="MainCommandBarZone" Grid.Row="1" Margin="40,0,8,0" VerticalAlignment="Top">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="11" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="16" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0"
+                        Width="255"
+                        Height="69"
+                        Padding="4"
+                        Background="{DynamicResource CardAltBrush}"
+                        BorderBrush="Transparent"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                  <StackPanel Orientation="Horizontal">
+                    <ToggleButton x:Name="CountdownTab"
+                                  Width="133"
+                                  Content="倒计时"
+                                  Style="{StaticResource MainSegmentButton}" />
+                    <ToggleButton x:Name="NotesTab"
+                                  Width="111"
+                                  Margin="2,0,0,0"
+                                  Content="便签"
+                                  Style="{StaticResource MainNotesSegmentButton}" />
+                  </StackPanel>
+                </Border>
+                <Button x:Name="FilterButton"
+                        Grid.Column="2"
+                        Width="133"
+                        Height="69"
+                        Style="{StaticResource MainSecondaryButton}">
+                  <StackPanel Orientation="Horizontal">
+                    <Path Width="22"
+                          Height="22"
+                          Data="M 2.5,4 L 19.5,4 L 13.5,11.5 L 13.5,18 L 8.5,15.5 L 8.5,11.5 Z"
+                          Stroke="{DynamicResource InkBrush}"
+                          StrokeThickness="1.8"
+                          StrokeLineJoin="Round"
+                          VerticalAlignment="Center" />
+                    <TextBlock Margin="10,0,0,0"
+                               Text="筛选"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <Button x:Name="TagManagerButton"
+                        Grid.Column="4"
+                        Width="132"
+                        Height="69"
+                        Style="{StaticResource MainSecondaryButton}">
+                  <StackPanel Orientation="Horizontal">
+                    <Path Width="22"
+                          Height="22"
+                          Data="M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7"
+                          Stroke="{DynamicResource InkBrush}"
+                          StrokeThickness="1.8"
+                          StrokeLineJoin="Round"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          VerticalAlignment="Center" />
+                    <TextBlock Margin="10,0,0,0"
+                               Text="标签"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <Border Grid.Column="6"
+                        Height="48"
+                        Margin="0,11,0,0"
+                        Padding="14,0"
+                        VerticalAlignment="Top"
+                        Background="{DynamicResource CardBrush}"
+                        BorderBrush="{DynamicResource PeachLineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="13">
+                  <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Path Width="20"
+                          Height="20"
+                          Data="M 4,2.5 L 16,2.5 C 16.8,2.5 17.5,3.2 17.5,4 L 17.5,16 C 17.5,16.8 16.8,17.5 16,17.5 L 4,17.5 C 3.2,17.5 2.5,16.8 2.5,16 L 2.5,4 C 2.5,3.2 3.2,2.5 4,2.5 Z M 6,7 L 14,7 M 6,11 L 14,11 M 6,15 L 11,15"
+                          Stroke="{DynamicResource MutedBrush}"
+                          StrokeThickness="1.6"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          VerticalAlignment="Center" />
+                    <TextBlock x:Name="RecordCountText"
+                               Margin="9,0,0,0"
+                               FontSize="20"
+                               Foreground="{DynamicResource BodyBrush}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+              </Grid>
+
+              <!-- 当前工作区主卡 + 列表/管理区 -->
+              <Grid x:Name="MainWorkspaceZone" Grid.Row="2">
+                <Canvas x:Name="CountdownWorkspace"
+                        Width="1165"
+                        Height="996">
+                  <Grid x:Name="CountdownWorkspaceBody"
+                        Margin="38,110,39,0"
+                        Width="1088"
+                        Height="886">
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="384" />
+                      <RowDefinition Height="24" />
+                      <RowDefinition Height="176" />
+                      <RowDefinition Height="22" />
+                      <RowDefinition Height="*" />
+                      <RowDefinition Height="28" />
+                    </Grid.RowDefinitions>
+                    <Border x:Name="CountdownWorkspaceBackdrop"
+                            Grid.Row="0"
+                            Grid.RowSpan="6"
+                            Background="{DynamicResource BackgroundBrush}"
+                            BorderBrush="{DynamicResource PeachLineBrush}"
+                            BorderThickness="0"
+                            CornerRadius="16"
+                            IsHitTestVisible="False" />
+                    <Border x:Name="CountdownEditorSurface"
+                            Grid.Row="0"
+                            Background="{DynamicResource BackgroundBrush}"
+                            BorderBrush="{DynamicResource PeachLineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="16">
+                      <Grid x:Name="CountdownEditorCard" Margin="35,30,35,26">
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <TextBlock x:Name="CountdownEditorTitle"
+                                     Text="新增倒计时"
+                                     FontSize="27"
+                                     FontWeight="SemiBold"
+                                     Foreground="{DynamicResource InkBrush}" />
+                          <TextBlock Grid.Column="2"
+                                     Width="412"
+                                     Margin="0,9,39,0"
+                                     TextAlignment="Right"
+                                     Text="每一个期待，都值得被认真对待 ♡"
+                                     FontFamily="{StaticResource HandwrittenDecoFontFamily}"
+                                     FontSize="17"
+                                     Foreground="{DynamicResource DecoTextBrush}"
+                                     IsHitTestVisible="False" />
+                        </Grid>
+                        <Grid Grid.Row="1" Margin="0,20,0,0">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="615" />
+                            <ColumnDefinition Width="19" />
+                            <ColumnDefinition Width="384" />
+                          </Grid.ColumnDefinitions>
+                          <StackPanel Grid.Column="0">
+                            <TextBlock Text="名称" Style="{StaticResource MainCompactFieldLabel}" />
+                            <Grid Margin="0,4,0,0">
+                              <TextBox x:Name="CountdownName"
+                                       Width="615"
+                                       Style="{StaticResource MainCompactTextInput}"
+                                       Padding="48,0,16,0"
+                                       MaxLength="30" />
+                              <Path Width="20"
+                                    Height="20"
+                                    Margin="16,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Data="M 2.5,17.5 L 3.4,13.7 L 14.2,2.9 C 15,2.1 16.3,2.1 17.1,2.9 C 17.9,3.7 17.9,5 17.1,5.8 L 6.3,16.6 L 2.5,17.5 Z"
+                                    Stroke="{DynamicResource MutedBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeLineJoin="Round"
+                                    IsHitTestVisible="False" />
+                              <TextBlock Margin="48,0,0,0"
+                                         Height="28"
+                                         HorizontalAlignment="Left"
+                                         VerticalAlignment="Center"
+                                         FontSize="20"
+                                         Foreground="{DynamicResource MutedBrush}"
+                                         IsHitTestVisible="False"
+                                         Text="例如：生日、考试、旅行…">
+                                <TextBlock.Style>
+                                  <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                      <DataTrigger Binding="{Binding Text, ElementName=CountdownName}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                      </DataTrigger>
+                                    </Style.Triggers>
+                                  </Style>
+                                </TextBlock.Style>
+                              </TextBlock>
+                            </Grid>
+                          </StackPanel>
+                          <StackPanel Grid.Column="2">
+                            <TextBlock Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
+                            <Grid Margin="0,4,0,0">
+                              <DatePicker x:Name="CountdownDate"
+                                          Width="384"
+                                          Style="{StaticResource MainCompactDateInput}"
+                                          Padding="48,0,16,0" />
+                              <Path Width="20"
+                                    Height="20"
+                                    Margin="16,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Data="M 3,4.5 L 17,4.5 C 17.6,4.5 18,4.9 18,5.5 L 18,16.5 C 18,17.1 17.6,17.5 17,17.5 L 3,17.5 C 2.4,17.5 2,17.1 2,16.5 L 2,5.5 C 2,4.9 2.4,4.5 3,4.5 Z M 2,8.5 L 18,8.5 M 6.5,2.5 L 6.5,6 M 13.5,2.5 L 13.5,6"
+                                    Stroke="{DynamicResource MutedBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeLineJoin="Round"
+                                    IsHitTestVisible="False" />
+                            </Grid>
+                          </StackPanel>
+                        </Grid>
+                        <Grid Grid.Row="2" Margin="0,20,0,0">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="386" />
+                          </Grid.ColumnDefinitions>
+                          <UniformGrid x:Name="MainCountdownTimeFields" Columns="3">
+                            <StackPanel>
+                              <TextBlock Text="时" Style="{StaticResource MainCompactFieldLabel}" />
+                              <ComboBox x:Name="CountdownHour"
+                                        Width="195"
+                                        Margin="0,4,0,0"
+                                        Style="{StaticResource MainCompactSelectionInput}" />
+                            </StackPanel>
+                            <StackPanel>
+                              <TextBlock Text="分" Style="{StaticResource MainCompactFieldLabel}" />
+                              <ComboBox x:Name="CountdownMinute"
+                                        Width="188"
+                                        Margin="0,4,0,0"
+                                        Style="{StaticResource MainCompactSelectionInput}" />
+                            </StackPanel>
+                            <StackPanel>
+                              <TextBlock Text="秒" Style="{StaticResource MainCompactFieldLabel}" />
+                              <ComboBox x:Name="CountdownSecond"
+                                        Width="188"
+                                        Margin="0,4,0,0"
+                                        Style="{StaticResource MainCompactSelectionInput}" />
+                            </StackPanel>
+                          </UniformGrid>
+                          <StackPanel Grid.Column="2">
+                            <TextBlock Text="设置标签" Style="{StaticResource MainCompactFieldLabel}" />
+                            <local:TagSelector x:Name="CountdownTags"
+                                               Width="386"
+                                               Height="56"
+                                               Margin="0,4,0,0" />
+                          </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="CountdownMessage"
+                                   Grid.Row="3"
+                                   Margin="0,2,0,0"
+                                   MaxHeight="26"
+                                   FontSize="18"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Grid Grid.Row="4" x:Name="MainCountdownActionRow">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="提醒规则"
+                                       VerticalAlignment="Center"
+                                       Style="{StaticResource MainCompactFieldLabel}" />
+                            <Button x:Name="CountdownReminderHelp"
+                                    Width="34"
+                                    Height="34"
+                                    Margin="26,0,0,0"
+                                    Style="{StaticResource MainReminderHelpButton}"
+                                    ToolTip="按时间提醒会在倒计时截止时刻提醒一次；自定义提醒可配置多条提醒规则。" />
+                            <RadioButton x:Name="CountdownReminderNoRadio"
+                                         Width="118"
+                                         Height="56"
+                                         Margin="16,0,0,0"
+                                         GroupName="CountdownReminderMode"
+                                         IsChecked="True"
+                                         Style="{StaticResource MainReminderModeRadio}"
+                                         Content="不提醒" />
+                            <RadioButton x:Name="CountdownReminderTimeRadio"
+                                         Width="172"
+                                         Height="56"
+                                         Margin="8,0,0,0"
+                                         GroupName="CountdownReminderMode"
+                                         Style="{StaticResource MainReminderModeRadio}"
+                                         Content="按时间提醒" />
+                            <RadioButton x:Name="CountdownReminderCustomRadio"
+                                         Width="172"
+                                         Height="56"
+                                         Margin="8,0,0,0"
+                                         GroupName="CountdownReminderMode"
+                                         Style="{StaticResource MainReminderModeRadio}"
+                                         Content="自定义提醒" />
+                          </StackPanel>
+                          <TextBlock x:Name="CountdownReminderRulesSummary"
+                                     Grid.Column="2"
+                                     Width="132"
+                                     Height="56"
+                                     VerticalAlignment="Center"
+                                     FontSize="16"
+                                     Foreground="{DynamicResource MutedBrush}"
+                                     TextWrapping="Wrap"
+                                     Visibility="Collapsed" />
+                          <Button x:Name="CancelCountdownEdit"
+                                  Grid.Column="3"
+                                  Width="72"
+                                  Height="56"
+                                  Margin="12,0,0,0"
+                                  Padding="8,0"
+                                  Content="取消"
+                                  Visibility="Collapsed"
+                                  Style="{StaticResource MainSecondaryButton}" />
+                          <Button x:Name="SaveCountdownButton"
+                                  Grid.Column="4"
+                                  Width="221"
+                                  Height="56"
+                                  MinHeight="56"
+                                  Margin="8,0,0,0"
+                                  Content="＋ 添加倒计时"
+                                  Style="{StaticResource MainPrimaryButton}" />
+                        </Grid>
+                      </Grid>
+                    </Border>
+                    <Border x:Name="CountdownPreferencesSurface"
+                            Grid.Row="2"
+                            Background="{DynamicResource BackgroundBrush}"
+                            BorderBrush="{DynamicResource PeachLineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="16">
+                      <Grid x:Name="CountdownPreferencesCard" Margin="35,18,25,24">
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <!-- #139 补齐 §11「显示设置」区块标题：与「新增倒计时」同级（InkBrush SemiBold）。 -->
+                        <StackPanel Grid.Row="0" x:Name="MainPreferenceHeading" Orientation="Horizontal">
+                          <Path Width="22"
+                                Height="22"
+                                Data="M 9.55,1.8 L 12.45,1.8 L 13.05,4.45 C 13.95,4.75 14.75,5.2 15.45,5.75 L 18.05,4.75 L 19.5,7.2 L 17.55,9.05 C 17.75,9.65 17.85,10.3 17.85,11 C 17.85,11.7 17.75,12.35 17.55,12.95 L 19.5,14.8 L 18.05,17.25 L 15.45,16.25 C 14.75,16.8 13.95,17.25 13.05,17.55 L 12.45,20.2 L 9.55,20.2 L 8.95,17.55 C 8.05,17.25 7.25,16.8 6.55,16.25 L 3.95,17.25 L 2.5,14.8 L 4.45,12.95 C 4.25,12.35 4.15,11.7 4.15,11 C 4.15,10.3 4.25,9.65 4.45,9.05 L 2.5,7.2 L 3.95,4.75 L 6.55,5.75 C 7.25,5.2 8.05,4.75 8.95,4.45 Z M 11,8.3 A 2.7,2.7 0 1 0 11,13.7 A 2.7,2.7 0 1 0 11,8.3 Z"
+                                Fill="{DynamicResource InkBrush}"
+                                VerticalAlignment="Center"
+                                IsHitTestVisible="False" />
+                          <TextBlock x:Name="CountdownPreferencesTitle"
+                                     Margin="10,0,0,0"
+                                     VerticalAlignment="Center"
+                                     Text="显示设置"
+                                     FontSize="27"
+                                     FontWeight="SemiBold"
+                                     Foreground="{DynamicResource InkBrush}" />
+                        </StackPanel>
+                        <Grid Grid.Row="1" x:Name="MainPreferenceLabels">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="210" />
+                            <ColumnDefinition Width="23" />
+                            <ColumnDefinition Width="243" />
+                            <ColumnDefinition Width="19" />
+                            <ColumnDefinition Width="187" />
+                            <ColumnDefinition Width="18" />
+                            <ColumnDefinition Width="172" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="140" />
+                          </Grid.ColumnDefinitions>
+                          <TextBlock Grid.Column="0" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
+                          <TextBlock Grid.Column="2" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
+                          <TextBlock Grid.Column="4" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
+                          <TextBlock Grid.Column="6" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
+                        </Grid>
+                        <Grid Grid.Row="2" x:Name="MainPreferenceInputs" Margin="0,4,0,0">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="210" />
+                            <ColumnDefinition Width="23" />
+                            <ColumnDefinition Width="243" />
+                            <ColumnDefinition Width="19" />
+                            <ColumnDefinition Width="187" />
+                            <ColumnDefinition Width="18" />
+                            <ColumnDefinition Width="172" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="140" />
+                          </Grid.ColumnDefinitions>
+                          <ComboBox x:Name="DisplayPrecision"
+                                    Grid.Column="0"
+                                    Width="210"
+                                    Style="{StaticResource MainCompactSelectionInput}" />
+                          <TextBox x:Name="MonthlySalary"
+                                   Grid.Column="2"
+                                   Width="243"
+                                   Style="{StaticResource MainCompactTextInput}" />
+                          <TextBox x:Name="WorkStart"
+                                   Grid.Column="4"
+                                   Width="187"
+                                   Style="{StaticResource MainCompactTextInput}" />
+                          <TextBox x:Name="WorkEnd"
+                                   Grid.Column="6"
+                                   Width="172"
+                                   Style="{StaticResource MainCompactTextInput}" />
+                          <Button x:Name="SavePreferencesButton"
+                                  Grid.Column="8"
+                                  Width="140"
+                                  Height="56"
+                                  MinHeight="56"
+                                  Content="保存设置"
+                                  Style="{StaticResource MainPrimaryButton}" />
+                        </Grid>
+                      </Grid>
+                    </Border>
+                    <ScrollViewer x:Name="CountdownListRegion"
+                                  Grid.Row="4"
+                                  Margin="2,0,1,0"
+                                  FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
+                                  Focusable="True"
+                                  IsTabStop="True"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                      <StackPanel>
+                        <StackPanel x:Name="CountdownRows" />
+                        <TextBlock x:Name="EmptyCountdownMessage"
+                                   Margin="20,20,20,0"
+                                   HorizontalAlignment="Center"
+                                   FontSize="20"
                                    Foreground="{DynamicResource MutedBrush}"
-                                   Text="正在照顾的事情" />
+                                   Text="还没有倒计时，先添加一个目标。"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed" />
+                        <Button x:Name="ResetEmptyCountdownFiltersButton"
+                                Margin="0,12,0,0"
+                                HorizontalAlignment="Center"
+                                Content="重置筛选"
+                                Visibility="Collapsed"
+                                Style="{StaticResource MainSecondaryButton}" />
                       </StackPanel>
-                      <TextBlock x:Name="ActiveNotesCount"
-                                 Grid.Column="2"
-                                 MinWidth="40"
-                                 VerticalAlignment="Center"
-                                 FontSize="22"
-                                 Foreground="{DynamicResource MutedBrush}"
-                                 Text="0"
-                                 TextAlignment="Right"
-                                 Typography.NumeralAlignment="Tabular" />
-                      <Path x:Name="ActiveNotesChevron"
-                            Grid.Column="3"
-                            Width="14"
-                            Height="9"
-                            Margin="16,0,3,0"
-                            VerticalAlignment="Center"
-                            Data="M 1,1 L 7,7 L 13,1"
-                            RenderTransformOrigin="0.5,0.5"
-                            Stretch="Uniform"
-                            Stroke="{DynamicResource BodyBrush}"
-                            StrokeEndLineCap="Round"
-                            StrokeLineJoin="Round"
-                            StrokeStartLineCap="Round"
-                            StrokeThickness="2">
-                        <Path.RenderTransform>
-                          <RotateTransform Angle="0" />
-                        </Path.RenderTransform>
-                      </Path>
+                    </ScrollViewer>
+                    <TextBlock Grid.Row="5"
+                               HorizontalAlignment="Right"
+                               Margin="0,2,1,0"
+                               Width="245"
+                               TextAlignment="Right"
+                               Text="生活很忙，但别忘了可爱 ♡"
+                               FontFamily="{StaticResource HandwrittenDecoFontFamily}"
+                               FontSize="17"
+                               Foreground="{DynamicResource DecoTextBrush}"
+                               IsHitTestVisible="False" />
+                  </Grid>
+                </Canvas>
+                <Canvas x:Name="NotesWorkspace"
+                        Width="1165"
+                        Height="996"
+                        Visibility="Collapsed">
+                  <!-- 装饰带手写体落点（§11 便签页装饰带契约；IsHitTestVisible=False，不参与布局测量）。 -->
+                  <TextBlock Canvas.Left="742"
+                             Canvas.Top="44"
+                             Text="今天也要加油呀！♡"
+                             FontFamily="{StaticResource HandwrittenDecoFontFamily}"
+                             FontSize="17"
+                             Foreground="{DynamicResource DecoTextBrush}"
+                             IsHitTestVisible="False" />
+                  <Grid x:Name="NotesWorkspaceBody"
+                        Margin="46,134,47,0"
+                        Width="1072"
+                        Height="862">
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="280" />
+                      <RowDefinition Height="24" />
+                      <RowDefinition Height="544" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" x:Name="NoteEditorCard">
+                      <Border x:Name="NoteEditorPanel"
+                              Panel.ZIndex="-2"
+                              Background="{DynamicResource WorkspacePanelBrush}"
+                              BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
+                              BorderThickness="0"
+                              CornerRadius="40">
+                        <!-- #136 便签页试点：目标图要求编辑区为装饰带下方的独立卡片。
+                             NoteEditorPanel 的画刷被 MainWorkspaceResourcesFollowDayTheme 合同钉在
+                             WorkspacePanel 透明角色上，卡片表面由内层 NoteEditorSurface 承担。 -->
+                        <Border x:Name="NoteEditorSurface"
+                                Background="{DynamicResource CardBrush}"
+                                BorderBrush="{DynamicResource PeachLineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="16">
+                          <Grid x:Name="NoteEditorFields" Margin="24,14,0,2">
+                          <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                          </Grid.RowDefinitions>
+                          <Grid Grid.Row="0" x:Name="MainNotePrimaryLabels">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="574" />
+                              <ColumnDefinition Width="15" />
+                              <ColumnDefinition Width="244" />
+                              <ColumnDefinition Width="7" />
+                              <ColumnDefinition Width="132" />
+                              <ColumnDefinition Width="8" />
+                              <ColumnDefinition Width="66" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                              <Path Width="18"
+                                    Height="18"
+                                    Data="M 3.9,2.5 L 14.1,2.5 C 14.9,2.5 15.5,3.1 15.5,3.9 L 15.5,10.9 L 10.9,15.5 L 3.9,15.5 C 3.1,15.5 2.5,14.9 2.5,14.1 L 2.5,3.9 C 2.5,3.1 3.1,2.5 3.9,2.5 Z M 10.9,10.9 L 10.9,15.5"
+                                    Stroke="{DynamicResource IconAccentBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeLineJoin="Round"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False" />
+                              <TextBlock x:Name="NoteTextLabel"
+                                         Margin="8,0,0,0"
+                                         Text="便签内容"
+                                         Style="{StaticResource MainCompactFieldLabel}" />
+                            </StackPanel>
+                            <TextBlock x:Name="NoteDateLabel" Grid.Column="2" Text="便签日期" Style="{StaticResource MainCompactFieldLabel}" />
+                          </Grid>
+                          <Grid Grid.Row="1" x:Name="MainNotePrimaryInputs" Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="574" />
+                              <ColumnDefinition Width="15" />
+                              <ColumnDefinition Width="244" />
+                              <ColumnDefinition Width="7" />
+                              <ColumnDefinition Width="132" />
+                              <ColumnDefinition Width="8" />
+                              <ColumnDefinition Width="66" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Grid.Column="0">
+                              <TextBox x:Name="NoteText"
+                                       MinHeight="68"
+                                       MaxLength="140" />
+                              <TextBlock Margin="18,0,0,0"
+                                         Height="28"
+                                         HorizontalAlignment="Left"
+                                         VerticalAlignment="Center"
+                                         FontSize="20"
+                                         Foreground="{DynamicResource MutedBrush}"
+                                         IsHitTestVisible="False"
+                                         Text="写下要记住的事情吧…">
+                                <TextBlock.Style>
+                                  <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                      <DataTrigger Binding="{Binding Text, ElementName=NoteText}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                      </DataTrigger>
+                                    </Style.Triggers>
+                                  </Style>
+                                </TextBlock.Style>
+                              </TextBlock>
+                            </Grid>
+                            <Grid Grid.Column="2">
+                              <DatePicker x:Name="NoteDate"
+                                          Width="244"
+                                          MinHeight="68"
+                                          Padding="48,0,16,0"
+                                          SelectedDateFormat="Short" />
+                              <Path Width="20"
+                                    Height="20"
+                                    Margin="16,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Data="M 3,4.5 L 17,4.5 C 17.6,4.5 18,4.9 18,5.5 L 18,16.5 C 18,17.1 17.6,17.5 17,17.5 L 3,17.5 C 2.4,17.5 2,17.1 2,16.5 L 2,5.5 C 2,4.9 2.4,4.5 3,4.5 Z M 2,8.5 L 18,8.5 M 6.5,2.5 L 6.5,6 M 13.5,2.5 L 13.5,6"
+                                    Stroke="{DynamicResource MutedBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeLineJoin="Round"
+                                    IsHitTestVisible="False" />
+                            </Grid>
+                            <Button x:Name="SaveNoteButton"
+                                    Grid.Column="4"
+                                    Width="132"
+                                    Height="68"
+                                    Padding="10,0"
+                                    Content="＋ 添加"
+                                    Style="{StaticResource MainPrimaryButton}" />
+                            <Button x:Name="CancelNoteEdit"
+                                    Grid.Column="6"
+                                    Width="66"
+                                    Height="68"
+                                    Padding="8,0"
+                                    Content="取消"
+                                    Visibility="Collapsed"
+                                    Style="{StaticResource MainSecondaryButton}" />
+                          </Grid>
+                          <Grid Grid.Row="2" x:Name="MainNoteSecondaryLabels" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="202" />
+                              <ColumnDefinition Width="15" />
+                              <ColumnDefinition Width="172" />
+                              <ColumnDefinition Width="406" />
+                              <ColumnDefinition Width="220" />
+                              <ColumnDefinition Width="31" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                              <Path Width="18"
+                                    Height="18"
+                                    Data="M 9,2.2 C 6.2,2.2 4.2,4.4 4.2,7.2 L 4.2,10.4 L 2.8,12.8 L 15.2,12.8 L 13.8,10.4 L 13.8,7.2 C 13.8,4.4 11.8,2.2 9,2.2 Z M 7.2,14.6 A 1.9,1.9 0 0 0 10.8,14.6"
+                                    Stroke="{DynamicResource IconAccentBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeStartLineCap="Round"
+                                    StrokeEndLineCap="Round"
+                                    StrokeLineJoin="Round"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False" />
+                              <TextBlock x:Name="NoteReminderModeLabel"
+                                         Margin="8,0,0,0"
+                                         Text="提醒规则"
+                                         Style="{StaticResource MainCompactFieldLabel}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                              <Path Width="18"
+                                    Height="18"
+                                    Data="M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7"
+                                    Stroke="{DynamicResource IconAccentBrush}"
+                                    StrokeThickness="1.8"
+                                    StrokeLineJoin="Round"
+                                    StrokeStartLineCap="Round"
+                                    StrokeEndLineCap="Round"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False" />
+                              <TextBlock x:Name="NoteTagsLabel"
+                                         Margin="8,0,0,0"
+                                         Text="标签"
+                                         Style="{StaticResource MainCompactFieldLabel}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4" Orientation="Horizontal">
+                              <Path Width="18"
+                                    Height="18"
+                                    Data="M 8,2.5 C 11,2.5 13.5,5 13.5,8 C 13.5,9.1 13.2,10.2 12.6,11.1 L 16.5,15 L 15.1,16.4 L 11.2,12.5 C 10.3,13.1 9.2,13.5 8,13.5 C 5,13.5 2.5,11 2.5,8 C 2.5,5 5,2.5 8,2.5 Z M 8,4.5 C 6.1,4.5 4.5,6.1 4.5,8 C 4.5,9.9 6.1,11.5 8,11.5 C 9.9,11.5 11.5,9.9 11.5,8 C 11.5,6.1 9.9,4.5 8,4.5 Z"
+                                    Stroke="{DynamicResource IconAccentBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeStartLineCap="Round"
+                                    StrokeEndLineCap="Round"
+                                    Fill="Transparent"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False" />
+                              <TextBlock x:Name="NoteSearchLabel"
+                                         Margin="8,0,0,0"
+                                         Text="搜索便签"
+                                         Style="{StaticResource MainCompactFieldLabel}" />
+                            </StackPanel>
+                          </Grid>
+                          <Grid Grid.Row="3" x:Name="MainNoteSecondaryInputs" Margin="0,3,0,0">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="202" />
+                              <ColumnDefinition Width="15" />
+                              <ColumnDefinition Width="172" />
+                              <ColumnDefinition Width="406" />
+                              <ColumnDefinition Width="220" />
+                              <ColumnDefinition Width="31" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="ManageNoteReminderRulesButton"
+                                    Grid.Column="0"
+                                    Width="202"
+                                    Height="69"
+                                    Content="管理提醒规则"
+                                    Style="{StaticResource MainSecondaryButton}" />
+                            <local:TagSelector x:Name="NoteTags"
+                                               Grid.Column="2"
+                                               Width="172"
+                                               Height="69" />
+                            <Grid Grid.Column="4">
+                              <TextBox x:Name="NoteSearch"
+                                       Width="220"
+                                       MinHeight="69"
+                                       MaxLength="140"
+                                       Padding="48,0,16,0" />
+                              <Path Width="20"
+                                    Height="20"
+                                    Margin="16,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Data="M 8.5,2 C 11.5,2 14,4.5 14,7.5 C 14,8.7 13.6,9.8 12.9,10.7 L 17,14.8 L 15.6,16.2 L 11.5,12.1 C 10.6,12.7 9.6,13 8.5,13 C 5.5,13 3,10.5 3,7.5 C 3,4.5 5.5,2 8.5,2 Z M 8.5,4 C 6.6,4 5,5.6 5,7.5 C 5,9.4 6.6,11 8.5,11 C 10.4,11 12,9.4 12,7.5 C 12,5.6 10.4,4 8.5,4 Z"
+                                    Fill="{DynamicResource MutedBrush}"
+                                    IsHitTestVisible="False" />
+                              <TextBlock Margin="48,0,0,0"
+                                         Height="28"
+                                         HorizontalAlignment="Left"
+                                         VerticalAlignment="Center"
+                                         FontSize="20"
+                                         Foreground="{DynamicResource MutedBrush}"
+                                         IsHitTestVisible="False"
+                                         Text="搜索关键词…">
+                                <TextBlock.Style>
+                                  <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                      <DataTrigger Binding="{Binding Text, ElementName=NoteSearch}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                      </DataTrigger>
+                                    </Style.Triggers>
+                                  </Style>
+                                </TextBlock.Style>
+                              </TextBlock>
+                            </Grid>
+                          </Grid>
+                          <TextBlock x:Name="NoteReminderRulesSummary"
+                                     Grid.Row="4"
+                                     Width="790"
+                                     Margin="0,4,0,0"
+                                     FontSize="17"
+                                     Foreground="{DynamicResource MutedBrush}"
+                                     TextWrapping="Wrap"
+                                     Text="不提醒" />
+                          <TextBlock x:Name="NoteMessage"
+                                     Grid.Row="5"
+                                     Width="790"
+                                     Margin="0,2,0,0"
+                                     FontSize="18"
+                                     Foreground="{DynamicResource DangerBrush}"
+                                     TextWrapping="Wrap" />
+                        </Grid>
+                        </Border>
+                      </Border>
                     </Grid>
-                  </Button>
-                  <StackPanel x:Name="ActiveNoteRows" Margin="26,6,0,0" />
-                  <Button x:Name="ToggleCompletedNotes"
-                          Margin="0,10,0,0"
-                          Background="{DynamicResource NoteCompletedHeaderBrush}"
-                          Visibility="Collapsed"
-                          Style="{StaticResource MainNoteStatusDisclosureButton}">
-                    <Grid>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="6" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <Border Width="5"
-                              Height="34"
-                              HorizontalAlignment="Left"
-                              VerticalAlignment="Center"
-                              Background="{DynamicResource NoteCompletedRailBrush}"
-                              CornerRadius="3" />
-                      <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="CompletedNotesLabel"
-                                   FontSize="22"
-                                   FontWeight="SemiBold"
-                                   Text="已完成" />
-                        <TextBlock Margin="0,2,0,0"
-                                   FontSize="16"
-                                   Foreground="{DynamicResource NoteCompletedAuxiliaryBrush}"
-                                   Text="收好，但随时能找回" />
+                    <Grid Grid.Row="2" x:Name="NotesListCard">
+                      <Border x:Name="NotesListSurface"
+                              Background="{DynamicResource CardBrush}"
+                              BorderBrush="{DynamicResource PeachLineBrush}"
+                              BorderThickness="1"
+                              CornerRadius="16" />
+                      <ScrollViewer x:Name="NotesListRegion"
+                                  FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
+                                  Focusable="True"
+                                  IsTabStop="True"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                      <StackPanel Margin="20,18,12,22">
+                        <Grid x:Name="NotesStatusHeader" Margin="0,0,0,4">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <Border Padding="2"
+                                  Background="Transparent"
+                                  CornerRadius="17">
+                            <StackPanel Orientation="Horizontal">
+                              <ToggleButton x:Name="ActiveNotesSegment"
+                                            Height="48"
+                                            Style="{StaticResource MainNoteSegmentButton}">
+                                <Grid>
+                                  <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                  </Grid.ColumnDefinitions>
+                                  <Border x:Name="ActiveNotesSegmentRail"
+                                          Width="4"
+                                          Height="26"
+                                          Margin="10,0,0,0"
+                                          CornerRadius="2"
+                                          VerticalAlignment="Center"
+                                          Background="{DynamicResource PeachRailBrush}">
+                                    <Border.Style>
+                                      <Style TargetType="{x:Type Border}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsChecked, ElementName=ActiveNotesSegment}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </Border.Style>
+                                  </Border>
+                                  <TextBlock x:Name="ActiveNotesLabel"
+                                             Grid.Column="1"
+                                             Margin="10,0,0,0"
+                                             FontSize="22"
+                                             Text="未完成"
+                                             VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                      <Style TargetType="{x:Type TextBlock}">
+                                        <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsChecked, ElementName=ActiveNotesSegment}" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </TextBlock.Style>
+                                  </TextBlock>
+                                  <Border x:Name="ActiveNotesBadge"
+                                          Grid.Column="2"
+                                          MinWidth="34"
+                                          Margin="12,0,14,0"
+                                          Padding="9,2"
+                                          CornerRadius="12"
+                                          VerticalAlignment="Center">
+                                    <Border.Style>
+                                      <Style TargetType="{x:Type Border}">
+                                        <Setter Property="Background" Value="{DynamicResource PeachBadgeMutedBrush}" />
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsChecked, ElementName=ActiveNotesSegment}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource PeachBadgeBrush}" />
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </Border.Style>
+                                    <TextBlock x:Name="ActiveNotesCount"
+                                               FontSize="16"
+                                               Text="0"
+                                               TextAlignment="Center"
+                                               Typography.NumeralAlignment="Tabular">
+                                      <TextBlock.Style>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                          <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                          <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=ActiveNotesSegment}" Value="True">
+                                              <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+                                            </DataTrigger>
+                                          </Style.Triggers>
+                                        </Style>
+                                      </TextBlock.Style>
+                                    </TextBlock>
+                                  </Border>
+                                </Grid>
+                              </ToggleButton>
+                              <ToggleButton x:Name="CompletedNotesSegment"
+                                            Height="48"
+                                            Margin="2,0,0,0"
+                                            Style="{StaticResource MainNoteSegmentButton}">
+                                <Grid>
+                                  <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                  </Grid.ColumnDefinitions>
+                                  <Border x:Name="CompletedNotesSegmentRail"
+                                          Width="4"
+                                          Height="26"
+                                          Margin="10,0,0,0"
+                                          CornerRadius="2"
+                                          VerticalAlignment="Center"
+                                          Background="{DynamicResource PeachRailBrush}">
+                                    <Border.Style>
+                                      <Style TargetType="{x:Type Border}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsChecked, ElementName=CompletedNotesSegment}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </Border.Style>
+                                  </Border>
+                                  <TextBlock x:Name="CompletedNotesLabel"
+                                             Grid.Column="1"
+                                             Margin="10,0,0,0"
+                                             FontSize="22"
+                                             Text="已完成"
+                                             VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                      <Style TargetType="{x:Type TextBlock}">
+                                        <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsChecked, ElementName=CompletedNotesSegment}" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </TextBlock.Style>
+                                  </TextBlock>
+                                  <Border x:Name="CompletedNotesBadge"
+                                          Grid.Column="2"
+                                          MinWidth="34"
+                                          Margin="12,0,14,0"
+                                          Padding="9,2"
+                                          CornerRadius="12"
+                                          VerticalAlignment="Center">
+                                    <Border.Style>
+                                      <Style TargetType="{x:Type Border}">
+                                        <Setter Property="Background" Value="{DynamicResource PeachBadgeMutedBrush}" />
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsChecked, ElementName=CompletedNotesSegment}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource PeachBadgeBrush}" />
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </Border.Style>
+                                    <TextBlock x:Name="CompletedNotesCount"
+                                               FontSize="16"
+                                               Text="0"
+                                               TextAlignment="Center"
+                                               Typography.NumeralAlignment="Tabular">
+                                      <TextBlock.Style>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                          <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                          <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=CompletedNotesSegment}" Value="True">
+                                              <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+                                            </DataTrigger>
+                                          </Style.Triggers>
+                                        </Style>
+                                      </TextBlock.Style>
+                                    </TextBlock>
+                                  </Border>
+                                </Grid>
+                              </ToggleButton>
+                            </StackPanel>
+                          </Border>
+                          <ComboBox x:Name="NoteGroupingSelector"
+                                    Grid.Column="2"
+                                    Width="188"
+                                    Height="48"
+                                    MinHeight="48"
+                                    FontSize="18"
+                                    VerticalAlignment="Center"
+                                    SelectedIndex="0"
+                                    AutomationProperties.Name="按日期分组">
+                            <ComboBoxItem Content="按日期分组" />
+                          </ComboBox>
+                        </Grid>
+                        <StackPanel x:Name="ActiveNoteRows" Margin="8,6,0,0" />
+                        <StackPanel x:Name="CompletedNoteRows" Margin="8,6,0,0" Visibility="Collapsed" />
+                        <TextBlock x:Name="EmptyNotesMessage"
+                                   Margin="0,40,0,0"
+                                   HorizontalAlignment="Center"
+                                   FontSize="20"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   Text="还没有便签，先写下一件想记住的事。"
+                                   Visibility="Collapsed" />
+                        <Button x:Name="ResetEmptyNotesFiltersButton"
+                                Margin="0,12,0,0"
+                                HorizontalAlignment="Center"
+                                Content="重置筛选"
+                                Visibility="Collapsed"
+                                Style="{StaticResource MainSecondaryButton}" />
                       </StackPanel>
-                      <TextBlock x:Name="CompletedNotesCount"
-                                 Grid.Column="2"
-                                 MinWidth="40"
-                                 VerticalAlignment="Center"
-                                 FontSize="22"
-                                 Foreground="{DynamicResource MutedBrush}"
-                                 Text="0"
-                                 TextAlignment="Right"
-                                 Typography.NumeralAlignment="Tabular" />
-                      <Path x:Name="CompletedNotesChevron"
-                            Grid.Column="3"
-                            Width="14"
-                            Height="9"
-                            Margin="16,0,3,0"
-                            VerticalAlignment="Center"
-                            Data="M 1,1 L 7,7 L 13,1"
-                            RenderTransformOrigin="0.5,0.5"
-                            Stretch="Uniform"
-                            Stroke="{DynamicResource NoteCompletedAuxiliaryBrush}"
-                            StrokeEndLineCap="Round"
-                            StrokeLineJoin="Round"
-                            StrokeStartLineCap="Round"
-                            StrokeThickness="2">
-                        <Path.RenderTransform>
-                          <RotateTransform Angle="-90" />
-                        </Path.RenderTransform>
-                      </Path>
+                      </ScrollViewer>
                     </Grid>
-                  </Button>
-                  <StackPanel x:Name="CompletedNoteRows" Margin="26,6,0,0" Visibility="Collapsed" />
-                  <TextBlock x:Name="EmptyNotesMessage"
-                             Margin="0,40,0,0"
-                             HorizontalAlignment="Center"
-                             FontSize="20"
-                             Foreground="{DynamicResource MutedBrush}"
-                             Text="还没有便签，先写下一件想记住的事。"
-                             Visibility="Collapsed" />
-                  <Button x:Name="ResetEmptyNotesFiltersButton"
-                          Margin="0,12,0,0"
-                          HorizontalAlignment="Center"
-                          Content="重置筛选"
-                          Visibility="Collapsed"
-                          Style="{StaticResource MainSecondaryButton}" />
-                </StackPanel>
-              </ScrollViewer>
-            </Canvas>
+                  </Grid>
+                </Canvas>
+              </Grid>
 
-            <TextBlock x:Name="NowText"
-                       Canvas.Left="40"
-                       Canvas.Top="1298"
-                       Width="760"
-                       FontSize="18"
-                       Foreground="{DynamicResource MutedBrush}" />
-            <TextBlock x:Name="StatusText"
-                       Canvas.Left="800"
-                       Canvas.Top="1298"
-                       Width="320"
-                       FontSize="18"
-                       Foreground="{DynamicResource MutedBrush}"
-                       FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
-                       Focusable="True"
-                       KeyboardNavigation.IsTabStop="True"
-                       TextAlignment="Right"
-                       TextTrimming="CharacterEllipsis" />
+              <!-- 底部动作区：北京时间与状态 -->
+              <Grid x:Name="MainStatusBarZone" Grid.Row="3" Margin="40,10,45,0" VerticalAlignment="Top">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="16" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="NowText"
+                           FontSize="18"
+                           Foreground="{DynamicResource MutedBrush}" />
+                <TextBlock x:Name="StatusText"
+                           Grid.Column="1"
+                           MaxWidth="320"
+                           FontSize="18"
+                           Foreground="{DynamicResource MutedBrush}"
+                           FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
+                           Focusable="True"
+                           KeyboardNavigation.IsTabStop="True"
+                           TextAlignment="Right"
+                           TextTrimming="CharacterEllipsis" />
+                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                  <Path Width="18"
+                        Height="18"
+                        Data="M 6.2,9 A 3.6,3.6 0 1 0 13.4,9 A 3.6,3.6 0 1 0 6.2,9 Z M 9.8,0.8 L 9.8,2.4 M 9.8,15.6 L 9.8,17.2 M 0.8,9.8 L 2.4,9.8 M 15.6,9.8 L 17.2,9.8 M 3.2,3.2 L 4.4,4.4 M 15.2,15.2 L 16.4,16.4 M 16.4,3.2 L 15.2,4.4 M 4.4,15.2 L 3.2,16.4"
+                        Stroke="{DynamicResource IconAccentBrush}"
+                        StrokeThickness="1.5"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False" />
+                  <TextBlock x:Name="MainThemeCaption"
+                             Margin="8,0,0,0"
+                             Text="当前主题：日间"
+                             FontSize="18"
+                             Foreground="{DynamicResource MutedBrush}"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Grid>
+            </Grid>
 
             <Popup x:Name="FilterPopup"
                    PlacementTarget="{Binding ElementName=FilterButton}"

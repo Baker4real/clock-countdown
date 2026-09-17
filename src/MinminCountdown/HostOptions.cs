@@ -3,26 +3,31 @@ namespace MinminCountdown;
 internal sealed record HostOptions(
     bool ValidateOnly,
     bool ExerciseNoteAdd,
-    bool ExerciseThemePreference,
     bool ExercisePersistenceFailures,
     bool ExerciseTagInteractions,
     bool ExerciseFatalDiagnostic,
     bool ExitAfterReadyForTest,
+    int ExitAfterReadyForTestSeconds,
     bool RequireStartupRequest,
     string? SettingsFile,
     string? DiagnosticLogPath,
     InstanceActivationTestState? ActivationTestState,
     InstanceActivationListenerBehavior ActivationListenerBehavior)
 {
+    // 测试自退间隔只是测试参数：生产默认保持 30 秒，套件可传更短值压缩纯等待。
+    internal const int DefaultExitAfterReadyForTestSeconds = 30;
+    internal const int MinExitAfterReadyForTestSeconds = 1;
+    internal const int MaxExitAfterReadyForTestSeconds = 600;
+
     public static HostOptions Parse(IReadOnlyList<string> arguments)
     {
         var validateOnly = false;
         var exerciseNoteAdd = false;
-        var exerciseThemePreference = false;
         var exercisePersistenceFailures = false;
         var exerciseTagInteractions = false;
         var exerciseFatalDiagnostic = false;
         var exitAfterReadyForTest = false;
+        var exitAfterReadyForTestSeconds = DefaultExitAfterReadyForTestSeconds;
         var requireStartupRequest = false;
         string? settingsFile = null;
         string? diagnosticLogPath = null;
@@ -40,9 +45,6 @@ internal sealed record HostOptions(
                 case "exercisenoteadd":
                     exerciseNoteAdd = true;
                     break;
-                case "exercisethemepreference":
-                    exerciseThemePreference = true;
-                    break;
                 case "exercisepersistencefailures":
                     exercisePersistenceFailures = true;
                     break;
@@ -54,6 +56,23 @@ internal sealed record HostOptions(
                     break;
                 case "exitafterreadyfortest":
                     exitAfterReadyForTest = true;
+                    break;
+                case "exitafterreadyseconds":
+                    if (++index >= arguments.Count || string.IsNullOrWhiteSpace(arguments[index]))
+                    {
+                        throw new ArgumentException("--exit-after-ready-seconds 缺少秒数值。");
+                    }
+
+                    var exitSecondsValue = arguments[index];
+                    if (!int.TryParse(exitSecondsValue, out var parsedExitSeconds) ||
+                        parsedExitSeconds < MinExitAfterReadyForTestSeconds ||
+                        parsedExitSeconds > MaxExitAfterReadyForTestSeconds)
+                    {
+                        throw new ArgumentException(
+                            $"--exit-after-ready-seconds 必须是 {MinExitAfterReadyForTestSeconds}..{MaxExitAfterReadyForTestSeconds} 之间的整数：{exitSecondsValue}");
+                    }
+
+                    exitAfterReadyForTestSeconds = parsedExitSeconds;
                     break;
                 case "requirestartuprequest":
                     requireStartupRequest = true;
@@ -100,7 +119,14 @@ internal sealed record HostOptions(
             }
         }
 
-        if ((exerciseNoteAdd || exerciseThemePreference || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic) &&
+        if (!exitAfterReadyForTest &&
+            exitAfterReadyForTestSeconds != DefaultExitAfterReadyForTestSeconds)
+        {
+            throw new ArgumentException(
+                "--exit-after-ready-seconds 只能与 --exit-after-ready-for-test 一起使用。");
+        }
+
+        if ((exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic) &&
             !validateOnly)
         {
             throw new ArgumentException("exercise 参数只能与 --validate-only 一起使用。");
@@ -142,11 +168,11 @@ internal sealed record HostOptions(
         return new HostOptions(
             validateOnly,
             exerciseNoteAdd,
-            exerciseThemePreference,
             exercisePersistenceFailures,
             exerciseTagInteractions,
             exerciseFatalDiagnostic,
             exitAfterReadyForTest,
+            exitAfterReadyForTestSeconds,
             requireStartupRequest,
             settingsFile,
             diagnosticLogPath,

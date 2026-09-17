@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace MinminCountdown;
 
@@ -11,12 +13,24 @@ internal static class ApplicationValidation
         DiagnosticLogger logger,
         ResourceDictionary resources)
     {
+        // Isolated Win32 desktops do not provide a composited DWM surface for
+        // WPF's default hardware renderer. Validation captures must still
+        // produce pixels, while normal application startup keeps its default.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
+        // Unattended or locked sessions can report zero display devices, in
+        // which case WPF skips rendering entirely; captures must still render.
+        // The switch must be set before the first MediaContext is created.
+        AppContext.SetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, true);
+        logger.Info(
+            "ValidationRenderMode " +
+            $"tier=0x{RenderCapability.Tier:X} " +
+            $"renderEvenWhenNoDisplayDevices={IsRenderEvenWhenNoDisplayDevicesEnabled()}");
+
         var settingsPath = ResolveSettingsPath(options, applicationRoot);
         MainWindow? mainWindow = null;
         FloatingWindow? floatingWindow = null;
         FloatingTrayController? floatingTrayController = null;
         HolidayCalendar? calendar = null;
-        EventHandler? themePreferenceChanged = null;
 
         try
         {
@@ -53,18 +67,15 @@ internal static class ApplicationValidation
             }
 
             var desktopWorkspace = DesktopWorkspace.Load(settingsPath);
-            var initialSnapshot = desktopWorkspace.Snapshot;
             var theme = new ApplicationTheme(resources);
-            theme.Apply(
-                initialSnapshot.UtcNow,
-                initialSnapshot.Settings.Preferences.ThemePreference);
+            theme.Apply();
             calendar = new HolidayCalendar(applicationRoot);
             mainWindow = new MainWindow(
                 desktopWorkspace,
                 calendar,
                 logger,
                 AppContext.BaseDirectory);
-            mainWindow.ApplyTheme(theme.ActiveMode);
+            mainWindow.ApplyTheme();
             floatingWindow = new FloatingWindow(
                 desktopWorkspace,
                 calendar,
@@ -81,19 +92,7 @@ internal static class ApplicationValidation
                 floatingTrayController.MinimizeToTray();
             };
 
-            void ApplyCurrentTheme()
-            {
-                var snapshot = desktopWorkspace.Snapshot;
-                var mode = theme.Apply(
-                    snapshot.UtcNow,
-                    snapshot.Settings.Preferences.ThemePreference);
-                mainWindow.ApplyTheme(mode);
-                floatingWindow.ApplyTheme(mode);
-            }
-
-            themePreferenceChanged = (_, _) => ApplyCurrentTheme();
-            mainWindow.ThemePreferenceChanged += themePreferenceChanged;
-            ApplyCurrentTheme();
+            floatingWindow.ApplyTheme();
 
             var report = ValidationReport.Create(
                 mainWindow,
@@ -107,11 +106,6 @@ internal static class ApplicationValidation
         }
         finally
         {
-            if (mainWindow is not null && themePreferenceChanged is not null)
-            {
-                mainWindow.ThemePreferenceChanged -= themePreferenceChanged;
-            }
-
             floatingTrayController?.Dispose();
             foreach (Window window in Application.Current.Windows.Cast<Window>().ToArray())
             {
@@ -122,6 +116,12 @@ internal static class ApplicationValidation
             logger.Info("ValidationResourcesReleased");
         }
     }
+
+    private const string RenderEvenWhenNoDisplayDevicesSwitch =
+        "Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable";
+
+    internal static bool IsRenderEvenWhenNoDisplayDevicesEnabled() =>
+        AppContext.TryGetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, out var enabled) && enabled;
 
     internal static string ResolveSettingsPath(HostOptions options, string applicationRoot)
     {

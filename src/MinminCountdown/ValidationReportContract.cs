@@ -63,7 +63,7 @@ internal static class ValidationReportContract
         "HolidayCalendarInterfaceBehavior",
         "MainReferenceDecorationsShareScaleAtMinimumAndWideSizes",
         "MainReferenceDecorationLayerOrderMatches",
-        "MainWorkspaceResourcesFollowDayNightTheme",
+        "MainWorkspaceResourcesFollowDayTheme",
         "MainDynamicCountdownCardsUseThemeResources",
         "MainDynamicNoteCardsUseThemeResources",
         "FloatingReferenceContentSafeAreaMatches",
@@ -82,20 +82,20 @@ internal static class ValidationReportContract
         "FloatingNoteInputScrolls",
         "FloatingInitialWorkspaceStateMatches",
         "FloatingWorkspaceSwitchingStaysSynchronized",
-        "FloatingCountdownSelectionSurvivesDayNightThemes",
+        "FloatingCountdownSelectionSurvivesRefresh",
         "FloatingNoteSearchScenariosPass",
+        "FloatingBottomCommandScenariosPass",
+        "FloatingQuickAddToggleScenariosPass",
+        "FloatingNoteOverflowMenuScenariosPass",
+        "FloatingDateStampPastelRotationMatches",
+        "FloatingNotesHandwrittenDecorationPass",
+        "FloatingSettingsButtonOpensManager",
         "FloatingEmptyStateTextIsolationBehavior",
         "NoteSearchSyncsFromSharedFilter",
         "FloatingQuickAddDayResourcesFollowLocalTheme",
-        "FloatingQuickAddNightResourcesFollowLocalTheme",
-        "FloatingQuickAddIndependentFromApplicationAutoTheme",
+        "FloatingQuickAddIndependentFromApplicationTheme",
         "FloatingQuickAddThemeResourceIsolationBehavior",
         "FloatingQuickAddDayExpandedScrolledCaptureWritten",
-        "FloatingQuickAddNightExpandedScrolledCaptureWritten",
-        "FloatingNightPlushSourceAlphaBoundsMatch",
-        "FloatingNightPlushEdgeBrightnessWithinLimit",
-        "FloatingNightPlushEdgeSaturationWithinLimit",
-        "FloatingNightPlushEdgeGlowGateIsolationBehavior",
         "FloatingPrimaryCountdownTextContrast",
         "FloatingPrimaryCountdownAccentSeparatedFromPlushGlow",
         "FloatingPrimaryCountdownContrastGateIsolationBehavior",
@@ -109,7 +109,7 @@ internal static class ValidationReportContract
         "FloatingScrollBarContentRemainsSafe",
         "FloatingScrollBarInputPathsWork",
         "FloatingScrollBarGateIsolationBehavior",
-        "FloatingScrollBarDayNightStateCapturesReady",
+        "FloatingScrollBarStateCapturesReady",
         "UiQualityGateIsolationBehavior",
         "ComboBoxArrowIsNotTabStop",
         "DatePickerOpenCalendarAccessibleNames",
@@ -120,7 +120,9 @@ internal static class ValidationReportContract
         "PopupEscapeFromTriggerClosesAndKeepsFocus",
         "RuleEditorInlineDeleteUsesDangerButton",
         "SettingsRecoverySecondaryUsesCanvas",
-        "ReminderCenterSnoozeRowAlignsWithActions",
+        "ReminderCenterTwoRowActionsLayout",
+        "ReminderCenterEntryVisualIdentity",
+        "ReminderCenterRepresentativeCaptureRendered",
         "PopupAnimationIsInstant",
         "ActionForegroundsUseMainActionText",
         "DisabledSelectionControlsUseButtonOpacity",
@@ -134,7 +136,18 @@ internal static class ValidationReportContract
         "FloatingSearchSlotRightIs396",
         "FloatingSearchHintMatchesInputHeight",
         "FloatingQuickAddAlignsWithNoteCards",
-        "FloatingCheckboxHitCoversSlot"
+        "FloatingCheckboxHitCoversSlot",
+        "CrossInterfaceAiReferencePriority",
+        "CrossInterfacePageSpecificComposition",
+        "CrossInterfaceSharedWarmPinkTokens",
+        "CrossInterfaceStaticDayThemeInfo",
+        "CrossInterfacePlushDecorationLayering",
+        "CrossInterfaceFilterSharing",
+        "CrossInterfaceKeyboardOrder",
+        "CrossInterfaceHitTesting",
+        "CrossInterfaceDeterministicFixtureIsolation",
+        "CrossInterfaceRealSettingsConserved",
+        "CrossInterfaceIntegration"
     ];
 
     private static readonly string[] RequiredPositiveIntegerFields =
@@ -183,6 +196,7 @@ internal static class ValidationReportContract
         var root = document.RootElement;
         EnsureJsonObject(root, report.Count);
 
+        var failedBooleanFields = new List<string>();
         foreach (var field in RequiredTrueBooleanFields)
         {
             if (!report.TryGetValue(field, out var value) || value is not bool typedValue)
@@ -193,9 +207,14 @@ internal static class ValidationReportContract
 
             if (!typedValue)
             {
-                throw new InvalidDataException(
-                    $"validate-only report 的行为字段未通过：{field}");
+                failedBooleanFields.Add(field);
             }
+        }
+
+        if (failedBooleanFields.Count > 0)
+        {
+            throw new InvalidDataException(
+                $"validate-only report 的行为字段未通过：{string.Join(", ", failedBooleanFields)}");
         }
 
         foreach (var field in RequiredPositiveIntegerFields)
@@ -229,10 +248,10 @@ internal static class ValidationReportContract
             "MainNoteCardReminderFontSizeMeetsContract");
         if (mainMode.Requested)
         {
-            if (!stressVisuals || stressMeasurementCount != 2)
+            if (!stressVisuals || stressMeasurementCount != 1)
             {
                 throw new InvalidDataException(
-                    "源码树模式必须包含 Day/Night 两份主窗口 Stress 标题真实测量。");
+                    "源码树模式必须包含单一日间主窗口 Stress 标题真实测量。");
             }
 
             if (noteCardReminderMeasurementCount == 0)
@@ -659,11 +678,11 @@ internal static class ValidationReportContract
         report.Add("MainStressCountdownTitleVisuals", requested);
         report.Add(
             "MainStressCountdownTitleMeasurements",
-            requested ? new object[] { new(), new() } : Array.Empty<object>());
+            requested ? new object[] { new() } : Array.Empty<object>());
         report.Add("MainNoteCardReminderFontSizeMeetsContract", requested);
         report.Add(
             "MainNoteCardReminderFontMeasurements",
-            requested ? new object[] { new(), new(), new(), new() } : Array.Empty<object>());
+            requested ? new object[] { new(), new() } : Array.Empty<object>());
         return report;
     }
 

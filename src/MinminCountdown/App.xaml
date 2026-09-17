@@ -2,7 +2,6 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
-             xmlns:local="clr-namespace:MinminCountdown"
              xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
              xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              Startup="OnStartup"
@@ -12,53 +11,87 @@
     <sys:Double x:Key="SecondaryWindowSectionFontSize">18</sys:Double>
     <sys:Double x:Key="SecondaryWindowBodyFontSize">16</sys:Double>
     <sys:Double x:Key="SecondaryWindowMinorFontSize">15</sys:Double>
-    <local:ThemeKeyboardFocusBrushConverter x:Key="ThemeKeyboardFocusBrushConverter" />
 
-    <Color x:Key="CanvasColor">#FFFDFC</Color>
-    <Color x:Key="BackgroundColor">#FFF6EF</Color>
-    <Color x:Key="CardColor">#FFF0E4</Color>
-    <Color x:Key="NoteColor">#FFF6D9</Color>
-    <Color x:Key="NoteLineColor">#E7C781</Color>
-    <Color x:Key="NoteStatusHeaderColor">#FFF0E4</Color>
-    <Color x:Key="NoteCompletedHeaderColor">#F7E9E2</Color>
-    <Color x:Key="NoteCompletedAuxiliaryColor">#765247</Color>
-    <Color x:Key="NoteActiveRailColor">#D55C47</Color>
-    <Color x:Key="NoteCompletedRailColor">#B89E8E</Color>
-    <Color x:Key="NoteTimelineColor">#E9C5B2</Color>
-    <Color x:Key="InkColor">#4A2D24</Color>
-    <Color x:Key="BodyColor">#765247</Color>
-    <Color x:Key="MutedColor">#87665A</Color>
-    <Color x:Key="ActiveColor">#B8533D</Color>
-    <Color x:Key="ActiveHoverColor">#B34B36</Color>
-    <Color x:Key="MainActionColor">#A24438</Color>
-    <Color x:Key="MainActionHoverColor">#8E392F</Color>
-    <Color x:Key="MainActionPressedColor">#762D25</Color>
-    <Color x:Key="MainActionFocusColor">#FFD49A</Color>
+    <!-- ═══ 第 1 层：Primitive 原色（*Color；与 ApplicationTheme.Tokens 一一对应，是全部色值的唯一来源） ═══ -->
+    <Color x:Key="CanvasColor">#FFFDF3EB</Color>
+    <Color x:Key="CanvasDeepColor">#FFFDE8DC</Color>
+    <Color x:Key="BackgroundColor">#FFFDF0E4</Color>
+    <Color x:Key="CardColor">#FFFEFCFB</Color>
+    <Color x:Key="PanelColor">#FFFFFDFC</Color>
+    <Color x:Key="CardAltColor">#FFFEF9F5</Color>
+    <Color x:Key="StatusBarColor">#FFFDFAF8</Color>
+    <Color x:Key="NoteColor">#FFFEF5DC</Color>
+    <Color x:Key="NoteWhiteColor">#FFFEFDFD</Color>
+    <Color x:Key="NoteLineColor">#FFF6D9B2</Color>
+    <Color x:Key="NoteActiveRailColor">#FFCD623E</Color>
+    <Color x:Key="NoteCompletedRailColor">#FF8A7069</Color>
+    <Color x:Key="NoteTimelineColor">#FFF6DFD3</Color>
+    <Color x:Key="InkColor">#FF3B190D</Color>
+    <Color x:Key="BodyColor">#FF6B4A3C</Color>
+    <Color x:Key="MutedColor">#FF82665F</Color>
+    <Color x:Key="ActiveColor">#FFE05A4A</Color>
+    <Color x:Key="ActiveHoverColor">#FFB84A36</Color>
+    <Color x:Key="MainActionColor">#FFC04A37</Color>
+    <Color x:Key="MainActionHoverColor">#FFB84A36</Color>
+    <Color x:Key="MainActionPressedColor">#FFBA4128</Color>
+    <Color x:Key="MainActionFocusColor">#FFFFD49A</Color>
     <Color x:Key="MainActionTextColor">#FFFDFC</Color>
-    <Color x:Key="PeachLineColor">#F1D5C5</Color>
-    <Color x:Key="DangerColor">#A24438</Color>
-    <Color x:Key="SuccessColor">#92522E</Color>
+    <Color x:Key="PeachLineColor">#FFF6DFD3</Color>
+    <Color x:Key="DangerColor">#FFB94D3A</Color>
+    <Color x:Key="SuccessColor">#FF266B5E</Color>
     <Color x:Key="TagColor">#FFF7E8</Color>
-    <Color x:Key="TagChipTextColor">#4A2D24</Color>
+    <Color x:Key="TagChipTextColor">#FF3B190D</Color>
     <Color x:Key="ExpiredColor">#F9DFDB</Color>
-    <Color x:Key="SegmentSelectedColor">#FFF7E8</Color>
-    <Color x:Key="SegmentSelectedForegroundColor">#725326</Color>
+    <Color x:Key="SegmentSelectedColor">#FFFEEFE1</Color>
+    <Color x:Key="SegmentSelectedForegroundColor">#FF3B190D</Color>
     <Color x:Key="WorkspacePanelColor">#00FFFDFC</Color>
-    <Color x:Key="WorkspacePanelLineColor">#00F1D5C5</Color>
+    <Color x:Key="WorkspacePanelLineColor">#00F6DFD3</Color>
     <Color x:Key="CharacterPanelColor">#FFF7E8</Color>
     <Color x:Key="CharacterLineColor">#EFC9A7</Color>
     <Color x:Key="CharacterMyMelodyDockColor">#FFE3C7</Color>
     <Color x:Key="CharacterCinnamorollDockColor">#FFF0D2</Color>
     <Color x:Key="CharacterKuromiDockColor">#F5DEC5</Color>
+    <Color x:Key="IconAccentColor">#F28995</Color>
+    <Color x:Key="DecoTextColor">#D9B7B1</Color>
+    <Color x:Key="DecoTextSoftColor">#E5AE9C</Color>
+    <Color x:Key="PinkBadgeColor">#FD97A1</Color>
+    <Color x:Key="PinkBadgeTextColor">#FFFDFC</Color>
+    <Color x:Key="PinkTintColor">#FFFEDDDE</Color>
+    <Color x:Key="PinkBlockColor">#FEE0E4</Color>
+    <Color x:Key="PrimaryCountdownNumberColor">#FFC0102F</Color>
+    <Color x:Key="SecondaryBlockColor">#FAF0EA</Color>
+    <Color x:Key="PinkTintSoftColor">#FEF0F1</Color>
+    <Color x:Key="PeachTintColor">#FEEFE1</Color>
+    <Color x:Key="PeachRailColor">#CD623E</Color>
+    <Color x:Key="PeachBadgeColor">#FBAE90</Color>
+    <Color x:Key="PeachBadgeMutedColor">#F3DED8</Color>
+    <Color x:Key="PinkAccentColor">#FFDE5863</Color>
+    <Color x:Key="PinkAccentStrongColor">#FFC23E68</Color>
+    <Color x:Key="StampPinkColor">#FEEFF1</Color>
+    <Color x:Key="StampPinkTextColor">#D41F57</Color>
+    <Color x:Key="StampBlueColor">#EEF5FE</Color>
+    <Color x:Key="StampBlueTextColor">#FF1D6BB0</Color>
+    <Color x:Key="StampGreenColor">#EDF6E8</Color>
+    <Color x:Key="StampGreenTextColor">#FF26732D</Color>
+    <Color x:Key="WarningAccentColor">#FFAD4A10</Color>
+    <Color x:Key="WarningTintColor">#FDEDD8</Color>
+    <Color x:Key="ReminderCardColor">#FEF9E8</Color>
+    <Color x:Key="ReminderPageColor">#FEFEFE</Color>
+    <Color x:Key="SourceNoteIconColor">#FED67F</Color>
+    <Color x:Key="FloatingDayPrimaryCountdownAccentColor">#EE2B46</Color>
+    <Color x:Key="FloatingDayPlushGlowColor">#B9794E</Color>
 
+    <!-- ═══ 第 2 层：Semantic 语义角色（*Brush；每支画刷只承载一个语义角色，见 DESIGN.md §13） ═══ -->
     <SolidColorBrush x:Key="CanvasBrush" Color="{DynamicResource CanvasColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CanvasDeepBrush" Color="{DynamicResource CanvasDeepColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="BackgroundBrush" Color="{DynamicResource BackgroundColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="CardBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PanelBrush" Color="{DynamicResource PanelColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CardAltBrush" Color="{DynamicResource CardAltColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="StatusBarBrush" Color="{DynamicResource StatusBarColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="NoteWhiteBrush" Color="{DynamicResource NoteWhiteColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteLineBrush" Color="{DynamicResource NoteLineColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteStatusHeaderBrush" Color="{DynamicResource NoteStatusHeaderColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteCompletedHeaderBrush" Color="{DynamicResource NoteCompletedHeaderColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteCompletedAuxiliaryBrush" Color="{DynamicResource NoteCompletedAuxiliaryColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteActiveRailBrush" Color="{DynamicResource NoteActiveRailColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteCompletedRailBrush" Color="{DynamicResource NoteCompletedRailColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="NoteTimelineBrush" Color="{DynamicResource NoteTimelineColor}" po:Freeze="False" />
@@ -87,62 +120,88 @@
     <SolidColorBrush x:Key="CharacterMyMelodyDockBrush" Color="{DynamicResource CharacterMyMelodyDockColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="CharacterCinnamorollDockBrush" Color="{DynamicResource CharacterCinnamorollDockColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="CharacterKuromiDockBrush" Color="{DynamicResource CharacterKuromiDockColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="IconAccentBrush" Color="{DynamicResource IconAccentColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="DecoTextBrush" Color="{DynamicResource DecoTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="DecoTextSoftBrush" Color="{DynamicResource DecoTextSoftColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PinkBadgeBrush" Color="{DynamicResource PinkBadgeColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PinkBadgeTextBrush" Color="{DynamicResource PinkBadgeTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PinkTintBrush" Color="{DynamicResource PinkTintColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PinkBlockBrush" Color="{DynamicResource PinkBlockColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PrimaryCountdownNumberBrush" Color="{DynamicResource PrimaryCountdownNumberColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="SecondaryBlockBrush" Color="{DynamicResource SecondaryBlockColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PinkTintSoftBrush" Color="{DynamicResource PinkTintSoftColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PeachTintBrush" Color="{DynamicResource PeachTintColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PeachRailBrush" Color="{DynamicResource PeachRailColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PeachBadgeBrush" Color="{DynamicResource PeachBadgeColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PeachBadgeMutedBrush" Color="{DynamicResource PeachBadgeMutedColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PinkAccentBrush" Color="{DynamicResource PinkAccentColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="PinkAccentStrongBrush" Color="{DynamicResource PinkAccentStrongColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="StampPinkBrush" Color="{DynamicResource StampPinkColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="StampPinkTextBrush" Color="{DynamicResource StampPinkTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="StampBlueBrush" Color="{DynamicResource StampBlueColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="StampBlueTextBrush" Color="{DynamicResource StampBlueTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="StampGreenBrush" Color="{DynamicResource StampGreenColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="StampGreenTextBrush" Color="{DynamicResource StampGreenTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="WarningAccentBrush" Color="{DynamicResource WarningAccentColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="WarningTintBrush" Color="{DynamicResource WarningTintColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="ReminderCardBrush" Color="{DynamicResource ReminderCardColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="ReminderPageBrush" Color="{DynamicResource ReminderPageColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="SourceNoteIconBrush" Color="{DynamicResource SourceNoteIconColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayPrimaryCountdownAccentBrush" Color="{DynamicResource FloatingDayPrimaryCountdownAccentColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayPlushGlowBrush" Color="{DynamicResource FloatingDayPlushGlowColor}" po:Freeze="False" />
+    <FontFamily x:Key="HandwrittenDecoFontFamily">Segoe Print, Ink Free, Segoe Script, KaiTi, Microsoft YaHei UI</FontFamily>
+    <FontFamily x:Key="UiFontFamily">Microsoft YaHei UI</FontFamily>
 
-    <SolidColorBrush x:Key="FloatingDayPanelBrush" Color="#FFFDFC" />
-    <SolidColorBrush x:Key="FloatingDayBackdropBrush" Color="#FFF0E4" />
-    <SolidColorBrush x:Key="FloatingDayBorderBrush" Color="#E7C781" />
-    <SolidColorBrush x:Key="FloatingDayHeaderBrush" Color="#FFF6D9" />
-    <SolidColorBrush x:Key="FloatingDayHeaderTextBrush" Color="#725326" />
-    <SolidColorBrush x:Key="FloatingDayHeaderDangerBrush" Color="#A24438" />
-    <SolidColorBrush x:Key="FloatingDayHeaderHoverBrush" Color="#FFF0E4" />
-    <SolidColorBrush x:Key="FloatingDayHeaderSelectedBrush" Color="#FCE8DE" />
-    <SolidColorBrush x:Key="FloatingDayHeaderSelectedTextBrush" Color="#725326" />
-    <SolidColorBrush x:Key="FloatingDaySurfaceBrush" Color="#FFFDFC" />
-    <SolidColorBrush x:Key="FloatingDayNoteCardBrush" Color="#FFF6D9" />
-    <SolidColorBrush x:Key="FloatingDayNoteInputBrush" Color="#FFF6D9" />
-    <SolidColorBrush x:Key="FloatingDayNoteInputTextBrush" Color="#725326" />
-    <SolidColorBrush x:Key="FloatingDayErrorBrush" Color="#B34B36" />
-    <SolidColorBrush x:Key="FloatingDayTextBrush" Color="#4A2D24" />
-    <SolidColorBrush x:Key="FloatingDayMutedBrush" Color="#87665A" />
-    <SolidColorBrush x:Key="FloatingDayPrimaryCountdownAccentBrush" Color="#A24438" />
-    <SolidColorBrush x:Key="FloatingDayPlushGlowBrush" Color="#B9794E" />
-    <SolidColorBrush x:Key="FloatingDayMyMelodyDockBrush" Color="#FFE3C7" />
-    <SolidColorBrush x:Key="FloatingDayCinnamorollDockBrush" Color="#FFF0D2" />
-    <SolidColorBrush x:Key="FloatingDayKuromiDockBrush" Color="#F5DEC5" />
+    <!-- ═══ 第 3 层：Component 组件资源（排版 / 间距 / 焦点 / 圆角，主窗口与悬浮窗共用；口径见 DESIGN.md §13） ═══ -->
+    <sys:Double x:Key="TypeDisplayFontSize">44</sys:Double>
+    <sys:Double x:Key="TypeH1FontSize">30</sys:Double>
+    <sys:Double x:Key="TypeH2FontSize">22</sys:Double>
+    <sys:Double x:Key="TypeBodyFontSize">16</sys:Double>
+    <sys:Double x:Key="TypeCaptionFontSize">13</sys:Double>
+    <sys:Double x:Key="SpacingUnit">8</sys:Double>
+    <sys:Double x:Key="SpacingFieldRow">10</sys:Double>
+    <sys:Double x:Key="SpacingBlockGap">12</sys:Double>
+    <sys:Double x:Key="SpacingCardPadding">14</sys:Double>
+    <Thickness x:Key="FocusBorderThickness">2</Thickness>
+    <CornerRadius x:Key="RadiusPill">19</CornerRadius>
+    <CornerRadius x:Key="RadiusOverlay">12</CornerRadius>
+    <CornerRadius x:Key="RadiusControl">9</CornerRadius>
+    <CornerRadius x:Key="RadiusCard">8</CornerRadius>
+    <CornerRadius x:Key="RadiusChip">5</CornerRadius>
+    <CornerRadius x:Key="RadiusThumb">4</CornerRadius>
 
-    <SolidColorBrush x:Key="FloatingNightPanelBrush" Color="#3A2B1E" />
-    <SolidColorBrush x:Key="FloatingNightBackdropBrush" Color="#241A12" />
-    <SolidColorBrush x:Key="FloatingNightBorderBrush" Color="#9B744A" />
-    <SolidColorBrush x:Key="FloatingNightHeaderBrush" Color="#4A3524" />
-    <SolidColorBrush x:Key="FloatingNightHeaderTextBrush" Color="#FFF4D8" />
-    <SolidColorBrush x:Key="FloatingNightHeaderDangerBrush" Color="#FFC0AD" />
-    <SolidColorBrush x:Key="FloatingNightHeaderHoverBrush" Color="#5A412B" />
-    <SolidColorBrush x:Key="FloatingNightHeaderSelectedBrush" Color="#6E492E" />
-    <SolidColorBrush x:Key="FloatingNightHeaderSelectedTextBrush" Color="#FFF8E8" />
-    <SolidColorBrush x:Key="FloatingNightSurfaceBrush" Color="#473323" />
-    <SolidColorBrush x:Key="FloatingNightNoteCardBrush" Color="#4E3827" />
-    <SolidColorBrush x:Key="FloatingNightNoteInputBrush" Color="#F7E1B3" />
-    <SolidColorBrush x:Key="FloatingNightNoteInputTextBrush" Color="#4A2D24" />
-    <SolidColorBrush x:Key="FloatingNightErrorBrush" Color="#8F342B" />
-    <SolidColorBrush x:Key="FloatingNightTextBrush" Color="#FFF4D8" />
-    <SolidColorBrush x:Key="FloatingNightMutedBrush" Color="#E9CAA0" />
-    <SolidColorBrush x:Key="FloatingNightPrimaryCountdownAccentBrush" Color="#E9B36D" />
-    <SolidColorBrush x:Key="FloatingNightPlushGlowBrush" Color="#E9B36D" />
-    <SolidColorBrush x:Key="FloatingNightMyMelodyDockBrush" Color="#5A3D2B" />
-    <SolidColorBrush x:Key="FloatingNightCinnamorollDockBrush" Color="#55452A" />
-    <SolidColorBrush x:Key="FloatingNightKuromiDockBrush" Color="#51362C" />
+    <!-- 悬浮窗组件画刷：色值全部绑回第 1 层 Primitive，不在组件层自持色值 -->
+    <SolidColorBrush x:Key="FloatingDayPanelBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayBackdropBrush" Color="{DynamicResource BackgroundColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayBorderBrush" Color="{DynamicResource PeachLineColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayHeaderBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayHeaderTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayHeaderDangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayHeaderHoverBrush" Color="{DynamicResource CardAltColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayHeaderSelectedBrush" Color="{DynamicResource PinkAccentStrongColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayHeaderSelectedTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDaySurfaceBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayNoteCardBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayNoteInputBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayNoteInputTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayErrorBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayMutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayMyMelodyDockBrush" Color="{DynamicResource CharacterMyMelodyDockColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayCinnamorollDockBrush" Color="{DynamicResource CharacterCinnamorollDockColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingDayKuromiDockBrush" Color="{DynamicResource CharacterKuromiDockColor}" po:Freeze="False" />
 
-    <SolidColorBrush x:Key="FloatingHeaderTextBrush" Color="#725326" />
-    <SolidColorBrush x:Key="FloatingHeaderDangerBrush" Color="#A24438" />
-    <SolidColorBrush x:Key="FloatingHeaderHoverBrush" Color="#FFF0E4" />
-    <SolidColorBrush x:Key="FloatingHeaderSelectedBrush" Color="#FCE8DE" />
-    <SolidColorBrush x:Key="FloatingHeaderSelectedTextBrush" Color="#725326" />
-    <SolidColorBrush x:Key="FloatingNoteInputTextBrush" Color="#725326" />
-    <SolidColorBrush x:Key="FloatingErrorBrush" Color="#B34B36" />
-    <SolidColorBrush x:Key="FloatingMutedBrush" Color="#87665A" />
+    <SolidColorBrush x:Key="FloatingHeaderTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingHeaderDangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingHeaderHoverBrush" Color="{DynamicResource CardAltColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingHeaderSelectedBrush" Color="{DynamicResource PinkAccentStrongColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingHeaderSelectedTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingNoteInputTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingErrorBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="FloatingMutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />
 
     <Style TargetType="{x:Type Window}">
-      <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+      <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="{DynamicResource BackgroundBrush}" />
       <Setter Property="UseLayoutRounding" Value="True" />
@@ -172,7 +231,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="9"
+                    CornerRadius="{DynamicResource RadiusControl}"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
@@ -184,11 +243,11 @@
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
@@ -203,8 +262,8 @@
            TargetType="{x:Type Button}"
            BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
-      <Setter Property="Background" Value="{DynamicResource ActiveBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+      <Setter Property="Background" Value="{DynamicResource MainActionBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource MainActionBrush}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Template">
         <Setter.Value>
@@ -213,7 +272,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="9"
+                    CornerRadius="{DynamicResource RadiusControl}"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
@@ -227,11 +286,11 @@
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveHoverBrush}" />
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
@@ -245,6 +304,47 @@
     <Style x:Key="SecondaryButton"
            TargetType="{x:Type Button}"
            BasedOn="{StaticResource {x:Type Button}}" />
+
+    <Style x:Key="FloatingAccentButton"
+           TargetType="{x:Type Button}">
+      <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+      <Setter Property="Background" Value="{DynamicResource PinkAccentStrongBrush}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type Button}">
+            <Border x:Name="Surface"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{DynamicResource RadiusPill}"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.9" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.82" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
 
     <Style x:Key="DangerButton"
            TargetType="{x:Type Button}"
@@ -279,7 +379,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="9"
+                    CornerRadius="{DynamicResource RadiusControl}"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
@@ -292,9 +392,16 @@
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}" />
               </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -320,7 +427,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="9"
+                    CornerRadius="{DynamicResource RadiusControl}"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
@@ -332,11 +439,11 @@
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
@@ -362,7 +469,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="9"
+                    CornerRadius="{DynamicResource RadiusControl}"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
@@ -371,13 +478,20 @@
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource FloatingHeaderHoverBrush}" />
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource FloatingHeaderSelectedBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource FloatingHeaderSelectedBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource FloatingHeaderSelectedTextBrush}" />
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PinkAccentStrongBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource PinkAccentStrongBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -416,7 +530,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="9">
+                    CornerRadius="{DynamicResource RadiusControl}">
               <ScrollViewer x:Name="PART_ContentHost"
                             Margin="{TemplateBinding Padding}"
                             VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
@@ -426,11 +540,11 @@
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Surface" Property="Opacity" Value="0.5" />
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -455,7 +569,7 @@
                       Background="{DynamicResource CanvasBrush}"
                       BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
-                      CornerRadius="5"
+                      CornerRadius="{DynamicResource RadiusChip}"
                       VerticalAlignment="Center">
                 <Path x:Name="Tick"
                       Width="10"
@@ -475,14 +589,76 @@
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Box" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </Trigger>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Box" Property="Background" Value="{DynamicResource ActiveBrush}" />
                 <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                 <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Box" Property="BorderThickness" Value="2" />
-                <Setter TargetName="Box" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
+                <Setter TargetName="Box" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- #133 隐式 RadioButton：未显式套样的单选钮不再落到系统默认外观（含系统蓝焦点）。
+         视觉语言按 DESIGN.md §4 提醒规则单选组执行，全部引用 §13 token。 -->
+    <Style TargetType="{x:Type RadioButton}">
+      <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type RadioButton}">
+            <Grid x:Name="Surface" Background="{TemplateBinding Background}">
+              <Border x:Name="FocusRing"
+                      Background="Transparent"
+                      BorderBrush="Transparent"
+                      BorderThickness="{DynamicResource FocusBorderThickness}"
+                      CornerRadius="{DynamicResource RadiusControl}" />
+              <StackPanel Orientation="Horizontal"
+                          Margin="12,0,0,0"
+                          VerticalAlignment="Center">
+                <Grid Width="18" Height="18">
+                  <Ellipse x:Name="Ring"
+                           Fill="Transparent"
+                           Stroke="{DynamicResource PeachLineBrush}"
+                           StrokeThickness="2" />
+                  <Ellipse x:Name="Dot"
+                           Width="8"
+                           Height="8"
+                           Fill="{DynamicResource IconAccentBrush}"
+                           Visibility="Collapsed" />
+                </Grid>
+                <ContentPresenter Margin="8,0,12,0"
+                                  VerticalAlignment="Center"
+                                  RecognizesAccessKey="True" />
+              </StackPanel>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource IconAccentBrush}" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
@@ -536,7 +712,7 @@
                       Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="9">
+                      CornerRadius="{DynamicResource RadiusControl}">
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -586,7 +762,7 @@
                         Background="{DynamicResource CanvasBrush}"
                         BorderBrush="{DynamicResource PeachLineBrush}"
                         BorderThickness="1"
-                        CornerRadius="12">
+                        CornerRadius="{DynamicResource RadiusOverlay}">
                   <ScrollViewer VerticalScrollBarVisibility="Auto"
                                 HorizontalScrollBarVisibility="Disabled">
                     <ItemsPresenter />
@@ -598,9 +774,12 @@
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
               </Trigger>
+              <Trigger Property="IsDropDownOpen" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
@@ -665,6 +844,23 @@
                           SelectedDate="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
               </Popup>
             </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              </Trigger>
+              <Trigger Property="IsDropDownOpen" Value="True">
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="PART_TextBox" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="PART_Button" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="PART_Root" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -698,7 +894,7 @@
                       Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="12">
+                      CornerRadius="{DynamicResource RadiusOverlay}">
                 <primitives:CalendarItem x:Name="PART_CalendarItem"
                                          Style="{StaticResource {x:Type primitives:CalendarItem}}" />
               </Border>
@@ -727,7 +923,7 @@
                         Background="{DynamicResource CardBrush}"
                         BorderBrush="{DynamicResource PeachLineBrush}"
                         BorderThickness="1"
-                        CornerRadius="9" />
+                        CornerRadius="{DynamicResource RadiusControl}" />
                 <Button x:Name="PART_PreviousButton"
                         Content="‹"
                         Style="{StaticResource CalendarNavigationButton}"
@@ -766,7 +962,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="Transparent"
                     BorderThickness="1"
-                    CornerRadius="5">
+                    CornerRadius="{DynamicResource RadiusChip}">
               <ContentPresenter HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 TextElement.Foreground="{TemplateBinding Foreground}" />
@@ -779,14 +975,14 @@
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionBrush}" />
               </Trigger>
               <Trigger Property="IsBlackedOut" Value="True">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.32" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
-                <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -815,7 +1011,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="Transparent"
                     BorderThickness="1"
-                    CornerRadius="5">
+                    CornerRadius="{DynamicResource RadiusChip}">
               <ContentPresenter HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 TextElement.Foreground="{TemplateBinding Foreground}" />
@@ -825,10 +1021,10 @@
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
               </Trigger>
               <Trigger Property="HasSelectedDays" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionBrush}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Mode, Source={x:Static local:ThemeModeObserver.Instance}, Converter={StaticResource ThemeKeyboardFocusBrushConverter}}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -859,6 +1055,7 @@
                 <Track.DecreaseRepeatButton>
                   <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
                                 CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                Focusable="False"
                                 Background="Transparent"
                                 BorderThickness="0">
                     <RepeatButton.Template>
@@ -874,7 +1071,7 @@
                       <ControlTemplate TargetType="{x:Type Thumb}">
                         <Border x:Name="ThumbSurface"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="4" />
+                                CornerRadius="{DynamicResource RadiusThumb}" />
                         <ControlTemplate.Triggers>
                           <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="ThumbSurface" Property="Opacity" Value="0.72" />
@@ -890,6 +1087,7 @@
                 <Track.IncreaseRepeatButton>
                   <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
                                 CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                Focusable="False"
                                 Background="Transparent"
                                 BorderThickness="0">
                     <RepeatButton.Template>
@@ -961,7 +1159,7 @@
           <ControlTemplate TargetType="{x:Type ToolTip}">
             <Border Background="{TemplateBinding Background}"
                     Padding="{TemplateBinding Padding}"
-                    CornerRadius="5">
+                    CornerRadius="{DynamicResource RadiusChip}">
               <TextBlock x:Name="Content"
                          Text="{TemplateBinding Content}"
                          Foreground="{TemplateBinding Foreground}"

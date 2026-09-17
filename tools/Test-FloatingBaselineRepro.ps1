@@ -1,10 +1,10 @@
 #requires -Version 7.0
-# 最小复现：以 SourceTree 模式跑应用 -ValidateOnly，触发悬浮窗 v20 基线门。
+# 最小复现：以 SourceTree 模式跑应用 -ValidateOnly，触发悬浮窗与主窗口 v22 基线门。
 # -Isolated 时经不可见桌面启动；否则直接在用户桌面跑（窗口可见，约一分钟）。
 [CmdletBinding()]
 param(
     [switch] $Isolated,
-    # 诊断专用：生成模式，把当前实际帧写入（应为空的）v20 目录，供与 17:31 原版 diff。
+    # 诊断专用：生成模式，把当前实际帧写入（应为空的）v22 基线目录并生成 manifest。
     [switch] $GenerateBaseline
 )
 

@@ -13,9 +13,6 @@
         Background="Transparent"
         Topmost="True"
         WindowStartupLocation="Manual">
-  <Window.Resources>
-    <SolidColorBrush x:Key="FloatingNightPlushGlowBrush" Color="#756A62" />
-  </Window.Resources>
   <Grid x:Name="TaskWrap"
         Margin="0"
         Background="Transparent"
@@ -60,6 +57,7 @@
           <RowDefinition Height="Auto" />
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Border x:Name="FloatingHeaderSurface"
                 Grid.Row="0"
@@ -97,11 +95,13 @@
             <ToggleButton x:Name="FloatingCountdownsButton"
                           Grid.Column="1"
                           Width="85"
+                          Height="36"
                           Content="倒计时"
                           Style="{DynamicResource FloatingHeaderSegmentButton}" />
             <ToggleButton x:Name="FloatingNotesButton"
                           Grid.Column="2"
                           Width="72"
+                          Height="36"
                           Margin="8,0,0,0"
                           Content="便签"
                           Style="{DynamicResource FloatingHeaderSegmentButton}" />
@@ -166,7 +166,7 @@
                 Visibility="Collapsed">
             <TextBox x:Name="FloatingNoteSearch"
                      MaxLength="140"
-                     MinHeight="28"
+                     MinHeight="36"
                      VerticalContentAlignment="Center"
                      Background="{DynamicResource CanvasBrush}"
                      BorderBrush="{DynamicResource PeachLineBrush}"
@@ -189,8 +189,8 @@
             <Button x:Name="FloatingNoteSearchHintTerm"
                     HorizontalAlignment="Left"
                     HorizontalContentAlignment="Left"
-                    MinHeight="28"
-                    Height="28"
+                    MinHeight="36"
+                    Height="36"
                     Padding="8,0"
                     FontSize="12"
                     Style="{DynamicResource SecondaryButton}">
@@ -203,10 +203,10 @@
             </Button>
             <Button x:Name="FloatingNoteSearchHintClear"
                     Grid.Column="1"
-                    Width="28"
-                    MinWidth="28"
-                    MinHeight="28"
-                    Height="28"
+                    Width="36"
+                    MinWidth="36"
+                    MinHeight="36"
+                    Height="36"
                     Padding="0"
                     Margin="8,0,0,0"
                     Content="✕"
@@ -300,116 +300,289 @@
             <StackPanel x:Name="FloatingRows"
                         Margin="8,13,11,0" />
 
-            <Border x:Name="FloatingNoteEntry"
-                    Width="319"
-                    HorizontalAlignment="Left"
-                    Margin="8,10,11,0"
-                    Padding="10"
-                    Background="{DynamicResource FloatingDayNoteInputBrush}"
-                    BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Visibility="Collapsed">
-              <StackPanel>
-                <Border Width="18"
-                        Height="3"
-                        Margin="2,-4,0,7"
-                        HorizontalAlignment="Left"
-                        Background="{DynamicResource FloatingHeaderDangerBrush}"
-                        IsHitTestVisible="False" />
-                <TextBox x:Name="FloatingNoteText"
-                         MaxHeight="88"
-                         MaxLength="140"
-                         Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                         TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto" />
-                <TextBlock x:Name="FloatingNoteTextError"
-                           Margin="2,4,2,0"
-                           Foreground="{DynamicResource FloatingErrorBrush}"
-                           TextWrapping="Wrap"
-                           Visibility="Collapsed" />
-                <Grid Margin="0,8,0,0">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-                  <DatePicker x:Name="FloatingNoteDate" />
-                  <Button x:Name="FloatingManageReminderRules"
-                          Grid.Column="1"
-                          Width="116"
-                          Margin="8,0,0,0"
-                          Content="提醒规则"
-                          Style="{DynamicResource SecondaryButton}" />
-                </Grid>
-                <TextBlock x:Name="FloatingNoteDateError"
-                           Margin="2,4,2,0"
-                           Foreground="{DynamicResource FloatingErrorBrush}"
-                           TextWrapping="Wrap"
-                           Visibility="Collapsed" />
-                <TextBlock x:Name="FloatingReminderRulesSummary"
-                           Margin="2,5,2,0"
-                           Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                           Text="不提醒"
-                           TextWrapping="Wrap" />
-                <TextBlock x:Name="FloatingReminderMessage"
-                           Margin="2,4,2,0"
-                           Foreground="{DynamicResource FloatingErrorBrush}"
-                           TextWrapping="Wrap"
-                           Visibility="Collapsed" />
-                <Grid Margin="0,8,0,0">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-                  <local:TagSelector x:Name="FloatingTags" HorizontalAlignment="Stretch" />
-                  <Button x:Name="FloatingAddNote"
-                          Grid.Column="1"
-                          Width="68"
-                          Margin="8,0,0,0"
-                          Content="添加"
-                          Style="{DynamicResource PrimaryButton}" />
-                  <Button x:Name="FloatingSearchNotes"
-                          Grid.Column="2"
-                          Width="36"
-                          MinWidth="36"
-                          Margin="8,0,0,0"
-                          Padding="0"
-                          FocusVisualStyle="{x:Null}"
-                          Style="{DynamicResource SecondaryButton}"
-                          ToolTip="搜索便签"
-                          Visibility="Collapsed">
-                    <Grid Width="16" Height="16">
-                      <Ellipse Width="9"
-                               Height="9"
-                               Margin="1,1,0,0"
-                               HorizontalAlignment="Left"
-                               VerticalAlignment="Top"
-                               Fill="Transparent"
-                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
-                               StrokeThickness="1.6" />
-                      <Line X1="8.2"
-                            Y1="8.2"
-                            X2="14.5"
-                            Y2="14.5"
-                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
-                            StrokeThickness="1.6"
-                            StrokeStartLineCap="Round"
-                            StrokeEndLineCap="Round" />
-                    </Grid>
-                  </Button>
-                </Grid>
-                <TextBlock x:Name="FloatingNoteMessage"
-                           Margin="2,6,2,0"
-                           Foreground="{DynamicResource FloatingErrorBrush}"
-                           TextWrapping="Wrap" />
-              </StackPanel>
-            </Border>
-
             <TextBlock x:Name="FloatingIncome"
                        Margin="12,10,0,29"
                        Foreground="{DynamicResource FloatingMutedBrush}" />
           </StackPanel>
+        </ScrollViewer>
+
+        <!-- #117 收尾：快速新增展开时表单+命令行可能超过外壳剩余空间；命令区整体收进限高
+             滚动容器（滚动热区最右 x=396 内），收起态内容高度低于限高，布局与基线不变。 -->
+        <ScrollViewer x:Name="FloatingNotesCommandScroller"
+                      Grid.Row="3"
+                      Margin="0,0,76,0"
+                      MaxHeight="170"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Focusable="False">
+          <ScrollViewer.Resources>
+            <Style TargetType="{x:Type ScrollBar}">
+              <Setter Property="Width" Value="10" />
+              <Setter Property="Height" Value="Auto" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="Foreground" Value="{DynamicResource PeachLineBrush}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type ScrollBar}">
+                    <Grid x:Name="FloatingScrollBarHitRail"
+                          Width="10"
+                          HorizontalAlignment="Right"
+                          Background="Transparent">
+                      <Track x:Name="PART_Track"
+                             Orientation="{TemplateBinding Orientation}"
+                             IsDirectionReversed="True">
+                        <Track.DecreaseRepeatButton>
+                          <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                        CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                        Focusable="False"
+                                        IsTabStop="False">
+                            <RepeatButton.Template>
+                              <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                <Border Background="Transparent" />
+                              </ControlTemplate>
+                            </RepeatButton.Template>
+                          </RepeatButton>
+                        </Track.DecreaseRepeatButton>
+                        <Track.Thumb>
+                          <local:FloatingScrollBarThumb x:Name="FloatingScrollBarThumb"
+                                                        Width="10"
+                                                        Background="{DynamicResource FloatingMutedBrush}"
+                                                        Focusable="False">
+                            <local:FloatingScrollBarThumb.Template>
+                              <ControlTemplate TargetType="{x:Type local:FloatingScrollBarThumb}">
+                                <Grid Background="Transparent">
+                                  <Border x:Name="FloatingScrollBarThumbVisual"
+                                          Width="{TemplateBinding VisualWidth}"
+                                          HorizontalAlignment="Right"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{DynamicResource PeachLineBrush}"
+                                          BorderThickness="0.5"
+                                          CornerRadius="3"
+                                          Opacity="{TemplateBinding ThumbOpacity}" />
+                                </Grid>
+                              </ControlTemplate>
+                            </local:FloatingScrollBarThumb.Template>
+                          </local:FloatingScrollBarThumb>
+                        </Track.Thumb>
+                        <Track.IncreaseRepeatButton>
+                          <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                        CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                        Focusable="False"
+                                        IsTabStop="False">
+                            <RepeatButton.Template>
+                              <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                <Border Background="Transparent" />
+                              </ControlTemplate>
+                            </RepeatButton.Template>
+                          </RepeatButton>
+                        </Track.IncreaseRepeatButton>
+                      </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="Orientation" Value="Horizontal">
+                        <Setter Property="Width" Value="Auto" />
+                        <Setter Property="Height" Value="10" />
+                        <Setter TargetName="FloatingScrollBarHitRail" Property="Width" Value="Auto" />
+                        <Setter TargetName="FloatingScrollBarHitRail" Property="Height" Value="Auto" />
+                        <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ScrollViewer.Resources>
+          <StackPanel x:Name="FloatingNotesCommandArea"
+                      Visibility="Collapsed">
+          <Border x:Name="FloatingNoteEntry"
+                  Width="319"
+                  HorizontalAlignment="Left"
+                  Margin="9,0,0,0"
+                  Padding="10"
+                  Background="{DynamicResource FloatingDayNoteInputBrush}"
+                  BorderBrush="{DynamicResource FloatingDayBorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  Visibility="Collapsed">
+            <StackPanel>
+              <Border Width="18"
+                      Height="3"
+                      Margin="2,-4,0,7"
+                      HorizontalAlignment="Left"
+                      Background="{DynamicResource FloatingHeaderDangerBrush}"
+                      IsHitTestVisible="False" />
+              <TextBox x:Name="FloatingNoteText"
+                       MaxHeight="88"
+                       MaxLength="140"
+                       Foreground="{DynamicResource FloatingNoteInputTextBrush}"
+                       TextWrapping="Wrap"
+                       VerticalScrollBarVisibility="Auto" />
+              <TextBlock x:Name="FloatingNoteTextError"
+                         Margin="2,4,2,0"
+                         Foreground="{DynamicResource FloatingErrorBrush}"
+                         TextWrapping="Wrap"
+                         Visibility="Collapsed" />
+              <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <DatePicker x:Name="FloatingNoteDate" />
+                <Button x:Name="FloatingManageReminderRules"
+                        Grid.Column="1"
+                        Width="116"
+                        Margin="8,0,0,0"
+                        Content="提醒规则"
+                        Style="{DynamicResource SecondaryButton}" />
+              </Grid>
+              <TextBlock x:Name="FloatingNoteDateError"
+                         Margin="2,4,2,0"
+                         Foreground="{DynamicResource FloatingErrorBrush}"
+                         TextWrapping="Wrap"
+                         Visibility="Collapsed" />
+              <TextBlock x:Name="FloatingReminderRulesSummary"
+                         Margin="2,5,2,0"
+                         Foreground="{DynamicResource FloatingNoteInputTextBrush}"
+                         Text="不提醒"
+                         TextWrapping="Wrap" />
+              <TextBlock x:Name="FloatingReminderMessage"
+                         Margin="2,4,2,0"
+                         Foreground="{DynamicResource FloatingErrorBrush}"
+                         TextWrapping="Wrap"
+                         Visibility="Collapsed" />
+              <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <local:TagSelector x:Name="FloatingTags" HorizontalAlignment="Stretch" />
+                <Button x:Name="FloatingAddNote"
+                        Grid.Column="1"
+                        Width="68"
+                        Margin="8,0,0,0"
+                        Content="添加"
+                        Style="{DynamicResource PrimaryButton}" />
+              </Grid>
+              <TextBlock x:Name="FloatingNoteMessage"
+                         Margin="2,6,2,0"
+                         Foreground="{DynamicResource FloatingErrorBrush}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+          </Border>
+          <Grid x:Name="FloatingNotesCommandBar"
+                Margin="9,4,0,6">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0"
+                        HorizontalAlignment="Center"
+                        Orientation="Horizontal">
+              <Button x:Name="FloatingAddNoteToggle"
+                      MinHeight="38"
+                      Padding="14,0"
+                      Style="{DynamicResource FloatingAccentButton}"
+                      ToolTip="展开或收起快速新增便签表单">
+                <StackPanel Orientation="Horizontal">
+                  <Grid Width="16"
+                        Height="16"
+                        VerticalAlignment="Center">
+                    <Ellipse Width="16"
+                             Height="16"
+                             Fill="{DynamicResource MainActionTextBrush}" />
+                    <Path Data="M 4.6,8 L 11.4,8 M 8,4.6 L 8,11.4"
+                          Stroke="{DynamicResource PinkAccentStrongBrush}"
+                          StrokeThickness="1.6"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round" />
+                  </Grid>
+                  <TextBlock Text="添加便签"
+                             Margin="7,0,0,0"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="FloatingSearchNotes"
+                      Width="38"
+                      MinWidth="38"
+                      MinHeight="38"
+                      Margin="8,0,0,0"
+                      Padding="0"
+                      FocusVisualStyle="{x:Null}"
+                      Style="{DynamicResource SecondaryButton}"
+                      ToolTip="搜索便签">
+                <Grid Width="16" Height="16">
+                  <Ellipse Width="9"
+                           Height="9"
+                           Margin="1,1,0,0"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Top"
+                           Fill="Transparent"
+                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                           StrokeThickness="1.6" />
+                  <Line X1="8.2"
+                        Y1="8.2"
+                        X2="14.5"
+                        Y2="14.5"
+                        Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                        StrokeThickness="1.6"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round" />
+                </Grid>
+              </Button>
+              <Button x:Name="FloatingOpenSettings"
+                      MinHeight="38"
+                      Margin="8,0,0,0"
+                      Padding="12,0"
+                      Style="{DynamicResource SecondaryButton}"
+                      ToolTip="打开管理窗口">
+                <StackPanel Orientation="Horizontal">
+                  <Grid Width="15"
+                        Height="15"
+                        VerticalAlignment="Center">
+                    <Path Data="M 6.55,0.9 L 8.45,0.9 L 8.9,2.5 C 9.32,2.64 9.7,2.84 10.05,3.1 L 11.68,2.55 L 12.63,4.2 L 11.4,5.3 C 11.43,5.53 11.45,5.76 11.45,6 C 11.45,6.24 11.43,6.47 11.4,6.7 L 12.63,7.8 L 11.68,9.45 L 10.05,8.9 C 9.7,9.16 9.32,9.36 8.9,9.5 L 8.45,11.1 L 6.55,11.1 L 6.1,9.5 C 5.68,9.36 5.3,9.16 4.95,8.9 L 3.32,9.45 L 2.37,7.8 L 3.6,6.7 C 3.57,6.47 3.55,6.24 3.55,6 C 3.55,5.76 3.57,5.53 3.6,5.3 L 2.37,4.2 L 3.32,2.55 L 4.95,3.1 C 5.3,2.84 5.68,2.64 6.1,2.5 Z"
+                          Fill="Transparent"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                          StrokeThickness="1.1"
+                          StrokeLineJoin="Round" />
+                    <Ellipse Width="3.4"
+                             Height="3.4"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Fill="Transparent"
+                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                             StrokeThickness="1.1" />
+                  </Grid>
+                  <TextBlock Text="设置"
+                             Margin="6,0,0,0"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+            <Grid Grid.Row="1"
+                  Margin="0,2,0,0">
+              <TextBlock x:Name="FloatingNotesDecoTextLeft"
+                         Text="Have a nice day!"
+                         Margin="2,0,0,0"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Bottom"
+                         FontFamily="{DynamicResource HandwrittenDecoFontFamily}"
+                         FontSize="13"
+                         Foreground="{DynamicResource DecoTextSoftBrush}"
+                         IsHitTestVisible="False"
+                         Focusable="False" />
+              <TextBlock x:Name="FloatingNotesDecoText"
+                         Text="Live a sweeter day ♡"
+                         Margin="0,0,2,0"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Bottom"
+                         FontFamily="{DynamicResource HandwrittenDecoFontFamily}"
+                         FontSize="13"
+                         Foreground="{DynamicResource DecoTextSoftBrush}"
+                         IsHitTestVisible="False"
+                         Focusable="False" />
+            </Grid>
+          </Grid>
+        </StackPanel>
         </ScrollViewer>
       </Grid>
     </Border>
@@ -423,57 +596,6 @@
              IsHitTestVisible="False"
              Stretch="Fill"
              Visibility="Collapsed" />
-      <Border x:Name="MyMelodyPlushAnchor"
-              Canvas.Left="5.75"
-              Canvas.Top="2.87"
-              Width="139.70"
-              Height="99.12"
-              Background="Transparent"
-              BorderThickness="0"
-              ClipToBounds="True"
-              IsHitTestVisible="False">
-        <Image x:Name="PlushTopLeft"
-               Width="139.70"
-               Height="99.12"
-               HorizontalAlignment="Left"
-               VerticalAlignment="Top"
-               IsHitTestVisible="False"
-               Stretch="Fill" />
-      </Border>
-      <Border x:Name="CinnamorollPlushAnchor"
-              Canvas.Left="369.17"
-              Canvas.Top="13.29"
-              Width="140.41"
-              Height="80.08"
-              Background="Transparent"
-              BorderThickness="0"
-              ClipToBounds="True"
-              IsHitTestVisible="False">
-        <Image x:Name="PlushTopRight"
-               Width="140.41"
-               Height="80.08"
-               HorizontalAlignment="Left"
-               VerticalAlignment="Top"
-               IsHitTestVisible="False"
-               Stretch="Fill" />
-      </Border>
-      <Border x:Name="KuromiPlushAnchor"
-              Canvas.Left="405.44"
-              Canvas.Top="205.41"
-              Width="114.56"
-              Height="112.40"
-              Background="Transparent"
-              BorderThickness="0"
-              ClipToBounds="True"
-              IsHitTestVisible="False">
-        <Image x:Name="PlushBottomRight"
-               Width="114.56"
-               Height="112.40"
-               HorizontalAlignment="Left"
-               VerticalAlignment="Top"
-               IsHitTestVisible="False"
-               Stretch="Fill" />
-      </Border>
     </Canvas>
   </Grid>
 </Window>

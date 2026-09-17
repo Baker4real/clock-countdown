@@ -174,7 +174,7 @@ function Assert-CountdownApplicationValidationReport {
     $requiredUiQualityFields = @(
         'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
         'MainReferenceDecorationLayerOrderMatches',
-        'MainWorkspaceResourcesFollowDayNightTheme',
+        'MainWorkspaceResourcesFollowDayTheme',
         'MainDynamicCountdownCardsUseThemeResources',
         'MainDynamicNoteCardsUseThemeResources',
         'FloatingReferenceContentSafeAreaMatches',
@@ -192,17 +192,11 @@ function Assert-CountdownApplicationValidationReport {
         'FloatingNoteInputScrolls',
         'FloatingInitialWorkspaceStateMatches',
         'FloatingWorkspaceSwitchingStaysSynchronized',
-        'FloatingCountdownSelectionSurvivesDayNightThemes',
+        'FloatingCountdownSelectionSurvivesRefresh',
         'FloatingQuickAddDayResourcesFollowLocalTheme',
-        'FloatingQuickAddNightResourcesFollowLocalTheme',
-        'FloatingQuickAddIndependentFromApplicationAutoTheme',
+        'FloatingQuickAddIndependentFromApplicationTheme',
         'FloatingQuickAddThemeResourceIsolationBehavior',
         'FloatingQuickAddDayExpandedScrolledCaptureWritten',
-        'FloatingQuickAddNightExpandedScrolledCaptureWritten',
-        'FloatingNightPlushSourceAlphaBoundsMatch',
-        'FloatingNightPlushEdgeBrightnessWithinLimit',
-        'FloatingNightPlushEdgeSaturationWithinLimit',
-        'FloatingNightPlushEdgeGlowGateIsolationBehavior',
         'FloatingSecondaryRemainingUnitSpacingMatches',
         'FloatingSecondaryRemainingLayoutMatches',
         'FloatingSecondaryRemainingGateIsolationBehavior',
@@ -213,7 +207,7 @@ function Assert-CountdownApplicationValidationReport {
         'FloatingScrollBarContentRemainsSafe',
         'FloatingScrollBarInputPathsWork',
         'FloatingScrollBarGateIsolationBehavior',
-        'FloatingScrollBarDayNightStateCapturesReady',
+        'FloatingScrollBarStateCapturesReady',
         'UiQualityGateIsolationBehavior'
     )
     foreach ($fieldName in $requiredUiQualityFields) {
@@ -228,8 +222,8 @@ function Assert-CountdownApplicationValidationReport {
     }
 
     $baselines = @(
-        [pscustomobject]@{ Name = 'Main'; Label = '主窗口'; Required = $MainManifestRequired; CaptureCount = 12 }
-        [pscustomobject]@{ Name = 'Floating'; Label = '悬浮窗'; Required = $FloatingManifestRequired; CaptureCount = 6 }
+        [pscustomobject]@{ Name = 'Main'; Label = '主窗口'; Required = $MainManifestRequired; CaptureCount = 8 }
+        [pscustomobject]@{ Name = 'Floating'; Label = '悬浮窗'; Required = $FloatingManifestRequired; CaptureCount = 4 }
     )
     $baselineStates = [ordered]@{}
     foreach ($baseline in $baselines) {
@@ -381,9 +375,9 @@ function Invoke-CountdownValidationSuite {
         )
     $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
 
-    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-09-07-v21\manifest.json'
+    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-09-11-v22\manifest.json'
     $floatingBaselineRequired = Test-Path -LiteralPath $floatingBaselineManifest -PathType Leaf
-    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\1165x1350\2026-09-07-v21\manifest.json'
+    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\1165x1350\2026-09-11-v22\manifest.json'
     $mainBaselineRequired = Test-Path -LiteralPath $mainBaselineManifest -PathType Leaf
     $visualBaselinesRequired = $floatingBaselineRequired -and $mainBaselineRequired
     $applicationEnvironment = @{

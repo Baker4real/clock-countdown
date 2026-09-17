@@ -1,110 +1,122 @@
-using System.Globalization;
 using System.Windows;
-using System.Windows.Data;
 using System.Windows.Media;
-using MinminCountdown.Core;
 
 namespace MinminCountdown;
 
-internal enum ApplicationThemeMode
-{
-    Day,
-    Night
-}
-
+/// <summary>
+/// 应用固定为单一日间主题：只应用日间画刷 token，不再解析 Auto/Day/Night，也不随 tick 变化。
+/// Tokens 是 Primitive 原色层（App.xaml *Color 资源）的运行时权威副本：
+/// 键与顺序与 App.xaml 的第 1 层保持一一对应，新增或修改颜色必须两处同步。
+/// 分层与可读性契约见 DESIGN.md §13。
+/// </summary>
 internal sealed class ApplicationTheme
 {
     private static readonly ThemeToken[] Tokens =
     [
-        Token("CanvasColor", "CanvasBrush", "#FFFDFC", "#33291E"),
-        Token("BackgroundColor", "BackgroundBrush", "#FFF6EF", "#2B2118"),
-        Token("CardColor", "CardBrush", "#FFF0E4", "#423125"),
-        Token("NoteColor", "NoteBrush", "#FFF6D9", "#4E3827"),
-        Token("NoteLineColor", "NoteLineBrush", "#E7C781", "#A77B4B"),
-        Token("NoteStatusHeaderColor", "NoteStatusHeaderBrush", "#FFF0E4", "#423125"),
-        Token("NoteCompletedHeaderColor", "NoteCompletedHeaderBrush", "#F7E9E2", "#493229"),
-        Token("NoteCompletedAuxiliaryColor", "NoteCompletedAuxiliaryBrush", "#765247", "#E7C99B"),
-        Token("NoteActiveRailColor", "NoteActiveRailBrush", "#D55C47", "#C86F54"),
-        Token("NoteCompletedRailColor", "NoteCompletedRailBrush", "#B89E8E", "#C6A17F"),
-        Token("NoteTimelineColor", "NoteTimelineBrush", "#E9C5B2", "#8B6845"),
-        Token("InkColor", "InkBrush", "#4A2D24", "#FFF4D8"),
-        Token("BodyColor", "BodyBrush", "#765247", "#E7C99B"),
-        Token("MutedColor", "MutedBrush", "#87665A", "#D7B88C"),
-        Token("ActiveColor", "ActiveBrush", "#B8533D", "#B8563D"),
-        Token("ActiveHoverColor", "ActiveHoverBrush", "#B34B36", "#86442F"),
-        Token("MainActionColor", "MainActionBrush", "#A24438", "#9A523B"),
-        Token("MainActionHoverColor", "MainActionHoverBrush", "#8E392F", "#86442F"),
-        Token("MainActionPressedColor", "MainActionPressedBrush", "#762D25", "#6E3425"),
-        Token("MainActionFocusColor", "MainActionFocusBrush", "#FFD49A", "#FFD38E"),
-        Token("MainActionTextColor", "MainActionTextBrush", "#FFFDFC", "#FFF4D8"),
-        Token("PeachLineColor", "PeachLineBrush", "#F1D5C5", "#8B6845"),
-        Token("DangerColor", "DangerBrush", "#A24438", "#FFC0AD"),
-        Token("SuccessColor", "SuccessBrush", "#92522E", "#E2C38A"),
-        Token("TagColor", "TagBrush", "#FFF7E8", "#E7C99B"),
-        Token("TagChipTextColor", "TagChipTextBrush", "#4A2D24", "#4A2D24"),
-        Token("ExpiredColor", "ExpiredBrush", "#F9DFDB", "#59392E"),
-        Token("SegmentSelectedColor", "SegmentSelectedBrush", "#FFF7E8", "#4B3522"),
-        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#725326", "#FFF0CC"),
-        Token("WorkspacePanelColor", "WorkspacePanelBrush", "#00FFFDFC", "#FF3A2C21"),
-        Token("WorkspacePanelLineColor", "WorkspacePanelLineBrush", "#00F1D5C5", "#FF8B6845"),
-        Token("CharacterPanelColor", "CharacterPanelBrush", "#FFF7E8", "#3B2B1D"),
-        Token("CharacterLineColor", "CharacterLineBrush", "#EFC9A7", "#987644"),
-        Token("CharacterMyMelodyDockColor", "CharacterMyMelodyDockBrush", "#FFE3C7", "#5A3D2B"),
-        Token("CharacterCinnamorollDockColor", "CharacterCinnamorollDockBrush", "#FFF0D2", "#55452A"),
-        Token("CharacterKuromiDockColor", "CharacterKuromiDockBrush", "#F5DEC5", "#51362C")
+        // 画布与表面
+        Token("CanvasColor", "CanvasBrush", "#FFFDF3EB"),
+        Token("CanvasDeepColor", "CanvasDeepBrush", "#FFFDE8DC"),
+        Token("BackgroundColor", "BackgroundBrush", "#FFFDF0E4"),
+        Token("CardColor", "CardBrush", "#FFFEFCFB"),
+        Token("PanelColor", "PanelBrush", "#FFFFFDFC"),
+        Token("CardAltColor", "CardAltBrush", "#FFFEF9F5"),
+        Token("StatusBarColor", "StatusBarBrush", "#FFFDFAF8"),
+        Token("NoteColor", "NoteBrush", "#FFFEF5DC"),
+        Token("NoteWhiteColor", "NoteWhiteBrush", "#FFFEFDFD"),
+        Token("NoteLineColor", "NoteLineBrush", "#FFF6D9B2"),
+        Token("NoteActiveRailColor", "NoteActiveRailBrush", "#FFCD623E"),
+        Token("NoteCompletedRailColor", "NoteCompletedRailBrush", "#FF8A7069"),
+        Token("NoteTimelineColor", "NoteTimelineBrush", "#FFF6DFD3"),
+
+        // 文字与结构线
+        Token("InkColor", "InkBrush", "#FF3B190D"),
+        Token("BodyColor", "BodyBrush", "#FF6B4A3C"),
+        Token("MutedColor", "MutedBrush", "#FF82665F"),
+        Token("ActiveColor", "ActiveBrush", "#FFE05A4A"),
+        Token("ActiveHoverColor", "ActiveHoverBrush", "#FFB84A36"),
+        Token("MainActionColor", "MainActionBrush", "#FFC04A37"),
+        Token("MainActionHoverColor", "MainActionHoverBrush", "#FFB84A36"),
+        Token("MainActionPressedColor", "MainActionPressedBrush", "#FFBA4128"),
+        Token("MainActionFocusColor", "MainActionFocusBrush", "#FFFFD49A"),
+        Token("MainActionTextColor", "MainActionTextBrush", "#FFFDFC"),
+        Token("PeachLineColor", "PeachLineBrush", "#FFF6DFD3"),
+        Token("DangerColor", "DangerBrush", "#FFB94D3A"),
+        Token("SuccessColor", "SuccessBrush", "#FF266B5E"),
+        Token("TagColor", "TagBrush", "#FFF7E8"),
+        Token("TagChipTextColor", "TagChipTextBrush", "#FF3B190D"),
+        Token("ExpiredColor", "ExpiredBrush", "#FFF9DFDB"),
+        Token("SegmentSelectedColor", "SegmentSelectedBrush", "#FFFEEFE1"),
+        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#FF3B190D"),
+        Token("WorkspacePanelColor", "WorkspacePanelBrush", "#00FFFDFC"),
+        Token("WorkspacePanelLineColor", "WorkspacePanelLineBrush", "#00F6DFD3"),
+
+        // 强调与控件
+        Token("PrimaryCountdownNumberColor", "PrimaryCountdownNumberBrush", "#FFC0102F"),
+        Token("PinkTintColor", "PinkTintBrush", "#FFFEDDDE"),
+        Token("PinkAccentColor", "PinkAccentBrush", "#FFDE5863"),
+        Token("PinkAccentStrongColor", "PinkAccentStrongBrush", "#FFC23E68"),
+        Token("PinkBadgeColor", "PinkBadgeBrush", "#FFFD97A1"),
+        Token("PinkBadgeTextColor", "PinkBadgeTextBrush", "#FFFDFC"),
+        Token("PinkBlockColor", "PinkBlockBrush", "#FEE0E4"),
+        Token("PinkTintSoftColor", "PinkTintSoftBrush", "#FEF0F1"),
+        Token("SecondaryBlockColor", "SecondaryBlockBrush", "#FAF0EA"),
+        Token("PeachTintColor", "PeachTintBrush", "#FEEFE1"),
+        Token("PeachRailColor", "PeachRailBrush", "#CD623E"),
+        Token("PeachBadgeColor", "PeachBadgeBrush", "#FBAE90"),
+        Token("PeachBadgeMutedColor", "PeachBadgeMutedBrush", "#F3DED8"),
+        Token("IconAccentColor", "IconAccentBrush", "#F28995"),
+
+        // 便签与提醒
+        Token("WarningAccentColor", "WarningAccentBrush", "#FFAD4A10"),
+        Token("WarningTintColor", "WarningTintBrush", "#FDEDD8"),
+        Token("ReminderCardColor", "ReminderCardBrush", "#FEF9E8"),
+        Token("ReminderPageColor", "ReminderPageBrush", "#FEFEFE"),
+        Token("SourceNoteIconColor", "SourceNoteIconBrush", "#FED67F"),
+        Token("DecoTextColor", "DecoTextBrush", "#D9B7B1"),
+        Token("DecoTextSoftColor", "DecoTextSoftBrush", "#E5AE9C"),
+
+        // 日期印记 pastel 轮换
+        Token("StampPinkColor", "StampPinkBrush", "#FEEFF1"),
+        Token("StampPinkTextColor", "StampPinkTextBrush", "#D41F57"),
+        Token("StampBlueColor", "StampBlueBrush", "#EEF5FE"),
+        Token("StampBlueTextColor", "StampBlueTextBrush", "#FF1D6BB0"),
+        Token("StampGreenColor", "StampGreenBrush", "#EDF6E8"),
+        Token("StampGreenTextColor", "StampGreenTextBrush", "#FF26732D"),
+
+        // 角色面板（三丽鸥玩偶泊位）
+        Token("CharacterPanelColor", "CharacterPanelBrush", "#FFF7E8"),
+        Token("CharacterLineColor", "CharacterLineBrush", "#EFC9A7"),
+        Token("CharacterMyMelodyDockColor", "CharacterMyMelodyDockBrush", "#FFE3C7"),
+        Token("CharacterCinnamorollDockColor", "CharacterCinnamorollDockBrush", "#FFF0D2"),
+        Token("CharacterKuromiDockColor", "CharacterKuromiDockBrush", "#F5DEC5"),
+
+        // 悬浮窗组件原色
+        Token("FloatingDayPrimaryCountdownAccentColor", "FloatingDayPrimaryCountdownAccentBrush", "#EE2B46"),
+        Token("FloatingDayPlushGlowColor", "FloatingDayPlushGlowBrush", "#B9794E")
     ];
 
     private readonly ResourceDictionary _resources;
-    private ApplicationThemeMode? _activeMode;
+    private bool _applied;
 
     public ApplicationTheme(ResourceDictionary resources)
     {
         _resources = resources;
     }
 
-    public ApplicationThemeMode ActiveMode => _activeMode ??
-        throw new InvalidOperationException("应用主题尚未初始化。");
-
-    public ApplicationThemeMode Apply(DateTimeOffset nowUtc)
+    public void Apply()
     {
-        return Apply(Resolve(nowUtc));
-    }
-
-    public ApplicationThemeMode Apply(DateTimeOffset nowUtc, ThemePreferenceMode preference)
-    {
-        return Apply(Resolve(nowUtc, preference));
-    }
-
-    internal ApplicationThemeMode Apply(ApplicationThemeMode nextMode)
-    {
-        if (_activeMode == nextMode)
+        if (_applied)
         {
-            ThemeModeObserver.Instance.Set(nextMode);
-            return nextMode;
+            return;
         }
 
         foreach (var token in Tokens)
         {
-            var color = nextMode == ApplicationThemeMode.Day ? token.DayColor : token.NightColor;
-            _resources[token.ColorKey] = color;
-            _resources[token.BrushKey] = new SolidColorBrush(color);
+            _resources[token.ColorKey] = token.Color;
+            _resources[token.BrushKey] = new SolidColorBrush(token.Color);
         }
 
-        _activeMode = nextMode;
-        ThemeModeObserver.Instance.Set(nextMode);
-        return nextMode;
-    }
-
-    public static ApplicationThemeMode Resolve(DateTimeOffset nowUtc)
-    {
-        return Resolve(nowUtc, ThemePreferenceMode.Auto);
-    }
-
-    public static ApplicationThemeMode Resolve(DateTimeOffset nowUtc, ThemePreferenceMode preference)
-    {
-        return ThemePreferenceResolver.Resolve(nowUtc, preference) == EffectiveThemeMode.Day
-            ? ApplicationThemeMode.Day
-            : ApplicationThemeMode.Night;
+        _applied = true;
     }
 
     internal static bool MeetsContrast(Brush background, Brush foreground, double minimum)
@@ -141,9 +153,8 @@ internal sealed class ApplicationTheme
     private static ThemeToken Token(
         string colorKey,
         string brushKey,
-        string dayColor,
-        string nightColor) =>
-        new(colorKey, brushKey, ParseColor(dayColor), ParseColor(nightColor));
+        string dayColor) =>
+        new(colorKey, brushKey, ParseColor(dayColor));
 
     private static Color ParseColor(string value) =>
         ColorConverter.ConvertFromString(value) is Color color
@@ -153,33 +164,5 @@ internal sealed class ApplicationTheme
     private sealed record ThemeToken(
         string ColorKey,
         string BrushKey,
-        Color DayColor,
-        Color NightColor);
-}
-
-internal sealed class ThemeModeObserver : System.ComponentModel.INotifyPropertyChanged
-{
-    public static ThemeModeObserver Instance { get; } = new();
-
-    public ApplicationThemeMode Mode { get; private set; } = ApplicationThemeMode.Day;
-
-    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
-
-    internal void Set(ApplicationThemeMode mode)
-    {
-        Mode = mode;
-        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(Mode)));
-    }
-}
-
-internal sealed class ThemeKeyboardFocusBrushConverter : IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        var key = value is ApplicationThemeMode.Night ? "MainActionFocusBrush" : "ActiveBrush";
-        return Application.Current?.TryFindResource(key) ?? DependencyProperty.UnsetValue;
-    }
-
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
+        Color Color);
 }

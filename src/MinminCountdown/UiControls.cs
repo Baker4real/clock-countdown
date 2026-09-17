@@ -55,6 +55,24 @@ internal static class UiAccessibility
     }
 }
 
+/// <summary>
+/// 便签行「…」溢出菜单：把弹出层挂在其触发按钮上，供真实渲染验证读取。
+/// </summary>
+internal static class NoteRowOverflowMenuBehavior
+{
+    private static readonly DependencyProperty PopupProperty = DependencyProperty.RegisterAttached(
+        "Popup",
+        typeof(Popup),
+        typeof(NoteRowOverflowMenuBehavior),
+        new PropertyMetadata(null));
+
+    public static Popup? GetPopup(Button trigger) =>
+        (Popup?)trigger.GetValue(PopupProperty);
+
+    public static void SetPopup(Button trigger, Popup popup) =>
+        trigger.SetValue(PopupProperty, popup);
+}
+
 internal static class PopupFocusLifecycle
 {
     private static readonly HashSet<Popup> Attached = new();
@@ -105,13 +123,20 @@ internal static class PopupFocusLifecycle
             Keyboard.PreviewKeyDownEvent,
             new KeyEventHandler((_, eventArgs) =>
             {
-                if (eventArgs.Key != Key.Escape || !popup.IsOpen)
+                if (eventArgs.Key != Key.Escape)
                 {
                     return;
                 }
 
                 popup.IsOpen = false;
                 eventArgs.Handled = true;
+                RestoreTriggerFocus(trigger);
+                trigger.Dispatcher.BeginInvoke(
+                    System.Windows.Threading.DispatcherPriority.Input,
+                    new Action(() =>
+                    {
+                        RestoreTriggerFocus(trigger);
+                    }));
             }),
             true);
 
@@ -148,21 +173,28 @@ internal static class PopupFocusLifecycle
                     System.Windows.Threading.DispatcherPriority.Input,
                     new Action(() =>
                     {
-                        if (!trigger.IsVisible || !trigger.IsEnabled)
-                        {
-                            return;
-                        }
-
-                        if (Window.GetWindow(trigger) is { } window)
-                        {
-                            window.Activate();
-                            FocusManager.SetFocusedElement(window, trigger);
-                        }
-
-                        Keyboard.Focus(trigger);
+                        RestoreTriggerFocus(trigger);
                     }));
             }),
             true);
+    }
+
+    private static void RestoreTriggerFocus(UIElement trigger)
+    {
+        if (!trigger.IsEnabled)
+        {
+            return;
+        }
+
+        if (Window.GetWindow(trigger) is { } window)
+        {
+            window.Activate();
+            FocusManager.SetFocusedElement(window, trigger);
+        }
+
+        trigger.Focusable = true;
+        trigger.Focus();
+        Keyboard.Focus(trigger);
     }
 
     public static void ClipToCanvas(Popup popup, FrameworkElement canvas)
@@ -258,16 +290,45 @@ internal sealed class TagSelector : Grid
     private readonly TextBox _search;
     private readonly Button _create;
     private readonly StackPanel _items;
+    private readonly TextBlock _triggerText;
     private IReadOnlyList<TagRecord> _tags = Array.Empty<TagRecord>();
     private bool _rendering;
 
     public TagSelector()
     {
+        _triggerText = new TextBlock
+        {
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Text = "选择标签"
+        };
+        var triggerContent = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        triggerContent.Children.Add(new System.Windows.Shapes.Path
+        {
+            Width = 20,
+            Height = 20,
+            Data = Geometry.Parse(
+                "M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7"),
+            Stroke = (Brush)FindResource("MutedBrush"),
+            StrokeThickness = 1.6,
+            StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        triggerContent.Children.Add(_triggerText);
         _trigger = UiAccessibility.Name(
             new Button
             {
-                Content = "选择标签",
+                Content = triggerContent,
                 MinWidth = 116,
+                Padding = new Thickness(16, 0, 8, 0),
                 Style = (Style)FindResource("SecondaryButton")
             },
             "选择标签");
@@ -346,7 +407,7 @@ internal sealed class TagSelector : Grid
 
     public bool CreateActionVisible => _create.Visibility == Visibility.Visible;
 
-    public string SummaryText => _trigger.Content?.ToString() ?? string.Empty;
+    public string SummaryText => _triggerText.Text;
 
     public bool CreateButtonIsDefault => _create.IsDefault;
 
@@ -470,7 +531,7 @@ internal sealed class TagSelector : Grid
         }
 
         var fullSelection = string.Join("、", names);
-        _trigger.Content = text;
+        _triggerText.Text = text;
         _trigger.ToolTip = names.Length == 0 ? "选择标签" : $"已选标签：{fullSelection}";
         UiAccessibility.Name(_trigger, names.Length == 0 ? "选择标签" : $"已选标签：{fullSelection}");
     }
@@ -480,6 +541,8 @@ internal static class ThemedDatePickerBehavior
 {
     private static readonly HashSet<DatePicker> Attached = new();
     private static readonly HashSet<DatePicker> PointerPressedOnText = new();
+    private static readonly HashSet<DatePickerTextBox> TextPointerAttached = new();
+    private static readonly HashSet<DatePicker> RefocusTriggerAfterClose = new();
 
     public static void Attach(DatePicker picker)
     {
@@ -492,6 +555,7 @@ internal static class ThemedDatePickerBehavior
         {
             if (eventArgs.Key == Key.Escape && picker.IsDropDownOpen)
             {
+                RefocusTriggerAfterClose.Add(picker);
                 picker.IsDropDownOpen = false;
                 eventArgs.Handled = true;
                 picker.Dispatcher.BeginInvoke(
@@ -499,15 +563,7 @@ internal static class ThemedDatePickerBehavior
                     new Action(() =>
                     {
                         picker.ApplyTemplate();
-                        var focusTarget =
-                            picker.Template.FindName("PART_Button", picker) as IInputElement ?? picker;
-                        if (Window.GetWindow(picker) is { } window)
-                        {
-                            window.Activate();
-                            FocusManager.SetFocusedElement(window, focusTarget);
-                        }
-
-                        Keyboard.Focus(focusTarget);
+                        FocusDatePickerTrigger(picker);
                     }));
             }
         };
@@ -533,23 +589,6 @@ internal static class ThemedDatePickerBehavior
                 }));
         };
 
-        picker.PreviewMouseLeftButtonDown += (_, eventArgs) =>
-        {
-            if (IsDateTextSource(eventArgs.OriginalSource as DependencyObject))
-            {
-                PointerPressedOnText.Add(picker);
-            }
-        };
-        picker.PreviewMouseLeftButtonUp += (_, eventArgs) =>
-        {
-            if (PointerPressedOnText.Remove(picker) &&
-                IsDateTextSource(eventArgs.OriginalSource as DependencyObject))
-            {
-                picker.IsDropDownOpen = true;
-                eventArgs.Handled = true;
-            }
-        };
-        picker.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(picker);
         picker.Loaded += (_, _) => LockReadOnlyTextBox(picker);
         picker.IsVisibleChanged += (_, eventArgs) =>
         {
@@ -560,7 +599,16 @@ internal static class ThemedDatePickerBehavior
         };
         picker.GotKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
         picker.LostKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
-        picker.CalendarClosed += (_, _) => LockReadOnlyTextBox(picker);
+        picker.CalendarClosed += (_, _) =>
+        {
+            LockReadOnlyTextBox(picker);
+            if (RefocusTriggerAfterClose.Remove(picker))
+            {
+                picker.Dispatcher.BeginInvoke(
+                    DispatcherPriority.Input,
+                    new Action(() => FocusDatePickerTrigger(picker)));
+            }
+        };
         if (picker.IsLoaded)
         {
             LockReadOnlyTextBox(picker);
@@ -587,9 +635,50 @@ internal static class ThemedDatePickerBehavior
             return;
         }
 
+        if (TextPointerAttached.Add(textBox))
+        {
+            textBox.PreviewMouseLeftButtonDown += (_, _) =>
+                PointerPressedOnText.Add(picker);
+            textBox.PreviewMouseLeftButtonUp += (_, eventArgs) =>
+            {
+                if (!PointerPressedOnText.Remove(picker))
+                {
+                    return;
+                }
+
+                picker.IsDropDownOpen = true;
+                eventArgs.Handled = true;
+            };
+            textBox.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(picker);
+        }
+
         textBox.IsReadOnly = true;
         textBox.Focusable = false;
+        AlignReadOnlyContentHostPadding(picker, textBox);
         ApplyOpenCalendarAccessibleName(picker);
+    }
+
+    /// <summary>
+    /// 右缘裁切修复（issue #139）：App 的 DatePicker 模板把 DatePicker.Padding 经 TemplateBinding
+    /// 映射为 PART_ContentHost 的 Margin，而 TextBoxBase 又会把 DatePickerTextBox.Padding 动态同步成
+    /// 同一 ScrollViewer 的 Padding，两者叠加后窄日期框（便签日期 244 宽）内 Short 日期放不下，
+    /// 文本被右缘裁切，文本起点也偏离 §4「图标与文字间距约 12 DIP」的单一留白意图。
+    /// 这里把内容宿主的 Padding 归零让 Margin 单份生效；DatePickerTextBox.Padding 保持模板值
+    /// 48/16 不变，CompactInputHorizontalPaddingAligned 合同继续按模板值通过。
+    /// 仅作用于主窗口工作区的主题化日期框，不触碰悬浮窗与提醒中心的日期框基线。
+    /// </summary>
+    private static void AlignReadOnlyContentHostPadding(DatePicker picker, DatePickerTextBox textBox)
+    {
+        if (Window.GetWindow(picker) is not MainWindow)
+        {
+            return;
+        }
+
+        if (textBox.Template?.FindName("PART_ContentHost", textBox) is ScrollViewer contentHost &&
+            contentHost.Padding != default)
+        {
+            contentHost.Padding = default;
+        }
     }
 
     internal static void ApplyOpenCalendarAccessibleName(DatePicker picker)
@@ -599,6 +688,25 @@ internal static class ThemedDatePickerBehavior
         {
             AutomationProperties.SetName(button, "打开日历");
         }
+    }
+
+    private static void FocusDatePickerTrigger(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        var focusTarget = picker.Template.FindName("PART_Button", picker) as IInputElement ?? picker;
+        if (Window.GetWindow(picker) is { } window)
+        {
+            window.Activate();
+            FocusManager.SetFocusedElement(window, focusTarget);
+        }
+
+        if (focusTarget is UIElement element)
+        {
+            element.Focusable = true;
+            element.Focus();
+        }
+
+        Keyboard.Focus(focusTarget);
     }
 
     public static bool IsAttached(DatePicker picker) => Attached.Contains(picker);

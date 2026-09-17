@@ -13,6 +13,23 @@ param(
 $isCIEnvironment = $env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true'
 
 $ErrorActionPreference = 'Stop'
+
+# #126 分段计时插桩：计时行只走 stderr，保持 stdout 单一 JSON 报告契约
+# （Countdown.Validation.psm1 的 Invoke-CountdownValidationProcess 严格解析整个 stdout）。
+$script:testClock = [System.Diagnostics.Stopwatch]::StartNew()
+$script:segmentClock = [System.Diagnostics.Stopwatch]::StartNew()
+function Write-TestSegmentTiming {
+    param([Parameter(Mandatory)] [string] $Name)
+    $script:segmentClock.Stop()
+    [Console]::Error.WriteLine(
+        ('[test-segment] name={0} seconds={1:F3}' -f $Name, $script:segmentClock.Elapsed.TotalSeconds))
+    $script:segmentClock.Restart()
+}
+function Write-TestSegmentTotal {
+    [Console]::Error.WriteLine(
+        ('[test-segment-total] seconds={0:F3}' -f $script:testClock.Elapsed.TotalSeconds))
+}
+
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Notes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Tags.psm1') -Force
@@ -130,6 +147,7 @@ function Get-IndependentCountdownDiagnosticMutexName {
     "Local\MinminCountdown.Diagnostic-$($hex.Substring(0, 32))"
 }
 
+Write-TestSegmentTiming -Name 'Setup'
 if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $RemoteDeploymentOnly)) {
     $validationEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-validation-tests'
     $validationTestRoot = Join-Path $validationEvidenceRoot ([guid]::NewGuid().ToString('N'))
@@ -195,7 +213,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
         foreach ($fieldName in @(
                 'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
                 'MainReferenceDecorationLayerOrderMatches',
-                'MainWorkspaceResourcesFollowDayNightTheme',
+                'MainWorkspaceResourcesFollowDayTheme',
                 'MainDynamicCountdownCardsUseThemeResources',
                 'MainDynamicNoteCardsUseThemeResources',
                 'FloatingReferenceContentSafeAreaMatches',
@@ -213,19 +231,13 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
                 'FloatingNoteInputScrolls',
                 'FloatingInitialWorkspaceStateMatches',
                 'FloatingWorkspaceSwitchingStaysSynchronized',
-                'FloatingCountdownSelectionSurvivesDayNightThemes',
+                'FloatingCountdownSelectionSurvivesRefresh',
                 'FloatingNoteSearchScenariosPass',
                 'NoteSearchSyncsFromSharedFilter',
                 'FloatingQuickAddDayResourcesFollowLocalTheme',
-                'FloatingQuickAddNightResourcesFollowLocalTheme',
-                'FloatingQuickAddIndependentFromApplicationAutoTheme',
+                'FloatingQuickAddIndependentFromApplicationTheme',
                 'FloatingQuickAddThemeResourceIsolationBehavior',
                 'FloatingQuickAddDayExpandedScrolledCaptureWritten',
-                'FloatingQuickAddNightExpandedScrolledCaptureWritten',
-                'FloatingNightPlushSourceAlphaBoundsMatch',
-                'FloatingNightPlushEdgeBrightnessWithinLimit',
-                'FloatingNightPlushEdgeSaturationWithinLimit',
-                'FloatingNightPlushEdgeGlowGateIsolationBehavior',
                 'FloatingSecondaryRemainingUnitSpacingMatches',
                 'FloatingSecondaryRemainingLayoutMatches',
                 'FloatingSecondaryRemainingGateIsolationBehavior',
@@ -236,7 +248,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
                 'FloatingScrollBarContentRemainsSafe',
                 'FloatingScrollBarInputPathsWork',
                 'FloatingScrollBarGateIsolationBehavior',
-                'FloatingScrollBarDayNightStateCapturesReady',
+                'FloatingScrollBarStateCapturesReady',
                 'UiQualityGateIsolationBehavior'
             )) {
             $validationApplicationReport[$fieldName] = $true
@@ -314,10 +326,10 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
             $sourceTreeValidationReport."${baselineName}ReferenceBaselineValidated" = $true
         }
         $sourceTreeValidationReport.MainReferenceBaselineCaptures = @(
-            1..12 | ForEach-Object { [pscustomobject]@{ CaptureId = "main-$_" } }
+            1..8 | ForEach-Object { [pscustomobject]@{ CaptureId = "main-$_" } }
         )
         $sourceTreeValidationReport.FloatingReferenceBaselineCaptures = @(
-            1..6 | ForEach-Object { [pscustomobject]@{ CaptureId = "floating-$_" } }
+            1..4 | ForEach-Object { [pscustomobject]@{ CaptureId = "floating-$_" } }
         )
         Assert-Equal `
             $true `
@@ -350,7 +362,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
         $missingSourceCaptureReport = $sourceTreeValidationReport | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $missingSourceCaptureReport.FloatingReferenceBaselineCaptures = @()
         Assert-Equal `
-            '应用 validate-only 的悬浮窗参考基线必须包含 6 个 captures，实际为 0。' `
+            '应用 validate-only 的悬浮窗参考基线必须包含 4 个 captures，实际为 0。' `
             (Get-CountdownApplicationValidationReportFailure `
                 -Report $missingSourceCaptureReport `
                 -MainManifestRequired $true `
@@ -732,11 +744,14 @@ param([string] `$OfficeDeploymentStagingRoot)
             $failures | ForEach-Object { Write-Error $_ }
             exit 1
         }
+        Write-TestSegmentTiming -Name 'Validation'
+        Write-TestSegmentTotal
         [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'Validation' } | ConvertTo-Json
         exit 0
     }
 }
 
+Write-TestSegmentTiming -Name 'Validation'
 if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $ValidationOnly)) {
     $remoteDeploymentEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-remote-deployment-tests'
     $remoteDeploymentTestRoot = Join-Path $remoteDeploymentEvidenceRoot ([guid]::NewGuid().ToString('N'))
@@ -3389,11 +3404,14 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             $failures | ForEach-Object { Write-Error $_ }
             exit 1
         }
+        Write-TestSegmentTiming -Name 'RemoteDeployment'
+        Write-TestSegmentTotal
         [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'RemoteDeployment' } | ConvertTo-Json
         exit 0
     }
 }
 
+Write-TestSegmentTiming -Name 'RemoteDeployment'
 if (-not $AcceptanceOnly) {
 $releaseContract = Get-CountdownReleaseContract
 $expectedBuildAssets = @(
@@ -3408,9 +3426,7 @@ $expectedBuildAssets = @(
     'assets\floating-plush\component-day-card-blank.png=>app\assets\floating-plush\component-day-card-blank.png',
     'assets\floating-plush\component-day-mascots.png=>app\assets\floating-plush\component-day-mascots.png',
     'assets\main-decorations\main-countdown-scene-day.png=>app\assets\main-decorations\main-countdown-scene-day.png',
-    'assets\main-decorations\main-notes-scene-day.png=>app\assets\main-decorations\main-notes-scene-day.png',
-    'assets\main-decorations\main-countdown-top-night.png=>app\assets\main-decorations\main-countdown-top-night.png',
-    'assets\main-decorations\main-notes-top-night.png=>app\assets\main-decorations\main-notes-top-night.png'
+    'assets\main-decorations\main-notes-scene-day.png=>app\assets\main-decorations\main-notes-scene-day.png'
 )
 $actualBuildAssets = @($releaseContract.BuildAssets | ForEach-Object { "$($_.SourcePath)=>$($_.PublishedPath)" })
 $expectedCompatibilityFixtures = @(
@@ -3427,13 +3443,13 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 578 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
-Assert-Equal 574 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
+Assert-Equal 575 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
+Assert-Equal 571 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 56 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
-Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
-Assert-Equal 501 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'
+Assert-Equal 55 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
+Assert-Equal 499 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'
 Assert-Equal 20 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
 Assert-Equal ($expectedBuildAssets -join ',') ($actualBuildAssets -join ',') 'Release contract exposes the exact build asset mappings'
 Assert-Equal ($expectedCompatibilityFixtures -join ',') (@($releaseContract.CompatibilityFixtureFiles) -join ',') 'Release contract exposes the exact compatibility fixtures'
@@ -3457,14 +3473,14 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-09-07-v21\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v21 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-09-11-v22\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v22 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-09-07-v21\\manifest\.json').Count) `
-    'Validation suite pins the main-window visual manifest to the current v21 baseline'
+        'assets\\ui-references\\main-window\\1165x1350\\2026-09-11-v22\\manifest\.json').Count) `
+    'Validation suite pins the main-window visual manifest to the current v22 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
     'Validation suite no longer references the retired main-window v17 baseline'
@@ -3490,8 +3506,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-09-07-v21\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-09-07-v21\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-09-11-v22\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-09-11-v22\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3500,23 +3516,19 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-09-07-v21'
+        ExpectedVersion = '2026-09-11-v22'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
-            'floating-countdowns-night',
             'long-notes-day-bottom',
             'long-notes-day-top',
-            'long-notes-night-bottom',
-            'long-notes-night-top',
-            'notes-search-expanded-day',
-            'notes-search-expanded-night'
+            'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-09-07-v21/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-09-11-v22/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-09-07-v21'
+        ExpectedVersion = '2026-09-11-v22'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3525,17 +3537,9 @@ $visualBaselineDefinitions = @(
             'main-day-notes-empty',
             'main-day-notes-filter-open',
             'main-day-notes-representative',
-            'main-day-notes-stress',
-            'main-night-countdowns-empty',
-            'main-night-countdowns-representative',
-            'main-night-countdowns-stress',
-            'main-night-notes-edit',
-            'main-night-notes-empty',
-            'main-night-notes-filter-open',
-            'main-night-notes-representative',
-            'main-night-notes-stress'
+            'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-09-07-v21/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-09-11-v22/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
@@ -4563,11 +4567,13 @@ finally {
     Remove-CountdownReleaseContractTestTree -Path $releaseContractTestRoot
 }
 
+Write-TestSegmentTiming -Name 'ReleaseContract'
 if ($ReleaseContractOnly) {
     if ($failures.Count -gt 0) {
         $failures | ForEach-Object { Write-Error $_ }
         exit 1
     }
+    Write-TestSegmentTotal
     [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'ReleaseContract' } | ConvertTo-Json
     exit 0
 }
@@ -4998,11 +5004,13 @@ finally {
     Remove-Item -LiteralPath $acceptanceTestRoot -Force -ErrorAction SilentlyContinue
 }
 
+Write-TestSegmentTiming -Name 'TransactionAcceptance'
 if ($AcceptanceOnly) {
     if ($failures.Count -gt 0) {
         $failures | ForEach-Object { Write-Error $_ }
         exit 1
     }
+    Write-TestSegmentTotal
     [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'TransactionAcceptance' } | ConvertTo-Json
     exit 0
 }
@@ -6004,6 +6012,7 @@ finally {
     Remove-Item -LiteralPath $reparseSafetyRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+Write-TestSegmentTiming -Name 'MainDomain'
 $installerValidationEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Install-Countdown.ps1') -ValidateOnly | Out-String
 if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
@@ -6032,6 +6041,7 @@ $failureReceiptCommand = Get-Command Write-CountdownInstallFailureReceipt -Modul
 Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('ErrorRecord') -and $failureReceiptCommand.Parameters.ContainsKey('RollbackSucceeded')) 'Transaction module exposes a selected-field deployment failure receipt writer'
 $failureReceiptParserCommand = Get-Command ConvertFrom-CountdownInstallFailureReceiptBytes -Module Countdown.InstallTransaction
 Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('CommitState') -and $failureReceiptParserCommand.Parameters.ContainsKey('Bytes')) 'Transaction module exposes a strict deployment failure receipt contract'
+Write-TestSegmentTiming -Name 'InstallerValidation'
 $installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Install-Countdown.ps1'), [System.Text.Encoding]::UTF8)
 $buildSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1'), [System.Text.Encoding]::UTF8)
 $deploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
@@ -7018,6 +7028,8 @@ Assert-Equal $true ([bool] $completionResult.Notes[0].isCompleted) 'Note persist
 Assert-Equal '2026-07-19' $completionResult.Notes[0].date 'Note persistence failure preserves the source calendar date'
 Assert-Equal 1 $failedPersistCalls.Count 'Note persistence failure invokes persistence once'
 
+Write-TestSegmentTiming -Name 'SourceContracts'
+Write-TestSegmentTotal
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Error $_ }
     exit 1

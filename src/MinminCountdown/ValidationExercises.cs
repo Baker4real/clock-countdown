@@ -18,9 +18,6 @@ namespace MinminCountdown;
 
 internal static class ValidationExercises
 {
-    internal const double FloatingNightPlushEdgeBrightnessLimit = 0.012;
-    internal const double FloatingNightPlushEdgeSaturationLimit = 0.35;
-
     public static bool RunValidateOnlySettingsIsolationBehavior()
     {
         var applicationRoot = Path.Combine(
@@ -447,67 +444,140 @@ internal static class ValidationExercises
         }
     }
 
-    public static bool ProbeReminderCenterSnoozeRowAlignsWithActions()
+    public static bool ProbeReminderCenterTwoRowActionsLayout()
     {
-        var key = new ActiveReminderOccurrenceKey(
-            "snooze-align-probe-rule",
+        var noteKey = new ActiveReminderOccurrenceKey(
+            "two-row-note-rule",
             new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+        var countdownKey = new ActiveReminderOccurrenceKey(
+            "two-row-countdown-rule",
+            new DateTimeOffset(2031, 4, 5, 2, 0, 0, TimeSpan.Zero));
         var window = new ReminderCenterWindow();
         PrepareOffscreenValidationWindow(window);
         window.AddEntry(new ReminderCenterItem(
-            key,
+            noteKey,
             new NoteRecord(
-                "snooze-align-probe-note",
-                "稍后提醒对齐探针",
+                "two-row-note",
+                "两行布局探针便签",
                 "2031-04-05",
                 false,
                 Array.Empty<string>(),
                 NoReminder.Instance),
             0,
             0));
+        window.AddEntry(new ReminderCenterItem(
+            countdownKey,
+            new CountdownReminderSource(new CountdownRecord(
+                "two-row-countdown",
+                "两行布局探针倒计时",
+                new DateTimeOffset(2031, 5, 1, 0, 0, 0, TimeSpan.Zero),
+                Array.Empty<string>())),
+            1,
+            0));
         try
         {
             window.Show();
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             window.UpdateLayout();
-            var snooze = VisualDescendants<Button>(window).Single(button =>
-                string.Equals(button.Content?.ToString(), "稍后提醒", StringComparison.Ordinal));
-            var acknowledge = VisualDescendants<Button>(window).Single(button =>
-                string.Equals(button.Content?.ToString(), "知道了", StringComparison.Ordinal));
-            var complete = VisualDescendants<Button>(window).Single(button =>
-                string.Equals(button.Content?.ToString(), "完成便签", StringComparison.Ordinal));
-            var openSource = VisualDescendants<Button>(window).Single(button =>
-                string.Equals(button.Content?.ToString(), "打开来源", StringComparison.Ordinal));
-            var snoozeChoice = VisualDescendants<ComboBox>(window).Single(comboBox =>
-                comboBox.IsVisible &&
-                AutomationProperties.GetName(comboBox).StartsWith(
-                    "稍后提醒时间：",
+            var acknowledgeAll = VisualDescendants<Button>(window).SingleOrDefault(button =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderCenterAcknowledgeAll",
                     StringComparison.Ordinal));
-            var customDate = VisualDescendants<DatePicker>(window).Single(datePicker =>
-                AutomationProperties.GetName(datePicker).StartsWith(
-                    "自定义稍后日期：",
-                    StringComparison.Ordinal));
-            if (acknowledge.Parent is not WrapPanel actionRow ||
-                customDate.Parent is not WrapPanel customRow ||
-                actionRow.Parent is not Panel content)
+            if (acknowledgeAll is null ||
+                !ButtonHasIconAndText(acknowledgeAll, "全部已读") ||
+                !window.IsAncestorOf(acknowledgeAll))
             {
                 return false;
             }
 
-            var actionChildren = actionRow.Children.Cast<UIElement>().ToArray();
-            return actionRow.HorizontalAlignment == HorizontalAlignment.Right &&
-                   ReferenceEquals(snoozeChoice.Parent, actionRow) &&
-                   ReferenceEquals(snooze.Parent, actionRow) &&
-                   ReferenceEquals(complete.Parent, actionRow) &&
-                   ReferenceEquals(openSource.Parent, actionRow) &&
-                   !ReferenceEquals(customRow, actionRow) &&
-                   content.Children.IndexOf(customRow) > content.Children.IndexOf(actionRow) &&
-                   actionChildren.Length == 5 &&
-                   ReferenceEquals(actionChildren[0], acknowledge) &&
-                   ReferenceEquals(actionChildren[1], snoozeChoice) &&
-                   ReferenceEquals(actionChildren[2], snooze) &&
-                   ReferenceEquals(actionChildren[3], complete) &&
-                   ReferenceEquals(actionChildren[4], openSource);
+            foreach (var (key, expectComplete) in new[] { (noteKey, true), (countdownKey, false) })
+            {
+                var row = VisualDescendants<Border>(window).Single(border =>
+                    border.Tag is ActiveReminderOccurrenceKey rowKey && rowKey == key);
+                var primaryRow = VisualDescendants<WrapPanel>(row).SingleOrDefault(panel =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(panel),
+                        "ReminderEntryActionsPrimaryRow",
+                        StringComparison.Ordinal));
+                var secondaryRow = VisualDescendants<WrapPanel>(row).SingleOrDefault(panel =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(panel),
+                        "ReminderEntryActionsSecondaryRow",
+                        StringComparison.Ordinal));
+                var customRow = VisualDescendants<WrapPanel>(row).SingleOrDefault(panel =>
+                    VisualDescendants<DatePicker>(panel).Any());
+                if (primaryRow is null || secondaryRow is null || customRow is null)
+                {
+                    return false;
+                }
+
+                var acknowledge = FindEntryButton(row, "知道了：");
+                var snooze = FindEntryButton(row, "稍后提醒：");
+                var openSource = FindEntryButton(row, "打开");
+                var complete = VisualDescendants<Button>(row).SingleOrDefault(button =>
+                    AutomationProperties.GetName(button).StartsWith("完成便签：", StringComparison.Ordinal));
+                var snoozeChoice = VisualDescendants<ComboBox>(row).Single(comboBox =>
+                    AutomationProperties.GetName(comboBox).StartsWith("稍后提醒时间：", StringComparison.Ordinal));
+                if (acknowledge is null ||
+                    snooze is null ||
+                    openSource is null ||
+                    !ButtonHasIconAndText(acknowledge, "知道了") ||
+                    !ButtonHasIconAndText(snooze, "稍后提醒") ||
+                    !ButtonHasIconAndText(openSource, "打开来源") ||
+                    expectComplete != (complete is not null))
+                {
+                    return false;
+                }
+
+                if (complete is not null && !ButtonHasIconAndText(complete, "完成便签"))
+                {
+                    return false;
+                }
+
+                var primaryChildren = primaryRow.Children.Cast<UIElement>().ToArray();
+                var secondaryChildren = secondaryRow.Children.Cast<UIElement>().ToArray();
+                var snoozeFrame = primaryChildren.Length == 3
+                    ? primaryChildren[1] as Grid
+                    : null;
+                var primaryOrderMatches =
+                    primaryChildren.Length == 3 &&
+                    ReferenceEquals(primaryChildren[0], acknowledge) &&
+                    snoozeFrame is not null &&
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(snoozeFrame),
+                        "ReminderEntrySnoozeChoiceFrame",
+                        StringComparison.Ordinal) &&
+                    snoozeFrame.Children.Contains(snoozeChoice) &&
+                    snoozeFrame.Children.OfType<Grid>().Any(icon =>
+                        !icon.IsHitTestVisible &&
+                        VisualDescendants<System.Windows.Shapes.Ellipse>(icon).Any()) &&
+                    ReferenceEquals(primaryChildren[2], snooze);
+                var secondaryOrderMatches = expectComplete
+                    ? secondaryChildren.Length == 2 &&
+                      ReferenceEquals(secondaryChildren[0], complete) &&
+                      ReferenceEquals(secondaryChildren[1], openSource)
+                    : secondaryChildren.Length == 1 &&
+                      ReferenceEquals(secondaryChildren[0], openSource);
+                if (!primaryOrderMatches ||
+                    !secondaryOrderMatches ||
+                    secondaryRow.HorizontalAlignment != HorizontalAlignment.Center ||
+                    ReferenceEquals(customRow.Parent, primaryRow) ||
+                    ReferenceEquals(customRow.Parent, secondaryRow))
+                {
+                    return false;
+                }
+
+                if (primaryRow.Parent is not Panel content ||
+                    content.Children.IndexOf(primaryRow) < 0 ||
+                    content.Children.IndexOf(secondaryRow) <= content.Children.IndexOf(primaryRow) ||
+                    content.Children.IndexOf(customRow) <= content.Children.IndexOf(secondaryRow))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
         finally
         {
@@ -517,6 +587,148 @@ internal static class ValidationExercises
             }
         }
     }
+
+    public static bool ProbeReminderCenterEntryVisualIdentity()
+    {
+        var noteKey = new ActiveReminderOccurrenceKey(
+            "identity-note-rule",
+            new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+        var countdownKey = new ActiveReminderOccurrenceKey(
+            "identity-countdown-rule",
+            new DateTimeOffset(2031, 4, 5, 2, 0, 0, TimeSpan.Zero));
+        var window = new ReminderCenterWindow();
+        PrepareOffscreenValidationWindow(window);
+        window.AddEntry(new ReminderCenterItem(
+            noteKey,
+            new NoteRecord(
+                "identity-note",
+                "视觉标识探针便签",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        window.AddEntry(new ReminderCenterItem(
+            countdownKey,
+            new CountdownReminderSource(new CountdownRecord(
+                "identity-countdown",
+                "视觉标识探针倒计时",
+                new DateTimeOffset(2031, 5, 1, 0, 0, 0, TimeSpan.Zero),
+                Array.Empty<string>())),
+            1,
+            0));
+        try
+        {
+            window.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            window.UpdateLayout();
+            var warningTint = Application.Current.FindResource("WarningTintBrush");
+            var warningAccent = Application.Current.FindResource("WarningAccentBrush");
+            var reminderCard = Application.Current.FindResource("ReminderCardBrush");
+            var reminderPage = Application.Current.FindResource("ReminderPageBrush");
+            var sourceNoteIcon = Application.Current.FindResource("SourceNoteIconBrush");
+            var pinkTintSoft = Application.Current.FindResource("PinkTintSoftBrush");
+            var panelBrush = Application.Current.FindResource("PanelBrush");
+            var inkBrush = Application.Current.FindResource("InkBrush");
+            if (window.Content is not Border surface ||
+                !ReferenceEquals(surface.Background, reminderPage))
+            {
+                return false;
+            }
+
+            foreach (var (key, isCountdown) in new[] { (noteKey, false), (countdownKey, true) })
+            {
+                var row = VisualDescendants<Border>(window).Single(border =>
+                    border.Tag is ActiveReminderOccurrenceKey rowKey && rowKey == key);
+                if (!ReferenceEquals(row.Background, reminderCard))
+                {
+                    return false;
+                }
+
+                var badge = VisualDescendants<Border>(row).SingleOrDefault(border =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(border),
+                        "ReminderEntryPendingBadge",
+                        StringComparison.Ordinal));
+                var badgeText = badge is null
+                    ? null
+                    : VisualDescendants<TextBlock>(badge).SingleOrDefault(text =>
+                        string.Equals(text.Text, "待处理", StringComparison.Ordinal));
+                if (badge is null ||
+                    badge.Focusable ||
+                    !ReferenceEquals(badge.Background, warningTint) ||
+                    badgeText is null ||
+                    !ReferenceEquals(badgeText.Foreground, warningAccent))
+                {
+                    return false;
+                }
+
+                var iconBlock = VisualDescendants<Border>(row).SingleOrDefault(border =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(border),
+                        "ReminderEntrySourceIcon",
+                        StringComparison.Ordinal));
+                var expectedIconBrush = isCountdown ? pinkTintSoft : sourceNoteIcon;
+                if (iconBlock is null ||
+                    iconBlock.Focusable ||
+                    !ReferenceEquals(iconBlock.Background, expectedIconBrush))
+                {
+                    return false;
+                }
+
+                var scheduledText = VisualDescendants<TextBlock>(row).Single(text =>
+                    text.Text.StartsWith("计划：", StringComparison.Ordinal));
+                var scheduledRow = scheduledText.Parent as StackPanel;
+                var scheduledClock = scheduledRow is not null &&
+                    VisualDescendants<System.Windows.Shapes.Ellipse>(scheduledRow).Any();
+                var divider = VisualDescendants<Border>(row).Any(border =>
+                    border.Child is null &&
+                    Math.Abs(border.Height - 1) < 0.01);
+                var snoozeFrame = VisualDescendants<Grid>(row).SingleOrDefault(grid =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(grid),
+                        "ReminderEntrySnoozeChoiceFrame",
+                        StringComparison.Ordinal));
+                var snoozeChoice = VisualDescendants<ComboBox>(row).Single(comboBox =>
+                    AutomationProperties.GetName(comboBox).StartsWith("稍后提醒时间：", StringComparison.Ordinal));
+                var snoozeChoiceFrameMatches =
+                    snoozeFrame is not null &&
+                    !snoozeFrame.Focusable &&
+                    snoozeFrame.Children.Contains(snoozeChoice) &&
+                    ReferenceEquals(snoozeChoice.Background, panelBrush) &&
+                    snoozeFrame.Children.OfType<Grid>().Any(icon =>
+                        !icon.IsHitTestVisible &&
+                        VisualDescendants<System.Windows.Shapes.Ellipse>(icon).Any(ring =>
+                            ReferenceEquals(ring.Stroke, inkBrush)));
+                if (!scheduledClock || !divider || !snoozeChoiceFrameMatches)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            if (!window.Dispatcher.HasShutdownStarted)
+            {
+                window.Close();
+            }
+        }
+    }
+
+    private static Button? FindEntryButton(DependencyObject row, string accessibleNamePrefix) =>
+        VisualDescendants<Button>(row).SingleOrDefault(button =>
+            AutomationProperties.GetName(button).StartsWith(accessibleNamePrefix, StringComparison.Ordinal));
+
+    private static bool ButtonHasIconAndText(Button button, string text) =>
+        button.Content is StackPanel panel &&
+        panel.Children.Count == 2 &&
+        panel.Children[0] is FrameworkElement icon &&
+        icon is not TextBlock &&
+        panel.Children[1] is TextBlock label &&
+        string.Equals(label.Text, text, StringComparison.Ordinal);
 
     public static bool ProbeFivePopupsUseInstantAnimation(MainWindow main)
     {
@@ -1198,6 +1410,7 @@ internal static class ValidationExercises
             }
 
             floating.ShowWorkspace(WorkspaceKind.Notes);
+            floating.SetQuickAddExpanded(true);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             floating.UpdateLayout();
             var entry = (FrameworkElement)floating.FindName("FloatingNoteEntry");
@@ -1659,7 +1872,7 @@ internal static class ValidationExercises
                 VisualDescendants<TextBlock>(center).Any(text =>
                     string.Equals(text.Text, countdown.Name, StringComparison.Ordinal)) &&
                 VisualDescendants<Button>(center).All(button =>
-                    !string.Equals(button.Content?.ToString(), "完成便签", StringComparison.Ordinal)),
+                    !AutomationProperties.GetName(button).StartsWith("完成便签：", StringComparison.Ordinal)),
                 "倒计时 occurrence 未进入只含安全动作的提醒中心。");
 
             var movedTargetUtc = targetUtc.AddHours(1);
@@ -2547,6 +2760,197 @@ internal static class ValidationExercises
                 coordinator.ActiveWindowCount == 0,
                 "提醒中心稍后点击没有持久化覆盖并关闭空中心。");
             return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static ReminderCenterAcknowledgeAllExerciseResult RunReminderCenterAcknowledgeAllBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 8, 20, 1, 30, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-acknowledge-all-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            var saved = true;
+            foreach (var text in new[] { "批量已读探针甲", "批量已读探针乙", "批量已读探针丙" })
+            {
+                saved &= session.TrySaveNote(
+                    null,
+                    text,
+                    new DateTime(2036, 8, 20),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(dueUtc),
+                    out _);
+            }
+
+            if (!saved || session.Current.Notes.Count != 3)
+            {
+                return ReminderCenterAcknowledgeAllExerciseResult.Failed;
+            }
+
+            var notes = session.Current.Notes.ToArray();
+            var rules = notes.Select(note => note.ReminderRules.Single()).ToArray();
+            var keys = rules
+                .Select(rule => new ActiveReminderOccurrenceKey(rule.Id, dueUtc))
+                .ToArray();
+            var occurrenceKeys = rules
+                .Select(rule => ReminderOccurrenceKey.Create(rule, dueUtc).ToString())
+                .ToArray();
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow;
+            center?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            if (center is null ||
+                coordinator.ActiveEntryCount != 3 ||
+                keys.Any(key => !center.IsAcknowledgeEnabled(key)) ||
+                !center.IsAcknowledgeAllEnabled)
+            {
+                return ReminderCenterAcknowledgeAllExerciseResult.Failed;
+            }
+
+            // 第一条走逐条「知道了」作为语义对照，其余两条走头部「全部已读」。
+            var singleAcknowledged = center.RequestAcknowledgement(keys[0]);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var commitCount = 0;
+            EventHandler countCommit = (_, _) => commitCount++;
+            session.StateChanged += countCommit;
+            var batchRaised = center.RequestAcknowledgeAll();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            session.StateChanged -= countCommit;
+            var persisted = new SettingsStore(clock: clock).Load(settingsPath).Settings;
+            var dispositionKeysMatch = true;
+            for (var index = 0; index < rules.Length; index++)
+            {
+                dispositionKeysMatch &=
+                    string.Equals(
+                        session.Current.ReminderStates[rules[index].Id].LastDispositionOccurrenceKey,
+                        occurrenceKeys[index],
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        persisted.ReminderStates[rules[index].Id].LastDispositionOccurrenceKey,
+                        occurrenceKeys[index],
+                        StringComparison.Ordinal);
+            }
+
+            var writesAllDispositions =
+                singleAcknowledged &&
+                batchRaised &&
+                dispositionKeysMatch &&
+                coordinator.ActiveEntryCount == 0 &&
+                !center.IsVisible;
+            var matchesSingleSemantics =
+                dispositionKeysMatch &&
+                commitCount == 1 &&
+                session.Reminders.GetDueOccurrences(session.Current, dueUtc).Count == 0;
+
+            var failDueUtc = dueUtc.AddMinutes(30);
+            var failureSaved =
+                session.TrySaveNote(
+                    null,
+                    "批量失败探针丁",
+                    new DateTime(2036, 8, 20),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(failDueUtc),
+                    out _) &&
+                session.TrySaveNote(
+                    null,
+                    "批量失败探针戊",
+                    new DateTime(2036, 8, 20),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(failDueUtc),
+                    out _);
+            clock.UtcNow = failDueUtc;
+            coordinator.Tick(failDueUtc);
+            var failureCenter = coordinator.ActiveWindow;
+            failureCenter?.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var failureRules = session.Current.Notes
+                .Skip(notes.Length)
+                .Select(note => note.ReminderRules.Single())
+                .ToArray();
+            var failureKeys = failureRules
+                .Select(rule => new ActiveReminderOccurrenceKey(rule.Id, failDueUtc))
+                .ToArray();
+            if (!failureSaved ||
+                failureCenter is null ||
+                coordinator.ActiveEntryCount != 2 ||
+                failureKeys.Any(key => !failureCenter.IsAcknowledgeEnabled(key)) ||
+                !failureCenter.IsAcknowledgeAllEnabled)
+            {
+                return new ReminderCenterAcknowledgeAllExerciseResult(
+                    writesAllDispositions,
+                    matchesSingleSemantics,
+                    false,
+                    false);
+            }
+
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            var beforeFailure = session.SerializeCurrent();
+            var failureRaised = failureCenter.RequestAcknowledgeAll();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var diskDuringFailure = new SettingsStore(clock: clock).Load(settingsPath).Settings;
+            var failureRetainsAllAtomically =
+                failureRaised &&
+                coordinator.ActiveEntryCount == 2 &&
+                failureKeys.All(key => failureCenter.IsFailureVisible(key)) &&
+                failureKeys.All(key => !failureCenter.IsAcknowledgeEnabled(key)) &&
+                failureKeys.All(key => failureCenter.IsOpenSourceEnabled(key)) &&
+                !failureCenter.IsAcknowledgeAllEnabled &&
+                string.Equals(beforeFailure, session.SerializeCurrent(), StringComparison.Ordinal) &&
+                failureRules.All(rule =>
+                    session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey is null &&
+                    diskDuringFailure.ReminderStates[rule.Id].LastDispositionOccurrenceKey is null);
+
+            clock.UtcNow = failDueUtc.AddSeconds(4);
+            coordinator.Tick(clock.UtcNow);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var noEarlyRetry =
+                coordinator.ActiveEntryCount == 2 &&
+                failureKeys.All(key => failureCenter.IsFailureVisible(key));
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            clock.UtcNow = failDueUtc.AddSeconds(5);
+            coordinator.Tick(clock.UtcNow);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var failureOccurrenceKeys = failureRules
+                .Select(rule => ReminderOccurrenceKey.Create(rule, failDueUtc).ToString())
+                .ToArray();
+            var persistedAfterRetry = new SettingsStore(clock: clock).Load(settingsPath).Settings;
+            var backoffRetryCompletesBatch =
+                noEarlyRetry &&
+                coordinator.ActiveEntryCount == 0 &&
+                !failureCenter.IsVisible &&
+                failureRules
+                    .Select((rule, index) => (rule, index))
+                    .All(pair =>
+                        string.Equals(
+                            session.Current.ReminderStates[pair.rule.Id].LastDispositionOccurrenceKey,
+                            failureOccurrenceKeys[pair.index],
+                            StringComparison.Ordinal) &&
+                        string.Equals(
+                            persistedAfterRetry.ReminderStates[pair.rule.Id].LastDispositionOccurrenceKey,
+                            failureOccurrenceKeys[pair.index],
+                            StringComparison.Ordinal));
+
+            return new ReminderCenterAcknowledgeAllExerciseResult(
+                writesAllDispositions,
+                matchesSingleSemantics,
+                failureRetainsAllAtomically,
+                backoffRetryCompletesBatch);
         }
         finally
         {
@@ -3630,16 +4034,20 @@ internal static class ValidationExercises
             main.Show();
             main.ShowWorkspace(WorkspaceKind.Notes);
             WindowValidationInput.Pump(main.Dispatcher);
+            var completedSegment = (ToggleButton)main.FindName("CompletedNotesSegment");
+            completedSegment.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            FindNoteDateDisclosure(main, noteGamma.Date, isCompleted: true)
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             FindNoteDateDisclosure(main, noteAlpha.Date, isCompleted: false)
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            var activeToggle = (Button)main.FindName("ToggleActiveNotes");
-            activeToggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
             Must(
-                NoteStatusSectionIsCollapsed(main, false) &&
+                NoteStatusSectionIsShown(main, true) &&
+                NoteStatusSectionIsHidden(main, false) &&
+                !NoteDateSectionIsExpanded(main, noteGamma.Date, true) &&
                 !NoteDateSectionIsExpanded(main, noteAlpha.Date, false) &&
-                main.CompletedNotesAreCollapsed,
-                "初始分组收放状态未建立。");
+                !main.CompletedNotesAreCollapsed,
+                "初始分段与分组收放状态未建立。");
 
             clock.UtcNow = dueUtc;
             coordinator.Tick(dueUtc);
@@ -3655,21 +4063,23 @@ internal static class ValidationExercises
             Must(
                 main.CurrentWorkspace == WorkspaceKind.Notes &&
                 NoteReminderHighlightVisible(main, noteAlpha) &&
-                NoteStatusSectionIsExpanded(main, false) &&
+                NoteStatusSectionIsShown(main, false) &&
+                NoteStatusSectionIsHidden(main, true) &&
                 NoteDateSectionIsExpanded(main, noteAlpha.Date, false) &&
                 Keyboard.FocusedElement is Button { Tag: string focusedNote } &&
                 string.Equals(focusedNote, noteAlpha.Id, StringComparison.OrdinalIgnoreCase),
-                "打开来源应临时揭示、高亮并聚焦来源便签。");
+                "打开来源应临时切换分段、揭示、高亮并聚焦来源便签。");
 
             clock.UtcNow = dueUtc.AddMinutes(1);
             main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
             WindowValidationInput.Pump(main.Dispatcher);
             Must(
-                NoteStatusSectionIsCollapsed(main, false) &&
+                NoteStatusSectionIsShown(main, true) &&
+                NoteStatusSectionIsHidden(main, false) &&
                 !NoteDateSectionIsExpanded(main, noteAlpha.Date, false) &&
-                main.CompletedNotesAreCollapsed &&
+                !NoteDateSectionIsExpanded(main, noteGamma.Date, true) &&
                 !NoteReminderHighlightVisible(main, noteAlpha),
-                "重渲染后来源揭示应还原为用户保持的分组收放状态。");
+                "重渲染后来源揭示应还原为用户保持的分段与分组收放状态。");
 
             Must(
                 main.OpenReminderSource(ReminderSourceKind.Note, noteGamma.Id),
@@ -3677,26 +4087,26 @@ internal static class ValidationExercises
             WindowValidationInput.Pump(main.Dispatcher);
             Must(
                 NoteReminderHighlightVisible(main, noteGamma) &&
-                NoteStatusSectionIsExpanded(main, true) &&
-                main.CompletedNotesAreCollapsed,
-                "已完成便签来源应临时揭示且不改写持久收放状态。");
+                NoteStatusSectionIsShown(main, true) &&
+                NoteStatusSectionIsHidden(main, false) &&
+                NoteDateSectionIsExpanded(main, noteGamma.Date, true),
+                "已完成便签来源应临时揭示且不改写持久分段状态。");
 
             clock.UtcNow = clock.UtcNow.AddMinutes(1);
             main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
             WindowValidationInput.Pump(main.Dispatcher);
             Must(
-                NoteStatusSectionIsCollapsed(main, true) &&
-                main.CompletedNotesAreCollapsed &&
+                NoteStatusSectionIsShown(main, true) &&
+                !NoteDateSectionIsExpanded(main, noteGamma.Date, true) &&
                 !NoteReminderHighlightVisible(main, noteGamma),
-                "重渲染后已完成组应恢复收起。");
+                "重渲染后已完成日期分组应恢复收起。");
 
             Must(center.RequestOpenSource(keyCountdown), "未接受倒计时来源打开请求。");
             WindowValidationInput.Pump(main.Dispatcher);
             Must(
                 main.CurrentWorkspace == WorkspaceKind.Countdowns &&
-                NoteStatusSectionIsCollapsed(main, false) &&
-                main.CompletedNotesAreCollapsed,
-                "倒计时来源路径不应影响便签分组收放。");
+                NoteStatusSectionIsHidden(main, false),
+                "倒计时来源路径不应影响便签分段状态。");
             return true;
         }
         finally
@@ -3800,20 +4210,18 @@ internal static class ValidationExercises
         AutomationProperties.GetName(FindNoteDateDisclosure(main, noteDate, isCompleted))
             ?.Contains("当前展开", StringComparison.Ordinal) == true;
 
-    private static bool NoteStatusSectionIsExpanded(MainWindow main, bool isCompleted)
+    private static bool NoteStatusSectionIsShown(MainWindow main, bool isCompleted)
     {
         var rows = (StackPanel)main.FindName(isCompleted ? "CompletedNoteRows" : "ActiveNoteRows");
-        var toggle = (Button)main.FindName(isCompleted ? "ToggleCompletedNotes" : "ToggleActiveNotes");
-        return rows.Visibility == Visibility.Visible &&
-            AutomationProperties.GetName(toggle)?.Contains("当前展开", StringComparison.Ordinal) == true;
+        var segment = (ToggleButton)main.FindName(isCompleted ? "CompletedNotesSegment" : "ActiveNotesSegment");
+        return rows.Visibility == Visibility.Visible && segment.IsChecked == true;
     }
 
-    private static bool NoteStatusSectionIsCollapsed(MainWindow main, bool isCompleted)
+    private static bool NoteStatusSectionIsHidden(MainWindow main, bool isCompleted)
     {
         var rows = (StackPanel)main.FindName(isCompleted ? "CompletedNoteRows" : "ActiveNoteRows");
-        var toggle = (Button)main.FindName(isCompleted ? "ToggleCompletedNotes" : "ToggleActiveNotes");
-        return rows.Visibility == Visibility.Collapsed &&
-            AutomationProperties.GetName(toggle)?.Contains("当前收起", StringComparison.Ordinal) == true;
+        var segment = (ToggleButton)main.FindName(isCompleted ? "CompletedNotesSegment" : "ActiveNotesSegment");
+        return rows.Visibility == Visibility.Collapsed && segment.IsChecked != true;
     }
 
     private static bool NoteReminderHighlightVisible(MainWindow main, NoteRecord note) =>
@@ -6459,7 +6867,7 @@ internal static class ValidationExercises
             input.EmptyStatesDistinguished,
             input.PointerResetRestoresResults,
             input.KeyboardResetRestoresResults,
-            input.DayNightTextContrast);
+            input.DayThemeTextContrast);
 
     public static bool RunCountdownEmptyStateGateIsolationBehavior()
     {
@@ -6476,8 +6884,8 @@ internal static class ValidationExercises
             passing with { KeyboardResetRestoresResults = false },
             nameof(CountdownEmptyStateGateResults.KeyboardResetRestoresResults));
         VerifyOnlyCountdownEmptyStateGateFails(
-            passing with { DayNightTextContrast = false },
-            nameof(CountdownEmptyStateGateResults.DayNightTextContrast));
+            passing with { DayThemeTextContrast = false },
+            nameof(CountdownEmptyStateGateResults.DayThemeTextContrast));
         return true;
     }
 
@@ -6485,7 +6893,7 @@ internal static class ValidationExercises
         NoteVisualTokenGateInputs input) =>
         new(
             input.CompactInputPaddingAligned,
-            input.StatusCountsUseMutedToken,
+            input.BadgeTokensFollowState,
             input.EmptyStateTextContrast);
 
     public static bool RunNoteVisualTokenGateIsolationBehavior()
@@ -6497,8 +6905,8 @@ internal static class ValidationExercises
             passing with { CompactInputPaddingAligned = false },
             nameof(NoteVisualTokenGateResults.CompactInputPaddingAligned));
         VerifyOnlyNoteVisualTokenGateFails(
-            passing with { StatusCountsUseMutedToken = false },
-            nameof(NoteVisualTokenGateResults.StatusCountsUseMutedToken));
+            passing with { BadgeTokensFollowState = false },
+            nameof(NoteVisualTokenGateResults.BadgeTokensFollowState));
         VerifyOnlyNoteVisualTokenGateFails(
             passing with { EmptyStateTextContrast = false },
             nameof(NoteVisualTokenGateResults.EmptyStateTextContrast));
@@ -6889,7 +7297,7 @@ internal static class ValidationExercises
     public static bool RunCountdownIncrementalRefreshGateIsolationBehavior()
     {
         var passing = new CountdownIncrementalRefreshGateResults(
-            true, true, true, true, true, true, true, true, true, true, true);
+            true, true, true, true, true, true, true, true, true, true);
         Must(passing.AllPassed, "倒计时增量刷新全通过夹具被错误拒绝。");
         VerifyOnlyCountdownIncrementalGateFails(
             passing with { IdentityPreserved = false },
@@ -6912,9 +7320,6 @@ internal static class ValidationExercises
         VerifyOnlyCountdownIncrementalGateFails(
             passing with { PrecisionChangeRebuilt = false },
             nameof(CountdownIncrementalRefreshGateResults.PrecisionChangeRebuilt));
-        VerifyOnlyCountdownIncrementalGateFails(
-            passing with { ThemeChangeRebuilt = false },
-            nameof(CountdownIncrementalRefreshGateResults.ThemeChangeRebuilt));
         VerifyOnlyCountdownIncrementalGateFails(
             passing with { ExpiryChangeRebuilt = false },
             nameof(CountdownIncrementalRefreshGateResults.ExpiryChangeRebuilt));
@@ -7036,7 +7441,7 @@ internal static class ValidationExercises
         var expectedCommands = new[]
         {
             "CountdownsWorkspace", "Filter", "Minimize", "NotesWorkspace",
-            "SaveCountdown", "SavePreferences", "TagManager", "Theme"
+            "SaveCountdown", "SavePreferences", "TagManager"
         };
         var passingCommands = expectedCommands.ToDictionary(
             command => command,
@@ -7085,7 +7490,7 @@ internal static class ValidationExercises
         var expected = input.ExpectedCommands.Order(StringComparer.Ordinal).ToArray();
         var observed = input.ObservedCommands.Keys.Order(StringComparer.Ordinal).ToArray();
         return new MainShortcutGateResults(
-            expected.Length == 8 &&
+            expected.Length == 7 &&
                 observed.SequenceEqual(expected, StringComparer.Ordinal) &&
                 input.ObservedCommands.Values.All(value => value),
             input.TextInputPreserved,
@@ -7102,12 +7507,11 @@ internal static class ValidationExercises
         new(
             input.WorkspaceAnnouncements,
             input.FilterResultAnnouncement,
-            input.EmptyStateAnnouncements,
-            input.ThemeAnnouncements);
+            input.EmptyStateAnnouncements);
 
     public static bool RunMainStructuralAnnouncementGateIsolationBehavior()
     {
-        var passing = new MainStructuralAnnouncementGateInputs(true, true, true, true);
+        var passing = new MainStructuralAnnouncementGateInputs(true, true, true);
         Must(
             EvaluateMainStructuralAnnouncementGates(passing).AllPassed,
             "主窗口结构变化通知全通过夹具被错误拒绝。");
@@ -7120,9 +7524,6 @@ internal static class ValidationExercises
         VerifyOnlyMainStructuralAnnouncementGateFails(
             passing with { EmptyStateAnnouncements = false },
             nameof(MainStructuralAnnouncementGateResults.EmptyStateAnnouncements));
-        VerifyOnlyMainStructuralAnnouncementGateFails(
-            passing with { ThemeAnnouncements = false },
-            nameof(MainStructuralAnnouncementGateResults.ThemeAnnouncements));
         return true;
     }
 
@@ -7652,7 +8053,6 @@ internal static class ValidationExercises
             StringComparer.Ordinal);
         Must(
             new FloatingQuickAddThemeProbeResult(
-                ApplicationThemeMode.Day,
                 passingChecks,
                 Array.Empty<FloatingQuickAddThemeProbeDiagnostic>()).Passed,
             "悬浮窗快速新增局部主题全通过夹具被错误拒绝。");
@@ -7664,7 +8064,6 @@ internal static class ValidationExercises
                 [target] = false
             };
             var result = new FloatingQuickAddThemeProbeResult(
-                ApplicationThemeMode.Night,
                 failingChecks,
                 [new FloatingQuickAddThemeProbeDiagnostic(
                     target,
@@ -7691,29 +8090,24 @@ internal static class ValidationExercises
 
     public static bool RunFloatingQuickAddPaletteBindingIsolationBehavior()
     {
-        var day = FloatingQuickAddPaletteBindings.Expected(ApplicationThemeMode.Day);
+        var day = FloatingQuickAddPaletteBindings.Expected();
         Must(
             FloatingQuickAddPaletteBindings.Evaluate(day).Passed,
             "悬浮窗快速新增日间 palette 固定映射未通过。");
 
-        var night = FloatingQuickAddPaletteBindings.Expected(ApplicationThemeMode.Night);
-        Must(
-            FloatingQuickAddPaletteBindings.Evaluate(night).Passed,
-            "悬浮窗快速新增夜间 palette 固定映射未通过。");
-
-        var historicalNightMiswirings = new[]
+        var historicalMiswirings = new[]
         {
             (
-                Mapping: night with { InputSurfaceResourceKey = "FloatingNightNoteCardBrush" },
+                Mapping: day with { InputSurfaceResourceKey = "FloatingDayErrorBrush" },
                 FailedCheck: nameof(FloatingQuickAddPaletteBindingResult.InputSurfaceMatches)),
             (
-                Mapping: night with { InputTextResourceKey = "FloatingNightTextBrush" },
+                Mapping: day with { InputTextResourceKey = "FloatingDayNoteInputBrush" },
                 FailedCheck: nameof(FloatingQuickAddPaletteBindingResult.InputTextMatches)),
             (
-                Mapping: night with { ErrorTextResourceKey = "FloatingNightHeaderDangerBrush" },
+                Mapping: day with { ErrorTextResourceKey = "FloatingDayNoteInputTextBrush" },
                 FailedCheck: nameof(FloatingQuickAddPaletteBindingResult.ErrorTextMatches))
         };
-        foreach (var fixture in historicalNightMiswirings)
+        foreach (var fixture in historicalMiswirings)
         {
             var failing = FloatingQuickAddPaletteBindings.Evaluate(fixture.Mapping);
             Must(
@@ -7725,96 +8119,27 @@ internal static class ValidationExercises
         return true;
     }
 
-    public static FloatingNightPlushEdgeGateResults EvaluateFloatingNightPlushEdgeGlow(
-        FloatingNightPlushEdgeGateInputs input) =>
-        new(
-            input.HasThreeRoleSamples &&
-                input.MaximumBrightnessSignal <= FloatingNightPlushEdgeBrightnessLimit,
-            input.HasThreeRoleSamples &&
-                input.MaximumSaturation <= FloatingNightPlushEdgeSaturationLimit);
-
-    public static bool RunFloatingNightPlushEdgeGlowGateIsolationBehavior()
-    {
-        var passing = new FloatingNightPlushEdgeGateInputs(0.006, 0.20, true);
-        var passingResult = EvaluateFloatingNightPlushEdgeGlow(passing);
-        Must(
-            passingResult.BrightnessWithinLimit && passingResult.SaturationWithinLimit,
-            "夜间悬浮窗角色外缘暖光全通过夹具被错误拒绝。");
-
-        var brightResult = EvaluateFloatingNightPlushEdgeGlow(
-            passing with
-            {
-                MaximumBrightnessSignal = FloatingNightPlushEdgeBrightnessLimit + 0.01
-            });
-        Must(
-            !brightResult.BrightnessWithinLimit && brightResult.SaturationWithinLimit,
-            "夜间悬浮窗角色外缘亮度负向夹具未单独变红。");
-
-        var saturatedResult = EvaluateFloatingNightPlushEdgeGlow(
-            passing with
-            {
-                MaximumSaturation = FloatingNightPlushEdgeSaturationLimit + 0.01
-            });
-        Must(
-            saturatedResult.BrightnessWithinLimit && !saturatedResult.SaturationWithinLimit,
-            "夜间悬浮窗角色外缘饱和度负向夹具未单独变红。");
-
-        return true;
-    }
-
     public static FloatingPrimaryCountdownContrastGateResults EvaluateFloatingPrimaryCountdownContrastGates(
         FloatingPrimaryCountdownContrastGateInputs input) =>
         new(
-            input.ContrastRatios.Count == 2 && input.ContrastRatios.All(ratio => ratio >= 4.5),
+            input.ContrastRatios.Count == 1 && input.ContrastRatios.All(ratio => ratio >= 3),
             input.AccentSeparatedFromPlushGlow);
 
     public static bool RunFloatingPrimaryCountdownContrastGateIsolationBehavior()
     {
-        static double ContrastRatio(
-            (byte Red, byte Green, byte Blue) first,
-            (byte Red, byte Green, byte Blue) second)
-        {
-            static double Luminance((byte Red, byte Green, byte Blue) color)
-            {
-                static double Channel(byte value)
-                {
-                    var normalized = value / 255d;
-                    return normalized <= 0.04045
-                        ? normalized / 12.92
-                        : Math.Pow((normalized + 0.055) / 1.055, 2.4);
-                }
-
-                return (0.2126 * Channel(color.Red)) +
-                    (0.7152 * Channel(color.Green)) +
-                    (0.0722 * Channel(color.Blue));
-            }
-
-            var firstLuminance = Luminance(first);
-            var secondLuminance = Luminance(second);
-            return (Math.Max(firstLuminance, secondLuminance) + 0.05) /
-                (Math.Min(firstLuminance, secondLuminance) + 0.05);
-        }
-
         var passing = new FloatingPrimaryCountdownContrastGateInputs(
-            new[] { 5.83, 6.12 },
+            new[] { 3.96 },
             true);
         var passingResult = EvaluateFloatingPrimaryCountdownContrastGates(passing);
         Must(
             passingResult.TextContrast && passingResult.AccentSeparatedFromPlushGlow,
             "悬浮窗主倒计时对比度与语义分离全通过夹具被错误拒绝。");
 
-        var legacyNightAccent = EvaluateFloatingPrimaryCountdownContrastGates(
-            passing with
-            {
-                ContrastRatios = new[]
-                {
-                    5.83,
-                    ContrastRatio((0x75, 0x6A, 0x62), (0x49, 0x35, 0x25))
-                }
-            });
+        var lowContrast = EvaluateFloatingPrimaryCountdownContrastGates(
+            passing with { ContrastRatios = new[] { 2.9 } });
         Must(
-            !legacyNightAccent.TextContrast && legacyNightAccent.AccentSeparatedFromPlushGlow,
-            "旧夜间主倒计时强调色负向夹具未单独让对比度门禁变红。");
+            !lowContrast.TextContrast && lowContrast.AccentSeparatedFromPlushGlow,
+            "主倒计时低对比度负向夹具未单独让对比度门禁变红。");
 
         var sharedAccentToken = EvaluateFloatingPrimaryCountdownContrastGates(
             passing with { AccentSeparatedFromPlushGlow = false });
@@ -7825,27 +8150,18 @@ internal static class ValidationExercises
         return true;
     }
 
-    public static NoteCompletedAuxiliaryContrastGateResults EvaluateNoteCompletedAuxiliaryContrastGates(
-        NoteCompletedAuxiliaryContrastGateInputs input) =>
-        new(
-            input.ContrastRatios.Count == 2 && input.ContrastRatios.All(ratio => ratio >= 4.5),
-            input.UsesDedicatedToken,
-            input.ActualBackgroundMatchesHeader,
-            input.MutedBrushUnchanged,
-            input.CompletedHeaderColorUnchanged);
-
     public static AuditContrastGateResults EvaluateAuditContrastGates(AuditContrastGateInputs input) =>
         new(
-            input.SourceLabelRatios.Count == 4 && input.SourceLabelRatios.All(ratio => ratio >= 4.5),
+            input.SourceLabelRatios.Count == 2 && input.SourceLabelRatios.All(ratio => ratio >= 4.5),
             input.SourceUsesInkBrush,
             input.SourceEmphasisPreserved,
             input.DialogRatios.Count == 2 && input.DialogRatios.All(ratio => ratio >= 4.5),
-            input.NightFocusRatios.Count == 3 && input.NightFocusRatios.All(ratio => ratio >= 3));
+            input.FocusRatios.Count == 3 && input.FocusRatios.All(ratio => ratio >= 3));
 
     public static bool RunAuditContrastGateIsolationBehavior()
     {
         var passing = new AuditContrastGateInputs(
-            new[] { 11.49, 11.49, 10.0, 10.0 },
+            new[] { 11.49, 10.0 },
             true,
             true,
             new[] { 6.05, 6.05 },
@@ -7854,11 +8170,11 @@ internal static class ValidationExercises
         Must(passingResult.AllPassed, "审计对比度全通过夹具被错误拒绝。");
 
         var sourceLow = EvaluateAuditContrastGates(
-            passing with { SourceLabelRatios = new[] { 1.90, 11.49, 10.0, 10.0 } });
+            passing with { SourceLabelRatios = new[] { 1.90, 10.0 } });
         Must(
             !sourceLow.SourceLabelContrast &&
             sourceLow.DialogContrast &&
-            sourceLow.NightFocusContrast,
+            sourceLow.FocusContrast,
             "来源标签不达标时未单独触发对比度负向门。");
 
         var dialogLow = EvaluateAuditContrastGates(
@@ -7866,82 +8182,16 @@ internal static class ValidationExercises
         Must(
             dialogLow.SourceLabelContrast &&
             !dialogLow.DialogContrast &&
-            dialogLow.NightFocusContrast,
+            dialogLow.FocusContrast,
             "系统对话框主按钮不达标时未单独触发对比度负向门。");
 
         var focusLow = EvaluateAuditContrastGates(
-            passing with { NightFocusRatios = new[] { 1.90, 8.4, 8.2 } });
+            passing with { FocusRatios = new[] { 1.90, 8.4, 8.2 } });
         Must(
             focusLow.SourceLabelContrast &&
             focusLow.DialogContrast &&
-            !focusLow.NightFocusContrast,
-            "夜间焦点环不达标时未单独触发对比度负向门。");
-
-        return true;
-    }
-
-    public static bool RunNoteCompletedAuxiliaryContrastGateIsolationBehavior()
-    {
-        var passing = new NoteCompletedAuxiliaryContrastGateInputs(
-            new[] { 5.772, 7.466 },
-            true,
-            true,
-            true,
-            true);
-        var passingResult = EvaluateNoteCompletedAuxiliaryContrastGates(passing);
-        Must(
-            passingResult.AllPassed,
-            "已完成便签辅助说明日夜实际背景对比度全通过夹具被错误拒绝。");
-
-        var lowContrastResult = EvaluateNoteCompletedAuxiliaryContrastGates(
-            passing with { ContrastRatios = new[] { 4.34, 7.466 } });
-        Must(
-            !lowContrastResult.TextContrast &&
-            lowContrastResult.UsesDedicatedToken &&
-            lowContrastResult.ActualBackgroundMatchesHeader &&
-            lowContrastResult.MutedBrushUnchanged &&
-            lowContrastResult.CompletedHeaderColorUnchanged,
-            "已完成便签辅助说明 token 改回不达标值时未单独触发对比度负向门。");
-
-        var sharedMutedResult = EvaluateNoteCompletedAuxiliaryContrastGates(
-            passing with { UsesDedicatedToken = false });
-        Must(
-            sharedMutedResult.TextContrast &&
-            !sharedMutedResult.UsesDedicatedToken &&
-            sharedMutedResult.ActualBackgroundMatchesHeader &&
-            sharedMutedResult.MutedBrushUnchanged &&
-            sharedMutedResult.CompletedHeaderColorUnchanged,
-            "已完成便签辅助说明与 MutedBrush 串线时未单独触发语义 token 负向门。");
-
-        var backgroundResult = EvaluateNoteCompletedAuxiliaryContrastGates(
-            passing with { ActualBackgroundMatchesHeader = false });
-        Must(
-            backgroundResult.TextContrast &&
-            backgroundResult.UsesDedicatedToken &&
-            !backgroundResult.ActualBackgroundMatchesHeader &&
-            backgroundResult.MutedBrushUnchanged &&
-            backgroundResult.CompletedHeaderColorUnchanged,
-            "已完成便签辅助说明未对其实际标题背景校验时未单独触发负向门。");
-
-        var mutedChangedResult = EvaluateNoteCompletedAuxiliaryContrastGates(
-            passing with { MutedBrushUnchanged = false });
-        Must(
-            mutedChangedResult.TextContrast &&
-            mutedChangedResult.UsesDedicatedToken &&
-            mutedChangedResult.ActualBackgroundMatchesHeader &&
-            !mutedChangedResult.MutedBrushUnchanged &&
-            mutedChangedResult.CompletedHeaderColorUnchanged,
-            "MutedBrush 改动未单独触发已完成便签辅助说明隔离门。");
-
-        var headerChangedResult = EvaluateNoteCompletedAuxiliaryContrastGates(
-            passing with { CompletedHeaderColorUnchanged = false });
-        Must(
-            headerChangedResult.TextContrast &&
-            headerChangedResult.UsesDedicatedToken &&
-            headerChangedResult.ActualBackgroundMatchesHeader &&
-            headerChangedResult.MutedBrushUnchanged &&
-            !headerChangedResult.CompletedHeaderColorUnchanged,
-            "NoteCompletedHeaderColor 改动未单独触发已完成便签辅助说明隔离门。");
+            !focusLow.FocusContrast,
+            "键盘焦点环不达标时未单独触发对比度负向门。");
 
         return true;
     }
@@ -8018,7 +8268,7 @@ internal static class ValidationExercises
                 input.HoverThumbOpacity > input.NormalThumbOpacity &&
                 input.DragThumbOpacity > input.HoverThumbOpacity &&
                 input.DragThumbOpacity <= 1,
-            input.DayThemeTokensMatch && input.NightThemeTokensMatch,
+            input.ThemeTokensMatch,
             input.NormalDoesNotObscureContent &&
                 input.HoverDoesNotObscureContent &&
                 input.DragDoesNotObscureContent &&
@@ -8037,7 +8287,6 @@ internal static class ValidationExercises
             0.52,
             0.78,
             0.96,
-            true,
             true,
             true,
             true,
@@ -8066,7 +8315,7 @@ internal static class ValidationExercises
             passing with { ContentSafeAreaUnchanged = false },
             nameof(FloatingScrollBarGateResults.ContentRemainsSafe));
         VerifyOnlyFloatingScrollBarGateFails(
-            passing with { NightThemeTokensMatch = false },
+            passing with { ThemeTokensMatch = false },
             nameof(FloatingScrollBarGateResults.UsesWarmThemeTokens));
         VerifyOnlyFloatingScrollBarGateFails(
             passing with { WheelChangesOffset = false },
@@ -8720,15 +8969,6 @@ internal sealed record UiQualityGateInputs(
     bool FloatingNoteInputWraps,
     bool FloatingNoteInputScrolls);
 
-internal sealed record FloatingNightPlushEdgeGateInputs(
-    double MaximumBrightnessSignal,
-    double MaximumSaturation,
-    bool HasThreeRoleSamples);
-
-internal sealed record FloatingNightPlushEdgeGateResults(
-    bool BrightnessWithinLimit,
-    bool SaturationWithinLimit);
-
 internal sealed record FloatingPrimaryCountdownContrastGateInputs(
     IReadOnlyList<double> ContrastRatios,
     bool AccentSeparatedFromPlushGlow);
@@ -8742,43 +8982,21 @@ internal sealed record AuditContrastGateInputs(
     bool SourceUsesInkBrush,
     bool SourceEmphasisPreserved,
     IReadOnlyList<double> DialogRatios,
-    IReadOnlyList<double> NightFocusRatios);
+    IReadOnlyList<double> FocusRatios);
 
 internal sealed record AuditContrastGateResults(
     bool SourceLabelContrast,
     bool SourceUsesInkBrush,
     bool SourceEmphasisPreserved,
     bool DialogContrast,
-    bool NightFocusContrast)
+    bool FocusContrast)
 {
     public bool AllPassed =>
         SourceLabelContrast &&
         SourceUsesInkBrush &&
         SourceEmphasisPreserved &&
         DialogContrast &&
-        NightFocusContrast;
-}
-
-internal sealed record NoteCompletedAuxiliaryContrastGateInputs(
-    IReadOnlyList<double> ContrastRatios,
-    bool UsesDedicatedToken,
-    bool ActualBackgroundMatchesHeader,
-    bool MutedBrushUnchanged,
-    bool CompletedHeaderColorUnchanged);
-
-internal sealed record NoteCompletedAuxiliaryContrastGateResults(
-    bool TextContrast,
-    bool UsesDedicatedToken,
-    bool ActualBackgroundMatchesHeader,
-    bool MutedBrushUnchanged,
-    bool CompletedHeaderColorUnchanged)
-{
-    public bool AllPassed =>
-        TextContrast &&
-        UsesDedicatedToken &&
-        ActualBackgroundMatchesHeader &&
-        MutedBrushUnchanged &&
-        CompletedHeaderColorUnchanged;
+        FocusContrast;
 }
 
 internal sealed record FloatingReferenceManifestGateInputs(
@@ -8991,7 +9209,6 @@ internal sealed record CountdownIncrementalRefreshGateResults(
     bool CollectionChangeRebuilt,
     bool FilterChangeRebuilt,
     bool PrecisionChangeRebuilt,
-    bool ThemeChangeRebuilt,
     bool ExpiryChangeRebuilt,
     bool ExpiryBackgroundFlipped,
     bool ExpiryRemainingTextFlipped)
@@ -9010,7 +9227,6 @@ internal sealed record CountdownIncrementalRefreshGateResults(
         (nameof(CollectionChangeRebuilt), CollectionChangeRebuilt),
         (nameof(FilterChangeRebuilt), FilterChangeRebuilt),
         (nameof(PrecisionChangeRebuilt), PrecisionChangeRebuilt),
-        (nameof(ThemeChangeRebuilt), ThemeChangeRebuilt),
         (nameof(ExpiryChangeRebuilt), ExpiryChangeRebuilt),
         (nameof(ExpiryBackgroundFlipped), ExpiryBackgroundFlipped),
         (nameof(ExpiryRemainingTextFlipped), ExpiryRemainingTextFlipped)
@@ -9136,14 +9352,12 @@ internal sealed record MainKeyboardNavigationGateResults(
 internal sealed record MainStructuralAnnouncementGateInputs(
     bool WorkspaceAnnouncements,
     bool FilterResultAnnouncement,
-    bool EmptyStateAnnouncements,
-    bool ThemeAnnouncements);
+    bool EmptyStateAnnouncements);
 
 internal sealed record MainStructuralAnnouncementGateResults(
     bool WorkspaceAnnouncements,
     bool FilterResultAnnouncement,
-    bool EmptyStateAnnouncements,
-    bool ThemeAnnouncements)
+    bool EmptyStateAnnouncements)
 {
     public bool AllPassed => FailedChecks.Count == 0;
 
@@ -9151,8 +9365,7 @@ internal sealed record MainStructuralAnnouncementGateResults(
     {
         (nameof(WorkspaceAnnouncements), WorkspaceAnnouncements),
         (nameof(FilterResultAnnouncement), FilterResultAnnouncement),
-        (nameof(EmptyStateAnnouncements), EmptyStateAnnouncements),
-        (nameof(ThemeAnnouncements), ThemeAnnouncements)
+        (nameof(EmptyStateAnnouncements), EmptyStateAnnouncements)
     }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
 }
 
@@ -9166,8 +9379,7 @@ internal sealed record FloatingScrollBarGateInputs(
     double NormalThumbOpacity,
     double HoverThumbOpacity,
     double DragThumbOpacity,
-    bool DayThemeTokensMatch,
-    bool NightThemeTokensMatch,
+    bool ThemeTokensMatch,
     bool NormalDoesNotObscureContent,
     bool HoverDoesNotObscureContent,
     bool DragDoesNotObscureContent,
@@ -9233,13 +9445,13 @@ internal sealed record CountdownEmptyStateGateInputs(
     bool EmptyStatesDistinguished,
     bool PointerResetRestoresResults,
     bool KeyboardResetRestoresResults,
-    bool DayNightTextContrast);
+    bool DayThemeTextContrast);
 
 internal sealed record CountdownEmptyStateGateResults(
     bool EmptyStatesDistinguished,
     bool PointerResetRestoresResults,
     bool KeyboardResetRestoresResults,
-    bool DayNightTextContrast)
+    bool DayThemeTextContrast)
 {
     public bool AllPassed => AsDictionary().Values.All(value => value);
 
@@ -9249,18 +9461,18 @@ internal sealed record CountdownEmptyStateGateResults(
             [nameof(EmptyStatesDistinguished)] = EmptyStatesDistinguished,
             [nameof(PointerResetRestoresResults)] = PointerResetRestoresResults,
             [nameof(KeyboardResetRestoresResults)] = KeyboardResetRestoresResults,
-            [nameof(DayNightTextContrast)] = DayNightTextContrast
+            [nameof(DayThemeTextContrast)] = DayThemeTextContrast
         };
 }
 
 internal sealed record NoteVisualTokenGateInputs(
     bool CompactInputPaddingAligned,
-    bool StatusCountsUseMutedToken,
+    bool BadgeTokensFollowState,
     bool EmptyStateTextContrast);
 
 internal sealed record NoteVisualTokenGateResults(
     bool CompactInputPaddingAligned,
-    bool StatusCountsUseMutedToken,
+    bool BadgeTokensFollowState,
     bool EmptyStateTextContrast)
 {
     public bool AllPassed => AsDictionary().Values.All(value => value);
@@ -9269,7 +9481,7 @@ internal sealed record NoteVisualTokenGateResults(
         new Dictionary<string, bool>(StringComparer.Ordinal)
         {
             [nameof(CompactInputPaddingAligned)] = CompactInputPaddingAligned,
-            [nameof(StatusCountsUseMutedToken)] = StatusCountsUseMutedToken,
+            [nameof(BadgeTokensFollowState)] = BadgeTokensFollowState,
             [nameof(EmptyStateTextContrast)] = EmptyStateTextContrast
         };
 }
@@ -9298,6 +9510,16 @@ internal sealed record MainNoteCompletionGateResults(
             [nameof(MainTargetSizeAndBehavior)] = MainTargetSizeAndBehavior,
             [nameof(OtherUserSizesUnchanged)] = OtherUserSizesUnchanged
         };
+}
+
+internal sealed record ReminderCenterAcknowledgeAllExerciseResult(
+    bool WritesAllDispositions,
+    bool MatchesSingleSemantics,
+    bool FailureRetainsAllAtomically,
+    bool BackoffRetryCompletesBatch)
+{
+    public static ReminderCenterAcknowledgeAllExerciseResult Failed { get; } =
+        new(false, false, false, false);
 }
 
 internal sealed class ValidationGuidSource(params Guid[] values) : IGuidSource

@@ -1,3 +1,10 @@
+---
+type: report
+title: "Handoff: clock-countdown #101–#110 实现 + v20 基线，套件已暂停"
+tags: [handoff, historical, verification]
+intent: 记录 2026-09-06 的实现交接、v20 基线与套件暂停状态。
+---
+
 # Handoff: clock-countdown #101–#110 实现 + v20 基线，套件已暂停
 
 Date: 2026-09-06T22:51+08:00  
@@ -12,7 +19,7 @@ User `/handoff` 无额外参数。下一会话重点：**先确认用户是否�
 
 - 本会话原目标：实现 GitHub `clock-countdown` 全部未关闭 issue，**除** `unified-env` **#58**。
 - 实现顺序曾锁定：`#102 → #104 → #105 → #108 → #103 → #110 → #106 → #107`；父 spec 为 **#101**；**#109** 的实现落在 **#110**。
-- 根 Agent 本会话用 subagent-orchestration：**根不写代码、不 commit、不 push、不关 issue、不建分支/worktree、不办公室部署**。写所有者是 [Serial UI issue implement](c14eb23a-7c92-43c5-ae8d-474a21ea2cca)。
+- 根 Agent 本会话用 subagent-orchestration：**根不写代码、不 commit、不 push、不关 issue、不建分支/worktree、不办公室部署**。写所有者是 `Serial UI issue implement`（c14eb23a-7c92-43c5-ae8d-474a21ea2cca）。
 - 2026-09-06 17:35 用户指令 **「暂停所有套件」仍有效**。当时已杀掉正在跑的 `Countdown.CSharp.Tests.ps1`（终端 `707521`，pwsh 13308 / 50424 及其 `MinminCountdown.exe --validate-only` 子进程）。本手off时刻再查：无匹配套件进程。`verified-current`
 - 用户已授权 **新建** 视觉基线 `2026-09-06-v20`（不覆盖 v19）。`changed-and-verified`（磁盘已有 v20 目录与钉死）
 - 未授权：commit、push、关 issue、办公室部署、浏览器操控、回退 #101–#110 产品 UI、剥 PNG alpha、放宽 `IsFullyOpaque` / Seal 像素门槛。
@@ -60,7 +67,7 @@ User `/handoff` 无额外参数。下一会话重点：**先确认用户是否�
 - 17:34 启动的 CSharp 套件（终端 `707521`）在用户暂停时被强杀，**无完成退出码**。可能已是钉 v20 之后的第一次官方跑，但被中断。`verified-current`（进程已停、终端 status failed）
 - empty-day 探针（会话叙述，env `MINMIN_COUNTDOWN_EMPTY_DAY_PROBE=1`）：对 **v19** empty-day RMSE=0 / 哈希一致。官方套件禁止带该 env。对 v20 **not-applicable** 作为绿灯证据
 - GitHub issue 开闭：本会话早些时候 `gh issue list` 见 clock-countdown **#101–#110 open**、unified-env **#58 open**。手off时刻 **未再查询**。`pending`
-- 独立 code-review（Standards [51cf615e](51cf615e-625d-4b1b-88ec-01fed1b8e0e6)、Spec [b5bd56ee](b5bd56ee-3544-4207-a6ba-d48782d411cf)）发生在 lows / 捕获修复 / v20 **之前**。事后审查 **pending**
+- 独立 code-review（Standards `51cf615e-625d-4b1b-88ec-01fed1b8e0e6`、Spec `b5bd56ee-3544-4207-a6ba-d48782d411cf`）发生在 lows / 捕获修复 / v20 **之前**。事后审查 **pending**
 - 知识库：本任务未检索 `D:\agents\knowledge-base`。`not-applicable`
 
 KB status: not-applicable  

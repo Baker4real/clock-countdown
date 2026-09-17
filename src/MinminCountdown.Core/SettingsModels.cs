@@ -10,33 +10,14 @@ public static class SettingsSchema
     public const string ChinaStandardTimeZoneId = "China Standard Time";
 }
 
+/// <summary>
+/// 主题偏好字段保留读取以兼容旧设置文件；应用固定为单一日间主题，任何值一律按日间解释。
+/// </summary>
 public enum ThemePreferenceMode
 {
     Auto,
     Day,
     Night
-}
-
-public enum EffectiveThemeMode
-{
-    Day,
-    Night
-}
-
-public static class ThemePreferenceResolver
-{
-    public static EffectiveThemeMode Resolve(DateTimeOffset nowUtc, ThemePreferenceMode preference)
-    {
-        return preference switch
-        {
-            ThemePreferenceMode.Day => EffectiveThemeMode.Day,
-            ThemePreferenceMode.Night => EffectiveThemeMode.Night,
-            ThemePreferenceMode.Auto => ChinaStandardTime.ToBeijingTime(nowUtc).Hour is >= 7 and < 19
-                ? EffectiveThemeMode.Day
-                : EffectiveThemeMode.Night,
-            _ => throw new SettingsValidationException("设置中包含无效的主题偏好。")
-        };
-    }
 }
 
 public sealed record CountdownPreferences(

@@ -12,7 +12,7 @@ function New-CountdownPreferences {
         [decimal] $MonthlySalary = 0,
         [string] $WorkStartText = '09:00',
         [string] $WorkEndText = '18:00',
-        [ValidateSet('Auto', 'Day', 'Night')] [string] $ThemePreference = 'Auto'
+        [string] $ThemePreference = 'Auto'
     )
 
     if ($MonthlySalary -lt 0) { throw '月薪不能小于 0。' }
@@ -31,8 +31,16 @@ function New-CountdownPreferences {
         MonthlySalary = $MonthlySalary
         WorkStart = $workStart
         WorkEnd = $workEnd
-        ThemePreference = $ThemePreference
+        ThemePreference = (Resolve-CountdownThemePreference -Value $ThemePreference)
     }
+}
+
+# 应用固定为单一日间主题：只保留旧值以兼容旧设置文件；未知值一律按日间解释，不报错、不回写。
+function Resolve-CountdownThemePreference {
+    param([AllowNull()] [string] $Value)
+
+    if ($Value -in @('Auto', 'Day', 'Night')) { return $Value }
+    return 'Day'
 }
 
 function Format-CountdownWorkTime {

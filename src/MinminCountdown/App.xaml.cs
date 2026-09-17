@@ -67,15 +67,45 @@ public sealed partial class App : Application
 
             if (_options.ValidateOnly)
             {
-                var validationReport = ApplicationValidation.Run(
-                    _options,
-                    _applicationRoot,
-                    _logger,
-                    Resources);
-                CliOutput.WriteJson(validationReport);
-                _logger.Info("ValidationCompleted");
-                Shutdown(0);
-                return;
+                var validationSettingsPath = _options.SettingsFile ??
+                                             Path.Combine(_applicationRoot, "settings.json");
+                var validationSettingsExisted = File.Exists(validationSettingsPath);
+                var validationSettingsBytes = validationSettingsExisted
+                    ? File.ReadAllBytes(validationSettingsPath)
+                    : null;
+                var validationSettingsMigrated = false;
+                try
+                {
+                    var validationReport = ApplicationValidation.Run(
+                        _options,
+                        _applicationRoot,
+                        _logger,
+                        Resources);
+                    validationSettingsMigrated =
+                        validationReport.TryGetValue("SettingsWereMigrated", out var migratedValue) &&
+                        migratedValue is true;
+                    CliOutput.WriteJson(validationReport);
+                    _logger.Info("ValidationCompleted");
+                    Shutdown(0);
+                    return;
+                }
+                finally
+                {
+                    // Validation probes are read-only by default, but the explicit
+                    // note/tag exercises are also persistence contracts: their
+                    // caller reads the isolated settings file after the process
+                    // exits. Preserve those exercise writes while keeping the
+                    // ordinary validate-only report byte-stable. A migrated source
+                    // must keep its rewritten canonical copy instead of the legacy
+                    // bytes.
+                    if (validationSettingsBytes is not null &&
+                        !_options.ExerciseNoteAdd &&
+                        !_options.ExerciseTagInteractions &&
+                        !validationSettingsMigrated)
+                    {
+                        File.WriteAllBytes(validationSettingsPath, validationSettingsBytes);
+                    }
+                }
             }
 
             var settingsPath = _options.SettingsFile ??
@@ -142,7 +172,7 @@ public sealed partial class App : Application
             var desktopWorkspace = _desktopWorkspace;
             var initialSnapshot = desktopWorkspace.Snapshot;
             _theme = new ApplicationTheme(Resources);
-            _theme.Apply(initialSnapshot.UtcNow, initialSnapshot.Settings.Preferences.ThemePreference);
+            _theme.Apply();
             var calendar = new HolidayCalendar(_applicationRoot);
             _calendar = calendar;
             var logger = _logger ??
@@ -161,7 +191,6 @@ public sealed partial class App : Application
                 _managerLifecycle,
                 AppContext.BaseDirectory,
                 deferAssets: true);
-            ApplyCurrentTheme(initialSnapshot.UtcNow);
 
             if (!_acceptanceReadOnly)
             {
@@ -310,10 +339,7 @@ public sealed partial class App : Application
 
     private void AttachManagerWindow(MainWindow window)
     {
-        if (_theme is not null)
-        {
-            window.ApplyTheme(_theme.ActiveMode);
-        }
+        window.ApplyTheme();
 
         window.CloseRequested += (_, _) => window.Hide();
         window.MinimizeToTrayRequested += (_, _) =>
@@ -330,13 +356,6 @@ public sealed partial class App : Application
 
             eventArgs.Cancel = true;
             window.Hide();
-        };
-        window.ThemePreferenceChanged += (_, _) =>
-        {
-            if (_desktopWorkspace is not null)
-            {
-                ApplyCurrentTheme(_desktopWorkspace.Snapshot.UtcNow);
-            }
         };
         if (_acceptanceReadOnly)
         {
@@ -454,7 +473,7 @@ public sealed partial class App : Application
         {
             _testExitTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(30)
+                Interval = TimeSpan.FromSeconds(_options.ExitAfterReadyForTestSeconds)
             };
             _testExitTimer.Tick += (_, _) =>
             {
@@ -558,7 +577,6 @@ public sealed partial class App : Application
         {
             _ = RefreshHolidayCalendarAsync(nowUtc);
         }
-        ApplyCurrentTheme(nowUtc);
         _mainWindow?.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
         _floatingWindow.UpdateTime(nowUtc);
         if (_acceptanceReadOnly)
@@ -574,22 +592,6 @@ public sealed partial class App : Application
         {
             _logger?.Error("NoteReminderFailed", exception);
         }
-    }
-
-    private void ApplyCurrentTheme(DateTimeOffset nowUtc)
-    {
-        if (_desktopWorkspace is null ||
-            _floatingWindow is null ||
-            _theme is null)
-        {
-            return;
-        }
-
-        var mode = _theme.Apply(
-            nowUtc,
-            _desktopWorkspace.Snapshot.Settings.Preferences.ThemePreference);
-        _mainWindow?.ApplyTheme(mode);
-        _floatingWindow.ApplyTheme(mode);
     }
 
     private void AdvanceAcceptanceState()
@@ -762,6 +764,46 @@ internal sealed class ManagerWindowLifecycle : IManagerWorkspaceHost
 
     public bool OpenReminderSource(ReminderSourceKind sourceKind, string sourceId) =>
         EnsureCreated().OpenReminderSource(sourceKind, sourceId);
+
+    /// <summary>
+    ///     打开管理窗口并进入指定便签的编辑态（悬浮窗“…”菜单的编辑路径复用主窗口编辑流程）。
+    /// </summary>
+    public bool RevealNoteEditor(string noteId, DesktopWorkspace workspace)
+    {
+        var window = EnsureCreated();
+        return RevealNoteEditorOnWindow(window, workspace, noteId);
+    }
+
+    /// <summary>
+    ///     兼容两类宿主注入：ManagerWindowLifecycle（应用组合根）与直接注入的 MainWindow（验收/验证组合）。
+    /// </summary>
+    internal static bool RevealNoteEditor(
+        IManagerWorkspaceHost manager,
+        DesktopWorkspace workspace,
+        string noteId) =>
+        manager switch
+        {
+            ManagerWindowLifecycle lifecycle => lifecycle.RevealNoteEditor(noteId, workspace),
+            MainWindow mainWindow => RevealNoteEditorOnWindow(mainWindow, workspace, noteId),
+            _ => false
+        };
+
+    private static bool RevealNoteEditorOnWindow(
+        MainWindow window,
+        DesktopWorkspace workspace,
+        string noteId)
+    {
+        var note = workspace.Snapshot.Settings.Notes.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, noteId, StringComparison.OrdinalIgnoreCase));
+        if (note is null)
+        {
+            return false;
+        }
+
+        window.Reveal(WorkspaceKind.Notes);
+        window.LoadNoteIntoEditor(note);
+        return true;
+    }
 }
 
 internal sealed class ReminderDeliveryCoordinator : IDisposable
@@ -963,6 +1005,7 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
         _window = window;
         window.EntryRendered += (_, args) => OnEntryRendered(args.Key);
         window.AcknowledgeRequested += (_, args) => OnAcknowledgeRequested(args.Key);
+        window.AcknowledgeAllRequested += (_, _) => OnAcknowledgeAllRequested();
         window.SnoozeRequested += (_, args) => OnSnoozeRequested(args);
         window.CompleteRequested += (_, args) => OnCompleteRequested(args.Key);
         window.OpenSourceRequested += (_, args) => OnOpenSourceRequested(args.Key);
@@ -1108,6 +1151,76 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
         active.NextAcknowledgementRetryUtc = nowUtc.Add(
             ReminderPersistenceRetrySchedule.GetDelay(active.AcknowledgementFailureCount));
         _window?.ShowAcknowledgementFailure(active.Key);
+        _logger?.Error(
+            "ReminderAcknowledgementPersistFailed",
+            new IOException(result.Error));
+    }
+
+    private void OnAcknowledgeAllRequested()
+    {
+        var eligible = _active.Values
+            .Where(active =>
+                active.Confirmed &&
+                active.NextAcknowledgementRetryUtc is null)
+            .OrderBy(active => active.Key.ScheduledUtc)
+            .ThenBy(active => active.Key.RuleId, StringComparer.Ordinal)
+            .ToArray();
+        if (eligible.Length == 0)
+        {
+            return;
+        }
+
+        AcknowledgeAll(eligible, _workspace.Snapshot.UtcNow);
+    }
+
+    private void AcknowledgeAll(IReadOnlyList<ActiveReminder> batch, DateTimeOffset nowUtc)
+    {
+        if (_persistenceWriteInFlight)
+        {
+            foreach (var active in batch)
+            {
+                active.NextAcknowledgementRetryUtc ??= nowUtc.AddSeconds(5);
+                _window?.ShowAcknowledgementFailure(active.Key);
+            }
+
+            return;
+        }
+
+        DesktopWorkspaceChangeResult result;
+        _persistenceWriteInFlight = true;
+        try
+        {
+            result = _workspace.AcknowledgeReminders(batch
+                .Select(active => new ReminderAcknowledgementRequest(
+                    active.Source.Kind,
+                    active.Source.Id,
+                    active.Key.RuleId,
+                    active.Key.ScheduledUtc))
+                .ToArray());
+        }
+        finally
+        {
+            _persistenceWriteInFlight = false;
+        }
+
+        if (result.Succeeded)
+        {
+            foreach (var active in batch)
+            {
+                Remove(active);
+            }
+
+            return;
+        }
+
+        foreach (var active in batch)
+        {
+            active.AcknowledgementFailureCount++;
+            active.NextAcknowledgementRetryUtc = nowUtc.Add(
+                ReminderPersistenceRetrySchedule.GetDelay(active.AcknowledgementFailureCount));
+            _window?.ShowAcknowledgementFailure(active.Key);
+        }
+
         _logger?.Error(
             "ReminderAcknowledgementPersistFailed",
             new IOException(result.Error));

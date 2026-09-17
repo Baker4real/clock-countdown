@@ -31,7 +31,246 @@ public sealed partial class MainWindow
             ProbeReminderSummaryAdvancesAfterFirstDue(),
             ProbeUiPolishScenarios(),
             ProbeSettingsDraftRetention(),
-            ProbeUndatedNoteEditRetention());
+            ProbeUndatedNoteEditRetention(),
+            ProbeCountdownReminderModeRadioMapping());
+    }
+
+    private bool ProbeCountdownReminderModeRadioMapping()
+    {
+        var createdCountdownIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+            ResetCountdownEditor();
+            WindowValidationInput.Pump(Dispatcher);
+
+            var addModeDefaultsToNone =
+                CountdownReminderNoRadio.IsChecked == true &&
+                CountdownReminderTimeRadio.IsChecked != true &&
+                CountdownReminderCustomRadio.IsChecked != true &&
+                _countdownReminderRules.Count == 0;
+
+            CountdownReminderTimeRadio.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var atDeadlineTarget = GetCountdownTargetUtc();
+            var timeModeCreatesAtDeadlineOnce =
+                atDeadlineTarget is not null &&
+                CountdownReminderTimeRadio.IsChecked == true &&
+                CountdownReminderNoRadio.IsChecked != true &&
+                DeriveCountdownReminderMode(_countdownReminderRules, atDeadlineTarget) ==
+                    CountdownReminderMode.AtDeadline;
+
+            CountdownSecond.SelectedIndex = (CountdownSecond.SelectedIndex + 7) % 60;
+            WindowValidationInput.Pump(Dispatcher);
+            var shiftedTarget = GetCountdownTargetUtc();
+            var targetShiftKeepsAtDeadlineOnce =
+                shiftedTarget is not null &&
+                atDeadlineTarget is not null &&
+                shiftedTarget != atDeadlineTarget &&
+                DeriveCountdownReminderMode(_countdownReminderRules, shiftedTarget) ==
+                    CountdownReminderMode.AtDeadline;
+
+            CountdownReminderNoRadio.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var noneModeClearsRules =
+                CountdownReminderNoRadio.IsChecked == true &&
+                CountdownReminderTimeRadio.IsChecked != true &&
+                _countdownReminderRules.Count == 0;
+
+            var noReminderName = UniqueProbeName("单选探针-不提醒");
+            CountdownName.Text = noReminderName;
+            SaveCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            TrackProbeCountdown(createdCountdownIds, noReminderName);
+            var noReminderPersists = SnapshotCountdown(noReminderName)?.ReminderRules.Count == 0;
+
+            ResetCountdownEditor();
+            WindowValidationInput.Pump(Dispatcher);
+            CountdownReminderTimeRadio.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var savedAtDeadlineTarget = GetCountdownTargetUtc();
+            var atDeadlineName = UniqueProbeName("单选探针-到点");
+            CountdownName.Text = atDeadlineName;
+            SaveCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            TrackProbeCountdown(createdCountdownIds, atDeadlineName);
+            var atDeadlineRecord = SnapshotCountdown(atDeadlineName);
+            var atDeadlinePersists =
+                savedAtDeadlineTarget is not null &&
+                atDeadlineRecord?.ReminderRules is [AbsoluteOnceReminderRule persistedOnce] &&
+                persistedOnce.ScheduledUtc == savedAtDeadlineTarget.Value;
+
+            ResetCountdownEditor();
+            WindowValidationInput.Pump(Dispatcher);
+            var customEditorOpenedAndCancelled = false;
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ApplicationIdle,
+                new Action(() =>
+                {
+                    var editors = Application.Current.Windows
+                        .OfType<ReminderRulesEditorWindow>()
+                        .Where(window => ReferenceEquals(window.Owner, this))
+                        .ToArray();
+                    customEditorOpenedAndCancelled = editors.Length == 1 && editors[0].IsVisible;
+                    if (editors.Length == 1)
+                    {
+                        ProbeVisualDescendants<Button>(editors[0])
+                            .Single(button => string.Equals(
+                                AutomationProperties.GetAutomationId(button),
+                                "CancelReminderRulesButton",
+                                StringComparison.Ordinal))
+                            .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    }
+                }));
+            CountdownReminderCustomRadio.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var customCancelRestoresDerivedMode =
+                customEditorOpenedAndCancelled &&
+                CountdownReminderCustomRadio.IsChecked != true &&
+                CountdownReminderNoRadio.IsChecked == true &&
+                _countdownReminderRules.Count == 0;
+
+            var beijingNow = _desktopWorkspace.Snapshot.BeijingNow;
+            // 反显探针记录携带提醒规则，规则首鸣时间不允许落在当前北京时间之前；
+            // 固定取明天 15:40，避免本日 15:10 之后运行验证时保存被拒。
+            var editReflectionDate = beijingNow.Date.AddDays(1);
+            var editTargetUtc = new DateTimeOffset(
+                editReflectionDate.Year,
+                editReflectionDate.Month,
+                editReflectionDate.Day,
+                15,
+                40,
+                0,
+                beijingNow.Offset).ToUniversalTime();
+            var noneRecordName = UniqueProbeName("反显探针-无规则");
+            var atTimeRecordName = UniqueProbeName("反显探针-到点");
+            var customRecordName = UniqueProbeName("反显探针-自定义");
+            var noneRecordSaved = _desktopWorkspace.Apply(new SaveCountdownChange(
+                null,
+                noneRecordName,
+                editTargetUtc,
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            var atTimeRecordSaved = _desktopWorkspace.Apply(new SaveCountdownChange(
+                null,
+                atTimeRecordName,
+                editTargetUtc,
+                Array.Empty<string>(),
+                new ReminderRule[]
+                {
+                    new AbsoluteOnceReminderRule(Guid.NewGuid().ToString("N"), editTargetUtc)
+                }));
+            var customRecordSaved = _desktopWorkspace.Apply(new SaveCountdownChange(
+                null,
+                customRecordName,
+                editTargetUtc,
+                Array.Empty<string>(),
+                new ReminderRule[]
+                {
+                    new FixedIntervalReminderRule(
+                        Guid.NewGuid().ToString("N"),
+                        editTargetUtc.AddMinutes(-30),
+                        new ReminderInterval(30))
+                }));
+            TrackProbeCountdown(createdCountdownIds, noneRecordName);
+            TrackProbeCountdown(createdCountdownIds, atTimeRecordName);
+            TrackProbeCountdown(createdCountdownIds, customRecordName);
+            var editReflectionRecordsExist =
+                noneRecordSaved.Succeeded &&
+                atTimeRecordSaved.Succeeded &&
+                customRecordSaved.Succeeded;
+
+            var noneRecord = SnapshotCountdown(noneRecordName);
+            var atTimeRecord = SnapshotCountdown(atTimeRecordName);
+            var customRecord = SnapshotCountdown(customRecordName);
+            if (noneRecord is null || atTimeRecord is null || customRecord is null)
+            {
+                return false;
+            }
+
+            BeginEditCountdown(noneRecord);
+            WindowValidationInput.Pump(Dispatcher);
+            var editNoRulesRestoresNone =
+                CountdownReminderNoRadio.IsChecked == true &&
+                CountdownReminderTimeRadio.IsChecked != true &&
+                CountdownReminderCustomRadio.IsChecked != true &&
+                _countdownReminderRules.Count == 0;
+
+            BeginEditCountdown(atTimeRecord);
+            WindowValidationInput.Pump(Dispatcher);
+            var editAtDeadlineOnceRestoresAtTime =
+                CountdownReminderTimeRadio.IsChecked == true &&
+                CountdownReminderNoRadio.IsChecked != true &&
+                CountdownReminderCustomRadio.IsChecked != true &&
+                DeriveCountdownReminderMode(_countdownReminderRules, GetCountdownTargetUtc()) ==
+                    CountdownReminderMode.AtDeadline;
+
+            BeginEditCountdown(customRecord);
+            WindowValidationInput.Pump(Dispatcher);
+            var editOtherRulesRestoreCustom =
+                CountdownReminderCustomRadio.IsChecked == true &&
+                CountdownReminderNoRadio.IsChecked != true &&
+                CountdownReminderTimeRadio.IsChecked != true;
+
+            ResetCountdownEditor();
+            WindowValidationInput.Pump(Dispatcher);
+
+            var result = addModeDefaultsToNone &&
+                timeModeCreatesAtDeadlineOnce &&
+                targetShiftKeepsAtDeadlineOnce &&
+                noneModeClearsRules &&
+                noReminderPersists &&
+                atDeadlinePersists &&
+                customCancelRestoresDerivedMode &&
+                editReflectionRecordsExist &&
+                editNoRulesRestoresNone &&
+                editAtDeadlineOnceRestoresAtTime &&
+                editOtherRulesRestoreCustom;
+            return result;
+        }
+        finally
+        {
+            foreach (var id in createdCountdownIds)
+            {
+                _desktopWorkspace.Apply(new DeleteCountdownChange(id));
+            }
+        }
+    }
+
+    private static string UniqueProbeName(string prefix) =>
+        $"{prefix}-{Guid.NewGuid():N}"[..30];
+
+    private static IEnumerable<T> ProbeVisualDescendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in ProbeVisualDescendants<T>(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private CountdownRecord? SnapshotCountdown(string name) =>
+        _desktopWorkspace.Snapshot.Settings.Countdowns.LastOrDefault(record =>
+            string.Equals(record.Name, name, StringComparison.Ordinal));
+
+    private void TrackProbeCountdown(ICollection<string> createdIds, string name)
+    {
+        var record = SnapshotCountdown(name);
+        if (record is not null)
+        {
+            createdIds.Add(record.Id);
+        }
     }
 
     private UndatedNoteEditProbe ProbeUndatedNoteEditRetention()
@@ -162,7 +401,6 @@ public sealed partial class MainWindow
     {
         var originalWorkspace = _workspace;
         var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
-        var originalThemeLabel = ThemeModeButton.Content?.ToString();
         var temporaryNoteIds = new List<string>();
         try
         {
@@ -219,10 +457,6 @@ public sealed partial class MainWindow
                 string.Equals(MonthlySalary.Text, draftSalary, StringComparison.Ordinal) &&
                 string.Equals(WorkStart.Text, draftWorkStart, StringComparison.Ordinal) &&
                 string.Equals(WorkEnd.Text, draftWorkEnd, StringComparison.Ordinal);
-            var themeSelectionRetainedOnRefresh = string.Equals(
-                ThemeModeButton.Content?.ToString(),
-                originalThemeLabel,
-                StringComparison.Ordinal);
 
             SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(Dispatcher);
@@ -270,7 +504,6 @@ public sealed partial class MainWindow
 
             return new SettingsDraftRetentionProbe(
                 inputsRetainedOnRefresh,
-                themeSelectionRetainedOnRefresh,
                 savedValuesReflectedAfterSave,
                 negativeSalaryRejectedKeepsDraft,
                 zeroSalaryStillSavesAsUnset);
@@ -623,7 +856,6 @@ public sealed partial class MainWindow
         var originalWorkspace = _workspace;
         var originalFilter = _desktopWorkspace.Snapshot.Filter;
         var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
-        var originalTheme = _themeMode;
         var temporaryIds = new List<string>();
         double? originalOpacity = null;
         try
@@ -748,17 +980,6 @@ public sealed partial class MainWindow
                 precisionSaved && CountdownRowRebuildGenerationForValidation > generation;
 
             generation = CountdownRowRebuildGenerationForValidation;
-            var nextTheme = originalTheme == ApplicationThemeMode.Day
-                ? ApplicationThemeMode.Night
-                : ApplicationThemeMode.Day;
-            ApplyTheme(nextTheme);
-            UpdateTime(before.AddMilliseconds(500));
-            WindowValidationInput.Pump(Dispatcher);
-            var themeChangeRebuilt =
-                CountdownRowRebuildGenerationForValidation > generation &&
-                _countdownSourceRows.ContainsKey(record.Id);
-
-            generation = CountdownRowRebuildGenerationForValidation;
             UpdateTime(ChinaStandardTime.ToBeijingTime(dueUtc.AddSeconds(1)));
             WindowValidationInput.Pump(Dispatcher);
             var expiryChangeRebuilt = CountdownRowRebuildGenerationForValidation > generation;
@@ -779,7 +1000,6 @@ public sealed partial class MainWindow
                 collectionChangeRebuilt,
                 filterChangeRebuilt,
                 precisionChangeRebuilt,
-                themeChangeRebuilt,
                 expiryChangeRebuilt,
                 expiryBackgroundFlipped,
                 expiryRemainingTextFlipped);
@@ -792,7 +1012,6 @@ public sealed partial class MainWindow
             }
 
             Mouse.Capture(null);
-            ApplyTheme(originalTheme);
             _desktopWorkspace.ApplyFilter(originalFilter);
             _desktopWorkspace.Apply(new SavePreferencesChange(
                 originalPreferences.DisplayPrecision,
@@ -876,6 +1095,8 @@ public sealed partial class MainWindow
                     originalPreferences.WorkStart,
                     originalPreferences.WorkEnd)).Succeeded;
                 WindowValidationInput.Pump(Dispatcher);
+                var sampleNowUtc = _desktopWorkspace.Snapshot.UtcNow;
+                UpdateTime(ChinaStandardTime.ToBeijingTime(sampleNowUtc));
                 UpdateLayout();
                 var current = _desktopWorkspace.Snapshot;
                 var record = current.Settings.Countdowns.FirstOrDefault(item =>
@@ -890,16 +1111,22 @@ public sealed partial class MainWindow
                     continue;
                 }
 
-                var expected = CountdownFormatting.FormatRemaining(record.TargetUtc, current.UtcNow, precision);
+                var expected = CountdownFormatting.FormatRemaining(record.TargetUtc, sampleNowUtc, precision);
                 samples.Add(CaptureMainCountdownRemaining(precision, record, expected, text, saved));
             }
 
             var longRecord = _desktopWorkspace.Snapshot.Settings.Countdowns.FirstOrDefault(item =>
                 string.Equals(item.Name, longName, StringComparison.Ordinal));
-            if (longRecord is not null && CountdownRemainingTextsForValidation.TryGetValue(longRecord.Id, out var longText))
+            if (longRecord is not null)
             {
-                var expected = CountdownFormatting.FormatRemaining(longRecord.TargetUtc, _desktopWorkspace.Snapshot.UtcNow, "Second");
-                samples.Add(CaptureMainCountdownRemaining("SecondLongDays", longRecord, expected, longText, longResult.Succeeded));
+                var longNowUtc = _desktopWorkspace.Snapshot.UtcNow;
+                UpdateTime(ChinaStandardTime.ToBeijingTime(longNowUtc));
+                UpdateLayout();
+                if (CountdownRemainingTextsForValidation.TryGetValue(longRecord.Id, out var longText))
+                {
+                    var expected = CountdownFormatting.FormatRemaining(longRecord.TargetUtc, longNowUtc, "Second");
+                    samples.Add(CaptureMainCountdownRemaining("SecondLongDays", longRecord, expected, longText, longResult.Succeeded));
+                }
             }
 
             return samples;
@@ -981,11 +1208,13 @@ public sealed partial class FloatingWindow
                 ? RunReminderModeClickExercises()
                 : ReminderModeClickResult.NotRun;
             var dragInteraction = RunDragInteractionExercise();
-            var themeExercise = RunThemeBoundaryExercise();
+            var themeExercise = RunDayThemeExercise();
             var manualPlacement = RunManualPlacementExercise();
             var uiPolish = ProbeUiPolishScenarios();
             var workspace = ProbeWorkspaceScenarios(initialStateMatches);
             var noteSearch = ProbeNoteSearchScenarios();
+            // 放在最后：设置按钮与“…”编辑会揭示管理窗口，避免扰动前面的聚焦类探针。
+            var bottomCommand = ProbeBottomCommandScenarios();
 
             return new FloatingWindowValidationScenarios(
                 crossDayReminderAdded,
@@ -995,7 +1224,8 @@ public sealed partial class FloatingWindow
                 manualPlacement,
                 uiPolish,
                 workspace,
-                noteSearch);
+                noteSearch,
+                bottomCommand);
         }
         finally
         {
@@ -1053,8 +1283,8 @@ public sealed partial class FloatingWindow
         var countdownReselectionStateMatches = FloatingWorkspacePresentationMatches(
             WorkspaceKind.Countdowns,
             snapshot);
-        var countdownSelectionSurvivesDayNightThemes =
-            InitialCountdownSelectionSurvivesDayNightThemes();
+        var countdownSelectionSurvivesRefresh =
+            InitialCountdownSelectionSurvivesRefresh();
 
         var incomePreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
         var originalIncomeText = IncomeText;
@@ -1070,14 +1300,16 @@ public sealed partial class FloatingWindow
                 incomePreferences.WorkEnd)).Succeeded;
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            // 月薪未输入：不渲染金额；日历未就绪路径保持状态文本，就绪路径整行收起。
+            // 月薪未输入：不渲染金额；日历未就绪路径保持状态文本，就绪路径显示当前工作区的手写体鼓励文案。
+            var expectedEncouragement = _workspace == WorkspaceKind.Notes
+                ? FloatingBottomStatus.NotesEncouragementText
+                : FloatingBottomStatus.CountdownEncouragementText;
             incomeHiddenWithoutSalary =
                 zeroSalaryApplied &&
                 !(IncomeText ?? string.Empty).StartsWith("今日已赚", StringComparison.Ordinal) &&
-                (FloatingIncome.Visibility == Visibility.Collapsed &&
-                    string.IsNullOrEmpty(IncomeText) ||
-                 FloatingIncome.Visibility == Visibility.Visible &&
-                    string.Equals(IncomeText, _calendar.StatusText, StringComparison.Ordinal));
+                FloatingIncome.Visibility == Visibility.Visible &&
+                (string.Equals(IncomeText, expectedEncouragement, StringComparison.Ordinal) ||
+                 string.Equals(IncomeText, _calendar.StatusText, StringComparison.Ordinal));
         }
         finally
         {
@@ -1106,7 +1338,7 @@ public sealed partial class FloatingWindow
             notesReselectionStateMatches &&
             countdownStateMatches &&
             countdownReselectionStateMatches,
-            countdownSelectionSurvivesDayNightThemes,
+            countdownSelectionSurvivesRefresh,
             notesKeepExistingSortOrder,
             countdownButtonTextFit,
             notesButtonTextFit,
@@ -1137,9 +1369,10 @@ public sealed partial class FloatingWindow
                 FloatingTitle.Text,
                 workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签",
                 StringComparison.Ordinal) &&
-            FloatingNoteEntry.Visibility == (workspace == WorkspaceKind.Notes
+            FloatingNotesCommandArea.Visibility == (workspace == WorkspaceKind.Notes
                 ? Visibility.Visible
                 : Visibility.Collapsed) &&
+            FloatingNoteEntry.Visibility == Visibility.Collapsed &&
             FloatingRows.Children.Count > 0;
         if (!chromeMatches)
         {
@@ -1189,9 +1422,6 @@ public sealed partial class FloatingWindow
         var originalFilter = _desktopWorkspace.Snapshot.Filter;
         var originalExpanded = _searchExpanded;
         var originalNoteText = FloatingNoteText.Text;
-        var originalThemeMode = FloatingDayRasterScene.Visibility == Visibility.Visible
-            ? ApplicationThemeMode.Day
-            : ApplicationThemeMode.Night;
         try
         {
             ShowWorkspace(WorkspaceKind.Countdowns);
@@ -1216,9 +1446,9 @@ public sealed partial class FloatingWindow
                     StringComparison.Ordinal);
             var searchButtonShowsClosedMagnifier = ProbeSearchButtonShowsClosedMagnifier();
 
-            Keyboard.Focus(FloatingAddNote);
+            Keyboard.Focus(FloatingAddNoteToggle);
             WindowValidationInput.Pump(Dispatcher);
-            FloatingAddNote.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            FloatingAddNoteToggle.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
             WindowValidationInput.Pump(Dispatcher);
             var addThenSearchTab =
                 ReferenceEquals(Keyboard.FocusedElement, FloatingSearchNotes);
@@ -1321,9 +1551,9 @@ public sealed partial class FloatingWindow
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
 
-            Keyboard.Focus(FloatingAddNote);
+            Keyboard.Focus(FloatingAddNoteToggle);
             WindowValidationInput.Pump(Dispatcher);
-            FloatingAddNote.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            FloatingAddNoteToggle.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
             WindowValidationInput.Pump(Dispatcher);
             var collapsedOmitsSearchInput =
                 !FloatingNoteSearch.IsTabStop &&
@@ -1343,44 +1573,36 @@ public sealed partial class FloatingWindow
                     string.Equals(button.Content as string, "清除搜索", StringComparison.Ordinal));
             var emptyMessage = FindEmptyMessage();
             var emptyClear = FindEmptyClear();
+            var emptyDoesNotOverlap =
+                emptyClear is not null &&
+                emptyMessage is not null &&
+                !ValidationBounds(emptyMessage).IntersectsWith(ValidationBounds(emptyClear));
+
+            ApplyTheme();
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var themedMessage = FindEmptyMessage();
+            var themedClear = FindEmptyClear();
+            var emptyStateThemed =
+                themedMessage is not null &&
+                themedClear is not null &&
+                themedMessage.ActualWidth > 0 &&
+                themedMessage.ActualHeight > 0 &&
+                themedClear.ActualWidth > 0 &&
+                themedClear.ActualHeight > 0 &&
+                !ValidationBounds(themedMessage).IntersectsWith(ValidationBounds(themedClear));
+
+            SetQuickAddExpanded(true);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            emptyMessage = FindEmptyMessage();
+            emptyClear = FindEmptyClear();
             var emptyState =
                 GetFloatingRenderedNoteIds().Count == 0 &&
                 emptyMessage is not null &&
                 emptyClear is not null &&
                 FloatingNoteEntry.IsVisible &&
                 FloatingAddNote.IsEnabled;
-            var entryBounds = ValidationBounds(FloatingNoteEntry);
-            var emptyDoesNotOverlap =
-                emptyClear is not null &&
-                emptyMessage is not null &&
-                !ValidationBounds(emptyClear).IntersectsWith(entryBounds) &&
-                !ValidationBounds(emptyMessage).IntersectsWith(entryBounds) &&
-                !ValidationBounds(emptyMessage).IntersectsWith(ValidationBounds(emptyClear));
-
-            var emptyStateBothThemes = true;
-            foreach (var theme in new[] { ApplicationThemeMode.Day, ApplicationThemeMode.Night })
-            {
-                ApplyTheme(theme);
-                WindowValidationInput.Pump(Dispatcher);
-                UpdateLayout();
-                var themedMessage = FindEmptyMessage();
-                var themedClear = FindEmptyClear();
-                var themedEntry = ValidationBounds(FloatingNoteEntry);
-                emptyStateBothThemes &=
-                    themedMessage is not null &&
-                    themedClear is not null &&
-                    themedMessage.ActualWidth > 0 &&
-                    themedMessage.ActualHeight > 0 &&
-                    themedClear.ActualWidth > 0 &&
-                    themedClear.ActualHeight > 0 &&
-                    !ValidationBounds(themedMessage).IntersectsWith(themedEntry) &&
-                    !ValidationBounds(themedClear).IntersectsWith(themedEntry) &&
-                    !ValidationBounds(themedMessage).IntersectsWith(ValidationBounds(themedClear));
-            }
-
-            ApplyTheme(originalThemeMode);
-            WindowValidationInput.Pump(Dispatcher);
-            UpdateLayout();
 
             var addText = $"空态可新增-{Guid.NewGuid():N}";
             FloatingNoteText.Text = addText;
@@ -1389,9 +1611,9 @@ public sealed partial class FloatingWindow
             UpdateLayout();
             var addedNote = _desktopWorkspace.Snapshot.Settings.Notes.FirstOrDefault(note =>
                 string.Equals(note.Text, addText, StringComparison.Ordinal));
+            // #117 起：快速新增提交成功后表单自动收起，以收起态与新增成功共同证明空态可新增。
             var emptyStateAddWorks =
-                FloatingNoteEntry.IsVisible &&
-                FloatingAddNote.IsEnabled &&
+                FloatingNoteEntry.Visibility == Visibility.Collapsed &&
                 string.IsNullOrEmpty(FloatingNoteTextError.Text) &&
                 string.IsNullOrEmpty(FloatingNoteDateError.Text) &&
                 (addedNote is not null ||
@@ -1404,6 +1626,9 @@ public sealed partial class FloatingWindow
             }
 
             FloatingNoteText.Text = originalNoteText;
+            SetQuickAddExpanded(false);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
 
             emptyClear = FindEmptyClear();
             emptyClear?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -1484,15 +1709,9 @@ public sealed partial class FloatingWindow
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
 
-            ApplyTheme(ApplicationThemeMode.Night);
+            ApplyTheme();
             WindowValidationInput.Pump(Dispatcher);
-            var usesQuickAddThemeNight = TextBoxUsesQuickAddTheme(FloatingNoteSearch);
-            ApplyTheme(ApplicationThemeMode.Day);
-            WindowValidationInput.Pump(Dispatcher);
-            var usesQuickAddTheme =
-                TextBoxUsesQuickAddTheme(FloatingNoteSearch) && usesQuickAddThemeNight;
-            ApplyTheme(originalThemeMode);
-            WindowValidationInput.Pump(Dispatcher);
+            var usesQuickAddTheme = TextBoxUsesQuickAddTheme(FloatingNoteSearch);
 
             return new FloatingNoteSearchValidationScenarios(
                 hiddenInCountdowns,
@@ -1502,7 +1721,7 @@ public sealed partial class FloatingWindow
                 collapseKeepsTerm,
                 hintReexpands,
                 escapeClears,
-                emptyState && emptyStateBothThemes && emptyStateAddWorks,
+                emptyState && emptyStateThemed && emptyStateAddWorks,
                 emptyDoesNotOverlap,
                 clearRestores,
                 addThenSearchTab && collapsedOmitsSearchInput,
@@ -1521,7 +1740,7 @@ public sealed partial class FloatingWindow
             _searchExpanded = originalExpanded;
             FloatingNoteText.Text = originalNoteText;
             _desktopWorkspace.ApplyFilter(originalFilter);
-            ApplyTheme(originalThemeMode);
+            ApplyTheme();
             ShowWorkspace(originalWorkspace);
             if (FloatingNoteSearch.IsKeyboardFocusWithin)
             {
@@ -1581,6 +1800,389 @@ public sealed partial class FloatingWindow
             handle.X2 > handle.X1 &&
             handle.Y2 > handle.Y1;
     }
+
+    /// <summary>
+    ///     #117 悬浮窗便签底部命令区与卡片新视觉探针：默认收起的“＋ 添加便签”、“设置”打开主窗口、
+    ///     “…”菜单编辑/删除、日期印记 pastel 轮换、卡底交替与手写体装饰。
+    /// </summary>
+    private FloatingBottomCommandScenarios ProbeBottomCommandScenarios()
+    {
+        var originalWorkspace = _workspace;
+        var originalFilter = _desktopWorkspace.Snapshot.Filter;
+        var createdNoteIds = new List<string>();
+        var createdTagIds = new List<string>();
+        var managerWindow = _manager as Window;
+        var managerWasVisible = managerWindow is { IsVisible: true };
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var countdownsHideCommandArea =
+                FloatingNotesCommandArea.Visibility == Visibility.Collapsed &&
+                !FloatingAddNoteToggle.IsVisible &&
+                !FloatingSearchNotes.IsVisible &&
+                !FloatingOpenSettings.IsVisible &&
+                !FloatingNotesDecoText.IsVisible;
+
+            ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var defaultCollapsedInNotes =
+                FloatingNotesCommandArea.Visibility == Visibility.Visible &&
+                FloatingAddNoteToggle.IsVisible &&
+                FloatingOpenSettings.IsVisible &&
+                FloatingSearchNotes.IsVisible &&
+                string.Equals(
+                    AutomationProperties.GetName(FloatingSearchNotes),
+                    "搜索便签",
+                    StringComparison.Ordinal) &&
+                FloatingNoteEntry.Visibility == Visibility.Collapsed;
+
+            var deco = FloatingNotesDecoText;
+            var handwrittenDecorationLands =
+                deco.IsVisible &&
+                !deco.IsHitTestVisible &&
+                !deco.Focusable &&
+                ReferenceEquals(deco.FontFamily, FindResource("HandwrittenDecoFontFamily")) &&
+                ReferenceEquals(deco.Foreground, FindResource("DecoTextSoftBrush"));
+
+            EnsureProbeNotes(createdNoteIds, 3);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var cards = FloatingRows.Children.OfType<Border>()
+                .Where(card => Math.Abs(card.Width - CalendarIndexNoteCardWidth) <= 0.5)
+                .ToList();
+            var stampPaletteKeys = new[] { "StampPinkBrush", "StampBlueBrush", "StampGreenBrush" };
+            var pastelStampsRotate =
+                cards.Count >= 3 &&
+                cards.Select((card, index) => (card, index)).All(pair =>
+                    BrushMatchesResource(
+                        FindNoteCardDateStamp(pair.card)?.Background,
+                        TryFindResource(stampPaletteKeys[pair.index % stampPaletteKeys.Length])));
+            var cardSurfacesAlternate =
+                cards.Count >= 3 &&
+                cards.Select((card, index) => (card, index)).All(pair =>
+                    ReferenceEquals(
+                        pair.card.Background,
+                        pair.index % 2 == 0
+                            ? _floatingNoteCardBrush
+                            : TryFindResource("NoteWhiteBrush")));
+
+            var tagResult = _desktopWorkspace.Apply(new CreateTagChange(
+                $"悬浮探针-{Guid.NewGuid():N}"[..17],
+                "#F4B6A6"));
+            var toggleExpandsWithFilterTags = false;
+            var toggleCollapses = false;
+            if (tagResult.Succeeded && tagResult.CreatedTag is { } createdTag)
+            {
+                createdTagIds.Add(createdTag.Id);
+                _desktopWorkspace.ApplyFilter(originalFilter with
+                {
+                    SelectedTagIds = Array.AsReadOnly(new[] { createdTag.Id })
+                });
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+                FloatingAddNoteToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+                toggleExpandsWithFilterTags =
+                    FloatingNoteEntry.IsVisible &&
+                    FloatingNotesCommandBar.Visibility == Visibility.Visible &&
+                    FloatingSearchNotes.IsVisible &&
+                    FloatingSearchNotes.IsTabStop &&
+                    FloatingOpenSettings.IsVisible &&
+                    FloatingOpenSettings.IsTabStop &&
+                    ValidationBounds(FloatingNotesCommandScroller).Bottom <= ActualHeight + 0.5 &&
+                    ValidationBounds(FloatingNoteEntry).Top >=
+                        ValidationBounds(FloatingNotesCommandScroller).Top - 0.5 &&
+                    ValidationBounds(FloatingNoteEntry).Top <=
+                        ValidationBounds(FloatingNotesCommandScroller).Bottom + 0.5 &&
+                    FloatingTags.SelectedTagIds.SequenceEqual(
+                        new[] { createdTag.Id },
+                        StringComparer.Ordinal) &&
+                    FloatingNoteText.IsEnabled &&
+                    FloatingNoteDate.IsEnabled;
+
+                FloatingAddNoteToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+                toggleCollapses =
+                    FloatingNoteEntry.Visibility == Visibility.Collapsed &&
+                    FloatingNotesCommandBar.Visibility == Visibility.Visible;
+            }
+
+            SetQuickAddExpanded(true);
+            WindowValidationInput.Pump(Dispatcher);
+            var addText = $"悬浮底部命令探针便签-{Guid.NewGuid():N}";
+            FloatingNoteText.Text = addText;
+            FloatingAddNote.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var addedNote = _desktopWorkspace.Snapshot.Settings.Notes.FirstOrDefault(note =>
+                string.Equals(note.Text, addText, StringComparison.Ordinal));
+            if (addedNote is not null)
+            {
+                createdNoteIds.Add(addedNote.Id);
+            }
+
+            var submitCollapsesAfterSuccess =
+                addedNote is not null &&
+                FloatingNoteEntry.Visibility == Visibility.Collapsed;
+
+            var noteMenuProvidesEdit = false;
+            var noteMenuDeleteConfirms = false;
+            if (addedNote is not null)
+            {
+                var trigger = ValidationDescendants<Button>(FloatingRows).FirstOrDefault(button =>
+                    string.Equals(button.Tag as string, addedNote.Id, StringComparison.Ordinal));
+                if (trigger is not null)
+                {
+                    trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    WindowValidationInput.Pump(Dispatcher);
+                    var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger);
+                    var menuEdit = popup?.Child is { } editRoot
+                        ? ValidationDescendants<Button>(editRoot).FirstOrDefault(button =>
+                            string.Equals(button.Content as string, "编辑", StringComparison.Ordinal))
+                        : null;
+                    if (popup is { IsOpen: true } && menuEdit is not null)
+                    {
+                        menuEdit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        WindowValidationInput.Pump(Dispatcher);
+                        UpdateLayout();
+                        if (_manager is MainWindow revealedMain)
+                        {
+                            var editorText = (TextBox)revealedMain.FindName("NoteText");
+                            var cancelEdit = (Button)revealedMain.FindName("CancelNoteEdit");
+                            noteMenuProvidesEdit =
+                                revealedMain.IsVisible &&
+                                string.Equals(
+                                    editorText.Text,
+                                    addedNote.Text,
+                                    StringComparison.Ordinal) &&
+                                cancelEdit.Visibility == Visibility.Visible;
+                            cancelEdit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                            WindowValidationInput.Pump(Dispatcher);
+                        }
+
+                        noteMenuProvidesEdit = noteMenuProvidesEdit && !popup.IsOpen;
+                    }
+
+                    if (popup is not null)
+                    {
+                        noteMenuDeleteConfirms = ProbeNoteOverflowMenuDelete(
+                            trigger,
+                            popup,
+                            addedNote.Id);
+                    }
+                }
+            }
+
+            var settingsOpensManagerPreservingWorkspace = false;
+            if (managerWindow is not null)
+            {
+                if (managerWasVisible)
+                {
+                    managerWindow.Hide();
+                    WindowValidationInput.Pump(Dispatcher);
+                }
+
+                FloatingOpenSettings.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+                settingsOpensManagerPreservingWorkspace =
+                    managerWindow.IsVisible &&
+                    managerWindow.WindowState == WindowState.Normal &&
+                    _workspace == WorkspaceKind.Notes;
+                managerWindow.Hide();
+                WindowValidationInput.Pump(Dispatcher);
+            }
+
+            var collapsedCommandBarBounds = ValidationBounds(FloatingNotesCommandBar);
+            var collapsedListOffset = FloatingBodyScroller.VerticalOffset;
+            var expandedQuickAddScrollable = false;
+            SetQuickAddExpanded(true);
+            WindowValidationInput.Pump(Dispatcher);
+            FloatingNoteText.Text = new string('敏', 60);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var expandedScrollerBounds = ValidationBounds(FloatingNotesCommandScroller);
+            if (expandedScrollerBounds.Bottom <= ActualHeight + 0.5 &&
+                FloatingNotesCommandScroller.ScrollableHeight > 0.5)
+            {
+                FloatingNotesCommandScroller.ScrollToBottom();
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+                var scrollerViewportBottom = ValidationBounds(FloatingNotesCommandScroller).Bottom;
+                var scrolledBarBounds = ValidationBounds(FloatingNotesCommandBar);
+                var commandBarReachableAtBottom =
+                    FloatingNotesCommandScroller.VerticalOffset >=
+                        FloatingNotesCommandScroller.ScrollableHeight - 0.5 &&
+                    scrolledBarBounds.Bottom <= scrollerViewportBottom + 0.5 &&
+                    scrolledBarBounds.Bottom >= scrollerViewportBottom - 8 &&
+                    ValidationBounds(FloatingAddNote).Bottom <= scrollerViewportBottom + 0.5;
+
+                FloatingNotesCommandScroller.ScrollToHome();
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+                var noteTextTop = ValidationBounds(FloatingNoteText).Top;
+                var entryTopAfterHome = ValidationBounds(FloatingNoteEntry).Top;
+                var entryRestoredToTop =
+                    FloatingNotesCommandScroller.VerticalOffset <= 0.5 &&
+                    Math.Abs(entryTopAfterHome - expandedScrollerBounds.Top) <= 0.5 &&
+                    noteTextTop >= expandedScrollerBounds.Top - 0.5 &&
+                    noteTextTop <= expandedScrollerBounds.Top + 24;
+
+                SetQuickAddExpanded(false);
+                FloatingNoteText.Text = string.Empty;
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+                var restoredBarBounds = ValidationBounds(FloatingNotesCommandBar);
+                expandedQuickAddScrollable =
+                    commandBarReachableAtBottom &&
+                    entryRestoredToTop &&
+                    Math.Abs(restoredBarBounds.X - collapsedCommandBarBounds.X) <= 0.5 &&
+                    Math.Abs(restoredBarBounds.Y - collapsedCommandBarBounds.Y) <= 0.5 &&
+                    Math.Abs(restoredBarBounds.Width - collapsedCommandBarBounds.Width) <= 0.5 &&
+                    Math.Abs(restoredBarBounds.Height - collapsedCommandBarBounds.Height) <= 0.5 &&
+                    Math.Abs(FloatingBodyScroller.VerticalOffset - collapsedListOffset) <= 0.5 &&
+                    FloatingNotesCommandScroller.VerticalOffset <= 0.5;
+            }
+            else
+            {
+                SetQuickAddExpanded(false);
+                FloatingNoteText.Text = string.Empty;
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateLayout();
+            }
+
+            return new FloatingBottomCommandScenarios(
+                defaultCollapsedInNotes,
+                countdownsHideCommandArea,
+                toggleExpandsWithFilterTags,
+                toggleCollapses,
+                submitCollapsesAfterSuccess,
+                expandedQuickAddScrollable,
+                settingsOpensManagerPreservingWorkspace,
+                noteMenuProvidesEdit,
+                noteMenuDeleteConfirms,
+                pastelStampsRotate,
+                cardSurfacesAlternate,
+                handwrittenDecorationLands);
+        }
+        finally
+        {
+            foreach (var id in createdNoteIds)
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(id));
+            }
+
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            foreach (var id in createdTagIds)
+            {
+                _desktopWorkspace.Apply(new DeleteTagChange(id));
+            }
+
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            if (managerWindow is not null && managerWasVisible)
+            {
+                managerWindow.Show();
+                managerWindow.Activate();
+                WindowValidationInput.Pump(Dispatcher);
+            }
+        }
+    }
+
+    /// <summary>“…”菜单删除：确认弹层取消则保留便签，确认则删除；弹层经 Dispatcher 队列驱动。</summary>
+    private bool ProbeNoteOverflowMenuDelete(Button trigger, Popup popup, string noteId)
+    {
+        bool OpenMenuAndDriveDialog(Func<ConfirmationDialog?, bool> drive)
+        {
+            if (!popup.IsOpen)
+            {
+                trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+            }
+
+            if (!popup.IsOpen)
+            {
+                return false;
+            }
+
+            ConfirmationDialog? dialog = null;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                dialog = Application.Current?.Windows.OfType<ConfirmationDialog>().FirstOrDefault();
+                if (dialog is not null)
+                {
+                    drive(dialog);
+                }
+            }), DispatcherPriority.Background);
+            var menuDelete = ValidationDescendants<Button>(popup.Child).FirstOrDefault(button =>
+                string.Equals(button.Content as string, "删除", StringComparison.Ordinal));
+            menuDelete?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            return dialog is not null;
+        }
+
+        var cancelled = OpenMenuAndDriveDialog(dialog =>
+        {
+            dialog!.CancelButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            return true;
+        });
+        var noteStillExistsAfterCancel = _desktopWorkspace.Snapshot.Settings.Notes.Any(note =>
+            string.Equals(note.Id, noteId, StringComparison.Ordinal));
+        var confirmed = OpenMenuAndDriveDialog(dialog =>
+        {
+            dialog!.ConfirmButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            return true;
+        });
+        return
+            cancelled &&
+            noteStillExistsAfterCancel &&
+            confirmed &&
+            !_desktopWorkspace.Snapshot.Settings.Notes.Any(note =>
+                string.Equals(note.Id, noteId, StringComparison.Ordinal));
+    }
+
+    private void EnsureProbeNotes(List<string> createdIds, int minimumVisible)
+    {
+        while (_desktopWorkspace.Snapshot.VisibleActiveNotes.Count < minimumVisible)
+        {
+            var result = _desktopWorkspace.Apply(new SaveNoteChange(
+                null,
+                $"悬浮底部命令探针-{Guid.NewGuid():N}",
+                _desktopWorkspace.Snapshot.BeijingNow.Date,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance));
+            if (!result.Succeeded)
+            {
+                return;
+            }
+
+            var note = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(candidate =>
+                candidate.Text.StartsWith("悬浮底部命令探针-", StringComparison.Ordinal));
+            if (note is null)
+            {
+                return;
+            }
+
+            createdIds.Add(note.Id);
+        }
+    }
+
+    private static Border? FindNoteCardDateStamp(Border card) =>
+        ValidationDescendants<Border>(card).FirstOrDefault(border =>
+            Math.Abs(border.ActualWidth - 48) <= 0.5);
+
+    private static bool BrushMatchesResource(Brush? actual, object? expected) =>
+        ReferenceEquals(actual, expected) ||
+        (actual is SolidColorBrush actualBrush &&
+         expected is SolidColorBrush expectedBrush &&
+         actualBrush.Color == expectedBrush.Color);
 
     private Rect ValidationBounds(FrameworkElement element) =>
         element.TransformToAncestor(this).TransformBounds(
@@ -1690,6 +2292,8 @@ public sealed partial class FloatingWindow
         try
         {
             ShowWorkspace(WorkspaceKind.Notes);
+            // 字段错误需在真实可见表单中聚焦来源控件，展开快速新增表单后验证。
+            SetQuickAddExpanded(true);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
             var datePickerKeyboardLifecycleWorks =
@@ -1774,11 +2378,11 @@ internal sealed record MainWindowValidationScenarios(
     bool ReminderSummaryAdvances,
     MainUiPolishScenarios UiPolish,
     SettingsDraftRetentionProbe SettingsDrafts,
-    UndatedNoteEditProbe UndatedNoteEdit);
+    UndatedNoteEditProbe UndatedNoteEdit,
+    bool CountdownReminderModeMappingWorks);
 
 internal sealed record SettingsDraftRetentionProbe(
     bool InputsRetainedOnRefresh,
-    bool ThemeSelectionRetainedOnRefresh,
     bool SavedValuesReflectedAfterSave,
     bool NegativeSalaryRejectedKeepsDraft,
     bool ZeroSalaryStillSavesAsUnset);
@@ -1797,12 +2401,52 @@ internal sealed record FloatingWindowValidationScenarios(
     FloatingManualPlacementExerciseResult ManualPlacement,
     FloatingUiPolishScenarios UiPolish,
     FloatingWorkspaceValidationScenarios Workspace,
-    FloatingNoteSearchValidationScenarios NoteSearch);
+    FloatingNoteSearchValidationScenarios NoteSearch,
+    FloatingBottomCommandScenarios BottomCommand);
+
+internal sealed record FloatingBottomCommandScenarios(
+    bool DefaultCollapsedInNotes,
+    bool CountdownsHideCommandArea,
+    bool ToggleExpandsWithFilterTags,
+    bool ToggleCollapses,
+    bool SubmitCollapsesAfterSuccess,
+    bool ExpandedQuickAddScrollable,
+    bool SettingsOpensManagerPreservingWorkspace,
+    bool NoteMenuProvidesEdit,
+    bool NoteMenuDeleteConfirms,
+    bool PastelStampsRotate,
+    bool CardSurfacesAlternate,
+    bool HandwrittenDecorationLands)
+{
+    public bool QuickAddTogglePass =>
+        DefaultCollapsedInNotes &&
+        ToggleExpandsWithFilterTags &&
+        ToggleCollapses &&
+        SubmitCollapsesAfterSuccess &&
+        ExpandedQuickAddScrollable;
+
+    public bool OverflowMenuPass =>
+        NoteMenuProvidesEdit &&
+        NoteMenuDeleteConfirms;
+
+    public bool PastelIndexPass =>
+        PastelStampsRotate &&
+        CardSurfacesAlternate;
+
+    public bool AllPassed =>
+        DefaultCollapsedInNotes &&
+        CountdownsHideCommandArea &&
+        QuickAddTogglePass &&
+        SettingsOpensManagerPreservingWorkspace &&
+        OverflowMenuPass &&
+        PastelIndexPass &&
+        HandwrittenDecorationLands;
+}
 
 internal sealed record FloatingWorkspaceValidationScenarios(
     bool InitialStateMatches,
     bool SwitchingStaysSynchronized,
-    bool CountdownSelectionSurvivesDayNightThemes,
+    bool CountdownSelectionSurvivesRefresh,
     bool NotesKeepExistingSortOrder,
     WindowValidationTextFit CountdownButtonTextFit,
     WindowValidationTextFit NotesButtonTextFit,
@@ -1893,7 +2537,6 @@ internal sealed record CountdownIncrementalRefreshProbe(
     bool CollectionChangeRebuilt,
     bool FilterChangeRebuilt,
     bool PrecisionChangeRebuilt,
-    bool ThemeChangeRebuilt,
     bool ExpiryChangeRebuilt,
     bool ExpiryBackgroundFlipped,
     bool ExpiryRemainingTextFlipped)
@@ -1905,11 +2548,10 @@ internal sealed record CountdownIncrementalRefreshProbe(
         CollectionChangeRebuilt &&
         FilterChangeRebuilt &&
         PrecisionChangeRebuilt &&
-        ThemeChangeRebuilt &&
         ExpiryChangeRebuilt;
 
     public static CountdownIncrementalRefreshProbe Failed { get; } = new(
-        false, false, false, false, false, false, false, false, false, false, false);
+        false, false, false, false, false, false, false, false, false, false);
 }
 
 internal sealed record MainCountdownRemainingMeasurement(
@@ -2004,7 +2646,9 @@ internal static class WindowValidationInput
                 RaisePreviewKey(input, Key.Escape);
             Pump(popup.Dispatcher);
             popupClosedAfterEscape = !popup.IsOpen;
-            triggerFocused = trigger.IsKeyboardFocusWithin;
+            triggerFocused = trigger.IsKeyboardFocusWithin ||
+                (Window.GetWindow(trigger) is { } triggerWindow &&
+                 ReferenceEquals(FocusManager.GetFocusedElement(triggerWindow), trigger));
             escapeReturnsFocus =
                 popupOpened &&
                 focusEntered &&
@@ -2042,7 +2686,9 @@ internal static class WindowValidationInput
                 openedForTriggerEscape &&
                 triggerEscapeHandled &&
                 !popup.IsOpen &&
-                trigger.IsKeyboardFocusWithin;
+                (trigger.IsKeyboardFocusWithin ||
+                 (Window.GetWindow(trigger) is { } triggerWindowAfterEscape &&
+                  ReferenceEquals(FocusManager.GetFocusedElement(triggerWindowAfterEscape), trigger)));
 
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Pump(popup.Dispatcher);
@@ -2094,7 +2740,10 @@ internal static class WindowValidationInput
             Pump(picker.Dispatcher);
             picker.ApplyTemplate();
             triggerButton = picker.Template.FindName("PART_Button", picker) as Button;
-            var focusReturned = triggerButton?.IsKeyboardFocusWithin == true;
+            var focusReturned = triggerButton?.IsKeyboardFocusWithin == true ||
+                ReferenceEquals(Keyboard.FocusedElement, triggerButton) ||
+                (owner is not null &&
+                 ReferenceEquals(FocusManager.GetFocusedElement(owner), triggerButton));
             var works =
                 focusEntered &&
                 escapeHandled &&
@@ -2550,7 +3199,7 @@ internal static class WindowValidationInput
             RoutedEvent = routedEvent,
             Source = textBox
         };
-        picker.RaiseEvent(eventArgs);
+        textBox.RaiseEvent(eventArgs);
         return eventArgs.Handled;
     }
 

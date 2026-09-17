@@ -647,6 +647,79 @@ internal sealed class ApplicationSession
         return TryCommit(Current with { ReminderStates = states }, out error);
     }
 
+    public bool TryAcknowledgeReminders(
+        IReadOnlyList<ReminderAcknowledgementRequest> requests,
+        out string error)
+    {
+        if (requests.Count == 0)
+        {
+            error = "没有可批量处置的提醒。";
+            return false;
+        }
+
+        var states = Current.ReminderStates.ToDictionary(
+            static pair => pair.Key,
+            static pair => pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+        var changed = false;
+        foreach (var request in requests)
+        {
+            var rule = FindReminderRule(
+                request.SourceKind,
+                request.SourceId,
+                request.RuleId,
+                out var countdownTargetUtc);
+            Current.ReminderStates.TryGetValue(request.RuleId, out var knownState);
+            if (rule is null ||
+                (!ReminderSchedule.IsOccurrence(rule, request.ScheduledUtc, countdownTargetUtc) &&
+                 !IsHistoricalRelativeDelivery(rule, request.ScheduledUtc, knownState)))
+            {
+                error = "提醒规则或 occurrence 已变化。";
+                return false;
+            }
+
+            var occurrenceKey = MinminCountdown.Core.ReminderOccurrenceKey.Create(
+                rule,
+                request.ScheduledUtc).ToString();
+            var normalizedScheduledUtc = request.ScheduledUtc.ToUniversalTime();
+            if (!Current.ReminderStates.TryGetValue(rule.Id, out var existingState) ||
+                existingState.HandledThroughUtc is not { } handledThroughUtc ||
+                handledThroughUtc < normalizedScheduledUtc ||
+                existingState.LastDeliveredOccurrenceKey is null)
+            {
+                error = "提醒 occurrence 尚未确认送达或已经变化。";
+                return false;
+            }
+
+            if (MinminCountdown.Core.ReminderOccurrenceKey.TryParse(
+                    existingState.LastDispositionOccurrenceKey,
+                    out var lastDispositionOccurrence) &&
+                string.Equals(
+                    lastDispositionOccurrence.RuleId,
+                    rule.Id,
+                    StringComparison.OrdinalIgnoreCase) &&
+                lastDispositionOccurrence.ScheduledUtc >= normalizedScheduledUtc)
+            {
+                continue;
+            }
+
+            states[rule.Id] = existingState with
+            {
+                LastDispositionOccurrenceKey = occurrenceKey,
+                ActiveSnooze = null
+            };
+            changed = true;
+        }
+
+        if (!changed)
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        return TryCommit(Current with { ReminderStates = states }, out error);
+    }
+
     public bool TrySnoozeReminder(
         string noteId,
         string ruleId,
@@ -849,14 +922,6 @@ internal sealed class ApplicationSession
         return TryCommit(Current with { Preferences = preferences }, out error);
     }
 
-    public bool TrySaveThemePreference(ThemePreferenceMode themePreference, out string error)
-    {
-        return TryCommit(Current with
-        {
-            Preferences = Current.Preferences with { ThemePreference = themePreference }
-        }, out error);
-    }
-
     private static bool StateSurvivesRuleEdit(
         IReadOnlyList<ReminderRule>? existingRules,
         IReadOnlyList<ReminderRule> candidateRules,
@@ -1004,3 +1069,9 @@ internal sealed class ApplicationSession
 
     public string SerializeCurrent() => _store.Serialize(Current);
 }
+
+internal sealed record ReminderAcknowledgementRequest(
+    ReminderSourceKind SourceKind,
+    string SourceId,
+    string RuleId,
+    DateTimeOffset ScheduledUtc);

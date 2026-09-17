@@ -3421,10 +3421,11 @@ internal static class ValidationReport
         // 重推导（x=200 列，delta≥30，证据 run-evidence\clock-countdown-issue-146-final-closure）。
         // Notes-Day 标签带收窄至 [405,424]：[425,426] 是 #135 sanction 的工作区卡片顶边（全宽），
         // 旧 [405,440] 会在新布局下把 sanctioned 卡边误计为标签带违规；标签字形仍被精确行金丝覆盖。
+        // 2026-09-17 深夜：捕获口径改 Aliased+Ideal 并重拍 v22 后按新帧再次重推导（同一 x=200/delta≥30 口径）。
         var specs = new[]
         {
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 540, 542, 553, 554, 555 }, 480, 510),
-            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 474, 499, 500, 503, 504, 506, 508, 509, 516, 517 }, 405, 424)
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 539, 540, 552, 553 }, 480, 510),
+            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 497, 498, 499, 501, 502, 503, 505, 506, 514, 515 }, 405, 424)
         };
         var directory = Path.Combine(
             Path.GetFullPath(sourceRoot),
@@ -8092,13 +8093,18 @@ internal static class ValidationReport
         }
     }
 
-    // 文本抗锯齿与格式化默认跟随系统 ClearType/显示设置漂移；基线重拍与无人值守
-    // 复验必须在同一渲染参数下进行，统一钉死为灰阶抗锯齿 + Display 格式化。
+    // 文本抗锯齿与格式化默认跟随系统显示环境漂移，且不只是抗锯齿灰阶：WPF 未显式钉死时
+    // 会按显示拓扑推导渲染参数（Avalon.Graphics 覆盖缺失时的系统查询路径），显示拓扑变化
+    // （如虚拟显示适配器加入）会同时改变 Display 格式化的像素对齐度量（实测长便签列表
+    // ScrollableHeight 871.4 -> 879.67 漂移）与灰阶抗锯齿的 gamma/对比度（细笔画出现/消失），
+    // 使像素基线门禁在环境变化后误红。捕获路径统一钉死为 Ideal 浮点格式化（度量只由字体
+    // 文件决定，无像素网格 hinting）+ Aliased 1-bit 光栅化（不经灰阶 gamma/对比度管线），
+    // 从机制上移除显示推导参数的入口，使捕获像素与布局对显示拓扑/时段确定。
     // TextOptions 是可继承附加属性，在捕获根上设置即下传，重复调用幂等。
     private static void PinDeterministicTextOptions(FrameworkElement visual)
     {
-        TextOptions.SetTextRenderingMode(visual, TextRenderingMode.Grayscale);
-        TextOptions.SetTextFormattingMode(visual, TextFormattingMode.Display);
+        TextOptions.SetTextRenderingMode(visual, TextRenderingMode.Aliased);
+        TextOptions.SetTextFormattingMode(visual, TextFormattingMode.Ideal);
     }
 
     private static RenderTargetBitmap RenderVisualToBitmap(FrameworkElement visual, int width, int height)

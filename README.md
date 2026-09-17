@@ -75,7 +75,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.Core.Tests.ps1`、`Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`：核心、C# 互操作和旧 UI 兼容回归测试
 - `Invoke-CountdownSourceValidation.ps1`：本机验证组合中的 C# validate-only 源码契约验证入口
 - `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化收口验证 runner 与桌面启动 T0–T4 分段时延探针；探针样本只用于归因，不汇入门槛样本池
-- `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + `-IsolatedDesktop` 不可见 Win32 桌面隔离 + 红即停），六阶段套件默认入口；配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
+- `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + `-IsolatedDesktop` 不可见 Win32 桌面隔离 + 红即停），六阶段套件默认入口；Build 绿后 Core/CSharp/Ui/SourceValidation/InstallValidate 五阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary；配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动，桌面名按阶段参数化）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
 迁移决策、module/seam 划分和候选语言比较见 [架构与语言迁移](docs/架构与语言迁移.md)。

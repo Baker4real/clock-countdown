@@ -48,10 +48,10 @@
     显示本帮助后退出 0。也可用 -?（以命令方式调用时）或 Get-Help。
 
 .EXAMPLE
-    pwsh.exe -NoLogo -NoProfile -File .\tools\Invoke-CountdownVerificationRun.ps1 -Help
+    pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownVerificationRun.ps1 -Help
 
 .EXAMPLE
-    pwsh.exe -NoLogo -NoProfile -File .\tools\Invoke-CountdownVerificationRun.ps1 -Namespace soak -DryRun
+    pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownVerificationRun.ps1 -Namespace soak -DryRun
 #>
 [CmdletBinding()]
 param(

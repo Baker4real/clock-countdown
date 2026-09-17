@@ -89,26 +89,28 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 硬约束：套件的默认运行前提是用户正在使用这台电脑。Build / Core / CSharp / Ui / SourceValidation / InstallValidate 六个阶段必须经低影响启动器运行，禁止非隔离直跑：整棵进程树 BelowNormal，`-IsolatedDesktop` 把控制台与 WPF 窗口都放进不可见 Win32 桌面（窗口不上用户屏幕、不抢焦点），任一阶段红即停，日志落在 `logs\suite-runs\`。启动器逐字转发下方官方命令行，命令本身不变：
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -File .\tools\Invoke-CountdownSuiteLowImpact.ps1 -IsolatedDesktop -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
+pwsh.exe -NoLogo -NoProfile -File ./tools\Invoke-CountdownSuiteLowImpact.ps1 -IsolatedDesktop -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
 ```
+
+标注：本文档命令的脚本路径统一用 `./` 前缀：该写法在 PowerShell、cmd 与 Git Bash 下均可直接执行；`.\` 前缀会被 Git Bash 等 POSIX shell 当作转义符吃掉反斜杠，导致 `pwsh -File` 报找不到脚本。
 
 标注：六阶段套件与 12 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/6/8/9/10/11 步与六阶段逐字相同，连跑等于整套跑两遍。
 
-标注：`pwsh.exe -NoLogo -NoProfile -File .\Build-CountdownApplication.ps1 -Incremental` 是开发者本地迭代手动工具（显式非默认开关：跳过受管清理、保留增量编译），不属于六阶段套件；直跑时须保持 BelowNormal 等低影响等价措施。增量产物不用于发布收口，收口仍走全量 `-Clean` + R2R 与六阶段套件。
+标注：`pwsh.exe -NoLogo -NoProfile -File ./Build-CountdownApplication.ps1 -Incremental` 是开发者本地迭代手动工具（显式非默认开关：跳过受管清理、保留增量编译），不属于六阶段套件；直跑时须保持 BelowNormal 等低影响等价措施。增量产物不用于发布收口，收口仍走全量 `-Clean` + R2R 与六阶段套件。
 
 启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-DesktopLauncherOnly`、`-InstanceActivationMatrix`、`Deploy-OfficeCountdown.ps1 -ValidateOnly`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行。下方为启动器转发的官方命令及未覆盖项全表：
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -File .\Build-CountdownApplication.ps1 -Clean
-.\verification\MinminCountdown.Verification.exe
-pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1
-pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly  # 2026-08-23 起冷≤4.7s / 暖≤4.5s
-& 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -STA -File .\Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix  # 诊断并发 probe 共享截止 38900ms（真实矩阵 8×100 强制 1MB 滚动写最差外推 32381ms +20%）
-pwsh.exe -NoLogo -NoProfile -File .\Countdown.Core.Tests.ps1
-pwsh.exe -NoLogo -NoProfile -STA -File .\Countdown.Ui.Tests.ps1
-pwsh.exe -NoLogo -NoProfile -STA -File .\Invoke-CountdownSourceValidation.ps1
-pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1 -ValidateOnly
-pwsh.exe -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
+pwsh.exe -NoLogo -NoProfile -File ./Build-CountdownApplication.ps1 -Clean
+./verification/MinminCountdown.Verification.exe
+pwsh.exe -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1
+pwsh.exe -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly  # 2026-08-23 起冷≤4.7s / 暖≤4.5s
+& 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix  # 诊断并发 probe 共享截止 38900ms（真实矩阵 8×100 强制 1MB 滚动写最差外推 32381ms +20%）
+pwsh.exe -NoLogo -NoProfile -File ./Countdown.Core.Tests.ps1
+pwsh.exe -NoLogo -NoProfile -STA -File ./Countdown.Ui.Tests.ps1
+pwsh.exe -NoLogo -NoProfile -STA -File ./Invoke-CountdownSourceValidation.ps1
+pwsh.exe -NoLogo -NoProfile -File ./Install-Countdown.ps1 -ValidateOnly
+pwsh.exe -NoLogo -NoProfile -File ./Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
 
 标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用（`Countdown.Core.Tests.ps1` 与 `Install-Countdown.ps1 -ValidateOnly`）是有意双轨：前者是阶段级红即停门禁，后者带合同断言；重复成本约 10 秒，不合并。
@@ -119,7 +121,7 @@ pwsh.exe -NoLogo -NoProfile -File .\Deploy-OfficeCountdown.ps1 -ValidateOnly
 ## 运行应用
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1
+pwsh.exe -NoLogo -NoProfile -STA -File ./敏敏子倒计时.ps1
 ```
 
 ## 安装
@@ -127,7 +129,7 @@ pwsh.exe -NoLogo -NoProfile -STA -File .\敏敏子倒计时.ps1
 安装前先运行 `Build-CountdownApplication.ps1 -Clean`。改了发布契约 `IntegrityHashes` 覆盖的源文件、测试或静态资产后，按当前提交 blob 更新 `Countdown.ReleaseContract.psm1` 里对应的 SHA-256；`verification\MinminCountdown.Verification.exe` 不进静态钉死，由构建和正式部署按本次产物字节锁定。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、把启动器安装到桌面，并另行注册登录任务。桌面双击 `敏敏子倒计时.exe` 直接启动宿主，不经过 schtasks、pwsh 或 adapter；登录任务仍执行 `pwsh -STA -File 敏敏子倒计时.ps1`。登录任务必须用本次启动令牌先写出“窗口首帧已渲染”的 `window-ready` 回执，安装器最多等待 30 秒；设置等价和提交前验收通过、事务进入仍可回滚的 `accepted` 后，应用还必须以同一令牌、进程、会话和应用路径写出 `finalized-ready`，安装器复核计划任务、受管 EXE 身份与运行环境后才把事务标记为 `committed`。正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1
+pwsh.exe -NoLogo -NoProfile -File ./Install-Countdown.ps1
 ```
 
 安装器只支持安装目录和交互用户桌面均位于 `D:\` 的设备，这是当前办公室设备的安全边界。
@@ -137,7 +139,7 @@ pwsh.exe -NoLogo -NoProfile -File .\Install-Countdown.ps1
 ## 重新编译启动器
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -File .\Build-Launcher.ps1
+pwsh.exe -NoLogo -NoProfile -File ./Build-Launcher.ps1
 ```
 
 重新生成 `CountdownLauncher.exe` 后，需要同步更新 `Countdown.ReleaseContract.psm1` 中对应的 SHA-256。

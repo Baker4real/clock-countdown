@@ -1,11 +1,18 @@
 #requires -Version 7.0
 # 监测调用线程所在桌面（用户 Default 桌面）在观测窗口内新出现的顶层窗口。
-# 输出：每行一条 JSON：时间、PID、进程名、窗口类、标题。
+# 默认输出每条新窗 JSON 行。-SuiteLeakOnly 只记录套件泄漏（敏敏子标题 / MinminCountdown / 套件 PID），
+# 发现即立刻追加 OutputPath，供启动器红即停。本脚本不创建 WPF 或 Win32 业务窗。
 [CmdletBinding()]
-param([int] $Seconds = 120, [string] $OutputPath)
+param(
+    [int] $Seconds = 120,
+    [string] $OutputPath,
+    [switch] $SuiteLeakOnly
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Import-Module -Name (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 
 $source = @'
 using System;
@@ -54,6 +61,15 @@ public static class DesktopWindowWatcher
 
 Add-Type -TypeDefinition $source -Language CSharp
 
+function Write-SuiteWatcherFinding {
+    param([Parameter(Mandatory)] [string] $Line)
+
+    if ($OutputPath) {
+        Add-Content -LiteralPath $OutputPath -Value $Line -Encoding UTF8
+    }
+    Write-Output $Line
+}
+
 $seen = @{}
 $initial = [DesktopWindowWatcher]::Snapshot()
 foreach ($row in $initial) { $seen[$row] = $true }
@@ -62,21 +78,35 @@ $deadline = [DateTimeOffset]::Now.AddSeconds($Seconds)
 $findings = [System.Collections.Generic.List[string]]::new()
 while ([DateTimeOffset]::Now -lt $deadline) {
     foreach ($row in [DesktopWindowWatcher]::Snapshot()) {
-        if (-not $seen.ContainsKey($row)) {
-            $seen[$row] = $true
-            $parts = $row -split '\|', 4
-            $procName = ''
-            try { $procName = (Get-Process -Id ([int] $parts[0]) -ErrorAction Stop).ProcessName } catch {}
-            $findings.Add((Get-Date -Format 'HH:mm:ss.fff') + ' pid=' + $parts[0] +
-                ' proc=' + $procName + ' class=' + $parts[1] +
-                ' visible=' + $parts[3] + ' title=' + $parts[2])
+        if ($seen.ContainsKey($row)) {
+            continue
         }
+        $seen[$row] = $true
+        $parsed = ConvertFrom-SuiteDesktopWindowSnapshotRow -Row $row
+        if ($null -eq $parsed) {
+            continue
+        }
+        $procName = ''
+        try { $procName = (Get-Process -Id $parsed.ProcessId -ErrorAction Stop).ProcessName } catch {}
+        if ($SuiteLeakOnly -and -not (Test-SuiteDesktopLeakWindow `
+                    -ProcessId $parsed.ProcessId `
+                    -ProcessName $procName `
+                    -ClassName $parsed.ClassName `
+                    -Title $parsed.Title `
+                    -Visible $parsed.Visible `
+                    -SuiteProcessIds @())) {
+            continue
+        }
+
+        $line = (Get-Date -Format 'HH:mm:ss.fff') + ' pid=' + $parsed.ProcessId +
+            ' proc=' + $procName + ' class=' + $parsed.ClassName +
+            ' visible=' + $(if ($parsed.Visible) { '1' } else { '0' }) +
+            ' title=' + $parsed.Title
+        $findings.Add($line)
+        Write-SuiteWatcherFinding -Line $line
     }
     Start-Sleep -Milliseconds 100
 }
 
-if ($OutputPath) {
-    Set-Content -LiteralPath $OutputPath -Value $findings -Encoding UTF8
-}
-$findings | ForEach-Object { Write-Output $_ }
-Write-Output ("watcher-done total-new-windows=" + $findings.Count)
+$done = 'watcher-done total-new-windows=' + $findings.Count
+Write-SuiteWatcherFinding -Line $done

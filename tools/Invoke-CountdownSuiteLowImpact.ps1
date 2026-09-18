@@ -3,8 +3,9 @@
 .SYNOPSIS
     低影响官方套件启动器：前提假设是「用户正在使用这台电脑」。
     整棵套件进程树以 BelowNormal 优先级运行（子进程自动继承），
-    含窗口的套件（CSharp/Ui）可经 -IsolatedDesktop 放入不可见 Win32 桌面，
-    窗口不出现在用户屏幕上、不抢焦点。官方命令行本身逐字不变。
+    窗口套件默认放入不可见 Win32 桌面，不上用户屏幕、不抢焦点。
+    -IsolatedDesktop 仍可显式传入（兼容旧命令）。关闭隔离必须
+    -AllowUnisolatedDesktop；用户正在用电脑时禁止。官方内层命令由启动器转发。
     隔离桌面名按阶段唯一化（MinminSuiteIso-<Stage>），阶段间无同名桌面冲突。
     #127：Build 仍串行先行作门禁（Ui/adapter 依赖 Build 产物，不得早于 Build）；
     Build 绿之后其余阶段按 -MaxParallel（默认 2，保守）并行扇出。
@@ -24,6 +25,9 @@ param(
 
     [switch] $IsolatedDesktop,
 
+    # 显式关闭桌面隔离。用户正在用电脑时禁止。
+    [switch] $AllowUnisolatedDesktop,
+
     # Build 门禁之后并行扇出的最大同时阶段数；默认 2（用户可能同时使用电脑）。
     [ValidateRange(1, 5)]
     [int] $MaxParallel = 2
@@ -40,6 +44,23 @@ if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
 }
 # 并行调度按每阶段唯一桌面/唯一日志设计，重复阶段去重并保持首次出现顺序。
 $Stage = @($Stage | Select-Object -Unique)
+
+Import-Module -Name (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
+$script:SuiteIsolation = Resolve-SuiteLauncherIsolation `
+    -IsolatedDesktopBound:($PSBoundParameters.ContainsKey('IsolatedDesktop')) `
+    -IsolatedDesktop:([bool] $IsolatedDesktop) `
+    -AllowUnisolatedDesktop:([bool] $AllowUnisolatedDesktop)
+if ($script:SuiteIsolation.Isolated) {
+    Remove-Item Env:MINMIN_SUITE_ALLOW_UNISOLATED -ErrorAction SilentlyContinue
+}
+else {
+    $env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
+    Write-Warning '已显式 -AllowUnisolatedDesktop：窗口会进入用户桌面。用户正在用电脑时禁止。'
+}
+
+$script:SuiteLeakWatcher = $null
+$script:SuiteLeakLog = $null
+$script:SuiteLeakReported = $false
 
 $suiteMutex = [System.Threading.Mutex]::new($false, 'Local\MinminCountdown.SuiteLowImpact')
 if (-not $suiteMutex.WaitOne(0)) {
@@ -61,6 +82,22 @@ try {
     [void] [System.IO.Directory]::CreateDirectory($logDir)
     $stamp = Get-Date -Format 'yyyyMMddTHHmmss'
     $suiteStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $script:SuiteLeakLog = Join-Path $logDir "$stamp-desktop-leaks.log"
+    if (Test-Path -LiteralPath $script:SuiteLeakLog -PathType Leaf) {
+        Remove-Item -LiteralPath $script:SuiteLeakLog -Force
+    }
+    $script:SuiteLeakWatcher = Start-Process -FilePath $pwsh `
+        -ArgumentList @(
+            '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+            (Join-Path $PSScriptRoot 'Watch-DesktopWindows.ps1'),
+            '-Seconds', '86400', '-SuiteLeakOnly',
+            '-OutputPath', $script:SuiteLeakLog
+        ) `
+        -WorkingDirectory $repoRoot `
+        -RedirectStandardOutput (Join-Path $logDir "$stamp-watcher.out.log") `
+        -RedirectStandardError (Join-Path $logDir "$stamp-watcher.err.log") `
+        -WindowStyle Hidden -PassThru
+    Write-Host "[suite] 用户桌面泄漏监测已启动（PID $($script:SuiteLeakWatcher.Id)）"
 
     $stageTable = @{
         Build = @{
@@ -86,6 +123,44 @@ try {
         InstallValidate = @{
             ArgumentList = @('-NoLogo', '-NoProfile', '-File', (Join-Path $repoRoot 'Install-Countdown.ps1'), '-ValidateOnly')
             Windowed = $false
+        }
+    }
+
+    function Read-SuiteDesktopLeakFindings {
+        if ([string]::IsNullOrWhiteSpace($script:SuiteLeakLog) -or
+            -not (Test-Path -LiteralPath $script:SuiteLeakLog -PathType Leaf)) {
+            return @()
+        }
+        return @(
+            Get-Content -LiteralPath $script:SuiteLeakLog -Encoding UTF8 |
+                Where-Object { $_ -and $_ -notmatch '^watcher-done' }
+        )
+    }
+
+    function Test-SuiteDesktopLeakRed {
+        $hits = @(Read-SuiteDesktopLeakFindings)
+        if ($hits.Count -eq 0) {
+            return $false
+        }
+        if (-not $script:SuiteLeakReported) {
+            Write-Host "[suite] 红：用户桌面出现套件窗口泄漏：$($hits[0])"
+            $script:SuiteLeakReported = $true
+        }
+        return $true
+    }
+
+    function Stop-SuiteDesktopLeakWatcher {
+        if ($null -eq $script:SuiteLeakWatcher) {
+            return
+        }
+        try {
+            if (-not $script:SuiteLeakWatcher.HasExited) {
+                [void] (& "$env:SystemRoot\System32\taskkill.exe" /PID $script:SuiteLeakWatcher.Id /T /F 2>&1)
+                [void] $script:SuiteLeakWatcher.WaitForExit(5000)
+            }
+        }
+        catch {
+            Write-Warning "停止桌面泄漏监测失败：$($_.Exception.Message)"
         }
     }
 
@@ -126,7 +201,7 @@ try {
         $stderrPath = Join-Path $logDir "$stamp-$Name.err.log"
         # 隔离桌面同时承接控制台与 WPF 窗口；SourceValidation 等阶段也会启动应用渲染窗口，一律隔离。
         # 桌面名按阶段唯一化：并行扇出下各阶段同名桌面冲突归零（#123 seam）。
-        $isolated = [bool] $IsolatedDesktop
+        $isolated = [bool] $script:SuiteIsolation.Isolated
         $desktopName = if ($isolated) { "MinminSuiteIso-$Name" } else { $null }
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -222,6 +297,10 @@ exit `$exitCode
     # 唯一收口出口：按官方阶段顺序排序写 summary，红绿都经过这里。
     function Complete-SuiteRun {
         param([Parameter(Mandatory)] [bool] $Failed)
+        Stop-SuiteDesktopLeakWatcher
+        if (Test-SuiteDesktopLeakRed) {
+            $Failed = $true
+        }
         $suiteStopwatch.Stop()
         $sorted = @($results | Sort-Object { $allowedStages.IndexOf($_.Stage) })
         $summaryPath = Join-Path $logDir "$stamp-summary.json"
@@ -247,7 +326,7 @@ exit `$exitCode
             $status = if ($exitCode -eq 0) { 'Completed' } else { 'Failed' }
             $results.Add((New-SuiteStageResult -Run $run -ExitCode $exitCode -Status $status))
             Write-Host "[suite] 阶段完成（Build 门禁）：$name 退出码 $exitCode 用时 $([int] $run.Stopwatch.Elapsed.TotalSeconds) 秒"
-            if ($exitCode -ne 0) {
+            if ($exitCode -ne 0 -or (Test-SuiteDesktopLeakRed)) {
                 $red = $true
                 break
             }
@@ -269,6 +348,9 @@ exit `$exitCode
                 }
                 if ($runners.Count -eq 0) { break }
                 Start-Sleep -Milliseconds 500
+                if (Test-SuiteDesktopLeakRed) {
+                    $red = $true
+                }
                 foreach ($run in @($runners)) {
                     if (-not $run.Process.HasExited) { continue }
                     # 无参 WaitForExit 立即返回，同时保证重定向输出已从管道排空再读退出码。
@@ -311,6 +393,9 @@ exit `$exitCode
             }
         }
         throw
+    }
+    finally {
+        Stop-SuiteDesktopLeakWatcher
     }
 }
 finally {

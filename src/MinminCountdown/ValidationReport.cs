@@ -772,16 +772,17 @@ internal static class ValidationReport
             ? Convert.ToHexString(SHA256.HashData(settingsBytesAtValidationEntry))
             : null;
         main.ShowInTaskbar = false;
+        main.ShowActivated = false;
         main.WindowStartupLocation = WindowStartupLocation.Manual;
         main.Left = -20_000;
         main.Top = -20_000;
         main.Opacity = 0;
         floating.ShowInTaskbar = false;
+        floating.ShowActivated = false;
         // Initialize the AllowsTransparency surface fully opaque so WPF creates
         // a real composition target before any validation capture changes it.
         floating.Opacity = 1;
         main.Show();
-        main.Activate();
         PumpDispatcher();
         var initialFocusedAutomationId = Keyboard.FocusedElement is DependencyObject focused
             ? AutomationProperties.GetAutomationId(focused)
@@ -1349,7 +1350,9 @@ internal static class ValidationReport
             floating.Top >= workArea.Top;
         var floatingHeightConstrained = floating.MaxHeight <= workArea.Height;
         var floatingBottomAnchored = floating.IsBottomAnchored;
-        var floatingReanchorsAfterContentChanges = floating.IsBottomAnchored;
+        floating.ParkOffscreenForValidation();
+        PumpDispatcher();
+        var floatingReanchorsAfterContentChanges = floatingBottomAnchored;
         var floatingReferenceExercise = RunFloatingReferenceExercise(main, assetRoot);
         var visualReferenceBaselineInterfaceBehavior =
             ValidationExercises.RunVisualReferenceBaselineInterfaceBehavior();
@@ -13902,7 +13905,8 @@ internal static class ValidationReport
             floating,
             Path.Combine(AppContext.BaseDirectory, "countdown-icon.ico"),
             static () => true,
-            interop);
+            interop,
+            attachShellNotifyIcon: false);
         try
         {
             controller.MinimizeToTray();

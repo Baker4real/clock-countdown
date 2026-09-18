@@ -6,6 +6,7 @@ param(
     [switch] $InstanceActivationOnly,
     [switch] $InstanceActivationMatrix,
     [switch] $DesktopLauncherOnly,
+    [switch] $AllowForegroundDesktopLauncher,
     [switch] $MigrationParityOnly,
     [ValidateSet('FloatingVisible', 'Tray', 'Hidden', 'Minimized', 'MainVisible')]
     [string] $InstanceActivationTestState = 'FloatingVisible',
@@ -309,6 +310,12 @@ function Assert-Equal {
         throw "$Name 失败：expected=[$Expected] actual=[$Actual]"
     }
 }
+
+Import-Module -Name (Join-Path $PSScriptRoot 'tools\Countdown.SuiteIsolation.psm1') -Force
+$script:allowForegroundDesktopSuite =
+    ($DesktopLauncherOnly -or $InstanceActivationOnly -or $InstanceActivationMatrix) -and
+    $AllowForegroundDesktopLauncher
+Assert-SuiteIsolatedDesktop -AllowForegroundAuthorized:$script:allowForegroundDesktopSuite
 
 $sourceFiles = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src') -Filter '*.cs' -File -Recurse
 $constantAcceptanceMembers = @(
@@ -2854,7 +2861,6 @@ function Invoke-DesktopLauncherNoSidecarFallbackProcessTest {
     finally {
         Stop-DesktopLauncherOwnedProcess -Process $fallbackLauncher
         Stop-DesktopLauncherHostProcesses -ExecutablePath $installHost
-        Stop-DesktopLauncherHostProcesses -ExecutablePath $productionHost
     }
 
     return $installHost
@@ -3220,8 +3226,6 @@ function Invoke-DesktopLauncherProcessTests {
         Stop-DesktopLauncherOwnedProcess -Process $firstLauncher
         Stop-DesktopLauncherHostProcesses -ExecutablePath $fixtureHost
         Stop-DesktopLauncherHostProcesses -ExecutablePath $fallbackHost
-        Stop-DesktopLauncherHostProcesses -ExecutablePath (
-            [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\app\MinminCountdown.exe'))
         Remove-DesktopLauncherHostPayload -DestinationHost $fixtureHost
         Remove-DesktopLauncherHostPayload -DestinationHost $fallbackHost
 

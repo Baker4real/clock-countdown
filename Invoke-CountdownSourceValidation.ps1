@@ -9,6 +9,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Import-Module -Name (Join-Path $PSScriptRoot 'tools\Countdown.SuiteIsolation.psm1') -Force
+Assert-SuiteIsolatedDesktop
+
 $applicationDll = Join-Path $PSScriptRoot "src\MinminCountdown\bin\$Configuration\net10.0-windows\MinminCountdown.dll"
 if (-not (Test-Path -LiteralPath $DotnetPath -PathType Leaf)) {
     throw "未找到受管 dotnet：$DotnetPath"

@@ -4,7 +4,60 @@ using Forms = System.Windows.Forms;
 
 namespace MinminCountdown;
 
-internal sealed class TrayIconHost : IDisposable
+internal interface ITrayIconHost : IDisposable
+{
+    bool IsVisible { get; }
+
+    void Show();
+
+    void Hide();
+
+    void InvokeRestoreForValidation();
+
+    void InvokeExitForValidation();
+}
+
+internal sealed class MemoryTrayIconHost : ITrayIconHost
+{
+    private readonly Action _restore;
+    private readonly Action _exit;
+    private bool _visible;
+    private bool _disposed;
+
+    public MemoryTrayIconHost(Action restore, Action exit)
+    {
+        _restore = restore;
+        _exit = exit;
+    }
+
+    public bool IsVisible => !_disposed && _visible;
+
+    public void Show()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _visible = true;
+    }
+
+    public void Hide()
+    {
+        if (!_disposed)
+        {
+            _visible = false;
+        }
+    }
+
+    public void InvokeRestoreForValidation() => _restore();
+
+    public void InvokeExitForValidation() => _exit();
+
+    public void Dispose()
+    {
+        _visible = false;
+        _disposed = true;
+    }
+}
+
+internal sealed class TrayIconHost : ITrayIconHost
 {
     private readonly Dispatcher _dispatcher;
     private readonly Action _restore;
@@ -51,7 +104,7 @@ internal sealed class TrayIconHost : IDisposable
         };
     }
 
-    internal bool IsVisible => !_disposed && _notifyIcon.Visible;
+    public bool IsVisible => !_disposed && _notifyIcon.Visible;
 
     public void Show()
     {
@@ -67,9 +120,9 @@ internal sealed class TrayIconHost : IDisposable
         }
     }
 
-    internal void InvokeRestoreForValidation() => _restoreItem.PerformClick();
+    public void InvokeRestoreForValidation() => _restoreItem.PerformClick();
 
-    internal void InvokeExitForValidation() => _exitItem.PerformClick();
+    public void InvokeExitForValidation() => _exitItem.PerformClick();
 
     public void Dispose()
     {

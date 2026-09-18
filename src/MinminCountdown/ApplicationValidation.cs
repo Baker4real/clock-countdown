@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -21,6 +23,7 @@ internal static class ApplicationValidation
         // which case WPF skips rendering entirely; captures must still render.
         // The switch must be set before the first MediaContext is created.
         AppContext.SetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, true);
+        EnsureIsolatedValidationDesktop();
         logger.Info(
             "ValidationRenderMode " +
             $"tier=0x{RenderCapability.Tier:X} " +
@@ -85,7 +88,9 @@ internal static class ApplicationValidation
                 floatingWindow,
                 Path.Combine(applicationRoot, "countdown-icon.ico"),
                 // Validate-only must be allowed to exercise tray transitions; this is not an acceptance gate.
-                static () => true);
+                static () => true,
+                foregroundInterop: null,
+                attachShellNotifyIcon: false);
             mainWindow.MinimizeToTrayRequested += (_, _) =>
             {
                 mainWindow.Hide();
@@ -119,6 +124,68 @@ internal static class ApplicationValidation
 
     private const string RenderEvenWhenNoDisplayDevicesSwitch =
         "Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable";
+
+    internal static void EnsureIsolatedValidationDesktop()
+    {
+        if (string.Equals(
+                Environment.GetEnvironmentVariable("MINMIN_SUITE_ALLOW_UNISOLATED"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var desktopName = IsolatedValidationDesktop.GetCurrentName();
+        if (desktopName.Equals("MinminSuiteIso", StringComparison.Ordinal) ||
+            (desktopName.StartsWith("MinminSuiteIso-", StringComparison.Ordinal) &&
+             desktopName.Length > "MinminSuiteIso-".Length &&
+             char.IsLetter(desktopName["MinminSuiteIso-".Length])))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "拒绝在用户桌面直跑窗口验证（当前桌面='" + desktopName +
+            "'）。请经 tools/Invoke-CountdownSuiteLowImpact.ps1 运行；用户正在用电脑时禁止 -AllowUnisolatedDesktop。");
+    }
+
+    private static class IsolatedValidationDesktop
+    {
+        private const int UoiName = 2;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr GetThreadDesktop(uint threadId);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool GetUserObjectInformationW(
+            IntPtr handle,
+            int index,
+            StringBuilder info,
+            int maxLength,
+            out uint lengthNeeded);
+
+        internal static string GetCurrentName()
+        {
+            var handle = GetThreadDesktop(GetCurrentThreadId());
+            if (handle == IntPtr.Zero)
+            {
+                throw new InvalidOperationException(
+                    "GetThreadDesktop 失败 error=" + Marshal.GetLastWin32Error());
+            }
+
+            var builder = new StringBuilder(256);
+            if (!GetUserObjectInformationW(handle, UoiName, builder, 256, out _))
+            {
+                throw new InvalidOperationException(
+                    "GetUserObjectInformationW 失败 error=" + Marshal.GetLastWin32Error());
+            }
+
+            return builder.ToString();
+        }
+    }
 
     internal static bool IsRenderEvenWhenNoDisplayDevicesEnabled() =>
         AppContext.TryGetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, out var enabled) && enabled;

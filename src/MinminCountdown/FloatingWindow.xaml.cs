@@ -646,6 +646,20 @@ public sealed partial class FloatingWindow : Window
         }
     }
 
+    internal void ParkOffscreenForValidation()
+    {
+        _isApplyingBottomAnchor = true;
+        try
+        {
+            Left = -20_000;
+            Top = -20_000;
+        }
+        finally
+        {
+            _isApplyingBottomAnchor = false;
+        }
+    }
+
     internal void ApplyTheme()
     {
         var nextTheme = FloatingThemePalette.Daylight;

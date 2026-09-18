@@ -69,6 +69,9 @@ param(
     [switch] $Retry,
 
     [Parameter()]
+    [switch] $AllowForegroundWindowedSteps,
+
+    [Parameter()]
     [Alias('h')]
     [switch] $Help
 )
@@ -96,6 +99,9 @@ SYNOPSIS
     -RunId      必须唯一。省略则用 UTC yyyyMMddTHHmmssZ + 短随机。禁止覆盖已有 attempt。
     -DryRun     只写 meta、拷贝 runner、列出 12 步，不跑验证。
     -Retry      必须保持关闭。打开则拒绝。默认不重试。
+    -AllowForegroundWindowedSteps
+                前台跑 desktop-launcher / instance-activation-matrix。
+                用户正在用电脑时禁止。默认拒绝这两步。
     -Help       显示本帮助。
 
 约束
@@ -262,6 +268,47 @@ function Invoke-CountdownCapturedProcess {
     }
 }
 
+function Invoke-CountdownIsolatedPwshStep {
+    param(
+        [Parameter(Mandatory)] [string] $Engine,
+        [Parameter(Mandatory)] [string[]] $ArgumentList,
+        [Parameter(Mandatory)] [string] $WorkingDirectory,
+        [Parameter(Mandatory)] [string] $StepDir,
+        [Parameter(Mandatory)] [string] $DesktopName
+    )
+
+    $stdoutPath = Join-Path $StepDir 'isolated.stdout.txt'
+    $stderrPath = Join-Path $StepDir 'isolated.stderr.txt'
+    $launcher = Join-Path $PSScriptRoot 'Start-IsolatedSuiteProcess.ps1'
+    $output = @(
+        & $launcher `
+            -FilePath $Engine `
+            -ArgumentList $ArgumentList `
+            -WorkingDirectory $WorkingDirectory `
+            -StdoutPath $stdoutPath `
+            -StderrPath $stderrPath `
+            -DesktopName $DesktopName
+    )
+    $exitCode = [int] ($output | Select-Object -Last 1)
+    $stdout = if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) {
+        [System.IO.File]::ReadAllText($stdoutPath, $script:Utf8NoBom)
+    }
+    else {
+        ''
+    }
+    $stderr = if (Test-Path -LiteralPath $stderrPath -PathType Leaf) {
+        [System.IO.File]::ReadAllText($stderrPath, $script:Utf8NoBom)
+    }
+    else {
+        ''
+    }
+    [pscustomobject]@{
+        ExitCode = $exitCode
+        Stdout = $stdout
+        Stderr = $stderr
+    }
+}
+
 function Get-CountdownGitState {
     param(
         [Parameter(Mandatory)] [string] $ProjectRoot,
@@ -286,18 +333,18 @@ function Get-CountdownGitState {
 
 function Get-CountdownVerificationSteps {
     @(
-        [pscustomobject]@{ Index = 1; Id = 'env-pre'; Kind = 'env-pre'; Sta = $false; Engine = 'in-process'; ScriptName = ''; Arguments = @() }
-        [pscustomobject]@{ Index = 2; Id = 'git-diff-check'; Kind = 'git'; Sta = $false; Engine = 'git'; ScriptName = ''; Arguments = @('diff', '--check') }
-        [pscustomobject]@{ Index = 3; Id = 'build'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Build-CountdownApplication.ps1'; Arguments = @('-Clean') }
-        [pscustomobject]@{ Index = 4; Id = 'pin-after-build'; Kind = 'pin-after-build'; Sta = $false; Engine = 'in-process'; ScriptName = ''; Arguments = @() }
-        [pscustomobject]@{ Index = 5; Id = 'desktop-launcher'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-DesktopLauncherOnly') }
-        [pscustomobject]@{ Index = 6; Id = 'csharp-default'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @() }
-        [pscustomobject]@{ Index = 7; Id = 'instance-activation-matrix'; Kind = 'pwsh'; Sta = $true; Engine = 'matrix'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-InstanceActivationMatrix') }
-        [pscustomobject]@{ Index = 8; Id = 'core'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.Core.Tests.ps1'; Arguments = @() }
-        [pscustomobject]@{ Index = 9; Id = 'ui'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.Ui.Tests.ps1'; Arguments = @() }
-        [pscustomobject]@{ Index = 10; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @() }
-        [pscustomobject]@{ Index = 11; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Install-Countdown.ps1'; Arguments = @('-ValidateOnly') }
-        [pscustomobject]@{ Index = 12; Id = 'deploy-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Deploy-OfficeCountdown.ps1'; Arguments = @('-ValidateOnly') }
+        [pscustomobject]@{ Index = 1; Id = 'env-pre'; Kind = 'env-pre'; Sta = $false; Engine = 'in-process'; ScriptName = ''; Arguments = @(); Isolation = 'none' }
+        [pscustomobject]@{ Index = 2; Id = 'git-diff-check'; Kind = 'git'; Sta = $false; Engine = 'git'; ScriptName = ''; Arguments = @('diff', '--check'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 3; Id = 'build'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Build-CountdownApplication.ps1'; Arguments = @('-Clean'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 4; Id = 'pin-after-build'; Kind = 'pin-after-build'; Sta = $false; Engine = 'in-process'; ScriptName = ''; Arguments = @(); Isolation = 'none' }
+        [pscustomobject]@{ Index = 5; Id = 'desktop-launcher'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-DesktopLauncherOnly'); Isolation = 'foreground-authorized' }
+        [pscustomobject]@{ Index = 6; Id = 'csharp-default'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifyCSharp' }
+        [pscustomobject]@{ Index = 7; Id = 'instance-activation-matrix'; Kind = 'pwsh'; Sta = $true; Engine = 'matrix'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-InstanceActivationMatrix'); Isolation = 'foreground-authorized' }
+        [pscustomobject]@{ Index = 8; Id = 'core'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.Core.Tests.ps1'; Arguments = @(); Isolation = 'none' }
+        [pscustomobject]@{ Index = 9; Id = 'ui'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.Ui.Tests.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifyUi' }
+        [pscustomobject]@{ Index = 10; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifySourceValidation' }
+        [pscustomobject]@{ Index = 11; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Install-Countdown.ps1'; Arguments = @('-ValidateOnly'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 12; Id = 'deploy-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Deploy-OfficeCountdown.ps1'; Arguments = @('-ValidateOnly'); Isolation = 'none' }
     )
 }
 
@@ -316,6 +363,11 @@ function Get-CountdownStepCommandTokens {
         'pwsh' {
             $engine = if ([string] $Step.Engine -eq 'matrix') { $MatrixPwsh } else { $ManagedPwsh }
             $tokens = [System.Collections.Generic.List[string]]::new()
+            if ([string] $Step.Isolation -eq 'isolated-desktop') {
+                [void] $tokens.Add((Join-Path $PSScriptRoot 'Start-IsolatedSuiteProcess.ps1'))
+                [void] $tokens.Add('-DesktopName')
+                [void] $tokens.Add([string] $Step.IsolatedDesktopName)
+            }
             [void] $tokens.Add($engine)
             [void] $tokens.Add('-NoLogo')
             [void] $tokens.Add('-NoProfile')
@@ -326,6 +378,9 @@ function Get-CountdownStepCommandTokens {
             [void] $tokens.Add('.\' + [string] $Step.ScriptName)
             foreach ($argument in @($Step.Arguments)) {
                 [void] $tokens.Add([string] $argument)
+            }
+            if ([string] $Step.Isolation -eq 'foreground-authorized') {
+                [void] $tokens.Add('#requires-AllowForegroundWindowedSteps')
             }
             @($tokens)
         }
@@ -675,20 +730,43 @@ try {
                     $captured = Invoke-CountdownCapturedProcess -FilePath $gitPath -WorkingDirectory $projectRoot -ArgumentList @($step.Arguments)
                 }
                 'pwsh' {
-                    $engine = if ([string] $step.Engine -eq 'matrix') { $matrixPwsh } else { $managedPwsh }
-                    $scriptPath = Resolve-CountdownRepoPath -Root $projectRoot -RelativePath ([string] $step.ScriptName)
-                    $argumentList = [System.Collections.Generic.List[string]]::new()
-                    [void] $argumentList.Add('-NoLogo')
-                    [void] $argumentList.Add('-NoProfile')
-                    if ([bool] $step.Sta) {
-                        [void] $argumentList.Add('-STA')
+                    $isolation = [string] $step.Isolation
+                    if ($isolation -eq 'foreground-authorized' -and -not $AllowForegroundWindowedSteps) {
+                        $captured = [pscustomobject]@{
+                            ExitCode = 1
+                            Stdout = ''
+                            Stderr = "拒绝前台窗口步骤 $($step.Id)。用户正在用电脑时禁止；需要时显式传入 -AllowForegroundWindowedSteps。"
+                        }
                     }
-                    [void] $argumentList.Add('-File')
-                    [void] $argumentList.Add($scriptPath)
-                    foreach ($argument in @($step.Arguments)) {
-                        [void] $argumentList.Add([string] $argument)
+                    else {
+                        $engine = if ([string] $step.Engine -eq 'matrix') { $matrixPwsh } else { $managedPwsh }
+                        $scriptPath = Resolve-CountdownRepoPath -Root $projectRoot -RelativePath ([string] $step.ScriptName)
+                        $argumentList = [System.Collections.Generic.List[string]]::new()
+                        [void] $argumentList.Add('-NoLogo')
+                        [void] $argumentList.Add('-NoProfile')
+                        if ([bool] $step.Sta) {
+                            [void] $argumentList.Add('-STA')
+                        }
+                        [void] $argumentList.Add('-File')
+                        [void] $argumentList.Add($scriptPath)
+                        foreach ($argument in @($step.Arguments)) {
+                            [void] $argumentList.Add([string] $argument)
+                        }
+                        if ($isolation -eq 'foreground-authorized') {
+                            [void] $argumentList.Add('-AllowForegroundDesktopLauncher')
+                        }
+                        if ($isolation -eq 'isolated-desktop') {
+                            $captured = Invoke-CountdownIsolatedPwshStep `
+                                -Engine $engine `
+                                -ArgumentList @($argumentList) `
+                                -WorkingDirectory $projectRoot `
+                                -StepDir $stepDir `
+                                -DesktopName ([string] $step.IsolatedDesktopName)
+                        }
+                        else {
+                            $captured = Invoke-CountdownCapturedProcess -FilePath $engine -WorkingDirectory $projectRoot -ArgumentList @($argumentList)
+                        }
                     }
-                    $captured = Invoke-CountdownCapturedProcess -FilePath $engine -WorkingDirectory $projectRoot -ArgumentList @($argumentList)
                 }
                 default {
                     throw "未知步骤类型：$($step.Kind)"

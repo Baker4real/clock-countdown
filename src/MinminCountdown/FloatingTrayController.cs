@@ -6,7 +6,7 @@ namespace MinminCountdown;
 internal sealed class FloatingTrayController : IDisposable
 {
     private readonly FloatingWindow _floatingWindow;
-    private readonly TrayIconHost _trayIcon;
+    private readonly ITrayIconHost _trayIcon;
     private readonly Func<bool> _canTransition;
     private readonly TrayForegroundInterop _foregroundInterop;
     private bool _disposed;
@@ -15,7 +15,7 @@ internal sealed class FloatingTrayController : IDisposable
         FloatingWindow floatingWindow,
         string iconPath,
         Func<bool>? canTransition = null)
-        : this(floatingWindow, iconPath, canTransition, foregroundInterop: null)
+        : this(floatingWindow, iconPath, canTransition, foregroundInterop: null, attachShellNotifyIcon: true)
     {
     }
 
@@ -24,15 +24,27 @@ internal sealed class FloatingTrayController : IDisposable
         string iconPath,
         Func<bool>? canTransition,
         TrayForegroundInterop? foregroundInterop)
+        : this(floatingWindow, iconPath, canTransition, foregroundInterop, attachShellNotifyIcon: true)
+    {
+    }
+
+    internal FloatingTrayController(
+        FloatingWindow floatingWindow,
+        string iconPath,
+        Func<bool>? canTransition,
+        TrayForegroundInterop? foregroundInterop,
+        bool attachShellNotifyIcon)
     {
         _floatingWindow = floatingWindow;
         _canTransition = canTransition ?? (() => true); // Production default: allow tray transitions unless a host supplies a guard.
         _foregroundInterop = foregroundInterop ?? TrayForegroundInterop.System;
-        _trayIcon = new TrayIconHost(
-            iconPath,
-            floatingWindow.Dispatcher,
-            Restore,
-            RequestExit);
+        _trayIcon = attachShellNotifyIcon
+            ? new TrayIconHost(
+                iconPath,
+                floatingWindow.Dispatcher,
+                Restore,
+                RequestExit)
+            : new MemoryTrayIconHost(Restore, RequestExit);
         _floatingWindow.MinimizeToTrayRequested += OnMinimizeRequested;
     }
 

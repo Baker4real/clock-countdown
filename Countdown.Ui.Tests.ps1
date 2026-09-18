@@ -2,6 +2,9 @@
 
 $ErrorActionPreference = 'Stop'
 
+Import-Module -Name (Join-Path $PSScriptRoot 'tools\Countdown.SuiteIsolation.psm1') -Force
+Assert-SuiteIsolatedDesktop
+
 # #126 分段计时插桩：计时行只走 stderr，保持 stdout 单一 JSON 报告契约
 # （Countdown.Validation.psm1 的 Invoke-CountdownValidationProcess 严格解析整个 stdout）。
 $script:testClock = [System.Diagnostics.Stopwatch]::StartNew()

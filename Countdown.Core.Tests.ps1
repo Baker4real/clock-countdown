@@ -3443,8 +3443,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 575 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
-Assert-Equal 571 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
+Assert-Equal 576 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
+Assert-Equal 572 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 55 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
@@ -3577,6 +3577,10 @@ foreach ($visualTool in @(
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($visualTool) "Visual generator is integrity protected: $visualTool"
     Assert-Equal $false ($visualTool -in @($releaseContract.InstalledFiles)) "Visual generator is not installed as runtime: $visualTool"
 }
+$isolationLauncher = 'tools\Start-IsolatedSuiteProcess.ps1'
+Assert-Equal $true ($isolationLauncher -in @($releaseContract.PackageFiles)) 'Isolation launcher is packaged for validation-suite windowed steps'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains($isolationLauncher) 'Isolation launcher is integrity protected'
+Assert-Equal $false ($isolationLauncher -in @($releaseContract.InstalledFiles)) 'Isolation launcher is not installed as runtime'
 foreach ($trustRoot in @('Deploy-OfficeCountdown.ps1', 'Install-Countdown.ps1', 'Countdown.ReleaseContract.psm1')) {
     Assert-Equal $true ($trustRoot -in @($releaseContract.PackageTrustRoots)) "Release contract declares trust root $trustRoot"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($trustRoot) "Release contract does not self-hash trust root $trustRoot"

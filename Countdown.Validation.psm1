@@ -9,8 +9,23 @@ function Invoke-CountdownProcess {
         [Parameter(Mandatory)] [string] $Operation,
         [Parameter(Mandatory)] [string[]] $ArgumentList,
         [hashtable] $EnvironmentVariables = @{},
-        [string] $StartFailureMessage = "$Operation 无法启动进程。"
+        [string] $StartFailureMessage = "$Operation 无法启动进程。",
+        [string] $IsolatedDesktopName
     )
+
+    $allowUnisolated = [string]::Equals(
+        [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED'),
+        '1',
+        [StringComparison]::Ordinal)
+    if (-not [string]::IsNullOrWhiteSpace($IsolatedDesktopName) -and -not $allowUnisolated) {
+        return Invoke-CountdownIsolatedDesktopProcess `
+            -FilePath $FilePath `
+            -Operation $Operation `
+            -ArgumentList $ArgumentList `
+            -EnvironmentVariables $EnvironmentVariables `
+            -StartFailureMessage $StartFailureMessage `
+            -DesktopName $IsolatedDesktopName
+    }
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $FilePath
@@ -67,12 +82,94 @@ function Invoke-CountdownProcess {
     $result
 }
 
+function Invoke-CountdownIsolatedDesktopProcess {
+    param(
+        [Parameter(Mandatory)] [string] $FilePath,
+        [Parameter(Mandatory)] [string] $Operation,
+        [Parameter(Mandatory)] [string[]] $ArgumentList,
+        [hashtable] $EnvironmentVariables = @{},
+        [string] $StartFailureMessage = "$Operation 无法启动进程。",
+        [Parameter(Mandatory)] [string] $DesktopName
+    )
+
+    $launcher = Join-Path $PSScriptRoot 'tools\Start-IsolatedSuiteProcess.ps1'
+    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+        throw "$Operation 缺少隔离启动器：$launcher"
+    }
+
+    $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('countdown-iso-' + [guid]::NewGuid().ToString('N'))
+    [void] [System.IO.Directory]::CreateDirectory($workRoot)
+    $stdoutPath = Join-Path $workRoot 'stdout.txt'
+    $stderrPath = Join-Path $workRoot 'stderr.txt'
+    $previousEnv = [ordered]@{}
+    foreach ($entry in $EnvironmentVariables.GetEnumerator()) {
+        $key = [string] $entry.Key
+        $previousEnv[$key] = [Environment]::GetEnvironmentVariable($key)
+        if ($null -eq $entry.Value) {
+            [Environment]::SetEnvironmentVariable($key, $null)
+        }
+        else {
+            [Environment]::SetEnvironmentVariable($key, [string] $entry.Value)
+        }
+    }
+
+    try {
+        $output = @(
+            & $launcher `
+                -FilePath $FilePath `
+                -ArgumentList $ArgumentList `
+                -WorkingDirectory ([System.IO.Directory]::GetCurrentDirectory()) `
+                -StdoutPath $stdoutPath `
+                -StderrPath $stderrPath `
+                -DesktopName $DesktopName
+        )
+        $result = [pscustomobject]@{
+            ExitCode = [int] ($output | Select-Object -Last 1)
+            StandardOutput = $(if (Test-Path -LiteralPath $stdoutPath -PathType Leaf) {
+                    [System.IO.File]::ReadAllText($stdoutPath)
+                }
+                else { '' })
+            StandardError = $(if (Test-Path -LiteralPath $stderrPath -PathType Leaf) {
+                    [System.IO.File]::ReadAllText($stderrPath)
+                }
+                else { '' })
+        }
+    }
+    catch {
+        throw "$StartFailureMessage $($_.Exception.Message)"
+    }
+    finally {
+        foreach ($key in $previousEnv.Keys) {
+            [Environment]::SetEnvironmentVariable($key, $previousEnv[$key])
+        }
+        Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($result.ExitCode -ne 0) {
+        $outputText = $result.StandardOutput.Trim()
+        $diagnostics = $result.StandardError.Trim()
+        $failureOutput = if ([string]::IsNullOrWhiteSpace($outputText)) {
+            $diagnostics
+        }
+        elseif ([string]::IsNullOrWhiteSpace($diagnostics)) {
+            $outputText
+        }
+        else {
+            "$outputText$([Environment]::NewLine)$diagnostics"
+        }
+        throw "$Operation 失败，退出码：$($result.ExitCode)。$([Environment]::NewLine)$failureOutput"
+    }
+
+    $result
+}
+
 function Invoke-CountdownValidationProcess {
     param(
         [Parameter(Mandatory)] [string] $PowerShell7Path,
         [Parameter(Mandatory)] [string] $Operation,
         [Parameter(Mandatory)] [string[]] $ArgumentList,
-        [hashtable] $EnvironmentVariables = @{}
+        [hashtable] $EnvironmentVariables = @{},
+        [string] $IsolatedDesktopName
     )
 
     $processResult = Invoke-CountdownProcess `
@@ -80,7 +177,8 @@ function Invoke-CountdownValidationProcess {
         -Operation $Operation `
         -ArgumentList $ArgumentList `
         -EnvironmentVariables $EnvironmentVariables `
-        -StartFailureMessage "$Operation 无法启动 PowerShell 7 进程。"
+        -StartFailureMessage "$Operation 无法启动 PowerShell 7 进程。" `
+        -IsolatedDesktopName $IsolatedDesktopName
     $json = ([string] $processResult.StandardOutput).Trim()
     if ([string]::IsNullOrWhiteSpace($json)) {
         throw "$Operation 未返回 JSON。"
@@ -359,7 +457,8 @@ function Invoke-CountdownValidationSuite {
     $cSharp = Invoke-CountdownValidationProcess `
         -PowerShell7Path $resolvedPowerShell `
         -Operation 'C# 回归' `
-        -ArgumentList $cSharpArguments
+        -ArgumentList $cSharpArguments `
+        -IsolatedDesktopName 'MinminSuiteIso-ValidateCSharp'
     $cSharpPassed = Assert-CountdownValidationTestReport -Report $cSharp.Report -Label 'C# 回归'
 
     $ui = Invoke-CountdownValidationProcess `
@@ -372,7 +471,8 @@ function Invoke-CountdownValidationSuite {
             '-STA',
             '-File',
             (Join-Path $resolvedRoot 'Countdown.Ui.Tests.ps1')
-        )
+        ) `
+        -IsolatedDesktopName 'MinminSuiteIso-ValidateUi'
     $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
 
     $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-09-11-v22\manifest.json'
@@ -407,7 +507,8 @@ function Invoke-CountdownValidationSuite {
                 $applicationSettingsPath,
                 '-DiagnosticLogPath',
                 $applicationDiagnosticPath
-            )
+            ) `
+            -IsolatedDesktopName 'MinminSuiteIso-ValidateApp'
     }
     finally {
         Remove-CountdownValidationArtifactFiles -Paths @(

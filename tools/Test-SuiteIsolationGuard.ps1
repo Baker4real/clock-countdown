@@ -9,6 +9,7 @@ $modulePath = Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1'
 $launcherPath = Join-Path $PSScriptRoot 'Invoke-CountdownSuiteLowImpact.ps1'
 $watcherPath = Join-Path $PSScriptRoot 'Watch-DesktopWindows.ps1'
 $runnerPath = Join-Path $PSScriptRoot 'Invoke-CountdownVerificationRun.ps1'
+$validationPath = Join-Path $repoRoot 'Countdown.Validation.psm1'
 $csharpTestsPath = Join-Path $repoRoot 'Countdown.CSharp.Tests.ps1'
 $uiTestsPath = Join-Path $repoRoot 'Countdown.Ui.Tests.ps1'
 $sourceValidationPath = Join-Path $repoRoot 'Invoke-CountdownSourceValidation.ps1'
@@ -133,6 +134,18 @@ $runnerSource = Get-Content -LiteralPath $runnerPath -Raw -Encoding UTF8
 Assert-Guard ($runnerSource -match 'AllowForegroundWindowedSteps') '收口 runner 前台窗步骤需显式授权'
 Assert-Guard ($runnerSource -match 'Start-IsolatedSuiteProcess') '收口 runner 窗口步骤走隔离启动器'
 Assert-Guard ($runnerSource -match '用户正在用电脑时禁止') '收口 runner 写清前台授权禁止条件'
+
+$validationSource = Get-Content -LiteralPath $validationPath -Raw -Encoding UTF8
+Assert-Guard ($validationSource -match 'Start-IsolatedSuiteProcess') '验证套件窗口步骤走隔离启动器'
+Assert-Guard ($validationSource -match 'MINMIN_SUITE_ALLOW_UNISOLATED') '验证套件尊重隔离 opt-out'
+Assert-Guard ($validationSource -match 'MinminSuiteIso-ValidateCSharp') 'C# 回归使用独立隔离桌面'
+Assert-Guard ($validationSource -match 'MinminSuiteIso-ValidateUi') '兼容 UI 回归使用独立隔离桌面'
+Assert-Guard ($validationSource -match 'MinminSuiteIso-ValidateApp') 'validate-only 使用独立隔离桌面'
+$coreInvoke = [regex]::Match(
+    $validationSource,
+    '\$core = Invoke-CountdownValidationProcess[\s\S]{0,250}Operation ''Core 回归''')
+Assert-Guard ($coreInvoke.Success) 'Core 回归仍走 ValidationProcess'
+Assert-Guard ($coreInvoke.Value -notmatch 'IsolatedDesktopName') 'Core 回归不进隔离桌面'
 
 $readme = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
 Assert-Guard ($readme -match '仅启动器可跑|只经低影响启动器') 'README 标明内层命令不可当复制模板'

@@ -159,6 +159,9 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
     $originalValidationArtifactMode = $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE
     $originalValidationArtifactRecord = $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD
     $originalValidationSiblingMarker = $env:COUNTDOWN_VALIDATION_SIBLING_MARKER
+    # 隔离断言自封闭：卸隔离标记只允许来自套件自身注入，不吃外部残留。
+    $originalSuiteAllowUnisolated = $env:MINMIN_SUITE_ALLOW_UNISOLATED
+    $env:MINMIN_SUITE_ALLOW_UNISOLATED = $null
     $validationArtifactRecord = Join-Path $validationTestRoot 'application-settings-path.txt'
     $validationArtifactRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
     $validationSiblingMarker = Join-Path $validationArtifactRoot (
@@ -397,6 +400,12 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
             'Countdown.CSharp.Tests.ps1' = @"
 param([string] `$OfficeDeploymentStagingRoot)
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
+Import-Module -Name (Join-Path '$PSScriptRoot' 'tools\Countdown.SuiteIsolation.psm1') -Force
+[System.IO.File]::WriteAllText(
+    (Join-Path `$PSScriptRoot 'office-csharp-isolation-evidence.txt'),
+    ('allowUnisolated=' + [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') +
+        [Environment]::NewLine + 'desktop=' + (Get-SuiteThreadDesktopName)),
+    [System.Text.UTF8Encoding]::new(`$false))
 if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
     [System.IO.File]::WriteAllText(
         (Join-Path `$PSScriptRoot 'office-staging-argument.txt'),
@@ -520,6 +529,15 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
             ([System.IO.Path]::GetFullPath((Split-Path -Parent $validationTestRoot))) `
             ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'office-staging-argument.txt'), [System.Text.Encoding]::UTF8)) `
             'Validation interface passes the current staging root to C# tests while the parent transaction mutex is held'
+        $officeIsolationEvidenceLines = @((([System.IO.File]::ReadAllText(
+                        (Join-Path $validationTestRoot 'office-csharp-isolation-evidence.txt'),
+                        [System.Text.Encoding]::UTF8)) -split '\r?\n'))
+        # 判别式：隔离路径必把子进程放到 MinminSuiteIso-ValidateCSharp 桌面（与父桌面无关）；
+        # 直接启动则继承父桌面。子进程带标记且不在该桌面 = 卸隔离直启生效。
+        $officeChildOnIsolatedDesktop = $officeIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp'
+        Assert-Equal $true `
+            ($officeIsolationEvidenceLines -contains 'allowUnisolated=1' -and -not $officeChildOnIsolatedDesktop) `
+            'Validation interface unisolates the windowed C# child inside the deferred office transaction context'
         $fixtureInvocation = ([System.IO.File]::ReadAllLines($fixtureDotnetRecord, [System.Text.Encoding]::UTF8)[0] | ConvertFrom-Json)
         $dotnetParameter = (Get-Command Invoke-CountdownValidationSuite).Parameters['DotnetPath']
         $expectedApplicationProject = [System.IO.Path]::GetFullPath((Join-Path $validationTestRoot 'src\MinminCountdown\MinminCountdown.csproj'))
@@ -569,9 +587,15 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
             @"
 param([string] `$OfficeDeploymentStagingRoot)
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
+Import-Module -Name (Join-Path '$PSScriptRoot' 'tools\Countdown.SuiteIsolation.psm1') -Force
 [System.IO.File]::WriteAllText(
     (Join-Path `$PSScriptRoot 'normal-office-staging-argument-present.txt'),
     [string] `$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot'),
+    [System.Text.UTF8Encoding]::new(`$false))
+[System.IO.File]::WriteAllText(
+    (Join-Path `$PSScriptRoot 'normal-csharp-isolation-evidence.txt'),
+    ('allowUnisolated=' + [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') +
+        [Environment]::NewLine + 'desktop=' + (Get-SuiteThreadDesktopName)),
     [System.Text.UTF8Encoding]::new(`$false))
 [Console]::Error.WriteLine('expected diagnostic')
 '{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
@@ -595,6 +619,13 @@ param([string] `$OfficeDeploymentStagingRoot)
             'False' `
             ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'normal-office-staging-argument-present.txt'), [System.Text.Encoding]::UTF8)) `
             'Validation interface does not pass the office staging parameter outside the parent transaction context'
+        $normalIsolationEvidenceLines = @((([System.IO.File]::ReadAllText(
+                        (Join-Path $validationTestRoot 'normal-csharp-isolation-evidence.txt'),
+                        [System.Text.Encoding]::UTF8)) -split '\r?\n'))
+        Assert-Equal $true `
+            ($normalIsolationEvidenceLines -contains 'allowUnisolated=' -and
+                $normalIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp') `
+            'Validation interface keeps the windowed C# child on its isolated desktop outside the office transaction context'
 
         $cSharpTestScript = Join-Path $PSScriptRoot 'Countdown.CSharp.Tests.ps1'
         $invalidOfficeStagingRoot = Join-Path 'D:\Codex\deploy' ("invalid-csharp-staging-" + [guid]::NewGuid().ToString('N'))
@@ -725,6 +756,7 @@ param([string] `$OfficeDeploymentStagingRoot)
         $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = $originalValidationArtifactMode
         $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD = $originalValidationArtifactRecord
         $env:COUNTDOWN_VALIDATION_SIBLING_MARKER = $originalValidationSiblingMarker
+        $env:MINMIN_SUITE_ALLOW_UNISOLATED = $originalSuiteAllowUnisolated
         if (Test-Path -LiteralPath $validationSiblingMarker -PathType Leaf) {
             Remove-Item -LiteralPath $validationSiblingMarker -Force
         }

@@ -17,6 +17,17 @@ function Invoke-CountdownProcess {
         [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED'),
         '1',
         [StringComparison]::Ordinal)
+    if (-not $allowUnisolated) {
+        # 办公室部署延迟事务上下文只在子进程环境注入同一 opt-out 标记：
+        # 生效范围限于该子树，父进程环境与本地交互隔离语义不受影响。
+        foreach ($environmentKey in $EnvironmentVariables.Keys) {
+            if ([string]::Equals([string] $environmentKey, 'MINMIN_SUITE_ALLOW_UNISOLATED', [StringComparison]::OrdinalIgnoreCase) -and
+                [string]::Equals([string] $EnvironmentVariables[$environmentKey], '1', [StringComparison]::Ordinal)) {
+                $allowUnisolated = $true
+                break
+            }
+        }
+    }
     if (-not [string]::IsNullOrWhiteSpace($IsolatedDesktopName) -and -not $allowUnisolated) {
         return Invoke-CountdownIsolatedDesktopProcess `
             -FilePath $FilePath `
@@ -420,6 +431,16 @@ function Invoke-CountdownValidationSuite {
     if ($ParentTransactionMutexHeld) {
         $coreArguments += '-ParentTransactionMutexHeld'
     }
+    # -ParentTransactionMutexHeld 只与安装器 -DeferCommit 同用，即办公室远端部署的 SSH 会话：
+    # 该上下文无法在自建隔离桌面初始化 GUI 子进程（0xC0000142），且其窗口对交互用户不可见
+    # （docs/办公室部署.md：远端窗口已创建但 IsWindowVisible=false）。经子进程环境注入隔离
+    # opt-out 标记让窗口化子步骤直接启动；本地上下文不带标记，隔离 fail-closed 语义不变。
+    $windowedChildEnvironment = if ($ParentTransactionMutexHeld) {
+        @{ MINMIN_SUITE_ALLOW_UNISOLATED = '1' }
+    }
+    else {
+        @{}
+    }
     $core = Invoke-CountdownValidationProcess `
         -PowerShell7Path $resolvedPowerShell `
         -Operation 'Core 回归' `
@@ -458,6 +479,7 @@ function Invoke-CountdownValidationSuite {
         -PowerShell7Path $resolvedPowerShell `
         -Operation 'C# 回归' `
         -ArgumentList $cSharpArguments `
+        -EnvironmentVariables $windowedChildEnvironment `
         -IsolatedDesktopName 'MinminSuiteIso-ValidateCSharp'
     $cSharpPassed = Assert-CountdownValidationTestReport -Report $cSharp.Report -Label 'C# 回归'
 
@@ -472,6 +494,7 @@ function Invoke-CountdownValidationSuite {
             '-File',
             (Join-Path $resolvedRoot 'Countdown.Ui.Tests.ps1')
         ) `
+        -EnvironmentVariables $windowedChildEnvironment `
         -IsolatedDesktopName 'MinminSuiteIso-ValidateUi'
     $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
 
@@ -484,6 +507,9 @@ function Invoke-CountdownValidationSuite {
         MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT = if ($visualBaselinesRequired) { $resolvedRoot } else { $null }
         MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE = $null
         MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE = $null
+    }
+    if ($ParentTransactionMutexHeld) {
+        $applicationEnvironment['MINMIN_SUITE_ALLOW_UNISOLATED'] = '1'
     }
     $applicationValidationRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
     [System.IO.Directory]::CreateDirectory($applicationValidationRoot) | Out-Null

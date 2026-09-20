@@ -2523,11 +2523,24 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 -Stage '验证已安装应用' `
                 -Action {
                     param($lockedPath)
-                    Invoke-CountdownInstalledApplicationValidation `
-                        -ApplicationPath $lockedPath `
-                        -PowerShell7Path $Context.PowerShell7Path `
-                        -TransactionPath ([string] $receipt.transactionPath) `
-                        -ActiveSettingsPath $settingsPath
+                    # 办公室部署暂存上下文（本适配器只在该上下文执行）：应用侧 validate-only 的
+                    # 桌面守卫（src/MinminCountdown/ApplicationValidation.cs
+                    # EnsureIsolatedValidationDesktop，77b4a33）无法区分 SSH 隐形会话与真交互
+                    # 用户桌面（远端桌面名解析为 'Default'，第 6 次部署死点）。与 6482c5e/验证
+                    # 夹具族同构：仅在此作用域为该子进程注入 MINMIN_SUITE_ALLOW_UNISOLATED，
+                    # 守卫断言本身不放宽；finally 恢复，标记不外泄到后续适配器步骤。
+                    $previousSuiteAllowUnisolated = $env:MINMIN_SUITE_ALLOW_UNISOLATED
+                    try {
+                        $env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
+                        Invoke-CountdownInstalledApplicationValidation `
+                            -ApplicationPath $lockedPath `
+                            -PowerShell7Path $Context.PowerShell7Path `
+                            -TransactionPath ([string] $receipt.transactionPath) `
+                            -ActiveSettingsPath $settingsPath
+                    }
+                    finally {
+                        $env:MINMIN_SUITE_ALLOW_UNISOLATED = $previousSuiteAllowUnisolated
+                    }
                 }
 
             $AdapterState.Stage = '等待窗口就绪回执'

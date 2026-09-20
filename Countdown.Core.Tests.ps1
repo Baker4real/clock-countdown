@@ -1547,6 +1547,35 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
         }
         Assert-Equal $true $freshInstallCreationRejected 'Fresh-install validation rejects active settings created by the child process'
 
+        # 第 6 次远端部署死点钉死：安装后应用 validate-only 的应用侧桌面守卫
+        # （ApplicationValidation.EnsureIsolatedValidationDesktop）在 SSH 会话把桌面名解析为
+        # 'Default' 而拒跑。适配器必须在调用点作用域内注入 MINMIN_SUITE_ALLOW_UNISOLATED 且
+        # finally 恢复；应用守卫必须保留环境放行与 MinminSuiteIso 桌面双通道，本地 fail-closed
+        # 语义不变。任一项被移除即红。
+        $remoteDeploymentAdapterSource = [System.IO.File]::ReadAllText(
+            (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1'),
+            [System.Text.Encoding]::UTF8)
+        $installedValidationInjectionIndex = $remoteDeploymentAdapterSource.IndexOf(
+            '$env:MINMIN_SUITE_ALLOW_UNISOLATED = ''1''')
+        $installedValidationCallIndex = $remoteDeploymentAdapterSource.IndexOf(
+            'Invoke-CountdownInstalledApplicationValidation `')
+        $installedValidationRestoreIndex = $remoteDeploymentAdapterSource.IndexOf(
+            '$env:MINMIN_SUITE_ALLOW_UNISOLATED = $previousSuiteAllowUnisolated')
+        $installedValidationInjectionCount = [regex]::Matches(
+            $remoteDeploymentAdapterSource,
+            '(?m)^\s*\$env:MINMIN_SUITE_ALLOW_UNISOLATED = ''1''\s*$').Count
+        Assert-Equal 1 $installedValidationInjectionCount 'Remote installed application validation injects the unisolation marker at exactly one scoped call site'
+        Assert-Equal $true (
+                $installedValidationInjectionIndex -ge 0 -and
+                $installedValidationCallIndex -gt $installedValidationInjectionIndex -and
+                $installedValidationRestoreIndex -gt $installedValidationCallIndex) 'Remote installed application validation scopes the unisolation marker around the child invocation and restores it'
+        $applicationValidationSource = [System.IO.File]::ReadAllText(
+            (Join-Path $PSScriptRoot 'src\MinminCountdown\ApplicationValidation.cs'),
+            [System.Text.Encoding]::UTF8)
+        Assert-Equal $true (
+                $applicationValidationSource.Contains('MINMIN_SUITE_ALLOW_UNISOLATED') -and
+                $applicationValidationSource.Contains('"MinminSuiteIso-')) 'Application validation desktop guard keeps the suite override channel and isolated desktop acceptance'
+
         $trustedLoaderRoot = Join-Path $remoteDeploymentTestRoot 'trusted-source-loader'
         $trustedLoaderModulePath = Join-Path $trustedLoaderRoot 'Issue4.SourceLoader.Fixture.psm1'
         $trustedLoaderMaliciousPath = Join-Path $remoteDeploymentTestRoot 'Issue4.SourceLoader.Malicious.psm1'

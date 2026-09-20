@@ -1,0 +1,120 @@
+---
+type: spec
+title: 敏敏子倒计时全面现代化重构
+tags: [spec, tauri, react, rust, migration, windows]
+intent: 把现有 WPF 倒计时应用全面重构为 Tauri、React、TypeScript、Vite、Tailwind 和 Rust 应用，同时保持数据和用户行为契约。
+---
+
+## Problem Statement
+
+当前应用可以满足倒计时、便签、提醒、悬浮窗、托盘和办公室部署等功能，但用户界面基于 WPF/XAML。WPF 并非不能实现复杂视觉，但渐变、遮罩、滤镜、响应式布局、装饰层和高频视觉迭代需要大量控件模板、Storyboard、绘制代码和 Windows 专用实现，难以以现代前端的速度持续提升视觉表现。
+
+当前项目还承担一组不能因换 UI 而丢失的行为：北京时间语义、schema v1-v10 数据迁移、两代合法设置备份、提醒 occurrence/cursor/disposition/snooze、单实例激活、托盘、登录启动、悬浮窗位置、提醒中心、无障碍、发布哈希、事务回滚、办公室传输账本和独立远端回读。
+
+用户需要一个真正现代化的桌面应用，而不是在 WPF 外壳上继续堆叠视觉补丁；同时升级不能牺牲已有数据、Windows 能力、部署安全和可复核验收。
+
+## Solution
+
+把应用运行时全面重构为 Tauri 2 + React 19.3 + TypeScript + Vite 8 + Tailwind CSS 4 + Rust。React 负责所有用户可见页面、悬浮窗、提醒中心、组件状态和动效；Tauri 负责窗口、WebView、托盘、单实例、开机启动和安装器；Rust 负责领域规则、北京时间、提醒调度、设置事务、备份恢复、诊断日志和 Windows 系统能力。
+
+保留 schema v10 作为跨版本数据契约，读取旧 schema v1-v10，只写 canonical schema v10。第一阶段不把 JSON 改成 SQLite，也不把文件读写交给前端。PowerShell 继续作为 Windows 安装、办公室部署和证据采集工具，直到新发布链路完成独立验收。
+
+迁移采用可回滚的分阶段切换：先冻结现有 WPF 生产基线和语言无关测试 fixture，再完成 Tauri 技术切片、Rust 领域移植、React 主窗口、悬浮窗、提醒中心、安装器和办公室部署，最后切换入口并清理旧 WPF。新版本在旧版本仍可回滚时只能作为 candidate 或 dry-run，不得宣称 deployed 或 live verified。
+
+## User Stories
+
+1. As a countdown user, I want the main window to use a modern component-based interface, so that I can read and edit countdowns without the visual limitations of WPF controls.
+2. As a countdown user, I want the warm-pink daytime visual system to be implemented with reusable design tokens, so that all windows remain visually consistent.
+3. As a countdown user, I want rich gradients, masks, filters, decorative layers and restrained transitions, so that the application feels expressive without harming readability.
+4. As a countdown user, I want the remaining time to remain visually prominent and stable while it updates, so that the numbers never jump, wrap or become hard to scan.
+5. As a countdown user, I want to manage multiple named countdowns, so that I can track independent deadlines in one application.
+6. As a note user, I want to create, edit, complete and delete notes with dates and tags, so that the application remains a combined countdown and task workspace.
+7. As a user with many records, I want status, tag, date and text filters to retain their current semantics, so that a visual rewrite does not change how I find records.
+8. As a reminder owner, I want absolute, fixed-interval, relative and typed calendar rules to keep their existing Beijing-time semantics, so that reminders do not move during migration.
+9. As a reminder owner, I want each occurrence to keep its stable rule ID, occurrence key, cursor, delivery state, disposition state and snooze state, so that a restart cannot duplicate or resurrect reminders.
+10. As a reminder owner, I want a single reminder center for countdowns and notes, so that I can process due items in one predictable place.
+11. As a user who rejects a reminder action because persistence failed, I want the item and my draft to remain unchanged, so that a failed save never looks successful.
+12. As a Windows user, I want the floating window to remain fixed at 520 x 390 and stay within the current work area, so that it is predictable across monitors and DPI settings.
+13. As a Windows user, I want the floating window to be draggable except for interactive controls, so that I can position it without accidentally activating buttons.
+14. As a Windows user, I want the tray menu to restore the floating window, open management, reset its position and exit, so that the application remains usable when the main window is hidden.
+15. As a Windows user, I want a second launch to activate the existing instance, so that I never get duplicate timers or conflicting settings writers.
+16. As a Windows user, I want login startup to show the floating window after a real first-frame render, so that a process that merely started is not reported as ready.
+17. As a Windows user, I want the application to work with keyboard navigation, visible focus, screen-reader names and live announcements, so that the modern UI remains accessible.
+18. As a user with reduced-motion preferences, I want decorative movement and view transitions to be reduced or disabled, so that the application remains comfortable to use.
+19. As an existing user, I want schema v1-v10 settings to load without data loss, so that upgrading the application does not require rebuilding my countdowns or notes.
+20. As an existing user, I want settings backup1 and backup2 to remain valid recovery points, so that a corrupt primary file does not silently erase my data.
+21. As an existing user, I want a corrupt settings file to offer only explicit recovery or exit, so that the new runtime never continues with fabricated empty state.
+22. As an installer, I want the new application to validate its settings migration before committing, so that deployment cannot overwrite a device with semantically changed data.
+23. As an offline office device, I want the installer to carry an offline WebView2 installation option, so that the application can be installed without relying on an internet connection.
+24. As a release operator, I want application, asset, installer and runtime hashes recorded, so that a deployed candidate can be bound to the exact bytes that were tested.
+25. As a release operator, I want failed installation to restore the previous application, startup configuration and evidence state, so that a candidate failure does not strand the device.
+26. As a release operator, I want transfer attempts to record bytes, duration, throughput, exit code and failure category, so that deployment performance and partial transfers remain auditable.
+27. As a release operator, I want two independent post-commit remote reads, so that a success receipt is not accepted without confirming the live host, user, process, settings fingerprint and startup state.
+28. As a maintainer, I want the frontend, Rust backend and Tauri commands to use explicit typed boundaries, so that UI changes cannot bypass persistence or Windows security rules.
+29. As a maintainer, I want the Rust domain implementation compared against language-independent fixtures derived from the existing C# implementation, so that a rewrite can prove semantic parity before the new UI is enabled.
+30. As a maintainer, I want the new frontend to be tested in a real Tauri/WebView2 window, so that browser-only tests do not hide desktop window, focus or runtime issues.
+31. As a maintainer, I want the old WPF application to remain a rollback candidate until the new release is live verified, so that the migration can be reversed without deleting user data.
+32. As a maintainer, I want old WPF code removed only after its replacement evidence is archived, so that cleanup does not erase the only reproducible verification path.
+
+## Implementation Decisions
+
+- The desktop shell is Tauri 2; the UI is React 19.3 with TypeScript, Vite 8 and Tailwind CSS 4. Design tokens remain CSS Variables owned by `DESIGN.md`.
+- Rust is the single owner of domain state, persistence, reminder scheduling, window management, tray actions, single-instance activation, autostart and startup acceptance.
+- React owns rendering, drafts, local interaction state and animation. React cannot access arbitrary files, registry, shell commands, scheduled tasks or network resources.
+- The application uses separate Tauri windows for the management window, 520 x 390 floating window and single reminder center. It does not depend on unstable multiwebview support.
+- Frontend/backend communication uses versioned discriminated command and event messages. Rust validates command shape, source identity, permissions and current state before applying a mutation.
+- The frontend receives a state snapshot and renders it. Rust emits the next snapshot only after the persistence transaction succeeds. Persistence failure leaves disk, in-memory state, draft and reminder entry unchanged.
+- Schema v1-v10 remain readable and canonical schema v10 remains the only write format. Rule IDs, occurrence keys, cursors, delivery/disposition records and snooze records retain their existing meanings.
+- The settings store continues to use same-directory temporary files, atomic replacement, a path-scoped cross-process lock, backup1/backup2 rotation and explicit recovery evidence.
+- The first migration keeps JSON storage. SQLite is explicitly deferred until an independent performance or data-volume requirement exists.
+- The old C# behavior is converted into language-independent fixtures. Rust and the existing C# verifier must agree on canonical JSON, time conversion, recurrence, migration, failure injection and backup outcomes before the new UI writes real settings.
+- The UI must preserve the existing domain glossary: countdown, note, tag, occurrence, cursor, disposition, snooze, current Beijing time, single-instance activation, startup-ready and finalized-ready.
+- The visual layer may use CSS gradients, masks, filters, blend modes, SVG, Canvas and WebGL for decoration, but critical text and controls remain semantic DOM controls.
+- Animation defaults to short feedback transitions and stable number updates. `prefers-reduced-motion` disables decorative movement, scale and parallax.
+- The tray provides restore floating window, open management, reset position and exit. The second instance only sends a bounded activation request and never changes filters, drafts or settings.
+- Tauri single-instance and autostart plugins are used for discovery and registration; Rust owns the application protocol and startup evidence.
+- WebView2 uses Evergreen distribution for security updates. The Windows installer supports an offline runtime installer for office devices; fixed runtime is a separate decision requiring an explicit compatibility need.
+- The release package contains only the built Tauri application, runtime assets, installer/runtime prerequisites and required deployment evidence. Node, Rust, npm cache and source trees are not runtime assets.
+- The existing PowerShell deployment and transfer ledger remain the external Windows operations boundary during migration. Their acceptance contract is adapted to Tauri artifact identity, autostart state and Rust startup receipts.
+- The migration is staged: baseline freeze; Tauri slice; Rust domain/persistence; main window; floating window and tray; reminder center; installer/deployment; production switch and cleanup.
+- Each stage has a candidate-only rollback point. Production entry, real user settings and office deployment remain on WPF until the corresponding new stage is independently verified.
+- The target repository layout separates frontend, Rust application modules, runtime assets, validation fixtures and deployment tooling. Module names describe boundaries; implementation may choose different physical files.
+- The CI pipeline adds Node lockfile installation, TypeScript checks, frontend tests/build, Rust formatting/lint/tests, Tauri Windows packaging and migration fixture checks to the existing Windows workflow.
+- Release state is recorded separately as candidate, dry-run, deployed and live verified. A local build, synthetic probe or unit test alone cannot close the migration.
+
+## Testing Decisions
+
+- Tests assert externally observable behavior at the highest available seam. The primary seam is the real Tauri application process with its typed command/event boundary and real Windows windows; lower-level Rust tests support deterministic domain and persistence failures.
+- The existing schema and deployment fixtures are preferred over inventing a parallel test oracle. The C# verifier remains a comparison oracle only until Rust parity is established.
+- Rust domain tests cover Beijing-time conversion, countdown sorting, note/tag filters, rule validation, calendar occurrence generation, stable IDs, cursor/disposition/snooze transitions and failure preservation.
+- Rust persistence tests cover missing primary, valid primary precedence, invalid primary recovery choices, backup rotation, atomic replacement, lock contention, corrupted/truncated/unknown JSON, recovery evidence and canonical round trips.
+- Cross-language fixture tests compare Rust and C# outputs for schema v1-v10 migration, canonical schema v10, occurrence keys, cursor state, reminder delivery/disposition and backup outcomes.
+- React tests use Playwright against the built Tauri/WebView2 app for real window rendering, keyboard paths, focus, scrolling, date selection, filters, draft preservation and command failures.
+- Visual tests capture the main window, floating countdown workspace, floating notes workspace and reminder center from real rendering and compare against the current manifest-bound baselines.
+- Accessibility tests verify names, labels, focus order, focus visibility, live announcements, keyboard-only operation, contrast and reduced-motion behavior.
+- Windows integration tests verify single-instance activation, tray restore, autostart registration, window position clamping, process identity, first-frame readiness and finalized readiness.
+- Installer tests verify WebView2 missing/present branches, offline installation, upgrade, uninstall, failed candidate rollback, package hashes and runtime directory contents.
+- Deployment tests use the existing SSH/SCP ledger and independent readback contracts, adding Tauri artifact identity, autostart state, Rust process identity and new readiness receipts.
+- A test is good when it can fail because a user-visible behavior or release guarantee is wrong. Tests that only mirror component internals or CSS class names are not required.
+
+## Out of Scope
+
+- Shipping a web/SaaS version or adding SSR, SEO, server-side rendering or cloud synchronization.
+- Supporting macOS, Linux, mobile or browser-only deployment in the first migration.
+- Replacing JSON with SQLite without a separate performance or data-volume requirement.
+- Reintroducing a night theme or adding a theme switcher; the current single daytime warm-pink direction remains the contract.
+- Adding a remote backend, account system, telemetry service or third-party content feed.
+- Loading remote HTML, JavaScript, fonts or images into the application UI at runtime.
+- Rewriting the Windows deployment controller into Rust before the Tauri runtime and artifact contract are proven.
+- Deleting the old WPF implementation before new production evidence, rollback evidence and data-migration evidence are archived.
+- Treating a successful local build, synthetic probe, package creation or `ValidateOnly` run as office deployment or live verification.
+- Adding animation libraries before CSS, Web Animations API and React View Transitions are shown to be insufficient by a concrete requirement.
+
+## Further Notes
+
+- The current production implementation is still C# / .NET 10 WPF. This spec defines the approved target and migration work; it does not claim that the rewrite has started or that the new application is deployed.
+- The existing project design contract remains authoritative for colors, typography, hit areas, dimensions, accessibility and reference-image binding during the rewrite.
+- The first implementation ticket should be the baseline-freeze and Tauri technical slice. It should not begin by deleting WPF or changing the live settings path.
+- The migration should retain a clear evidence chain for each stage: source revision, dependency lockfile, fixture result, visual baseline hashes, package manifest, transfer ledger, deployment binding and independent live readback.
+- The completed spec is also recorded in the repository's modernization plan and stack decision documents; those documents explain the selected versions and deployment trade-offs in more detail.
+

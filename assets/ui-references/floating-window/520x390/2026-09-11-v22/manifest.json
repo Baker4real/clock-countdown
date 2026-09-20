@@ -9,7 +9,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "775A78672BEE050AF83A0B8A8FC25C15A8FE55A66230BF03716C35A4367FEFCC",
+    "aggregateSha256": "AB30954E10800E46B863DEC0FBC93DA9E345CA0DEB1DEDF364910440550A2686",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -41,11 +41,11 @@
       },
       {
         "path": "src/MinminCountdown/App.xaml",
-        "sha256": "6C5B28C535658A130305632C8682BB96496402CCCF4D663358F96386194AFAF5"
+        "sha256": "17C8553208FE1A13A741F7F7B587630BBF0284E4B7DB7522658712AE2C432067"
       },
       {
         "path": "src/MinminCountdown/ApplicationTheme.cs",
-        "sha256": "CD4D9E6148324AA90199654AE2467EF1D31F453A658F38889EDFCAFC63BF4846"
+        "sha256": "FFEBF84183D5C2237AF02F8E09862A5E08012D6534E599ABD16A5072BCDB5E3A"
       },
       {
         "path": "src/MinminCountdown/DomainLogic.cs",
@@ -53,19 +53,19 @@
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Countdowns.cs",
-        "sha256": "CB8C8E8C415B269872E3D225EA2517EDDF5272CD49669ADF586C3D798F8DAB3C"
+        "sha256": "AF04DE57EB1AAA1ABF47E2B1B70F6D05336C4D56B0FFE5368572804BC1BDE5A9"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Notes.cs",
-        "sha256": "416F12B523710188F4B76B52F17DA3AB7291466AF0FE5A12320DC0DFED8B80B6"
+        "sha256": "7133D7A578BB1B2FBC489900DAFC24624453DC33E838921991B9444465AAC93D"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml",
-        "sha256": "6E14D013F962D48905CC4D49CA0DC0682645E38D1772FFFE73767372AB90892F"
+        "sha256": "F94693033B6B59197D5DFEF7967E0684611E9855F2748B4F7ABF6F048A506479"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml.cs",
-        "sha256": "D9F2A02B066431ADF87428D81DB1A7241AB2ADBA8E923366308639C9A2BA0C2E"
+        "sha256": "0AFD015011A30DE471EEE1DEB31D5D43C30BF6D1800555F94FFDCF46BF762004"
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
@@ -73,7 +73,7 @@
       },
       {
         "path": "src/MinminCountdown/UiControls.cs",
-        "sha256": "B51EA82F020D5FA82570E06CE3B941560FF6F06A6399B386F4B946C374D619D1"
+        "sha256": "5DF12A618124F949C05C6129F8EA10DD10E60FD3B0AB26930EBB7BD1F31B32FC"
       }
     ]
   },
@@ -100,9 +100,9 @@
         "topCaptureId": "long-notes-day-top",
         "bottomCaptureId": "long-notes-day-bottom",
         "maxAbsoluteChannelDelta": 240,
-        "meanAbsoluteError": 6.849607,
-        "rootMeanSquareError": 31.715729,
-        "changedPixelCount": 42961
+        "meanAbsoluteError": 5.859347,
+        "rootMeanSquareError": 24.215256,
+        "changedPixelCount": 43456
       }
     ]
   },
@@ -115,7 +115,7 @@
       "path": "assets/ui-references/floating-window/520x390/2026-09-11-v22/floating-countdowns-day.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "86FFE3EAE3AE4307D7E1DB19F4813B2C7BE4F21F7E6D291E1C63C560960B6B15",
+      "pngSha256": "2C9854511782A7949912F3239EF48CA19C10CDC8A26BCB5671C6896737877390",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
         "sha256": "B5DECF9D636E640D8DF8CD975F24C2E5BE307724EC69352FBDFDE3C3C432E343",
@@ -133,9 +133,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 45820,
-        "nonOpaquePixelCount": 50216,
-        "opaquePixelCount": 152584
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51542,
+        "opaquePixelCount": 151258
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -143,8 +143,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 360,
-        "pixelCount": 154216
+        "height": 359,
+        "pixelCount": 154021
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,
@@ -161,17 +161,17 @@
       "path": "assets/ui-references/floating-window/520x390/2026-09-11-v22/long-notes-day-top.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "5A5B889BB0A8EAA2F6DC07CDD0BA34E072059DB18B8485C27CA94C02E9429CD8",
+      "pngSha256": "6A0C0CACB968DDC726347E15B6AD568587A707E3B8F98CB81944C8CE30D69FEC",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "A4569050D25A558165ABDB12678FF4A2216A8982931E4A17AB544D4099157DF9",
+        "sha256": "42FAFF0CCC70970EC3807AF2CD9671238FD4465243EFCE2ACA376252C040F113",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-1",
         "noteTextSha256": "F5F77918BA836A251A5CC842AA8FC6BE8AA2DE0F0EC7C35A4E0D97689E18ED52",
         "viewportState": "Top",
         "verticalOffset": 0,
-        "scrollableHeight": 878.52,
+        "scrollableHeight": 883.19,
         "firstVisibleAnchor": "reference-note-1:\u9996\u951A\u70B9\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709\u624B\u5DE5",
         "lastVisibleAnchor": "reference-note-1:\u53F7 1 \u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\u3002"
       },
@@ -179,9 +179,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 45820,
-        "nonOpaquePixelCount": 50381,
-        "opaquePixelCount": 152419
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51711,
+        "opaquePixelCount": 151089
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -189,8 +189,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 360,
-        "pixelCount": 154216
+        "height": 359,
+        "pixelCount": 154021
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,
@@ -207,17 +207,17 @@
       "path": "assets/ui-references/floating-window/520x390/2026-09-11-v22/long-notes-day-bottom.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "8767E5B3A7F7C84C8B61B433BA8D90DE1F5498720244FE75BBDF49CE11C60FE3",
+      "pngSha256": "F8A0BA0139083A4AF81B356D23B51756E2D004E9F117B6343CF94AB315E946FC",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "0F4E77FCCDC081A78664A6D466B6C8E81D263D50338388B8352771EEC5B130FB",
+        "sha256": "4F1CF0115D20E6CE65B152A49338F516BB9313EA7A09DA90EC025CF7B704A16E",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-6",
         "noteTextSha256": "EDD146B6B25D26BD5A0BC7964B73DAAD9544C3EC194275D126E1768BFD5982C3",
         "viewportState": "Bottom",
-        "verticalOffset": 878.52,
-        "scrollableHeight": 878.52,
+        "verticalOffset": 883.19,
+        "scrollableHeight": 883.19,
         "firstVisibleAnchor": "reference-note-6:\u4E2D\u6BB5\u951A\u70B96\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709",
         "lastVisibleAnchor": "reference-note-6:\u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\uFF0C\u5C3E\u951A\u70B9\u3002"
       },
@@ -225,9 +225,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 45820,
-        "nonOpaquePixelCount": 50381,
-        "opaquePixelCount": 152419
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51711,
+        "opaquePixelCount": 151089
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -235,8 +235,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 360,
-        "pixelCount": 154216
+        "height": 359,
+        "pixelCount": 154021
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,
@@ -253,17 +253,17 @@
       "path": "assets/ui-references/floating-window/520x390/2026-09-11-v22/notes-search-expanded-day.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "80D95D2F22E92C18A337CA4F1CC669B026191B07C026B699AB9B51522034BA95",
+      "pngSha256": "E3A14F23A18ED6B9E8C0FC4EE5174659360E89B2DE8F4C0BF046C09173392AD6",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "0E57AF6187168AD1567040A0D9C163FC55DF8867300C39B3EB64B3AFBFC797BF",
+        "sha256": "70B7E81619E6FD6DEDE0747F65478094EC7DE405180549A0B759DA1D51B45116",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "",
         "noteTextSha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
         "viewportState": "Expanded",
-        "verticalOffset": 922.52,
-        "scrollableHeight": 922.52,
+        "verticalOffset": 927.19,
+        "scrollableHeight": 927.19,
         "firstVisibleAnchor": "search-expanded",
         "lastVisibleAnchor": "search-expanded"
       },
@@ -271,9 +271,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 45820,
-        "nonOpaquePixelCount": 50563,
-        "opaquePixelCount": 152237
+        "transparentPixelCount": 46259,
+        "nonOpaquePixelCount": 51855,
+        "opaquePixelCount": 150945
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -281,8 +281,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 360,
-        "pixelCount": 154216
+        "height": 359,
+        "pixelCount": 154021
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,

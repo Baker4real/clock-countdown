@@ -34,11 +34,15 @@ internal sealed class ApplicationTheme
         Token("MutedColor", "MutedBrush", "#FF82665F"),
         Token("ActiveColor", "ActiveBrush", "#FFE05A4A"),
         Token("ActiveHoverColor", "ActiveHoverBrush", "#FFB84A36"),
+        // #151：文本选区高亮独立语义色（不得复用 1px 结构线色）。
+        Token("SelectionColor", "SelectionBrush", "#FFD4526A"),
         Token("MainActionColor", "MainActionBrush", "#FFC04A37"),
         Token("MainActionHoverColor", "MainActionHoverBrush", "#FFB84A36"),
         Token("MainActionPressedColor", "MainActionPressedBrush", "#FFBA4128"),
         Token("MainActionFocusColor", "MainActionFocusBrush", "#FFFFD49A"),
         Token("MainActionTextColor", "MainActionTextBrush", "#FFFDFC"),
+        // #151：主窗口次级实心按钮（「保存设置」）珊瑚语义色，文字用主文字色。
+        Token("CoralActionColor", "CoralActionBrush", "#FFD68481"),
         Token("PeachLineColor", "PeachLineBrush", "#FFF6DFD3"),
         Token("DangerColor", "DangerBrush", "#FFB94D3A"),
         Token("SuccessColor", "SuccessBrush", "#FF266B5E"),
@@ -149,6 +153,10 @@ internal sealed class ApplicationTheme
             (Math.Min(firstLuminance, secondLuminance) + 0.05);
         return ratio >= minimum;
     }
+
+    // #152：未来动效的即时等价入口——读取系统「客户区动画」开关（SystemParameters.ClientAreaAnimation）。
+    // 本票不新增过渡动画（DESIGN.md §9）；未来加入任何过渡时必须依据该开关提供即时等价行为。
+    internal static bool ClientAreaAnimationEnabled => SystemParameters.ClientAreaAnimation;
 
     private static ThemeToken Token(
         string colorKey,

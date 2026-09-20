@@ -16,6 +16,9 @@ namespace MinminCountdown;
 public sealed partial class FloatingWindow : Window
 {
     private const double CountdownScrollBarSafeOffset = 76;
+
+    // #149：列表视口底部稳定内边距（12 DIP，§5 区块节奏），末卡不视觉顶住底部命令区。
+    private const double FloatingNotesListBottomPadding = 12;
     private static readonly string[] QuickAddThemeCheckNames =
     [
         "TextBox",
@@ -415,6 +418,15 @@ public sealed partial class FloatingWindow : Window
 
     internal event EventHandler? MinimizeToTrayRequested;
 
+    // #155：悬浮窗删除便签成功后携带撤销载荷；由 App 转交主窗口状态条呈现短时「撤销」。
+    internal event EventHandler<DeletedRecordUndo>? NoteDeleted;
+
+    // #155：退出确认的脏状态描述——快速新增正文非空即视为未保存草稿（保存成功后正文被清空）。
+    internal string? DescribeUnsavedExitWork() =>
+        string.IsNullOrEmpty(FloatingNoteText.Text)
+            ? null
+            : "悬浮窗便签草稿未保存。";
+
     private bool RunCrossDayReminderAddExercise()
     {
         ShowWorkspace(WorkspaceKind.Notes);
@@ -553,6 +565,8 @@ public sealed partial class FloatingWindow : Window
         // The command bar remains reachable while the in-place editor is open;
         // the search action is part of the notes workspace contract.
         FloatingNotesCommandBar.Visibility = Visibility.Visible;
+        // #149：展开后切换钮降级为次级「收起」，表单「添加」是该状态唯一实心粉钮。
+        ApplyQuickAddTogglePresentation(expanded);
         if (!expanded)
         {
             return;
@@ -566,6 +580,61 @@ public sealed partial class FloatingWindow : Window
             FloatingNoteDate.SelectedDate = snapshot.BeijingNow.Date;
             _settingDefaultDate = false;
         }
+    }
+
+    /// <summary>
+    ///     #149：底部切换钮双态呈现——收起态为实心粉胶囊「＋ 添加便签」（FloatingAccentButton），
+    ///     展开态换次级样式并显示「收起」；可访问名随动作与对象同步。
+    /// </summary>
+    private void ApplyQuickAddTogglePresentation(bool expanded)
+    {
+        if (expanded)
+        {
+            FloatingAddNoteToggle.Style = (Style)FindResource("SecondaryButton");
+            FloatingAddNoteToggle.Content = "收起";
+            UiAccessibility.Name(FloatingAddNoteToggle, "收起快速新增便签表单");
+            return;
+        }
+
+        FloatingAddNoteToggle.Style = (Style)FindResource("FloatingAccentButton");
+        FloatingAddNoteToggle.Content = CreateAddNoteToggleContent();
+        UiAccessibility.Name(FloatingAddNoteToggle, "添加便签");
+    }
+
+    private static StackPanel CreateAddNoteToggleContent()
+    {
+        var circle = new System.Windows.Shapes.Ellipse { Width = 16, Height = 16 };
+        circle.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "MainActionTextBrush");
+        var plus = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 4.6,8 L 11.4,8 M 8,4.6 L 8,11.4"),
+            StrokeThickness = 1.6,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        };
+        plus.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "PinkAccentStrongBrush");
+        var icon = new Grid
+        {
+            Width = 16,
+            Height = 16,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        icon.Children.Add(circle);
+        icon.Children.Add(plus);
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                icon,
+                new TextBlock
+                {
+                    Text = "添加便签",
+                    Margin = new Thickness(7, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            }
+        };
     }
 
     internal void UpdateTime(DateTimeOffset nowUtc)
@@ -644,6 +713,21 @@ public sealed partial class FloatingWindow : Window
         {
             _isApplyingBottomAnchor = false;
         }
+    }
+
+    // #156：非拖动的复位/贴边入口——托盘菜单「复位窗口位置」与悬浮窗 Ctrl+R 共用：
+    // 隐藏或最小化时先恢复为可见正常态，再把窗口夹回工作区（Reanchor 只在越界时移动，
+    // 未越界的手动位置保持不变；完成任务的窗口收纳不依赖拖无边框窗）。
+    internal void ResetPositionIntoWorkArea()
+    {
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        WindowState = System.Windows.WindowState.Normal;
+        UpdateLayout();
+        Reanchor();
     }
 
     internal void ParkOffscreenForValidation()
@@ -1439,6 +1523,8 @@ public sealed partial class FloatingWindow : Window
         };
         FloatingOpenSettings.Click += (_, _) => _manager.Reveal(_workspace);
         FloatingSearchNotes.Click += (_, _) => ToggleNoteSearch();
+        // #149：滚动时把被裁切长卡的日期印记粘在卡片可见区域内（三行始终可见）。
+        FloatingBodyScroller.ScrollChanged += (_, _) => UpdateNoteDateStampStickyOffsets();
         FloatingNoteSearch.TextChanged += (_, _) => OnNoteSearchTextChanged();
         FloatingNoteSearchHintTerm.Click += (_, _) => ExpandNoteSearch(focus: true);
         FloatingNoteSearchHintClear.Click += (_, _) => ClearNoteSearch();
@@ -1558,6 +1644,7 @@ public sealed partial class FloatingWindow : Window
         var renderVersion = ++_floatingRowsRenderVersion;
 
         FloatingRows.Children.Clear();
+        ClearNoteDateStampStickyEntries();
         var snapshot = _desktopWorkspace.Snapshot;
         if (workspace == WorkspaceKind.Countdowns)
         {
@@ -1606,10 +1693,28 @@ public sealed partial class FloatingWindow : Window
                 {
                     FloatingRows.Children.Add(BuildNoteSearchEmptyState());
                 }
+                else if (NoteConstraintsActive(snapshot.Filter))
+                {
+                    // #149：筛选约束空态提供可执行下一步「清除筛选」；搜索无匹配仍走「清除搜索」。
+                    // 消息与按钮都是 FloatingRows 直接子级，保持空态消息直读语义。
+                    FloatingRows.Children.Add(EmptyText(NoteEmptyStateText(snapshot.Filter)));
+                    FloatingRows.Children.Add(BuildNoteConstrainedEmptyStateAction());
+                }
                 else
                 {
                     FloatingRows.Children.Add(EmptyText(NoteEmptyStateText(snapshot.Filter)));
                 }
+            }
+            else
+            {
+                // #149：列表视口底部稳定内边距，末卡不视觉顶住底部命令区（DESIGN §10）。
+                // 用普通 FrameworkElement 而非 Border：基线管线以 rows 内 Border 数计卡。
+                FloatingRows.Children.Add(new FrameworkElement
+                {
+                    Height = FloatingNotesListBottomPadding,
+                    IsHitTestVisible = false,
+                    Focusable = false
+                });
             }
         }
 
@@ -1689,9 +1794,54 @@ public sealed partial class FloatingWindow : Window
         return panel;
     }
 
+    /// <summary>
+    ///     #149：筛选约束（标签 / 无标签 / 状态 / 日期）导致的空态提供可执行下一步「清除筛选」，
+    ///     一键还原到无约束视图；搜索词不受影响，语义与「清除搜索」互斥出现。
+    /// </summary>
+    private FrameworkElement BuildNoteConstrainedEmptyStateAction()
+    {
+        var clear = UiAccessibility.Name(
+            new Button
+            {
+                Content = "清除筛选",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Style = TryFindResource("SecondaryButton") as Style
+            },
+            "清除便签筛选");
+        clear.Click += (_, _) => ClearNoteFilterConstraints();
+        return clear;
+    }
+
+    private void ClearNoteFilterConstraints()
+    {
+        var filter = _desktopWorkspace.Snapshot.Filter;
+        _desktopWorkspace.ApplyFilter(filter with
+        {
+            SelectedTagIds = Array.Empty<string>(),
+            UntaggedOnly = false,
+            NoteStatus = NoteStatusFilter.All,
+            NoteDate = null,
+            UndatedNotesOnly = false
+        });
+    }
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
         var modifiers = MainShortcutInput.ResolveModifiers(args);
+        if (modifiers == ModifierKeys.Control && args.Key == Key.R)
+        {
+            // #156：Ctrl+R 是非拖动的窗口复位入口（与托盘「复位窗口位置」共用实现）；
+            // 弹层或日期下拉打开时不抢动作。
+            if (FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen)
+            {
+                return;
+            }
+
+            ResetPositionIntoWorkArea();
+            args.Handled = true;
+            return;
+        }
+
         if (modifiers == ModifierKeys.Control && args.Key == Key.F)
         {
             if (FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen)
@@ -2082,6 +2232,8 @@ public sealed partial class FloatingWindow : Window
 
             var restoredOffset = ClampScrollOffset(targetScrollOffset);
             FloatingBodyScroller.ScrollToVerticalOffset(restoredOffset);
+            // #149：滚动位置恢复后同步日期印记粘性位移（ScrollToVerticalOffset 幅度相同时不触发 ScrollChanged）。
+            UpdateNoteDateStampStickyOffsets();
             _workspaceScrollOffsets[workspace] = FloatingBodyScroller.VerticalOffset;
         }), DispatcherPriority.Loaded);
     }

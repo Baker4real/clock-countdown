@@ -31,11 +31,16 @@
     <Color x:Key="MutedColor">#FF82665F</Color>
     <Color x:Key="ActiveColor">#FFE05A4A</Color>
     <Color x:Key="ActiveHoverColor">#FFB84A36</Color>
+    <!-- #151：文本选区高亮独立语义色（0.4 SelectionOpacity 合成在白纸输入面上肉眼可辨），
+         不得复用 1px 结构线色 PeachLineColor。 -->
+    <Color x:Key="SelectionColor">#FFD4526A</Color>
     <Color x:Key="MainActionColor">#FFC04A37</Color>
     <Color x:Key="MainActionHoverColor">#FFB84A36</Color>
     <Color x:Key="MainActionPressedColor">#FFBA4128</Color>
     <Color x:Key="MainActionFocusColor">#FFFFD49A</Color>
     <Color x:Key="MainActionTextColor">#FFFDFC</Color>
+    <!-- #151：主窗口次级实心按钮（「保存设置」）珊瑚语义色，比主行动更浅，文字用主文字色。 -->
+    <Color x:Key="CoralActionColor">#FFD68481</Color>
     <Color x:Key="PeachLineColor">#FFF6DFD3</Color>
     <Color x:Key="DangerColor">#FFB94D3A</Color>
     <Color x:Key="SuccessColor">#FF266B5E</Color>
@@ -100,11 +105,13 @@
     <SolidColorBrush x:Key="MutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="ActiveBrush" Color="{DynamicResource ActiveColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="ActiveHoverBrush" Color="{DynamicResource ActiveHoverColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="{DynamicResource SelectionColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="MainActionBrush" Color="{DynamicResource MainActionColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="MainActionHoverBrush" Color="{DynamicResource MainActionHoverColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="MainActionPressedBrush" Color="{DynamicResource MainActionPressedColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="MainActionFocusBrush" Color="{DynamicResource MainActionFocusColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="MainActionTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="CoralActionBrush" Color="{DynamicResource CoralActionColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PeachLineBrush" Color="{DynamicResource PeachLineColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" po:Freeze="False" />
@@ -465,11 +472,12 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ToggleButton}">
+            <!-- #154：激活胶囊短边一半全圆角——实例命中/渲染高 36 → 圆角 18（不再 RadiusControl 9）。 -->
             <Border x:Name="Surface"
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="{DynamicResource RadiusControl}"
+                    CornerRadius="18"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
@@ -490,6 +498,15 @@
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                 <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
+              <!-- #152：选中实心粉胶囊（PinkAccentStrongBrush）上的焦点环对实际邻色达非文本门槛：
+                   ActiveBrush 对深粉实测 1.37 不达标，改用主按钮焦点色暖金（实测 3.63 ≥3:1）。 -->
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsChecked" Value="True" />
+                  <Condition Property="IsKeyboardFocused" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
+              </MultiTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
               </Trigger>
@@ -502,7 +519,8 @@
     <Style x:Key="FilterOptionButton"
            TargetType="{x:Type ToggleButton}"
            BasedOn="{StaticResource SegmentButton}">
-      <Setter Property="Height" Value="34" />
+      <!-- #152：筛选芯片高度向桌面紧凑下限族（#143 的 36）靠拢；相邻间距由消费侧统一 8px。 -->
+      <Setter Property="Height" Value="36" />
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
     </Style>
@@ -521,7 +539,7 @@
       <Setter Property="Padding" Value="11,0" />
       <Setter Property="MinHeight" Value="40" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="SelectionBrush" Value="{DynamicResource PeachLineBrush}" />
+      <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
       <Setter Property="CaretBrush" Value="{DynamicResource ActiveBrush}" />
       <Setter Property="Template">
         <Setter.Value>
@@ -795,6 +813,8 @@
            BasedOn="{StaticResource {x:Type TextBox}}">
       <Setter Property="IsReadOnly" Value="True" />
       <Setter Property="Focusable" Value="False" />
+      <!-- #151：日期框文字区与主窗倒计时页白纸输入面同色（由 DatePicker.Background 决定）。 -->
+      <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
     </Style>
 
     <Style TargetType="{x:Type DatePicker}">
@@ -813,15 +833,18 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="38" />
               </Grid.ColumnDefinitions>
+              <!-- #153：选中日期文本与列表/组头同一中文日期格式——数字与「月」「日」之间留空格（§3）。
+                   绑定固定 OneWay：只读文本框不回写 SelectedDate，行为层负责日期变化后写回同一格式。 -->
               <primitives:DatePickerTextBox x:Name="PART_TextBox"
                                             Grid.Column="0"
                                             Style="{StaticResource DatePickerTextBoxStyle}"
                                             BorderThickness="1,1,0,1"
                                             Padding="{TemplateBinding Padding}"
-                                            Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, StringFormat={}{0:yyyy年M月d日}}" />
+                                            Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay, StringFormat={}{0:yyyy 年 M 月 d 日}}" />
               <Button x:Name="PART_Button"
                       Grid.Column="1"
                       Padding="0"
+                      Background="{TemplateBinding Background}"
                       BorderThickness="1"
                       ToolTip="打开日历"
                       AutomationProperties.Name="打开日历">
@@ -869,10 +892,11 @@
     <Style x:Key="CalendarNavigationButton"
            TargetType="{x:Type Button}"
            BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Width" Value="32" />
-      <Setter Property="Height" Value="32" />
-      <Setter Property="MinWidth" Value="32" />
-      <Setter Property="MinHeight" Value="32" />
+      <!-- #152：日历翻月按钮向桌面紧凑下限族（36）靠拢，与筛选芯片同档。 -->
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="MinWidth" Value="36" />
+      <Setter Property="MinHeight" Value="36" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />

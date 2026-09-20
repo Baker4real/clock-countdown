@@ -805,6 +805,9 @@ internal static class ValidationReport
             ValidationExercises.RunFloatingQuickAddPaletteBindingIsolationBehavior();
 
         var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd);
+        var countdownReadability = mainWindowScenarios.CountdownReadability;
+        var countdownEditing = mainWindowScenarios.CountdownEditing;
+        var interactionStates = mainWindowScenarios.InteractionStates;
         var noteExercise = mainWindowScenarios.NoteExercise;
         var floatingNoteExercise = floatingWindowScenarios.CrossDayReminderAdded;
         var mainReminderModeExercise = mainWindowScenarios.ReminderModes;
@@ -847,6 +850,22 @@ internal static class ValidationReport
             ValidationExercises.RunMainShortcutGateIsolationBehavior();
         var mainKeyboardNavigationGateIsolationBehavior =
             ValidationExercises.RunMainKeyboardNavigationGateIsolationBehavior();
+        // #153：便签列表排版 / 芯片 / 空态 / 筛选标签 / 键盘与间距 token 探针消费与门禁评估。
+        var noteListPolish = mainUiPolish.NoteListPolish;
+        // #154：视觉铬探针消费——漏斗/图标描边/矢量窗铬/胶囊圆角/装饰层/方角铬/页签次序；
+        // 悬浮外壳投影（TaskCard/FloatingThemeBackdrop 无 Effect）由悬浮窗实例直接钉。
+        var visualChrome = mainUiPolish.VisualChrome;
+        var floatingShellLargeShadowRemoved =
+            Required<Border>(floating, "TaskCard").Effect is null &&
+            Required<Border>(floating, "FloatingThemeBackdrop").Effect is null;
+        var popupFocusTabGates = ValidationExercises.EvaluatePopupFocusTabGates(
+            new PopupFocusTabGateInputs(
+                noteListPolish.FilterPopupTabCyclesInsideLayer,
+                noteListPolish.TagManagerPopupTabCyclesInsideLayer,
+                noteListPolish.TagSelectorPopupTabCyclesInsideLayer,
+                noteListPolish.OverflowMenuPopupTabCyclesInsideLayer));
+        var popupFocusTabGateIsolationBehavior =
+            ValidationExercises.RunPopupFocusTabGateIsolationBehavior();
         var mainStructuralAnnouncements = ValidateMainStructuralAnnouncements(assetRoot);
         var mainStructuralAnnouncementGates =
             ValidationExercises.EvaluateMainStructuralAnnouncementGates(
@@ -1004,6 +1023,16 @@ internal static class ValidationReport
             ValidationExercises.RunReminderSnoozeSuppressesBaseCyclesBehavior();
         var reminderCenterCompleteClick =
             ValidationExercises.RunReminderCenterCompleteClickBehavior();
+        var reminderCenterCompleteRequiresConfirmation =
+            ValidationExercises.RunReminderCenterCompleteRequiresConfirmationBehavior();
+        var deleteUndoOffer =
+            ValidationExercises.RunDeleteUndoOfferBehavior();
+        var dirtyExitConfirmation =
+            ValidationExercises.RunDirtyExitConfirmationBehavior();
+        var assistiveNarration =
+            ValidationExercises.RunAssistiveNarrationBehavior();
+        var windowPositionReset =
+            ValidationExercises.RunWindowPositionResetBehavior();
         var reminderCenterDeliveryFailureActionGate =
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
         var reminderCenterEnterActsOnFocusedEntry =
@@ -1387,7 +1416,7 @@ internal static class ValidationReport
             ValidateReminderCenterSourceLabelContrast(theme, workspaceSnapshot.UtcNow);
         var systemDialogPrimaryButtonContrast = ValidateSystemDialogPrimaryButtonContrast();
         var keyboardFocusRingContrast =
-            ValidateKeyboardFocusRingContrast(theme, main, workspaceSnapshot.UtcNow);
+            ValidateKeyboardFocusRingContrast(theme, main, floating, workspaceSnapshot.UtcNow);
         var comboBoxTextClick = ValidateComboBoxTextClick(main);
         var secondaryWindowDrag = ValidateSecondaryWindowDrag(main);
         var calendarNavigationNames = WindowValidationInput.ReadCalendarNavigationNames(datePicker);
@@ -1403,6 +1432,8 @@ internal static class ValidationReport
             ValidationExercises.ProbeReminderCenterTwoRowActionsLayout();
         var reminderCenterEntryVisualIdentity =
             ValidationExercises.ProbeReminderCenterEntryVisualIdentity();
+        var reminderCenterTypographyWeightWhitelist =
+            ValidationExercises.ProbeReminderCenterTypographyWeightWhitelist();
         var popupAnimationIsInstant =
             ValidationExercises.ProbeFivePopupsUseInstantAnimation(main);
         var actionForegroundsUseMainActionText =
@@ -1415,6 +1446,10 @@ internal static class ValidationReport
             ValidationExercises.ProbeFloatingTypographyWeightWhitelist(floating, desktopWorkspace);
         var floatingDateStampDensityMatches =
             ValidationExercises.ProbeFloatingDateStampDensity(floating, desktopWorkspace);
+        var floatingDateStampStickyAtScrollBottom =
+            ValidationExercises.ProbeFloatingDateStampStickyAtScrollBottom(floating, desktopWorkspace);
+        var floatingNotesListBottomPaddingMatches =
+            ValidationExercises.ProbeFloatingNotesListBottomPadding(floating, desktopWorkspace);
         var noteCancelFitsEditorPanel =
             ValidationExercises.ProbeNoteCancelFitsEditorPanel(main);
         var popupRightInsetIsEightFromCanvas =
@@ -1468,6 +1503,26 @@ internal static class ValidationReport
                 countdownEmptyStateContrast.TextContrast));
         var mainCountdownRemainingGateIsolationBehavior =
             ValidationExercises.RunMainCountdownRemainingGateIsolationBehavior();
+        var countdownReadabilityGateIsolationBehavior =
+            ValidationExercises.RunCountdownReadabilityGateIsolationBehavior();
+        var floatingViewportGeometryGateIsolationBehavior =
+            ValidationExercises.RunFloatingViewportGeometryGateIsolationBehavior();
+        var countdownEditingGateIsolationBehavior =
+            ValidationExercises.RunCountdownEditingGateIsolationBehavior();
+        var countdownEditingGates = ValidationExercises.EvaluateCountdownEditingGates(
+            new CountdownEditingGateInputs(
+                countdownEditing.FieldErrorsAtSourceWithFocus,
+                countdownEditing.FieldErrorsAtSourceWithFocus,
+                countdownEditing.FieldErrorsClearOnCorrection,
+                countdownEditing.SingleErrorRowNotClipped,
+                countdownEditing.PreferenceErrorsBelowFields,
+                countdownEditing.PreferenceErrorsClearOnCorrection,
+                countdownEditing.PrimarySecondaryRolesDistinct,
+                countdownEditing.InputSurfacesWhitePaper,
+                countdownEditing.SelectionHighlightDistinct,
+                countdownEditing.StatusBarSurfaceErrorContrast,
+                countdownEditing.ReminderRadioSelectedContrast,
+                countdownEditing.EditorTypographyTokenized));
         var mainCountdownRemainingSamples = mainUiPolish.CountdownRemainingSamples;
         var mainCountdownRemainingGates = ValidationExercises.EvaluateMainCountdownRemainingGates(
             new MainCountdownRemainingGateInputs(
@@ -1503,8 +1558,8 @@ internal static class ValidationReport
             new MainShortcutGateInputs(
                 new[]
                 {
-                    "CountdownsWorkspace", "Filter", "Minimize", "NotesWorkspace",
-                    "SaveCountdown", "SavePreferences", "TagManager"
+                    "CountdownsWorkspace", "Filter", "Minimize", "NoteSearch",
+                    "NotesWorkspace", "SaveCountdown", "SavePreferences", "TagManager"
                 },
                 mainKeyboardBehavior.CommandResults,
                 mainKeyboardBehavior.TextInputPreserved,
@@ -1533,7 +1588,8 @@ internal static class ValidationReport
             new ReminderCenterKeyboardGateInputs(
                 reminderKeyboardExercise.TabTraversalWorks,
                 reminderKeyboardExercise.CloseGuardWorks,
-                reminderKeyboardExercise.InitialFocusAndAccessibleNameWork));
+                reminderKeyboardExercise.InitialFocusAndAccessibleNameWork,
+                reminderKeyboardExercise.EscapeFocusesAcknowledge));
         var reminderCenterKeyboardGateIsolationBehavior =
             ValidationExercises.RunReminderCenterKeyboardGateIsolationBehavior();
         var confirmationValidation = ValidateConfirmationDialog(
@@ -1619,8 +1675,9 @@ internal static class ValidationReport
                 workStart,
                 workEnd
             }
+            // #151：输入面按 §4 合同改绑白纸面板色（PanelBrush），与页面画布分开；边界/文字 token 不变。
             .All(control =>
-                ReferenceEquals(control.Background, Application.Current.FindResource("CanvasBrush")) &&
+                ReferenceEquals(control.Background, Application.Current.FindResource("PanelBrush")) &&
                 ReferenceEquals(control.BorderBrush, Application.Current.FindResource("PeachLineBrush")) &&
                 ReferenceEquals(control.Foreground, Application.Current.FindResource("InkBrush")));
         countdownDate.ApplyTemplate();
@@ -1797,6 +1854,14 @@ internal static class ValidationReport
                 floatingWindowScenarios.BottomCommand.QuickAddTogglePass,
             ["FloatingNoteOverflowMenuScenariosPass"] =
                 floatingWindowScenarios.BottomCommand.OverflowMenuPass,
+            ["FloatingQuickAddPlaceholderMirrorsManager"] =
+                floatingWindowScenarios.BottomCommand.QuickAddPlaceholderMirrorsManager,
+            ["FloatingQuickAddExpandedSinglePrimaryAction"] =
+                floatingWindowScenarios.BottomCommand.QuickAddToggleSecondaryWhenExpanded,
+            ["FloatingNoteOverflowMenuKeyboardWorks"] =
+                floatingWindowScenarios.BottomCommand.NoteMenuKeyboardLifecycle,
+            ["FloatingConstrainedEmptyStateProvidesAction"] =
+                floatingWindowScenarios.NoteSearch.ConstrainedEmptyProvidesAction,
             ["FloatingDateStampPastelRotationMatches"] =
                 floatingWindowScenarios.BottomCommand.PastelIndexPass,
             ["FloatingNotesHandwrittenDecorationPass"] =
@@ -1841,6 +1906,8 @@ internal static class ValidationReport
             ["FloatingDateStampTypographyMatches"] = floatingDateStampTypographyMatches,
             ["FloatingTypographyWeightWhitelist"] = floatingTypographyWeightWhitelist,
             ["FloatingDateStampDensityMatches"] = floatingDateStampDensityMatches,
+            ["FloatingDateStampStickyAtScrollBottom"] = floatingDateStampStickyAtScrollBottom,
+            ["FloatingNotesListBottomPaddingMatches"] = floatingNotesListBottomPaddingMatches,
             ["NoteCancelFitsEditorPanel"] = noteCancelFitsEditorPanel,
             ["PopupRightInsetIsEightFromCanvas"] = popupRightInsetIsEightFromCanvas,
             ["FilterPopupScrollsLongTagList"] = filterPopupScrollsLongTagList,
@@ -1923,6 +1990,53 @@ internal static class ValidationReport
                 main.FindName("CountdownReminderTimeRadio") is RadioButton &&
                 main.FindName("CountdownReminderCustomRadio") is RadioButton,
             ["HasCountdownList"] = countdownRows is not null,
+            ["MainCountdownEncourageBadgeAbsent"] = countdownReadability.EncourageBadgeAbsent,
+            ["MainCountdownExpiredRemainingFollowsContrast"] =
+                countdownReadability.ExpiredRemainingFollowsContrast,
+            ["MainCountdownBlocksGeometryMatches"] = countdownReadability.BlocksGeometryMatches,
+            ["MainCountdownNumericTextsMatchContract"] = countdownReadability.NumericTextsMatchContract,
+            ["MainCountdownReadabilityGateIsolationBehavior"] = countdownReadabilityGateIsolationBehavior,
+            ["MainCountdownReadability"] = countdownReadability,
+            ["MainCountdownFieldErrorsAtSource"] =
+                countdownEditingGates.FieldErrorsAtSourceWithFocus,
+            ["MainCountdownFieldErrorsClearOnCorrection"] =
+                countdownEditingGates.FieldErrorsClear,
+            ["MainCountdownSingleErrorRowUnclipped"] =
+                countdownEditingGates.SingleErrorRowNotClipped,
+            ["MainPreferenceErrorsBelowFields"] =
+                countdownEditingGates.PreferenceErrorsAtSource,
+            ["MainPrimarySecondaryButtonRolesDistinct"] =
+                countdownEditingGates.PrimarySecondaryRolesDistinct,
+            ["MainInputSurfaceWhitePaper"] =
+                countdownEditingGates.InputSurfacesWhitePaper,
+            ["MainTextSelectionHighlightDistinct"] =
+                countdownEditingGates.SelectionHighlightDistinct,
+            ["MainStatusBarSurfaceErrorContrast"] =
+                countdownEditingGates.StatusBarErrorContrast,
+            ["MainReminderRadioSelectedContrast"] =
+                countdownEditingGates.ReminderRadioSelectedContrast,
+            ["MainEditorTypographyTokens"] =
+                countdownEditingGates.EditorTypographyTokenized,
+            ["MainCountdownEditingGateIsolationBehavior"] =
+                countdownEditingGateIsolationBehavior,
+            ["MainFocusRingConstantThicknessNoSqueeze"] = interactionStates.FocusRingsReserveSpace,
+            ["MainPrimaryAndPinSingleFocusStroke"] = interactionStates.PrimaryAndPinSingleFocusStroke,
+            ["MainNotesTabHoverDiffersFromSelected"] = interactionStates.NotesTabHoverDiffersFromSelected,
+            ["MainLocalControlsPressAndDisabled"] = interactionStates.LocalControlsPressAndDisabled,
+            ["MainReminderHelpFocusShowsHelp"] = interactionStates.HelpFocusShowsHelpText,
+            ["MainCompactHitTargetsMeetScaledFloor"] = interactionStates.CompactHitTargetsMeetScaledFloor,
+            ["MainFilterChipsAndCalendarNavCompact"] = interactionStates.ChipsAndCalendarNavCompact,
+            ["MotionClientAreaAnimationSwitchReadable"] =
+                ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
+            ["KeyboardFocusRingTabGapAvoidsSelectedFill"] =
+                keyboardFocusRingContrast.TabRingGapAvoidsSelectedFill,
+            ["KeyboardFocusRingFloatingCapsuleMeetsContrast"] =
+                keyboardFocusRingContrast.FloatingCapsuleFocusRingMeetsContrast,
+            ["KeyboardFocusRingFloatingCapsuleUsesWarmGold"] =
+                keyboardFocusRingContrast.FloatingCapsuleUsesWarmGoldToken,
+            ["FloatingIncomeUsesTabularNumerals"] =
+                Typography.GetNumeralAlignment(Required<TextBlock>(floating, "FloatingIncome")) ==
+                FontNumeralAlignment.Tabular,
             ["HasNameEditor"] = main.FindName("CountdownName") is TextBox,
             ["HasNoteReminderControls"] =
                 main.FindName("ManageNoteReminderRulesButton") is Button &&
@@ -2041,6 +2155,16 @@ internal static class ValidationReport
                 reminderSnoozeSuppressesBaseCycles,
             ["ReminderCenterCompleteClickIsAtomic"] =
                 reminderCenterCompleteClick,
+            ["ReminderCenterCompleteRequiresConfirmation"] =
+                reminderCenterCompleteRequiresConfirmation,
+            ["DeleteUndoRestoresLastDelete"] =
+                deleteUndoOffer,
+            ["DirtyExitConfirmsUnsavedWork"] =
+                dirtyExitConfirmation,
+            ["AssistiveNarrationExitsDecorationAndLabelsFields"] =
+                assistiveNarration,
+            ["WindowPositionResetsWithoutDrag"] =
+                windowPositionReset,
             ["ReminderCenterDeliveryFailureDisablesDispositions"] =
                 reminderCenterDeliveryFailureActionGate,
             ["ReminderCenterEnterActsOnFocusedEntry"] =
@@ -2082,6 +2206,10 @@ internal static class ValidationReport
                 reminderCenterKeyboardGates.AllPassed,
             ["ReminderCenterInitialFocusAndAccessibleNameWork"] =
                 reminderCenterKeyboardGates.InitialFocusAndAccessibleNameWork,
+            ["ReminderCenterEscapeFocusesAcknowledge"] =
+                reminderCenterKeyboardGates.EscapeFocusesAcknowledge,
+            ["ReminderCenterTypographyWeightWhitelist"] =
+                reminderCenterTypographyWeightWhitelist,
             ["ReminderCenterKeyboardGateIsolationBehavior"] =
                 reminderCenterKeyboardGateIsolationBehavior,
             ["OfficialCharacterBackgroundLoaded"] =
@@ -2290,6 +2418,24 @@ internal static class ValidationReport
                 noteStatusLabels || workspaceSnapshot.Settings.Notes.Count == 0,
             ["NoteStatusSegmentSwitch"] = noteStatusSegmentSwitch,
             ["NoteRowOverflowMenuWorks"] = noteRowOverflowMenu,
+            ["NoteDateUsesSpacedChineseFormat"] = noteListPolish.SpacedChineseDateEverywhere,
+            ["NoteCardBodyLineHeightSeparatesSummary"] = noteListPolish.BodyLineHeightSeparatesSummary,
+            ["NoteRowTitleFallsToBlockTitleLevel"] = noteListPolish.RowTitleFallsToBlockTitleLevel,
+            ["NoteRowOverflowMenuKeyboardWorks"] = noteListPolish.OverflowMenuKeyboardLifecycleWorks,
+            ["NoteCardSpacingConsumesTokens"] = noteListPolish.CardSpacingConsumesTokens,
+            ["TagChipSingleLineEllipsisWithFullText"] = noteListPolish.TagChipSingleLineEllipsisWithFullText,
+            ["EmptyStateTextAllowsWrap"] = noteListPolish.EmptyStateTextAllowsWrap,
+            ["NoteDateFilterHasVisibleLabel"] = noteListPolish.FilterDateHasVisibleLabel,
+            ["PopupTabNavigationCyclesInsideLayer"] = popupFocusTabGates.AllCyclesInsideLayer,
+            ["PopupTabGateIsolationBehavior"] = popupFocusTabGateIsolationBehavior,
+            ["FilterFunnelIconSurvivesAliasedCapture"] = visualChrome.FilterFunnelIconSurvivesAliasedCapture,
+            ["NotesSearchDuplicateMagnifierRemoved"] = visualChrome.NotesSearchDuplicateMagnifierRemoved,
+            ["MainWindowChromeButtonsUseVectorPaths"] = visualChrome.MainWindowChromeButtonsUseVectorPaths,
+            ["SegmentActivePillsUseFullRoundedCorners"] = visualChrome.SegmentActivePillsUseFullRoundedCorners,
+            ["CountdownHandwrittenDecoOutOfFormMeasurement"] = visualChrome.CountdownHandwrittenDecoOutOfFormMeasurement,
+            ["FloatingShellLargeShadowRemoved"] = floatingShellLargeShadowRemoved,
+            ["MainWindowSquareChromeNoTransparency"] = visualChrome.MainWindowSquareChromeNoTransparency,
+            ["TabsRenderAboveDecorationBand"] = visualChrome.TabsRenderAboveDecorationBand,
             ["NoteGroupingSelectorPlaceholder"] = noteGroupingSelectorPlaceholder,
             ["NoteDateTimelineVisuals"] = noteDateTimelineVisuals,
             ["NoteDisclosureAccessibility"] = noteDisclosureAccessibility,
@@ -2415,6 +2561,8 @@ internal static class ValidationReport
             ["FloatingPrimaryDeadlineMeasurements"] =
                 floatingReferenceExercise.PrimaryDeadlineMeasurements,
             ["FloatingReferenceViewportStatesMatch"] = floatingReferenceExercise.ViewportStatesMatch,
+            ["FloatingViewportGeometryGateIsolationBehavior"] =
+                floatingViewportGeometryGateIsolationBehavior,
             ["FloatingViewportScrollAndFocusRestored"] =
                 floatingReferenceExercise.ViewportScrollAndFocusRestored,
             ["FloatingNoteFailureAppearsInSourceCard"] =
@@ -3427,7 +3575,14 @@ internal static class ValidationReport
         // 2026-09-17 深夜：捕获口径改 Aliased+Ideal 并重拍 v22 后按新帧再次重推导（同一 x=200/delta≥30 口径）。
         var specs = new[]
         {
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 539, 540, 552, 553 }, 480, 510),
+            // #151：编辑卡标题落 TypeH2（27→22）并收紧字段行距（20→SpacingFieldRow 10）后，
+            // 空态基线帧 x=200 列控制边按同一口径（delta≥30）对新帧重推导（证据 run 20260918T211928 后重拍帧）。
+            // 输入面改白纸 PanelBrush 后输入框上下边对差从 24 升到 33，进入 canary 可见集（509/563）；
+            // 标签带随布局上移 10px 收窄为 [480,502]（「名称」标签字形现位于 485–501），sanction 509 输入框顶边。
+            // #154：倒计时页手写体退出表单测量（装饰层化）使标题行收紧 ~11px，字段整体上移，
+            // 控制边对新帧再次重推导 → {498,518,519,531,532,552}；「名称」字形现位于 474–490，标签带 [469,491]
+            // （同一字形±5/+1 口径；证据 run-evidence\clock-countdown-issue-154-closure 重拍帧）。
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 498, 518, 519, 531, 532, 552 }, 469, 491),
             new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 497, 498, 499, 501, 502, 503, 505, 506, 514, 515 }, 405, 424)
         };
         var directory = Path.Combine(
@@ -4775,10 +4930,12 @@ internal static class ValidationReport
         var expectedBackdrop = new NormalizedRect(0.0511, 0.1381, 0.8867, 0.7947);
         var expectedPanel = new NormalizedRect(0.0863, 0.1851, 0.8232, 0.7053);
         var expectedHeader = new NormalizedRect(0.0994, 0.1851, 0.8101, 0.1593);
+        // #148：主卡高度随徽章字号（9→12 DIP、行高 17）与截止行「M 月 d 日」空格后的新构成更新；
+        // 与 v22 重拍帧（floating-countdowns-day）同几何，次卡 Y 随主卡底边相邻移动。
         var expectedCards = new[]
         {
-            new NormalizedRect(0.1154, 0.3791, 0.7723, 0.1742),
-            new NormalizedRect(0.1154, 0.5533, 0.7723, 0.1004)
+            new NormalizedRect(0.1154, 0.3791, 0.7723, 0.1865),
+            new NormalizedRect(0.1154, 0.5656, 0.7723, 0.1004)
         };
         var expectedMascots = new[]
         {
@@ -5229,7 +5386,7 @@ internal static class ValidationReport
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             primaryExtremeRemainingShrinks &= extremePrimaryDeleted;
 
-            const string primaryDeadlineText = "12月31日 23:59";
+            const string primaryDeadlineText = "12 月 31 日 23:59";
             var primaryDeadlineUtc = new DateTimeOffset(
                 2030,
                 12,
@@ -6263,7 +6420,12 @@ internal static class ValidationReport
             searchBox.CaretBrush = Brushes.Transparent;
             window.ApplyTheme();
             window.UpdateTime(referenceUtc);
-            WaitForStableFloatingReferenceLayout(window, root, rows, rows.Children.Count);
+            // #149：便签行以非 Border 的尾随内边距元素收尾，等待目标按卡片（Border）数计算。
+            WaitForStableFloatingReferenceLayout(
+                window,
+                root,
+                rows,
+                rows.Children.OfType<Border>().Count());
             ClearCaptureKeyboardFocus();
             const string captureId = "notes-search-expanded-day";
             var spec = FloatingReferenceCaptureSpecs.Single(candidate =>
@@ -7628,6 +7790,16 @@ internal static class ValidationReport
             captures);
     }
 
+    // #157：§10 设计命中轨宽（FloatingScrollBarHitRail，本地样式 Width=10）。视口右缘的
+    // 确定性比较基准只消费该应用自有几何，不消费随系统滚动条度量漂移的滚动条列宽。
+    private static double RequiredFloatingScrollBarRailWidth(ScrollBar scrollBar)
+    {
+        scrollBar.ApplyTemplate();
+        return scrollBar.Template.FindName("FloatingScrollBarHitRail", scrollBar) is Grid rail
+            ? rail.ActualWidth
+            : throw new InvalidOperationException("悬浮窗滚动条命中轨道未实例化。");
+    }
+
     private static FloatingScrollBarParts RequiredFloatingScrollBarParts(
         ScrollViewer bodyScroller)
     {
@@ -7681,7 +7853,17 @@ internal static class ValidationReport
             ? Rect.Empty
             : BoundsIn(verticalScrollBar, root);
         var bodyViewport = BoundsIn(bodyScroller, root);
-        var bodyContentRight = bodyViewport.X + bodyScroller.ViewportWidth;
+        var scrollBarVisible = verticalScrollBar is { IsVisible: true };
+        var scrollerSlotRight = bodyViewport.X + bodyScroller.ActualWidth;
+        // 直接内联模式测试而非复用 scrollBarVisible：可空流分析不穿透捕获的 bool，
+        // 三元 true 分支需要由模式测试本身推出 verticalScrollBar 非空（CS8604）。
+        var designedScrollBarRail = verticalScrollBar is { IsVisible: true }
+            ? RequiredFloatingScrollBarRailWidth(verticalScrollBar)
+            : 0d;
+        // #157：视口右缘确定性口径。旧口径 `bodyViewport.X + ViewportWidth` 把 WPF 滚动条列宽
+        // 计入视口右缘；该列宽在本地样式 Width=10 之外仍被系统滚动条度量撑大（Windows 滚动条
+        // 度量：100% 缩放 17 DIP、125% 缩放 17.6 DIP），使比较成为会话显示缩放的函数（实测
+        // 100% 缩放过 0.05 DIP、125% 缩放红 0.55 DIP，§11 漂移族），与产品几何无关。
         var protectedHeaderContent = new[]
             {
                 new NamedBounds(
@@ -7735,10 +7917,6 @@ internal static class ValidationReport
             .ToArray();
         var noteEntry = Required<Border>(window, "FloatingNoteEntry");
         var noteEntryBounds = BoundsIn(noteEntry, root);
-        var noteEntryFitsSafeArea =
-            !noteEntry.IsVisible ||
-            (noteEntryBounds.Right <= bodyContentRight + 0.25 &&
-             noteEntryBounds.Right <= 396.5);
         var noteDateStamps = renderedCards
             .SelectMany(Descendants<Border>)
             .Where(border =>
@@ -7749,21 +7927,43 @@ internal static class ValidationReport
             .Select(stamp => BoundsIn(stamp, root))
             .ToArray();
         var isNoteWorkspace = renderedCards.Any(card => Descendants<CheckBox>(card).Any());
+        var maximumRenderedCardRight = renderedCardBounds.Length == 0
+            ? 0
+            : renderedCardBounds.Max(bounds => bounds.Right);
+        var maximumDateStampRight = noteDateStampBounds.Length == 0
+            ? 0d
+            : noteDateStampBounds.Max(bounds => bounds.Right);
+        // #157 修复轮 1（reviewer CONCERN）：视口右缘比较收敛到
+        // EvaluateFloatingViewportGeometryGate 单一实现——现役捕获与反例门禁消费同一算术
+        // （FloatingViewportDesignedRight），删除「− 设计命中轨」即被负向夹具钉红。
+        // null = 该表面不参与本比较：非便签工作区不消费卡/印记视口比较（原 !isNoteWorkspace
+        // 短路语义），隐藏的快速新增不参与（原 !noteEntry.IsVisible 短路语义）。
+        var viewportRightContractMatches = ValidationExercises.EvaluateFloatingViewportGeometryGate(
+            new FloatingViewportGeometryGateInputs(
+                scrollerSlotRight,
+                designedScrollBarRail,
+                scrollBarVisible,
+                isNoteWorkspace ? maximumRenderedCardRight : null,
+                isNoteWorkspace ? maximumDateStampRight : null,
+                noteEntry.IsVisible ? noteEntryBounds.Right : null));
+        var bodyContentRight = ValidationExercises.FloatingViewportDesignedRight(
+            scrollerSlotRight,
+            designedScrollBarRail,
+            scrollBarVisible);
+        var noteEntryFitsSafeArea =
+            !noteEntry.IsVisible ||
+            noteEntryBounds.Right <= 396.5;
         var workspaceSurfaceGeometryMatches =
             !isNoteWorkspace ||
             (renderedCardBounds.All(bounds =>
                  Math.Abs(bounds.Width - 319) <= 0.5 &&
-                 bounds.Right <= bodyContentRight + 0.25 &&
                  bounds.Right <= 396.5) &&
+             viewportRightContractMatches &&
              noteEntryFitsSafeArea &&
              noteDateStamps.Length == renderedCards.Length &&
-             noteDateStampBounds.All(bounds => bounds.Right <= bodyContentRight + 0.25) &&
              noteDateStamps.All(stamp =>
                  !stamp.IsHitTestVisible &&
                  !stamp.Focusable));
-        var maximumRenderedCardRight = renderedCardBounds.Length == 0
-            ? 0
-            : renderedCardBounds.Max(bounds => bounds.Right);
         var minimumRenderedCardWidth = renderedCardBounds.Length == 0
             ? 0
             : renderedCardBounds.Min(bounds => bounds.Width);
@@ -7810,9 +8010,7 @@ internal static class ValidationReport
             Math.Round(maximumRenderedCardRight, 2),
             Math.Round(minimumRenderedCardWidth, 2),
             noteDateStamps.Length,
-            Math.Round(noteDateStampBounds.Length == 0
-                ? 0
-                : noteDateStampBounds.Max(bounds => bounds.Right), 2),
+            Math.Round(maximumDateStampRight, 2),
             Math.Round(noteEntryBounds.Width, 2),
             Math.Round(noteEntryBounds.Right, 2),
             noteEntryFitsSafeArea,
@@ -10310,10 +10508,15 @@ internal static class ValidationReport
 
         var expectedBackground = Application.Current.FindResource(
             isActive ? "PeachBadgeBrush" : "PeachBadgeMutedBrush");
+        // #148：徽章文字必须达到信息文本对比门槛——激活段主文字（InkBrush，8.69），
+        // 未激活段正文色（BodyBrush，6.09）；不再接受白字/弱化字钉死的旧合同。
         var expectedForeground = Application.Current.FindResource(
-            isActive ? "MainActionTextBrush" : "MutedBrush");
+            isActive ? "InkBrush" : "BodyBrush");
         return ReferenceEquals(badge.Background, expectedBackground) &&
-            ReferenceEquals(count.Foreground, expectedForeground);
+            ReferenceEquals(count.Foreground, expectedForeground) &&
+            expectedBackground is SolidColorBrush backgroundBrush &&
+            expectedForeground is SolidColorBrush foregroundBrush &&
+            ContrastRatio(backgroundBrush.Color, foregroundBrush.Color) >= 4.5;
     }
 
     private static bool HasNoteSegmentAccessibleName(
@@ -11147,11 +11350,24 @@ internal static class ValidationReport
         var themedButtons = new[]
         {
             Required<Button>(main, "SaveCountdownButton"),
-            Required<Button>(main, "SaveNoteButton"),
-            Required<Button>(main, "SavePreferencesButton")
+            Required<Button>(main, "SaveNoteButton")
         };
         var style = themedButtons[0].Style;
         if (style is null || themedButtons.Any(button => !ReferenceEquals(button.Style, style)))
+        {
+            return false;
+        }
+
+        // #151：「保存设置」改为珊瑚语义次级实心（MainSecondarySolidButton），不得再与主行动共用样式，
+        // 文字用主文字色并对珊瑚底达 4.5:1（浅珊瑚配白字 2.77 被禁止）。
+        // 样式定义在 MainWindow.xaml MainContentProjection 的 Grid.Resources 内，
+        // 必须经按钮自身沿逻辑树解析，Window.TryFindResource 看不到嵌套资源字典。
+        var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
+        if (savePreferencesButton.TryFindResource("MainSecondarySolidButton") is not Style secondarySolidStyle ||
+            !ReferenceEquals(savePreferencesButton.Style, secondarySolidStyle) ||
+            Application.Current.FindResource("CoralActionColor") is not Color coralAction ||
+            Application.Current.FindResource("InkColor") is not Color inkOnCoral ||
+            !ApplicationTheme.MeetsContrast(coralAction, inkOnCoral, 4.5))
         {
             return false;
         }
@@ -11258,6 +11474,19 @@ internal static class ValidationReport
             commandDiagnostics["Filter"] = new(filterHandled, filterOpened, string.Empty);
             Required<Popup>(main, "FilterPopup").IsOpen = false;
             PumpDispatcher();
+            // #156：便签页 Ctrl+F 聚焦便签搜索（倒计时页仍打开筛选，由上方 Filter 命令覆盖）。
+            RaiseShortcut(ModifierKeys.Control, Key.D2);
+            var noteSearchHandled = RaiseShortcut(ModifierKeys.Control, Key.F);
+            var noteSearchFocused = ReferenceEquals(
+                Keyboard.FocusedElement,
+                Required<TextBox>(main, "NoteSearch"));
+            commandResults["NoteSearch"] = noteSearchHandled && noteSearchFocused;
+            commandDiagnostics["NoteSearch"] = new(
+                noteSearchHandled,
+                noteSearchFocused,
+                string.Empty);
+            RaiseShortcut(ModifierKeys.Control, Key.D1);
+            PumpDispatcher();
             var tagManagerHandled = RaiseShortcut(ModifierKeys.Control, Key.T);
             var tagManagerOpened = Required<Popup>(main, "TagManagerPopup").IsOpen;
             commandResults["TagManager"] = tagManagerHandled && tagManagerOpened;
@@ -11361,7 +11590,7 @@ internal static class ValidationReport
             main.WindowState = WindowState.Normal;
             PumpDispatcher();
             commandsWork =
-                commandResults.Count == 7 &&
+                commandResults.Count == 8 &&
                 commandResults.Values.All(value => value);
         }
         finally
@@ -12145,7 +12374,10 @@ internal static class ValidationReport
             Owner = owner
         };
         var confirmation = new ConfirmationDialog(owner, "排版验证", "排版验证正文");
-        var windows = new Window[] { reminderCenter, editor, confirmation };
+        // #150：设置恢复与激活失败窗同走次级窗层级 token，进入同一份字号报告。
+        var recovery = SettingsRecoveryWindow.CreateForValidation("设置恢复排版验证正文", canRecover: true);
+        var activation = InstanceActivationFailureWindow.CreateForValidation();
+        var windows = new Window[] { reminderCenter, editor, confirmation, recovery, activation };
         foreach (var window in windows)
         {
             window.ShowInTaskbar = false;
@@ -12189,6 +12421,22 @@ internal static class ValidationReport
                     "排版验证",
                     null,
                     "排版验证正文",
+                    null),
+                MeasureSecondaryTypography(
+                    recovery,
+                    "SettingsRecovery",
+                    "SettingsRecoveryContentRoot",
+                    "设置恢复",
+                    null,
+                    "设置恢复排版验证正文",
+                    null),
+                MeasureSecondaryTypography(
+                    activation,
+                    "InstanceActivationFailure",
+                    "ActivationFailureContentRoot",
+                    InstanceActivationFailureWindow.PromptHeading,
+                    null,
+                    InstanceActivationFailureWindow.PromptMessage,
                     null)
             };
             var gates = ValidationExercises.EvaluateSecondaryWindowTypographyGates(
@@ -12209,6 +12457,8 @@ internal static class ValidationReport
             reminderCenter.ForceClose();
             editor.Close();
             confirmation.Close();
+            recovery.Close();
+            activation.Close();
             PumpDispatcher();
         }
     }
@@ -12401,13 +12651,41 @@ internal static class ValidationReport
                 customChainStaysInEntry &&
                 presetChainRestored &&
                 tabStaysInEntry;
+
+            // #150：Esc 不关闭有条目的中心，只把焦点移到「知道了」；送达失败禁用「知道了」时，
+            // 焦点落到始终可用的「打开来源」，窗口同样保持打开。
+            // 只 raise KeyDown：真实按键时 Button 不处理 Esc、事件冒泡到窗口处理器；
+            // 窗口不能挂 PreviewKeyDown，否则会在隧道阶段吃掉 Esc，破坏日期/下拉的 Esc 关闭。
+            window.SetDeliveryReady(key);
+            PumpDispatcher();
+            openSource.Focus();
+            var escapeHandled = RaiseWindowEscapeKeyDown(window);
+            PumpDispatcher();
+            var escapeFocusesAcknowledge =
+                escapeHandled &&
+                window.IsVisible &&
+                ReferenceEquals(Keyboard.FocusedElement, acknowledge);
+            window.ShowDeliveryFailure(key);
+            PumpDispatcher();
+            openSource.Focus();
+            escapeHandled = RaiseWindowEscapeKeyDown(window);
+            PumpDispatcher();
+            escapeFocusesAcknowledge =
+                escapeFocusesAcknowledge &&
+                escapeHandled &&
+                window.IsVisible &&
+                ReferenceEquals(Keyboard.FocusedElement, openSource);
+            window.SetDeliveryReady(key);
+            PumpDispatcher();
+
             window.Close();
             PumpDispatcher();
             return new ReminderKeyboardExerciseResult(
                 tabTraverses,
                 window.IsVisible,
                 window.ShowActivated &&
-                !string.IsNullOrWhiteSpace(AutomationProperties.GetName(window)));
+                !string.IsNullOrWhiteSpace(AutomationProperties.GetName(window)),
+                escapeFocusesAcknowledge);
         }
         finally
         {
@@ -12416,6 +12694,28 @@ internal static class ValidationReport
                 window.ForceClose();
             }
         }
+    }
+
+    // #150：只 raise KeyDown 的窗口级 Esc；KeyDown 挂在窗口冒泡阶段，
+    // 与真实按键「子控件不处理 Esc 时冒泡到窗口」的路径一致。
+    private static bool RaiseWindowEscapeKeyDown(Window window)
+    {
+        var source = PresentationSource.FromVisual(window);
+        if (source is null)
+        {
+            return false;
+        }
+
+        var escapeDown = new KeyEventArgs(
+            Keyboard.PrimaryDevice,
+            source,
+            Environment.TickCount,
+            Key.Escape)
+        {
+            RoutedEvent = Keyboard.KeyDownEvent
+        };
+        window.RaiseEvent(escapeDown);
+        return escapeDown.Handled;
     }
 
     private static bool ValidateToolTipThemeTextContrast(
@@ -12977,11 +13277,17 @@ internal static class ValidationReport
                 MeasureSystemDialogPrimaryButton("SettingsRecovery", recoveryButton),
                 MeasureSystemDialogPrimaryButton("InstanceActivationFailure", activationButton)
             };
+            // #150：静态色必须是现役主画布/主文字/主行动（及其文字）的副本，
+            // 窗口本身是无边框暖粉壳（无系统默认窗口铬）。
+            var usesActiveStaticPalette =
+                UsesActiveWarmShell(recovery) &&
+                UsesActiveWarmShell(activation);
             return new SystemDialogPrimaryButtonContrastValidation(
                 measurements.All(measurement => measurement.ContrastRatio >= 4.5),
                 measurements.All(measurement =>
-                    string.Equals(measurement.Background, "#FFA24438", StringComparison.Ordinal) &&
+                    string.Equals(measurement.Background, "#FFC04A37", StringComparison.Ordinal) &&
                     string.Equals(measurement.Foreground, "#FFFFFDFC", StringComparison.Ordinal)),
+                usesActiveStaticPalette,
                 measurements);
         }
         finally
@@ -12989,6 +13295,36 @@ internal static class ValidationReport
             recovery.Close();
             activation.Close();
         }
+    }
+
+    private static bool UsesActiveWarmShell(Window window)
+    {
+        var canvasColor = Application.Current.FindResource("CanvasColor") as Color?;
+        var shellLineColor = Application.Current.FindResource("PeachLineColor") as Color?;
+        var inkColor = Application.Current.FindResource("InkColor") as Color?;
+        var mainActionColor = Application.Current.FindResource("MainActionColor") as Color?;
+        var mainActionTextColor = Application.Current.FindResource("MainActionTextColor") as Color?;
+        var button = LogicalDescendants<Button>(window).First();
+        return window.WindowStyle == WindowStyle.None &&
+               window.AllowsTransparency &&
+               Equals(window.Background, Brushes.Transparent) &&
+               window.Content is Border shell &&
+               Equals(shell.BorderThickness, new Thickness(1)) &&
+               canvasColor is { } canvas &&
+               shell.Background is SolidColorBrush shellBackground &&
+               shellBackground.Color == canvas &&
+               shellLineColor is { } shellLine &&
+               shell.BorderBrush is SolidColorBrush shellBorder &&
+               shellBorder.Color == shellLine &&
+               inkColor is { } ink &&
+               window.Foreground is SolidColorBrush foreground &&
+               foreground.Color == ink &&
+               mainActionColor is { } mainAction &&
+               button.Background is SolidColorBrush buttonBackground &&
+               buttonBackground.Color == mainAction &&
+               mainActionTextColor is { } mainActionText &&
+               button.Foreground is SolidColorBrush buttonText &&
+               buttonText.Color == mainActionText;
     }
 
     private static SystemDialogPrimaryButtonContrastMeasurement MeasureSystemDialogPrimaryButton(
@@ -13010,6 +13346,7 @@ internal static class ValidationReport
     private static KeyboardFocusRingContrastValidation ValidateKeyboardFocusRingContrast(
         ApplicationTheme theme,
         MainWindow main,
+        FloatingWindow floating,
         DateTimeOffset restoreUtc)
     {
         var probe = new Button { Content = "焦点环验证", MinWidth = 80 };
@@ -13026,6 +13363,7 @@ internal static class ValidationReport
         };
         var measurements = new List<KeyboardFocusContrastMeasurement>();
         var ringMeasurements = new List<KeyboardFocusRingMeasurement>();
+        var tabRingGapAvoidsSelectedFill = false;
         try
         {
             host.Show();
@@ -13041,35 +13379,56 @@ internal static class ValidationReport
                 probe.ApplyTemplate();
                 var surface = probe.Template?.FindName("Surface", probe) as Border;
                 var probeUsesExpected = BrushMatchesExpected(surface?.BorderBrush, expected);
+
+                // #152：选中粉底页签（PinkTintBrush）上的焦点环——环与粉底之间常驻 1px 间隙，
+                // 实际邻色是容器 CardAltBrush；对实际邻色以主题公式核 ≥3:1。
+                // 每处环按上下文钉唯一期望 token（常规 ActiveBrush / 实心粉邻色暖金），
+                // 不存在「不达标但匹配旧强调色则放过」的分支。
                 var countdownTab = Required<ToggleButton>(main, "CountdownTab");
                 main.Activate();
+                var originalTabChecked = countdownTab.IsChecked;
+                countdownTab.IsChecked = true;
                 Keyboard.Focus(countdownTab);
                 PumpDispatcher();
                 countdownTab.ApplyTemplate();
+                var tabRing = countdownTab.Template?.FindName("FocusRing", countdownTab) as Border;
                 var tabSurface = countdownTab.Template?.FindName("Surface", countdownTab) as Border;
                 var usesExpected =
                     probeUsesExpected &&
-                    BrushMatchesExpected(tabSurface?.BorderBrush, expected);
+                    BrushMatchesExpected(tabRing?.BorderBrush, expected);
                 ringMeasurements.Add(new KeyboardFocusRingMeasurement(
                     "Day",
-                    BrushColor(tabSurface?.BorderBrush),
+                    BrushColor(tabRing?.BorderBrush),
                     usesExpected,
-                    tabSurface is not null &&
+                    tabRing is not null &&
                         new[]
                         {
-                            tabSurface.BorderThickness.Left,
-                            tabSurface.BorderThickness.Top,
-                            tabSurface.BorderThickness.Right,
-                            tabSurface.BorderThickness.Bottom
+                            tabRing.BorderThickness.Left,
+                            tabRing.BorderThickness.Top,
+                            tabRing.BorderThickness.Right,
+                            tabRing.BorderThickness.Bottom
                         }.Max() >= 2));
 
-                if (tabSurface?.BorderBrush is SolidColorBrush focusBrush)
+                // 环与选中粉底之间有 1px 间隙：Surface 外缩 3（环 2px + 间隙 1px），
+                // 环的邻色是容器浅色而不是粉底本身。
+                tabRingGapAvoidsSelectedFill =
+                    tabSurface is not null &&
+                    Math.Abs(tabSurface.Margin.Left - 3) <= 0.01 &&
+                    Math.Abs(tabSurface.Margin.Top - 3) <= 0.01 &&
+                    Math.Abs(tabSurface.Margin.Right - 3) <= 0.01 &&
+                    Math.Abs(tabSurface.Margin.Bottom - 3) <= 0.01 &&
+                    tabSurface.Background is SolidColorBrush selectedFill &&
+                    Application.Current.FindResource("PinkTintColor") is Color pinkTint &&
+                    selectedFill.Color == pinkTint;
+
+                if (tabRing?.BorderBrush is SolidColorBrush focusBrush)
                 {
                 foreach (var pair in new[]
                          {
                              ("Canvas", (Color)Application.Current.FindResource("CanvasColor")),
                              ("PeachTint", (Color)Application.Current.FindResource("PeachTintColor")),
-                             ("Note", (Color)Application.Current.FindResource("NoteColor"))
+                             ("Note", (Color)Application.Current.FindResource("NoteColor")),
+                             ("CardAlt", (Color)Application.Current.FindResource("CardAltColor"))
                          })
                     {
                         measurements.Add(new KeyboardFocusContrastMeasurement(
@@ -13077,6 +13436,9 @@ internal static class ValidationReport
                             ContrastRatio(focusBrush.Color, pair.Item2)));
                     }
                 }
+
+                countdownTab.IsChecked = originalTabChecked;
+                PumpDispatcher();
             }
 
             var pin = Required<CheckBox>(main, "TopmostCheck");
@@ -13098,11 +13460,18 @@ internal static class ValidationReport
                 Application.Current.FindResource("MainActionFocusBrush") is SolidColorBrush focusToken &&
                 active.Color != focusToken.Color;
 
+            // #152：悬浮窗选中实心粉工作区胶囊（PinkAccentStrongBrush）上的焦点环，
+            // 按裁决优先用主按钮焦点色暖金做外环，对深粉实测 ≥3:1。
+            var floatingCapsule = ValidateFloatingCapsuleFocusRing(floating);
+
             return new KeyboardFocusRingContrastValidation(
-                measurements.Count == 3 && measurements.All(measurement => measurement.ContrastRatio >= 3),
+                measurements.Count == 4 && measurements.All(measurement => measurement.ContrastRatio >= 3),
                 ringMeasurements.All(measurement => measurement.UsesExpectedToken && measurement.RingVisible),
                 pinKeepsWarmGold,
                 hoverUnchanged,
+                tabRingGapAvoidsSelectedFill,
+                floatingCapsule.MeetsNeighborContrast,
+                floatingCapsule.UsesWarmGoldToken,
                 measurements,
                 ringMeasurements);
         }
@@ -13111,6 +13480,43 @@ internal static class ValidationReport
             theme.Apply();
             main.ApplyTheme();
             host.Close();
+            PumpDispatcher();
+        }
+    }
+
+    private static (bool MeetsNeighborContrast, bool UsesWarmGoldToken)
+        ValidateFloatingCapsuleFocusRing(FloatingWindow floating)
+    {
+        var notesButton = Required<ToggleButton>(floating, "FloatingNotesButton");
+        var originalChecked = notesButton.IsChecked;
+        try
+        {
+            floating.Activate();
+            notesButton.IsChecked = true;
+            Keyboard.Focus(notesButton);
+            PumpDispatcher();
+            notesButton.ApplyTemplate();
+            var capsuleSurface = notesButton.Template?.FindName("Surface", notesButton) as Border;
+            if (capsuleSurface?.BorderBrush is not SolidColorBrush ring ||
+                Application.Current.FindResource("MainActionFocusBrush") is not SolidColorBrush warmGold ||
+                Application.Current.FindResource("PinkAccentStrongColor") is not Color deepPink)
+            {
+                return (false, false);
+            }
+
+            var usesWarmGold = ring.Color == warmGold.Color;
+            var thickness = new[]
+            {
+                capsuleSurface.BorderThickness.Left,
+                capsuleSurface.BorderThickness.Top,
+                capsuleSurface.BorderThickness.Right,
+                capsuleSurface.BorderThickness.Bottom
+            }.Max();
+            return (usesWarmGold && thickness >= 2 && ContrastRatio(ring.Color, deepPink) >= 3, usesWarmGold);
+        }
+        finally
+        {
+            notesButton.IsChecked = originalChecked;
             PumpDispatcher();
         }
     }
@@ -13348,13 +13754,11 @@ internal static class ValidationReport
         {
             countdownTab.IsChecked = true;
             notesTab.IsChecked = false;
-            var countdownContrast = HasSelectedSegmentContrast(
-                main, countdownTab, "PinkTintColor", "PinkAccentColor");
+            var countdownContrast = HasSelectedSegmentContrast(main, countdownTab);
 
             countdownTab.IsChecked = false;
             notesTab.IsChecked = true;
-            return countdownContrast && HasSelectedSegmentContrast(
-                main, notesTab, "PeachTintColor", "PeachRailColor");
+            return countdownContrast && HasSelectedSegmentContrast(main, notesTab);
         }
         finally
         {
@@ -13365,20 +13769,16 @@ internal static class ValidationReport
 
     private static bool HasSelectedSegmentContrast(
         MainWindow main,
-        ToggleButton button,
-        string surfaceColorKey,
-        string foregroundColorKey)
+        ToggleButton button)
     {
         main.UpdateLayout();
         button.ApplyTemplate();
         var surface = button.Template?.FindName("Surface", button) as Border;
+        // #148：选中段文字必须以主题公式对实际邻色达到 4.5:1；
+        // 删除「不达标但对上方向稿采样对则放过」的旧分支，避免把错误验收成绿。
         return surface?.Background is SolidColorBrush background &&
             button.Foreground is SolidColorBrush foreground &&
-            (ApplicationTheme.MeetsContrast(background, foreground, 4.5) ||
-                (Application.Current.FindResource(surfaceColorKey) is Color designSurface &&
-                 Application.Current.FindResource(foregroundColorKey) is Color designForeground &&
-                 background.Color == designSurface &&
-                 foreground.Color == designForeground));
+            ApplicationTheme.MeetsContrast(background, foreground, 4.5);
     }
 
     private static double ContrastRatio(Color first, Color second)
@@ -13614,7 +14014,7 @@ internal static class ValidationReport
         var primaryTitle = primaryTexts.SingleOrDefault(text =>
             string.Equals(text.Text, "距离下班", StringComparison.Ordinal));
         var primaryDeadline = primaryTexts.SingleOrDefault(text =>
-            string.Equals(text.Text, "7月15日 18:00", StringComparison.Ordinal));
+            string.Equals(text.Text, "7 月 15 日 18:00", StringComparison.Ordinal));
         var secondaryTitle = secondaryTexts.SingleOrDefault(text =>
             string.Equals(text.Text, "七月倒计时", StringComparison.Ordinal));
         var primaryNames = rows.Children
@@ -13631,7 +14031,7 @@ internal static class ValidationReport
         var secondaryBlock = ResourceBrush(window, "SecondaryBlockBrush");
         var numberBrush = ResourceBrush(window, "PrimaryCountdownNumberBrush");
         var pinkBadge = ResourceBrush(window, "PinkBadgeBrush");
-        var pinkBadgeText = ResourceBrush(window, "PinkBadgeTextBrush");
+        var ink = ResourceBrush(window, "InkBrush");
         var muted = ResourceBrush(window, "FloatingDayMutedBrush");
         var primaryDecorations = primaryRoot.Children.OfType<Border>().ToArray();
         var secondaryDecorations = secondaryRoot.Children.OfType<Border>().ToArray();
@@ -13681,14 +14081,19 @@ internal static class ValidationReport
             primaryDeadline is not null &&
             Math.Abs(primaryDeadline.FontSize - 11) <= 0.01 &&
             string.Equals(BrushColor(primaryDeadline.Foreground), "#FF82665F", StringComparison.Ordinal) &&
+            Typography.GetNumeralAlignment(primaryDeadline) == FontNumeralAlignment.Tabular &&
             badge is not null &&
             !badge.IsHitTestVisible &&
             Math.Abs(badge.CornerRadius.TopLeft - 8) <= 0.01 &&
+            badge.VerticalAlignment == VerticalAlignment.Center &&
             ReferenceEquals(badge.Background, pinkBadge) &&
+            pinkBadge is not null &&
+            ink is not null &&
+            ContrastRatio(pinkBadge.Color, ink.Color) >= 4.5 &&
             badgeText is not null &&
-            Math.Abs(badgeText.FontSize - 9) <= 0.01 &&
+            Math.Abs(badgeText.FontSize - 12) <= 0.01 &&
             badgeText.FontWeight == FontWeights.SemiBold &&
-            ReferenceEquals(badgeText.Foreground, pinkBadgeText) &&
+            ReferenceEquals(badgeText.Foreground, ink) &&
             primaryCluster is not null &&
             Math.Abs(primaryCluster.Width - 194) <= 0.01 &&
             primaryCluster.HorizontalAlignment == HorizontalAlignment.Right &&
@@ -14591,7 +14996,8 @@ internal static class ValidationReport
     private sealed record ReminderKeyboardExerciseResult(
         bool TabTraversalWorks,
         bool CloseGuardWorks,
-        bool InitialFocusAndAccessibleNameWork);
+        bool InitialFocusAndAccessibleNameWork,
+        bool EscapeFocusesAcknowledge);
 
     private sealed record ReminderDeliveryExerciseResult(
         bool RequiresContentRenderedConfirmation,
@@ -15628,6 +16034,7 @@ internal static class ValidationReport
     private sealed record SystemDialogPrimaryButtonContrastValidation(
         bool TextContrast,
         bool UsesDaytimeMainActionColors,
+        bool UsesActiveStaticPalette,
         IReadOnlyList<SystemDialogPrimaryButtonContrastMeasurement> Measurements);
 
     private sealed record KeyboardFocusContrastMeasurement(
@@ -15645,6 +16052,9 @@ internal static class ValidationReport
         bool RingsUseExpectedTokens,
         bool PinKeepsWarmGold,
         bool HoverTokenDistinctFromFocus,
+        bool TabRingGapAvoidsSelectedFill,
+        bool FloatingCapsuleFocusRingMeetsContrast,
+        bool FloatingCapsuleUsesWarmGoldToken,
         IReadOnlyList<KeyboardFocusContrastMeasurement> Measurements,
         IReadOnlyList<KeyboardFocusRingMeasurement> Rings);
 

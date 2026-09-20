@@ -1,6 +1,7 @@
 using System.Text;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -56,6 +57,17 @@ internal static class UiAccessibility
 }
 
 /// <summary>
+/// #156：退出控件朗读的文本（Web aria-hidden 的 WPF 映射——不产生自动化 peer，元素整体
+/// 不进 UIA 树，装饰手写体与分段裸数字因此不再被当作独立内容控件朗读）。
+/// 不携带信息语义：信息一律由携带可访问名的宿主控件（如图标按钮、分段按钮名）承担。
+/// 渲染与 <see cref="TextBlock"/> 完全一致，只影响自动化树。
+/// </summary>
+internal sealed class SilentTextBlock : TextBlock
+{
+    protected override AutomationPeer? OnCreateAutomationPeer() => null;
+}
+
+/// <summary>
 /// 便签行「…」溢出菜单：把弹出层挂在其触发按钮上，供真实渲染验证读取。
 /// </summary>
 internal static class NoteRowOverflowMenuBehavior
@@ -96,6 +108,10 @@ internal static class PopupFocusLifecycle
         {
             throw new InvalidOperationException("弹层必须先设置可聚焦的内容容器。");
         }
+
+        // #153：弹层焦点生命周期补齐层内 Tab 循环——从最后一个可聚焦项继续 Tab 回到首项，
+        // 焦点不得逃到被挡住的宿主窗口而弹层仍开着（父票键盘裁决：打开聚焦首项、Esc 关并归还、层内 Tab 循环）。
+        KeyboardNavigation.SetTabNavigation(surface, KeyboardNavigationMode.Cycle);
 
         var suppressClickToggle = false;
         trigger.AddHandler(
@@ -544,12 +560,19 @@ internal static class ThemedDatePickerBehavior
     private static readonly HashSet<DatePickerTextBox> TextPointerAttached = new();
     private static readonly HashSet<DatePicker> RefocusTriggerAfterClose = new();
 
+    // #153：主题化日期框的可见文本统一为合同中文日期格式（§3：数字与「月」「日」之间留空格）。
+    // DatePicker 自身会按 SelectedDateFormat 在日期变化后重写 PART_TextBox.Text（覆盖模板绑定），
+    // 这里在 SelectedDateChanged 与只读锁定时点写回同一格式，保证两窗所有日期框显示一致。
+    internal const string SpacedChineseDateFormat = "yyyy 年 M 月 d 日";
+
     public static void Attach(DatePicker picker)
     {
         if (!Attached.Add(picker))
         {
             return;
         }
+
+        picker.SelectedDateChanged += (_, _) => WriteSpacedChineseDateText(picker);
 
         KeyEventHandler closeOnEscape = (_, eventArgs) =>
         {
@@ -655,7 +678,21 @@ internal static class ThemedDatePickerBehavior
         textBox.IsReadOnly = true;
         textBox.Focusable = false;
         AlignReadOnlyContentHostPadding(picker, textBox);
+        WriteSpacedChineseDateText(picker);
         ApplyOpenCalendarAccessibleName(picker);
+    }
+
+    /// <summary>#153：把只读日期框的可见文本写回合同空格中文格式（不带日期时清空）。</summary>
+    private static void WriteSpacedChineseDateText(DatePicker picker)
+    {
+        if (picker.Template?.FindName("PART_TextBox", picker) is not DatePickerTextBox textBox)
+        {
+            return;
+        }
+
+        textBox.Text = picker.SelectedDate is { } selectedDate
+            ? selectedDate.ToString(SpacedChineseDateFormat, System.Globalization.CultureInfo.InvariantCulture)
+            : string.Empty;
     }
 
     /// <summary>
@@ -1001,7 +1038,12 @@ internal sealed class ConfirmationDialog : Window
     internal TextBlock BodyText { get; private set; } = null!;
     internal ScrollViewer BodyScroller { get; private set; } = null!;
 
-    public ConfirmationDialog(Window owner, string title, string message)
+    public ConfirmationDialog(
+        Window owner,
+        string title,
+        string message,
+        string confirmText = "确认删除",
+        string confirmStyleKey = "DangerButton")
     {
         Owner = owner;
         Title = title;
@@ -1030,16 +1072,19 @@ internal sealed class ConfirmationDialog : Window
             DialogResult = false;
             Close();
         };
+        // #155：确认按钮文案与样式参数化——删除确认仍是「确认删除」+ DangerButton，
+        // 提醒中心完成确认用「确认完成」+ SecondaryButton，退出确认用「退出」；
+        // 取消按钮始终 IsDefault + IsCancel，安全默认不随场景改变。
         var confirm = UiAccessibility.Name(
             new Button
             {
-                Content = "确认删除",
+                Content = confirmText,
                 IsDefault = false,
                 MinWidth = 96,
                 Margin = new Thickness(8, 0, 0, 0),
-                Style = (Style)FindResource("DangerButton")
+                Style = (Style)FindResource(confirmStyleKey)
             },
-            "确认删除");
+            confirmText);
         ConfirmButton = confirm;
         AutomationProperties.SetAutomationId(confirm, "ConfirmationConfirmButton");
         confirm.Click += (_, _) =>
@@ -1100,5 +1145,28 @@ internal sealed class ConfirmationDialog : Window
         };
         surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         Content = surface;
+    }
+}
+
+// #155：进程退出（悬浮退出、托盘退出）在显示设置或编辑器脏时的确认入口。
+// reasons 为空表示没有未保存内容，直接放行；确认框以取消为安全默认，
+// 确认按钮为危险色「退出」，管理窗口关闭/隐藏不经过本入口（继续只 Hide 并保留草稿）。
+internal static class ExitConfirmation
+{
+    public static bool Confirm(Window? owner, IReadOnlyList<string> reasons)
+    {
+        if (reasons.Count == 0)
+        {
+            return true;
+        }
+
+        var message =
+            $"{string.Join(string.Empty, reasons)}退出后这些未保存内容将丢失。确定退出吗？";
+        return new ConfirmationDialog(
+            owner!,
+            "退出敏敏子倒计时",
+            message,
+            confirmText: "退出",
+            confirmStyleKey: "DangerButton").ShowDialog() == true;
     }
 }

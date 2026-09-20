@@ -17,7 +17,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "4E256D3988D44CD883BCC1AFB07B6C83504F71352BCAD8246400D5B96DBC12E2",
+    "aggregateSha256": "3C6480EB2FE83ACC4BE4383F6093AFBBECFDBF5E55878DB930A011521D265B4D",
     "files": [
       {
         "path": "assets/main-decorations/main-countdown-scene-day.png",
@@ -37,15 +37,15 @@
       },
       {
         "path": "src/MinminCountdown/App.xaml",
-        "sha256": "6C5B28C535658A130305632C8682BB96496402CCCF4D663358F96386194AFAF5"
+        "sha256": "17C8553208FE1A13A741F7F7B587630BBF0284E4B7DB7522658712AE2C432067"
       },
       {
         "path": "src/MinminCountdown/ApplicationTheme.cs",
-        "sha256": "CD4D9E6148324AA90199654AE2467EF1D31F453A658F38889EDFCAFC63BF4846"
+        "sha256": "FFEBF84183D5C2237AF02F8E09862A5E08012D6534E599ABD16A5072BCDB5E3A"
       },
       {
         "path": "src/MinminCountdown/DesktopWorkspace.cs",
-        "sha256": "383838E46810FD26C90899F1DF8E35AF5F35E64072D07D02F0548D0578188A1F"
+        "sha256": "BDF3410B3944CC5A59F3DC4E87C5F9B2B8D34F1896E22529DBEC3B2A4F5A18BC"
       },
       {
         "path": "src/MinminCountdown/DomainLogic.cs",
@@ -53,11 +53,11 @@
       },
       {
         "path": "src/MinminCountdown/MainWindow.xaml",
-        "sha256": "04AD607A0A137696667988E3553206950E6E96E2DFF7F8C4E9093FC34E5B8566"
+        "sha256": "DE261C26954C10535429C3D0718DA00F893591DF4DD378C9949B81ED17009236"
       },
       {
         "path": "src/MinminCountdown/MainWindow.xaml.cs",
-        "sha256": "0D5B2DB0C76161A0360CC76A615EC10A05CD2065F4122CE3EE9DA9925DAFE8AF"
+        "sha256": "CB4F6134E44E453AB25054EA95E6BD5718D0519B6BCE207DCDF536AA10CEFDEB"
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
@@ -65,7 +65,7 @@
       },
       {
         "path": "src/MinminCountdown/UiControls.cs",
-        "sha256": "B51EA82F020D5FA82570E06CE3B941560FF6F06A6399B386F4B946C374D619D1"
+        "sha256": "5DF12A618124F949C05C6129F8EA10DD10E60FD3B0AB26930EBB7BD1F31B32FC"
       },
       {
         "path": "tools/Build-MainDayOrnamentScene.ps1",
@@ -103,7 +103,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "E22C067E255F6EB50749C3110E0FAC66FF62DE324F316911777501D2DB3A2C3F",
+      "pngSha256": "1C9AECF4946458B41D3C61DF570885271E6C44278E61DC38174C229323162A79",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "C06E5103A75A468A5876D2D2D265175DEF8D756026577D6D055F6B90A76F23DB",
@@ -148,7 +148,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "1042768016628CBBEE08F697F29408C343BB7428826B66B00A43434A4E6FA6F0",
+      "pngSha256": "BA6624A532D76B876EF7EBB4E215D34DCF9752EF745F1320F3975D3E463D691C",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "0977D897956D2AEC9E1D43EA418FC76B67A10C736176FB353A438B74D130772F",
@@ -193,7 +193,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "54C5606EC53F48B10570CB9363C185E2B21DBCF6C103B8AE69B3B2F3860D5B43",
+      "pngSha256": "DFC55C99ECD92F1CAE316EA46A9D699B0F3EFC156023FAB92BD559E48FF109D7",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "4B1FD68D569D44B0552851A78760559D18ACAEAFAD98B2DF94716ABFDCAD55D9",
@@ -238,7 +238,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "AB2446DE0788585BF3FE1FC92173266C57FC0ED902ECE4AC8302A17F98329324",
+      "pngSha256": "E9125DFFE26FE2A87F27225649F41D255F3530F9FEFCB66BADDF9F1CD70D6B98",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "1112E894381C16494AB340056D47ED615DF736F955D6D82C78B250F945F2E6E7",
@@ -283,7 +283,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "F0DB8209FC672FFAEEBA338599BAD5F0004945EDA3F5056C8164B852E656BF96",
+      "pngSha256": "2E75F43190F2CC0EE22DF8DFB95002F5B86A645258BD305BCE1AC6CDBE4861A9",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "F447D5D695A4047119EB295789C8E8386225C9E7C76C3FECFF941E614C79284A",
@@ -328,7 +328,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "9BAD37B620AA2D289204DA9D6FE5C12B8C4E9519B7257F0A2D9BECDD82B01862",
+      "pngSha256": "E7354A7F5F4649B26D760A5654A74F1742643EB78944103C5C383FB736AFE834",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "5C0E665178F0F03653A775B7D5B42DAFCE0EC09911E4058E13835882B5481CE5",
@@ -373,7 +373,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "80141FEE9FC942B0AE80400322AE52A87448D9EB8416AB5AC930540658D083FB",
+      "pngSha256": "C45173E1D1B850D258A66B306A31A93676704719B842E06B66B3F18183EBC70B",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "75922BACD2DA68B4A1EA65CE3320F376122C70AF5D7289B4A0D0DED1D3A8B656",
@@ -418,7 +418,7 @@
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 1165,
       "height": 1350,
-      "pngSha256": "DB535F64D34ABAD4624E4B0D9D0F681DEDF6E75DB4BF2CAFF43EC7F750D1F46E",
+      "pngSha256": "16F3216B35A0137D204BD21A20AE47E976B2AC37A1389B3958F703BFE188D1B5",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
         "sha256": "E1BDD0C3849A982FC26C1A74073975690886F2E447A52584256FC68F197FC10D",

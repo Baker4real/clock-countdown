@@ -43,8 +43,9 @@ internal sealed class FloatingTrayController : IDisposable
                 iconPath,
                 floatingWindow.Dispatcher,
                 Restore,
-                RequestExit)
-            : new MemoryTrayIconHost(Restore, RequestExit);
+                RequestExit,
+                ResetWindowPosition)
+            : new MemoryTrayIconHost(Restore, RequestExit, ResetWindowPosition);
         _floatingWindow.MinimizeToTrayRequested += OnMinimizeRequested;
     }
 
@@ -59,6 +60,8 @@ internal sealed class FloatingTrayController : IDisposable
     internal event EventHandler? ExitRequested;
 
     internal void InvokeRestoreForValidation() => _trayIcon.InvokeRestoreForValidation();
+
+    internal void InvokeResetPositionForValidation() => _trayIcon.InvokeResetPositionForValidation();
 
     internal void InvokeExitForValidation() => _trayIcon.InvokeExitForValidation();
 
@@ -162,6 +165,10 @@ internal sealed class FloatingTrayController : IDisposable
             ExitRequested?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    // #156：托盘菜单「复位窗口位置」——非拖动地把悬浮窗夹回工作区（贴边/复位即可，
+    // 不做方向键微移）。复位不是托盘切换，不受 CanTransition 守卫约束。
+    private void ResetWindowPosition() => _floatingWindow.ResetPositionIntoWorkArea();
 
     private bool CanTransition() => !_disposed && _canTransition();
 

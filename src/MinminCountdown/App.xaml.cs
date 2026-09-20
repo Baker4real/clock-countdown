@@ -379,6 +379,8 @@ public sealed partial class App : Application
         }
 
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
+        // #155：悬浮窗删除便签成功后，撤销入口统一呈现在主窗口状态条（最近一次删除）。
+        _floatingWindow.NoteDeleted += (_, undo) => _mainWindow?.RegisterDeleteUndo(undo);
         _floatingWindow.Closed += (_, _) =>
         {
             if (!_shuttingDown)
@@ -478,7 +480,8 @@ public sealed partial class App : Application
             _testExitTimer.Tick += (_, _) =>
             {
                 _testExitTimer.Stop();
-                ShutdownInteractiveHost();
+                // #155：测试自动退出不进交互脏确认（无用户在场的无人值守路径）。
+                ShutdownInteractiveHost(confirmDirtyExit: false);
             };
             _testExitTimer.Start();
         }
@@ -658,9 +661,17 @@ public sealed partial class App : Application
         _logger?.Info("AcceptanceReadOnlyReleased");
     }
 
-    private void ShutdownInteractiveHost()
+    private void ShutdownInteractiveHost(bool confirmDirtyExit = true)
     {
         if (_shuttingDown)
+        {
+            return;
+        }
+
+        // #155：用户发起的进程退出（悬浮退出、托盘退出、悬浮窗关闭）在显示设置或编辑器脏时
+        // 先确认；测试自动退出（ExitAfterReadyForTest）与干净状态不弹确认框。
+        // 管理窗口关闭/隐藏不经过本方法（AttachManagerWindow 继续 Cancel+Hide 并保留草稿）。
+        if (confirmDirtyExit && !ConfirmDirtyExitAllowed())
         {
             return;
         }
@@ -683,6 +694,35 @@ public sealed partial class App : Application
         _singleInstanceLease = null;
         _logger?.Info("ProcessExited");
         Shutdown(0);
+    }
+
+    private bool ConfirmDirtyExitAllowed()
+    {
+        var reasons = new List<string>();
+        if (_mainWindow?.DescribeUnsavedExitWork() is { } mainReason)
+        {
+            reasons.Add(mainReason);
+        }
+
+        if (_floatingWindow?.DescribeUnsavedExitWork() is { } floatingReason)
+        {
+            reasons.Add(floatingReason);
+        }
+
+        if (reasons.Count == 0)
+        {
+            return true;
+        }
+
+        // 对话框归属当前可见窗口：悬浮退出时归悬浮窗，托盘退出（悬浮已隐藏）时归管理窗口。
+        Window? owner =
+            _floatingWindow?.IsVisible == true ? _floatingWindow :
+            _mainWindow?.IsVisible == true ? _mainWindow :
+            _floatingWindow;
+        _logger?.Info("ExitConfirmationOffered");
+        var confirmed = ExitConfirmation.Confirm(owner, reasons);
+        _logger?.Info(confirmed ? "ExitConfirmationConfirmed" : "ExitConfirmationCancelled");
+        return confirmed;
     }
 
     protected override void OnExit(ExitEventArgs eventArgs)
@@ -1325,6 +1365,21 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             active.NextSnoozeRetryUtc is null &&
             active.NextCompletionRetryUtc is null)
         {
+            // #155：「完成便签」先确认再提交——用户主动点击时以取消为安全默认；
+            // 送达失败后的自动重试路径（Tick → CompleteNote）不经确认，不改变完成语义。
+            // 「全部已读」继续是批量「知道了」，不经过本入口。
+            if (_window is { } center &&
+                active.Source is NoteReminderSource noteSource &&
+                new ConfirmationDialog(
+                    center,
+                    "完成便签",
+                    $"确定完成“{noteSource.Note.Text}”吗？完成将清除该便签在提醒中心的全部条目。",
+                    confirmText: "确认完成",
+                    confirmStyleKey: "SecondaryButton").ShowDialog() != true)
+            {
+                return;
+            }
+
             CompleteNote(active, _workspace.Snapshot.UtcNow);
         }
     }

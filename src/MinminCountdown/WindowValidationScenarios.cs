@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -32,7 +33,10 @@ public sealed partial class MainWindow
             ProbeUiPolishScenarios(),
             ProbeSettingsDraftRetention(),
             ProbeUndatedNoteEditRetention(),
-            ProbeCountdownReminderModeRadioMapping());
+            ProbeCountdownReminderModeRadioMapping(),
+            ProbeCountdownReadabilityScenarios(),
+            ProbeCountdownEditingScenarios(),
+            ProbeMainWindowInteractionStates());
     }
 
     private bool ProbeCountdownReminderModeRadioMapping()
@@ -474,9 +478,10 @@ public sealed partial class MainWindow
                 savedPreferences.WorkStart == new TimeSpan(7, 30, 0) &&
                 savedPreferences.WorkEnd == new TimeSpan(19, 45, 0) &&
                 DisplayPrecision.SelectedIndex == savedPrecisionIndex &&
+                // #148：月薪输入显示与「今日已赚」同一套本地数字格式（N2）。
                 string.Equals(
                     MonthlySalary.Text,
-                    savedPreferences.MonthlySalary.ToString(CultureInfo.CurrentCulture),
+                    savedPreferences.MonthlySalary.ToString("N2", CultureInfo.CurrentCulture),
                     StringComparison.Ordinal) &&
                 string.Equals(
                     WorkStart.Text,
@@ -641,6 +646,7 @@ public sealed partial class MainWindow
             var countdownLayoutMatches = CountdownRemainingLayoutMatches;
             var countdownRemainingSamples = ProbeCountdownRemainingSamples();
             var countdownIncrementalRefresh = ProbeCountdownIncrementalRefresh();
+            var noteListPolish = ProbeNoteListPolishScenarios();
             var noteCompletionStyleScoped = MainNoteCompletionStyleIsScoped;
             var originalSearchForSync = NoteSearch.Text;
             _desktopWorkspace.ApplyFilter(originalFilter with { NoteSearch = "sync-from-outside" });
@@ -655,6 +661,8 @@ public sealed partial class MainWindow
             NoteSearch.Text = originalSearchForSync;
             _desktopWorkspace.ApplyFilter(originalFilter);
             var noteSearchSyncsFromSharedFilter = searchFilledFromFilter && searchClearedFromFilter;
+            // #154：视觉铬探针（漏斗/图标描边/矢量窗铬/胶囊圆角/装饰层/方角铬/页签次序）。
+            var visualChrome = ProbeVisualChromeScenarios();
 
             return new MainUiPolishScenarios(
                 editorFieldsDoNotOverlap,
@@ -685,7 +693,9 @@ public sealed partial class MainWindow
                 countdownRemainingSamples,
                 countdownIncrementalRefresh,
                 noteCompletionStyleScoped,
-                noteSearchSyncsFromSharedFilter);
+                noteSearchSyncsFromSharedFilter,
+                noteListPolish,
+                visualChrome);
         }
         finally
         {
@@ -715,6 +725,510 @@ public sealed partial class MainWindow
             RenderVisibleWorkspace();
             UpdateFilterSummary();
             ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    /// <summary>
+    ///     #153：便签列表排版 / 芯片 / 空态 / 筛选日期标签 / 溢出菜单键盘 / 弹层 Tab 循环 / 间距 token 的
+    ///     运行态探针。自建带长标签的探针便签（结束时删除便签与标签），不触碰帧捕获（帧捕获使用独立场景窗口）。
+    /// </summary>
+    private MainNoteListPolishScenarios ProbeNoteListPolishScenarios()
+    {
+        var entryWorkspace = _workspace;
+        var originalFilter = _desktopWorkspace.Snapshot.Filter;
+        var originalNoteDateFilter = NoteDateFilter.SelectedDate;
+        var createdTagId = string.Empty;
+        var createdNoteId = string.Empty;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Notes);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+            // 前置场景可能把已完成段留在选中态（ActiveNoteRows 折叠后可视树无行），先回到未完成段。
+            SelectNotesSegment(false);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+            // picker 文本用窗口内真实 NoteDateFilter（无父级控件解析不到 App 隐式模板）。
+            // AC1：便签日期与倒计时截止同一中文日期格式——picker 模板选中日期文本与组头标签都留空格。
+            var groupLabel = FormatNoteDateLabel("2032-05-18", new DateTimeOffset(2032, 5, 18, 10, 15, 30, TimeSpan.FromHours(8)).ToUniversalTime());
+            var groupLabelSpaced =
+                groupLabel.Contains("5 月 18 日", StringComparison.Ordinal) &&
+                !groupLabel.Contains("5月18日", StringComparison.Ordinal);
+
+            // AC5：筛选弹层日期有可见标签，不是无名空下拉。
+            FilterPopup.IsOpen = true;
+            WindowValidationInput.Pump(Dispatcher);
+            var filterDateHasVisibleLabel =
+                NoteDateFilterLabel.IsVisible &&
+                !string.IsNullOrWhiteSpace(NoteDateFilterLabel.Text);
+
+            NoteDateFilter.SelectedDate = new DateTime(2032, 5, 18);
+            NoteDateFilter.ApplyTemplate();
+            WindowValidationInput.Pump(Dispatcher);
+            var noteDateFilterTextBox = NoteDateFilter.Template.FindName(
+                "PART_TextBox",
+                NoteDateFilter) as System.Windows.Controls.Primitives.DatePickerTextBox;
+            var pickerTextSpaced = string.Equals(
+                noteDateFilterTextBox?.Text,
+                "2032 年 5 月 18 日",
+                StringComparison.Ordinal);
+            // 立即还原：NoteDateFilter 驱动共享日期筛选，残留值会把后续行渲染全部过滤掉。
+            NoteDateFilter.SelectedDate = originalNoteDateFilter;
+            FilterPopup.IsOpen = false;
+            WindowValidationInput.Pump(Dispatcher);
+            var spacedChineseDate = pickerTextSpaced && groupLabelSpaced;
+
+            // AC4：倒计时与便签空态文案都允许换行。
+            var emptyStateTextAllowsWrap =
+                EmptyNotesMessage.TextWrapping == TextWrapping.Wrap &&
+                EmptyCountdownMessage.TextWrapping == TextWrapping.Wrap;
+
+            // 自建长标签探针便签：AC2 正文行距、AC3 芯片契约、AC8 间距 token 都在真实卡上度量。
+            // 标签名 26 字符（5 + 17 + 4 位随机后缀），超过芯片 MaxWidth 的可容纳字数以触发省略。
+            var longTagName = $"长标签探针{new string('长', 17)}{Random.Shared.Next(1000, 9999)}";
+            var createTagResult = _desktopWorkspace.Apply(new CreateTagChange(longTagName, null));
+            var probeTag = createTagResult.CreatedTag;
+            if (probeTag is not null)
+            {
+                createdTagId = probeTag.Id;
+                var saved = _desktopWorkspace.Apply(new SaveNoteChange(
+                    null,
+                    $"便签排版探针-{Guid.NewGuid():N}",
+                    _desktopWorkspace.Snapshot.BeijingNow.Date,
+                    false,
+                    new[] { probeTag.Id },
+                    NoReminder.Instance));
+                if (saved.Succeeded)
+                {
+                    createdNoteId = _desktopWorkspace.Snapshot.Settings.Notes.Single(note =>
+                        note.TagIds.Contains(probeTag.Id, StringComparer.OrdinalIgnoreCase) &&
+                        note.Text.StartsWith("便签排版探针-", StringComparison.Ordinal)).Id;
+                }
+            }
+
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+
+            var bodyLineHeightSeparatesSummary = false;
+            var tagChipSingleLine = false;
+            var cardSpacingConsumesTokens = false;
+            if (_noteSourceRows.TryGetValue(createdNoteId, out var probeRow) && probeTag is not null)
+            {
+                var bodyText = MainValidationDescendants<TextBlock>(probeRow)
+                    .FirstOrDefault(text => string.Equals(text.Uid, "NoteRowBodyText", StringComparison.Ordinal));
+                bodyLineHeightSeparatesSummary =
+                    bodyText is not null &&
+                    Math.Abs(bodyText.LineHeight - NoteCardBodyLineHeight) <= 0.01 &&
+                    bodyText.LineStackingStrategy == LineStackingStrategy.BlockLineHeight &&
+                    bodyText.TextWrapping == TextWrapping.Wrap;
+
+                var chip = MainValidationDescendants<Border>(probeRow)
+                    .FirstOrDefault(border => string.Equals(border.Uid, probeTag.Id, StringComparison.Ordinal));
+                var chipText = chip?.Child as TextBlock;
+                tagChipSingleLine =
+                    chip is not null &&
+                    chip.Parent is WrapPanel &&
+                    Math.Abs(chip.MaxWidth - TagChipMaxWidth) <= 0.01 &&
+                    chip.ActualWidth <= TagChipMaxWidth + 0.01 &&
+                    chipText is not null &&
+                    chipText.TextWrapping == TextWrapping.NoWrap &&
+                    chipText.TextTrimming == TextTrimming.CharacterEllipsis &&
+                    string.Equals(chip.ToolTip as string, probeTag.Name, StringComparison.Ordinal);
+
+                var spacingCardPadding = (double)FindResource("SpacingCardPadding");
+                var spacingUnit = (double)FindResource("SpacingUnit");
+                var spacingBlockGap = (double)FindResource("SpacingBlockGap");
+                var dateSection = MainValidationDescendants<Grid>(ActiveNoteRows)
+                    .FirstOrDefault(grid =>
+                        string.Equals(grid.Uid, "NoteDateTimelineSection", StringComparison.Ordinal));
+                cardSpacingConsumesTokens =
+                    Math.Abs(((Border)probeRow).Padding.Left - spacingCardPadding) <= 0.01 &&
+                    Math.Abs(((Border)probeRow).Margin.Bottom - spacingUnit) <= 0.01 &&
+                    dateSection is not null &&
+                    Math.Abs(dateSection.Margin.Bottom - spacingBlockGap) <= 0.01;
+            }
+
+            // AC2：列表条目标题落区块标题层级（TypeH2FontSize），与 22px 区块标题不再几乎同级。
+            // 空列表没有条目标题可度量，视为满足（空洞真）；有行而缺标题或字号不符才判失败。
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+            var rowTitleTypeH2 = (double)FindResource("TypeH2FontSize");
+            var rowTitles = MainValidationDescendants<TextBlock>(CountdownRows)
+                .Where(text => string.Equals(text.Uid, "CountdownRowTitleText", StringComparison.Ordinal))
+                .ToArray();
+            var rowTitleFallsToBlockTitleLevel =
+                CountdownRows.Children.Count == 0 ||
+                (rowTitles.Length > 0 &&
+                 rowTitles.All(text => Math.Abs(text.FontSize - rowTitleTypeH2) <= 0.01));
+
+            // AC6：管理窗便签 `…` 打开后键盘进入「编辑 / 删除」、层内 Tab 循环、Esc 关闭归还触发器。
+            var overflowMenuKeyboard = ProbeMainWindowNoteRowOverflowMenuKeyboard();
+
+            // AC7：筛选 / 标签管理 / 标签选择器弹层 Tab 层内循环。
+            ShowWorkspace(WorkspaceKind.Notes);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+            var filterCycles = ProbePopupTabCyclesInsideLayer(FilterPopup, AnyTagMode);
+            var tagManagerCycles = ProbePopupTabCyclesInsideLayer(TagManagerPopup, NewTagInput);
+            var tagSelectorCycles = ProbePopupTabCyclesInsideLayer(
+                NoteTags.Popup,
+                NoteTags.PopupInitialFocus);
+
+            return new MainNoteListPolishScenarios(
+                spacedChineseDate,
+                bodyLineHeightSeparatesSummary,
+                rowTitleFallsToBlockTitleLevel,
+                tagChipSingleLine,
+                emptyStateTextAllowsWrap,
+                filterDateHasVisibleLabel,
+                overflowMenuKeyboard,
+                cardSpacingConsumesTokens,
+                filterCycles,
+                tagManagerCycles,
+                tagSelectorCycles,
+                overflowMenuKeyboard);
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(createdNoteId))
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(createdNoteId));
+            }
+
+            if (!string.IsNullOrEmpty(createdTagId))
+            {
+                _desktopWorkspace.Apply(new DeleteTagChange(createdTagId));
+            }
+
+            NoteDateFilter.SelectedDate = originalNoteDateFilter;
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            ShowWorkspace(entryWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    /// <summary>
+    ///     #154：视觉铬探针——筛选漏斗实心在现役捕获口径可识别、控件图标描边统一且无重复搜索镜、
+    ///     管理窗最小/关闭为矢量窗铬、页签与分段激活胶囊短边一半全圆角、倒计时页手写体落装饰层、
+    ///     管理窗方角铬不开整窗透明、页签在装饰带之上（#135 工作台骨架次序）。
+    /// </summary>
+    internal MainVisualChromeScenarios ProbeVisualChromeScenarios()
+    {
+        var entryWorkspace = _workspace;
+        try
+        {
+            // 便签工作区可见态：搜索框图标 / 状态分段模板检查。
+            ShowWorkspace(WorkspaceKind.Notes);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+
+            // AC1：筛选漏斗改实心填充（InkBrush）——1.8px 描边漏斗在 Aliased 捕获下只剩「筛选」文字
+            // （v22 实证）；门禁钉「漏斗 Path 存在 + Fill/Stroke 同绑 InkBrush + 可见」。
+            var funnel = MainValidationDescendants<System.Windows.Shapes.Path>(FilterButton).FirstOrDefault(path =>
+                path.Data is not null &&
+                Math.Abs(path.Data.Bounds.Width - 17) <= 0.5 &&
+                Math.Abs(path.Data.Bounds.Height - 14) <= 0.5);
+            var inkBrush = FindResource("InkBrush") as Brush;
+            var filterFunnelIconSurvivesAliasedCapture =
+                funnel is not null &&
+                inkBrush is not null &&
+                ReferenceEquals(funnel.Fill, inkBrush) &&
+                ReferenceEquals(funnel.Stroke, inkBrush) &&
+                funnel.IsVisible &&
+                funnel.ActualWidth > 10;
+
+            // AC2a：便签页标签旁重复搜索镜已移除；输入框内搜索镜统一描边语言
+            // （Fill 空 + Stroke=MutedBrush 1.6 圆头，与铅笔/日历字段图标同规格）。
+            var searchLabelRowClean =
+                NoteSearchLabel.Parent is StackPanel labelRow &&
+                !labelRow.Children.OfType<System.Windows.Shapes.Path>().Any();
+            var mutedBrush = FindResource("MutedBrush") as Brush;
+            var inputMagnifier =
+                (NoteSearch.Parent as Grid)?.Children.OfType<System.Windows.Shapes.Path>().FirstOrDefault();
+            var notesSearchDuplicateMagnifierRemoved =
+                searchLabelRowClean &&
+                inputMagnifier is not null &&
+                mutedBrush is not null &&
+                inputMagnifier.Fill is null &&
+                ReferenceEquals(inputMagnifier.Stroke, mutedBrush) &&
+                Math.Abs(inputMagnifier.StrokeThickness - 1.6) <= 0.01 &&
+                inputMagnifier.StrokeStartLineCap == PenLineCap.Round &&
+                inputMagnifier.StrokeEndLineCap == PenLineCap.Round &&
+                inputMagnifier.IsVisible;
+
+            // AC2b：最小/关闭为矢量路径（与悬浮窗头部同一 12x12 坐标几何、2px 圆头描边、
+            // 描边绑定按钮 Foreground），不再是「−」「×」文本字形。
+            var mainWindowChromeButtonsUseVectorPaths =
+                ChromeButtonHasVectorGlyph(MinimizeButton, expectedWidth: 10, expectedHeight: 0) &&
+                ChromeButtonHasVectorGlyph(CloseButton, expectedWidth: 10, expectedHeight: 10);
+
+            // AC3：页签与分段激活胶囊短边一半全圆角。
+            // 主窗页签：按钮高 60，Surface(3) 54 → 27，环 60 → 30。
+            // 状态分段：按钮高 48，Surface(2) 44 → 22，环 48 → 24。
+            // 悬浮工作区胶囊（App 级样式，模板宿主实例化检查）：高 36 → 18。
+            var segmentActivePillsUseFullRoundedCorners =
+                PillCornersAre(CountdownTab, 27, 30) &&
+                PillCornersAre(NotesTab, 27, 30) &&
+                PillCornersAre(ActiveNotesSegment, 22, 24) &&
+                PillCornersAre(CompletedNotesSegment, 22, 24) &&
+                FloatingSegmentStyleUsesPillCorner();
+
+            // 倒计时工作区可见态：手写体装饰落点检查。
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+
+            // AC4：倒计时页手写体落装饰层——两处文案都是 CountdownWorkspace Canvas 直接子级
+            // （绝对设计坐标落点），不在 CountdownWorkspaceBody 表单子树内参与测量。
+            var decoFont = FindResource("HandwrittenDecoFontFamily") as FontFamily;
+            var countdownDecoTexts = MainValidationDescendants<TextBlock>(CountdownWorkspace)
+                .Where(textBlock => ReferenceEquals(textBlock.FontFamily, decoFont))
+                .ToList();
+            var countdownHandwrittenDecoOutOfFormMeasurement =
+                decoFont is not null &&
+                countdownDecoTexts.Count == 2 &&
+                countdownDecoTexts.All(textBlock =>
+                    textBlock.Visibility == Visibility.Visible &&
+                    !textBlock.IsHitTestVisible &&
+                    ReferenceEquals(textBlock.Parent, CountdownWorkspace) &&
+                    Canvas.GetLeft(textBlock) > 0 &&
+                    Canvas.GetTop(textBlock) > 0) &&
+                !MainValidationDescendants<TextBlock>(CountdownWorkspaceBody)
+                    .Any(textBlock =>
+                        ReferenceEquals(textBlock.FontFamily, decoFont) &&
+                        textBlock.Text.Length > 0);
+
+            // AC6：管理窗方角铬——WindowChrome CornerRadius 0、GlassFrame 0、不开整窗透明；
+            // 圆角只来自装饰 raster（两张整幅装饰图不可命中）。
+            var windowChrome = System.Windows.Shell.WindowChrome.GetWindowChrome(this);
+            var mainWindowSquareChromeNoTransparency =
+                !AllowsTransparency &&
+                WindowStyle == WindowStyle.None &&
+                windowChrome is not null &&
+                windowChrome.CornerRadius == new CornerRadius(0) &&
+                windowChrome.GlassFrameThickness == new Thickness(0) &&
+                Background is not null &&
+                !CountdownReferenceDecoration.IsHitTestVisible &&
+                !NotesReferenceDecoration.IsHitTestVisible;
+
+            // AC7：#135 工作台骨架次序——页签（命令栏）在装饰带之上：装饰层 ZIndex 低于内容投影层、
+            // 装饰层不可命中、页签在内容投影层子树内。
+            var tabsRenderAboveDecorationBand =
+                Panel.GetZIndex(MainReferenceDecorationLayer) < Panel.GetZIndex(MainContentProjection) &&
+                !MainReferenceDecorationLayer.IsHitTestVisible &&
+                MainContentProjection.IsAncestorOf(CountdownTab) &&
+                MainContentProjection.IsAncestorOf(NotesTab);
+
+            return new MainVisualChromeScenarios(
+                filterFunnelIconSurvivesAliasedCapture,
+                notesSearchDuplicateMagnifierRemoved,
+                mainWindowChromeButtonsUseVectorPaths,
+                segmentActivePillsUseFullRoundedCorners,
+                countdownHandwrittenDecoOutOfFormMeasurement,
+                mainWindowSquareChromeNoTransparency,
+                tabsRenderAboveDecorationBand);
+        }
+        finally
+        {
+            ShowWorkspace(entryWorkspace);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    // #154：管理窗窗铬按钮（最小/关闭）内容为 Viewbox+Path 矢量字形——描边 2px 圆头、
+    // 绑定按钮 Foreground、Data 包围盒与悬浮窗头部同几何（12x12 坐标系）。
+    private static bool ChromeButtonHasVectorGlyph(Button button, double expectedWidth, double expectedHeight)
+    {
+        button.ApplyTemplate();
+        if (button.Content is not Viewbox viewbox || viewbox.Child is not System.Windows.Shapes.Path glyph || glyph.Data is null)
+        {
+            return false;
+        }
+
+        var bounds = glyph.Data.Bounds;
+        return Math.Abs(bounds.Width - expectedWidth) <= 0.5 &&
+            Math.Abs(bounds.Height - expectedHeight) <= 0.5 &&
+            Math.Abs(glyph.StrokeThickness - 2) <= 0.01 &&
+            glyph.StrokeStartLineCap == PenLineCap.Round &&
+            glyph.StrokeEndLineCap == PenLineCap.Round &&
+            ReferenceEquals(glyph.Stroke, button.Foreground);
+    }
+
+    // #154：页签/分段模板激活胶囊短边一半全圆角——Surface 与 FocusRing 的 CornerRadius 钉值。
+    private static bool PillCornersAre(ToggleButton toggle, double surfaceRadius, double ringRadius)
+    {
+        toggle.ApplyTemplate();
+        return toggle.Template?.FindName("Surface", toggle) is Border surface &&
+            surface.CornerRadius.TopLeft == surfaceRadius &&
+            toggle.Template?.FindName("FocusRing", toggle) is Border ring &&
+            ring.CornerRadius.TopLeft == ringRadius;
+    }
+
+    // #154：悬浮工作区分段样式（App 级资源，主窗内无实例）用模板宿主实例化后检查胶囊圆角 18。
+    // 实例化模式与 RegularFocusVisualThicknessIs 相同（模板无 FrameworkElementFactory）。
+    private bool FloatingSegmentStyleUsesPillCorner()
+    {
+        if (FindResource("FloatingHeaderSegmentButton") is not Style style)
+        {
+            return false;
+        }
+
+        var host = new ToggleButton
+        {
+            Style = style,
+            Width = 85,
+            Height = 36,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Focusable = false
+        };
+        MainContentProjection.Children.Add(host);
+        try
+        {
+            host.ApplyTemplate();
+            WindowValidationInput.Pump(Dispatcher);
+            return host.Template?.FindName("Surface", host) is Border surface &&
+                surface.CornerRadius.TopLeft == 18;
+        }
+        finally
+        {
+            MainContentProjection.Children.Remove(host);
+        }
+    }
+
+    /// <summary>#153：管理窗便签 `…` 菜单键盘生命周期——打开聚焦「编辑」、Tab 到「删除」、再 Tab 回「编辑」（层内循环）、Esc 关闭归还触发器。</summary>
+    private bool ProbeMainWindowNoteRowOverflowMenuKeyboard()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        UpdateLayout();
+        WindowValidationInput.Pump(Dispatcher);
+        var trigger = MainValidationDescendants<Button>(ActiveNoteRows)
+            .FirstOrDefault(button =>
+                string.Equals(button.Uid, "NoteRowOverflowMenu", StringComparison.Ordinal));
+        if (trigger is null)
+        {
+            // 空便签列表没有可打开的 `…` 菜单，视为满足（空洞真，与 NoteRowOverflowMenuWorks 同语义）；
+            // 有便签行而找不到触发器才是失败。
+            return _noteSourceRows.Count == 0;
+        }
+
+        var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger);
+        if (popup is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            popup.IsOpen = false;
+            WindowValidationInput.Pump(Dispatcher);
+            Activate();
+            Keyboard.Focus(trigger);
+            WindowValidationInput.Pump(Dispatcher);
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.Pump(Dispatcher);
+            var menuEdit = MainValidationDescendants<Button>(popup.Child)
+                .FirstOrDefault(button =>
+                    string.Equals(button.Content as string, "编辑", StringComparison.Ordinal));
+            var openedWithFocusOnEdit =
+                popup.IsOpen &&
+                menuEdit is not null &&
+                ReferenceEquals(Keyboard.FocusedElement, menuEdit);
+            if (menuEdit is null)
+            {
+                return false;
+            }
+
+            menuEdit.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            WindowValidationInput.Pump(Dispatcher);
+            var menuDelete = MainValidationDescendants<Button>(popup.Child)
+                .FirstOrDefault(button =>
+                    string.Equals(button.Content as string, "删除", StringComparison.Ordinal));
+            var tabReachesDelete =
+                menuDelete is not null &&
+                ReferenceEquals(Keyboard.FocusedElement, menuDelete);
+            var tabWrapsBackToEdit = false;
+            if (menuDelete is not null)
+            {
+                menuDelete.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                WindowValidationInput.Pump(Dispatcher);
+                tabWrapsBackToEdit = ReferenceEquals(Keyboard.FocusedElement, menuEdit);
+            }
+
+            var escapeHandled = WindowValidationInput.RaisePreviewKey(menuDelete ?? menuEdit, Key.Escape);
+            WindowValidationInput.Pump(Dispatcher);
+            var closedBackToTrigger =
+                !popup.IsOpen &&
+                (trigger.IsKeyboardFocusWithin ||
+                 ReferenceEquals(FocusManager.GetFocusedElement(this), trigger));
+            return
+                openedWithFocusOnEdit &&
+                tabReachesDelete &&
+                tabWrapsBackToEdit &&
+                escapeHandled &&
+                closedBackToTrigger;
+        }
+        finally
+        {
+            popup.IsOpen = false;
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    /// <summary>
+    ///     #153：弹层 Tab 层内循环——从首项连续 Tab 超过层内可聚焦项数量后焦点仍留在弹层子树内
+    ///     且回到首项（Cycle 包环）；Tab 从层内逃到被挡住的宿主窗口即失败。
+    /// </summary>
+    private bool ProbePopupTabCyclesInsideLayer(Popup popup, IInputElement? expectedInitialFocus)
+    {
+        try
+        {
+            popup.IsOpen = false;
+            WindowValidationInput.Pump(Dispatcher);
+            Activate();
+            WindowValidationInput.Pump(Dispatcher);
+            popup.IsOpen = true;
+            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.Pump(Dispatcher);
+            var surface = popup.Child as DependencyObject;
+            if (surface is null || !popup.IsOpen)
+            {
+                return false;
+            }
+
+            var first = Keyboard.FocusedElement;
+            if (expectedInitialFocus is not null && !ReferenceEquals(first, expectedInitialFocus))
+            {
+                return false;
+            }
+
+            bool InsideSurface(IInputElement? focused) =>
+                focused is not null &&
+                (ReferenceEquals(focused, surface) ||
+                 (focused is System.Windows.Media.Visual visual &&
+                  surface is System.Windows.Media.Visual surfaceVisual &&
+                  surfaceVisual.IsAncestorOf(visual)));
+            var stayedInside = InsideSurface(first);
+            var wrappedToFirst = false;
+            var current = first;
+            for (var step = 0; step < 32 && stayedInside && !wrappedToFirst; step++)
+            {
+                (current as UIElement)?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                WindowValidationInput.Pump(Dispatcher);
+                current = Keyboard.FocusedElement;
+                stayedInside = InsideSurface(current);
+                wrappedToFirst = stayedInside && ReferenceEquals(current, first);
+            }
+
+            return stayedInside && wrappedToFirst;
+        }
+        finally
+        {
+            popup.IsOpen = false;
             WindowValidationInput.Pump(Dispatcher);
         }
     }
@@ -840,7 +1354,8 @@ public sealed partial class MainWindow
             CountdownRows.Children.Count > 0 &&
             EmptyCountdownMessage.Visibility == Visibility.Collapsed &&
             ResetEmptyCountdownFiltersButton.Visibility == Visibility.Collapsed &&
-            string.Equals(FilterButton.Content?.ToString(), "筛选", StringComparison.Ordinal) &&
+            // #154：筛选按钮内容改为「图标 + 具名文字」StackPanel，摘要断言读 FilterButtonText。
+            string.Equals(FilterButtonText.Text, "筛选", StringComparison.Ordinal) &&
             string.Equals(
                 AutomationProperties.GetName(FilterButton),
                 "打开筛选",
@@ -903,11 +1418,15 @@ public sealed partial class MainWindow
             }
 
             var scrollViewer = FindVisualParent<ScrollViewer>(rowBefore);
+            // #148：程序化 Keyboard.Focus 会触发 WPF bring-into-view。若先 ScrollToEnd 再聚焦，
+            // 聚焦行的编辑按钮在长分格下可能骑在视口顶裁切线上，此处最小滚入会被误记到 tick 头上。
+            // 因此先聚焦、再滚到底取 offsetBefore，让断言只度量「tick 本身是否移动滚动位置」。
+            Keyboard.Focus(focusTarget);
+            WindowValidationInput.Pump(Dispatcher);
             scrollViewer?.ScrollToEnd();
             WindowValidationInput.Pump(Dispatcher);
             var offsetBefore = scrollViewer?.VerticalOffset ?? 0;
-            Keyboard.Focus(focusTarget);
-            WindowValidationInput.Pump(Dispatcher);
+            var scrollableHeightBefore = scrollViewer?.ScrollableHeight ?? 0;
             originalOpacity = Opacity;
             Opacity = 1;
             Activate();
@@ -922,6 +1441,7 @@ public sealed partial class MainWindow
             var nonZeroScrollPreserved =
                 offsetBefore > 0 &&
                 Math.Abs((scrollViewer?.VerticalOffset ?? 0) - offsetBefore) <= 0.1;
+            var scrollOffsetAfterTick = scrollViewer?.VerticalOffset ?? 0;
             // A session without an interactive mouse refuses Capture(); that is not a
             // tick-refresh regression. When capture is granted, the tick must keep it.
             var pointerStatePreserved = pointerCaptured
@@ -991,7 +1511,8 @@ public sealed partial class MainWindow
             var expiryRemainingTextFlipped =
                 _countdownRemainingTexts.TryGetValue(record.Id, out var textAfter) &&
                 !ReferenceEquals(textBefore, textAfter) &&
-                ReferenceEquals(textAfter.Foreground, FindResource("DangerBrush"));
+                // #148：到期剩余文字不用删除红；该记录是首行主项，到期后回落主项数字色。
+                ReferenceEquals(textAfter.Foreground, FindResource("PrimaryCountdownNumberBrush"));
             return new CountdownIncrementalRefreshProbe(
                 ordinaryIdentityPreserved,
                 focusPreserved,
@@ -1002,7 +1523,10 @@ public sealed partial class MainWindow
                 precisionChangeRebuilt,
                 expiryChangeRebuilt,
                 expiryBackgroundFlipped,
-                expiryRemainingTextFlipped);
+                expiryRemainingTextFlipped,
+                Math.Round(offsetBefore, 2),
+                Math.Round(scrollOffsetAfterTick, 2),
+                Math.Round(scrollableHeightBefore, 2));
         }
         finally
         {
@@ -1027,6 +1551,772 @@ public sealed partial class MainWindow
             WindowValidationInput.Pump(Dispatcher);
         }
     }
+
+    // #148：倒计时列表可读性探针——「超期待！」排他、到期文字对比、分格几何与表格数字格式。
+    // #151：倒计时编辑合同——字段级错误贴字段并聚焦首个无效控件、唯一错误行不裁切、
+    // 偏好错误下移到字段下方、主次按钮角色（每页一枚实心主行动 + 珊瑚次级实心）、
+    // 白纸输入面、独立选区高亮、状态条表面错误对比、提醒规则选中圆点非文本对比、排版/间距 token。
+    internal CountdownEditingScenarios ProbeCountdownEditingScenarios()
+    {
+        var originalWorkspace = _workspace;
+        var originalName = CountdownName.Text;
+        var originalDate = CountdownDate.SelectedDate;
+        var originalHour = CountdownHour.SelectedIndex;
+        var originalMinute = CountdownMinute.SelectedIndex;
+        var originalSecond = CountdownSecond.SelectedIndex;
+        var originalSalary = MonthlySalary.Text;
+        var originalWorkStart = WorkStart.Text;
+        var originalWorkEnd = WorkEnd.Text;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+            // 焦点断言前置条件：与悬浮窗 DatePicker 探针同一口径，先激活本窗口再模拟提交。
+            Activate();
+            WindowValidationInput.Pump(Dispatcher);
+            ResetCountdownEditor();
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+
+            // —— 倒计时字段错误：名称与截止日期按字段拆开，聚焦第一个无效控件（名称优先）。
+            CountdownName.Text = string.Empty;
+            CountdownDate.SelectedDate = null;
+            WindowValidationInput.Pump(Dispatcher);
+            SaveCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var fieldErrorsAtSource =
+                CountdownNameError.Visibility == Visibility.Visible &&
+                CountdownDateError.Visibility == Visibility.Visible &&
+                string.Equals(CountdownNameError.Text, "请先填写倒计时名称。", StringComparison.Ordinal) &&
+                string.Equals(CountdownDateError.Text, "请选择截止日期。", StringComparison.Ordinal) &&
+                string.Equals(CountdownMessage.Text, CountdownNameError.Text, StringComparison.Ordinal) &&
+                CountdownName.IsKeyboardFocusWithin &&
+                EditingValidationErrorIsAccessible(CountdownNameError, CountdownName) &&
+                EditingValidationErrorIsAccessible(CountdownDateError, CountdownDate);
+
+            // 仅日期无效时再次提交：聚焦唯一无效控件（截止日期）。
+            CountdownName.Text = "倒计时编辑探针";
+            WindowValidationInput.Pump(Dispatcher);
+            SaveCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var dateOnlyFocusesDate =
+                CountdownNameError.Visibility == Visibility.Collapsed &&
+                CountdownDateError.Visibility == Visibility.Visible &&
+                CountdownDate.IsKeyboardFocusWithin;
+
+            // —— 唯一错误行不再固定高度裁切或省略（MaxHeight 默认为正无穷）。
+            var singleErrorRowNotClipped =
+                double.IsPositiveInfinity(CountdownMessage.MaxHeight) &&
+                CountdownMessage.TextTrimming == TextTrimming.None &&
+                CountdownMessage.TextWrapping == TextWrapping.Wrap;
+
+            // —— 字段值修正后错误立即清除。
+            CountdownDate.SelectedDate = _desktopWorkspace.Snapshot.BeijingNow.Date;
+            WindowValidationInput.Pump(Dispatcher);
+            var countdownFieldErrorsClear =
+                CountdownNameError.Visibility == Visibility.Collapsed &&
+                CountdownDateError.Visibility == Visibility.Collapsed &&
+                string.IsNullOrEmpty(CountdownMessage.Text);
+
+            // —— 偏好错误出现在对应字段下方并聚焦；错误态错误字落在状态条表面上（见下）。
+            MonthlySalary.Text = "not-a-number";
+            SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var salaryErrorBelowField =
+                MonthlySalaryError.Visibility == Visibility.Visible &&
+                string.Equals(MonthlySalaryError.Text, "月薪格式无效。", StringComparison.Ordinal) &&
+                MonthlySalary.IsKeyboardFocusWithin &&
+                ValidationBounds(MonthlySalaryError).Top >= ValidationBounds(MonthlySalary).Bottom - 0.5 &&
+                EditingValidationErrorIsAccessible(MonthlySalaryError, MonthlySalary) &&
+                string.Equals(StatusText.Text, "月薪格式无效。", StringComparison.Ordinal);
+
+            // 月薪先恢复合法值，让校验推进到上班时间字段（镜像真实逐字段提交顺序）。
+            MonthlySalary.Text = "8000";
+            WorkStart.Text = "9点";
+            SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var workStartErrorBelowField =
+                MonthlySalaryError.Visibility == Visibility.Collapsed &&
+                WorkStartError.Visibility == Visibility.Visible &&
+                string.Equals(WorkStartError.Text, "上班时间请使用 HH:mm。", StringComparison.Ordinal) &&
+                WorkStart.IsKeyboardFocusWithin &&
+                ValidationBounds(WorkStartError).Top >= ValidationBounds(WorkStart).Bottom - 0.5;
+
+            // —— 偏好字段修正后错误清除（不保存，避免写入偏好）。
+            WorkStart.Text = "09:00";
+            WindowValidationInput.Pump(Dispatcher);
+            var preferenceErrorsClear =
+                WorkStartError.Visibility == Visibility.Collapsed;
+
+            // —— 主次按钮角色：倒计时页唯一实心主行动是「＋ 添加倒计时」；
+            // 「保存设置」为珊瑚语义次级实心 + 主文字色（珊瑚底白字实测 2.77 不达标）。
+            var solidPrimaryButtons = ProbeVisualDescendants<Button>(CountdownWorkspaceBody)
+                .Where(button => ReferenceEquals(button.Background, FindResource("MainActionBrush")))
+                .ToArray();
+            var primarySecondaryRolesDistinct =
+                solidPrimaryButtons.Length == 1 &&
+                ReferenceEquals(solidPrimaryButtons[0], SaveCountdownButton) &&
+                ReferenceEquals(SavePreferencesButton.Background, FindResource("CoralActionBrush")) &&
+                ReferenceEquals(SavePreferencesButton.Foreground, FindResource("InkBrush")) &&
+                ApplicationTheme.MeetsContrast(
+                    (Color)FindResource("CoralActionColor"),
+                    (Color)FindResource("InkColor"),
+                    4.5) &&
+                ReferenceEquals(SaveNoteButton.Background, FindResource("MainActionBrush"));
+
+            // —— 白纸输入面：主窗倒计时页输入控件表面为 PanelBrush，与画布色分开。
+            CountdownDate.ApplyTemplate();
+            var dateTextBox = CountdownDate.Template.FindName("PART_TextBox", CountdownDate)
+                as System.Windows.Controls.Primitives.DatePickerTextBox;
+            var dateButton = CountdownDate.Template.FindName("PART_Button", CountdownDate) as Button;
+            var inputSurfacesWhitePaper =
+                ReferenceEquals(CountdownName.Background, FindResource("PanelBrush")) &&
+                ReferenceEquals(MonthlySalary.Background, FindResource("PanelBrush")) &&
+                ReferenceEquals(CountdownHour.Background, FindResource("PanelBrush")) &&
+                ReferenceEquals(DisplayPrecision.Background, FindResource("PanelBrush")) &&
+                ReferenceEquals(CountdownDate.Background, FindResource("PanelBrush")) &&
+                dateTextBox is not null &&
+                ReferenceEquals(dateTextBox.Background, FindResource("PanelBrush")) &&
+                dateButton is not null &&
+                ReferenceEquals(dateButton.Background, CountdownDate.Background) &&
+                !((Color)FindResource("PanelColor")).Equals((Color)FindResource("BackgroundColor"));
+
+            // —— 文本选区高亮：独立语义色（不得复用 PeachLine 结构线色）且 0.4 合成肉眼可辨。
+            var selectionBrush = CountdownName.SelectionBrush;
+            var selectionIsIndependent =
+                selectionBrush is SolidColorBrush selectionSolid &&
+                ReferenceEquals(selectionBrush, FindResource("SelectionBrush")) &&
+                selectionSolid.Color != (Color)FindResource("PeachLineColor");
+            var selectionHighlightDistinct = false;
+            if (selectionIsIndependent)
+            {
+                var panelColor = (Color)FindResource("PanelColor");
+                var blended = selectionBrush is SolidColorBrush solid
+                    ? Color.FromRgb(
+                        (byte)Math.Round((0.4 * solid.Color.R) + (0.6 * panelColor.R)),
+                        (byte)Math.Round((0.4 * solid.Color.G) + (0.6 * panelColor.G)),
+                        (byte)Math.Round((0.4 * solid.Color.B) + (0.6 * panelColor.B)))
+                    : panelColor;
+                var maxChannelDelta = new[]
+                {
+                    Math.Abs(blended.R - panelColor.R),
+                    Math.Abs(blended.G - panelColor.G),
+                    Math.Abs(blended.B - panelColor.B)
+                }.Max();
+                selectionHighlightDistinct = maxChannelDelta >= 24;
+            }
+
+            // —— 状态条表面 + 错误字对比：状态栏消费 StatusBarBrush 表面；
+            // 错误态 StatusText 前景为 DangerBrush 且对状态条表面 ≥ 4.5（不达标应改更深文字色）。
+            var statusBarSurface = FindName("MainStatusBarSurface") as Border;
+            var statusBarSurfaceErrorContrast =
+                statusBarSurface is not null &&
+                ReferenceEquals(statusBarSurface.Background, FindResource("StatusBarBrush")) &&
+                ReferenceEquals(statusBarSurface.BorderBrush, FindResource("PeachLineBrush")) &&
+                ReferenceEquals(StatusText.Foreground, FindResource("DangerBrush")) &&
+                ApplicationTheme.MeetsContrast(
+                    (Color)FindResource("StatusBarColor"),
+                    (Color)FindResource("DangerColor"),
+                    4.5);
+
+            // —— 提醒规则选中圆点/描边：焦点·强调轨语义色 ActiveBrush，对编辑卡画布 ≥ 3:1。
+            CountdownReminderNoRadio.ApplyTemplate();
+            var radioDot = CountdownReminderNoRadio.Template.FindName("Dot", CountdownReminderNoRadio) as Ellipse;
+            var radioRing = CountdownReminderNoRadio.Template.FindName("Ring", CountdownReminderNoRadio) as Ellipse;
+            var editorSurfaceColor = CountdownEditorSurface.Background is SolidColorBrush surfaceBrush
+                ? surfaceBrush.Color
+                : (Color?)null;
+            var reminderRadioSelectedContrast =
+                CountdownReminderNoRadio.IsChecked == true &&
+                radioDot is not null &&
+                radioRing is not null &&
+                radioDot.Visibility == Visibility.Visible &&
+                ReferenceEquals(radioDot.Fill, FindResource("ActiveBrush")) &&
+                ReferenceEquals(radioRing.Stroke, FindResource("ActiveBrush")) &&
+                editorSurfaceColor is not null &&
+                ApplicationTheme.MeetsContrast(editorSurfaceColor.Value, (Color)FindResource("ActiveColor"), 3.0);
+
+            // —— 排版/间距 token：区块标题落 TypeH2；字段行距/错误行距消费间距 token 值。
+            var typeH2 = (double)FindResource("TypeH2FontSize");
+            var spacingUnit = (double)FindResource("SpacingUnit");
+            var spacingFieldRow = (double)FindResource("SpacingFieldRow");
+            var editorTypographyTokens =
+                Math.Abs(CountdownEditorTitle.FontSize - typeH2) <= 0.01 &&
+                Math.Abs(CountdownPreferencesTitle.FontSize - typeH2) <= 0.01 &&
+                Math.Abs(MainCountdownNameDateRow.Margin.Top - spacingFieldRow) <= 0.01 &&
+                Math.Abs(MainCountdownTimeTagRow.Margin.Top - spacingFieldRow) <= 0.01 &&
+                Math.Abs(MainCountdownActionRow.Margin.Top - spacingFieldRow) <= 0.01 &&
+                Math.Abs(CountdownMessage.Margin.Top - spacingUnit) <= 0.01 &&
+                Math.Abs(CountdownNameError.Margin.Top - spacingUnit) <= 0.01 &&
+                Math.Abs(MonthlySalaryError.Margin.Top - spacingUnit) <= 0.01;
+
+            return new CountdownEditingScenarios(
+                fieldErrorsAtSource && dateOnlyFocusesDate,
+                countdownFieldErrorsClear,
+                singleErrorRowNotClipped,
+                salaryErrorBelowField && workStartErrorBelowField,
+                preferenceErrorsClear,
+                primarySecondaryRolesDistinct,
+                inputSurfacesWhitePaper,
+                selectionHighlightDistinct,
+                statusBarSurfaceErrorContrast,
+                reminderRadioSelectedContrast,
+                editorTypographyTokens);
+        }
+        finally
+        {
+            CountdownName.Text = originalName;
+            CountdownDate.SelectedDate = originalDate;
+            CountdownHour.SelectedIndex = originalHour;
+            CountdownMinute.SelectedIndex = originalMinute;
+            CountdownSecond.SelectedIndex = originalSecond;
+            MonthlySalary.Text = originalSalary;
+            WorkStart.Text = originalWorkStart;
+            WorkEnd.Text = originalWorkEnd;
+            ClearCountdownFieldErrors();
+            ClearPreferenceFieldErrors();
+            CountdownMessage.Text = string.Empty;
+            ResetCountdownEditor();
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    // #151：字段错误可访问语义——错误行名称/帮助文本为完整消息，来源控件帮助文本指向错误。
+    private static bool EditingValidationErrorIsAccessible(TextBlock field, Control source) =>
+        !string.IsNullOrWhiteSpace(field.Text) &&
+        string.Equals(AutomationProperties.GetName(field), field.Text, StringComparison.Ordinal) &&
+        string.Equals(AutomationProperties.GetHelpText(field), field.Text, StringComparison.Ordinal) &&
+        string.Equals(AutomationProperties.GetHelpText(source), field.Text, StringComparison.Ordinal) &&
+        AutomationProperties.GetLiveSetting(field) == AutomationLiveSetting.Polite;
+
+    // #152：主窗可操作性合同探针——常驻焦点环不挤布局、主按钮/置顶唯一焦点描边、
+    // 未选中便签页签悬停不复用选中实心底、本地页签/帮助/单选/日期披露按压与禁用、
+    // 帮助聚焦显示说明、默认缩放后命中 ≥24、筛选芯片与日历翻月紧凑几何。
+    internal MainWindowInteractionStates ProbeMainWindowInteractionStates()
+    {
+        var originalWorkspace = CurrentWorkspace;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+
+            var focusRingsReserveSpace =
+                FocusDoesNotChangeLayout(SaveCountdownButton, "FocusRing", "Surface") &&
+                FocusDoesNotChangeLayout(TopmostCheck, "Box", "Box") &&
+                FocusDoesNotChangeLayout(CountdownTab, "FocusRing", "Surface");
+
+            // 主按钮/置顶只有模板内暖粉焦点环（FocusVisualStyle 为空）；常规控件保留 2px 暖边。
+            var primaryAndPinSingleFocusStroke =
+                SaveCountdownButton.FocusVisualStyle is null &&
+                SaveNoteButton.FocusVisualStyle is null &&
+                TopmostCheck.FocusVisualStyle is null &&
+                FilterButton.FocusVisualStyle is Style regularStroke &&
+                RegularFocusVisualThicknessIs(regularStroke, 2);
+
+            var notesTabHoverDiffersFromSelected = NotesTabHoverDoesNotReuseSelectedFill();
+
+            // 按压视觉无法在无鼠标隔离桌面驱动（ButtonBase 需真实 IsMouseOver 才置 IsPressed），
+            // 改按模板触发器合同钉住：IsPressed → 状态环 ActiveBrush（与键盘焦点同语言）；禁用走运行态。
+            var localControlsPressAndDisabled =
+                TemplateHasPressRingTrigger(CountdownTab, "FocusRing") &&
+                DisabledUses45Opacity(CountdownTab, "InteractionSurface") &&
+                TemplateHasPressRingTrigger(CountdownReminderHelp, "FocusRing") &&
+                DisabledUses45Opacity(CountdownReminderHelp, "Surface") &&
+                TemplateHasPressRingTrigger(CountdownReminderNoRadio, "FocusRing") &&
+                DisabledUses45Opacity(CountdownReminderNoRadio, "Surface") &&
+                DateDisclosureTemplateHasPressAndDisabled();
+
+            // 聚焦帮助显示与悬停相同的说明（同一 ToolTip 即时打开），并提供帮助文本。
+            Activate();
+            var helpTooltip = CountdownReminderHelp.ToolTip as ToolTip;
+            Keyboard.Focus(CountdownReminderHelp);
+            WindowValidationInput.Pump(Dispatcher);
+            var helpOpensOnFocus = helpTooltip is not null && helpTooltip.IsOpen;
+            var helpTextProvided =
+                helpTooltip?.Content is string tooltipText &&
+                tooltipText.Length > 0 &&
+                string.Equals(
+                    AutomationProperties.GetHelpText(CountdownReminderHelp),
+                    tooltipText,
+                    StringComparison.Ordinal);
+            Keyboard.Focus(CloseButton);
+            WindowValidationInput.Pump(Dispatcher);
+            var helpClosesOnBlur = helpTooltip is null || !helpTooltip.IsOpen;
+            var helpFocusShowsHelpText = helpOpensOnFocus && helpTextProvided && helpClosesOnBlur;
+
+            // 默认缩放（≈0.652）后帮助/完成勾选命中 ≥24 DIP：槽位 38 设计坐标 × 实测缩放 ≥24。
+            var scale = MainScaleViewport.ActualWidth > 0
+                ? MainScaleViewport.ActualWidth / MainLayoutSurface.Width
+                : 0;
+            var compactHitTargetsMeetScaledFloor =
+                Math.Abs(CountdownReminderHelp.ActualWidth - 38) <= 1 &&
+                Math.Abs(CountdownReminderHelp.ActualHeight - 38) <= 1 &&
+                Math.Abs(scale - (760d / 1165d)) <= 0.02 &&
+                38 * scale >= 24;
+
+            // 筛选芯片与日历翻月按钮向同一紧凑下限靠拢（高度 36、相邻间距 8）。
+            var chipsAndCalendarNavCompact =
+                StyleHeightSetterIs("FilterOptionButton", 36) &&
+                StyleSetterIs("CalendarNavigationButton", FrameworkElement.MinHeightProperty, 36) &&
+                StyleSetterIs("CalendarNavigationButton", FrameworkElement.WidthProperty, 36) &&
+                RequiredToggleButtonMargin("AllTagMode") &&
+                RequiredToggleButtonMargin("NoteActiveFilter") &&
+                FilterTagChipGapsMeetCompactSpacing();
+
+            return new MainWindowInteractionStates(
+                focusRingsReserveSpace,
+                primaryAndPinSingleFocusStroke,
+                notesTabHoverDiffersFromSelected,
+                localControlsPressAndDisabled,
+                helpFocusShowsHelpText,
+                compactHitTargetsMeetScaledFloor,
+                chipsAndCalendarNavCompact);
+        }
+        finally
+        {
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    // 聚焦前后控件外尺寸与状态部件边厚都不变——焦点环是常驻透明环，只换色不加厚。
+    private bool FocusDoesNotChangeLayout(Control control, string ringName, string surfaceName)
+    {
+        control.ApplyTemplate();
+        var ring = control.Template?.FindName(ringName, control) as Border;
+        var surface = control.Template?.FindName(surfaceName, control) as FrameworkElement;
+        if (ring is null || surface is null)
+        {
+            return false;
+        }
+
+        Activate();
+        var widthBefore = control.ActualWidth;
+        var heightBefore = control.ActualHeight;
+        var ringThicknessBefore = ring.BorderThickness;
+        var focusVisualBefore = control.FocusVisualStyle;
+        Keyboard.Focus(control);
+        WindowValidationInput.Pump(Dispatcher);
+        var layoutStable =
+            Math.Abs(control.ActualWidth - widthBefore) <= 0.01 &&
+            Math.Abs(control.ActualHeight - heightBefore) <= 0.01 &&
+            ring.BorderThickness == ringThicknessBefore &&
+            ReferenceEquals(control.FocusVisualStyle, focusVisualBefore);
+        Keyboard.Focus(CloseButton);
+        WindowValidationInput.Pump(Dispatcher);
+        return layoutStable;
+    }
+
+    // XAML 模板没有 FrameworkElementFactory（VisualTree 为 null），把模板临时挂到窗口内
+    // 实例化后读取可视子 Border 的边厚，验证常规 FocusVisualStyle 是 2px 暖边。
+    private bool RegularFocusVisualThicknessIs(Style focusVisual, double expected)
+    {
+        var template = focusVisual.Setters
+            .OfType<Setter>()
+            .Where(setter => setter.Property == Control.TemplateProperty)
+            .Select(setter => setter.Value)
+            .OfType<ControlTemplate>()
+            .FirstOrDefault();
+        if (template is null)
+        {
+            return false;
+        }
+
+        var host = new Control
+        {
+            Template = template,
+            Width = 10,
+            Height = 10,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Focusable = false
+        };
+        MainContentProjection.Children.Add(host);
+        try
+        {
+            host.ApplyTemplate();
+            WindowValidationInput.Pump(Dispatcher);
+            if (System.Windows.Media.VisualTreeHelper.GetChild(host, 0) is not Border border)
+            {
+                return false;
+            }
+
+            return Math.Max(
+                Math.Max(border.BorderThickness.Left, border.BorderThickness.Right),
+                Math.Max(border.BorderThickness.Top, border.BorderThickness.Bottom)) == expected;
+        }
+        finally
+        {
+            MainContentProjection.Children.Remove(host);
+        }
+    }
+
+    // 未选中「便签」页签的 IsMouseOver 触发器不得把 Surface 底换成选中实心底 PeachTintBrush
+    // （#152 换成「边换 ActiveBrush」）；IsChecked 触发器才允许设置选中底。
+    private bool NotesTabHoverDoesNotReuseSelectedFill()
+    {
+        if (NotesTab.Template is not { } template)
+        {
+            return false;
+        }
+
+        Trigger? hoverTrigger = null;
+        Trigger? checkedTrigger = null;
+        foreach (var trigger in template.Triggers.OfType<Trigger>())
+        {
+            if (trigger.Property == UIElement.IsMouseOverProperty)
+            {
+                hoverTrigger = trigger;
+            }
+
+            if (trigger.Property == ToggleButton.IsCheckedProperty)
+            {
+                checkedTrigger = trigger;
+            }
+        }
+
+        return hoverTrigger is not null &&
+            checkedTrigger is not null &&
+            !SetsBackgroundTo(hoverTrigger, "Surface", "PeachTintBrush") &&
+            SetsBackgroundTo(checkedTrigger, "Surface", "PeachTintBrush") &&
+            SetsBorderBrushTo(hoverTrigger, "Surface", "ActiveBrush");
+    }
+
+    private static bool SetsBackgroundTo(Trigger trigger, string targetName, string resourceKey) =>
+        trigger.Setters.OfType<Setter>().Any(setter =>
+            setter.TargetName == targetName &&
+            setter.Property == Border.BackgroundProperty &&
+            MarkupResourceKeyIs(setter.Value, resourceKey));
+
+    private static bool SetsBorderBrushTo(Trigger trigger, string targetName, string resourceKey) =>
+        trigger.Setters.OfType<Setter>().Any(setter =>
+            setter.TargetName == targetName &&
+            setter.Property == Border.BorderBrushProperty &&
+            MarkupResourceKeyIs(setter.Value, resourceKey));
+
+    private static bool MarkupResourceKeyIs(object? value, string resourceKey) =>
+        value is System.Windows.DynamicResourceExtension dynamic &&
+        dynamic.ResourceKey as string == resourceKey;
+
+    // 按压与键盘焦点同语言：模板存在 IsPressed → 状态环 ActiveBrush 的触发器。
+    private static bool TemplateHasPressRingTrigger(Control control, string ringName)
+    {
+        control.ApplyTemplate();
+        if (control.Template?.Triggers is not { } triggers)
+        {
+            return false;
+        }
+
+        return triggers
+            .OfType<Trigger>()
+            .Where(trigger => trigger.Property == ButtonBase.IsPressedProperty)
+            .SelectMany(trigger => trigger.Setters.OfType<Setter>())
+            .Any(setter =>
+                setter.TargetName == ringName &&
+                setter.Property == Border.BorderBrushProperty &&
+                MarkupResourceKeyIs(setter.Value, "ActiveBrush"));
+    }
+
+    private bool DisabledUses45Opacity(Control control, string partName)
+    {
+        control.ApplyTemplate();
+        if (control.Template?.FindName(partName, control) is not FrameworkElement part)
+        {
+            return false;
+        }
+
+        var original = control.IsEnabled;
+        control.IsEnabled = false;
+        WindowValidationInput.Pump(Dispatcher);
+        var disabledOpacity = part.Opacity;
+        control.IsEnabled = original;
+        WindowValidationInput.Pump(Dispatcher);
+        return Math.Abs(disabledOpacity - 0.45) <= 0.001;
+    }
+
+    // 日期披露按钮由代码构建，模板触发器检查通过窗口内样式资源进行（按压=环 Active、禁用=0.45）。
+    private bool DateDisclosureTemplateHasPressAndDisabled()
+    {
+        if ((Style)MainContentProjection.FindResource("MainNoteDateDisclosureButton") is not { } style)
+        {
+            return false;
+        }
+
+        var template = style.Setters
+            .OfType<Setter>()
+            .Where(setter => setter.Property == Control.TemplateProperty)
+            .Select(setter => setter.Value)
+            .OfType<ControlTemplate>()
+            .FirstOrDefault();
+        if (template?.Triggers is not { } triggers)
+        {
+            return false;
+        }
+
+        var hasPressRing = triggers
+            .OfType<Trigger>()
+            .Where(trigger => trigger.Property == ButtonBase.IsPressedProperty)
+            .SelectMany(trigger => trigger.Setters.OfType<Setter>())
+            .Any(setter =>
+                setter.TargetName == "FocusRing" &&
+                setter.Property == Border.BorderBrushProperty &&
+                MarkupResourceKeyIs(setter.Value, "ActiveBrush"));
+        var hasDisabledOpacity = triggers
+            .OfType<Trigger>()
+            .Where(trigger => trigger.Property == UIElement.IsEnabledProperty)
+            .SelectMany(trigger => trigger.Setters.OfType<Setter>())
+            .Any(setter =>
+                setter.Property == UIElement.OpacityProperty &&
+                setter.Value is double opacity &&
+                Math.Abs(opacity - 0.45) <= 0.001);
+        return hasPressRing && hasDisabledOpacity;
+    }
+
+    private static bool StyleHeightSetterIs(string styleKey, double expected) =>
+        StyleSetterIs(styleKey, FrameworkElement.HeightProperty, expected);
+
+    private static bool StyleSetterIs(string styleKey, DependencyProperty property, double expected) =>
+        Application.Current.TryFindResource(styleKey) is Style style &&
+        style.Setters.OfType<Setter>()
+            .FirstOrDefault(setter => setter.Property == property)?.Value is double value &&
+            Math.Abs(value - expected) <= 0.5;
+
+    private bool FilterTagChipGapsMeetCompactSpacing()
+    {
+        var options = (Panel)FindName("FilterTagOptions")!;
+        return options.Children
+            .OfType<FrameworkElement>()
+            .All(child => child.Margin.Right >= 8 && child.Margin.Bottom >= 8);
+    }
+
+    private bool RequiredToggleButtonMargin(string name) =>
+        FindName(name) is FrameworkElement element && element.Margin.Left >= 8;
+
+    private MainCountdownReadabilityScenarios ProbeCountdownReadabilityScenarios()
+    {
+        var originalWorkspace = _workspace;
+        var originalFilter = _desktopWorkspace.Snapshot.Filter;
+        var temporaryIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
+            // 主项/次项各一条进行中条目供徽章与分格几何检查；再各一条过去截止条目供到期对比检查。
+            // 会话层允许保存 0 规则的过去截止倒计时（编辑器 UI 才限制未来），全程使用真实时钟。
+            foreach (var (name, targetUtc) in new[]
+                     {
+                         ("验证倒计时可读-主项", nowUtc.AddDays(1)),
+                         ("验证倒计时可读-次项", nowUtc.AddDays(2)),
+                         ("验证倒计时可读-到期主项", nowUtc.AddDays(-1)),
+                         ("验证倒计时可读-到期次项", nowUtc.AddDays(-2))
+                     })
+            {
+                var result = _desktopWorkspace.Apply(new SaveCountdownChange(
+                    null,
+                    name,
+                    targetUtc,
+                    Array.Empty<string>()));
+                if (!result.Succeeded)
+                {
+                    return MainCountdownReadabilityScenarios.Failed;
+                }
+
+                temporaryIds.Add(_desktopWorkspace.Snapshot.Settings.Countdowns
+                    .Single(item => string.Equals(item.Name, name, StringComparison.Ordinal)).Id);
+            }
+
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+
+            // 「超期待！」只挂距离下班；管理窗口没有距离下班条目，任何列表行都不得携带徽章。
+            // 列表必须确有行渲染，排除空列表下的空洞真。
+            var rowsRendered = CountdownRows.Children.Count > 0;
+            var encourageBadgeAbsent = rowsRendered && !ProbeVisualDescendants<TextBlock>(CountdownRows)
+                .Any(text => string.Equals(text.Text, "超期待！", StringComparison.Ordinal));
+
+            // 主项/次项分格与悬浮窗同一套竖长口径（约 2:3、单位在块外、单位字不小于辅助下限档）。
+            var blocks = CountdownBlocksFollowWarmPaperContract();
+
+            // 「已到期」筛选下：首行到期主项回落主项数字色，其余到期次项回落正文色，
+            // 「已到期」文案保留，卡底为到期弱化底。
+            _desktopWorkspace.ApplyFilter(originalFilter with { CountdownStatus = CountdownStatusFilter.Expired });
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var expiredRows = CountdownRows.Children.OfType<Border>().ToArray();
+            var expiredBrush = FindResource("ExpiredBrush");
+            var numberBrush = FindResource("PrimaryCountdownNumberBrush");
+            var bodyBrush = FindResource("BodyBrush");
+            var expiredPairs = expiredRows
+                .Select((card, index) => (card, isPrimary: index == 0))
+                .SelectMany(pair => CountdownBlocksFallbackTexts(pair.card)
+                    .Select(text => (text, pair.isPrimary)))
+                .ToArray();
+            var expiredCardBackgroundsMatch = expiredRows.Length >= 2 &&
+                expiredRows.All(card => ReferenceEquals(card.Background, expiredBrush));
+            var expiredFallbackTextsPresent = expiredRows.Length >= 2 &&
+                expiredRows.All(card => CountdownBlocksFallbackTexts(card).Any());
+            var expiredPrimaryUsesNumberColor = expiredPairs
+                .Where(pair => pair.isPrimary)
+                .All(pair =>
+                    string.Equals(pair.text.Text, "已到期", StringComparison.Ordinal) &&
+                    ReferenceEquals(pair.text.Foreground, numberBrush));
+            var expiredSecondaryUsesBodyColor = expiredPairs
+                .Where(pair => !pair.isPrimary)
+                .All(pair =>
+                    string.Equals(pair.text.Text, "已到期", StringComparison.Ordinal) &&
+                    ReferenceEquals(pair.text.Foreground, bodyBrush));
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+
+            // 北京时间时钟使用表格数字；月薪输入与「今日已赚」同一套本地数字格式。
+            var numericTextsMatchContract =
+                Typography.GetNumeralAlignment(NowText) == FontNumeralAlignment.Tabular &&
+                decimal.TryParse(
+                    MonthlySalary.Text,
+                    NumberStyles.Number,
+                    CultureInfo.CurrentCulture,
+                    out var salaryValue) &&
+                string.Equals(
+                    MonthlySalary.Text,
+                    salaryValue.ToString("N2", CultureInfo.CurrentCulture),
+                    StringComparison.Ordinal);
+
+            return new MainCountdownReadabilityScenarios(
+                encourageBadgeAbsent,
+                expiredCardBackgroundsMatch,
+                expiredFallbackTextsPresent,
+                expiredPrimaryUsesNumberColor,
+                expiredSecondaryUsesBodyColor,
+                blocks.PairCountValid,
+                blocks.VerticalRatioMatches,
+                blocks.GapMatches,
+                blocks.UnitOutsideAndColored,
+                blocks.ValueBrushAndFamily,
+                numericTextsMatchContract);
+        }
+        finally
+        {
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            foreach (var temporaryId in temporaryIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteCountdownChange(temporaryId));
+            }
+
+            UpdateTime(ChinaStandardTime.ToBeijingTime(_desktopWorkspace.Snapshot.UtcNow));
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private MainCountdownBlocksProbeResult CountdownBlocksFollowWarmPaperContract()
+    {
+        var primaryBlockBrush = FindResource("PinkBlockBrush");
+        var secondaryBlockBrush = FindResource("SecondaryBlockBrush");
+        var numberBrush = FindResource("PrimaryCountdownNumberBrush");
+        var inkBrush = FindResource("InkBrush");
+        var mutedBrush = FindResource("MutedBrush");
+        var cards = CountdownRows.Children.OfType<Border>().ToArray();
+        var result = new MainCountdownBlocksProbeResult();
+        if (cards.Length == 0)
+        {
+            return result;
+        }
+
+        result.PairCountValid = true;
+        foreach (var card in cards)
+        {
+            foreach (var surface in ProbeVisualDescendants<Grid>(card)
+                         .Where(grid => Math.Abs(grid.Width - CountdownRemainingColumnWidth) <= 0.01))
+            {
+                var pairPanels = ProbeVisualDescendants<StackPanel>(surface)
+                    .Where(panel => panel.Children.Count == 2 &&
+                        panel.Children[0] is Border &&
+                        panel.Children[1] is TextBlock)
+                    .ToArray();
+                if (pairPanels.Length == 0)
+                {
+                    continue;
+                }
+
+                // 显示精度决定对数（天=1 … 秒=4）；几何合同逐对成立。
+                if (pairPanels.Length > 4)
+                {
+                    result.PairCountValid = false;
+                    continue;
+                }
+
+                for (var index = 0; index < pairPanels.Length; index++)
+                {
+                    var block = (Border)pairPanels[index].Children[0];
+                    var unit = (TextBlock)pairPanels[index].Children[1];
+                    if (block.Child is not TextBlock value)
+                    {
+                        result.PairCountValid = false;
+                        continue;
+                    }
+
+                    var isPrimary = ReferenceEquals(block.Background, primaryBlockBrush);
+                    if (!isPrimary && !ReferenceEquals(block.Background, secondaryBlockBrush))
+                    {
+                        result.PairCountValid = false;
+                        continue;
+                    }
+
+                    // 竖长 2:3：块高固定为基准块宽的 1.5 倍（主项 42x63、次项 38x57），
+                    // 长数值只允许加宽色块，不允许压扁比例或缩单位字。
+                    var expectedBaseWidth = isPrimary ? 42 : 38;
+                    var expectedHeight = isPrimary ? 63 : 57;
+                    var expectedRadius = expectedBaseWidth / 4.0;
+                    if (Math.Abs(block.Height - expectedHeight) > 0.01 ||
+                        block.MinWidth < expectedBaseWidth - 0.01 ||
+                        Math.Abs(block.CornerRadius.TopLeft - expectedRadius) > 0.01)
+                    {
+                        result.VerticalRatioMatches = false;
+                    }
+
+                    var expectedGap = isPrimary ? 14 : 13;
+                    var expectedMargin = index == 0
+                        ? new Thickness(0)
+                        : new Thickness(expectedGap, 0, 0, 0);
+                    if (pairPanels[index].Margin != expectedMargin)
+                    {
+                        result.GapMatches = false;
+                    }
+
+                    if (!ReferenceEquals(unit.Foreground, mutedBrush) ||
+                        unit.FontSize < CountdownRemainingUnitFontSize - 0.01 ||
+                        unit.FontFamily.Source.Contains("Bahnschrift", StringComparison.Ordinal) ||
+                        !ReferenceEquals(unit.Parent, pairPanels[index]) ||
+                        ReferenceEquals(unit, block.Child))
+                    {
+                        result.UnitOutsideAndColored = false;
+                    }
+
+                    var expectedValueBrush = isPrimary ? numberBrush : inkBrush;
+                    if (!ReferenceEquals(value.Foreground, expectedValueBrush) ||
+                        Typography.GetNumeralAlignment(value) != FontNumeralAlignment.Tabular ||
+                        !value.FontFamily.Source.Contains("Bahnschrift", StringComparison.Ordinal))
+                    {
+                        result.ValueBrushAndFamily = false;
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private IEnumerable<TextBlock> CountdownBlocksFallbackTexts(Border card) =>
+        ProbeVisualDescendants<Grid>(card)
+            .Where(grid => Math.Abs(grid.Width - CountdownRemainingColumnWidth) <= 0.01)
+            .SelectMany(surface => ProbeVisualDescendants<TextBlock>(surface))
+            .Where(text => string.Equals(text.Text, "已到期", StringComparison.Ordinal));
 
     private static T? FindVisualParent<T>(DependencyObject? child)
         where T : DependencyObject
@@ -1577,6 +2867,9 @@ public sealed partial class FloatingWindow
                 emptyClear is not null &&
                 emptyMessage is not null &&
                 !ValidationBounds(emptyMessage).IntersectsWith(ValidationBounds(emptyClear));
+            // #149：搜索无匹配空态只提供「清除搜索」，不与「清除筛选」同现（门禁反例方向）。
+            var searchEmptyHasNoFilterClear = !ValidationDescendants<Button>(FloatingRows).Any(button =>
+                string.Equals(button.Content as string, "清除筛选", StringComparison.Ordinal));
 
             ApplyTheme();
             WindowValidationInput.Pump(Dispatcher);
@@ -1691,9 +2984,15 @@ public sealed partial class FloatingWindow
                 .OfType<TextBlock>()
                 .Select(text => text.Text)
                 .ToArray();
+            // #149：筛选约束空态提供「清除筛选」且不出现「清除搜索」。
+            var filterEmptyClear = ValidationDescendants<Button>(FloatingRows).FirstOrDefault(button =>
+                string.Equals(button.Content as string, "清除筛选", StringComparison.Ordinal));
+            var filterEmptyHasNoSearchClear = !ValidationDescendants<Button>(FloatingRows).Any(button =>
+                string.Equals(button.Content as string, "清除搜索", StringComparison.Ordinal));
             var noteFilterEmptyStateDistinguished =
                 noteFilterEmptyMessages.SequenceEqual(new[] { "没有匹配的便签。" }) &&
-                !ValidationDescendants<Button>(FloatingRows).Any() &&
+                filterEmptyClear is not null &&
+                filterEmptyHasNoSearchClear &&
                 FloatingNoteSearchSlot.Visibility == Visibility.Collapsed;
 
             ShowWorkspace(WorkspaceKind.Countdowns);
@@ -1705,6 +3004,26 @@ public sealed partial class FloatingWindow
                 .ToArray();
             var countdownFilterEmptyStateDistinguished =
                 countdownFilterEmptyMessages.SequenceEqual(new[] { "没有匹配的倒计时。" });
+
+            // #149：点击「清除筛选」还原到无约束便签列表（对已脱树按钮触发 Click 走同一处理）。
+            filterEmptyClear?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var constrainedEmptyClearRestoresList =
+                filterEmptyClear is not null &&
+                GetFloatingRenderedNoteIds().SequenceEqual(
+                    _desktopWorkspace.Snapshot.VisibleActiveNotes.Select(note => note.Id),
+                    StringComparer.Ordinal) &&
+                _desktopWorkspace.Snapshot.Filter.NoteStatus == NoteStatusFilter.All &&
+                !_desktopWorkspace.Snapshot.Filter.UntaggedOnly &&
+                _desktopWorkspace.Snapshot.Filter.NoteDate is null;
+            var constrainedEmptyProvidesAction =
+                searchEmptyHasNoFilterClear &&
+                noteFilterEmptyStateDistinguished &&
+                constrainedEmptyClearRestoresList;
             _desktopWorkspace.ApplyFilter(originalFilter);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
@@ -1733,7 +3052,8 @@ public sealed partial class FloatingWindow
                 noteFilterEmptyStateDistinguished,
                 countdownFilterEmptyStateDistinguished,
                 searchButtonShowsClosedMagnifier,
-                searchRefreshLeavesPlacementUnchanged);
+                searchRefreshLeavesPlacementUnchanged,
+                constrainedEmptyProvidesAction);
         }
         finally
         {
@@ -1840,12 +3160,21 @@ public sealed partial class FloatingWindow
                 FloatingNoteEntry.Visibility == Visibility.Collapsed;
 
             var deco = FloatingNotesDecoText;
+            var decoLeft = FloatingNotesDecoTextLeft;
+            // #149：520 外壳上的手写体保持 13 DIP（相对 17 设计坐标的外壳例外，DESIGN §4）。
             var handwrittenDecorationLands =
                 deco.IsVisible &&
+                decoLeft.IsVisible &&
                 !deco.IsHitTestVisible &&
+                !decoLeft.IsHitTestVisible &&
                 !deco.Focusable &&
+                !decoLeft.Focusable &&
                 ReferenceEquals(deco.FontFamily, FindResource("HandwrittenDecoFontFamily")) &&
-                ReferenceEquals(deco.Foreground, FindResource("DecoTextSoftBrush"));
+                ReferenceEquals(deco.Foreground, FindResource("DecoTextSoftBrush")) &&
+                ReferenceEquals(decoLeft.FontFamily, FindResource("HandwrittenDecoFontFamily")) &&
+                ReferenceEquals(decoLeft.Foreground, FindResource("DecoTextSoftBrush")) &&
+                Math.Abs(deco.FontSize - 13) <= 0.01 &&
+                Math.Abs(decoLeft.FontSize - 13) <= 0.01;
 
             EnsureProbeNotes(createdNoteIds, 3);
             WindowValidationInput.Pump(Dispatcher);
@@ -1912,6 +3241,48 @@ public sealed partial class FloatingWindow
                     FloatingNotesCommandBar.Visibility == Visibility.Visible;
             }
 
+            // #149：快速新增正文占位文与管理窗口一致；空白时可见、输入后隐藏。
+            var quickAddPlaceholder = FindName("FloatingNoteTextPlaceholder") as TextBlock;
+            var quickAddPlaceholderMirrorsManager =
+                quickAddPlaceholder is not null &&
+                string.Equals(
+                    quickAddPlaceholder.Text,
+                    "写下要记住的事情吧…",
+                    StringComparison.Ordinal) &&
+                quickAddPlaceholder.Visibility == Visibility.Visible;
+            SetQuickAddExpanded(true);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            FloatingNoteText.Text = "占位隐藏探针";
+            WindowValidationInput.Pump(Dispatcher);
+            quickAddPlaceholderMirrorsManager =
+                quickAddPlaceholderMirrorsManager &&
+                quickAddPlaceholder is not null &&
+                quickAddPlaceholder.Visibility == Visibility.Collapsed;
+            FloatingNoteText.Text = string.Empty;
+            WindowValidationInput.Pump(Dispatcher);
+            // #149：展开态底部切换钮为次级「收起」，表单「添加」是唯一实心粉钮。
+            var quickAddToggleSecondaryWhenExpanded =
+                FloatingNoteEntry.IsVisible &&
+                ReferenceEquals(FloatingAddNoteToggle.Style, FindResource("SecondaryButton")) &&
+                string.Equals(FloatingAddNoteToggle.Content as string, "收起", StringComparison.Ordinal) &&
+                string.Equals(
+                    AutomationProperties.GetName(FloatingAddNoteToggle),
+                    "收起快速新增便签表单",
+                    StringComparison.Ordinal) &&
+                ReferenceEquals(FloatingAddNote.Style, FindResource("PrimaryButton"));
+            SetQuickAddExpanded(false);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            quickAddToggleSecondaryWhenExpanded =
+                quickAddToggleSecondaryWhenExpanded &&
+                ReferenceEquals(FloatingAddNoteToggle.Style, FindResource("FloatingAccentButton")) &&
+                FloatingAddNoteToggle.Content is StackPanel &&
+                string.Equals(
+                    AutomationProperties.GetName(FloatingAddNoteToggle),
+                    "添加便签",
+                    StringComparison.Ordinal);
+
             SetQuickAddExpanded(true);
             WindowValidationInput.Pump(Dispatcher);
             var addText = $"悬浮底部命令探针便签-{Guid.NewGuid():N}";
@@ -1932,19 +3303,29 @@ public sealed partial class FloatingWindow
 
             var noteMenuProvidesEdit = false;
             var noteMenuDeleteConfirms = false;
+            var noteMenuKeyboardLifecycle = false;
             if (addedNote is not null)
             {
                 var trigger = ValidationDescendants<Button>(FloatingRows).FirstOrDefault(button =>
                     string.Equals(button.Tag as string, addedNote.Id, StringComparison.Ordinal));
                 if (trigger is not null)
                 {
-                    trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-                    WindowValidationInput.Pump(Dispatcher);
                     var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger);
-                    var menuEdit = popup?.Child is { } editRoot
-                        ? ValidationDescendants<Button>(editRoot).FirstOrDefault(button =>
+                    var menuEdit = popup?.Child is { } keyboardRoot
+                        ? ValidationDescendants<Button>(keyboardRoot).FirstOrDefault(button =>
                             string.Equals(button.Content as string, "编辑", StringComparison.Ordinal))
                         : null;
+                    // #149：先走键盘路径——打开聚焦「编辑」，Tab 进入「删除」，Esc 关闭并回到触发器。
+                    if (popup is not null && menuEdit is not null)
+                    {
+                        noteMenuKeyboardLifecycle = ProbeNoteOverflowMenuKeyboard(
+                            trigger,
+                            popup,
+                            menuEdit);
+                    }
+
+                    trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    WindowValidationInput.Pump(Dispatcher);
                     if (popup is { IsOpen: true } && menuEdit is not null)
                     {
                         menuEdit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -2067,7 +3448,10 @@ public sealed partial class FloatingWindow
                 noteMenuDeleteConfirms,
                 pastelStampsRotate,
                 cardSurfacesAlternate,
-                handwrittenDecorationLands);
+                handwrittenDecorationLands,
+                quickAddPlaceholderMirrorsManager,
+                quickAddToggleSecondaryWhenExpanded,
+                noteMenuKeyboardLifecycle);
         }
         finally
         {
@@ -2147,6 +3531,44 @@ public sealed partial class FloatingWindow
                 string.Equals(note.Id, noteId, StringComparison.Ordinal));
     }
 
+    /// <summary>
+    ///     #149：悬浮便签 `…` 菜单键盘生命周期——打开聚焦首项「编辑」，Tab 进入「删除」，
+    ///     Esc 关闭并把焦点还给触发按钮（与筛选 / 标签选择器同一套弹层焦点生命周期）。
+    /// </summary>
+    private bool ProbeNoteOverflowMenuKeyboard(Button trigger, Popup popup, Button menuEdit)
+    {
+        popup.IsOpen = false;
+        WindowValidationInput.Pump(Dispatcher);
+        Window.GetWindow(trigger)?.Activate();
+        Keyboard.Focus(trigger);
+        WindowValidationInput.Pump(Dispatcher);
+        trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        WindowValidationInput.Pump(Dispatcher);
+        var openedWithFocusOnEdit =
+            popup.IsOpen &&
+            ReferenceEquals(Keyboard.FocusedElement, menuEdit);
+        menuEdit.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+        WindowValidationInput.Pump(Dispatcher);
+        var deleteButton = popup.Child is { } root
+            ? ValidationDescendants<Button>(root).FirstOrDefault(button =>
+                string.Equals(button.Content as string, "删除", StringComparison.Ordinal))
+            : null;
+        var tabReachesDelete =
+            deleteButton is not null &&
+            ReferenceEquals(Keyboard.FocusedElement, deleteButton);
+        var escapeHandled = deleteButton is not null &&
+            WindowValidationInput.RaisePreviewKey(deleteButton, Key.Escape);
+        WindowValidationInput.Pump(Dispatcher);
+        var closedBackToTrigger =
+            !popup.IsOpen &&
+            (trigger.IsKeyboardFocusWithin ||
+             ReferenceEquals(FocusManager.GetFocusedElement(this), trigger));
+        popup.IsOpen = false;
+        WindowValidationInput.Pump(Dispatcher);
+        return openedWithFocusOnEdit && tabReachesDelete && escapeHandled && closedBackToTrigger;
+    }
+
     private void EnsureProbeNotes(List<string> createdIds, int minimumVisible)
     {
         while (_desktopWorkspace.Snapshot.VisibleActiveNotes.Count < minimumVisible)
@@ -2174,7 +3596,7 @@ public sealed partial class FloatingWindow
         }
     }
 
-    private static Border? FindNoteCardDateStamp(Border card) =>
+    internal static Border? FindNoteCardDateStamp(Border card) =>
         ValidationDescendants<Border>(card).FirstOrDefault(border =>
             Math.Abs(border.ActualWidth - 48) <= 0.5);
 
@@ -2379,7 +3801,83 @@ internal sealed record MainWindowValidationScenarios(
     MainUiPolishScenarios UiPolish,
     SettingsDraftRetentionProbe SettingsDrafts,
     UndatedNoteEditProbe UndatedNoteEdit,
-    bool CountdownReminderModeMappingWorks);
+    bool CountdownReminderModeMappingWorks,
+    MainCountdownReadabilityScenarios CountdownReadability,
+    CountdownEditingScenarios CountdownEditing,
+    MainWindowInteractionStates InteractionStates);
+
+// #151：倒计时编辑合同探针结果（字段错误、主次按钮、输入面、选区、状态条、单选圆点、排版 token）。
+internal sealed record CountdownEditingScenarios(
+    bool FieldErrorsAtSourceWithFocus,
+    bool FieldErrorsClearOnCorrection,
+    bool SingleErrorRowNotClipped,
+    bool PreferenceErrorsBelowFields,
+    bool PreferenceErrorsClearOnCorrection,
+    bool PrimarySecondaryRolesDistinct,
+    bool InputSurfacesWhitePaper,
+    bool SelectionHighlightDistinct,
+    bool StatusBarSurfaceErrorContrast,
+    bool ReminderRadioSelectedContrast,
+    bool EditorTypographyTokenized)
+{
+    public static CountdownEditingScenarios Failed { get; } = new(
+        false, false, false, false, false, false, false, false, false, false, false);
+}
+
+// #152：主窗可操作性合同探针结果——常驻焦点环、唯一焦点描边、悬停区分、按压/禁用、
+// 帮助聚焦说明、默认缩放后紧凑命中、筛选芯片与日历翻月紧凑几何。
+internal sealed record MainWindowInteractionStates(
+    bool FocusRingsReserveSpace,
+    bool PrimaryAndPinSingleFocusStroke,
+    bool NotesTabHoverDiffersFromSelected,
+    bool LocalControlsPressAndDisabled,
+    bool HelpFocusShowsHelpText,
+    bool CompactHitTargetsMeetScaledFloor,
+    bool ChipsAndCalendarNavCompact)
+{
+    public static MainWindowInteractionStates Failed { get; } = new(
+        false, false, false, false, false, false, false);
+}
+
+// #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。
+internal sealed record MainCountdownReadabilityScenarios(
+    bool EncourageBadgeAbsent,
+    bool ExpiredCardBackgroundsMatch,
+    bool ExpiredFallbackTextsPresent,
+    bool ExpiredPrimaryUsesNumberColor,
+    bool ExpiredSecondaryUsesBodyColor,
+    bool BlocksPairCountValid,
+    bool BlocksVerticalRatioMatches,
+    bool BlocksGapMatches,
+    bool BlocksUnitOutsideAndColored,
+    bool BlocksValueBrushAndFamily,
+    bool NumericTextsMatchContract)
+{
+    public bool ExpiredRemainingFollowsContrast =>
+        ExpiredCardBackgroundsMatch &&
+        ExpiredFallbackTextsPresent &&
+        ExpiredPrimaryUsesNumberColor &&
+        ExpiredSecondaryUsesBodyColor;
+
+    public bool BlocksGeometryMatches =>
+        BlocksPairCountValid &&
+        BlocksVerticalRatioMatches &&
+        BlocksGapMatches &&
+        BlocksUnitOutsideAndColored &&
+        BlocksValueBrushAndFamily;
+
+    public static MainCountdownReadabilityScenarios Failed { get; } = new(
+        false, false, false, false, false, false, false, false, false, false, false);
+}
+
+internal sealed record MainCountdownBlocksProbeResult
+{
+    public bool PairCountValid { get; set; }
+    public bool VerticalRatioMatches { get; set; } = true;
+    public bool GapMatches { get; set; } = true;
+    public bool UnitOutsideAndColored { get; set; } = true;
+    public bool ValueBrushAndFamily { get; set; } = true;
+}
 
 internal sealed record SettingsDraftRetentionProbe(
     bool InputsRetainedOnRefresh,
@@ -2416,18 +3914,23 @@ internal sealed record FloatingBottomCommandScenarios(
     bool NoteMenuDeleteConfirms,
     bool PastelStampsRotate,
     bool CardSurfacesAlternate,
-    bool HandwrittenDecorationLands)
+    bool HandwrittenDecorationLands,
+    bool QuickAddPlaceholderMirrorsManager,
+    bool QuickAddToggleSecondaryWhenExpanded,
+    bool NoteMenuKeyboardLifecycle)
 {
     public bool QuickAddTogglePass =>
         DefaultCollapsedInNotes &&
         ToggleExpandsWithFilterTags &&
         ToggleCollapses &&
         SubmitCollapsesAfterSuccess &&
-        ExpandedQuickAddScrollable;
+        ExpandedQuickAddScrollable &&
+        QuickAddToggleSecondaryWhenExpanded;
 
     public bool OverflowMenuPass =>
         NoteMenuProvidesEdit &&
-        NoteMenuDeleteConfirms;
+        NoteMenuDeleteConfirms &&
+        NoteMenuKeyboardLifecycle;
 
     public bool PastelIndexPass =>
         PastelStampsRotate &&
@@ -2440,7 +3943,8 @@ internal sealed record FloatingBottomCommandScenarios(
         SettingsOpensManagerPreservingWorkspace &&
         OverflowMenuPass &&
         PastelIndexPass &&
-        HandwrittenDecorationLands;
+        HandwrittenDecorationLands &&
+        QuickAddPlaceholderMirrorsManager;
 }
 
 internal sealed record FloatingWorkspaceValidationScenarios(
@@ -2479,7 +3983,8 @@ internal sealed record FloatingNoteSearchValidationScenarios(
     bool NoteFilterEmptyStateDistinguished,
     bool CountdownFilterEmptyStateDistinguished,
     bool SearchButtonShowsClosedMagnifier,
-    bool SearchRefreshLeavesPlacementUnchanged)
+    bool SearchRefreshLeavesPlacementUnchanged,
+    bool ConstrainedEmptyProvidesAction)
 {
     public bool AllPassed =>
         HiddenInCountdowns &&
@@ -2501,7 +4006,8 @@ internal sealed record FloatingNoteSearchValidationScenarios(
         NoteFilterEmptyStateDistinguished &&
         CountdownFilterEmptyStateDistinguished &&
         SearchButtonShowsClosedMagnifier &&
-        SearchRefreshLeavesPlacementUnchanged;
+        SearchRefreshLeavesPlacementUnchanged &&
+        ConstrainedEmptyProvidesAction;
 }
 
 internal sealed record WindowValidationTextFit(
@@ -2527,7 +4033,37 @@ internal sealed record MainUiPolishScenarios(
     IReadOnlyList<MainCountdownRemainingMeasurement> CountdownRemainingSamples,
     CountdownIncrementalRefreshProbe CountdownIncrementalRefresh,
     bool MainNoteCompletionStyleScoped,
-    bool NoteSearchSyncsFromSharedFilter);
+    bool NoteSearchSyncsFromSharedFilter,
+    MainNoteListPolishScenarios NoteListPolish,
+    MainVisualChromeScenarios VisualChrome);
+
+/// <summary>#153：便签列表排版 / 芯片 / 空态 / 筛选标签 / 键盘与间距 token 探针结果。</summary>
+internal sealed record MainNoteListPolishScenarios(
+    bool SpacedChineseDateEverywhere,
+    bool BodyLineHeightSeparatesSummary,
+    bool RowTitleFallsToBlockTitleLevel,
+    bool TagChipSingleLineEllipsisWithFullText,
+    bool EmptyStateTextAllowsWrap,
+    bool FilterDateHasVisibleLabel,
+    bool OverflowMenuKeyboardLifecycleWorks,
+    bool CardSpacingConsumesTokens,
+    bool FilterPopupTabCyclesInsideLayer,
+    bool TagManagerPopupTabCyclesInsideLayer,
+    bool TagSelectorPopupTabCyclesInsideLayer,
+    bool OverflowMenuPopupTabCyclesInsideLayer);
+
+/// <summary>
+///     #154：视觉铬探针结果——漏斗实心可识别、图标描边统一无重复搜索镜、矢量窗铬、
+///     激活胶囊全圆角、倒计时页手写体装饰层化、方角窗铬、页签在装饰带之上。
+/// </summary>
+internal sealed record MainVisualChromeScenarios(
+    bool FilterFunnelIconSurvivesAliasedCapture,
+    bool NotesSearchDuplicateMagnifierRemoved,
+    bool MainWindowChromeButtonsUseVectorPaths,
+    bool SegmentActivePillsUseFullRoundedCorners,
+    bool CountdownHandwrittenDecoOutOfFormMeasurement,
+    bool MainWindowSquareChromeNoTransparency,
+    bool TabsRenderAboveDecorationBand);
 
 internal sealed record CountdownIncrementalRefreshProbe(
     bool IdentityPreserved,
@@ -2539,7 +4075,10 @@ internal sealed record CountdownIncrementalRefreshProbe(
     bool PrecisionChangeRebuilt,
     bool ExpiryChangeRebuilt,
     bool ExpiryBackgroundFlipped,
-    bool ExpiryRemainingTextFlipped)
+    bool ExpiryRemainingTextFlipped,
+    double ScrollOffsetBefore = 0,
+    double ScrollOffsetAfterTick = 0,
+    double ScrollableHeightBefore = 0)
 {
     public bool ExpiryVisualsFlipTogether =>
         ExpiryBackgroundFlipped && ExpiryRemainingTextFlipped;

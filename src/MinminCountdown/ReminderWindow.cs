@@ -147,6 +147,18 @@ internal sealed class ReminderCenterWindow : Window
             args.Handled = true;
             focused.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, focused));
         };
+        // #150：有条目时 Esc 不关闭提醒中心，只把焦点移到首条目的「知道了」；
+        // 「知道了」被失败态禁用时落到始终可用的「打开来源」。
+        KeyDown += (_, args) =>
+        {
+            if (args.Key != Key.Escape || _entries.Count == 0)
+            {
+                return;
+            }
+
+            args.Handled = true;
+            FocusEscapeTarget();
+        };
         Loaded += (_, _) => ApplyAutomaticPlacementIfNeeded();
         UpdateCount();
     }
@@ -264,7 +276,8 @@ internal sealed class ReminderCenterWindow : Window
             sourceIcon.SetResourceReference(Border.BackgroundProperty, "SourceNoteIconBrush");
         }
         AutomationProperties.SetAutomationId(sourceIcon, "ReminderEntrySourceIcon");
-        UiAccessibility.Name(sourceIcon, $"{sourceLabel}来源图标");
+        // #150：来源图标是纯装饰，不携带可访问名（不作为独立控件朗读）；
+        // 来源名称由整行可访问名与行内「便签 / 倒计时」标签承担。
         var source = new TextBlock
         {
             Text = sourceLabel,
@@ -814,6 +827,20 @@ internal sealed class ReminderCenterWindow : Window
         _initialFocusAssigned = true;
     }
 
+    private void FocusEscapeTarget()
+    {
+        var entry = _itemsHost.Children
+            .OfType<Border>()
+            .Select(row => _entries[(ActiveReminderOccurrenceKey)row.Tag])
+            .FirstOrDefault();
+        if (entry is null)
+        {
+            return;
+        }
+
+        Keyboard.Focus(entry.Acknowledge.IsEnabled ? entry.Acknowledge : entry.OpenSource);
+    }
+
     private static void ShowFailure(ReminderCenterEntry entry, string message)
     {
         entry.Error.Text = message;
@@ -992,26 +1019,35 @@ internal sealed class ReminderCenterWindow : Window
 
     private static FrameworkElement CreateWarningIcon()
     {
+        // #150：感叹号圆图标是矢量图形（描边竖条 + 圆点），不引入第三种字重（不使用 Bold 文本）。
         var circle = new Ellipse
         {
             Width = 13,
             Height = 13
         };
         circle.SetResourceReference(Shape.FillProperty, "WarningAccentBrush");
-        var mark = new TextBlock
+        var bar = new Path
         {
-            Text = "!",
-            FontSize = 9,
-            FontWeight = FontWeights.Bold,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            Data = Geometry.Parse("M 6.5,3.3 L 6.5,7.3"),
+            StrokeThickness = 1.8,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
         };
-        mark.SetResourceReference(TextBlock.ForegroundProperty, "MainActionTextBrush");
+        bar.SetResourceReference(Shape.StrokeProperty, "MainActionTextBrush");
+        var dot = new Ellipse
+        {
+            Width = 1.9,
+            Height = 1.9,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 0, 1.7)
+        };
+        dot.SetResourceReference(Shape.FillProperty, "MainActionTextBrush");
         return new Grid
         {
             Width = 13,
             Height = 13,
-            Children = { circle, mark }
+            Children = { circle, bar, dot }
         };
     }
 

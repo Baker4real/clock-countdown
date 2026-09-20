@@ -49,9 +49,9 @@
             BorderBrush="{DynamicResource FloatingDayBorderBrush}"
             BorderThickness="1"
             CornerRadius="24">
-      <Border.Effect>
-        <DropShadowEffect Color="#6F4A3C" BlurRadius="24" ShadowDepth="4" Opacity="0.16" />
-      </Border.Effect>
+      <!-- #154：去掉原字面色大面积投影（DropShadowEffect #6F4A3C/Blur24/Opacity0.16）。
+           深度由 1px 暖边 + raster 表达（§5 结构基因 4：不堆阴影），主行动按钮现役无投影，
+           不引入「主按钮级极轻投影」的第三种深度语言。 -->
       <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
@@ -302,6 +302,7 @@
 
             <TextBlock x:Name="FloatingIncome"
                        Margin="12,10,0,29"
+                       Typography.NumeralAlignment="Tabular"
                        Foreground="{DynamicResource FloatingMutedBrush}" />
           </StackPanel>
         </ScrollViewer>
@@ -411,12 +412,33 @@
                       HorizontalAlignment="Left"
                       Background="{DynamicResource FloatingHeaderDangerBrush}"
                       IsHitTestVisible="False" />
-              <TextBox x:Name="FloatingNoteText"
-                       MaxHeight="88"
-                       MaxLength="140"
-                       Foreground="{DynamicResource FloatingNoteInputTextBrush}"
-                       TextWrapping="Wrap"
-                       VerticalScrollBarVisibility="Auto" />
+              <Grid>
+                <TextBox x:Name="FloatingNoteText"
+                         MaxHeight="88"
+                         MaxLength="140"
+                         Foreground="{DynamicResource FloatingNoteInputTextBrush}"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" />
+                <!-- #149：快速新增正文占位文与管理窗口便签内容占位一致（DESIGN §4 占位文表）。 -->
+                <TextBlock x:Name="FloatingNoteTextPlaceholder"
+                           Margin="8,6,8,0"
+                           VerticalAlignment="Top"
+                           FontSize="12"
+                           Foreground="{DynamicResource FloatingMutedBrush}"
+                           IsHitTestVisible="False"
+                           Text="写下要记住的事情吧…">
+                  <TextBlock.Style>
+                    <Style TargetType="{x:Type TextBlock}">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding Text, ElementName=FloatingNoteText}" Value="">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+              </Grid>
               <TextBlock x:Name="FloatingNoteTextError"
                          Margin="2,4,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
@@ -482,25 +504,7 @@
                       MinHeight="38"
                       Padding="14,0"
                       Style="{DynamicResource FloatingAccentButton}"
-                      ToolTip="展开或收起快速新增便签表单">
-                <StackPanel Orientation="Horizontal">
-                  <Grid Width="16"
-                        Height="16"
-                        VerticalAlignment="Center">
-                    <Ellipse Width="16"
-                             Height="16"
-                             Fill="{DynamicResource MainActionTextBrush}" />
-                    <Path Data="M 4.6,8 L 11.4,8 M 8,4.6 L 8,11.4"
-                          Stroke="{DynamicResource PinkAccentStrongBrush}"
-                          StrokeThickness="1.6"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round" />
-                  </Grid>
-                  <TextBlock Text="添加便签"
-                             Margin="7,0,0,0"
-                             VerticalAlignment="Center" />
-                </StackPanel>
-              </Button>
+                      ToolTip="展开或收起快速新增便签表单" />
               <Button x:Name="FloatingSearchNotes"
                       Width="38"
                       MinWidth="38"
@@ -560,7 +564,8 @@
             </StackPanel>
             <Grid Grid.Row="1"
                   Margin="0,2,0,0">
-              <TextBlock x:Name="FloatingNotesDecoTextLeft"
+              <!-- #156：悬浮窗手写体装饰退出控件朗读（SilentTextBlock 无自动化 peer，§4/#156 合同）。 -->
+              <local:SilentTextBlock x:Name="FloatingNotesDecoTextLeft"
                          Text="Have a nice day!"
                          Margin="2,0,0,0"
                          HorizontalAlignment="Left"
@@ -570,7 +575,7 @@
                          Foreground="{DynamicResource DecoTextSoftBrush}"
                          IsHitTestVisible="False"
                          Focusable="False" />
-              <TextBlock x:Name="FloatingNotesDecoText"
+              <local:SilentTextBlock x:Name="FloatingNotesDecoText"
                          Text="Live a sweeter day ♡"
                          Margin="0,0,2,0"
                          HorizontalAlignment="Right"

@@ -59,6 +59,18 @@ internal sealed class DesktopWorkspace
         DeleteCountdownChange deleteCountdown => Result(
             _session.TryDeleteCountdown(deleteCountdown.Id, out var error),
             error),
+        RestoreDeletedCountdownChange restoreCountdown => Result(
+            _session.TryRestoreCountdown(
+                restoreCountdown.Record,
+                restoreCountdown.ReminderStates,
+                out var restoreCountdownError),
+            restoreCountdownError),
+        RestoreDeletedNoteChange restoreNote => Result(
+            _session.TryRestoreNote(
+                restoreNote.Record,
+                restoreNote.ReminderStates,
+                out var restoreNoteError),
+            restoreNoteError),
         SaveNoteChange saveNote => ApplySaveNote(saveNote),
         SetNoteCompletionChange completion => Result(
             _session.TrySetNoteCompletion(completion.Id, completion.Completed, out var error),
@@ -459,6 +471,56 @@ internal sealed record SaveNoteChange : DesktopWorkspaceChange
 internal sealed record SetNoteCompletionChange(string Id, bool Completed) : DesktopWorkspaceChange;
 
 internal sealed record DeleteNoteChange(string Id) : DesktopWorkspaceChange;
+
+// #155：撤销删除的恢复事务——被删记录与其规则提醒状态在同一事务原样恢复；
+// 不引入通用撤销栈，撤销载荷只保留最近一次删除（持有方为主窗口状态条）。
+internal sealed record RestoreDeletedCountdownChange(
+    CountdownRecord Record,
+    IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
+
+internal sealed record RestoreDeletedNoteChange(
+    NoteRecord Record,
+    IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
+
+// #155：最近一次删除的撤销载荷。记录与规则状态在删除前捕获；Description 为
+// 倒计时名称或便签正文，供状态条「撤销」入口的可访问名与消息文案使用。
+internal sealed record DeletedRecordUndo(
+    CountdownRecord? Countdown,
+    NoteRecord? Note,
+    IReadOnlyDictionary<string, ReminderRuleState> ReminderStates,
+    string Description)
+{
+    public string KindName => Countdown is not null ? "倒计时" : "便签";
+
+    public DesktopWorkspaceChange ToChange() => Countdown is { } countdown
+        ? new RestoreDeletedCountdownChange(countdown, ReminderStates)
+        : new RestoreDeletedNoteChange(Note!, ReminderStates);
+
+    public static DeletedRecordUndo ForCountdown(
+        CountdownRecord record,
+        IReadOnlyDictionary<string, ReminderRuleState> reminderStates) =>
+        new(record, null, reminderStates, record.Name);
+
+    public static DeletedRecordUndo ForNote(
+        NoteRecord note,
+        IReadOnlyDictionary<string, ReminderRuleState> reminderStates) =>
+        new(null, note, reminderStates, note.Text);
+
+    // 删除前从当前设置快照捕获该记录各规则已有的提醒状态；没有状态的规则跳过。
+    public static IReadOnlyDictionary<string, ReminderRuleState> CaptureReminderStates(
+        IReadOnlyDictionary<string, ReminderRuleState> states,
+        IReadOnlyList<ReminderRule> rules) =>
+        rules
+            .Select(rule => rule.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(ruleId => (RuleId: ruleId, Key: states.Keys
+                .FirstOrDefault(key => string.Equals(key, ruleId, StringComparison.OrdinalIgnoreCase))))
+            .Where(pair => pair.Key is not null)
+            .ToDictionary(
+                pair => pair.RuleId,
+                pair => states[pair.Key!] with { },
+                StringComparer.OrdinalIgnoreCase);
+}
 
 internal sealed record CreateTagChange(string Name, string? Color) : DesktopWorkspaceChange;
 

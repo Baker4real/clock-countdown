@@ -14,6 +14,8 @@ internal interface ITrayIconHost : IDisposable
 
     void InvokeRestoreForValidation();
 
+    void InvokeResetPositionForValidation();
+
     void InvokeExitForValidation();
 }
 
@@ -21,13 +23,15 @@ internal sealed class MemoryTrayIconHost : ITrayIconHost
 {
     private readonly Action _restore;
     private readonly Action _exit;
+    private readonly Action? _resetPosition;
     private bool _visible;
     private bool _disposed;
 
-    public MemoryTrayIconHost(Action restore, Action exit)
+    public MemoryTrayIconHost(Action restore, Action exit, Action? resetPosition = null)
     {
         _restore = restore;
         _exit = exit;
+        _resetPosition = resetPosition;
     }
 
     public bool IsVisible => !_disposed && _visible;
@@ -48,6 +52,8 @@ internal sealed class MemoryTrayIconHost : ITrayIconHost
 
     public void InvokeRestoreForValidation() => _restore();
 
+    public void InvokeResetPositionForValidation() => _resetPosition?.Invoke();
+
     public void InvokeExitForValidation() => _exit();
 
     public void Dispose()
@@ -62,8 +68,10 @@ internal sealed class TrayIconHost : ITrayIconHost
     private readonly Dispatcher _dispatcher;
     private readonly Action _restore;
     private readonly Action _exit;
+    private readonly Action? _resetPosition;
     private readonly Icon _icon;
     private readonly Forms.ToolStripMenuItem _restoreItem;
+    private readonly Forms.ToolStripMenuItem _resetPositionItem;
     private readonly Forms.ToolStripMenuItem _exitItem;
     private readonly Forms.ContextMenuStrip _menu;
     private readonly Forms.NotifyIcon _notifyIcon;
@@ -73,19 +81,23 @@ internal sealed class TrayIconHost : ITrayIconHost
         string iconPath,
         Dispatcher dispatcher,
         Action restore,
-        Action exit)
+        Action exit,
+        Action? resetPosition = null)
     {
         _dispatcher = dispatcher;
         _restore = restore;
         _exit = exit;
+        _resetPosition = resetPosition;
         _icon = LoadIcon(iconPath);
         _restoreItem = new Forms.ToolStripMenuItem("打开悬浮窗");
+        // #156：非拖动的窗口复位/贴边入口——悬浮窗被拖出屏幕时，托盘仍可达并把窗夹回工作区。
+        _resetPositionItem = new Forms.ToolStripMenuItem("复位窗口位置");
         _exitItem = new Forms.ToolStripMenuItem("退出");
         _menu = new Forms.ContextMenuStrip
         {
             ShowImageMargin = false
         };
-        _menu.Items.AddRange([_restoreItem, _exitItem]);
+        _menu.Items.AddRange([_restoreItem, _resetPositionItem, _exitItem]);
         _notifyIcon = new Forms.NotifyIcon
         {
             ContextMenuStrip = _menu,
@@ -94,6 +106,7 @@ internal sealed class TrayIconHost : ITrayIconHost
             Visible = false
         };
         _restoreItem.Click += (_, _) => Invoke(_restore);
+        _resetPositionItem.Click += (_, _) => Invoke(ResetPosition);
         _exitItem.Click += (_, _) => Invoke(_exit);
         _notifyIcon.MouseDoubleClick += (_, eventArgs) =>
         {
@@ -122,6 +135,8 @@ internal sealed class TrayIconHost : ITrayIconHost
 
     public void InvokeRestoreForValidation() => _restoreItem.PerformClick();
 
+    public void InvokeResetPositionForValidation() => _resetPositionItem.PerformClick();
+
     public void InvokeExitForValidation() => _exitItem.PerformClick();
 
     public void Dispose()
@@ -148,6 +163,8 @@ internal sealed class TrayIconHost : ITrayIconHost
 
         _dispatcher.Invoke(action);
     }
+
+    private void ResetPosition() => _resetPosition?.Invoke();
 
     private static Icon LoadIcon(string iconPath)
     {

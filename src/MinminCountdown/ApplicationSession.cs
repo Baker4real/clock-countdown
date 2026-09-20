@@ -835,6 +835,60 @@ internal sealed class ApplicationSession
         return TryCommit(Current with { Notes = records, ReminderStates = states }, out error);
     }
 
+    // #155：撤销删除——记录与规则提醒状态在同一事务恢复；仅当同 ID 记录不存在时执行，
+    // 已被占用的规则状态不覆盖，避免回写比删除后更新的提醒状态。
+    public bool TryRestoreCountdown(
+        CountdownRecord record,
+        IReadOnlyDictionary<string, ReminderRuleState> reminderStates,
+        out string error)
+    {
+        if (Current.Countdowns.Any(item =>
+                string.Equals(item.Id, record.Id, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "倒计时已存在，无法撤销删除。";
+            return false;
+        }
+
+        var states = MergeRestoredReminderStates(Current.ReminderStates, reminderStates);
+        return TryCommit(
+            Current with { Countdowns = Current.Countdowns.Append(record).ToArray(), ReminderStates = states },
+            out error);
+    }
+
+    public bool TryRestoreNote(
+        NoteRecord record,
+        IReadOnlyDictionary<string, ReminderRuleState> reminderStates,
+        out string error)
+    {
+        if (Current.Notes.Any(item =>
+                string.Equals(item.Id, record.Id, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "便签已存在，无法撤销删除。";
+            return false;
+        }
+
+        var states = MergeRestoredReminderStates(Current.ReminderStates, reminderStates);
+        return TryCommit(
+            Current with { Notes = Current.Notes.Append(record).ToArray(), ReminderStates = states },
+            out error);
+    }
+
+    private static IReadOnlyDictionary<string, ReminderRuleState> MergeRestoredReminderStates(
+        IReadOnlyDictionary<string, ReminderRuleState> current,
+        IReadOnlyDictionary<string, ReminderRuleState> restored)
+    {
+        var states = new Dictionary<string, ReminderRuleState>(current, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in restored)
+        {
+            if (!states.ContainsKey(pair.Key))
+            {
+                states[pair.Key] = pair.Value with { };
+            }
+        }
+
+        return states;
+    }
+
     public bool TryCreateTag(string name, string? color, out TagRecord? tag, out string error)
     {
         tag = new TagRecord(Guid.NewGuid().ToString("N"), name, color);

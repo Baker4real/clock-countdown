@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using MinminCountdown.Core;
 
@@ -8,11 +9,15 @@ namespace MinminCountdown;
 
 internal sealed class SettingsRecoveryWindow : Window
 {
-    private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFF, 0xFB, 0xF7));
-    private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x4A, 0x2D, 0x24));
-    private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x87, 0x66, 0x5A));
-    private static readonly SolidColorBrush AccentBrush = new(Color.FromRgb(0xA2, 0x44, 0x38));
-    private static readonly SolidColorBrush PrimaryButtonTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
+    // #150：静态刷是现役主题色板的副本（Canvas #FDF3EB / Ink #3B190D / Muted #82665F /
+    // MainAction #C04A37 / MainActionText #FFFDFC / PeachLine #F6DFD3），
+    // 允许在主题尚未 Apply 时渲染；探针把它们与活体主题 token 逐值核对。
+    private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFD, 0xF3, 0xEB));
+    private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x3B, 0x19, 0x0D));
+    private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x82, 0x66, 0x5F));
+    private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC0, 0x4A, 0x37));
+    private static readonly SolidColorBrush MainActionTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
+    private static readonly SolidColorBrush ShellLineBrush = new(Color.FromRgb(0xF6, 0xDF, 0xD3));
 
     private SettingsRecoveryDecision _decision = SettingsRecoveryDecision.Exit;
 
@@ -27,30 +32,29 @@ internal sealed class SettingsRecoveryWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ShowInTaskbar = true;
-        Background = CanvasBrush;
+        // #150：与提醒中心同一套无边框暖粉壳（圆角 + 1px 暖边），不掉回系统默认窗口铬。
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
         Foreground = InkBrush;
         FontFamily = new FontFamily("Microsoft YaHei UI");
 
-        var body = new StackPanel
-        {
-            Margin = new Thickness(28)
-        };
-        body.Children.Add(new TextBlock
+        var heading = new TextBlock
         {
             Text = "设置恢复",
-            FontSize = 22,
             FontWeight = FontWeights.SemiBold,
             Foreground = InkBrush
-        });
-        body.Children.Add(new TextBlock
+        };
+        heading.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowTitleFontSize");
+        var messageText = new TextBlock
         {
             Text = message,
             Margin = new Thickness(0, 14, 0, 22),
-            FontSize = 16,
             LineHeight = 25,
             TextWrapping = TextWrapping.Wrap,
             Foreground = MutedBrush
-        });
+        };
+        messageText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
 
         var commands = new StackPanel
         {
@@ -83,8 +87,16 @@ internal sealed class SettingsRecoveryWindow : Window
         };
         AutomationProperties.SetName(exit, "退出");
         commands.Children.Add(exit);
+        var body = new StackPanel
+        {
+            Margin = new Thickness(28)
+        };
+        AutomationProperties.SetAutomationId(body, "SettingsRecoveryContentRoot");
+        body.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");
+        body.Children.Add(heading);
+        body.Children.Add(messageText);
         body.Children.Add(commands);
-        Content = body;
+        Content = CreateWarmShell(body);
     }
 
     public static SettingsRecoveryDecision Choose(SettingsRecoveryPrompt prompt)
@@ -105,22 +117,33 @@ internal sealed class SettingsRecoveryWindow : Window
         window.ShowDialog();
     }
 
+    private static Border CreateWarmShell(StackPanel body) =>
+        new()
+        {
+            Child = body,
+            Background = CanvasBrush,
+            BorderBrush = ShellLineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8)
+        };
+
     private static Button CreateButton(string text, bool isPrimary)
     {
-        return new Button
+        var button = new Button
         {
             Content = text,
             MinWidth = 112,
             Height = 44,
             Margin = new Thickness(10, 0, 0, 0),
             Padding = new Thickness(16, 0, 16, 0),
-            FontSize = 15,
             FontWeight = FontWeights.SemiBold,
-            Foreground = isPrimary ? PrimaryButtonTextBrush : InkBrush,
-            Background = isPrimary ? AccentBrush : CanvasBrush,
-            BorderBrush = isPrimary ? AccentBrush : MutedBrush,
+            Foreground = isPrimary ? MainActionTextBrush : InkBrush,
+            Background = isPrimary ? MainActionBrush : CanvasBrush,
+            BorderBrush = isPrimary ? MainActionBrush : MutedBrush,
             BorderThickness = new Thickness(1)
         };
+        button.SetResourceReference(Control.FontSizeProperty, "SecondaryWindowMinorFontSize");
+        return button;
     }
 }
 
@@ -131,11 +154,12 @@ internal sealed class InstanceActivationFailureWindow : Window
     internal const string PromptMessage = "请稍后重试，或检查已在运行的倒计时程序状态。";
     internal const string DismissButtonText = "知道了";
 
-    private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFF, 0xFB, 0xF7));
-    private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x4A, 0x2D, 0x24));
-    private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x87, 0x66, 0x5A));
-    private static readonly SolidColorBrush AccentBrush = new(Color.FromRgb(0xA2, 0x44, 0x38));
-    private static readonly SolidColorBrush PrimaryButtonTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
+    private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFD, 0xF3, 0xEB));
+    private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x3B, 0x19, 0x0D));
+    private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x82, 0x66, 0x5F));
+    private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC0, 0x4A, 0x37));
+    private static readonly SolidColorBrush MainActionTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
+    private static readonly SolidColorBrush ShellLineBrush = new(Color.FromRgb(0xF6, 0xDF, 0xD3));
 
     private InstanceActivationFailureWindow()
     {
@@ -146,30 +170,29 @@ internal sealed class InstanceActivationFailureWindow : Window
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ShowInTaskbar = true;
-        Background = CanvasBrush;
+        // #150：与提醒中心同一套无边框暖粉壳（圆角 + 1px 暖边），不掉回系统默认窗口铬。
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
         Foreground = InkBrush;
         FontFamily = new FontFamily("Microsoft YaHei UI");
 
-        var body = new StackPanel
-        {
-            Margin = new Thickness(28)
-        };
-        body.Children.Add(new TextBlock
+        var heading = new TextBlock
         {
             Text = PromptHeading,
-            FontSize = 22,
             FontWeight = FontWeights.SemiBold,
             Foreground = InkBrush
-        });
-        body.Children.Add(new TextBlock
+        };
+        heading.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowTitleFontSize");
+        var messageText = new TextBlock
         {
             Text = PromptMessage,
             Margin = new Thickness(0, 14, 0, 22),
-            FontSize = 16,
             LineHeight = 25,
             TextWrapping = TextWrapping.Wrap,
             Foreground = MutedBrush
-        });
+        };
+        messageText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
 
         var commands = new StackPanel
         {
@@ -183,20 +206,35 @@ internal sealed class InstanceActivationFailureWindow : Window
             Height = 44,
             Margin = new Thickness(10, 0, 0, 0),
             Padding = new Thickness(16, 0, 16, 0),
-            FontSize = 15,
             FontWeight = FontWeights.SemiBold,
-            Foreground = PrimaryButtonTextBrush,
-            Background = AccentBrush,
-            BorderBrush = AccentBrush,
+            Foreground = MainActionTextBrush,
+            Background = MainActionBrush,
+            BorderBrush = MainActionBrush,
             BorderThickness = new Thickness(1),
             IsDefault = true,
             IsCancel = true
         };
+        dismiss.SetResourceReference(Control.FontSizeProperty, "SecondaryWindowMinorFontSize");
         dismiss.Click += (_, _) => Close();
         AutomationProperties.SetName(dismiss, DismissButtonText);
         commands.Children.Add(dismiss);
+        var body = new StackPanel
+        {
+            Margin = new Thickness(28)
+        };
+        AutomationProperties.SetAutomationId(body, "ActivationFailureContentRoot");
+        body.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");
+        body.Children.Add(heading);
+        body.Children.Add(messageText);
         body.Children.Add(commands);
-        Content = body;
+        Content = new Border
+        {
+            Child = body,
+            Background = CanvasBrush,
+            BorderBrush = ShellLineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8)
+        };
     }
 
     public static void ShowPrompt() => new InstanceActivationFailureWindow().ShowDialog();

@@ -4,7 +4,6 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Media;
 using MinminCountdown.Core;
 
@@ -27,6 +26,15 @@ public sealed partial class FloatingWindow
         ["StampBlueBrush", "StampBlueTextBrush"],
         ["StampGreenBrush", "StampGreenTextBrush"]
     ];
+
+    // #149：当前渲染批次内每张便签卡的日期印记粘性位移入口（RenderRows 重建时清空重填）。
+    private readonly List<FloatingDateStampStickyEntry> _noteDateStampStickyEntries = new();
+
+    internal sealed record FloatingDateStampStickyEntry(
+        Border Card,
+        Border StampBorder,
+        StackPanel StampContent,
+        TranslateTransform Translate);
 
     private FrameworkElement BuildCalendarIndexNoteCard(NoteRecord note, DateTimeOffset nowUtc, int rowIndex)
     {
@@ -129,7 +137,7 @@ public sealed partial class FloatingWindow
         });
 
         var overflowMenu = BuildNoteOverflowMenu(note);
-        var dateStamp = CreateCalendarIndexDateStamp(note, rowIndex);
+        var dateStamp = CreateCalendarIndexDateStamp(note, rowIndex, out var stampTranslate);
         Grid.SetColumn(body, 1);
         Grid.SetColumn(dateStamp, 2);
         Grid.SetColumn(overflowMenu, 3);
@@ -162,8 +170,66 @@ public sealed partial class FloatingWindow
             card.SetResourceReference(Border.BackgroundProperty, "NoteWhiteBrush");
         }
 
+        _noteDateStampStickyEntries.Add(
+            new FloatingDateStampStickyEntry(
+                card,
+                dateStamp,
+                (StackPanel)dateStamp.Child,
+                stampTranslate));
+
         return card;
     }
+
+    /// <summary>
+    ///     #149：长便签被视口裁切时，日期印记三行文字在「卡片可见区域」内居中（粘性），
+    ///     「月 / 日 / 周X」始终整体可见，不再只剩「日 / 周」；完整可见的卡片保持自然居中（位移 0）。
+    ///     印记 pastel 背景列仍铺满卡片高度，仅文字位移；印记继续不可命中、不可聚焦。
+    /// </summary>
+    internal void UpdateNoteDateStampStickyOffsets()
+    {
+        if (_workspace != WorkspaceKind.Notes || FloatingBodyScroller.ViewportHeight <= 0)
+        {
+            return;
+        }
+
+        foreach (var entry in _noteDateStampStickyEntries)
+        {
+            if (entry.StampBorder.ActualHeight <= 0 ||
+                entry.StampContent.ActualHeight <= 0 ||
+                entry.Card.ActualHeight <= 0)
+            {
+                continue;
+            }
+
+            var cardTop = entry.Card
+                .TransformToVisual(FloatingBodyScroller)
+                .Transform(new Point(0, 0))
+                .Y;
+            var visibleTop = Math.Max(0, -cardTop);
+            var visibleBottom = Math.Min(
+                entry.Card.ActualHeight,
+                FloatingBodyScroller.ViewportHeight - cardTop);
+            var stampHeight = entry.StampContent.ActualHeight;
+            var columnHeight = entry.StampBorder.ActualHeight;
+            var centeredTop = (columnHeight - stampHeight) / 2;
+            double stickyTop;
+            if (visibleBottom <= visibleTop)
+            {
+                // 卡片完全在视口外：回到自然居中，滚动后由 ScrollChanged 再次修正。
+                stickyTop = centeredTop;
+            }
+            else
+            {
+                var desiredTop = visibleTop +
+                    Math.Max(0, (visibleBottom - visibleTop - stampHeight) / 2);
+                stickyTop = Math.Clamp(desiredTop, 0, Math.Max(0, columnHeight - stampHeight));
+            }
+
+            entry.Translate.Y = stickyTop - centeredTop;
+        }
+    }
+
+    internal void ClearNoteDateStampStickyEntries() => _noteDateStampStickyEntries.Clear();
 
     /// <summary>
     ///     每条便签右侧的“…”菜单：提供编辑/删除，编辑复用主窗口编辑流程（悬浮窗首次获得编辑能力）。
@@ -240,28 +306,10 @@ public sealed partial class FloatingWindow
             Child = surface
         };
         NoteRowOverflowMenuBehavior.SetPopup(trigger, popup);
-        var suppressToggle = false;
-        trigger.PreviewMouseLeftButtonDown += (_, _) => suppressToggle = popup.IsOpen;
-        trigger.Click += (_, _) =>
-        {
-            if (suppressToggle)
-            {
-                suppressToggle = false;
-                popup.IsOpen = false;
-                return;
-            }
-
-            popup.IsOpen = true;
-        };
-        surface.PreviewKeyDown += (_, eventArgs) =>
-        {
-            if (eventArgs.Key == Key.Escape && popup.IsOpen)
-            {
-                popup.IsOpen = false;
-                eventArgs.Handled = true;
-                Keyboard.Focus(trigger);
-            }
-        };
+        // #149：接入与筛选/标签选择器同一套弹层焦点生命周期——打开聚焦首项（编辑）、
+        // Esc 关闭并归还触发器、层内 Tab 循环，键盘可走完「编辑 / 删除」。
+        PopupFocusLifecycle.Attach(popup, trigger, () => menuEdit);
+        trigger.Click += (_, _) => popup.IsOpen = !popup.IsOpen;
         menuEdit.Click += (_, _) => popup.IsOpen = false;
         menuEdit.Click += (_, _) => RequestNoteEdit(note);
         menuDelete.Click += (_, _) => popup.IsOpen = false;
@@ -281,11 +329,21 @@ public sealed partial class FloatingWindow
             return;
         }
 
+        // #155：删除成功后把撤销载荷交给主窗口状态条（App 接线 NoteDeleted → RegisterDeleteUndo）。
+        var snapshot = _desktopWorkspace.Snapshot;
+        var undo = DeletedRecordUndo.ForNote(
+            note,
+            DeletedRecordUndo.CaptureReminderStates(
+                snapshot.Settings.ReminderStates,
+                note.ReminderRules));
         var result = _desktopWorkspace.Apply(new DeleteNoteChange(note.Id));
         if (!result.Succeeded)
         {
             SetNoteMessage($"删除失败：{result.Error}");
+            return;
         }
+
+        NoteDeleted?.Invoke(this, undo);
     }
 
     private static void SetNoteCardError(TextBlock error, Control source, string message)
@@ -299,17 +357,22 @@ public sealed partial class FloatingWindow
         AutomationProperties.SetHelpText(source, message);
     }
 
-    private Border CreateCalendarIndexDateStamp(NoteRecord note, int rowIndex)
+    private Border CreateCalendarIndexDateStamp(
+        NoteRecord note,
+        int rowIndex,
+        out TranslateTransform stickyTranslate)
     {
         var date = CalendarIndexDate(note);
         var culture = CultureInfo.GetCultureInfo("zh-CN");
         var palette = CalendarIndexStampPalette[rowIndex % CalendarIndexStampPalette.Length];
         var stampBackground = ThemeBrush(palette[0]);
         var stampText = ThemeBrush(palette[1]);
+        stickyTranslate = new TranslateTransform();
         var stamp = new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center,
+            RenderTransform = stickyTranslate
         };
         stamp.Children.Add(CalendarIndexStampText(
             date is null ? "无日期" : $"{date.Value.Month} 月",

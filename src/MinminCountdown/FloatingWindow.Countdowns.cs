@@ -151,13 +151,15 @@ public sealed partial class FloatingWindow
         copy.Children.Add(title);
         var deadline = new TextBlock
         {
-            Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M月d日 HH:mm}",
+            // #148：截止行数字与「月」「日」之间留空格，并使用表格数字避免刷新跳动。
+            Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M 月 d 日 HH:mm}",
             Margin = new Thickness(0, 3, 0, 0),
             FontSize = 11,
             TextTrimming = TextTrimming.None,
             TextWrapping = TextWrapping.NoWrap,
             Foreground = _floatingMutedBrush
         };
+        Typography.SetNumeralAlignment(deadline, FontNumeralAlignment.Tabular);
         Grid.SetRow(deadline, 1);
         Grid.SetColumn(deadline, 0);
         Grid.SetColumnSpan(deadline, 2);
@@ -165,11 +167,13 @@ public sealed partial class FloatingWindow
 
         if (string.Equals(record.Id, WorkdayEndCountdownId, StringComparison.Ordinal))
         {
+            // #148：徽章只挂距离下班；文字用主文字色（PinkBadgeTextBrush 白字对比不足），
+            // 字号不低于 12 DIP 关键状态下限，并垂直居中于标题行。
             var badge = new Border
             {
-                Margin = new Thickness(12, 1, 0, 0),
+                Margin = new Thickness(12, 0, 0, 0),
                 Padding = new Thickness(6, 0, 6, 0),
-                VerticalAlignment = VerticalAlignment.Top,
+                VerticalAlignment = VerticalAlignment.Center,
                 Background = ThemeBrush("PinkBadgeBrush"),
                 CornerRadius = new CornerRadius(8),
                 IsHitTestVisible = false,
@@ -178,13 +182,13 @@ public sealed partial class FloatingWindow
             badge.Child = new TextBlock
             {
                 Text = EncourageBadgeText,
-                FontSize = 9,
+                FontSize = 12,
                 FontWeight = FontWeights.SemiBold,
-                LineHeight = 15,
+                LineHeight = 17,
                 LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
                 TextTrimming = TextTrimming.None,
                 TextWrapping = TextWrapping.NoWrap,
-                Foreground = ThemeBrush("PinkBadgeTextBrush")
+                Foreground = ThemeBrush("InkBrush")
             };
             UiAccessibility.Name(badge, EncourageBadgeText);
             Grid.SetRow(badge, 0);
@@ -235,8 +239,9 @@ public sealed partial class FloatingWindow
             var fallback = CountdownRemainingText(remaining, isPrimary ? 16 : 13, FontWeights.SemiBold);
             FitSingleLineText(fallback, isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth);
             fallback.Width = isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth;
+            // #148：到期剩余文字不得用强调轨色当字；主项到期回落主项数字色，次项回落主文字。
             fallback.Foreground = isPrimary
-                ? WarmPaperAccentBrush(_activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。"))
+                ? ThemeBrush("PrimaryCountdownNumberBrush")
                 : _floatingPrimaryBrush;
             return fallback;
         }

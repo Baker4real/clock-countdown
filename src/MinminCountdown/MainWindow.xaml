@@ -17,9 +17,10 @@
       <Setter Property="Control.Template">
         <Setter.Value>
           <ControlTemplate>
-            <Border Margin="-3"
+            <!-- #152：常规键盘焦点为 2px 暖边（§13.3 FocusBorderThickness），不再是 3px 第二套描边。 -->
+            <Border Margin="-2"
                     BorderBrush="{DynamicResource ActiveBrush}"
-                    BorderThickness="3"
+                    BorderThickness="2"
                     CornerRadius="8" />
           </ControlTemplate>
         </Setter.Value>
@@ -96,18 +97,19 @@
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type ToggleButton}">
                     <Grid x:Name="InteractionSurface" Background="Transparent">
+                      <!-- #154：激活胶囊短边一半全圆角——环包按钮高 48 → 24；Surface 高 48-2×2=44 → 22。 -->
                       <Border x:Name="FocusRing"
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="17" />
+                              CornerRadius="24" />
                       <Border x:Name="Surface"
                               Margin="2"
                               Padding="{TemplateBinding Padding}"
                               Background="{TemplateBinding Background}"
                               BorderBrush="Transparent"
                               BorderThickness="1"
-                              CornerRadius="15">
+                              CornerRadius="22">
                         <ContentPresenter VerticalAlignment="Center" />
                       </Border>
                     </Grid>
@@ -168,11 +170,15 @@
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
                       </Trigger>
+                      <!-- #152：按压与键盘焦点同语言（环 ActiveBrush），替代原 Opacity 0.9；补齐禁用 0.45。 -->
                       <Trigger Property="IsPressed" Value="True">
-                        <Setter TargetName="Surface" Property="Opacity" Value="0.9" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -191,31 +197,91 @@
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
+                  <!-- #152：主按钮焦点例外沿用暖粉 MainActionFocusBrush；改常驻 2px 透明环变色，
+                       悬停/按压/焦点都不再改 BorderThickness，内容不因状态位移。 -->
                   <ControlTemplate TargetType="{x:Type Button}">
-                    <Border x:Name="Surface"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="14"
-                            Padding="{TemplateBinding Padding}">
-                      <ContentPresenter HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        RecognizesAccessKey="True" />
-                    </Border>
+                    <Grid x:Name="InteractionSurface" Background="Transparent">
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="{DynamicResource FocusBorderThickness}"
+                              CornerRadius="16" />
+                      <Border x:Name="Surface"
+                              Margin="2"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="14"
+                              Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                      </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionHoverBrush}" />
                       </Trigger>
                       <Trigger Property="IsPressed" Value="True">
                         <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionPressedBrush}" />
-                        <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
-                        <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                       </Trigger>
                       <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+            <!-- #151：次级实心按钮（「保存设置」）——珊瑚语义底 + 主文字色（白字实测 2.77 不达标），
+                 每页唯一实心主行动仍是 MainPrimaryButton；本样式不是主行动角色。 -->
+            <Style x:Key="MainSecondarySolidButton" TargetType="{x:Type Button}">
+              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+              <Setter Property="Background" Value="{DynamicResource CoralActionBrush}" />
+              <Setter Property="BorderBrush" Value="{DynamicResource CoralActionBrush}" />
+              <Setter Property="BorderThickness" Value="1" />
+              <Setter Property="FontSize" Value="20" />
+              <Setter Property="Padding" Value="18,0" />
+              <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <!-- #152：次级实心按钮改常驻 2px 透明环；环与珊瑚底之间留 1px 间隙，
+                       ActiveBrush 环对间隙/编辑卡浅色实测 ≥3:1（直接贴珊瑚底仅 1.3 不达非文本门槛）。 -->
+                  <ControlTemplate TargetType="{x:Type Button}">
+                    <Grid x:Name="InteractionSurface" Background="Transparent">
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="{DynamicResource FocusBorderThickness}"
+                              CornerRadius="16" />
+                      <Border x:Name="Surface"
+                              Margin="3"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="13"
+                              Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                      </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsKeyboardFocused" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -233,18 +299,32 @@
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="Template">
                 <Setter.Value>
+                  <!-- #152：页签改常驻 2px 透明环 + 1px 间隙；选中粉底（PinkTintBrush）上
+                       ActiveBrush 环不再直接贴粉底（实测 2.90 <3:1），环对容器/间隙浅色 ≥3:1。 -->
                   <ControlTemplate TargetType="{x:Type ToggleButton}">
-                    <Border x:Name="Surface"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="14"
-                            Padding="{TemplateBinding Padding}">
-                      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid x:Name="InteractionSurface" Background="Transparent">
+                      <!-- #154：激活胶囊短边一半全圆角——环包按钮高 60 → 30；Surface 高 60-2×3=54 → 27。 -->
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="{DynamicResource FocusBorderThickness}"
+                              CornerRadius="30" />
+                      <Border x:Name="Surface"
+                              Margin="3"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="27"
+                              Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PinkTintSoftBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsChecked" Value="True">
                         <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PinkTintBrush}" />
@@ -253,8 +333,10 @@
                         <Setter Property="FontWeight" Value="SemiBold" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                        <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -267,18 +349,32 @@
               <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
               <Setter Property="Template">
                 <Setter.Value>
+                  <!-- #152：未选中「便签」页签悬停改「边换 ActiveBrush」，不复用选中实心底 PeachTintBrush；
+                       按压/焦点与键盘焦点同语言（环 ActiveBrush），补齐禁用 0.45。 -->
                   <ControlTemplate TargetType="{x:Type ToggleButton}">
-                    <Border x:Name="Surface"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="14"
-                            Padding="{TemplateBinding Padding}">
-                      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid x:Name="InteractionSurface" Background="Transparent">
+                      <!-- #154：同 MainSegmentButton——短边一半全圆角（环 30 / Surface 高 54 → 27）。 -->
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="{DynamicResource FocusBorderThickness}"
+                              CornerRadius="30" />
+                      <Border x:Name="Surface"
+                              Margin="3"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="27"
+                              Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
-                        <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PeachTintBrush}" />
+                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsChecked" Value="True">
                         <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PeachTintBrush}" />
@@ -287,8 +383,10 @@
                         <Setter Property="FontWeight" Value="SemiBold" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                        <Setter TargetName="Surface" Property="BorderThickness" Value="2" />
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -320,7 +418,7 @@
                               Height="26"
                               Background="{DynamicResource CanvasBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
-                              BorderThickness="1"
+                              BorderThickness="{DynamicResource FocusBorderThickness}"
                               CornerRadius="8"
                               VerticalAlignment="Center">
                         <Path x:Name="Tick"
@@ -346,8 +444,9 @@
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionBrush}" />
                         <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
                       </Trigger>
+                      <!-- #152：置顶焦点例外沿用暖粉 MainActionFocusBrush；边框常驻 FocusBorderThickness，
+                       焦点只换色不再从 1px 加粗，不再叠 FocusVisualStyle 第二套描边。 -->
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Box" Property="BorderThickness" Value="2" />
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                       </Trigger>
                       <Trigger Property="IsEnabled" Value="False">
@@ -365,7 +464,9 @@
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type CheckBox}">
-                    <Grid x:Name="Surface" Width="30" Height="30" Background="Transparent">
+                    <!-- #152：命中槽位 38（默认 0.652 缩放后 ≈24.8 DIP ≥ 桌面紧凑下限 24），
+                         可见勾选框保持 24 设计坐标居中；边框常驻 2px、焦点只换色。 -->
+                    <Grid x:Name="Surface" Width="38" Height="38" Background="Transparent">
                       <Border x:Name="Box"
                               Width="24"
                               Height="24"
@@ -373,7 +474,7 @@
                               VerticalAlignment="Center"
                               Background="{DynamicResource CanvasBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
-                              BorderThickness="1"
+                              BorderThickness="{DynamicResource FocusBorderThickness}"
                               CornerRadius="6">
                         <Path x:Name="Tick"
                               Width="14"
@@ -396,7 +497,6 @@
                         <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
-                        <Setter TargetName="Box" Property="BorderThickness" Value="2" />
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsEnabled" Value="False">
@@ -431,18 +531,22 @@
                    BasedOn="{StaticResource {x:Type TextBox}}">
               <Setter Property="Height" Value="56" />
               <Setter Property="Padding" Value="16,0" />
+              <!-- #151：输入面使用白纸面板色，与页面画布分开（§4 输入框底 PanelBrush）。 -->
+              <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             </Style>
             <Style x:Key="MainCompactSelectionInput"
                    TargetType="{x:Type ComboBox}"
                    BasedOn="{StaticResource {x:Type ComboBox}}">
               <Setter Property="Height" Value="56" />
               <Setter Property="Padding" Value="16,0" />
+              <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             </Style>
             <Style x:Key="MainCompactDateInput"
                    TargetType="{x:Type DatePicker}"
                    BasedOn="{StaticResource {x:Type DatePicker}}">
               <Setter Property="Height" Value="56" />
               <Setter Property="Padding" Value="16,0" />
+              <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             </Style>
             <Style x:Key="MainReminderModeRadio" TargetType="{x:Type RadioButton}">
               <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
@@ -468,10 +572,12 @@
                                    Fill="Transparent"
                                    Stroke="{DynamicResource PeachLineBrush}"
                                    StrokeThickness="2" />
+                          <!-- #151：选中圆点/描边用焦点·强调轨语义色 ActiveBrush
+                              （对编辑卡画布 3.27 ≥ 3:1 非文本门槛；IconAccentBrush 2.13 是装饰色）。 -->
                           <Ellipse x:Name="Dot"
                                    Width="10"
                                    Height="10"
-                                   Fill="{DynamicResource IconAccentBrush}"
+                                   Fill="{DynamicResource ActiveBrush}"
                                    Visibility="Collapsed" />
                         </Grid>
                         <ContentPresenter Margin="8,0,12,0"
@@ -482,10 +588,14 @@
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsChecked" Value="True">
                         <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
-                        <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource IconAccentBrush}" />
+                        <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <!-- #152：补齐按压态，与键盘焦点同语言（环 ActiveBrush）。 -->
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
@@ -515,7 +625,7 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="15" />
+                              CornerRadius="19" />
                       <Ellipse x:Name="Circle"
                                Width="26"
                                Height="26"
@@ -529,8 +639,15 @@
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Circle" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
+                      <!-- #152：帮助图标补齐按压（环 ActiveBrush）与禁用 0.45；聚焦说明见代码behind接线。 -->
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
                       <Trigger Property="IsKeyboardFocused" Value="True">
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <Trigger Property="IsEnabled" Value="False">
+                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -735,19 +852,36 @@
                           Grid.Column="4"
                           Width="57"
                           Height="58"
-                          Content="−"
                           Style="{StaticResource MainIconButton}"
                           ToolTip="最小化"
-                          shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                          shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <!-- #154：窗铬改矢量路径，与悬浮窗头部同一几何（12x12 坐标、2px 圆头描边）。 -->
+                    <Viewbox Width="18" Height="18" Margin="0,1,0,0">
+                      <Path Data="M 2,10 L 12,10"
+                            Fill="Transparent"
+                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                            StrokeThickness="2"
+                            StrokeStartLineCap="Round"
+                            StrokeEndLineCap="Round" />
+                    </Viewbox>
+                  </Button>
                   <Button x:Name="CloseButton"
                           Grid.Column="6"
                           Width="57"
                           Height="58"
-                          Content="×"
                           Foreground="{DynamicResource DangerBrush}"
                           Style="{StaticResource MainIconButton}"
                           ToolTip="关闭"
-                          shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                          shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Viewbox Width="18" Height="18" Margin="0,1,0,0">
+                      <Path Data="M 2,2 L 12,12 M 12,2 L 2,12"
+                            Fill="Transparent"
+                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                            StrokeThickness="2"
+                            StrokeStartLineCap="Round"
+                            StrokeEndLineCap="Round" />
+                    </Viewbox>
+                  </Button>
                 </Grid>
               </Grid>
 
@@ -788,14 +922,19 @@
                         Height="69"
                         Style="{StaticResource MainSecondaryButton}">
                   <StackPanel Orientation="Horizontal">
+                    <!-- #154：漏斗改实心填充（InkBrush）——1.8px 描边漏斗在现役 Aliased 确定性捕获口径下
+                         对角笔画消失、按钮只剩「筛选」两字（v22 实证）；实心字形任何栅格化下都可识别。
+                         同色描边只做边缘平滑。 -->
                     <Path Width="22"
                           Height="22"
                           Data="M 2.5,4 L 19.5,4 L 13.5,11.5 L 13.5,18 L 8.5,15.5 L 8.5,11.5 Z"
+                          Fill="{DynamicResource InkBrush}"
                           Stroke="{DynamicResource InkBrush}"
                           StrokeThickness="1.8"
                           StrokeLineJoin="Round"
                           VerticalAlignment="Center" />
                     <TextBlock Margin="10,0,0,0"
+                               x:Name="FilterButtonText"
                                Text="筛选"
                                VerticalAlignment="Center" />
                   </StackPanel>
@@ -894,27 +1033,21 @@
                           </Grid.ColumnDefinitions>
                           <TextBlock x:Name="CountdownEditorTitle"
                                      Text="新增倒计时"
-                                     FontSize="27"
+                                     FontSize="{StaticResource TypeH2FontSize}"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource InkBrush}" />
-                          <TextBlock Grid.Column="2"
-                                     Width="412"
-                                     Margin="0,9,39,0"
-                                     TextAlignment="Right"
-                                     Text="每一个期待，都值得被认真对待 ♡"
-                                     FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                                     FontSize="17"
-                                     Foreground="{DynamicResource DecoTextBrush}"
-                                     IsHitTestVisible="False" />
+                          <!-- #154：原「每一个期待…」手写体已迁出表单（CountdownWorkspace 装饰层），
+                               不再作为标题行列成员参与表单测量；用户故事 #147-55「只是情绪，不是布局成员」。 -->
                         </Grid>
-                        <Grid Grid.Row="1" Margin="0,20,0,0">
+                        <!-- #151：字段行距消费 SpacingFieldRow（10，§5 区块内字段行节奏），替代随机 20。 -->
+                        <Grid x:Name="MainCountdownNameDateRow" Grid.Row="1" Margin="0,10,0,0">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="615" />
                             <ColumnDefinition Width="19" />
                             <ColumnDefinition Width="384" />
                           </Grid.ColumnDefinitions>
                           <StackPanel Grid.Column="0">
-                            <TextBlock Text="名称" Style="{StaticResource MainCompactFieldLabel}" />
+                            <TextBlock x:Name="CountdownNameLabel" Text="名称" Style="{StaticResource MainCompactFieldLabel}" />
                             <Grid Margin="0,4,0,0">
                               <TextBox x:Name="CountdownName"
                                        Width="615"
@@ -951,9 +1084,16 @@
                                 </TextBlock.Style>
                               </TextBlock>
                             </Grid>
+                            <!-- #151：名称字段错误贴字段显示（不裁切、可换行）；间距消费 SpacingUnit。 -->
+                            <TextBlock x:Name="CountdownNameError"
+                                       Margin="0,8,0,0"
+                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
                           </StackPanel>
                           <StackPanel Grid.Column="2">
-                            <TextBlock Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
+                            <TextBlock x:Name="CountdownDateLabel" Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
                             <Grid Margin="0,4,0,0">
                               <DatePicker x:Name="CountdownDate"
                                           Width="384"
@@ -970,9 +1110,15 @@
                                     StrokeLineJoin="Round"
                                     IsHitTestVisible="False" />
                             </Grid>
+                            <TextBlock x:Name="CountdownDateError"
+                                       Margin="0,8,0,0"
+                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
                           </StackPanel>
                         </Grid>
-                        <Grid Grid.Row="2" Margin="0,20,0,0">
+                        <Grid x:Name="MainCountdownTimeTagRow" Grid.Row="2" Margin="0,10,0,0">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="20" />
@@ -980,21 +1126,21 @@
                           </Grid.ColumnDefinitions>
                           <UniformGrid x:Name="MainCountdownTimeFields" Columns="3">
                             <StackPanel>
-                              <TextBlock Text="时" Style="{StaticResource MainCompactFieldLabel}" />
+                              <TextBlock x:Name="CountdownHourLabel" Text="时" Style="{StaticResource MainCompactFieldLabel}" />
                               <ComboBox x:Name="CountdownHour"
                                         Width="195"
                                         Margin="0,4,0,0"
                                         Style="{StaticResource MainCompactSelectionInput}" />
                             </StackPanel>
                             <StackPanel>
-                              <TextBlock Text="分" Style="{StaticResource MainCompactFieldLabel}" />
+                              <TextBlock x:Name="CountdownMinuteLabel" Text="分" Style="{StaticResource MainCompactFieldLabel}" />
                               <ComboBox x:Name="CountdownMinute"
                                         Width="188"
                                         Margin="0,4,0,0"
                                         Style="{StaticResource MainCompactSelectionInput}" />
                             </StackPanel>
                             <StackPanel>
-                              <TextBlock Text="秒" Style="{StaticResource MainCompactFieldLabel}" />
+                              <TextBlock x:Name="CountdownSecondLabel" Text="秒" Style="{StaticResource MainCompactFieldLabel}" />
                               <ComboBox x:Name="CountdownSecond"
                                         Width="188"
                                         Margin="0,4,0,0"
@@ -1002,21 +1148,21 @@
                             </StackPanel>
                           </UniformGrid>
                           <StackPanel Grid.Column="2">
-                            <TextBlock Text="设置标签" Style="{StaticResource MainCompactFieldLabel}" />
+                            <TextBlock x:Name="CountdownTagsLabel" Text="设置标签" Style="{StaticResource MainCompactFieldLabel}" />
                             <local:TagSelector x:Name="CountdownTags"
                                                Width="386"
                                                Height="56"
                                                Margin="0,4,0,0" />
                           </StackPanel>
                         </Grid>
+                        <!-- #151：唯一错误行不再固定高度裁切或省略，长错误完整换行可见。 -->
                         <TextBlock x:Name="CountdownMessage"
                                    Grid.Row="3"
-                                   Margin="0,2,0,0"
-                                   MaxHeight="26"
+                                   Margin="0,8,0,0"
                                    FontSize="18"
                                    Foreground="{DynamicResource DangerBrush}"
-                                   TextTrimming="CharacterEllipsis" />
-                        <Grid Grid.Row="4" x:Name="MainCountdownActionRow">
+                                   TextWrapping="Wrap" />
+                        <Grid Grid.Row="4" x:Name="MainCountdownActionRow" Margin="0,10,0,0">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1028,12 +1174,12 @@
                             <TextBlock Text="提醒规则"
                                        VerticalAlignment="Center"
                                        Style="{StaticResource MainCompactFieldLabel}" />
-                            <Button x:Name="CountdownReminderHelp"
-                                    Width="34"
-                                    Height="34"
-                                    Margin="26,0,0,0"
-                                    Style="{StaticResource MainReminderHelpButton}"
-                                    ToolTip="按时间提醒会在倒计时截止时刻提醒一次；自定义提醒可配置多条提醒规则。" />
+                    <Button x:Name="CountdownReminderHelp"
+                            Width="38"
+                            Height="38"
+                            Margin="26,0,0,0"
+                            Style="{StaticResource MainReminderHelpButton}"
+                            ToolTip="按时间提醒会在倒计时截止时刻提醒一次；自定义提醒可配置多条提醒规则。" />
                             <RadioButton x:Name="CountdownReminderNoRadio"
                                          Width="118"
                                          Height="56"
@@ -1110,7 +1256,7 @@
                                      Margin="10,0,0,0"
                                      VerticalAlignment="Center"
                                      Text="显示设置"
-                                     FontSize="27"
+                                     FontSize="{StaticResource TypeH2FontSize}"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource InkBrush}" />
                         </StackPanel>
@@ -1126,10 +1272,10 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="140" />
                           </Grid.ColumnDefinitions>
-                          <TextBlock Grid.Column="0" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
-                          <TextBlock Grid.Column="2" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
-                          <TextBlock Grid.Column="4" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
-                          <TextBlock Grid.Column="6" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
+                          <TextBlock Grid.Column="0" x:Name="DisplayPrecisionLabel" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
+                          <TextBlock Grid.Column="2" x:Name="MonthlySalaryLabel" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
+                          <TextBlock Grid.Column="4" x:Name="WorkStartLabel" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
+                          <TextBlock Grid.Column="6" x:Name="WorkEndLabel" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
                         </Grid>
                         <Grid Grid.Row="2" x:Name="MainPreferenceInputs" Margin="0,4,0,0">
                           <Grid.ColumnDefinitions>
@@ -1147,25 +1293,47 @@
                                     Grid.Column="0"
                                     Width="210"
                                     Style="{StaticResource MainCompactSelectionInput}" />
-                          <TextBox x:Name="MonthlySalary"
-                                   Grid.Column="2"
-                                   Width="243"
-                                   Style="{StaticResource MainCompactTextInput}" />
-                          <TextBox x:Name="WorkStart"
-                                   Grid.Column="4"
-                                   Width="187"
-                                   Style="{StaticResource MainCompactTextInput}" />
-                          <TextBox x:Name="WorkEnd"
-                                   Grid.Column="6"
-                                   Width="172"
-                                   Style="{StaticResource MainCompactTextInput}" />
+                          <StackPanel Grid.Column="2">
+                            <TextBox x:Name="MonthlySalary"
+                                     Width="243"
+                                     Style="{StaticResource MainCompactTextInput}" />
+                            <!-- #151：偏好错误贴对应字段下方（不再只出现在窗口底栏）。 -->
+                            <TextBlock x:Name="MonthlySalaryError"
+                                       Margin="0,8,0,0"
+                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
+                          </StackPanel>
+                          <StackPanel Grid.Column="4">
+                            <TextBox x:Name="WorkStart"
+                                     Width="187"
+                                     Style="{StaticResource MainCompactTextInput}" />
+                            <TextBlock x:Name="WorkStartError"
+                                       Margin="0,8,0,0"
+                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
+                          </StackPanel>
+                          <StackPanel Grid.Column="6">
+                            <TextBox x:Name="WorkEnd"
+                                     Width="172"
+                                     Style="{StaticResource MainCompactTextInput}" />
+                            <TextBlock x:Name="WorkEndError"
+                                       Margin="0,8,0,0"
+                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
+                          </StackPanel>
                           <Button x:Name="SavePreferencesButton"
                                   Grid.Column="8"
                                   Width="140"
                                   Height="56"
                                   MinHeight="56"
                                   Content="保存设置"
-                                  Style="{StaticResource MainPrimaryButton}" />
+                                  Style="{StaticResource MainSecondarySolidButton}" />
                         </Grid>
                       </Grid>
                     </Border>
@@ -1195,30 +1363,49 @@
                                 Style="{StaticResource MainSecondaryButton}" />
                       </StackPanel>
                     </ScrollViewer>
-                    <TextBlock Grid.Row="5"
-                               HorizontalAlignment="Right"
-                               Margin="0,2,1,0"
-                               Width="245"
-                               TextAlignment="Right"
-                               Text="生活很忙，但别忘了可爱 ♡"
-                               FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                               FontSize="17"
-                               Foreground="{DynamicResource DecoTextBrush}"
-                               IsHitTestVisible="False" />
+                    <!-- #154：原右下角手写体「生活很忙…」已迁至 CountdownWorkspace 装饰层；
+                         本行保留为列表与页面下缘之间的结构间距，不再承载装饰文案。 -->
                   </Grid>
+                  <!-- #154：倒计时页手写体装饰落点（§4/§5 装饰层合同）——设计坐标绝对落点，
+                       IsHitTestVisible=False、不参与表单测量、不挤字段；视觉位置与迁移前一致
+                       （右上 (640,149) 右对齐宽 412；右下 (880,970) 右对齐宽 245）。 -->
+                  <!-- #156：倒计时页两处手写体装饰退出控件朗读（SilentTextBlock 无自动化 peer）；
+                       不再携带「装饰文案」可访问名，装饰信息不进朗读树（§4/#156 合同）。 -->
+                  <local:SilentTextBlock Canvas.Left="640"
+                             Canvas.Top="149"
+                             Width="412"
+                             TextAlignment="Right"
+                             Text="每一个期待，都值得被认真对待 ♡"
+                             FontFamily="{StaticResource HandwrittenDecoFontFamily}"
+                             FontSize="17"
+                             Foreground="{DynamicResource DecoTextBrush}"
+                             IsHitTestVisible="False"
+                             x:Name="CountdownDecoTextTop" />
+                  <local:SilentTextBlock Canvas.Left="880"
+                             Canvas.Top="970"
+                             Width="245"
+                             TextAlignment="Right"
+                             Text="生活很忙，但别忘了可爱 ♡"
+                             FontFamily="{StaticResource HandwrittenDecoFontFamily}"
+                             FontSize="17"
+                             Foreground="{DynamicResource DecoTextBrush}"
+                             IsHitTestVisible="False"
+                             x:Name="CountdownDecoTextBottom" />
                 </Canvas>
                 <Canvas x:Name="NotesWorkspace"
                         Width="1165"
                         Height="996"
                         Visibility="Collapsed">
                   <!-- 装饰带手写体落点（§11 便签页装饰带契约；IsHitTestVisible=False，不参与布局测量）。 -->
-                  <TextBlock Canvas.Left="742"
+                  <!-- #156：装饰带手写体退出控件朗读（SilentTextBlock，§4/#156 合同）。 -->
+                  <local:SilentTextBlock Canvas.Left="742"
                              Canvas.Top="44"
                              Text="今天也要加油呀！♡"
                              FontFamily="{StaticResource HandwrittenDecoFontFamily}"
                              FontSize="17"
                              Foreground="{DynamicResource DecoTextBrush}"
-                             IsHitTestVisible="False" />
+                             IsHitTestVisible="False"
+                             x:Name="NotesDecoText" />
                   <Grid x:Name="NotesWorkspaceBody"
                         Margin="46,134,47,0"
                         Width="1072"
@@ -1387,16 +1574,8 @@
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
                             <StackPanel Grid.Column="4" Orientation="Horizontal">
-                              <Path Width="18"
-                                    Height="18"
-                                    Data="M 8,2.5 C 11,2.5 13.5,5 13.5,8 C 13.5,9.1 13.2,10.2 12.6,11.1 L 16.5,15 L 15.1,16.4 L 11.2,12.5 C 10.3,13.1 9.2,13.5 8,13.5 C 5,13.5 2.5,11 2.5,8 C 2.5,5 5,2.5 8,2.5 Z M 8,4.5 C 6.1,4.5 4.5,6.1 4.5,8 C 4.5,9.9 6.1,11.5 8,11.5 C 9.9,11.5 11.5,9.9 11.5,8 C 11.5,6.1 9.9,4.5 8,4.5 Z"
-                                    Stroke="{DynamicResource IconAccentBrush}"
-                                    StrokeThickness="1.6"
-                                    StrokeStartLineCap="Round"
-                                    StrokeEndLineCap="Round"
-                                    Fill="Transparent"
-                                    VerticalAlignment="Center"
-                                    IsHitTestVisible="False" />
+                              <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
+                                   与悬浮窗「搜索便签」单一图标语言一致）。 -->
                               <TextBlock x:Name="NoteSearchLabel"
                                          Margin="8,0,0,0"
                                          Text="搜索便签"
@@ -1428,13 +1607,18 @@
                                        MinHeight="69"
                                        MaxLength="140"
                                        Padding="48,0,16,0" />
+                              <!-- #154：输入框内搜索镜统一控件层描边语言（§4 单色描边、MutedBrush 1.6、
+                                   圆头），与铅笔/日历字段图标同规格；不再是唯一的实心填充图标。 -->
                               <Path Width="20"
                                     Height="20"
                                     Margin="16,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Data="M 8.5,2 C 11.5,2 14,4.5 14,7.5 C 14,8.7 13.6,9.8 12.9,10.7 L 17,14.8 L 15.6,16.2 L 11.5,12.1 C 10.6,12.7 9.6,13 8.5,13 C 5.5,13 3,10.5 3,7.5 C 3,4.5 5.5,2 8.5,2 Z M 8.5,4 C 6.6,4 5,5.6 5,7.5 C 5,9.4 6.6,11 8.5,11 C 10.4,11 12,9.4 12,7.5 C 12,5.6 10.4,4 8.5,4 Z"
-                                    Fill="{DynamicResource MutedBrush}"
+                                    Data="M 13.5,8 A 5.5,5.5 0 1 0 2.5,8 A 5.5,5.5 0 1 0 13.5,8 M 12.6,12.6 L 16.5,16.5"
+                                    Stroke="{DynamicResource MutedBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeStartLineCap="Round"
+                                    StrokeEndLineCap="Round"
                                     IsHitTestVisible="False" />
                               <TextBlock Margin="48,0,0,0"
                                          Height="28"
@@ -1561,22 +1745,25 @@
                                         </Style.Triggers>
                                       </Style>
                                     </Border.Style>
-                                    <TextBlock x:Name="ActiveNotesCount"
+                                    <!-- #156：分段裸数字不再作为独立内容控件朗读（SilentTextBlock）；
+                                         数量语义由分段按钮可访问名「查看未完成便签，共 N 条」承担。 -->
+                                    <local:SilentTextBlock x:Name="ActiveNotesCount"
                                                FontSize="16"
                                                Text="0"
                                                TextAlignment="Center"
                                                Typography.NumeralAlignment="Tabular">
                                       <TextBlock.Style>
                                         <Style TargetType="{x:Type TextBlock}">
-                                          <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                          <!-- #148：徽章文字换绑正文可读色，白字对 PeachBadgeBrush 不达 4.5。 -->
+                                          <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
                                           <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsChecked, ElementName=ActiveNotesSegment}" Value="True">
-                                              <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+                                              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
                                             </DataTrigger>
                                           </Style.Triggers>
                                         </Style>
                                       </TextBlock.Style>
-                                    </TextBlock>
+                                    </local:SilentTextBlock>
                                   </Border>
                                 </Grid>
                               </ToggleButton>
@@ -1643,22 +1830,25 @@
                                         </Style.Triggers>
                                       </Style>
                                     </Border.Style>
-                                    <TextBlock x:Name="CompletedNotesCount"
+                                    <!-- #156：分段裸数字不再作为独立内容控件朗读（SilentTextBlock）；
+                                         数量语义由分段按钮可访问名「查看已完成便签，共 N 条」承担。 -->
+                                    <local:SilentTextBlock x:Name="CompletedNotesCount"
                                                FontSize="16"
                                                Text="0"
                                                TextAlignment="Center"
                                                Typography.NumeralAlignment="Tabular">
                                       <TextBlock.Style>
                                         <Style TargetType="{x:Type TextBlock}">
-                                          <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                          <!-- #148：徽章文字换绑正文可读色，白字对 PeachBadgeBrush 不达 4.5。 -->
+                                          <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
                                           <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsChecked, ElementName=CompletedNotesSegment}" Value="True">
-                                              <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
+                                              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
                                             </DataTrigger>
                                           </Style.Triggers>
                                         </Style>
                                       </TextBlock.Style>
-                                    </TextBlock>
+                                    </local:SilentTextBlock>
                                   </Border>
                                 </Grid>
                               </ToggleButton>
@@ -1684,6 +1874,7 @@
                                    FontSize="20"
                                    Foreground="{DynamicResource MutedBrush}"
                                    Text="还没有便签，先写下一件想记住的事。"
+                                   TextWrapping="Wrap"
                                    Visibility="Collapsed" />
                         <Button x:Name="ResetEmptyNotesFiltersButton"
                                 Margin="0,12,0,0"
@@ -1698,16 +1889,26 @@
                 </Canvas>
               </Grid>
 
-              <!-- 底部动作区：北京时间与状态 -->
+              <!-- 底部动作区：北京时间与状态。#151：状态栏消费状态条表面（StatusBarBrush），
+                   错误字在该表面上达信息文本对比（DangerBrush 实测 4.83 ≥ 4.5）。 -->
               <Grid x:Name="MainStatusBarZone" Grid.Row="3" Margin="40,10,45,0" VerticalAlignment="Top">
+                <Border x:Name="MainStatusBarSurface"
+                        Background="{DynamicResource StatusBarBrush}"
+                        BorderBrush="{DynamicResource PeachLineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource RadiusOverlay}"
+                        Padding="14,8">
+                <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="16" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="NowText"
                            FontSize="18"
+                           Typography.NumeralAlignment="Tabular"
                            Foreground="{DynamicResource MutedBrush}" />
                 <TextBlock x:Name="StatusText"
                            Grid.Column="1"
@@ -1719,7 +1920,17 @@
                            KeyboardNavigation.IsTabStop="True"
                            TextAlignment="Right"
                            TextTrimming="CharacterEllipsis" />
-                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                <!-- #155：最近一次删除的短时「撤销」入口；常态 Collapsed，状态条默认构图与 v22 帧一致。 -->
+                <Button x:Name="MainStatusUndoButton"
+                        Grid.Column="2"
+                        MinWidth="56"
+                        MinHeight="28"
+                        Margin="12,0,0,0"
+                        Padding="10,0"
+                        Content="撤销"
+                        Style="{DynamicResource SecondaryButton}"
+                        Visibility="Collapsed" />
+                <StackPanel Grid.Column="4" Orientation="Horizontal">
                   <Path Width="18"
                         Height="18"
                         Data="M 6.2,9 A 3.6,3.6 0 1 0 13.4,9 A 3.6,3.6 0 1 0 6.2,9 Z M 9.8,0.8 L 9.8,2.4 M 9.8,15.6 L 9.8,17.2 M 0.8,9.8 L 2.4,9.8 M 15.6,9.8 L 17.2,9.8 M 3.2,3.2 L 4.4,4.4 M 15.2,15.2 L 16.4,16.4 M 16.4,3.2 L 15.2,4.4 M 4.4,15.2 L 3.2,16.4"
@@ -1736,6 +1947,8 @@
                              Foreground="{DynamicResource MutedBrush}"
                              VerticalAlignment="Center" />
                 </StackPanel>
+                </Grid>
+                </Border>
               </Grid>
             </Grid>
 
@@ -1760,31 +1973,37 @@
                   <TextBlock Text="标签匹配" FontSize="18" FontWeight="SemiBold" />
                   <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
                     <ToggleButton x:Name="AnyTagMode" Content="任一匹配" Style="{DynamicResource FilterOptionButton}" />
-                    <ToggleButton x:Name="AllTagMode" Margin="6,0,0,0" Content="全部匹配" Style="{DynamicResource FilterOptionButton}" />
-                    <ToggleButton x:Name="UntaggedOnly" Margin="6,0,0,0" Content="无标签" Style="{DynamicResource FilterOptionButton}" />
+                    <ToggleButton x:Name="AllTagMode" Margin="8,0,0,0" Content="全部匹配" Style="{DynamicResource FilterOptionButton}" />
+                    <ToggleButton x:Name="UntaggedOnly" Margin="8,0,0,0" Content="无标签" Style="{DynamicResource FilterOptionButton}" />
                   </StackPanel>
                   <WrapPanel x:Name="FilterTagOptions" Margin="0,8,0,0" />
                   <StackPanel x:Name="CountdownFilterOptions" Margin="0,12,0,0">
                     <TextBlock Text="倒计时状态" FontWeight="SemiBold" />
                     <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
                       <ToggleButton x:Name="CountdownAllFilter" Content="全部" Style="{DynamicResource FilterOptionButton}" />
-                      <ToggleButton x:Name="CountdownActiveFilter" Margin="6,0,0,0" Content="未到期" Style="{DynamicResource FilterOptionButton}" />
-                      <ToggleButton x:Name="CountdownExpiredFilter" Margin="6,0,0,0" Content="已到期" Style="{DynamicResource FilterOptionButton}" />
+                      <ToggleButton x:Name="CountdownActiveFilter" Margin="8,0,0,0" Content="未到期" Style="{DynamicResource FilterOptionButton}" />
+                      <ToggleButton x:Name="CountdownExpiredFilter" Margin="8,0,0,0" Content="已到期" Style="{DynamicResource FilterOptionButton}" />
                     </StackPanel>
                   </StackPanel>
                   <StackPanel x:Name="NoteFilterOptions" Margin="0,12,0,0" Visibility="Collapsed">
                     <TextBlock Text="便签状态与日期" FontWeight="SemiBold" />
                     <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
                       <ToggleButton x:Name="NoteAllFilter" Content="全部" Style="{DynamicResource FilterOptionButton}" />
-                      <ToggleButton x:Name="NoteActiveFilter" Margin="6,0,0,0" Content="未完成" Style="{DynamicResource FilterOptionButton}" />
-                      <ToggleButton x:Name="NoteCompletedFilter" Margin="6,0,0,0" Content="已完成" Style="{DynamicResource FilterOptionButton}" />
-                      <ToggleButton x:Name="NoteUndatedFilter" Margin="6,0,0,0" Content="未设日期" Style="{DynamicResource FilterOptionButton}" />
+                      <ToggleButton x:Name="NoteActiveFilter" Margin="8,0,0,0" Content="未完成" Style="{DynamicResource FilterOptionButton}" />
+                      <ToggleButton x:Name="NoteCompletedFilter" Margin="8,0,0,0" Content="已完成" Style="{DynamicResource FilterOptionButton}" />
+                      <ToggleButton x:Name="NoteUndatedFilter" Margin="8,0,0,0" Content="未设日期" Style="{DynamicResource FilterOptionButton}" />
                     </StackPanel>
                     <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                      <!-- #153：筛选弹层的便签日期筛选有可见标签（字段标签 BodyBrush），不是无名空下拉。 -->
+                      <TextBlock x:Name="NoteDateFilterLabel"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,8,0"
+                                 Foreground="{DynamicResource BodyBrush}"
+                                 Text="日期" />
                       <DatePicker x:Name="NoteDateFilter" Width="230" />
                       <Button x:Name="ClearNoteDateFilter"
                               Width="76"
-                              Margin="6,0,0,0"
+                              Margin="8,0,0,0"
                               Content="清除"
                               Style="{DynamicResource SecondaryButton}" />
                     </StackPanel>

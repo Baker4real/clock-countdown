@@ -9,6 +9,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using MinminCountdown.Core;
 using WpfEllipse = System.Windows.Shapes.Ellipse;
 using WpfPath = System.Windows.Shapes.Path;
@@ -21,8 +22,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private const double CountdownRemainingLeftMargin = 16;
     private const double CountdownRemainingBaseFontSize = 20;
     private const double CountdownRemainingMinimumFontSize = 14;
+    // #148：分格单位字固定在设计坐标 15px（合同已承认的辅助下限档，常态渲染约 9.8 DIP），不随列宽缩小。
+    private const double CountdownRemainingUnitFontSize = 15;
     internal const string NoteCardReminderSummaryAutomationId = "MainNoteCardReminderSummary";
     private const double NoteCardReminderSummaryFontSize = 18.5;
+    // #153：便签正文 20px 按悬浮窗 §10「13/18」同一比例（18/13≈1.385）取整为 28 的显式行高，
+    // 多行正文与「下次提醒」摘要分开，不再挤成一块（§3 便签正文行距合同）。
+    private const double NoteCardBodyLineHeight = 28;
+    // #153：标签芯片单行不折字，集合由 WrapPanel 先折行；超长芯片按此上限省略并以 ToolTip 提供全文。
+    internal const double TagChipMaxWidth = 200;
 
     private static readonly string[] TagColors =
     {
@@ -70,6 +78,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private string? _reminderSourceCountdownId;
     private string? _reminderSourceNoteId;
     private string? _countdownRenderSignature;
+    // #155：最近一次删除的撤销载荷；只保留最近一次，不引入通用撤销栈。
+    private DeletedRecordUndo? _deleteUndo;
+    private DispatcherTimer? _deleteUndoTimer;
+
+    // #155：撤销入口的短时窗口。过期后自动隐藏，删除本身不受影响。
+    private static readonly TimeSpan DeleteUndoOfferDuration = TimeSpan.FromSeconds(10);
 
     internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
     internal long CountdownRowRebuildGenerationForValidation { get; private set; }
@@ -167,7 +181,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AutomationProperties.GetLiveSetting(NoteMessage) == AutomationLiveSetting.Polite;
 
     internal bool HasAccessibleCoreControls =>
-        FindCoreControls().All(control => !string.IsNullOrWhiteSpace(AutomationProperties.GetName(control)));
+        FindCoreControls().All(control =>
+            !string.IsNullOrWhiteSpace(AutomationProperties.GetName(control)) ||
+            // #156：可访问名允许经由标签关系（LabeledBy）从可见标签取得——此时输入不再
+            // 携带重复显式名，避免同一字段被读两遍。
+            AutomationProperties.GetLabeledBy(control) is not null);
 
     internal bool HasOnDemandPanels =>
         !FilterPopup.IsOpen &&
@@ -207,7 +225,17 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 ShowWorkspace(WorkspaceKind.Notes);
                 return true;
             case (ModifierKeys.Control, Key.F):
-                FilterPopup.IsOpen = true;
+                // #156：便签页有正文搜索，Ctrl+F 聚焦便签搜索（与悬浮窗记忆一致）；
+                // 倒计时页没有正文搜索，Ctrl+F 仍打开筛选。
+                if (_workspace == WorkspaceKind.Notes)
+                {
+                    NoteSearch.Focus();
+                }
+                else
+                {
+                    FilterPopup.IsOpen = true;
+                }
+
                 return true;
             case (ModifierKeys.Control, Key.T):
                 RenderTagManager();
@@ -803,27 +831,20 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownAllFilter.IsChecked = true;
         NoteAllFilter.IsChecked = true;
 
-        NameControl(CountdownName, "倒计时名称");
-        NameControl(CountdownDate, "倒计时截止日期");
-        NameControl(CountdownHour, "倒计时截止小时");
-        NameControl(CountdownMinute, "倒计时截止分钟");
-        NameControl(CountdownSecond, "倒计时截止秒");
+        // #156：有可见文字的字段改经标签关系（LabeledBy）指向输入——输入不再携带与可见
+        // 标签重复的显式自动化名，同一字段只被读一遍；原更丰富的语境（如「悬浮窗显示精度」
+        // 「按便签日期筛选」）降级为该输入的帮助文本。映射为自动化名/帮助文本/标签关系，
+        // 不把 Web aria 属性原样搬到 WPF。
+        WireFieldLabelRelations();
         NameControl(CountdownReminderHelp, "提醒规则说明");
         NameControl(CountdownReminderNoRadio, "提醒规则：不提醒");
         NameControl(CountdownReminderTimeRadio, "提醒规则：按时间提醒");
         NameControl(CountdownReminderCustomRadio, "提醒规则：自定义提醒");
         NameControl(SaveCountdownButton, "保存倒计时");
-        NameControl(DisplayPrecision, "悬浮窗显示精度");
-        NameControl(MonthlySalary, "月薪");
-        NameControl(WorkStart, "上班时间");
-        NameControl(WorkEnd, "下班时间");
         NameControl(SavePreferencesButton, "保存偏好");
         NameControl(MinimizeButton, "最小化窗口");
         NameControl(CloseButton, "关闭窗口");
-        NameControl(NoteText, "便签内容");
-        NameControl(NoteDate, "便签日期");
         NameControl(ManageNoteReminderRulesButton, "管理便签提醒规则");
-        NameControl(NoteSearch, "搜索便签");
         NameControl(SaveNoteButton, "保存便签");
         NameControl(ResetEmptyNotesFiltersButton, "重置便签筛选");
         NameControl(ResetEmptyCountdownFiltersButton, "重置倒计时筛选");
@@ -835,16 +856,19 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AutomationProperties.SetAutomationId(NotesTab, "NotesTab");
         AutomationProperties.SetAutomationId(FilterButton, "FilterButton");
         AutomationProperties.SetAutomationId(TagManagerButton, "TagManagerButton");
+        // #152：主按钮（SaveCountdownButton/SaveNoteButton）与置顶开关不再套 FocusVisualStyle——
+        // 它们的模板内常驻 2px 暖粉焦点环是全应用唯一焦点例外，外圈 3px（现 2px）描边属于被
+        // 禁止的第二套焦点描边；其余键盘路径控件继续用 2px 暖边 FocusVisualStyle。
         var keyboardPathControls = new FrameworkElement[]
         {
-            TopmostCheck, MinimizeButton, CloseButton,
+            MinimizeButton, CloseButton,
             CountdownTab, NotesTab, FilterButton, TagManagerButton,
             CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
             CountdownTags.PopupTrigger, CountdownReminderHelp,
             CountdownReminderNoRadio, CountdownReminderTimeRadio, CountdownReminderCustomRadio,
-            CancelCountdownEdit, SaveCountdownButton, DisplayPrecision, MonthlySalary,
+            CancelCountdownEdit, DisplayPrecision, MonthlySalary,
             WorkStart, WorkEnd, SavePreferencesButton, CountdownListRegion,
-            NoteText, NoteDate, SaveNoteButton, CancelNoteEdit,
+            NoteText, NoteDate, CancelNoteEdit,
             ManageNoteReminderRulesButton,
             NoteTags.PopupTrigger, NoteSearch, NotesListRegion, StatusText
         };
@@ -855,6 +879,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 control.FocusVisualStyle = keyboardFocusVisual;
             }
         }
+
+        ConfigureReminderHelpFocusHelpText();
 
         SetAutomationIds(
             (TopmostCheck, "TopmostCheck"),
@@ -887,9 +913,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             (NoteSearch, "NoteSearch"),
             (NotesListRegion, "NotesListRegion"),
             (StatusText, "StatusText"));
-        NameControl(NewTagInput, "新标签名称");
         NameControl(CreateTagButton, "新建标签");
-        NameControl(NoteDateFilter, "按便签日期筛选");
+        // #156：筛选「清除」的可访问名说明清除的是便签日期筛选，不是只读一个「清除」。
+        NameControl(ClearNoteDateFilter, "清除便签日期筛选");
         ThemedDatePickerBehavior.Attach(CountdownDate);
         ThemedDatePickerBehavior.Attach(NoteDate);
         ThemedDatePickerBehavior.Attach(NoteDateFilter);
@@ -900,7 +926,16 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ThemedComboBoxBehavior.Attach(NoteGroupingSelector);
         UseShortDateText(NoteDate);
         UiAccessibility.MarkLive(StatusText);
+        // #156：数量变化由一处状态区域说出完整句子——命令栏数量文字（N 个待办 / N 个倒计时）
+        // 是唯一的数量直播区；分段徽章与分段名只承载视觉与可访问名，不再各自播报。
+        UiAccessibility.MarkLive(RecordCountText);
         UiAccessibility.MarkLive(CountdownMessage);
+        // #151：字段级错误行同样以礼貌直播区播报，镜像悬浮窗快速新增行为。
+        UiAccessibility.MarkLive(CountdownNameError);
+        UiAccessibility.MarkLive(CountdownDateError);
+        UiAccessibility.MarkLive(MonthlySalaryError);
+        UiAccessibility.MarkLive(WorkStartError);
+        UiAccessibility.MarkLive(WorkEndError);
         UiAccessibility.MarkLive(NoteMessage);
         UiAccessibility.MarkLive(TagManagerMessage);
     }
@@ -936,6 +971,27 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
+    internal const string ReminderRuleHelpText =
+        "按时间提醒会在倒计时截止时刻提醒一次；自定义提醒可配置多条提醒规则。";
+
+    // #152：提醒规则帮助在键盘聚焦时显示与悬停相同的说明（ToolTip 即时打开/关闭），
+    // 并通过 AutomationProperties.HelpText 提供同一份帮助文本。
+    private void ConfigureReminderHelpFocusHelpText()
+    {
+        var helpText = CountdownReminderHelp.ToolTip as string ?? ReminderRuleHelpText;
+        var tooltip = new ToolTip
+        {
+            Content = helpText,
+            PlacementTarget = CountdownReminderHelp,
+            Placement = PlacementMode.Bottom,
+            StaysOpen = false
+        };
+        CountdownReminderHelp.ToolTip = tooltip;
+        AutomationProperties.SetHelpText(CountdownReminderHelp, helpText);
+        CountdownReminderHelp.GotKeyboardFocus += (_, _) => tooltip.IsOpen = true;
+        CountdownReminderHelp.LostKeyboardFocus += (_, _) => tooltip.IsOpen = false;
+    }
+
     private void WireEvents()
     {
         CloseButton.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -960,13 +1016,32 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
+        // #151：字段值修正后立即清除对应字段错误（镜像悬浮窗快速新增）。
+        CountdownName.TextChanged += (_, _) => ClearCountdownFieldError(CountdownNameError);
+        CountdownDate.SelectedDateChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
+        CountdownHour.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
+        CountdownMinute.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
+        CountdownSecond.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
         DisplayPrecision.SelectionChanged += (_, _) => MarkSettingsDraftDirty();
-        MonthlySalary.TextChanged += (_, _) => MarkSettingsDraftDirty();
-        WorkStart.TextChanged += (_, _) => MarkSettingsDraftDirty();
-        WorkEnd.TextChanged += (_, _) => MarkSettingsDraftDirty();
+        MonthlySalary.TextChanged += (_, _) =>
+        {
+            MarkSettingsDraftDirty();
+            ClearPreferenceFieldError(MonthlySalaryError);
+        };
+        WorkStart.TextChanged += (_, _) =>
+        {
+            MarkSettingsDraftDirty();
+            ClearPreferenceFieldError(WorkStartError);
+        };
+        WorkEnd.TextChanged += (_, _) =>
+        {
+            MarkSettingsDraftDirty();
+            ClearPreferenceFieldError(WorkEndError);
+        };
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
         ManageNoteReminderRulesButton.Click += (_, _) => OpenNoteReminderRulesEditor();
+        MainStatusUndoButton.Click += OnUndoDeleteClick;
         NoteSearch.TextChanged += (_, _) =>
         {
             if (_syncingNoteSearch)
@@ -1130,7 +1205,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                         _reminderSourceCountdownId,
                         StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-        RecordCountText.Text = $"{records.Count} 个倒计时";
+        SetRecordCountText(RecordCountText, $"{records.Count} 个倒计时");
         var signature = string.Join(
             "|",
             records.Select(record =>
@@ -1224,40 +1299,21 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var name = new TextBlock
             {
+                Uid = "CountdownRowTitleText",
                 Text = record.Name,
-                FontSize = 25,
+                // #153：列表条目标题落区块标题层级（TypeH2FontSize），去掉与 22px 区块标题几乎同级的 25px 台阶。
+                FontSize = (double)FindResource("TypeH2FontSize"),
                 FontWeight = FontWeights.SemiBold
             };
             name.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+            // #148：「超期待！」徽章只挂距离下班主项；管理窗口不渲染距离下班条目，
+            // 普通倒计时即便承担视觉主项也不得携带该徽章，此处不再构造。
             var title = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center
             };
             title.Children.Add(name);
-            if (isPrimary)
-            {
-                var badge = new Border
-                {
-                    Margin = new Thickness(12, 2, 0, 0),
-                    Padding = new Thickness(8, 1, 8, 1),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    CornerRadius = new CornerRadius(10),
-                    IsHitTestVisible = false,
-                    Focusable = false
-                };
-                badge.SetResourceReference(Border.BackgroundProperty, "PinkBadgeBrush");
-                var badgeText = new TextBlock
-                {
-                    Text = "超期待！",
-                    FontSize = 14,
-                    FontWeight = FontWeights.SemiBold,
-                    TextWrapping = TextWrapping.NoWrap
-                };
-                badgeText.SetResourceReference(TextBlock.ForegroundProperty, "PinkBadgeTextBrush");
-                badge.Child = badgeText;
-                title.Children.Add(badge);
-            }
             var remaining = new TextBlock
             {
                 Margin = new Thickness(CountdownRemainingLeftMargin, 5, 0, 0),
@@ -1289,9 +1345,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             remaining.Tag = blocksHost;
             SetCountdownRemainingText(remaining, remainingValue);
             remaining.Typography.NumeralAlignment = FontNumeralAlignment.Tabular;
+            // #148：到期剩余文字不得用删除红/强调轨色当字。
+            // 主项到期回落主项数字色，次项到期回落正文色；「已到期」文案继续显示。
             remaining.SetResourceReference(
                 TextBlock.ForegroundProperty,
-                active ? "BodyBrush" : "DangerBrush");
+                active ? "BodyBrush" : isPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush");
             var tagChips = CreateTagChips(record.TagIds);
             Grid.SetColumnSpan(title, 2);
             Grid.SetRow(tagChips, 1);
@@ -1379,12 +1437,110 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             };
             fallback.SetResourceReference(
                 TextBlock.ForegroundProperty,
-                host.IsPrimary ? "PrimaryCountdownNumberBrush" : "DangerBrush");
+                host.IsPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush");
             Typography.SetNumeralAlignment(fallback, FontNumeralAlignment.Tabular);
             host.Surface.Children.Add(fallback);
             return;
         }
 
+        // #148：主窗口分格与悬浮窗同一套竖长口径（约 2:3、单位在块外、间距约块宽三分之一），
+        // 主窗走设计坐标：主项 42x63、次项 38x57，圆角约短边 1/4；数值优先压内边距与间距，
+        // 最后才在辅助下限档之上收缩数值字号；单位字固定在下限档、不得缩小硬塞。
+        const double valueFontPrimary = 19;
+        const double valueFontSecondary = 17;
+        const double blockWidthPrimary = 42;
+        const double blockWidthSecondary = 38;
+        const double blockHeightPrimary = 63;
+        const double blockHeightSecondary = 57;
+        const double minimumValueFontSize = 15;
+        const double blockWidthReserve = 3;
+        const double unitGap = 3;
+        var valueFontSize = host.IsPrimary ? valueFontPrimary : valueFontSecondary;
+        var blockPadding = 4;
+        var pairGap = host.IsPrimary ? 14 : 13;
+
+        var valueBlocks = pairs
+            .Select(pair => new TextBlock
+            {
+                Text = pair.Value,
+                MinWidth = host.IsPrimary ? 38 : 34,
+                Padding = new Thickness(blockPadding, 0, blockPadding, 0),
+                FontFamily = new FontFamily("Bahnschrift, Microsoft YaHei UI"),
+                FontSize = valueFontSize,
+                FontWeight = FontWeights.SemiBold,
+                TextAlignment = TextAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.None
+            })
+            .ToArray();
+        foreach (var valueBlock in valueBlocks)
+        {
+            Typography.SetNumeralAlignment(valueBlock, FontNumeralAlignment.Tabular);
+        }
+
+        var unitFace = new Typeface(
+            new FontFamily("Microsoft YaHei UI"),
+            new FontStyle(),
+            FontWeights.Regular,
+            FontStretches.Normal);
+        double ValueBlockWidth(int index, double font, double padding)
+        {
+            valueBlocks[index].FontSize = font;
+            valueBlocks[index].Padding = new Thickness(padding, 0, padding, 0);
+            valueBlocks[index].Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            return valueBlocks[index].DesiredSize.Width;
+        }
+
+        // 分格几何按设计坐标计量（主窗整体在 Viewbox 内缩放），文本测量固定 1.0 pixelsPerDip。
+        double RequiredWidth(double font, double padding, double gap)
+        {
+            var total = 0d;
+            for (var index = 0; index < pairs.Count; index++)
+            {
+                var valueWidth = ValueBlockWidth(index, font, padding);
+                var unitWidth = MeasureMainText(pairs[index].Unit, unitFace, CountdownRemainingUnitFontSize);
+                var blockWidth = Math.Max(
+                    host.IsPrimary ? blockWidthPrimary : blockWidthSecondary,
+                    Math.Ceiling(valueWidth) + blockWidthReserve);
+                total += blockWidth + unitWidth + unitGap;
+                if (index < pairs.Count - 1)
+                {
+                    total += gap;
+                }
+            }
+
+            return total;
+        }
+
+        var availableWidth = CountdownRemainingColumnWidth - CountdownRemainingLeftMargin;
+        if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
+        {
+            blockPadding = 2;
+        }
+
+        if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
+        {
+            pairGap = 6;
+        }
+
+        var required = RequiredWidth(valueFontSize, blockPadding, pairGap);
+        while (required > availableWidth && valueFontSize > minimumValueFontSize)
+        {
+            var fittedFontSize = valueFontSize * (availableWidth / required);
+            var nextFontSize = Math.Max(minimumValueFontSize, Math.Floor(fittedFontSize * 4) / 4);
+            if (nextFontSize >= valueFontSize)
+            {
+                nextFontSize = Math.Max(minimumValueFontSize, valueFontSize - 0.25);
+            }
+
+            valueFontSize = nextFontSize;
+            required = RequiredWidth(valueFontSize, blockPadding, pairGap);
+        }
+
+        var blockHeight = host.IsPrimary ? blockHeightPrimary : blockHeightSecondary;
+        var blockBaseWidth = host.IsPrimary ? blockWidthPrimary : blockWidthSecondary;
+        var blockRadius = Math.Max(4, blockBaseWidth / 4);
         var values = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -1393,39 +1549,30 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         for (var index = 0; index < pairs.Count; index++)
         {
-            var pair = pairs[index];
-            var value = new TextBlock
-            {
-                Text = pair.Value,
-                MinWidth = host.IsPrimary ? 38 : 34,
-                Padding = new Thickness(4, 0, 4, 0),
-                FontFamily = new FontFamily("Bahnschrift, Microsoft YaHei UI"),
-                FontSize = host.IsPrimary ? 19 : 17,
-                FontWeight = FontWeights.SemiBold,
-                TextAlignment = TextAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.NoWrap,
-                TextTrimming = TextTrimming.None
-            };
+            var value = valueBlocks[index];
+            value.FontSize = valueFontSize;
+            value.Padding = new Thickness(blockPadding, 0, blockPadding, 0);
             value.SetResourceReference(
                 TextBlock.ForegroundProperty,
                 host.IsPrimary ? "PrimaryCountdownNumberBrush" : "InkBrush");
-            Typography.SetNumeralAlignment(value, FontNumeralAlignment.Tabular);
+            value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var block = new Border
             {
-                MinWidth = host.IsPrimary ? 42 : 38,
-                Height = host.IsPrimary ? 46 : 38,
-                CornerRadius = new CornerRadius(host.IsPrimary ? 10 : 8),
-                Child = value
+                MinWidth = Math.Max(
+                    blockBaseWidth,
+                    Math.Ceiling(value.DesiredSize.Width) + blockWidthReserve),
+                Height = blockHeight,
+                CornerRadius = new CornerRadius(blockRadius)
             };
             block.SetResourceReference(
                 Border.BackgroundProperty,
                 host.IsPrimary ? "PinkBlockBrush" : "SecondaryBlockBrush");
+            block.Child = value;
             var unit = new TextBlock
             {
-                Text = pair.Unit,
-                Margin = new Thickness(3, 0, 0, 0),
-                FontSize = 11,
+                Text = pairs[index].Unit,
+                Margin = new Thickness(unitGap, 0, 0, 0),
+                FontSize = CountdownRemainingUnitFontSize,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.None
@@ -1435,7 +1582,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = index == 0 ? new Thickness(0) : new Thickness(6, 0, 0, 0)
+                Margin = index == 0 ? new Thickness(0) : new Thickness(pairGap, 0, 0, 0)
             };
             pairPanel.Children.Add(block);
             pairPanel.Children.Add(unit);
@@ -1443,6 +1590,19 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         host.Surface.Children.Add(values);
+    }
+
+    private static double MeasureMainText(string text, Typeface typeface, double fontSize)
+    {
+        var formatted = new FormattedText(
+            text,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            fontSize,
+            Brushes.Black,
+            1);
+        return formatted.WidthIncludingTrailingWhitespace + Math.Max(0, formatted.OverhangTrailing);
     }
 
     private static IReadOnlyList<RemainingPair>? ParseMainRemainingPairs(string remaining)
@@ -1511,7 +1671,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var revealCompleted = revealNoteId is not null &&
             completed.Any(note =>
                 string.Equals(note.Id, revealNoteId, StringComparison.OrdinalIgnoreCase));
-        RecordCountText.Text = $"{active.Length} 个待办";
+        SetRecordCountText(RecordCountText, $"{active.Length} 个待办");
         AddNotesGroupedByDay(ActiveNoteRows, active, isCompleted: false, effectiveNowUtc, revealNoteId);
         AddNotesGroupedByDay(CompletedNoteRows, completed, isCompleted: true, effectiveNowUtc, revealNoteId);
         ActiveNotesCount.Text = active.Length.ToString(CultureInfo.InvariantCulture);
@@ -1668,7 +1828,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var section = new Grid
             {
                 Uid = "NoteDateTimelineSection",
-                Margin = new Thickness(0, 0, 0, 12)
+                // #153：日期章节间距消费 §13.3 SpacingBlockGap（12，§5 日期章节 12px 节奏）。
+                Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingBlockGap"))
             };
             section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
             section.ColumnDefinitions.Add(new ColumnDefinition());
@@ -1836,8 +1997,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var body = new StackPanel();
         var noteText = new TextBlock
         {
+            Uid = "NoteRowBodyText",
             Text = note.Text,
             TextWrapping = TextWrapping.Wrap,
+            // #153：正文行距足够分开正文与提醒摘要（NoteCardBodyLineHeight 注释推导）。
+            LineHeight = NoteCardBodyLineHeight,
+            LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
             TextDecorations = note.IsCompleted ? TextDecorations.Strikethrough : null
         };
         noteText.SetResourceReference(
@@ -1949,28 +2114,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Child = surface
         };
         NoteRowOverflowMenuBehavior.SetPopup(trigger, popup);
-        var suppressToggle = false;
-        trigger.PreviewMouseLeftButtonDown += (_, _) => suppressToggle = popup.IsOpen;
-        trigger.Click += (_, _) =>
-        {
-            if (suppressToggle)
-            {
-                suppressToggle = false;
-                popup.IsOpen = false;
-                return;
-            }
-
-            popup.IsOpen = true;
-        };
-        surface.PreviewKeyDown += (_, eventArgs) =>
-        {
-            if (eventArgs.Key == Key.Escape && popup.IsOpen)
-            {
-                popup.IsOpen = false;
-                eventArgs.Handled = true;
-                Keyboard.Focus(trigger);
-            }
-        };
+        // #153：管理窗便签 `…` 菜单接入与筛选 / 标签管理 / 标签选择器 / 悬浮窗 `…` 菜单同一套
+        // 弹层焦点生命周期——打开聚焦首项「编辑」、Tab 在层内循环走完「编辑 / 删除」、
+        // Esc 关闭并把焦点归还触发按钮；不再保留 ad-hoc 的二次点击抑制与 Esc 处理。
+        PopupFocusLifecycle.Attach(popup, trigger, () => menuEdit);
+        trigger.Click += (_, _) => popup.IsOpen = !popup.IsOpen;
         menuEdit.Click += (_, _) => popup.IsOpen = false;
         menuEdit.Click += OnEditNote;
         menuDelete.Click += (_, _) => popup.IsOpen = false;
@@ -2036,13 +2184,43 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void SaveCountdown()
     {
-        if (string.IsNullOrWhiteSpace(CountdownName.Text) || CountdownDate.SelectedDate is null)
+        // #151：校验按字段拆开；错误完整出现在对应字段旁并聚焦第一个无效控件；
+        // 唯一错误行不再固定高度裁切或省略（XAML 侧已去除 MaxHeight/TextTrimming）。
+        ClearCountdownFieldErrors();
+        var validations = new List<(TextBlock Error, string Message, Control Source)>();
+        if (string.IsNullOrWhiteSpace(CountdownName.Text))
         {
-            SetMessage(CountdownMessage, "请填写名称并选择截止日期。", true);
+            validations.Add((CountdownNameError, "请先填写倒计时名称。", CountdownName));
+        }
+
+        if (CountdownDate.SelectedDate is null)
+        {
+            validations.Add((CountdownDateError, "请选择截止日期。", CountdownDate));
+        }
+
+        if (validations.Count > 0)
+        {
+            foreach (var (error, message, source) in validations)
+            {
+                ShowCountdownValidationError(error, message, source);
+            }
+
+            SetMessage(CountdownMessage, validations[0].Message, true);
+            validations[0].Source.Focus();
             return;
         }
 
-        var target = GetCountdownTargetUtc()!.Value;
+        if (GetCountdownTargetUtc() is not { } target)
+        {
+            ShowCountdownValidationError(
+                CountdownDateError,
+                "请先选择完整的倒计时截止时间。",
+                CountdownDate);
+            SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
+            CountdownDate.Focus();
+            return;
+        }
+
         var result = _desktopWorkspace.Apply(new SaveCountdownChange(
             _editingCountdownId,
             CountdownName.Text,
@@ -2117,23 +2295,38 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void SavePreferences()
     {
+        // #151：偏好格式错误出现在对应字段下方并同时镜像到底栏；不再只出现在窗口底栏。
+        ClearPreferenceFieldErrors();
         if (!decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var salary) &&
             !decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out salary))
         {
+            ShowPreferenceFieldError(MonthlySalaryError, "月薪格式无效。", MonthlySalary);
             SetMessage(StatusText, "月薪格式无效。", true);
+            MonthlySalary.Focus();
             return;
         }
 
         if (salary < 0)
         {
+            ShowPreferenceFieldError(MonthlySalaryError, "月薪不能小于 0。", MonthlySalary);
             SetMessage(StatusText, "月薪不能小于 0。", true);
+            MonthlySalary.Focus();
             return;
         }
 
-        if (!TimeSpan.TryParseExact(WorkStart.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workStart) ||
-            !TimeSpan.TryParseExact(WorkEnd.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workEnd))
+        if (!TimeSpan.TryParseExact(WorkStart.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workStart))
         {
-            SetMessage(StatusText, "上下班时间请使用 HH:mm。", true);
+            ShowPreferenceFieldError(WorkStartError, "上班时间请使用 HH:mm。", WorkStart);
+            SetMessage(StatusText, "上班时间请使用 HH:mm。", true);
+            WorkStart.Focus();
+            return;
+        }
+
+        if (!TimeSpan.TryParseExact(WorkEnd.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workEnd))
+        {
+            ShowPreferenceFieldError(WorkEndError, "下班时间请使用 HH:mm。", WorkEnd);
+            SetMessage(StatusText, "下班时间请使用 HH:mm。", true);
+            WorkEnd.Focus();
             return;
         }
 
@@ -2203,17 +2396,26 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        var record = _desktopWorkspace.Snapshot.Settings.Countdowns.First(item => item.Id == id);
+        var snapshot = _desktopWorkspace.Snapshot;
+        var record = snapshot.Settings.Countdowns.First(item => item.Id == id);
         if (new ConfirmationDialog(this, "删除倒计时", $"确定删除“{record.Name}”吗？").ShowDialog() != true)
         {
             return;
         }
 
+        var undo = DeletedRecordUndo.ForCountdown(
+            record,
+            DeletedRecordUndo.CaptureReminderStates(
+                snapshot.Settings.ReminderStates,
+                record.ReminderRules));
         var result = _desktopWorkspace.Apply(new DeleteCountdownChange(id));
         if (!result.Succeeded)
         {
             SetMessage(StatusText, $"删除失败：{result.Error}", true);
+            return;
         }
+
+        RegisterDeleteUndo(undo);
     }
 
     private void OnEditNote(object sender, RoutedEventArgs eventArgs)
@@ -2253,17 +2455,109 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        var note = _desktopWorkspace.Snapshot.Settings.Notes.First(item => item.Id == id);
+        var snapshot = _desktopWorkspace.Snapshot;
+        var note = snapshot.Settings.Notes.First(item => item.Id == id);
         if (new ConfirmationDialog(this, "删除便签", $"确定删除“{note.Text}”吗？").ShowDialog() != true)
         {
             return;
         }
 
+        var undo = DeletedRecordUndo.ForNote(
+            note,
+            DeletedRecordUndo.CaptureReminderStates(
+                snapshot.Settings.ReminderStates,
+                note.ReminderRules));
         var result = _desktopWorkspace.Apply(new DeleteNoteChange(id));
         if (!result.Succeeded)
         {
             SetMessage(StatusText, $"删除失败：{result.Error}", true);
+            return;
         }
+
+        RegisterDeleteUndo(undo);
+    }
+
+    // #155：最近一次删除的短时撤销——状态条入口以 #151 状态条表面合同呈现；
+    // 主窗口与悬浮窗便签删除成功后都会经 RegisterDeleteUndo 提供同一入口。
+    internal void RegisterDeleteUndo(DeletedRecordUndo undo)
+    {
+        _deleteUndo = undo;
+        SetMessage(StatusText, $"已删除{undo.KindName}「{undo.Description}」。", false);
+        AutomationProperties.SetName(
+            MainStatusUndoButton,
+            $"撤销删除{undo.KindName}「{undo.Description}」");
+        MainStatusUndoButton.Visibility = Visibility.Visible;
+        ResetDeleteUndoTimer();
+    }
+
+    private void OnUndoDeleteClick(object sender, RoutedEventArgs eventArgs)
+    {
+        var undo = _deleteUndo;
+        if (undo is null)
+        {
+            return;
+        }
+
+        var result = _desktopWorkspace.Apply(undo.ToChange());
+        if (!result.Succeeded)
+        {
+            SetMessage(StatusText, $"撤销失败：{result.Error}", true);
+            return;
+        }
+
+        ExpireDeleteUndo();
+        SetMessage(StatusText, $"已撤销删除{undo.KindName}「{undo.Description}」。", false);
+    }
+
+    private void ResetDeleteUndoTimer()
+    {
+        _deleteUndoTimer ??= new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = DeleteUndoOfferDuration
+        };
+        _deleteUndoTimer.Stop();
+        _deleteUndoTimer.Tick -= OnDeleteUndoTimerTick;
+        _deleteUndoTimer.Tick += OnDeleteUndoTimerTick;
+        _deleteUndoTimer.Start();
+    }
+
+    private void OnDeleteUndoTimerTick(object? sender, EventArgs eventArgs)
+    {
+        ExpireDeleteUndo();
+    }
+
+    private void ExpireDeleteUndo()
+    {
+        _deleteUndoTimer?.Stop();
+        _deleteUndo = null;
+        MainStatusUndoButton.Visibility = Visibility.Collapsed;
+    }
+
+    internal DeletedRecordUndo? DeleteUndoForValidation => _deleteUndo;
+
+    internal void ExpireDeleteUndoForValidation() => ExpireDeleteUndo();
+
+    // #155：退出确认的脏状态描述——显示设置脏沿用既有 HasUnsavedSettingsEdits 语义；
+    // 编辑器脏指倒计时编辑、便签编辑与便签草稿正文，进程退出会丢弃这些未保存内容。
+    internal string? DescribeUnsavedExitWork()
+    {
+        var parts = new List<string>();
+        if (HasUnsavedSettingsEdits(_desktopWorkspace.Snapshot.Settings.Preferences))
+        {
+            parts.Add("显示设置有未保存的更改。");
+        }
+
+        if (_editingCountdownId is not null)
+        {
+            parts.Add("倒计时编辑器有未保存的更改。");
+        }
+
+        if (_editingNoteId is not null || _noteDateDirty || !string.IsNullOrEmpty(NoteText.Text))
+        {
+            parts.Add("便签编辑器有未保存的草稿。");
+        }
+
+        return parts.Count == 0 ? null : string.Join(string.Empty, parts);
     }
 
     private void OnNoteCompletionChanged(object sender, RoutedEventArgs eventArgs)
@@ -2302,6 +2596,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             CountdownEditorTitle.Text = "新增倒计时";
             SaveCountdownButton.Content = "＋ 添加倒计时";
             CancelCountdownEdit.Visibility = Visibility.Collapsed;
+            ClearCountdownFieldErrors();
             CountdownMessage.Text = string.Empty;
         }
         finally
@@ -2354,7 +2649,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             DisplayPrecision.SelectedIndex != PrecisionIndex(preferences.DisplayPrecision) ||
             !string.Equals(
                 MonthlySalary.Text,
-                preferences.MonthlySalary.ToString(CultureInfo.CurrentCulture),
+                FormatMonthlySalary(preferences.MonthlySalary),
                 StringComparison.Ordinal) ||
             !string.Equals(
                 WorkStart.Text,
@@ -2365,6 +2660,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 CountdownFormatting.FormatWorkTime(preferences.WorkEnd),
                 StringComparison.Ordinal);
     }
+
+    // #148：月薪与「今日已赚」使用同一套本地数字格式（N2，当前区域千位分隔 + 两位小数），
+    // 显示可用 NumberStyles.Number 原样解析回写。
+    private static string FormatMonthlySalary(decimal salary) =>
+        salary.ToString("N2", CultureInfo.CurrentCulture);
 
     private static int PrecisionIndex(string displayPrecision) => displayPrecision switch
     {
@@ -2387,7 +2687,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         try
         {
             DisplayPrecision.SelectedIndex = PrecisionIndex(preferences.DisplayPrecision);
-            MonthlySalary.Text = preferences.MonthlySalary.ToString(CultureInfo.CurrentCulture);
+            MonthlySalary.Text = FormatMonthlySalary(preferences.MonthlySalary);
             WorkStart.Text = CountdownFormatting.FormatWorkTime(preferences.WorkStart);
             WorkEnd.Text = CountdownFormatting.FormatWorkTime(preferences.WorkEnd);
         }
@@ -2426,6 +2726,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var targetUtc = GetCountdownTargetUtc();
         if (targetUtc is null)
         {
+            ShowCountdownValidationError(
+                CountdownDateError,
+                "请先选择完整的倒计时截止时间。",
+                CountdownDate);
             SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
             return;
         }
@@ -2467,6 +2771,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 var targetUtc = GetCountdownTargetUtc();
                 if (targetUtc is null)
                 {
+                    ShowCountdownValidationError(
+                        CountdownDateError,
+                        "请先选择完整的倒计时截止时间。",
+                        CountdownDate);
                     SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
                     SyncCountdownReminderModeFromRules();
                     return;
@@ -2604,7 +2912,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 IsChecked = snapshot.Filter.SelectedTagIds.Contains(tag.Id),
                 Tag = tag.Id,
                 Uid = tag.Id,
-                Margin = new Thickness(0, 0, 6, 6),
+                // #152：筛选标签芯片相邻间距向紧凑下限族靠拢（6 → 8，与 #143 相邻命令间距一致）。
+                Margin = new Thickness(0, 0, 8, 8),
                 Style = (Style)FindResource("TagToggleButton")
             };
             NameControl(option, $"筛选标签 {tag.Name}");
@@ -2762,7 +3071,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private void UpdateFilterSummary()
     {
         var count = _desktopWorkspace.Snapshot.AppliedFilterCount;
-        FilterButton.Content = count == 0 ? "筛选" : $"筛选 · {count}";
+        // #154：只更新筛选文字，不再整体替换 Button.Content——原实现把 XAML 里的漏斗图标+
+        // 文字 StackPanel 换成纯字符串，运行时第一次摘要刷新后漏斗即消失（v22 帧实证只剩「筛选」）。
+        FilterButtonText.Text = count == 0 ? "筛选" : $"筛选 · {count}";
         AutomationProperties.SetName(FilterButton, count == 0 ? "打开筛选" : $"打开筛选，已应用 {count} 项");
         SetMessage(StatusText, $"筛选结果：{RecordCountText.Text}", false);
     }
@@ -2787,19 +3098,25 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                      StringComparer.OrdinalIgnoreCase)))
         {
             // #136 便签卡目标图：芯片文字带 # 前缀（仅展示层，标签名与持久化不变）。
+            // #153：芯片单行不折字（NoWrap），超长以省略号收尾并经 ToolTip 提供全文；
+            // 芯片集合仍由 WrapPanel 先折行，单枚超长芯片不得把卡片撑破（父票裁决：先折行再省略）。
             var chipText = new TextBlock
             {
                 Text = hashPrefix ? $"# {tag.Name}" : tag.Name,
-                FontSize = 16
+                FontSize = 16,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis
             };
             chipText.SetResourceReference(TextBlock.ForegroundProperty, "TagChipTextBrush");
             var chip = new Border
             {
                 Uid = tag.Id,
+                MaxWidth = TagChipMaxWidth,
                 Margin = new Thickness(0, 0, 5, 0),
                 Padding = new Thickness(7, 3, 7, 3),
                 CornerRadius = new CornerRadius(10),
-                Child = chipText
+                Child = chipText,
+                ToolTip = tag.Name
             };
             var savedBackground = ParseBrush(tag.Color);
             if (savedBackground is null)
@@ -2864,8 +3181,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var card = new Border
         {
             Child = content,
-            Margin = new Thickness(0, 0, 0, 8),
-            Padding = new Thickness(14),
+            // #153：卡片内边距与卡间距消费间距 token（§13.3 SpacingCardPadding=14 / SpacingUnit=8），
+            // 不再各写字面量。
+            Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingUnit")),
+            Padding = new Thickness((double)FindResource("SpacingCardPadding")),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1)
         };
@@ -2980,6 +3299,46 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private static void NameControl(FrameworkElement control, string name) =>
         UiAccessibility.Name(control, name);
 
+    // #156：数量文字只在数值真正变化时更新，避免分钟级刷新让唯一的数量直播区反复空播。
+    private static void SetRecordCountText(TextBlock target, string text)
+    {
+        if (string.Equals(target.Text, text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        target.Text = text;
+    }
+
+    // #156：可见标签 → 输入的标签关系表（主窗全部带可见文字的字段）。输入一律不携带与
+    // 标签重复的显式自动化名；仅在标签文本比原自动化名更短时，把原语境写入帮助文本。
+    private void WireFieldLabelRelations()
+    {
+        LabelFor(CountdownNameLabel, CountdownName);
+        LabelFor(CountdownDateLabel, CountdownDate);
+        LabelFor(CountdownHourLabel, CountdownHour);
+        LabelFor(CountdownMinuteLabel, CountdownMinute);
+        LabelFor(CountdownSecondLabel, CountdownSecond);
+        LabelFor(DisplayPrecisionLabel, DisplayPrecision, "悬浮窗显示精度");
+        LabelFor(MonthlySalaryLabel, MonthlySalary);
+        LabelFor(WorkStartLabel, WorkStart);
+        LabelFor(WorkEndLabel, WorkEnd);
+        LabelFor(NoteTextLabel, NoteText);
+        LabelFor(NoteDateLabel, NoteDate);
+        LabelFor(NoteSearchLabel, NoteSearch);
+        LabelFor(NoteDateFilterLabel, NoteDateFilter, "按便签日期筛选");
+        LabelFor(NewTagInputLabel, NewTagInput);
+    }
+
+    private static void LabelFor(FrameworkElement label, FrameworkElement input, string? helpText = null)
+    {
+        AutomationProperties.SetLabeledBy(input, label);
+        if (helpText is not null)
+        {
+            AutomationProperties.SetHelpText(input, helpText);
+        }
+    }
+
     private static void UseShortDateText(DatePicker datePicker)
     {
         datePicker.ApplyTemplate();
@@ -3006,6 +3365,77 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         target.SetResourceReference(
             TextBlock.ForegroundProperty,
             isError ? "DangerBrush" : "SuccessBrush");
+    }
+
+    // #151：字段级错误反馈（镜像悬浮窗快速新增）——错误文本完整出现在字段旁、不裁切；
+    // 名称/帮助文本同步到错误行与来源控件，修正字段值后由 WireEvents 的回调清除。
+    private static void ShowCountdownValidationError(TextBlock field, string message, Control source)
+    {
+        SetFieldError(field, message);
+        AutomationProperties.SetHelpText(source, message);
+    }
+
+    private void ShowPreferenceFieldError(TextBlock field, string message, Control source)
+    {
+        SetFieldError(field, message);
+        AutomationProperties.SetHelpText(source, message);
+    }
+
+    private void ClearCountdownFieldErrors()
+    {
+        ClearCountdownFieldError(CountdownNameError);
+        ClearCountdownFieldError(CountdownDateError);
+    }
+
+    private void ClearPreferenceFieldErrors()
+    {
+        ClearPreferenceFieldError(MonthlySalaryError);
+        ClearPreferenceFieldError(WorkStartError);
+        ClearPreferenceFieldError(WorkEndError);
+    }
+
+    private void ClearCountdownFieldError(TextBlock field)
+    {
+        var previousMessage = field.Text;
+        SetFieldError(field, string.Empty);
+        foreach (var control in CountdownValidationControls())
+        {
+            if (string.Equals(
+                    AutomationProperties.GetHelpText(control),
+                    previousMessage,
+                    StringComparison.Ordinal))
+            {
+                AutomationProperties.SetHelpText(control, string.Empty);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(previousMessage) &&
+            string.Equals(CountdownMessage.Text, previousMessage, StringComparison.Ordinal))
+        {
+            CountdownMessage.Text = string.Empty;
+            AutomationProperties.SetName(CountdownMessage, string.Empty);
+        }
+    }
+
+    private void ClearPreferenceFieldError(TextBlock field) => SetFieldError(field, string.Empty);
+
+    private static void SetFieldError(TextBlock field, string message)
+    {
+        field.Text = message;
+        AutomationProperties.SetName(field, message);
+        AutomationProperties.SetHelpText(field, message);
+        field.Visibility = string.IsNullOrWhiteSpace(message)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private IEnumerable<Control> CountdownValidationControls()
+    {
+        yield return CountdownName;
+        yield return CountdownDate;
+        yield return CountdownHour;
+        yield return CountdownMinute;
+        yield return CountdownSecond;
     }
 
     private void LoadCharacterAssets(string assetRoot)

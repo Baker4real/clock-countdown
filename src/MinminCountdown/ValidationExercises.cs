@@ -271,7 +271,7 @@ internal static class ValidationExercises
             canRecover: true);
         try
         {
-            var body = window.Content as StackPanel;
+            var body = (window.Content as Border)?.Child as StackPanel;
             var commands = body?.Children
                 .OfType<StackPanel>()
                 .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
@@ -330,7 +330,7 @@ internal static class ValidationExercises
             canRecover: false);
         try
         {
-            var body = window.Content as StackPanel;
+            var body = (window.Content as Border)?.Child as StackPanel;
             var commands = body?.Children
                 .OfType<StackPanel>()
                 .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
@@ -392,7 +392,8 @@ internal static class ValidationExercises
 
     public static bool ProbeSettingsRecoverySecondaryUsesCanvas()
     {
-        var expected = Color.FromRgb(0xFF, 0xFB, 0xF7);
+        // #150：期望值是现役 CanvasBrush 的静态副本（#FDF3EB），随活体 token 同步。
+        var expected = Color.FromRgb(0xFD, 0xF3, 0xEB);
         var failure = SettingsRecoveryWindow.CreateForValidation("次级按钮暖白验证", canRecover: false);
         var recoverable = SettingsRecoveryWindow.CreateForValidation("次级按钮暖白验证", canRecover: true);
         try
@@ -418,7 +419,7 @@ internal static class ValidationExercises
             Color expected,
             bool expectExitIsDefault)
         {
-            var body = window.Content as StackPanel;
+            var body = (window.Content as Border)?.Child as StackPanel;
             var commands = body?.Children
                 .OfType<StackPanel>()
                 .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
@@ -559,9 +560,20 @@ internal static class ValidationExercises
                       ReferenceEquals(secondaryChildren[1], openSource)
                     : secondaryChildren.Length == 1 &&
                       ReferenceEquals(secondaryChildren[0], openSource);
+                // #150：第二行按钮居中且不拉伸——行宽等于子项期望宽之和，且不得吸满整张卡。
+                var secondaryExpectedWidth =
+                    (expectComplete && complete is { } completeButton
+                        ? completeButton.ActualWidth + 8
+                        : 0) +
+                    openSource.ActualWidth;
+                var secondaryNotStretched =
+                    Math.Abs(secondaryRow.ActualWidth - secondaryExpectedWidth) <= 0.5 &&
+                    secondaryRow.ActualWidth > 0 &&
+                    secondaryRow.ActualWidth < row.ActualWidth;
                 if (!primaryOrderMatches ||
                     !secondaryOrderMatches ||
                     secondaryRow.HorizontalAlignment != HorizontalAlignment.Center ||
+                    !secondaryNotStretched ||
                     ReferenceEquals(customRow.Parent, primaryRow) ||
                     ReferenceEquals(customRow.Parent, secondaryRow))
                 {
@@ -664,15 +676,33 @@ internal static class ValidationExercises
                     return false;
                 }
 
+                // #150：「待处理」徽章的感叹号是矢量图形（竖条 + 圆点），不是文本字重。
+                var badgePanel = badge.Child as StackPanel;
+                var badgeMark = badgePanel is { Children.Count: 2 } badgeIconText
+                    ? badgeIconText.Children[0] as Grid
+                    : null;
+                if (badgeMark is null ||
+                    VisualDescendants<TextBlock>(badgeMark).Any() ||
+                    !VisualDescendants<System.Windows.Shapes.Ellipse>(badgeMark).Any())
+                {
+                    return false;
+                }
+
                 var iconBlock = VisualDescendants<Border>(row).SingleOrDefault(border =>
                     string.Equals(
                         AutomationProperties.GetAutomationId(border),
                         "ReminderEntrySourceIcon",
                         StringComparison.Ordinal));
                 var expectedIconBrush = isCountdown ? pinkTintSoft : sourceNoteIcon;
+                // #150：来源图标是纯装饰，不携带可访问名（不作为独立控件朗读）；
+                // 名称留在整行可访问名上。
                 if (iconBlock is null ||
                     iconBlock.Focusable ||
-                    !ReferenceEquals(iconBlock.Background, expectedIconBrush))
+                    !ReferenceEquals(iconBlock.Background, expectedIconBrush) ||
+                    !string.IsNullOrEmpty(AutomationProperties.GetName(iconBlock)) ||
+                    !AutomationProperties.GetName(row).StartsWith(
+                        isCountdown ? "倒计时提醒：" : "便签提醒：",
+                        StringComparison.Ordinal))
                 {
                     return false;
                 }
@@ -721,6 +751,58 @@ internal static class ValidationExercises
     private static Button? FindEntryButton(DependencyObject row, string accessibleNamePrefix) =>
         VisualDescendants<Button>(row).SingleOrDefault(button =>
             AutomationProperties.GetName(button).StartsWith(accessibleNamePrefix, StringComparison.Ordinal));
+
+    // #150：提醒中心不引入第三种字重——窗口内全部文字只用 Regular/SemiBold（无 Bold），
+    // 且「待处理」徽章的感叹号是纯矢量图形而不是文本。
+    public static bool ProbeReminderCenterTypographyWeightWhitelist()
+    {
+        var key = new ActiveReminderOccurrenceKey(
+            "weight-whitelist-rule",
+            new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+        var window = new ReminderCenterWindow();
+        PrepareOffscreenValidationWindow(window);
+        window.AddEntry(new ReminderCenterItem(
+            key,
+            new NoteRecord(
+                "weight-whitelist-note",
+                "字重白名单探针便签",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        try
+        {
+            window.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            window.UpdateLayout();
+            var textBlocks = VisualDescendants<TextBlock>(window).ToArray();
+            var badge = VisualDescendants<Border>(window).SingleOrDefault(border =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(border),
+                    "ReminderEntryPendingBadge",
+                    StringComparison.Ordinal));
+            var badgePanel = badge?.Child as StackPanel;
+            var badgeMark = badgePanel is { Children.Count: 2 } badgeIconText
+                ? badgeIconText.Children[0] as Grid
+                : null;
+            return textBlocks.Length > 0 &&
+                   textBlocks.All(static text => text.FontWeight != FontWeights.Bold) &&
+                   VisualDescendants<Button>(window)
+                       .All(static button => button.FontWeight != FontWeights.Bold) &&
+                   badgeMark is not null &&
+                   !VisualDescendants<TextBlock>(badgeMark).Any() &&
+                   VisualDescendants<System.Windows.Shapes.Ellipse>(badgeMark).Any();
+        }
+        finally
+        {
+            if (!window.Dispatcher.HasShutdownStarted)
+            {
+                window.Close();
+            }
+        }
+    }
 
     private static bool ButtonHasIconAndText(Button button, string text) =>
         button.Content is StackPanel panel &&
@@ -926,6 +1008,158 @@ internal static class ValidationExercises
             floating,
             workspace,
             (stamps, _) => stamps.Length > 0 && stamps.All(StampDensityMatches));
+
+    /// <summary>
+    ///     #149：长便签滚到底时，末卡被视口裁切，日期印记「月 / 日 / 周X」三行必须整体留在
+    ///     可见区域内（可见区域内居中 / 粘性），不得只剩「日 / 周」。
+    /// </summary>
+    public static bool ProbeFloatingDateStampStickyAtScrollBottom(
+        FloatingWindow floating,
+        DesktopWorkspace workspace)
+    {
+        var restore = ResolveFloatingRestoreWorkspace(floating);
+        var createdIds = new List<string>();
+        try
+        {
+            // 长正文保证末卡高度超过列表视口（11×12=132 字 ≤ 便签 140 字上限，约 10 行）。
+            var longText = string.Concat(Enumerable.Repeat("长便签印记粘性探针正文，", 11));
+            if (!TryAddProbeNote(workspace, longText, new DateTime(2031, 4, 5), createdIds) &&
+                !TryUseExistingNote(workspace, createdIds))
+            {
+                return false;
+            }
+
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            var scroller = (ScrollViewer)floating.FindName("FloatingBodyScroller");
+            var rows = (Panel)floating.FindName("FloatingRows");
+            // 目标卡 = 本探针创建的长便签卡（日期排序无关）；把它的底边对齐视口底部，
+            // 使「长卡被视口裁切且印记仍在可见区域」场景与列表长度无关地稳定可达。
+            scroller.ScrollToBottom();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            scroller.UpdateLayout();
+            var probeNoteId = ResolveProbeNoteId(workspace, createdIds);
+            var cards = rows.Children.OfType<Border>()
+                .Where(card => Math.Abs(card.Width - 319) <= 0.5)
+                .Where(card => VisualDescendants<CheckBox>(card).Any(checkBox =>
+                    string.Equals(checkBox.Tag as string, probeNoteId, StringComparison.Ordinal)))
+                .ToArray();
+            var clippedCard = cards.FirstOrDefault();
+            var stamp = clippedCard is null ? null : FloatingWindow.FindNoteCardDateStamp(clippedCard);
+            var lines = stamp?.Child is StackPanel stampContent
+                ? stampContent.Children.OfType<TextBlock>().ToArray()
+                : Array.Empty<TextBlock>();
+            if (clippedCard is null || stamp is null || lines.Length != 3)
+            {
+                return false;
+            }
+
+            var cardBounds = clippedCard.TransformToVisual(scroller).TransformBounds(
+                new Rect(new Point(0, 0), clippedCard.RenderSize));
+            var alignDelta = scroller.ViewportHeight - cardBounds.Bottom;
+            if (Math.Abs(alignDelta) > 0.5)
+            {
+                scroller.ScrollToVerticalOffset(scroller.VerticalOffset - alignDelta);
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+                floating.UpdateLayout();
+                scroller.UpdateLayout();
+                cardBounds = clippedCard.TransformToVisual(scroller).TransformBounds(
+                    new Rect(new Point(0, 0), clippedCard.RenderSize));
+            }
+
+            var cardIsClippedByViewport =
+                cardBounds.Top < -0.5 || cardBounds.Bottom > scroller.ViewportHeight + 0.5;
+            var threeStampLinesStayVisible = lines.All(line =>
+            {
+                var bounds = line.TransformToVisual(scroller).TransformBounds(
+                    new Rect(new Point(0, 0), line.RenderSize));
+                return bounds.Top >= -0.5 && bounds.Bottom <= scroller.ViewportHeight + 0.5;
+            });
+            return cardIsClippedByViewport && threeStampLinesStayVisible;
+        }
+        finally
+        {
+            foreach (var id in createdIds)
+            {
+                workspace.Apply(new DeleteNoteChange(id));
+            }
+
+            floating.ShowWorkspace(restore);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    /// <summary>
+    ///     #149：便签列表视口底部存在稳定内边距——滚动内容以 ≥12 DIP 的尾随内边距收尾，
+    ///     滚到底时末卡与底部状态行之间保留稳定空隙，不视觉顶住底部命令区。
+    /// </summary>
+    public static bool ProbeFloatingNotesListBottomPadding(
+        FloatingWindow floating,
+        DesktopWorkspace workspace)
+    {
+        var restore = ResolveFloatingRestoreWorkspace(floating);
+        var createdIds = new List<string>();
+        try
+        {
+            if (!TryAddProbeNote(workspace, "底部内边距探针", new DateTime(2031, 4, 5), createdIds) &&
+                !TryUseExistingNote(workspace, createdIds))
+            {
+                return false;
+            }
+
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            var scroller = (ScrollViewer)floating.FindName("FloatingBodyScroller");
+            var rows = (Panel)floating.FindName("FloatingRows");
+            var cards = rows.Children.OfType<Border>()
+                .Where(card => Math.Abs(card.Width - 319) <= 0.5)
+                .ToArray();
+            // 尾随内边距与生产实现同型：普通 FrameworkElement（非 Border，不干扰基线计卡）。
+            var trailingPadding = rows.Children.OfType<FrameworkElement>().LastOrDefault();
+            var trailingPaddingMatches =
+                cards.Length > 0 &&
+                trailingPadding is FrameworkElement pad &&
+                pad.Height is double paddingHeight &&
+                paddingHeight >= 12 &&
+                !pad.IsHitTestVisible &&
+                !pad.Focusable;
+            scroller.ScrollToBottom();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            floating.UpdateLayout();
+            var lastCard = cards
+                .OrderBy(card => card.TransformToVisual(scroller).Transform(new Point(0, 0)).Y)
+                .LastOrDefault();
+            if (!trailingPaddingMatches || lastCard is null)
+            {
+                return false;
+            }
+
+            var lastCardBottom = lastCard.TransformToVisual(scroller)
+                .Transform(new Point(0, lastCard.ActualHeight)).Y;
+            var income = (TextBlock)floating.FindName("FloatingIncome");
+            var incomeTop = income.TransformToVisual(scroller).Transform(new Point(0, 0)).Y;
+            var stableGapAboveCommandArea = incomeTop - lastCardBottom >= 20;
+            return trailingPaddingMatches && stableGapAboveCommandArea;
+        }
+        finally
+        {
+            foreach (var id in createdIds)
+            {
+                workspace.Apply(new DeleteNoteChange(id));
+            }
+
+            floating.ShowWorkspace(restore);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+        }
+    }
+
+    private static WorkspaceKind ResolveFloatingRestoreWorkspace(FloatingWindow floating) =>
+        floating.FloatingCountdownsButton.IsChecked == true
+            ? WorkspaceKind.Countdowns
+            : WorkspaceKind.Notes;
 
     private static bool WithFloatingDateStamps(
         FloatingWindow floating,
@@ -1283,8 +1517,9 @@ internal static class ValidationExercises
             var bottomRight = check.InputHitTest(new Point(
                 Math.Max(1, check.ActualWidth - 1),
                 Math.Max(1, check.ActualHeight - 1)));
-            return Math.Abs(check.ActualWidth - 30) <= 1 &&
-                   Math.Abs(check.ActualHeight - 30) <= 1 &&
+            // #152：槽位 38 设计坐标，默认 0.652 Viewbox 缩放后 ≈24.8 DIP ≥ 桌面紧凑下限 24。
+            return Math.Abs(check.ActualWidth - 38) <= 1 &&
+                   Math.Abs(check.ActualHeight - 38) <= 1 &&
                    check.Tag as string == noteId &&
                    IsSelfOrVisualDescendant(check, topLeft as DependencyObject) &&
                    IsSelfOrVisualDescendant(check, bottomRight as DependencyObject);
@@ -1601,7 +1836,7 @@ internal static class ValidationExercises
         var window = InstanceActivationFailureWindow.CreateForValidation();
         try
         {
-            var body = window.Content as StackPanel;
+            var body = (window.Content as Border)?.Child as StackPanel;
             var texts = body?.Children.OfType<TextBlock>().ToArray() ?? Array.Empty<TextBlock>();
             var commands = body?.Children
                 .OfType<StackPanel>()
@@ -3287,8 +3522,22 @@ internal static class ValidationExercises
 
             var beforeFailure = session.SerializeCurrent();
             var diskBeforeFailure = File.ReadAllText(settingsPath);
-            Directory.CreateDirectory(settingsPath + ".tmp");
+            // #155：完成确认以取消为安全默认——先取消确认，便签、状态与中心条目全量保留。
+            QueueConfirmationDialogResponse(center, confirm: false);
             Must(center.RequestComplete(firstKey), "无法点击真实完成便签按钮。");
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                !session.Current.Notes.Single().IsCompleted &&
+                session.SerializeCurrent() == beforeFailure &&
+                File.ReadAllText(settingsPath) == diskBeforeFailure &&
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsCompleteEnabled(firstKey) &&
+                !center.IsFailureVisible(firstKey),
+                "完成便签确认框取消后没有全量保留便签、状态、条目与可完成状态。");
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            // #155：确认后提交完成 → 命中写入失败注入，退避重试路径不经确认。
+            QueueConfirmationDialogResponse(center, confirm: true);
+            Must(center.RequestComplete(firstKey), "无法再次点击真实完成便签按钮。");
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
                 !session.Current.Notes.Single().IsCompleted &&
@@ -3320,6 +3569,728 @@ internal static class ValidationExercises
             DeleteSettingsFiles(settingsPath);
             DeleteFileIfPresent(settingsPath + ".tmp");
         }
+    }
+
+    // #155：为真实确认框路径排队自动应答。确认框在 Click 处理器内以 ShowDialog 模态打开并阻塞，
+    // 排队的 ApplicationIdle 计时器在模态泵内轮询 owner 的 OwnedWindows，找到弹层后按需点击
+    // 确认/取消；inspect 允许探针在应答前核对弹层内容（安全默认、文案与消息正文）。
+    internal static void QueueConfirmationDialogResponse(
+        Window owner,
+        bool confirm,
+        Action<ConfirmationDialog>? inspect = null)
+    {
+        var attempts = 0;
+        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, owner.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(40)
+        };
+        timer.Tick += (_, _) =>
+        {
+            attempts++;
+            var dialog = owner.OwnedWindows
+                .OfType<ConfirmationDialog>()
+                .FirstOrDefault(window => window.IsVisible);
+            if (dialog is not null)
+            {
+                timer.Stop();
+                inspect?.Invoke(dialog);
+                (confirm ? dialog.ConfirmButton : dialog.CancelButton)
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                return;
+            }
+
+            if (attempts >= 40)
+            {
+                timer.Stop();
+            }
+        };
+        timer.Start();
+    }
+
+    // #155：「完成便签」确认框行为——先取消（安全默认，便签/条目/可完成状态原样保留），
+    // 再确认（原子完成便签、移除中心条目、写入处置 key）。「全部已读」不经本入口。
+    public static bool RunReminderCenterCompleteRequiresConfirmationBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 5, 12, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-complete-confirm-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            var rule = new AbsoluteOnceReminderRule("complete-confirm-rule", dueUtc);
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "完成确认探针便签",
+                    new DateTime(2036, 5, 12),
+                    false,
+                    Array.Empty<string>(),
+                    new ReminderRule[] { rule },
+                    out _,
+                    out _),
+                "无法建立完成确认探针便签。");
+            var key = new ActiveReminderOccurrenceKey(rule.Id, dueUtc);
+            clock.UtcNow = rule.ScheduledUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(clock.UtcNow);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            center.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.IsCompleteEnabled(key) &&
+                coordinator.ActiveEntryCount == 1,
+                "完成确认探针条目未进入可完成状态。");
+
+            QueueConfirmationDialogResponse(center, confirm: false);
+            Must(center.RequestComplete(key), "无法点击真实完成便签控件。");
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                !session.Current.Notes.Single().IsCompleted &&
+                coordinator.ActiveEntryCount == 1 &&
+                center.IsCompleteEnabled(key) &&
+                !center.IsFailureVisible(key),
+                "完成便签确认框取消后必须原样保留便签、中心条目与可完成状态。");
+
+            QueueConfirmationDialogResponse(
+                center,
+                confirm: true,
+                inspect: dialog => Must(
+                    string.Equals(
+                        dialog.ConfirmButton.Content?.ToString(),
+                        "确认完成",
+                        StringComparison.Ordinal) &&
+                    dialog.CancelButton.IsDefault &&
+                    dialog.CancelButton.IsCancel &&
+                    !dialog.ConfirmButton.IsDefault,
+                    "完成便签确认框没有以取消为安全默认或确认文案不是「确认完成」。"));
+            Must(center.RequestComplete(key), "无法再次点击真实完成便签控件。");
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                session.Current.Notes.Single().IsCompleted &&
+                coordinator.ActiveEntryCount == 0 &&
+                coordinator.ActiveWindowCount == 0 &&
+                session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey ==
+                    ReminderOccurrenceKey.Create(rule, rule.ScheduledUtc).ToString(),
+                "完成便签确认后没有原子完成便签并移除全部中心条目。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+        }
+    }
+
+    // #155：最近一次删除的短时撤销——确认框取消为安全默认；删除成功后主窗口状态条提供
+    // 「撤销」入口；撤销在同一事务恢复记录与规则提醒状态；连续删除只保留最近一次；入口短时过期。
+    public static bool RunDeleteUndoOfferBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-delete-undo-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+        var clock = new AdvancingValidationClock(nowUtc);
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        var rule = new AbsoluteOnceReminderRule("undo-absolute-rule", nowUtc.AddMinutes(30));
+        MustApply(workspace, new SaveCountdownChange(
+            null,
+            "撤销倒计时甲",
+            nowUtc.AddDays(3),
+            Array.Empty<string>(),
+            new ReminderRule[] { rule }));
+        var countdownA = workspace.Snapshot.Settings.Countdowns.Single();
+        MustApply(workspace, new SaveCountdownChange(
+            null,
+            "撤销倒计时乙",
+            nowUtc.AddDays(5),
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        var countdownB = workspace.Snapshot.Settings.Countdowns.FirstOrDefault(item =>
+            !string.Equals(item.Id, countdownA.Id, StringComparison.OrdinalIgnoreCase));
+        Must(countdownB is not null, "无法定位第二个撤销探针倒计时。");
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "撤销便签丙",
+            new DateTime(2038, 7, 8),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        var noteC = workspace.Snapshot.Settings.Notes.Single();
+        clock.UtcNow = rule.ScheduledUtc;
+        Must(
+            workspace.ConfirmReminderDisplayed(
+                ReminderSourceKind.Countdown,
+                countdownA.Id,
+                rule.Id,
+                rule.ScheduledUtc).Succeeded,
+            "无法预置倒计时提醒已送达状态。");
+        var stateBefore = workspace.Snapshot.Settings.ReminderStates[rule.Id];
+
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory)
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        try
+        {
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            // Roslyn 对该局部在跨 Must/本地函数调用后的空流状态判定偏保守，四处用 ! 断言非空。
+            Button undoButton = main.MainStatusUndoButton;
+            TextBlock statusText = main.StatusText;
+            Must(
+                undoButton is not null &&
+                statusText is not null &&
+                main.DescribeUnsavedExitWork() is null &&
+                main.DeleteUndoForValidation is null &&
+                undoButton.Visibility == Visibility.Collapsed,
+                "撤销入口初始状态必须干净且不可见。");
+
+            Button DeleteButton(string id)
+            {
+                var button = VisualDescendants<Button>(main).FirstOrDefault(candidate =>
+                    string.Equals(candidate.Content?.ToString(), "删除", StringComparison.Ordinal) &&
+                    string.Equals(candidate.Tag as string, id, StringComparison.OrdinalIgnoreCase));
+                Must(button is not null, $"无法定位记录 {id} 的行内删除按钮。");
+                return button!;
+            }
+
+            QueueConfirmationDialogResponse(main, confirm: false);
+            DeleteButton(countdownA.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdownA.Id) &&
+                main.DeleteUndoForValidation is null &&
+                undoButton!.Visibility == Visibility.Collapsed,
+                "删除倒计时确认框取消后必须原样保留记录且不出现撤销入口。");
+
+            QueueConfirmationDialogResponse(main, confirm: true);
+            DeleteButton(countdownA.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            var undo = main.DeleteUndoForValidation;
+            Must(
+                !workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdownA.Id) &&
+                !workspace.Snapshot.Settings.ReminderStates.ContainsKey(rule.Id) &&
+                undo is not null &&
+                undo.Countdown is not null &&
+                string.Equals(undo.KindName, "倒计时", StringComparison.Ordinal) &&
+                string.Equals(undo.Description, countdownA.Name, StringComparison.Ordinal) &&
+                undo.ReminderStates.ContainsKey(rule.Id) &&
+                undoButton!.Visibility == Visibility.Visible &&
+                string.Equals(
+                    AutomationProperties.GetName(undoButton),
+                    $"撤销删除倒计时「{countdownA.Name}」",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    statusText!.Text,
+                    $"已删除倒计时「{countdownA.Name}」。",
+                    StringComparison.Ordinal),
+                "删除倒计时成功后状态区没有提供带完整上下文的撤销入口，或提醒状态没有随删除清理。");
+
+            undoButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            var restoredA = workspace.Snapshot.Settings.Countdowns.FirstOrDefault(item =>
+                item.Id == countdownA.Id);
+            Must(
+                restoredA is not null &&
+                string.Equals(restoredA.Name, countdownA.Name, StringComparison.Ordinal) &&
+                workspace.Snapshot.Settings.ReminderStates.TryGetValue(rule.Id, out var restoredState) &&
+                restoredState == stateBefore &&
+                main.DeleteUndoForValidation is null &&
+                undoButton.Visibility == Visibility.Collapsed &&
+                string.Equals(
+                    statusText!.Text,
+                    $"已撤销删除倒计时「{countdownA.Name}」。",
+                    StringComparison.Ordinal),
+                "撤销删除必须恢复倒计时与其规则提醒状态并收起入口。");
+
+            QueueConfirmationDialogResponse(main, confirm: true);
+            DeleteButton(countdownB!.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            // 便签行只在便签工作区渲染（RenderVisibleWorkspace），删除/撤销便签前先切换工作区。
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            QueueConfirmationDialogResponse(main, confirm: true);
+            DeleteButton(noteC.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            var latestUndo = main.DeleteUndoForValidation;
+            Must(
+                !workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdownB.Id) &&
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteC.Id) &&
+                latestUndo is not null &&
+                latestUndo.Note is not null &&
+                string.Equals(latestUndo.KindName, "便签", StringComparison.Ordinal) &&
+                string.Equals(latestUndo.Description, noteC.Text, StringComparison.Ordinal),
+                "连续删除必须只保留最近一次删除的撤销入口。");
+
+            undoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteC.Id) &&
+                !workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdownB.Id) &&
+                main.DeleteUndoForValidation is null,
+                "撤销入口必须只恢复最近一次删除的记录。");
+
+            QueueConfirmationDialogResponse(main, confirm: true);
+            DeleteButton(noteC.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                main.DeleteUndoForValidation is not null &&
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteC.Id),
+                "删除后撤销入口应可用。");
+            main.ExpireDeleteUndoForValidation();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                main.DeleteUndoForValidation is null &&
+                undoButton!.Visibility == Visibility.Collapsed &&
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteC.Id),
+                "撤销入口过期后必须收起且不影响已删除状态。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #155：脏退出确认——显示设置脏与编辑器脏都产生退出描述；退出确认框以取消为安全默认，
+    // 确认文案为「退出」并携带完整未保存内容描述；干净状态直接放行、不弹框。
+    public static bool RunDirtyExitConfirmationBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-dirty-exit-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+        var clock = new AdvancingValidationClock(nowUtc);
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "退出前草稿探针便签",
+            new DateTime(2038, 7, 8),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        var note = workspace.Snapshot.Settings.Notes.Single();
+
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory)
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        try
+        {
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                main.DescribeUnsavedExitWork() is null,
+                "干净状态下不应产生退出确认描述。");
+
+            var noteText = (TextBox)main.FindName("NoteText");
+            noteText.Text = "未保存的便签草稿";
+            Must(
+                string.Equals(
+                    main.DescribeUnsavedExitWork(),
+                    "便签编辑器有未保存的草稿。",
+                    StringComparison.Ordinal),
+                "便签草稿未保存时退出描述缺失。");
+            noteText.Clear();
+            Must(main.DescribeUnsavedExitWork() is null, "清空便签草稿后退出描述应消失。");
+
+            // 便签行只在便签工作区渲染（RenderVisibleWorkspace），先切换工作区再驱动便签行。
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var editButton = VisualDescendants<Button>(main).FirstOrDefault(button =>
+                string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal) &&
+                string.Equals(button.Tag as string, note.Id, StringComparison.OrdinalIgnoreCase));
+            Must(editButton is not null, "无法定位便签探针行的编辑按钮。");
+            editButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                string.Equals(
+                    main.DescribeUnsavedExitWork(),
+                    "便签编辑器有未保存的草稿。",
+                    StringComparison.Ordinal),
+                "便签编辑器编辑态的退出描述缺失。");
+            var cancelNoteEdit = (Button)main.FindName("CancelNoteEdit");
+            cancelNoteEdit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(main.DescribeUnsavedExitWork() is null, "取消便签编辑后退出描述应消失。");
+
+            var monthlySalary = (TextBox)main.FindName("MonthlySalary");
+            monthlySalary.Text = "not-a-number";
+            Must(
+                string.Equals(
+                    main.DescribeUnsavedExitWork(),
+                    "显示设置有未保存的更改。",
+                    StringComparison.Ordinal),
+                "显示设置脏时退出描述缺失。");
+            monthlySalary.Text = workspace.Snapshot.Settings.Preferences.MonthlySalary
+                .ToString("N2", CultureInfo.CurrentCulture);
+            Must(main.DescribeUnsavedExitWork() is null, "显示设置恢复后退出描述应消失。");
+
+            monthlySalary.Text = "not-a-number";
+            noteText.Text = "未保存的便签草稿";
+            var combined = main.DescribeUnsavedExitWork();
+            Must(
+                combined is not null &&
+                combined.Contains("显示设置", StringComparison.Ordinal) &&
+                combined.Contains("便签编辑器", StringComparison.Ordinal),
+                "多来源未保存内容的退出描述不完整。");
+
+            var dialogInspected = false;
+            QueueConfirmationDialogResponse(
+                main,
+                confirm: false,
+                inspect: dialog =>
+                {
+                    dialogInspected =
+                        dialog.CancelButton.IsDefault &&
+                        dialog.CancelButton.IsCancel &&
+                        !dialog.ConfirmButton.IsDefault &&
+                        string.Equals(
+                            dialog.ConfirmButton.Content?.ToString(),
+                            "退出",
+                            StringComparison.Ordinal) &&
+                        dialog.BodyText.Text.Contains("显示设置", StringComparison.Ordinal) &&
+                        dialog.BodyText.Text.Contains("便签编辑器", StringComparison.Ordinal);
+                });
+            var confirmed = ExitConfirmation.Confirm(
+                main,
+                new[] { main.DescribeUnsavedExitWork()! });
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                dialogInspected &&
+                !confirmed,
+                "退出确认框必须以取消为安全默认、携带完整描述且取消时不退出。");
+
+            QueueConfirmationDialogResponse(main, confirm: true);
+            confirmed = ExitConfirmation.Confirm(
+                main,
+                new[] { main.DescribeUnsavedExitWork()! });
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(confirmed, "退出确认框确认后必须放行退出。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #156：辅助技术朗读映射——装饰手写体与分段裸数字退出朗读（SilentTextBlock 无自动化
+    // peer，也不出现在窗口原始自动化树中）；有可见文字的字段经标签关系（LabeledBy）指向
+    // 输入且不携带重复显式名；数量变化由唯一的命令栏数量直播区播完整句；筛选「清除」的
+    // 可访问名说明清除的是便签日期筛选；图标按钮继续有可访问名。
+    public static bool RunAssistiveNarrationBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-assistive-narration-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "朗读探针便签甲",
+            new DateTime(2038, 7, 8),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "朗读探针便签乙",
+            new DateTime(2038, 7, 9),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var lifecycle = new ManagerWindowLifecycle(
+            () => new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory),
+            PrepareOffscreenValidationWindow);
+        var floating = new FloatingWindow(workspace, calendar, lifecycle, AppContext.BaseDirectory);
+        PrepareOffscreenValidationWindow(floating);
+        floating.Show();
+        var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory)
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        try
+        {
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            WindowValidationInput.Pump(floating.Dispatcher);
+
+            var mainDecoTexts = new SilentTextBlock[]
+            {
+                (SilentTextBlock)main.FindName("CountdownDecoTextTop"),
+                (SilentTextBlock)main.FindName("CountdownDecoTextBottom"),
+                (SilentTextBlock)main.FindName("NotesDecoText")
+            };
+            var floatingDecoTexts = new SilentTextBlock[]
+            {
+                (SilentTextBlock)floating.FindName("FloatingNotesDecoTextLeft"),
+                (SilentTextBlock)floating.FindName("FloatingNotesDecoText")
+            };
+            var rootPeer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(main) ??
+                           new System.Windows.Automation.Peers.UIElementAutomationPeer(main);
+            Must(
+                mainDecoTexts.Concat<FrameworkElement>(floatingDecoTexts).All(deco =>
+                    System.Windows.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(deco) is null) &&
+                !AutomationRawTreeContains(rootPeer, mainDecoTexts.Concat<FrameworkElement>(floatingDecoTexts).ToList()),
+                "装饰手写体必须退出控件朗读：无自动化 peer 且不出现在窗口自动化树中。");
+
+            // 便签分段、数量文字只随便签工作区渲染（RenderVisibleWorkspace），先切换工作区。
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+
+            var activeNotesCount = (SilentTextBlock)main.FindName("ActiveNotesCount");
+            var completedNotesCount = (SilentTextBlock)main.FindName("CompletedNotesCount");
+            Must(
+                System.Windows.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(activeNotesCount) is null &&
+                System.Windows.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(completedNotesCount) is null,
+                "分段内部裸数字不再作为独立内容控件朗读。");
+
+            var labeledFields = new (string InputName, string LabelName, string? HelpText)[]
+            {
+                ("CountdownName", "CountdownNameLabel", null),
+                ("CountdownDate", "CountdownDateLabel", null),
+                ("CountdownHour", "CountdownHourLabel", null),
+                ("CountdownMinute", "CountdownMinuteLabel", null),
+                ("CountdownSecond", "CountdownSecondLabel", null),
+                ("DisplayPrecision", "DisplayPrecisionLabel", "悬浮窗显示精度"),
+                ("MonthlySalary", "MonthlySalaryLabel", null),
+                ("WorkStart", "WorkStartLabel", null),
+                ("WorkEnd", "WorkEndLabel", null),
+                ("NoteText", "NoteTextLabel", null),
+                ("NoteDate", "NoteDateLabel", null),
+                ("NoteSearch", "NoteSearchLabel", null),
+                ("NoteDateFilter", "NoteDateFilterLabel", "按便签日期筛选"),
+                ("NewTagInput", "NewTagInputLabel", null)
+            };
+            foreach (var (inputName, labelName, helpText) in labeledFields)
+            {
+                var input = (FrameworkElement)main.FindName(inputName);
+                var label = (TextBlock)main.FindName(labelName);
+                Must(
+                    input is not null && label is not null &&
+                    ReferenceEquals(AutomationProperties.GetLabeledBy(input), label) &&
+                    label.Text.Length > 0 &&
+                    string.IsNullOrEmpty(AutomationProperties.GetName(input)) &&
+                    (helpText is null ||
+                     string.Equals(AutomationProperties.GetHelpText(input), helpText, StringComparison.Ordinal)),
+                    $"字段「{inputName}」必须经标签关系指向可见标签且不携带重复显式名（不读两遍）。");
+            }
+
+            var activeSegment = (ToggleButton)main.FindName("ActiveNotesSegment");
+            var completedSegment = (ToggleButton)main.FindName("CompletedNotesSegment");
+            var recordCount = (TextBlock)main.FindName("RecordCountText");
+            Must(
+                string.Equals(
+                    AutomationProperties.GetName(activeSegment),
+                    "查看未完成便签，共 2 条",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    AutomationProperties.GetName(completedSegment),
+                    "查看已完成便签，共 0 条",
+                    StringComparison.Ordinal) &&
+                AutomationProperties.GetLiveSetting(recordCount) == AutomationLiveSetting.Polite &&
+                string.Equals(recordCount.Text, "2 个待办", StringComparison.Ordinal),
+                "分段数量由分段可访问名承担、数量变化由唯一的命令栏数量直播区播完整句。");
+
+            var clearNoteDateFilter = (Button)main.FindName("ClearNoteDateFilter");
+            Must(
+                string.Equals(
+                    AutomationProperties.GetName(clearNoteDateFilter),
+                    "清除便签日期筛选",
+                    StringComparison.Ordinal),
+                "筛选「清除」的可访问名必须说明清除的是便签日期筛选。");
+
+            Must(
+                main.HasAccessibleCoreControls,
+                "图标按钮与核心控件继续拥有可访问名（显式名或标签关系）。");
+
+            // 完成一条便签：数量直播区文字随真实数量变化为完整句，分段名同步。
+            var completion = VisualDescendants<CheckBox>(main).FirstOrDefault(checkBox =>
+                checkBox.Tag is string tagId &&
+                workspace.Snapshot.Settings.Notes.Any(note =>
+                    string.Equals(note.Id, tagId, StringComparison.OrdinalIgnoreCase)));
+            Must(completion is not null, "无法定位朗读探针便签的完成勾选。");
+            completion!.IsChecked = true;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                string.Equals(recordCount.Text, "1 个待办", StringComparison.Ordinal) &&
+                string.Equals(
+                    AutomationProperties.GetName(activeSegment),
+                    "查看未完成便签，共 1 条",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    AutomationProperties.GetName(completedSegment),
+                    "查看已完成便签，共 1 条",
+                    StringComparison.Ordinal),
+                "便签完成后的数量变化只由一处状态区域以完整句更新。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            floating.Close();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #156：非拖动的窗口复位/贴边入口——越界悬浮窗经 Ctrl+R 或托盘菜单「复位窗口位置」
+    // 都能被夹回工作区；隐藏态复位先恢复可见再夹回；完成任务的窗口收纳不依赖拖无边框窗。
+    public static bool RunWindowPositionResetBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-window-position-reset-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var lifecycle = new ManagerWindowLifecycle(
+            () => new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory),
+            PrepareOffscreenValidationWindow);
+        var floating = new FloatingWindow(workspace, calendar, lifecycle, AppContext.BaseDirectory);
+        PrepareOffscreenValidationWindow(floating);
+        var trayController = new FloatingTrayController(
+            floating,
+            Path.Combine(AppContext.BaseDirectory, "countdown-icon.ico"),
+            canTransition: static () => true,
+            foregroundInterop: null,
+            attachShellNotifyIcon: false);
+        floating.Show();
+        try
+        {
+            WindowValidationInput.Pump(floating.Dispatcher);
+            var workArea = SystemParameters.WorkArea;
+
+            floating.Left = workArea.Right + 120;
+            floating.Top = workArea.Top + 40;
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                !WindowIntersectsWorkArea(floating),
+                "前置：悬浮窗应完全位于工作区右侧之外。");
+
+            WindowValidationInput.RaisePreviewKey(floating, Key.R, ModifierKeys.Control);
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                WindowIntersectsWorkArea(floating),
+                "Ctrl+R 必须把越界悬浮窗夹回工作区（非拖动复位）。");
+
+            floating.Left = workArea.Right + 120;
+            floating.Top = workArea.Bottom + 120;
+            WindowValidationInput.Pump(floating.Dispatcher);
+            trayController.InvokeResetPositionForValidation();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                WindowIntersectsWorkArea(floating),
+                "托盘菜单「复位窗口位置」必须把越界悬浮窗夹回工作区。");
+
+            floating.Hide();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            trayController.InvokeResetPositionForValidation();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                floating.IsVisible &&
+                floating.WindowState == WindowState.Normal &&
+                WindowIntersectsWorkArea(floating),
+                "隐藏态的托盘复位必须先恢复悬浮窗再夹回工作区。");
+            return true;
+        }
+        finally
+        {
+            trayController.Dispose();
+            floating.Close();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    private static bool WindowIntersectsWorkArea(Window window)
+    {
+        var area = SystemParameters.WorkArea;
+        return window.Left < area.Right &&
+            window.Left + window.ActualWidth > area.Left &&
+            window.Top < area.Bottom &&
+            window.Top + window.ActualHeight > area.Top;
+    }
+
+    // #156：沿原始视图递归窗口自动化树，断言给定元素不再可达（退出朗读的强证据）。
+    private static bool AutomationRawTreeContains(
+        System.Windows.Automation.Peers.AutomationPeer root,
+        IReadOnlyList<FrameworkElement> targets)
+    {
+        var visited = 0;
+        var queue = new Queue<System.Windows.Automation.Peers.AutomationPeer>();
+        queue.Enqueue(root);
+        while (queue.Count > 0)
+        {
+            if (++visited > 4_000)
+            {
+                // 超出遍历上限视为「不可证明缺席」，按包含处理让门禁红出来，而不是静默放过。
+                return true;
+            }
+
+            var current = queue.Dequeue();
+            var owner = (current as System.Windows.Automation.Peers.UIElementAutomationPeer)?.Owner;
+            if (owner is not null && targets.Any(target => ReferenceEquals(target, owner)))
+            {
+                return true;
+            }
+
+            IReadOnlyList<System.Windows.Automation.Peers.AutomationPeer>? children;
+            try
+            {
+                children = current?.GetChildren();
+            }
+            catch (System.Windows.Automation.ElementNotAvailableException)
+            {
+                continue;
+            }
+
+            if (children is null)
+            {
+                continue;
+            }
+
+            foreach (var child in children)
+            {
+                queue.Enqueue(child);
+            }
+        }
+
+        return false;
     }
 
     public static bool RunReminderCenterDeliveryFailureActionGateBehavior()
@@ -3521,6 +4492,8 @@ internal static class ValidationExercises
             Directory.CreateDirectory(settingsPath + ".tmp");
             try
             {
+                // #155：完成先经确认框（自动确认后提交），写入失败注入保持原语义。
+                QueueConfirmationDialogResponse(center, confirm: true);
                 Must(center.RequestComplete(key), "无法点击真实完成便签控件。");
                 WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
                 const string completionFailure =
@@ -7294,6 +8267,109 @@ internal static class ValidationExercises
         return true;
     }
 
+    // #148：倒计时可读性合同（徽章对比/字号/居中、到期文字、分格 2:3 与单位字下限、
+    // 选中段对比度唯一门禁）——用会失败的反例保住门禁。
+    public static CountdownReadabilityGateResults EvaluateCountdownReadabilityGates(
+        CountdownReadabilityGateInputs input) =>
+        new(
+            input.BadgeUsesInkText && input.BadgeMeetsContrast && input.BadgeSizedAndCentered,
+            input.ExpiredSecondaryUsesBodyColor && input.ExpiredPrimaryUsesNumberColor,
+            input.BlocksVerticalRatioMatches && input.UnitFontSizeAtFloor,
+            input.SegmentContrastGateOnly);
+
+    public static bool RunCountdownReadabilityGateIsolationBehavior()
+    {
+        var passing = new CountdownReadabilityGateInputs(
+            true, true, true, true, true, true, true, true);
+        Must(EvaluateCountdownReadabilityGates(passing).AllPassed, "倒计时可读性全通过夹具被错误拒绝。");
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { BadgeUsesInkText = false },
+            nameof(CountdownReadabilityGateResults.BadgeContractMatches));
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { BadgeMeetsContrast = false },
+            nameof(CountdownReadabilityGateResults.BadgeContractMatches));
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { BadgeSizedAndCentered = false },
+            nameof(CountdownReadabilityGateResults.BadgeContractMatches));
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { ExpiredSecondaryUsesBodyColor = false },
+            nameof(CountdownReadabilityGateResults.ExpiredTextMatches));
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { ExpiredPrimaryUsesNumberColor = false },
+            nameof(CountdownReadabilityGateResults.ExpiredTextMatches));
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { BlocksVerticalRatioMatches = false },
+            nameof(CountdownReadabilityGateResults.BlocksGeometryMatches));
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { UnitFontSizeAtFloor = false },
+            nameof(CountdownReadabilityGateResults.BlocksGeometryMatches));
+        VerifyOnlyCountdownReadabilityGateFails(
+            passing with { SegmentContrastGateOnly = false },
+            nameof(CountdownReadabilityGateResults.SegmentContrastGateOnly));
+        return true;
+    }
+
+    // #151：倒计时编辑合同（字段错误贴源+聚焦首个无效控件、错误清除、错误行不裁切、
+    // 偏好错误贴字段、主次按钮角色、白纸输入面、独立选区高亮、状态条对比、单选圆点、排版 token）
+    // ——用会失败的反例保住门禁。
+    public static CountdownEditingGateResults EvaluateCountdownEditingGates(
+        CountdownEditingGateInputs input) =>
+        new(
+            input.CountdownFieldErrorsAtSource && input.FocusFirstInvalidControl,
+            input.CountdownFieldErrorsClearOnCorrection,
+            input.SingleErrorRowNotClipped,
+            input.PreferenceErrorsBelowFields && input.PreferenceErrorsClearOnCorrection,
+            input.PrimarySecondaryRolesDistinct,
+            input.InputSurfacesWhitePaper,
+            input.SelectionHighlightDistinct,
+            input.StatusBarSurfaceErrorContrast,
+            input.ReminderRadioSelectedContrast,
+            input.EditorTypographyTokenized);
+
+    public static bool RunCountdownEditingGateIsolationBehavior()
+    {
+        var passing = new CountdownEditingGateInputs(
+            true, true, true, true, true, true, true, true, true, true, true, true);
+        Must(EvaluateCountdownEditingGates(passing).AllPassed, "倒计时编辑全通过夹具被错误拒绝。");
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { CountdownFieldErrorsAtSource = false },
+            nameof(CountdownEditingGateResults.FieldErrorsAtSourceWithFocus));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { FocusFirstInvalidControl = false },
+            nameof(CountdownEditingGateResults.FieldErrorsAtSourceWithFocus));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { CountdownFieldErrorsClearOnCorrection = false },
+            nameof(CountdownEditingGateResults.FieldErrorsClear));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { SingleErrorRowNotClipped = false },
+            nameof(CountdownEditingGateResults.SingleErrorRowNotClipped));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { PreferenceErrorsBelowFields = false },
+            nameof(CountdownEditingGateResults.PreferenceErrorsAtSource));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { PreferenceErrorsClearOnCorrection = false },
+            nameof(CountdownEditingGateResults.PreferenceErrorsAtSource));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { PrimarySecondaryRolesDistinct = false },
+            nameof(CountdownEditingGateResults.PrimarySecondaryRolesDistinct));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { InputSurfacesWhitePaper = false },
+            nameof(CountdownEditingGateResults.InputSurfacesWhitePaper));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { SelectionHighlightDistinct = false },
+            nameof(CountdownEditingGateResults.SelectionHighlightDistinct));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { StatusBarSurfaceErrorContrast = false },
+            nameof(CountdownEditingGateResults.StatusBarErrorContrast));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { ReminderRadioSelectedContrast = false },
+            nameof(CountdownEditingGateResults.ReminderRadioSelectedContrast));
+        VerifyOnlyCountdownEditingGateFails(
+            passing with { EditorTypographyTokenized = false },
+            nameof(CountdownEditingGateResults.EditorTypographyTokenized));
+        return true;
+    }
+
     public static bool RunCountdownIncrementalRefreshGateIsolationBehavior()
     {
         var passing = new CountdownIncrementalRefreshGateResults(
@@ -7410,11 +8486,12 @@ internal static class ValidationExercises
         new(
             input.TabTraversalWorks,
             input.CloseGuardWorks,
-            input.InitialFocusAndAccessibleNameWork);
+            input.InitialFocusAndAccessibleNameWork,
+            input.EscapeFocusesAcknowledge);
 
     public static bool RunReminderCenterKeyboardGateIsolationBehavior()
     {
-        var passing = new ReminderCenterKeyboardGateInputs(true, true, true);
+        var passing = new ReminderCenterKeyboardGateInputs(true, true, true, true);
         Must(EvaluateReminderCenterKeyboardGates(passing).AllPassed,
             "提醒中心键盘全通过夹具被错误拒绝。");
         VerifyOnlyReminderCenterKeyboardGateFails(
@@ -7426,6 +8503,9 @@ internal static class ValidationExercises
         VerifyOnlyReminderCenterKeyboardGateFails(
             passing with { InitialFocusAndAccessibleNameWork = false },
             nameof(ReminderCenterKeyboardGateResults.InitialFocusAndAccessibleNameWork));
+        VerifyOnlyReminderCenterKeyboardGateFails(
+            passing with { EscapeFocusesAcknowledge = false },
+            nameof(ReminderCenterKeyboardGateResults.EscapeFocusesAcknowledge));
         return true;
     }
 
@@ -7440,8 +8520,8 @@ internal static class ValidationExercises
     {
         var expectedCommands = new[]
         {
-            "CountdownsWorkspace", "Filter", "Minimize", "NotesWorkspace",
-            "SaveCountdown", "SavePreferences", "TagManager"
+            "CountdownsWorkspace", "Filter", "Minimize", "NoteSearch",
+            "NotesWorkspace", "SaveCountdown", "SavePreferences", "TagManager"
         };
         var passingCommands = expectedCommands.ToDictionary(
             command => command,
@@ -7490,7 +8570,7 @@ internal static class ValidationExercises
         var expected = input.ExpectedCommands.Order(StringComparer.Ordinal).ToArray();
         var observed = input.ObservedCommands.Keys.Order(StringComparer.Ordinal).ToArray();
         return new MainShortcutGateResults(
-            expected.Length == 7 &&
+            expected.Length == 8 &&
                 observed.SequenceEqual(expected, StringComparer.Ordinal) &&
                 input.ObservedCommands.Values.All(value => value),
             input.TextInputPreserved,
@@ -7540,6 +8620,46 @@ internal static class ValidationExercises
             passing with { CompleteTabSequence = false },
             nameof(MainKeyboardNavigationGateResults.CompleteTabSequence));
         return true;
+    }
+
+    // #153：弹层 Tab 层内循环门禁——筛选 / 标签管理 / 标签选择器 / 便签溢出菜单四类弹层逐一收敛，
+    // 负向夹具证明每个输入位都会被独立击穿，评估器不可能是恒真。
+    public static PopupFocusTabGateResults EvaluatePopupFocusTabGates(
+        PopupFocusTabGateInputs input) =>
+        new(
+            input.FilterCyclesInsideLayer,
+            input.TagManagerCyclesInsideLayer,
+            input.TagSelectorCyclesInsideLayer,
+            input.OverflowMenuCyclesInsideLayer);
+
+    public static bool RunPopupFocusTabGateIsolationBehavior()
+    {
+        var passing = new PopupFocusTabGateInputs(true, true, true, true);
+        Must(
+            EvaluatePopupFocusTabGates(passing).AllCyclesInsideLayer,
+            "弹层 Tab 层内循环全通过夹具被错误拒绝。");
+        VerifyOnlyPopupFocusTabGateFails(
+            passing with { FilterCyclesInsideLayer = false },
+            nameof(PopupFocusTabGateResults.FilterCyclesInsideLayer));
+        VerifyOnlyPopupFocusTabGateFails(
+            passing with { TagManagerCyclesInsideLayer = false },
+            nameof(PopupFocusTabGateResults.TagManagerCyclesInsideLayer));
+        VerifyOnlyPopupFocusTabGateFails(
+            passing with { TagSelectorCyclesInsideLayer = false },
+            nameof(PopupFocusTabGateResults.TagSelectorCyclesInsideLayer));
+        VerifyOnlyPopupFocusTabGateFails(
+            passing with { OverflowMenuCyclesInsideLayer = false },
+            nameof(PopupFocusTabGateResults.OverflowMenuCyclesInsideLayer));
+        return true;
+    }
+
+    private static void VerifyOnlyPopupFocusTabGateFails(
+        PopupFocusTabGateInputs input,
+        string target)
+    {
+        var result = EvaluatePopupFocusTabGates(input);
+        Must(!result.AllCyclesInsideLayer && result.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
+            $"弹层 Tab 层内循环负向夹具未只击穿 {target}。");
     }
 
     public static FloatingReferenceManifestGateResults EvaluateFloatingReferenceManifestGates(
@@ -8256,6 +9376,68 @@ internal static class ValidationExercises
         return true;
     }
 
+    // #157 修复轮 1（reviewer CONCERN）：确定性视口右缘算术的唯一实现——现役捕获
+    // （ValidationReport.CaptureFloatingViewportState）与反例门禁共同消费它；
+    // 删除「− 设计命中轨」会使可见态负向夹具（越界 386.3 必须红）变红。
+    public static double FloatingViewportDesignedRight(
+        double scrollerSlotRight,
+        double designedScrollBarRail,
+        bool scrollBarVisible) =>
+        scrollerSlotRight - (scrollBarVisible ? designedScrollBarRail : 0d);
+
+    // #157：悬浮视口几何门禁——「卡右缘 ≤ 视口右缘 + 0.25」的比较基准必须是确定性口径：
+    // 滚动内容槽右缘（只由 520 外壳固定边距决定）扣除 §10 设计命中轨（滚动条可见时），
+    // 不消费随系统滚动条度量漂移的滚动条列宽（旧 ViewportWidth 口径在 100%/125% 显示
+    // 缩放下分别 0.05 过 / 0.55 红，§11 漂移族）。用会失败的反例保住门禁语义。
+    public static bool EvaluateFloatingViewportGeometryGate(FloatingViewportGeometryGateInputs input)
+    {
+        var rightLimit = FloatingViewportDesignedRight(
+            input.ScrollerSlotRight,
+            input.DesignedScrollBarRail,
+            input.ScrollBarVisible) + 0.25;
+        return SurfaceRightFits(input.MaximumCardRight, rightLimit) &&
+               SurfaceRightFits(input.MaximumDateStampRight, rightLimit) &&
+               SurfaceRightFits(input.NoteEntryRight, rightLimit);
+    }
+
+    private static bool SurfaceRightFits(double? right, double limit) =>
+        right is null || right <= limit;
+
+    public static bool RunFloatingViewportGeometryGateIsolationBehavior()
+    {
+        // 现役真实几何（#157 插桩实测，任意显示缩放下稳定）：槽右 396 = 51 + 345（520 外壳
+        // 固定边距），设计命中轨 10，便签卡右 379.2、印记右 342.4、快速新增右 51。
+        var passing = new FloatingViewportGeometryGateInputs(396, 10, true, 379.2, 342.4, 51);
+        Must(EvaluateFloatingViewportGeometryGate(passing), "悬浮视口几何全通过夹具被错误拒绝。");
+        var visibleBoundary = 396 - 10 + 0.25;
+        Must(
+            EvaluateFloatingViewportGeometryGate(passing with { MaximumCardRight = visibleBoundary }),
+            "设计视口边界容差内的现役几何被错误拒绝。");
+        Must(
+            !EvaluateFloatingViewportGeometryGate(
+                passing with { MaximumCardRight = visibleBoundary + 0.01 }),
+            "卡片越过设计视口边界未被拒绝（真几何回归必须红）。");
+        Must(
+            !EvaluateFloatingViewportGeometryGate(
+                passing with { MaximumDateStampRight = visibleBoundary + 0.01 }),
+            "日期印记越过设计视口边界未被拒绝。");
+        Must(
+            !EvaluateFloatingViewportGeometryGate(
+                passing with { NoteEntryRight = visibleBoundary + 0.01 }),
+            "快速新增越过设计视口边界未被拒绝。");
+        // 滚动条隐藏（零扣除）时设计边界放大到滚动内容槽右：越进命中轨区不算回归，
+        // 越出槽右仍是回归——边界语义与扣除规则绑定，不随系统度量变化。
+        Must(
+            EvaluateFloatingViewportGeometryGate(
+                passing with { ScrollBarVisible = false, MaximumCardRight = visibleBoundary + 0.01 }),
+            "滚动条隐藏时设计边界内的几何被错误拒绝。");
+        Must(
+            !EvaluateFloatingViewportGeometryGate(
+                passing with { ScrollBarVisible = false, MaximumCardRight = 396.3 }),
+            "滚动条隐藏时卡片越过滚动内容槽未被拒绝。");
+        return true;
+    }
+
     public static FloatingScrollBarGateResults EvaluateFloatingScrollBarGates(
         FloatingScrollBarGateInputs input) =>
         new(
@@ -8410,6 +9592,30 @@ internal static class ValidationExercises
     {
         Must(!results.AllPassed && results.FailedChecks.SequenceEqual([target], StringComparer.Ordinal),
             $"倒计时增量刷新负向夹具未只击穿 {target}。");
+    }
+
+    private static void VerifyOnlyCountdownReadabilityGateFails(
+        CountdownReadabilityGateInputs input,
+        string target)
+    {
+        var results = EvaluateCountdownReadabilityGates(input).AsDictionary();
+        Must(results.TryGetValue(target, out var value) && !value,
+            $"倒计时可读性负向夹具未让 {target} 单独失败。");
+        Must(results.Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"倒计时可读性负向夹具 {target} 误伤无关契约。");
+    }
+
+    private static void VerifyOnlyCountdownEditingGateFails(
+        CountdownEditingGateInputs input,
+        string target)
+    {
+        var results = EvaluateCountdownEditingGates(input).AsDictionary();
+        Must(results.TryGetValue(target, out var value) && !value,
+            $"倒计时编辑负向夹具未让 {target} 单独失败。");
+        Must(results.Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                .All(pair => pair.Value),
+            $"倒计时编辑负向夹具 {target} 误伤无关契约。");
     }
 
     private static void VerifyOnlyConfirmationGateFails(
@@ -9170,6 +10376,16 @@ internal sealed record FloatingSecondaryRemainingGateInputs(
     bool UsesTabularNumerals,
     bool FontSizingMatches);
 
+// #157：悬浮视口几何门禁输入（确定性视口右缘口径的隔离负向夹具与现役捕获共用）。
+// null = 该表面不参与视口右缘比较（非便签工作区的卡/印记、隐藏的快速新增）。
+internal sealed record FloatingViewportGeometryGateInputs(
+    double ScrollerSlotRight,
+    double DesignedScrollBarRail,
+    bool ScrollBarVisible,
+    double? MaximumCardRight,
+    double? MaximumDateStampRight,
+    double? NoteEntryRight);
+
 internal sealed record FloatingSecondaryRemainingGateResults(
     bool UnitSpacingMatches,
     bool FixedColumnLayoutMatches);
@@ -9198,6 +10414,91 @@ internal sealed record MainCountdownRemainingGateResults(
         {
             [nameof(UnitSpacingMatches)] = UnitSpacingMatches,
             [nameof(FixedColumnLayoutMatches)] = FixedColumnLayoutMatches
+        };
+}
+
+// #151：倒计时编辑门禁输入与结果（隔离负向夹具用）。
+internal sealed record CountdownEditingGateInputs(
+    bool CountdownFieldErrorsAtSource,
+    bool FocusFirstInvalidControl,
+    bool CountdownFieldErrorsClearOnCorrection,
+    bool SingleErrorRowNotClipped,
+    bool PreferenceErrorsBelowFields,
+    bool PreferenceErrorsClearOnCorrection,
+    bool PrimarySecondaryRolesDistinct,
+    bool InputSurfacesWhitePaper,
+    bool SelectionHighlightDistinct,
+    bool StatusBarSurfaceErrorContrast,
+    bool ReminderRadioSelectedContrast,
+    bool EditorTypographyTokenized);
+
+internal sealed record CountdownEditingGateResults(
+    bool FieldErrorsAtSourceWithFocus,
+    bool FieldErrorsClear,
+    bool SingleErrorRowNotClipped,
+    bool PreferenceErrorsAtSource,
+    bool PrimarySecondaryRolesDistinct,
+    bool InputSurfacesWhitePaper,
+    bool SelectionHighlightDistinct,
+    bool StatusBarErrorContrast,
+    bool ReminderRadioSelectedContrast,
+    bool EditorTypographyTokenized)
+{
+    public bool AllPassed =>
+        FieldErrorsAtSourceWithFocus &&
+        FieldErrorsClear &&
+        SingleErrorRowNotClipped &&
+        PreferenceErrorsAtSource &&
+        PrimarySecondaryRolesDistinct &&
+        InputSurfacesWhitePaper &&
+        SelectionHighlightDistinct &&
+        StatusBarErrorContrast &&
+        ReminderRadioSelectedContrast &&
+        EditorTypographyTokenized;
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(FieldErrorsAtSourceWithFocus)] = FieldErrorsAtSourceWithFocus,
+            [nameof(FieldErrorsClear)] = FieldErrorsClear,
+            [nameof(SingleErrorRowNotClipped)] = SingleErrorRowNotClipped,
+            [nameof(PreferenceErrorsAtSource)] = PreferenceErrorsAtSource,
+            [nameof(PrimarySecondaryRolesDistinct)] = PrimarySecondaryRolesDistinct,
+            [nameof(InputSurfacesWhitePaper)] = InputSurfacesWhitePaper,
+            [nameof(SelectionHighlightDistinct)] = SelectionHighlightDistinct,
+            [nameof(StatusBarErrorContrast)] = StatusBarErrorContrast,
+            [nameof(ReminderRadioSelectedContrast)] = ReminderRadioSelectedContrast,
+            [nameof(EditorTypographyTokenized)] = EditorTypographyTokenized
+        };
+}
+
+// #148：倒计时可读性门禁输入与结果（隔离负向夹具用）。
+internal sealed record CountdownReadabilityGateInputs(
+    bool BadgeUsesInkText,
+    bool BadgeMeetsContrast,
+    bool BadgeSizedAndCentered,
+    bool ExpiredSecondaryUsesBodyColor,
+    bool ExpiredPrimaryUsesNumberColor,
+    bool BlocksVerticalRatioMatches,
+    bool UnitFontSizeAtFloor,
+    bool SegmentContrastGateOnly);
+
+internal sealed record CountdownReadabilityGateResults(
+    bool BadgeContractMatches,
+    bool ExpiredTextMatches,
+    bool BlocksGeometryMatches,
+    bool SegmentContrastGateOnly)
+{
+    public bool AllPassed =>
+        BadgeContractMatches && ExpiredTextMatches && BlocksGeometryMatches && SegmentContrastGateOnly;
+
+    public IReadOnlyDictionary<string, bool> AsDictionary() =>
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [nameof(BadgeContractMatches)] = BadgeContractMatches,
+            [nameof(ExpiredTextMatches)] = ExpiredTextMatches,
+            [nameof(BlocksGeometryMatches)] = BlocksGeometryMatches,
+            [nameof(SegmentContrastGateOnly)] = SegmentContrastGateOnly
         };
 }
 
@@ -9291,12 +10592,14 @@ internal sealed record SecondaryWindowTypographyGateResults(
 internal sealed record ReminderCenterKeyboardGateInputs(
     bool TabTraversalWorks,
     bool CloseGuardWorks,
-    bool InitialFocusAndAccessibleNameWork);
+    bool InitialFocusAndAccessibleNameWork,
+    bool EscapeFocusesAcknowledge);
 
 internal sealed record ReminderCenterKeyboardGateResults(
     bool TabTraversalWorks,
     bool CloseGuardWorks,
-    bool InitialFocusAndAccessibleNameWork)
+    bool InitialFocusAndAccessibleNameWork,
+    bool EscapeFocusesAcknowledge)
 {
     public bool AllPassed => FailedChecks.Count == 0;
 
@@ -9304,7 +10607,8 @@ internal sealed record ReminderCenterKeyboardGateResults(
     {
         (nameof(TabTraversalWorks), TabTraversalWorks),
         (nameof(CloseGuardWorks), CloseGuardWorks),
-        (nameof(InitialFocusAndAccessibleNameWork), InitialFocusAndAccessibleNameWork)
+        (nameof(InitialFocusAndAccessibleNameWork), InitialFocusAndAccessibleNameWork),
+        (nameof(EscapeFocusesAcknowledge), EscapeFocusesAcknowledge)
     }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
 }
 
@@ -9335,6 +10639,34 @@ internal sealed record MainShortcutGateResults(
 internal sealed record MainKeyboardNavigationGateInputs(
     bool InitialFocusSafe,
     bool CompleteTabSequence);
+
+// #153：弹层 Tab 层内循环门禁输入/结果。
+internal sealed record PopupFocusTabGateInputs(
+    bool FilterCyclesInsideLayer,
+    bool TagManagerCyclesInsideLayer,
+    bool TagSelectorCyclesInsideLayer,
+    bool OverflowMenuCyclesInsideLayer);
+
+internal sealed record PopupFocusTabGateResults(
+    bool FilterCyclesInsideLayer,
+    bool TagManagerCyclesInsideLayer,
+    bool TagSelectorCyclesInsideLayer,
+    bool OverflowMenuCyclesInsideLayer)
+{
+    public bool AllCyclesInsideLayer =>
+        FilterCyclesInsideLayer &&
+        TagManagerCyclesInsideLayer &&
+        TagSelectorCyclesInsideLayer &&
+        OverflowMenuCyclesInsideLayer;
+
+    public IReadOnlyList<string> FailedChecks => new[]
+    {
+        (nameof(FilterCyclesInsideLayer), FilterCyclesInsideLayer),
+        (nameof(TagManagerCyclesInsideLayer), TagManagerCyclesInsideLayer),
+        (nameof(TagSelectorCyclesInsideLayer), TagSelectorCyclesInsideLayer),
+        (nameof(OverflowMenuCyclesInsideLayer), OverflowMenuCyclesInsideLayer)
+    }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
+}
 
 internal sealed record MainKeyboardNavigationGateResults(
     bool InitialFocusSafe,

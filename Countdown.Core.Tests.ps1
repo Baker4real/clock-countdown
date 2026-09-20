@@ -12,6 +12,15 @@ param(
 # CI 环境检测
 $isCIEnvironment = $env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true'
 
+# office 上下文（本测试自身以 -ParentTransactionMutexHeld 运行，即办公室 SSH 暂存上下文）：
+# 本进程派生的全部窗口化子步骤（验证接口族、ReleaseContract 段的隔离套件复核等）与安装器
+# 套件调用（6482c5e）同样卸隔离直启——该上下文无法在自建隔离桌面初始化子进程（0xC0000142，
+# 第 5 次远端部署 normal-* 证据缺失与本地 SSH 复现实证的根因）。本地上下文不带标记，
+# 隔离 fail-closed 语义逐字不变；验证接口族区段入口的快照自封闭继续排除外部残留。
+if ($ParentTransactionMutexHeld) {
+    $env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
+}
+
 $ErrorActionPreference = 'Stop'
 
 # #126 分段计时插桩：计时行只走 stderr，保持 stdout 单一 JSON 报告契约
@@ -149,7 +158,10 @@ function Get-IndependentCountdownDiagnosticMutexName {
 
 Write-TestSegmentTiming -Name 'Setup'
 if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $RemoteDeploymentOnly)) {
-    $validationEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-validation-tests'
+    # 运行根自封闭（参照 transactionTestRoot 的 $PSScriptRoot + NewGuid 模式）：夹具与证据
+    # 写读同一次运行的同一根，不再依赖 migration-preflight 时代的固定绝对根（目录已加入
+    # .gitignore，崩溃残留不污染 git status）。
+    $validationEvidenceRoot = Join-Path $PSScriptRoot 'validation-suite-test-runs'
     $validationTestRoot = Join-Path $validationEvidenceRoot ([guid]::NewGuid().ToString('N'))
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     $originalFixtureRecord = $env:COUNTDOWN_FAKE_DOTNET_RECORD
@@ -159,9 +171,13 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
     $originalValidationArtifactMode = $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE
     $originalValidationArtifactRecord = $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD
     $originalValidationSiblingMarker = $env:COUNTDOWN_VALIDATION_SIBLING_MARKER
-    # 隔离断言自封闭：卸隔离标记只允许来自套件自身注入，不吃外部残留。
+    # 隔离断言自封闭：快照入口标记（可能来自本脚本顶部对 office 上下文的注入）并在 finally
+    # 恢复；外部进程环境的残留不属于套件自身注入，经双分支断言可证伪。
     $originalSuiteAllowUnisolated = $env:MINMIN_SUITE_ALLOW_UNISOLATED
     $env:MINMIN_SUITE_ALLOW_UNISOLATED = $null
+    if ($ParentTransactionMutexHeld) {
+        $env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
+    }
     $validationArtifactRecord = Join-Path $validationTestRoot 'application-settings-path.txt'
     $validationArtifactRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
     $validationSiblingMarker = Join-Path $validationArtifactRoot (
@@ -438,7 +454,7 @@ public static class SuiteEvidenceDesktopProbe
     [System.Text.UTF8Encoding]::new(`$false))
 if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
     [System.IO.File]::WriteAllText(
-        (Join-Path `$PSScriptRoot 'office-staging-argument.txt'),
+        (Join-Path '$validationTestRoot' 'office-staging-argument.txt'),
         `$OfficeDeploymentStagingRoot,
         [System.Text.UTF8Encoding]::new(`$false))
 }
@@ -652,7 +668,7 @@ public static class SuiteEvidenceDesktopProbe
 }
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
 [System.IO.File]::WriteAllText(
-    (Join-Path `$PSScriptRoot 'normal-office-staging-argument-present.txt'),
+    (Join-Path '$validationTestRoot' 'normal-office-staging-argument-present.txt'),
     [string] `$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot'),
     [System.Text.UTF8Encoding]::new(`$false))
 [System.IO.File]::WriteAllText(
@@ -678,9 +694,23 @@ public static class SuiteEvidenceDesktopProbe
             $successfulDiagnosticPreserved = $false
         }
         Assert-Equal $true $successfulDiagnosticPreserved 'Validation interface parses stdout JSON without merging successful stderr diagnostics'
+        # 族级可证伪断言：夹具四份证据任一不在本次运行根内 = 写读发散，红（任一夹具写读发散即红）。
+        $familyEvidenceMissing = @(
+            @(
+                'office-staging-argument.txt',
+                'office-csharp-isolation-evidence.txt',
+                'normal-office-staging-argument-present.txt',
+                'normal-csharp-isolation-evidence.txt'
+            ) | Where-Object { -not (Test-Path -LiteralPath (Join-Path $validationTestRoot $_) -PathType Leaf) })
+        Assert-Equal '' (@($familyEvidenceMissing) -join ',') 'Validation interface fixture family writes and reads every evidence file inside the same run root'
+        $normalStagingArgumentPath = Join-Path $validationTestRoot 'normal-office-staging-argument-present.txt'
+        $normalStagingArgumentLines = @()
+        if (Test-Path -LiteralPath $normalStagingArgumentPath -PathType Leaf) {
+            $normalStagingArgumentLines = @([System.IO.File]::ReadAllText($normalStagingArgumentPath, [System.Text.Encoding]::UTF8) -split '\r?\n')
+        }
         Assert-Equal `
             'False' `
-            ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'normal-office-staging-argument-present.txt'), [System.Text.Encoding]::UTF8)) `
+            ([string] $normalStagingArgumentLines[0]) `
             'Validation interface does not pass the office staging parameter outside the parent transaction context'
         $normalEvidencePath = Join-Path $validationTestRoot 'normal-csharp-isolation-evidence.txt'
         Assert-Equal $true (Test-Path -LiteralPath $normalEvidencePath -PathType Leaf) 'Validation interface normal-run isolation evidence is written into the same validation run root'
@@ -688,10 +718,21 @@ public static class SuiteEvidenceDesktopProbe
         if (Test-Path -LiteralPath $normalEvidencePath -PathType Leaf) {
             $normalIsolationEvidenceLines = @((([System.IO.File]::ReadAllText($normalEvidencePath, [System.Text.Encoding]::UTF8)) -split '\r?\n'))
         }
-        Assert-Equal $true `
-            ($normalIsolationEvidenceLines -contains 'allowUnisolated=' -and
-                $normalIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp') `
-            'Validation interface keeps the windowed C# child on its isolated desktop outside the office transaction context'
+        # 双分支钉死：本地上下文隔离 fail-closed（标记空且子进程在隔离桌面）；
+        # office 上下文（本测试带 -ParentTransactionMutexHeld）与安装器套件调用同语义卸隔离
+        # （标记=1 且不在隔离桌面），与 office 分支断言互为镜像，任一分支语义不放宽。
+        if ($ParentTransactionMutexHeld) {
+            Assert-Equal $true `
+                ($normalIsolationEvidenceLines -contains 'allowUnisolated=1' -and
+                    -not ($normalIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp')) `
+                'Validation interface unisolates the normal-context windowed C# child inside the deferred office transaction context'
+        }
+        else {
+            Assert-Equal $true `
+                ($normalIsolationEvidenceLines -contains 'allowUnisolated=' -and
+                    $normalIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp') `
+                'Validation interface keeps the windowed C# child on its isolated desktop outside the office transaction context'
+        }
 
         $cSharpTestScript = Join-Path $PSScriptRoot 'Countdown.CSharp.Tests.ps1'
         $invalidOfficeStagingRoot = Join-Path 'D:\Codex\deploy' ("invalid-csharp-staging-" + [guid]::NewGuid().ToString('N'))
@@ -3541,8 +3582,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 576 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
-Assert-Equal 572 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
+Assert-Equal 577 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
+Assert-Equal 573 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 55 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'

@@ -52,3 +52,5 @@ src/**/bin/
 src/**/obj/
 app/
 verification/
+# 验证接口夹具族的运行根（每运行 guid 子目录，finally 自清理；崩溃残留不入库）。
+validation-suite-test-runs/

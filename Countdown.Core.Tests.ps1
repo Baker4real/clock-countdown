@@ -399,12 +399,42 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
             'Countdown.Core.Tests.ps1' = "param([switch] `$ParentTransactionMutexHeld)`r`n'{`"Passed`":11,`"Failed`":0}'"
             'Countdown.CSharp.Tests.ps1' = @"
 param([string] `$OfficeDeploymentStagingRoot)
+if (-not ('SuiteEvidenceDesktopProbe' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class SuiteEvidenceDesktopProbe
+{
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetThreadDesktop(uint threadId);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetUserObjectInformationW(IntPtr handle, int index, StringBuilder info, int maxLength, out uint lengthNeeded);
+    public static string GetDesktopName()
+    {
+        IntPtr handle = GetThreadDesktop(GetCurrentThreadId());
+        if (handle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("GetThreadDesktop failed");
+        }
+        StringBuilder builder = new StringBuilder(256);
+        uint lengthNeeded;
+        if (!GetUserObjectInformationW(handle, 2, builder, 256, out lengthNeeded))
+        {
+            throw new InvalidOperationException("GetUserObjectInformationW failed");
+        }
+        return builder.ToString();
+    }
+}
+'@
+}
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
-Import-Module -Name (Join-Path '$PSScriptRoot' 'tools\Countdown.SuiteIsolation.psm1') -Force
 [System.IO.File]::WriteAllText(
-    (Join-Path `$PSScriptRoot 'office-csharp-isolation-evidence.txt'),
+    (Join-Path '$validationTestRoot' 'office-csharp-isolation-evidence.txt'),
     ('allowUnisolated=' + [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') +
-        [Environment]::NewLine + 'desktop=' + (Get-SuiteThreadDesktopName)),
+        [Environment]::NewLine + 'desktop=' + [SuiteEvidenceDesktopProbe]::GetDesktopName()),
     [System.Text.UTF8Encoding]::new(`$false))
 if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
     [System.IO.File]::WriteAllText(
@@ -529,9 +559,12 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
             ([System.IO.Path]::GetFullPath((Split-Path -Parent $validationTestRoot))) `
             ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'office-staging-argument.txt'), [System.Text.Encoding]::UTF8)) `
             'Validation interface passes the current staging root to C# tests while the parent transaction mutex is held'
-        $officeIsolationEvidenceLines = @((([System.IO.File]::ReadAllText(
-                        (Join-Path $validationTestRoot 'office-csharp-isolation-evidence.txt'),
-                        [System.Text.Encoding]::UTF8)) -split '\r?\n'))
+        $officeEvidencePath = Join-Path $validationTestRoot 'office-csharp-isolation-evidence.txt'
+        Assert-Equal $true (Test-Path -LiteralPath $officeEvidencePath -PathType Leaf) 'Validation interface office isolation evidence is written into the same validation run root'
+        $officeIsolationEvidenceLines = @()
+        if (Test-Path -LiteralPath $officeEvidencePath -PathType Leaf) {
+            $officeIsolationEvidenceLines = @((([System.IO.File]::ReadAllText($officeEvidencePath, [System.Text.Encoding]::UTF8)) -split '\r?\n'))
+        }
         # 判别式：隔离路径必把子进程放到 MinminSuiteIso-ValidateCSharp 桌面（与父桌面无关）；
         # 直接启动则继承父桌面。子进程带标记且不在该桌面 = 卸隔离直启生效。
         $officeChildOnIsolatedDesktop = $officeIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp'
@@ -586,16 +619,46 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
             (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
             @"
 param([string] `$OfficeDeploymentStagingRoot)
+if (-not ('SuiteEvidenceDesktopProbe' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class SuiteEvidenceDesktopProbe
+{
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetThreadDesktop(uint threadId);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetUserObjectInformationW(IntPtr handle, int index, StringBuilder info, int maxLength, out uint lengthNeeded);
+    public static string GetDesktopName()
+    {
+        IntPtr handle = GetThreadDesktop(GetCurrentThreadId());
+        if (handle == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("GetThreadDesktop failed");
+        }
+        StringBuilder builder = new StringBuilder(256);
+        uint lengthNeeded;
+        if (!GetUserObjectInformationW(handle, 2, builder, 256, out lengthNeeded))
+        {
+            throw new InvalidOperationException("GetUserObjectInformationW failed");
+        }
+        return builder.ToString();
+    }
+}
+'@
+}
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
-Import-Module -Name (Join-Path '$PSScriptRoot' 'tools\Countdown.SuiteIsolation.psm1') -Force
 [System.IO.File]::WriteAllText(
     (Join-Path `$PSScriptRoot 'normal-office-staging-argument-present.txt'),
     [string] `$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot'),
     [System.Text.UTF8Encoding]::new(`$false))
 [System.IO.File]::WriteAllText(
-    (Join-Path `$PSScriptRoot 'normal-csharp-isolation-evidence.txt'),
+    (Join-Path '$validationTestRoot' 'normal-csharp-isolation-evidence.txt'),
     ('allowUnisolated=' + [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') +
-        [Environment]::NewLine + 'desktop=' + (Get-SuiteThreadDesktopName)),
+        [Environment]::NewLine + 'desktop=' + [SuiteEvidenceDesktopProbe]::GetDesktopName()),
     [System.Text.UTF8Encoding]::new(`$false))
 [Console]::Error.WriteLine('expected diagnostic')
 '{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
@@ -619,9 +682,12 @@ Import-Module -Name (Join-Path '$PSScriptRoot' 'tools\Countdown.SuiteIsolation.p
             'False' `
             ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'normal-office-staging-argument-present.txt'), [System.Text.Encoding]::UTF8)) `
             'Validation interface does not pass the office staging parameter outside the parent transaction context'
-        $normalIsolationEvidenceLines = @((([System.IO.File]::ReadAllText(
-                        (Join-Path $validationTestRoot 'normal-csharp-isolation-evidence.txt'),
-                        [System.Text.Encoding]::UTF8)) -split '\r?\n'))
+        $normalEvidencePath = Join-Path $validationTestRoot 'normal-csharp-isolation-evidence.txt'
+        Assert-Equal $true (Test-Path -LiteralPath $normalEvidencePath -PathType Leaf) 'Validation interface normal-run isolation evidence is written into the same validation run root'
+        $normalIsolationEvidenceLines = @()
+        if (Test-Path -LiteralPath $normalEvidencePath -PathType Leaf) {
+            $normalIsolationEvidenceLines = @((([System.IO.File]::ReadAllText($normalEvidencePath, [System.Text.Encoding]::UTF8)) -split '\r?\n'))
+        }
         Assert-Equal $true `
             ($normalIsolationEvidenceLines -contains 'allowUnisolated=' -and
                 $normalIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp') `

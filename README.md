@@ -77,7 +77,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`：核心与发布契约测试可直跑；含 `-ReleaseContractOnly` 时会嵌套验证套件窗口步骤（自行隔离），不要当成全程无窗口
 - `Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`、`Invoke-CountdownSourceValidation.ps1`：窗口套件内层实现，仅由低影响启动器转发，直跑 fail-closed
-- `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化收口验证 runner 与桌面启动 T0–T4 分段时延探针；探针样本只用于归因，不汇入门槛样本池
+- `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化 13 步收口验证 runner 与桌面启动 T0–T4 分段时延探针；收口包含 `Countdown.TransferLedger.Tests.ps1`，探针样本只用于归因，不汇入门槛样本池
 - `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），六阶段套件默认入口；Build 绿后 Core/CSharp/Ui/SourceValidation/InstallValidate 五阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
@@ -104,7 +104,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Al
 
 标注：本文档命令的脚本路径统一用 `./` 前缀：该写法在 PowerShell、cmd 与 Git Bash 下均可直接执行；`.\` 前缀会被 Git Bash 等 POSIX shell 当作转义符吃掉反斜杠，导致 `pwsh -File` 报找不到脚本。
 
-标注：六阶段套件与 12 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/6/8/9/10/11 步与六阶段逐字相同，连跑等于整套跑两遍。收口 runner 的 CSharp/Ui/SourceValidation 走同一隔离启动器；`desktop-launcher` 与 `instance-activation-matrix` 默认拒绝前台跑，需要时显式 `-AllowForegroundWindowedSteps`（用户正在用电脑时禁止）。
+标注：六阶段套件与 13 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/6/8/10/11/12 步与六阶段逐字相同，连跑等于整套跑两遍；第 9 步单独覆盖 `Countdown.TransferLedger.Tests.ps1`。收口 runner 的 CSharp/Ui/SourceValidation 走同一隔离启动器；`desktop-launcher` 与 `instance-activation-matrix` 默认拒绝前台跑，需要时显式 `-AllowForegroundWindowedSteps`（用户正在用电脑时禁止）。
 
 标注：`pwsh.exe -NoLogo -NoProfile -File ./Build-CountdownApplication.ps1 -Incremental` 是开发者本地迭代手动工具（显式非默认开关：跳过受管清理、保留增量编译），不属于六阶段套件；直跑时须保持 BelowNormal 等低影响等价措施。增量产物不用于发布收口，收口仍走全量 `-Clean` + R2R 与六阶段套件。
 

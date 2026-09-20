@@ -108,6 +108,33 @@ function Assert-CountdownAcceptanceEnvironment {
     }
 }
 
+function Invoke-CountdownAcceptanceEnvironmentAssertion {
+    param(
+        [Parameter(Mandatory)] [hashtable] $Context,
+        [Parameter(Mandatory)] [string] $Phase,
+        [switch] $SkipRuntimeReceipt
+    )
+
+    $arguments = @{
+        Phase = $Phase
+        ExpectedInteractiveContext = $Context.ExpectedInteractiveContext
+        ExpectedProcessId = $Context.ExpectedProcessId
+        RuntimeStatusPath = $Context.RuntimeStatusPath
+        LaunchToken = $Context.LaunchToken
+        ExpectedSessionId = $Context.ExpectedSessionId
+        ExpectedApplicationPath = $Context.ExpectedApplicationPath
+        TaskName = $Context.TaskName
+        ExpectedScheduledTaskIdentity = $Context.ExpectedScheduledTaskIdentity
+        GetInteractiveContext = $Context.GetInteractiveContext
+        GetScheduledTask = $Context.GetScheduledTask
+        GetScheduledTaskIdentity = $Context.GetScheduledTaskIdentity
+        GetScheduledTaskInfo = $Context.GetScheduledTaskInfo
+    }
+    if ($null -ne $Context.ProcessProbe) { $arguments.ProcessProbe = $Context.ProcessProbe }
+    if ($SkipRuntimeReceipt) { $arguments.SkipRuntimeReceipt = $true }
+    Assert-CountdownAcceptanceEnvironment @arguments
+}
+
 function Invoke-CountdownTransactionAcceptance {
     [CmdletBinding()]
     param(
@@ -141,6 +168,21 @@ function Invoke-CountdownTransactionAcceptance {
     $settingsBefore = $null
     $settingsAfter = $null
     $settingsMutex = $null
+    $environmentContext = @{
+        ExpectedInteractiveContext = $ExpectedInteractiveContext
+        ExpectedProcessId = $ExpectedProcessId
+        RuntimeStatusPath = $RuntimeStatusPath
+        LaunchToken = $LaunchToken
+        ExpectedSessionId = $ExpectedSessionId
+        ExpectedApplicationPath = $ExpectedApplicationPath
+        TaskName = $TaskName
+        ExpectedScheduledTaskIdentity = $ExpectedScheduledTaskIdentity
+        GetInteractiveContext = $GetInteractiveContext
+        GetScheduledTask = $GetScheduledTask
+        GetScheduledTaskIdentity = $GetScheduledTaskIdentity
+        GetScheduledTaskInfo = $GetScheduledTaskInfo
+        ProcessProbe = $ProcessProbe
+    }
     try {
         $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $SettingsPath -TimeoutSeconds 10
         $settingsBefore = Get-CountdownAcceptanceSettingsState -Path $SettingsPath
@@ -148,21 +190,9 @@ function Invoke-CountdownTransactionAcceptance {
             throw '验收前 settings.json 超出允许的数据等价范围。'
         }
 
-        [void] (Assert-CountdownAcceptanceEnvironment `
-            -Phase '验收提交前' `
-            -ExpectedInteractiveContext $ExpectedInteractiveContext `
-            -ExpectedProcessId $ExpectedProcessId `
-            -RuntimeStatusPath $RuntimeStatusPath `
-            -LaunchToken $LaunchToken `
-            -ExpectedSessionId $ExpectedSessionId `
-            -ExpectedApplicationPath $ExpectedApplicationPath `
-            -TaskName $TaskName `
-            -ExpectedScheduledTaskIdentity $ExpectedScheduledTaskIdentity `
-            -GetInteractiveContext $GetInteractiveContext `
-            -GetScheduledTask $GetScheduledTask `
-            -GetScheduledTaskIdentity $GetScheduledTaskIdentity `
-            -GetScheduledTaskInfo $GetScheduledTaskInfo `
-            -ProcessProbe $ProcessProbe)
+        [void] (Invoke-CountdownAcceptanceEnvironmentAssertion `
+            -Context $environmentContext `
+            -Phase '验收提交前')
 
         if (-not (Complete-CountdownStartupRequest -Path $StartupRequestPath -LaunchToken $LaunchToken)) {
             throw '验收事务仍可回滚，但无法授权应用持久化 schema 迁移。'
@@ -184,21 +214,9 @@ function Invoke-CountdownTransactionAcceptance {
             throw 'C# schema 迁移超出允许的数据等价范围。'
         }
 
-        [void] (Assert-CountdownAcceptanceEnvironment `
-            -Phase 'schema 迁移确认后' `
-            -ExpectedInteractiveContext $ExpectedInteractiveContext `
-            -ExpectedProcessId $ExpectedProcessId `
-            -RuntimeStatusPath $RuntimeStatusPath `
-            -LaunchToken $LaunchToken `
-            -ExpectedSessionId $ExpectedSessionId `
-            -ExpectedApplicationPath $ExpectedApplicationPath `
-            -TaskName $TaskName `
-            -ExpectedScheduledTaskIdentity $ExpectedScheduledTaskIdentity `
-            -GetInteractiveContext $GetInteractiveContext `
-            -GetScheduledTask $GetScheduledTask `
-            -GetScheduledTaskIdentity $GetScheduledTaskIdentity `
-            -GetScheduledTaskInfo $GetScheduledTaskInfo `
-            -ProcessProbe $ProcessProbe)
+        [void] (Invoke-CountdownAcceptanceEnvironmentAssertion `
+            -Context $environmentContext `
+            -Phase 'schema 迁移确认后')
 
         [void] (& $CompleteTransaction)
         if (-not (Set-CountdownStartupRequestFinalized -Path $StartupRequestPath -LaunchToken $LaunchToken)) {
@@ -220,21 +238,9 @@ function Invoke-CountdownTransactionAcceptance {
             throw '应用解锁确认的进程与 window-ready 进程不一致。'
         }
 
-        $finalEnvironment = Assert-CountdownAcceptanceEnvironment `
+        $finalEnvironment = Invoke-CountdownAcceptanceEnvironmentAssertion `
+            -Context $environmentContext `
             -Phase '应用解锁确认后' `
-            -ExpectedInteractiveContext $ExpectedInteractiveContext `
-            -ExpectedProcessId $ExpectedProcessId `
-            -RuntimeStatusPath $RuntimeStatusPath `
-            -LaunchToken $LaunchToken `
-            -ExpectedSessionId $ExpectedSessionId `
-            -ExpectedApplicationPath $ExpectedApplicationPath `
-            -TaskName $TaskName `
-            -ExpectedScheduledTaskIdentity $ExpectedScheduledTaskIdentity `
-            -GetInteractiveContext $GetInteractiveContext `
-            -GetScheduledTask $GetScheduledTask `
-            -GetScheduledTaskIdentity $GetScheduledTaskIdentity `
-            -GetScheduledTaskInfo $GetScheduledTaskInfo `
-            -ProcessProbe $ProcessProbe `
             -SkipRuntimeReceipt
 
         [void] (& $RemoveCommittedTransaction)

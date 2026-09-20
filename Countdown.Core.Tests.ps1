@@ -3119,6 +3119,13 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         Assert-Equal $true ($missingJournalMessage -match '无法验证待回滚事务的 journal；拒绝声称已回滚') 'Known rollback transaction without a journal fails closed'
 
         $remoteDeploymentControllerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1'), [System.Text.Encoding]::UTF8)
+        $deploymentOrchestratorSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
+        $acceptanceSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Countdown.TransactionAcceptance.psm1'), [System.Text.Encoding]::UTF8)
+        Assert-Equal 1 ([regex]::Matches($deploymentOrchestratorSource, '(?m)^function Invoke-OfficeRemoteBoundedBase64FileRead\b').Count) 'Deployment orchestrator has one bounded Base64 reader helper'
+        Assert-Equal 2 ([regex]::Matches($deploymentOrchestratorSource, '(?m)^function Get-OfficeRemote(?:DeploymentFailureReceipt|PreRollbackDiagnostics)\b').Count) 'Deployment orchestrator keeps both receipt reader entry points'
+        Assert-Equal 4 ([regex]::Matches($deploymentOrchestratorSource, '(?m)^Assert-CountdownDeploymentRepositoryAndManifest\b').Count) 'Deployment orchestrator uses the repository and manifest stage helper at all four stages'
+        Assert-Equal 1 ([regex]::Matches($acceptanceSource, '(?m)^function Invoke-CountdownAcceptanceEnvironmentAssertion\b').Count) 'Transaction acceptance has one shared environment assertion helper'
+        Assert-Equal 3 ([regex]::Matches($acceptanceSource, '(?m)^\s*\[void\] \(Invoke-CountdownAcceptanceEnvironmentAssertion|^\s*\$finalEnvironment = Invoke-CountdownAcceptanceEnvironmentAssertion').Count) 'Transaction acceptance preserves three environment assertion timings'
         $preRollbackCaptureCallCount = [regex]::Matches($remoteDeploymentControllerSource, '(?m)^\s*\$preRollbackCapture = Write-CountdownPreRollbackDiagnostics\b').Count
         $preRollbackCaptureIndex = $remoteDeploymentControllerSource.IndexOf('$preRollbackCapture = Write-CountdownPreRollbackDiagnostics')
         $rollbackInvocationIndex = $remoteDeploymentControllerSource.IndexOf('$rollback = & $Adapter.Rollback', $preRollbackCaptureIndex)
@@ -3851,6 +3858,14 @@ $deploymentGitExitCodeText = if ($null -ne $deploymentGitExitCodeStatement) {
     $deploymentGitExitCodeStatement.Extent.Text.Trim()
 }
 else { '' }
+$postPackageManifestStageBinding = [regex]::Match(
+    $deploySource,
+    '(?s)Assert-CountdownDeploymentRepositoryAndManifest.{0,500}-Stage ''打包后''.{0,500}-ManifestRoot \$sourceRoot.{0,200}-Manifest \$packageManifest.{0,100}-ManifestFirst'
+).Success
+$remoteOutputManifestStageBinding = [regex]::Match(
+    $deploySource,
+    '(?s)Assert-CountdownDeploymentRepositoryAndManifest.{0,500}-Stage ''远程输出前''.{0,500}-ManifestRoot \$extractRoot.{0,200}-Manifest \$packageManifest'
+).Success
 Assert-Equal '$exitCode = $LASTEXITCODE' $deploymentGitExitCodeText 'Office deployment captures the real Git exit code in the immediately following statement'
 Assert-Equal $true (
     $deploySource.Contains("@('status', '--porcelain=v1', '--untracked-files=all')") -and
@@ -3865,8 +3880,8 @@ Assert-Equal $true (
     $deploySource.Contains("@('archive', '--format=zip', `"--output=`$DestinationPath`", `$Commit)") -and
     $deploySource.Contains('Copy-Item -LiteralPath (Join-Path $sourceRoot $file)') -and
     -not $deploySource.Contains('Copy-Item -LiteralPath (Join-Path $repoRoot $file)') -and
-    $deploySource.Contains("Assert-CountdownDeploymentFileManifest -Root `$sourceRoot -Manifest `$packageManifest -Stage '打包后'") -and
-    $deploySource.Contains("Assert-CountdownDeploymentFileManifest -Root `$extractRoot -Manifest `$packageManifest -Stage '远程输出前'")
+    $postPackageManifestStageBinding -and
+    $remoteOutputManifestStageBinding
 ) 'Office deployment builds package bytes only from the verified commit snapshot'
 $buildInvocationIndex = $deploySource.IndexOf('[void] (Invoke-CountdownDeploymentLockedCommitFile', $deploySource.IndexOf('$powerShell7 ='))
 $buildScriptPathIndex = $deploySource.IndexOf("-RelativePath 'Build-CountdownApplication.ps1'", $buildInvocationIndex)
@@ -3891,6 +3906,7 @@ $deploymentGateFunctionNames = @(
     'New-CountdownDeploymentCommitFileManifest',
     'New-CountdownDeploymentFileManifest',
     'Assert-CountdownDeploymentFileManifest',
+    'Assert-CountdownDeploymentRepositoryAndManifest',
     'Assert-CountdownDeploymentFileSet',
     'Invoke-CountdownWorkingTreeArchiveValidation',
     'Assert-CountdownRemoteInstallScript'

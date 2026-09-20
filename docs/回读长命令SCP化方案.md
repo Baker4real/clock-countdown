@@ -7,6 +7,8 @@ intent: 记录部署后独立回读 SCP 化（issue #78）的设计决策、目�
 
 # 回读长命令 SCP 化方案
 
+> 历史设计边界：本文记录回读长命令 SCP 化的历史方案与现状取证，不构成当前传输策略变更授权。现行部署仍按受管 OpenSSH/SCP 执行；本次编排去重不迁移到 tailcat，也不改变账本协议或 schema。
+
 > 文档状态：这是 2026-08-26 的 #78 设计记录，2026-08-27 已按文末五条验收并关闭（实现 `df0a454`，端到端 runId `20260827214221918-811d1ca7`）。现役部署合同以 [办公室部署](办公室部署.md) 为准。下文「现状机制」与「测试与验证计划」描述改动前代码和当时实施清单，不是未完成待办。
 
 ## 背景与问题
@@ -98,7 +100,7 @@ issue #78（2026-08-27 已按本方案验收并关闭，实现提交 df0a454，�
 
 ### 测试与验证现状
 
-回读契约测试 `Countdown.Core.Tests.ps1:2945-3079`（含 3022-3024 公共 adapter 账本 id/顺序断言）；SCP 化静态断言 3790-3846（3790-3801 部署脚本 SCP 调用计数与显式传参断言，3816-3824 AST 禁裸 ssh/scp 只扫部署脚本，3837-3846 身份解析先于首次 SCP 的顺序断言）；身份/探针单测 3872-4020。`Countdown.TransferLedger.Tests.ps1` 的唯一断言原语是 `Assert-Equal`（:9 定义），全文件静态出现 138 行（含定义行），另有 7 个 drift 循环用例（848-889）；该文件未被 README 本机验证清单、12 步 runner（`tools/Invoke-CountdownVerificationRun.ps1`）或 CI 引用，需手动运行。README.md「本机验证」共 10 条命令（8 条套件 + 97/98 两个 `-ValidateOnly`）；`-ValidateOnly`（`Deploy-OfficeCountdown.ps1:1076-1100`）纯本地、不解析 SSH 身份、不触网、不跑探针。
+回读契约测试 `Countdown.Core.Tests.ps1:2945-3079`（含 3022-3024 公共 adapter 账本 id/顺序断言）；SCP 化静态断言 3790-3846（3790-3801 部署脚本 SCP 调用计数与显式传参断言，3816-3824 AST 禁裸 ssh/scp 只扫部署脚本，3837-3846 身份解析先于首次 SCP 的顺序断言）；身份/探针单测 3872-4020。`Countdown.TransferLedger.Tests.ps1` 的唯一断言原语是 `Assert-Equal`（:9 定义），全文件静态出现 138 行（含定义行），另有 7 个 drift 循环用例（848-889）；这是历史快照中的未接入状态，现行 README、13 步 runner（`tools/Invoke-CountdownVerificationRun.ps1`）和 CI 已纳入该测试。README.md「本机验证」共 10 条命令（8 条套件 + 97/98 两个 `-ValidateOnly`）；`-ValidateOnly`（`Deploy-OfficeCountdown.ps1:1076-1100`）纯本地、不解析 SSH 身份、不触网、不跑探针。
 
 ## 目标协议设计
 

@@ -50,3 +50,10 @@ jobs:
           & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.Core.Tests.ps1 -RemoteDeploymentOnly
           $testExit = $LASTEXITCODE
           if ($testExit -ne 0) { exit $testExit }
+
+      - name: Test transfer ledger
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.TransferLedger.Tests.ps1
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) { exit $testExit }

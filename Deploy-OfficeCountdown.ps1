@@ -57,27 +57,33 @@ if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) {
     $bytes
 }
 
-function Get-OfficeRemoteDeploymentFailureReceipt {
-    param([Parameter(Mandatory)] [string] $RemotePath)
+function Invoke-OfficeRemoteBoundedBase64FileRead {
+    param(
+        [Parameter(Mandatory)] [string] $RemotePath,
+        [Parameter(Mandatory)] [string] $RemoteFileLabel,
+        [Parameter(Mandatory)] [string] $RemoteSizeErrorLabel,
+        [Parameter(Mandatory)] [string] $ReturnedSizeErrorLabel,
+        [Parameter(Mandatory)] [string] $StartupErrorPrefix,
+        [Parameter(Mandatory)] [string] $ReadErrorMessage,
+        [Parameter(Mandatory)] [string] $InvalidBase64ErrorPrefix,
+        [Parameter(Mandatory)] [string] $ContractErrorPrefix,
+        [Parameter(Mandatory)] [scriptblock] $ContractParser
+    )
 
     $escapedRemotePath = $RemotePath.Replace("'", "''")
     $runtimeGuard = "`$ErrorActionPreference = 'Stop'; if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') { throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。' }"
-    $receiptScript = @"
+    $readerScript = @"
 $runtimeGuard
-if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) {
-  exit 0
-}
+if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) { exit 0 }
 `$item = Get-Item -LiteralPath '$escapedRemotePath' -Force -ErrorAction Stop
 if (`$item -isnot [System.IO.FileInfo] -or (`$item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-  throw '远端部署失败回执必须是非 reparse point 的普通文件。'
+  throw '${RemoteFileLabel}必须是非 reparse point 的普通文件。'
 }
 `$length = [long] `$item.Length
-if (`$length -gt 32768) {
-  throw "远端部署失败回执超过允许大小：`$length"
-}
+if (`$length -gt 32768) { throw "${RemoteSizeErrorLabel}：`$length" }
 [Console]::Out.Write([Convert]::ToBase64String([System.IO.File]::ReadAllBytes(`$item.FullName)))
 "@
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($receiptScript))
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($readerScript))
     $exitCode = -1
     try {
         $output = & $script:sshExecutablePath @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
@@ -88,7 +94,7 @@ if (`$length -gt 32768) {
             Success = $false
             ExitCode = -1
             Bytes = $null
-            FailureMessage = "无法启动办公室设备部署失败回执读取：$($_.Exception.Message)"
+            FailureMessage = "$StartupErrorPrefix$($_.Exception.Message)"
         }
     }
     if ($exitCode -ne 0) {
@@ -96,7 +102,7 @@ if (`$length -gt 32768) {
             Success = $false
             ExitCode = $exitCode
             Bytes = $null
-            FailureMessage = '无法读取办公室设备上的部署失败回执。'
+            FailureMessage = $ReadErrorMessage
         }
     }
 
@@ -117,7 +123,7 @@ if (`$length -gt 32768) {
             Success = $false
             ExitCode = $exitCode
             Bytes = $null
-            FailureMessage = "办公室设备返回的部署失败回执不是有效 Base64：$($_.Exception.Message)"
+            FailureMessage = "$InvalidBase64ErrorPrefix$($_.Exception.Message)"
         }
     }
     if ($bytes.Length -gt 32768) {
@@ -125,18 +131,18 @@ if (`$length -gt 32768) {
             Success = $false
             ExitCode = $exitCode
             Bytes = $null
-            FailureMessage = "办公室设备返回的部署失败回执超过允许大小：$($bytes.Length)"
+            FailureMessage = "$ReturnedSizeErrorLabel$($bytes.Length)"
         }
     }
     try {
-        [void] (ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes $bytes)
+        & $ContractParser $bytes
     }
     catch {
         return [pscustomobject]@{
             Success = $false
             ExitCode = $exitCode
             Bytes = $null
-            FailureMessage = "办公室设备返回的部署失败回执未通过契约校验：$($_.Exception.Message)"
+            FailureMessage = "$ContractErrorPrefix$($_.Exception.Message)"
         }
     }
     [pscustomobject]@{
@@ -147,48 +153,34 @@ if (`$length -gt 32768) {
     }
 }
 
+function Get-OfficeRemoteDeploymentFailureReceipt {
+    param([Parameter(Mandatory)] [string] $RemotePath)
+
+    Invoke-OfficeRemoteBoundedBase64FileRead `
+        -RemotePath $RemotePath `
+        -RemoteFileLabel '远端部署失败回执' `
+        -RemoteSizeErrorLabel '远端部署失败回执超过允许大小' `
+        -ReturnedSizeErrorLabel '办公室设备返回的部署失败回执超过允许大小：' `
+        -StartupErrorPrefix '无法启动办公室设备部署失败回执读取：' `
+        -ReadErrorMessage '无法读取办公室设备上的部署失败回执。' `
+        -InvalidBase64ErrorPrefix '办公室设备返回的部署失败回执不是有效 Base64：' `
+        -ContractErrorPrefix '办公室设备返回的部署失败回执未通过契约校验：' `
+        -ContractParser { param($bytes) [void] (ConvertFrom-CountdownInstallFailureReceiptBytes -Bytes $bytes) }
+}
+
 function Get-OfficeRemotePreRollbackDiagnostics {
     param([Parameter(Mandatory)] [string] $RemotePath)
 
-    $escapedRemotePath = $RemotePath.Replace("'", "''")
-    $runtimeGuard = "`$ErrorActionPreference = 'Stop'; if (`$PSVersionTable.PSVersion.Major -lt 7 -or `$PSVersionTable.PSEdition -ne 'Core') { throw '办公室设备必须使用 PowerShell 7+（pwsh.exe）。' }"
-    $readerScript = @"
-$runtimeGuard
-if (-not (Test-Path -LiteralPath '$escapedRemotePath' -PathType Leaf)) { exit 0 }
-`$item = Get-Item -LiteralPath '$escapedRemotePath' -Force -ErrorAction Stop
-if (`$item -isnot [System.IO.FileInfo] -or (`$item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-  throw 'rollback 前诊断必须是非 reparse point 的普通文件。'
-}
-if ([long] `$item.Length -gt 32768) { throw "rollback 前诊断超过远端读取上限：`$(`$item.Length)" }
-[Console]::Out.Write([Convert]::ToBase64String([System.IO.File]::ReadAllBytes(`$item.FullName)))
-"@
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($readerScript))
-    try {
-        $output = & $script:sshExecutablePath @script:sshOptions $env:REPLICATOR_OFFICE_SSH_DESTINATION "pwsh.exe -NoLogo -NoProfile -EncodedCommand $encoded"
-        $exitCode = $LASTEXITCODE
-    }
-    catch {
-        return [pscustomobject]@{ Success = $false; ExitCode = -1; Bytes = $null; FailureMessage = "无法启动 rollback 前诊断读取：$($_.Exception.Message)" }
-    }
-    if ($exitCode -ne 0) {
-        return [pscustomobject]@{ Success = $false; ExitCode = $exitCode; Bytes = $null; FailureMessage = '无法读取办公室设备上的 rollback 前诊断。' }
-    }
-    $text = ($output | Out-String).Trim()
-    if ([string]::IsNullOrWhiteSpace($text)) {
-        return [pscustomobject]@{ Success = $true; ExitCode = 0; Bytes = $null; FailureMessage = $null }
-    }
-    try { $bytes = [Convert]::FromBase64String($text) }
-    catch {
-        return [pscustomobject]@{ Success = $false; ExitCode = 0; Bytes = $null; FailureMessage = "办公室设备返回的 rollback 前诊断不是有效 Base64：$($_.Exception.Message)" }
-    }
-    if ($bytes.Length -gt 32768) {
-        return [pscustomobject]@{ Success = $false; ExitCode = 0; Bytes = $null; FailureMessage = "办公室设备返回的 rollback 前诊断超过远端读取上限：$($bytes.Length)" }
-    }
-    try { [void] (ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes $bytes) }
-    catch {
-        return [pscustomobject]@{ Success = $false; ExitCode = 0; Bytes = $null; FailureMessage = "办公室设备返回的 rollback 前诊断未通过契约校验：$($_.Exception.Message)" }
-    }
-    [pscustomobject]@{ Success = $true; ExitCode = 0; Bytes = [byte[]] $bytes; FailureMessage = $null }
+    Invoke-OfficeRemoteBoundedBase64FileRead `
+        -RemotePath $RemotePath `
+        -RemoteFileLabel 'rollback 前诊断' `
+        -RemoteSizeErrorLabel 'rollback 前诊断超过远端读取上限' `
+        -ReturnedSizeErrorLabel '办公室设备返回的 rollback 前诊断超过远端读取上限：' `
+        -StartupErrorPrefix '无法启动 rollback 前诊断读取：' `
+        -ReadErrorMessage '无法读取办公室设备上的 rollback 前诊断。' `
+        -InvalidBase64ErrorPrefix '办公室设备返回的 rollback 前诊断不是有效 Base64：' `
+        -ContractErrorPrefix '办公室设备返回的 rollback 前诊断未通过契约校验：' `
+        -ContractParser { param($bytes) [void] (ConvertFrom-CountdownPreRollbackDiagnosticsBytes -Bytes $bytes) }
 }
 
 function Invoke-CountdownDeploymentGit {
@@ -484,6 +476,38 @@ function Assert-CountdownDeploymentFileManifest {
         if (-not [string]::Equals($actual, [string] $entry.Value, [System.StringComparison]::OrdinalIgnoreCase)) {
             throw "$Stage：部署文件已变化：$($entry.Key)"
         }
+    }
+}
+
+function Assert-CountdownDeploymentRepositoryAndManifest {
+    param(
+        [Parameter(Mandatory)] [string] $GitPath,
+        [Parameter(Mandatory)] [string] $RepositoryRoot,
+        [Parameter(Mandatory)] [string] $Stage,
+        [Parameter(Mandatory)] [string] $ExpectedCommit,
+        [Parameter(Mandatory)] [string] $ManifestRoot,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Manifest,
+        [switch] $ManifestFirst,
+        [scriptblock] $Adapter
+    )
+
+    if ($ManifestFirst) {
+        Assert-CountdownDeploymentFileManifest -Root $ManifestRoot -Manifest $Manifest -Stage $Stage
+        [void] (Assert-CountdownDeploymentRepositoryState `
+            -GitPath $GitPath `
+            -RepositoryRoot $RepositoryRoot `
+            -Stage $Stage `
+            -ExpectedCommit $ExpectedCommit `
+            -Adapter $Adapter)
+    }
+    else {
+        [void] (Assert-CountdownDeploymentRepositoryState `
+            -GitPath $GitPath `
+            -RepositoryRoot $RepositoryRoot `
+            -Stage $Stage `
+            -ExpectedCommit $ExpectedCommit `
+            -Adapter $Adapter)
+        Assert-CountdownDeploymentFileManifest -Root $ManifestRoot -Manifest $Manifest -Stage $Stage
     }
 }
 
@@ -1203,12 +1227,13 @@ if ($requiredFiles -notcontains 'app\published-payload.json') {
     throw '构建后：发布契约未包含运行时载荷清单，拒绝打包。'
 }
 
-[void] (Assert-CountdownDeploymentRepositoryState `
+Assert-CountdownDeploymentRepositoryAndManifest `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
     -Stage '构建后' `
-    -ExpectedCommit $commit)
-Assert-CountdownDeploymentFileManifest -Root $sourceRoot -Manifest $controlManifest -Stage '构建后'
+    -ExpectedCommit $commit `
+    -ManifestRoot $sourceRoot `
+    -Manifest $controlManifest
 $packageValidation = Assert-CountdownReleasePackage -Root $sourceRoot
 $packageManifest = [ordered]@{}
 foreach ($file in $requiredFiles) {
@@ -1227,12 +1252,13 @@ foreach ($file in $requiredFiles) {
         $packageManifest[$file] = [string] (Get-FileHash -Algorithm SHA256 -LiteralPath $builtPath).Hash
     }
 }
-[void] (Assert-CountdownDeploymentRepositoryState `
+Assert-CountdownDeploymentRepositoryAndManifest `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
     -Stage '打包前' `
-    -ExpectedCommit $commit)
-Assert-CountdownDeploymentFileManifest -Root $sourceRoot -Manifest $controlManifest -Stage '打包前'
+    -ExpectedCommit $commit `
+    -ManifestRoot $sourceRoot `
+    -Manifest $controlManifest
 
 New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 foreach ($file in $requiredFiles) {
@@ -1247,21 +1273,24 @@ Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot -Force
 [void] (Assert-CountdownReleasePackage -Root $extractRoot)
 Assert-CountdownDeploymentFileSet -Root $extractRoot -ExpectedFiles $requiredFiles -Stage 'ZIP 生成后'
 Assert-CountdownDeploymentFileManifest -Root $extractRoot -Manifest $packageManifest -Stage 'ZIP 生成后'
-Assert-CountdownDeploymentFileManifest -Root $sourceRoot -Manifest $packageManifest -Stage '打包后'
-[void] (Assert-CountdownDeploymentRepositoryState `
+Assert-CountdownDeploymentRepositoryAndManifest `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
     -Stage '打包后' `
-    -ExpectedCommit $commit)
+    -ExpectedCommit $commit `
+    -ManifestRoot $sourceRoot `
+    -Manifest $packageManifest `
+    -ManifestFirst
 
 $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
 
-[void] (Assert-CountdownDeploymentRepositoryState `
+Assert-CountdownDeploymentRepositoryAndManifest `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
     -Stage '远程输出前' `
-    -ExpectedCommit $commit)
-Assert-CountdownDeploymentFileManifest -Root $extractRoot -Manifest $packageManifest -Stage '远程输出前'
+    -ExpectedCommit $commit `
+    -ManifestRoot $extractRoot `
+    -Manifest $packageManifest
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash -ne $archiveHash) {
     throw '远程输出前：ZIP 已变化，拒绝部署。'
 }

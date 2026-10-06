@@ -2384,6 +2384,11 @@ internal static class ValidationReport
             ["NoteDateDefaultsTrackBeijingDay"] = noteDateBehavior.TracksBeijingDay,
             ["NoteDateChoicesSurviveBeijingDayChange"] = noteDateBehavior.PreservesChosenDate,
             ["NoteStatusViaCheckbox"] = noteExercise.CompletionViaCheckbox,
+            ["NoteFieldErrorsAtSource"] = mainWindowScenarios.NoteValidation.BothFieldsShowErrors,
+            ["NoteFirstInvalidFieldFocus"] = mainWindowScenarios.NoteValidation.FirstInvalidFieldFocus,
+            ["NoteFieldErrorsClearOnCorrection"] = mainWindowScenarios.NoteValidation.ErrorsClearOnCorrection,
+            ["DatedNoteRejectsClearedDate"] = mainWindowScenarios.NoteValidation.DatedEditRejectsClearedDate,
+            ["CountdownReminderDateFocusForTimeAndCustom"] = mainWindowScenarios.NoteValidation.ReminderDateFocusForTimeAndCustom,
             ["TagInteractionsExecuted"] = tagExercise.Executed,
             ["TagCreationAndAssociation"] = tagExercise.CreationAndAssociation,
             ["TagAnyAllFilter"] = tagExercise.AnyAllFilter,
@@ -2558,6 +2563,8 @@ internal static class ValidationReport
                 floatingReferenceExercise.PrimaryDeadlineTextFullyVisible,
             ["FloatingPrimaryExtremeRemainingShrinks"] =
                 floatingReferenceExercise.PrimaryExtremeRemainingShrinks,
+            ["FloatingExpiredFallbackRemainingTextFullyVisible"] =
+                floatingReferenceExercise.ExpiredFallbackRemainingTextFullyVisible,
             ["FloatingPrimaryDeadlineMeasurements"] =
                 floatingReferenceExercise.PrimaryDeadlineMeasurements,
             ["FloatingReferenceViewportStatesMatch"] = floatingReferenceExercise.ViewportStatesMatch,
@@ -5157,6 +5164,32 @@ internal static class ValidationReport
                     baselineBodyScroller.ScrollableHeight,
                     "距离下班",
                     "七月倒计时"));
+            var expiredFallbackProbe = referenceWindow.BuildRemainingBlocksForValidation(
+                "已到期",
+                isPrimary: false);
+            var expiredFallbackProbeRow = new Border
+            {
+                Child = expiredFallbackProbe
+            };
+            rows.Children.Add(expiredFallbackProbeRow);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 3);
+            var expiredFallbackText = Descendants<TextBlock>(expiredFallbackProbeRow)
+                .SingleOrDefault(text => string.Equals(text.Text, "已到期", StringComparison.Ordinal));
+            var expiredFallbackRemainingTextFullyVisible =
+                expiredFallbackText is not null &&
+                expiredFallbackText.FontSize >= 12 &&
+                expiredFallbackText.TextWrapping == TextWrapping.NoWrap &&
+                expiredFallbackText.TextTrimming == TextTrimming.None &&
+                string.Equals(
+                    AutomationProperties.GetItemStatus(expiredFallbackText),
+                    "KeyTextFontFloorSatisfied",
+                    StringComparison.Ordinal) &&
+                TextBlockLinesFit(expiredFallbackText) &&
+                MeasureTextFit(expiredFallbackText, root).Fits &&
+                FitsInsideFloatingViewport(expiredFallbackText, referenceWindow);
+            rows.Children.Remove(expiredFallbackProbeRow);
+            referenceWindow.UpdateTime(referenceUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             var secondaryRemainingSamples = new List<FloatingSecondaryRemainingMeasurement>();
             var primaryCountdownContrastMeasurements = new List<FloatingPrimaryCountdownContrastMeasurement>
             {
@@ -5235,7 +5268,7 @@ internal static class ValidationReport
                             Math.Abs(sample.FontSize - 13) <= 0.01) &&
                         longSecondaryMeasurement.ColumnIs194Pixels &&
                         longSecondaryMeasurement.IsFullyVisible &&
-                        longSecondaryMeasurement.FontSize is >= 10 and <= 13));
+                        longSecondaryMeasurement.FontSize is >= 12 and <= 13));
             var longSecondaryDeleted = referenceSession.TryDeleteCountdown(
                 "reference-long-secondary",
                 out _);
@@ -5376,7 +5409,11 @@ internal static class ValidationReport
                 Math.Abs(extremePrimaryCluster.Width - 194) <= 0.01 &&
                 extremePrimaryCluster.HorizontalAlignment == HorizontalAlignment.Right &&
                 extremePrimaryValueBlocks.Length == 4 &&
-                extremePrimaryValueBlocks.All(value => value.FontSize is >= 10 and < 18) &&
+                extremePrimaryValueBlocks.All(value => value.FontSize is >= 12 and < 18) &&
+                string.Equals(
+                    AutomationProperties.GetItemStatus(extremePrimaryCluster),
+                    "KeyTextFontFloorSatisfied",
+                    StringComparison.Ordinal) &&
                 RemainingClusterIsSingleLine(extremePrimaryCluster) &&
                 FitsInsideFloatingViewport(extremePrimaryCluster, referenceWindow);
             var extremePrimaryDeleted = referenceSession.TryDeleteCountdown(
@@ -5868,6 +5905,7 @@ internal static class ValidationReport
                 scenarioMatches,
                 primaryDeadlineTextFullyVisible,
                 primaryExtremeRemainingShrinks,
+                expiredFallbackRemainingTextFullyVisible,
                 new[]
                 {
                     primaryDeadlineWithoutScrollbarMeasurement,
@@ -13914,6 +13952,10 @@ internal static class ValidationReport
         var isFullyVisible =
             cluster is not null &&
             isSingleLineAndUntrimmed &&
+            string.Equals(
+                AutomationProperties.GetItemStatus(cluster),
+                "KeyTextFontFloorSatisfied",
+                StringComparison.Ordinal) &&
             FitsInsideFloatingViewport(cluster, floating);
         return new FloatingSecondaryRemainingMeasurement(
             precision,
@@ -14076,7 +14118,9 @@ internal static class ValidationReport
             primaryTitle is not null &&
             Math.Abs(primaryTitle.FontSize - 15) <= 0.01 &&
             primaryTitle.FontWeight == FontWeights.SemiBold &&
-            primaryTitle.TextWrapping == TextWrapping.Wrap &&
+            primaryTitle.TextWrapping == TextWrapping.NoWrap &&
+            primaryTitle.TextTrimming == TextTrimming.CharacterEllipsis &&
+            Math.Abs(primaryTitle.MaxHeight - 20) <= 0.01 &&
             string.Equals(BrushColor(primaryTitle.Foreground), "#FF3B190D", StringComparison.Ordinal) &&
             primaryDeadline is not null &&
             Math.Abs(primaryDeadline.FontSize - 11) <= 0.01 &&
@@ -15840,6 +15884,7 @@ internal static class ValidationReport
         bool ScenarioMatches,
         bool PrimaryDeadlineTextFullyVisible,
         bool PrimaryExtremeRemainingShrinks,
+        bool ExpiredFallbackRemainingTextFullyVisible,
         IReadOnlyList<FloatingPrimaryDeadlineMeasurement> PrimaryDeadlineMeasurements,
         bool ViewportStatesMatch,
         bool RasterCardStatesMatch,

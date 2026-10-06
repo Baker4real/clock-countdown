@@ -1475,47 +1475,63 @@
                               <ColumnDefinition Width="8" />
                               <ColumnDefinition Width="66" />
                             </Grid.ColumnDefinitions>
-                            <Grid Grid.Column="0">
-                              <TextBox x:Name="NoteText"
-                                       MinHeight="68"
-                                       MaxLength="140" />
-                              <TextBlock Margin="18,0,0,0"
-                                         Height="28"
-                                         HorizontalAlignment="Left"
-                                         VerticalAlignment="Center"
-                                         FontSize="20"
-                                         Foreground="{DynamicResource MutedBrush}"
-                                         IsHitTestVisible="False"
-                                         Text="写下要记住的事情吧…">
-                                <TextBlock.Style>
-                                  <Style TargetType="{x:Type TextBlock}">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                      <DataTrigger Binding="{Binding Text, ElementName=NoteText}" Value="">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                      </DataTrigger>
-                                    </Style.Triggers>
-                                  </Style>
-                                </TextBlock.Style>
-                              </TextBlock>
-                            </Grid>
-                            <Grid Grid.Column="2">
-                              <DatePicker x:Name="NoteDate"
-                                          Width="244"
-                                          MinHeight="68"
-                                          Padding="48,0,16,0"
-                                          SelectedDateFormat="Short" />
-                              <Path Width="20"
-                                    Height="20"
-                                    Margin="16,0,0,0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    Data="M 3,4.5 L 17,4.5 C 17.6,4.5 18,4.9 18,5.5 L 18,16.5 C 18,17.1 17.6,17.5 17,17.5 L 3,17.5 C 2.4,17.5 2,17.1 2,16.5 L 2,5.5 C 2,4.9 2.4,4.5 3,4.5 Z M 2,8.5 L 18,8.5 M 6.5,2.5 L 6.5,6 M 13.5,2.5 L 13.5,6"
-                                    Stroke="{DynamicResource MutedBrush}"
-                                    StrokeThickness="1.6"
-                                    StrokeLineJoin="Round"
-                                    IsHitTestVisible="False" />
-                            </Grid>
+                            <StackPanel Grid.Column="0">
+                              <Grid>
+                                <TextBox x:Name="NoteText"
+                                         MinHeight="68"
+                                         MaxLength="140" />
+                                <TextBlock Margin="18,0,0,0"
+                                           Height="28"
+                                           HorizontalAlignment="Left"
+                                           VerticalAlignment="Center"
+                                           FontSize="20"
+                                           Foreground="{DynamicResource MutedBrush}"
+                                           IsHitTestVisible="False"
+                                           Text="写下要记住的事情吧…">
+                                  <TextBlock.Style>
+                                    <Style TargetType="{x:Type TextBlock}">
+                                      <Setter Property="Visibility" Value="Collapsed" />
+                                      <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=NoteText}" Value="">
+                                          <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                      </Style.Triggers>
+                                    </Style>
+                                  </TextBlock.Style>
+                                </TextBlock>
+                              </Grid>
+                              <TextBlock x:Name="NoteTextError"
+                                         Margin="0,8,0,0"
+                                         FontSize="{StaticResource TypeBodyFontSize}"
+                                         Foreground="{DynamicResource DangerBrush}"
+                                         TextWrapping="Wrap"
+                                         Visibility="Collapsed" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                              <Grid>
+                                <DatePicker x:Name="NoteDate"
+                                            Width="244"
+                                            MinHeight="68"
+                                            Padding="48,0,16,0"
+                                            SelectedDateFormat="Short" />
+                                <Path Width="20"
+                                      Height="20"
+                                      Margin="16,0,0,0"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Center"
+                                      Data="M 3,4.5 L 17,4.5 C 17.6,4.5 18,4.9 18,5.5 L 18,16.5 C 18,17.1 17.6,17.5 17,17.5 L 3,17.5 C 2.4,17.5 2,17.1 2,16.5 L 2,5.5 C 2,4.9 2.4,4.5 3,4.5 Z M 2,8.5 L 18,8.5 M 6.5,2.5 L 6.5,6 M 13.5,2.5 L 13.5,6"
+                                      Stroke="{DynamicResource MutedBrush}"
+                                      StrokeThickness="1.6"
+                                      StrokeLineJoin="Round"
+                                      IsHitTestVisible="False" />
+                              </Grid>
+                              <TextBlock x:Name="NoteDateError"
+                                         Margin="0,8,0,0"
+                                         FontSize="{StaticResource TypeBodyFontSize}"
+                                         Foreground="{DynamicResource DangerBrush}"
+                                         TextWrapping="Wrap"
+                                         Visibility="Collapsed" />
+                            </StackPanel>
                             <Button x:Name="SaveNoteButton"
                                     Grid.Column="4"
                                     Width="132"

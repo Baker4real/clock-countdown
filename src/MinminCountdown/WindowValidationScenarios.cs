@@ -36,7 +36,129 @@ public sealed partial class MainWindow
             ProbeCountdownReminderModeRadioMapping(),
             ProbeCountdownReadabilityScenarios(),
             ProbeCountdownEditingScenarios(),
+            ProbeNoteValidationScenarios(),
             ProbeMainWindowInteractionStates());
+    }
+
+    // #185/#186/#188：便签字段错误和倒计时提醒日期前置条件必须回到来源控件，
+    // 并复用同一字段错误/礼貌直播语义；无效提交不应清掉草稿或打开规则编辑器。
+    internal NoteValidationScenarios ProbeNoteValidationScenarios()
+    {
+        var originalWorkspace = _workspace;
+        var originalText = NoteText.Text;
+        var originalDate = NoteDate.SelectedDate;
+        var originalEditingId = _editingNoteId;
+        var originalDateDirty = _noteDateDirty;
+        string? temporaryNoteId = null;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Notes);
+            Activate();
+            WindowValidationInput.Pump(Dispatcher);
+            ResetNoteEditor();
+            NoteDate.SelectedDate = null;
+            NoteText.Text = string.Empty;
+            SaveNoteButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var bothFields =
+                NoteTextError.Visibility == Visibility.Visible &&
+                NoteDateError.Visibility == Visibility.Visible &&
+                EditingValidationErrorIsAccessible(NoteTextError, NoteText) &&
+                EditingValidationErrorIsAccessible(NoteDateError, NoteDate);
+            var firstInvalidFieldFocus = NoteText.IsKeyboardFocusWithin;
+
+            NoteText.Text = "便签字段探针";
+            WindowValidationInput.Pump(Dispatcher);
+            var dateError =
+                NoteTextError.Visibility == Visibility.Collapsed &&
+                NoteDateError.Visibility == Visibility.Visible;
+            NoteDate.SelectedDate = _desktopWorkspace.Snapshot.BeijingNow.Date;
+            WindowValidationInput.Pump(Dispatcher);
+            var correctionClears =
+                dateError &&
+                NoteTextError.Visibility == Visibility.Collapsed &&
+                NoteDateError.Visibility == Visibility.Collapsed &&
+                string.IsNullOrEmpty(NoteMessage.Text);
+
+            NoteText.Text = "便签日期探针";
+            NoteDate.SelectedDate = _desktopWorkspace.Snapshot.BeijingNow.Date;
+            var reminderDue = _desktopWorkspace.Snapshot.BeijingNow.AddDays(1).ToUniversalTime();
+            _noteReminderRules = Array.AsReadOnly(new ReminderRule[]
+            {
+                new AbsoluteOnceReminderRule(Guid.NewGuid().ToString("N"), reminderDue)
+            });
+            UpdateNoteReminderRulesSummary();
+            SaveNoteButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            var saved = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
+                note => note.Text == "便签日期探针");
+            temporaryNoteId = saved?.Id;
+            var datedEditRejectsClear = false;
+            if (saved is not null)
+            {
+                LoadNoteIntoEditor(saved);
+                var rulesBeforeReject = _noteReminderRules.Count;
+                NoteDate.SelectedDate = null;
+                SaveNoteButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(Dispatcher);
+                datedEditRejectsClear =
+                    NoteDateError.Visibility == Visibility.Visible &&
+                    NoteDate.IsKeyboardFocusWithin &&
+                    NoteText.Text == "便签日期探针" &&
+                    _noteReminderRules.Count == rulesBeforeReject;
+            }
+
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            Activate();
+            WindowValidationInput.Pump(Dispatcher);
+            ResetCountdownEditor();
+            CountdownName.Text = "提醒日期草稿";
+            CountdownDate.SelectedDate = null;
+            var editorsBeforeMissingDate = Application.Current.Windows
+                .OfType<ReminderRulesEditorWindow>()
+                .Count();
+            CountdownReminderTimeRadio.IsChecked = true;
+            ApplyCountdownReminderModeForValidation(CountdownReminderMode.AtDeadline);
+            WindowValidationInput.Pump(Dispatcher);
+            var timeFocusesDate = CountdownDate.IsKeyboardFocusWithin;
+            CountdownReminderCustomRadio.IsChecked = true;
+            ApplyCountdownReminderModeForValidation(CountdownReminderMode.Custom);
+            WindowValidationInput.Pump(Dispatcher);
+            var customFocusesDate =
+                CountdownDate.IsKeyboardFocusWithin &&
+                CountdownName.Text == "提醒日期草稿" &&
+                CountdownReminderNoRadio.IsChecked == true &&
+                _countdownReminderRules.Count == 0 &&
+                Application.Current.Windows.OfType<ReminderRulesEditorWindow>().Count() ==
+                    editorsBeforeMissingDate;
+
+            return new NoteValidationScenarios(
+                bothFields,
+                firstInvalidFieldFocus,
+                correctionClears,
+                datedEditRejectsClear,
+                timeFocusesDate && customFocusesDate);
+        }
+        finally
+        {
+            if (temporaryNoteId is not null)
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(temporaryNoteId));
+            }
+
+            _editingNoteId = originalEditingId;
+            NoteText.Text = originalText;
+            _settingDefaultDate = true;
+            NoteDate.SelectedDate = originalDate;
+            _settingDefaultDate = false;
+            _noteDateDirty = originalDateDirty;
+            ClearNoteFieldErrors();
+            NoteMessage.Text = string.Empty;
+            ResetCountdownEditor();
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
     }
 
     private bool ProbeCountdownReminderModeRadioMapping()
@@ -3804,7 +3926,18 @@ internal sealed record MainWindowValidationScenarios(
     bool CountdownReminderModeMappingWorks,
     MainCountdownReadabilityScenarios CountdownReadability,
     CountdownEditingScenarios CountdownEditing,
+    NoteValidationScenarios NoteValidation,
     MainWindowInteractionStates InteractionStates);
+
+internal sealed record NoteValidationScenarios(
+    bool BothFieldsShowErrors,
+    bool FirstInvalidFieldFocus,
+    bool ErrorsClearOnCorrection,
+    bool DatedEditRejectsClearedDate,
+    bool ReminderDateFocusForTimeAndCustom)
+{
+    public static NoteValidationScenarios Failed { get; } = new(false, false, false, false, false);
+}
 
 // #151：倒计时编辑合同探针结果（字段错误、主次按钮、输入面、选区、状态条、单选圆点、排版 token）。
 internal sealed record CountdownEditingScenarios(

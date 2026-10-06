@@ -16,6 +16,7 @@ public sealed partial class FloatingWindow
     internal const string RemainingBlocksTag = "FloatingRemainingBlocks";
     private const string WorkdayEndCountdownId = "__workday_end__";
     private const string EncourageBadgeText = "超期待！";
+    private const double KeyTextMinimumFontSize = 12;
 
     private IReadOnlyList<FrameworkElement> BuildWarmPaperCountdownRows(
         IReadOnlyList<CountdownRecord> records,
@@ -138,11 +139,11 @@ public sealed partial class FloatingWindow
         var title = new TextBlock
         {
             Text = record.Name,
-            MaxHeight = 40,
+            MaxHeight = 20,
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
             LineHeight = 20,
-            TextWrapping = TextWrapping.Wrap,
+            TextWrapping = TextWrapping.NoWrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _floatingPrimaryBrush
         };
@@ -291,7 +292,7 @@ public sealed partial class FloatingWindow
 
         double RequiredWidth(double font, double padding, double gap)
         {
-            var unitFontSize = Math.Round(font * 2 / 3);
+            var unitFontSize = Math.Max(KeyTextMinimumFontSize, Math.Round(font * 2 / 3));
             var dpi = VisualTreeHelper.GetDpi(this);
             var total = 0d;
             for (var index = 0; index < pairs.Count; index++)
@@ -326,25 +327,31 @@ public sealed partial class FloatingWindow
         }
 
         var required = RequiredWidth(valueFontSize, blockPadding, pairGap);
-        while (required > availableWidth && valueFontSize > 10)
+        while (required > availableWidth && valueFontSize > KeyTextMinimumFontSize)
         {
             var fittedFontSize = valueFontSize * (availableWidth / required);
-            var nextFontSize = Math.Max(10, Math.Floor(fittedFontSize * 4) / 4);
+            var nextFontSize = Math.Max(KeyTextMinimumFontSize, Math.Floor(fittedFontSize * 4) / 4);
             if (nextFontSize >= valueFontSize)
             {
-                nextFontSize = Math.Max(10, valueFontSize - 0.25);
+                nextFontSize = Math.Max(KeyTextMinimumFontSize, valueFontSize - 0.25);
             }
 
             valueFontSize = nextFontSize;
             required = RequiredWidth(valueFontSize, blockPadding, pairGap);
         }
 
+        // The loop intentionally stops at the 12 DIP contract floor. If the
+        // fixed viewport still cannot fit, expose that failure to the
+        // validation seam instead of silently claiming a compliant layout.
+        var keyFontFloorSatisfied =
+            required <= availableWidth && valueFontSize >= KeyTextMinimumFontSize;
+
         var blockBrush = isPrimary
             ? ThemeBrush("PinkBlockBrush")
             : ThemeBrush("SecondaryBlockBrush");
         var blockHeight = isPrimary ? blockHeightPrimary : blockHeightSecondary;
         var blockRadius = Math.Max(4, (isPrimary ? blockWidthPrimary : blockWidthSecondary) / 4);
-        var unitFontSize = Math.Round(valueFontSize * 2 / 3);
+        var unitFontSize = Math.Max(KeyTextMinimumFontSize, Math.Round(valueFontSize * 2 / 3));
 
         var pairsPanel = new StackPanel
         {
@@ -402,9 +409,19 @@ public sealed partial class FloatingWindow
             Tag = RemainingBlocksTag
         };
         AutomationProperties.SetName(cluster, remaining);
+        AutomationProperties.SetItemStatus(
+            cluster,
+            keyFontFloorSatisfied ? "KeyTextFontFloorSatisfied" : "KeyTextFontFloorExceeded");
         cluster.Children.Add(pairsPanel);
         return cluster;
     }
+
+    // ValidationReport uses the same rendering seam for the expired fallback,
+    // which is normally filtered out of the live countdown list.
+    internal FrameworkElement BuildRemainingBlocksForValidation(
+        string remaining,
+        bool isPrimary) =>
+        BuildRemainingBlocks(remaining, isPrimary);
 
     private static IReadOnlyList<RemainingPair>? ParseRemainingPairs(string remaining)
     {
@@ -486,22 +503,28 @@ public sealed partial class FloatingWindow
         return block;
     }
 
-    private static void FitSingleLineText(TextBlock text, double availableWidth)
+    private static bool FitSingleLineText(TextBlock text, double availableWidth)
     {
         const double widthReserve = 2;
-        const double minimumFontSize = 10;
+        const double minimumFontSize = KeyTextMinimumFontSize;
         text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var requiredWidth = text.DesiredSize.Width;
         var usableWidth = availableWidth - widthReserve;
-        if (requiredWidth <= usableWidth)
+        if (requiredWidth > usableWidth)
         {
-            return;
+            var fittedFontSize = text.FontSize * (usableWidth / requiredWidth);
+            text.FontSize = Math.Max(
+                minimumFontSize,
+                Math.Floor(fittedFontSize * 4) / 4);
+            text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            requiredWidth = text.DesiredSize.Width;
         }
 
-        var fittedFontSize = text.FontSize * (usableWidth / requiredWidth);
-        text.FontSize = Math.Max(
-            minimumFontSize,
-            Math.Floor(fittedFontSize * 4) / 4);
+        var fits = requiredWidth <= usableWidth && text.FontSize >= minimumFontSize;
+        AutomationProperties.SetItemStatus(
+            text,
+            fits ? "KeyTextFontFloorSatisfied" : "KeyTextFontFloorExceeded");
+        return fits;
     }
 }
 

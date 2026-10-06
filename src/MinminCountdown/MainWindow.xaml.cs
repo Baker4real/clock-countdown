@@ -933,6 +933,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         // #151：字段级错误行同样以礼貌直播区播报，镜像悬浮窗快速新增行为。
         UiAccessibility.MarkLive(CountdownNameError);
         UiAccessibility.MarkLive(CountdownDateError);
+        UiAccessibility.MarkLive(NoteTextError);
+        UiAccessibility.MarkLive(NoteDateError);
         UiAccessibility.MarkLive(MonthlySalaryError);
         UiAccessibility.MarkLive(WorkStartError);
         UiAccessibility.MarkLive(WorkEndError);
@@ -1041,6 +1043,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
         ManageNoteReminderRulesButton.Click += (_, _) => OpenNoteReminderRulesEditor();
+        NoteText.TextChanged += (_, _) => ClearNoteFieldError(NoteTextError);
         MainStatusUndoButton.Click += OnUndoDeleteClick;
         NoteSearch.TextChanged += (_, _) =>
         {
@@ -1059,6 +1062,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 _noteDateDirty = true;
             }
+
+            ClearNoteFieldError(NoteDateError);
         };
         ActiveNotesSegment.Click += (_, _) => SelectNotesSegment(showCompleted: false);
         CompletedNotesSegment.Click += (_, _) => SelectNotesSegment(showCompleted: true);
@@ -2245,29 +2250,39 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void SaveNote()
     {
-        if (string.IsNullOrWhiteSpace(NoteText.Text))
-        {
-            SetMessage(NoteMessage, "请先写下便签内容。", true);
-            return;
-        }
-
         var existing = _editingNoteId is null
             ? null
             : _desktopWorkspace.Snapshot.Settings.Notes
                 .FirstOrDefault(note => note.Id == _editingNoteId);
+        ClearNoteFieldErrors();
+        var validations = new List<(TextBlock Error, string Message, Control Source)>();
+        if (string.IsNullOrWhiteSpace(NoteText.Text))
+        {
+            validations.Add((NoteTextError, "请先写下便签内容。", NoteText));
+        }
+
         if (NoteDate.SelectedDate is null)
         {
             if (existing is null)
             {
-                SetMessage(NoteMessage, "请选择便签日期，当前草稿已保留。", true);
-                return;
+                validations.Add((NoteDateError, "请选择便签日期，当前草稿已保留。", NoteDate));
+            }
+            else if (existing.Date is not null)
+            {
+                validations.Add((NoteDateError, "该便签已设置日期，不能清空日期保存，当前草稿已保留。", NoteDate));
+            }
+        }
+
+        if (validations.Count > 0)
+        {
+            foreach (var (error, message, source) in validations)
+            {
+                ShowNoteValidationError(error, message, source);
             }
 
-            if (existing.Date is not null)
-            {
-                SetMessage(NoteMessage, "该便签已设置日期，不能清空日期保存，当前草稿已保留。", true);
-                return;
-            }
+            SetMessage(NoteMessage, validations[0].Message, true);
+            validations[0].Source.Focus();
+            return;
         }
 
         var result = _desktopWorkspace.Apply(new SaveNoteChange(
@@ -2608,6 +2623,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private void ResetNoteEditor()
     {
         _editingNoteId = null;
+        ClearNoteFieldErrors();
         NoteText.Clear();
         _settingDefaultDate = true;
         var snapshot = _desktopWorkspace.Snapshot;
@@ -2726,11 +2742,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var targetUtc = GetCountdownTargetUtc();
         if (targetUtc is null)
         {
-            ShowCountdownValidationError(
-                CountdownDateError,
-                "请先选择完整的倒计时截止时间。",
-                CountdownDate);
-            SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
+            FocusCountdownDatePrerequisite();
             return;
         }
 
@@ -2771,12 +2783,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 var targetUtc = GetCountdownTargetUtc();
                 if (targetUtc is null)
                 {
-                    ShowCountdownValidationError(
-                        CountdownDateError,
-                        "请先选择完整的倒计时截止时间。",
-                        CountdownDate);
-                    SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
-                    SyncCountdownReminderModeFromRules();
+                    FocusCountdownDatePrerequisite();
+                    EnsureCountdownReminderModeRadio(_countdownReminderMode);
                     return;
                 }
 
@@ -2788,12 +2796,35 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 EnsureCountdownReminderModeRadio(mode);
                 break;
             case CountdownReminderMode.Custom:
+                if (GetCountdownTargetUtc() is null)
+                {
+                    FocusCountdownDatePrerequisite();
+                    EnsureCountdownReminderModeRadio(_countdownReminderMode);
+                    return;
+                }
+
                 OpenCountdownReminderRulesEditor();
                 SyncCountdownReminderModeFromRules();
                 return;
         }
 
         UpdateCountdownReminderRulesSummary();
+    }
+
+    internal void ApplyCountdownReminderModeForValidation(CountdownReminderMode mode) =>
+        ApplyCountdownReminderMode(mode);
+
+    private void FocusCountdownDatePrerequisite()
+    {
+        const string message = "请先选择完整的倒计时截止时间。";
+        ShowCountdownValidationError(CountdownDateError, message, CountdownDate);
+        SetMessage(CountdownMessage, message, true);
+        // DatePickerTextBoxStyle deliberately disables the inner PART_TextBox;
+        // focus the DatePicker owner so keyboard focus remains reachable.
+        var target = (Control)CountdownDate;
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(() => Keyboard.Focus(target)));
     }
 
     private void EnsureCountdownReminderModeRadio(CountdownReminderMode mode)
@@ -3387,6 +3418,41 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ClearCountdownFieldError(CountdownDateError);
     }
 
+    private void ShowNoteValidationError(TextBlock field, string message, Control source)
+    {
+        SetFieldError(field, message);
+        AutomationProperties.SetHelpText(source, message);
+    }
+
+    private void ClearNoteFieldErrors()
+    {
+        ClearNoteFieldError(NoteTextError);
+        ClearNoteFieldError(NoteDateError);
+    }
+
+    private void ClearNoteFieldError(TextBlock field)
+    {
+        var previousMessage = field.Text;
+        SetFieldError(field, string.Empty);
+        foreach (var control in NoteValidationControls())
+        {
+            if (string.Equals(
+                    AutomationProperties.GetHelpText(control),
+                    previousMessage,
+                    StringComparison.Ordinal))
+            {
+                AutomationProperties.SetHelpText(control, string.Empty);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(previousMessage) &&
+            string.Equals(NoteMessage.Text, previousMessage, StringComparison.Ordinal))
+        {
+            NoteMessage.Text = string.Empty;
+            AutomationProperties.SetName(NoteMessage, string.Empty);
+        }
+    }
+
     private void ClearPreferenceFieldErrors()
     {
         ClearPreferenceFieldError(MonthlySalaryError);
@@ -3436,6 +3502,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         yield return CountdownHour;
         yield return CountdownMinute;
         yield return CountdownSecond;
+    }
+
+    private IEnumerable<Control> NoteValidationControls()
+    {
+        yield return NoteText;
+        yield return NoteDate;
     }
 
     private void LoadCharacterAssets(string assetRoot)

@@ -168,6 +168,7 @@ internal static class ValidationReportContract
         "MainKeyboardFocusRingShowsOnTab",
         "MainSelectedTabWeightDominates",
         "MotionClientAreaAnimationSwitchReadable",
+        "MotionTokensMatch",
         "KeyboardFocusRingTabGapAvoidsSelectedFill",
         "KeyboardFocusRingFloatingCapsuleMeetsContrast",
         "KeyboardFocusRingFloatingCapsuleUsesWarmGold",

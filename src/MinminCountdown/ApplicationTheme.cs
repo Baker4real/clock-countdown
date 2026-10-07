@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 
 namespace MinminCountdown;
 
@@ -110,18 +111,41 @@ internal sealed class ApplicationTheme
 
     public void Apply()
     {
-        if (_applied)
+        if (!_applied)
         {
-            return;
+            foreach (var token in Tokens)
+            {
+                _resources[token.ColorKey] = token.Color;
+                _resources[token.BrushKey] = new SolidColorBrush(token.Color);
+            }
+
+            _applied = true;
         }
 
-        foreach (var token in Tokens)
-        {
-            _resources[token.ColorKey] = token.Color;
-            _resources[token.BrushKey] = new SolidColorBrush(token.Color);
-        }
+        ApplyMotionTokens();
+    }
 
-        _applied = true;
+    private void ApplyMotionTokens()
+    {
+        var enabled = ClientAreaAnimationEnabled;
+        _resources["MotionHoverDuration"] = new Duration(
+            enabled ? MotionTokens.HoverDuration : TimeSpan.Zero);
+        _resources["MotionPressDuration"] = new Duration(
+            enabled ? MotionTokens.PressDuration : TimeSpan.Zero);
+        _resources["MotionPopupEnterDuration"] = new Duration(
+            enabled ? MotionTokens.PopupEnterDuration : TimeSpan.Zero);
+        _resources["MotionPopupExitDuration"] = new Duration(
+            enabled ? MotionTokens.PopupExitDuration : TimeSpan.Zero);
+        _resources["MotionIndicatorDuration"] = new Duration(
+            enabled ? MotionTokens.IndicatorDuration : TimeSpan.Zero);
+        _resources["MotionCountdownDuration"] = new Duration(
+            enabled ? MotionTokens.CountdownDuration : TimeSpan.Zero);
+        _resources["MotionEaseOut"] = MotionTokens.CreateEaseOut();
+        _resources["MotionCubicEaseOut"] = new CubicEase
+        {
+            EasingMode = EasingMode.EaseOut
+        };
+        _resources["MotionQuarticEaseOut"] = MotionTokens.CreateEaseOut();
     }
 
     internal static bool MeetsContrast(Brush background, Brush foreground, double minimum)
@@ -155,9 +179,12 @@ internal sealed class ApplicationTheme
         return ratio >= minimum;
     }
 
-    // #152：未来动效的即时等价入口——读取系统「客户区动画」开关（SystemParameters.ClientAreaAnimation）。
-    // 本票不新增过渡动画（DESIGN.md §9）；未来加入任何过渡时必须依据该开关提供即时等价行为。
+    // #194：所有动效的即时等价入口——读取系统「客户区动画」开关
+    //（SystemParameters.ClientAreaAnimation）。系统关闭时每个动效 token 都变为零时长。
     internal static bool ClientAreaAnimationEnabled => SystemParameters.ClientAreaAnimation;
+
+    internal static TimeSpan GetEffectiveMotionDuration(TimeSpan enabledDuration) =>
+        ClientAreaAnimationEnabled ? enabledDuration : TimeSpan.Zero;
 
     private static ThemeToken Token(
         string colorKey,
@@ -174,4 +201,20 @@ internal sealed class ApplicationTheme
         string ColorKey,
         string BrushKey,
         Color Color);
+}
+
+internal static class MotionTokens
+{
+    internal static readonly TimeSpan HoverDuration = TimeSpan.FromMilliseconds(120);
+    internal static readonly TimeSpan PressDuration = TimeSpan.FromMilliseconds(100);
+    internal static readonly TimeSpan PopupEnterDuration = TimeSpan.FromMilliseconds(140);
+    internal static readonly TimeSpan PopupExitDuration = TimeSpan.FromMilliseconds(90);
+    internal static readonly TimeSpan IndicatorDuration = TimeSpan.FromMilliseconds(160);
+    internal static readonly TimeSpan CountdownDuration = TimeSpan.FromMilliseconds(90);
+
+    internal static PowerEase CreateEaseOut() => new()
+    {
+        EasingMode = EasingMode.EaseOut,
+        Power = 4
+    };
 }

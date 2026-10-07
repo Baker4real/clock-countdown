@@ -2129,11 +2129,28 @@ public sealed partial class MainWindow
             }
         }
 
-        return hoverTrigger is not null &&
-            checkedTrigger is not null &&
-            !SetsBackgroundTo(hoverTrigger, "Surface", "PeachTintBrush") &&
-            SetsBackgroundTo(checkedTrigger, "Surface", "PeachTintBrush") &&
-            SetsBorderBrushTo(hoverTrigger, "Surface", "ActiveBrush");
+        var motionSurface = template.FindName("InteractionSurface", NotesTab) as FrameworkElement;
+        var motionUsesDistinctTokens = motionSurface is not null &&
+            MotionBehavior.GetIsEnabled(motionSurface) &&
+            string.Equals(
+                MotionBehavior.GetHoverBackgroundResourceKey(motionSurface),
+                "CardAltBrush",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                MotionBehavior.GetHoverBorderBrushResourceKey(motionSurface),
+                "ActiveHoverBrush",
+                StringComparison.Ordinal) &&
+            string.Equals(
+                MotionBehavior.GetCheckedBackgroundResourceKey(motionSurface),
+                "PinkTintBrush",
+                StringComparison.Ordinal);
+
+        return motionUsesDistinctTokens ||
+            (hoverTrigger is not null &&
+             checkedTrigger is not null &&
+             !SetsBackgroundTo(hoverTrigger, "Surface", "PeachTintBrush") &&
+             SetsBackgroundTo(checkedTrigger, "Surface", "PeachTintBrush") &&
+             SetsBorderBrushTo(hoverTrigger, "Surface", "ActiveBrush"));
     }
 
     // #191：悬停必须有可感知的暖色反馈。画布上的按钮使用 CardAltBrush（比常态
@@ -2170,7 +2187,18 @@ public sealed partial class MainWindow
     private static bool TemplateHasHoverFeedback(Control control)
     {
         control.ApplyTemplate();
-        if (control.Template?.Triggers is not { } triggers)
+        if (control.Template is not { } template)
+        {
+            return false;
+        }
+
+        if (template.FindName("InteractionSurface", control) is FrameworkElement motionSurface &&
+            MotionBehavior.GetIsEnabled(motionSurface))
+        {
+            return true;
+        }
+
+        if (template.Triggers is not { } triggers)
         {
             return false;
         }

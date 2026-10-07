@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -7676,7 +7677,9 @@ internal static class ValidationExercises
                     "工作日历 interface 未在北京时间跨年后刷新年份与派生结果。");
             }
 
-            using (var calendar = new HolidayCalendar(unavailableRoot))
+            using (var calendar = new HolidayCalendar(
+                       unavailableRoot,
+                       (_, _) => Task.FromException<string>(new HttpRequestException("synthetic offline"))))
             {
                 var stateChangedCount = 0;
                 calendar.StateChanged += (_, _) => stateChangedCount++;
@@ -7709,7 +7712,7 @@ internal static class ValidationExercises
                     !immediateRetry &&
                     calendar.State == "Unavailable" &&
                     calendar.StatusText == "节假日日历未就绪" &&
-                    stateChangedCount == 1 &&
+                    stateChangedCount == 2 &&
                     calendar.GetWorkdayEndCountdown(nowUtc, preferences) is null &&
                     calendar.GetEarnings(nowUtc, preferences) is null,
                     "工作日历 interface 未把本地缓存读取失败收敛为 Unavailable 状态。");
@@ -7722,7 +7725,7 @@ internal static class ValidationExercises
                     recoveredRefresh &&
                     calendar.State == "Ready" &&
                     calendar.StatusText == "已同步 2034 年法定节假日与调休" &&
-                    stateChangedCount == 2 &&
+                    stateChangedCount == 3 &&
                     calendar.GetWorkdayEndCountdown(nowUtc, preferences) is not null &&
                     calendar.GetEarnings(nowUtc, preferences) == 1550m,
                     "工作日历 interface 未在退避后恢复同年失败的刷新。");
@@ -7731,6 +7734,10 @@ internal static class ValidationExercises
             Must(
                 !HolidayCalendar.TryParse(payload, nextYear, out _),
                 "工作日历 interface 接受了与请求年份不一致的缓存。");
+
+            Must(
+                RunHolidayCalendarOfflineFallbackBehavior(),
+                "工作日历 interface 未覆盖本地缓存、联网结果和随包年度数据的优先级场景。");
 
             using (var calendar = new HolidayCalendar(Path.Combine(
                        Path.GetTempPath(),
@@ -7765,6 +7772,110 @@ internal static class ValidationExercises
             DeleteDirectoryIfEmpty(unavailableCacheDirectory);
             DeleteDirectoryIfEmpty(readyRoot);
             DeleteDirectoryIfEmpty(unavailableRoot);
+        }
+    }
+
+    private static bool RunHolidayCalendarOfflineFallbackBehavior()
+    {
+        const int packagedYear = 2037;
+        const int unsupportedYear = packagedYear + 1;
+        var packagedRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-holiday-packaged-{Guid.NewGuid():N}");
+        var conflictRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-holiday-conflict-{Guid.NewGuid():N}");
+        var missingRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-holiday-missing-{Guid.NewGuid():N}");
+        var packagedDirectory = Path.Combine(packagedRoot, "holiday-data");
+        var conflictDirectory = Path.Combine(conflictRoot, "holiday-data");
+        var preferences = new CountdownPreferences(
+            "Second",
+            6200m,
+            TimeSpan.FromHours(9),
+            TimeSpan.FromHours(18));
+        var nowUtc = new DateTimeOffset(packagedYear, 5, 6, 5, 30, 0, TimeSpan.Zero);
+        var packagedPayload = CreateHolidayCalendarPayload(packagedYear, includeMaySixthWorkday: true);
+        var networkPayload = CreateHolidayCalendarPayload(packagedYear, includeMaySixthWorkday: false);
+
+        Directory.CreateDirectory(packagedDirectory);
+        Directory.CreateDirectory(conflictDirectory);
+        File.WriteAllText(
+            Path.Combine(packagedDirectory, $"{packagedYear}.json"),
+            packagedPayload,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(
+            Path.Combine(conflictDirectory, $"{packagedYear}.json"),
+            packagedPayload,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        static Task<string> OfflineDownload(int _, CancellationToken __) =>
+            Task.FromException<string>(new HttpRequestException("synthetic offline"));
+
+        try
+        {
+            // Scenario 1: no mutable cache, offline network, valid packaged year.
+            using (var packagedCalendar = new HolidayCalendar(packagedRoot, OfflineDownload))
+            {
+                var refreshed = packagedCalendar
+                    .RefreshAsync(nowUtc, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                Must(
+                    refreshed &&
+                    packagedCalendar.State == "Ready" &&
+                    packagedCalendar.StatusText == "已加载 2037 年随包法定节假日与调休" &&
+                    packagedCalendar.GetWorkdayEndCountdown(nowUtc, preferences) is not null &&
+                    packagedCalendar.GetEarnings(nowUtc, preferences) == 1550m,
+                    "随包年度数据在离线网络下未提供有效的工作日历结果。");
+            }
+
+            // Scenario 2: packaged data conflicts with a valid network response;
+            // the network result must win and be cached for subsequent launches.
+            using (var conflictCalendar = new HolidayCalendar(
+                       conflictRoot,
+                       (_, _) => Task.FromResult(networkPayload)))
+            {
+                var refreshed = conflictCalendar
+                    .RefreshAsync(nowUtc, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                Must(
+                    refreshed &&
+                    conflictCalendar.State == "Ready" &&
+                    conflictCalendar.StatusText == "已同步 2037 年法定节假日与调休" &&
+                    conflictCalendar.GetWorkdayEndCountdown(nowUtc, preferences) is null &&
+                    conflictCalendar.GetEarnings(nowUtc, preferences) == 0m &&
+                    File.Exists(Path.Combine(conflictRoot, "holiday-cache", $"{packagedYear}.json")),
+                    "联网结果未覆盖冲突的随包数据或未写入本地缓存。");
+            }
+
+            // Scenario 3: neither network nor package covers a year; no weekday
+            // estimate is allowed to leak into the UI.
+            using (var missingCalendar = new HolidayCalendar(missingRoot, OfflineDownload))
+            {
+                var unsupportedNowUtc = new DateTimeOffset(unsupportedYear, 5, 6, 5, 30, 0, TimeSpan.Zero);
+                var refreshed = missingCalendar
+                    .RefreshAsync(unsupportedNowUtc, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                Must(
+                    refreshed &&
+                    missingCalendar.State == "Unavailable" &&
+                    missingCalendar.StatusText == "节假日日历未就绪" &&
+                    missingCalendar.GetWorkdayEndCountdown(unsupportedNowUtc, preferences) is null &&
+                    missingCalendar.GetEarnings(unsupportedNowUtc, preferences) is null,
+                    "未覆盖年份必须保持日历未就绪且不估算工资。");
+            }
+
+            return true;
+        }
+        finally
+        {
+            DeleteDirectoryIfPresent(packagedRoot);
+            DeleteDirectoryIfPresent(conflictRoot);
+            DeleteDirectoryIfPresent(missingRoot);
         }
     }
 
@@ -9932,7 +10043,9 @@ internal static class ValidationExercises
         File.WriteAllText(path, payload, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
     }
 
-    private static string CreateHolidayCalendarPayload(int year)
+    private static string CreateHolidayCalendarPayload(
+        int year,
+        bool includeMaySixthWorkday = true)
     {
         var firstDay = new DateTime(year, 1, 1);
         var dayCount = DateTime.IsLeapYear(year) ? 366 : 365;
@@ -9943,7 +10056,7 @@ internal static class ValidationExercises
                 return new
                 {
                     date = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
-                    is_workday = date == new DateTime(year, 5, 6) ||
+                    is_workday = includeMaySixthWorkday && date == new DateTime(year, 5, 6) ||
                                  date == new DateTime(year, 5, 7)
                 };
             })
@@ -9991,6 +10104,14 @@ internal static class ValidationExercises
         if (Directory.Exists(path))
         {
             Directory.Delete(path);
+        }
+    }
+
+    private static void DeleteDirectoryIfPresent(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
         }
     }
 

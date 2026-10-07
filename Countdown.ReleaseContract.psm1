@@ -109,6 +109,12 @@ $script:floatingPlushAssets = @(
     'assets\floating-plush\component-day-mascots.png'
 )
 
+$script:offlineHolidayDataFiles = @(
+    'holiday-data\2026.json',
+    'holiday-data\README.md',
+    'holiday-data\LICENSE.txt'
+)
+
 $script:sourceBuildNonAssetFiles = @(
     'global.json',
     'src\MinminCountdown.Core\CalendarOccurrenceCalculator.cs',
@@ -172,7 +178,7 @@ $script:nonAssetHashes = [ordered]@{
     'Countdown.Runtime.psm1' = '6EAD9634FAB49CED2C588D74DC62541FEC6852F0DE694EBC53147FD967CD3A88'
     'Countdown.Settings.psm1' = '507BB437A209CC6F340B00D7089171C6D78EFF6C6EF597A87F49E45BF40E95DC'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '67633D6AEC9589A4E474B1FC00B30FE4EEA1F6F9B6A9D774C0DE5F21683D747E'
+    'Countdown.Core.Tests.ps1' = '1DC13A62B70D66888C3FB4668BE635BFD50EC4F2CB89CE1A04E4A35BE90BBBA5'
     'Countdown.Ui.Tests.ps1' = '661E0397B3C9CD69F5FF23E42D9238BCC09D662554272D8611A1CB5E1C6CB49C'
     'Countdown.CSharp.Tests.ps1' = '88F6770C73B77244C87C8786C57E056E65186FC1C3DF0807C9CA32042C0B6DAC'
     'tools\Build-MainDayOrnamentScene.ps1' = '1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036'
@@ -185,6 +191,9 @@ $script:nonAssetHashes = [ordered]@{
     'CountdownLauncher.cs' = 'FF4602D8C63A42C1237855B7CF787F47A8F09CEA4F49D9006F777A367BBFDC42'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'assets\floating-plush\SOURCES.md' = '7B6A95A1EADEA0ED9A9FD4C44128BBE2F05F9D2C2675AF37998133C6228F5846'
+    'holiday-data\2026.json' = '8303ADF3FAF23AA6CBC6349EC5A53D7EE9EE36D4EC7FCD21646980794617D6D4'
+    'holiday-data\README.md' = '4ECE97B00FCBA7B3C353BBF8910495381C8B339D6C89A75ABFF80ABC7938CAE7'
+    'holiday-data\LICENSE.txt' = '9EA45B3D21AFD763308A3B09E64705D5C1889392352BB8B0185253115C5E1A9C'
     'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
     'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
     'assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
@@ -215,7 +224,7 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\FloatingWindow.xaml' = 'AF8F8654C38E4D67D5973A5F164DFEE689869969C88018CF9ED40CD0E4154129'
     'src\MinminCountdown\FloatingWindow.xaml.cs' = '0AFD015011A30DE471EEE1DEB31D5D43C30BF6D1800555F94FFDCF46BF762004'
     'src\MinminCountdown\GlobalUsings.cs' = '9EB56B713F4BD450C169F140E74FF7B6D5E456F3742A30188B947223D01628E4'
-    'src\MinminCountdown\HolidayCalendar.cs' = 'C70C998ADCA948015E8CCAAFF2D36ECCF273D470444774BF0E67E09F4E70BFF5'
+    'src\MinminCountdown\HolidayCalendar.cs' = '331422DAD096D07324937E0ABF89962ACE072EB854830CF2B631F682BB0A4AF1'
     'src\MinminCountdown\HostOptions.cs' = '4C3BB5ED222319195A459C0BA4323A49EAB03D119250E926AFE988F25339A4F3'
     'src\MinminCountdown\InstanceActivation.cs' = '26A31C9A31EC7FF860E3102DBE23EFD840810CD31FDE0F232B91421B2F16D7CE'
     'src\MinminCountdown\MainWindow.xaml' = '57356270F2F6B707AAF5D43C106F5C2B5FA54517B930F8BF8AA49221DB4110A3'
@@ -229,7 +238,7 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\SettingsRecoveryWindow.cs' = 'CF0159D4DB2DE8DDA837D491A209F1E9E6718E4A7B48C76194FD96BF2806EBEE'
     'src\MinminCountdown\TrayIconHost.cs' = 'E966A64CA77DD99BDF7BB81A3952654F9AE706420C1AEAB31D0BC9FEAFABFA3F'
     'src\MinminCountdown\UiControls.cs' = '5DF12A618124F949C05C6129F8EA10DD10E60FD3B0AB26930EBB7BD1F31B32FC'
-    'src\MinminCountdown\ValidationExercises.cs' = '096262F7548833E22BD77626E7E5B06739B0CB4B69DC1C24CF3A5BA3ED1BD1F9'
+    'src\MinminCountdown\ValidationExercises.cs' = 'A0C3E9A32A871AAD74041EDD1BC7B582BF721C0B46974FECC6DDE465B6313A79'
     'src\MinminCountdown\ValidationReport.cs' = '4E42AE8A0FF6B91ADC4E154D339748D82CA80D53F1EB8175326AC1299903CC8A'
     'src\MinminCountdown\ValidationReportContract.cs' = 'C704D91A995C9167530D803E32BF5C689A40BA0E166B6015D60B6C10A4854BB5'
     'src\MinminCountdown\VisualReferenceBaseline.cs' = 'DF0E749EA0D7234AFB6E850AF9F17B46BBB5EE0ACDE11083725FD2B08008FB61'
@@ -262,7 +271,7 @@ $script:nonAssetIntegrityPaths = @(
     'CountdownLauncher.cs',
     'countdown-icon.ico',
     'assets\floating-plush\SOURCES.md'
-) + @($script:sourceBuildNonAssetFiles)
+) + @($script:sourceBuildNonAssetFiles) + @($script:offlineHolidayDataFiles)
 
 # 构建产物（如验证程序 exe）跨环境字节不可复现，不进静态哈希钉死；仍必须随发布包传输。
 $script:buildOutputPackageFiles = @(
@@ -422,6 +431,8 @@ function New-CountdownReleaseContractSnapshot {
     )
     $applicationAssets = @($script:buildAssetDefinitions | ForEach-Object { [string] $_.PublishedPath })
     $installedFiles = @(
+        $script:offlineHolidayDataFiles
+    ) + @(
         'Countdown.Core.psm1',
         'Countdown.InstallTransaction.psm1',
         'Countdown.Notes.psm1',
@@ -483,6 +494,7 @@ function New-CountdownReleaseContractSnapshot {
         CurrentFloatingRuntimeAssets = [string[]] $currentFloatingRuntimeAssets
         LegacyFloatingRegressionAssets = [string[]] @($script:legacyFloatingRegressionAssets)
         SourceBuildFiles = [string[]] @($script:sourceBuildFiles)
+        OfflineHolidayDataFiles = [string[]] @($script:offlineHolidayDataFiles)
     }
 }
 

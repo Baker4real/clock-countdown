@@ -3618,13 +3618,18 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 577 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs'
-Assert-Equal 573 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs'
+Assert-Equal 580 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs and offline holiday data'
+Assert-Equal 576 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 55 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
-Assert-Equal 499 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload'
+Assert-Equal 502 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload including offline holiday data'
+foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
+    Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Release contract packages offline holiday data: $offlineHolidayFile"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"
+    Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Offline holiday data is installed: $offlineHolidayFile"
+}
 Assert-Equal 20 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
 Assert-Equal ($expectedBuildAssets -join ',') ($actualBuildAssets -join ',') 'Release contract exposes the exact build asset mappings'
 Assert-Equal ($expectedCompatibilityFixtures -join ',') (@($releaseContract.CompatibilityFixtureFiles) -join ',') 'Release contract exposes the exact compatibility fixtures'

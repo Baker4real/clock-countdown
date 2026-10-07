@@ -61,6 +61,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private readonly Dictionary<string, Button> _noteSourceFocusTargets =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
+    private readonly HashSet<Control> _focusVisualStateWired = new();
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private string? _editingCountdownId;
     private string? _editingNoteId;
@@ -71,6 +72,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _loadingPreferences;
     private bool _syncingNoteSearch;
     private bool _loadingCountdownEditor;
+    private bool _mouseFocusPending;
     private CountdownReminderMode _countdownReminderMode = CountdownReminderMode.None;
     private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();
     private IReadOnlyList<ReminderRule> _noteReminderRules = Array.Empty<ReminderRule>();
@@ -877,8 +879,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             if (element is Control control)
             {
                 control.FocusVisualStyle = keyboardFocusVisual;
+                WireFocusVisualState(control);
             }
         }
+
+        WireFocusVisualState(SaveCountdownButton);
+        WireFocusVisualState(SaveNoteButton);
+        WireFocusVisualState(TopmostCheck);
 
         ConfigureReminderHelpFocusHelpText();
 
@@ -963,6 +970,34 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         return false;
+    }
+
+    // #191：WPF 的 IsKeyboardFocused 同时覆盖鼠标取得的焦点。记录一次鼠标
+    // 指针聚焦并在焦点事件完成后压低自定义焦点环；Tab/方向键取得焦点时恢复。
+    private void WireFocusVisualState(Control control)
+    {
+        if (!_focusVisualStateWired.Add(control))
+        {
+            return;
+        }
+        control.PreviewMouseLeftButtonDown += (_, _) =>
+        {
+            _mouseFocusPending = true;
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Input,
+                new Action(() =>
+                {
+                    FocusVisualState.SetIsKeyboardFocusVisible(control, false);
+                    _mouseFocusPending = false;
+                }));
+        };
+        control.GotKeyboardFocus += (_, _) =>
+        {
+            if (!_mouseFocusPending)
+            {
+                FocusVisualState.SetIsKeyboardFocusVisible(control, true);
+            }
+        };
     }
 
     private static void SetAutomationIds(params (DependencyObject Control, string Id)[] controls)
@@ -3638,4 +3673,25 @@ internal sealed record ReminderModeClickResult(
     bool RepeatingReminder)
 {
     public static ReminderModeClickResult NotRun { get; } = new(false, false, false);
+}
+
+/// <summary>
+/// Tracks whether the current focus was reached through keyboard navigation. WPF's
+/// <see cref="UIElement.IsKeyboardFocusWithinChangedEvent"/> does not distinguish
+/// mouse focus from keyboard focus, while custom templates need that distinction.
+/// </summary>
+internal static class FocusVisualState
+{
+    internal static readonly DependencyProperty IsKeyboardFocusVisibleProperty =
+        DependencyProperty.RegisterAttached(
+            "IsKeyboardFocusVisible",
+            typeof(bool),
+            typeof(FocusVisualState),
+            new FrameworkPropertyMetadata(false));
+
+    internal static void SetIsKeyboardFocusVisible(DependencyObject target, bool value) =>
+        target.SetValue(IsKeyboardFocusVisibleProperty, value);
+
+    internal static bool GetIsKeyboardFocusVisible(DependencyObject target) =>
+        (bool)target.GetValue(IsKeyboardFocusVisibleProperty);
 }

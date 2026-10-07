@@ -105,14 +105,12 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 ## 3. 排版规则
 
-- 中文 UI 使用 `Microsoft YaHei UI` 和系统 fallback。
-- 手写体装饰文案使用手写感字族，按序 fallback：`Segoe Print` → `Ink Free` → `Segoe Script` → `楷体` → `Microsoft YaHei UI`。四者在 Windows 10/11 简体中文环境随系统安装（`segoepr.ttf`、`Inkfree.ttf`、`segoesc.ttf`、`simkai.ttf`），渲染不得依赖 webfont 或联网字体。
+- 中文 UI 使用 `UiFontFamily`，按序 fallback：`Microsoft YaHei UI` → `Microsoft YaHei` → `DengXian` → `Segoe UI` → `Arial` → `sans-serif`。手写体装饰文案使用 `HandwrittenDecoFontFamily`，在手写字族之后复用同一尾部回退链；渲染不得依赖 webfont 或联网字体。
 - 数字使用表格数字（`Typography.NumeralAlignment=Tabular`）并保持半角；中西文与数字之间留自然空格。剩余时间、北京时间、截止时刻、月薪、今日已赚与数量文字均表格对齐；月薪与今日已赚使用同一套本地数字格式（N2，当前区域千位分隔 + 两位小数）。
-- 表格数字专用字族例外（#148 写入合同）：数字色块数值和日期印记的「日」允许使用 `Bahnschrift` 加系统中文回退（`Bahnschrift, Microsoft YaHei UI`）并保持表格对齐；其余界面文字继续 `Microsoft YaHei UI` 中文 UI 字族，单位字不使用该例外。
+- 表格数字专用字族例外（#148/#197）：数字色块数值和日期印记的数字统一使用 `NumeralFontFamily`（`Bahnschrift SemiCondensed` → `Bahnschrift` → `Microsoft YaHei UI` → `Microsoft YaHei` → `DengXian` → `Segoe UI` → `Arial` → `sans-serif`）并保持表格对齐；其余界面文字继续使用 `UiFontFamily`，单位字不使用该例外。
 - 中文截止与日期在数字与「月」「日」之间留空格（如 `7 月 15 日 18:00`），两窗同一格式；本合同由倒计时截止行先行消费，便签日期由便签列表票消费同一格式（#153：日期选择器选中日期文本 `yyyy 年 M 月 d 日` 与便签列表组头、提醒摘要同套空格）。
-- 主窗口常态 `760 x 880` Viewbox 缩放（约 `0.652`）下，日期数量 `9.8 DIP`、状态辅助说明 `10.4 DIP`、日期标题 `11.7 DIP` 和列表便签正文 `13.0 DIP`；这些层级只承担辅助扫读或受当前绝对定位布局限制。
-- 设计坐标字号与常态渲染值对应为：状态标题 `22px -> 14.3 DIP`、辅助说明 `16px -> 10.4 DIP`、数量 `22px -> 14.3 DIP`；日期标题 `18px -> 11.7 DIP`，日期数量 `15px -> 9.8 DIP`；便签正文继承 `20px -> 13.0 DIP`，便签卡提醒摘要 `18.5px -> 12 DIP`，仍按悬浮窗合同使用 `12 DIP`。
-- 新增层级（设计坐标）：区块标题 `22px`、列表条目标题 `22px`、输入内容 `20px`、字段标签 `18px`、辅助/摘要 `16px`、徽章文字 `15px`、手写体装饰文案 `17px`。
+- 设计坐标字号统一收敛为约 `1.25` 比例的 `13 / 16 / 20 / 26 / 44` 阶梯：`13px` caption、`16px` body、`20px` H2、`26px` H1、`44px` display。原 `17px` 装饰与 `18px` 字段标签并入 `16px`；字段标签保持 SemiBold；区块标题消费 `26px`，列表条目和输入内容消费 `20px`。
+- 主窗口常态 `760 x 880` Viewbox 缩放（约 `0.652`）下，阶梯约渲染为 `8.5 / 10.4 / 13.0 / 16.9 / 28.7 DIP`。日期与状态辅助文案只承担辅助扫读，关键状态不得再通过额外字号台阶挤入布局。
 - 字重只用 Regular、SemiBold；层级主要靠位置、颜色和间距建立。区块标题、列表标题与选中态使用 SemiBold。
 - 正文允许换行，标题和数量不换行；长便签由正文区域吸收宽度，操作区保持稳定尺寸。
 
@@ -127,14 +125,14 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 管理窗口与悬浮窗共用同一分格几何口径，各自保留坐标口径：悬浮窗按 `1:1` DIP（主项 `28 x 42`、次项 `20 x 30`），管理窗口按设计坐标（主项 `42 x 63`、次项 `38 x 57`，分格间距主项 `14`、次项 `13`，均约块宽三分之一）；长数值只加宽色块，不改竖长比例。
 - 主项（列表第一项，含“距离下班”）的分格底为 `PinkBlockBrush`，数值为 `PrimaryCountdownNumberBrush`。
 - 次项分格底为 `SecondaryBlockBrush`，数值为 `InkBrush`。
-- 单位字始终为 `MutedBrush`，字号小于数值约 `1/3`，不进入色块。悬浮窗单位字随数值约 `2/3` 收放；管理窗口单位字固定设计坐标 `15px`（默认 Viewbox 缩放后约 `9.8 DIP`，即 §3 承认的辅助下限档），不得靠缩小字号硬塞进剩余时间列；长剩余时间（如 `999 天`）先压缩分格内边距与分格间距，最后才在辅助下限档之上收缩数值字号。
+- 单位字始终为 `MutedBrush`，字号小于数值约 `1/3`，不进入色块。悬浮窗单位字使用 `TypeCaptionFontSize` 并随数值约 `2/3` 收放；管理窗口单位字固定设计坐标 `13px`（默认 Viewbox 缩放后约 `8.5 DIP`，落在 caption 阶梯），不得靠缩小字号硬塞进剩余时间列；长剩余时间（如 `999 天`）先压缩分格内边距与分格间距，最后才在辅助下限档之上收缩数值字号。
 - 倒计时表面为固定 `194 DIP` 右对齐列；分格后仍需完整单行显示，不得省略。
 - 数值不得换行、不得裁切；管理窗口与悬浮窗的数值都允许压缩分格内边距而不是压缩字号到不可读。
 
 ### 「超期待！」徽章
 
 - 形态：圆角胶囊，底 `PinkBadgeBrush`，文字 `InkBrush` 字重 SemiBold（#148 换绑：白字 `PinkBadgeTextBrush` 对 `PinkBadgeBrush` 实测 2.05 不达信息文本门槛，`InkBrush` 实测 7.60）。
-- 字号：悬浮窗不低于 `12 DIP` 关键状态下限，目标贴近 §3 徽章层级；空间不够先减内边距，不再缩字号到下限以下。
+- 字号：悬浮窗使用 `TypeCaptionFontSize`（当前 `13 DIP`），仍满足 `12 DIP` 关键状态下限；空间不够先减内边距，不再缩字号到下限以下。
 - 位置：紧贴主项标题右侧，垂直居中于标题行，与标题左缘间距约 `12 DIP`。
 - 触发范围：两窗都只挂在“距离下班”主项上。主窗口不渲染“距离下班”条目，因此管理窗口倒计时列表不显示该徽章；普通倒计时即便承担视觉主项也不挂徽章；筛选激活时“距离下班”不参与悬浮窗列表，徽章随之不显示。
 - 不可点击、不可聚焦、不参与命中测试。
@@ -182,8 +180,8 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 ### 手写体装饰文案
 
-- 使用 §3 的手写字族：主窗口文案用 `DecoTextBrush`，悬浮窗文案用 `DecoTextSoftBrush`，`17px` 设计坐标，可带轻微旋转（不超过 `±3°`）。
-- 悬浮窗外壳例外（#149 写入合同）：悬浮窗按 `1:1` DIP 渲染，其手写体装饰文案在 `520 x 390` 外壳上保持 `13 DIP`（如便签工作区左右下角装饰），这是相对上表 `17px` 设计坐标的外壳例外，不按主窗口设计坐标放大；字族、颜色与不可命中规则两窗一致。
+- 使用 §3 的手写字族：主窗口文案用 `DecoTextBrush`，悬浮窗文案用 `DecoTextSoftBrush`，主窗口消费 `TypeBodyFontSize`（16px）设计坐标，可带轻微旋转（不超过 `±3°`）。
+- 悬浮窗外壳例外（#149 写入合同）：悬浮窗按 `1:1` DIP 渲染，其手写体装饰文案在 `520 x 390` 外壳上保持 `TypeCaptionFontSize`（当前 13 DIP，如便签工作区左右下角装饰），这是相对主窗口 16px 设计坐标的外壳例外，不按主窗口设计坐标放大；字族、颜色与不可命中规则两窗一致。
 - 位置为固定装饰层，`IsHitTestVisible=False`，不参与布局测量，不遮挡任何控件或可点击热区。
 - 已确认落点：主窗口倒计时页区块标题右侧（`每一个期待，都值得被认真对待 ♡`）；主窗口页面右下角（`生活很忙，但别忘了可爱 ♡`）；悬浮窗倒计时工作区左下（`加油！美好的事情正在靠近 ~`）；悬浮窗便签工作区左下（`Have a nice day!`）与右下（`Live a sweeter day ♡`）。
 - 倒计时页手写体装饰层落点（#154 写入合同）：两处文案都是 `CountdownWorkspace` Canvas 的直接子级（绝对设计坐标 `Canvas.Left/Top`，右上 `(640,149)` 右对齐宽 412、右下 `(880,970)` 右对齐宽 245），不是编辑卡或正文 Grid 的布局成员——不参与表单测量、不挤字段、不可点、不挡命中（用户故事 #147-55「只是情绪，不是布局成员」）。与便签页装饰带落点（`NotesWorkspace` Canvas 直接子级）同一层级语言。
@@ -215,7 +213,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 ### 便签卡与行内命令
 
 - 便签卡圆角 `8px`，1px 边界；黄卡底 `NoteBrush`、边界 `NoteLineBrush`，白卡底 `NoteWhiteBrush`、边界 `PeachLineBrush`。内边距 14px，卡间距 8px（#153：两者分别消费 `SpacingCardPadding` 与 `SpacingUnit`，日期章节间距消费 `SpacingBlockGap`，不再写字面量）。
-- 便签正文 20px 正文带显式行高 28（`BlockLineHeight`，与悬浮窗 13/18 同比例，#153）：多行正文与「下次提醒」摘要之间保持可扫读的间隔；提醒摘要维持 18.5px 设计坐标（≈12 DIP）。
+- 便签正文消费 `TypeBodyFontSize`，带显式行高 28（`BlockLineHeight`，与悬浮窗 13/18 同比例，#153）；多行正文与「下次提醒」摘要之间保持可扫读的间隔，摘要消费 `TypeH2FontSize`（主窗口 Viewbox 后约 13 DIP）。
 - 标签芯片（#153）：芯片文字单行不折字（`NoWrap`），芯片集合由 `WrapPanel` 先折行；单枚芯片最大宽 200 设计坐标，超长以省略号收尾并通过 `ToolTip` 提供完整标签名；芯片文字对比与配色维持 §2 `TagChipTextBrush` 合同。
 - 行内命令固定为 `编辑`、`删除`、`…` 三个等距按钮，均有 1px 边界与 `8px` 圆角：`编辑` 文字与铅笔图标用 `InkBrush`，`删除` 文字与垃圾桶图标用 `DangerBrush`，`…` 用 `MutedBrush`。
 - `…` 菜单内容与既有 `编辑` / `删除` 直排按钮一致（此为本文件记录的假设，见 §12）。三者并存是 AI 稿的明确画面。
@@ -224,7 +222,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 便签页状态区右侧保留 `按日期分组` 下拉，当前只有 `按日期分组` 一个选项，属于占位单选项，不引入新的分组维度。
 - 状态区分组标题卡使用 `NoteBrush` 暖黄底，左侧 `PeachRailBrush` 圆点，`M月d日 · 周X` 标题与右侧 `N 条` 数量加展开箭头。
 - 空态与筛选弹层（#153）：倒计时与便签的空态文案统一允许换行（`TextWrapping=Wrap`），长文案不裁切；筛选弹层的便签日期筛选带可见字段标签 `日期`（`BodyBrush`），不是无名空下拉。
-- 列表条目标题层级（#153）：管理窗口倒计时列表条目标题消费 `TypeH2FontSize`（22px 设计坐标），与「新增倒计时」「显示设置」区块标题同层，25/27 台阶不再存在；便签列表组头维持 §3 日期标题 `18px` 层。
+- 列表条目标题层级（#153/#197）：管理窗口倒计时列表条目标题消费 `TypeH2FontSize`（20px 设计坐标）；「新增倒计时」「显示设置」区块标题消费 `TypeH1FontSize`（26px），便签列表组头同样落 H2 阶梯。
 
 ### 悬浮窗底部命令区
 
@@ -273,7 +271,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 ### 倒计时紧凑输入
 
-主窗口倒计时编辑区与设置区的文本框、日期框和下拉框统一为设计坐标 `56px` 高，字段标签为设计坐标 `18px`，内部横向留白为设计坐标 `16px`（本节数值均为设计坐标，不与 §3 渲染 DIP 混用）。名称和日期继续按内容职责分配宽度，时、分、秒保持可并排比较；相邻的标签选择器、保存与取消动作与输入行同高，不制造额外视觉台阶。
+主窗口倒计时编辑区与设置区的文本框、日期框和下拉框统一为设计坐标 `56px` 高，字段标签消费 `TypeBodyFontSize`（16px SemiBold），内部横向留白为设计坐标 `16px`（本节数值均为设计坐标，不与 §3 渲染 DIP 混用）。名称和日期继续按内容职责分配宽度，时、分、秒保持可并排比较；相邻的标签选择器、保存与取消动作与输入行同高，不制造额外视觉台阶。
 
 输入控件只使用 §2 的角色：`PanelBrush` 作为表面（#151 收口：主窗倒计时页紧凑输入面由画布奶油色改为白纸面板色，与页面画布分开）、`PeachLineBrush` 作为常态边界、`InkBrush` 作为文字、`MutedBrush` 作为图标与占位文。悬停与按压反馈使用 `ActiveBrush`；键盘焦点使用 `ActiveBrush` 边界，不依赖默认系统蓝。时、分、秒下拉点击文字区域即可打开，命中规则与日期选择器一致。编辑区顶部到列表底部使用连续的不透明 `BackgroundBrush` 底层，编辑区与设置区再叠加各自边界，保证真实 WPF 控件及区块间距都不依赖装饰 raster 中历史控件位置；不得引入默认系统蓝、独立灰阶或新的输入框专属色板。
 
@@ -284,7 +282,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 偏好（月薪、上下班时间）格式错误出现在对应字段下方，并同时镜像到底部状态栏；不再只出现在窗口底栏。错误同样在字段修正后清除。
 - 每页一枚实心主行动：倒计时页是「＋ 添加倒计时」（`MainActionBrush` 实心 + 白字）；「保存设置」是该页次级实心（`CoralActionBrush` 底 + `InkBrush` 主文字色，悬停/按压/焦点走 `ActiveBrush` 边的常规状态语言，不是主行动角色）；便签页「＋ 添加」仍是该页唯一实心主按钮（`MainActionBrush`）。
 - 底部状态栏消费状态条表面：`MainStatusBarSurface` 以 `StatusBarBrush` 为底、1px `PeachLineBrush` 边、圆角消费 `RadiusOverlay`、内边距消费间距节奏（`14,8`）；错误字 `DangerBrush` 在该表面实测 4.83 ≥ 4.5 信息文本门槛，不达标时改用更深文字色而不放宽门槛。
-- 排版与间距：编辑卡与偏好卡区块标题落 `TypeH2FontSize`（22px 设计坐标，#151 去掉 27px 台阶）；字段行组间距消费 `SpacingFieldRow`（10px），错误行上间距消费 `SpacingUnit`（8px），不再使用与节奏无关的随机边距。
+- 排版与间距：编辑卡与偏好卡区块标题落 `TypeH1FontSize`（26px 设计坐标，#197 收敛标题阶梯）；字段行组间距消费 `SpacingFieldRow`（10px），错误行上间距消费 `SpacingUnit`（8px），不再使用与节奏无关的随机边距。
 
 ### 基础控件状态契约（#133）
 
@@ -293,13 +291,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | 状态 | 统一口径 | 说明 |
 | --- | --- | --- |
 | 常态 | 表面按控件既有角色（`CanvasBrush` / 透明 / 分段选中态） | 1px `PeachLineBrush` 边或无边 |
-| 悬停 | 表面换 `CardBrush` 系画刷或边换 `ActiveBrush` | 立即生效（见下方反馈节奏） |
-| 按压 | 边换 `ActiveBrush` + `FocusBorderThickness`（2px），立即反馈 | 与键盘焦点同语言（§6） |
-| 键盘焦点 | `ActiveBrush` 边 + `FocusBorderThickness`；主操作按钮与置顶开关用 `MainActionFocusBrush`（§6 唯一焦点例外） | 不得依赖鼠标悬停、不得只在特定事件隐藏 |
+| 悬停 | 常规按钮表面换 `CardAltBrush`，桃色结构线换更深的 `ActiveHoverBrush`；主行动使用同族 hover 底 | 亮度差 ≥ 4%，立即生效 |
+| 按压 | 常驻 `FocusBorderThickness`（2px）透明环换 `ActiveBrush`，内容以 `RenderTransform` 缩至 0.97 | 外边界与兄弟元素位置不变，不改边厚 |
+| 键盘焦点 | 仅键盘导航设置自定义 `FocusVisualState.IsKeyboardFocusVisible` 后显示 `ActiveBrush` 边；主操作按钮与置顶开关用 `MainActionFocusBrush`（§6 唯一焦点例外） | 鼠标点击取得焦点不残留环 |
 | 禁用 | 整体 `Opacity` 0.45 | 全控件统一取值 |
 
 - 覆盖范围：`Button`（含 Primary/Secondary/FloatingAccent/Danger/IconButton/CalendarNavigationButton）、`ToggleButton`（SegmentButton 族、FloatingHeaderSegmentButton、FilterOptionButton、TagToggleButton）、`CheckBox`、`RadioButton`（#133 新增隐式样式，视觉语言按 §4 提醒规则单选组；未显式套样的单选钮不再落系统默认外观）、`ComboBox`（展开态边 `ActiveBrush`）、`DatePicker`（悬停/展开/键盘焦点/禁用态；焦点环用 `FocusBorderThickness`）、`TextBox`、`ToolTip`（非交互控件，只承担主题化常态，无悬停/按压/焦点/禁用态）。Calendar 系列维持既有 token 化状态。
-- 反馈节奏：沿用 §9「高频切换默认即时完成」——现有按压、悬停与焦点反馈立即生效；本契约未引入过渡动画，#131 规格中的 hover 150–200ms 过渡与 §9 的 160ms 上限及「沿用现有反馈」的裁决冲突，且 `PrimaryButton` 悬停即时换底被验证合同（`ValidationReport.ValidatePrimaryButtonHoverTextContrast` 的 `Surface.Background` setter 检查）钉死，故暂以即时反馈收口；未来加过渡时只允许可中断 `transform` / `opacity`、上限 160ms，并按系统「客户区动画」开关（`SystemParameters.ClientAreaAnimation`，#152 已接读取点 `ApplicationTheme.ClientAreaAnimationEnabled`）提供等价即时行为。
+- 反馈节奏：沿用 §9「高频切换默认即时完成」——hover 颜色、按压缩放与焦点反馈立即生效；本票保留未来过渡的入口，但当前不引入动画。颜色对比与状态几何由 `MainHoverStateContrastIsPerceivable`、`MainPressedStateGeometryStable`、`MainMouseClickDoesNotLeaveFocusRing`、`MainKeyboardFocusRingShowsOnTab` 和 `MainSelectedTabWeightDominates` 五项验证字段钉住。
 - MainWindow 本地样式（`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderModeRadio`、`MainTopmostCheck`、`MainNoteCompletionCheck`、`MainReminderHelpButton`、`MainNoteDateDisclosureButton`）沿用窗口内模板：#133 仅对其中两处激活页签文字执行 §13.4 换绑。#152 已补齐遗留缺口：`MainSegmentButton`/`MainNotesSegmentButton`/`MainReminderHelpButton`/`MainReminderModeRadio`/`MainNoteDateDisclosureButton` 具备按压（环换 `ActiveBrush`，与键盘焦点同语言）与禁用（整体 `Opacity` 0.45）外观；`MainPrimaryButton`/`MainSecondarySolidButton`/`MainTopmostCheck`/`MainNoteCompletionCheck` 的焦点/按压改为常驻环变色（见下方「主窗可操作性」）。
 - 图标按钮必须具备 `AutomationProperties.Name`；动态列表行、标签芯片与分段按钮通过既有 `UiAccessibility`/`NameControl` 命名并经 `ToggleButton`/`CheckBox` 的 Toggle 语义暴露选中状态（MainWindow.xaml.cs / FloatingWindow*.cs 既有接线，#133 复核无缺口）。
 
@@ -307,7 +305,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 - **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。主按钮（`＋ 添加倒计时`/`＋ 添加`）与 `窗口置顶` 继续用 `MainActionFocusBrush` 暖粉焦点例外（唯一焦点例外，§6），且不得再套 `FocusVisualStyle` 第二套焦点描边；其余键盘路径控件继续消费 2px 暖边 `MainKeyboardFocusVisual`。
 - **选中粉底/实心粉邻色**：选中页签（`PinkTintBrush`）的焦点环与粉底之间常驻 1px 间隙（Surface 外缩 3），环的实际邻色是容器 `CardAltBrush`（实测 3.50 ≥ 3:1），不直接贴粉底（`ActiveBrush`×`PinkTintBrush` 实测 2.90 不达标）。悬浮窗选中实心粉工作区胶囊（`PinkAccentStrongBrush`）按裁决用 `MainActionFocusBrush` 暖金做外环（实测 3.62 ≥ 3:1）。键盘焦点环验收按上下文钉唯一期望 token（常规 `ActiveBrush`/实心粉邻色暖金），不存在「不达标但匹配旧强调色则放过」的分支。
-- **悬停区分**：未选中「便签」页签的悬停是「边换 `ActiveBrush`」，不得复用选中实心底 `PeachTintBrush`。
+- **悬停区分**：未选中页签悬停使用 `CardAltBrush` + `ActiveHoverBrush`，不得复用选中实心底；选中页签统一使用 `PinkTintBrush` 底和 `SemiBold` 字重，悬停不得反转层级。
 - **帮助聚焦**：提醒规则 `?` 帮助在键盘聚焦时即时打开与悬停相同的 ToolTip 说明，并以 `AutomationProperties.HelpText` 提供同一份帮助文本。
 - **紧凑命中下限（24 DIP）**：主窗口默认 `760 x 880` Viewbox（约 0.652）缩放后，便签完成勾选与提醒规则帮助的命中区不得低于桌面紧凑下限 24 DIP——两者命中槽位为 38 设计坐标（≈24.8 DIP），勾选可见框保持 24 设计坐标居中。悬浮窗既有 36 下限与头部 3px、滚动条 10px 例外不变、不借此放宽。筛选芯片（`FilterOptionButton`/`TagToggleButton`）高度与日历翻月按钮（`CalendarNavigationButton`）统一为 36，筛选芯片相邻间距 8（含筛选标签芯片 0,0,8,8）。
 - **动效入口**：已接入系统「客户区动画」开关读取点（`ApplicationTheme.ClientAreaAnimationEnabled`，读 `SystemParameters.ClientAreaAnimation`）；本票不加过渡动画，未来任何过渡必须依据该开关提供即时等价（§9）。
@@ -412,7 +410,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 日期印记只帮助扫读，不是侧栏、筛选器或新导航；它不可点击、不可聚焦，也不能覆盖复选框、正文、提醒或 `…` 菜单。
 - 每条便签右侧独立 `…` 菜单，提供 `编辑` / `删除`，复用主窗口编辑流程。菜单接入与筛选 / 标签选择器同一套弹层焦点生命周期（#149）：打开聚焦首项「编辑」，Tab 在层内循环走完「编辑 / 删除」，Esc 关闭并把焦点归还触发按钮。
 - 正文和提醒允许自然换行；列表与便签正文继续只使用既有 `FloatingBodyScroller`，不新增内部滚动容器。快速新增输入框允许内部滚动；快速新增展开态底部命令区的整体滚动容器（`FloatingNotesCommandScroller`）同为该条例外。
-- 悬浮便签正文固定为 `13 DIP` 字号和 `18 DIP` 行高；提醒摘要固定为 `12 DIP` 字号和 `17 DIP` 行高，均使用显式 `BlockLineHeight`，不得继承主窗口的正文排版尺寸。
+- 悬浮便签正文和提醒摘要均消费 `TypeCaptionFontSize`（当前 `13 DIP`）；正文行高为 `18 DIP`、提醒摘要行高为 `17 DIP`，均使用显式 `BlockLineHeight`，不得继承主窗口的正文排版尺寸。
 - 快速新增区使用便签黄纸面、`6px` 圆角和珊瑚短标，保留正文、日期、标签、添加、搜索按钮以及紧凑“提醒规则”入口；可见性与展开行为见 §4「悬浮窗底部命令区」。
 - 搜索按钮位于底部命令区，可访问名称“搜索便签”，仅便签工作区可见；可见内容是闭合圆环加右下手柄的放大镜，不得渲染成残缺 C 或左括号，也不得被按钮内边距裁切。列表上方槽位三态互斥：无词且未展开时无任何行；收起且有词时显示“搜索:{词} ✕”（点词展开、点 ✕ 清除）；展开时显示输入行（MaxLength=140，占位“搜索便签”），列表视口变矮、底部命令区位置不动。Esc 清空并收起；Ctrl+F 在任意工作区切到便签、展开并聚焦。无匹配时列表区显示“没有匹配的便签。”与“清除搜索”，底部命令区保持可用。筛选约束（标签 / 无标签 / 状态 / 日期）导致的空态提供“清除筛选”，点击还原到无约束便签列表（#149）；搜索空态只出现“清除搜索”、约束空态只出现“清除筛选”，两者互斥。
 - 快速新增正文输入框带与管理窗口一致的占位文「写下要记住的事情吧…」（#149）：空白时可见、输入后隐藏，避免空白框不像输入区。
@@ -542,14 +540,14 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | token | 值（设计坐标 px） | 规格 band | 对应现状 |
 | --- | --- | --- | --- |
 | `TypeDisplayFontSize` | 44 | 40–48 | 页面主标题层（待界面节点消费） |
-| `TypeH1FontSize` | 30 | 28–32 | 章节大标题层（待界面节点消费） |
-| `TypeH2FontSize` | 22 | 20–24 | 区块标题、列表条目标题（§3 现状 22px） |
-| `TypeBodyFontSize` | 16 | 15–17 | 辅助/摘要 16px、徽章 15px、装饰 17px |
-| `TypeCaptionFontSize` | 13 | 13–14 | 悬浮窗便签正文（§10 现状 13 DIP） |
+| `TypeH1FontSize` | 26 | 24–28 | 区块/章节标题层 |
+| `TypeH2FontSize` | 20 | 18–22 | 列表条目、输入内容和紧凑标题层 |
+| `TypeBodyFontSize` | 16 | 15–17 | 字段标签（SemiBold）、辅助/摘要和装饰 |
+| `TypeCaptionFontSize` | 13 | 12–14 | 紧凑正文、徽章和日期辅助信息 |
 
-- band 来自 #131 规格；每层取 band 内与现状最接近的值。主窗口经 Viewbox（约 `0.652`）缩放后与 §3 渲染值一致，悬浮窗按 1:1 DIP 消费；两窗口复用同一组 token，按各自渲染口径选择层级。
-- `12px` 以下不得承载关键状态；提醒摘要 `12 DIP` 是 §10 钉死的下限值，只承担辅助摘要，不单独承载唯一关键状态。
-- 字族：`UiFontFamily`（`Microsoft YaHei UI` + 系统 fallback）承担全部 UI 文本；`HandwrittenDecoFontFamily` 只用于装饰（13.5）；数字保持 `Typography.NumeralAlignment=Tabular`；字重只用 Regular/SemiBold（§3）。
+- 阶梯值由 #197 固定，主窗口经 Viewbox（约 `0.652`）缩放后与 §3 渲染值一致，悬浮窗按 1:1 DIP 消费；三类窗口都只能从这五个 token 取常态字号，长数值只允许在既有可读下限内收缩。
+- `12px` 以下不得承载关键状态；caption 只承担紧凑正文、徽章和辅助摘要，不单独承载唯一关键状态。
+- 字族：`UiFontFamily` 与 `NumeralFontFamily` 统一由 App.xaml 资源提供；数字保持 `Typography.NumeralAlignment=Tabular`；字重只用 Regular/SemiBold（§3）。
 
 ### 13.3 间距、圆角与焦点 token
 
@@ -627,7 +625,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 到期剩余文字（管理窗口）：次项删除红 `DangerBrush` → `BodyBrush`（`ExpiredBrush` 底实测 6.22；旧红实测 3.97 不达标），主项到期回落 `PrimaryCountdownNumberBrush`（`ExpiredBrush` 底实测 4.95）；「已到期」文案继续显示。悬浮窗到期回落路径同样不再用强调轨色当字。
 - 到期卡单位字/辅助文字对比统一由上述语义色承担；装饰手写体与伴随带标签字段的浅粉图标维持 §13.5 装饰豁免，不得拿去当状态。
 - `ValidationReport.HasSelectedSegmentContrast` 删除「不达标但匹配方向稿采样对则放过」的旧分支：选中段文字必须以主题公式对实际邻色达到 4.5:1。
-- 分格几何：管理窗口与悬浮窗同一套竖长比例（约 2:3）、单位在块外、间距约块宽三分之一；管理窗口单位字固定设计坐标 15px（≈9.8 DIP，§3 辅助下限档），数值字族例外见 §3（Bahnschrift + 中文回退）。
+- 分格几何：管理窗口与悬浮窗同一套竖长比例（约 2:3）、单位在块外、间距约块宽三分之一；管理窗口单位字固定设计坐标 13px（≈8.5 DIP，落在 caption 阶梯），数值字族例外见 §3（Bahnschrift + 中文回退）。
 
 #152 收口（主窗可操作：焦点、命中与邻色门槛，未新增/修改 token 值）：
 

@@ -93,7 +93,7 @@ public sealed partial class FloatingWindow
         body.Children.Add(new TextBlock
         {
             Text = note.Text,
-            FontSize = 13,
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
             LineHeight = 18,
             LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
             TextWrapping = TextWrapping.Wrap,
@@ -110,7 +110,7 @@ public sealed partial class FloatingWindow
             {
                 Text = $"下次提醒：{ChinaStandardTime.ToBeijingTime(nextReminder.Value):M月d日 HH:mm}",
                 Margin = new Thickness(0, 4, 0, 0),
-                FontSize = 12,
+                FontSize = (double)FindResource("TypeCaptionFontSize"),
                 LineHeight = 17,
                 LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
                 TextWrapping = TextWrapping.Wrap,
@@ -253,7 +253,7 @@ public sealed partial class FloatingWindow
                 Content = new TextBlock
                 {
                     Text = "…",
-                    FontSize = 13,
+                    FontSize = (double)FindResource("TypeCaptionFontSize"),
                     FontWeight = FontWeights.SemiBold,
                     HorizontalAlignment = HorizontalAlignment.Center
                 }
@@ -376,21 +376,21 @@ public sealed partial class FloatingWindow
         };
         stamp.Children.Add(CalendarIndexStampText(
             date is null ? "无日期" : $"{date.Value.Month} 月",
-            10,
+            (double)FindResource("TypeCaptionFontSize"),
             FontWeights.Regular,
             stampText));
         stamp.Children.Add(CalendarIndexStampText(
             date is null ? "--" : date.Value.Day.ToString("D2", CultureInfo.InvariantCulture),
-            22,
+            (double)FindResource("TypeH2FontSize"),
             FontWeights.SemiBold,
             stampText,
-            new FontFamily("Bahnschrift SemiCondensed, Bahnschrift, Microsoft YaHei UI"),
+            (FontFamily)FindResource("NumeralFontFamily"),
             new Thickness(0, 2, 0, 2)));
         stamp.Children.Add(CalendarIndexStampText(
             date is null
                 ? " "
                 : culture.DateTimeFormat.GetAbbreviatedDayName(date.Value.DayOfWeek),
-            10,
+            (double)FindResource("TypeCaptionFontSize"),
             FontWeights.Regular,
             stampText));
 

@@ -971,7 +971,7 @@ public sealed partial class MainWindow
                     Math.Abs(dateSection.Margin.Bottom - spacingBlockGap) <= 0.01;
             }
 
-            // AC2：列表条目标题落区块标题层级（TypeH2FontSize），与 22px 区块标题不再几乎同级。
+            // AC2：列表条目标题落 H2 阶梯，与 H1 区块标题保持明确层级。
             // 空列表没有条目标题可度量，视为满足（空洞真）；有行而缺标题或字号不符才判失败。
             ShowWorkspace(WorkspaceKind.Countdowns);
             UpdateLayout();
@@ -1862,13 +1862,13 @@ public sealed partial class MainWindow
                 editorSurfaceColor is not null &&
                 ApplicationTheme.MeetsContrast(editorSurfaceColor.Value, (Color)FindResource("ActiveColor"), 3.0);
 
-            // —— 排版/间距 token：区块标题落 TypeH2；字段行距/错误行距消费间距 token 值。
-            var typeH2 = (double)FindResource("TypeH2FontSize");
+            // —— 排版/间距 token：区块标题落 TypeH1；字段行距/错误行距消费间距 token 值。
+            var typeH1 = (double)FindResource("TypeH1FontSize");
             var spacingUnit = (double)FindResource("SpacingUnit");
             var spacingFieldRow = (double)FindResource("SpacingFieldRow");
             var editorTypographyTokens =
-                Math.Abs(CountdownEditorTitle.FontSize - typeH2) <= 0.01 &&
-                Math.Abs(CountdownPreferencesTitle.FontSize - typeH2) <= 0.01 &&
+                Math.Abs(CountdownEditorTitle.FontSize - typeH1) <= 0.01 &&
+                Math.Abs(CountdownPreferencesTitle.FontSize - typeH1) <= 0.01 &&
                 Math.Abs(MainCountdownNameDateRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(MainCountdownTimeTagRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(MainCountdownActionRow.Margin.Top - spacingFieldRow) <= 0.01 &&
@@ -1942,6 +1942,23 @@ public sealed partial class MainWindow
 
             var notesTabHoverDiffersFromSelected = NotesTabHoverDoesNotReuseSelectedFill();
 
+            // #191：所有按钮的悬停反馈必须与常态有可感知的色差，并且沿暖粉
+            // Card/ActiveHover 角色走统一状态语言；不能只依赖默认 WPF 蓝色。
+            var hoverStateContrastIsPerceivable = HoverStateContrastIsPerceivable();
+
+            // #191：按压只改变颜色，不改变边厚或控件外框。全局模板也必须
+            // 预留 2px 透明环，避免从静止到按下时挤动同级元素。
+            var pressedStateGeometryStable = PressedStateGeometryIsStable();
+
+            // #191：焦点环由键盘焦点视觉样式提供，鼠标点击不应留下环；Tab
+            // 路径仍须为可聚焦控件提供独立的键盘焦点样式。
+            var mouseClickDoesNotLeaveFocusRing = MouseClickDoesNotLeaveFocusRing();
+            var keyboardFocusRingShowsOnTab = KeyboardFocusRingShowsOnTab();
+
+            // #191：选中页签必须以 PinkTint 底 + SemiBold 建立高于未选中页签
+            // 的权重，悬停只补充反馈，不能反转层级。
+            var selectedTabWeightDominates = SelectedTabWeightDominates();
+
             // 按压视觉无法在无鼠标隔离桌面驱动（ButtonBase 需真实 IsMouseOver 才置 IsPressed），
             // 改按模板触发器合同钉住：IsPressed → 状态环 ActiveBrush（与键盘焦点同语言）；禁用走运行态。
             var localControlsPressAndDisabled =
@@ -1997,7 +2014,12 @@ public sealed partial class MainWindow
                 localControlsPressAndDisabled,
                 helpFocusShowsHelpText,
                 compactHitTargetsMeetScaledFloor,
-                chipsAndCalendarNavCompact);
+                chipsAndCalendarNavCompact,
+                hoverStateContrastIsPerceivable,
+                pressedStateGeometryStable,
+                mouseClickDoesNotLeaveFocusRing,
+                keyboardFocusRingShowsOnTab,
+                selectedTabWeightDominates);
         }
         finally
         {
@@ -2108,6 +2130,201 @@ public sealed partial class MainWindow
             SetsBackgroundTo(checkedTrigger, "Surface", "PeachTintBrush") &&
             SetsBorderBrushTo(hoverTrigger, "Surface", "ActiveBrush");
     }
+
+    // #191：悬停必须有可感知的暖色反馈。画布上的按钮使用 CardAltBrush（比常态
+    // CanvasBrush 深一档），同时把桃色结构线换成更深的 ActiveHoverBrush；主按钮
+    // 和页签可使用各自的同族语义色，但不得继续依赖系统默认蓝色。
+    private bool HoverStateContrastIsPerceivable()
+    {
+        if (Application.Current.FindResource("CanvasBrush") is not Brush normal ||
+            Application.Current.FindResource("CardAltBrush") is not Brush cardHover ||
+            Application.Current.FindResource("PeachLineBrush") is not Brush peachLine ||
+            Application.Current.FindResource("ActiveHoverBrush") is not Brush activeHover ||
+            !ApplicationTheme.MeetsContrast(normal, cardHover, 1.04) ||
+            !ApplicationTheme.MeetsContrast(peachLine, activeHover, 2.0))
+        {
+            return false;
+        }
+
+        var controls = new Control[]
+        {
+            SaveCountdownButton,
+            SavePreferencesButton,
+            SaveNoteButton,
+            CloseButton,
+            FilterButton,
+            CountdownTab,
+            NotesTab,
+            CountdownReminderHelp,
+            CountdownReminderNoRadio
+        };
+
+        return controls.All(TemplateHasHoverFeedback);
+    }
+
+    private static bool TemplateHasHoverFeedback(Control control)
+    {
+        control.ApplyTemplate();
+        if (control.Template?.Triggers is not { } triggers)
+        {
+            return false;
+        }
+
+        return triggers
+            .OfType<Trigger>()
+            .Where(trigger => trigger.Property == UIElement.IsMouseOverProperty)
+            .SelectMany(trigger => trigger.Setters.OfType<Setter>())
+            .Any(setter =>
+                setter.TargetName is "Surface" or "FocusRing" or "Circle" or "Box" &&
+                (setter.Property == Border.BackgroundProperty ||
+                    setter.Property == Border.BorderBrushProperty ||
+                    setter.Property == UIElement.OpacityProperty));
+    }
+
+    // #191：模板的 IsPressed 触发器只能改变颜色、透明度或 RenderTransform；边厚
+    // 与常驻状态环必须固定为 2px。检查真实主窗控件，覆盖全局隐式模板与窗口内模板。
+    private bool PressedStateGeometryIsStable()
+    {
+        var controls = new Control[]
+        {
+            SaveCountdownButton,
+            SavePreferencesButton,
+            SaveNoteButton,
+            CloseButton,
+            FilterButton,
+            CountdownTab,
+            NotesTab,
+            CountdownReminderHelp,
+            CountdownReminderNoRadio,
+            CountdownReminderTimeRadio,
+            CountdownReminderCustomRadio,
+            TopmostCheck
+        };
+
+        return controls.All(TemplateReservesPressRing);
+    }
+
+    private static bool TemplateReservesPressRing(Control control)
+    {
+        control.ApplyTemplate();
+        if (control.Template is not { } template)
+        {
+            return false;
+        }
+
+        var ring = template.FindName("FocusRing", control) as Border ??
+            template.FindName("Box", control) as Border;
+        if (ring is null)
+        {
+            return false;
+        }
+
+        var constantRing = Application.Current.FindResource("FocusBorderThickness") is Thickness expectedThickness &&
+            ring.BorderThickness == expectedThickness;
+        var pressedDoesNotResize = template.Triggers
+            .OfType<Trigger>()
+            .Where(trigger => trigger.Property == ButtonBase.IsPressedProperty)
+            .SelectMany(trigger => trigger.Setters.OfType<Setter>())
+            .All(setter => setter.Property != Border.BorderThicknessProperty);
+        return constantRing && pressedDoesNotResize;
+    }
+
+    // WPF 区分键盘导航和鼠标输入时会更新 ShowKeyboardFocusVisual。模板以该附加
+    // 属性作为第二条件，因此鼠标点击取得实际焦点也不会残留键盘焦点环。
+    private bool MouseClickDoesNotLeaveFocusRing()
+    {
+        if (SaveCountdownButton.Template?.FindName("FocusRing", SaveCountdownButton) is not Border ring)
+        {
+            return false;
+        }
+
+        var previous = FocusVisualState.GetIsKeyboardFocusVisible(SaveCountdownButton);
+        try
+        {
+            _mouseFocusPending = true;
+            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, false);
+            Keyboard.Focus(SaveCountdownButton);
+            WindowValidationInput.Pump(Dispatcher);
+            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, false);
+            return IsTransparent(ring.BorderBrush);
+        }
+        finally
+        {
+            _mouseFocusPending = false;
+            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, previous);
+            Keyboard.Focus(CloseButton);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private bool KeyboardFocusRingShowsOnTab()
+    {
+        if (SaveCountdownButton.Template?.FindName("FocusRing", SaveCountdownButton) is not Border ring)
+        {
+            return false;
+        }
+
+        var previous = FocusVisualState.GetIsKeyboardFocusVisible(SaveCountdownButton);
+        try
+        {
+            _mouseFocusPending = false;
+            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, true);
+            Keyboard.Focus(SaveCountdownButton);
+            WindowValidationInput.Pump(Dispatcher);
+            return UsesResourceBrush(ring.BorderBrush, "MainActionFocusBrush");
+        }
+        finally
+        {
+            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, previous);
+            Keyboard.Focus(CloseButton);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    // #191：两枚主窗页签的选中态都使用 PinkTintBrush + SemiBold；未选中态不
+    // 预先加粗，确保视觉权重不会被悬停红环反转。
+    private bool SelectedTabWeightDominates()
+    {
+        return SelectedTabTemplateUsesWeight(CountdownTab, "PinkTintBrush") &&
+            SelectedTabTemplateUsesWeight(NotesTab, "PinkTintBrush");
+    }
+
+    private static bool SelectedTabTemplateUsesWeight(Control control, string backgroundResource)
+    {
+        control.ApplyTemplate();
+        if (control.Template?.Triggers is not { } triggers)
+        {
+            return false;
+        }
+
+        var checkedTrigger = triggers
+            .OfType<Trigger>()
+            .FirstOrDefault(trigger =>
+                trigger.Property == ToggleButton.IsCheckedProperty &&
+                Equals(trigger.Value, true));
+        if (checkedTrigger is null)
+        {
+            return false;
+        }
+
+        var selectedFill = checkedTrigger.Setters.OfType<Setter>().Any(setter =>
+            setter.TargetName == "Surface" &&
+            setter.Property == Border.BackgroundProperty &&
+            MarkupResourceKeyIs(setter.Value, backgroundResource));
+        var selectedWeight = checkedTrigger.Setters.OfType<Setter>().Any(setter =>
+            setter.Property == Control.FontWeightProperty &&
+            setter.Value is FontWeight weight &&
+            weight == FontWeights.SemiBold);
+        return selectedFill && selectedWeight;
+    }
+
+    private static bool IsTransparent(Brush? brush) =>
+        brush is SolidColorBrush solid && solid.Color.A == 0;
+
+    private static bool UsesResourceBrush(Brush? brush, string resourceKey) =>
+        brush is SolidColorBrush actual &&
+        Application.Current.FindResource(resourceKey) is SolidColorBrush expected &&
+        actual.Color == expected.Color;
 
     private static bool SetsBackgroundTo(Trigger trigger, string targetName, string resourceKey) =>
         trigger.Setters.OfType<Setter>().Any(setter =>
@@ -3966,10 +4183,15 @@ internal sealed record MainWindowInteractionStates(
     bool LocalControlsPressAndDisabled,
     bool HelpFocusShowsHelpText,
     bool CompactHitTargetsMeetScaledFloor,
-    bool ChipsAndCalendarNavCompact)
+    bool ChipsAndCalendarNavCompact,
+    bool HoverStateContrastIsPerceivable,
+    bool PressedStateGeometryStable,
+    bool MouseClickDoesNotLeaveFocusRing,
+    bool KeyboardFocusRingShowsOnTab,
+    bool SelectedTabWeightDominates)
 {
     public static MainWindowInteractionStates Failed { get; } = new(
-        false, false, false, false, false, false, false);
+        false, false, false, false, false, false, false, false, false, false, false, false);
 }
 
 // #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。

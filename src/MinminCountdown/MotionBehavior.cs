@@ -100,6 +100,43 @@ internal static class MotionBehavior
     public static string? GetCheckedBorderBrushResourceKey(DependencyObject element) =>
         (string?)element.GetValue(CheckedBorderBrushResourceKeyProperty);
 
+    /// <summary>
+    /// Gives a newly rendered countdown digit the shared 90 ms opacity pulse.
+    /// The current animated value is used when a refresh interrupts an in-flight
+    /// pulse, so repeated ticks never snap through a hidden frame.
+    /// </summary>
+    internal static void FadeCountdownDigit(FrameworkElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+        var configured = element.TryFindResource("MotionCountdownDuration") is Duration duration &&
+            duration.HasTimeSpan
+            ? duration.TimeSpan
+            : MotionTokens.CountdownDuration;
+        var effectiveDuration = ApplicationTheme.GetEffectiveMotionDuration(configured);
+        var current = element.Opacity;
+        var from = current > 0.001 && current < 0.999 ? current : 0.6;
+        element.BeginAnimation(UIElement.OpacityProperty, null);
+        element.Opacity = from;
+        if (effectiveDuration <= TimeSpan.Zero)
+        {
+            element.Opacity = 1;
+            return;
+        }
+
+        var easing = element.TryFindResource("MotionEaseOut") as IEasingFunction ??
+            MotionTokens.CreateEaseOut();
+        element.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation
+            {
+                From = from,
+                To = 1,
+                Duration = new Duration(effectiveDuration),
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+    }
+
     private static void OnIsEnabledChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
     {
         if (dependencyObject is not FrameworkElement element)
@@ -484,6 +521,689 @@ internal static class MotionBehavior
                 Lerp(From.R, To.R, easedProgress),
                 Lerp(From.G, To.G, easedProgress),
                 Lerp(From.B, To.B, easedProgress)));
+        }
+    }
+}
+
+/// <summary>
+/// Animates popup surfaces without changing their placement or hit-test bounds.
+/// A close request keeps the host open until the exit clock has completed, which
+/// lets a rapid reopen reverse the same opacity/translation values in place.
+/// </summary>
+internal static class PopupMotionBehavior
+{
+    public static readonly DependencyProperty IsEnabledProperty =
+        DependencyProperty.RegisterAttached(
+            "IsEnabled",
+            typeof(bool),
+            typeof(PopupMotionBehavior),
+            new PropertyMetadata(false, OnIsEnabledChanged));
+
+    public static readonly DependencyProperty IsToolTipEnabledProperty =
+        DependencyProperty.RegisterAttached(
+            "IsToolTipEnabled",
+            typeof(bool),
+            typeof(PopupMotionBehavior),
+            new PropertyMetadata(false, OnIsToolTipEnabledChanged));
+
+    private static readonly DependencyProperty ControllerProperty =
+        DependencyProperty.RegisterAttached(
+            "Controller",
+            typeof(PopupMotionController),
+            typeof(PopupMotionBehavior),
+            new PropertyMetadata(null));
+
+    public static void SetIsEnabled(DependencyObject element, bool value) =>
+        element.SetValue(IsEnabledProperty, value);
+
+    public static bool GetIsEnabled(DependencyObject element) =>
+        (bool)element.GetValue(IsEnabledProperty);
+
+    public static void SetIsToolTipEnabled(DependencyObject element, bool value) =>
+        element.SetValue(IsToolTipEnabledProperty, value);
+
+    public static bool GetIsToolTipEnabled(DependencyObject element) =>
+        (bool)element.GetValue(IsToolTipEnabledProperty);
+
+    internal static void Attach(Popup popup) => SetIsEnabled(popup, true);
+
+    internal static bool IsAttached(Popup? popup) =>
+        popup is not null && popup.ReadLocalValue(ControllerProperty) is PopupMotionController;
+
+    internal static void Open(Popup popup)
+    {
+        if (popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.RequestOpen();
+        }
+        else
+        {
+            SetPopupOpen(popup, true);
+        }
+    }
+
+    internal static void Close(Popup popup)
+    {
+        if (popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.RequestClose();
+        }
+        else
+        {
+            SetPopupOpen(popup, false);
+        }
+    }
+
+    internal static void Open(ToolTip toolTip)
+    {
+        if (toolTip.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.RequestOpen();
+        }
+        else
+        {
+            toolTip.SetCurrentValue(ToolTip.IsOpenProperty, true);
+        }
+    }
+
+    internal static void Close(ToolTip toolTip)
+    {
+        if (toolTip.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.RequestClose();
+        }
+        else
+        {
+            toolTip.SetCurrentValue(ToolTip.IsOpenProperty, false);
+        }
+    }
+
+    internal static void Toggle(Popup popup)
+    {
+        if (popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.RequestToggle();
+            return;
+        }
+
+        SetPopupOpen(popup, !popup.IsOpen);
+    }
+
+    internal static bool IsClosing(Popup? popup) =>
+        popup?.ReadLocalValue(ControllerProperty) is PopupMotionController controller &&
+        controller.IsClosing;
+
+    private static void OnIsEnabledChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs args)
+    {
+        if (dependencyObject is not Popup popup)
+        {
+            return;
+        }
+
+        if (args.NewValue is true)
+        {
+            if (popup.ReadLocalValue(ControllerProperty) is PopupMotionController)
+            {
+                return;
+            }
+
+            var controller = new PopupMotionController(popup);
+            popup.SetValue(ControllerProperty, controller);
+            controller.Attach();
+        }
+        else if (popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.Detach();
+            popup.ClearValue(ControllerProperty);
+        }
+    }
+
+    private static void OnIsToolTipEnabledChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs args)
+    {
+        if (dependencyObject is not ToolTip toolTip)
+        {
+            return;
+        }
+
+        if (args.NewValue is true)
+        {
+            if (toolTip.ReadLocalValue(ControllerProperty) is PopupMotionController)
+            {
+                return;
+            }
+
+            var controller = new PopupMotionController(toolTip);
+            toolTip.SetValue(ControllerProperty, controller);
+            controller.Attach();
+        }
+        else if (toolTip.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.Detach();
+            toolTip.ClearValue(ControllerProperty);
+        }
+    }
+
+    private static void SetPopupOpen(Popup popup, bool value)
+    {
+        if (popup.IsOpen != value)
+        {
+            popup.SetCurrentValue(Popup.IsOpenProperty, value);
+        }
+    }
+
+    private sealed class PopupMotionController
+    {
+        private enum TransitionKind
+        {
+            None,
+            Opening,
+            Closing
+        }
+
+        private readonly DependencyObject _owner;
+        private readonly bool _isToolTip;
+        private readonly DependencyPropertyDescriptor _isOpenDescriptor;
+        private DependencyPropertyDescriptor? _placementTargetDescriptor;
+        private DependencyPropertyDescriptor? _targetOpenDescriptor;
+        private DependencyObject? _placementTarget;
+        private FrameworkElement? _visual;
+        private TranslateTransform? _translation;
+        private TransitionKind _transition;
+        private long _transitionVersion;
+        private bool _suppress;
+        private bool _requestedOpen;
+        private bool _hasPresented;
+        private bool _attached;
+
+        public PopupMotionController(DependencyObject owner)
+        {
+            _owner = owner;
+            _isToolTip = owner is ToolTip;
+            _isOpenDescriptor = _isToolTip
+                ? DependencyPropertyDescriptor.FromProperty(
+                    ToolTip.IsOpenProperty,
+                    typeof(ToolTip))!
+                : DependencyPropertyDescriptor.FromProperty(
+                    Popup.IsOpenProperty,
+                    typeof(Popup))!;
+        }
+
+        public bool IsClosing => _transition == TransitionKind.Closing;
+
+        public void Attach()
+        {
+            if (_attached)
+            {
+                return;
+            }
+
+            _attached = true;
+            _requestedOpen = IsOpen;
+            _isOpenDescriptor.AddValueChanged(_owner, OnIsOpenChanged);
+            if (_owner is Popup popup)
+            {
+                popup.Opened += OnPopupOpened;
+                popup.Closed += OnPopupClosed;
+                _placementTargetDescriptor = DependencyPropertyDescriptor.FromProperty(
+                    Popup.PlacementTargetProperty,
+                    typeof(Popup));
+                _placementTargetDescriptor?.AddValueChanged(popup, OnPlacementTargetChanged);
+            }
+            else if (_owner is ToolTip toolTip)
+            {
+                _placementTargetDescriptor = DependencyPropertyDescriptor.FromProperty(
+                    ToolTip.PlacementTargetProperty,
+                    typeof(ToolTip));
+                _placementTargetDescriptor?.AddValueChanged(toolTip, OnPlacementTargetChanged);
+            }
+
+            AttachPlacementTarget();
+            if (_requestedOpen)
+            {
+                RequestOpen();
+            }
+        }
+
+        public void Detach()
+        {
+            if (!_attached)
+            {
+                return;
+            }
+
+            _attached = false;
+            _transitionVersion++;
+            _isOpenDescriptor.RemoveValueChanged(_owner, OnIsOpenChanged);
+            if (_owner is Popup popup)
+            {
+                popup.Opened -= OnPopupOpened;
+                popup.Closed -= OnPopupClosed;
+                _placementTargetDescriptor?.RemoveValueChanged(
+                    popup,
+                    OnPlacementTargetChanged);
+            }
+            else if (_owner is ToolTip toolTip)
+            {
+                _placementTargetDescriptor?.RemoveValueChanged(
+                    toolTip,
+                    OnPlacementTargetChanged);
+            }
+
+            DetachPlacementTarget();
+            ClearAnimations();
+            _visual = null;
+            _translation = null;
+            _placementTargetDescriptor = null;
+        }
+
+        public void RequestOpen()
+        {
+            _requestedOpen = true;
+            if (!IsOpen)
+            {
+                SetIsOpen(true);
+            }
+
+            StartTransition(TransitionKind.Opening);
+        }
+
+        public void RequestClose()
+        {
+            _requestedOpen = false;
+            var duration = ResolveDuration("MotionPopupExitDuration", MotionTokens.PopupExitDuration);
+            if (duration <= TimeSpan.Zero)
+            {
+                CompleteClose();
+                return;
+            }
+
+            if (!IsOpen)
+            {
+                // The binding may already have pushed IsOpen=false. Reopen it for
+                // this frame so the exit clock owns the visible surface.
+                SetIsOpen(true);
+            }
+
+            StartTransition(TransitionKind.Closing);
+        }
+
+        public void RequestToggle()
+        {
+            if (_requestedOpen)
+            {
+                RequestClose();
+            }
+            else
+            {
+                RequestOpen();
+            }
+        }
+
+        private bool IsOpen => _isToolTip
+            ? ((ToolTip)_owner).IsOpen
+            : ((Popup)_owner).IsOpen;
+
+        private void SetIsOpen(bool value)
+        {
+            if (IsOpen == value)
+            {
+                return;
+            }
+
+            _suppress = true;
+            try
+            {
+                if (_isToolTip)
+                {
+                    _owner.SetCurrentValue(ToolTip.IsOpenProperty, value);
+                }
+                else
+                {
+                    _owner.SetCurrentValue(Popup.IsOpenProperty, value);
+                }
+            }
+            finally
+            {
+                _suppress = false;
+            }
+        }
+
+        private void OnIsOpenChanged(object? sender, EventArgs args)
+        {
+            if (_suppress)
+            {
+                return;
+            }
+
+            if (IsOpen)
+            {
+                AttachPlacementTarget();
+                RequestOpen();
+            }
+            else
+            {
+                RequestClose();
+            }
+        }
+
+        private void OnPopupOpened(object? sender, EventArgs args)
+        {
+            ResolveVisual();
+            AttachPlacementTarget();
+            if (_requestedOpen && _transition != TransitionKind.Closing)
+            {
+                StartTransition(TransitionKind.Opening);
+            }
+        }
+
+        private void OnPopupClosed(object? sender, EventArgs args)
+        {
+            // Closing is driven from IsOpen above. This callback is deliberately
+            // observational so an already-rendered child is never animated only
+            // after Popup.Closed has torn down its native surface.
+        }
+
+        private void OnPlacementTargetChanged(object? sender, EventArgs args) =>
+            AttachPlacementTarget();
+
+        private void AttachPlacementTarget()
+        {
+            DependencyObject? target = _isToolTip
+                ? ((ToolTip)_owner).PlacementTarget
+                : ((Popup)_owner).PlacementTarget;
+            if (ReferenceEquals(target, _placementTarget))
+            {
+                return;
+            }
+
+            DetachPlacementTarget();
+            _placementTarget = target;
+            if (target is ComboBox)
+            {
+                _targetOpenDescriptor = DependencyPropertyDescriptor.FromProperty(
+                    ComboBox.IsDropDownOpenProperty,
+                    typeof(ComboBox));
+            }
+            else if (target is DatePicker)
+            {
+                _targetOpenDescriptor = DependencyPropertyDescriptor.FromProperty(
+                    DatePicker.IsDropDownOpenProperty,
+                    typeof(DatePicker));
+            }
+
+            _targetOpenDescriptor?.AddValueChanged(target, OnPlacementTargetOpenChanged);
+        }
+
+        private void DetachPlacementTarget()
+        {
+            if (_placementTarget is not null)
+            {
+                _targetOpenDescriptor?.RemoveValueChanged(
+                    _placementTarget,
+                    OnPlacementTargetOpenChanged);
+            }
+
+            _placementTarget = null;
+            _targetOpenDescriptor = null;
+        }
+
+        private void OnPlacementTargetOpenChanged(object? sender, EventArgs args)
+        {
+            if (_suppress)
+            {
+                return;
+            }
+
+            if (_placementTarget is ComboBox comboBox)
+            {
+                if (comboBox.IsDropDownOpen)
+                {
+                    RequestOpen();
+                }
+                else if (!_suppress && _requestedOpen)
+                {
+                    RequestClose();
+                }
+            }
+            else if (_placementTarget is DatePicker datePicker)
+            {
+                if (datePicker.IsDropDownOpen)
+                {
+                    RequestOpen();
+                }
+                else if (!_suppress && _requestedOpen)
+                {
+                    RequestClose();
+                }
+            }
+        }
+
+        private void StartTransition(TransitionKind kind)
+        {
+            ResolveVisual();
+            if (_visual is null)
+            {
+                // Template popups can materialize their child after Opened.
+                // The event above retries; a short dispatcher retry covers a
+                // binding-created child without changing popup placement.
+                var pendingVersion = ++_transitionVersion;
+                _transition = kind;
+                _owner.Dispatcher.BeginInvoke(
+                    DispatcherPriority.Loaded,
+                    new Action(() =>
+                    {
+                        if (pendingVersion == _transitionVersion)
+                        {
+                            StartTransition(kind);
+                        }
+                    }));
+                return;
+            }
+
+            var version = ++_transitionVersion;
+            _transition = kind;
+            var translation = EnsureTranslation(_visual);
+            var fromOpacity = _visual.Opacity;
+            var fromY = translation.Y;
+            ClearAnimations();
+
+            if (kind == TransitionKind.Opening &&
+                !_hasPresented &&
+                fromOpacity >= 0.999 &&
+                Math.Abs(fromY) < 0.001)
+            {
+                fromOpacity = 0;
+                fromY = 4;
+            }
+
+            var targetOpacity = kind == TransitionKind.Opening ? 1 : 0;
+            var targetY = kind == TransitionKind.Opening ? 0 : 4;
+            var duration = ResolveDuration(
+                kind == TransitionKind.Opening
+                    ? "MotionPopupEnterDuration"
+                    : "MotionPopupExitDuration",
+                kind == TransitionKind.Opening
+                    ? MotionTokens.PopupEnterDuration
+                    : MotionTokens.PopupExitDuration);
+            var easing = ResolveEasing();
+            SetVisualValues(fromOpacity, fromY);
+            if (duration <= TimeSpan.Zero)
+            {
+                CompleteTransition(version, kind, targetOpacity, targetY);
+                return;
+            }
+
+            var opacityAnimation = new DoubleAnimation
+            {
+                From = fromOpacity,
+                To = targetOpacity,
+                Duration = new Duration(duration),
+                EasingFunction = easing
+            };
+            opacityAnimation.Completed += (_, _) =>
+            {
+                if (version == _transitionVersion)
+                {
+                    CompleteTransition(version, kind, targetOpacity, targetY);
+                }
+            };
+            _visual.BeginAnimation(
+                UIElement.OpacityProperty,
+                opacityAnimation,
+                HandoffBehavior.SnapshotAndReplace);
+            translation.BeginAnimation(
+                TranslateTransform.YProperty,
+                new DoubleAnimation
+                {
+                    From = fromY,
+                    To = targetY,
+                    Duration = new Duration(duration),
+                    EasingFunction = easing
+                },
+                HandoffBehavior.SnapshotAndReplace);
+        }
+
+        private void CompleteTransition(
+            long version,
+            TransitionKind kind,
+            double targetOpacity,
+            double targetY)
+        {
+            if (version != _transitionVersion || _visual is null)
+            {
+                return;
+            }
+
+            SetVisualValues(targetOpacity, targetY);
+            _transition = TransitionKind.None;
+            if (kind == TransitionKind.Opening)
+            {
+                _hasPresented = true;
+                return;
+            }
+
+            CompleteClose();
+        }
+
+        private void CompleteClose()
+        {
+            _transitionVersion++;
+            _transition = TransitionKind.None;
+            _hasPresented = false;
+            if (_visual is not null)
+            {
+                SetVisualValues(0, 4);
+            }
+
+            if (IsOpen)
+            {
+                SetIsOpen(false);
+            }
+        }
+
+        private void ResolveVisual()
+        {
+            if (_isToolTip)
+            {
+                _visual = (ToolTip)_owner;
+                _translation = null;
+                return;
+            }
+
+            _visual = ((Popup)_owner).Child as FrameworkElement;
+            _translation = null;
+        }
+
+        private TranslateTransform EnsureTranslation(FrameworkElement visual)
+        {
+            if (_translation is not null &&
+                ReferenceEquals(_translation, FindTranslation(visual)))
+            {
+                return _translation;
+            }
+
+            var existing = FindTranslation(visual);
+            if (existing is not null && !existing.IsFrozen)
+            {
+                _translation = existing;
+                return existing;
+            }
+
+            var translation = new TranslateTransform();
+            if (visual.RenderTransform is null || visual.RenderTransform == Transform.Identity)
+            {
+                visual.RenderTransform = translation;
+            }
+            else
+            {
+                var group = visual.RenderTransform is TransformGroup existingGroup
+                    ? existingGroup.Clone()
+                    : new TransformGroup
+                    {
+                        Children = { visual.RenderTransform.Clone() }
+                    };
+                group.Children.Add(translation);
+                visual.RenderTransform = group;
+            }
+
+            _translation = translation;
+            return translation;
+        }
+
+        private static TranslateTransform? FindTranslation(FrameworkElement visual)
+        {
+            if (visual.RenderTransform is TranslateTransform translation)
+            {
+                return translation;
+            }
+
+            if (visual.RenderTransform is TransformGroup group)
+            {
+                return group.Children.OfType<TranslateTransform>().LastOrDefault();
+            }
+
+            return null;
+        }
+
+        private void SetVisualValues(double opacity, double y)
+        {
+            if (_visual is null)
+            {
+                return;
+            }
+
+            var translation = EnsureTranslation(_visual);
+            ClearAnimations();
+            _visual.Opacity = opacity;
+            translation.Y = y;
+        }
+
+        private void ClearAnimations()
+        {
+            _visual?.BeginAnimation(UIElement.OpacityProperty, null);
+            _translation?.BeginAnimation(TranslateTransform.YProperty, null);
+        }
+
+        private TimeSpan ResolveDuration(string key, TimeSpan fallback)
+        {
+            var source = _visual ?? (FrameworkElement)_owner;
+            var configured = source.TryFindResource(key) is Duration duration &&
+                duration.HasTimeSpan
+                ? duration.TimeSpan
+                : fallback;
+            return ApplicationTheme.GetEffectiveMotionDuration(configured);
+        }
+
+        private IEasingFunction ResolveEasing()
+        {
+            var source = _visual ?? (FrameworkElement)_owner;
+            return source.TryFindResource("MotionQuarticEaseOut") as IEasingFunction ??
+                source.TryFindResource("MotionEaseOut") as IEasingFunction ??
+                MotionTokens.CreateEaseOut();
         }
     }
 }

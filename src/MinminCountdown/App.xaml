@@ -897,6 +897,7 @@
                      Placement="Bottom"
                      AllowsTransparency="True"
                      Focusable="False"
+                     focus:PopupMotionBehavior.IsEnabled="True"
                      PopupAnimation="None"
                      IsOpen="{TemplateBinding IsDropDownOpen}">
                 <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
@@ -982,6 +983,7 @@
                      StaysOpen="False"
                      AllowsTransparency="True"
                      Focusable="False"
+                     focus:PopupMotionBehavior.IsEnabled="True"
                      PopupAnimation="None"
                      IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                 <Calendar x:Name="PART_Calendar"
@@ -1299,6 +1301,7 @@
     </Style>
 
     <Style TargetType="{x:Type ToolTip}">
+      <Setter Property="focus:PopupMotionBehavior.IsToolTipEnabled" Value="True" />
       <Setter Property="Background" Value="{DynamicResource InkBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="MaxWidth" Value="360" />

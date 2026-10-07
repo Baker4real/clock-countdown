@@ -1570,7 +1570,7 @@ internal static class ValidationExercises
             var bottomRight = check.InputHitTest(new Point(
                 Math.Max(1, check.ActualWidth - 1),
                 Math.Max(1, check.ActualHeight - 1)));
-            // #152：槽位 38 设计坐标，默认 0.652 Viewbox 缩放后 ≈24.8 DIP ≥ 桌面紧凑下限 24。
+            // #152/#208：真实 DIP 槽位 38，直接达到桌面紧凑下限 24。
             return Math.Abs(check.ActualWidth - 38) <= 1 &&
                    Math.Abs(check.ActualHeight - 38) <= 1 &&
                    check.Tag as string == noteId &&

@@ -213,7 +213,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 ### 便签卡与行内命令
 
 - 便签卡圆角 `8px`，1px 边界；黄卡底 `NoteBrush`、边界 `NoteLineBrush`，白卡底 `NoteWhiteBrush`、边界 `PeachLineBrush`。内边距 14px，卡间距 8px（#153：两者分别消费 `SpacingCardPadding` 与 `SpacingUnit`，日期章节间距消费 `SpacingBlockGap`，不再写字面量）。
-- 便签正文消费 `TypeBodyFontSize`，带显式行高 28（`BlockLineHeight`，与悬浮窗 13/18 同比例，#153）；多行正文与「下次提醒」摘要之间保持可扫读的间隔，摘要消费 `TypeH2FontSize`（主窗口 Viewbox 后约 13 DIP）。
+- 便签正文消费 `TypeBodyFontSize`，带显式行高 28（`BlockLineHeight`，与悬浮窗 13/18 同比例，#153）；多行正文与「下次提醒」摘要之间保持可扫读的间隔，摘要消费 `TypeH2FontSize`（主窗口真实 DIP 直接渲染）。
 - 标签芯片（#153）：芯片文字单行不折字（`NoWrap`），芯片集合由 `WrapPanel` 先折行；单枚芯片最大宽 200 设计坐标，超长以省略号收尾并通过 `ToolTip` 提供完整标签名；芯片文字对比与配色维持 §2 `TagChipTextBrush` 合同。
 - 行内命令固定为 `编辑`、`删除`、`…` 三个等距按钮，均有 1px 边界与 `8px` 圆角：`编辑` 文字与铅笔图标用 `InkBrush`，`删除` 文字与垃圾桶图标用 `DangerBrush`，`…` 用 `MutedBrush`。
 - `…` 菜单内容与既有 `编辑` / `删除` 直排按钮一致（此为本文件记录的假设，见 §12）。三者并存是 AI 稿的明确画面。

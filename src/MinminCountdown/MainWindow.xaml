@@ -528,7 +528,7 @@
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type CheckBox}">
-                    <!-- #152：命中槽位 38（默认 0.652 缩放后 ≈24.8 DIP ≥ 桌面紧凑下限 24），
+                    <!-- #152/#208：真实 DIP 命中槽位 38（≥ 桌面紧凑下限 24），
                          可见勾选框保持 24 设计坐标居中；边框常驻 2px、焦点只换色。 -->
                     <Grid x:Name="Surface" Width="38" Height="38" Background="Transparent">
                       <Border x:Name="Box"

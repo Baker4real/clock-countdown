@@ -1540,8 +1540,8 @@ internal static class ValidationReport
                 mainCountdownRemainingSamples.All(sample => sample.UsesTabularNumerals),
                 mainCountdownRemainingSamples.All(sample => sample.PreferenceSaved),
                 mainCountdownRemainingSamples.Count == 5 &&
-                    mainCountdownRemainingSamples.Take(4).All(sample => Math.Abs(sample.FontSize - 20) <= 0.01) &&
-                    mainCountdownRemainingSamples[4].FontSize is >= 14 and < 20));
+                    mainCountdownRemainingSamples.Take(4).All(sample => Math.Abs(sample.FontSize - 26) <= 0.01) &&
+                    mainCountdownRemainingSamples[4].FontSize is >= 14 and < 26));
         var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
@@ -5288,10 +5288,10 @@ internal static class ValidationReport
                         secondaryRemainingSamples.All(sample => sample.IsFullyVisible),
                         secondaryRemainingSamples.All(sample => sample.UsesTabularNumerals),
                         secondaryRemainingSamples.Take(4).All(sample =>
-                            Math.Abs(sample.FontSize - 13) <= 0.01) &&
+                            Math.Abs(sample.FontSize - 20) <= 0.01) &&
                         longSecondaryMeasurement.ColumnIs194Pixels &&
                         longSecondaryMeasurement.IsFullyVisible &&
-                        longSecondaryMeasurement.FontSize is >= 12 and <= 13));
+                        longSecondaryMeasurement.FontSize is >= 12 and < 20));
             var longSecondaryDeleted = referenceSession.TryDeleteCountdown(
                 "reference-long-secondary",
                 out _);
@@ -5432,7 +5432,7 @@ internal static class ValidationReport
                 Math.Abs(extremePrimaryCluster.Width - 194) <= 0.01 &&
                 extremePrimaryCluster.HorizontalAlignment == HorizontalAlignment.Right &&
                 extremePrimaryValueBlocks.Length == 4 &&
-                extremePrimaryValueBlocks.All(value => value.FontSize is >= 12 and < 20) &&
+                extremePrimaryValueBlocks.All(value => value.FontSize is >= 12 and < 26) &&
                 string.Equals(
                     AutomationProperties.GetItemStatus(extremePrimaryCluster),
                     "KeyTextFontFloorSatisfied",
@@ -14315,7 +14315,7 @@ internal static class ValidationReport
                 ReferenceEquals(pair.Block.Background, pinkBlock) &&
                 Math.Abs(pair.Block.CornerRadius.TopLeft - 7) <= 0.01 &&
                 pair.Value.FontWeight == FontWeights.SemiBold &&
-                Math.Abs(pair.Value.FontSize - 20) <= 0.01 &&
+                Math.Abs(pair.Value.FontSize - 26) <= 0.01 &&
                 ReferenceEquals(pair.Value.Foreground, numberBrush) &&
                 Typography.GetNumeralAlignment(pair.Value) == FontNumeralAlignment.Tabular &&
                 pair.Value.TextWrapping == TextWrapping.NoWrap &&
@@ -14335,7 +14335,7 @@ internal static class ValidationReport
                 ReferenceEquals(pair.Block.Background, secondaryBlock) &&
                 Math.Abs(pair.Block.CornerRadius.TopLeft - 5) <= 0.01 &&
                 pair.Value.FontWeight == FontWeights.SemiBold &&
-                Math.Abs(pair.Value.FontSize - 13) <= 0.01 &&
+                Math.Abs(pair.Value.FontSize - 20) <= 0.01 &&
                 string.Equals(BrushColor(pair.Value.Foreground), "#FF3B190D", StringComparison.Ordinal) &&
                 Typography.GetNumeralAlignment(pair.Value) == FontNumeralAlignment.Tabular &&
                 pair.Value.TextWrapping == TextWrapping.NoWrap &&
@@ -14402,7 +14402,7 @@ internal static class ValidationReport
                Math.Abs(cluster.Width - 194) <= 0.01 &&
                valueBlocks.Length == 4 &&
                valueBlocks.All(value =>
-                    Math.Abs(value.FontSize - 20) <= 0.01 &&
+                    Math.Abs(value.FontSize - 26) <= 0.01 &&
                    value.FontWeight == FontWeights.SemiBold &&
                    value.TextWrapping == TextWrapping.NoWrap &&
                    value.TextTrimming == TextTrimming.None &&

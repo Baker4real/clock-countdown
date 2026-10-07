@@ -1534,7 +1534,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         // 主窗真实 DIP：主项 52x78、次项 46x69，圆角约短边 1/4；数值优先压内边距与间距，
         // 最后才在辅助下限档之上收缩数值字号；单位字固定在下限档、不得缩小硬塞。
         const double valueFontPrimary = 26;
-        const double valueFontSecondary = 22;
+        const double valueFontSecondary = 20;
         const double blockWidthPrimary = 52;
         const double blockWidthSecondary = 46;
         const double blockHeightPrimary = 78;

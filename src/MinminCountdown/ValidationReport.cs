@@ -2026,6 +2026,11 @@ internal static class ValidationReport
             ["MainReminderHelpFocusShowsHelp"] = interactionStates.HelpFocusShowsHelpText,
             ["MainCompactHitTargetsMeetScaledFloor"] = interactionStates.CompactHitTargetsMeetScaledFloor,
             ["MainFilterChipsAndCalendarNavCompact"] = interactionStates.ChipsAndCalendarNavCompact,
+            ["MainHoverStateContrastIsPerceivable"] = interactionStates.HoverStateContrastIsPerceivable,
+            ["MainPressedStateGeometryStable"] = interactionStates.PressedStateGeometryStable,
+            ["MainMouseClickDoesNotLeaveFocusRing"] = interactionStates.MouseClickDoesNotLeaveFocusRing,
+            ["MainKeyboardFocusRingShowsOnTab"] = interactionStates.KeyboardFocusRingShowsOnTab,
+            ["MainSelectedTabWeightDominates"] = interactionStates.SelectedTabWeightDominates,
             ["MotionClientAreaAnimationSwitchReadable"] =
                 ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
             ["KeyboardFocusRingTabGapAvoidsSelectedFill"] =

@@ -50,13 +50,13 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 | 角色 token | 值 | 用途 |
 | --- | --- | --- |
-| `MainActionBrush` | `#E7593B` | 主行动实心按钮（提醒中心“知道了”等） |
-| `MainActionHoverBrush` | `#D24C30` | 主行动按钮悬停 |
-| `MainActionPressedBrush` | `#BA4128` | 主行动按钮按压 |
+| `MainActionBrush` | `#C23E68` | 主行动实心按钮（主窗口、悬浮窗和提醒中心“知道了”等）；与悬浮窗玫粉主按钮统一，白字对比度约 4.95:1 |
+| `MainActionHoverBrush` | `#B0355D` | 主行动按钮悬停；白字对比度约 5.89:1 |
+| `MainActionPressedBrush` | `#9B2D50` | 主行动按钮按压；白字对比度约 7.18:1 |
 | `MainActionTextBrush` | `#FFFDFC` | 主行动按钮文字与图标 |
 | `CoralActionBrush` | `#D68481` | 主窗口次级实心按钮（「保存设置」），比主行动更浅；文字用 `InkBrush` 主文字色（白字实测 2.77 不达 4.5，#151 禁止浅珊瑚配白字） |
 | `PinkAccentBrush` | `#DE5863` | 主窗口顶部激活页签文字、粉色强调文字 |
-| `PinkAccentStrongBrush` | `#F06F9B` | 悬浮窗粉色实心主按钮（“＋ 添加便签”）与悬浮窗激活分段胶囊 |
+| `PinkAccentStrongBrush` | `#C23E68` | 悬浮窗粉色实心主按钮（“＋ 添加便签”）与悬浮窗激活分段胶囊；与 `MainActionBrush` 共用玫粉主行动底 |
 | `IconAccentBrush` | `#F28995` | 区块标题图标、粉色圆形加号、日历/标签/时钟等字段图标 |
 | `PinkBadgeBrush` | `#FD97A1` | “超期待！”徽章底、粉色小胶囊徽章底 |
 | `PinkBadgeTextBrush` | `#FFFDFC` | 主行动白字的值级 alias（#148 起“超期待！”文字改绑 `InkBrush`，该 token 不再绑到徽章文字） |
@@ -78,7 +78,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `NoteBrush` | `#FEF5DC` | 便签黄卡片（活跃/未完成条目）、分组标题卡暖黄底 |
 | `NoteLineBrush` | `#F6D9B2` | 便签黄卡 1px 边界、复选框暖黄描边 |
 | `NoteWhiteBrush` | `#FEFDFD` | 白纸便签卡（无需强调的条目），边界用 `PeachLineBrush` |
-| `DangerBrush` | `#C8503F` | 删除文字与图标 |
+| `DangerBrush` | `#B94D3A` | 删除文字与图标；砖红仅保留给 Danger 操作，与玫粉主行动区分 |
 | `SuccessBrush` | `#529F8C` | 完成/成功语义 |
 | `ExpiredBrush` | `#F9DFDB` | 已到期倒计时弱化底 |
 | `TagChipBrush` | `#FFF7E8` | 默认标签芯片底（无持久化颜色时） |
@@ -265,7 +265,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 便签编辑区只显示“管理提醒规则”命令和规则数量摘要；倒计时编辑区改用「提醒规则单选组」（见 §4），不再提供独立的“管理提醒规则”入口，规则数量摘要也不显示。绝对一次、固定间隔、日历重复、新增、编辑、复制与删除集中在共享次级窗口；由倒计时进入时额外显示“倒计时相对”和提前分钟输入，错误紧邻该输入。
 
-设置恢复与激活失败这类可能先于任何窗口初始化出现的系统对话框，同样是无边框暖粉壳（#150）：`WindowStyle.None`、圆角 `8px` 表面 + 1px `PeachLineBrush` 暖边、透明窗底，不掉回系统默认窗口铬。静态色是现役主画布 `#FDF3EB` / 主文字 `#3B190D` / 主行动 `#C04A37` 与主行动文字 `#FFFDFC` 的静态副本（允许在主题尚未 Apply 时渲染，不得保留旧色板），边界用 `PeachLineBrush` 的静态副本；按钮已吃应用隐式模板，悬停/按压/焦点沿用 `CardBrush`/`ActiveBrush`/`MainActionFocusBrush` 的暖色状态语言，禁止系统默认蓝。字号走与无 Viewbox 窗口一致的 `SecondaryWindow*FontSize` 层级 token，不再各写一套字面量（#150）。
+设置恢复与激活失败这类可能先于任何窗口初始化出现的系统对话框，同样是无边框暖粉壳（#150）：`WindowStyle.None`、圆角 `8px` 表面 + 1px `PeachLineBrush` 暖边、透明窗底，不掉回系统默认窗口铬。静态色是现役主画布 `#FDF3EB` / 主文字 `#3B190D` / 主行动 `#C23E68` 与主行动文字 `#FFFDFC` 的静态副本（允许在主题尚未 Apply 时渲染，不得保留旧色板），边界用 `PeachLineBrush` 的静态副本；按钮已吃应用隐式模板，悬停/按压/焦点沿用 `CardBrush`/`ActiveBrush`/`MainActionFocusBrush` 的暖色状态语言，禁止系统默认蓝。字号走与无 Viewbox 窗口一致的 `SecondaryWindow*FontSize` 层级 token，不再各写一套字面量（#150）。
 
 可访问名称必须包含动作、状态和对象；分段控件与状态标题的可见文本不随动作改变，辅助技术名称可以准确说出“未完成/已完成”和数量。
 
@@ -587,7 +587,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `DangerColor` | `#B94D3A` | `CanvasBrush` | 4.59 | 4.5 | text | PASS | 删除/错误（对 `CardBrush` 4.91、`NoteBrush` 4.61） |
 | `SuccessColor` | `#266B5E` | `CanvasBrush` | 5.74 | 4.5 | text | PASS | #132 由 `#529F8C`（2.87）调深 |
 | `WarningAccentColor` | `#AD4A10` | `WarningTintBrush` | 4.86 | 4.5 | text | PASS | #132 由 `#DC6922`（3.00）调深 |
-| `MainActionTextColor` | `#FFFDFC` | `MainActionBrush` | 4.84 | 4.5 | text | PASS | 主行动按钮（hover 5.09、pressed 5.34、悬浮粉按钮 4.95） |
+| `MainActionTextColor` | `#FFFDFC` | `MainActionBrush` | 4.95 | 4.5 | text | PASS | 主行动按钮；同族 hover 5.89、pressed 7.18，悬浮粉按钮 4.95 |
 | `PrimaryCountdownNumberColor` | `#C0102F` | `PinkBlockBrush` | 5.06 | 4.5 | text | PASS | 主项分格数字 |
 | `InkColor` | `#3B190D` | `SecondaryBlockBrush` | 14.06 | 4.5 | text | PASS | 次项分格数字 |
 | `StampPinkTextColor` | `#D41F57` | `StampPinkBrush` | 4.56 | 4.5 | text | PASS | 粉印记 |
@@ -601,7 +601,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `PrimaryCountdownNumberColor` | `#C0102F` | `ExpiredBrush` | 4.95 | 4.5 | text | PASS | 到期主项剩余文字（#148） |
 | `InkColor` | `#3B190D` | `CoralActionBrush` | 5.62 | 4.5 | text | PASS | 「保存设置」次级实心文字（#151 新增；白字 2.77 不达标故禁用浅珊瑚配白字） |
 | `DangerColor` | `#B94D3A` | `StatusBarBrush` | 4.83 | 4.5 | text | PASS | 状态条表面上的错误字（#151；旧画布奶油底上 4.48 不达标） |
-| `ActiveColor` | `#E05A4A` | `PanelBrush` | 3.61 | 3.0 | graphic | PASS | 焦点边/复选图形；`PrimaryButton` 底已改绑 `MainActionBrush`（3.61→4.84） |
+| `ActiveColor` | `#E05A4A` | `PanelBrush` | 3.61 | 3.0 | graphic | PASS | 焦点边/复选图形；`PrimaryButton` 底已改绑 `MainActionBrush`（3.61→4.95） |
 | `ActiveColor` | `#E05A4A` | `BackgroundBrush` | 3.27 | 3.0 | graphic | PASS | 提醒规则选中圆点/描边（#151 换绑；`IconAccentBrush` 2.13 属装饰不承载选中态） |
 | `ActiveColor` | `#E05A4A` | `CardAltBrush` | 3.50 | 3.0 | graphic | PASS | 选中粉底页签焦点环实际邻色（#152；环与粉底间常驻 1px 间隙，`PinkTintBrush` 直贴 2.90 不达标被间隙规避） |
 | `MainActionFocusColor` | `#FFD49A` | `PinkAccentStrongBrush` | 3.62 | 3.0 | graphic | PASS | 悬浮选中实心粉工作区胶囊焦点环（#152 换绑暖金；`ActiveBrush` 直贴深粉 1.37 不达标） |

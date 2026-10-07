@@ -1874,6 +1874,15 @@ internal static class ValidationReport
             ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
             ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
             ["MainActionTextContrast"] = mainActionTextContrast,
+            ["MainActionPalette"] = new
+            {
+                Default = Application.Current.FindResource("MainActionBrush")?.ToString() ?? string.Empty,
+                Hover = Application.Current.FindResource("MainActionHoverBrush")?.ToString() ?? string.Empty,
+                Pressed = Application.Current.FindResource("MainActionPressedBrush")?.ToString() ?? string.Empty,
+                Floating = Application.Current.FindResource("PinkAccentStrongBrush")?.ToString() ?? string.Empty,
+                Text = Application.Current.FindResource("MainActionTextBrush")?.ToString() ?? string.Empty,
+                Danger = Application.Current.FindResource("DangerBrush")?.ToString() ?? string.Empty
+            },
             ["ToolTipThemeTextContrast"] = toolTipThemeTextContrast,
             ["TagChipTextContrast"] = tagChipTextContrast,
             ["ThemedInteractiveStates"] = mainThemeTemplate && comboThemed && dateFamilyThemed,
@@ -10049,7 +10058,7 @@ internal static class ValidationReport
             {
                 pendingBadge++;
             }
-            else if (Matches(red, green, blue, 0xC0, 0x4A, 0x37))
+            else if (Matches(red, green, blue, 0xC2, 0x3E, 0x68))
             {
                 mainAction++;
             }
@@ -11286,8 +11295,9 @@ internal static class ValidationReport
                 ("NoteLineColor", "#FFF6D9B2"),
                 ("ActiveHoverColor", "#FFB84A36"),
                 ("MutedColor", "#FF82665F"),
-                ("MainActionColor", "#FFC04A37"),
-                ("MainActionHoverColor", "#FFB84A36"),
+                ("MainActionColor", "#FFC23E68"),
+                ("MainActionHoverColor", "#FFB0355D"),
+                ("MainActionPressedColor", "#FF9B2D50"),
                 ("DangerColor", "#FFB94D3A"),
                 ("PrimaryCountdownNumberColor", "#FFC0102F"),
                 ("PeachLineColor", "#FFF6DFD3"),
@@ -11370,7 +11380,7 @@ internal static class ValidationReport
         try
         {
             theme.Apply();
-            if (Application.Current.FindResource("ActiveHoverBrush") is not Brush hover ||
+            if (Application.Current.FindResource("MainActionHoverBrush") is not Brush hover ||
                 Application.Current.FindResource("MainActionTextBrush") is not Brush hoverForeground ||
                 !ApplicationTheme.MeetsContrast(hover, hoverForeground, 4.5))
             {
@@ -11423,7 +11433,8 @@ internal static class ValidationReport
                 {
                     "MainActionBrush",
                     "MainActionHoverBrush",
-                    "MainActionPressedBrush"
+                    "MainActionPressedBrush",
+                    "PinkAccentStrongBrush"
                 }.Any(key =>
                     Application.Current.FindResource(key) is not Brush background ||
                     !ApplicationTheme.MeetsContrast(background, foreground, 4.5)))
@@ -13328,7 +13339,7 @@ internal static class ValidationReport
             return new SystemDialogPrimaryButtonContrastValidation(
                 measurements.All(measurement => measurement.ContrastRatio >= 4.5),
                 measurements.All(measurement =>
-                    string.Equals(measurement.Background, "#FFC04A37", StringComparison.Ordinal) &&
+                    string.Equals(measurement.Background, "#FFC23E68", StringComparison.Ordinal) &&
                     string.Equals(measurement.Foreground, "#FFFFFDFC", StringComparison.Ordinal)),
                 usesActiveStaticPalette,
                 measurements);

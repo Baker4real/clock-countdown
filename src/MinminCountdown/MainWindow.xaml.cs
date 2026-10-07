@@ -92,7 +92,16 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     internal static (string Message, bool ShowReset) CountdownEmptyStatePresentation(bool hasSavedCountdowns) =>
         hasSavedCountdowns
             ? ("没有符合当前筛选条件的倒计时。", true)
-            : ("还没有倒计时，先添加一个目标。", false);
+            : ("还没有倒计时", false);
+
+    internal const string CountdownEmptyStateHint = "把重要的时刻记下来，从一个目标开始吧。";
+
+    internal static (string Message, bool ShowReset) NoteEmptyStatePresentation(bool hasSavedNotes) =>
+        hasSavedNotes
+            ? ("没有符合当前筛选条件的便签。", true)
+            : ("还没有便签", false);
+
+    internal const string NoteEmptyStateHint = "先写下一件想记住的事。";
 
     internal bool CountdownRemainingLayoutMatches
     {
@@ -847,8 +856,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NameControl(CloseButton, "关闭窗口");
         NameControl(ManageNoteReminderRulesButton, "管理便签提醒规则");
         NameControl(SaveNoteButton, "保存便签");
+        NameControl(AddEmptyCountdownButton, "添加倒计时");
+        NameControl(AddEmptyNoteButton, "添加便签");
         NameControl(ResetEmptyNotesFiltersButton, "重置便签筛选");
         NameControl(ResetEmptyCountdownFiltersButton, "重置倒计时筛选");
+        AutomationProperties.SetName(CountdownEmptyMascot, string.Empty);
+        AutomationProperties.SetName(NotesEmptyMascot, string.Empty);
         NameControl(CountdownTab, "倒计时工作区");
         NameControl(NotesTab, "便签工作区");
         NameControl(FilterButton, "打开筛选");
@@ -867,9 +880,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
             CountdownTags.PopupTrigger, CountdownReminderHelp,
             CountdownReminderNoRadio, CountdownReminderTimeRadio, CountdownReminderCustomRadio,
-            CancelCountdownEdit, DisplayPrecision, MonthlySalary,
+            CancelCountdownEdit, DisplayPrecision, MonthlySalary, AddEmptyCountdownButton,
             WorkStart, WorkEnd, SavePreferencesButton, CountdownListRegion,
-            NoteText, NoteDate, CancelNoteEdit,
+            NoteText, NoteDate, CancelNoteEdit, AddEmptyNoteButton,
             ManageNoteReminderRulesButton,
             NoteTags.PopupTrigger, NoteSearch, NotesListRegion, StatusText
         };
@@ -910,6 +923,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             (WorkEnd, "WorkEnd"),
             (SavePreferencesButton, "SavePreferencesButton"),
             (CountdownListRegion, "CountdownListRegion"),
+            (AddEmptyCountdownButton, "AddEmptyCountdownButton"),
             (NoteText, "NoteText"),
             (NoteDate, "NoteDate"),
             (SaveNoteButton, "SaveNoteButton"),
@@ -918,6 +932,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             (NoteTags.PopupTrigger, "NoteTags"),
             (NoteSearch, "NoteSearch"),
             (NotesListRegion, "NotesListRegion"),
+            (AddEmptyNoteButton, "AddEmptyNoteButton"),
             (StatusText, "StatusText"));
         NameControl(CreateTagButton, "新建标签");
         // #156：筛选「清除」的可访问名说明清除的是便签日期筛选，不是只读一个「清除」。
@@ -1050,6 +1065,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownSecond.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
+        AddEmptyCountdownButton.Click += (_, _) => BeginCountdownAddFromEmptyState();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
         // #151：字段值修正后立即清除对应字段错误（镜像悬浮窗快速新增）。
         CountdownName.TextChanged += (_, _) => ClearCountdownFieldError(CountdownNameError);
@@ -1075,6 +1091,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
+        AddEmptyNoteButton.Click += (_, _) => BeginNoteAddFromEmptyState();
         ManageNoteReminderRulesButton.Click += (_, _) => OpenNoteReminderRulesEditor();
         NoteText.TextChanged += (_, _) => ClearNoteFieldError(NoteTextError);
         MainStatusUndoButton.Click += OnUndoDeleteClick;
@@ -1268,9 +1285,21 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
             var hasSavedCountdowns = snapshot.Settings.Countdowns.Count > 0;
             var emptyState = CountdownEmptyStatePresentation(hasSavedCountdowns);
+            var isFirstUse = !hasSavedCountdowns;
+            CountdownEmptyStateContent.Visibility = Visibility.Visible;
+            CountdownEmptyMascot.Visibility = isFirstUse
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             EmptyCountdownMessage.Text = emptyState.Message;
             AutomationProperties.SetLiveSetting(EmptyCountdownMessage, AutomationLiveSetting.Polite);
             EmptyCountdownMessage.Visibility = Visibility.Visible;
+            EmptyCountdownHint.Text = CountdownEmptyStateHint;
+            EmptyCountdownHint.Visibility = isFirstUse
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            AddEmptyCountdownButton.Visibility = isFirstUse
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             ResetEmptyCountdownFiltersButton.Visibility = emptyState.ShowReset
                 ? Visibility.Visible
                 : Visibility.Collapsed;
@@ -1290,7 +1319,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 }
             }
 
+            CountdownEmptyStateContent.Visibility = Visibility.Collapsed;
+            CountdownEmptyMascot.Visibility = Visibility.Collapsed;
             EmptyCountdownMessage.Visibility = Visibility.Collapsed;
+            EmptyCountdownHint.Visibility = Visibility.Collapsed;
+            AddEmptyCountdownButton.Visibility = Visibility.Collapsed;
             ResetEmptyCountdownFiltersButton.Visibility = Visibility.Collapsed;
             return;
         }
@@ -1303,7 +1336,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _countdownSourceFocusTargets.Clear();
         _countdownRemainingTexts.Clear();
         _countdownActiveStates.Clear();
+        CountdownEmptyStateContent.Visibility = Visibility.Collapsed;
+        CountdownEmptyMascot.Visibility = Visibility.Collapsed;
         EmptyCountdownMessage.Visibility = Visibility.Collapsed;
+        EmptyCountdownHint.Visibility = Visibility.Collapsed;
+        AddEmptyCountdownButton.Visibility = Visibility.Collapsed;
         ResetEmptyCountdownFiltersButton.Visibility = Visibility.Collapsed;
 
         for (var recordIndex = 0; recordIndex < records.Count; recordIndex++)
@@ -1722,9 +1759,23 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var noVisibleNotes = records.Count == 0;
         var segmentHasNotes = showCompleted ? completed.Length > 0 : active.Length > 0;
         var emptyState = NoteEmptyStatePresentation(snapshot.Settings.Notes.Count > 0);
+        var isFirstUse = snapshot.Settings.Notes.Count == 0;
+        NotesEmptyStateContent.Visibility = noVisibleNotes || !segmentHasNotes
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        NotesEmptyMascot.Visibility = isFirstUse
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         EmptyNotesMessage.Text = emptyState.Message;
         AutomationProperties.SetLiveSetting(EmptyNotesMessage, AutomationLiveSetting.Polite);
         EmptyNotesMessage.Visibility = noVisibleNotes || !segmentHasNotes
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        EmptyNotesHint.Text = NoteEmptyStateHint;
+        EmptyNotesHint.Visibility = isFirstUse && (noVisibleNotes || !segmentHasNotes)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        AddEmptyNoteButton.Visibility = isFirstUse && (noVisibleNotes || !segmentHasNotes)
             ? Visibility.Visible
             : Visibility.Collapsed;
         AutomationProperties.SetName(EmptyNotesMessage, EmptyNotesMessage.Text);
@@ -1732,11 +1783,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
-
-    private static (string Message, bool ShowReset) NoteEmptyStatePresentation(bool hasSavedNotes) =>
-        hasSavedNotes
-            ? ("没有符合当前筛选条件的便签。", true)
-            : ("还没有便签，先写下一件想记住的事。", false);
 
     private void SelectNotesSegment(bool showCompleted)
     {
@@ -2656,6 +2702,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
+    private void BeginCountdownAddFromEmptyState()
+    {
+        ShowWorkspace(WorkspaceKind.Countdowns);
+        ResetCountdownEditor();
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(() => Keyboard.Focus(CountdownName)));
+    }
+
     private void ResetNoteEditor()
     {
         _editingNoteId = null;
@@ -2672,6 +2727,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SaveNoteButton.Content = "＋ 添加";
         CancelNoteEdit.Visibility = Visibility.Collapsed;
         NoteMessage.Text = string.Empty;
+    }
+
+    private void BeginNoteAddFromEmptyState()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        ResetNoteEditor();
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(() => Keyboard.Focus(NoteText)));
     }
 
     private void SetCountdownTarget(DateTimeOffset beijing)
@@ -3539,6 +3603,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         MyMelodyPanelCharacter.Source = myMelody;
         CinnamorollPanelCharacter.Source = cinnamoroll;
         KuromiPanelCharacter.Source = kuromi;
+        CountdownEmptyMascot.Source = cinnamoroll;
+        NotesEmptyMascot.Source = myMelody;
         CountdownReferenceDecoration.Source = LoadImage(Path.Combine(
             characterRoot,
             "main-decorations",

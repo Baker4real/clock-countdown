@@ -291,13 +291,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | 状态 | 统一口径 | 说明 |
 | --- | --- | --- |
 | 常态 | 表面按控件既有角色（`CanvasBrush` / 透明 / 分段选中态） | 1px `PeachLineBrush` 边或无边 |
-| 悬停 | 常规按钮表面换 `CardAltBrush`，桃色结构线换更深的 `ActiveHoverBrush`；主行动使用同族 hover 底 | 亮度差 ≥ 4%，立即生效 |
-| 按压 | 常驻 `FocusBorderThickness`（2px）透明环换 `ActiveBrush`，内容以 `RenderTransform` 缩至 0.97 | 外边界与兄弟元素位置不变，不改边厚 |
+| 悬停 | 常规按钮表面换 `CardAltBrush`，桃色结构线换更深的 `ActiveHoverBrush`；主行动使用同族 hover 底 | 亮度差 ≥ 4%，`MotionHoverDuration` 120ms ease-out |
+| 按压 | 常驻 `FocusBorderThickness`（2px）透明环换 `ActiveBrush`，内容以 `RenderTransform` 缩至 0.97 | `MotionPressDuration` 100ms ease-out；外边界与兄弟元素位置不变，不改边厚 |
 | 键盘焦点 | 仅键盘导航设置自定义 `FocusVisualState.IsKeyboardFocusVisible` 后显示 `ActiveBrush` 边；主操作按钮与置顶开关用 `MainActionFocusBrush`（§6 唯一焦点例外） | 鼠标点击取得焦点不残留环 |
 | 禁用 | 整体 `Opacity` 0.45 | 全控件统一取值 |
 
 - 覆盖范围：`Button`（含 Primary/Secondary/FloatingAccent/Danger/IconButton/CalendarNavigationButton）、`ToggleButton`（SegmentButton 族、FloatingHeaderSegmentButton、FilterOptionButton、TagToggleButton）、`CheckBox`、`RadioButton`（#133 新增隐式样式，视觉语言按 §4 提醒规则单选组；未显式套样的单选钮不再落系统默认外观）、`ComboBox`（展开态边 `ActiveBrush`）、`DatePicker`（悬停/展开/键盘焦点/禁用态；焦点环用 `FocusBorderThickness`）、`TextBox`、`ToolTip`（非交互控件，只承担主题化常态，无悬停/按压/焦点/禁用态）。Calendar 系列维持既有 token 化状态。
-- 反馈节奏：沿用 §9「高频切换默认即时完成」——hover 颜色、按压缩放与焦点反馈立即生效；本票保留未来过渡的入口，但当前不引入动画。颜色对比与状态几何由 `MainHoverStateContrastIsPerceivable`、`MainPressedStateGeometryStable`、`MainMouseClickDoesNotLeaveFocusRing`、`MainKeyboardFocusRingShowsOnTab` 和 `MainSelectedTabWeightDominates` 五项验证字段钉住。
+- 反馈节奏：hover 颜色使用 `MotionHoverDuration`（120ms）ease-out，按压缩放使用 `MotionPressDuration`（100ms）ease-out；焦点反馈仍即时生效。所有过渡只作用于颜色、透明度或 `RenderTransform`，不改布局属性。颜色对比与状态几何由 `MainHoverStateContrastIsPerceivable`、`MainPressedStateGeometryStable`、`MainMouseClickDoesNotLeaveFocusRing`、`MainKeyboardFocusRingShowsOnTab` 和 `MainSelectedTabWeightDominates` 五项验证字段钉住。
 - MainWindow 本地样式（`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderModeRadio`、`MainTopmostCheck`、`MainNoteCompletionCheck`、`MainReminderHelpButton`、`MainNoteDateDisclosureButton`）沿用窗口内模板：#133 仅对其中两处激活页签文字执行 §13.4 换绑。#152 已补齐遗留缺口：`MainSegmentButton`/`MainNotesSegmentButton`/`MainReminderHelpButton`/`MainReminderModeRadio`/`MainNoteDateDisclosureButton` 具备按压（环换 `ActiveBrush`，与键盘焦点同语言）与禁用（整体 `Opacity` 0.45）外观；`MainPrimaryButton`/`MainSecondarySolidButton`/`MainTopmostCheck`/`MainNoteCompletionCheck` 的焦点/按压改为常驻环变色（见下方「主窗可操作性」）。
 - 图标按钮必须具备 `AutomationProperties.Name`；动态列表行、标签芯片与分段按钮通过既有 `UiAccessibility`/`NameControl` 命名并经 `ToggleButton`/`CheckBox` 的 Toggle 语义暴露选中状态（MainWindow.xaml.cs / FloatingWindow*.cs 既有接线，#133 复核无缺口）。
 
@@ -308,7 +308,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - **悬停区分**：未选中页签悬停使用 `CardAltBrush` + `ActiveHoverBrush`，不得复用选中实心底；选中页签统一使用 `PinkTintBrush` 底和 `SemiBold` 字重，悬停不得反转层级。
 - **帮助聚焦**：提醒规则 `?` 帮助在键盘聚焦时即时打开与悬停相同的 ToolTip 说明，并以 `AutomationProperties.HelpText` 提供同一份帮助文本。
 - **紧凑命中下限（24 DIP）**：主窗口默认 `760 x 880` Viewbox（约 0.652）缩放后，便签完成勾选与提醒规则帮助的命中区不得低于桌面紧凑下限 24 DIP——两者命中槽位为 38 设计坐标（≈24.8 DIP），勾选可见框保持 24 设计坐标居中。悬浮窗既有 36 下限与头部 3px、滚动条 10px 例外不变、不借此放宽。筛选芯片（`FilterOptionButton`/`TagToggleButton`）高度与日历翻月按钮（`CalendarNavigationButton`）统一为 36，筛选芯片相邻间距 8（含筛选标签芯片 0,0,8,8）。
-- **动效入口**：已接入系统「客户区动画」开关读取点（`ApplicationTheme.ClientAreaAnimationEnabled`，读 `SystemParameters.ClientAreaAnimation`）；本票不加过渡动画，未来任何过渡必须依据该开关提供即时等价（§9）。
+- **动效入口**：`ApplicationTheme.ClientAreaAnimationEnabled` 读取系统「客户区动画」开关；开启动效时消费 §9 的 token，关闭时所有有效时长为 0，直接到达目标值。
 
 ### 视觉铬与窗铬合同（#154）
 
@@ -377,7 +377,20 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ## 9. Motion 哲学
 
-高频切换与收放默认即时完成：可见内容、胶囊位置和箭头状态同步更新，不播放阻塞式展开动画。按钮沿用现有按下、悬停和焦点反馈；若未来加入过渡，只允许可中断的 `transform` / `opacity`，上限 160ms，并提供等价的 reduced-motion 行为。#152 已接入该等价开关的读取点（`ApplicationTheme.ClientAreaAnimationEnabled`，读系统「客户区动画」`SystemParameters.ClientAreaAnimation`）；在接入过渡前它只作为入口存在。键盘操作不增加额外动画。
+高频切换与收放保持短促反馈：按钮 hover 颜色以 120ms ease-out 过渡，按下的 `RenderTransform` 缩放到 `0.97` 以 100ms ease-out 完成，不触发重新布局。所有动效时长和缓动集中在资源 token，并由 `ApplicationTheme.ClientAreaAnimationEnabled` 控制；系统关闭动画时 token 有效时长为 0，状态立即到达目标值。允许的属性只有颜色、透明度和 `RenderTransform`，单段上限 200ms；动画使用 `SnapshotAndReplace` 从当前值继续，快速 hover / 按下可被打断而不会闪回起点。键盘焦点反馈不增加额外动画。
+
+现行动效 token：
+
+| 资源 token | 开启动效时长 | 缓动 | 预留落点 |
+| --- | ---: | --- | --- |
+| `MotionHoverDuration` | 120ms | `MotionEaseOut`（quartic） | 按钮与分段控件 hover 颜色 |
+| `MotionPressDuration` | 100ms | `MotionEaseOut`（quartic） | 按钮与分段控件按下缩放 |
+| `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | 弹出层进入 |
+| `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | 弹出层退出 |
+| `MotionIndicatorDuration` | 160ms | `MotionEaseOut`（quartic） | 页签/分段指示条 |
+| `MotionCountdownDuration` | 90ms | `MotionEaseOut`（quartic） | 倒计时数字轻量切换 |
+
+`MotionCubicEaseOut` 同时作为可复用的 cubic ease-out 资源；新增落点只能引用上述 token，不得在控件模板中写字面时长或第二套缓动。
 
 ## 10. 悬浮窗双工作区附录
 
@@ -567,6 +580,10 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 间距 token 以 `sys:Double` 网格值提供（可绑定 `FontSize`/`Height` 或在代码中组装）；XAML 中直接用于 `Margin` 时需由消费方包装为 `Thickness`。焦点语义沿用 §6：常规键盘焦点用 `ActiveBrush` 边界；主操作按钮与置顶开关用 `MainActionFocusBrush`，是全应用唯一焦点例外；不得引入默认系统蓝。App.xaml 内模板圆角与焦点边已全部改为引用上述资源。
 
+### 13.3.1 动效 token 与系统开关
+
+动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色和按下缩放通过模板表面的动画时钟执行，按压缩放只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover 与按压的连续反转从当前值继续。
+
 ### 13.4 对比度基线
 
 口径：WCAG 2.x 相对亮度（sRGB 线性化，`0.2126/0.7152/0.0722` 加权），对比度 `(L1+0.05)/(L2+0.05)`，与 `ApplicationTheme.MeetsContrast` 同一公式。门槛：
@@ -632,7 +649,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 常规键盘焦点 2px 暖边：`MainKeyboardFocusVisual` 由 3px 收到 `FocusBorderThickness`（2px）；主按钮/置顶只保留模板内 `MainActionFocusBrush` 暖粉焦点环，`ConfigureControls` 不再对其套 `FocusVisualStyle` 第二套更粗描边。
 - 主窗本地控件焦点/按压全部改为常驻透明环变色（环厚恒为 `FocusBorderThickness`），悬停/按压/聚焦不再改写边厚挤布局。选中粉底页签环对实际邻色（1px 间隙后的 `CardAltBrush`，3.50）达标；悬浮选中实心粉胶囊环换绑 `MainActionFocusBrush` 暖金（对 `PinkAccentStrongBrush` 3.62）达标；`ValidateKeyboardFocusRingContrast` 扩展覆盖两个邻色场景并按上下文钉唯一期望 token，无旧强调色放过分支。
 - 便签完成勾选与提醒帮助命中槽位 38 设计坐标（默认缩放 ≈24.8 DIP ≥ 桌面紧凑下限 24）；筛选芯片高度 36、相邻间距 8，日历翻月按钮 36。悬浮窗 36 下限与头部 3px、滚动条 10px 例外未放宽。
-- 接入 `ApplicationTheme.ClientAreaAnimationEnabled`（系统「客户区动画」开关）读取点；本票无过渡动画。
+- 接入 `ApplicationTheme.ClientAreaAnimationEnabled`（系统「客户区动画」开关）读取点；#194 将悬停颜色和按下缩放接入 §9 token，关闭系统动画时有效时长为 0。
 
 ### 13.5 装饰文字的非信息性限制
 

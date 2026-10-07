@@ -1437,6 +1437,7 @@ internal static class ValidationReport
             ValidationExercises.ProbeReminderCenterTypographyWeightWhitelist();
         var popupAnimationIsInstant =
             ValidationExercises.ProbeFivePopupsUseInstantAnimation(main);
+        var motionTokensMatch = ValidationExercises.ProbeMotionTokens();
         var actionForegroundsUseMainActionText =
             ValidationExercises.ProbeActionForegroundsUseMainActionText(main);
         var disabledSelectionControlsUseButtonOpacity =
@@ -2044,6 +2045,7 @@ internal static class ValidationReport
             ["MainSelectedTabWeightDominates"] = interactionStates.SelectedTabWeightDominates,
             ["MotionClientAreaAnimationSwitchReadable"] =
                 ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
+            ["MotionTokensMatch"] = motionTokensMatch,
             ["KeyboardFocusRingTabGapAvoidsSelectedFill"] =
                 keyboardFocusRingContrast.TabRingGapAvoidsSelectedFill,
             ["KeyboardFocusRingFloatingCapsuleMeetsContrast"] =

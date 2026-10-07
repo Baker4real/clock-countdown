@@ -181,6 +181,18 @@
     <CornerRadius x:Key="RadiusChip">5</CornerRadius>
     <CornerRadius x:Key="RadiusThumb">4</CornerRadius>
 
+    <!-- #194：动效 token。ApplicationTheme.Apply 将这些时长按系统
+         ClientAreaAnimation 开关收敛为原值或零；动效只消费这些资源。 -->
+    <Duration x:Key="MotionHoverDuration">0:0:0.120</Duration>
+    <Duration x:Key="MotionPressDuration">0:0:0.100</Duration>
+    <Duration x:Key="MotionPopupEnterDuration">0:0:0.140</Duration>
+    <Duration x:Key="MotionPopupExitDuration">0:0:0.090</Duration>
+    <Duration x:Key="MotionIndicatorDuration">0:0:0.160</Duration>
+    <Duration x:Key="MotionCountdownDuration">0:0:0.090</Duration>
+    <PowerEase x:Key="MotionEaseOut" EasingMode="EaseOut" Power="4" />
+    <CubicEase x:Key="MotionCubicEaseOut" EasingMode="EaseOut" />
+    <PowerEase x:Key="MotionQuarticEaseOut" EasingMode="EaseOut" Power="4" />
+
     <!-- 悬浮窗组件画刷：色值全部绑回第 1 层 Primitive，不在组件层自持色值 -->
     <SolidColorBrush x:Key="FloatingDayPanelBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="FloatingDayBackdropBrush" Color="{DynamicResource BackgroundColor}" po:Freeze="False" />
@@ -238,7 +250,9 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type Button}">
-            <Grid x:Name="InteractionSurface" Background="Transparent">
+            <Grid x:Name="InteractionSurface"
+                  Background="Transparent"
+                  focus:MotionBehavior.IsEnabled="True">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -259,16 +273,10 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardAltBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <!-- #194：悬停颜色由 MotionBehavior 以 MotionHoverDuration 插值。 -->
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="RenderTransform">
-                  <Setter.Value>
-                    <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
-                  </Setter.Value>
-                </Setter>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -296,7 +304,12 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type Button}">
-            <Grid x:Name="InteractionSurface" Background="Transparent">
+            <Grid x:Name="InteractionSurface"
+                  Background="Transparent"
+                  focus:MotionBehavior.IsEnabled="True"
+                  focus:MotionBehavior.HoverBackgroundResourceKey="MainActionHoverBrush"
+                  focus:MotionBehavior.HoverBorderBrushResourceKey="MainActionHoverBrush"
+                  focus:MotionBehavior.PressedBackgroundResourceKey="MainActionPressedBrush">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -317,17 +330,10 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionHoverBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionHoverBrush}" />
+                <!-- #194：主行动悬停色由 MotionBehavior 以 MotionHoverDuration 插值。 -->
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionPressedBrush}" />
-                <Setter TargetName="Surface" Property="RenderTransform">
-                  <Setter.Value>
-                    <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
-                  </Setter.Value>
-                </Setter>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -360,7 +366,11 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type Button}">
-            <Grid x:Name="InteractionSurface" Background="Transparent">
+            <Grid x:Name="InteractionSurface"
+                  Background="Transparent"
+                  focus:MotionBehavior.IsEnabled="True"
+                  focus:MotionBehavior.HoverBackgroundResourceKey="PinkAccentStrongBrush"
+                  focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -382,15 +392,10 @@
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.94" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <!-- #194：悬停边色由 MotionBehavior 以 MotionHoverDuration 插值。 -->
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="RenderTransform">
-                  <Setter.Value>
-                    <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
-                  </Setter.Value>
-                </Setter>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -437,7 +442,13 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ToggleButton}">
-            <Grid x:Name="InteractionSurface" Background="Transparent">
+            <Grid x:Name="InteractionSurface"
+                  Background="Transparent"
+                  focus:MotionBehavior.IsEnabled="True"
+                  focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
+                  focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
+                  focus:MotionBehavior.CheckedBackgroundResourceKey="SegmentSelectedBrush"
+                  focus:MotionBehavior.CheckedBorderBrushResourceKey="PeachLineBrush">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -456,21 +467,13 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardAltBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <!-- #194：分段悬停色由 MotionBehavior 以 MotionHoverDuration 插值。 -->
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource SegmentSelectedBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="RenderTransform">
-                  <Setter.Value>
-                    <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
-                  </Setter.Value>
-                </Setter>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -502,7 +505,11 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type Button}">
-            <Grid x:Name="InteractionSurface" Background="Transparent">
+            <Grid x:Name="InteractionSurface"
+                  Background="Transparent"
+                  focus:MotionBehavior.IsEnabled="True"
+                  focus:MotionBehavior.HoverBackgroundResourceKey="FloatingHeaderHoverBrush"
+                  focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -523,16 +530,10 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource FloatingHeaderHoverBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <!-- #194：悬浮标题悬停色由 MotionBehavior 以 MotionHoverDuration 插值。 -->
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="RenderTransform">
-                  <Setter.Value>
-                    <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
-                  </Setter.Value>
-                </Setter>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -562,7 +563,13 @@
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ToggleButton}">
             <!-- #154：激活胶囊短边一半全圆角——实例命中/渲染高 36 → 圆角 18（不再 RadiusControl 9）。 -->
-            <Grid x:Name="InteractionSurface" Background="Transparent">
+            <Grid x:Name="InteractionSurface"
+                  Background="Transparent"
+                  focus:MotionBehavior.IsEnabled="True"
+                  focus:MotionBehavior.HoverBackgroundResourceKey="FloatingHeaderHoverBrush"
+                  focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
+                  focus:MotionBehavior.CheckedBackgroundResourceKey="PinkAccentStrongBrush"
+                  focus:MotionBehavior.CheckedBorderBrushResourceKey="PinkAccentStrongBrush">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -581,21 +588,13 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource FloatingHeaderHoverBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <!-- #194：悬浮分段悬停色由 MotionBehavior 以 MotionHoverDuration 插值。 -->
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PinkAccentStrongBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource PinkAccentStrongBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Surface" Property="RenderTransform">
-                  <Setter.Value>
-                    <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
-                  </Setter.Value>
-                </Setter>
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>

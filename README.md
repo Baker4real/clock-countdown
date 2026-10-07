@@ -81,8 +81,8 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），六阶段套件默认入口；Build 绿后 Core/CSharp/Ui/SourceValidation/InstallValidate 五阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
-迁移决策、module/seam 划分和候选语言比较见 [架构与语言迁移](docs/架构与语言迁移.md)。
-全面现代化目标栈和阶段性迁移方案见 [现代化重构方案](docs/现代化重构方案.md)；定稿依赖与版本证据见 [技术栈决策](docs/stack.md)。
+当前迁移决策、WPF module/seam 划分和 Tauri 闸门边界见 [架构与语言迁移](docs/架构与语言迁移.md)；父级 PRD 为 [GitHub #189](https://github.com/Baker4real/clock-countdown/issues/189)。
+WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方案](docs/现代化重构方案.md)；现行栈状态与候选闸门范围见 [技术栈决策](docs/stack.md)。Tauri/React/Rust 文档只描述可回滚的候选切片，不代表已批准的目标栈。
 倒计时、便签与共享标签的产品证据、现役边界和后续候选见 [倒计时、便签与标签协同调研](docs/标签与倒计时应用调研.md)。
 悬浮窗参考图复刻的 GitHub 候选、采用路线、数值边界和明确不采用项见 [悬浮窗视觉复刻 GitHub 方案调研](docs/悬浮窗视觉复刻%20GitHub%20方案调研.md)。
 

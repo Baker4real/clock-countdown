@@ -930,7 +930,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ThemedComboBoxBehavior.Attach(CountdownSecond);
         ThemedComboBoxBehavior.Attach(DisplayPrecision);
         ThemedComboBoxBehavior.Attach(NoteGroupingSelector);
-        UseShortDateText(NoteDate);
         UiAccessibility.MarkLive(StatusText);
         // #156：数量变化由一处状态区域说出完整句子——命令栏数量文字（N 个待办 / N 个倒计时）
         // 是唯一的数量直播区；分段徽章与分段名只承载视觉与可访问名，不再各自播报。
@@ -3405,25 +3404,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             AutomationProperties.SetHelpText(input, helpText);
         }
-    }
-
-    private static void UseShortDateText(DatePicker datePicker)
-    {
-        datePicker.ApplyTemplate();
-        if (datePicker.Template.FindName("PART_TextBox", datePicker) is not DatePickerTextBox textBox)
-        {
-            throw new InvalidOperationException("便签日期模板缺少 PART_TextBox。");
-        }
-
-        BindingOperations.SetBinding(
-            textBox,
-            TextBox.TextProperty,
-            new Binding(nameof(DatePicker.SelectedDate))
-            {
-                Source = datePicker,
-                StringFormat = "{0:yyyy/M/d}"
-            });
-        ThemedDatePickerBehavior.LockReadOnlyTextBox(datePicker);
     }
 
     private void SetMessage(TextBlock target, string text, bool isError)

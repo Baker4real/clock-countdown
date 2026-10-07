@@ -4532,6 +4532,22 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.DatePickerTextFits) '完整选中日期在日期框内完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextRequiredWidth -gt 0) '日期框实测需求宽度为正（#129 自 U1 迁移）'
+    $productionDatePickerMeasurements = @($adapterValidation.DatePickerProductionMeasurements)
+    foreach ($measurement in @(
+        $productionDatePickerMeasurements |
+            Where-Object { $_.Name -in @('Main.NoteDate', 'Floating.NoteDate') }
+    )) {
+        Assert-Equal $true ([bool] $measurement.TextFit.Fits) "便签日期框完整中文日期不裁切：$($measurement.Name)（#190）"
+        Assert-Equal $true (
+            [double] $measurement.TextFit.Available -gt 0 -and
+            [double] $measurement.TextFit.Required -gt 0 -and
+            [double] $measurement.TextFit.Available -ge [double] $measurement.TextFit.Required
+        ) "便签日期框文本宽度不超过可用宽度：$($measurement.Name)（#190）"
+    }
+    Assert-Equal 2 @(
+        $productionDatePickerMeasurements |
+            Where-Object { $_.Name -in @('Main.NoteDate', 'Floating.NoteDate') }
+    ).Count '主窗口与悬浮窗便签日期框均纳入裁切几何断言（#190）'
     Assert-Equal $true ([bool] $adapterValidation.CalendarHeaderTextFits) '日历月份头部完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextAvailableWidth -gt 0) '日历头部实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextRequiredWidth -gt 0) '日历头部实测需求宽度为正（#129 自 U1 迁移）'
@@ -5038,8 +5054,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainThemeReminderLabelFollowsTheme) '主窗口提醒标签保持主题前景色'
     Assert-Equal $true ([bool] $adapterValidation.MainThemeSegmentSelectedTextContrast) '主窗口工作区选中态文字对比度达标或精确匹配设计声明 token'
     Assert-Equal $true ([bool] $adapterValidation.WarmYellowPaletteMatchesLegacy) '全局主题恢复旧版暖黄日间色'
-    Assert-Equal $true ([bool] $adapterValidation.PrimaryButtonHoverTextContrast) '主操作按钮悬停时保持珊瑚底白字的可读对比度'
-    Assert-Equal $true ([bool] $adapterValidation.MainActionTextContrast) '主窗口核心操作在默认、悬停与按下状态均保持可读对比度'
+    Assert-Equal $true ([bool] $adapterValidation.PrimaryButtonHoverTextContrast) '主操作按钮悬停时保持玫粉底白字的可读对比度'
+    Assert-Equal $true ([bool] $adapterValidation.MainActionTextContrast) '主窗口与悬浮窗主操作白字在默认、悬停与按下色上均达到 4.5:1 对比度（#199）'
+    Assert-Equal '#FFC23E68' ([string] $adapterValidation.MainActionPalette.Default) '主行动默认色与悬浮窗同为深玫粉（#199）'
+    Assert-Equal '#FFB0355D' ([string] $adapterValidation.MainActionPalette.Hover) '主行动悬停色使用同族深玫粉（#199）'
+    Assert-Equal '#FF9B2D50' ([string] $adapterValidation.MainActionPalette.Pressed) '主行动按下色使用同族深玫粉（#199）'
+    Assert-Equal ([string] $adapterValidation.MainActionPalette.Default) ([string] $adapterValidation.MainActionPalette.Floating) '主窗口与悬浮窗主行动使用相同玫粉色（#199）'
+    Assert-Equal '#FFFFFDFC' ([string] $adapterValidation.MainActionPalette.Text) '主行动文字保持暖白（#199）'
+    Assert-Equal '#FFB94D3A' ([string] $adapterValidation.MainActionPalette.Danger) 'Danger 删除操作仍保留砖红且不复用主行动玫粉（#199）'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterSourceLabelContrast.TextContrast) '提醒中心来源标签对便签卡对比度达到 4.5:1'
     Assert-Equal $true ([bool] $adapterValidation.SystemDialogPrimaryButtonContrast.TextContrast) '设置恢复与激活失败主按钮文字对比度达到 4.5:1'
     Assert-Equal $true ([bool] $adapterValidation.SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette) '设置恢复与激活失败窗是无边框暖粉壳且静态色为现役 token 副本'

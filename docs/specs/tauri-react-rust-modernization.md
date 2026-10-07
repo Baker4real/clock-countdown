@@ -1,9 +1,11 @@
 ---
 type: spec
-title: 敏敏子倒计时全面现代化重构
-tags: [spec, tauri, react, rust, migration, windows]
-intent: 把现有 WPF 倒计时应用全面重构为 Tauri、React、TypeScript、Vite、Tailwind 和 Rust 应用，同时保持数据和用户行为契约。
+title: 敏敏子倒计时 Tauri 闸门切片候选规格
+tags: [spec, tauri, react, rust, migration, wpf, windows]
+intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScript、Vite、Tailwind 和 Rust 悬浮窗对比切片，不把它当作当前生产目标。"
 ---
+
+> 状态：候选规格，依赖 [#189：WPF 渐进式 UI 精致化与现代化（替代全面重写为先）](https://github.com/Baker4real/clock-countdown/issues/189) 的后置闸门（#209）。当前生产宿主仍是 C# / .NET 10 WPF + PowerShell 7；本文件不批准全面迁移、真实设置写入或生产入口切换。
 
 ## Problem Statement
 
@@ -15,11 +17,11 @@ intent: 把现有 WPF 倒计时应用全面重构为 Tauri、React、TypeScript�
 
 ## Solution
 
-把应用运行时全面重构为 Tauri 2 + React 19.3 + TypeScript + Vite 8 + Tailwind CSS 4 + Rust。React 负责所有用户可见页面、悬浮窗、提醒中心、组件状态和动效；Tauri 负责窗口、WebView、托盘、单实例、开机启动和安装器；Rust 负责领域规则、北京时间、提醒调度、设置事务、备份恢复、诊断日志和 Windows 系统能力。
+如果 #189 的 WPF 批次完成后触发闸门，本规格只指导一个隔离的 `520 x 390` Tauri 2 + React + TypeScript + Vite/CSS Variables + Rust 悬浮窗切片。切片用于与 WPF 改版比较视觉、交互、性能、无障碍和发布成本；它不负责所有用户界面，也不取得真实生产设置、计划任务或部署入口的写入权。
 
 保留 schema v10 作为跨版本数据契约，读取旧 schema v1-v10，只写 canonical schema v10。第一阶段不把 JSON 改成 SQLite，也不把文件读写交给前端。PowerShell 继续作为 Windows 安装、办公室部署和证据采集工具，直到新发布链路完成独立验收。
 
-迁移采用可回滚的分阶段切换：先冻结现有 WPF 生产基线和语言无关测试 fixture，再完成 Tauri 技术切片、Rust 领域移植、React 主窗口、悬浮窗、提醒中心、安装器和办公室部署，最后切换入口并清理旧 WPF。新版本在旧版本仍可回滚时只能作为 candidate 或 dry-run，不得宣称 deployed 或 live verified。
+切片采用可回滚的隔离验证：复用现有 WPF 基线和脱敏 fixture，只验证一扇真实 WebView2 窗口、typed command/event、窗口边界、托盘恢复、第二实例发现和关键无障碍路径。切片只能作为 candidate 或 dry-run；不得以浏览器截图、合成探针或本机打包宣称 deployed 或 live verified。
 
 ## User Stories
 
@@ -58,10 +60,10 @@ intent: 把现有 WPF 倒计时应用全面重构为 Tauri、React、TypeScript�
 
 ## Implementation Decisions
 
-- The desktop shell is Tauri 2; the UI is React 19.3 with TypeScript, Vite 8 and Tailwind CSS 4. Design tokens remain CSS Variables owned by `DESIGN.md`.
-- Rust is the single owner of domain state, persistence, reminder scheduling, window management, tray actions, single-instance activation, autostart and startup acceptance.
+- For the optional gate slice, the desktop shell is Tauri 2; the UI is React 19.3 with TypeScript, Vite 8 and Tailwind CSS 4. Design tokens remain CSS Variables owned by `DESIGN.md`; these are candidate dependencies, not current production dependencies.
+- Inside that isolated slice, Rust may own the exercised domain seam and Tauri window commands. It does not replace the current WPF owner of real settings, reminder scheduling, deployment or startup acceptance.
 - React owns rendering, drafts, local interaction state and animation. React cannot access arbitrary files, registry, shell commands, scheduled tasks or network resources.
-- The application uses separate Tauri windows for the management window, 520 x 390 floating window and single reminder center. It does not depend on unstable multiwebview support.
+- The gate slice uses one `520 x 390` Tauri window. Separate management and reminder-center windows are explicitly out of scope until a later decision.
 - Frontend/backend communication uses versioned discriminated command and event messages. Rust validates command shape, source identity, permissions and current state before applying a mutation.
 - The frontend receives a state snapshot and renders it. Rust emits the next snapshot only after the persistence transaction succeeds. Persistence failure leaves disk, in-memory state, draft and reminder entry unchanged.
 - Schema v1-v10 remain readable and canonical schema v10 remains the only write format. Rule IDs, occurrence keys, cursors, delivery/disposition records and snooze records retain their existing meanings.
@@ -76,9 +78,8 @@ intent: 把现有 WPF 倒计时应用全面重构为 Tauri、React、TypeScript�
 - WebView2 uses Evergreen distribution for security updates. The Windows installer supports an offline runtime installer for office devices; fixed runtime is a separate decision requiring an explicit compatibility need.
 - The release package contains only the built Tauri application, runtime assets, installer/runtime prerequisites and required deployment evidence. Node, Rust, npm cache and source trees are not runtime assets.
 - The existing PowerShell deployment and transfer ledger remain the external Windows operations boundary during migration. Their acceptance contract is adapted to Tauri artifact identity, autostart state and Rust startup receipts.
-- The migration is staged: baseline freeze; Tauri slice; Rust domain/persistence; main window; floating window and tray; reminder center; installer/deployment; production switch and cleanup.
-- Each stage has a candidate-only rollback point. Production entry, real user settings and office deployment remain on WPF until the corresponding new stage is independently verified.
-- The target repository layout separates frontend, Rust application modules, runtime assets, validation fixtures and deployment tooling. Module names describe boundaries; implementation may choose different physical files.
+- The work is staged as the WPF batches in #189, followed only if justified by the isolated Tauri slice in #209. Each candidate step has a rollback point; production entry, real user settings and office deployment remain on WPF.
+- If the gate is approved, the candidate repository layout may separate frontend, Rust application modules, runtime assets, validation fixtures and deployment tooling. Module names describe boundaries; implementation may choose different physical files.
 - The CI pipeline adds Node lockfile installation, TypeScript checks, frontend tests/build, Rust formatting/lint/tests, Tauri Windows packaging and migration fixture checks to the existing Windows workflow.
 - Release state is recorded separately as candidate, dry-run, deployed and live verified. A local build, synthetic probe or unit test alone cannot close the migration.
 
@@ -112,9 +113,9 @@ intent: 把现有 WPF 倒计时应用全面重构为 Tauri、React、TypeScript�
 
 ## Further Notes
 
-- The current production implementation is still C# / .NET 10 WPF. This spec defines the approved target and migration work; it does not claim that the rewrite has started or that the new application is deployed.
-- The existing project design contract remains authoritative for colors, typography, hit areas, dimensions, accessibility and reference-image binding during the rewrite.
-- The first implementation ticket should be the baseline-freeze and Tauri technical slice. It should not begin by deleting WPF or changing the live settings path.
+- The current production implementation is still C# / .NET 10 WPF. This spec defines a conditional comparison candidate; it is not an approved replacement target and does not claim that a rewrite has started or that a new application is deployed.
+- The existing project design contract remains authoritative for colors, typography, hit areas, dimensions, accessibility and reference-image binding during the WPF batches and any later slice.
+- The first work remains the WPF baseline and batches in #189. Only after those batches may #209 start the isolated Tauri slice; it must not delete WPF or change the live settings path.
 - The migration should retain a clear evidence chain for each stage: source revision, dependency lockfile, fixture result, visual baseline hashes, package manifest, transfer ledger, deployment binding and independent live readback.
-- The completed spec is also recorded in the repository's modernization plan and stack decision documents; those documents explain the selected versions and deployment trade-offs in more detail.
+- The candidate spec is cross-referenced by the repository's modernization plan and stack decision documents; those documents record WPF as current and explain the gate's evidence and rollback boundary.
 

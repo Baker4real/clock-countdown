@@ -36,9 +36,10 @@ internal sealed class ApplicationTheme
         Token("ActiveHoverColor", "ActiveHoverBrush", "#FFB84A36"),
         // #151：文本选区高亮独立语义色（不得复用 1px 结构线色）。
         Token("SelectionColor", "SelectionBrush", "#FFD4526A"),
-        Token("MainActionColor", "MainActionBrush", "#FFC04A37"),
-        Token("MainActionHoverColor", "MainActionHoverBrush", "#FFB84A36"),
-        Token("MainActionPressedColor", "MainActionPressedBrush", "#FFBA4128"),
+        // #199：主窗口与悬浮窗统一使用深玫粉主行动；Danger 保留砖红。
+        Token("MainActionColor", "MainActionBrush", "#FFC23E68"),
+        Token("MainActionHoverColor", "MainActionHoverBrush", "#FFB0355D"),
+        Token("MainActionPressedColor", "MainActionPressedBrush", "#FF9B2D50"),
         Token("MainActionFocusColor", "MainActionFocusBrush", "#FFFFD49A"),
         Token("MainActionTextColor", "MainActionTextBrush", "#FFFDFC"),
         // #151：主窗口次级实心按钮（「保存设置」）珊瑚语义色，文字用主文字色。

@@ -161,7 +161,17 @@ internal sealed class ReminderCenterWindow : Window
             }
 
             args.Handled = true;
-            focused.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, focused));
+            if (focused.Command is { } command)
+            {
+                if (command.CanExecute(focused.CommandParameter))
+                {
+                    command.Execute(focused.CommandParameter);
+                }
+            }
+            else
+            {
+                focused.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, focused));
+            }
         };
         // #150：有条目时 Esc 不关闭提醒中心，只把焦点移到首条目的「知道了」；
         // 「知道了」被失败态禁用时落到始终可用的「打开来源」。

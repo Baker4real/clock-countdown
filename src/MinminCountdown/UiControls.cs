@@ -1031,7 +1031,7 @@ internal static class SecondaryWindowChrome
     };
 }
 
-internal sealed class ConfirmationDialog : Window
+internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
 {
     internal Button CancelButton { get; private set; } = null!;
     internal Button ConfirmButton { get; private set; } = null!;
@@ -1045,61 +1045,39 @@ internal sealed class ConfirmationDialog : Window
         string confirmText = "确认删除",
         string confirmStyleKey = "DangerButton")
     {
+        // #205：WPF-UI 只在本确认框的 Window.Resources 中合并；不触碰
+        // Application.Current.Resources，避免其隐式样式进入主窗、悬浮窗和其他次级窗口。
+        Resources = CreateLocalWpfUiResources();
+        // Implicit styles are keyed by the exact control type; this subclass
+        // therefore applies WPF-UI's MessageBox style explicitly while keeping
+        // the style and all merged dictionaries local to this window.
+        Style = (Style)FindResource(typeof(Wpf.Ui.Controls.MessageBox));
         Owner = owner;
         Title = title;
         Width = 390;
         Height = Math.Min(360, Math.Max(240, SystemParameters.WorkArea.Height - 48));
+        MaxWidth = 390;
+        MaxHeight = Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
+        Topmost = false;
         SetResourceReference(BackgroundProperty, "BackgroundBrush");
+        Foreground = (Brush)FindResource("InkBrush");
 
-        var cancel = UiAccessibility.Name(
-            new Button
-            {
-                Content = "取消",
-                IsDefault = true,
-                IsCancel = true,
-                MinWidth = 82,
-                Style = (Style)FindResource("SecondaryButton")
-            },
-            "取消");
-        CancelButton = cancel;
-        AutomationProperties.SetAutomationId(cancel, "ConfirmationCancelButton");
-        cancel.Click += (_, _) =>
-        {
-            DialogResult = false;
-            Close();
-        };
-        // #155：确认按钮文案与样式参数化——删除确认仍是「确认删除」+ DangerButton，
-        // 提醒中心完成确认用「确认完成」+ SecondaryButton，退出确认用「退出」；
-        // 取消按钮始终 IsDefault + IsCancel，安全默认不随场景改变。
-        var confirm = UiAccessibility.Name(
-            new Button
-            {
-                Content = confirmText,
-                IsDefault = false,
-                MinWidth = 96,
-                Margin = new Thickness(8, 0, 0, 0),
-                Style = (Style)FindResource(confirmStyleKey)
-            },
-            confirmText);
-        ConfirmButton = confirm;
-        AutomationProperties.SetAutomationId(confirm, "ConfirmationConfirmButton");
-        confirm.Click += (_, _) =>
-        {
-            DialogResult = true;
-            Close();
-        };
-
-        var actions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right
-        };
-        actions.Children.Add(cancel);
-        actions.Children.Add(confirm);
+        // WPF-UI MessageBox 的 Primary 按钮默认响应 Enter；把它承载为「取消」后，
+        // Enter 与 Esc 都落到安全路径，Secondary 才是唯一的确认路径。
+        PrimaryButtonText = "取消";
+        PrimaryButtonAppearance = Wpf.Ui.Controls.ControlAppearance.Secondary;
+        IsPrimaryButtonEnabled = true;
+        SecondaryButtonText = confirmText;
+        SecondaryButtonAppearance = string.Equals(confirmStyleKey, "DangerButton", StringComparison.Ordinal)
+            ? Wpf.Ui.Controls.ControlAppearance.Danger
+            : Wpf.Ui.Controls.ControlAppearance.Secondary;
+        IsSecondaryButtonEnabled = true;
+        CloseButtonText = string.Empty;
+        IsCloseButtonEnabled = false;
 
         var layout = new Grid { Margin = new Thickness(24) };
         layout.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");
@@ -1133,10 +1111,8 @@ internal sealed class ConfirmationDialog : Window
         BodyScroller = bodyScroller;
         AutomationProperties.SetAutomationId(bodyScroller, "ConfirmationBodyScroller");
         Grid.SetRow(bodyScroller, 1);
-        Grid.SetRow(actions, 2);
         layout.Children.Add(heading);
         layout.Children.Add(bodyScroller);
-        layout.Children.Add(actions);
         var surface = new Border
         {
             Child = layout,
@@ -1146,6 +1122,118 @@ internal sealed class ConfirmationDialog : Window
         surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         Content = surface;
     }
+
+    // WPF-UI MessageBox intentionally hides Window.Show/ShowDialog/Close and asks
+    // consumers to use ShowDialogAsync. The existing product seam is synchronous,
+    // so keep that seam while delegating the actual modal loop to WPF-UI.
+    public new void Show() => ((Window)this).Show();
+
+    public new bool? ShowDialog()
+    {
+        var result = ShowDialogAsync().GetAwaiter().GetResult();
+        return result switch
+        {
+            Wpf.Ui.Controls.MessageBoxResult.Secondary => true,
+            Wpf.Ui.Controls.MessageBoxResult.Primary => false,
+            _ => null
+        };
+    }
+
+    public new void Close() => ((Window)this).Close();
+
+    protected override void OnLoaded()
+    {
+        base.OnLoaded();
+
+        // MessageBox's Loaded handler runs before all TemplateBinding values are
+        // observable on the generated button elements. Defer one dispatcher
+        // turn, then select by the template's command parameter rather than by
+        // translated button text or visual-tree position.
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Loaded,
+            new Action(ConfigureTemplateButtons));
+    }
+
+    private void ConfigureTemplateButtons()
+    {
+        ApplyTemplate();
+        UpdateLayout();
+
+        var buttons = Descendants<Button>(this).ToArray();
+        CancelButton = buttons.SingleOrDefault(button =>
+            button.CommandParameter is Wpf.Ui.Controls.MessageBoxButton command &&
+            command == Wpf.Ui.Controls.MessageBoxButton.Primary)
+            ?? throw new InvalidOperationException("WPF-UI 确认框缺少 Primary 取消按钮。");
+        ConfirmButton = buttons.SingleOrDefault(button =>
+            button.CommandParameter is Wpf.Ui.Controls.MessageBoxButton command &&
+            command == Wpf.Ui.Controls.MessageBoxButton.Secondary)
+            ?? throw new InvalidOperationException("WPF-UI 确认框缺少 Secondary 确认按钮。");
+
+        // The WPF-UI template owns the visual buttons; retain the established
+        // automation IDs and make the safe button both the default and Esc target.
+        CancelButton.IsDefault = true;
+        CancelButton.IsCancel = true;
+        ConfirmButton.IsDefault = false;
+        ConfirmButton.IsCancel = false;
+        UiAccessibility.Name(CancelButton, "取消");
+        UiAccessibility.Name(ConfirmButton, SecondaryButtonText);
+        AutomationProperties.SetAutomationId(CancelButton, "ConfirmationCancelButton");
+        AutomationProperties.SetAutomationId(ConfirmButton, "ConfirmationConfirmButton");
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in Descendants<T>(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private static ResourceDictionary CreateLocalWpfUiResources()
+    {
+        var resources = new ResourceDictionary();
+        resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ThemesDictionary
+        {
+            Theme = Wpf.Ui.Appearance.ApplicationTheme.Light
+        });
+        resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ControlsDictionary());
+
+        // WPF-UI resource keys are local aliases of existing warm-pink semantic
+        // tokens. These aliases are intentionally scoped to this dialog Window.
+        resources["MessageBoxBackground"] = ApplicationResource("BackgroundBrush");
+        resources["MessageBoxForeground"] = ApplicationResource("InkBrush");
+        resources["MessageBoxTopOverlay"] = ApplicationResource("BackgroundBrush");
+        resources["MessageBoxSeparatorBorderBrush"] = ApplicationResource("PeachLineBrush");
+        resources["ButtonBackground"] = ApplicationResource("CardBrush");
+        resources["ButtonBackgroundPointerOver"] = ApplicationResource("CardAltBrush");
+        resources["ButtonBackgroundPressed"] = ApplicationResource("PeachTintBrush");
+        resources["ButtonForeground"] = ApplicationResource("InkBrush");
+        resources["ButtonForegroundPointerOver"] = ApplicationResource("InkBrush");
+        resources["ButtonForegroundPressed"] = ApplicationResource("InkBrush");
+        resources["AccentButtonBackground"] = ApplicationResource("MainActionBrush");
+        resources["AccentButtonBackgroundPointerOver"] = ApplicationResource("MainActionHoverBrush");
+        resources["AccentButtonBackgroundPressed"] = ApplicationResource("MainActionPressedBrush");
+        resources["AccentButtonForeground"] = ApplicationResource("MainActionTextBrush");
+        resources["AccentButtonForegroundPointerOver"] = ApplicationResource("MainActionTextBrush");
+        resources["AccentButtonForegroundPressed"] = ApplicationResource("MainActionTextBrush");
+        resources["PaletteRedColor"] = ApplicationResource("DangerColor");
+        return resources;
+    }
+
+    private static object ApplicationResource(string key) =>
+        Application.Current?.TryFindResource(key)
+        ?? throw new InvalidOperationException($"缺少确认框主题资源：{key}");
 }
 
 // #155：进程退出（悬浮退出、托盘退出）在显示设置或编辑器脏时的确认入口。

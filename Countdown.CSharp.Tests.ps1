@@ -4381,6 +4381,20 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $trayIconHostSource -match '#3B190D' -and
         $trayIconHostSource -match '#F6DFD3' -and
         $trayIconHostSource -match '#D4526A') 'H.NotifyIcon 托盘保留双击恢复与四项入口，并使用局部 WPF 暖粉菜单样式（#202）'
+
+    # #205：确认框只在自身资源作用域内合并 WPF-UI，且保留取消为安全默认。
+    Assert-Equal $true (
+        $trayProjectSource -match '<PackageReference Include="WPF-UI" Version="4\.3\.0"' -and
+        $trayProjectSource -notmatch '<PackageReference Include="WPF\.UI"'
+    ) '确认框使用精确锁定的 WPF-UI 4.3.0 包（#205 依赖契约）'
+    Assert-Equal $true (
+        $uiControlsSource -match 'class ConfirmationDialog : Wpf\.Ui\.Controls\.MessageBox' -and
+        $uiControlsSource -match 'new Wpf\.Ui\.Markup\.ThemesDictionary' -and
+        $uiControlsSource -match 'new Wpf\.Ui\.Markup\.ControlsDictionary' -and
+        $uiControlsSource -match 'IsCancel = true' -and
+        $uiControlsSource -match 'ConfirmationCancelButton' -and
+        $uiControlsSource -match 'ConfirmationConfirmButton'
+    ) '确认框局部使用 WPF-UI、取消为 Esc/默认安全按钮且自动化名保持不变（#205）'
     Assert-Equal $true (
         $floatingTraySource -match 'private void ResetWindowPosition\(\) => _floatingWindow\.ResetPositionIntoWorkArea\(\);') '托盘复位动作直达悬浮窗夹取实现（#156 源码契约）'
     $resetPositionBody = [regex]::Match(

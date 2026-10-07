@@ -29,9 +29,16 @@ internal sealed class HolidayCalendar : IDisposable
     {
     }
 
-    private HolidayCalendar(HolidayCalendarSource source)
+    internal HolidayCalendar(HolidayCalendarSource source)
     {
         _source = source;
+    }
+
+    internal HolidayCalendar(
+        string applicationRoot,
+        Func<int, CancellationToken, Task<string>>? downloadOverride)
+        : this(new HolidayCalendarSource(applicationRoot, downloadOverride))
+    {
     }
 
     public event EventHandler? StateChanged;
@@ -81,9 +88,18 @@ internal sealed class HolidayCalendar : IDisposable
     {
         try
         {
-            if (_source.TryReadCached(year, out var cached))
+            try
             {
-                return TrySetReady(cached, year, generation);
+                if (_source.TryReadCached(year, out var cached))
+                {
+                    return TrySetReady(cached, year, generation);
+                }
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // A corrupt or unreadable mutable cache must not hide a valid
+                // network or packaged source.
             }
 
             if (!TrySetLoading(generation))
@@ -91,20 +107,54 @@ internal sealed class HolidayCalendar : IDisposable
                 return false;
             }
 
-            var payload = await _source
-                .DownloadAsync(year, refreshCancellation.Token)
-                .ConfigureAwait(false);
-            if (!TryParse(payload, year, out var downloaded))
+            IReadOnlyDictionary<string, bool>? downloaded = null;
+            try
             {
-                return TrySetUnavailable(year, attemptUtc, generation);
+                var payload = await _source
+                    .DownloadAsync(year, refreshCancellation.Token)
+                    .ConfigureAwait(false);
+                if (TryParse(payload, year, out var parsed))
+                {
+                    downloaded = parsed;
+                    // A valid network response is authoritative over packaged data.
+                    try
+                    {
+                        _source.WriteCache(year, payload);
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException or UnauthorizedAccessException)
+                    {
+                        // Keep the valid network result for this process even if
+                        // the optional mutable cache cannot be persisted.
+                    }
+                }
+            }
+            catch (Exception exception) when (
+                exception is HttpRequestException or OperationCanceledException or IOException or JsonException)
+            {
+                // Offline data is attempted below. A missing or invalid packaged year
+                // still leaves the calendar unavailable rather than estimating.
             }
 
-            _source.WriteCache(year, payload);
-            return TrySetReady(downloaded, year, generation);
-        }
-        catch (Exception exception) when (
-            exception is HttpRequestException or OperationCanceledException or IOException or JsonException)
-        {
+            if (downloaded is not null)
+            {
+                return TrySetReady(downloaded, year, generation, "network");
+            }
+
+            try
+            {
+                if (_source.TryReadPackaged(year, out var packaged))
+                {
+                    return TrySetReady(packaged, year, generation, "packaged");
+                }
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // Missing, corrupt or inaccessible packaged data means this year
+                // remains unavailable; never infer a weekday-only calendar.
+            }
+
             return TrySetUnavailable(year, attemptUtc, generation);
         }
         catch (ObjectDisposedException) when (!IsCurrentRefresh(generation))
@@ -319,7 +369,8 @@ internal sealed class HolidayCalendar : IDisposable
     private bool TrySetReady(
         IReadOnlyDictionary<string, bool> map,
         int year,
-        long generation)
+        long generation,
+        string sourceKind = "cache")
     {
         lock (_sync)
         {
@@ -333,7 +384,12 @@ internal sealed class HolidayCalendar : IDisposable
             _refreshingYear = null;
             ClearRetryState();
             State = "Ready";
-            StatusText = $"已同步 {year} 年法定节假日与调休";
+            StatusText = sourceKind switch
+            {
+                "packaged" => $"已加载 {year} 年随包法定节假日与调休",
+                "network" => $"已同步 {year} 年法定节假日与调休",
+                _ => $"已同步 {year} 年法定节假日与调休"
+            };
         }
         StateChanged?.Invoke(this, EventArgs.Empty);
         return true;
@@ -385,11 +441,15 @@ internal sealed class HolidayCalendarSource : IDisposable
 {
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private readonly string _applicationRoot;
+    private readonly Func<int, CancellationToken, Task<string>>? _downloadOverride;
     private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(10) };
 
-    public HolidayCalendarSource(string applicationRoot)
+    public HolidayCalendarSource(
+        string applicationRoot,
+        Func<int, CancellationToken, Task<string>>? downloadOverride = null)
     {
         _applicationRoot = applicationRoot;
+        _downloadOverride = downloadOverride;
     }
 
     public bool TryReadCached(int year, out IReadOnlyDictionary<string, bool> workdayMap)
@@ -405,9 +465,25 @@ internal sealed class HolidayCalendarSource : IDisposable
 
     public async Task<string> DownloadAsync(int year, CancellationToken cancellationToken)
     {
+        if (_downloadOverride is not null)
+        {
+            return await _downloadOverride(year, cancellationToken).ConfigureAwait(false);
+        }
+
         var uri =
             $"https://uapis.cn/api/v1/misc/holiday-calendar?year={year}&holiday_type=legal&timezone=Asia%2FShanghai";
         return await _client.GetStringAsync(uri, cancellationToken).ConfigureAwait(false);
+    }
+
+    public bool TryReadPackaged(int year, out IReadOnlyDictionary<string, bool> workdayMap)
+    {
+        workdayMap = new Dictionary<string, bool>();
+        var packagedPath = GetPackagedPath(year);
+        return File.Exists(packagedPath) &&
+               HolidayCalendar.TryParse(
+                   File.ReadAllText(packagedPath, Utf8NoBom),
+                   year,
+                   out workdayMap);
     }
 
     public void WriteCache(int year, string payload)
@@ -421,4 +497,6 @@ internal sealed class HolidayCalendarSource : IDisposable
     public void Dispose() => _client.Dispose();
 
     private string GetCachePath(int year) => Path.Combine(_applicationRoot, "holiday-cache", $"{year}.json");
+
+    private string GetPackagedPath(int year) => Path.Combine(_applicationRoot, "holiday-data", $"{year}.json");
 }

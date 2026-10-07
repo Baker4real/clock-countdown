@@ -10,12 +10,12 @@ namespace MinminCountdown;
 internal sealed class SettingsRecoveryWindow : Window
 {
     // #150：静态刷是现役主题色板的副本（Canvas #FDF3EB / Ink #3B190D / Muted #82665F /
-    // MainAction #C04A37 / MainActionText #FFFDFC / PeachLine #F6DFD3），
+    // MainAction #C23E68 / MainActionText #FFFDFC / PeachLine #F6DFD3），
     // 允许在主题尚未 Apply 时渲染；探针把它们与活体主题 token 逐值核对。
     private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFD, 0xF3, 0xEB));
     private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x3B, 0x19, 0x0D));
     private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x82, 0x66, 0x5F));
-    private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC0, 0x4A, 0x37));
+    private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC2, 0x3E, 0x68));
     private static readonly SolidColorBrush MainActionTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
     private static readonly SolidColorBrush ShellLineBrush = new(Color.FromRgb(0xF6, 0xDF, 0xD3));
 
@@ -157,7 +157,7 @@ internal sealed class InstanceActivationFailureWindow : Window
     private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFD, 0xF3, 0xEB));
     private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x3B, 0x19, 0x0D));
     private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x82, 0x66, 0x5F));
-    private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC0, 0x4A, 0x37));
+    private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC2, 0x3E, 0x68));
     private static readonly SolidColorBrush MainActionTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
     private static readonly SolidColorBrush ShellLineBrush = new(Color.FromRgb(0xF6, 0xDF, 0xD3));
 

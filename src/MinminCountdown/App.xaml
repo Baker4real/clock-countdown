@@ -36,9 +36,10 @@
     <!-- #151：文本选区高亮独立语义色（0.4 SelectionOpacity 合成在白纸输入面上肉眼可辨），
          不得复用 1px 结构线色 PeachLineColor。 -->
     <Color x:Key="SelectionColor">#FFD4526A</Color>
-    <Color x:Key="MainActionColor">#FFC04A37</Color>
-    <Color x:Key="MainActionHoverColor">#FFB84A36</Color>
-    <Color x:Key="MainActionPressedColor">#FFBA4128</Color>
+    <!-- #199：主窗口与悬浮窗统一使用深玫粉主行动；Danger 保留砖红。 -->
+    <Color x:Key="MainActionColor">#FFC23E68</Color>
+    <Color x:Key="MainActionHoverColor">#FFB0355D</Color>
+    <Color x:Key="MainActionPressedColor">#FF9B2D50</Color>
     <Color x:Key="MainActionFocusColor">#FFFFD49A</Color>
     <Color x:Key="MainActionTextColor">#FFFDFC</Color>
     <!-- #151：主窗口次级实心按钮（「保存设置」）珊瑚语义色，比主行动更浅，文字用主文字色。 -->
@@ -316,8 +317,8 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource ActiveHoverBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource MainActionHoverBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionHoverBrush}" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />

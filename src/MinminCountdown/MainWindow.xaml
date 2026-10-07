@@ -68,28 +68,28 @@
               Width="1165"
               Height="1350"
               Panel.ZIndex="2"
-              TextElement.FontSize="20"
+              TextElement.FontSize="{DynamicResource TypeBodyFontSize}"
               Background="Transparent">
           <Grid.Resources>
             <Style x:Key="MainFieldLabel"
                    TargetType="{x:Type TextBlock}"
                    BasedOn="{StaticResource FieldLabel}">
               <Setter Property="Margin" Value="0" />
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
             </Style>
             <Style x:Key="MainSecondaryButton"
                    TargetType="{x:Type Button}"
                    BasedOn="{StaticResource SecondaryButton}">
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="Padding" Value="18,0" />
             </Style>
             <Style x:Key="MainNoteSegmentButton" TargetType="{x:Type ToggleButton}">
               <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderThickness" Value="0" />
-              <Setter Property="FontSize" Value="22" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Padding" Value="0" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -190,7 +190,7 @@
               <Setter Property="Background" Value="{DynamicResource MainActionBrush}" />
               <Setter Property="BorderBrush" Value="{DynamicResource MainActionBrush}" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="FontWeight" Value="SemiBold" />
               <Setter Property="Padding" Value="18,0" />
               <Setter Property="Cursor" Value="Hand" />
@@ -243,7 +243,7 @@
               <Setter Property="Background" Value="{DynamicResource CoralActionBrush}" />
               <Setter Property="BorderBrush" Value="{DynamicResource CoralActionBrush}" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Padding" Value="18,0" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -293,7 +293,7 @@
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Height" Value="60" />
               <Setter Property="Padding" Value="18,0" />
               <Setter Property="Cursor" Value="Hand" />
@@ -398,7 +398,7 @@
                    BasedOn="{StaticResource IconButton}">
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
-              <Setter Property="FontSize" Value="24" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Padding" Value="0" />
             </Style>
             <Style x:Key="MainTopmostCheck" TargetType="{x:Type CheckBox}">
@@ -509,22 +509,23 @@
             </Style>
             <Style TargetType="{x:Type TextBox}"
                    BasedOn="{StaticResource {x:Type TextBox}}">
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Padding" Value="18,0" />
             </Style>
             <Style TargetType="{x:Type ComboBox}"
                    BasedOn="{StaticResource {x:Type ComboBox}}">
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Padding" Value="18,0" />
             </Style>
             <Style TargetType="{x:Type DatePicker}"
                    BasedOn="{StaticResource {x:Type DatePicker}}">
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
             </Style>
             <Style x:Key="MainCompactFieldLabel"
                    TargetType="{x:Type TextBlock}"
                    BasedOn="{StaticResource MainFieldLabel}">
-              <Setter Property="FontSize" Value="18" />
+              <!-- #197：字段标签统一 16px SemiBold。 -->
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
             </Style>
             <Style x:Key="MainCompactTextInput"
                    TargetType="{x:Type TextBox}"
@@ -550,7 +551,7 @@
             </Style>
             <Style x:Key="MainReminderModeRadio" TargetType="{x:Type RadioButton}">
               <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-              <Setter Property="FontSize" Value="20" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -613,7 +614,7 @@
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="17" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="FontWeight" Value="SemiBold" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -769,7 +770,7 @@
                       </Path.Style>
                     </Path>
                     <TextBlock Text="敏敏子的时光小屋"
-                               FontSize="44"
+                               FontSize="{DynamicResource TypeDisplayFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource InkBrush}" />
                     <Path Width="32"
@@ -795,7 +796,7 @@
                   </StackPanel>
                   <TextBlock Margin="0,6,0,0"
                              Text="重要时刻和今日努力，都在这里慢慢长大"
-                             FontSize="20"
+                             FontSize="{DynamicResource TypeH2FontSize}"
                              Foreground="{DynamicResource MutedBrush}" />
                 </StackPanel>
                 <Grid x:Name="MainWindowControls" Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
@@ -833,7 +834,7 @@
                       <TextBlock Margin="9,0,0,0"
                                  Text="日间"
                                  VerticalAlignment="Center"
-                                 FontSize="20"
+                                 FontSize="{DynamicResource TypeH2FontSize}"
                                  Foreground="{DynamicResource BodyBrush}" />
                     </StackPanel>
                   </Border>
@@ -844,7 +845,7 @@
                             Margin="0,11,0,0"
                             Content="窗口置顶"
                             IsChecked="True"
-                            FontSize="20"
+                            FontSize="{DynamicResource TypeH2FontSize}"
                             Style="{StaticResource MainTopmostCheck}"
                             VerticalContentAlignment="Center"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True" />
@@ -979,7 +980,7 @@
                           VerticalAlignment="Center" />
                     <TextBlock x:Name="RecordCountText"
                                Margin="9,0,0,0"
-                               FontSize="20"
+                               FontSize="{DynamicResource TypeH2FontSize}"
                                Foreground="{DynamicResource BodyBrush}"
                                VerticalAlignment="Center" />
                   </StackPanel>
@@ -1033,7 +1034,7 @@
                           </Grid.ColumnDefinitions>
                           <TextBlock x:Name="CountdownEditorTitle"
                                      Text="新增倒计时"
-                                     FontSize="{StaticResource TypeH2FontSize}"
+                                     FontSize="{StaticResource TypeH1FontSize}"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource InkBrush}" />
                           <!-- #154：原「每一个期待…」手写体已迁出表单（CountdownWorkspace 装饰层），
@@ -1068,7 +1069,7 @@
                                          Height="28"
                                          HorizontalAlignment="Left"
                                          VerticalAlignment="Center"
-                                         FontSize="20"
+                                         FontSize="{DynamicResource TypeH2FontSize}"
                                          Foreground="{DynamicResource MutedBrush}"
                                          IsHitTestVisible="False"
                                          Text="例如：生日、考试、旅行…">
@@ -1159,7 +1160,7 @@
                         <TextBlock x:Name="CountdownMessage"
                                    Grid.Row="3"
                                    Margin="0,8,0,0"
-                                   FontSize="18"
+                                   FontSize="{DynamicResource TypeBodyFontSize}"
                                    Foreground="{DynamicResource DangerBrush}"
                                    TextWrapping="Wrap" />
                         <Grid Grid.Row="4" x:Name="MainCountdownActionRow" Margin="0,10,0,0">
@@ -1208,7 +1209,7 @@
                                      Width="132"
                                      Height="56"
                                      VerticalAlignment="Center"
-                                     FontSize="16"
+                                     FontSize="{DynamicResource TypeBodyFontSize}"
                                      Foreground="{DynamicResource MutedBrush}"
                                      TextWrapping="Wrap"
                                      Visibility="Collapsed" />
@@ -1256,7 +1257,7 @@
                                      Margin="10,0,0,0"
                                      VerticalAlignment="Center"
                                      Text="显示设置"
-                                     FontSize="{StaticResource TypeH2FontSize}"
+                                     FontSize="{StaticResource TypeH1FontSize}"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource InkBrush}" />
                         </StackPanel>
@@ -1350,7 +1351,7 @@
                         <TextBlock x:Name="EmptyCountdownMessage"
                                    Margin="20,20,20,0"
                                    HorizontalAlignment="Center"
-                                   FontSize="20"
+                                   FontSize="{DynamicResource TypeH2FontSize}"
                                    Foreground="{DynamicResource MutedBrush}"
                                    Text="还没有倒计时，先添加一个目标。"
                                    TextWrapping="Wrap"
@@ -1377,7 +1378,7 @@
                              TextAlignment="Right"
                              Text="每一个期待，都值得被认真对待 ♡"
                              FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                             FontSize="17"
+                             FontSize="{DynamicResource TypeBodyFontSize}"
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="CountdownDecoTextTop" />
@@ -1387,7 +1388,7 @@
                              TextAlignment="Right"
                              Text="生活很忙，但别忘了可爱 ♡"
                              FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                             FontSize="17"
+                             FontSize="{DynamicResource TypeBodyFontSize}"
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="CountdownDecoTextBottom" />
@@ -1402,7 +1403,7 @@
                              Canvas.Top="44"
                              Text="今天也要加油呀！♡"
                              FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                             FontSize="17"
+                             FontSize="{DynamicResource TypeBodyFontSize}"
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="NotesDecoText" />
@@ -1484,7 +1485,7 @@
                                            Height="28"
                                            HorizontalAlignment="Left"
                                            VerticalAlignment="Center"
-                                           FontSize="20"
+                                           FontSize="{DynamicResource TypeH2FontSize}"
                                            Foreground="{DynamicResource MutedBrush}"
                                            IsHitTestVisible="False"
                                            Text="写下要记住的事情吧…">
@@ -1640,7 +1641,7 @@
                                          Height="28"
                                          HorizontalAlignment="Left"
                                          VerticalAlignment="Center"
-                                         FontSize="20"
+                                         FontSize="{DynamicResource TypeH2FontSize}"
                                          Foreground="{DynamicResource MutedBrush}"
                                          IsHitTestVisible="False"
                                          Text="搜索关键词…">
@@ -1661,7 +1662,7 @@
                                      Grid.Row="4"
                                      Width="790"
                                      Margin="0,4,0,0"
-                                     FontSize="17"
+                                     FontSize="{DynamicResource TypeBodyFontSize}"
                                      Foreground="{DynamicResource MutedBrush}"
                                      TextWrapping="Wrap"
                                      Text="不提醒" />
@@ -1669,7 +1670,7 @@
                                      Grid.Row="5"
                                      Width="790"
                                      Margin="0,2,0,0"
-                                     FontSize="18"
+                                     FontSize="{DynamicResource TypeBodyFontSize}"
                                      Foreground="{DynamicResource DangerBrush}"
                                      TextWrapping="Wrap" />
                         </Grid>
@@ -1729,7 +1730,7 @@
                                   <TextBlock x:Name="ActiveNotesLabel"
                                              Grid.Column="1"
                                              Margin="10,0,0,0"
-                                             FontSize="22"
+                                             FontSize="{DynamicResource TypeH2FontSize}"
                                              Text="未完成"
                                              VerticalAlignment="Center">
                                     <TextBlock.Style>
@@ -1764,7 +1765,7 @@
                                     <!-- #156：分段裸数字不再作为独立内容控件朗读（SilentTextBlock）；
                                          数量语义由分段按钮可访问名「查看未完成便签，共 N 条」承担。 -->
                                     <local:SilentTextBlock x:Name="ActiveNotesCount"
-                                               FontSize="16"
+                                               FontSize="{DynamicResource TypeBodyFontSize}"
                                                Text="0"
                                                TextAlignment="Center"
                                                Typography.NumeralAlignment="Tabular">
@@ -1814,7 +1815,7 @@
                                   <TextBlock x:Name="CompletedNotesLabel"
                                              Grid.Column="1"
                                              Margin="10,0,0,0"
-                                             FontSize="22"
+                                             FontSize="{DynamicResource TypeH2FontSize}"
                                              Text="已完成"
                                              VerticalAlignment="Center">
                                     <TextBlock.Style>
@@ -1849,7 +1850,7 @@
                                     <!-- #156：分段裸数字不再作为独立内容控件朗读（SilentTextBlock）；
                                          数量语义由分段按钮可访问名「查看已完成便签，共 N 条」承担。 -->
                                     <local:SilentTextBlock x:Name="CompletedNotesCount"
-                                               FontSize="16"
+                                               FontSize="{DynamicResource TypeBodyFontSize}"
                                                Text="0"
                                                TextAlignment="Center"
                                                Typography.NumeralAlignment="Tabular">
@@ -1875,7 +1876,7 @@
                                     Width="188"
                                     Height="48"
                                     MinHeight="48"
-                                    FontSize="18"
+                                    FontSize="{DynamicResource TypeBodyFontSize}"
                                     VerticalAlignment="Center"
                                     SelectedIndex="0"
                                     AutomationProperties.Name="按日期分组">
@@ -1887,7 +1888,7 @@
                         <TextBlock x:Name="EmptyNotesMessage"
                                    Margin="0,40,0,0"
                                    HorizontalAlignment="Center"
-                                   FontSize="20"
+                                   FontSize="{DynamicResource TypeH2FontSize}"
                                    Foreground="{DynamicResource MutedBrush}"
                                    Text="还没有便签，先写下一件想记住的事。"
                                    TextWrapping="Wrap"
@@ -1923,13 +1924,13 @@
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="NowText"
-                           FontSize="18"
+                           FontSize="{DynamicResource TypeBodyFontSize}"
                            Typography.NumeralAlignment="Tabular"
                            Foreground="{DynamicResource MutedBrush}" />
                 <TextBlock x:Name="StatusText"
                            Grid.Column="1"
                            MaxWidth="320"
-                           FontSize="18"
+                           FontSize="{DynamicResource TypeBodyFontSize}"
                            Foreground="{DynamicResource MutedBrush}"
                            FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
                            Focusable="True"
@@ -1959,7 +1960,7 @@
                   <TextBlock x:Name="MainThemeCaption"
                              Margin="8,0,0,0"
                              Text="当前主题：日间"
-                             FontSize="18"
+                             FontSize="{DynamicResource TypeBodyFontSize}"
                              Foreground="{DynamicResource MutedBrush}"
                              VerticalAlignment="Center" />
                 </StackPanel>
@@ -1986,7 +1987,7 @@
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-                  <TextBlock Text="标签匹配" FontSize="18" FontWeight="SemiBold" />
+                  <TextBlock Text="标签匹配" FontSize="{DynamicResource TypeBodyFontSize}" FontWeight="SemiBold" />
                   <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
                     <ToggleButton x:Name="AnyTagMode" Content="任一匹配" Style="{DynamicResource FilterOptionButton}" />
                     <ToggleButton x:Name="AllTagMode" Margin="8,0,0,0" Content="全部匹配" Style="{DynamicResource FilterOptionButton}" />
@@ -2057,7 +2058,7 @@
                   <StackPanel>
                     <TextBlock x:Name="NewTagInputLabel"
                                Text="新标签名称"
-                               FontSize="18"
+                               FontSize="{DynamicResource TypeBodyFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource InkBrush}" />
                     <Grid Margin="0,6,0,0">

@@ -7,10 +7,11 @@
              Startup="OnStartup"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
-    <sys:Double x:Key="SecondaryWindowTitleFontSize">22</sys:Double>
-    <sys:Double x:Key="SecondaryWindowSectionFontSize">18</sys:Double>
+    <!-- #197：所有窗口共享 13 / 16 / 20 / 26 / 44 设计坐标字号阶梯。 -->
+    <sys:Double x:Key="SecondaryWindowTitleFontSize">26</sys:Double>
+    <sys:Double x:Key="SecondaryWindowSectionFontSize">20</sys:Double>
     <sys:Double x:Key="SecondaryWindowBodyFontSize">16</sys:Double>
-    <sys:Double x:Key="SecondaryWindowMinorFontSize">15</sys:Double>
+    <sys:Double x:Key="SecondaryWindowMinorFontSize">13</sys:Double>
 
     <!-- ═══ 第 1 层：Primitive 原色（*Color；与 ApplicationTheme.Tokens 一一对应，是全部色值的唯一来源） ═══ -->
     <Color x:Key="CanvasColor">#FFFDF3EB</Color>
@@ -156,13 +157,14 @@
     <SolidColorBrush x:Key="SourceNoteIconBrush" Color="{DynamicResource SourceNoteIconColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="FloatingDayPrimaryCountdownAccentBrush" Color="{DynamicResource FloatingDayPrimaryCountdownAccentColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="FloatingDayPlushGlowBrush" Color="{DynamicResource FloatingDayPlushGlowColor}" po:Freeze="False" />
-    <FontFamily x:Key="HandwrittenDecoFontFamily">Segoe Print, Ink Free, Segoe Script, KaiTi, Microsoft YaHei UI</FontFamily>
-    <FontFamily x:Key="UiFontFamily">Microsoft YaHei UI</FontFamily>
+    <FontFamily x:Key="HandwrittenDecoFontFamily">Segoe Print, Ink Free, Segoe Script, KaiTi, Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>
+    <FontFamily x:Key="UiFontFamily">Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>
+    <FontFamily x:Key="NumeralFontFamily">Bahnschrift SemiCondensed, Bahnschrift, Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>
 
     <!-- ═══ 第 3 层：Component 组件资源（排版 / 间距 / 焦点 / 圆角，主窗口与悬浮窗共用；口径见 DESIGN.md §13） ═══ -->
     <sys:Double x:Key="TypeDisplayFontSize">44</sys:Double>
-    <sys:Double x:Key="TypeH1FontSize">30</sys:Double>
-    <sys:Double x:Key="TypeH2FontSize">22</sys:Double>
+    <sys:Double x:Key="TypeH1FontSize">26</sys:Double>
+    <sys:Double x:Key="TypeH2FontSize">20</sys:Double>
     <sys:Double x:Key="TypeBodyFontSize">16</sys:Double>
     <sys:Double x:Key="TypeCaptionFontSize">13</sys:Double>
     <sys:Double x:Key="SpacingUnit">8</sys:Double>
@@ -217,7 +219,7 @@
 
     <Style x:Key="FieldLabel" TargetType="{x:Type TextBlock}">
       <Setter Property="Margin" Value="1,0,0,6" />
-      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontSize" Value="{DynamicResource TypeCaptionFontSize}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
     </Style>
@@ -368,7 +370,7 @@
       <Setter Property="Width" Value="38" />
       <Setter Property="Height" Value="38" />
       <Setter Property="Padding" Value="0" />
-      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
     </Style>
 
     <Style x:Key="SegmentButton" TargetType="{x:Type ToggleButton}">
@@ -425,7 +427,7 @@
       <Setter Property="MinWidth" Value="36" />
       <Setter Property="Width" Value="36" />
       <Setter Property="Height" Value="36" />
-      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>

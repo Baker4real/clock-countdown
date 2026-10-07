@@ -37,7 +37,7 @@ internal sealed class SettingsRecoveryWindow : Window
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         Foreground = InkBrush;
-        FontFamily = new FontFamily("Microsoft YaHei UI");
+        SetResourceReference(Window.FontFamilyProperty, "UiFontFamily");
 
         var heading = new TextBlock
         {
@@ -175,7 +175,7 @@ internal sealed class InstanceActivationFailureWindow : Window
         AllowsTransparency = true;
         Background = Brushes.Transparent;
         Foreground = InkBrush;
-        FontFamily = new FontFamily("Microsoft YaHei UI");
+        SetResourceReference(Window.FontFamilyProperty, "UiFontFamily");
 
         var heading = new TextBlock
         {

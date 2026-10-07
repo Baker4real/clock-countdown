@@ -140,7 +140,7 @@ public sealed partial class FloatingWindow
         {
             Text = record.Name,
             MaxHeight = 20,
-            FontSize = 15,
+            FontSize = (double)FindResource("TypeBodyFontSize"),
             FontWeight = FontWeights.SemiBold,
             LineHeight = 20,
             TextWrapping = TextWrapping.NoWrap,
@@ -155,7 +155,7 @@ public sealed partial class FloatingWindow
             // #148：截止行数字与「月」「日」之间留空格，并使用表格数字避免刷新跳动。
             Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M 月 d 日 HH:mm}",
             Margin = new Thickness(0, 3, 0, 0),
-            FontSize = 11,
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
             TextTrimming = TextTrimming.None,
             TextWrapping = TextWrapping.NoWrap,
             Foreground = _floatingMutedBrush
@@ -183,7 +183,7 @@ public sealed partial class FloatingWindow
             badge.Child = new TextBlock
             {
                 Text = EncourageBadgeText,
-                FontSize = 12,
+                FontSize = (double)FindResource("TypeCaptionFontSize"),
                 FontWeight = FontWeights.SemiBold,
                 LineHeight = 17,
                 LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
@@ -221,7 +221,7 @@ public sealed partial class FloatingWindow
             Text = record.Name,
             Margin = new Thickness(0, 0, 10, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 13,
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _floatingPrimaryBrush
         };
@@ -237,7 +237,12 @@ public sealed partial class FloatingWindow
         var pairs = ParseRemainingPairs(remaining);
         if (pairs is null || pairs.Count == 0)
         {
-            var fallback = CountdownRemainingText(remaining, isPrimary ? 16 : 13, FontWeights.SemiBold);
+            var fallback = CountdownRemainingText(
+                remaining,
+                isPrimary
+                    ? (double)FindResource("TypeBodyFontSize")
+                    : (double)FindResource("TypeCaptionFontSize"),
+                FontWeights.SemiBold);
             FitSingleLineText(fallback, isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth);
             fallback.Width = isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth;
             // #148：到期剩余文字不得用强调轨色当字；主项到期回落主项数字色，次项回落主文字。
@@ -247,8 +252,8 @@ public sealed partial class FloatingWindow
             return fallback;
         }
 
-        const double valueFontPrimary = 18;
-        const double valueFontSecondary = 13;
+        var valueFontPrimary = (double)FindResource("TypeH2FontSize");
+        var valueFontSecondary = (double)FindResource("TypeCaptionFontSize");
         const double blockWidthPrimary = 28;
         const double blockWidthSecondary = 20;
         const double blockHeightPrimary = 42;
@@ -262,7 +267,6 @@ public sealed partial class FloatingWindow
                 Text = pair.Value,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Center,
-                FontFamily = new FontFamily("Bahnschrift, Microsoft YaHei UI"),
                 FontSize = isPrimary ? valueFontPrimary : valueFontSecondary,
                 FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center,
@@ -275,11 +279,12 @@ public sealed partial class FloatingWindow
             .ToArray();
         foreach (var valueBlock in valueBlocks)
         {
+            valueBlock.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
             Typography.SetNumeralAlignment(valueBlock, FontNumeralAlignment.Tabular);
         }
 
         var unitFace = new Typeface(
-            new FontFamily("Microsoft YaHei UI"),
+            (FontFamily)FindResource("UiFontFamily"),
             new FontStyle(),
             FontWeights.Regular,
             FontStretches.Normal);
@@ -292,7 +297,9 @@ public sealed partial class FloatingWindow
 
         double RequiredWidth(double font, double padding, double gap)
         {
-            var unitFontSize = Math.Max(KeyTextMinimumFontSize, Math.Round(font * 2 / 3));
+            var unitFontSize = Math.Max(
+                KeyTextMinimumFontSize,
+                (double)FindResource("TypeCaptionFontSize"));
             var dpi = VisualTreeHelper.GetDpi(this);
             var total = 0d;
             for (var index = 0; index < pairs.Count; index++)
@@ -351,7 +358,7 @@ public sealed partial class FloatingWindow
             : ThemeBrush("SecondaryBlockBrush");
         var blockHeight = isPrimary ? blockHeightPrimary : blockHeightSecondary;
         var blockRadius = Math.Max(4, (isPrimary ? blockWidthPrimary : blockWidthSecondary) / 4);
-        var unitFontSize = Math.Max(KeyTextMinimumFontSize, Math.Round(valueFontSize * 2 / 3));
+        var unitFontSize = (double)FindResource("TypeCaptionFontSize");
 
         var pairsPanel = new StackPanel
         {
@@ -482,7 +489,7 @@ public sealed partial class FloatingWindow
     private Brush WarmPaperAccentBrush(FloatingThemePalette theme) =>
         ThemeBrush(theme.PrimaryCountdownAccentBrushKey);
 
-    private static TextBlock CountdownRemainingText(
+    private TextBlock CountdownRemainingText(
         string text,
         double fontSize,
         FontWeight fontWeight)
@@ -492,13 +499,13 @@ public sealed partial class FloatingWindow
             Text = text,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Right,
-            FontFamily = new FontFamily("Bahnschrift, Microsoft YaHei UI"),
             FontSize = fontSize,
             FontWeight = fontWeight,
             TextAlignment = TextAlignment.Right,
             TextTrimming = TextTrimming.None,
             TextWrapping = TextWrapping.NoWrap
         };
+        block.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
         Typography.SetNumeralAlignment(block, FontNumeralAlignment.Tabular);
         return block;
     }

@@ -971,7 +971,7 @@ public sealed partial class MainWindow
                     Math.Abs(dateSection.Margin.Bottom - spacingBlockGap) <= 0.01;
             }
 
-            // AC2：列表条目标题落区块标题层级（TypeH2FontSize），与 22px 区块标题不再几乎同级。
+            // AC2：列表条目标题落 H2 阶梯，与 H1 区块标题保持明确层级。
             // 空列表没有条目标题可度量，视为满足（空洞真）；有行而缺标题或字号不符才判失败。
             ShowWorkspace(WorkspaceKind.Countdowns);
             UpdateLayout();
@@ -1862,13 +1862,13 @@ public sealed partial class MainWindow
                 editorSurfaceColor is not null &&
                 ApplicationTheme.MeetsContrast(editorSurfaceColor.Value, (Color)FindResource("ActiveColor"), 3.0);
 
-            // —— 排版/间距 token：区块标题落 TypeH2；字段行距/错误行距消费间距 token 值。
-            var typeH2 = (double)FindResource("TypeH2FontSize");
+            // —— 排版/间距 token：区块标题落 TypeH1；字段行距/错误行距消费间距 token 值。
+            var typeH1 = (double)FindResource("TypeH1FontSize");
             var spacingUnit = (double)FindResource("SpacingUnit");
             var spacingFieldRow = (double)FindResource("SpacingFieldRow");
             var editorTypographyTokens =
-                Math.Abs(CountdownEditorTitle.FontSize - typeH2) <= 0.01 &&
-                Math.Abs(CountdownPreferencesTitle.FontSize - typeH2) <= 0.01 &&
+                Math.Abs(CountdownEditorTitle.FontSize - typeH1) <= 0.01 &&
+                Math.Abs(CountdownPreferencesTitle.FontSize - typeH1) <= 0.01 &&
                 Math.Abs(MainCountdownNameDateRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(MainCountdownTimeTagRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(MainCountdownActionRow.Margin.Top - spacingFieldRow) <= 0.01 &&

@@ -85,7 +85,7 @@
                          Margin="16,0,0,0"
                          MinWidth="92"
                          MinHeight="34"
-                         FontSize="22"
+                         FontSize="{DynamicResource TypeH2FontSize}"
                          FontWeight="SemiBold"
                          LineHeight="32"
                          LineStackingStrategy="BlockLineHeight"
@@ -175,7 +175,7 @@
                        Margin="8,6,8,0"
                        VerticalAlignment="Center"
                        Foreground="{DynamicResource FloatingMutedBrush}"
-                       FontSize="12"
+                       FontSize="{DynamicResource TypeCaptionFontSize}"
                        Text="搜索便签"
                        IsHitTestVisible="False"
                        Visibility="Collapsed" />
@@ -192,7 +192,7 @@
                     MinHeight="36"
                     Height="36"
                     Padding="8,0"
-                    FontSize="12"
+                    FontSize="{DynamicResource TypeCaptionFontSize}"
                     Style="{DynamicResource SecondaryButton}">
               <Button.ContentTemplate>
                 <DataTemplate>
@@ -210,7 +210,7 @@
                     Padding="0"
                     Margin="8,0,0,0"
                     Content="✕"
-                    FontSize="12"
+                    FontSize="{DynamicResource TypeCaptionFontSize}"
                     Style="{DynamicResource SecondaryButton}" />
           </Grid>
         </Grid>
@@ -423,7 +423,7 @@
                 <TextBlock x:Name="FloatingNoteTextPlaceholder"
                            Margin="8,6,8,0"
                            VerticalAlignment="Top"
-                           FontSize="12"
+                           FontSize="{DynamicResource TypeCaptionFontSize}"
                            Foreground="{DynamicResource FloatingMutedBrush}"
                            IsHitTestVisible="False"
                            Text="写下要记住的事情吧…">
@@ -571,7 +571,7 @@
                          HorizontalAlignment="Left"
                          VerticalAlignment="Bottom"
                          FontFamily="{DynamicResource HandwrittenDecoFontFamily}"
-                         FontSize="13"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
                          Foreground="{DynamicResource DecoTextSoftBrush}"
                          IsHitTestVisible="False"
                          Focusable="False" />
@@ -581,7 +581,7 @@
                          HorizontalAlignment="Right"
                          VerticalAlignment="Bottom"
                          FontFamily="{DynamicResource HandwrittenDecoFontFamily}"
-                         FontSize="13"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
                          Foreground="{DynamicResource DecoTextSoftBrush}"
                          IsHitTestVisible="False"
                          Focusable="False" />

@@ -5409,7 +5409,7 @@ internal static class ValidationReport
                 Math.Abs(extremePrimaryCluster.Width - 194) <= 0.01 &&
                 extremePrimaryCluster.HorizontalAlignment == HorizontalAlignment.Right &&
                 extremePrimaryValueBlocks.Length == 4 &&
-                extremePrimaryValueBlocks.All(value => value.FontSize is >= 12 and < 18) &&
+                extremePrimaryValueBlocks.All(value => value.FontSize is >= 12 and < 20) &&
                 string.Equals(
                     AutomationProperties.GetItemStatus(extremePrimaryCluster),
                     "KeyTextFontFloorSatisfied",
@@ -6106,7 +6106,7 @@ internal static class ValidationReport
                         binding.BodyText.LineStackingStrategy == LineStackingStrategy.BlockLineHeight) &&
                     reminderTexts.Length == 1 &&
                     reminderTexts.All(text =>
-                        Math.Abs(text.FontSize - 12) <= 0.01 &&
+                        Math.Abs(text.FontSize - 13) <= 0.01 &&
                         Math.Abs(text.LineHeight - 17) <= 0.01 &&
                         text.LineStackingStrategy == LineStackingStrategy.BlockLineHeight);
                 naturalWraps &= stateNaturalWraps;
@@ -12483,7 +12483,7 @@ internal static class ValidationReport
                     measurements.All(measurement => measurement.ContentRootDeclaresFontSize),
                     floatingTypographyUnchanged &&
                     Math.Abs(floatingBodyFontSize - 13) <= 0.1 &&
-                    Math.Abs(floatingReminderFontSize - 12) <= 0.1));
+                    Math.Abs(floatingReminderFontSize - 13) <= 0.1));
             return new SecondaryWindowTypographyResult(
                 measurements,
                 gates,
@@ -13846,8 +13846,12 @@ internal static class ValidationReport
             text,
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
-            new Typeface("Microsoft YaHei UI"),
-            13,
+            new Typeface(
+                (FontFamily)Application.Current.FindResource("UiFontFamily"),
+                FontStyles.Normal,
+                FontWeights.Normal,
+                FontStretches.Normal),
+            (double)Application.Current.FindResource("TypeCaptionFontSize"),
             Brushes.Black,
             VisualTreeHelper.GetDpi(element).PixelsPerDip);
         var available = double.IsNaN(element.Width)
@@ -14116,14 +14120,14 @@ internal static class ValidationReport
             ReferenceEquals(secondaryDecorations[0].Background, cardAlt) &&
             Math.Abs(secondaryDecorations[1].Opacity - 0.48) <= 0.01 &&
             primaryTitle is not null &&
-            Math.Abs(primaryTitle.FontSize - 15) <= 0.01 &&
+            Math.Abs(primaryTitle.FontSize - 16) <= 0.01 &&
             primaryTitle.FontWeight == FontWeights.SemiBold &&
             primaryTitle.TextWrapping == TextWrapping.NoWrap &&
             primaryTitle.TextTrimming == TextTrimming.CharacterEllipsis &&
             Math.Abs(primaryTitle.MaxHeight - 20) <= 0.01 &&
             string.Equals(BrushColor(primaryTitle.Foreground), "#FF3B190D", StringComparison.Ordinal) &&
             primaryDeadline is not null &&
-            Math.Abs(primaryDeadline.FontSize - 11) <= 0.01 &&
+            Math.Abs(primaryDeadline.FontSize - 13) <= 0.01 &&
             string.Equals(BrushColor(primaryDeadline.Foreground), "#FF82665F", StringComparison.Ordinal) &&
             Typography.GetNumeralAlignment(primaryDeadline) == FontNumeralAlignment.Tabular &&
             badge is not null &&
@@ -14135,7 +14139,7 @@ internal static class ValidationReport
             ink is not null &&
             ContrastRatio(pinkBadge.Color, ink.Color) >= 4.5 &&
             badgeText is not null &&
-            Math.Abs(badgeText.FontSize - 12) <= 0.01 &&
+            Math.Abs(badgeText.FontSize - 13) <= 0.01 &&
             badgeText.FontWeight == FontWeights.SemiBold &&
             ReferenceEquals(badgeText.Foreground, ink) &&
             primaryCluster is not null &&
@@ -14150,7 +14154,7 @@ internal static class ValidationReport
                 ReferenceEquals(pair.Block.Background, pinkBlock) &&
                 Math.Abs(pair.Block.CornerRadius.TopLeft - 7) <= 0.01 &&
                 pair.Value.FontWeight == FontWeights.SemiBold &&
-                Math.Abs(pair.Value.FontSize - 18) <= 0.01 &&
+                Math.Abs(pair.Value.FontSize - 20) <= 0.01 &&
                 ReferenceEquals(pair.Value.Foreground, numberBrush) &&
                 Typography.GetNumeralAlignment(pair.Value) == FontNumeralAlignment.Tabular &&
                 pair.Value.TextWrapping == TextWrapping.NoWrap &&
@@ -14237,7 +14241,7 @@ internal static class ValidationReport
                Math.Abs(cluster.Width - 194) <= 0.01 &&
                valueBlocks.Length == 4 &&
                valueBlocks.All(value =>
-                   Math.Abs(value.FontSize - 18) <= 0.01 &&
+                    Math.Abs(value.FontSize - 20) <= 0.01 &&
                    value.FontWeight == FontWeights.SemiBold &&
                    value.TextWrapping == TextWrapping.NoWrap &&
                    value.TextTrimming == TextTrimming.None &&
@@ -14927,10 +14931,10 @@ internal static class ValidationReport
         bool ContentRootDeclaresFontSize)
     {
         public bool RenderedScaleMatches =>
-            Math.Abs(TitleFontSize - 22) <= 0.1 &&
-            (SectionFontSize is null || Math.Abs(SectionFontSize.Value - 18) <= 0.1) &&
+            Math.Abs(TitleFontSize - 26) <= 0.1 &&
+            (SectionFontSize is null || Math.Abs(SectionFontSize.Value - 20) <= 0.1) &&
             Math.Abs(BodyFontSize - 16) <= 0.1 &&
-            (MinorFontSize is null || Math.Abs(MinorFontSize.Value - 15) <= 0.1) &&
+            (MinorFontSize is null || Math.Abs(MinorFontSize.Value - 13) <= 0.1) &&
             Math.Abs(ContentRootFontSize - 16) <= 0.1;
     }
 

@@ -4206,7 +4206,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #153 便签列表：排版、筛选、芯片、空态与溢出菜单键盘（新增 10 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.NoteDateUsesSpacedChineseFormat) '便签日期与倒计时截止同一中文日期格式：数字与「月」「日」之间留空格（#153）'
     Assert-Equal $true ([bool] $adapterValidation.NoteCardBodyLineHeightSeparatesSummary) '便签正文行距足够分开正文与提醒摘要（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteRowTitleFallsToBlockTitleLevel) '列表条目标题落区块标题层级，不再与 22px 区块标题几乎同级（#153）'
+    Assert-Equal $true ([bool] $adapterValidation.NoteRowTitleFallsToBlockTitleLevel) '列表条目标题落 H2 阶梯、与 H1 区块标题保持明确层级（#153/#197）'
     Assert-Equal $true ([bool] $adapterValidation.NoteRowOverflowMenuKeyboardWorks) '管理窗便签 `…` 打开后键盘进入编辑/删除、层内 Tab 循环、Esc 关闭归还触发器（#153）'
     Assert-Equal $true ([bool] $adapterValidation.NoteCardSpacingConsumesTokens) '便签卡内边距与日期章节间距消费间距 token（#153）'
     Assert-Equal $true ([bool] $adapterValidation.TagChipSingleLineEllipsisWithFullText) '标签芯片单行不折字、集合折行、超长省略并提供全文提示（#153）'
@@ -4424,6 +4424,31 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $uiControlsSource -match 'KeyboardNavigation\.SetTabNavigation\(surface, KeyboardNavigationMode\.Cycle\)') '弹层焦点生命周期在层内启用 Tab 循环（#153 源码契约）'
     $appXamlSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\App.xaml') -Raw -Encoding UTF8
+    # #197 字号阶梯与字族资源：实现前先钉住公开视觉合同，避免回退到散落字面量。
+    foreach ($fontToken in @{
+            TypeCaptionFontSize = 13
+            TypeBodyFontSize = 16
+            TypeH2FontSize = 20
+            TypeH1FontSize = 26
+            TypeDisplayFontSize = 44
+            SecondaryWindowMinorFontSize = 13
+            SecondaryWindowBodyFontSize = 16
+            SecondaryWindowSectionFontSize = 20
+            SecondaryWindowTitleFontSize = 26
+        }.GetEnumerator()) {
+        $expectedToken = '<sys:Double x:Key="{0}">{1}</sys:Double>' -f $fontToken.Key, $fontToken.Value
+        Assert-Equal $true (
+            $appXamlSource -match [regex]::Escape($expectedToken)) "#197 排版 token $($fontToken.Key) 固定为阶梯值 $($fontToken.Value)"
+    }
+    Assert-Equal $true (
+        $appXamlSource -match '<FontFamily x:Key="UiFontFamily">Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>') '#197 UI 字族以 Microsoft YaHei UI 优先并声明尾部 fallback'
+    Assert-Equal $true (
+        $appXamlSource -match '<FontFamily x:Key="NumeralFontFamily">Bahnschrift SemiCondensed, Bahnschrift, Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>') '#197 数字字族通过 NumeralFontFamily 资源提供 Bahnschrift 与 fallback'
+    $countdownTypographySources = @(
+        $mainWindowNotesSource,
+        (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.Countdowns.cs') -Raw -Encoding UTF8),
+        (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.Notes.cs') -Raw -Encoding UTF8))
+    Assert-Equal 0 @($countdownTypographySources | Where-Object { $_ -match 'new FontFamily\("(?:Bahnschrift|Microsoft YaHei UI)' }).Count '#197 倒计时与日期数字不在代码中直接构造字族字面量'
     Assert-Equal $true (
         $appXamlSource -match 'StringFormat=\{\}\{0:yyyy 年 M 月 d 日\}\}') '日期选择器选中日期文本数字与「月」「日」之间留空格（#153 源码契约）'
     $mainWindowXamlSource = Get-Content -LiteralPath (
@@ -4750,7 +4775,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 2 $longNoteMeasurements.Count '长便签真实 WPF 精确测量日间 top/bottom 两态'
     Assert-Equal $expectedLongNoteCaptureIds ((@($longNoteMeasurements.CaptureId) | Sort-Object) -join ',') '长便签测量 capture ID 固定'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { -not $_.BodyHasNoManualLineBreaks -or -not $_.NaturalWraps -or -not $_.UsesOnlyOuterScroller -or -not $_.OuterScrollable -or -not $_.PrimaryAnchorReachable -or -not $_.SafeAreaMatches }).Count '长便签每态均证明无手工换行、自然折行、仅外层滚动、锚点可达和安全区'
-    Assert-Equal 0 @($longNoteMeasurements | Where-Object { [double] $_.BodyFontSize -ne 13 -or [double] $_.BodyLineHeight -ne 18 -or [double] $_.ReminderFontSize -ne 12 -or [double] $_.ReminderLineHeight -ne 17 -or -not $_.TypographyMatches }).Count '长便签日间 top/bottom 两态均满足正文 13/18 与提醒 12/17 显式排版'
+    Assert-Equal 0 @($longNoteMeasurements | Where-Object { [double] $_.BodyFontSize -ne 13 -or [double] $_.BodyLineHeight -ne 18 -or [double] $_.ReminderFontSize -ne 13 -or [double] $_.ReminderLineHeight -ne 17 -or -not $_.TypographyMatches }).Count '长便签日间 top/bottom 两态均满足正文与提醒 13px 显式排版'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { $_.State -eq 'Top' -and [math]::Abs([double] $_.VerticalOffset) -gt 1 }).Count '长便签 top 四舍五入 offset 约等于零'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { $_.State -eq 'Bottom' -and [math]::Abs([double] $_.VerticalOffset - [double] $_.ScrollableHeight) -gt 1 }).Count '长便签 bottom offset 约等于 ScrollableHeight'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { ([string] $_.NoteTextSha256).Length -ne 64 -or [string]::IsNullOrWhiteSpace([string] $_.FirstVisibleAnchor) -or [string]::IsNullOrWhiteSpace([string] $_.LastVisibleAnchor) }).Count '长便签每态绑定正文 SHA-256 与可见首尾锚点'
@@ -4956,7 +4981,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $dayPrimaryContrast = @($primaryContrastMeasurements | Where-Object Theme -eq 'Day')[0]
     Assert-Equal '#FFC0102F' ([string] $dayPrimaryContrast.Foreground) '日间主倒计时数字使用高饱和红粉主项数值 token'
     Assert-Equal '#FFFEE0E4' ([string] $dayPrimaryContrast.PrimarySurfaceBackground) '日间主倒计时数字落在粉色色块上'
-    Assert-Equal 0 @($primaryContrastMeasurements | Where-Object { [double] $_.FontSize -ne 18 -or -not $_.UsesExpectedSemanticAccent -or -not $_.AccentTrackUsesAccentToken -or -not $_.AccentDiffersFromPlushGlow }).Count '日间主项轨和 18 DIP 数字使用各自独立语义 token'
+    Assert-Equal 0 @($primaryContrastMeasurements | Where-Object { [double] $_.FontSize -ne 20 -or -not $_.UsesExpectedSemanticAccent -or -not $_.AccentTrackUsesAccentToken -or -not $_.AccentDiffersFromPlushGlow }).Count '日间主项轨和 20 DIP 数字使用各自独立语义 token'
     Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddDayResourcesFollowLocalTheme) '悬浮窗快速新增真实控件日间使用局部暖色主题'
     Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddIndependentFromApplicationTheme) '悬浮窗快速新增局部主题不受应用主题反向切换污染'
     Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddThemeResourceIsolationBehavior) '悬浮窗快速新增资源枚举负向夹具可逐控件单项失败'
@@ -5212,13 +5237,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 5 $secondaryTypographyWindows.Count '五个次级窗口都有真实字号测量'
     Assert-Equal 'ConfirmationDialog,InstanceActivationFailure,ReminderCenter,ReminderRulesEditor,SettingsRecovery' ((@($secondaryTypographyWindows.Window) | Sort-Object) -join ',') '次级窗口字号报告精确覆盖五种窗口'
     foreach ($measurement in $secondaryTypographyWindows) {
-        Assert-Equal 22 ([double] $measurement.TitleFontSize) "次级窗口 $($measurement.Window) 标题真实渲染 22 DIP"
+        Assert-Equal 26 ([double] $measurement.TitleFontSize) "次级窗口 $($measurement.Window) 标题真实渲染 26 DIP"
         Assert-Equal 16 ([double] $measurement.BodyFontSize) "次级窗口 $($measurement.Window) 正文真实渲染 16 DIP"
         Assert-Equal 16 ([double] $measurement.ContentRootFontSize) "次级窗口 $($measurement.Window) 内容根真实渲染 16 DIP"
         Assert-Equal $true ([bool] $measurement.ContentRootDeclaresFontSize) "次级窗口 $($measurement.Window) 内容根本地声明字号"
         if ($measurement.Window -in @('ReminderCenter', 'ReminderRulesEditor')) {
-            Assert-Equal 18 ([double] $measurement.SectionFontSize) "次级窗口 $($measurement.Window) 段落标题真实渲染 18 DIP"
-            Assert-Equal 15 ([double] $measurement.MinorFontSize) "次级窗口 $($measurement.Window) 次要文字真实渲染 15 DIP"
+            Assert-Equal 20 ([double] $measurement.SectionFontSize) "次级窗口 $($measurement.Window) 段落标题真实渲染 20 DIP"
+            Assert-Equal 13 ([double] $measurement.MinorFontSize) "次级窗口 $($measurement.Window) 次要文字真实渲染 13 DIP"
         }
         else {
             Assert-Equal $null $measurement.SectionFontSize "$($measurement.Window) 不虚构段落标题字号角色"
@@ -5227,9 +5252,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     }
     Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.RenderedScaleMatches) '五个次级窗口真实渲染字号符合共享刻度'
     Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.ContentRootsDeclareFontSize) '五个次级窗口内容根显式声明字号资源'
-    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.FloatingTypographyUnchanged) '悬浮便签正文和提醒摘要保持 13/12 DIP'
+    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.FloatingTypographyUnchanged) '悬浮便签正文和提醒摘要保持 13 DIP 阶梯'
     Assert-Equal 13 ([double] $adapterValidation.SecondaryWindowTypography.FloatingBodyFontSize) '悬浮便签正文真实渲染仍为 13 DIP'
-    Assert-Equal 12 ([double] $adapterValidation.SecondaryWindowTypography.FloatingReminderFontSize) '悬浮提醒摘要真实渲染仍为 12 DIP'
+    Assert-Equal 13 ([double] $adapterValidation.SecondaryWindowTypography.FloatingReminderFontSize) '悬浮提醒摘要真实渲染收敛为 13 DIP'
     $secondaryTypographyGateNames = @(
         'RenderedScaleMatches',
         'ContentRootsDeclareFontSize',

@@ -22,11 +22,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private const double CountdownRemainingLeftMargin = 16;
     private const double CountdownRemainingBaseFontSize = 20;
     private const double CountdownRemainingMinimumFontSize = 14;
-    // #148：分格单位字固定在设计坐标 15px（合同已承认的辅助下限档，常态渲染约 9.8 DIP），不随列宽缩小。
-    private const double CountdownRemainingUnitFontSize = 15;
+    // #197：分格单位字收敛到字号阶梯的 caption 档，不随列宽缩小。
+    private const double CountdownRemainingUnitFontSize = 13;
     internal const string NoteCardReminderSummaryAutomationId = "MainNoteCardReminderSummary";
-    private const double NoteCardReminderSummaryFontSize = 18.5;
-    // #153：便签正文 20px 按悬浮窗 §10「13/18」同一比例（18/13≈1.385）取整为 28 的显式行高，
+    // #153/#197：便签正文 20px 按悬浮窗 §10「13/18」同一比例（18/13≈1.385）取整为 28 的显式行高，
     // 多行正文与「下次提醒」摘要分开，不再挤成一块（§3 便签正文行距合同）。
     private const double NoteCardBodyLineHeight = 28;
     // #153：标签芯片单行不折字，集合由 WrapPanel 先折行；超长芯片按此上限省略并以 ToolTip 提供全文。
@@ -1306,7 +1305,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Uid = "CountdownRowTitleText",
                 Text = record.Name,
-                // #153：列表条目标题落区块标题层级（TypeH2FontSize），去掉与 22px 区块标题几乎同级的 25px 台阶。
+                // #153/#197：列表条目标题落 H2 阶梯，去掉与区块标题混用的旧字号台阶。
                 FontSize = (double)FindResource("TypeH2FontSize"),
                 FontWeight = FontWeights.SemiBold
             };
@@ -1332,6 +1331,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Opacity = 0,
                 IsHitTestVisible = false
             };
+            remaining.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
             var remainingValue = CountdownFormatting.FormatRemaining(
                 record.TargetUtc,
                 effectiveNowUtc,
@@ -1440,6 +1440,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.None
             };
+            fallback.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
             fallback.SetResourceReference(
                 TextBlock.ForegroundProperty,
                 host.IsPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush");
@@ -1457,7 +1458,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         const double blockWidthSecondary = 38;
         const double blockHeightPrimary = 63;
         const double blockHeightSecondary = 57;
-        const double minimumValueFontSize = 15;
+        const double minimumValueFontSize = 13;
         const double blockWidthReserve = 3;
         const double unitGap = 3;
         var valueFontSize = host.IsPrimary ? valueFontPrimary : valueFontSecondary;
@@ -1470,7 +1471,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Text = pair.Value,
                 MinWidth = host.IsPrimary ? 38 : 34,
                 Padding = new Thickness(blockPadding, 0, blockPadding, 0),
-                FontFamily = new FontFamily("Bahnschrift, Microsoft YaHei UI"),
                 FontSize = valueFontSize,
                 FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center,
@@ -1481,11 +1481,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             .ToArray();
         foreach (var valueBlock in valueBlocks)
         {
+            valueBlock.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
             Typography.SetNumeralAlignment(valueBlock, FontNumeralAlignment.Tabular);
         }
 
         var unitFace = new Typeface(
-            new FontFamily("Microsoft YaHei UI"),
+            (FontFamily)FindResource("UiFontFamily"),
             new FontStyle(),
             FontWeights.Regular,
             FontStretches.Normal);
@@ -1861,7 +1862,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Uid = "NoteDateLabel",
             Text = dateLabel,
             VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 18,
+            FontSize = (double)FindResource("TypeH2FontSize"),
             FontWeight = FontWeights.SemiBold
         };
         label.SetResourceReference(TextBlock.ForegroundProperty, "BodyBrush");
@@ -1871,7 +1872,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Text = $"{noteCount} 条",
             Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 15,
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
             Typography =
             {
                 NumeralAlignment = FontNumeralAlignment.Tabular
@@ -2019,9 +2020,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             var detailText = new TextBlock
             {
-                Text = details,
-                FontSize = NoteCardReminderSummaryFontSize
+                Text = details
             };
+            // #197：摘要使用 H2 阶梯，Viewbox 后约 13 DIP，保持长便签提醒的可读下限。
+            detailText.SetResourceReference(TextBlock.FontSizeProperty, "TypeH2FontSize");
             detailText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             AutomationProperties.SetAutomationId(detailText, NoteCardReminderSummaryAutomationId);
             UiAccessibility.Name(detailText, $"便签卡提醒摘要：{details}");
@@ -3134,7 +3136,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var chipText = new TextBlock
             {
                 Text = hashPrefix ? $"# {tag.Name}" : tag.Name,
-                FontSize = 16,
+                FontSize = (double)FindResource("TypeBodyFontSize"),
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
@@ -3237,7 +3239,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Tag = id,
                 MinWidth = 72,
                 MinHeight = 44,
-                FontSize = 16,
+                FontSize = (double)FindResource("TypeBodyFontSize"),
                 Margin = new Thickness(6, 0, 0, 0),
                 Style = (Style)FindResource("SecondaryButton")
             },
@@ -3292,7 +3294,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Tag = id,
                 MinWidth = 88,
                 MinHeight = 52,
-                FontSize = 18,
+                FontSize = (double)FindResource("TypeBodyFontSize"),
                 Margin = new Thickness(9, 0, 0, 0),
                 Style = (Style)FindResource("SecondaryButton")
             },

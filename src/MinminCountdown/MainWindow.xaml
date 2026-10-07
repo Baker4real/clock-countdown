@@ -995,17 +995,30 @@
                         BorderBrush="Transparent"
                         BorderThickness="1"
                         CornerRadius="14">
-                  <StackPanel Orientation="Horizontal">
-                    <ToggleButton x:Name="CountdownTab"
-                                  Width="133"
-                                  Content="倒计时"
-                                  Style="{StaticResource MainSegmentButton}" />
-                    <ToggleButton x:Name="NotesTab"
-                                  Width="111"
-                                  Margin="2,0,0,0"
-                                  Content="便签"
-                                  Style="{StaticResource MainNotesSegmentButton}" />
-                  </StackPanel>
+                  <Grid x:Name="MainWorkspaceTabHost">
+                    <!-- #196：选中指示条只改变 RenderTransform，避免切换时重排同级页签。 -->
+                    <Canvas x:Name="MainWorkspaceTabIndicatorLayer"
+                            Panel.ZIndex="2"
+                            IsHitTestVisible="False">
+                      <Border x:Name="MainWorkspaceTabIndicator"
+                              Width="1"
+                              Height="4"
+                              Background="{DynamicResource PinkAccentStrongBrush}"
+                              CornerRadius="2"
+                              Visibility="Collapsed" />
+                    </Canvas>
+                    <StackPanel Panel.ZIndex="1" Orientation="Horizontal">
+                      <ToggleButton x:Name="CountdownTab"
+                                    Width="133"
+                                    Content="倒计时"
+                                    Style="{StaticResource MainSegmentButton}" />
+                      <ToggleButton x:Name="NotesTab"
+                                    Width="111"
+                                    Margin="2,0,0,0"
+                                    Content="便签"
+                                    Style="{StaticResource MainNotesSegmentButton}" />
+                    </StackPanel>
+                  </Grid>
                 </Border>
                 <Button x:Name="FilterButton"
                         Grid.Column="2"
@@ -1818,7 +1831,19 @@
                           <Border Padding="2"
                                   Background="Transparent"
                                   CornerRadius="17">
-                            <StackPanel Orientation="Horizontal">
+                            <Grid x:Name="NotesSegmentHost">
+                              <!-- #196：状态分段与页签共用可中断的 160ms 指示条。 -->
+                              <Canvas x:Name="NotesSegmentIndicatorLayer"
+                                      Panel.ZIndex="2"
+                                      IsHitTestVisible="False">
+                                <Border x:Name="NotesSegmentIndicator"
+                                        Width="1"
+                                        Height="4"
+                                        Background="{DynamicResource PeachRailBrush}"
+                                        CornerRadius="2"
+                                        Visibility="Collapsed" />
+                              </Canvas>
+                              <StackPanel Panel.ZIndex="1" Orientation="Horizontal">
                               <ToggleButton x:Name="ActiveNotesSegment"
                                             Height="48"
                                             Style="{StaticResource MainNoteSegmentButton}">
@@ -1988,7 +2013,8 @@
                                   </Border>
                                 </Grid>
                               </ToggleButton>
-                            </StackPanel>
+                              </StackPanel>
+                            </Grid>
                           </Border>
                           <ComboBox x:Name="NoteGroupingSelector"
                                     Grid.Column="2"

@@ -2044,6 +2044,11 @@ internal static class ValidationReport
             ["MainMouseClickDoesNotLeaveFocusRing"] = interactionStates.MouseClickDoesNotLeaveFocusRing,
             ["MainKeyboardFocusRingShowsOnTab"] = interactionStates.KeyboardFocusRingShowsOnTab,
             ["MainSelectedTabWeightDominates"] = interactionStates.SelectedTabWeightDominates,
+            ["MainSegmentIndicatorGeometryMatches"] = interactionStates.SegmentIndicatorGeometryMatches,
+            ["MainSegmentIndicatorReducedMotionIsImmediate"] =
+                interactionStates.SegmentIndicatorReducedMotionIsImmediate,
+            ["MainSegmentIndicatorRapidSwitchStaysAligned"] =
+                interactionStates.SegmentIndicatorRapidSwitchStaysAligned,
             ["MotionClientAreaAnimationSwitchReadable"] =
                 ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
             ["MotionTokensMatch"] = motionTokensMatch,

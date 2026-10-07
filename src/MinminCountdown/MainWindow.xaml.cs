@@ -63,6 +63,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
     private readonly HashSet<Control> _focusVisualStateWired = new();
+    private readonly SegmentIndicator _workspaceTabIndicator;
+    private readonly SegmentIndicator _notesSegmentIndicator;
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private string? _editingCountdownId;
     private string? _editingNoteId;
@@ -153,6 +155,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _calendar = calendar;
         _logger = logger;
         InitializeComponent();
+        _workspaceTabIndicator = new SegmentIndicator(
+            MainWorkspaceTabHost,
+            MainWorkspaceTabIndicatorLayer,
+            MainWorkspaceTabIndicator);
+        _notesSegmentIndicator = new SegmentIndicator(
+            NotesSegmentHost,
+            NotesSegmentIndicatorLayer,
+            NotesSegmentIndicator);
         PopupFocusLifecycle.Attach(FilterPopup, FilterButton, () => AnyTagMode);
         PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput);
         PopupFocusLifecycle.ClipToCanvas(FilterPopup, MainLayoutSurface);
@@ -176,6 +186,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         Loaded += (_, _) =>
         {
             CountdownTab.Focus();
+            UpdateSegmentIndicators();
         };
     }
 
@@ -194,6 +205,34 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         new[] { CountdownHour.Items.Count, CountdownMinute.Items.Count, CountdownSecond.Items.Count };
 
     internal bool CompletedNotesAreCollapsed => !_completedSegmentSelected;
+
+    internal bool SegmentIndicatorGeometryMatchesForValidation =>
+        _workspaceTabIndicator.IsAlignedTo(
+            _workspace == WorkspaceKind.Countdowns ? CountdownTab : NotesTab) &&
+        _notesSegmentIndicator.IsAlignedTo(
+            _completedSegmentSelected ? CompletedNotesSegment : ActiveNotesSegment);
+
+    internal bool SegmentIndicatorRapidSwitchIsStableForValidation
+    {
+        get
+        {
+            _workspaceTabIndicator.MoveTo(CountdownTab);
+            _workspaceTabIndicator.MoveTo(NotesTab);
+            _workspaceTabIndicator.MoveTo(CountdownTab);
+            _workspaceTabIndicator.SnapToTargetForValidation();
+            var workspaceStable = _workspaceTabIndicator.IsAlignedTo(CountdownTab);
+
+            _notesSegmentIndicator.MoveTo(ActiveNotesSegment);
+            _notesSegmentIndicator.MoveTo(CompletedNotesSegment);
+            _notesSegmentIndicator.MoveTo(ActiveNotesSegment);
+            _notesSegmentIndicator.SnapToTargetForValidation();
+            var notesStable = _notesSegmentIndicator.IsAlignedTo(ActiveNotesSegment);
+            return workspaceStable && notesStable;
+        }
+    }
+
+    internal bool SegmentIndicatorReducedMotionIsImmediateForValidation =>
+        SegmentIndicator.EffectiveDuration(MotionTokens.IndicatorDuration, false) == TimeSpan.Zero;
 
     internal bool HasLiveStatusRegions =>
         AutomationProperties.GetLiveSetting(StatusText) == AutomationLiveSetting.Polite &&
@@ -613,6 +652,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NotesWorkspace.Visibility = showCountdowns ? Visibility.Collapsed : Visibility.Visible;
         CountdownTab.IsChecked = showCountdowns;
         NotesTab.IsChecked = !showCountdowns;
+        UpdateWorkspaceTabIndicator();
         CountdownFilterOptions.Visibility = showCountdowns ? Visibility.Visible : Visibility.Collapsed;
         NoteFilterOptions.Visibility = showCountdowns ? Visibility.Collapsed : Visibility.Visible;
         SaveCountdownButton.IsEnabled = showCountdowns;
@@ -1804,6 +1844,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         ActiveNotesSegment.IsChecked = !showCompleted;
         CompletedNotesSegment.IsChecked = showCompleted;
+        UpdateNotesSegmentIndicator(showCompleted);
         ActiveNoteRows.Visibility = !showCompleted && activeCount > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1812,6 +1853,24 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             : Visibility.Collapsed;
         SetNoteStatusSegmentState(ActiveNotesSegment, "未完成", activeCount);
         SetNoteStatusSegmentState(CompletedNotesSegment, "已完成", completedCount);
+    }
+
+    private void UpdateSegmentIndicators()
+    {
+        UpdateWorkspaceTabIndicator();
+        UpdateNotesSegmentIndicator(_completedSegmentSelected);
+    }
+
+    private void UpdateWorkspaceTabIndicator()
+    {
+        _workspaceTabIndicator.MoveTo(
+            _workspace == WorkspaceKind.Countdowns ? CountdownTab : NotesTab);
+    }
+
+    private void UpdateNotesSegmentIndicator(bool showCompleted)
+    {
+        _notesSegmentIndicator.MoveTo(
+            showCompleted ? CompletedNotesSegment : ActiveNotesSegment);
     }
 
     private static void SetNoteStatusSegmentState(

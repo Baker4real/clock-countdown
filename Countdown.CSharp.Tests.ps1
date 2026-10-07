@@ -5555,9 +5555,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $settingsContractSource -match '最多只能包含 8 条提醒规则。') '设置契约在持久化边界拒绝超过 8 条提醒规则（#140 规则 0–8 边界源码契约）'
     $reminderRulesEditorWindowSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\ReminderRulesEditorWindow.cs') -Raw -Encoding UTF8
+    $reminderRulesEditorViewModelSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\ReminderRulesEditorViewModel.cs') -Raw -Encoding UTF8
     Assert-Equal $true (
-        $reminderRulesEditorWindowSource -match [regex]::Escape('_countText.Text = $"{_rules.Count} / 8 条"') -and
-        $reminderRulesEditorWindowSource -match '"当前不提醒"') '规则编辑器规则计数呈现 N / 8 条且空列表呈现“当前不提醒”空态（#140 规则 0–8 边界源码契约）'
+        $reminderRulesEditorViewModelSource -match 'public string CountText => .*8 条' -and
+        $reminderRulesEditorViewModelSource -match '"当前不提醒"' -and
+        $reminderRulesEditorWindowSource -match 'DataContext = _viewModel' -and
+        $reminderRulesEditorWindowSource -match 'ReminderRulesEditorViewModel.CountText' -and
+        $reminderRulesEditorWindowSource -notmatch '_countText\.Text\s*=') '规则编辑器由 ViewModel 绑定呈现 N / 8 条和“当前不提醒”空态，窗口不直接改写计数文字（#140/#204 规则 0–8 边界源码契约）'
     # #143 悬浮窗小尺寸可访问性回归：520×390 内快速操作命中区 ≥36px、相邻命令间距 ≥8px。
     # validate-only JSON 形状冻结（665 顶层键，#154 后），几何契约沿用 #140 源码契约模式钉在 canonical 面；
     # 运行态遮挡/隔离字段沿用 #145「已计算未断言补齐」模式。

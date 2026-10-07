@@ -2039,13 +2039,18 @@ internal static class ValidationReport
             ["MainCompactHitTargetsMeetScaledFloor"] = interactionStates.CompactHitTargetsMeetScaledFloor,
             ["MainFilterChipsAndCalendarNavCompact"] = interactionStates.ChipsAndCalendarNavCompact,
             ["MainHoverStateContrastIsPerceivable"] = interactionStates.HoverStateContrastIsPerceivable,
-            ["MainPressedStateGeometryStable"] = interactionStates.PressedStateGeometryStable,
+            ["MainPressedStateGeometryStable"] =
+                interactionStates.PressedStateGeometryStable &&
+                interactionStates.SegmentIndicatorRapidSwitchStaysAligned,
             ["MainMouseClickDoesNotLeaveFocusRing"] = interactionStates.MouseClickDoesNotLeaveFocusRing,
             ["MainKeyboardFocusRingShowsOnTab"] = interactionStates.KeyboardFocusRingShowsOnTab,
-            ["MainSelectedTabWeightDominates"] = interactionStates.SelectedTabWeightDominates,
+            ["MainSelectedTabWeightDominates"] =
+                interactionStates.SelectedTabWeightDominates &&
+                interactionStates.SegmentIndicatorGeometryMatches,
             ["MotionClientAreaAnimationSwitchReadable"] =
                 ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
-            ["MotionTokensMatch"] = motionTokensMatch,
+            ["MotionTokensMatch"] =
+                motionTokensMatch && interactionStates.SegmentIndicatorReducedMotionIsImmediate,
             ["KeyboardFocusRingTabGapAvoidsSelectedFill"] =
                 keyboardFocusRingContrast.TabRingGapAvoidsSelectedFill,
             ["KeyboardFocusRingFloatingCapsuleMeetsContrast"] =

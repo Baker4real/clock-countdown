@@ -1975,6 +1975,8 @@ public sealed partial class MainWindow
                 DisabledUses45Opacity(CountdownReminderNoRadio, "Surface") &&
                 DateDisclosureTemplateHasPressAndDisabled();
 
+            var segmentIndicators = ProbeSegmentIndicatorScenarios();
+
             // 聚焦帮助显示与悬停相同的说明（同一 ToolTip 即时打开），并提供帮助文本。
             Activate();
             var helpTooltip = CountdownReminderHelp.ToolTip as ToolTip;
@@ -2024,12 +2026,67 @@ public sealed partial class MainWindow
                 pressedStateGeometryStable,
                 mouseClickDoesNotLeaveFocusRing,
                 keyboardFocusRingShowsOnTab,
-                selectedTabWeightDominates);
+                selectedTabWeightDominates,
+                segmentIndicators.GeometryMatches,
+                segmentIndicators.ReducedMotionIsImmediate,
+                segmentIndicators.RapidSwitchStaysAligned);
         }
         finally
         {
             ShowWorkspace(originalWorkspace);
             WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    // #196：页签与便签状态分段共享一个可中断指示条。这里以真实控件的
+    // TransformToAncestor 几何作断言，并快速往返切换，确保过期回调不会把
+    // 指示条留在旧段；关闭系统动画时只保留同一目标几何的即时等价。
+    private SegmentIndicatorScenarios ProbeSegmentIndicatorScenarios()
+    {
+        var originalWorkspace = _workspace;
+        var originalCompleted = _completedSegmentSelected;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            Activate();
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            _workspaceTabIndicator.SnapToTargetForValidation();
+            var countdownTabAligned = _workspaceTabIndicator.IsAlignedTo(CountdownTab);
+
+            ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            _workspaceTabIndicator.SnapToTargetForValidation();
+            _notesSegmentIndicator.SnapToTargetForValidation();
+            var notesTabAligned = _workspaceTabIndicator.IsAlignedTo(NotesTab);
+            var activeSegmentAligned = _notesSegmentIndicator.IsAlignedTo(ActiveNotesSegment);
+
+            SelectNotesSegment(showCompleted: true);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            _notesSegmentIndicator.SnapToTargetForValidation();
+            var completedSegmentAligned = _notesSegmentIndicator.IsAlignedTo(CompletedNotesSegment);
+
+            var rapidSwitchStaysAligned =
+                SegmentIndicatorRapidSwitchIsStableForValidation;
+            var reducedMotionIsImmediate =
+                SegmentIndicatorReducedMotionIsImmediateForValidation;
+
+            return new SegmentIndicatorScenarios(
+                countdownTabAligned &&
+                notesTabAligned &&
+                activeSegmentAligned &&
+                completedSegmentAligned,
+                reducedMotionIsImmediate,
+                rapidSwitchStaysAligned);
+        }
+        finally
+        {
+            _completedSegmentSelected = originalCompleted;
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
         }
     }
 
@@ -4221,11 +4278,19 @@ internal sealed record MainWindowInteractionStates(
     bool PressedStateGeometryStable,
     bool MouseClickDoesNotLeaveFocusRing,
     bool KeyboardFocusRingShowsOnTab,
-    bool SelectedTabWeightDominates)
+    bool SelectedTabWeightDominates,
+    bool SegmentIndicatorGeometryMatches,
+    bool SegmentIndicatorReducedMotionIsImmediate,
+    bool SegmentIndicatorRapidSwitchStaysAligned)
 {
     public static MainWindowInteractionStates Failed { get; } = new(
-        false, false, false, false, false, false, false, false, false, false, false, false);
+        false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
 }
+
+internal sealed record SegmentIndicatorScenarios(
+    bool GeometryMatches,
+    bool ReducedMotionIsImmediate,
+    bool RapidSwitchStaysAligned);
 
 // #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。
 internal sealed record MainCountdownReadabilityScenarios(

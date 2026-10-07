@@ -1442,23 +1442,53 @@
                                   IsTabStop="True"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
-                      <StackPanel>
+                      <Grid x:Name="CountdownListContent" MinHeight="252">
                         <StackPanel x:Name="CountdownRows" />
-                        <TextBlock x:Name="EmptyCountdownMessage"
-                                   Margin="20,20,20,0"
-                                   HorizontalAlignment="Center"
-                                   FontSize="{DynamicResource TypeH2FontSize}"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   Text="还没有倒计时，先添加一个目标。"
-                                   TextWrapping="Wrap"
-                                   Visibility="Collapsed" />
-                        <Button x:Name="ResetEmptyCountdownFiltersButton"
-                                Margin="0,12,0,0"
-                                HorizontalAlignment="Center"
-                                Content="重置筛选"
-                                Visibility="Collapsed"
-                                Style="{StaticResource MainSecondaryButton}" />
-                      </StackPanel>
+                        <StackPanel x:Name="CountdownEmptyStateContent"
+                                    VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    MaxWidth="520"
+                                    Visibility="Collapsed">
+                          <Image x:Name="CountdownEmptyMascot"
+                                 Width="92"
+                                 Height="64"
+                                 HorizontalAlignment="Center"
+                                 Stretch="Uniform"
+                                 IsHitTestVisible="False"
+                                 Focusable="False" />
+                          <TextBlock x:Name="EmptyCountdownMessage"
+                                     Margin="0,10,0,0"
+                                     HorizontalAlignment="Center"
+                                     FontSize="{DynamicResource TypeH2FontSize}"
+                                     FontWeight="SemiBold"
+                                     Foreground="{DynamicResource InkBrush}"
+                                     Text="还没有倒计时"
+                                     TextWrapping="Wrap"
+                                     TextAlignment="Center"
+                                     Visibility="Collapsed" />
+                          <TextBlock x:Name="EmptyCountdownHint"
+                                     Margin="0,6,0,0"
+                                     HorizontalAlignment="Center"
+                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                     Foreground="{DynamicResource MutedBrush}"
+                                     Text="把重要的时刻记下来，从一个目标开始吧。"
+                                     TextWrapping="Wrap"
+                                     TextAlignment="Center"
+                                     Visibility="Collapsed" />
+                          <Button x:Name="AddEmptyCountdownButton"
+                                  Margin="0,14,0,0"
+                                  HorizontalAlignment="Center"
+                                  Content="添加倒计时"
+                                  Style="{StaticResource MainSecondaryButton}"
+                                  Visibility="Collapsed" />
+                          <Button x:Name="ResetEmptyCountdownFiltersButton"
+                                  Margin="0,12,0,0"
+                                  HorizontalAlignment="Center"
+                                  Content="重置筛选"
+                                  Visibility="Collapsed"
+                                  Style="{StaticResource MainSecondaryButton}" />
+                        </StackPanel>
+                      </Grid>
                     </ScrollViewer>
                     <!-- #154：原右下角手写体「生活很忙…」已迁至 CountdownWorkspace 装饰层；
                          本行保留为列表与页面下缘之间的结构间距，不再承载装饰文案。 -->
@@ -1980,20 +2010,52 @@
                         </Grid>
                         <StackPanel x:Name="ActiveNoteRows" Margin="8,6,0,0" />
                         <StackPanel x:Name="CompletedNoteRows" Margin="8,6,0,0" Visibility="Collapsed" />
-                        <TextBlock x:Name="EmptyNotesMessage"
-                                   Margin="0,40,0,0"
+                        <Grid x:Name="NotesEmptyStateContent"
+                              MinHeight="360"
+                              Visibility="Collapsed">
+                          <StackPanel VerticalAlignment="Center"
+                                      HorizontalAlignment="Center"
+                                      MaxWidth="520">
+                            <Image x:Name="NotesEmptyMascot"
+                                   Width="92"
+                                   Height="64"
                                    HorizontalAlignment="Center"
-                                   FontSize="{DynamicResource TypeH2FontSize}"
-                                   Foreground="{DynamicResource MutedBrush}"
-                                   Text="还没有便签，先写下一件想记住的事。"
-                                   TextWrapping="Wrap"
-                                   Visibility="Collapsed" />
-                        <Button x:Name="ResetEmptyNotesFiltersButton"
-                                Margin="0,12,0,0"
-                                HorizontalAlignment="Center"
-                                Content="重置筛选"
-                                Visibility="Collapsed"
-                                Style="{StaticResource MainSecondaryButton}" />
+                                   Stretch="Uniform"
+                                   IsHitTestVisible="False"
+                                   Focusable="False" />
+                            <TextBlock x:Name="EmptyNotesMessage"
+                                       Margin="0,10,0,0"
+                                       HorizontalAlignment="Center"
+                                       FontSize="{DynamicResource TypeH2FontSize}"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource InkBrush}"
+                                       Text="还没有便签"
+                                       TextWrapping="Wrap"
+                                       TextAlignment="Center"
+                                       Visibility="Collapsed" />
+                            <TextBlock x:Name="EmptyNotesHint"
+                                       Margin="0,6,0,0"
+                                       HorizontalAlignment="Center"
+                                       FontSize="{DynamicResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource MutedBrush}"
+                                       Text="先写下一件想记住的事。"
+                                       TextWrapping="Wrap"
+                                       TextAlignment="Center"
+                                       Visibility="Collapsed" />
+                            <Button x:Name="AddEmptyNoteButton"
+                                    Margin="0,14,0,0"
+                                    HorizontalAlignment="Center"
+                                    Content="添加便签"
+                                    Style="{StaticResource MainSecondaryButton}"
+                                    Visibility="Collapsed" />
+                            <Button x:Name="ResetEmptyNotesFiltersButton"
+                                    Margin="0,12,0,0"
+                                    HorizontalAlignment="Center"
+                                    Content="重置筛选"
+                                    Visibility="Collapsed"
+                                    Style="{StaticResource MainSecondaryButton}" />
+                          </StackPanel>
+                        </Grid>
                       </StackPanel>
                       </ScrollViewer>
                     </Grid>

@@ -1956,6 +1956,7 @@ internal static class ValidationReport
             ["MainKeyboardBehavior"] = mainKeyboardBehavior,
             ["MainKeyboardPathNegativeFixtures"] = mainKeyboardPathNegativeFixtures,
             ["MainStructuralAnnouncements"] = mainStructuralAnnouncements,
+            ["MainEmptyStateGuidance"] = mainStructuralAnnouncements.EmptyStateGuidance,
             ["MainStructuralAnnouncementGates"] = mainStructuralAnnouncementGates,
             ["MainStructuralAnnouncementGateIsolationBehavior"] =
                 mainStructuralAnnouncementGateIsolationBehavior,
@@ -12088,6 +12089,14 @@ internal static class ValidationReport
             var status = Required<TextBlock>(window, "StatusText");
             var emptyCountdowns = Required<TextBlock>(window, "EmptyCountdownMessage");
             var emptyNotes = Required<TextBlock>(window, "EmptyNotesMessage");
+            var countdownEmptyContent = Required<FrameworkElement>(window, "CountdownEmptyStateContent");
+            var countdownEmptyMascot = Required<Image>(window, "CountdownEmptyMascot");
+            var countdownEmptyHint = Required<TextBlock>(window, "EmptyCountdownHint");
+            var addEmptyCountdown = Required<Button>(window, "AddEmptyCountdownButton");
+            var notesEmptyContent = Required<FrameworkElement>(window, "NotesEmptyStateContent");
+            var notesEmptyMascot = Required<Image>(window, "NotesEmptyMascot");
+            var notesEmptyHint = Required<TextBlock>(window, "EmptyNotesHint");
+            var addEmptyNote = Required<Button>(window, "AddEmptyNoteButton");
 
             window.ShowWorkspace(WorkspaceKind.Countdowns);
             PumpDispatcher();
@@ -12096,7 +12105,18 @@ internal static class ValidationReport
                 "当前工作区：倒计时");
             var countdownFirstUseEmptyAnnounced = VisiblePoliteTextEquals(
                 emptyCountdowns,
-                "还没有倒计时，先添加一个目标。");
+                "还没有倒计时");
+            var countdownFirstUseElementsVisible =
+                countdownEmptyContent.IsVisible &&
+                countdownEmptyMascot.IsVisible &&
+                emptyCountdowns.IsVisible &&
+                countdownEmptyHint.IsVisible &&
+                addEmptyCountdown.IsVisible;
+            addEmptyCountdown.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            PumpDispatcher();
+            var countdownAddFocusesEditor = ReferenceEquals(
+                Keyboard.FocusedElement,
+                Required<TextBox>(window, "CountdownName"));
             window.ShowWorkspace(WorkspaceKind.Notes);
             PumpDispatcher();
             var notesWorkspaceAnnounced = VisiblePoliteTextEquals(
@@ -12104,7 +12124,26 @@ internal static class ValidationReport
                 "当前工作区：便签");
             var notesFirstUseEmptyAnnounced = VisiblePoliteTextEquals(
                 emptyNotes,
-                "还没有便签，先写下一件想记住的事。");
+                "还没有便签");
+            var notesFirstUseElementsVisible =
+                notesEmptyContent.IsVisible &&
+                notesEmptyMascot.IsVisible &&
+                emptyNotes.IsVisible &&
+                notesEmptyHint.IsVisible &&
+                addEmptyNote.IsVisible;
+            addEmptyNote.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            PumpDispatcher();
+            var noteAddFocusesEditor = ReferenceEquals(
+                Keyboard.FocusedElement,
+                Required<TextBox>(window, "NoteText"));
+
+            var decorationsAreNonInteractive =
+                !countdownEmptyMascot.IsHitTestVisible &&
+                !countdownEmptyMascot.Focusable &&
+                !notesEmptyMascot.IsHitTestVisible &&
+                !notesEmptyMascot.Focusable &&
+                string.IsNullOrWhiteSpace(AutomationProperties.GetName(countdownEmptyMascot)) &&
+                string.IsNullOrWhiteSpace(AutomationProperties.GetName(notesEmptyMascot));
 
             var countdownSaved = workspace.Apply(new SaveCountdownChange(
                 null,
@@ -12139,6 +12178,61 @@ internal static class ValidationReport
             var notesFilterResultAnnounced =
                 VisiblePoliteTextEquals(status, "筛选结果：0 个待办");
 
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
+            PumpDispatcher();
+            foreach (var countdown in workspace.Snapshot.Settings.Countdowns.ToArray())
+            {
+                workspace.Apply(new DeleteCountdownChange(countdown.Id));
+            }
+
+            foreach (var note in workspace.Snapshot.Settings.Notes.ToArray())
+            {
+                workspace.Apply(new DeleteNoteChange(note.Id));
+            }
+
+            PumpDispatcher();
+
+            var savedCountdown = workspace.Apply(new SaveCountdownChange(
+                null,
+                "空态引导恢复倒计时探针",
+                workspace.Snapshot.UtcNow.AddDays(7),
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            var savedCountdownId = workspace.Snapshot.Settings.Countdowns.LastOrDefault()?.Id;
+            var savedNote = workspace.Apply(new SaveNoteChange(
+                null,
+                "空态引导恢复便签探针",
+                workspace.Snapshot.BeijingNow.Date,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance));
+            var savedNoteId = workspace.Snapshot.Settings.Notes.LastOrDefault()?.Id;
+            window.ShowWorkspace(WorkspaceKind.Countdowns);
+            PumpDispatcher();
+            var populatedListsHideEmpty =
+                savedCountdown.Succeeded &&
+                savedNote.Succeeded &&
+                countdownEmptyContent.Visibility == Visibility.Collapsed;
+            window.ShowWorkspace(WorkspaceKind.Notes);
+            PumpDispatcher();
+            populatedListsHideEmpty &= notesEmptyContent.Visibility == Visibility.Collapsed;
+            if (savedCountdownId is not null)
+            {
+                workspace.Apply(new DeleteCountdownChange(savedCountdownId));
+            }
+
+            if (savedNoteId is not null)
+            {
+                workspace.Apply(new DeleteNoteChange(savedNoteId));
+            }
+
+            window.ShowWorkspace(WorkspaceKind.Countdowns);
+            PumpDispatcher();
+            var restoredEmptyState = countdownEmptyContent.IsVisible;
+            window.ShowWorkspace(WorkspaceKind.Notes);
+            PumpDispatcher();
+            restoredEmptyState &= notesEmptyContent.IsVisible;
+
             return new MainStructuralAnnouncementsResult(
                 countdownWorkspaceAnnounced,
                 notesWorkspaceAnnounced,
@@ -12146,7 +12240,13 @@ internal static class ValidationReport
                 countdownFirstUseEmptyAnnounced,
                 notesFirstUseEmptyAnnounced,
                 countdownFilterEmptyAnnounced,
-                notesFilterEmptyAnnounced);
+                notesFilterEmptyAnnounced,
+                new MainEmptyStateGuidanceResult(
+                    countdownFirstUseElementsVisible,
+                    notesFirstUseElementsVisible,
+                    countdownAddFocusesEditor && noteAddFocusesEditor,
+                    decorationsAreNonInteractive,
+                    populatedListsHideEmpty && restoredEmptyState));
         }
         finally
         {
@@ -14893,7 +14993,15 @@ internal static class ValidationReport
         bool CountdownFirstUseEmptyAnnounced,
         bool NotesFirstUseEmptyAnnounced,
         bool CountdownFilterEmptyAnnounced,
-        bool NotesFilterEmptyAnnounced);
+        bool NotesFilterEmptyAnnounced,
+        MainEmptyStateGuidanceResult EmptyStateGuidance);
+
+    private sealed record MainEmptyStateGuidanceResult(
+        bool CountdownElementsVisible,
+        bool NotesElementsVisible,
+        bool AddActionsFocusEditors,
+        bool DecorationsAreNonInteractive,
+        bool PopulatedListsRestoreEmptyState);
 
     private sealed record ConfirmationDialogScenario(
         string ContentKind,

@@ -1,11 +1,13 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using System.Windows.Data;
 using MinminCountdown.Core;
 using Path = System.Windows.Shapes.Path;
 
@@ -17,7 +19,9 @@ internal sealed class ReminderCenterWindow : Window
     private readonly TextBlock _countText;
     private readonly Button _acknowledgeAll;
     private readonly Dictionary<ActiveReminderOccurrenceKey, ReminderCenterEntry> _entries = new();
+    private readonly ReminderCenterViewModel _viewModel;
     private readonly Border _dragHeader;
+    private readonly BooleanToVisibilityConverter _visibilityConverter = new();
     private bool _contentRendered;
     private bool _coordinatorCloseRequested;
     private bool _initialFocusAssigned;
@@ -27,6 +31,9 @@ internal sealed class ReminderCenterWindow : Window
 
     public ReminderCenterWindow()
     {
+        _viewModel = new ReminderCenterViewModel();
+        _viewModel.AcknowledgeAllRequested += (_, args) =>
+            AcknowledgeAllRequested?.Invoke(this, args);
         Title = "提醒中心";
         Width = 460;
         Height = 520;
@@ -39,6 +46,7 @@ internal sealed class ReminderCenterWindow : Window
         Topmost = true;
         Background = Brushes.Transparent;
         AllowsTransparency = true;
+        DataContext = _viewModel;
         AutomationProperties.SetName(this, "提醒中心");
 
         var heading = new TextBlock
@@ -56,6 +64,10 @@ internal sealed class ReminderCenterWindow : Window
         };
         _countText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
         _countText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        _countText.SetBinding(TextBlock.TextProperty, new Binding(nameof(ReminderCenterViewModel.CountText)));
+        _countText.SetBinding(
+            AutomationProperties.NameProperty,
+            new Binding(nameof(ReminderCenterViewModel.AccessibleCountText)));
         var titleRow = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -67,13 +79,17 @@ internal sealed class ReminderCenterWindow : Window
             new Button
             {
                 Content = CreateIconTextContent(CreateBellIcon("InkBrush"), "全部已读"),
-                IsEnabled = false,
                 VerticalAlignment = VerticalAlignment.Center,
                 Cursor = Cursors.Hand
             },
             "全部已读：当前全部提醒");
         AutomationProperties.SetAutomationId(_acknowledgeAll, "ReminderCenterAcknowledgeAll");
-        _acknowledgeAll.Click += (_, _) => AcknowledgeAllRequested?.Invoke(this, EventArgs.Empty);
+        _acknowledgeAll.SetBinding(
+            Button.IsEnabledProperty,
+            new Binding(nameof(ReminderCenterViewModel.CanAcknowledgeAll)));
+        _acknowledgeAll.SetBinding(
+            Button.CommandProperty,
+            new Binding(nameof(ReminderCenterViewModel.AcknowledgeAllCommand)));
         var headerGrid = new Grid();
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition());
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -160,7 +176,6 @@ internal sealed class ReminderCenterWindow : Window
             FocusEscapeTarget();
         };
         Loaded += (_, _) => ApplyAutomaticPlacementIfNeeded();
-        UpdateCount();
     }
 
     internal bool HasManualWindowPlacement => _hasManualWindowPlacement;
@@ -209,7 +224,7 @@ internal sealed class ReminderCenterWindow : Window
     internal event EventHandler<ReminderCenterEntryEventArgs>? OpenSourceRequested;
 
     internal bool PersistenceFailureVisible =>
-        _entries.Values.Any(entry => entry.Error.Visibility == Visibility.Visible);
+        _entries.Values.Any(entry => entry.ViewModel.IsFailureVisible);
 
     internal int EntryCount => _entries.Count;
 
@@ -223,25 +238,25 @@ internal sealed class ReminderCenterWindow : Window
 
     internal bool IsFailureVisible(ActiveReminderOccurrenceKey key) =>
         _entries.TryGetValue(key, out var entry) &&
-        entry.Error.Visibility == Visibility.Visible;
+        entry.ViewModel.IsFailureVisible;
 
     internal bool IsAcknowledgeEnabled(ActiveReminderOccurrenceKey key) =>
-        _entries.TryGetValue(key, out var entry) && entry.Acknowledge.IsEnabled;
+        _entries.TryGetValue(key, out var entry) && entry.ViewModel.IsAcknowledgeEnabled;
 
     internal bool IsSnoozeEnabled(ActiveReminderOccurrenceKey key) =>
-        _entries.TryGetValue(key, out var entry) && entry.Snooze.IsEnabled;
+        _entries.TryGetValue(key, out var entry) && entry.ViewModel.IsSnoozeEnabled;
 
     internal bool IsCompleteEnabled(ActiveReminderOccurrenceKey key) =>
-        _entries.TryGetValue(key, out var entry) && entry.Complete.IsEnabled;
+        _entries.TryGetValue(key, out var entry) && entry.ViewModel.IsCompleteEnabled;
 
     internal bool IsOpenSourceEnabled(ActiveReminderOccurrenceKey key) =>
         _entries.TryGetValue(key, out var entry) && entry.OpenSource.IsEnabled;
 
     internal bool IsCustomSnoozeErrorVisible(ActiveReminderOccurrenceKey key) =>
         _entries.TryGetValue(key, out var entry) &&
-        entry.CustomError.Visibility == Visibility.Visible;
+        entry.ViewModel.IsCustomErrorVisible;
 
-    internal bool IsAcknowledgeAllEnabled => _acknowledgeAll.IsEnabled;
+    internal bool IsAcknowledgeAllEnabled => _viewModel.CanAcknowledgeAll;
 
     internal bool RemoveEntryThrowsForValidation { get; set; }
 
@@ -251,6 +266,12 @@ internal sealed class ReminderCenterWindow : Window
         {
             return;
         }
+
+        var viewModel = new ReminderCenterEntryViewModel(item);
+        viewModel.AcknowledgeRequested += OnViewModelAcknowledgeRequested;
+        viewModel.SnoozeRequested += OnViewModelSnoozeRequested;
+        viewModel.CompleteRequested += OnViewModelCompleteRequested;
+        viewModel.OpenSourceRequested += OnViewModelOpenSourceRequested;
 
         var isCountdown = item.Source.Kind == ReminderSourceKind.Countdown;
         var sourceLabel = isCountdown ? "倒计时" : "便签";
@@ -332,11 +353,22 @@ internal sealed class ReminderCenterWindow : Window
         {
             Margin = new Thickness(0, 8, 0, 0),
             TextWrapping = TextWrapping.Wrap,
-            FontWeight = FontWeights.SemiBold,
-            Visibility = Visibility.Collapsed
+            FontWeight = FontWeights.SemiBold
         };
         error.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Assertive);
+        BindEntry(error, TextBlock.TextProperty, nameof(ReminderCenterEntryViewModel.ErrorMessage), viewModel);
+        BindEntry(
+            error,
+            TextBlock.VisibilityProperty,
+            nameof(ReminderCenterEntryViewModel.IsFailureVisible),
+            viewModel,
+            _visibilityConverter);
+        BindEntry(
+            error,
+            AutomationProperties.NameProperty,
+            nameof(ReminderCenterEntryViewModel.ErrorMessage),
+            viewModel);
         var divider = new Border
         {
             Height = 1,
@@ -351,15 +383,25 @@ internal sealed class ReminderCenterWindow : Window
                 MinWidth = 82,
                 Margin = new Thickness(0, 0, 7, 0),
                 Padding = new Thickness(8, 0, 8, 0),
-                IsEnabled = false,
                 Style = (Style)FindResource("PrimaryButton")
             },
             $"知道了：{item.Source.DisplayText}");
+        BindEntry(
+            acknowledge,
+            Button.IsEnabledProperty,
+            nameof(ReminderCenterEntryViewModel.IsAcknowledgeEnabled),
+            viewModel);
+        BindEntry(
+            acknowledge,
+            Button.CommandProperty,
+            nameof(ReminderCenterEntryViewModel.AcknowledgeCommand),
+            viewModel);
         var snoozeChoice = UiAccessibility.Name(
             new ComboBox
             {
                 MinWidth = 132,
-                Padding = new Thickness(28, 0, 0, 0)
+                Padding = new Thickness(28, 0, 0, 0),
+                SelectedValuePath = "Tag"
             },
             $"稍后提醒时间：{item.Source.DisplayText}");
         snoozeChoice.SetResourceReference(Control.BackgroundProperty, "PanelBrush");
@@ -379,7 +421,12 @@ internal sealed class ReminderCenterWindow : Window
             });
         }
 
-        snoozeChoice.SelectedIndex = 0;
+        BindEntry(
+            snoozeChoice,
+            Selector.SelectedValueProperty,
+            nameof(ReminderCenterEntryViewModel.SelectedSnoozeOption),
+            viewModel,
+            mode: BindingMode.TwoWay);
         ThemedComboBoxBehavior.Attach(snoozeChoice);
         var snoozeFrame = new Grid
         {
@@ -397,32 +444,71 @@ internal sealed class ReminderCenterWindow : Window
             new DatePicker
             {
                 Width = 150,
-                Margin = new Thickness(0, 8, 8, 0),
-                Visibility = Visibility.Collapsed
+                Margin = new Thickness(0, 8, 8, 0)
             },
             $"自定义稍后日期：{item.Source.DisplayText}");
+        BindEntry(
+            customDate,
+            DatePicker.SelectedDateProperty,
+            nameof(ReminderCenterEntryViewModel.CustomDate),
+            viewModel,
+            mode: BindingMode.TwoWay);
+        BindEntry(
+            customDate,
+            DatePicker.VisibilityProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
+            viewModel,
+            _visibilityConverter);
         ThemedDatePickerBehavior.Attach(customDate);
         var customHour = UiAccessibility.Name(
             new ComboBox
             {
                 Width = 68,
                 Margin = new Thickness(0, 8, 6, 0),
-                ItemsSource = Enumerable.Range(0, 24).Select(static value => value.ToString("00")).ToArray(),
-                Visibility = Visibility.Collapsed
+                ItemsSource = Enumerable.Range(0, 24).Select(static value => value.ToString("00")).ToArray()
             },
             $"自定义稍后小时：{item.Source.DisplayText}");
+        BindEntry(
+            customHour,
+            Selector.SelectedIndexProperty,
+            nameof(ReminderCenterEntryViewModel.CustomHourIndex),
+            viewModel,
+            mode: BindingMode.TwoWay);
+        BindEntry(
+            customHour,
+            ComboBox.VisibilityProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
+            viewModel,
+            _visibilityConverter);
         var customMinute = UiAccessibility.Name(
             new ComboBox
             {
                 Width = 68,
                 Margin = new Thickness(0, 8, 0, 0),
-                ItemsSource = Enumerable.Range(0, 60).Select(static value => value.ToString("00")).ToArray(),
-                Visibility = Visibility.Collapsed
+                ItemsSource = Enumerable.Range(0, 60).Select(static value => value.ToString("00")).ToArray()
             },
             $"自定义稍后分钟：{item.Source.DisplayText}");
+        BindEntry(
+            customMinute,
+            Selector.SelectedIndexProperty,
+            nameof(ReminderCenterEntryViewModel.CustomMinuteIndex),
+            viewModel,
+            mode: BindingMode.TwoWay);
+        BindEntry(
+            customMinute,
+            ComboBox.VisibilityProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
+            viewModel,
+            _visibilityConverter);
         ThemedComboBoxBehavior.Attach(customHour);
         ThemedComboBoxBehavior.Attach(customMinute);
-        var customFields = new WrapPanel { Visibility = Visibility.Collapsed };
+        var customFields = new WrapPanel();
+        BindEntry(
+            customFields,
+            WrapPanel.VisibilityProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
+            viewModel,
+            _visibilityConverter);
         customFields.Children.Add(customDate);
         customFields.Children.Add(customHour);
         customFields.Children.Add(customMinute);
@@ -430,29 +516,62 @@ internal sealed class ReminderCenterWindow : Window
         {
             Margin = new Thickness(0, 6, 0, 0),
             TextWrapping = TextWrapping.Wrap,
-            FontWeight = FontWeights.SemiBold,
-            Visibility = Visibility.Collapsed
+            FontWeight = FontWeights.SemiBold
         };
         customError.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         AutomationProperties.SetLiveSetting(customError, AutomationLiveSetting.Assertive);
+        BindEntry(
+            customError,
+            TextBlock.TextProperty,
+            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
+            viewModel);
+        BindEntry(
+            customError,
+            TextBlock.VisibilityProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomErrorVisible),
+            viewModel,
+            _visibilityConverter);
+        BindEntry(
+            customError,
+            AutomationProperties.NameProperty,
+            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
+            viewModel);
         var snooze = UiAccessibility.Name(
             new Button
             {
                 Content = CreateIconTextContent(CreateBellIcon("InkBrush"), "稍后提醒"),
                 MinWidth = 96,
-                Padding = new Thickness(8, 0, 8, 0),
-                IsEnabled = false
+                Padding = new Thickness(8, 0, 8, 0)
             },
             $"稍后提醒：{item.Source.DisplayText}");
+        BindEntry(
+            snooze,
+            Button.IsEnabledProperty,
+            nameof(ReminderCenterEntryViewModel.IsSnoozeEnabled),
+            viewModel);
+        BindEntry(
+            snooze,
+            Button.CommandProperty,
+            nameof(ReminderCenterEntryViewModel.SnoozeCommand),
+            viewModel);
         var complete = UiAccessibility.Name(
             new Button
             {
                 Content = CreateIconTextContent(CreateCheckCircleIcon("InkBrush"), "完成便签"),
                 MinWidth = 96,
-                Padding = new Thickness(11, 0, 11, 0),
-                IsEnabled = false
+                Padding = new Thickness(11, 0, 11, 0)
             },
             $"完成便签：{item.Source.DisplayText}");
+        BindEntry(
+            complete,
+            Button.IsEnabledProperty,
+            nameof(ReminderCenterEntryViewModel.IsCompleteEnabled),
+            viewModel);
+        BindEntry(
+            complete,
+            Button.CommandProperty,
+            nameof(ReminderCenterEntryViewModel.CompleteCommand),
+            viewModel);
         var openSource = UiAccessibility.Name(
             new Button
             {
@@ -505,7 +624,8 @@ internal sealed class ReminderCenterWindow : Window
             Padding = new Thickness(14),
             Margin = new Thickness(0, 0, 0, 8),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8)
+            CornerRadius = new CornerRadius(8),
+            DataContext = viewModel
         };
         row.SetResourceReference(Border.BackgroundProperty, "ReminderCardBrush");
         row.SetResourceReference(Border.BorderBrushProperty, "NoteLineBrush");
@@ -515,6 +635,7 @@ internal sealed class ReminderCenterWindow : Window
 
         var entry = new ReminderCenterEntry(
             item,
+            viewModel,
             row,
             acknowledge,
             snooze,
@@ -527,31 +648,14 @@ internal sealed class ReminderCenterWindow : Window
             customError,
             openSource,
             error);
-        acknowledge.Click += (_, _) =>
-            AcknowledgeRequested?.Invoke(this, new ReminderCenterEntryEventArgs(item.Key));
-        snoozeChoice.SelectionChanged += (_, _) =>
-        {
-            var isCustom = SelectedSnoozeOption(entry) == ReminderSnoozeOption.Custom;
-            var customVisibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
-            customFields.Visibility = customVisibility;
-            customDate.Visibility = customVisibility;
-            customHour.Visibility = customVisibility;
-            customMinute.Visibility = customVisibility;
-            if (!isCustom)
-            {
-                ClearCustomError(entry);
-            }
-        };
-        snooze.Click += (_, _) => RequestSnooze(entry);
-        if (item.CanComplete)
-        {
-            complete.Click += (_, _) =>
-                CompleteRequested?.Invoke(this, new ReminderCenterEntryEventArgs(item.Key));
-        }
-        openSource.Click += (_, _) =>
-            OpenSourceRequested?.Invoke(this, new ReminderCenterEntryEventArgs(item.Key));
+        BindEntry(
+            openSource,
+            Button.CommandProperty,
+            nameof(ReminderCenterEntryViewModel.OpenSourceCommand),
+            viewModel);
         row.Loaded += (_, _) => ScheduleRenderedProbe(entry);
         _entries.Add(item.Key, entry);
+        _viewModel.Add(viewModel);
 
         var insertionIndex = _itemsHost.Children
             .OfType<Border>()
@@ -568,8 +672,6 @@ internal sealed class ReminderCenterWindow : Window
         }
 
         _itemsHost.Children.Insert(insertionIndex, row);
-        UpdateCount();
-        UpdateAcknowledgeAllEnabled();
         if (_contentRendered)
         {
             ScheduleRenderedProbe(entry);
@@ -588,9 +690,12 @@ internal sealed class ReminderCenterWindow : Window
             return;
         }
 
+        entry.ViewModel.AcknowledgeRequested -= OnViewModelAcknowledgeRequested;
+        entry.ViewModel.SnoozeRequested -= OnViewModelSnoozeRequested;
+        entry.ViewModel.CompleteRequested -= OnViewModelCompleteRequested;
+        entry.ViewModel.OpenSourceRequested -= OnViewModelOpenSourceRequested;
+        _viewModel.Remove(key);
         _itemsHost.Children.Remove(entry.Row);
-        UpdateCount();
-        UpdateAcknowledgeAllEnabled();
     }
 
     internal void SetDeliveryReady(ActiveReminderOccurrenceKey key)
@@ -600,12 +705,7 @@ internal sealed class ReminderCenterWindow : Window
             return;
         }
 
-        entry.Error.Visibility = Visibility.Collapsed;
-        entry.Error.Text = string.Empty;
-        entry.Acknowledge.IsEnabled = true;
-        entry.Snooze.IsEnabled = true;
-        entry.Complete.IsEnabled = entry.Item.CanComplete;
-        UpdateAcknowledgeAllEnabled();
+        entry.ViewModel.SetDeliveryReady();
         EnsureInitialFocus();
     }
 
@@ -613,8 +713,7 @@ internal sealed class ReminderCenterWindow : Window
     {
         if (_entries.TryGetValue(key, out var entry))
         {
-            ShowFailure(entry, "送达状态保存失败，正在自动重试。打开来源仍然可用。");
-            UpdateAcknowledgeAllEnabled();
+            entry.ViewModel.ShowFailure("送达状态保存失败，正在自动重试。打开来源仍然可用。");
         }
     }
 
@@ -622,8 +721,7 @@ internal sealed class ReminderCenterWindow : Window
     {
         if (_entries.TryGetValue(key, out var entry))
         {
-            ShowFailure(entry, "“知道了”状态保存失败，正在自动重试。条目仍保留在提醒中心。");
-            UpdateAcknowledgeAllEnabled();
+            entry.ViewModel.ShowFailure("“知道了”状态保存失败，正在自动重试。条目仍保留在提醒中心。");
         }
     }
 
@@ -631,8 +729,7 @@ internal sealed class ReminderCenterWindow : Window
     {
         if (_entries.TryGetValue(key, out var entry))
         {
-            ShowFailure(entry, "稍后提醒状态保存失败，正在自动重试。条目仍保留在提醒中心。");
-            UpdateAcknowledgeAllEnabled();
+            entry.ViewModel.ShowFailure("稍后提醒状态保存失败，正在自动重试。条目仍保留在提醒中心。");
         }
     }
 
@@ -640,8 +737,7 @@ internal sealed class ReminderCenterWindow : Window
     {
         if (_entries.TryGetValue(key, out var entry))
         {
-            ShowFailure(entry, "完成便签状态保存失败，正在自动重试。便签与提醒条目均保持不变。");
-            UpdateAcknowledgeAllEnabled();
+            entry.ViewModel.ShowFailure("完成便签状态保存失败，正在自动重试。便签与提醒条目均保持不变。");
         }
     }
 
@@ -649,15 +745,7 @@ internal sealed class ReminderCenterWindow : Window
     {
         if (_entries.TryGetValue(key, out var entry))
         {
-            entry.Error.Text = string.Empty;
-            entry.Error.Visibility = Visibility.Collapsed;
-            entry.CustomError.Text = message;
-            entry.CustomError.Visibility = Visibility.Visible;
-            AutomationProperties.SetName(entry.CustomError, message);
-            entry.Acknowledge.IsEnabled = true;
-            entry.Snooze.IsEnabled = true;
-            entry.Complete.IsEnabled = entry.Item.CanComplete;
-            UpdateAcknowledgeAllEnabled();
+            entry.ViewModel.ShowCustomSnoozeError(message);
         }
     }
 
@@ -666,35 +754,35 @@ internal sealed class ReminderCenterWindow : Window
         var entry = _itemsHost.Children
             .OfType<Border>()
             .Select(row => _entries[(ActiveReminderOccurrenceKey)row.Tag])
-            .FirstOrDefault(candidate => candidate.Acknowledge.IsEnabled);
+            .FirstOrDefault(candidate => candidate.ViewModel.IsAcknowledgeEnabled);
         if (entry is null)
         {
             return false;
         }
 
-        entry.Acknowledge.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        entry.ViewModel.AcknowledgeCommand.Execute(null);
         return true;
     }
 
     internal bool RequestAcknowledgeAll()
     {
-        if (!_acknowledgeAll.IsEnabled)
+        if (!_viewModel.CanAcknowledgeAll)
         {
             return false;
         }
 
-        _acknowledgeAll.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _viewModel.AcknowledgeAllCommand.Execute(null);
         return true;
     }
 
     internal bool RequestAcknowledgement(ActiveReminderOccurrenceKey key)
     {
-        if (!_entries.TryGetValue(key, out var entry) || !entry.Acknowledge.IsEnabled)
+        if (!_entries.TryGetValue(key, out var entry) || !entry.ViewModel.IsAcknowledgeEnabled)
         {
             return false;
         }
 
-        entry.Acknowledge.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        entry.ViewModel.AcknowledgeCommand.Execute(null);
         return true;
     }
 
@@ -703,34 +791,32 @@ internal sealed class ReminderCenterWindow : Window
         ReminderSnoozeOption option,
         DateTimeOffset? customBeijing = null)
     {
-        if (!_entries.TryGetValue(key, out var entry) || !entry.Snooze.IsEnabled)
+        if (!_entries.TryGetValue(key, out var entry) || !entry.ViewModel.IsSnoozeEnabled)
         {
             return false;
         }
 
-        entry.SnoozeChoice.SelectedItem = entry.SnoozeChoice.Items
-            .OfType<ComboBoxItem>()
-            .Single(item => Equals(item.Tag, option));
+        entry.ViewModel.SelectedSnoozeOption = option;
         if (option == ReminderSnoozeOption.Custom && customBeijing is { } custom)
         {
             var beijing = ChinaStandardTime.ToBeijingTime(custom);
-            entry.CustomDate.SelectedDate = beijing.Date;
-            entry.CustomHour.SelectedIndex = beijing.Hour;
-            entry.CustomMinute.SelectedIndex = beijing.Minute;
+            entry.ViewModel.CustomDate = beijing.Date;
+            entry.ViewModel.CustomHourIndex = beijing.Hour;
+            entry.ViewModel.CustomMinuteIndex = beijing.Minute;
         }
 
-        entry.Snooze.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        entry.ViewModel.SnoozeCommand.Execute(null);
         return true;
     }
 
     internal bool RequestComplete(ActiveReminderOccurrenceKey key)
     {
-        if (!_entries.TryGetValue(key, out var entry) || !entry.Complete.IsEnabled)
+        if (!_entries.TryGetValue(key, out var entry) || !entry.ViewModel.IsCompleteEnabled)
         {
             return false;
         }
 
-        entry.Complete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        entry.ViewModel.CompleteCommand.Execute(null);
         return true;
     }
 
@@ -741,7 +827,7 @@ internal sealed class ReminderCenterWindow : Window
             return false;
         }
 
-        entry.OpenSource.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        entry.ViewModel.OpenSourceCommand.Execute(null);
         return true;
     }
 
@@ -796,6 +882,7 @@ internal sealed class ReminderCenterWindow : Window
                 }
 
                 entry.RenderedRaised = true;
+                entry.ViewModel.MarkRendered();
                 EntryRendered?.Invoke(
                     this,
                     new ReminderCenterEntryEventArgs(entry.Item.Key));
@@ -814,7 +901,7 @@ internal sealed class ReminderCenterWindow : Window
             .OfType<Border>()
             .Select(row => _entries[(ActiveReminderOccurrenceKey)row.Tag])
             .FirstOrDefault();
-        var target = first?.Acknowledge.IsEnabled == true
+        var target = first?.ViewModel.IsAcknowledgeEnabled == true
             ? first.Acknowledge
             : first?.OpenSource;
         if (target is null)
@@ -838,66 +925,45 @@ internal sealed class ReminderCenterWindow : Window
             return;
         }
 
-        Keyboard.Focus(entry.Acknowledge.IsEnabled ? entry.Acknowledge : entry.OpenSource);
+        Keyboard.Focus(entry.ViewModel.IsAcknowledgeEnabled ? entry.Acknowledge : entry.OpenSource);
     }
 
-    private static void ShowFailure(ReminderCenterEntry entry, string message)
-    {
-        entry.Error.Text = message;
-        entry.Error.Visibility = Visibility.Visible;
-        AutomationProperties.SetName(entry.Error, message);
-        entry.Acknowledge.IsEnabled = false;
-        entry.Snooze.IsEnabled = false;
-        entry.Complete.IsEnabled = false;
-    }
+    private void OnViewModelAcknowledgeRequested(
+        object? sender,
+        ReminderCenterEntryEventArgs args) =>
+        AcknowledgeRequested?.Invoke(this, args);
 
-    private void RequestSnooze(ReminderCenterEntry entry)
-    {
-        var option = SelectedSnoozeOption(entry);
-        DateTimeOffset? customBeijing = null;
-        if (option == ReminderSnoozeOption.Custom)
-        {
-            if (entry.CustomDate.SelectedDate is not { } date ||
-                entry.CustomHour.SelectedIndex < 0 ||
-                entry.CustomMinute.SelectedIndex < 0)
+    private void OnViewModelSnoozeRequested(
+        object? sender,
+        ReminderCenterSnoozeEventArgs args) =>
+        SnoozeRequested?.Invoke(this, args);
+
+    private void OnViewModelCompleteRequested(
+        object? sender,
+        ReminderCenterEntryEventArgs args) =>
+        CompleteRequested?.Invoke(this, args);
+
+    private void OnViewModelOpenSourceRequested(
+        object? sender,
+        ReminderCenterEntryEventArgs args) =>
+        OpenSourceRequested?.Invoke(this, args);
+
+    private static void BindEntry(
+        DependencyObject target,
+        DependencyProperty property,
+        string path,
+        ReminderCenterEntryViewModel viewModel,
+        IValueConverter? converter = null,
+        BindingMode mode = BindingMode.Default) =>
+        BindingOperations.SetBinding(
+            target,
+            property,
+            new Binding(path)
             {
-                ShowCustomSnoozeError(entry.Item.Key, "请选择完整的自定义稍后日期和时间。");
-                return;
-            }
-
-            customBeijing = ChinaStandardTime.ToBeijingTime(
-                CountdownFormatting.ToUtc(
-                    date,
-                    entry.CustomHour.SelectedIndex,
-                    entry.CustomMinute.SelectedIndex,
-                    0));
-        }
-
-        ClearCustomError(entry);
-        SnoozeRequested?.Invoke(
-            this,
-            new ReminderCenterSnoozeEventArgs(entry.Item.Key, option, customBeijing));
-    }
-
-    private static ReminderSnoozeOption SelectedSnoozeOption(ReminderCenterEntry entry) =>
-        entry.SnoozeChoice.SelectedItem is ComboBoxItem { Tag: ReminderSnoozeOption option }
-            ? option
-            : ReminderSnoozeOption.TenMinutes;
-
-    private static void ClearCustomError(ReminderCenterEntry entry)
-    {
-        entry.CustomError.Text = string.Empty;
-        entry.CustomError.Visibility = Visibility.Collapsed;
-    }
-
-    private void UpdateCount()
-    {
-        _countText.Text = $"{_entries.Count} 条";
-        AutomationProperties.SetName(_countText, $"共 {_entries.Count} 条提醒");
-    }
-
-    private void UpdateAcknowledgeAllEnabled() =>
-        _acknowledgeAll.IsEnabled = _entries.Values.Any(entry => entry.Acknowledge.IsEnabled);
+                Source = viewModel,
+                Mode = mode,
+                Converter = converter
+            });
 
     private static StackPanel CreateIconTextContent(
         FrameworkElement icon,
@@ -1073,6 +1139,7 @@ internal sealed class ReminderCenterWindow : Window
 
     private sealed class ReminderCenterEntry(
         ReminderCenterItem item,
+        ReminderCenterEntryViewModel viewModel,
         Border row,
         Button acknowledge,
         Button snooze,
@@ -1087,6 +1154,8 @@ internal sealed class ReminderCenterWindow : Window
         TextBlock error)
     {
         public ReminderCenterItem Item { get; } = item;
+
+        public ReminderCenterEntryViewModel ViewModel { get; } = viewModel;
 
         public Border Row { get; } = row;
 

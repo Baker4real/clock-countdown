@@ -140,6 +140,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\MainWindow.xaml',
     'src\MinminCountdown\MainWindow.xaml.cs',
     'src\MinminCountdown\MinminCountdown.csproj',
+    'src\MinminCountdown\ReminderCenterViewModel.cs',
     'src\MinminCountdown\ReminderEditing.cs',
     'src\MinminCountdown\ReminderRulesEditorWindow.cs',
     'src\MinminCountdown\ReminderWindow.cs',
@@ -219,10 +220,11 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\InstanceActivation.cs' = '26A31C9A31EC7FF860E3102DBE23EFD840810CD31FDE0F232B91421B2F16D7CE'
     'src\MinminCountdown\MainWindow.xaml' = 'CFA2FD597B1018C4C50FC7723C52B33CD9D647697BF7F4B7F2869E0543F72842'
     'src\MinminCountdown\MainWindow.xaml.cs' = 'FB204008BE9C6E1896BCD78A479B1E176D5E32595D9E3B741CFD98E44D1D316E'
-    'src\MinminCountdown\MinminCountdown.csproj' = '5F8A813454B10FD6EE7A6401F7BE2F566C9C13D630715B36BE00C74B33A06E70'
+    'src\MinminCountdown\MinminCountdown.csproj' = '2E3F0356C942E1838E9A0C889D712894F604BC6AF9F1411C1987970AC3AF4E58'
+    'src\MinminCountdown\ReminderCenterViewModel.cs' = '908ACB085AF79BC64448F988F717C57AEDE0C6C1FD906E0412975D59D0E03784'
     'src\MinminCountdown\ReminderEditing.cs' = '952F7935F4971A7BDFA145938525A7E7D14F8CE4305EA8ECEC52F4AA5E2FB138'
     'src\MinminCountdown\ReminderRulesEditorWindow.cs' = '6465D072A3848AD674E3F3CB5733754BC0A41F8ACB50D87B9892ED71F232DEB9'
-    'src\MinminCountdown\ReminderWindow.cs' = '51DD8F0B6B0D74A3DFB2450367A00C131D91DE2C613C39C071D31A45BA8F8091'
+    'src\MinminCountdown\ReminderWindow.cs' = '8446E50B82A11A839349FDB013274799B4495918E3031928C35CC0B81D52FA29'
     'src\MinminCountdown\RuntimeProtocol.cs' = '37E5585174890F4B748DE4394440CE9D674B675EEAD0775472E2222F0AAC9EE2'
     'src\MinminCountdown\SettingsRecoveryWindow.cs' = 'CD632E4F65173D771D1AC3A36DF5749F2A408F928EBF67FCF8E1FEC664672363'
     'src\MinminCountdown\TrayIconHost.cs' = 'E966A64CA77DD99BDF7BB81A3952654F9AE706420C1AEAB31D0BC9FEAFABFA3F'

@@ -5,10 +5,10 @@
         xmlns:focus="clr-namespace:MinminCountdown"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="敏敏子倒计时"
-        Width="760"
-        Height="880"
-        MinWidth="760"
-        MinHeight="880"
+        Width="1165"
+        Height="1350"
+        MinWidth="1165"
+        MinHeight="1350"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize"
@@ -37,11 +37,15 @@
   </shell:WindowChrome.WindowChrome>
 
   <Grid Background="{DynamicResource BackgroundBrush}">
-    <Viewbox x:Name="MainScaleViewport"
-             Stretch="Uniform"
-             StretchDirection="Both">
-      <!-- 1165 x 1350 设计坐标锚点：只承担 Viewbox 缩放原点与 Popup 裁剪基准，
-           不参与业务内容的布局测量（issue #135）。 -->
+    <!-- 1165 x 1350 is the real DIP layout.  The named grid is retained as the
+         reference surface and popup clipping root; it no longer performs a
+         non-integer Viewbox transform. -->
+    <Grid x:Name="MainScaleViewport"
+          Width="1165"
+          Height="1350"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Center"
+          ClipToBounds="True">
       <Canvas x:Name="MainLayoutSurface"
               Width="1165"
               Height="1350"
@@ -2236,6 +2240,6 @@
           </Canvas>
         </Grid>
       </Canvas>
-    </Viewbox>
+    </Grid>
   </Grid>
 </Window>

@@ -792,8 +792,8 @@ public sealed partial class MainWindow
                 editorLabelsVisible,
                 Width >= MinWidth &&
                 Height >= MinHeight &&
-                Math.Abs(MinWidth - 760) <= 0.1 &&
-                Math.Abs(MinHeight - 880) <= 0.1,
+                Math.Abs(MinWidth - 1165) <= 0.1 &&
+                Math.Abs(MinHeight - 1350) <= 0.1,
                 filterPopup.EscapeReturnsFocus &&
                 tagManagerPopup.EscapeReturnsFocus &&
                 tagSelectorPopup.EscapeReturnsFocus,
@@ -1993,14 +1993,15 @@ public sealed partial class MainWindow
             var helpClosesOnBlur = helpTooltip is null || !helpTooltip.IsOpen;
             var helpFocusShowsHelpText = helpOpensOnFocus && helpTextProvided && helpClosesOnBlur;
 
-            // 默认缩放（≈0.652）后帮助/完成勾选命中 ≥24 DIP：槽位 38 设计坐标 × 实测缩放 ≥24。
+            // #208: the 1165 x 1350 canvas is laid out at 1:1 DIP, so the
+            // compact controls keep their 38 DIP hit slots without a Viewbox.
             var scale = MainScaleViewport.ActualWidth > 0
                 ? MainScaleViewport.ActualWidth / MainLayoutSurface.Width
                 : 0;
             var compactHitTargetsMeetScaledFloor =
                 Math.Abs(CountdownReminderHelp.ActualWidth - 38) <= 1 &&
                 Math.Abs(CountdownReminderHelp.ActualHeight - 38) <= 1 &&
-                Math.Abs(scale - (760d / 1165d)) <= 0.02 &&
+                Math.Abs(scale - 1) <= 0.02 &&
                 38 * scale >= 24;
 
             // 筛选芯片与日历翻月按钮向同一紧凑下限靠拢（高度 36、相邻间距 8）。
@@ -2640,10 +2641,10 @@ public sealed partial class MainWindow
                         continue;
                     }
 
-                    // 竖长 2:3：块高固定为基准块宽的 1.5 倍（主项 42x63、次项 38x57），
+                    // 竖长 2:3：块高固定为基准块宽的 1.5 倍（主项 52x78、次项 46x69），
                     // 长数值只允许加宽色块，不允许压扁比例或缩单位字。
-                    var expectedBaseWidth = isPrimary ? 42 : 38;
-                    var expectedHeight = isPrimary ? 63 : 57;
+                    var expectedBaseWidth = isPrimary ? 52 : 46;
+                    var expectedHeight = isPrimary ? 78 : 69;
                     var expectedRadius = expectedBaseWidth / 4.0;
                     if (Math.Abs(block.Height - expectedHeight) > 0.01 ||
                         block.MinWidth < expectedBaseWidth - 0.01 ||

@@ -101,7 +101,7 @@ internal static class ValidationReport
     }
 
     // #134 真实运行态 UI 捕获 seam：在隔离夹具的临时窗口上按固定验收轴捕获真实 WPF 帧，
-    // 证据统一落盘可审查。变体覆盖 1165×1350 设计坐标、常态窗口（XAML 默认与最小 760×880）、
+    // 证据统一落盘可审查。变体覆盖 1165×1350 真实 DIP 画布和常态窗口（同尺寸）、
     // PerMonitorV2 动态 DPI 变更（WM_DPICHANGED 等比放大 1.5 倍）与文字放大（144 DPI 光栅化）。
     // 任何变体失败都先把原始异常写入 <变体>.error.txt 再原样重抛；不以静态参考图、
     // 空白画布或合成替代帧顶替实拍证据。窗口为 probe 专用临时窗口，设置写入隔离临时根。
@@ -214,11 +214,12 @@ internal static class ValidationReport
                 designHeight);
         });
 
-        // 变体三：常态窗口。XAML 声明的默认与最小窗口 760×880 DIP，Viewbox 等比缩放设计画布。
-        RunVariant("main-normal-760x880-notes-empty", () =>
+        // 变体三：常态窗口。XAML 声明的默认与最小窗口就是 1165×1350
+        // DIP；真实布局直接在该坐标系中排列，不再经过 Viewbox。
+        RunVariant("main-normal-1165x1350-notes-empty", () =>
         {
-            const int normalWidth = 760;
-            const int normalHeight = 880;
+            const int normalWidth = 1165;
+            const int normalHeight = 1350;
             ShowNotesWorkspace();
             window.Width = normalWidth;
             window.Height = normalHeight;
@@ -228,11 +229,11 @@ internal static class ValidationReport
                 capture,
                 normalWidth,
                 normalHeight,
-                "main-normal-760x880-notes-empty");
+                "main-normal-1165x1350-notes-empty");
             var entry = RecordUiCaptureSeamEntry(
                 evidenceDirectory,
-                "main-normal-760x880-notes-empty",
-                "normal-window; XAML default/min 760x880 DIP; Viewbox uniform scale; notes empty",
+                "main-normal-1165x1350-notes-empty",
+                "normal-window; XAML default/min 1165x1350 DIP; direct layout; notes empty",
                 root,
                 capture,
                 normalWidth,
@@ -294,7 +295,7 @@ internal static class ValidationReport
                     issue = "#134 real WPF capture and DPI acceptance seam",
                     awarenessElevatedByProbe = awarenessElevatedByProbe,
                     designCanvas = new { width = designWidth, height = designHeight },
-                    normalWindow = new { width = 760, height = 880 },
+                    normalWindow = new { width = 1165, height = 1350 },
                     dpiChange = dpiChangeTelemetry,
                     entries = entries.Select(entry => new
                     {
@@ -2893,7 +2894,9 @@ internal static class ValidationReport
             return new MainReferenceDecorationValidation(false, false);
         }
 
-        var scaleViewport = Required<Viewbox>(main, "MainScaleViewport");
+        // #208: the main surface is laid out directly in DIP.  Keep the
+        // stable name for evidence consumers, but reject a Viewbox transform.
+        var scaleViewport = Required<Grid>(main, "MainScaleViewport");
         var layoutSurface = Required<Canvas>(main, "MainLayoutSurface");
         var decorationLayer = Required<Canvas>(main, "MainReferenceDecorationLayer");
         var contentProjection = Required<Grid>(main, "MainContentProjection");
@@ -2945,7 +2948,9 @@ internal static class ValidationReport
                     notesScene.Width == layoutSurface.Width &&
                     notesScene.Height == layoutSurface.Height &&
                     !HasNonIdentityTransform(contentProjection) &&
-                    scaleViewport.Stretch == Stretch.Uniform;
+                    scaleViewport.Width == 1165 &&
+                    scaleViewport.Height == 1350 &&
+                    !HasNonIdentityTransform(scaleViewport);
                 layerOrderMatches &=
                     Panel.GetZIndex(decorationLayer) < Panel.GetZIndex(contentProjection) &&
                     Panel.GetZIndex(noteEditorPanel) < Panel.GetZIndex(noteTextLabel);

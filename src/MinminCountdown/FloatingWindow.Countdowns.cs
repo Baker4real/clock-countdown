@@ -240,8 +240,8 @@ public sealed partial class FloatingWindow
             var fallback = CountdownRemainingText(
                 remaining,
                 isPrimary
-                    ? (double)FindResource("TypeBodyFontSize")
-                    : (double)FindResource("TypeCaptionFontSize"),
+                    ? (double)FindResource("SecondaryWindowTitleFontSize")
+                    : (double)FindResource("SecondaryWindowSectionFontSize"),
                 FontWeights.SemiBold);
             FitSingleLineText(fallback, isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth);
             fallback.Width = isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth;
@@ -252,8 +252,10 @@ public sealed partial class FloatingWindow
             return fallback;
         }
 
-        var valueFontPrimary = (double)FindResource("TypeH2FontSize");
-        var valueFontSecondary = (double)FindResource("TypeCaptionFontSize");
+        // #198: keep the floating window on the same enlarged countdown
+        // hierarchy while retaining its compact 520 x 390 geometry.
+        var valueFontPrimary = (double)FindResource("SecondaryWindowTitleFontSize");
+        var valueFontSecondary = (double)FindResource("SecondaryWindowSectionFontSize");
         const double blockWidthPrimary = 28;
         const double blockWidthSecondary = 20;
         const double blockHeightPrimary = 42;

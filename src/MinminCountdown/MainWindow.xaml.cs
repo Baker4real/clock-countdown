@@ -20,7 +20,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 {
     private const double CountdownRemainingColumnWidth = 300;
     private const double CountdownRemainingLeftMargin = 16;
-    private const double CountdownRemainingBaseFontSize = 20;
+    // #198: the remaining time is the primary visual anchor.  These are real
+    // DIP values now that the main window no longer scales a design canvas.
+    private const double CountdownRemainingBaseFontSize = 26;
     private const double CountdownRemainingMinimumFontSize = 14;
     // #197：分格单位字收敛到字号阶梯的 caption 档，不随列宽缩小。
     private const double CountdownRemainingUnitFontSize = 13;
@@ -1529,15 +1531,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         // #148：主窗口分格与悬浮窗同一套竖长口径（约 2:3、单位在块外、间距约块宽三分之一），
-        // 主窗走设计坐标：主项 42x63、次项 38x57，圆角约短边 1/4；数值优先压内边距与间距，
+        // 主窗真实 DIP：主项 52x78、次项 46x69，圆角约短边 1/4；数值优先压内边距与间距，
         // 最后才在辅助下限档之上收缩数值字号；单位字固定在下限档、不得缩小硬塞。
-        const double valueFontPrimary = 19;
-        const double valueFontSecondary = 17;
-        const double blockWidthPrimary = 42;
-        const double blockWidthSecondary = 38;
-        const double blockHeightPrimary = 63;
-        const double blockHeightSecondary = 57;
-        const double minimumValueFontSize = 13;
+        const double valueFontPrimary = 26;
+        const double valueFontSecondary = 22;
+        const double blockWidthPrimary = 52;
+        const double blockWidthSecondary = 46;
+        const double blockHeightPrimary = 78;
+        const double blockHeightSecondary = 69;
+        const double minimumValueFontSize = 14;
         const double blockWidthReserve = 3;
         const double unitGap = 3;
         var valueFontSize = host.IsPrimary ? valueFontPrimary : valueFontSecondary;
@@ -1577,7 +1579,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return valueBlocks[index].DesiredSize.Width;
         }
 
-        // 分格几何按设计坐标计量（主窗整体在 Viewbox 内缩放），文本测量固定 1.0 pixelsPerDip。
+        // 分格几何在真实 DIP 中计量，文本测量固定 1.0 pixelsPerDip。
         double RequiredWidth(double font, double padding, double gap)
         {
             var total = 0d;
@@ -2110,7 +2112,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Text = details
             };
-            // #197：摘要使用 H2 阶梯，Viewbox 后约 13 DIP，保持长便签提醒的可读下限。
+            // #197/#208：摘要使用 H2 阶梯并直接以真实 DIP 渲染，保持长便签提醒的可读下限。
             detailText.SetResourceReference(TextBlock.FontSizeProperty, "TypeH2FontSize");
             detailText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             AutomationProperties.SetAutomationId(detailText, NoteCardReminderSummaryAutomationId);

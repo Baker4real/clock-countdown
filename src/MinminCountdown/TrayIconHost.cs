@@ -1,6 +1,12 @@
 using System.Drawing;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
-using Forms = System.Windows.Forms;
+using H.NotifyIcon;
+using MediaColor = System.Windows.Media.Color;
+using MediaColorConverter = System.Windows.Media.ColorConverter;
+using MediaFontFamily = System.Windows.Media.FontFamily;
 
 namespace MinminCountdown;
 
@@ -70,11 +76,12 @@ internal sealed class TrayIconHost : ITrayIconHost
     private readonly Action _exit;
     private readonly Action? _resetPosition;
     private readonly Icon _icon;
-    private readonly Forms.ToolStripMenuItem _restoreItem;
-    private readonly Forms.ToolStripMenuItem _resetPositionItem;
-    private readonly Forms.ToolStripMenuItem _exitItem;
-    private readonly Forms.ContextMenuStrip _menu;
-    private readonly Forms.NotifyIcon _notifyIcon;
+    private readonly MenuItem _restoreItem;
+    private readonly MenuItem _resetPositionItem;
+    private readonly MenuItem _exitItem;
+    private readonly ContextMenu _menu;
+    private readonly TaskbarIcon _taskbarIcon;
+    private bool _visible;
     private bool _disposed;
 
     public TrayIconHost(
@@ -89,55 +96,59 @@ internal sealed class TrayIconHost : ITrayIconHost
         _exit = exit;
         _resetPosition = resetPosition;
         _icon = LoadIcon(iconPath);
-        _restoreItem = new Forms.ToolStripMenuItem("打开悬浮窗");
+        _restoreItem = new MenuItem { Header = "打开悬浮窗" };
         // #156：非拖动的窗口复位/贴边入口——悬浮窗被拖出屏幕时，托盘仍可达并把窗夹回工作区。
-        _resetPositionItem = new Forms.ToolStripMenuItem("复位窗口位置");
-        _exitItem = new Forms.ToolStripMenuItem("退出");
-        _menu = new Forms.ContextMenuStrip
+        _resetPositionItem = new MenuItem { Header = "复位窗口位置" };
+        _exitItem = new MenuItem { Header = "退出" };
+        _menu = new ContextMenu
         {
-            ShowImageMargin = false
+            Background = Brush("#FFFDFC"),
+            BorderBrush = Brush("#F6DFD3"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4),
+            HasDropShadow = true
         };
-        _menu.Items.AddRange([_restoreItem, _resetPositionItem, _exitItem]);
-        _notifyIcon = new Forms.NotifyIcon
+        _menu.Resources.Add(typeof(MenuItem), CreateMenuItemStyle());
+        _menu.Items.Add(_restoreItem);
+        _menu.Items.Add(_resetPositionItem);
+        _menu.Items.Add(_exitItem);
+        _taskbarIcon = new TaskbarIcon
         {
-            ContextMenuStrip = _menu,
+            ContextMenu = _menu,
             Icon = _icon,
-            Text = "敏敏子倒计时 - 双击打开",
-            Visible = false
+            ToolTipText = "敏敏子倒计时 - 双击打开",
+            Visibility = Visibility.Collapsed
         };
         _restoreItem.Click += (_, _) => Invoke(_restore);
         _resetPositionItem.Click += (_, _) => Invoke(ResetPosition);
         _exitItem.Click += (_, _) => Invoke(_exit);
-        _notifyIcon.MouseDoubleClick += (_, eventArgs) =>
-        {
-            if (eventArgs.Button == Forms.MouseButtons.Left)
-            {
-                Invoke(_restore);
-            }
-        };
+        _taskbarIcon.TrayLeftMouseDoubleClick += (_, _) => Invoke(_restore);
     }
 
-    public bool IsVisible => !_disposed && _notifyIcon.Visible;
+    public bool IsVisible => !_disposed && _visible;
 
     public void Show()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _notifyIcon.Visible = true;
+        _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
+        _taskbarIcon.TrayIcon.Show();
+        _visible = true;
     }
 
     public void Hide()
     {
         if (!_disposed)
         {
-            _notifyIcon.Visible = false;
+            _taskbarIcon.TrayIcon.Hide();
+            _visible = false;
         }
     }
 
-    public void InvokeRestoreForValidation() => _restoreItem.PerformClick();
+    public void InvokeRestoreForValidation() => _restoreItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
-    public void InvokeResetPositionForValidation() => _resetPositionItem.PerformClick();
+    public void InvokeResetPositionForValidation() => _resetPositionItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
-    public void InvokeExitForValidation() => _exitItem.PerformClick();
+    public void InvokeExitForValidation() => _exitItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
     public void Dispose()
     {
@@ -146,10 +157,11 @@ internal sealed class TrayIconHost : ITrayIconHost
             return;
         }
 
-        _notifyIcon.Visible = false;
-        _notifyIcon.Dispose();
-        _menu.Dispose();
+        _taskbarIcon.TrayIcon.Hide();
+        _taskbarIcon.Dispose();
+        _menu.IsOpen = false;
         _icon.Dispose();
+        _visible = false;
         _disposed = true;
     }
 
@@ -165,6 +177,35 @@ internal sealed class TrayIconHost : ITrayIconHost
     }
 
     private void ResetPosition() => _resetPosition?.Invoke();
+
+    private static Style CreateMenuItemStyle()
+    {
+        var style = new Style(typeof(MenuItem));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, Brush("#3B190D")));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#FFFDFC")));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty, Brush("#D4526A")));
+        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(16, 9, 16, 9)));
+        style.Setters.Add(new Setter(Control.FontFamilyProperty, new MediaFontFamily("Microsoft YaHei UI")));
+        style.Setters.Add(new Setter(Control.FontSizeProperty, 14d));
+
+        var highlighted = new Trigger
+        {
+            Property = MenuItem.IsHighlightedProperty,
+            Value = true
+        };
+        highlighted.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#F6DFD3")));
+        highlighted.Setters.Add(new Setter(Control.ForegroundProperty, Brush("#C23E68")));
+        style.Triggers.Add(highlighted);
+        return style;
+    }
+
+    private static SolidColorBrush Brush(string hex)
+    {
+        var color = (MediaColor)MediaColorConverter.ConvertFromString(hex)!;
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
 
     private static Icon LoadIcon(string iconPath)
     {

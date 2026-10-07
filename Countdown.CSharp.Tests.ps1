@@ -3528,6 +3528,20 @@ if (-not (Test-Path -LiteralPath $verificationRunner -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $application -PathType Leaf)) {
     throw "未找到待验证的 C# 应用宿主：$application。请先运行 Build-CountdownApplication.ps1。"
 }
+$publishedPayloadManifest = Join-Path $PSScriptRoot 'app\published-payload.json'
+if (-not (Test-Path -LiteralPath $publishedPayloadManifest -PathType Leaf)) {
+    throw "未找到 C# 发布载荷清单：$publishedPayloadManifest。请先运行 Build-CountdownApplication.ps1。"
+}
+$publishedPayload = Get-Content -LiteralPath $publishedPayloadManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+$publishedPayloadPaths = @($publishedPayload.files | ForEach-Object { [string] $_.path })
+foreach ($trayDependency in @(
+        'app\H.NotifyIcon.Wpf.dll',
+        'app\H.NotifyIcon.dll',
+        'app\H.GeneratedIcons.System.Drawing.dll',
+        'app\System.Drawing.Common.dll'
+    )) {
+    Assert-Equal $true ($trayDependency -in $publishedPayloadPaths) "H.NotifyIcon 托盘发布闭包包含 $trayDependency"
+}
 $dayRasterComponentFiles = @(
     'component-day-outer-shell.png',
     'component-day-header-blank.png',
@@ -4345,6 +4359,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $mainWindowCodeSource -match 'NameControl\(ClearNoteDateFilter, "清除便签日期筛选"\);') '筛选「清除」的可访问名说明清除的是便签日期筛选（#156 源码契约）'
     $trayIconHostSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\TrayIconHost.cs') -Raw -Encoding UTF8
+    $trayProjectSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\MinminCountdown.csproj') -Raw -Encoding UTF8
     $floatingTraySource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingTrayController.cs') -Raw -Encoding UTF8
     $floatingWindowHostSource = Get-Content -LiteralPath (
@@ -4352,6 +4368,19 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $trayIconHostSource -match '"复位窗口位置"' -and
         $trayIconHostSource -match 'InvokeResetPositionForValidation') '托盘菜单提供「复位窗口位置」入口（#156 源码契约）'
+    Assert-Equal $true (
+        $trayProjectSource -match '<PackageReference Include="H\.NotifyIcon\.Wpf" Version="2\.4\.1"' -and
+        $trayProjectSource -notmatch '<UseWindowsForms>true</UseWindowsForms>' -and
+        $trayProjectSource -notmatch 'System\.Windows\.Forms') '托盘使用精确锁定的 H.NotifyIcon.Wpf 2.4.1 且应用项目不再启用 WinForms（#202 依赖契约）'
+    Assert-Equal $true (
+        $trayIconHostSource -match 'using H\.NotifyIcon;' -and
+        $trayIconHostSource -match 'TaskbarIcon' -and
+        $trayIconHostSource -match 'TrayLeftMouseDoubleClick' -and
+        $trayIconHostSource -notmatch 'System\.Windows\.Forms' -and
+        $trayIconHostSource -match '#FFFDFC' -and
+        $trayIconHostSource -match '#3B190D' -and
+        $trayIconHostSource -match '#F6DFD3' -and
+        $trayIconHostSource -match '#D4526A') 'H.NotifyIcon 托盘保留双击恢复与四项入口，并使用局部 WPF 暖粉菜单样式（#202）'
     Assert-Equal $true (
         $floatingTraySource -match 'private void ResetWindowPosition\(\) => _floatingWindow\.ResetPositionIntoWorkArea\(\);') '托盘复位动作直达悬浮窗夹取实现（#156 源码契约）'
     $resetPositionBody = [regex]::Match(

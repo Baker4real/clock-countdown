@@ -5125,6 +5125,26 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainMouseClickDoesNotLeaveFocusRing) '鼠标点击后不残留键盘焦点环'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardFocusRingShowsOnTab) 'Tab 键聚焦时显示键盘焦点环'
     Assert-Equal $true ([bool] $adapterValidation.MainSelectedTabWeightDominates) '选中页签使用 PinkTint 底与 SemiBold 权重'
+    Assert-Equal $true ([bool] $adapterValidation.MainSegmentIndicatorGeometryMatches) '主窗页签与便签状态分段指示条最终几何与选中项对齐（#196）'
+    Assert-Equal $true ([bool] $adapterValidation.MainSegmentIndicatorReducedMotionIsImmediate) '系统关闭动画时选中指示条直接到达目标几何（#196）'
+    Assert-Equal $true ([bool] $adapterValidation.MainSegmentIndicatorRapidSwitchStaysAligned) '连续快速切换不会把选中指示条留在旧分段（#196）'
+    $segmentIndicatorSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\SegmentIndicator.cs') -Raw -Encoding UTF8
+    Assert-Equal $true (
+        $mainWindowXamlSource -match 'x:Name="MainWorkspaceTabIndicatorLayer"' -and
+        $mainWindowXamlSource -match 'x:Name="MainWorkspaceTabIndicator"' -and
+        $mainWindowXamlSource -match 'x:Name="NotesSegmentIndicatorLayer"' -and
+        $mainWindowXamlSource -match 'x:Name="NotesSegmentIndicator"') '主窗页签与便签状态分段声明独立选中指示条层（#196 源码契约）'
+    Assert-Equal $true (
+        $mainWindowCodeSource -match 'new SegmentIndicator\(' -and
+        $mainWindowCodeSource -match 'UpdateWorkspaceTabIndicator\(\)' -and
+        $mainWindowCodeSource -match 'UpdateNotesSegmentIndicator\(') '主窗状态切换会把指示条目标更新到选中项（#196 源码契约）'
+    Assert-Equal $true (
+        $segmentIndicatorSource -match 'MotionIndicatorDuration' -and
+        $segmentIndicatorSource -match 'HandoffBehavior\.SnapshotAndReplace' -and
+        $segmentIndicatorSource -match 'EffectiveDuration\(' -and
+        $segmentIndicatorSource -match 'clientAreaAnimationsEnabled' -and
+        $segmentIndicatorSource -match 'TransformGroup') '指示条动画消费 160ms token、从当前值可中断续接并提供 reduced-motion 即时等价（#196 源码契约）'
     Assert-Equal $true ([bool] $adapterValidation.MotionClientAreaAnimationSwitchReadable) '已接入系统客户区动画开关读取点（未来动效即时等价入口）'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxArrowIsNotTabStop) '下拉箭头不是独立 Tab 停靠点'

@@ -4221,7 +4221,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.SegmentActivePillsUseFullRoundedCorners) '页签与分段激活胶囊短边一半全圆角（主窗页签 27/分段 22/悬浮 18）（#154）'
     Assert-Equal $true ([bool] $adapterValidation.CountdownHandwrittenDecoOutOfFormMeasurement) '倒计时页手写体落装饰层：不参与表单测量、不可点（#154）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingShellLargeShadowRemoved) '悬浮外壳去掉字面色大面积投影，深度由 1px 暖边与 raster 表达（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.MainWindowSquareChromeNoTransparency) '管理窗方角 OS 窗铬、圆角只来自装饰 raster、不开整窗透明（#154）'
+    Assert-Equal $true ([bool] $adapterValidation.MainWindowSquareChromeNoTransparency) '管理窗请求 Windows 11 DWM 原生圆角与系统阴影、失败安全降级且不开整窗透明（#200）'
     Assert-Equal $true ([bool] $adapterValidation.TabsRenderAboveDecorationBand) '#135 工作台骨架次序：页签在装饰带之上（#154）'
     # #155 删除撤销、完成确认与脏退出（新增 3 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.DeleteUndoRestoresLastDelete) '删除成功后状态区提供短时「撤销」：确认取消为安全默认、撤销同事务恢复记录与规则提醒状态、只保留最近一次、入口短时过期（#155）'
@@ -4507,7 +4507,16 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $mainWindowRootElement.Length -gt 0 -and
         -not $mainWindowRootElement.Contains('AllowsTransparency')) '管理窗根元素不开整窗透明（弹层 Popup 的透明不受限）（#154 源码契约）'
     Assert-Equal $true (
-        $mainWindowXamlSource -match '<shell:WindowChrome.WindowChrome>(?s).*?CornerRadius="0"(?s).*?GlassFrameThickness="0"') '管理窗 OS 窗铬方角（圆角只来自装饰 raster）（#154 源码契约）'
+        $mainWindowXamlSource -match '<shell:WindowChrome.WindowChrome>(?s).*?CornerRadius="0"(?s).*?GlassFrameThickness="0"') '管理窗保留无透明 WPF 窗铬基线，圆角交给 DWM（#200 源码契约）'
+    $dwmWindowChromeSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\DwmWindowChrome.cs') -Raw -Encoding UTF8
+    Assert-Equal $true (
+        $mainWindowNotesSource -match 'SourceInitialized\s*\+=' -and
+        $dwmWindowChromeSource -match 'DWMWA_WINDOW_CORNER_PREFERENCE' -and
+        $dwmWindowChromeSource -match 'DWMWCP_ROUND' -and
+        $dwmWindowChromeSource -match 'DwmSetWindowAttribute' -and
+        $dwmWindowChromeSource -match 'MainWindowDwmRoundedCornersFallback' -and
+        $dwmWindowChromeSource -match 'catch \(Exception') '主窗口 SourceInitialized 请求 Windows 11 DWM 原生圆角，失败只记录降级且不启用整窗透明（#200 源码契约）'
     Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
     Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '兼容字段由桌面工作区真实 interface 行为计算'
     Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolModuleDeep) '兼容字段由启动验收真实 interface 行为计算'

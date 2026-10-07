@@ -312,7 +312,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 视觉铬与窗铬合同（#154）
 
-- **管理窗口方角铬 + 装饰 raster 圆角**：管理窗口是无边框 OS 窗（`WindowStyle=None`），`WindowChrome` 的 `CornerRadius=0`、`GlassFrameThickness=0`，根元素不开 `AllowsTransparency`、不为此打开整窗透明；窗口可见圆角只来自装饰 raster（`MainReferenceDecorationLayer` 的两张整幅装饰图），装饰层 `IsHitTestVisible=False`。运行态由 `MainWindowSquareChromeNoTransparency` 探针钉住。
+- **管理窗口原生 DWM 圆角与系统阴影**：管理窗口继续使用不透明的无边框 OS 窗（`WindowStyle=None`），`WindowChrome` 保持 `CornerRadius=0`、`GlassFrameThickness=0`，根元素不开 `AllowsTransparency`、不为此打开整窗透明。首个 HWND 创建后，主窗口通过 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND)` 请求 Windows 11 DWM 绘制系统圆角与投影；DWM 不可用、系统低于 Windows 11 或隔离桌面不支持时保持现有窗铬，写入 `MainWindowDwmRoundedCornersFallback` 诊断事件且不抛异常。装饰 raster（`MainReferenceDecorationLayer`）只承载内容、仍 `IsHitTestVisible=False`，不模拟窗体外壳圆角。兼容字段 `MainWindowSquareChromeNoTransparency` 现用于钉住上述无透明窗铬、DWM 请求或安全降级状态。
 - **页签在装饰带之上（#135 工作台骨架裁决）**：倒计时方向稿中「装饰带在页签之上」的构图不作为实现目标；实现保持 §5 工作台骨架——命令栏（倒计时/便签页签、筛选、标签、数量）位于内容投影层（`MainContentProjection`，ZIndex 2），装饰 raster 层（`MainReferenceDecorationLayer`，ZIndex 1）在其下且不可命中。运行态由 `TabsRenderAboveDecorationBand` 探针钉住。
 - **矢量窗铬**：管理窗口最小化/关闭按钮与悬浮窗头部命令使用同一套矢量路径语言（12x12 坐标系、2px 圆头描边、描边绑定按钮前景——关闭为 `DangerBrush`）：最小化 `M 2,10 L 12,10`，关闭 `M 2,2 L 12,12 M 12,2 L 2,12`；不再是 `−`/`×` 文本字形。运行态由 `MainWindowChromeButtonsUseVectorPaths` 探针钉住。
 - **悬浮外壳深度**：悬浮窗外壳不用字面色大面积投影（原 `TaskCard` 上的 `DropShadowEffect #6F4A3C/Blur24/ShadowDepth4/Opacity0.16` 已移除）；深度继续由 1px 暖边、背景角色、留白与 raster 表达（§5 结构基因 4）。现役主行动按钮无投影，不引入「主按钮级极轻投影」的第二种深度语言；未来若引入，投影颜色必须走 token 且达到主按钮焦点色那一级的极轻存在感。运行态由 `FloatingShellLargeShadowRemoved` 探针钉住。

@@ -72,6 +72,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _syncingNoteSearch;
     private bool _loadingCountdownEditor;
     private bool _mouseFocusPending;
+    private DwmWindowChromeResult _dwmWindowChromeResult = DwmWindowChromeResult.NotAttempted;
     private CountdownReminderMode _countdownReminderMode = CountdownReminderMode.None;
     private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();
     private IReadOnlyList<ReminderRule> _noteReminderRules = Array.Empty<ReminderRule>();
@@ -157,6 +158,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         LoadPreferences();
         ShowWorkspace(WorkspaceKind.Countdowns);
         RefreshAll();
+        SourceInitialized += (_, _) =>
+        {
+            _dwmWindowChromeResult = DwmWindowChrome.ApplyMainWindow(this, _logger);
+        };
         Loaded += (_, _) =>
         {
             CountdownTab.Focus();
@@ -168,6 +173,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     public event EventHandler? MinimizeToTrayRequested;
 
     internal WorkspaceKind CurrentWorkspace => _workspace;
+
+    internal DwmWindowChromeResult DwmWindowChromeResultForValidation =>
+        _dwmWindowChromeResult;
 
     internal string? EditingCountdownId => _editingCountdownId;
 

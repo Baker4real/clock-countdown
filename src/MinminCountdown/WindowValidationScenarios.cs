@@ -1034,7 +1034,7 @@ public sealed partial class MainWindow
     /// <summary>
     ///     #154：视觉铬探针——筛选漏斗实心在现役捕获口径可识别、控件图标描边统一且无重复搜索镜、
     ///     管理窗最小/关闭为矢量窗铬、页签与分段激活胶囊短边一半全圆角、倒计时页手写体落装饰层、
-    ///     管理窗方角铬不开整窗透明、页签在装饰带之上（#135 工作台骨架次序）。
+    ///     管理窗请求 DWM 原生圆角与系统阴影且不开整窗透明、页签在装饰带之上（#135 工作台骨架次序）。
     /// </summary>
     internal MainVisualChromeScenarios ProbeVisualChromeScenarios()
     {
@@ -1122,9 +1122,13 @@ public sealed partial class MainWindow
                         ReferenceEquals(textBlock.FontFamily, decoFont) &&
                         textBlock.Text.Length > 0);
 
-            // AC6：管理窗方角铬——WindowChrome CornerRadius 0、GlassFrame 0、不开整窗透明；
-            // 圆角只来自装饰 raster（两张整幅装饰图不可命中）。
+            // AC6（#154/#200）：管理窗保留不透明 WPF 窗铬基线（CornerRadius 0、
+            // GlassFrame 0），首个 HWND 创建后请求 Windows 11 DWM 原生圆角与系统阴影；
+            // 不支持 DWM 时安全降级到既有窗铬并由诊断日志记录，装饰 raster 仍不可命中。
             var windowChrome = System.Windows.Shell.WindowChrome.GetWindowChrome(this);
+            var dwmWindowChromeConfigured =
+                DwmWindowChromeResultForValidation is
+                    DwmWindowChromeResult.Applied or DwmWindowChromeResult.Fallback;
             var mainWindowSquareChromeNoTransparency =
                 !AllowsTransparency &&
                 WindowStyle == WindowStyle.None &&
@@ -1132,6 +1136,7 @@ public sealed partial class MainWindow
                 windowChrome.CornerRadius == new CornerRadius(0) &&
                 windowChrome.GlassFrameThickness == new Thickness(0) &&
                 Background is not null &&
+                dwmWindowChromeConfigured &&
                 !CountdownReferenceDecoration.IsHitTestVisible &&
                 !NotesReferenceDecoration.IsHitTestVisible;
 
@@ -4409,7 +4414,7 @@ internal sealed record MainNoteListPolishScenarios(
 
 /// <summary>
 ///     #154：视觉铬探针结果——漏斗实心可识别、图标描边统一无重复搜索镜、矢量窗铬、
-///     激活胶囊全圆角、倒计时页手写体装饰层化、方角窗铬、页签在装饰带之上。
+///     激活胶囊全圆角、倒计时页手写体装饰层化、DWM 原生圆角与系统阴影、页签在装饰带之上。
 /// </summary>
 internal sealed record MainVisualChromeScenarios(
     bool FilterFunnelIconSurvivesAliasedCapture,

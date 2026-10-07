@@ -852,7 +852,8 @@ internal static class ValidationReport
             ValidationExercises.RunMainKeyboardNavigationGateIsolationBehavior();
         // #153：便签列表排版 / 芯片 / 空态 / 筛选标签 / 键盘与间距 token 探针消费与门禁评估。
         var noteListPolish = mainUiPolish.NoteListPolish;
-        // #154：视觉铬探针消费——漏斗/图标描边/矢量窗铬/胶囊圆角/装饰层/方角铬/页签次序；
+        // #154/#200：视觉铬探针消费——漏斗/图标描边/矢量窗铬/胶囊圆角/装饰层/
+        // DWM 原生圆角与安全降级/页签次序；
         // 悬浮外壳投影（TaskCard/FloatingThemeBackdrop 无 Effect）由悬浮窗实例直接钉。
         var visualChrome = mainUiPolish.VisualChrome;
         var floatingShellLargeShadowRemoved =

@@ -250,6 +250,12 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - **完成便签确认**：提醒中心「完成便签」先弹确认框（标题「完成便签」，确认按钮「确认完成」配 `SecondaryButton`，取消为安全默认）再提交；取消时便签、条目与可完成状态全量保留。送达失败后的退避重试路径不经确认。「全部已读」保持批量「知道了」，不另加确认。
 - **脏退出确认**：悬浮退出、托盘退出与悬浮窗关闭在进程退出前咨询未保存内容——显示设置脏（沿用 `HasUnsavedSettingsEdits` 语义）、倒计时/便签编辑器脏、悬浮快速新增正文非空；有未保存内容时弹「退出敏敏子倒计时」确认框（确认按钮「退出」配 `DangerButton`，取消为安全默认），取消即留在应用。管理窗口关闭/隐藏继续只 `Hide` 并保留草稿，不经过该确认。
 
+### WPF-UI 局部主题边界（#205）
+
+`ConfirmationDialog` 以 `Wpf.Ui.Controls.MessageBox` 承载确认框，但 WPF-UI 只在该窗口的 `Window.Resources` 中合并 `ThemesDictionary`（固定 `Light`）和 `ControlsDictionary`。WPF-UI 的 `Application.Current.Resources` 不得被修改，也不得把其隐式样式提升到主窗口、悬浮窗或其他次级窗口。
+
+确认框在窗口资源作用域内把 WPF-UI 的 MessageBox、按钮和危险色资源键映射回本设计系统的暖粉 token（`BackgroundBrush`、`InkBrush`、`CardBrush`、`PeachLineBrush`、`MainAction*`、`DangerColor` 等），因此不会引入默认 WPF 蓝色或独立色板。WPF-UI 的 Primary 按钮承载「取消」，并在真实模板加载后设置 `IsDefault` + `IsCancel`；Secondary 按钮承载参数化的确认文案。`ConfirmationCancelButton`、`ConfirmationConfirmButton`、正文和滚动容器的自动化 ID 保持既有契约，调用方继续使用同步 `Show` / `ShowDialog` / `Close` seam。
+
 ### 辅助技术与快捷键（#156）
 
 - **装饰退出朗读**：手写体装饰文案（倒计时页两处、便签页装饰带一处、悬浮窗两处角落文案）与便签分段数量徽章内的裸数字一律使用 `SilentTextBlock`——不产生自动化 peer，元素整体退出自动化树，是 Web aria-hidden 的 WPF 等价映射；不再被当作独立内容控件朗读（旧「装饰文案」可访问名废除）。纯装饰图标（描边 Path、提醒中心来源图标块）继续不携带可访问名。数量语义由分段按钮可访问名「查看未完成/已完成便签，共 N 条」与命令栏数量文字承担，不因退出朗读而丢失。

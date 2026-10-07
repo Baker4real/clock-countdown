@@ -251,13 +251,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 }
                 else
                 {
-                    FilterPopup.IsOpen = true;
+                    PopupMotionBehavior.Open(FilterPopup);
                 }
 
                 return true;
             case (ModifierKeys.Control, Key.T):
                 RenderTagManager();
-                TagManagerPopup.IsOpen = true;
+                PopupMotionBehavior.Open(TagManagerPopup);
                 return true;
             case (ModifierKeys.Control, Key.M):
                 MinimizeToTray();
@@ -1046,8 +1046,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         CountdownReminderHelp.ToolTip = tooltip;
         AutomationProperties.SetHelpText(CountdownReminderHelp, helpText);
-        CountdownReminderHelp.GotKeyboardFocus += (_, _) => tooltip.IsOpen = true;
-        CountdownReminderHelp.LostKeyboardFocus += (_, _) => tooltip.IsOpen = false;
+        CountdownReminderHelp.GotKeyboardFocus += (_, _) => PopupMotionBehavior.Open(tooltip);
+        CountdownReminderHelp.LostKeyboardFocus += (_, _) => PopupMotionBehavior.Close(tooltip);
     }
 
     private void WireEvents()
@@ -1058,11 +1058,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         TopmostCheck.Unchecked += (_, _) => Topmost = false;
         CountdownTab.Click += (_, _) => ShowWorkspace(WorkspaceKind.Countdowns);
         NotesTab.Click += (_, _) => ShowWorkspace(WorkspaceKind.Notes);
-        FilterButton.Click += (_, _) => FilterPopup.IsOpen = !FilterPopup.IsOpen;
+        FilterButton.Click += (_, _) => PopupMotionBehavior.Toggle(FilterPopup);
         TagManagerButton.Click += (_, _) =>
         {
             RenderTagManager();
-            TagManagerPopup.IsOpen = !TagManagerPopup.IsOpen;
+            PopupMotionBehavior.Toggle(TagManagerPopup);
         };
         CountdownReminderNoRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.None);
         CountdownReminderTimeRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.AtDeadline);

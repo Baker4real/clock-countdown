@@ -131,7 +131,7 @@ internal static class PopupFocusLifecycle
                 }
 
                 suppressClickToggle = false;
-                popup.IsOpen = false;
+                PopupMotionBehavior.Close(popup);
                 eventArgs.Handled = true;
             }),
             true);
@@ -144,7 +144,7 @@ internal static class PopupFocusLifecycle
                     return;
                 }
 
-                popup.IsOpen = false;
+                PopupMotionBehavior.Close(popup);
                 eventArgs.Handled = true;
                 RestoreTriggerFocus(trigger);
                 trigger.Dispatcher.BeginInvoke(
@@ -163,7 +163,9 @@ internal static class PopupFocusLifecycle
                 System.Windows.Threading.DispatcherPriority.Input,
                 new Action(() =>
                 {
-                    if (popup.IsOpen && initialFocus() is { } target)
+                    if (popup.IsOpen &&
+                        !PopupMotionBehavior.IsClosing(popup) &&
+                        initialFocus() is { } target)
                     {
                         Keyboard.Focus(target);
                     }
@@ -183,7 +185,7 @@ internal static class PopupFocusLifecycle
                     return;
                 }
 
-                popup.IsOpen = false;
+                PopupMotionBehavior.Close(popup);
                 eventArgs.Handled = true;
                 trigger.Dispatcher.BeginInvoke(
                     System.Windows.Threading.DispatcherPriority.Input,
@@ -404,8 +406,9 @@ internal sealed class TagSelector : Grid
             PopupAnimation = PopupAnimation.None,
             Child = _surface
         };
+        PopupMotionBehavior.Attach(_popup);
         PopupFocusLifecycle.Attach(_popup, _trigger, () => _search);
-        _trigger.Click += (_, _) => _popup.IsOpen = !_popup.IsOpen;
+        _trigger.Click += (_, _) => PopupMotionBehavior.Toggle(_popup);
         Children.Add(_popup);
     }
 
@@ -418,7 +421,17 @@ internal sealed class TagSelector : Grid
     public bool IsPopupOpen
     {
         get => _popup.IsOpen;
-        set => _popup.IsOpen = value;
+        set
+        {
+            if (value)
+            {
+                PopupMotionBehavior.Open(_popup);
+            }
+            else
+            {
+                PopupMotionBehavior.Close(_popup);
+            }
+        }
     }
 
     public bool CreateActionVisible => _create.Visibility == Visibility.Visible;

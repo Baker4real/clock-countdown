@@ -864,11 +864,23 @@ internal static class ValidationExercises
         var filterPopup = (Popup)main.FindName("FilterPopup");
         var tagManagerPopup = (Popup)main.FindName("TagManagerPopup");
         var selector = (TagSelector)main.FindName("CountdownTags");
+        var toolTipStyle = Application.Current.TryFindResource(typeof(ToolTip)) as Style;
+        var toolTipMotionEnabled = toolTipStyle?.Setters
+            .OfType<Setter>()
+            .Any(setter =>
+                setter.Property == PopupMotionBehavior.IsToolTipEnabledProperty &&
+                setter.Value is true) == true;
         return comboPopup is { PopupAnimation: PopupAnimation.None } &&
                datePopup is { PopupAnimation: PopupAnimation.None } &&
                filterPopup is { PopupAnimation: PopupAnimation.None } &&
                tagManagerPopup is { PopupAnimation: PopupAnimation.None } &&
-               selector.Popup.PopupAnimation == PopupAnimation.None;
+               selector.Popup.PopupAnimation == PopupAnimation.None &&
+               PopupMotionBehavior.IsAttached(comboPopup) &&
+               PopupMotionBehavior.IsAttached(datePopup) &&
+               PopupMotionBehavior.IsAttached(filterPopup) &&
+               PopupMotionBehavior.IsAttached(tagManagerPopup) &&
+               PopupMotionBehavior.IsAttached(selector.Popup) &&
+               toolTipMotionEnabled;
     }
 
     public static bool ProbeActionForegroundsUseMainActionText(MainWindow main)

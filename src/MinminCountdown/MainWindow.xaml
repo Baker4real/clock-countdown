@@ -2121,6 +2121,7 @@
                    Placement="Bottom"
                    StaysOpen="False"
                    AllowsTransparency="True"
+                   focus:PopupMotionBehavior.IsEnabled="True"
                    PopupAnimation="None">
               <Border MinWidth="480"
                       MaxHeight="520"
@@ -2187,6 +2188,7 @@
                    Placement="Bottom"
                    StaysOpen="False"
                    AllowsTransparency="True"
+                   focus:PopupMotionBehavior.IsEnabled="True"
                    PopupAnimation="None">
               <Border MinWidth="430"
                       MaxHeight="520"

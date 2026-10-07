@@ -1538,9 +1538,9 @@
                           </Grid.RowDefinitions>
                           <Grid Grid.Row="0" x:Name="MainNotePrimaryLabels">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="574" />
+                              <ColumnDefinition Width="534" />
                               <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="244" />
+                              <ColumnDefinition Width="284" />
                               <ColumnDefinition Width="7" />
                               <ColumnDefinition Width="132" />
                               <ColumnDefinition Width="8" />
@@ -1564,9 +1564,9 @@
                           </Grid>
                           <Grid Grid.Row="1" x:Name="MainNotePrimaryInputs" Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="574" />
+                              <ColumnDefinition Width="534" />
                               <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="244" />
+                              <ColumnDefinition Width="284" />
                               <ColumnDefinition Width="7" />
                               <ColumnDefinition Width="132" />
                               <ColumnDefinition Width="8" />
@@ -1607,10 +1607,9 @@
                             <StackPanel Grid.Column="2">
                               <Grid>
                                 <DatePicker x:Name="NoteDate"
-                                            Width="244"
+                                            Width="284"
                                             MinHeight="68"
-                                            Padding="48,0,16,0"
-                                            SelectedDateFormat="Short" />
+                                            Padding="48,0,16,0" />
                                 <Path Width="20"
                                       Height="20"
                                       Margin="16,0,0,0"

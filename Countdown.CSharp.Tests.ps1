@@ -4532,6 +4532,22 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.DatePickerTextFits) '完整选中日期在日期框内完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextRequiredWidth -gt 0) '日期框实测需求宽度为正（#129 自 U1 迁移）'
+    $productionDatePickerMeasurements = @($adapterValidation.DatePickerProductionMeasurements)
+    foreach ($measurement in @(
+        $productionDatePickerMeasurements |
+            Where-Object { $_.Name -in @('Main.NoteDate', 'Floating.NoteDate') }
+    )) {
+        Assert-Equal $true ([bool] $measurement.TextFit.Fits) "便签日期框完整中文日期不裁切：$($measurement.Name)（#190）"
+        Assert-Equal $true (
+            [double] $measurement.TextFit.Available -gt 0 -and
+            [double] $measurement.TextFit.Required -gt 0 -and
+            [double] $measurement.TextFit.Available -ge [double] $measurement.TextFit.Required
+        ) "便签日期框文本宽度不超过可用宽度：$($measurement.Name)（#190）"
+    }
+    Assert-Equal 2 @(
+        $productionDatePickerMeasurements |
+            Where-Object { $_.Name -in @('Main.NoteDate', 'Floating.NoteDate') }
+    ).Count '主窗口与悬浮窗便签日期框均纳入裁切几何断言（#190）'
     Assert-Equal $true ([bool] $adapterValidation.CalendarHeaderTextFits) '日历月份头部完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextAvailableWidth -gt 0) '日历头部实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextRequiredWidth -gt 0) '日历头部实测需求宽度为正（#129 自 U1 迁移）'

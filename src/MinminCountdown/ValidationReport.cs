@@ -966,7 +966,7 @@ internal static class ValidationReport
 
         var dateBehaviorAttached = ThemedDatePickerBehavior.IsAttached(datePicker);
         var productionDatePickers = ValidateProductionDatePickers(main, floating);
-        var dateTextMetrics = MeasureTextFit(datePicker, "2031年12月31日");
+        var dateTextMetrics = MeasureDatePickerTextFit(datePicker);
         var calendarHeaderMetrics = MeasureTextFit(datePicker, "2031年12月");
         var workspaceDraftsRetained = mainWindowScenarios.WorkspaceDraftsRetained;
         var settingsDrafts = mainWindowScenarios.SettingsDrafts;
@@ -13865,6 +13865,43 @@ internal static class ValidationReport
         return new TextFit(available >= formatted.Width, available, formatted.Width);
     }
 
+    private static TextFit MeasureDatePickerTextFit(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        if (picker.Template?.FindName("PART_TextBox", picker) is not DatePickerTextBox textBox)
+        {
+            return new TextFit(false, 0, 0);
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(textBox);
+        var formatted = new FormattedText(
+            new DateTime(2031, 12, 31).ToString(
+                ThemedDatePickerBehavior.SpacedChineseDateFormat,
+                CultureInfo.InvariantCulture),
+            CultureInfo.CurrentCulture,
+            textBox.FlowDirection,
+            new Typeface(
+                textBox.FontFamily,
+                textBox.FontStyle,
+                textBox.FontWeight,
+                textBox.FontStretch),
+            textBox.FontSize,
+            Brushes.Black,
+            dpi.PixelsPerDip);
+        var available = Math.Max(
+            0,
+            textBox.ActualWidth -
+            textBox.Padding.Left -
+            textBox.Padding.Right -
+            textBox.BorderThickness.Left -
+            textBox.BorderThickness.Right);
+        var required =
+            formatted.WidthIncludingTrailingWhitespace +
+            Math.Max(0, formatted.OverhangTrailing) +
+            (2 / dpi.DpiScaleX);
+        return new TextFit(available >= required, available, required);
+    }
+
     private static TextFit MeasureButtonFit(ContentControl button)
     {
         var text = button.Content?.ToString() ?? string.Empty;
@@ -14472,6 +14509,7 @@ internal static class ValidationReport
         var originalFilterOpen = filterPopup.IsOpen;
         var floatingWasCountdowns =
             Required<ToggleButton>(floating, "FloatingCountdownsButton").IsChecked == true;
+        var quickAddWasExpanded = Required<Border>(floating, "FloatingNoteEntry").Visibility == Visibility.Visible;
         ReminderRulesEditorWindow? rulesEditor = null;
         ReminderCenterWindow? reminderCenter = null;
         Window? negativeHost = null;
@@ -14494,6 +14532,7 @@ internal static class ValidationReport
                 Required<DatePicker>(main, "NoteDateFilter")));
 
             floating.ShowWorkspace(WorkspaceKind.Notes);
+            floating.SetQuickAddExpanded(true);
             PumpDispatcher();
             attached.Add(MeasureDatePicker(
                 "Floating.NoteDate",
@@ -14602,6 +14641,7 @@ internal static class ValidationReport
             reminderCenter?.ForceClose();
             filterPopup.IsOpen = originalFilterOpen;
             main.ShowWorkspace(originalMainWorkspace);
+            floating.SetQuickAddExpanded(quickAddWasExpanded);
             floating.ShowWorkspace(
                 floatingWasCountdowns ? WorkspaceKind.Countdowns : WorkspaceKind.Notes);
             PumpDispatcher();
@@ -14634,7 +14674,8 @@ internal static class ValidationReport
             AutomationProperties.GetName(picker),
             openCalendarButton is null
                 ? string.Empty
-                : AutomationProperties.GetName(openCalendarButton) ?? string.Empty);
+                : AutomationProperties.GetName(openCalendarButton) ?? string.Empty,
+            MeasureDatePickerTextFit(picker));
     }
 
     private static bool ValidateCountdownCardActionNames(
@@ -14973,7 +15014,8 @@ internal static class ValidationReport
         bool ButtonOpensCalendar,
         bool EscapeClosesAndReturnsFocus,
         string AutomationName,
-        string OpenCalendarButtonName);
+        string OpenCalendarButtonName,
+        TextFit TextFit);
 
     private sealed record ProductionDatePickerValidation(
         IReadOnlyList<DatePickerProductionMeasurement> Attached,

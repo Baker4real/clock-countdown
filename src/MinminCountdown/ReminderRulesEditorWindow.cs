@@ -1,7 +1,8 @@
-using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -11,18 +12,8 @@ namespace MinminCountdown;
 
 internal sealed class ReminderRulesEditorWindow : Window
 {
-    private readonly ReminderRuleEditing _editor;
-    private readonly ReminderEditing _scheduleEditor = new();
-    private readonly IClock _clock;
-    private readonly IReadOnlyList<ReminderRule> _initialRules;
-    private readonly ReminderRuleEditingErrorTarget _initialErrorTarget;
-    private readonly string _initialError;
-    private readonly DateTimeOffset? _countdownTargetUtc;
-    private IReadOnlyList<ReminderRule> _rules;
-    private string? _editingRuleId;
-    private bool _updatingForm;
-    private bool _formDirty;
-
+    private readonly ReminderRulesEditorViewModel _viewModel;
+    private readonly BooleanToVisibilityConverter _visibilityConverter = new();
     private readonly StackPanel _rulesHost = new();
     private readonly TextBlock _countText = new();
     private readonly ComboBox _mode = new();
@@ -33,12 +24,13 @@ internal sealed class ReminderRulesEditorWindow : Window
     private readonly TextBox _customInterval = new() { MaxLength = 4 };
     private readonly TextBox _relativeOffset = new() { MaxLength = 7 };
     private readonly ComboBox _calendarFrequency = new();
-    private readonly TextBox _calendarInterval = new() { MaxLength = 3, Text = "1" };
+    private readonly TextBox _calendarInterval = new() { MaxLength = 3 };
     private readonly ComboBox _calendarMonth = new();
     private readonly ComboBox _calendarDay = new();
     private readonly CheckBox _calendarLastDay = new() { Content = "最后一天" };
     private readonly WrapPanel _calendarWeekdays = new();
     private readonly StackPanel _calendarSelector = new();
+    private readonly StackPanel _calendarDateSelector = new();
     private readonly Dictionary<DayOfWeek, CheckBox> _calendarWeekdayChecks = new();
     private readonly TextBlock _modeError = ErrorText();
     private readonly TextBlock _firstDueError = ErrorText();
@@ -47,20 +39,13 @@ internal sealed class ReminderRulesEditorWindow : Window
     private readonly TextBlock _calendarIntervalError = ErrorText();
     private readonly TextBlock _calendarSelectorError = ErrorText();
     private readonly TextBlock _collectionError = ErrorText();
-    private readonly List<UIElement> _firstDueElements = new();
-    private readonly List<UIElement> _intervalElements = new();
-    private readonly List<UIElement> _relativeElements = new();
-    private readonly List<UIElement> _calendarFrequencyElements = new();
-    private readonly List<UIElement> _calendarIntervalElements = new();
-    private readonly List<UIElement> _calendarSelectorElements = new();
-    private readonly Button _saveRuleButton = new() { Content = "添加规则", MinWidth = 104 };
+    private readonly Button _saveRuleButton = new() { MinWidth = 104 };
     private readonly Button _cancelRuleEditButton = new()
     {
-        Content = "取消编辑",
         MinWidth = 92,
-        Margin = new Thickness(8, 0, 0, 0),
-        Visibility = Visibility.Collapsed
+        Margin = new Thickness(8, 0, 0, 0)
     };
+    private TextBlock _firstDueLabel = null!;
     private Border _dragHeader = null!;
     private bool _hasManualWindowPlacement;
     private int _nativeWindowDragRequestCount;
@@ -74,16 +59,13 @@ internal sealed class ReminderRulesEditorWindow : Window
         string initialError = "",
         DateTimeOffset? countdownTargetUtc = null)
     {
-        ArgumentNullException.ThrowIfNull(initialRules);
-        ArgumentNullException.ThrowIfNull(clock);
-        _initialRules = Freeze(initialRules);
-        _rules = Freeze(initialRules);
-        _clock = clock;
-        _initialErrorTarget = initialErrorTarget;
-        _initialError = initialError;
-        _countdownTargetUtc = countdownTargetUtc?.ToUniversalTime();
-        _editor = new ReminderRuleEditing(guidSource);
-        ResultRules = _initialRules;
+        _viewModel = new ReminderRulesEditorViewModel(
+            initialRules,
+            clock,
+            guidSource,
+            initialErrorTarget,
+            initialError,
+            countdownTargetUtc);
 
         Title = "提醒规则";
         Width = 640;
@@ -96,16 +78,17 @@ internal sealed class ReminderRulesEditorWindow : Window
         AllowsTransparency = true;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.CanResizeWithGrip;
+        DataContext = _viewModel;
         AutomationProperties.SetName(this, "提醒规则编辑器");
 
         ConfigureControls();
         Content = BuildContent();
+        Bind(_firstDueLabel, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.FirstDueLabel), _viewModel);
         WireEvents();
-        BeginAddRule();
         RenderRules();
     }
 
-    internal IReadOnlyList<ReminderRule> ResultRules { get; private set; }
+    internal IReadOnlyList<ReminderRule> ResultRules => _viewModel.ResultRules;
 
     internal bool HasManualWindowPlacement => _hasManualWindowPlacement;
 
@@ -136,65 +119,29 @@ internal sealed class ReminderRulesEditorWindow : Window
 
     private void ConfigureControls()
     {
-        _mode.Items.Add("绝对一次");
-        _mode.Items.Add("固定间隔");
-        if (_countdownTargetUtc is not null)
-        {
-            _mode.Items.Add("倒计时相对");
-        }
-        _mode.Items.Add("日历重复");
-        for (var hour = 0; hour < 24; hour++)
-        {
-            _firstDueHour.Items.Add(hour.ToString("D2", CultureInfo.InvariantCulture));
-        }
+        _mode.ItemsSource = _viewModel.ModeOptions;
+        _firstDueHour.ItemsSource = _viewModel.Hours;
+        _firstDueMinute.ItemsSource = _viewModel.Minutes;
+        _interval.ItemsSource = _viewModel.IntervalOptions;
+        _calendarFrequency.ItemsSource = _viewModel.CalendarFrequencyOptions;
+        _calendarMonth.ItemsSource = _viewModel.Months;
+        _calendarDay.ItemsSource = _viewModel.Days;
 
-        for (var minute = 0; minute < 60; minute++)
-        {
-            _firstDueMinute.Items.Add(minute.ToString("D2", CultureInfo.InvariantCulture));
-        }
-
-        _interval.Items.Add("15 分钟");
-        _interval.Items.Add("30 分钟");
-        _interval.Items.Add("60 分钟");
-        _interval.Items.Add("自定义");
-        _interval.SelectedIndex = 1;
-        foreach (var frequency in new[] { "每天", "每周", "每月", "每年" })
-        {
-            _calendarFrequency.Items.Add(frequency);
-        }
-        _calendarFrequency.SelectedIndex = 0;
-        for (var month = 1; month <= 12; month++)
-        {
-            _calendarMonth.Items.Add(month.ToString(CultureInfo.InvariantCulture));
-        }
-        _calendarMonth.SelectedIndex = 0;
-        for (var day = 1; day <= 31; day++)
-        {
-            _calendarDay.Items.Add(day.ToString(CultureInfo.InvariantCulture));
-        }
-        _calendarDay.SelectedIndex = 0;
-        foreach (var (weekday, text) in new[]
-                 {
-                     (DayOfWeek.Monday, "一"),
-                     (DayOfWeek.Tuesday, "二"),
-                     (DayOfWeek.Wednesday, "三"),
-                     (DayOfWeek.Thursday, "四"),
-                     (DayOfWeek.Friday, "五"),
-                     (DayOfWeek.Saturday, "六"),
-                     (DayOfWeek.Sunday, "日")
-                 })
+        foreach (var weekday in _viewModel.Weekdays)
         {
             var checkBox = new CheckBox
             {
-                Content = text,
+                Content = weekday.Text,
                 Margin = new Thickness(0, 0, 10, 4),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            NameControl(checkBox, $"每周星期{text}");
-            AutomationProperties.SetAutomationId(checkBox, $"ReminderRuleCalendarWeekday{weekday}");
-            _calendarWeekdayChecks.Add(weekday, checkBox);
+            NameControl(checkBox, $"每周星期{weekday.Text}");
+            AutomationProperties.SetAutomationId(checkBox, $"ReminderRuleCalendarWeekday{weekday.Day}");
+            Bind(checkBox, ToggleButton.IsCheckedProperty, nameof(ReminderRuleWeekdayViewModel.IsSelected), weekday, BindingMode.TwoWay);
+            _calendarWeekdayChecks.Add(weekday.Day, checkBox);
             _calendarWeekdays.Children.Add(checkBox);
         }
+
         BuildCalendarSelector();
         ThemedDatePickerBehavior.Attach(_firstDueDate);
         ThemedComboBoxBehavior.Attach(_mode);
@@ -219,6 +166,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         NameControl(_calendarLastDay, "显式选择最后一天");
         NameControl(_saveRuleButton, "保存提醒规则");
         NameControl(_cancelRuleEditButton, "取消编辑提醒规则");
+
         AutomationProperties.SetAutomationId(_mode, "ReminderRuleMode");
         AutomationProperties.SetAutomationId(_firstDueDate, "ReminderRuleFirstDueDate");
         AutomationProperties.SetAutomationId(_firstDueHour, "ReminderRuleFirstDueHour");
@@ -248,6 +196,67 @@ internal sealed class ReminderRulesEditorWindow : Window
         UiAccessibility.MarkLive(_calendarIntervalError);
         UiAccessibility.MarkLive(_calendarSelectorError);
         UiAccessibility.MarkLive(_collectionError);
+
+        Bind(_countText, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.CountText), _viewModel);
+        Bind(_mode, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.ModeIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_firstDueDate, DatePicker.SelectedDateProperty, nameof(ReminderRulesEditorViewModel.FirstDueDate), _viewModel, BindingMode.TwoWay);
+        Bind(_firstDueHour, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.FirstDueHourIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_firstDueMinute, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.FirstDueMinuteIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_interval, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.IntervalIndex), _viewModel, BindingMode.TwoWay);
+        BindText(_customInterval, nameof(ReminderRulesEditorViewModel.CustomIntervalMinutes));
+        BindText(_relativeOffset, nameof(ReminderRulesEditorViewModel.RelativeOffsetMinutes));
+        Bind(_calendarFrequency, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarFrequencyIndex), _viewModel, BindingMode.TwoWay);
+        BindText(_calendarInterval, nameof(ReminderRulesEditorViewModel.CalendarInterval));
+        Bind(_calendarMonth, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarMonthIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_calendarDay, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarDayIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_calendarLastDay, ToggleButton.IsCheckedProperty, nameof(ReminderRulesEditorViewModel.CalendarLastDay), _viewModel, BindingMode.TwoWay);
+        Bind(_saveRuleButton, Button.ContentProperty, nameof(ReminderRulesEditorViewModel.SaveRuleButtonText), _viewModel);
+        Bind(_cancelRuleEditButton, UIElement.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCancelRuleEditVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_saveRuleButton, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.SaveRuleCommand), _viewModel);
+        Bind(_cancelRuleEditButton, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.CancelRuleEditCommand), _viewModel);
+
+        BindError(_modeError, nameof(ReminderRulesEditorViewModel.ModeError), nameof(ReminderRulesEditorViewModel.IsModeErrorVisible));
+        BindError(_firstDueError, nameof(ReminderRulesEditorViewModel.FirstDueError), nameof(ReminderRulesEditorViewModel.IsFirstDueErrorVisible));
+        BindError(_intervalError, nameof(ReminderRulesEditorViewModel.IntervalError), nameof(ReminderRulesEditorViewModel.IsIntervalErrorVisible));
+        BindError(_relativeOffsetError, nameof(ReminderRulesEditorViewModel.RelativeOffsetError), nameof(ReminderRulesEditorViewModel.IsRelativeOffsetErrorVisible));
+        BindError(_calendarIntervalError, nameof(ReminderRulesEditorViewModel.CalendarIntervalError), nameof(ReminderRulesEditorViewModel.IsCalendarIntervalErrorVisible));
+        BindError(_calendarSelectorError, nameof(ReminderRulesEditorViewModel.CalendarSelectorError), nameof(ReminderRulesEditorViewModel.IsCalendarSelectorErrorVisible));
+        BindError(_collectionError, nameof(ReminderRulesEditorViewModel.CollectionError), nameof(ReminderRulesEditorViewModel.IsCollectionErrorVisible));
+
+        Bind(_firstDueDate, DatePicker.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_firstDueHour, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_firstDueMinute, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_interval, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsIntervalVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_customInterval, TextBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCustomIntervalVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_relativeOffset, TextBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsRelativeVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_calendarFrequency, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarFrequencyVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_calendarInterval, TextBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarIntervalVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_calendarSelector, StackPanel.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarSelectorVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_calendarWeekdays, WrapPanel.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarWeekdaysVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_calendarDateSelector, StackPanel.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarDateSelectorVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_calendarMonth, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarMonthVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_calendarDay, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarDayVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_firstDueDate, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueDateAutomationName), _viewModel);
+        Bind(_firstDueHour, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueHourAutomationName), _viewModel);
+        Bind(_firstDueMinute, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueMinuteAutomationName), _viewModel);
+
+        BindHelpText(_mode, nameof(ReminderRulesEditorViewModel.ModeError));
+        BindHelpText(_firstDueDate, nameof(ReminderRulesEditorViewModel.FirstDueError));
+        BindHelpText(_firstDueHour, nameof(ReminderRulesEditorViewModel.FirstDueError));
+        BindHelpText(_firstDueMinute, nameof(ReminderRulesEditorViewModel.FirstDueError));
+        BindHelpText(_interval, nameof(ReminderRulesEditorViewModel.IntervalError));
+        BindHelpText(_customInterval, nameof(ReminderRulesEditorViewModel.IntervalError));
+        BindHelpText(_relativeOffset, nameof(ReminderRulesEditorViewModel.RelativeOffsetError));
+        BindHelpText(_calendarFrequency, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
+        BindHelpText(_calendarInterval, nameof(ReminderRulesEditorViewModel.CalendarIntervalError));
+        BindHelpText(_calendarMonth, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
+        BindHelpText(_calendarDay, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
+        BindHelpText(_calendarLastDay, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
+        BindHelpText(_saveRuleButton, nameof(ReminderRulesEditorViewModel.CollectionError));
+        foreach (var checkBox in _calendarWeekdayChecks.Values)
+        {
+            BindHelpText(checkBox, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
+        }
     }
 
     private UIElement BuildContent()
@@ -294,12 +303,12 @@ internal sealed class ReminderRulesEditorWindow : Window
         form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
         form.ColumnDefinitions.Add(new ColumnDefinition());
         AddFormRow(form, 0, "规则类型", _mode, _modeError);
-        AddFormRow(form, 1, "首次提醒", BuildFirstDueRow(), _firstDueError, _firstDueElements);
-        AddFormRow(form, 2, "固定间隔", BuildIntervalRow(), _intervalError, _intervalElements);
-        AddFormRow(form, 3, "提前分钟", _relativeOffset, _relativeOffsetError, _relativeElements);
-        AddFormRow(form, 4, "日历频率", _calendarFrequency, ErrorText(), _calendarFrequencyElements);
-        AddFormRow(form, 5, "重复间隔", _calendarInterval, _calendarIntervalError, _calendarIntervalElements);
-        AddFormRow(form, 6, "日历选择", _calendarSelector, _calendarSelectorError, _calendarSelectorElements);
+        _firstDueLabel = AddFormRow(form, 1, "首次提醒", BuildFirstDueRow(), _firstDueError);
+        AddFormRow(form, 2, "固定间隔", BuildIntervalRow(), _intervalError);
+        AddFormRow(form, 3, "提前分钟", _relativeOffset, _relativeOffsetError);
+        AddFormRow(form, 4, "日历频率", _calendarFrequency, ErrorText());
+        AddFormRow(form, 5, "重复间隔", _calendarInterval, _calendarIntervalError);
+        AddFormRow(form, 6, "日历选择", _calendarSelector, _calendarSelectorError);
 
         _saveRuleButton.SetResourceReference(StyleProperty, "PrimaryButton");
         var ruleActions = new StackPanel
@@ -315,6 +324,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         accept.SetResourceReference(StyleProperty, "PrimaryButton");
         NameControl(accept, "接受提醒规则草稿");
         AutomationProperties.SetAutomationId(accept, "AcceptReminderRulesButton");
+        Bind(accept, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.AcceptDraftCommand), _viewModel);
         var cancel = new Button
         {
             Content = "取消",
@@ -324,8 +334,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         };
         NameControl(cancel, "取消提醒规则草稿");
         AutomationProperties.SetAutomationId(cancel, "CancelReminderRulesButton");
-        accept.Click += (_, _) => AcceptDraft();
-        cancel.Click += (_, _) => CancelDraft();
+        Bind(cancel, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.CancelDraftCommand), _viewModel);
         var dialogActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -407,26 +416,25 @@ internal sealed class ReminderRulesEditorWindow : Window
 
     private void BuildCalendarSelector()
     {
-        var dateRow = new StackPanel { Orientation = Orientation.Horizontal };
+        _calendarDateSelector.Orientation = Orientation.Horizontal;
         _calendarMonth.Width = 90;
         _calendarDay.Width = 90;
         _calendarDay.Margin = new Thickness(8, 0, 0, 0);
         _calendarLastDay.Margin = new Thickness(12, 0, 0, 0);
-        dateRow.Children.Add(_calendarMonth);
-        dateRow.Children.Add(_calendarDay);
-        dateRow.Children.Add(_calendarLastDay);
-        AutomationProperties.SetAutomationId(dateRow, "ReminderRuleCalendarDateSelector");
+        AutomationProperties.SetAutomationId(_calendarDateSelector, "ReminderRuleCalendarDateSelector");
+        _calendarDateSelector.Children.Add(_calendarMonth);
+        _calendarDateSelector.Children.Add(_calendarDay);
+        _calendarDateSelector.Children.Add(_calendarLastDay);
         _calendarSelector.Children.Add(_calendarWeekdays);
-        _calendarSelector.Children.Add(dateRow);
+        _calendarSelector.Children.Add(_calendarDateSelector);
     }
 
-    private static void AddFormRow(
+    private static TextBlock AddFormRow(
         Grid form,
         int rowIndex,
         string label,
         UIElement input,
-        TextBlock error,
-        ICollection<UIElement>? elements = null)
+        TextBlock error)
     {
         form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -447,68 +455,30 @@ internal sealed class ReminderRulesEditorWindow : Window
         form.Children.Add(labelBlock);
         form.Children.Add(input);
         form.Children.Add(error);
-        elements?.Add(labelBlock);
-        elements?.Add(input);
-        elements?.Add(error);
+        return labelBlock;
     }
 
     private void WireEvents()
     {
-        _mode.SelectionChanged += (_, _) =>
-        {
-            UpdateModeVisibility();
-            MarkFormDirty();
-        };
-        _interval.SelectionChanged += (_, _) =>
-        {
-            UpdateModeVisibility();
-            MarkFormDirty();
-        };
-        _firstDueDate.SelectedDateChanged += (_, _) => MarkFormDirty();
-        _firstDueHour.SelectionChanged += (_, _) => MarkFormDirty();
-        _firstDueMinute.SelectionChanged += (_, _) => MarkFormDirty();
-        _customInterval.TextChanged += (_, _) => MarkFormDirty();
-        _relativeOffset.TextChanged += (_, _) => MarkFormDirty();
-        _calendarFrequency.SelectionChanged += (_, _) =>
-        {
-            EnsureWeeklySelection();
-            UpdateModeVisibility();
-            MarkFormDirty();
-        };
-        _calendarInterval.TextChanged += (_, _) => MarkFormDirty();
-        _calendarMonth.SelectionChanged += (_, _) => MarkFormDirty();
-        _calendarDay.SelectionChanged += (_, _) => MarkFormDirty();
-        _calendarLastDay.Checked += (_, _) =>
-        {
-            UpdateModeVisibility();
-            MarkFormDirty();
-        };
-        _calendarLastDay.Unchecked += (_, _) =>
-        {
-            UpdateModeVisibility();
-            MarkFormDirty();
-        };
-        foreach (var checkBox in _calendarWeekdayChecks.Values)
-        {
-            checkBox.Checked += (_, _) => MarkFormDirty();
-            checkBox.Unchecked += (_, _) => MarkFormDirty();
-        }
-        _saveRuleButton.Click += (_, _) => SaveDraftRule();
-        _cancelRuleEditButton.Click += (_, _) => BeginAddRule();
+        ((System.Collections.Specialized.INotifyCollectionChanged)_viewModel.RuleItems).CollectionChanged +=
+            (_, _) => RenderRules();
+        _viewModel.DraftAccepted += (_, _) => DialogResult = true;
+        _viewModel.DraftCancelled += (_, _) => DialogResult = false;
+        _viewModel.ValidationErrorRaised += OnValidationErrorRaised;
+        _viewModel.FormFocusRequested += OnFormFocusRequested;
         PreviewKeyDown += (_, args) =>
         {
-            if (args.Key == Key.Escape && _editingRuleId is not null)
+            if (args.Key == Key.Escape && _viewModel.EditingRuleId is not null)
             {
-                BeginAddRule();
+                _viewModel.CancelRuleEditCommand.Execute(null);
                 args.Handled = true;
             }
         };
         Loaded += (_, _) =>
         {
-            if (_initialErrorTarget != ReminderRuleEditingErrorTarget.None &&
-                !string.IsNullOrWhiteSpace(_initialError))
+            if (_viewModel.HasInitialError)
             {
-                ShowError(_initialErrorTarget, _initialError);
+                _viewModel.ShowInitialError();
             }
             else
             {
@@ -517,40 +487,74 @@ internal sealed class ReminderRulesEditorWindow : Window
         };
     }
 
+    private void OnValidationErrorRaised(object? sender, ReminderRuleEditorErrorEventArgs args)
+    {
+        GetErrorControl(args.Target).Focus();
+    }
+
+    private void OnFormFocusRequested(object? sender, EventArgs args)
+    {
+        if (_viewModel.ModeIndex == 2 && _viewModel.CountdownTargetUtc is not null)
+        {
+            _relativeOffset.Focus();
+        }
+        else if (_viewModel.ModeIndex == (_viewModel.CountdownTargetUtc is null ? 2 : 3))
+        {
+            _calendarFrequency.Focus();
+        }
+        else
+        {
+            _firstDueDate.Focus();
+        }
+    }
+
+    private Control GetErrorControl(ReminderRuleEditingErrorTarget target) => target switch
+    {
+        ReminderRuleEditingErrorTarget.Mode => _mode,
+        ReminderRuleEditingErrorTarget.FirstDue => _firstDueDate,
+        ReminderRuleEditingErrorTarget.Interval => _interval.SelectedIndex == 3 ? _customInterval : _interval,
+        ReminderRuleEditingErrorTarget.RelativeOffset => _relativeOffset,
+        ReminderRuleEditingErrorTarget.CalendarInterval => _calendarInterval,
+        ReminderRuleEditingErrorTarget.CalendarSelector => _viewModel.CalendarFrequencyIndex == 1
+            ? _calendarWeekdayChecks.Values.First()
+            : _calendarLastDay,
+        _ => _saveRuleButton
+    };
+
     private void RenderRules()
     {
         _rulesHost.Children.Clear();
-        _countText.Text = $"{_rules.Count} / 8 条";
-        if (_rules.Count == 0)
+        if (_viewModel.IsEmpty)
         {
-            var empty = new TextBlock { Text = "当前不提醒" };
+            var empty = new TextBlock();
+            Bind(empty, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.EmptyText), _viewModel);
             empty.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
             empty.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             _rulesHost.Children.Add(empty);
             return;
         }
 
-        foreach (var rule in _rules)
+        foreach (var item in _viewModel.RuleItems)
         {
             var summary = new TextBlock
             {
-                Text = Describe(rule),
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
                 FontWeight = FontWeights.Regular
             };
             summary.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
             summary.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-            var edit = ActionButton("编辑", $"编辑规则 {Describe(rule)}");
-            var copy = ActionButton("复制", $"复制规则 {Describe(rule)}");
-            var delete = ActionButton("删除", $"删除规则 {Describe(rule)}");
-            edit.Tag = rule.Id;
-            copy.Tag = rule.Id;
-            delete.Tag = rule.Id;
+            Bind(summary, TextBlock.TextProperty, nameof(ReminderRuleItemViewModel.Description), item);
+            var edit = ActionButton("编辑", $"编辑规则 {item.Description}");
+            var copy = ActionButton("复制", $"复制规则 {item.Description}");
+            var delete = ActionButton("删除", $"删除规则 {item.Description}");
+            edit.Tag = item.RuleId;
+            copy.Tag = item.RuleId;
+            delete.Tag = item.RuleId;
             delete.Style = (Style)FindResource("DangerButton");
-            edit.Click += (_, _) => BeginEditRule(rule, copy: false);
-            copy.Click += (_, _) => BeginEditRule(rule, copy: true);
-            delete.Click += (_, _) => DeleteRule(rule.Id);
+            Bind(edit, Button.CommandProperty, nameof(ReminderRuleItemViewModel.EditCommand), item);
+            Bind(copy, Button.CommandProperty, nameof(ReminderRuleItemViewModel.CopyCommand), item);
+            Bind(delete, Button.CommandProperty, nameof(ReminderRuleItemViewModel.DeleteCommand), item);
             var actions = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -591,374 +595,43 @@ internal sealed class ReminderRulesEditorWindow : Window
         return button;
     }
 
-    private void BeginAddRule()
+    private void BindError(TextBlock target, string textPath, string visibilityPath)
     {
-        _updatingForm = true;
-        try
-        {
-            _editingRuleId = null;
-            _mode.SelectedIndex = 0;
-            _interval.SelectedIndex = 1;
-            _customInterval.Clear();
-            _relativeOffset.Text = "0";
-            _calendarFrequency.SelectedIndex = 0;
-            _calendarInterval.Text = "1";
-            _calendarMonth.SelectedIndex = 0;
-            _calendarDay.SelectedIndex = 0;
-            _calendarLastDay.IsChecked = false;
-            foreach (var checkBox in _calendarWeekdayChecks.Values)
+        Bind(target, TextBlock.TextProperty, textPath, _viewModel);
+        Bind(target, TextBlock.VisibilityProperty, visibilityPath, _viewModel, converter: _visibilityConverter);
+        Bind(target, AutomationProperties.NameProperty, textPath, _viewModel);
+    }
+
+    private void BindHelpText(Control target, string path) =>
+        Bind(target, AutomationProperties.HelpTextProperty, path, _viewModel);
+
+    private void BindText(TextBox target, string path) =>
+        Bind(
+            target,
+            TextBox.TextProperty,
+            path,
+            _viewModel,
+            BindingMode.TwoWay,
+            updateSourceTrigger: UpdateSourceTrigger.PropertyChanged);
+
+    private static void Bind(
+        DependencyObject target,
+        DependencyProperty property,
+        string path,
+        object source,
+        BindingMode mode = BindingMode.Default,
+        IValueConverter? converter = null,
+        UpdateSourceTrigger updateSourceTrigger = UpdateSourceTrigger.Default) =>
+        BindingOperations.SetBinding(
+            target,
+            property,
+            new Binding(path)
             {
-                checkBox.IsChecked = false;
-            }
-            var defaultDue = _scheduleEditor.GetDefaultFirstDueBeijing(
-                ReminderEditingMode.Once,
-                ReminderIntervalSelection.ThirtyMinutes,
-                string.Empty,
-                _clock.UtcNow).FirstDueBeijing;
-            SetSchedule(defaultDue);
-            UpdateModeVisibility();
-            _saveRuleButton.Content = "添加规则";
-            _cancelRuleEditButton.Visibility = Visibility.Collapsed;
-            ClearErrors();
-        }
-        finally
-        {
-            _updatingForm = false;
-            _formDirty = false;
-        }
-    }
-
-    private void BeginEditRule(ReminderRule rule, bool copy)
-    {
-        _updatingForm = true;
-        try
-        {
-            _editingRuleId = copy ? null : rule.Id;
-            var dueUtc = rule switch
-            {
-                AbsoluteOnceReminderRule once => once.ScheduledUtc,
-                FixedIntervalReminderRule repeating => repeating.FirstDueUtc,
-                CountdownRelativeReminderRule => (DateTimeOffset?)null,
-                CalendarReminderRule calendarSchedule => new DateTimeOffset(
-                    calendarSchedule.StartDate.ToDateTime(calendarSchedule.LocalTime, DateTimeKind.Unspecified),
-                    TimeSpan.FromHours(8)),
-                _ => throw new ArgumentOutOfRangeException(nameof(rule))
-            };
-            _mode.SelectedIndex = rule switch
-            {
-                FixedIntervalReminderRule => 1,
-                CountdownRelativeReminderRule when _countdownTargetUtc is not null => 2,
-                CountdownRelativeReminderRule => throw new InvalidOperationException(
-                    "便签提醒编辑器不能编辑倒计时相对规则。"),
-                CalendarReminderRule => CalendarModeIndex,
-                _ => 0
-            };
-            if (rule is FixedIntervalReminderRule fixedInterval)
-            {
-                var minutes = fixedInterval.Interval.Minutes;
-                _interval.SelectedIndex = minutes switch
-                {
-                    15 => 0,
-                    30 => 1,
-                    60 => 2,
-                    _ => 3
-                };
-                _customInterval.Text = minutes is 15 or 30 or 60
-                    ? string.Empty
-                    : minutes.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (rule is CountdownRelativeReminderRule relative)
-            {
-                _relativeOffset.Text = relative.OffsetMinutesBefore.ToString(CultureInfo.InvariantCulture);
-            }
-
-            if (rule is CalendarReminderRule calendar)
-            {
-                _calendarFrequency.SelectedIndex = (int)calendar.Frequency;
-                _calendarInterval.Text = calendar.Interval.ToString(CultureInfo.InvariantCulture);
-                foreach (var pair in _calendarWeekdayChecks)
-                {
-                    pair.Value.IsChecked = calendar.Selector is WeeklyCalendarSelector weekly &&
-                        weekly.Weekdays.Contains(pair.Key);
-                }
-                _calendarMonth.SelectedIndex = calendar.Selector is YearlyCalendarSelector yearSelector
-                    ? yearSelector.Month - 1
-                    : 0;
-                var day = calendar.Selector switch
-                {
-                    MonthlyCalendarSelector monthly => monthly.Day,
-                    YearlyCalendarSelector yearDaySelector => yearDaySelector.Day,
-                    _ => null
-                };
-                _calendarDay.SelectedIndex = (day ?? 1) - 1;
-                _calendarLastDay.IsChecked = calendar.Selector is MonthlyCalendarSelector { LastDay: true } or
-                    YearlyCalendarSelector { LastDay: true };
-            }
-
-            SetSchedule(dueUtc is null ? null : ChinaStandardTime.ToBeijingTime(dueUtc.Value));
-            UpdateModeVisibility();
-            _saveRuleButton.Content = copy ? "保存副本" : "保存修改";
-            _cancelRuleEditButton.Visibility = Visibility.Visible;
-            ClearErrors();
-        }
-        finally
-        {
-            _updatingForm = false;
-            _formDirty = false;
-        }
-
-        if (_mode.SelectedIndex == 2 && _countdownTargetUtc is not null)
-        {
-            _relativeOffset.Focus();
-        }
-        else if (_mode.SelectedIndex == CalendarModeIndex)
-        {
-            _calendarFrequency.Focus();
-        }
-        else
-        {
-            _firstDueDate.Focus();
-        }
-    }
-
-    private bool SaveDraftRule()
-    {
-        ClearErrors();
-        var result = _editor.SaveRule(_rules, new ReminderRuleEditingRequest(
-            _editingRuleId,
-            SelectedMode(),
-            _firstDueDate.SelectedDate,
-            _firstDueHour.SelectedIndex,
-            _firstDueMinute.SelectedIndex,
-            SelectedInterval(),
-            _customInterval.Text,
-            _clock.UtcNow,
-            _countdownTargetUtc,
-            _relativeOffset.Text,
-            SelectedCalendarFrequency(),
-            _calendarInterval.Text,
-            SelectedCalendarWeekdays(),
-            _calendarDay.SelectedIndex >= 0
-                ? (_calendarDay.SelectedIndex + 1).ToString(CultureInfo.InvariantCulture)
-                : string.Empty,
-            _calendarMonth.SelectedIndex >= 0
-                ? (_calendarMonth.SelectedIndex + 1).ToString(CultureInfo.InvariantCulture)
-                : string.Empty,
-            _calendarLastDay.IsChecked == true));
-        if (!result.Succeeded)
-        {
-            ShowError(result.ErrorTarget, result.Error);
-            return false;
-        }
-
-        _rules = Freeze(result.Rules);
-        RenderRules();
-        BeginAddRule();
-        return true;
-    }
-
-    private void DeleteRule(string ruleId)
-    {
-        var result = _editor.DeleteRule(_rules, ruleId);
-        if (!result.Succeeded)
-        {
-            ShowError(result.ErrorTarget, result.Error);
-            return;
-        }
-
-        _rules = Freeze(result.Rules);
-        if (string.Equals(_editingRuleId, ruleId, StringComparison.OrdinalIgnoreCase))
-        {
-            BeginAddRule();
-        }
-
-        RenderRules();
-    }
-
-    private void AcceptDraft()
-    {
-        if (_formDirty && !SaveDraftRule())
-        {
-            return;
-        }
-
-        ResultRules = Freeze(_rules);
-        DialogResult = true;
-    }
-
-    private void CancelDraft()
-    {
-        ResultRules = _initialRules;
-        DialogResult = false;
-    }
-
-    private void SetSchedule(DateTimeOffset? beijing)
-    {
-        _firstDueDate.SelectedDate = beijing?.Date;
-        _firstDueHour.SelectedIndex = beijing?.Hour ?? -1;
-        _firstDueMinute.SelectedIndex = beijing?.Minute ?? -1;
-    }
-
-    private ReminderEditingMode SelectedMode() => _mode.SelectedIndex switch
-    {
-        0 => ReminderEditingMode.Once,
-        1 => ReminderEditingMode.Repeating,
-        2 when _countdownTargetUtc is not null => ReminderEditingMode.CountdownRelative,
-        var index when index == CalendarModeIndex => ReminderEditingMode.Calendar,
-        _ => (ReminderEditingMode)(-1)
-    };
-
-    private int CalendarModeIndex => _countdownTargetUtc is null ? 2 : 3;
-
-    private CalendarFrequency SelectedCalendarFrequency() => _calendarFrequency.SelectedIndex switch
-    {
-        0 => CalendarFrequency.Daily,
-        1 => CalendarFrequency.Weekly,
-        2 => CalendarFrequency.Monthly,
-        3 => CalendarFrequency.Yearly,
-        _ => (CalendarFrequency)(-1)
-    };
-
-    private IReadOnlyList<DayOfWeek> SelectedCalendarWeekdays() => _calendarWeekdayChecks
-        .Where(static pair => pair.Value.IsChecked == true)
-        .Select(static pair => pair.Key)
-        .ToArray();
-
-    private ReminderIntervalSelection SelectedInterval() => _interval.SelectedIndex switch
-    {
-        0 => ReminderIntervalSelection.FifteenMinutes,
-        1 => ReminderIntervalSelection.ThirtyMinutes,
-        2 => ReminderIntervalSelection.SixtyMinutes,
-        _ => ReminderIntervalSelection.Custom
-    };
-
-    private void ShowError(ReminderRuleEditingErrorTarget target, string error)
-    {
-        var (message, control) = target switch
-        {
-            ReminderRuleEditingErrorTarget.Mode => (_modeError, (Control)_mode),
-            ReminderRuleEditingErrorTarget.FirstDue => (_firstDueError, _firstDueDate),
-            ReminderRuleEditingErrorTarget.Interval => (_intervalError,
-                _interval.SelectedIndex == 3 ? _customInterval : _interval),
-            ReminderRuleEditingErrorTarget.RelativeOffset => (_relativeOffsetError, _relativeOffset),
-            ReminderRuleEditingErrorTarget.CalendarInterval => (_calendarIntervalError, _calendarInterval),
-            ReminderRuleEditingErrorTarget.CalendarSelector => (_calendarSelectorError,
-                SelectedCalendarFrequency() == CalendarFrequency.Weekly
-                    ? _calendarWeekdayChecks.Values.First()
-                    : _calendarLastDay),
-            _ => (_collectionError, (Control)_saveRuleButton)
-        };
-        message.Text = error;
-        message.Visibility = Visibility.Visible;
-        AutomationProperties.SetName(message, error);
-        AutomationProperties.SetHelpText(control, error);
-        control.Focus();
-    }
-
-    private void ClearErrors()
-    {
-        foreach (var message in new[]
-                 {
-                     _modeError,
-                     _firstDueError,
-                     _intervalError,
-                     _relativeOffsetError,
-                     _calendarIntervalError,
-                     _calendarSelectorError,
-                     _collectionError
-                 })
-        {
-            message.Text = string.Empty;
-            message.Visibility = Visibility.Collapsed;
-        }
-
-        foreach (var control in new Control[]
-                 {
-                     _mode,
-                     _firstDueDate,
-                     _firstDueHour,
-                     _firstDueMinute,
-                     _interval,
-                     _customInterval,
-                     _relativeOffset,
-                     _calendarFrequency,
-                     _calendarInterval,
-                     _calendarMonth,
-                     _calendarDay,
-                     _calendarLastDay,
-                     _saveRuleButton
-                 })
-        {
-            AutomationProperties.SetHelpText(control, string.Empty);
-        }
-    }
-
-    private void MarkFormDirty()
-    {
-        if (!_updatingForm)
-        {
-            _formDirty = true;
-        }
-
-        ClearErrors();
-    }
-
-    private void UpdateModeVisibility()
-    {
-        var relative = _mode.SelectedIndex == 2 && _countdownTargetUtc is not null;
-        var calendar = _mode.SelectedIndex == CalendarModeIndex;
-        if (_firstDueElements.Count > 0 && _firstDueElements[0] is TextBlock firstDueLabel)
-        {
-            firstDueLabel.Text = calendar ? "开始日期" : "首次提醒";
-        }
-
-        NameControl(_firstDueDate, calendar ? "开始日期" : "首次提醒日期");
-        NameControl(_firstDueHour, calendar ? "本地时刻小时" : "首次提醒小时");
-        NameControl(_firstDueMinute, calendar ? "本地时刻分钟" : "首次提醒分钟");
-        SetVisibility(_firstDueElements, relative ? Visibility.Collapsed : Visibility.Visible);
-        SetVisibility(
-            _intervalElements,
-            !relative && _mode.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed);
-        SetVisibility(_relativeElements, relative ? Visibility.Visible : Visibility.Collapsed);
-        SetVisibility(_calendarFrequencyElements, calendar ? Visibility.Visible : Visibility.Collapsed);
-        SetVisibility(_calendarIntervalElements, calendar ? Visibility.Visible : Visibility.Collapsed);
-        SetVisibility(_calendarSelectorElements, calendar ? Visibility.Visible : Visibility.Collapsed);
-        _calendarWeekdays.Visibility = calendar && SelectedCalendarFrequency() == CalendarFrequency.Weekly
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        var dateSelector = _calendarSelector.Children[1];
-        dateSelector.Visibility = calendar && SelectedCalendarFrequency() is CalendarFrequency.Monthly or CalendarFrequency.Yearly
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        _calendarMonth.Visibility = calendar && SelectedCalendarFrequency() == CalendarFrequency.Yearly
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        _calendarDay.Visibility = _calendarLastDay.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
-        _customInterval.Visibility = !relative && _mode.SelectedIndex == 1 && _interval.SelectedIndex == 3
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-    }
-
-    private void EnsureWeeklySelection()
-    {
-        if (_updatingForm || SelectedCalendarFrequency() != CalendarFrequency.Weekly ||
-            _calendarWeekdayChecks.Values.Any(static checkBox => checkBox.IsChecked == true))
-        {
-            return;
-        }
-
-        var weekday = _firstDueDate.SelectedDate?.DayOfWeek ?? DayOfWeek.Monday;
-        _calendarWeekdayChecks[weekday].IsChecked = true;
-    }
-
-    private static void SetVisibility(IEnumerable<UIElement> elements, Visibility visibility)
-    {
-        foreach (var element in elements)
-        {
-            element.Visibility = visibility;
-        }
-    }
+                Source = source,
+                Mode = mode,
+                Converter = converter,
+                UpdateSourceTrigger = updateSourceTrigger
+            });
 
     private static TextBlock ErrorText()
     {
@@ -971,71 +644,6 @@ internal sealed class ReminderRulesEditorWindow : Window
         text.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         return text;
     }
-
-    private static string Describe(ReminderRule rule) => rule switch
-    {
-        AbsoluteOnceReminderRule once =>
-            $"一次 · {ChinaStandardTime.ToBeijingTime(once.ScheduledUtc):yyyy-MM-dd HH:mm}",
-        FixedIntervalReminderRule repeating =>
-            $"每 {repeating.Interval.Minutes} 分钟 · {ChinaStandardTime.ToBeijingTime(repeating.FirstDueUtc):yyyy-MM-dd HH:mm} 起",
-        CountdownRelativeReminderRule relative => relative.OffsetMinutesBefore == 0
-            ? "倒计时到点"
-            : $"倒计时提前 {relative.OffsetMinutesBefore} 分钟",
-        CalendarReminderRule calendar => DescribeCalendar(calendar),
-        _ => throw new ArgumentOutOfRangeException(nameof(rule))
-    };
-
-    private static IReadOnlyList<ReminderRule> Freeze(IEnumerable<ReminderRule> rules) =>
-        Array.AsReadOnly(rules.Select(rule => (ReminderRule)(rule switch
-        {
-            AbsoluteOnceReminderRule once => once with { },
-            FixedIntervalReminderRule repeating => repeating with { },
-            CountdownRelativeReminderRule relative => relative with { },
-            CalendarReminderRule calendar => calendar with { Selector = calendar.Selector switch
-            {
-                DailyCalendarSelector => new DailyCalendarSelector(),
-                WeeklyCalendarSelector weekly => new WeeklyCalendarSelector(weekly.Weekdays.ToArray()),
-                MonthlyCalendarSelector monthly => monthly with { },
-                YearlyCalendarSelector yearly => yearly with { },
-                _ => throw new ArgumentOutOfRangeException(nameof(rule))
-            } },
-            _ => throw new ArgumentOutOfRangeException(nameof(rule))
-        })).ToArray());
-
-    private static string DescribeCalendar(CalendarReminderRule calendar)
-    {
-        var frequency = calendar.Frequency switch
-        {
-            CalendarFrequency.Daily => "日",
-            CalendarFrequency.Weekly => "周",
-            CalendarFrequency.Monthly => "月",
-            CalendarFrequency.Yearly => "年",
-            _ => throw new ArgumentOutOfRangeException(nameof(calendar))
-        };
-        var selector = calendar.Selector switch
-        {
-            DailyCalendarSelector => string.Empty,
-            WeeklyCalendarSelector weekly => $" · 周{string.Join("、周", weekly.Weekdays.Select(ChineseWeekday))}",
-            MonthlyCalendarSelector { LastDay: true } => " · 最后一天",
-            MonthlyCalendarSelector monthly => $" · {monthly.Day} 日",
-            YearlyCalendarSelector { LastDay: true } yearly => $" · {yearly.Month} 月最后一天",
-            YearlyCalendarSelector yearly => $" · {yearly.Month} 月 {yearly.Day} 日",
-            _ => throw new ArgumentOutOfRangeException(nameof(calendar))
-        };
-        return $"每 {calendar.Interval} {frequency}{selector} · {calendar.LocalTime:HH\\:mm}";
-    }
-
-    private static string ChineseWeekday(DayOfWeek day) => day switch
-    {
-        DayOfWeek.Monday => "一",
-        DayOfWeek.Tuesday => "二",
-        DayOfWeek.Wednesday => "三",
-        DayOfWeek.Thursday => "四",
-        DayOfWeek.Friday => "五",
-        DayOfWeek.Saturday => "六",
-        DayOfWeek.Sunday => "日",
-        _ => throw new ArgumentOutOfRangeException(nameof(day))
-    };
 
     private static void NameControl(DependencyObject target, string name) =>
         AutomationProperties.SetName(target, name);

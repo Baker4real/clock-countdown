@@ -4928,9 +4928,10 @@ internal static class ValidationExercises
                     Focusable: false
                 },
                 "自定义稍后日历文本框未保持全应用统一只读。");
+            var keyboardWorks = WindowValidationInput.ExerciseDatePicker(customDate, out var keyboardDiagnostic);
             Must(
-                WindowValidationInput.ExerciseDatePicker(customDate),
-                "自定义稍后日历未实现打开聚焦、Esc 关闭并回收焦点的统一行为。");
+                keyboardWorks,
+                "自定义稍后日历未实现打开聚焦、Esc 关闭并回收焦点的统一行为。" + keyboardDiagnostic);
             customDate.ApplyTemplate();
             Must(
                 customDate.Template.FindName("PART_TextBox", customDate) is DatePickerTextBox
@@ -5685,6 +5686,13 @@ internal static class ValidationExercises
                relativeResult.Id == ruleId;
     }
 
+    private static void InvokeRuleEditorButton(Button button)
+    {
+        // #203: editor actions now bind commands; Click alone skips them.
+        Must(WindowValidationInput.InvokeButton(button), "提醒规则编辑器按钮不支持真实 Invoke。");
+        WindowValidationInput.Pump(button.Dispatcher);
+    }
+
     internal static bool ExerciseReminderRulesEntry(Window owner, Button entry)
     {
         var opened = false;
@@ -5704,8 +5712,7 @@ internal static class ValidationExercises
                         StringComparison.Ordinal);
                 if (editors.Length == 1)
                 {
-                    FindByAutomationId<Button>(editors[0], "CancelReminderRulesButton")
-                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    InvokeRuleEditorButton(FindByAutomationId<Button>(editors[0], "CancelReminderRulesButton"));
                 }
             }));
         entry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -5744,37 +5751,31 @@ internal static class ValidationExercises
                     0,
                     firstDue.Offset);
                 SetEditorSchedule(editor, ReminderEditingMode.Once, firstDue, 30);
-                FindByAutomationId<Button>(editor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
 
                 var originalEdit = VisualDescendants<Button>(editor).Single(button =>
                     string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal));
                 var originalId = originalEdit.Tag as string;
-                originalEdit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(originalEdit);
                 SetEditorSchedule(editor, ReminderEditingMode.Once, firstDue.AddHours(1), 30);
-                FindByAutomationId<Button>(editor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
 
-                VisualDescendants<Button>(editor).Single(button =>
+                InvokeRuleEditorButton(VisualDescendants<Button>(editor).Single(button =>
                         string.Equals(button.Content?.ToString(), "复制", StringComparison.Ordinal) &&
-                        string.Equals(button.Tag as string, originalId, StringComparison.Ordinal))
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        string.Equals(button.Tag as string, originalId, StringComparison.Ordinal)));
                 SetEditorSchedule(editor, ReminderEditingMode.Once, firstDue.AddHours(2), 30);
-                FindByAutomationId<Button>(editor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
 
                 var copiedId = VisualDescendants<Button>(editor)
                     .Where(button => string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal))
                     .Select(button => button.Tag as string)
                     .Single(id => !string.Equals(id, originalId, StringComparison.Ordinal));
-                VisualDescendants<Button>(editor).Single(button =>
+                InvokeRuleEditorButton(VisualDescendants<Button>(editor).Single(button =>
                         string.Equals(button.Content?.ToString(), "删除", StringComparison.Ordinal) &&
-                        string.Equals(button.Tag as string, originalId, StringComparison.Ordinal))
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        string.Equals(button.Tag as string, originalId, StringComparison.Ordinal)));
 
                 SetEditorSchedule(editor, ReminderEditingMode.Once, firstDue.AddHours(3), 30);
-                FindByAutomationId<Button>(editor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "AcceptReminderRulesButton"));
                 actionsWorked = editor.ResultRules.Count == 2 &&
                     editor.ResultRules.Any(rule => string.Equals(rule.Id, copiedId, StringComparison.Ordinal)) &&
                     editor.ResultRules.All(rule => !string.Equals(rule.Id, originalId, StringComparison.Ordinal));
@@ -5804,8 +5805,7 @@ internal static class ValidationExercises
                 var firstDue = ChinaStandardTime.ToBeijingTime(nowUtc.AddMinutes(3));
                 SetEditorSchedule(delayedEditor, ReminderEditingMode.Once, firstDue, 30);
                 delayedClock.UtcNow = nowUtc.AddMinutes(4);
-                FindByAutomationId<Button>(delayedEditor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(delayedEditor, "AcceptReminderRulesButton"));
                 var error = FindByAutomationId<TextBlock>(delayedEditor, "ReminderRuleFirstDueError");
                 rejectedAtLiveTime = delayedEditor.IsVisible &&
                     delayedEditor.ResultRules.Count == 0 &&
@@ -5817,8 +5817,7 @@ internal static class ValidationExercises
 
                 var correctedDue = ChinaStandardTime.ToBeijingTime(delayedClock.UtcNow.AddMinutes(10));
                 SetEditorSchedule(delayedEditor, ReminderEditingMode.Once, correctedDue, 30);
-                FindByAutomationId<Button>(delayedEditor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(delayedEditor, "AcceptReminderRulesButton"));
             }));
             Must(delayedEditor.ShowDialog() == true,
                 "共享提醒规则编辑器未在修正实时过期输入后接受草稿。");
@@ -5843,11 +5842,9 @@ internal static class ValidationExercises
         {
             cancelledEditor.Dispatcher.BeginInvoke(new Action(() =>
             {
-                VisualDescendants<Button>(cancelledEditor).Single(button =>
-                        string.Equals(button.Content?.ToString(), "删除", StringComparison.Ordinal))
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                FindByAutomationId<Button>(cancelledEditor, "CancelReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(VisualDescendants<Button>(cancelledEditor).Single(button =>
+                        string.Equals(button.Content?.ToString(), "删除", StringComparison.Ordinal)));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(cancelledEditor, "CancelReminderRulesButton"));
             }));
             Must(cancelledEditor.ShowDialog() == false,
                 "共享提醒规则编辑器取消删除后未以取消结果关闭。");
@@ -5888,27 +5885,23 @@ internal static class ValidationExercises
                 var mode = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
                 mode.SelectedIndex = 2;
                 FindByAutomationId<TextBox>(editor, "ReminderRuleRelativeOffsetMinutes").Text = "0";
-                FindByAutomationId<Button>(editor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
 
                 var edits = VisualDescendants<Button>(editor).Where(button =>
                     string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal)).ToArray();
                 if (edits.Length != 1)
                 {
-                    FindByAutomationId<Button>(editor, "CancelReminderRulesButton")
-                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "CancelReminderRulesButton"));
                     return;
                 }
 
                 var edit = edits[0];
                 var createdId = edit.Tag as string;
-                edit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(edit);
                 FindByAutomationId<TextBox>(editor, "ReminderRuleRelativeOffsetMinutes").Text =
                     "5256000";
-                FindByAutomationId<Button>(editor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                FindByAutomationId<Button>(editor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "AcceptReminderRulesButton"));
                 editedExistingRule =
                     mode.Items.Count == 4 &&
                     string.Equals(createdId, relativeRuleId.ToString("N"), StringComparison.Ordinal) &&
@@ -5943,27 +5936,23 @@ internal static class ValidationExercises
                 var dueBeijing = ChinaStandardTime.ToBeijingTime(nowUtc.AddHours(2));
                 var edit = VisualDescendants<Button>(transitionEditor).Single(button =>
                     string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal));
-                edit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(edit);
                 SetEditorSchedule(transitionEditor, ReminderEditingMode.Once, dueBeijing, 30);
-                FindByAutomationId<Button>(transitionEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(transitionEditor, "SaveReminderRuleButton"));
 
                 edit = VisualDescendants<Button>(transitionEditor).Single(button =>
                     string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal));
-                edit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(edit);
                 FindByAutomationId<ComboBox>(transitionEditor, "ReminderRuleMode").SelectedIndex = 2;
                 FindByAutomationId<TextBox>(transitionEditor, "ReminderRuleRelativeOffsetMinutes").Text = "30";
-                FindByAutomationId<Button>(transitionEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(transitionEditor, "SaveReminderRuleButton"));
 
                 edit = VisualDescendants<Button>(transitionEditor).Single(button =>
                     string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal));
-                edit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(edit);
                 SetEditorSchedule(transitionEditor, ReminderEditingMode.Repeating, dueBeijing, 30);
-                FindByAutomationId<Button>(transitionEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                FindByAutomationId<Button>(transitionEditor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(transitionEditor, "SaveReminderRuleButton"));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(transitionEditor, "AcceptReminderRulesButton"));
                 typeTransitionsWorked =
                     transitionEditor.ResultRules.SingleOrDefault() is FixedIntervalReminderRule finalRule &&
                     string.Equals(finalRule.Id, transitionRuleId, StringComparison.Ordinal);
@@ -5994,8 +5983,7 @@ internal static class ValidationExercises
             {
                 FindByAutomationId<ComboBox>(rejectedEditor, "ReminderRuleMode").SelectedIndex = 2;
                 FindByAutomationId<TextBox>(rejectedEditor, "ReminderRuleRelativeOffsetMinutes").Text = "60";
-                FindByAutomationId<Button>(rejectedEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(rejectedEditor, "SaveReminderRuleButton"));
                 var error = FindByAutomationId<TextBlock>(
                     rejectedEditor,
                     "ReminderRuleRelativeOffsetError");
@@ -6003,8 +5991,7 @@ internal static class ValidationExercises
                     rejectedEditor.ResultRules.Count == 0 &&
                     error.Visibility == Visibility.Visible &&
                     error.Text.Contains("派生时间晚于当前北京时间", StringComparison.Ordinal);
-                FindByAutomationId<Button>(rejectedEditor, "CancelReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(rejectedEditor, "CancelReminderRulesButton"));
             }));
             Must(rejectedEditor.ShowDialog() == false,
                 "倒计时相对规则无效 offset 探针未以取消结果关闭。");
@@ -6076,8 +6063,7 @@ internal static class ValidationExercises
                         .IsChecked = false;
                 }
 
-                FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton"));
                 var error = FindByAutomationId<TextBlock>(noteEditor, "ReminderRuleCalendarSelectorError");
                 var form = error.Parent as Grid ??
                            throw new InvalidOperationException("日历 selector 错误不在规则表单 Grid 中。");
@@ -6109,8 +6095,7 @@ internal static class ValidationExercises
                 var lastDay = FindByAutomationId<CheckBox>(noteEditor, "ReminderRuleCalendarLastDay");
                 daySelector.SelectedIndex = -1;
                 lastDay.IsChecked = false;
-                FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton"));
                 var monthlyLocalized = error.Visibility == Visibility.Visible &&
                     error.Text.Contains("按月重复", StringComparison.Ordinal) &&
                     string.Equals(
@@ -6121,8 +6106,7 @@ internal static class ValidationExercises
 
                 frequency.SelectedIndex = 3;
                 FindByAutomationId<ComboBox>(noteEditor, "ReminderRuleCalendarMonth").SelectedIndex = -1;
-                FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton"));
                 var yearlyLocalized = error.Visibility == Visibility.Visible &&
                     error.Text.Contains("按年重复", StringComparison.Ordinal) &&
                     string.Equals(
@@ -6142,10 +6126,8 @@ internal static class ValidationExercises
                 frequency.Focus();
                 frequency.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
                 noteKeyboardWorked = interval.IsKeyboardFocusWithin;
-                FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                FindByAutomationId<Button>(noteEditor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton"));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(noteEditor, "AcceptReminderRulesButton"));
             }));
 
             Must(noteEditor.ShowDialog() == true, "便签日历规则编辑器未接受有效草稿。");
@@ -6189,10 +6171,8 @@ internal static class ValidationExercises
                 FindByAutomationId<ComboBox>(countdownEditor, "ReminderRuleFirstDueHour").SelectedIndex = 10;
                 FindByAutomationId<ComboBox>(countdownEditor, "ReminderRuleFirstDueMinute").SelectedIndex = 0;
                 FindByAutomationId<ComboBox>(countdownEditor, "ReminderRuleCalendarDay").SelectedIndex = 30;
-                FindByAutomationId<Button>(countdownEditor, "SaveReminderRuleButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                FindByAutomationId<Button>(countdownEditor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(countdownEditor, "SaveReminderRuleButton"));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(countdownEditor, "AcceptReminderRulesButton"));
             }));
             Must(countdownEditor.ShowDialog() == true, "倒计时日历规则编辑器未接受有效草稿。");
             Must(countdownEditor.ResultRules.SingleOrDefault() is CalendarReminderRule
@@ -6319,13 +6299,13 @@ internal static class ValidationExercises
                     AutomationProperties.GetName(button).StartsWith(
                         "删除规则 ",
                         StringComparison.Ordinal));
-                delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(delete);
                 var complete = VisualDescendants<Button>(editor).Single(button =>
                     string.Equals(
                         AutomationProperties.GetName(button),
                         "接受提醒规则草稿",
                         StringComparison.Ordinal));
-                complete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(complete);
             }));
             ((Button)main.FindName("ManageNoteReminderRulesButton"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -6556,8 +6536,7 @@ internal static class ValidationExercises
                     ReminderEditingMode.Once,
                     ChinaStandardTime.ToBeijingTime(nowUtc.AddMinutes(3)),
                     30);
-                FindByAutomationId<Button>(editor, "AcceptReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "AcceptReminderRulesButton"));
             }));
             ((Button)main.FindName("ManageNoteReminderRulesButton"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -6575,8 +6554,7 @@ internal static class ValidationExercises
                         error.Text,
                         "首次提醒时间必须晚于当前北京时间。",
                         StringComparison.Ordinal);
-                FindByAutomationId<Button>(editor, "CancelReminderRulesButton")
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "CancelReminderRulesButton"));
             }));
             ((Button)main.FindName("SaveNoteButton"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

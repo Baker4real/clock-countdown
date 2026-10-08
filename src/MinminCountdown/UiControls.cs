@@ -632,8 +632,7 @@ internal sealed class WpfUiDatePicker : DatePicker
             _textBox.ApplyTemplate();
             // #139: TextBoxBase copies Padding to the content host. The warm
             // template already applies it as Margin, so count it only once.
-            if (Window.GetWindow(this) is MainWindow &&
-                _textBox.Template?.FindName("PART_ContentHost", _textBox) is ScrollViewer host)
+            if (_textBox.Template?.FindName("PART_ContentHost", _textBox) is ScrollViewer host)
             {
                 host.Padding = default;
             }
@@ -731,7 +730,8 @@ internal static class PickerTemplateParts
         return picker is WpfUiDatePicker &&
                WpfUiPickerStyles.IsBasedOn(picker.Style, WpfUiPickerStyles.DatePicker) &&
                picker.Template?.FindName("PART_TextBox", picker) is DatePickerTextBox &&
-               picker.Template.FindName("PART_TextToggle", picker) is ToggleButton &&
+               picker.Template.FindName("PART_TextToggle", picker) is ToggleButton textToggle &&
+               WpfUiPickerStyles.IsBasedOn(textToggle.Style, WpfUiPickerStyles.ToggleButton) &&
                picker.Template.FindName("PART_Button", picker) is Wpf.Ui.Controls.Button;
     }
 

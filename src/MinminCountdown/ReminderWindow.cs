@@ -452,7 +452,7 @@ internal sealed class ReminderCenterWindow : Window
         var customDate = UiAccessibility.Name(
             new WpfUiDatePicker
             {
-                Width = 150,
+                Width = 216,
                 Margin = new Thickness(0, 8, 8, 0)
             },
             $"自定义稍后日期：{item.Source.DisplayText}");

@@ -5165,6 +5165,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingCountdownsSource -match 'FadeCountdownDigit\(') '主窗与悬浮窗秒位刷新消费 90ms 淡入 token，并从当前动画状态续接（#198 源码契约）'
     Assert-Equal $true ([bool] $adapterValidation.MotionClientAreaAnimationSwitchReadable) '已接入系统客户区动画开关读取点（未来动效即时等价入口）'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
+    Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.KeyboardPathsWork) '生产下拉支持 F4、Alt+Down、方向键，并在正常动画下以 Esc 完成关闭'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxArrowIsNotTabStop) '下拉箭头不是独立 Tab 停靠点'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.ArrowIsNotTabStop) '生产 ComboBox 箭头测量均非 Tab 停靠点'
     Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowHeaderDrag.HeaderRequestsDrag) '提醒中心与规则编辑器头部拖动请求原生 DragMove'

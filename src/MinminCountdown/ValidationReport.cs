@@ -2055,6 +2055,9 @@ internal static class ValidationReport
             ["MainSelectedTabWeightDominates"] =
                 interactionStates.SelectedTabWeightDominates &&
                 interactionStates.SegmentIndicatorGeometryMatches,
+            ["MainSegmentIndicatorGeometryMatches"] = interactionStates.SegmentIndicatorGeometryMatches,
+            ["MainSegmentIndicatorReducedMotionIsImmediate"] = interactionStates.SegmentIndicatorReducedMotionIsImmediate,
+            ["MainSegmentIndicatorRapidSwitchStaysAligned"] = interactionStates.SegmentIndicatorRapidSwitchStaysAligned,
             ["MotionClientAreaAnimationSwitchReadable"] =
                 ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
             ["MotionTokensMatch"] =
@@ -12315,11 +12318,10 @@ internal static class ValidationReport
                         dialog.Show();
                         PumpDispatcher();
                         dialog.UpdateLayout();
-                        var root = Descendants<FrameworkElement>(dialog).Single(element =>
-                            string.Equals(
-                                AutomationProperties.GetAutomationId(element),
-                                "ConfirmationContentRoot",
-                                StringComparison.Ordinal));
+                        // #205: MessageBox owns the action row in its template.
+                        // Measure the complete rendered surface that contains
+                        // both content and actions, rather than the body grid.
+                        var root = (FrameworkElement)VisualTreeHelper.GetChild(dialog, 0);
                         var rootBounds = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
                         var cancelBounds = dialog.CancelButton.TransformToAncestor(root).TransformBounds(
                             new Rect(0, 0, dialog.CancelButton.ActualWidth, dialog.CancelButton.ActualHeight));
@@ -13752,16 +13754,30 @@ internal static class ValidationReport
             };
             rulesEditor.Show();
             PumpDispatcher();
-            var editorResults = Descendants<ComboBox>(rulesEditor)
-                .Select(comboBox =>
-                    MeasureCombo(AutomationProperties.GetAutomationId(comboBox), comboBox))
-                .ToArray();
+            var editorResults = new List<ComboBoxPointerExerciseResult>();
+            var editorCombos = Descendants<ComboBox>(rulesEditor).ToArray();
+            var editorMode = editorCombos.Single(comboBox =>
+                AutomationProperties.GetAutomationId(comboBox) == "ReminderRuleMode");
+            var calendarFrequency = editorCombos.Single(comboBox =>
+                AutomationProperties.GetAutomationId(comboBox) == "ReminderRuleCalendarFrequency");
+            foreach (var comboBox in editorCombos)
+            {
+                var id = AutomationProperties.GetAutomationId(comboBox);
+                // Exercise each selector in a reachable visible editor mode.
+                // Routed-event injection previously also clicked collapsed
+                // controls, which does not represent a user's pointer path.
+                editorMode.SelectedIndex = id == "ReminderRuleInterval" ? 1 :
+                    id.StartsWith("ReminderRuleCalendar", StringComparison.Ordinal) ? 2 : 0;
+                calendarFrequency.SelectedIndex = 3;
+                PumpDispatcher();
+                editorResults.Add(MeasureCombo(id, comboBox));
+            }
 
             var all = mainResults.Concat(reminderResults).Concat(editorResults).ToArray();
             return new ComboBoxTextClickValidation(
                 all.All(result => result.ReleaseOpened && result.Attached && result.ArrowColumnUnchanged),
                 all.All(result => result.ArrowPressOpens),
-                all.All(result => result.KeyboardF4Opens && result.KeyboardAltDownOpens && result.KeyboardArrowsKeepOpen),
+                all.All(result => result.KeyboardF4Opens && result.KeyboardAltDownOpens && result.KeyboardArrowsKeepOpen && result.KeyboardEscapeCloses),
                 all.All(result => result.DisabledClickDoesNotOpen),
                 all.All(result => result.PopupItemClickSelects),
                 all.All(result => result.ArrowIsNotTabStop),
@@ -14735,11 +14751,10 @@ internal static class ValidationReport
             var reminderCenterComboBoxes = Descendants<ComboBox>(reminderCenter).ToArray();
             var reminderCenterComboBoxThemedCount = reminderCenterComboBoxes.Count(HasTemplate);
 
-            // Keep the negative control: the unadapted WPF-UI picker has an
-            // arrow and read-only text, but no project text-click surface.
-            var negativePicker = new DatePicker { Style = WpfUiPickerStyles.DatePicker };
-            negativePicker.Resources[typeof(DatePickerTextBox)] =
-                Application.Current.FindResource("DatePickerTextBoxStyle");
+            // Keep an independent negative: the same warm, read-only date
+            // template with its text activation surface removed. Its arrow
+            // remains usable, but clicking the text must not open the calendar.
+            var negativePicker = new DatePicker();
             negativeHost = new Window
             {
                 Content = negativePicker,
@@ -14752,6 +14767,10 @@ internal static class ValidationReport
                 Height = 100
             };
             negativeHost.Show();
+            PumpDispatcher();
+            negativePicker.ApplyTemplate();
+            ((ToggleButton)negativePicker.Template.FindName("PART_TextToggle", negativePicker))
+                .Visibility = Visibility.Collapsed;
             PumpDispatcher();
             var negativeMeasurement = MeasureDatePicker(
                 "Negative.UnattachedDatePicker",

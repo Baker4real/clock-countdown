@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -3923,14 +3925,11 @@ public sealed partial class FloatingWindow
             }
 
             ConfirmationDialog? dialog = null;
-            Dispatcher.BeginInvoke(new Action(() =>
+            ValidationExercises.QueueConfirmationDialogAction(this, visibleDialog =>
             {
-                dialog = Application.Current?.Windows.OfType<ConfirmationDialog>().FirstOrDefault();
-                if (dialog is not null)
-                {
-                    drive(dialog);
-                }
-            }), DispatcherPriority.Background);
+                dialog = visibleDialog;
+                return drive(dialog);
+            });
             var menuDelete = ValidationDescendants<Button>(popup.Child).FirstOrDefault(button =>
                 string.Equals(button.Content as string, "删除", StringComparison.Ordinal));
             menuDelete?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -3941,15 +3940,13 @@ public sealed partial class FloatingWindow
 
         var cancelled = OpenMenuAndDriveDialog(dialog =>
         {
-            dialog!.CancelButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            return true;
+            return WindowValidationInput.InvokeButton(dialog!.CancelButton);
         });
         var noteStillExistsAfterCancel = _desktopWorkspace.Snapshot.Settings.Notes.Any(note =>
             string.Equals(note.Id, noteId, StringComparison.Ordinal));
         var confirmed = OpenMenuAndDriveDialog(dialog =>
         {
-            dialog!.ConfirmButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            return true;
+            return WindowValidationInput.InvokeButton(dialog!.ConfirmButton);
         });
         return
             cancelled &&
@@ -4605,6 +4602,20 @@ internal sealed record ComboBoxPointerExerciseResult(
 
 internal static class WindowValidationInput
 {
+    // #205 regression: raising Click alone bypasses ButtonBase.OnClick and its
+    // command source. UIA Invoke follows the same command path as a real click.
+    public static bool InvokeButton(Button button)
+    {
+        if (UIElementAutomationPeer.CreatePeerForElement(button)?.GetPattern(PatternInterface.Invoke)
+            is not IInvokeProvider provider)
+        {
+            return false;
+        }
+
+        provider.Invoke();
+        return true;
+    }
+
     /// <summary>
     /// Waits for the popup's own close path to complete without changing its state.
     /// Callers use this only as an observation before an assertion; fixture cleanup
@@ -4753,7 +4764,7 @@ internal static class WindowValidationInput
             picker.IsDropDownOpen = true;
             Pump(picker.Dispatcher);
             picker.ApplyTemplate();
-            var calendar = ThemedDatePickerBehavior.GetCalendar(picker);
+            var calendar = PickerTemplateParts.GetCalendar(picker);
             var focusedVisual = Keyboard.FocusedElement as DependencyObject;
             var focusedWithinCalendarVisual =
                 calendar is not null &&
@@ -4794,7 +4805,10 @@ internal static class WindowValidationInput
             picker.IsDropDownOpen = false;
             picker.ApplyTemplate();
             var textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
-            if (textBox is null || PresentationSource.FromVisual(textBox) is null)
+            var textSurface = (UIElement?)PickerTemplateParts.GetTextToggle(picker) ?? textBox;
+            if (textBox is null ||
+                textSurface is null ||
+                PresentationSource.FromVisual(textSurface) is null)
             {
                 return new DatePickerPointerExerciseResult(
                     false, false, false, false, false, false, false);
@@ -4802,16 +4816,16 @@ internal static class WindowValidationInput
 
             RaiseDateTextPointer(
                 picker,
-                textBox,
+                textSurface,
                 UIElement.PreviewMouseLeftButtonDownEvent);
             Pump(picker.Dispatcher);
             var pressDidNotOpen = !picker.IsDropDownOpen;
             var releaseHandled = RaiseDateTextPointer(
                 picker,
-                textBox,
+                textSurface,
                 UIElement.PreviewMouseLeftButtonUpEvent);
             Pump(picker.Dispatcher);
-            var calendar = ThemedDatePickerBehavior.GetCalendar(picker);
+            var calendar = PickerTemplateParts.GetCalendar(picker);
             var releaseOpened = picker.IsDropDownOpen;
             var themedPopupOpened =
                 releaseOpened &&
@@ -4854,6 +4868,48 @@ internal static class WindowValidationInput
         finally
         {
             picker.IsDropDownOpen = false;
+            Pump(picker.Dispatcher);
+        }
+    }
+
+    public static bool ExerciseDatePickerSelectedDateText(DatePicker picker)
+    {
+        var original = picker.SelectedDate;
+        try
+        {
+            // Independent literals include the widest date and a leap day.
+            foreach (var (date, expected) in new (DateTime? Date, string Text)[]
+            {
+                (new DateTime(2031, 12, 31), "2031 年 12 月 31 日"),
+                (new DateTime(2032, 2, 29), "2032 年 2 月 29 日"),
+                (null, string.Empty)
+            })
+            {
+                picker.SetCurrentValue(DatePicker.SelectedDateProperty, date);
+                Pump(picker.Dispatcher);
+                picker.ApplyTemplate();
+                if (picker.Template.FindName("PART_TextBox", picker) is not DatePickerTextBox text ||
+                    text.Text != expected || !text.IsReadOnly || text.Focusable)
+                {
+                    return false;
+                }
+
+                picker.IsDropDownOpen = true;
+                Pump(picker.Dispatcher);
+                picker.IsDropDownOpen = false;
+                Pump(picker.Dispatcher);
+                if (text.Text != expected)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            picker.IsDropDownOpen = false;
+            picker.SetCurrentValue(DatePicker.SelectedDateProperty, original);
             Pump(picker.Dispatcher);
         }
     }
@@ -4934,11 +4990,12 @@ internal static class WindowValidationInput
 
     public static ComboBoxPointerExerciseResult ExerciseComboBox(ComboBox comboBox)
     {
-        var attached = ThemedComboBoxBehavior.IsAttached(comboBox);
-        var arrowColumnUnchanged = ThemedComboBoxBehavior.HasUnchangedArrowColumn(comboBox);
-        var presenter = ThemedComboBoxBehavior.GetSelectionPresenter(comboBox);
-        var arrow = ThemedComboBoxBehavior.GetArrowToggle(comboBox);
-        if (presenter is null || PresentationSource.FromVisual(comboBox) is null)
+        var attached = PickerTemplateParts.HasComboBoxContract(comboBox);
+        var arrowColumnUnchanged = PickerTemplateParts.HasUnchangedArrowColumn(comboBox);
+        var presenter = PickerTemplateParts.GetSelectionPresenter(comboBox);
+        var textToggle = PickerTemplateParts.GetTextToggle(comboBox);
+        var arrow = PickerTemplateParts.GetArrowToggle(comboBox);
+        if (presenter is null || textToggle is null || PresentationSource.FromVisual(comboBox) is null)
         {
             return new ComboBoxPointerExerciseResult(
                 false, false, false, false, false, false, false, false, false, false, false, false,
@@ -4956,12 +5013,12 @@ internal static class WindowValidationInput
             comboBox.IsEnabled = true;
             comboBox.IsDropDownOpen = false;
             Pump(comboBox.Dispatcher);
-            RaiseComboTextPointer(comboBox, presenter, UIElement.PreviewMouseLeftButtonDownEvent);
+            RaiseComboTextPointer(comboBox, textToggle, UIElement.PreviewMouseLeftButtonDownEvent);
             Pump(comboBox.Dispatcher);
             var pressDidNotOpen = !comboBox.IsDropDownOpen;
             var releaseHandled = RaiseComboTextPointer(
                 comboBox,
-                presenter,
+                textToggle,
                 UIElement.PreviewMouseLeftButtonUpEvent);
             Pump(comboBox.Dispatcher);
             var releaseOpened = comboBox.IsDropDownOpen;
@@ -4994,9 +5051,7 @@ internal static class WindowValidationInput
             Pump(comboBox.Dispatcher);
             Keyboard.Focus(comboBox);
             Pump(comboBox.Dispatcher);
-            RaisePreviewKey(comboBox, Key.Down, ModifierKeys.Alt);
-            Pump(comboBox.Dispatcher);
-            RaiseKey(comboBox, Key.Down, ModifierKeys.Alt);
+            RaiseComboBoxAltDown(comboBox);
             Pump(comboBox.Dispatcher);
             var altDownOpened = comboBox.IsDropDownOpen;
 
@@ -5009,11 +5064,11 @@ internal static class WindowValidationInput
             comboBox.IsDropDownOpen = false;
             Pump(comboBox.Dispatcher);
             comboBox.IsEnabled = false;
-            RaiseComboTextPointer(comboBox, presenter, UIElement.PreviewMouseLeftButtonDownEvent);
+            RaiseComboTextPointer(comboBox, textToggle, UIElement.PreviewMouseLeftButtonDownEvent);
             Pump(comboBox.Dispatcher);
             var disabledHandled = RaiseComboTextPointer(
                 comboBox,
-                presenter,
+                textToggle,
                 UIElement.PreviewMouseLeftButtonUpEvent);
             Pump(comboBox.Dispatcher);
             var disabledClickDoesNotOpen = !comboBox.IsDropDownOpen && !disabledHandled;
@@ -5125,7 +5180,7 @@ internal static class WindowValidationInput
             Pump(picker.Dispatcher);
         }
 
-        var calendar = ThemedDatePickerBehavior.GetCalendar(picker);
+        var calendar = PickerTemplateParts.GetCalendar(picker);
         calendar?.ApplyTemplate();
         calendar?.UpdateLayout();
         Pump(picker.Dispatcher);
@@ -5196,36 +5251,119 @@ internal static class WindowValidationInput
 
     private static bool RaiseComboTextPointer(
         ComboBox comboBox,
-        ContentPresenter presenter,
-        RoutedEvent routedEvent)
-    {
-        var eventArgs = new MouseButtonEventArgs(
-            Mouse.PrimaryDevice,
-            Environment.TickCount,
-            MouseButton.Left)
-        {
-            RoutedEvent = routedEvent,
-            Source = presenter
-        };
-        comboBox.RaiseEvent(eventArgs);
-        return eventArgs.Handled;
-    }
+        UIElement target,
+        RoutedEvent routedEvent) => RaisePickerPointer(target, routedEvent);
 
     private static bool RaiseDateTextPointer(
         DatePicker picker,
-        DatePickerTextBox textBox,
-        RoutedEvent routedEvent)
+        UIElement target,
+        RoutedEvent routedEvent) => RaisePickerPointer(target, routedEvent);
+
+    private static bool RaisePickerPointer(UIElement target, RoutedEvent routedEvent)
     {
-        var eventArgs = new MouseButtonEventArgs(
-            Mouse.PrimaryDevice,
-            Environment.TickCount,
-            MouseButton.Left)
+        // The original seam injected Preview events for project event handlers.
+        // Native ButtonBase needs both routed phases and the pressed device
+        // state, just as WPF's input manager provides. No global input is sent.
+        if (!target.IsEnabled)
         {
-            RoutedEvent = routedEvent,
-            Source = textBox
+            return false;
+        }
+
+        if (PresentationSource.FromVisual(target) is not System.Windows.Interop.HwndSource source ||
+            source.RootVisual is not Visual root)
+        {
+            return false;
+        }
+
+        var pressed = routedEvent == UIElement.PreviewMouseLeftButtonDownEvent;
+        var originalKeys = new byte[256];
+        if (!PickerNativeInput.GetKeyboardState(originalKeys))
+        {
+            throw new System.ComponentModel.Win32Exception();
+        }
+
+        var keys = (byte[])originalKeys.Clone();
+        keys[1] = pressed ? (byte)0x80 : (byte)0;
+        try
+        {
+            if (!PickerNativeInput.SetKeyboardState(keys))
+            {
+                throw new System.ComponentModel.Win32Exception();
+            }
+
+            // Activate this HWND's WPF mouse source without moving the physical
+            // cursor. SetKeyboardState is local to this isolated test thread.
+            var point = target.TransformToAncestor(root).Transform(
+                new Point(target.RenderSize.Width / 2, target.RenderSize.Height / 2));
+            point = source.CompositionTarget.TransformToDevice.Transform(point);
+            var coordinates = new IntPtr(((int)point.Y << 16) | ((int)point.X & 0xffff));
+            PickerNativeInput.SendMessage(source.Handle, 0x0200, pressed ? new IntPtr(1) : IntPtr.Zero, coordinates);
+            var eventArgs = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            {
+                RoutedEvent = routedEvent,
+                Source = target
+            };
+            target.RaiseEvent(eventArgs);
+            if (!eventArgs.Handled)
+            {
+                eventArgs.RoutedEvent = pressed
+                    ? UIElement.MouseLeftButtonDownEvent
+                    : UIElement.MouseLeftButtonUpEvent;
+                target.RaiseEvent(eventArgs);
+            }
+
+            return eventArgs.Handled;
+        }
+        finally
+        {
+            if (!PickerNativeInput.SetKeyboardState(originalKeys))
+            {
+                throw new System.ComponentModel.Win32Exception();
+            }
+        }
+    }
+
+    private static void RaiseComboBoxAltDown(ComboBox comboBox)
+    {
+        var source = PresentationSource.FromVisual(comboBox);
+        if (source is null)
+        {
+            return;
+        }
+
+        // ComboBox consumes e.KeyboardDevice.Modifiers. The application's
+        // shortcut-only modifier dictionary cannot stand in for that device.
+        var keyboard = new PickerKeyboardDevice();
+        var keyDown = new KeyEventArgs(keyboard, source, Environment.TickCount, Key.Down)
+        {
+            RoutedEvent = Keyboard.PreviewKeyDownEvent
         };
-        textBox.RaiseEvent(eventArgs);
-        return eventArgs.Handled;
+        comboBox.RaiseEvent(keyDown);
+        if (!keyDown.Handled)
+        {
+            keyDown.RoutedEvent = Keyboard.KeyDownEvent;
+            comboBox.RaiseEvent(keyDown);
+        }
+    }
+
+    private static class PickerNativeInput
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        internal static extern bool GetKeyboardState(byte[] state);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        internal static extern bool SetKeyboardState(byte[] state);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        internal static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    }
+
+    private sealed class PickerKeyboardDevice() : KeyboardDevice(InputManager.Current)
+    {
+        protected override KeyStates GetKeyStatesFromSystem(Key key) =>
+            key == Key.LeftAlt ? KeyStates.Down : KeyStates.None;
     }
 
     private static bool OwnsKeyboardFocus(IInputElement target) =>

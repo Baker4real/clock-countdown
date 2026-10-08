@@ -992,7 +992,7 @@ internal static class ValidationExercises
 
             datePicker.IsDropDownOpen = true;
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
-            var calendar = ThemedDatePickerBehavior.GetCalendar(datePicker);
+            var calendar = PickerTemplateParts.GetCalendar(datePicker);
             if (calendar is not null && datePicker.SelectedDate is DateTime visibleDate)
             {
                 calendar.DisplayDate = visibleDate;
@@ -3632,7 +3632,19 @@ internal static class ValidationExercises
         bool confirm,
         Action<ConfirmationDialog>? inspect = null)
     {
+        QueueConfirmationDialogAction(owner, dialog =>
+        {
+            inspect?.Invoke(dialog);
+            return WindowValidationInput.InvokeButton(confirm ? dialog.ConfirmButton : dialog.CancelButton);
+        });
+    }
+
+    internal static void QueueConfirmationDialogAction(
+        Window owner,
+        Func<ConfirmationDialog, bool> invoke)
+    {
         var attempts = 0;
+        ConfirmationDialog? dispatchedDialog = null;
         var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, owner.Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(40)
@@ -3640,21 +3652,33 @@ internal static class ValidationExercises
         timer.Tick += (_, _) =>
         {
             attempts++;
-            var dialog = owner.OwnedWindows
-                .OfType<ConfirmationDialog>()
-                .FirstOrDefault(window => window.IsVisible);
-            if (dialog is not null)
+            if (dispatchedDialog is { IsVisible: false })
             {
                 timer.Stop();
-                inspect?.Invoke(dialog);
-                (confirm ? dialog.ConfirmButton : dialog.CancelButton)
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 return;
             }
 
-            if (attempts >= 40)
+            var dialog = owner.OwnedWindows
+                .OfType<ConfirmationDialog>()
+                .FirstOrDefault(window => window.IsVisible);
+            if (dialog is not null && dispatchedDialog is null)
+            {
+                dispatchedDialog = dialog;
+                if (!invoke(dialog))
+                {
+                    timer.Stop();
+                    dialog.Close();
+                    throw new InvalidOperationException("确认框验证未能调用按钮命令；窗口仅为失败收口而关闭。");
+                }
+            }
+
+            if (attempts >= 75)
             {
                 timer.Stop();
+                dispatchedDialog?.Close();
+                // Fail the validation process after bounded modal cleanup.
+                // Closing the dialog is never counted as a successful action.
+                throw new InvalidOperationException("确认框验证在 3 秒内未完成按钮命令或窗口关闭。");
             }
         };
         timer.Start();
@@ -4894,8 +4918,8 @@ internal static class ValidationExercises
                 customDate.Visibility == Visibility.Visible && customDate.IsVisible,
                 "自定义稍后日历未处于真实可见状态，挂接断言无效。");
             Must(
-                ThemedDatePickerBehavior.IsAttached(customDate),
-                "自定义稍后日历未挂接全应用统一日历行为。");
+                PickerTemplateParts.HasDatePickerContract(customDate),
+                "自定义稍后日历未使用全应用统一日期模板。");
             customDate.ApplyTemplate();
             Must(
                 customDate.Template.FindName("PART_TextBox", customDate) is DatePickerTextBox

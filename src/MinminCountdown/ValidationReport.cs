@@ -939,7 +939,7 @@ internal static class ValidationReport
         var dateTextBox = datePicker.Template.FindName("PART_TextBox", datePicker) as DatePickerTextBox;
         var dateButton = datePicker.Template.FindName("PART_Button", datePicker) as Button;
         var datePopup = datePicker.Template.FindName("PART_Popup", datePicker) as Popup;
-        var dateCalendar = ThemedDatePickerBehavior.GetCalendar(datePicker);
+        var dateCalendar = PickerTemplateParts.GetCalendar(datePicker);
         var dateParts = new object?[] { dateTextBox, dateButton, datePopup, dateCalendar };
         var dateButtonOpenedPopup = false;
         if (datePopup is not null)
@@ -966,7 +966,7 @@ internal static class ValidationReport
             Equals(dateCalendar.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
         datePicker.IsDropDownOpen = false;
 
-        var dateBehaviorAttached = ThemedDatePickerBehavior.IsAttached(datePicker);
+        var dateBehaviorAttached = PickerTemplateParts.HasDatePickerContract(datePicker);
         var productionDatePickers = ValidateProductionDatePickers(main, floating);
         var dateTextMetrics = MeasureDatePickerTextFit(datePicker);
         var calendarHeaderMetrics = MeasureTextFit(datePicker, "2031年12月");
@@ -1970,6 +1970,13 @@ internal static class ValidationReport
             ["RequiredControls"] = 10,
             ["DatePickerTemplateParts"] = dateParts.Count(part => part is not null),
             ["DatePickerText"] = dateTextBox?.Text,
+            ["WpfUiPickerStylesIntegrated"] =
+                productionDatePickers.AllAttached &&
+                productionDatePickers.ReminderCenter.Attached &&
+                comboBoxTextClick.Measurements.All(input => input.Attached),
+            ["DatePickerSelectedDateTextMatchesContract"] =
+                productionDatePickers.Attached.All(input => input.SelectedDateTextMatchesContract) &&
+                productionDatePickers.ReminderCenter.SelectedDateTextMatchesContract,
             ["DateInputReadOnly"] = productionDatePickers.AllProductionInputsReadOnly,
             ["DatePickerButtonOpensCalendar"] =
                 dateButtonOpens && productionDatePickers.ReminderCenter.ButtonOpensCalendar,
@@ -12474,8 +12481,7 @@ internal static class ValidationReport
                 {
                     if (action == ConfirmationDialogAction.Cancel)
                     {
-                        actionDispatched = true;
-                        dialog.CancelButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        actionDispatched = WindowValidationInput.InvokeButton(dialog.CancelButton);
                         return;
                     }
 
@@ -13998,7 +14004,7 @@ internal static class ValidationReport
         var dpi = VisualTreeHelper.GetDpi(textBox);
         var formatted = new FormattedText(
             new DateTime(2031, 12, 31).ToString(
-                ThemedDatePickerBehavior.SpacedChineseDateFormat,
+                WpfUiDatePicker.SpacedChineseDateFormat,
                 CultureInfo.InvariantCulture),
             CultureInfo.CurrentCulture,
             textBox.FlowDirection,
@@ -14729,7 +14735,11 @@ internal static class ValidationReport
             var reminderCenterComboBoxes = Descendants<ComboBox>(reminderCenter).ToArray();
             var reminderCenterComboBoxThemedCount = reminderCenterComboBoxes.Count(HasTemplate);
 
-            var negativePicker = new DatePicker();
+            // Keep the negative control: the unadapted WPF-UI picker has an
+            // arrow and read-only text, but no project text-click surface.
+            var negativePicker = new DatePicker { Style = WpfUiPickerStyles.DatePicker };
+            negativePicker.Resources[typeof(DatePickerTextBox)] =
+                Application.Current.FindResource("DatePickerTextBoxStyle");
             negativeHost = new Window
             {
                 Content = negativePicker,
@@ -14778,10 +14788,9 @@ internal static class ValidationReport
         var textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
         var pointer = WindowValidationInput.ExerciseDatePickerTextPointer(picker);
         var buttonOpensCalendar = WindowValidationInput.ExerciseDatePickerButton(picker);
-        var attached = ThemedDatePickerBehavior.IsAttached(picker);
+        var attached = PickerTemplateParts.HasDatePickerContract(picker);
         var keyboardLifecycleWorks = attached && WindowValidationInput.ExerciseDatePicker(picker);
         picker.ApplyTemplate();
-        ThemedDatePickerBehavior.LockReadOnlyTextBox(picker);
         textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
         var openCalendarButton = picker.Template.FindName("PART_Button", picker) as Button;
         return new DatePickerProductionMeasurement(
@@ -14797,7 +14806,8 @@ internal static class ValidationReport
             openCalendarButton is null
                 ? string.Empty
                 : AutomationProperties.GetName(openCalendarButton) ?? string.Empty,
-            MeasureDatePickerTextFit(picker));
+            MeasureDatePickerTextFit(picker),
+            WindowValidationInput.ExerciseDatePickerSelectedDateText(picker));
     }
 
     private static bool ValidateCountdownCardActionNames(
@@ -15145,7 +15155,8 @@ internal static class ValidationReport
         bool EscapeClosesAndReturnsFocus,
         string AutomationName,
         string OpenCalendarButtonName,
-        TextFit TextFit);
+        TextFit TextFit,
+        bool SelectedDateTextMatchesContract);
 
     private sealed record ProductionDatePickerValidation(
         IReadOnlyList<DatePickerProductionMeasurement> Attached,

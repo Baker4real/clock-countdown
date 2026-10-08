@@ -681,12 +681,14 @@ internal sealed class WpfUiDatePicker : DatePicker
             {
                 if (GetTemplateChild("PART_Button") is Button trigger)
                 {
+                    trigger.Focusable = true;
                     if (Window.GetWindow(this) is { } owner)
                     {
                         owner.Activate();
                         FocusManager.SetFocusedElement(owner, trigger);
                     }
 
+                    trigger.Focus();
                     Keyboard.Focus(trigger);
                 }
             }));

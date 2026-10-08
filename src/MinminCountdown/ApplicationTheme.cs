@@ -103,6 +103,7 @@ internal sealed class ApplicationTheme
 
     private readonly ResourceDictionary _resources;
     private bool _applied;
+    private static bool? _validationAnimationPreference;
 
     public ApplicationTheme(ResourceDictionary resources)
     {
@@ -180,10 +181,56 @@ internal sealed class ApplicationTheme
 
     // #194：所有动效的即时等价入口——读取系统「客户区动画」开关
     //（SystemParameters.ClientAreaAnimation）。系统关闭时每个动效 token 都变为零时长。
-    internal static bool ClientAreaAnimationEnabled => SystemParameters.ClientAreaAnimation;
+    internal static bool ClientAreaAnimationEnabled =>
+        _validationAnimationPreference ?? SystemParameters.ClientAreaAnimation;
 
     internal static TimeSpan GetEffectiveMotionDuration(TimeSpan enabledDuration) =>
         ClientAreaAnimationEnabled ? enabledDuration : TimeSpan.Zero;
+
+    internal static bool HasAnimationPreferenceOverrideForValidation =>
+        _validationAnimationPreference.HasValue;
+
+    internal static IDisposable OverrideAnimationPreferenceForValidation(bool enabled)
+    {
+        EnsureMotionValidationContext();
+        if (_validationAnimationPreference.HasValue)
+        {
+            throw new InvalidOperationException("动效验证偏好作用域不能嵌套。");
+        }
+
+        _validationAnimationPreference = enabled;
+        return new AnimationPreferenceScope(Application.Current.Dispatcher);
+    }
+
+    internal static void EnsureMotionValidationContext()
+    {
+        var application = Application.Current ??
+            throw new InvalidOperationException("动效验证需要已初始化的 WPF Application。");
+        application.Dispatcher.VerifyAccess();
+        if (System.Threading.Thread.CurrentThread.GetApartmentState() != System.Threading.ApartmentState.STA ||
+            string.Equals(Environment.GetEnvironmentVariable("MINMIN_SUITE_ALLOW_UNISOLATED"), "1",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("动效验证输入只允许 STA 隔离桌面，不能使用非隔离绕过。");
+        }
+
+        ApplicationValidation.EnsureIsolatedValidationDesktop();
+    }
+
+    private sealed class AnimationPreferenceScope(System.Windows.Threading.Dispatcher dispatcher) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            dispatcher.VerifyAccess();
+            if (!_disposed)
+            {
+                _validationAnimationPreference = null;
+                _disposed = true;
+            }
+        }
+    }
 
     private static ThemeToken Token(
         string colorKey,

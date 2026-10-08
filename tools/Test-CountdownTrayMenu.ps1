@@ -1,0 +1,440 @@
+#requires -Version 7.0
+
+[CmdletBinding()]
+param(
+    [string] $AssemblyPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'app/MinminCountdown.dll'),
+    [string] $EvidenceDirectory,
+    [switch] $Json
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
+$desktopName = Get-SuiteThreadDesktopName
+# This probe never accepts the foreground override used by other suite callers.
+if (-not (Test-SuiteIsolatedDesktopName -DesktopName $desktopName)) {
+    throw "托盘菜单验证只允许官方 ValidationHarness 隔离桌面；当前桌面='$desktopName'。"
+}
+if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+    throw '托盘菜单验证必须由官方 ValidationHarness 阶段在 STA 隔离桌面中运行。'
+}
+if (-not (Test-Path -LiteralPath $AssemblyPath -PathType Leaf)) {
+    throw "未找到被测应用程序集：$AssemblyPath"
+}
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$resolvedAssembly = (Resolve-Path -LiteralPath $AssemblyPath).Path
+if ([string]::IsNullOrWhiteSpace($EvidenceDirectory)) {
+    $captureName = 'tray-menu-{0}-{1}' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'), [Guid]::NewGuid().ToString('N')
+    $EvidenceDirectory = Join-Path $repoRoot "logs/ui-captures/$captureName"
+}
+$EvidenceDirectory = [IO.Path]::GetFullPath($EvidenceDirectory)
+if (-not [string]::Equals([IO.Path]::GetPathRoot($EvidenceDirectory), 'D:\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw '托盘菜单证据必须写入真实 D 盘路径。'
+}
+if (Test-Path -LiteralPath $EvidenceDirectory) {
+    throw "证据目录已存在，拒绝覆盖：$EvidenceDirectory"
+}
+[void] [IO.Directory]::CreateDirectory($EvidenceDirectory)
+
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+$references = @(
+    Get-ChildItem -LiteralPath (Join-Path $PSHOME 'ref') -Filter '*.dll' |
+        Where-Object Name -ne 'WindowsBase.dll' |
+        Select-Object -ExpandProperty FullName
+    [System.Windows.Window].Assembly.Location
+    [System.Windows.UIElement].Assembly.Location
+    [System.Windows.Threading.Dispatcher].Assembly.Location
+    [System.Windows.Markup.IQueryAmbient].Assembly.Location
+)
+
+# Only the production WPF menu factory is invoked. No notification host,
+# application workspace, settings store, or Shell icon is constructed.
+if (-not ('CountdownTrayMenuHarness' -as [type])) {
+    Add-Type -ReferencedAssemblies $references -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+
+public sealed class TrayMenuRowEvidence
+{
+    public string Header { get; set; }
+    public bool Highlighted { get; set; }
+    public double[] Bounds { get; set; }
+    public string Foreground { get; set; }
+    public string Background { get; set; }
+    public double FontSize { get; set; }
+    public double ContrastRatio { get; set; }
+    public bool TextFits { get; set; }
+    public bool TextUsesInk { get; set; }
+    public int TextPixels { get; set; }
+    public int WarmBackgroundPixels { get; set; }
+    public bool WarmBackgroundRendered { get; set; }
+    public bool Readable { get; set; }
+}
+
+public sealed class TrayMenuCaptureEvidence
+{
+    public string State { get; set; }
+    public string Path { get; set; }
+    public string SHA256 { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public int NonTransparentPixels { get; set; }
+    public int WarmSurfacePixels { get; set; }
+    public string SurfaceForeground { get; set; }
+    public string SurfaceBackground { get; set; }
+    public List<TrayMenuRowEvidence> Rows { get; } = new List<TrayMenuRowEvidence>();
+}
+
+public sealed class TrayMenuActionEvidence
+{
+    public string Header { get; set; }
+    public bool PointerInputHandled { get; set; }
+    public int[] CallbackDeltas { get; set; }
+    public bool RoutedOnlyToExpectedCallback { get; set; }
+    public bool MenuClosedByAction { get; set; }
+    public bool Passed { get; set; }
+}
+
+public sealed class TrayMenuVerificationEvidence
+{
+    public string Factory { get; } = "MinminCountdown.TrayMenuFactory.Create";
+    public string InputPath { get; } = "WindowValidationInput.ClickForFocusValidation";
+    public bool ShellRegistrationPerformed { get; } = false;
+    public bool ShellDoubleClickValidated { get; } = false;
+    public bool ControllerBehaviorValidated { get; } = false;
+    public bool SettingsAccessPerformed { get; } = false;
+    public string CaptureScope { get; } = "WPF ContextMenu client visual; native Shell opening and system shadow are not covered";
+    public bool KeyboardHighlightReached { get; set; }
+    public List<TrayMenuCaptureEvidence> Captures { get; } = new List<TrayMenuCaptureEvidence>();
+    public List<TrayMenuActionEvidence> Actions { get; } = new List<TrayMenuActionEvidence>();
+    public List<string> Failures { get; } = new List<string>();
+    public bool Passed => Failures.Count == 0 && Captures.Count == 2 && Actions.Count == 3;
+}
+
+public static class CountdownTrayMenuHarness
+{
+    private const BindingFlags StaticPrivate = BindingFlags.Static | BindingFlags.NonPublic;
+    private static readonly Color Ink = Color.FromRgb(0x3B, 0x19, 0x0D);
+    private static readonly Color Surface = Color.FromRgb(0xFF, 0xFD, 0xFC);
+    private static readonly Color Highlight = Color.FromRgb(0xF6, 0xDF, 0xD3);
+
+    public static TrayMenuVerificationEvidence Run(string assemblyPath, string evidenceDirectory)
+    {
+        var result = new TrayMenuVerificationEvidence();
+        Window owner = null;
+        ContextMenu menu = null;
+        MethodInfo pump = null;
+        try
+        {
+            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+            AppContext.SetSwitch("Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable", true);
+            if (Application.Current == null)
+                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+
+            var application = Assembly.LoadFrom(assemblyPath);
+            var factory = application.GetType("MinminCountdown.TrayMenuFactory", true)
+                .GetMethod("Create", StaticPrivate);
+            var input = application.GetType("MinminCountdown.WindowValidationInput", true);
+            pump = input.GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
+            var click = input.GetMethod("ClickForFocusValidation", BindingFlags.Public | BindingFlags.Static);
+            var capture = application.GetType("MinminCountdown.ValidationReport", true)
+                .GetMethod("CaptureVisual", StaticPrivate);
+            var writePng = application.GetType("MinminCountdown.ValidationReport", true)
+                .GetMethod("WriteNewPng", StaticPrivate);
+            if (factory == null || pump == null || click == null || capture == null || writePng == null)
+                throw new InvalidOperationException("当前构建缺少生产菜单工厂或既有输入/截图接口。");
+
+            var counts = new int[3];
+            var built = (ValueTuple<ContextMenu, MenuItem, MenuItem, MenuItem>)factory.Invoke(null, new object[]
+            {
+                new Action(() => counts[0]++),
+                new Action(() => counts[1]++),
+                new Action(() => counts[2]++)
+            });
+            menu = built.Item1;
+            var items = new[] { built.Item2, built.Item3, built.Item4 };
+            var expectedHeaders = new[] { "打开悬浮窗", "复位窗口位置", "退出" };
+            if (menu.Items.Count != 3 || !items.Select(item => item.Header as string).SequenceEqual(expectedHeaders) ||
+                !menu.Items.Cast<object>().SequenceEqual(items.Cast<object>()))
+                throw new InvalidOperationException("生产菜单必须按顺序包含打开悬浮窗、复位窗口位置、退出三个真实菜单项。");
+
+            owner = new Window
+            {
+                Title = "MinminCountdown Tray Menu Validation",
+                Width = 160,
+                Height = 80,
+                Left = 20,
+                Top = 20,
+                ShowInTaskbar = false,
+                Content = new Border()
+            };
+            owner.Show();
+            owner.Activate();
+            Pump(pump, owner.Dispatcher);
+            menu.PlacementTarget = owner;
+            menu.Placement = PlacementMode.AbsolutePoint;
+            menu.HorizontalOffset = 40;
+            menu.VerticalOffset = 110;
+
+            Open(menu, pump);
+            TryCapture("tray-menu-open", menu, items, capture, writePng, evidenceDirectory, result);
+            menu.Focus();
+            Keyboard.Focus(items[0]);
+            Pump(pump, menu.Dispatcher);
+            result.KeyboardHighlightReached = items[0].IsKeyboardFocusWithin && items[0].IsHighlighted;
+            if (!result.KeyboardHighlightReached)
+                result.Failures.Add("通过隔离菜单的键盘焦点未进入首项高亮态。");
+            TryCapture("tray-menu-keyboard-highlight", menu, items, capture, writePng, evidenceDirectory, result);
+            menu.IsOpen = false;
+            Pump(pump, menu.Dispatcher);
+
+            for (int index = 0; index < items.Length; index++)
+            {
+                var action = new TrayMenuActionEvidence { Header = expectedHeaders[index] };
+                var before = (int[])counts.Clone();
+                try
+                {
+                    Open(menu, pump);
+                    action.PointerInputHandled = (bool)click.Invoke(null, new object[] { items[index] });
+                    Pump(pump, menu.Dispatcher);
+                    action.CallbackDeltas = counts.Select((count, i) => count - before[i]).ToArray();
+                    action.RoutedOnlyToExpectedCallback = action.CallbackDeltas
+                        .Select((count, i) => count == (i == index ? 1 : 0)).All(matches => matches);
+                    action.MenuClosedByAction = !menu.IsOpen;
+                    action.Passed = action.PointerInputHandled &&
+                        action.RoutedOnlyToExpectedCallback && action.MenuClosedByAction;
+                    if (!action.Passed)
+                        result.Failures.Add("真实菜单点击路由或关闭失败：" + action.Header);
+                }
+                catch (Exception exception)
+                {
+                    result.Failures.Add("菜单点击异常 " + action.Header + "：" + Detail(exception));
+                }
+                finally
+                {
+                    result.Actions.Add(action);
+                    // Cleanup is recorded after MenuClosedByAction; it cannot make that verdict pass.
+                    menu.IsOpen = false;
+                    Pump(pump, menu.Dispatcher);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            result.Failures.Add("托盘菜单验证异常：" + Detail(exception));
+        }
+        finally
+        {
+            if (menu != null) menu.IsOpen = false;
+            if (owner != null) owner.Close();
+            if (pump != null) Pump(pump, Dispatcher.CurrentDispatcher);
+        }
+        return result;
+    }
+
+    private static void Pump(MethodInfo pump, Dispatcher dispatcher) =>
+        pump.Invoke(null, new object[] { dispatcher });
+
+    private static void Open(ContextMenu menu, MethodInfo pump)
+    {
+        menu.IsOpen = true;
+        Pump(pump, menu.Dispatcher);
+        menu.ApplyTemplate();
+        menu.UpdateLayout();
+        if (!menu.IsOpen || !menu.IsVisible || menu.ActualWidth <= 0 || menu.ActualHeight <= 0 ||
+            PresentationSource.FromVisual(menu) == null)
+            throw new InvalidOperationException("菜单未形成真实可见、正尺寸的隔离 HWND 内容。");
+    }
+
+    private static void TryCapture(
+        string state, ContextMenu menu, MenuItem[] items, MethodInfo capture, MethodInfo writePng,
+        string evidenceDirectory, TrayMenuVerificationEvidence result)
+    {
+        try
+        {
+            var bitmap = (BitmapSource)capture.Invoke(null, new object[] { menu });
+            var path = Path.Combine(evidenceDirectory, state + ".png");
+            var pixels = new Pixels(bitmap);
+            var measured = new TrayMenuCaptureEvidence
+            {
+                State = state,
+                Path = path,
+                SHA256 = (string)writePng.Invoke(null, new object[] { path, bitmap }),
+                Width = bitmap.PixelWidth,
+                Height = bitmap.PixelHeight,
+                NonTransparentPixels = pixels.NonTransparent,
+                WarmSurfacePixels = pixels.Count(new Rect(0, 0, bitmap.PixelWidth, bitmap.PixelHeight), Surface),
+                SurfaceForeground = BrushColor(menu.Foreground).ToString(),
+                SurfaceBackground = BrushColor(menu.Background).ToString()
+            };
+            // Preserve the raw frame even when its subsequent geometry or colour checks fail.
+            result.Captures.Add(measured);
+            if (measured.NonTransparentPixels == 0 || measured.WarmSurfacePixels < 10 ||
+                BrushColor(menu.Background) != Surface)
+                result.Failures.Add(state + "：客户区未渲染出生产暖白背景。");
+
+            foreach (var item in items)
+            {
+                var header = item.Header as string;
+                var text = Descendants<TextBlock>(item)
+                    .SingleOrDefault(block => block.IsVisible && block.Text == header);
+                if (text == null)
+                {
+                    result.Failures.Add(state + "：菜单文案未形成唯一可见 TextBlock：" + header);
+                    continue;
+                }
+                var itemBounds = item.TransformToAncestor(menu).TransformBounds(new Rect(item.RenderSize));
+                var textBounds = text.TransformToAncestor(menu).TransformBounds(new Rect(text.RenderSize));
+                var background = item.IsHighlighted ? Highlight : Surface;
+                var foreground = BrushColor(text.Foreground);
+                var formatted = new FormattedText(
+                    text.Text, CultureInfo.InvariantCulture, text.FlowDirection,
+                    new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+                    text.FontSize, text.Foreground, VisualTreeHelper.GetDpi(text).PixelsPerDip);
+                var row = new TrayMenuRowEvidence
+                {
+                    Header = header,
+                    Highlighted = item.IsHighlighted,
+                    Bounds = new[] { itemBounds.X, itemBounds.Y, itemBounds.Width, itemBounds.Height },
+                    Foreground = foreground.ToString(),
+                    Background = BrushColor(item.Background).ToString(),
+                    FontSize = text.FontSize,
+                    ContrastRatio = Math.Round(Contrast(foreground, background), 6),
+                    TextFits = text.ActualWidth > 0 && text.ActualHeight > 0 &&
+                        text.ActualWidth + 0.5 >= formatted.WidthIncludingTrailingWhitespace &&
+                        text.ActualHeight + 0.5 >= formatted.Height &&
+                        itemBounds.Contains(textBounds) && new Rect(menu.RenderSize).Contains(itemBounds),
+                    TextUsesInk = foreground == Ink,
+                    TextPixels = pixels.Count(textBounds, foreground),
+                    WarmBackgroundPixels = pixels.Count(itemBounds, background)
+                };
+                row.WarmBackgroundRendered = BrushColor(item.Background) == background &&
+                    row.WarmBackgroundPixels >= Math.Max(10, itemBounds.Width * itemBounds.Height * 0.1);
+                row.Readable = row.TextFits && row.TextPixels > 0 && row.ContrastRatio >= 4.5;
+                measured.Rows.Add(row);
+                if (!row.Readable || !row.WarmBackgroundRendered || !row.TextUsesInk)
+                    result.Failures.Add(state + "：" + header +
+                        " 可读性/暖粉实拍检查失败，contrast=" + row.ContrastRatio.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+        catch (Exception exception)
+        {
+            result.Failures.Add(state + " 捕获异常：" + Detail(exception));
+        }
+    }
+
+    private static Color BrushColor(Brush brush)
+    {
+        if (brush is SolidColorBrush solid) return solid.Color;
+        throw new InvalidOperationException("菜单文字或背景不是预期的纯色画刷。");
+    }
+
+    private static double Contrast(Color first, Color second)
+    {
+        double Linear(byte value)
+        {
+            var channel = value / 255d;
+            return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+        }
+        double Luminance(Color color) => 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+        var a = Luminance(first);
+        var b = Luminance(second);
+        return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match) yield return match;
+            foreach (var descendant in Descendants<T>(child)) yield return descendant;
+        }
+    }
+
+    private static string Detail(Exception exception) =>
+        (exception is TargetInvocationException && exception.InnerException != null
+            ? exception.InnerException : exception).Message;
+
+    private sealed class Pixels
+    {
+        private readonly byte[] _bytes;
+        private readonly int _width;
+        private readonly int _height;
+        public int NonTransparent { get; }
+
+        public Pixels(BitmapSource bitmap)
+        {
+            if (bitmap.Format != PixelFormats.Pbgra32 && bitmap.Format != PixelFormats.Bgra32)
+                throw new InvalidOperationException("菜单原帧必须为 32-bit BGRA。");
+            _width = bitmap.PixelWidth;
+            _height = bitmap.PixelHeight;
+            _bytes = new byte[_width * _height * 4];
+            bitmap.CopyPixels(_bytes, _width * 4, 0);
+            for (int index = 3; index < _bytes.Length; index += 4)
+                if (_bytes[index] != 0) NonTransparent++;
+        }
+
+        public int Count(Rect bounds, Color color)
+        {
+            int count = 0;
+            for (int y = Math.Max(0, (int)Math.Floor(bounds.Top)); y < Math.Min(_height, (int)Math.Ceiling(bounds.Bottom)); y++)
+            for (int x = Math.Max(0, (int)Math.Floor(bounds.Left)); x < Math.Min(_width, (int)Math.Ceiling(bounds.Right)); x++)
+            {
+                var offset = (y * _width + x) * 4;
+                if (_bytes[offset + 3] == 255 &&
+                    Math.Abs(_bytes[offset] - color.B) <= 3 &&
+                    Math.Abs(_bytes[offset + 1] - color.G) <= 3 &&
+                    Math.Abs(_bytes[offset + 2] - color.R) <= 3)
+                    count++;
+            }
+            return count;
+        }
+    }
+}
+'@
+}
+
+$measured = [CountdownTrayMenuHarness]::Run($resolvedAssembly, $EvidenceDirectory)
+$reportPath = Join-Path $EvidenceDirectory 'tray-menu-report.json'
+$report = [pscustomobject]@{
+    Suite = 'CountdownTrayMenu'
+    DesktopName = $desktopName
+    ApartmentState = [string] [Threading.Thread]::CurrentThread.ApartmentState
+    AssemblyPath = $resolvedAssembly
+    AssemblySHA256 = (Get-FileHash -LiteralPath $resolvedAssembly -Algorithm SHA256).Hash
+    SourceSHA256 = (Get-FileHash -LiteralPath (Join-Path $repoRoot 'src/MinminCountdown/TrayIconHost.cs') -Algorithm SHA256).Hash
+    EvidenceDirectory = $EvidenceDirectory
+    ReportPath = $reportPath
+    ShellRegistrationPerformed = $measured.ShellRegistrationPerformed
+    ShellDoubleClickValidated = $measured.ShellDoubleClickValidated
+    ControllerBehaviorValidated = $measured.ControllerBehaviorValidated
+    SettingsAccessPerformed = $measured.SettingsAccessPerformed
+    CaptureScope = $measured.CaptureScope
+    Factory = $measured.Factory
+    InputPath = $measured.InputPath
+    KeyboardHighlightReached = $measured.KeyboardHighlightReached
+    Captures = @($measured.Captures)
+    Actions = @($measured.Actions)
+    Failures = @($measured.Failures)
+    Passed = $measured.Passed
+}
+$reportJson = $report | ConvertTo-Json -Depth 8
+[IO.File]::WriteAllText($reportPath, $reportJson + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+if ($Json) { $reportJson } else { $report }
+if (-not $measured.Passed) {
+    throw "托盘菜单验证未通过；已保留全部结果和原帧：$reportPath"
+}

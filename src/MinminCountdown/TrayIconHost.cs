@@ -96,22 +96,10 @@ internal sealed class TrayIconHost : ITrayIconHost
         _exit = exit;
         _resetPosition = resetPosition;
         _icon = LoadIcon(iconPath);
-        _restoreItem = new MenuItem { Header = "打开悬浮窗" };
-        // #156：非拖动的窗口复位/贴边入口——悬浮窗被拖出屏幕时，托盘仍可达并把窗夹回工作区。
-        _resetPositionItem = new MenuItem { Header = "复位窗口位置" };
-        _exitItem = new MenuItem { Header = "退出" };
-        _menu = new ContextMenu
-        {
-            Background = Brush("#FFFDFC"),
-            BorderBrush = Brush("#F6DFD3"),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(4),
-            HasDropShadow = true
-        };
-        _menu.Resources.Add(typeof(MenuItem), CreateMenuItemStyle());
-        _menu.Items.Add(_restoreItem);
-        _menu.Items.Add(_resetPositionItem);
-        _menu.Items.Add(_exitItem);
+        (_menu, _restoreItem, _resetPositionItem, _exitItem) = TrayMenuFactory.Create(
+            () => Invoke(_restore),
+            () => Invoke(ResetPosition),
+            () => Invoke(_exit));
         _taskbarIcon = new TaskbarIcon
         {
             ContextMenu = _menu,
@@ -119,9 +107,6 @@ internal sealed class TrayIconHost : ITrayIconHost
             ToolTipText = "敏敏子倒计时 - 双击打开",
             Visibility = Visibility.Collapsed
         };
-        _restoreItem.Click += (_, _) => Invoke(_restore);
-        _resetPositionItem.Click += (_, _) => Invoke(ResetPosition);
-        _exitItem.Click += (_, _) => Invoke(_exit);
         _taskbarIcon.TrayLeftMouseDoubleClick += (_, _) => Invoke(_restore);
     }
 
@@ -178,6 +163,53 @@ internal sealed class TrayIconHost : ITrayIconHost
 
     private void ResetPosition() => _resetPosition?.Invoke();
 
+    private static Icon LoadIcon(string iconPath)
+    {
+        if (File.Exists(iconPath))
+        {
+            return new Icon(iconPath);
+        }
+
+        using var associated = string.IsNullOrWhiteSpace(Environment.ProcessPath)
+            ? null
+            : Icon.ExtractAssociatedIcon(Environment.ProcessPath);
+        return associated is null
+            ? (Icon)SystemIcons.Application.Clone()
+            : (Icon)associated.Clone();
+    }
+}
+
+// The production menu is independent of Shell registration so the isolated
+// validation harness can render and exercise these same WPF controls.
+internal static class TrayMenuFactory
+{
+    internal static (ContextMenu Menu, MenuItem Restore, MenuItem ResetPosition, MenuItem Exit) Create(
+        Action restore,
+        Action resetPosition,
+        Action exit)
+    {
+        var restoreItem = new MenuItem { Header = "打开悬浮窗" };
+        // #156：非拖动的窗口复位/贴边入口——悬浮窗被拖出屏幕时，托盘仍可达并把窗夹回工作区。
+        var resetPositionItem = new MenuItem { Header = "复位窗口位置" };
+        var exitItem = new MenuItem { Header = "退出" };
+        var menu = new ContextMenu
+        {
+            Background = Brush("#FFFDFC"),
+            BorderBrush = Brush("#F6DFD3"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4),
+            HasDropShadow = true
+        };
+        menu.Resources.Add(typeof(MenuItem), CreateMenuItemStyle());
+        menu.Items.Add(restoreItem);
+        menu.Items.Add(resetPositionItem);
+        menu.Items.Add(exitItem);
+        restoreItem.Click += (_, _) => restore();
+        resetPositionItem.Click += (_, _) => resetPosition();
+        exitItem.Click += (_, _) => exit();
+        return (menu, restoreItem, resetPositionItem, exitItem);
+    }
+
     private static Style CreateMenuItemStyle()
     {
         var style = new Style(typeof(MenuItem));
@@ -207,18 +239,4 @@ internal sealed class TrayIconHost : ITrayIconHost
         return brush;
     }
 
-    private static Icon LoadIcon(string iconPath)
-    {
-        if (File.Exists(iconPath))
-        {
-            return new Icon(iconPath);
-        }
-
-        using var associated = string.IsNullOrWhiteSpace(Environment.ProcessPath)
-            ? null
-            : Icon.ExtractAssociatedIcon(Environment.ProcessPath);
-        return associated is null
-            ? (Icon)SystemIcons.Application.Clone()
-            : (Icon)associated.Clone();
-    }
 }

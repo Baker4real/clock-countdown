@@ -101,6 +101,27 @@ internal static class MotionBehavior
     public static string? GetCheckedBorderBrushResourceKey(DependencyObject element) =>
         (string?)element.GetValue(CheckedBorderBrushResourceKeyProperty);
 
+    internal static void SetInputForValidation(FrameworkElement templateHost, bool isMouseOver, bool isPressed)
+    {
+        ApplicationTheme.EnsureMotionValidationContext();
+        if (!ApplicationTheme.HasAnimationPreferenceOverrideForValidation ||
+            templateHost.ReadLocalValue(ControllerProperty) is not MotionController controller)
+        {
+            throw new InvalidOperationException("动效输入验证需要偏好作用域和已附加的生产模板控制器。");
+        }
+
+        controller.SetInputForValidation(isMouseOver, isPressed);
+    }
+
+    internal static void ClearInputForValidation(FrameworkElement templateHost)
+    {
+        ApplicationTheme.EnsureMotionValidationContext();
+        if (templateHost.ReadLocalValue(ControllerProperty) is MotionController controller)
+        {
+            controller.ClearInputForValidation();
+        }
+    }
+
     /// <summary>
     /// Gives a newly rendered countdown digit the shared 90 ms opacity pulse.
     /// The current animated value is used when a refresh interrupts an in-flight
@@ -167,11 +188,33 @@ internal static class MotionBehavior
         private DependencyPropertyDescriptor? _checkedDescriptor;
         private long _stateVersion;
         private bool _attached;
+        private (bool IsMouseOver, bool IsPressed)? _validationInput;
 
         public MotionController(FrameworkElement host)
         {
             _host = host;
         }
+
+        public void SetInputForValidation(bool isMouseOver, bool isPressed)
+        {
+            if (!_attached || _control is null || _surface is null)
+            {
+                throw new InvalidOperationException("动效验证模板尚未加载。");
+            }
+
+            _validationInput = (isMouseOver, isPressed);
+            OnStateChanged(_host, EventArgs.Empty);
+        }
+
+        public void ClearInputForValidation()
+        {
+            _validationInput = null;
+            OnStateChanged(_host, EventArgs.Empty);
+        }
+
+        private bool IsMouseOver => _validationInput?.IsMouseOver ?? _control?.IsMouseOver == true;
+
+        private bool IsPressed => _validationInput?.IsPressed ?? _control is ButtonBase { IsPressed: true };
 
         public void Attach()
         {
@@ -327,7 +370,7 @@ internal static class MotionBehavior
                 null,
                 GetCheckedBorderBrushResourceKey(_host),
                 _control.BorderBrush);
-            var isPressed = _control is ButtonBase { IsPressed: true };
+            var isPressed = IsPressed;
             var colorDuration = animateColors
                 ? ResolveMotionDuration(
                     isPressed ? "MotionPressDuration" : "MotionHoverDuration",
@@ -383,13 +426,13 @@ internal static class MotionBehavior
                 return normal ?? Brushes.Transparent;
             }
 
-            var key = control is ButtonBase { IsPressed: true } &&
+            var key = IsPressed &&
                       !string.IsNullOrWhiteSpace(pressedKey)
                 ? pressedKey
                 : control is ToggleButton { IsChecked: true } &&
                   !string.IsNullOrWhiteSpace(checkedKey)
                     ? checkedKey
-                    : control.IsMouseOver && !string.IsNullOrWhiteSpace(hoverKey)
+                    : IsMouseOver && !string.IsNullOrWhiteSpace(hoverKey)
                         ? hoverKey
                         : null;
             return (key is not null ? control.TryFindResource(key) as Brush : normal) ??

@@ -23,6 +23,19 @@ if (-not (Test-Path -LiteralPath $AssemblyPath -PathType Leaf)) {
 
 $resolvedAssembly = (Resolve-Path -LiteralPath $AssemblyPath).Path
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+$assemblyDirectory = Split-Path -Parent $resolvedAssembly
+# PowerShell does not run the application's deps.json probing for pack URIs.
+# Preload only these two collocated production dependencies before App resources.
+$fixtureDependencies = @(
+    foreach ($dependencyName in @('Wpf.Ui.Abstractions.dll', 'Wpf.Ui.dll')) {
+        $dependencyPath = Join-Path $assemblyDirectory $dependencyName
+        if (-not (Test-Path -LiteralPath $dependencyPath -PathType Leaf)) {
+            throw "未找到夹具所需的生产依赖：$dependencyPath"
+        }
+        $dependency = [Reflection.Assembly]::LoadFrom($dependencyPath)
+        [pscustomobject]@{ Path = $dependency.Location; Identity = $dependency.FullName }
+    }
+)
 $references = @(
     Get-ChildItem -LiteralPath (Join-Path $PSHOME 'ref') -Filter '*.dll' |
         Where-Object Name -ne 'WindowsBase.dll' |
@@ -311,6 +324,14 @@ public static class PopupValidationContractHarness
     }
 }
 
+public sealed class PopupInputObservation
+{
+    public string PlacementTargetType { get; set; }
+    public string TemplatedParentType { get; set; }
+    public string InputControlType { get; set; }
+    public bool? IsDropDownOpen { get; set; }
+}
+
 public sealed class MotionObservation
 {
     public string Phase { get; set; }
@@ -318,6 +339,7 @@ public sealed class MotionObservation
     public double[] Values { get; set; }
     public bool HasAnimation { get; set; }
     public bool? IsOpen { get; set; }
+    public PopupInputObservation PopupInput { get; set; }
 }
 
 public sealed class MotionScenarioResult
@@ -332,8 +354,10 @@ public sealed class MotionScenarioResult
     public bool PreferenceRestored { get; set; }
     public bool ResourcesRestored { get; set; }
     public bool ExpectedExceptionObserved { get; set; }
+    public PopupInputObservation PopupInputBeforeOpen { get; set; }
     public bool Passed => Failures.Count == 0;
     internal Stopwatch Clock = Stopwatch.StartNew();
+    internal Func<PopupInputObservation> CapturePopupInput;
 }
 
 public static class MotionValidationContractHarness
@@ -467,7 +491,8 @@ public static class MotionValidationContractHarness
     {
         var observation = new MotionObservation {
             Phase = phase, ElapsedMilliseconds = result.Clock.Elapsed.TotalMilliseconds,
-            Values = values(), HasAnimation = animated(), IsOpen = isOpen == null ? (bool?)null : isOpen()
+            Values = values(), HasAnimation = animated(), IsOpen = isOpen == null ? (bool?)null : isOpen(),
+            PopupInput = result.CapturePopupInput?.Invoke()
         };
         result.Observations.Add(observation);
         return observation;
@@ -540,6 +565,38 @@ public static class MotionValidationContractHarness
             if (Math.Abs(target[index] - after.Values[index]) > tolerance) moved = true;
         }
         return moved;
+    }
+
+    // Popup and digit controllers synchronously commit the captured current value.
+    // WPF frame-clock progress is not the Stopwatch interval between these reads.
+    // Require that snapshot, a live nonterminal frame in the target direction, and
+    // leave each caller's subsequent real 10%-90% observation mandatory.
+    private static bool ContinuesFromSnapshot(MotionObservation before, MotionObservation committed,
+        MotionObservation after, double[] target, double durationMs, double tolerance)
+    {
+        var elapsed = after.ElapsedMilliseconds - before.ElapsedMilliseconds;
+        if (committed.ElapsedMilliseconds < before.ElapsedMilliseconds ||
+            after.ElapsedMilliseconds < committed.ElapsedMilliseconds ||
+            elapsed < 0 || elapsed >= durationMs || !after.HasAnimation ||
+            before.Values.Length != target.Length || after.Values.Length != target.Length ||
+            !Near(committed.Values, before.Values, tolerance)) return false;
+        var unfinished = false;
+        for (int index = 0; index < target.Length; index++)
+        {
+            var span = target[index] - before.Values[index];
+            var step = after.Values[index] - before.Values[index];
+            if (double.IsNaN(span) || double.IsInfinity(span) ||
+                double.IsNaN(step) || double.IsInfinity(step)) return false;
+            if (Math.Abs(span) <= tolerance)
+            {
+                if (Math.Abs(step) > tolerance) return false;
+                continue;
+            }
+            if (step * Math.Sign(span) < -tolerance || Math.Abs(step) > Math.Abs(span) + tolerance ||
+                Math.Abs(target[index] - after.Values[index]) <= tolerance) return false;
+            unfinished = true;
+        }
+        return unfinished;
     }
 
     private static bool Immediate(double[] values, double[] target, bool animated, double tolerance) =>
@@ -708,6 +765,7 @@ public static class MotionValidationContractHarness
         panel.Children.Add(trigger);
         DependencyObject owner = null;
         FrameworkElement visual = null;
+        FrameworkElement inputControl = null;
         Window window = null;
         Action open = null;
         Action close = null;
@@ -717,6 +775,7 @@ public static class MotionValidationContractHarness
             if (category == "calendar")
             {
                 var picker = new DatePicker { SelectedDate = new DateTime(2026, 10, 8), Width = 220 };
+                inputControl = picker;
                 panel.Children.Add(picker);
                 window = ShowFixture(panel); picker.ApplyTemplate();
                 var popup = (Popup)picker.Template.FindName("PART_Popup", picker);
@@ -728,6 +787,7 @@ public static class MotionValidationContractHarness
             else if (category == "combobox")
             {
                 var combo = new ComboBox { Width = 220, Items = { "One", "Two" }, SelectedIndex = 0 };
+                inputControl = combo;
                 panel.Children.Add(combo);
                 window = ShowFixture(panel); combo.ApplyTemplate();
                 var popup = (Popup)combo.Template.FindName("PART_Popup", combo);
@@ -739,6 +799,7 @@ public static class MotionValidationContractHarness
             else if (category == "tags")
             {
                 var tags = (FrameworkElement)Activator.CreateInstance(AppType("TagSelector"), true);
+                inputControl = tags;
                 panel.Children.Add(tags);
                 window = ShowFixture(panel);
                 var popup = (Popup)Property(tags.GetType(), tags, "Popup");
@@ -752,6 +813,7 @@ public static class MotionValidationContractHarness
             {
                 var tooltip = new ToolTip { Content = "Production tooltip motion", PlacementTarget = trigger,
                     Style = (Style)_application.FindResource(typeof(ToolTip)) };
+                inputControl = trigger;
                 owner = tooltip; visual = tooltip;
                 window = ShowFixture(panel);
                 open = () => Call("PopupMotionBehavior", "Open", tooltip);
@@ -761,6 +823,18 @@ public static class MotionValidationContractHarness
                     "ToolTip 没有生产动效样式。");
             }
             Require(owner != null && visual != null, category + " 没有真实弹层内容。");
+            result.CapturePopupInput = () => {
+                var placementTarget = owner is Popup popupState
+                    ? popupState.PlacementTarget : (owner as ToolTip)?.PlacementTarget;
+                return new PopupInputObservation {
+                    PlacementTargetType = placementTarget?.GetType().FullName,
+                    TemplatedParentType = (owner as FrameworkElement)?.TemplatedParent?.GetType().FullName,
+                    InputControlType = inputControl?.GetType().FullName,
+                    IsDropDownOpen = inputControl is ComboBox comboState ? (bool?)comboState.IsDropDownOpen :
+                        inputControl is DatePicker pickerState ? (bool?)pickerState.IsDropDownOpen : null
+                };
+            };
+            result.PopupInputBeforeOpen = result.CapturePopupInput();
             if (owner is Popup actualPopup)
                 Require((bool)Call("PopupMotionBehavior", "IsAttached", actualPopup),
                     category + " 未附加生产动效。");
@@ -787,17 +861,19 @@ public static class MotionValidationContractHarness
             Require(isOpen(), category + " 有动画关闭未保留当前可见弹层。");
             RenderTick(visual);
             var after = Observe(result, category + "-close-first-frame", values, animated, isOpen);
-            Require(Continues(before, after, new[] { 0.0, 4.0 }, 90, 0.002),
+            Require(ContinuesFromSnapshot(before, immediate, after, new[] { 0.0, 4.0 }, 90, 0.002),
                 category + " 打开中途关闭未从当前值续接。");
             WaitFor(result, category + "-closing-middle", visual, values, animated,
                 value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen);
             before = Observe(result, category + "-reopen-before", values, animated, isOpen);
             open();
-            Observe(result, category + "-reopen-committed", values, animated, isOpen);
+            immediate = Observe(result, category + "-reopen-committed", values, animated, isOpen);
             RenderTick(visual);
             after = Observe(result, category + "-reopen-first-frame", values, animated, isOpen);
-            Require(Continues(before, after, new[] { 1.0, 0.0 }, 140, 0.002),
+            Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0, 0.0 }, 140, 0.002),
                 category + " 退出中途重开未从当前值续接。");
+            WaitFor(result, category + "-reopening-middle", visual, values, animated,
+                value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen);
             WaitFor(result, category + "-reopen-final", visual, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
             close();
@@ -806,6 +882,7 @@ public static class MotionValidationContractHarness
         }
         finally
         {
+            result.CapturePopupInput = null;
             try
             {
                 if (owner is Popup popup)
@@ -912,7 +989,7 @@ public static class MotionValidationContractHarness
             var immediate = Observe(result, "digit-repeat-committed", values, animated);
             RenderTick(text);
             var after = Observe(result, "digit-repeat-first-frame", values, animated);
-            Require(Continues(before, after, new[] { 1.0 }, 90, 0.002),
+            Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0 }, 90, 0.002),
                 "秒位中断把 opacity 重置到 0.6 或终点。");
             WaitFor(result, "digit-repeat-middle", text, values, animated,
                 value => Intermediate(before.Values, value, new[] { 1.0 }));
@@ -938,6 +1015,15 @@ public static class MotionValidationContractHarness
         results.Add(RunCase("override-restoration-after-exception", false,
             result => { throw new ExpectedFixtureException(); }, true));
         var before = new MotionObservation { ElapsedMilliseconds = 10, Values = new[] { 0.65 } };
+        var committed = new MotionObservation { ElapsedMilliseconds = 10.2, Values = new[] { 0.65 } };
+        var firstFrame = new MotionObservation {
+            ElapsedMilliseconds = 10.8, Values = new[] { 0.75 }, HasAnimation = true };
+        var snapshotClockAdvanceAccepted = ContinuesFromSnapshot(
+            new MotionObservation { ElapsedMilliseconds = 57.582, Values = new[] { 0.8365065194954957 } },
+            new MotionObservation { ElapsedMilliseconds = 57.7731, Values = new[] { 0.8365065194954957 } },
+            new MotionObservation {
+                ElapsedMilliseconds = 58.3934, Values = new[] { 0.8814214647463753 }, HasAnimation = true },
+            new[] { 1.0 }, 90, 0.002);
         var negatives = new Dictionary<string, bool> {
             ["missing-intermediate"] = !Intermediate(new[] { 0.0 }, new[] { 1.0 }, new[] { 1.0 }),
             ["nonfinite-intermediate"] = !Intermediate(new[] { 0.0 }, new[] { double.NaN }, new[] { 1.0 }),
@@ -949,6 +1035,24 @@ public static class MotionValidationContractHarness
                 new[] { 0.0 }, 90, 0.002),
             ["whole-transition-missed"] = !Continues(before,
                 new MotionObservation { ElapsedMilliseconds = 110, Values = new[] { 1.0 } },
+                new[] { 1.0 }, 90, 0.002),
+            ["snapshot-commit-restarts-at-origin"] = !ContinuesFromSnapshot(before,
+                new MotionObservation { ElapsedMilliseconds = 10.2, Values = new[] { 0.0 } },
+                firstFrame, new[] { 1.0 }, 90, 0.002),
+            ["snapshot-commit-jumps-to-target"] = !ContinuesFromSnapshot(before,
+                new MotionObservation { ElapsedMilliseconds = 10.2, Values = new[] { 1.0 } },
+                firstFrame, new[] { 1.0 }, 90, 0.002),
+            ["snapshot-frame-restarts-at-origin"] = !ContinuesFromSnapshot(before, committed,
+                new MotionObservation { ElapsedMilliseconds = 11, Values = new[] { 0.0 }, HasAnimation = true },
+                new[] { 1.0 }, 90, 0.002),
+            ["snapshot-frame-jumps-to-target"] = !ContinuesFromSnapshot(before, committed,
+                new MotionObservation { ElapsedMilliseconds = 11, Values = new[] { 1.0 }, HasAnimation = true },
+                new[] { 1.0 }, 90, 0.002),
+            ["snapshot-frame-nonfinite"] = !ContinuesFromSnapshot(before, committed,
+                new MotionObservation { ElapsedMilliseconds = 11, Values = new[] { double.NaN }, HasAnimation = true },
+                new[] { 1.0 }, 90, 0.002),
+            ["snapshot-whole-transition-missed"] = !ContinuesFromSnapshot(before, committed,
+                new MotionObservation { ElapsedMilliseconds = 110, Values = new[] { 0.75 }, HasAnimation = true },
                 new[] { 1.0 }, 90, 0.002),
             ["off-retains-clock"] = !Immediate(new[] { 1.0 }, new[] { 1.0 }, true, 0),
             ["off-wrong-target"] = !Immediate(new[] { 0.6 }, new[] { 1.0 }, false, 0)
@@ -963,9 +1067,10 @@ public static class MotionValidationContractHarness
             ApplicationExitNotInvoked = !_applicationExitObserved,
             DeadlineMilliseconds,
             Results = results,
+            SnapshotClockAdvanceAccepted = snapshotClockAdvanceAccepted,
             NegativeControls = negatives,
             Passed = startupAbsent && !_applicationExitObserved && systemUnchanged && results.All(result => result.Passed) &&
-                negatives.Values.All(value => value)
+                snapshotClockAdvanceAccepted && negatives.Values.All(value => value)
         };
     }
 }
@@ -1043,6 +1148,7 @@ if ($null -eq $trayMenu) {
 [pscustomobject]@{
     Suite = 'PopupValidationContract'
     AssemblyPath = $resolvedAssembly
+    FixtureDependencies = $fixtureDependencies
     AssemblySHA256 = (Get-FileHash -LiteralPath $resolvedAssembly -Algorithm SHA256).Hash
     HarnessSHA256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     Results = $results

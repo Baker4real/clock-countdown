@@ -103,6 +103,8 @@ Assert-Guard (-not (Test-SuiteDesktopLeakWindow -ProcessId 7 -ProcessName 'Minmi
 Assert-Guard (-not (Test-SuiteDesktopLeakWindow -ProcessId 100 -ProcessName 'Cursor' -ClassName 'Chrome_WidgetWin_1' -Title 'README.md' -Visible:$true -SuiteProcessIds @(42))) '无关用户窗不是泄漏'
 Assert-Guard (-not (Test-SuiteDesktopLeakWindow -ProcessId 200 -ProcessName 'notepad' -ClassName 'Notepad' -Title '无标题' -Visible:$true -SuiteProcessIds @(42))) '记事本不是泄漏'
 Assert-Guard (-not (Test-SuiteDesktopLeakWindow -ProcessId 300 -ProcessName 'devenv' -ClassName 'HwndWrapper[devenv.exe;;1]' -Title 'Microsoft Visual Studio' -Visible:$true -SuiteProcessIds @(42))) '其他 WPF 应用不是泄漏'
+Assert-Guard (Test-SuiteDesktopLeakWindow -ProcessId 400 -ProcessName 'minmin-countdown-slice' -ClassName 'Chrome_WidgetWin_1' -Title '' -Visible:$true -SuiteProcessIds @()) 'Tauri 切片无标题可见窗是泄漏'
+Assert-Guard (-not (Test-SuiteDesktopLeakWindow -ProcessId 400 -ProcessName 'minmin-countdown-slice' -ClassName 'Chrome_WidgetWin_1' -Title '' -Visible:$false -SuiteProcessIds @())) 'Tauri 切片不可见窗不是泄漏'
 
 # --- 源码合同：启动器 / watcher / 内层脚本 / 收口 runner / 生产进程清理 ---
 $launcherSource = Get-Content -LiteralPath $launcherPath -Raw -Encoding UTF8

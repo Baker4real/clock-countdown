@@ -4842,6 +4842,21 @@ internal static class WindowValidationInput
         var frameRequestCount = 0;
         var renderingCount = 0;
         var observedMilliseconds = -1d;
+        var operationStarts = new Dictionary<DispatcherOperation, double>();
+        var longestOperationMilliseconds = 0d;
+        var longestOperationStartedMilliseconds = 0d;
+        var longestOperationPriority = DispatcherPriority.Inactive;
+        void OnOperationStarted(object? sender, DispatcherHookEventArgs args) =>
+            operationStarts[args.Operation] = watch.Elapsed.TotalMilliseconds;
+        void OnOperationCompleted(object? sender, DispatcherHookEventArgs args)
+        {
+            if (!operationStarts.Remove(args.Operation, out var started)) return;
+            var elapsed = watch.Elapsed.TotalMilliseconds - started;
+            if (elapsed <= longestOperationMilliseconds) return;
+            longestOperationMilliseconds = elapsed;
+            longestOperationStartedMilliseconds = started;
+            longestOperationPriority = args.Operation.Priority;
+        }
         var timeout = new DispatcherTimer(DispatcherPriority.Send, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
@@ -4899,6 +4914,9 @@ internal static class WindowValidationInput
         EventHandler expired = (_, _) => frame.Continue = false;
         try
         {
+            dispatcher.Hooks.OperationStarted += OnOperationStarted;
+            dispatcher.Hooks.OperationCompleted += OnOperationCompleted;
+            dispatcher.Hooks.OperationAborted += OnOperationCompleted;
             timeout.Tick += expired;
             frameRequests.Tick += requestFrame;
             timeout.Start();
@@ -4908,6 +4926,9 @@ internal static class WindowValidationInput
         }
         finally
         {
+            dispatcher.Hooks.OperationStarted -= OnOperationStarted;
+            dispatcher.Hooks.OperationCompleted -= OnOperationCompleted;
+            dispatcher.Hooks.OperationAborted -= OnOperationCompleted;
             timeout.Stop();
             timeout.Tick -= expired;
             frameRequests.Stop();
@@ -4923,7 +4944,9 @@ internal static class WindowValidationInput
             {
                 timeoutMilliseconds, observed, observedMilliseconds,
                 elapsedMilliseconds = watch.Elapsed.TotalMilliseconds,
-                frameRequestCount, renderingCount
+                frameRequestCount, renderingCount,
+                longestOperationMilliseconds, longestOperationStartedMilliseconds,
+                longestOperationPriority = longestOperationPriority.ToString()
             }));
         }
         return passed;

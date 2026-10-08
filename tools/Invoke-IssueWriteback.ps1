@@ -177,11 +177,13 @@ function Initialize-Output {
         $stamp = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
         $OutputDirectory = Join-Path $repoRoot "logs/issue-writeback/$stamp-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
     }
-    $script:outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
-    if ($Apply -and (Test-Path -LiteralPath (Join-Path $script:outputRoot 'ledger.json') -PathType Leaf)) {
-        throw "拒绝在已有 ledger 的输出目录重发：$script:outputRoot；请先人工审查该 ledger 并使用新的输出目录。"
+    $candidateRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
+    if (Test-Path -LiteralPath $candidateRoot) {
+        throw "拒绝复用已有输出目录：$candidateRoot；请保留既有证据并使用新的输出目录。"
     }
-    [System.IO.Directory]::CreateDirectory($script:outputRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory($candidateRoot) | Out-Null
+    # Ownership is acquired only after creating a new output directory.
+    $script:outputRoot = $candidateRoot
     return $script:outputRoot
 }
 

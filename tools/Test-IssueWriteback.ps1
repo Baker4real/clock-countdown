@@ -139,6 +139,32 @@ $stateValue = if ($mode -eq 'state-mismatch' -and $issueNumber -eq 101) { 'open'
     Assert-True (@($successLedger.issues | Where-Object { $_.commentId -le 0 -or -not $_.commentReadback.bodyMatches }).Count -eq 0) '成功 ledger 缺少评论 ID 或正文回读。'
     $results.Add([pscustomobject]@{ Name = 'success-independent-readback'; Passed = $true })
 
+    $reuseFailures = [Collections.Generic.List[string]]::new()
+    foreach ($reuseApply in @($false, $true)) {
+        $caseName = if ($reuseApply) { 'reuse-apply-output' } else { 'reuse-dry-run-output' }
+        $reuseDir = Join-Path $testRoot $caseName
+        Copy-Item -LiteralPath $successDir -Destination $reuseDir -Recurse
+        $snapshot = {
+            @(Get-ChildItem -LiteralPath $reuseDir -File -Recurse | Sort-Object FullName | ForEach-Object {
+                [pscustomobject]@{ Path = $_.FullName; Length = $_.Length; LastWriteTimeUtc = $_.LastWriteTimeUtc.ToString('o'); SHA256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
+            }) | ConvertTo-Json -Depth 4 -Compress
+        }
+        $before = & $snapshot
+        $fakeBefore = (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash
+        $reuseArguments = @('-RecordPath', $recordPath, '-Repo', 'fake/example', '-GhPath', $fakeGhPath, '-OutputDirectory', $reuseDir, '-Json')
+        if ($reuseApply) { $reuseArguments += @('-Apply', '-CloseSatisfied') }
+        $reuse = Invoke-WritebackTool -Arguments $reuseArguments -Environment @{
+            ISSUE_WRITEBACK_FAKE_STATE = $statePath; ISSUE_WRITEBACK_FAKE_MODE = 'success'
+        }
+        $preserved = $before -ceq (& $snapshot)
+        $fakeUnchanged = $fakeBefore -ceq (Get-FileHash -LiteralPath $statePath -Algorithm SHA256).Hash
+        $rejected = $reuse.ExitCode -ne 0 -and -not $reuse.Json.Valid
+        $passed = $rejected -and $preserved -and $fakeUnchanged -and $null -eq $reuse.Json.OutputDirectory
+        $results.Add([pscustomobject]@{ Name = $caseName; Passed = $passed; Rejected = $rejected; BytesAndTimesPreserved = $preserved; FakeGhUnchanged = $fakeUnchanged })
+        if (-not $passed) { $reuseFailures.Add("${caseName}: rejected=$rejected, bytes-and-mtime-preserved=$preserved, fake-gh-unchanged=$fakeUnchanged") }
+    }
+    Assert-True ($reuseFailures.Count -eq 0) ("复用输出目录未保护既有证据：" + ($reuseFailures -join '; '))
+
     foreach ($case in @(
         [pscustomobject]@{ Name = 'body-mismatch'; Mode = 'body-mismatch'; Message = '正文 SHA 不符' }
         [pscustomobject]@{ Name = 'state-mismatch'; Mode = 'state-mismatch'; Message = '状态回读不符' }

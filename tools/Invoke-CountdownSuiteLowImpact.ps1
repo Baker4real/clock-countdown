@@ -19,11 +19,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$allowedStages = @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling')
+$allowedStages = @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate')
 $Stage = @($Stage | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 $invalid = @($Stage | Where-Object { $_ -notin $allowedStages })
 if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
     throw "无效 Stage：$($invalid -join ', ')。允许值：$($allowedStages -join ', ')"
+}
+if ('BaselineGenerate' -in $Stage -and $Stage.Count -ne 1) {
+    throw 'BaselineGenerate 会创建新基线，必须单独运行；生成后另行运行回归套件。'
 }
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteRun.psm1') -Force
@@ -56,6 +59,7 @@ try {
         InstallValidate = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $repoRoot 'Install-Countdown.ps1'), '-ValidateOnly')
         ValidationHarness = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'Test-PopupValidationContract.ps1'))
         Tooling = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Test-CountdownTooling.ps1'))
+        BaselineGenerate = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'New-CountdownVisualBaseline.ps1'))
     }
     $specs = @($allowedStages | Where-Object { $_ -in $Stage } | ForEach-Object {
         $spec = [ordered]@{ Stage = $_; FilePath = $pwsh; ArgumentList = $stageTable[$_]; Isolated = [bool]$isolation.Isolated -and $_ -ne 'Tooling' }

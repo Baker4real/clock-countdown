@@ -467,7 +467,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役四帧与场景对应（v22 基线 `assets/ui-references/floating-window/520x390/2026-09-11-v22/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
+现役四帧与场景对应（v23 基线 `assets/ui-references/floating-window/520x390/2026-10-08-v23/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -520,11 +520,11 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-09-19，#157 重拍与探针确定性收口）：#157 把 #151–#156 遗留的 CSharp 套件夹具红 `FloatingReferenceViewportStatesMatch` 定性为探针缺陷并按根因修复：悬浮视口右缘的旧比较口径 `bodyViewport.X + ViewportWidth` 把 WPF 滚动条列宽计入视口，而该列宽在本地样式 `Width=10` 之外仍被系统滚动条度量撑大（Windows 滚动条度量：100% 缩放 17 DIP、125% 缩放 17.6 DIP），使「卡右缘 ≤ 视口右缘 + 0.25」成为会话显示缩放的函数（#157 插桩实测：同一几何下 125% 缩放红 0.55 DIP、100% 缩放仅过 0.05 DIP，§11 漂移族），与产品几何无关。修复后该比较改为确定性口径——滚动内容槽右缘（`bodyViewport.X + ActualWidth`，只由 520 外壳固定边距决定）扣除 §10 设计命中轨宽（模板 `FloatingScrollBarHitRail`，应用自有几何），滚动条隐藏时零扣除；新增 `FloatingViewportGeometryGateIsolationBehavior` 反例门禁钉住该边界语义（卡/印记/快速新增越界即红、滚动条隐藏零扣除、边界容差精确到 0.25），并以源码契约钉住捕获方法不得回到 `ViewportWidth` 口径。真实滚动条列宽可宽于 10 DIP 命中轨（系统度量、透明不可见），属观察事实记录，不改变可视基线几何。v22 全部 12 帧与双 manifest 按现役 Aliased+Ideal 口径在独立隔离会话整套重拍（归档于 `run-evidence\clock-countdown-issue-157-closure\v22-prev-20260919\`）：12 帧与重拍前逐字节一致、双 manifest 内容零差异（主窗聚合 `3C6480EB2FE83ACC4BE4383F6093AFBBECFDBF5E55878DB930A011521D265B4D`、悬浮窗聚合 `AB30954E10800E46B863DEC0FBC93DA9E345CA0DEB1DEDF364910440550A2686`），证明该修复渲染中性、基线稳定档位可复现。提醒中心继续无像素帧，父票对该表面的验收由代码探针覆盖且全真（`ReminderCenterEscapeFocusesAcknowledge`、`ReminderCenterTwoRowActionsLayout`、`ReminderCenterEntryVisualIdentity`、`ReminderCenterTypographyWeightWhitelist`、`ReminderCenterRepresentativeCaptureRendered` 与设置恢复壳 `SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette`），未静默跳过。
 
-1. 五个界面按本文件实现完成后，重拍纯日间 **v22** 真实渲染系列替换 v21 成为新基线；v22 只包含日间帧，不再有 Night 帧。
+1. #189 的 WPF 改版使用纯日间 **v23** 真实渲染系列，版本目录为 `2026-10-08-v23`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
 
-2. v22 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-09-11-v22/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 v22 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v22 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21 目录作为归档保留（`assets/ui-references/main-window/1165x1350/2026-09-07-v21/` 与 `assets/ui-references/floating-window/520x390/2026-09-07-v21/`；目录名保持仓库既有形式），**解除引用**：不再出现在任何 manifest 的现役路径、不再被门禁脚本或测试读取。归档目录本身不被删除，以保留历史比对能力。
+2. v23 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-08-v23/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v23 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v23。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项
@@ -674,8 +674,8 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 ### 13.6 同步与验证接线
 
 - `ApplicationTheme.Tokens` 是 App.xaml 第 1 层的运行时权威副本，键与顺序一一对应；新增或修改颜色必须两处同步，校验按解析后 ARGB 比较。
-- 修改 `App.xaml` / `ApplicationTheme.cs` 会使 v22 视觉基线 `sourceBinding` 失配：按 §11 口径重拍 v22 并更新双 manifest 后基线门禁才恢复。本节 token 变更应与后续界面节点的消费面修正（13.4 例外表）在同一次重拍中收口。
+- 修改 `App.xaml` / `ApplicationTheme.cs` 会使现役视觉基线 `sourceBinding` 失配：按 §11 口径在新版本目录重拍并生成双 manifest 后基线门禁才恢复。本节 token 变更应与后续界面节点的消费面修正（13.4 例外表）在同一次重拍中收口。
 
 ## Agent Prompt Guide
 
-继续修改界面时，先读取本文件。保留暖粉日间的固定分段控件、数字色块分格、徽章、手写体装饰层和单一日间 token；优先使用 §2 的既有角色，不要创建夜间替代品或新的粉紫色板。token 分层、排版/间距/圆角/焦点与对比度基线以 §13 为准：新增颜色先落 Primitive 再挂 Semantic 角色，控件不得自持字面色值或新增同义色值。行为改动必须落到对应的 PowerShell / C# 验证入口并按 §11 的 v22 口径更新视觉基线。任何视觉改动完成后都要重新拍 v22 帧，并检查空态、长文本、日期分组、搜索展开态、`＋ 添加便签` 展开态、`…` 菜单、提醒中心两行按钮和底部已赚/鼓励文案切换。
+继续修改界面时，先读取本文件。保留暖粉日间的固定分段控件、数字色块分格、徽章、手写体装饰层和单一日间 token；优先使用 §2 的既有角色，不要创建夜间替代品或新的粉紫色板。token 分层、排版/间距/圆角/焦点与对比度基线以 §13 为准：新增颜色先落 Primitive 再挂 Semantic 角色，控件不得自持字面色值或新增同义色值。行为改动必须落到对应的 PowerShell / C# 验证入口并按 §11 的现役版本口径更新视觉基线。视觉改动完成后在新版本目录保存实拍帧，并检查空态、长文本、日期分组、搜索展开态、`＋ 添加便签` 展开态、`…` 菜单、提醒中心两行按钮和底部已赚/鼓励文案切换。

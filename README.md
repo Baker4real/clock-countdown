@@ -112,6 +112,12 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownTooling.ps1 -Json
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness,Tooling
 ```
 
+视觉改动需要新基线时，先更新现役版本并构建当前源码，再单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 8 张主窗口与 4 张悬浮窗实拍绑定到实际 EXE；已有基线目录拒绝覆盖，失败时保留生成现场。生成完成后还须另行运行 CSharp / Ui 复验，生成过程本身不替代回归。
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate
+```
+
 兼容旧命令仍可显式传入 `-IsolatedDesktop`（与默认相同）。调试关隔离：
 
 ```powershell

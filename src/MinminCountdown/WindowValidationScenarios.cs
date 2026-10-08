@@ -4867,38 +4867,65 @@ internal static class WindowValidationInput
     /// </summary>
     public static bool WaitForPopupClosed(Popup popup, int timeoutMilliseconds = 300)
     {
-        var diagnosticWatch = Stopwatch.StartNew();
-        var diagnosticPumpCount = 0;
-        var diagnosticRenderCount = 0;
-        double diagnosticMaxPump = 0;
-        double diagnosticMaxRender = 0;
-        var deadline = Stopwatch.GetTimestamp() +
-            (long)(timeoutMilliseconds * (double)Stopwatch.Frequency / 1000d);
-        // An isolated desktop has no presented DWM frame. Request a real WPF
-        // render so its animation clock can finish; never assign close state.
-        while (popup.IsOpen && Stopwatch.GetTimestamp() < deadline)
+        if (!popup.IsOpen || timeoutMilliseconds <= 0)
         {
-            var stepStarted = diagnosticWatch.Elapsed.TotalMilliseconds;
-            Pump(popup.Dispatcher);
-            diagnosticPumpCount++;
-            diagnosticMaxPump = Math.Max(diagnosticMaxPump, diagnosticWatch.Elapsed.TotalMilliseconds - stepStarted);
-            if (popup.IsOpen && popup.Child is Visual visual)
-            {
-                stepStarted = diagnosticWatch.Elapsed.TotalMilliseconds;
-                var renderTick = new System.Windows.Media.Imaging.RenderTargetBitmap(1, 1, 96, 96, PixelFormats.Pbgra32);
-                renderTick.Render(visual);
-                renderTick.Freeze();
-                diagnosticRenderCount++;
-                diagnosticMaxRender = Math.Max(diagnosticMaxRender, diagnosticWatch.Elapsed.TotalMilliseconds - stepStarted);
-            }
-            System.Threading.Thread.Sleep(5);
+            return !popup.IsOpen;
         }
 
-        if (popup.IsOpen)
+        var watch = Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var observedClosed = false;
+        var timeout = new DispatcherTimer(DispatcherPriority.Send, popup.Dispatcher)
         {
-            Console.Error.WriteLine($"[DEBUG-popup-clock] elapsed={diagnosticWatch.Elapsed.TotalMilliseconds:F3}, pumps={diagnosticPumpCount}, renders={diagnosticRenderCount}, maxPump={diagnosticMaxPump:F3}, maxRender={diagnosticMaxRender:F3}, transition={PopupMotionBehavior.DescribeTransitionForValidation(popup)}");
+            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
+        };
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Render, popup.Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        void Observe()
+        {
+            if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
+            {
+                frame.Continue = false;
+            }
+            else if (!popup.IsOpen)
+            {
+                observedClosed = true;
+                frame.Continue = false;
+            }
         }
-        return !popup.IsOpen;
+
+        // Request real WPF frames on the isolated desktop. A bitmap capture
+        // does not advance animation clocks; neither observation path sets
+        // IsOpen, disables motion, or seeks the production clock.
+        EventHandler requestFrame = (_, _) =>
+        {
+            popup.Child?.InvalidateVisual();
+            Observe();
+        };
+        EventHandler rendering = (_, _) => Observe();
+        EventHandler expired = (_, _) => frame.Continue = false;
+        try
+        {
+            timeout.Tick += expired;
+            frameRequests.Tick += requestFrame;
+            CompositionTarget.Rendering += rendering;
+            timeout.Start();
+            frameRequests.Start();
+            popup.Child?.InvalidateVisual();
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timeout.Stop();
+            timeout.Tick -= expired;
+            frameRequests.Stop();
+            frameRequests.Tick -= requestFrame;
+            CompositionTarget.Rendering -= rendering;
+        }
+
+        return observedClosed;
     }
 
     /// <summary>
@@ -5660,9 +5687,15 @@ internal static class WindowValidationInput
         }
 
         PickerNativeInput.SendMessage(source.Handle, 0x0200, pressed ? new IntPtr(1) : IntPtr.Zero, coordinates);
+        // TextEditor listens to the generic mouse-button events. Raising only
+        // the button-specific events bypasses TextBox focus and selection.
+        var textInput = target is TextBoxBase;
+        var previewEvent = textInput
+            ? (pressed ? Mouse.PreviewMouseDownEvent : Mouse.PreviewMouseUpEvent)
+            : routedEvent;
         var eventArgs = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
         {
-            RoutedEvent = routedEvent,
+            RoutedEvent = previewEvent,
             Source = target
         };
         try
@@ -5670,9 +5703,9 @@ internal static class WindowValidationInput
             target.RaiseEvent(eventArgs);
             if (!eventArgs.Handled)
             {
-                eventArgs.RoutedEvent = pressed
-                    ? UIElement.MouseLeftButtonDownEvent
-                    : UIElement.MouseLeftButtonUpEvent;
+                eventArgs.RoutedEvent = textInput
+                    ? (pressed ? Mouse.MouseDownEvent : Mouse.MouseUpEvent)
+                    : (pressed ? UIElement.MouseLeftButtonDownEvent : UIElement.MouseLeftButtonUpEvent);
                 target.RaiseEvent(eventArgs);
             }
         }

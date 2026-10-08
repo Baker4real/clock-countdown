@@ -472,8 +472,17 @@ public static class MotionValidationContractHarness
         var timeout = new DispatcherTimer(DispatcherPriority.Send, visual.Dispatcher) {
             Interval = TimeSpan.FromMilliseconds(DeadlineMilliseconds)
         };
+        // An isolated, idle HWND can wait for a channel commit longer than a
+        // short transition. Request frames only while this observation is
+        // active; animation values still come from real Rendering callbacks.
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Render, visual.Dispatcher) {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
         Exception failure = null;
         EventHandler expired = (sender, args) => frame.Continue = false;
+        EventHandler requestFrame = (sender, args) => {
+            if (visual is UIElement surface) surface.InvalidateVisual();
+        };
         EventHandler rendering = (sender, args) => {
             if (watch.Elapsed.TotalMilliseconds > DeadlineMilliseconds)
             {
@@ -499,14 +508,19 @@ public static class MotionValidationContractHarness
         try
         {
             timeout.Tick += expired;
+            frameRequests.Tick += requestFrame;
             CompositionTarget.Rendering += rendering;
             timeout.Start();
+            frameRequests.Start();
+            requestFrame(null, EventArgs.Empty);
             Dispatcher.PushFrame(frame);
         }
         finally
         {
             timeout.Stop();
             timeout.Tick -= expired;
+            frameRequests.Stop();
+            frameRequests.Tick -= requestFrame;
             CompositionTarget.Rendering -= rendering;
             sampling.ElapsedMilliseconds = watch.Elapsed.TotalMilliseconds;
             sampling.Matched &= sampling.ElapsedMilliseconds <= DeadlineMilliseconds;
@@ -757,7 +771,6 @@ public static class MotionValidationContractHarness
         var panel = new StackPanel { Children = { button } };
         Window window = null;
         FrameworkElement host = null;
-        DispatcherTimer frameRequests = null;
         try
         {
             window = ShowFixture(panel);
@@ -765,14 +778,6 @@ public static class MotionValidationContractHarness
             host = (FrameworkElement)button.Template.FindName("InteractionSurface", button);
             var surface = (Border)button.Template.FindName("Surface", button);
             Require(host != null && surface != null, "PrimaryButton 生产模板缺少交互面。");
-            // An isolated, idle HWND can wait for a channel commit longer than
-            // this short transition. Request frames without advancing clocks;
-            // values are still read only from actual Rendering callbacks.
-            frameRequests = new DispatcherTimer(DispatcherPriority.Render, surface.Dispatcher) {
-                Interval = TimeSpan.FromMilliseconds(10)
-            };
-            frameRequests.Tick += (sender, args) => surface.InvalidateVisual();
-            frameRequests.Start();
             Action<bool, bool> input = (hover, pressed) =>
                 Call("MotionBehavior", "SetInputForValidation", host, hover, pressed);
             Action commit = () => _application.Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
@@ -848,7 +853,6 @@ public static class MotionValidationContractHarness
         }
         finally
         {
-            frameRequests?.Stop();
             try
             {
                 if (host != null) Call("MotionBehavior", "ClearInputForValidation", host);
@@ -1024,6 +1028,7 @@ public static class MotionValidationContractHarness
                     tooltip.IsOpen = false;
                 }
             }
+            catch (Exception error) { result.Failures.Add("夹具清理失败：" + error.Message); }
             finally { window?.Close(); Pump(); }
         }
     }
@@ -1033,7 +1038,7 @@ public static class MotionValidationContractHarness
         var picker = (DatePicker)Activator.CreateInstance(AppType("WpfUiDatePicker"), true);
         picker.SelectedDate = new DateTime(2026, 10, 8);
         picker.Width = 220;
-        var outside = new TextBox { Text = "External focus fixture", Margin = new Thickness(0, 330, 0, 0) };
+        var outside = new TextBox { Name = "OutsideInput", Text = "External focus fixture", Margin = new Thickness(0, 330, 0, 0) };
         var panel = new StackPanel { Children = { picker, outside } };
         Window window = null;
         Popup popup = null;
@@ -1046,14 +1051,30 @@ public static class MotionValidationContractHarness
             popup = (Popup)picker.Template.FindName("PART_Popup", picker);
             var calendar = (Calendar)popup.Child;
             var trigger = (Control)picker.Template.FindName(textTrigger ? "PART_TextToggle" : "PART_Button", picker);
+            int openedCount = 0, closedCount = 0;
+            popup.Opened += (sender, args) => openedCount++;
+            popup.Closed += (sender, args) => closedCount++;
             pointerState = (IDisposable)Activator.CreateInstance(AppType("WindowValidationInput+PickerPointerState"), true);
+            var pointerActions = new List<object>();
+            result.InputChecks["PointerActions"] = pointerActions;
             Action<Control> click = target => {
-                Call("WindowValidationInput", "RaisePickerPointer", target, UIElement.PreviewMouseLeftButtonDownEvent);
+                var pressed = (bool)Call("WindowValidationInput", "RaisePickerPointer", target,
+                    UIElement.PreviewMouseLeftButtonDownEvent);
                 Pump();
+                var focusedOnPress = target.IsKeyboardFocusWithin;
                 var released = (bool)Call("WindowValidationInput", "RaisePickerPointer", target,
                     UIElement.PreviewMouseLeftButtonUpEvent);
                 Pump();
-                Require(released, "隔离 pointer release 没有经过目标控件。");
+                pointerActions.Add(new {
+                    Target = target.Name, Type = target.GetType().FullName,
+                    Visible = target.IsVisible, Enabled = target.IsEnabled,
+                    PressHandled = pressed, ReleaseHandled = released,
+                    FocusedOnPress = focusedOnPress, FocusedAfterRelease = target.IsKeyboardFocusWithin
+                });
+                if (target is TextBox)
+                    Require(focusedOnPress && target.IsKeyboardFocusWithin, "隔离 pointer 未把焦点交给外部输入框。");
+                else
+                    Require(released, "隔离 pointer release 未被触发器处理：" + target.Name);
             };
             Func<double[]> values = () => new[] { calendar.Opacity, Translation(calendar)?.Y ?? double.NaN };
             Func<bool> animated = () => Animated(calendar, UIElement.OpacityProperty);
@@ -1068,6 +1089,7 @@ public static class MotionValidationContractHarness
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
             result.InputChecks["CaptureBeforeEscape"] = Mouse.Captured?.GetType().FullName ?? "none";
             result.InputChecks["PopupCapturedBeforeEscape"] = popupCapture();
+            Require(popupCapture(), "日历打开后未建立捕获，不能据此验证退出时释放捕获。");
             var handled = (bool)Call("WindowValidationInput", "RaisePreviewKey", calendar, Key.Escape, ModifierKeys.None);
             var closeStart = Observe(result, "pointer-escape-committed", values, animated, isOpen);
             result.InputChecks["EscapeHandled"] = handled;
@@ -1078,9 +1100,17 @@ public static class MotionValidationContractHarness
             Require(!popupCapture(), "退出中的日历仍抓捕鼠标，下一次宿主点击不可达。");
             WaitFor(result, "pointer-escape-middle", calendar, values, animated,
                 value => Intermediate(closeStart.Values, value, new[] { 0.0, 4.0 }), isOpen);
+            Require(popup.IsOpen && (bool)Call("PopupMotionBehavior", "IsClosing", popup),
+                "重开注入前日历已完成退出，未覆盖中途重开。");
+            var openedBeforeReopen = openedCount;
+            var closedBeforeReopen = closedCount;
             click(trigger);
             result.InputChecks["PointerReopenedDuringExit"] = picker.IsDropDownOpen && popup.IsOpen;
+            result.InputChecks["EscapeReopenRetainedSurface"] =
+                openedCount == openedBeforeReopen && closedCount == closedBeforeReopen;
             Require(picker.IsDropDownOpen && popup.IsOpen, "退出期间真实触发器 pointer 没有重新打开日历。");
+            Require(openedCount == openedBeforeReopen && closedCount == closedBeforeReopen,
+                "Esc 后的重开已重建弹层，未覆盖同一表面的中途反向。");
             WaitFor(result, "pointer-reopen-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
             click(outside);
@@ -1101,8 +1131,16 @@ public static class MotionValidationContractHarness
             popup.SetCurrentValue(Popup.IsOpenProperty, false);
             Require(picker.SelectedDate == selected && !picker.IsDropDownOpen && popup.IsOpen,
                 "日期选择与原生关闭没有保留新日期及退出表面。");
+            Require((bool)Call("PopupMotionBehavior", "IsClosing", popup),
+                "日期选择后的重开注入前已完成退出。");
+            openedBeforeReopen = openedCount;
+            closedBeforeReopen = closedCount;
             click(trigger);
             Require(picker.IsDropDownOpen, "选择日期后的退出没有被真实触发器重新打开。");
+            result.InputChecks["SelectionReopenRetainedSurface"] =
+                openedCount == openedBeforeReopen && closedCount == closedBeforeReopen;
+            Require(openedCount == openedBeforeReopen && closedCount == closedBeforeReopen,
+                "选择日期后的重开已重建弹层，未覆盖同一表面的中途反向。");
             WaitFor(result, "selection-reopen-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
             Require((bool)Call("WindowValidationInput", "RaisePreviewKey", calendar, Key.Escape, ModifierKeys.None),
@@ -1118,6 +1156,7 @@ public static class MotionValidationContractHarness
             {
                 if (popup != null) Call("WindowValidationInput", "ClosePopupForCleanup", popup);
             }
+            catch (Exception error) { result.Failures.Add("夹具清理失败：" + error.Message); }
             finally { pointerState?.Dispose(); window?.Close(); Pump(); }
         }
     }

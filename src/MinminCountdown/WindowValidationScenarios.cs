@@ -825,8 +825,10 @@ public sealed partial class MainWindow
                 editorFieldsDoNotOverlap,
                 legacyInlineReminderControlsStayHidden,
                 editorLabelsVisible,
-                Width >= MinWidth &&
-                Height >= MinHeight &&
+                // Native pixel rounding can report Width=1164.8 at 125% DPI
+                // while WPF still lays out the required 1165 DIP surface.
+                ActualWidth >= MinWidth &&
+                ActualHeight >= MinHeight &&
                 Math.Abs(MinWidth - 1165) <= 0.1 &&
                 Math.Abs(MinHeight - 1350) <= 0.1,
                 filterPopup.EscapeReturnsFocus &&

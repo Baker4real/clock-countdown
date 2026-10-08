@@ -4876,9 +4876,9 @@ internal static class WindowValidationInput
 
         void OnRendering(object? sender, EventArgs args)
         {
-            // Do not keep MediaContext continuously rendering while native
-            // popup destruction is queued at the lower Input priority.
-            CompositionTarget.Rendering -= OnRendering;
+            // Keep the observer for this bounded wait. Removing it inside the
+            // last animation tick makes MediaContext leave presentation and
+            // synchronously wait before queued native popup cleanup can run.
             renderingCount++;
             Observe();
         }

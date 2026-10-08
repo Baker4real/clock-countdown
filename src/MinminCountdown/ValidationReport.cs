@@ -15199,7 +15199,6 @@ internal static class ValidationReport
         };
         void OnRendering(object? sender, EventArgs args)
         {
-            CompositionTarget.Rendering -= OnRendering;
             if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
             {
                 frame.Continue = false;

@@ -1087,6 +1087,36 @@ public static class MotionValidationContractHarness
             Require(picker.IsDropDownOpen && popup.IsOpen, "真实触发器 pointer 没有打开日历。");
             WaitFor(result, "pointer-open-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            // The hidden desktop has no physical cursor over the popup HWND.
+            // Activate that input source, then let WPF's StaysOpen callback
+            // acquire its own PopupRoot capture. Never substitute child capture.
+            var popupSource = PresentationSource.FromVisual(calendar) as HwndSource;
+            Require(popupSource?.RootVisual is Visual, "日历没有可激活的真实 Popup HWND。");
+            var selectedBeforeActivation = picker.SelectedDate;
+            var openEventsBeforeActivation = openedCount;
+            var closeEventsBeforeActivation = closedCount;
+            result.InputChecks["CaptureBeforeSourceActivation"] = Mouse.Captured?.GetType().FullName ?? "none";
+            Require(!popup.StaysOpen, "日历捕获前提要求原生外点关闭。");
+            popup.SetCurrentValue(Popup.StaysOpenProperty, true);
+            try
+            {
+                Call("WindowValidationInput+PickerNativeInput", "SetCapture", popupSource.Handle);
+                Require((IntPtr)Call("WindowValidationInput+PickerNativeInput", "GetCapture") == popupSource.Handle,
+                    "隔离日历 HWND 未能激活输入源。");
+                var point = calendar.TransformToAncestor((Visual)popupSource.RootVisual).Transform(
+                    new Point(calendar.ActualWidth / 2, 1));
+                point = popupSource.CompositionTarget.TransformToDevice.Transform(point);
+                var coordinates = new IntPtr(((int)point.Y << 16) | ((int)point.X & 0xffff));
+                Call("WindowValidationInput+PickerNativeInput", "SendMessage",
+                    popupSource.Handle, (uint)0x0200, IntPtr.Zero, coordinates);
+            }
+            finally { popup.SetCurrentValue(Popup.StaysOpenProperty, false); }
+            Pump();
+            result.InputChecks["SourceActivationKeptPickerState"] = picker.IsDropDownOpen && popup.IsOpen &&
+                picker.SelectedDate == selectedBeforeActivation && openedCount == openEventsBeforeActivation &&
+                closedCount == closeEventsBeforeActivation;
+            Require((bool)result.InputChecks["SourceActivationKeptPickerState"],
+                "隔离输入源激活意外改变了日期或弹层开关。");
             result.InputChecks["CaptureBeforeEscape"] = Mouse.Captured?.GetType().FullName ?? "none";
             result.InputChecks["PopupCapturedBeforeEscape"] = popupCapture();
             Require(popupCapture(), "日历打开后未建立捕获，不能据此验证退出时释放捕获。");
@@ -1111,6 +1141,8 @@ public static class MotionValidationContractHarness
             Require(picker.IsDropDownOpen && popup.IsOpen, "退出期间真实触发器 pointer 没有重新打开日历。");
             Require(openedCount == openedBeforeReopen && closedCount == closedBeforeReopen,
                 "Esc 后的重开已重建弹层，未覆盖同一表面的中途反向。");
+            result.InputChecks["DismissPolicyRestoredAfterReopen"] = !popup.StaysOpen;
+            Require(!popup.StaysOpen, "重开日历后未恢复原生外点关闭策略。");
             WaitFor(result, "pointer-reopen-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
             click(outside);
@@ -1149,6 +1181,8 @@ public static class MotionValidationContractHarness
                 value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
             result.InputChecks["SelectedDateAfterReopenEscape"] = picker.SelectedDate?.ToString("yyyy-MM-dd");
             Require(picker.SelectedDate == selected, "重新打开后的 Esc 回滚到了上一轮打开前的日期。");
+            result.InputChecks["DismissPolicyRestoredAfterClose"] = !popup.StaysOpen;
+            Require(!popup.StaysOpen, "日历完成退出后未恢复外点关闭策略。");
         }
         finally
         {

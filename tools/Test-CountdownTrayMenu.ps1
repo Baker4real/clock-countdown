@@ -103,6 +103,9 @@ public sealed class TrayMenuCaptureEvidence
 public sealed class TrayMenuActionEvidence
 {
     public string Header { get; set; }
+    public bool PointerPressHandled { get; set; }
+    public bool PointerReleaseHandled { get; set; }
+    public bool FocusedOnPress { get; set; }
     public bool PointerInputHandled { get; set; }
     public int[] CallbackDeltas { get; set; }
     public bool RoutedOnlyToExpectedCallback { get; set; }
@@ -147,7 +150,7 @@ public sealed class TrayMenuSourceActivationEvidence
 public sealed class TrayMenuVerificationEvidence
 {
     public string Factory { get; } = "MinminCountdown.TrayMenuFactory.Create";
-    public string InputPath { get; } = "WindowValidationInput.ClickForFocusValidation";
+    public string InputPath { get; } = "WindowValidationInput.RaisePickerPointer: down/up, callback and close observed before input cleanup";
     public string HighlightInputPath { get; } = "Own menu HWND: SetCapture + WM_MOUSEMOVE(blank); DispatcherPriority.Input: Keyboard.Focus(menu), then menu.MoveFocus(First)";
     public bool ShellRegistrationPerformed { get; } = false;
     public bool ShellDoubleClickValidated { get; } = false;
@@ -188,12 +191,13 @@ public static class CountdownTrayMenuHarness
                 .GetMethod("Create", StaticPrivate);
             var input = application.GetType("MinminCountdown.WindowValidationInput", true);
             pump = input.GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
-            var click = input.GetMethod("ClickForFocusValidation", BindingFlags.Public | BindingFlags.Static);
+            var pointer = input.GetMethod("RaisePickerPointer", StaticPrivate);
+            var pointerState = input.GetNestedType("PickerPointerState", BindingFlags.NonPublic);
             var capture = application.GetType("MinminCountdown.ValidationReport", true)
                 .GetMethod("CaptureVisual", StaticPrivate);
             var writePng = application.GetType("MinminCountdown.ValidationReport", true)
                 .GetMethod("WriteNewPng", StaticPrivate);
-            if (factory == null || pump == null || click == null || capture == null || writePng == null)
+            if (factory == null || pump == null || pointer == null || pointerState == null || capture == null || writePng == null)
                 throw new InvalidOperationException("当前构建缺少生产菜单工厂或既有输入/截图接口。");
 
             var counts = new int[3];
@@ -291,12 +295,26 @@ public static class CountdownTrayMenuHarness
                 try
                 {
                     Open(menu, pump);
-                    action.PointerInputHandled = (bool)click.Invoke(null, new object[] { items[index] });
+                    items[index].BringIntoView();
                     Pump(pump, menu.Dispatcher);
-                    action.CallbackDeltas = counts.Select((count, i) => count - before[i]).ToArray();
-                    action.RoutedOnlyToExpectedCallback = action.CallbackDeltas
-                        .Select((count, i) => count == (i == index ? 1 : 0)).All(matches => matches);
-                    action.MenuClosedByAction = !menu.IsOpen;
+                    using ((IDisposable)Activator.CreateInstance(pointerState, true))
+                    {
+                        action.PointerPressHandled = (bool)pointer.Invoke(null,
+                            new object[] { items[index], UIElement.PreviewMouseLeftButtonDownEvent });
+                        Pump(pump, menu.Dispatcher);
+                        action.FocusedOnPress = items[index].IsKeyboardFocusWithin;
+                        action.PointerReleaseHandled = (bool)pointer.Invoke(null,
+                            new object[] { items[index], UIElement.PreviewMouseLeftButtonUpEvent });
+                        Pump(pump, menu.Dispatcher);
+                        action.PointerInputHandled = action.PointerPressHandled && action.PointerReleaseHandled;
+                        action.CallbackDeltas = counts.Select((count, i) => count - before[i]).ToArray();
+                        action.RoutedOnlyToExpectedCallback = action.CallbackDeltas
+                            .Select((count, i) => count == (i == index ? 1 : 0)).All(matches => matches);
+                        action.MenuClosedByAction = !menu.IsOpen;
+                    }
+                    // A leaf MenuItem can invoke on release without taking
+                    // keyboard focus on press. Keep focus as an observation;
+                    // its pointer, exact callback and own close are required.
                     action.Passed = action.PointerInputHandled &&
                         action.RoutedOnlyToExpectedCallback && action.MenuClosedByAction;
                     if (!action.Passed)

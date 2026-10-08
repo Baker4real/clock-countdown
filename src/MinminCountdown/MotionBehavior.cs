@@ -827,6 +827,7 @@ internal static class PopupMotionBehavior
         private bool _requestedOpen;
         private bool _hasPresented;
         private bool _attached;
+        private bool _restoreDismissOnOutsideClick;
 
         public PopupMotionController(DependencyObject owner)
         {
@@ -887,6 +888,8 @@ internal static class PopupMotionBehavior
             {
                 popupWithRetainedExit.CoerceValue(Popup.IsOpenProperty);
             }
+
+            RestoreCapturePolicy();
         }
 
         public bool CoerceIsOpen(bool requestedOpen)
@@ -935,6 +938,7 @@ internal static class PopupMotionBehavior
             }
 
             StartTransition(TransitionKind.Opening);
+            RestoreCapturePolicy();
         }
 
         public void RequestClose()
@@ -969,10 +973,32 @@ internal static class PopupMotionBehavior
             }
 
             StartTransition(TransitionKind.Closing);
+            ReleaseCaptureForExit();
             // The exit already owns the visible surface before the native
             // picker callback can write Popup.IsOpen=false again. An outside
             // close must also make the next trigger click an open request.
             SynchronizeTargetCloseRequest();
+        }
+
+        private void ReleaseCaptureForExit()
+        {
+            if (_owner is Popup { StaysOpen: false } popup)
+            {
+                // Retaining IsOpen also retains WPF's PopupRoot capture.
+                // Let WPF release it while the visible exit surface remains;
+                // the next host click must be able to interrupt this exit.
+                _restoreDismissOnOutsideClick = true;
+                popup.SetCurrentValue(Popup.StaysOpenProperty, true);
+            }
+        }
+
+        private void RestoreCapturePolicy()
+        {
+            if (_restoreDismissOnOutsideClick && _owner is Popup popup)
+            {
+                _restoreDismissOnOutsideClick = false;
+                popup.SetCurrentValue(Popup.StaysOpenProperty, false);
+            }
         }
 
         private void SynchronizeTargetCloseRequest()
@@ -1248,6 +1274,8 @@ internal static class PopupMotionBehavior
             {
                 SetIsOpen(false);
             }
+
+            RestoreCapturePolicy();
         }
 
         private void ResolveVisual()

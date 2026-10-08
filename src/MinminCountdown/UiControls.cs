@@ -1041,12 +1041,15 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
             command == Wpf.Ui.Controls.MessageBoxButton.Secondary)
             ?? throw new InvalidOperationException("WPF-UI 确认框缺少 Secondary 确认按钮。");
 
-        // The WPF-UI template owns the visual buttons; retain the established
-        // automation IDs and make the safe button both the default and Esc target.
-        CancelButton.IsDefault = true;
-        CancelButton.IsCancel = true;
-        ConfirmButton.IsDefault = false;
-        ConfirmButton.IsCancel = false;
+        // WPF-UI keeps its zero-width Close button registered as an Esc target.
+        // Multiple IsCancel buttons make WPF cycle focus instead of clicking,
+        // so only the safe Primary action may own the Enter and Esc access keys.
+        foreach (var button in buttons.Where(button =>
+                     button.CommandParameter is Wpf.Ui.Controls.MessageBoxButton))
+        {
+            button.IsDefault = ReferenceEquals(button, CancelButton);
+            button.IsCancel = ReferenceEquals(button, CancelButton);
+        }
         UiAccessibility.Name(CancelButton, "取消");
         UiAccessibility.Name(ConfirmButton, SecondaryButtonText);
         AutomationProperties.SetAutomationId(CancelButton, "ConfirmationCancelButton");

@@ -1084,7 +1084,7 @@
                       BorderThickness="{TemplateBinding BorderThickness}"
                       CornerRadius="{DynamicResource RadiusOverlay}">
                 <primitives:CalendarItem x:Name="PART_CalendarItem"
-                                         Style="{StaticResource {x:Type primitives:CalendarItem}}" />
+                                         Style="{TemplateBinding CalendarItemStyle}" />
               </Border>
             </Grid>
           </ControlTemplate>

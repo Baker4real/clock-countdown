@@ -153,11 +153,12 @@ public sealed partial class FloatingWindow
         var title = new TextBlock
         {
             Text = record.Name,
-            MaxHeight = 20,
+            MaxHeight = 40,
             FontSize = (double)FindResource("TypeBodyFontSize"),
             FontWeight = FontWeights.SemiBold,
             LineHeight = 20,
-            TextWrapping = TextWrapping.NoWrap,
+            LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+            TextWrapping = TextWrapping.Wrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _floatingPrimaryBrush
         };

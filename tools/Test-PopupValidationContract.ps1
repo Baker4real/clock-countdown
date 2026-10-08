@@ -477,12 +477,15 @@ public static class MotionValidationContractHarness
         // An isolated, idle HWND can wait for a channel commit longer than a
         // short transition. Request frames only while this observation is
         // active; animation values still come from real Rendering callbacks.
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Render, visual.Dispatcher) {
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, visual.Dispatcher) {
             Interval = TimeSpan.FromMilliseconds(10)
         };
         Exception failure = null;
         EventHandler expired = (sender, args) => frame.Continue = false;
-        EventHandler rendering = (sender, args) => {
+        void OnRendering(object sender, EventArgs args) {
+            // A persistent Rendering subscriber keeps MediaContext active;
+            // observe one requested frame, then yield to native Input work.
+            CompositionTarget.Rendering -= OnRendering;
             sampling.RenderingCallbackCount++;
             if (watch.Elapsed.TotalMilliseconds > DeadlineMilliseconds)
             {
@@ -504,7 +507,8 @@ public static class MotionValidationContractHarness
                 }
             }
             catch (Exception error) { failure = error; frame.Continue = false; }
-        };
+        }
+        EventHandler rendering = OnRendering;
         EventHandler requestFrame = (sender, args) => {
             sampling.FrameRequestCount++;
             // Adding Rendering posts a render request even when a visual is
@@ -516,7 +520,6 @@ public static class MotionValidationContractHarness
         {
             timeout.Tick += expired;
             frameRequests.Tick += requestFrame;
-            CompositionTarget.Rendering += rendering;
             timeout.Start();
             frameRequests.Start();
             requestFrame(null, EventArgs.Empty);

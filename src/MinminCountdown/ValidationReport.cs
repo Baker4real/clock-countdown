@@ -513,7 +513,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-09-v30";
+    private const string FloatingReferenceBaselineVersion = "2026-10-09-v31";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -606,7 +606,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-09-v30";
+    private const string MainReferenceBaselineVersion = "2026-10-09-v31";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -1939,7 +1939,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-09-v30 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-09-v31 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["EffectiveThemeTextContrast"] = contrast,
@@ -2901,7 +2901,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-09-v30 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-09-v31 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -4133,8 +4133,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-09-v30", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-09-v30", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-09-v31", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-09-v31", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -15193,12 +15193,13 @@ internal static class ValidationReport
         {
             Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
         };
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Render, visual.Dispatcher)
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, visual.Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(10)
         };
-        EventHandler rendering = (_, _) =>
+        void OnRendering(object? sender, EventArgs args)
         {
+            CompositionTarget.Rendering -= OnRendering;
             if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
             {
                 frame.Continue = false;
@@ -15214,7 +15215,8 @@ internal static class ValidationReport
                 }
             }
             catch (Exception error) { failure = error; frame.Continue = false; }
-        };
+        }
+        EventHandler rendering = OnRendering;
         EventHandler requestFrame = (_, _) =>
         {
             // Adding Rendering posts a real WPF render request. A bitmap

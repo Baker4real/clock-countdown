@@ -4846,7 +4846,7 @@ internal static class WindowValidationInput
         {
             Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
         };
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Render, dispatcher)
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(10)
         };
@@ -4874,7 +4874,15 @@ internal static class WindowValidationInput
             }
         }
 
-        EventHandler rendering = (_, _) => { renderingCount++; Observe(); };
+        void OnRendering(object? sender, EventArgs args)
+        {
+            // Do not keep MediaContext continuously rendering while native
+            // popup destruction is queued at the lower Input priority.
+            CompositionTarget.Rendering -= OnRendering;
+            renderingCount++;
+            Observe();
+        }
+        EventHandler rendering = OnRendering;
         EventHandler requestFrame = (_, _) =>
         {
             // Also observe between frames: WPF defers popup HWND destruction
@@ -4911,7 +4919,7 @@ internal static class WindowValidationInput
         var passed = observed && watch.Elapsed.TotalMilliseconds <= timeoutMilliseconds;
         if (!passed)
         {
-            Console.Error.WriteLine("[DEBUG-frame-wait] " + System.Text.Json.JsonSerializer.Serialize(new
+            Console.Error.WriteLine("VALIDATION_RENDER_WAIT_DIAGNOSTIC " + System.Text.Json.JsonSerializer.Serialize(new
             {
                 timeoutMilliseconds, observed, observedMilliseconds,
                 elapsedMilliseconds = watch.Elapsed.TotalMilliseconds,
@@ -4947,7 +4955,7 @@ internal static class WindowValidationInput
         var closed = WaitUntil(popup.Dispatcher, IsFullyClosed, timeoutMilliseconds);
         if (!closed)
         {
-            Console.Error.WriteLine("[DEBUG-popup-close] " + System.Text.Json.JsonSerializer.Serialize(new
+            Console.Error.WriteLine("POPUP_CLOSE_WAIT_DIAGNOSTIC " + System.Text.Json.JsonSerializer.Serialize(new
             {
                 popup.IsOpen,
                 sourceAttached = popup.Child is Visual child && PresentationSource.FromVisual(child) is not null,

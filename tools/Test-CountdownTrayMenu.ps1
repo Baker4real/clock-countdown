@@ -9,6 +9,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 $desktopName = Get-SuiteThreadDesktopName
@@ -108,16 +110,34 @@ public sealed class TrayMenuActionEvidence
     public bool Passed { get; set; }
 }
 
+public sealed class TrayMenuFocusEvidence
+{
+    public string Stage { get; set; }
+    public string KeyboardFocusRequestReturned { get; set; }
+    public bool? MoveFocusReturned { get; set; }
+    public string FocusedElement { get; set; }
+    public string MenuHwnd { get; set; }
+    public bool OwnerIsActive { get; set; }
+    public bool MenuIsOpen { get; set; }
+    public bool MenuIsKeyboardFocusWithin { get; set; }
+    public bool FirstItemIsKeyboardFocused { get; set; }
+    public bool FirstItemIsKeyboardFocusWithin { get; set; }
+    public bool FirstItemIsSelected { get; set; }
+    public bool FirstItemIsHighlighted { get; set; }
+}
+
 public sealed class TrayMenuVerificationEvidence
 {
     public string Factory { get; } = "MinminCountdown.TrayMenuFactory.Create";
     public string InputPath { get; } = "WindowValidationInput.ClickForFocusValidation";
+    public string HighlightInputPath { get; } = "DispatcherPriority.Input: Keyboard.Focus(menu), then menu.MoveFocus(First)";
     public bool ShellRegistrationPerformed { get; } = false;
     public bool ShellDoubleClickValidated { get; } = false;
     public bool ControllerBehaviorValidated { get; } = false;
     public bool SettingsAccessPerformed { get; } = false;
     public string CaptureScope { get; } = "WPF ContextMenu client visual; native Shell opening and system shadow are not covered";
     public bool KeyboardHighlightReached { get; set; }
+    public List<TrayMenuFocusEvidence> KeyboardFocusSteps { get; } = new List<TrayMenuFocusEvidence>();
     public List<TrayMenuCaptureEvidence> Captures { get; } = new List<TrayMenuCaptureEvidence>();
     public List<TrayMenuActionEvidence> Actions { get; } = new List<TrayMenuActionEvidence>();
     public List<string> Failures { get; } = new List<string>();
@@ -191,9 +211,24 @@ public static class CountdownTrayMenuHarness
 
             Open(menu, pump);
             TryCapture("tray-menu-open", menu, items, capture, writePng, evidenceDirectory, result);
-            menu.Focus();
-            Keyboard.Focus(items[0]);
+            result.KeyboardFocusSteps.Add(ReadFocusState("after-open", owner, menu, items[0]));
+            // Let the popup finish opening before entering its keyboard scope.
+            // WPF navigation owns selection/highlight; the fixture never assigns either state.
+            IInputElement focusReturned = null;
+            menu.Dispatcher.BeginInvoke(DispatcherPriority.Input,
+                new Action(() => focusReturned = Keyboard.Focus(menu)));
             Pump(pump, menu.Dispatcher);
+            var focusedMenu = ReadFocusState("after-menu-focus", owner, menu, items[0]);
+            focusedMenu.KeyboardFocusRequestReturned = DescribeFocus(focusReturned);
+            result.KeyboardFocusSteps.Add(focusedMenu);
+            bool moveFocusReturned = false;
+            menu.Dispatcher.BeginInvoke(DispatcherPriority.Input,
+                new Action(() => moveFocusReturned = menu.MoveFocus(
+                    new TraversalRequest(FocusNavigationDirection.First))));
+            Pump(pump, menu.Dispatcher);
+            var navigated = ReadFocusState("after-first-navigation", owner, menu, items[0]);
+            navigated.MoveFocusReturned = moveFocusReturned;
+            result.KeyboardFocusSteps.Add(navigated);
             result.KeyboardHighlightReached = items[0].IsKeyboardFocusWithin && items[0].IsHighlighted;
             if (!result.KeyboardHighlightReached)
                 result.Failures.Add("通过隔离菜单的键盘焦点未进入首项高亮态。");
@@ -247,6 +282,32 @@ public static class CountdownTrayMenuHarness
 
     private static void Pump(MethodInfo pump, Dispatcher dispatcher) =>
         pump.Invoke(null, new object[] { dispatcher });
+
+    private static TrayMenuFocusEvidence ReadFocusState(
+        string stage, Window owner, ContextMenu menu, MenuItem firstItem)
+    {
+        var source = PresentationSource.FromVisual(menu) as System.Windows.Interop.HwndSource;
+        return new TrayMenuFocusEvidence
+        {
+            Stage = stage,
+            FocusedElement = DescribeFocus(Keyboard.FocusedElement),
+            MenuHwnd = source == null ? null : "0x" + source.Handle.ToInt64().ToString("X", CultureInfo.InvariantCulture),
+            OwnerIsActive = owner.IsActive,
+            MenuIsOpen = menu.IsOpen,
+            MenuIsKeyboardFocusWithin = menu.IsKeyboardFocusWithin,
+            FirstItemIsKeyboardFocused = firstItem.IsKeyboardFocused,
+            FirstItemIsKeyboardFocusWithin = firstItem.IsKeyboardFocusWithin,
+            FirstItemIsSelected = firstItem.IsSelected,
+            FirstItemIsHighlighted = firstItem.IsHighlighted
+        };
+    }
+
+    private static string DescribeFocus(IInputElement element)
+    {
+        if (element == null) return "(null)";
+        var detail = element is MenuItem item ? item.Header as string : (element as FrameworkElement)?.Name;
+        return element.GetType().FullName + (string.IsNullOrEmpty(detail) ? "" : ":" + detail);
+    }
 
     private static void Open(ContextMenu menu, MethodInfo pump)
     {
@@ -426,7 +487,9 @@ $report = [pscustomobject]@{
     CaptureScope = $measured.CaptureScope
     Factory = $measured.Factory
     InputPath = $measured.InputPath
+    HighlightInputPath = $measured.HighlightInputPath
     KeyboardHighlightReached = $measured.KeyboardHighlightReached
+    KeyboardFocusSteps = @($measured.KeyboardFocusSteps)
     Captures = @($measured.Captures)
     Actions = @($measured.Actions)
     Failures = @($measured.Failures)

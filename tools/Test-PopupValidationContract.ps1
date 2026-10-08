@@ -350,6 +350,8 @@ public sealed class MotionObservation
 public sealed class MotionSamplingWindow
 {
     public string Phase { get; set; }
+    public int FrameRequestCount { get; set; }
+    public int RenderingCallbackCount { get; set; }
     public int FrameCount { get; set; }
     public double ElapsedMilliseconds { get; set; }
     public double? FirstRenderingTimeMilliseconds { get; set; }
@@ -480,10 +482,8 @@ public static class MotionValidationContractHarness
         };
         Exception failure = null;
         EventHandler expired = (sender, args) => frame.Continue = false;
-        EventHandler requestFrame = (sender, args) => {
-            if (visual is UIElement surface) surface.InvalidateVisual();
-        };
         EventHandler rendering = (sender, args) => {
+            sampling.RenderingCallbackCount++;
             if (watch.Elapsed.TotalMilliseconds > DeadlineMilliseconds)
             {
                 frame.Continue = false;
@@ -504,6 +504,13 @@ public static class MotionValidationContractHarness
                 }
             }
             catch (Exception error) { failure = error; frame.Continue = false; }
+        };
+        EventHandler requestFrame = (sender, args) => {
+            sampling.FrameRequestCount++;
+            // Adding Rendering posts a render request even when a visual is
+            // already dirty; repeated InvalidateVisual calls can be coalesced.
+            CompositionTarget.Rendering -= rendering;
+            CompositionTarget.Rendering += rendering;
         };
         try
         {
@@ -1035,6 +1042,21 @@ public static class MotionValidationContractHarness
 
     private static void DatePickerInterruptedInput(MotionScenarioResult result, bool textTrigger)
     {
+        var selected = new DateTime(2026, 10, 12);
+        Func<SelectionChangedEventArgs, string> describeChange = args =>
+            "[" + string.Join(",", args.RemovedItems.Cast<DateTime>().Select(date => date.ToString("yyyy-MM-dd"))) +
+            "] -> [" + string.Join(",", args.AddedItems.Cast<DateTime>().Select(date => date.ToString("yyyy-MM-dd"))) + "]";
+        var expectedRollback = "[" + selected.AddDays(1).ToString("yyyy-MM-dd") + "] -> [" + selected.ToString("yyyy-MM-dd") + "]";
+        // Native DatePicker coercion synchronously feeds Calendar's selection
+        // back into the picker. Match that notification sequence rather than
+        // requiring fewer events than the unmodified framework emits.
+        var nativePicker = new DatePicker { SelectedDate = selected.AddDays(1) };
+        var nativeDateEvents = new List<string>();
+        nativePicker.SelectedDateChanged += (sender, args) => nativeDateEvents.Add(describeChange(args));
+        nativePicker.SetCurrentValue(DatePicker.SelectedDateProperty, selected);
+        Require(nativeDateEvents.Count > 0 && nativeDateEvents.All(change => change == expectedRollback),
+            "原生 DatePicker 日期回写对照未产生预期通知。");
+        result.InputChecks["NativePickerRollbackDateEvents"] = nativeDateEvents.ToArray();
         var picker = (DatePicker)Activator.CreateInstance(AppType("WpfUiDatePicker"), true);
         picker.SelectedDate = new DateTime(2026, 10, 8);
         picker.Width = 220;
@@ -1167,7 +1189,6 @@ public static class MotionValidationContractHarness
             click(trigger);
             WaitFor(result, "selection-open-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
-            var selected = new DateTime(2026, 10, 12);
             calendar.SelectedDate = selected;
             popup.SetCurrentValue(Popup.IsOpenProperty, false);
             Require(picker.SelectedDate == selected && !picker.IsDropDownOpen && popup.IsOpen,
@@ -1213,10 +1234,8 @@ public static class MotionValidationContractHarness
             result.InputChecks["KeyboardPreviewDate"] = picker.SelectedDate?.ToString("yyyy-MM-dd");
             var pickerDateEvents = new List<string>();
             var calendarDateEvents = new List<string>();
-            picker.SelectedDateChanged += (sender, args) => pickerDateEvents.AddRange(
-                args.AddedItems.OfType<DateTime>().Select(date => date.ToString("yyyy-MM-dd")));
-            calendar.SelectedDatesChanged += (sender, args) => calendarDateEvents.AddRange(
-                args.AddedItems.OfType<DateTime>().Select(date => date.ToString("yyyy-MM-dd")));
+            picker.SelectedDateChanged += (sender, args) => pickerDateEvents.Add(describeChange(args));
+            calendar.SelectedDatesChanged += (sender, args) => calendarDateEvents.Add(describeChange(args));
             result.InputChecks["FinalEscapeTarget"] = Keyboard.FocusedElement.GetType().FullName;
             Require((bool)Call("WindowValidationInput", "RaisePreviewKey", escapeTarget, Key.Escape, ModifierKeys.None),
                 "重新打开后 Esc 没有被生产控件处理。");
@@ -1224,13 +1243,14 @@ public static class MotionValidationContractHarness
                 value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
             result.InputChecks["SelectedDateAfterReopenEscape"] = picker.SelectedDate?.ToString("yyyy-MM-dd");
             Require(picker.SelectedDate == selected, "重新打开后的 Esc 回滚到了上一轮打开前的日期。");
-            result.InputChecks["PickerEscapeDateEvents"] = pickerDateEvents;
-            result.InputChecks["CalendarEscapeDateEvents"] = calendarDateEvents;
-            Require(pickerDateEvents.SequenceEqual(new[] { selected.ToString("yyyy-MM-dd") }) &&
-                calendarDateEvents.SequenceEqual(new[] { selected.ToString("yyyy-MM-dd") }),
-                "Esc 日期通知泄露了旧日期或重复回写。");
             picker.CoerceValue(DatePicker.SelectedDateProperty);
-            Require(picker.SelectedDate == selected, "再次 coercion 暴露了潜伏的旧日期基值。");
+            result.InputChecks["SelectionSurvivesRecoercion"] = picker.SelectedDate == selected;
+            Require((bool)result.InputChecks["SelectionSurvivesRecoercion"], "再次 coercion 暴露了潜伏的旧日期基值。");
+            result.InputChecks["PickerEscapeDateEvents"] = pickerDateEvents.ToArray();
+            result.InputChecks["CalendarEscapeDateEvents"] = calendarDateEvents.ToArray();
+            Require(pickerDateEvents.SequenceEqual(nativeDateEvents) &&
+                calendarDateEvents.SequenceEqual(new[] { expectedRollback }),
+                "Esc 日期通知泄露了旧日期或偏离原生回写序列。");
             picker.SelectedDate = selected.AddDays(2);
             result.InputChecks["LaterSelectionAccepted"] = picker.SelectedDate == selected.AddDays(2);
             Require((bool)result.InputChecks["LaterSelectionAccepted"], "Esc 路由结束后仍阻止正常日期修改。");

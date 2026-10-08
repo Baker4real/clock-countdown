@@ -11627,8 +11627,9 @@ internal static class ValidationReport
             var filterOpened = Required<Popup>(main, "FilterPopup").IsOpen;
             commandResults["Filter"] = filterHandled && filterOpened;
             commandDiagnostics["Filter"] = new(filterHandled, filterOpened, string.Empty);
-            Required<Popup>(main, "FilterPopup").IsOpen = false;
-            PumpDispatcher();
+            // The following shortcut is a separate scenario. Wait for the real
+            // exit transition before it runs, while the popup guard is still valid.
+            WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "FilterPopup"));
             // #156：便签页 Ctrl+F 聚焦便签搜索（倒计时页仍打开筛选，由上方 Filter 命令覆盖）。
             RaiseShortcut(ModifierKeys.Control, Key.D2);
             var noteSearchHandled = RaiseShortcut(ModifierKeys.Control, Key.F);
@@ -11649,8 +11650,7 @@ internal static class ValidationReport
                 tagManagerHandled,
                 tagManagerOpened,
                 string.Empty);
-            Required<Popup>(main, "TagManagerPopup").IsOpen = false;
-            PumpDispatcher();
+            WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "TagManagerPopup"));
 
             var probeCountdownName = Required<TextBox>(main, "CountdownName");
             var probeCountdownDate = Required<DatePicker>(main, "CountdownDate");
@@ -11774,8 +11774,8 @@ internal static class ValidationReport
                 originalPreferences.WorkStart.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
             Required<TextBox>(main, "WorkEnd").Text =
                 originalPreferences.WorkEnd.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
-            Required<Popup>(main, "FilterPopup").IsOpen = false;
-            Required<Popup>(main, "TagManagerPopup").IsOpen = false;
+            WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "FilterPopup"));
+            WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "TagManagerPopup"));
             main.WindowState = originalWindowState;
             main.IsEnabled = originalEnabled;
             main.ShowWorkspace(originalWorkspace);
@@ -11834,7 +11834,7 @@ internal static class ValidationReport
             !WindowValidationInput.RaisePreviewKey(countdownTab, Key.D2, ModifierKeys.Control) &&
             main.CurrentWorkspace == WorkspaceKind.Countdowns &&
             filterPopup.IsOpen;
-        filterPopup.IsOpen = false;
+        WindowValidationInput.ClosePopupForCleanup(filterPopup);
 
         main.IsEnabled = false;
         var modalOwnerGuarded =

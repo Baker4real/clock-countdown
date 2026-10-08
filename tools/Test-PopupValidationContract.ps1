@@ -365,6 +365,7 @@ public sealed class MotionScenarioResult
     public double[] EffectiveMilliseconds { get; set; }
     public List<MotionObservation> Observations { get; } = new List<MotionObservation>();
     public List<MotionSamplingWindow> SamplingWindows { get; } = new List<MotionSamplingWindow>();
+    public Dictionary<string, object> InputChecks { get; } = new Dictionary<string, object>();
     public List<string> Failures { get; } = new List<string>();
     public bool SystemPreferenceUnchanged { get; set; }
     public bool PreferenceRestored { get; set; }
@@ -520,11 +521,11 @@ public static class MotionValidationContractHarness
             "300 ms 内没有真实 WPF Rendering 帧；不以位图捕获或 Dispatcher Pump 代替。");
     }
 
-    private static Window ShowFixture(FrameworkElement content)
+    private static Window ShowFixture(FrameworkElement content, double height = 260)
     {
         var window = new Window {
             Title = "MinminCountdown Motion Validation Contract",
-            Width = 360, Height = 260, ShowInTaskbar = false,
+            Width = 360, Height = height, ShowInTaskbar = false,
             ShowActivated = false, Content = content
         };
         try
@@ -756,6 +757,7 @@ public static class MotionValidationContractHarness
         var panel = new StackPanel { Children = { button } };
         Window window = null;
         FrameworkElement host = null;
+        DispatcherTimer frameRequests = null;
         try
         {
             window = ShowFixture(panel);
@@ -763,6 +765,14 @@ public static class MotionValidationContractHarness
             host = (FrameworkElement)button.Template.FindName("InteractionSurface", button);
             var surface = (Border)button.Template.FindName("Surface", button);
             Require(host != null && surface != null, "PrimaryButton 生产模板缺少交互面。");
+            // An isolated, idle HWND can wait for a channel commit longer than
+            // this short transition. Request frames without advancing clocks;
+            // values are still read only from actual Rendering callbacks.
+            frameRequests = new DispatcherTimer(DispatcherPriority.Render, surface.Dispatcher) {
+                Interval = TimeSpan.FromMilliseconds(10)
+            };
+            frameRequests.Tick += (sender, args) => surface.InvalidateVisual();
+            frameRequests.Start();
             Action<bool, bool> input = (hover, pressed) =>
                 Call("MotionBehavior", "SetInputForValidation", host, hover, pressed);
             Action commit = () => _application.Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
@@ -838,6 +848,7 @@ public static class MotionValidationContractHarness
         }
         finally
         {
+            frameRequests?.Stop();
             try
             {
                 if (host != null) Call("MotionBehavior", "ClearInputForValidation", host);
@@ -1017,6 +1028,100 @@ public static class MotionValidationContractHarness
         }
     }
 
+    private static void DatePickerInterruptedInput(MotionScenarioResult result, bool textTrigger)
+    {
+        var picker = (DatePicker)Activator.CreateInstance(AppType("WpfUiDatePicker"), true);
+        picker.SelectedDate = new DateTime(2026, 10, 8);
+        picker.Width = 220;
+        var outside = new TextBox { Text = "External focus fixture", Margin = new Thickness(0, 330, 0, 0) };
+        var panel = new StackPanel { Children = { picker, outside } };
+        Window window = null;
+        Popup popup = null;
+        IDisposable pointerState = null;
+        try
+        {
+            window = ShowFixture(panel, 500);
+            window.Activate();
+            picker.ApplyTemplate();
+            popup = (Popup)picker.Template.FindName("PART_Popup", picker);
+            var calendar = (Calendar)popup.Child;
+            var trigger = (Control)picker.Template.FindName(textTrigger ? "PART_TextToggle" : "PART_Button", picker);
+            pointerState = (IDisposable)Activator.CreateInstance(AppType("WindowValidationInput+PickerPointerState"), true);
+            Action<Control> click = target => {
+                Call("WindowValidationInput", "RaisePickerPointer", target, UIElement.PreviewMouseLeftButtonDownEvent);
+                Pump();
+                var released = (bool)Call("WindowValidationInput", "RaisePickerPointer", target,
+                    UIElement.PreviewMouseLeftButtonUpEvent);
+                Pump();
+                Require(released, "隔离 pointer release 没有经过目标控件。");
+            };
+            Func<double[]> values = () => new[] { calendar.Opacity, Translation(calendar)?.Y ?? double.NaN };
+            Func<bool> animated = () => Animated(calendar, UIElement.OpacityProperty);
+            Func<bool> isOpen = () => popup.IsOpen;
+            Func<bool> popupCapture = () => Mouse.Captured is Visual captured &&
+                PresentationSource.FromVisual(calendar) is PresentationSource popupSource &&
+                ReferenceEquals(PresentationSource.FromVisual(captured), popupSource);
+            click(outside);
+            click(trigger);
+            Require(picker.IsDropDownOpen && popup.IsOpen, "真实触发器 pointer 没有打开日历。");
+            WaitFor(result, "pointer-open-final", calendar, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            result.InputChecks["CaptureBeforeEscape"] = Mouse.Captured?.GetType().FullName ?? "none";
+            result.InputChecks["PopupCapturedBeforeEscape"] = popupCapture();
+            var handled = (bool)Call("WindowValidationInput", "RaisePreviewKey", calendar, Key.Escape, ModifierKeys.None);
+            var closeStart = Observe(result, "pointer-escape-committed", values, animated, isOpen);
+            result.InputChecks["EscapeHandled"] = handled;
+            result.InputChecks["LogicalClosedWhileVisible"] = !picker.IsDropDownOpen && popup.IsOpen;
+            result.InputChecks["CaptureDuringExit"] = Mouse.Captured?.GetType().FullName ?? "none";
+            result.InputChecks["PopupCapturedDuringExit"] = popupCapture();
+            Require(handled && !picker.IsDropDownOpen && popup.IsOpen, "Esc 未启动逻辑关闭与可见退出。");
+            Require(!popupCapture(), "退出中的日历仍抓捕鼠标，下一次宿主点击不可达。");
+            WaitFor(result, "pointer-escape-middle", calendar, values, animated,
+                value => Intermediate(closeStart.Values, value, new[] { 0.0, 4.0 }), isOpen);
+            click(trigger);
+            result.InputChecks["PointerReopenedDuringExit"] = picker.IsDropDownOpen && popup.IsOpen;
+            Require(picker.IsDropDownOpen && popup.IsOpen, "退出期间真实触发器 pointer 没有重新打开日历。");
+            WaitFor(result, "pointer-reopen-final", calendar, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            click(outside);
+            var outsideFocused = outside.IsKeyboardFocusWithin;
+            result.InputChecks["OutsideFocusedBeforeClose"] = outsideFocused;
+            WaitFor(result, "pointer-outside-close-final", calendar, values, animated,
+                value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+            Pump();
+            result.InputChecks["OutsideFocusPreserved"] = outside.IsKeyboardFocusWithin;
+            Require(outsideFocused && outside.IsKeyboardFocusWithin,
+                "Esc 被重开打断后，旧关闭标记夺走了外部输入框的焦点。");
+
+            click(trigger);
+            WaitFor(result, "selection-open-final", calendar, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            var selected = new DateTime(2026, 10, 12);
+            calendar.SelectedDate = selected;
+            popup.SetCurrentValue(Popup.IsOpenProperty, false);
+            Require(picker.SelectedDate == selected && !picker.IsDropDownOpen && popup.IsOpen,
+                "日期选择与原生关闭没有保留新日期及退出表面。");
+            click(trigger);
+            Require(picker.IsDropDownOpen, "选择日期后的退出没有被真实触发器重新打开。");
+            WaitFor(result, "selection-reopen-final", calendar, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            Require((bool)Call("WindowValidationInput", "RaisePreviewKey", calendar, Key.Escape, ModifierKeys.None),
+                "重新打开后 Esc 没有被生产控件处理。");
+            WaitFor(result, "selection-escape-final", calendar, values, animated,
+                value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+            result.InputChecks["SelectedDateAfterReopenEscape"] = picker.SelectedDate?.ToString("yyyy-MM-dd");
+            Require(picker.SelectedDate == selected, "重新打开后的 Esc 回滚到了上一轮打开前的日期。");
+        }
+        finally
+        {
+            try
+            {
+                if (popup != null) Call("WindowValidationInput", "ClosePopupForCleanup", popup);
+            }
+            finally { pointerState?.Dispose(); window?.Close(); Pump(); }
+        }
+    }
+
     private static void Indicator(MotionScenarioResult result)
     {
         var root = new Grid { Width = 240, Height = 44 };
@@ -1129,6 +1234,10 @@ public static class MotionValidationContractHarness
             results.Add(RunCase("segment-indicator", enabled, Indicator));
             results.Add(RunCase("countdown-digit", enabled, Digit));
         }
+        results.Add(RunCase("datepicker-text-interrupted-input", true,
+            result => DatePickerInterruptedInput(result, true)));
+        results.Add(RunCase("datepicker-arrow-interrupted-input", true,
+            result => DatePickerInterruptedInput(result, false)));
         results.Add(RunCase("override-restoration-after-exception", false,
             result => { throw new ExpectedFixtureException(); }, true));
         var before = new MotionObservation { ElapsedMilliseconds = 10, Values = new[] { 0.65 } };

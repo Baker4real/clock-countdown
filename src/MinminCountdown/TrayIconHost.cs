@@ -219,6 +219,7 @@ internal static class TrayMenuFactory
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(16, 9, 16, 9)));
         style.Setters.Add(new Setter(Control.FontFamilyProperty, new MediaFontFamily("Microsoft YaHei UI")));
         style.Setters.Add(new Setter(Control.FontSizeProperty, 14d));
+        style.Setters.Add(new Setter(Control.TemplateProperty, CreateMenuItemTemplate()));
 
         var highlighted = new Trigger
         {
@@ -226,9 +227,29 @@ internal static class TrayMenuFactory
             Value = true
         };
         highlighted.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#F6DFD3")));
-        highlighted.Setters.Add(new Setter(Control.ForegroundProperty, Brush("#C23E68")));
         style.Triggers.Add(highlighted);
         return style;
+    }
+
+    private static ControlTemplate CreateMenuItemTemplate()
+    {
+        // These three leaf commands have no icon, checkmark, or submenu. Bind
+        // the rendered surface so the native theme cannot paint a blue highlight.
+        var surface = new FrameworkElementFactory(typeof(Border));
+        surface.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+        surface.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+        surface.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
+        surface.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
+
+        var header = new FrameworkElementFactory(typeof(ContentPresenter));
+        header.SetValue(ContentPresenter.ContentSourceProperty, "Header");
+        header.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
+        header.SetValue(FrameworkElement.HorizontalAlignmentProperty,
+            new TemplateBindingExtension(Control.HorizontalContentAlignmentProperty));
+        header.SetValue(FrameworkElement.VerticalAlignmentProperty,
+            new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
+        surface.AppendChild(header);
+        return new ControlTemplate(typeof(MenuItem)) { VisualTree = surface };
     }
 
     private static SolidColorBrush Brush(string hex)

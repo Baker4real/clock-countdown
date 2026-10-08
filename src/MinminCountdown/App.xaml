@@ -1070,6 +1070,7 @@
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
       <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CalendarItemStyle" Value="{DynamicResource {x:Type primitives:CalendarItem}}" />
       <Setter Property="CalendarDayButtonStyle" Value="{DynamicResource {x:Type primitives:CalendarDayButton}}" />
       <Setter Property="CalendarButtonStyle" Value="{DynamicResource {x:Type primitives:CalendarButton}}" />
       <Setter Property="Template">

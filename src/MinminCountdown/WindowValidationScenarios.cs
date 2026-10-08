@@ -5472,6 +5472,8 @@ internal static class WindowValidationInput
                     $"[calendar-navigation] pickerVisible={picker.IsVisible};pickerOpen={picker.IsDropDownOpen};" +
                     $"popupOpen={popup?.IsOpen};child={popup?.Child?.GetType().Name};" +
                     $"calendarVisible={calendar?.IsVisible};item={item?.GetType().Name};" +
+                    $"calendarItemStyleIsProject={ReferenceEquals(calendar?.CalendarItemStyle, Application.Current.FindResource(typeof(CalendarItem)))};" +
+                    $"itemStyleIsProject={ReferenceEquals(item?.Style, Application.Current.FindResource(typeof(CalendarItem)))};" +
                     $"previous={previous?.Name}/{previous?.IsVisible};next={next?.Name}/{next?.IsVisible}");
             }
 

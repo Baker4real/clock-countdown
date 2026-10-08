@@ -39,6 +39,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 public sealed class PopupValidationContractResult
@@ -50,12 +52,21 @@ public sealed class PopupValidationContractResult
     public bool OutsideFocusPreserved { get; set; }
     public int HandledEscapeCount { get; set; }
     public bool CleanedAfterExercise { get; set; }
+    public bool? ReopenedWithInitialFocus { get; set; }
 }
 
 public static class PopupValidationContractHarness
 {
     public static PopupValidationContractResult Run(string assemblyPath, string scenario)
     {
+        // Match ApplicationValidation's renderer on an isolated desktop, which
+        // has no composited DWM surface for WPF's hardware animation clocks.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
+        AppContext.SetSwitch("Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable", true);
+        if (Application.Current is null)
+        {
+            new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        }
         Assembly application = Assembly.LoadFrom(assemblyPath);
         Type input = application.GetType("MinminCountdown.WindowValidationInput", true);
         MethodInfo exercise = input.GetMethod("ExercisePopup", BindingFlags.Public | BindingFlags.Static);
@@ -88,8 +99,13 @@ public static class PopupValidationContractHarness
         };
         var timers = new List<DispatcherTimer>();
         int handledEscapeCount = 0;
-        if (scenario == "real-close")
+        if (scenario == "real-close" || scenario == "real-close-motion")
         {
+            if (scenario == "real-close-motion")
+            {
+                motion.GetMethod("Attach", BindingFlags.NonPublic | BindingFlags.Static).Invoke(
+                    null, new object[] { popup });
+            }
             lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
                 null, new object[] { popup, trigger, new Func<IInputElement>(() => initial) });
             KeyEventHandler recordEscape = (sender, args) =>
@@ -138,6 +154,21 @@ public static class PopupValidationContractHarness
             pump.Invoke(null, new object[] { window.Dispatcher });
             object result = exercise.Invoke(null, new object[] { popup, trigger, initial, outside });
             Type resultType = result.GetType();
+            bool cleanedAfterExercise = !popup.IsOpen;
+            bool? reopenedWithInitialFocus = null;
+            if (scenario == "real-close-motion")
+            {
+                reopenedWithInitialFocus = false;
+                if (cleanedAfterExercise)
+                {
+                    Keyboard.Focus(outside);
+                    popup.IsOpen = true;
+                    pump.Invoke(null, new object[] { popup.Dispatcher });
+                    reopenedWithInitialFocus = popup.IsOpen && ReferenceEquals(Keyboard.FocusedElement, initial);
+                    input.GetMethod("ClosePopupForCleanup", BindingFlags.Public | BindingFlags.Static).Invoke(
+                        null, new object[] { popup });
+                }
+            }
             return new PopupValidationContractResult
             {
                 Scenario = scenario,
@@ -146,7 +177,8 @@ public static class PopupValidationContractHarness
                 TriggerSecondClickCloses = (bool)resultType.GetProperty("TriggerSecondClickCloses").GetValue(result),
                 OutsideFocusPreserved = (bool)resultType.GetProperty("OutsideFocusPreserved").GetValue(result),
                 HandledEscapeCount = handledEscapeCount,
-                CleanedAfterExercise = !popup.IsOpen
+                CleanedAfterExercise = cleanedAfterExercise,
+                ReopenedWithInitialFocus = reopenedWithInitialFocus
             };
         }
         finally
@@ -161,7 +193,7 @@ public static class PopupValidationContractHarness
 '@
 
 $results = @(
-    foreach ($scenario in @('real-close', 'handled-without-close', 'close-after-deadline')) {
+    foreach ($scenario in @('real-close', 'real-close-motion', 'handled-without-close', 'close-after-deadline')) {
         [PopupValidationContractHarness]::Run($resolvedAssembly, $scenario)
     }
 )
@@ -173,7 +205,10 @@ foreach ($result in $results) {
     if (-not $result.CleanedAfterExercise) {
         $failures.Add("$($result.Scenario)：验证方法 finally 未清理弹层。")
     }
-    if ($result.Scenario -eq 'real-close') {
+    if ($result.Scenario -eq 'real-close-motion' -and -not $result.ReopenedWithInitialFocus) {
+        $failures.Add('带动画的弹层清理后重开未恢复初始键盘焦点。')
+    }
+    if ($result.Scenario -in @('real-close', 'real-close-motion')) {
         if (-not ($result.EscapeReturnsFocus -and $result.EscapeFromTriggerClosesAndKeepsFocus -and
                   $result.TriggerSecondClickCloses -and $result.OutsideFocusPreserved)) {
             $failures.Add('真实 PopupFocusLifecycle 关闭和焦点回归未通过。')

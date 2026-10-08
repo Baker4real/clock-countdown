@@ -126,7 +126,7 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsChecked" Value="True">
-                        <!-- #194：选中底色由 MotionBehavior 插值。 -->
+                        <!-- 选中底色与前景同步更新；悬停过渡仍由 MotionBehavior 插值。 -->
                       </Trigger>
                       <Trigger Property="IsMouseOver" Value="True">
                         <!-- #194：页签悬停边色由 MotionBehavior 插值。 -->
@@ -662,7 +662,7 @@
                         <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
                       <Trigger Property="IsMouseOver" Value="True">
-                        <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
+                        <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveHoverBrush}" />
                       </Trigger>
                       <!-- #152：补齐按压态，与键盘焦点同语言（环 ActiveBrush）。 -->
                       <Trigger Property="IsPressed" Value="True">

@@ -234,14 +234,15 @@ internal static class MotionBehavior
 
             if (control is ToggleButton)
             {
-                _checkedDescriptor?.AddValueChanged(control, OnStateChanged);
+                _checkedDescriptor?.AddValueChanged(control, OnCheckedChanged);
             }
 
             _attached = true;
             ApplyState(
                 CurrentBrushColor(surface.Background),
                 CurrentBrushColor(surface.BorderBrush),
-                CurrentScale(surface));
+                CurrentScale(surface),
+                animateColors: false);
         }
 
         private void DetachFromControl()
@@ -252,7 +253,7 @@ internal static class MotionBehavior
                 _control.MouseEnter -= OnMouseEnter;
                 _control.MouseLeave -= OnMouseLeave;
                 _pressedDescriptor?.RemoveValueChanged(_control, OnStateChanged);
-                _checkedDescriptor?.RemoveValueChanged(_control, OnStateChanged);
+                _checkedDescriptor?.RemoveValueChanged(_control, OnCheckedChanged);
             }
 
             _pressedDescriptor = null;
@@ -267,6 +268,24 @@ internal static class MotionBehavior
 
         private void OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs args) =>
             OnStateChanged(sender, EventArgs.Empty);
+
+        private void OnCheckedChanged(object? sender, EventArgs args)
+        {
+            if (_control is null || _surface is null)
+            {
+                return;
+            }
+
+            // Selection changes the template's foreground immediately. Match
+            // its surface in the same turn so white selected text never sits
+            // on a fading pale fill, or dark unselected text on the old pink.
+            _stateVersion++;
+            ApplyState(
+                CurrentBrushColor(_surface.Background),
+                CurrentBrushColor(_surface.BorderBrush),
+                CurrentScale(_surface),
+                animateColors: false);
+        }
 
         private void OnStateChanged(object? sender, EventArgs args)
         {
@@ -290,7 +309,7 @@ internal static class MotionBehavior
                 }));
         }
 
-        private void ApplyState(Color? currentBackground, Color? currentBorder, double currentScale)
+        private void ApplyState(Color? currentBackground, Color? currentBorder, double currentScale, bool animateColors = true)
         {
             if (_control is null || _surface is null)
             {
@@ -308,9 +327,11 @@ internal static class MotionBehavior
                 GetCheckedBorderBrushResourceKey(_host),
                 _control.BorderBrush);
             var isPressed = _control is ButtonBase { IsPressed: true };
-            var colorDuration = ResolveMotionDuration(
-                isPressed ? "MotionPressDuration" : "MotionHoverDuration",
-                isPressed ? MotionTokens.PressDuration : MotionTokens.HoverDuration);
+            var colorDuration = animateColors
+                ? ResolveMotionDuration(
+                    isPressed ? "MotionPressDuration" : "MotionHoverDuration",
+                    isPressed ? MotionTokens.PressDuration : MotionTokens.HoverDuration)
+                : TimeSpan.Zero;
             var easing = ResolveMotionEasing();
             AnimateBrush(
                 _surface,

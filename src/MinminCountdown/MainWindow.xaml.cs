@@ -74,7 +74,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _loadingPreferences;
     private bool _syncingNoteSearch;
     private bool _loadingCountdownEditor;
-    private bool _mouseFocusPending;
     private DwmWindowChromeResult _dwmWindowChromeResult = DwmWindowChromeResult.NotAttempted;
     private CountdownReminderMode _countdownReminderMode = CountdownReminderMode.None;
     private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();

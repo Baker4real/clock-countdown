@@ -13713,7 +13713,11 @@ internal static class ValidationReport
                 focusRing.BorderThickness.Right,
                 focusRing.BorderThickness.Bottom
             }.Min();
-            return (usesWarmGold && thickness >= 2 && ContrastRatio(ring.Color, deepPink) >= 3, usesWarmGold);
+            var contrastPasses = usesWarmGold && thickness >= 2 && ContrastRatio(ring.Color, deepPink) >= 3;
+            var pointerClearsKeyboardRing = WindowValidationInput.ClickForFocusValidation(selected) &&
+                !FocusVisualState.GetIsKeyboardFocusVisible(selected) &&
+                focusRing.BorderBrush is SolidColorBrush pointerRing && pointerRing.Color.A == 0;
+            return (contrastPasses && pointerClearsKeyboardRing, usesWarmGold);
         }
     }
 

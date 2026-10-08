@@ -77,7 +77,11 @@ internal sealed class SegmentIndicator
     {
         _target = target;
         var version = ++_requestVersion;
-        ApplyWhenReady(version);
+        // Selection can change the segment's text weight and badge width in
+        // this same turn. Measure only after WPF has arranged those changes.
+        _coordinateRoot.Dispatcher.BeginInvoke(
+            DispatcherPriority.Loaded,
+            new Action(() => ApplyWhenReady(version)));
     }
 
     private void ApplyWhenReady(long version)

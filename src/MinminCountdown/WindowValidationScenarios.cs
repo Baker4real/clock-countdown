@@ -1376,6 +1376,7 @@ public sealed partial class MainWindow
                     Popup = popup.Name,
                     phase,
                     popup.IsOpen,
+                    IsClosing = PopupMotionBehavior.IsClosing(popup),
                     Expected = (expectedInitialFocus as FrameworkElement)?.Name,
                     Actual = (focused as FrameworkElement)?.Name,
                     Type = focused?.GetType().Name
@@ -2297,7 +2298,9 @@ public sealed partial class MainWindow
                 setter.TargetName is "Surface" or "FocusRing" or "Circle" or "Box" &&
                 (setter.Property == Border.BackgroundProperty ||
                     setter.Property == Border.BorderBrushProperty ||
-                    setter.Property == Shape.StrokeProperty ||
+                    (setter.Property == Shape.StrokeProperty &&
+                     template.FindName(setter.TargetName, control) is Shape &&
+                     MarkupResourceKeyIs(setter.Value, "ActiveHoverBrush")) ||
                     setter.Property == UIElement.OpacityProperty));
     }
 

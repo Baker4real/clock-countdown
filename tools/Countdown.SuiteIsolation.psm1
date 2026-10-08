@@ -123,7 +123,7 @@ function Test-SuiteDesktopLeakWindow {
     }
 
     $titleHit = $Title -match '敏敏子'
-    $processHit = $ProcessName -eq 'MinminCountdown'
+    $processHit = $ProcessName -in @('MinminCountdown', 'minmin-countdown-slice')
     $pidHit = @($SuiteProcessIds) -contains $ProcessId
     $classHit = $ClassName -match 'MinminCountdown'
     return [bool] ($titleHit -or $processHit -or $pidHit -or $classHit)

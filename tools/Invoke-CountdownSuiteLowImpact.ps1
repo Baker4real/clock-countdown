@@ -13,13 +13,15 @@ param(
     [switch] $IsolatedDesktop,
     [switch] $AllowUnisolatedDesktop,
     [ValidateRange(1, 5)] [int] $MaxParallel = 2,
-    [ValidateRange(1, 86400)] [int] $StageTimeoutSeconds = 1800
+    [ValidateRange(1, 86400)] [int] $StageTimeoutSeconds = 1800,
+    [string] $TauriExecutable,
+    [string] $TauriEvidenceDirectory
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$allowedStages = @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate')
+$allowedStages = @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'TauriGate')
 $Stage = @($Stage | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 $invalid = @($Stage | Where-Object { $_ -notin $allowedStages })
 if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
@@ -27,6 +29,16 @@ if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
 }
 if ('BaselineGenerate' -in $Stage -and $Stage.Count -ne 1) {
     throw 'BaselineGenerate 会创建新基线，必须单独运行；生成后另行运行回归套件。'
+}
+if ('TauriGate' -in $Stage) {
+    if ($Stage.Count -ne 1 -or $AllowUnisolatedDesktop) {
+        throw 'TauriGate 必须单独运行并保留隔离桌面。'
+    }
+    if ([string]::IsNullOrWhiteSpace($TauriExecutable) -or [string]::IsNullOrWhiteSpace($TauriEvidenceDirectory)) {
+        throw 'TauriGate 必须显式指定 -TauriExecutable 和全新的 -TauriEvidenceDirectory。'
+    }
+} elseif ($TauriExecutable -or $TauriEvidenceDirectory) {
+    throw 'Tauri 参数只能用于 TauriGate 阶段。'
 }
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteRun.psm1') -Force
@@ -60,6 +72,7 @@ try {
         ValidationHarness = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'Test-PopupValidationContract.ps1'))
         Tooling = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Test-CountdownTooling.ps1'))
         BaselineGenerate = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'New-CountdownVisualBaseline.ps1'))
+        TauriGate = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Test-CountdownTauriGate.ps1'), '-CandidateExecutable', $TauriExecutable, '-EvidenceDirectory', $TauriEvidenceDirectory)
     }
     $specs = @($allowedStages | Where-Object { $_ -in $Stage } | ForEach-Object {
         $spec = [ordered]@{ Stage = $_; FilePath = $pwsh; ArgumentList = $stageTable[$_]; Isolated = [bool]$isolation.Isolated -and $_ -ne 'Tooling' }

@@ -118,6 +118,8 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate
 ```
 
+`TauriGate` 仅用于 #209 的既有 Tauri 原型实验，须在 WPF 改版验收后单独运行。通过同一启动器显式指定 `-TauriExecutable`（以 evidence feature 构建的 `minmin-countdown-slice.exe` 绝对路径）和 `-TauriEvidenceDirectory`（尚不存在的绝对路径），建议 `-StageTimeoutSeconds 240`。该阶段使用不可见桌面、BelowNormal、owned Job、取消/超时和桌面泄漏监测，拒绝关闭隔离；原型仅接触新目录内的 fixture state 与 WebView2 profile。退出后独立核对单个 `520 x 390` 窗口、四场景 PNG 尺寸/哈希和关键交互回执。该结果仅证明候选实验，不构成生产发布或离线 WebView2 部署验收。
+
 兼容旧命令仍可显式传入 `-IsolatedDesktop`（与默认相同）。调试关隔离：
 
 ```powershell

@@ -308,6 +308,10 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - MainWindow 本地样式（`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderModeRadio`、`MainTopmostCheck`、`MainNoteCompletionCheck`、`MainReminderHelpButton`、`MainNoteDateDisclosureButton`）沿用窗口内模板：#133 仅对其中两处激活页签文字执行 §13.4 换绑。#152 已补齐遗留缺口：`MainSegmentButton`/`MainNotesSegmentButton`/`MainReminderHelpButton`/`MainReminderModeRadio`/`MainNoteDateDisclosureButton` 具备按压（环换 `ActiveBrush`，与键盘焦点同语言）与禁用（整体 `Opacity` 0.45）外观；`MainPrimaryButton`/`MainSecondarySolidButton`/`MainTopmostCheck`/`MainNoteCompletionCheck` 的焦点/按压改为常驻环变色（见下方「主窗可操作性」）。
 - 图标按钮必须具备 `AutomationProperties.Name`；动态列表行、标签芯片与分段按钮通过既有 `UiAccessibility`/`NameControl` 命名并经 `ToggleButton`/`CheckBox` 的 Toggle 语义暴露选中状态（MainWindow.xaml.cs / FloatingWindow*.cs 既有接线，#133 复核无缺口）。
 
+### 日期与下拉接入（#206）
+
+日期框与下拉继承 WPF-UI 4.3.0 对原生 WPF 控件提供的样式，暖粉模板继续使用本节的现役色彩、状态和箭头几何。文字区释放时打开、箭头打开、只读中文日期、独立时分秒、日历键盘及 Esc 返回触发按钮均保持；实现不再依赖窗口逐个挂接日期/下拉 Behavior。历史基线条目描述当时实现，当前源码与重新捕获的视觉基线分别验收。
+
 ### 主窗可操作性与紧凑命中（#152）
 
 - **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。主按钮（`＋ 添加倒计时`/`＋ 添加`）与 `窗口置顶` 继续用 `MainActionFocusBrush` 暖粉焦点例外（唯一焦点例外，§6），且不得再套 `FocusVisualStyle` 第二套焦点描边；其余键盘路径控件继续消费 2px 暖边 `MainKeyboardFocusVisual`。

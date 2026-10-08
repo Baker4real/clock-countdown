@@ -857,7 +857,7 @@ public sealed partial class FloatingWindow : Window
     private void ApplyQuickAddThemeToDatePickerPopup(DatePicker picker)
     {
         if (_activeTheme is not { } theme ||
-            ThemedDatePickerBehavior.GetCalendar(picker) is not { } calendar)
+            PickerTemplateParts.GetCalendar(picker) is not { } calendar)
         {
             return;
         }
@@ -1019,7 +1019,7 @@ public sealed partial class FloatingWindow : Window
         {
             popupOpened = true;
             popupWasOpenDuringEvent = popup?.IsOpen == true;
-            calendarDuringEvent = ThemedDatePickerBehavior.GetCalendar(picker);
+            calendarDuringEvent = PickerTemplateParts.GetCalendar(picker);
             calendarDuringEvent?.ApplyTemplate();
             calendarDuringEvent?.UpdateLayout();
             surfaceMatchedDuringEvent =
@@ -1519,7 +1519,6 @@ public sealed partial class FloatingWindow : Window
         UiAccessibility.Name(FloatingNoteSearch, "搜索便签");
         UiAccessibility.Name(FloatingNoteSearchHintClear, "清除搜索");
         FloatingNoteSearch.IsTabStop = false;
-        ThemedDatePickerBehavior.Attach(FloatingNoteDate);
         UiAccessibility.MarkLive(FloatingNoteTextError);
         UiAccessibility.MarkLive(FloatingNoteDateError);
         UiAccessibility.MarkLive(FloatingReminderMessage);

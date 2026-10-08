@@ -437,7 +437,6 @@ internal sealed class ReminderCenterWindow : Window
             nameof(ReminderCenterEntryViewModel.SelectedSnoozeOption),
             viewModel,
             mode: BindingMode.TwoWay);
-        ThemedComboBoxBehavior.Attach(snoozeChoice);
         var snoozeFrame = new Grid
         {
             Margin = new Thickness(0, 0, 7, 0)
@@ -451,9 +450,9 @@ internal sealed class ReminderCenterWindow : Window
         snoozeFrame.Children.Add(snoozeChoice);
         snoozeFrame.Children.Add(snoozeClock);
         var customDate = UiAccessibility.Name(
-            new DatePicker
+            new WpfUiDatePicker
             {
-                Width = 150,
+                Width = 216,
                 Margin = new Thickness(0, 8, 8, 0)
             },
             $"自定义稍后日期：{item.Source.DisplayText}");
@@ -469,7 +468,6 @@ internal sealed class ReminderCenterWindow : Window
             nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
             viewModel,
             _visibilityConverter);
-        ThemedDatePickerBehavior.Attach(customDate);
         var customHour = UiAccessibility.Name(
             new ComboBox
             {
@@ -510,8 +508,6 @@ internal sealed class ReminderCenterWindow : Window
             nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
             viewModel,
             _visibilityConverter);
-        ThemedComboBoxBehavior.Attach(customHour);
-        ThemedComboBoxBehavior.Attach(customMinute);
         var customFields = new WrapPanel();
         BindEntry(
             customFields,

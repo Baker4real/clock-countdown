@@ -5,6 +5,7 @@
              xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
              xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
              xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              Startup="OnStartup"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
@@ -812,7 +813,9 @@
       </Setter>
     </Style>
 
-    <Style TargetType="{x:Type ComboBoxItem}">
+    <Style TargetType="{x:Type ComboBoxItem}"
+           BasedOn="{x:Static focus:WpfUiPickerStyles.ComboBoxItem}">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Padding" Value="10,7" />
@@ -839,7 +842,10 @@
       </Setter>
     </Style>
 
-    <Style TargetType="{x:Type ComboBox}">
+    <Style TargetType="{x:Type ComboBox}"
+           BasedOn="{x:Static focus:WpfUiPickerStyles.ComboBox}">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="ContextMenu" Value="{x:Null}" />
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
@@ -865,6 +871,18 @@
                                     VerticalAlignment="Center"
                                     Content="{TemplateBinding SelectionBoxItem}"
                                     ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+                  <!-- WPF-UI's native ComboBox style supplies the base contract
+                       and toggle template. Split text/arrow surfaces retain
+                       the project's release/press timing and arrow geometry. -->
+                  <ToggleButton x:Name="PART_TextToggle"
+                                Grid.Column="0"
+                                Style="{x:Static focus:WpfUiPickerStyles.ToggleButton}"
+                                ClickMode="Release"
+                                Focusable="False"
+                                IsTabStop="False"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
                   <ToggleButton Grid.Column="1"
                                 ClickMode="Press"
                                 Focusable="False"
@@ -943,7 +961,10 @@
       <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
     </Style>
 
-    <Style TargetType="{x:Type DatePicker}">
+    <Style TargetType="{x:Type DatePicker}"
+           BasedOn="{x:Static focus:WpfUiPickerStyles.DatePicker}">
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="ContextMenu" Value="{x:Null}" />
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
@@ -960,22 +981,34 @@
                 <ColumnDefinition Width="38" />
               </Grid.ColumnDefinitions>
               <!-- #153：选中日期文本与列表/组头同一中文日期格式——数字与「月」「日」之间留空格（§3）。
-                   绑定固定 OneWay：只读文本框不回写 SelectedDate，行为层负责日期变化后写回同一格式。 -->
+                   绑定固定 OneWay：只读文本框不回写 SelectedDate；文字区由模板内置切换面打开日历。 -->
               <primitives:DatePickerTextBox x:Name="PART_TextBox"
                                             Grid.Column="0"
                                             Style="{StaticResource DatePickerTextBoxStyle}"
                                             BorderThickness="1,1,0,1"
                                             Padding="{TemplateBinding Padding}"
+                                            IsHitTestVisible="False"
                                             Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay, StringFormat={}{0:yyyy 年 M 月 d 日}}" />
-              <Button x:Name="PART_Button"
+              <ToggleButton x:Name="PART_TextToggle"
+                            Grid.Column="0"
+                            Style="{x:Static focus:WpfUiPickerStyles.ToggleButton}"
+                            ClickMode="Release"
+                            Focusable="False"
+                            IsTabStop="False"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            AutomationProperties.Name="打开日历"
+                            IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+              <ui:Button x:Name="PART_Button"
                       Grid.Column="1"
+                      Style="{StaticResource {x:Type Button}}"
                       Padding="0"
                       Background="{TemplateBinding Background}"
                       BorderThickness="1"
                       ToolTip="打开日历"
                       AutomationProperties.Name="打开日历">
                 <Path Width="10" Height="6" Fill="{DynamicResource BodyBrush}" Data="M 0,0 L 10,0 L 5,6 Z" />
-              </Button>
+              </ui:Button>
               <Popup x:Name="PART_Popup"
                      Grid.ColumnSpan="2"
                      Placement="Bottom"
@@ -1028,6 +1061,9 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
     </Style>
+
+    <Style TargetType="{x:Type focus:WpfUiDatePicker}"
+           BasedOn="{StaticResource {x:Type DatePicker}}" />
 
     <Style TargetType="{x:Type Calendar}">
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />

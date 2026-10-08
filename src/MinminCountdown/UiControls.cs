@@ -66,7 +66,6 @@ internal sealed class SilentTextBlock : TextBlock
 {
     protected override AutomationPeer? OnCreateAutomationPeer() => null;
 }
-
 /// <summary>
 /// 便签行「…」溢出菜单：把弹出层挂在其触发按钮上，供真实渲染验证读取。
 /// </summary>
@@ -566,383 +565,244 @@ internal sealed class TagSelector : Grid
     }
 }
 
-internal static class ThemedDatePickerBehavior
+internal static class WpfUiPickerStyles
 {
-    private static readonly HashSet<DatePicker> Attached = new();
-    private static readonly HashSet<DatePicker> PointerPressedOnText = new();
-    private static readonly HashSet<DatePickerTextBox> TextPointerAttached = new();
-    private static readonly HashSet<DatePicker> RefocusTriggerAfterClose = new();
+    private static readonly ResourceDictionary Library = CreateLibrary();
 
-    // #153：主题化日期框的可见文本统一为合同中文日期格式（§3：数字与「月」「日」之间留空格）。
-    // DatePicker 自身会按 SelectedDateFormat 在日期变化后重写 PART_TextBox.Text（覆盖模板绑定），
-    // 这里在 SelectedDateChanged 与只读锁定时点写回同一格式，保证两窗所有日期框显示一致。
-    internal const string SpacedChineseDateFormat = "yyyy 年 M 月 d 日";
+    // WPF-UI supports the standard WPF DatePicker and ComboBox through styles.
+    // Keep its implicit styles out of Application.Resources: only these explicit
+    // base styles, and the tokens scoped to each style, enter the picker family.
+    public static Style DatePicker { get; } = CreateScopedStyle("DefaultDatePickerStyle");
+    public static Style ComboBox { get; } = CreateScopedStyle("DefaultComboBoxStyle");
+    public static Style ComboBoxItem { get; } = CreateScopedStyle("DefaultComboBoxItemStyle");
+    public static Style ToggleButton { get; } = CreateScopedStyle("DefaultComboBoxToggleButtonStyle");
 
-    public static void Attach(DatePicker picker)
+    private static ResourceDictionary CreateLibrary()
     {
-        if (!Attached.Add(picker))
+        var resources = new ResourceDictionary();
+        resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ThemesDictionary
         {
-            return;
-        }
-
-        picker.SelectedDateChanged += (_, _) => WriteSpacedChineseDateText(picker);
-
-        KeyEventHandler closeOnEscape = (_, eventArgs) =>
-        {
-            if (eventArgs.Key == Key.Escape && picker.IsDropDownOpen)
-            {
-                RefocusTriggerAfterClose.Add(picker);
-                picker.IsDropDownOpen = false;
-                eventArgs.Handled = true;
-                picker.Dispatcher.BeginInvoke(
-                    System.Windows.Threading.DispatcherPriority.ContextIdle,
-                    new Action(() =>
-                    {
-                        picker.ApplyTemplate();
-                        FocusDatePickerTrigger(picker);
-                    }));
-            }
-        };
-
-        picker.CalendarOpened += (_, _) =>
-        {
-            if (GetCalendar(picker) is not { } calendar)
-            {
-                return;
-            }
-
-            calendar.RemoveHandler(Keyboard.PreviewKeyDownEvent, closeOnEscape);
-            calendar.AddHandler(Keyboard.PreviewKeyDownEvent, closeOnEscape, true);
-            picker.Dispatcher.BeginInvoke(
-                System.Windows.Threading.DispatcherPriority.ContextIdle,
-                new Action(() =>
-                {
-                    ApplyCalendarNavigationAccessibleNames(picker);
-                    if (picker.IsDropDownOpen)
-                    {
-                        Keyboard.Focus(calendar);
-                    }
-                }));
-        };
-
-        picker.Loaded += (_, _) => LockReadOnlyTextBox(picker);
-        picker.IsVisibleChanged += (_, eventArgs) =>
-        {
-            if (eventArgs.NewValue is true)
-            {
-                LockReadOnlyTextBox(picker);
-            }
-        };
-        picker.GotKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
-        picker.LostKeyboardFocus += (_, _) => LockReadOnlyTextBox(picker);
-        picker.CalendarClosed += (_, _) =>
-        {
-            LockReadOnlyTextBox(picker);
-            if (RefocusTriggerAfterClose.Remove(picker))
-            {
-                picker.Dispatcher.BeginInvoke(
-                    DispatcherPriority.Input,
-                    new Action(() => FocusDatePickerTrigger(picker)));
-            }
-        };
-        if (picker.IsLoaded)
-        {
-            LockReadOnlyTextBox(picker);
-        }
+            Theme = Wpf.Ui.Appearance.ApplicationTheme.Light
+        });
+        resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ControlsDictionary());
+        return resources;
     }
 
-    internal static void LockReadOnlyTextBox(DatePicker picker)
+    private static Style CreateScopedStyle(string name)
     {
-        // 折叠控件不提前套模板：模板样式已保证只读与不可聚焦，
-        // 控件真实可见后由 GotKeyboardFocus/CalendarClosed 再补本地锁定（如提醒中心自定义稍后日期）。
-        if (picker.Visibility != Visibility.Visible)
+        var libraryStyle = (Style)Library[name];
+        var style = new Style(libraryStyle.TargetType, libraryStyle);
+        style.Resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ThemesDictionary
         {
-            return;
-        }
-
-        if (!picker.IsLoaded && picker.Template is null)
-        {
-            return;
-        }
-
-        picker.ApplyTemplate();
-        if (picker.Template?.FindName("PART_TextBox", picker) is not DatePickerTextBox textBox)
-        {
-            return;
-        }
-
-        if (TextPointerAttached.Add(textBox))
-        {
-            textBox.PreviewMouseLeftButtonDown += (_, _) =>
-                PointerPressedOnText.Add(picker);
-            textBox.PreviewMouseLeftButtonUp += (_, eventArgs) =>
-            {
-                if (!PointerPressedOnText.Remove(picker))
-                {
-                    return;
-                }
-
-                picker.IsDropDownOpen = true;
-                eventArgs.Handled = true;
-            };
-            textBox.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(picker);
-        }
-
-        textBox.IsReadOnly = true;
-        textBox.Focusable = false;
-        AlignReadOnlyContentHostPadding(picker, textBox);
-        WriteSpacedChineseDateText(picker);
-        ApplyOpenCalendarAccessibleName(picker);
+            Theme = Wpf.Ui.Appearance.ApplicationTheme.Light
+        });
+        return style;
     }
 
-    /// <summary>#153：把只读日期框的可见文本写回合同空格中文格式（不带日期时清空）。</summary>
-    private static void WriteSpacedChineseDateText(DatePicker picker)
+    internal static bool IsBasedOn(Style? style, Style libraryStyle)
     {
-        if (picker.Template?.FindName("PART_TextBox", picker) is not DatePickerTextBox textBox)
+        for (var current = style; current is not null; current = current.BasedOn)
         {
-            return;
-        }
-
-        textBox.Text = picker.SelectedDate is { } selectedDate
-            ? selectedDate.ToString(SpacedChineseDateFormat, System.Globalization.CultureInfo.InvariantCulture)
-            : string.Empty;
-    }
-
-    /// <summary>
-    /// 右缘裁切修复（issue #139）：App 的 DatePicker 模板把 DatePicker.Padding 经 TemplateBinding
-    /// 映射为 PART_ContentHost 的 Margin，而 TextBoxBase 又会把 DatePickerTextBox.Padding 动态同步成
-    /// 同一 ScrollViewer 的 Padding，两者叠加后窄日期框（便签日期 244 宽）内 Short 日期放不下，
-    /// 文本被右缘裁切，文本起点也偏离 §4「图标与文字间距约 12 DIP」的单一留白意图。
-    /// 这里把内容宿主的 Padding 归零让 Margin 单份生效；DatePickerTextBox.Padding 保持模板值
-    /// 48/16 不变，CompactInputHorizontalPaddingAligned 合同继续按模板值通过。
-    /// 仅作用于主窗口工作区的主题化日期框，不触碰悬浮窗与提醒中心的日期框基线。
-    /// </summary>
-    private static void AlignReadOnlyContentHostPadding(DatePicker picker, DatePickerTextBox textBox)
-    {
-        if (Window.GetWindow(picker) is not MainWindow)
-        {
-            return;
-        }
-
-        if (textBox.Template?.FindName("PART_ContentHost", textBox) is ScrollViewer contentHost &&
-            contentHost.Padding != default)
-        {
-            contentHost.Padding = default;
-        }
-    }
-
-    internal static void ApplyOpenCalendarAccessibleName(DatePicker picker)
-    {
-        picker.ApplyTemplate();
-        if (picker.Template.FindName("PART_Button", picker) is Button button)
-        {
-            AutomationProperties.SetName(button, "打开日历");
-        }
-    }
-
-    private static void FocusDatePickerTrigger(DatePicker picker)
-    {
-        picker.ApplyTemplate();
-        var focusTarget = picker.Template.FindName("PART_Button", picker) as IInputElement ?? picker;
-        if (Window.GetWindow(picker) is { } window)
-        {
-            window.Activate();
-            FocusManager.SetFocusedElement(window, focusTarget);
-        }
-
-        if (focusTarget is UIElement element)
-        {
-            element.Focusable = true;
-            element.Focus();
-        }
-
-        Keyboard.Focus(focusTarget);
-    }
-
-    public static bool IsAttached(DatePicker picker) => Attached.Contains(picker);
-
-    internal static Calendar? GetCalendar(DatePicker picker)
-    {
-        picker.ApplyTemplate();
-        if (picker.Template.FindName("PART_Popup", picker) is Popup popup &&
-            popup.Child is Calendar popupCalendar)
-        {
-            return popupCalendar;
-        }
-
-        return picker.Template.FindName("PART_Calendar", picker) as Calendar;
-    }
-
-    internal static void ApplyCalendarNavigationAccessibleNames(DatePicker picker)
-    {
-        var calendar = GetCalendar(picker);
-        if (calendar is null)
-        {
-            return;
-        }
-
-        calendar.ApplyTemplate();
-        var item = calendar.Template.FindName("PART_CalendarItem", calendar) as CalendarItem;
-        item?.ApplyTemplate();
-        var previous = item?.Template.FindName("PART_PreviousButton", item) as Button;
-        var next = item?.Template.FindName("PART_NextButton", item) as Button;
-        previous ??= FindNamedCalendarButton(calendar, "上一个月");
-        next ??= FindNamedCalendarButton(calendar, "下一个月");
-        if (previous is not null)
-        {
-            AutomationProperties.SetName(previous, "上一个月");
-        }
-
-        if (next is not null)
-        {
-            AutomationProperties.SetName(next, "下一个月");
-        }
-    }
-
-    private static Button? FindNamedCalendarButton(DependencyObject root, string name)
-    {
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-        {
-            var child = VisualTreeHelper.GetChild(root, index);
-            if (child is Button button &&
-                (string.Equals(button.ToolTip as string, name, StringComparison.Ordinal) ||
-                 string.Equals(button.Name, name == "上一个月" ? "PART_PreviousButton" : "PART_NextButton", StringComparison.Ordinal)))
-            {
-                return button;
-            }
-
-            var nested = FindNamedCalendarButton(child, name);
-            if (nested is not null)
-            {
-                return nested;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool IsDateTextSource(DependencyObject? source)
-    {
-        var cursor = source;
-        while (cursor is not null)
-        {
-            if (cursor is DatePickerTextBox)
+            if (ReferenceEquals(current, libraryStyle))
             {
                 return true;
             }
-
-            cursor = VisualTreeHelper.GetParent(cursor);
         }
 
         return false;
     }
 }
 
-internal static class ThemedComboBoxBehavior
+internal sealed class WpfUiDatePicker : DatePicker
 {
-    private static readonly HashSet<ComboBox> Attached = new();
-    private static readonly HashSet<ComboBox> PointerPressedOnText = new();
+    internal const string SpacedChineseDateFormat = "yyyy 年 M 月 d 日";
+    private DatePickerTextBox? _textBox;
+    private Calendar? _openCalendar;
+    private bool _returnFocusAfterClose;
 
-    public static void Attach(ComboBox comboBox)
+    public override void OnApplyTemplate()
     {
-        ArgumentNullException.ThrowIfNull(comboBox);
-        if (!Attached.Add(comboBox))
+        DetachOpenCalendar();
+        base.OnApplyTemplate();
+        _textBox = GetTemplateChild("PART_TextBox") as DatePickerTextBox;
+        if (_textBox is not null)
         {
-            return;
+            _textBox.IsReadOnly = true;
+            _textBox.Focusable = false;
+            _textBox.ApplyTemplate();
+            // #139: TextBoxBase copies Padding to the content host. The warm
+            // template already applies it as Margin, so count it only once.
+            if (_textBox.Template?.FindName("PART_ContentHost", _textBox) is ScrollViewer host)
+            {
+                host.Padding = default;
+            }
         }
 
-        comboBox.PreviewMouseLeftButtonDown += (_, eventArgs) =>
-        {
-            if (IsComboTextSource(comboBox, eventArgs.OriginalSource as DependencyObject))
-            {
-                PointerPressedOnText.Add(comboBox);
-            }
-        };
-        comboBox.PreviewMouseLeftButtonUp += (_, eventArgs) =>
-        {
-            if (PointerPressedOnText.Remove(comboBox) &&
-                comboBox.IsEnabled &&
-                IsComboTextSource(comboBox, eventArgs.OriginalSource as DependencyObject))
-            {
-                eventArgs.Handled = true;
-                comboBox.Dispatcher.BeginInvoke(
-                    DispatcherPriority.Input,
-                    () =>
-                    {
-                        if (comboBox.IsEnabled)
-                        {
-                            comboBox.IsDropDownOpen = true;
-                        }
-                    });
-            }
-        };
-        comboBox.LostMouseCapture += (_, _) => PointerPressedOnText.Remove(comboBox);
-        comboBox.PreviewKeyDown += (_, eventArgs) =>
-        {
-            if (!comboBox.IsEnabled)
-            {
-                return;
-            }
-
-            var isDown = eventArgs.Key == Key.Down || eventArgs.SystemKey == Key.Down;
-            if (!isDown ||
-                (MainShortcutInput.ResolveModifiers(eventArgs) & ModifierKeys.Alt) != ModifierKeys.Alt)
-            {
-                return;
-            }
-
-            comboBox.IsDropDownOpen = !comboBox.IsDropDownOpen;
-            eventArgs.Handled = true;
-        };
+        WriteSelectedDateText();
     }
 
-    public static bool IsAttached(ComboBox comboBox) => Attached.Contains(comboBox);
+    protected override void OnSelectedDateChanged(SelectionChangedEventArgs eventArgs)
+    {
+        base.OnSelectedDateChanged(eventArgs);
+        WriteSelectedDateText();
+    }
+
+    protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs eventArgs)
+    {
+        base.OnLostKeyboardFocus(eventArgs);
+        WriteSelectedDateText();
+    }
+
+    protected override void OnCalendarOpened(RoutedEventArgs eventArgs)
+    {
+        base.OnCalendarOpened(eventArgs);
+        DetachOpenCalendar();
+        _openCalendar = PickerTemplateParts.GetCalendar(this);
+        _openCalendar?.AddHandler(Keyboard.PreviewKeyDownEvent, new KeyEventHandler(OnCalendarKeyDown), true);
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            if (IsDropDownOpen && _openCalendar is not null)
+            {
+                Keyboard.Focus(_openCalendar);
+            }
+        }));
+    }
+
+    protected override void OnCalendarClosed(RoutedEventArgs eventArgs)
+    {
+        base.OnCalendarClosed(eventArgs);
+        DetachOpenCalendar();
+        WriteSelectedDateText();
+        if (_returnFocusAfterClose)
+        {
+            _returnFocusAfterClose = false;
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                if (GetTemplateChild("PART_Button") is Button trigger)
+                {
+                    trigger.Focusable = true;
+                    if (Window.GetWindow(this) is { } owner)
+                    {
+                        owner.Activate();
+                        FocusManager.SetFocusedElement(owner, trigger);
+                    }
+
+                    trigger.Focus();
+                    Keyboard.Focus(trigger);
+                }
+            }));
+        }
+    }
+
+    private void OnCalendarKeyDown(object sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Key == Key.Escape && IsDropDownOpen)
+        {
+            _returnFocusAfterClose = true;
+            IsDropDownOpen = false;
+            eventArgs.Handled = true;
+        }
+    }
+
+    private void DetachOpenCalendar()
+    {
+        _openCalendar?.RemoveHandler(Keyboard.PreviewKeyDownEvent, new KeyEventHandler(OnCalendarKeyDown));
+        _openCalendar = null;
+    }
+
+    private void WriteSelectedDateText()
+    {
+        if (_textBox is not null)
+        {
+            _textBox.Text = SelectedDate is { } date
+                ? date.ToString(SpacedChineseDateFormat, System.Globalization.CultureInfo.InvariantCulture)
+                : string.Empty;
+        }
+    }
+}
+
+internal static class PickerTemplateParts
+{
+
+    internal static bool HasDatePickerContract(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        return picker is WpfUiDatePicker &&
+               WpfUiPickerStyles.IsBasedOn(picker.Style, WpfUiPickerStyles.DatePicker) &&
+               picker.Template?.FindName("PART_TextBox", picker) is DatePickerTextBox &&
+               picker.Template.FindName("PART_TextToggle", picker) is ToggleButton textToggle &&
+               WpfUiPickerStyles.IsBasedOn(textToggle.Style, WpfUiPickerStyles.ToggleButton) &&
+               picker.Template.FindName("PART_Button", picker) is Wpf.Ui.Controls.Button;
+    }
+
+    internal static ToggleButton? GetTextToggle(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        return picker.Template?.FindName("PART_TextToggle", picker) as ToggleButton;
+    }
+
+    internal static Calendar? GetCalendar(DatePicker picker)
+    {
+        picker.ApplyTemplate();
+        if (picker.Template?.FindName("PART_Popup", picker) is Popup popup &&
+            popup.Child is Calendar popupCalendar)
+        {
+            return popupCalendar;
+        }
+
+        return picker.Template?.FindName("PART_Calendar", picker) as Calendar;
+    }
+
+    internal static bool HasComboBoxContract(ComboBox comboBox)
+    {
+        comboBox.ApplyTemplate();
+        return WpfUiPickerStyles.IsBasedOn(comboBox.Style, WpfUiPickerStyles.ComboBox) &&
+               GetTextToggle(comboBox) is { } textToggle &&
+               WpfUiPickerStyles.IsBasedOn(textToggle.Style, WpfUiPickerStyles.ToggleButton) &&
+               GetArrowToggle(comboBox) is not null &&
+               GetSelectionPresenter(comboBox) is not null &&
+               HasUnchangedArrowColumn(comboBox);
+    }
+
+    internal static ToggleButton? GetTextToggle(ComboBox comboBox)
+    {
+        comboBox.ApplyTemplate();
+        return FindDescendant<ToggleButton>(
+            comboBox,
+            static candidate =>
+                string.Equals(candidate.Name, "PART_TextToggle", StringComparison.Ordinal) &&
+                !IsInsidePopup(candidate));
+    }
 
     internal static ToggleButton? GetArrowToggle(ComboBox comboBox)
     {
         comboBox.ApplyTemplate();
-        return FindDescendant<ToggleButton>(comboBox, static candidate =>
-            candidate.ClickMode == ClickMode.Press &&
-            !IsInsidePopup(candidate));
+        return FindDescendant<ToggleButton>(
+            comboBox,
+            static candidate =>
+                candidate.ClickMode == ClickMode.Press &&
+                !IsInsidePopup(candidate));
     }
 
     internal static ContentPresenter? GetSelectionPresenter(ComboBox comboBox)
     {
         comboBox.ApplyTemplate();
-        return FindDescendant<ContentPresenter>(comboBox, static candidate =>
-            !IsInsidePopup(candidate));
+        return FindDescendant<ContentPresenter>(
+            comboBox,
+            static candidate => !IsInsidePopup(candidate));
     }
 
     internal static bool HasUnchangedArrowColumn(ComboBox comboBox)
     {
         comboBox.ApplyTemplate();
-        var columns = FindDescendant<Grid>(comboBox, static candidate =>
-            candidate.ColumnDefinitions.Count == 2 &&
-            !IsInsidePopup(candidate))?.ColumnDefinitions;
+        var columns = FindDescendant<Grid>(
+            comboBox,
+            static candidate =>
+                candidate.ColumnDefinitions.Count == 2 &&
+                !IsInsidePopup(candidate))?.ColumnDefinitions;
         return columns is { Count: 2 } &&
-            columns[1].Width.IsAbsolute &&
-            Math.Abs(columns[1].Width.Value - 36) < 0.01;
-    }
-
-    private static bool IsComboTextSource(ComboBox comboBox, DependencyObject? source)
-    {
-        if (source is null || IsInsidePopup(source) || !comboBox.IsEnabled)
-        {
-            return false;
-        }
-
-        var cursor = source;
-        while (cursor is not null && !ReferenceEquals(cursor, comboBox))
-        {
-            if (cursor is ToggleButton)
-            {
-                return false;
-            }
-
-            cursor = VisualTreeHelper.GetParent(cursor);
-        }
-
-        return ReferenceEquals(cursor, comboBox);
+               columns[1].Width.IsAbsolute &&
+               Math.Abs(columns[1].Width.Value - 36) < 0.01;
     }
 
     private static bool IsInsidePopup(DependencyObject source)
@@ -982,7 +842,6 @@ internal static class ThemedComboBoxBehavior
         return null;
     }
 }
-
 internal static class SecondaryWindowChrome
 {
     public static bool IsInteractiveDragSource(DependencyObject source, DependencyObject headerRoot)

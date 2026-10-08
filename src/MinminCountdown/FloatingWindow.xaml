@@ -449,7 +449,7 @@
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <DatePicker x:Name="FloatingNoteDate"
+                <local:WpfUiDatePicker x:Name="FloatingNoteDate"
                             Padding="4,0" />
                 <Button x:Name="FloatingManageReminderRules"
                         Grid.Column="1"

@@ -939,7 +939,7 @@ internal static class ValidationReport
         var dateTextBox = datePicker.Template.FindName("PART_TextBox", datePicker) as DatePickerTextBox;
         var dateButton = datePicker.Template.FindName("PART_Button", datePicker) as Button;
         var datePopup = datePicker.Template.FindName("PART_Popup", datePicker) as Popup;
-        var dateCalendar = ThemedDatePickerBehavior.GetCalendar(datePicker);
+        var dateCalendar = PickerTemplateParts.GetCalendar(datePicker);
         var dateParts = new object?[] { dateTextBox, dateButton, datePopup, dateCalendar };
         var dateButtonOpenedPopup = false;
         if (datePopup is not null)
@@ -966,7 +966,7 @@ internal static class ValidationReport
             Equals(dateCalendar.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
         datePicker.IsDropDownOpen = false;
 
-        var dateBehaviorAttached = ThemedDatePickerBehavior.IsAttached(datePicker);
+        var dateBehaviorAttached = PickerTemplateParts.HasDatePickerContract(datePicker);
         var productionDatePickers = ValidateProductionDatePickers(main, floating);
         var dateTextMetrics = MeasureDatePickerTextFit(datePicker);
         var calendarHeaderMetrics = MeasureTextFit(datePicker, "2031年12月");
@@ -1970,6 +1970,13 @@ internal static class ValidationReport
             ["RequiredControls"] = 10,
             ["DatePickerTemplateParts"] = dateParts.Count(part => part is not null),
             ["DatePickerText"] = dateTextBox?.Text,
+            ["WpfUiPickerStylesIntegrated"] =
+                productionDatePickers.AllAttached &&
+                productionDatePickers.ReminderCenter.Attached &&
+                comboBoxTextClick.Measurements.All(input => input.Attached),
+            ["DatePickerSelectedDateTextMatchesContract"] =
+                productionDatePickers.Attached.All(input => input.SelectedDateTextMatchesContract) &&
+                productionDatePickers.ReminderCenter.SelectedDateTextMatchesContract,
             ["DateInputReadOnly"] = productionDatePickers.AllProductionInputsReadOnly,
             ["DatePickerButtonOpensCalendar"] =
                 dateButtonOpens && productionDatePickers.ReminderCenter.ButtonOpensCalendar,
@@ -2048,6 +2055,9 @@ internal static class ValidationReport
             ["MainSelectedTabWeightDominates"] =
                 interactionStates.SelectedTabWeightDominates &&
                 interactionStates.SegmentIndicatorGeometryMatches,
+            ["MainSegmentIndicatorGeometryMatches"] = interactionStates.SegmentIndicatorGeometryMatches,
+            ["MainSegmentIndicatorReducedMotionIsImmediate"] = interactionStates.SegmentIndicatorReducedMotionIsImmediate,
+            ["MainSegmentIndicatorRapidSwitchStaysAligned"] = interactionStates.SegmentIndicatorRapidSwitchStaysAligned,
             ["MotionClientAreaAnimationSwitchReadable"] =
                 ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
             ["MotionTokensMatch"] =
@@ -12314,11 +12324,10 @@ internal static class ValidationReport
                         dialog.Show();
                         PumpDispatcher();
                         dialog.UpdateLayout();
-                        var root = Descendants<FrameworkElement>(dialog).Single(element =>
-                            string.Equals(
-                                AutomationProperties.GetAutomationId(element),
-                                "ConfirmationContentRoot",
-                                StringComparison.Ordinal));
+                        // #205: MessageBox owns the action row in its template.
+                        // Measure the complete rendered surface that contains
+                        // both content and actions, rather than the body grid.
+                        var root = (FrameworkElement)VisualTreeHelper.GetChild(dialog, 0);
                         var rootBounds = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
                         var cancelBounds = dialog.CancelButton.TransformToAncestor(root).TransformBounds(
                             new Rect(0, 0, dialog.CancelButton.ActualWidth, dialog.CancelButton.ActualHeight));
@@ -12480,8 +12489,7 @@ internal static class ValidationReport
                 {
                     if (action == ConfirmationDialogAction.Cancel)
                     {
-                        actionDispatched = true;
-                        dialog.CancelButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        actionDispatched = WindowValidationInput.InvokeButton(dialog.CancelButton);
                         return;
                     }
 
@@ -13769,16 +13777,30 @@ internal static class ValidationReport
             };
             rulesEditor.Show();
             PumpDispatcher();
-            var editorResults = Descendants<ComboBox>(rulesEditor)
-                .Select(comboBox =>
-                    MeasureCombo(AutomationProperties.GetAutomationId(comboBox), comboBox))
-                .ToArray();
+            var editorResults = new List<ComboBoxPointerExerciseResult>();
+            var editorCombos = Descendants<ComboBox>(rulesEditor).ToArray();
+            var editorMode = editorCombos.Single(comboBox =>
+                AutomationProperties.GetAutomationId(comboBox) == "ReminderRuleMode");
+            var calendarFrequency = editorCombos.Single(comboBox =>
+                AutomationProperties.GetAutomationId(comboBox) == "ReminderRuleCalendarFrequency");
+            foreach (var comboBox in editorCombos)
+            {
+                var id = AutomationProperties.GetAutomationId(comboBox);
+                // Exercise each selector in a reachable visible editor mode.
+                // Routed-event injection previously also clicked collapsed
+                // controls, which does not represent a user's pointer path.
+                editorMode.SelectedIndex = id == "ReminderRuleInterval" ? 1 :
+                    id.StartsWith("ReminderRuleCalendar", StringComparison.Ordinal) ? 2 : 0;
+                calendarFrequency.SelectedIndex = 3;
+                PumpDispatcher();
+                editorResults.Add(MeasureCombo(id, comboBox));
+            }
 
             var all = mainResults.Concat(reminderResults).Concat(editorResults).ToArray();
             return new ComboBoxTextClickValidation(
                 all.All(result => result.ReleaseOpened && result.Attached && result.ArrowColumnUnchanged),
                 all.All(result => result.ArrowPressOpens),
-                all.All(result => result.KeyboardF4Opens && result.KeyboardAltDownOpens && result.KeyboardArrowsKeepOpen),
+                all.All(result => result.KeyboardF4Opens && result.KeyboardAltDownOpens && result.KeyboardArrowsKeepOpen && result.KeyboardEscapeCloses),
                 all.All(result => result.DisabledClickDoesNotOpen),
                 all.All(result => result.PopupItemClickSelects),
                 all.All(result => result.ArrowIsNotTabStop),
@@ -14021,7 +14043,7 @@ internal static class ValidationReport
         var dpi = VisualTreeHelper.GetDpi(textBox);
         var formatted = new FormattedText(
             new DateTime(2031, 12, 31).ToString(
-                ThemedDatePickerBehavior.SpacedChineseDateFormat,
+                WpfUiDatePicker.SpacedChineseDateFormat,
                 CultureInfo.InvariantCulture),
             CultureInfo.CurrentCulture,
             textBox.FlowDirection,
@@ -14752,6 +14774,9 @@ internal static class ValidationReport
             var reminderCenterComboBoxes = Descendants<ComboBox>(reminderCenter).ToArray();
             var reminderCenterComboBoxThemedCount = reminderCenterComboBoxes.Count(HasTemplate);
 
+            // Keep an independent negative: the same warm, read-only date
+            // template with its text activation surface removed. Its arrow
+            // remains usable, but clicking the text must not open the calendar.
             var negativePicker = new DatePicker();
             negativeHost = new Window
             {
@@ -14765,6 +14790,10 @@ internal static class ValidationReport
                 Height = 100
             };
             negativeHost.Show();
+            PumpDispatcher();
+            negativePicker.ApplyTemplate();
+            ((ToggleButton)negativePicker.Template.FindName("PART_TextToggle", negativePicker))
+                .Visibility = Visibility.Collapsed;
             PumpDispatcher();
             var negativeMeasurement = MeasureDatePicker(
                 "Negative.UnattachedDatePicker",
@@ -14801,10 +14830,9 @@ internal static class ValidationReport
         var textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
         var pointer = WindowValidationInput.ExerciseDatePickerTextPointer(picker);
         var buttonOpensCalendar = WindowValidationInput.ExerciseDatePickerButton(picker);
-        var attached = ThemedDatePickerBehavior.IsAttached(picker);
+        var attached = PickerTemplateParts.HasDatePickerContract(picker);
         var keyboardLifecycleWorks = attached && WindowValidationInput.ExerciseDatePicker(picker);
         picker.ApplyTemplate();
-        ThemedDatePickerBehavior.LockReadOnlyTextBox(picker);
         textBox = picker.Template.FindName("PART_TextBox", picker) as DatePickerTextBox;
         var openCalendarButton = picker.Template.FindName("PART_Button", picker) as Button;
         return new DatePickerProductionMeasurement(
@@ -14820,7 +14848,8 @@ internal static class ValidationReport
             openCalendarButton is null
                 ? string.Empty
                 : AutomationProperties.GetName(openCalendarButton) ?? string.Empty,
-            MeasureDatePickerTextFit(picker));
+            MeasureDatePickerTextFit(picker),
+            WindowValidationInput.ExerciseDatePickerSelectedDateText(picker));
     }
 
     private static bool ValidateCountdownCardActionNames(
@@ -15168,7 +15197,8 @@ internal static class ValidationReport
         bool EscapeClosesAndReturnsFocus,
         string AutomationName,
         string OpenCalendarButtonName,
-        TextFit TextFit);
+        TextFit TextFit,
+        bool SelectedDateTextMatchesContract);
 
     private sealed record ProductionDatePickerValidation(
         IReadOnlyList<DatePickerProductionMeasurement> Attached,

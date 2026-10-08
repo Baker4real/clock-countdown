@@ -1426,7 +1426,7 @@ internal static class ValidationReport
             ValidateKeyboardFocusRingContrast(theme, main, floating, workspaceSnapshot.UtcNow);
         var comboBoxTextClick = ValidateComboBoxTextClick(main);
         var secondaryWindowDrag = ValidateSecondaryWindowDrag(main);
-        var calendarNavigationNames = WindowValidationInput.ReadCalendarNavigationNames(datePicker);
+        var calendarNavigationNames = ValidateCalendarNavigationNames(main, datePicker);
         var countdownCardActionsIncludeRecordName =
             ValidateCountdownCardActionNames(main, desktopWorkspace);
         var settingsRecoveryFailureExitIsDefault =
@@ -11465,19 +11465,17 @@ internal static class ValidationReport
         DateTimeOffset restoreUtc)
     {
         var primaryStyle = Application.Current.FindResource("PrimaryButton") as Style;
-        var template = primaryStyle?.Setters
-            .OfType<Setter>()
-            .FirstOrDefault(setter => setter.Property == Control.TemplateProperty)
-            ?.Value as ControlTemplate;
-        var hasDedicatedHoverState = template?.Triggers
-            .OfType<Trigger>()
-            .Any(trigger =>
-                trigger.Property == UIElement.IsMouseOverProperty &&
-                trigger.Value is bool isMouseOver &&
-                isMouseOver &&
-                trigger.Setters.OfType<Setter>().Any(setter =>
-                    setter.TargetName == "Surface" &&
-                    setter.Property == Border.BackgroundProperty)) == true;
+        var button = new Button { Style = primaryStyle, Content = "验证主行动" };
+        button.ApplyTemplate();
+        // #194 moved the hover color from a trigger setter to the shared
+        // animation behavior. Inspect the materialized template's actual binding.
+        var interaction = button.Template?.FindName("InteractionSurface", button) as FrameworkElement;
+        var hasDedicatedHoverState = interaction is not null &&
+            MotionBehavior.GetIsEnabled(interaction) &&
+            string.Equals(MotionBehavior.GetHoverBackgroundResourceKey(interaction),
+                "MainActionHoverBrush", StringComparison.Ordinal) &&
+            string.Equals(MotionBehavior.GetHoverBorderBrushResourceKey(interaction),
+                "MainActionHoverBrush", StringComparison.Ordinal);
         try
         {
             theme.Apply();
@@ -11493,6 +11491,26 @@ internal static class ValidationReport
         finally
         {
             theme.Apply();
+        }
+    }
+
+    private static (string Previous, string Next) ValidateCalendarNavigationNames(
+        MainWindow main,
+        DatePicker picker)
+    {
+        var originalWorkspace = main.CurrentWorkspace;
+        try
+        {
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            picker.BringIntoView();
+            main.UpdateLayout();
+            PumpDispatcher();
+            return WindowValidationInput.ReadCalendarNavigationNames(picker);
+        }
+        finally
+        {
+            main.ShowWorkspace(originalWorkspace);
+            PumpDispatcher();
         }
     }
 
@@ -12735,7 +12753,9 @@ internal static class ValidationReport
                 AutomationProperties.GetAutomationId(element),
                 rootAutomationId,
                 StringComparison.Ordinal));
-        var texts = Descendants<TextBlock>(window).ToArray();
+        // Window chrome may repeat the same title using its own caption scale.
+        // Measure the content region named by this contract, not the outer chrome.
+        var texts = Descendants<TextBlock>(root).ToArray();
         var title = texts.First(text => string.Equals(text.Text, titleText, StringComparison.Ordinal));
         var section = sectionText is null
             ? null
@@ -13196,13 +13216,24 @@ internal static class ValidationReport
         ApplicationTheme theme,
         MainWindow main)
     {
-        var emptyMessage = Required<TextBlock>(main, "EmptyCountdownMessage");
+        var heading = Required<TextBlock>(main, "EmptyCountdownMessage");
+        var emptyMessage = Required<TextBlock>(main, "EmptyCountdownHint");
+        var content = Required<StackPanel>(main, "CountdownEmptyStateContent");
+        var rows = Required<StackPanel>(main, "CountdownRows");
         var workspace = Required<Canvas>(main, "CountdownWorkspace");
         var backdrop = Required<Border>(main, "CountdownWorkspaceBackdrop");
+        var originalWorkspace = main.CurrentWorkspace;
         var originalVisibility = emptyMessage.Visibility;
+        var originalHeadingVisibility = heading.Visibility;
+        var originalContentVisibility = content.Visibility;
+        var originalRowsVisibility = rows.Visibility;
         var measurements = new List<CountdownEmptyStateContrastMeasurement>();
         try
         {
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            content.Visibility = Visibility.Visible;
+            rows.Visibility = Visibility.Collapsed;
+            heading.Visibility = Visibility.Visible;
             emptyMessage.Visibility = Visibility.Visible;
             theme.Apply();
             main.ApplyTheme();
@@ -13215,10 +13246,14 @@ internal static class ValidationReport
                 ReferenceEquals(emptyMessage.Foreground, Application.Current.FindResource("MutedBrush"));
             var actualBackgroundMatchesBackdrop =
                 ReferenceEquals(backdrop.Background, Application.Current.FindResource("BackgroundBrush"));
-            var transparentAncestors = EmptyStateAncestorsAreTransparent(emptyMessage, workspace);
+            var transparentAncestors = EmptyStateAncestorsAreTransparent(emptyMessage, workspace) &&
+                EmptyStateAncestorsAreTransparent(heading, workspace);
             var textBounds = BoundsIn(emptyMessage, main);
             var backdropBounds = BoundsIn(backdrop, main);
-            var textWithinBackdrop = backdropBounds.Contains(textBounds);
+            var textWithinBackdrop = emptyMessage.IsVisible && textBounds.Width > 0 &&
+                textBounds.Height > 0 && backdropBounds.Contains(textBounds);
+            var headingForeground = heading.Foreground as SolidColorBrush;
+            var headingBounds = BoundsIn(heading, main);
 
             measurements.Add(new CountdownEmptyStateContrastMeasurement(
                 "Day",
@@ -13230,7 +13265,14 @@ internal static class ValidationReport
                 foregroundUsesMutedBrush,
                 actualBackgroundMatchesBackdrop,
                 transparentAncestors,
-                textWithinBackdrop));
+                textWithinBackdrop,
+                headingForeground?.Color.ToString() ?? string.Empty,
+                headingForeground is not null && background is not null
+                    ? Math.Round(ContrastRatio(headingForeground.Color, background.Color), 3)
+                    : 0,
+                ReferenceEquals(heading.Foreground, Application.Current.FindResource("InkBrush")),
+                heading.IsVisible && headingBounds.Width > 0 && headingBounds.Height > 0 &&
+                    backdropBounds.Contains(headingBounds)));
 
             return new CountdownEmptyStateContrastValidation(
                 measurements.All(measurement =>
@@ -13238,12 +13280,19 @@ internal static class ValidationReport
                     measurement.ForegroundUsesMutedBrush &&
                     measurement.ActualBackgroundMatchesBackdrop &&
                     measurement.TransparentAncestors &&
-                    measurement.TextWithinBackdrop),
+                    measurement.TextWithinBackdrop &&
+                    measurement.HeadingContrastRatio >= 4.5 &&
+                    measurement.HeadingUsesInkBrush &&
+                    measurement.HeadingTextWithinBackdrop),
                 measurements);
         }
         finally
         {
             emptyMessage.Visibility = originalVisibility;
+            heading.Visibility = originalHeadingVisibility;
+            content.Visibility = originalContentVisibility;
+            rows.Visibility = originalRowsVisibility;
+            main.ShowWorkspace(originalWorkspace);
             theme.Apply();
             main.ApplyTheme();
             main.UpdateLayout();
@@ -13255,12 +13304,26 @@ internal static class ValidationReport
         ApplicationTheme theme,
         MainWindow main)
     {
-        var emptyMessage = Required<TextBlock>(main, "EmptyNotesMessage");
+        var heading = Required<TextBlock>(main, "EmptyNotesMessage");
+        var emptyMessage = Required<TextBlock>(main, "EmptyNotesHint");
+        var content = Required<Grid>(main, "NotesEmptyStateContent");
+        var activeRows = Required<StackPanel>(main, "ActiveNoteRows");
+        var completedRows = Required<StackPanel>(main, "CompletedNoteRows");
         var workspace = Required<Canvas>(main, "NotesWorkspace");
+        var originalWorkspace = main.CurrentWorkspace;
         var originalVisibility = emptyMessage.Visibility;
+        var originalHeadingVisibility = heading.Visibility;
+        var originalContentVisibility = content.Visibility;
+        var originalActiveRowsVisibility = activeRows.Visibility;
+        var originalCompletedRowsVisibility = completedRows.Visibility;
         var measurements = new List<CountdownEmptyStateContrastMeasurement>();
         try
         {
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            content.Visibility = Visibility.Visible;
+            activeRows.Visibility = Visibility.Collapsed;
+            completedRows.Visibility = Visibility.Collapsed;
+            heading.Visibility = Visibility.Visible;
             emptyMessage.Visibility = Visibility.Visible;
             theme.Apply();
             main.ApplyTheme();
@@ -13273,10 +13336,14 @@ internal static class ValidationReport
                 ReferenceEquals(emptyMessage.Foreground, Application.Current.FindResource("MutedBrush"));
             var actualBackgroundMatchesBackdrop =
                 ReferenceEquals(main.Background, Application.Current.FindResource("BackgroundBrush"));
-            var transparentAncestors = EmptyStateAncestorsAreTransparent(emptyMessage, workspace);
+            var transparentAncestors = EmptyStateAncestorsAreTransparent(emptyMessage, workspace) &&
+                EmptyStateAncestorsAreTransparent(heading, workspace);
             var textBounds = BoundsIn(emptyMessage, main);
             var backdropBounds = BoundsIn(workspace, main);
-            var textWithinBackdrop = backdropBounds.Contains(textBounds);
+            var textWithinBackdrop = emptyMessage.IsVisible && textBounds.Width > 0 &&
+                textBounds.Height > 0 && backdropBounds.Contains(textBounds);
+            var headingForeground = heading.Foreground as SolidColorBrush;
+            var headingBounds = BoundsIn(heading, main);
 
             measurements.Add(new CountdownEmptyStateContrastMeasurement(
                 "Day",
@@ -13288,7 +13355,14 @@ internal static class ValidationReport
                 foregroundUsesMutedBrush,
                 actualBackgroundMatchesBackdrop,
                 transparentAncestors,
-                textWithinBackdrop));
+                textWithinBackdrop,
+                headingForeground?.Color.ToString() ?? string.Empty,
+                headingForeground is not null && background is not null
+                    ? Math.Round(ContrastRatio(headingForeground.Color, background.Color), 3)
+                    : 0,
+                ReferenceEquals(heading.Foreground, Application.Current.FindResource("InkBrush")),
+                heading.IsVisible && headingBounds.Width > 0 && headingBounds.Height > 0 &&
+                    backdropBounds.Contains(headingBounds)));
 
             return new NoteEmptyStateContrastValidation(
                 measurements.All(measurement =>
@@ -13296,12 +13370,20 @@ internal static class ValidationReport
                     measurement.ForegroundUsesMutedBrush &&
                     measurement.ActualBackgroundMatchesBackdrop &&
                     measurement.TransparentAncestors &&
-                    measurement.TextWithinBackdrop),
+                    measurement.TextWithinBackdrop &&
+                    measurement.HeadingContrastRatio >= 4.5 &&
+                    measurement.HeadingUsesInkBrush &&
+                    measurement.HeadingTextWithinBackdrop),
                 measurements);
         }
         finally
         {
             emptyMessage.Visibility = originalVisibility;
+            heading.Visibility = originalHeadingVisibility;
+            content.Visibility = originalContentVisibility;
+            activeRows.Visibility = originalActiveRowsVisibility;
+            completedRows.Visibility = originalCompletedRowsVisibility;
+            main.ShowWorkspace(originalWorkspace);
             theme.Apply();
             main.ApplyTheme();
             main.UpdateLayout();
@@ -16167,7 +16249,11 @@ internal static class ValidationReport
         bool ForegroundUsesMutedBrush,
         bool ActualBackgroundMatchesBackdrop,
         bool TransparentAncestors,
-        bool TextWithinBackdrop);
+        bool TextWithinBackdrop,
+        string HeadingForeground,
+        double HeadingContrastRatio,
+        bool HeadingUsesInkBrush,
+        bool HeadingTextWithinBackdrop);
 
     private sealed record CountdownEmptyStateContrastValidation(
         bool TextContrast,

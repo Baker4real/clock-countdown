@@ -4717,6 +4717,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 1 $countdownEmptyContrastMeasurements.Count '倒计时空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($countdownEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '倒计时空态对比度主题集合固定'
     Assert-Equal 0 @($countdownEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '倒计时空态使用真实可见背景与动态主题资源'
+    Assert-Equal 0 @($countdownEmptyContrastMeasurements | Where-Object { [double] $_.HeadingContrastRatio -lt 4.5 -or -not $_.HeadingUsesInkBrush -or -not $_.HeadingTextWithinBackdrop }).Count '倒计时空态标题另行使用 InkBrush 且对可见背景达到 4.5:1'
     Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyStateGateIsolationBehavior) '倒计时空态门禁可独立失败（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.CompactInputHorizontalPaddingAligned) '倒计时编辑区与设置区三类输入内部横向留白对齐设计坐标 16px'
     # #129 去重迁移（U1 独有断言）：紧凑布局实测宽度、时间下拉与主窗口控件存在性系列。
@@ -4754,6 +4755,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 1 $noteEmptyContrastMeasurements.Count '便签空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($noteEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '便签空态对比度主题集合固定'
     Assert-Equal 0 @($noteEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '便签空态使用真实可见背景与 MutedBrush 动态主题资源'
+    Assert-Equal 0 @($noteEmptyContrastMeasurements | Where-Object { [double] $_.HeadingContrastRatio -lt 4.5 -or -not $_.HeadingUsesInkBrush -or -not $_.HeadingTextWithinBackdrop }).Count '便签空态标题另行使用 InkBrush 且对可见背景达到 4.5:1'
     Assert-Equal $true ([bool] $adapterValidation.NoteVisualTokenGateIsolationBehavior) '主窗口便签视觉合同负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $true ([bool] $adapterValidation.CountdownRemainingLayoutMatches) '主窗口倒计时剩余时间使用固定列、表格数字和单行布局'
     Assert-Equal $true ([bool] $adapterValidation.CountdownIncrementalRefreshIdentityMatches) '主窗口倒计时 tick 保留行控件与文字目标实例'

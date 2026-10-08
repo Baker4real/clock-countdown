@@ -39,7 +39,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | --- | --- | --- |
 | `InkBrush` | `#3B190D` | 主文字、区块标题、列表标题、提醒中心标题与来源标签 |
 | `BodyBrush` | `#6B4A3C` | 正文、卡片副标题、字段标签 |
-| `MutedBrush` | `#8A7069` | 辅助文字、占位文、单位字、时间戳、数量 |
+| `MutedBrush` | `#82665F` | 辅助文字、占位文、单位字、时间戳、数量；#198 调深以满足暖色背景上的文字对比 |
 | `PeachLineBrush` | `#F6DFD3` | 1px 结构边界、区块分隔线、输入框常态边界 |
 | `ActiveBrush` | `#E05A4A` | 悬停与按压反馈、键盘焦点边界 |
 | `SelectionBrush` | `#D4526A` | 文本选区高亮（独立语义色，#151）：按 `0.4` SelectionOpacity 合成在白纸输入面上肉眼可辨；不得复用 1px 结构线色 |
@@ -64,7 +64,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `PinkTintSoftBrush` | `#FEF0F1` | 悬浮窗主项卡片底、粉色淡底 |
 | `PinkBlockBrush` | `#FEE0E4` | 主项数字色块底 |
 | `SecondaryBlockBrush` | `#FAF0EA` | 次项数字色块底（暖米色空槽） |
-| `PrimaryCountdownNumberBrush` | `#E01133` | 主项数字色块内的数值（高饱和红粉） |
+| `PrimaryCountdownNumberBrush` | `#C0102F` | 主项数字色块内的数值；#198 对粉色格底保持至少 `4.5:1` 对比 |
 | `FloatingDayPrimaryCountdownAccentBrush` | `#EE2B46` | 悬浮窗主项左强调轨；该 token 不得复用玩偶阴影资源，合成背景上文字对比度不低于 `4.5:1` |
 | `PeachTintBrush` | `#FEEFE1` | 便签页激活分段胶囊底 |
 | `PeachRailBrush` | `#CD623E` | 激活分段胶囊左强调轨、`#` 标签芯片暖橙描边、日期分组标题圆点 |

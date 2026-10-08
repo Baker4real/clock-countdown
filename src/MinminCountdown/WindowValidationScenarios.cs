@@ -5431,37 +5431,61 @@ internal static class WindowValidationInput
     {
         picker.ApplyTemplate();
         var originalOpen = picker.IsDropDownOpen;
-        picker.IsDropDownOpen = true;
-        Pump(picker.Dispatcher);
-        picker.ApplyTemplate();
-        picker.UpdateLayout();
-        Pump(picker.Dispatcher);
-        if (!picker.IsDropDownOpen &&
-            picker.Template.FindName("PART_Button", picker) is Button button)
+        try
         {
-            button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            ClosePickerForFixture(picker);
+            picker.BringIntoView();
+            Window.GetWindow(picker)?.Activate();
             Pump(picker.Dispatcher);
-        }
+            picker.IsDropDownOpen = true;
+            Pump(picker.Dispatcher);
+            picker.ApplyTemplate();
+            picker.UpdateLayout();
+            Pump(picker.Dispatcher);
+            if (!picker.IsDropDownOpen &&
+                picker.Template.FindName("PART_Button", picker) is Button button)
+            {
+                button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                Pump(picker.Dispatcher);
+            }
 
-        var calendar = PickerTemplateParts.GetCalendar(picker);
-        calendar?.ApplyTemplate();
-        calendar?.UpdateLayout();
-        Pump(picker.Dispatcher);
-        Pump(picker.Dispatcher);
-        var item = calendar?.Template.FindName("PART_CalendarItem", calendar) as CalendarItem;
-        item ??= calendar is null ? null : FindVisualDescendant<CalendarItem>(calendar);
-        item?.ApplyTemplate();
-        item?.UpdateLayout();
-        var previous = item?.Template.FindName("PART_PreviousButton", item) as Button
-            ?? FindCalendarNavigationButton(calendar, "上一个月");
-        var next = item?.Template.FindName("PART_NextButton", item) as Button
-            ?? FindCalendarNavigationButton(calendar, "下一个月");
-        var names = (
-            previous is null ? string.Empty : AutomationProperties.GetName(previous),
-            next is null ? string.Empty : AutomationProperties.GetName(next));
-        picker.IsDropDownOpen = originalOpen;
-        Pump(picker.Dispatcher);
-        return names;
+            var calendar = PickerTemplateParts.GetCalendar(picker);
+            calendar?.ApplyTemplate();
+            calendar?.UpdateLayout();
+            Pump(picker.Dispatcher);
+            Pump(picker.Dispatcher);
+            var item = calendar?.Template.FindName("PART_CalendarItem", calendar) as CalendarItem;
+            item ??= calendar is null ? null : FindVisualDescendant<CalendarItem>(calendar);
+            item?.ApplyTemplate();
+            item?.UpdateLayout();
+            var previous = item?.Template.FindName("PART_PreviousButton", item) as Button
+                ?? FindCalendarNavigationButton(calendar, "上一个月");
+            var next = item?.Template.FindName("PART_NextButton", item) as Button
+                ?? FindCalendarNavigationButton(calendar, "下一个月");
+            var names = (
+                previous is null ? string.Empty : AutomationProperties.GetName(previous),
+                next is null ? string.Empty : AutomationProperties.GetName(next));
+            if (string.IsNullOrEmpty(names.Item1) || string.IsNullOrEmpty(names.Item2))
+            {
+                var popup = picker.Template.FindName("PART_Popup", picker) as Popup;
+                Console.Error.WriteLine(
+                    $"[calendar-navigation] pickerVisible={picker.IsVisible};pickerOpen={picker.IsDropDownOpen};" +
+                    $"popupOpen={popup?.IsOpen};child={popup?.Child?.GetType().Name};" +
+                    $"calendarVisible={calendar?.IsVisible};item={item?.GetType().Name};" +
+                    $"previous={previous?.Name}/{previous?.IsVisible};next={next?.Name}/{next?.IsVisible}");
+            }
+
+            return names;
+        }
+        finally
+        {
+            ClosePickerForFixture(picker);
+            if (originalOpen)
+            {
+                picker.IsDropDownOpen = true;
+                Pump(picker.Dispatcher);
+            }
+        }
     }
 
     private static Button? FindCalendarNavigationButton(DependencyObject? root, string name)

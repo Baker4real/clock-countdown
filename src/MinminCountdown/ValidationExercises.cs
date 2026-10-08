@@ -8476,7 +8476,7 @@ internal static class ValidationExercises
     public static MainCountdownRemainingGateResults EvaluateMainCountdownRemainingGates(
         MainCountdownRemainingGateInputs input) =>
         new(
-            input.ExpectedTexts.Count == 5 &&
+            input.ExpectedTexts.Count == 6 &&
                 input.RenderedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal),
                 input.HasExpectedSampleCount &&
                 input.ColumnsAre300Pixels &&
@@ -8496,7 +8496,8 @@ internal static class ValidationExercises
             "4 天 13 小时",
             "4 天 13 小时 18 分钟",
             "4 天 13 小时 18 分钟 59 秒",
-            "2000000 天 00 小时 00 分钟 00 秒"
+            "2000000 天 00 小时 00 分钟 00 秒",
+            "999 天 13 小时 18 分钟 59 秒"
         };
         var passing = new MainCountdownRemainingGateInputs(
             expected,

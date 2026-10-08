@@ -35,6 +35,7 @@ Add-Type -ReferencedAssemblies $references -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -58,6 +59,84 @@ public sealed class PopupValidationContractResult
 
 public static class PopupValidationContractHarness
 {
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference MakeToolTipReference(string assemblyPath, bool enableMotion)
+    {
+        var tooltip = new ToolTip { Content = "Dynamic tooltip", PlacementTarget = new Button() };
+        if (enableMotion)
+            Assembly.LoadFrom(assemblyPath).GetType("MinminCountdown.PopupMotionBehavior", true)
+                .GetMethod("SetIsToolTipEnabled", BindingFlags.Public | BindingFlags.Static)
+                .Invoke(null, new object[] { tooltip, true });
+        return new WeakReference(tooltip);
+    }
+
+    public static object CheckToolTipCollectibility(string assemblyPath)
+    {
+        var plain = MakeToolTipReference(assemblyPath, false);
+        var animated = MakeToolTipReference(assemblyPath, true);
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        return new { PlainCollected = !plain.IsAlive, AnimatedCollected = !animated.IsAlive };
+    }
+
+    public static object CheckClosedPopupClose(string assemblyPath, bool previouslyOpened, bool escape)
+    {
+        var application = Assembly.LoadFrom(assemblyPath);
+        var input = application.GetType("MinminCountdown.WindowValidationInput", true);
+        var motion = application.GetType("MinminCountdown.PopupMotionBehavior", true);
+        var lifecycle = application.GetType("MinminCountdown.PopupFocusLifecycle", true);
+        var pump = input.GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
+        var wait = input.GetMethod("WaitForPopupClosed", BindingFlags.Public | BindingFlags.Static);
+        var close = motion.GetMethod("Close", BindingFlags.NonPublic | BindingFlags.Static,
+            null, new[] { typeof(Popup) }, null);
+        var trigger = new Button { Content = "Open popup" };
+        var initial = new Button { Content = "Popup action" };
+        var window = new Window { Content = trigger, Width = 220, Height = 120, ShowInTaskbar = false };
+        var popup = new Popup { Child = initial, PlacementTarget = trigger, StaysOpen = true };
+        int opened = 0;
+        popup.Opened += (sender, args) => opened++;
+        motion.GetMethod("Attach", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { popup });
+        lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
+            null, new object[] { popup, trigger, new Func<IInputElement>(() => initial) });
+        try
+        {
+            window.Show();
+            window.Activate();
+            pump.Invoke(null, new object[] { window.Dispatcher });
+            bool prerequisiteClosed = true;
+            if (previouslyOpened)
+            {
+                popup.IsOpen = true;
+                pump.Invoke(null, new object[] { popup.Dispatcher });
+                close.Invoke(null, new object[] { popup });
+                prerequisiteClosed = (bool)wait.Invoke(null, new object[] { popup, 300 });
+            }
+            var previousOpened = opened;
+            if (escape)
+                input.GetMethod("RaisePreviewKey", BindingFlags.Public | BindingFlags.Static)
+                    .Invoke(null, new object[] { trigger, Key.Escape, ModifierKeys.None });
+            else
+                close.Invoke(null, new object[] { popup });
+            pump.Invoke(null, new object[] { popup.Dispatcher });
+            bool remainedClosed = !popup.IsOpen;
+            bool finalClosed = (bool)wait.Invoke(null, new object[] { popup, 300 });
+            return new { PreviouslyOpened = previouslyOpened, Action = escape ? "Escape" : "Close",
+                PrerequisiteClosed = prerequisiteClosed, RemainedClosed = remainedClosed,
+                FinalClosed = finalClosed, OpenedEvents = opened - previousOpened };
+        }
+        finally
+        {
+            input.GetMethod("ClosePopupForCleanup", BindingFlags.Public | BindingFlags.Static)
+                .Invoke(null, new object[] { popup });
+            window.Close();
+            pump.Invoke(null, new object[] { window.Dispatcher });
+        }
+    }
+
     public static object CheckCaptureComposite(string assemblyPath)
     {
         var method = Assembly.LoadFrom(assemblyPath).GetType("MinminCountdown.ValidationReport", true)
@@ -235,6 +314,23 @@ $results = @(
     }
 )
 $failures = [Collections.Generic.List[string]]::new()
+$tooltipCollectibility = [PopupValidationContractHarness]::CheckToolTipCollectibility($resolvedAssembly)
+if (-not ($tooltipCollectibility.PlainCollected -and $tooltipCollectibility.AnimatedCollected)) {
+    $failures.Add('临时 ToolTip 及其动效监听器应可回收；普通 ToolTip 是 GC 正向对照。')
+}
+$closedPopupResults = @(
+    foreach ($previouslyOpened in @($false, $true)) {
+        foreach ($escape in @($true, $false)) {
+            [PopupValidationContractHarness]::CheckClosedPopupClose($resolvedAssembly, $previouslyOpened, $escape)
+        }
+    }
+)
+foreach ($closedPopup in $closedPopupResults) {
+    if (-not ($closedPopup.PrerequisiteClosed -and $closedPopup.RemainedClosed -and $closedPopup.FinalClosed) -or
+        $closedPopup.OpenedEvents -ne 0) {
+        $failures.Add("关闭态 Popup 不应被 $($closedPopup.Action) 闪开；previouslyOpened=$($closedPopup.PreviouslyOpened)。")
+    }
+}
 $captureComposite = [PopupValidationContractHarness]::CheckCaptureComposite($resolvedAssembly)
 if (-not ($captureComposite.StraightAlphaMatches -and $captureComposite.PremultipliedInputMatches -and
           $captureComposite.HalfWhiteOverWhiteStaysWhite -and $captureComposite.OpaqueSourcePreserved -and
@@ -271,6 +367,8 @@ foreach ($result in $results) {
     AssemblySHA256 = (Get-FileHash -LiteralPath $resolvedAssembly -Algorithm SHA256).Hash
     Results = $results
     CaptureComposite = $captureComposite
+    ClosedPopupResults = $closedPopupResults
+    ToolTipCollectibility = $tooltipCollectibility
     Failures = @($failures)
     Passed = $failures.Count -eq 0
 } | ConvertTo-Json -Depth 5

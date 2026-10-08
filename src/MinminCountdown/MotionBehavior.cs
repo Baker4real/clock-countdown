@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -716,7 +717,7 @@ internal static class PopupMotionBehavior
         }
     }
 
-    private sealed class PopupMotionController
+    private sealed class PopupMotionController : DependencyObject
     {
         private enum TransitionKind
         {
@@ -727,9 +728,20 @@ internal static class PopupMotionBehavior
 
         private readonly DependencyObject _owner;
         private readonly bool _isToolTip;
-        private readonly DependencyPropertyDescriptor _isOpenDescriptor;
-        private DependencyPropertyDescriptor? _placementTargetDescriptor;
-        private DependencyPropertyDescriptor? _targetOpenDescriptor;
+        // Dependency-property bindings use weak invalidation listeners. A
+        // PropertyDescriptor subscription instead roots transient popup owners.
+        private static readonly DependencyProperty ObservedIsOpenProperty =
+            DependencyProperty.Register("ObservedIsOpen", typeof(bool), typeof(PopupMotionController),
+                new PropertyMetadata(false, (owner, _) =>
+                    ((PopupMotionController)owner).OnIsOpenChanged(null, EventArgs.Empty)));
+        private static readonly DependencyProperty ObservedPlacementTargetProperty =
+            DependencyProperty.Register("ObservedPlacementTarget", typeof(UIElement), typeof(PopupMotionController),
+                new PropertyMetadata(null, (owner, _) =>
+                    ((PopupMotionController)owner).AttachPlacementTarget()));
+        private static readonly DependencyProperty ObservedTargetIsOpenProperty =
+            DependencyProperty.Register("ObservedTargetIsOpen", typeof(bool), typeof(PopupMotionController),
+                new PropertyMetadata(false, (owner, _) =>
+                    ((PopupMotionController)owner).OnPlacementTargetOpenChanged(null, EventArgs.Empty)));
         private DependencyObject? _placementTarget;
         private FrameworkElement? _visual;
         private TranslateTransform? _translation;
@@ -744,13 +756,6 @@ internal static class PopupMotionBehavior
         {
             _owner = owner;
             _isToolTip = owner is ToolTip;
-            _isOpenDescriptor = _isToolTip
-                ? DependencyPropertyDescriptor.FromProperty(
-                    ToolTip.IsOpenProperty,
-                    typeof(ToolTip))!
-                : DependencyPropertyDescriptor.FromProperty(
-                    Popup.IsOpenProperty,
-                    typeof(Popup))!;
         }
 
         public bool IsClosing => _transition == TransitionKind.Closing;
@@ -764,22 +769,14 @@ internal static class PopupMotionBehavior
 
             _attached = true;
             _requestedOpen = IsOpen;
-            _isOpenDescriptor.AddValueChanged(_owner, OnIsOpenChanged);
+            BindingOperations.SetBinding(this, ObservedIsOpenProperty,
+                new Binding("IsOpen") { Source = _owner, Mode = BindingMode.OneWay });
+            BindingOperations.SetBinding(this, ObservedPlacementTargetProperty,
+                new Binding("PlacementTarget") { Source = _owner, Mode = BindingMode.OneWay });
             if (_owner is Popup popup)
             {
                 popup.Opened += OnPopupOpened;
                 popup.Closed += OnPopupClosed;
-                _placementTargetDescriptor = DependencyPropertyDescriptor.FromProperty(
-                    Popup.PlacementTargetProperty,
-                    typeof(Popup));
-                _placementTargetDescriptor?.AddValueChanged(popup, OnPlacementTargetChanged);
-            }
-            else if (_owner is ToolTip toolTip)
-            {
-                _placementTargetDescriptor = DependencyPropertyDescriptor.FromProperty(
-                    ToolTip.PlacementTargetProperty,
-                    typeof(ToolTip));
-                _placementTargetDescriptor?.AddValueChanged(toolTip, OnPlacementTargetChanged);
             }
 
             AttachPlacementTarget();
@@ -798,27 +795,18 @@ internal static class PopupMotionBehavior
 
             _attached = false;
             _transitionVersion++;
-            _isOpenDescriptor.RemoveValueChanged(_owner, OnIsOpenChanged);
+            BindingOperations.ClearBinding(this, ObservedIsOpenProperty);
+            BindingOperations.ClearBinding(this, ObservedPlacementTargetProperty);
             if (_owner is Popup popup)
             {
                 popup.Opened -= OnPopupOpened;
                 popup.Closed -= OnPopupClosed;
-                _placementTargetDescriptor?.RemoveValueChanged(
-                    popup,
-                    OnPlacementTargetChanged);
-            }
-            else if (_owner is ToolTip toolTip)
-            {
-                _placementTargetDescriptor?.RemoveValueChanged(
-                    toolTip,
-                    OnPlacementTargetChanged);
             }
 
             DetachPlacementTarget();
             ClearAnimations();
             _visual = null;
             _translation = null;
-            _placementTargetDescriptor = null;
         }
 
         public void RequestOpen()
@@ -834,6 +822,14 @@ internal static class PopupMotionBehavior
 
         public void RequestClose()
         {
+            // Only a live/open request can own an exit transition. A binding
+            // may already have closed that host; a never-opened or completed
+            // host must stay closed when its trigger receives Escape.
+            if (!IsOpen && !_requestedOpen)
+            {
+                return;
+            }
+
             _requestedOpen = false;
             var duration = ResolveDuration("MotionPopupExitDuration", MotionTokens.PopupExitDuration);
             if (duration <= TimeSpan.Zero)
@@ -895,7 +891,7 @@ internal static class PopupMotionBehavior
 
         private void OnIsOpenChanged(object? sender, EventArgs args)
         {
-            if (_suppress)
+            if (_suppress || !_attached)
             {
                 return;
             }
@@ -928,11 +924,12 @@ internal static class PopupMotionBehavior
             // after Popup.Closed has torn down its native surface.
         }
 
-        private void OnPlacementTargetChanged(object? sender, EventArgs args) =>
-            AttachPlacementTarget();
-
         private void AttachPlacementTarget()
         {
+            if (!_attached)
+            {
+                return;
+            }
             DependencyObject? target = _isToolTip
                 ? ((ToolTip)_owner).PlacementTarget
                 : ((Popup)_owner).PlacementTarget;
@@ -943,38 +940,22 @@ internal static class PopupMotionBehavior
 
             DetachPlacementTarget();
             _placementTarget = target;
-            if (target is ComboBox)
+            if (target is ComboBox or DatePicker)
             {
-                _targetOpenDescriptor = DependencyPropertyDescriptor.FromProperty(
-                    ComboBox.IsDropDownOpenProperty,
-                    typeof(ComboBox));
+                BindingOperations.SetBinding(this, ObservedTargetIsOpenProperty,
+                    new Binding("IsDropDownOpen") { Source = target, Mode = BindingMode.OneWay });
             }
-            else if (target is DatePicker)
-            {
-                _targetOpenDescriptor = DependencyPropertyDescriptor.FromProperty(
-                    DatePicker.IsDropDownOpenProperty,
-                    typeof(DatePicker));
-            }
-
-            _targetOpenDescriptor?.AddValueChanged(target, OnPlacementTargetOpenChanged);
         }
 
         private void DetachPlacementTarget()
         {
-            if (_placementTarget is not null)
-            {
-                _targetOpenDescriptor?.RemoveValueChanged(
-                    _placementTarget,
-                    OnPlacementTargetOpenChanged);
-            }
-
             _placementTarget = null;
-            _targetOpenDescriptor = null;
+            BindingOperations.ClearBinding(this, ObservedTargetIsOpenProperty);
         }
 
         private void OnPlacementTargetOpenChanged(object? sender, EventArgs args)
         {
-            if (_suppress)
+            if (_suppress || !_attached)
             {
                 return;
             }

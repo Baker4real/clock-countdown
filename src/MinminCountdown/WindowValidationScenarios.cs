@@ -2845,7 +2845,9 @@ public sealed partial class MainWindow
                         result.VerticalRatioMatches = false;
                     }
 
-                    var expectedGap = isPrimary ? 14 : 13;
+                    // Four primary blocks keep their 52 DIP width and 26 DIP
+                    // digits by taking the specified compact 6 DIP gap.
+                    var expectedGap = isPrimary ? pairPanels.Length == 4 ? 6 : 14 : 13;
                     var expectedMargin = index == 0
                         ? new Thickness(0)
                         : new Thickness(expectedGap, 0, 0, 0);
@@ -2904,9 +2906,17 @@ public sealed partial class MainWindow
         var originalWorkspace = _workspace;
         var originalFilter = _desktopWorkspace.Snapshot.Filter;
         var temporaryIds = new List<string>();
+        string? sampleTagId = null;
         try
         {
             ShowWorkspace(WorkspaceKind.Countdowns);
+            sampleTagId = _desktopWorkspace.Apply(new CreateTagChange("倒计时字号验证", null)).CreatedTag?.Id;
+            if (sampleTagId is null)
+            {
+                return Array.Empty<MainCountdownRemainingMeasurement>();
+            }
+            var sampleTags = new[] { sampleTagId };
+            _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = sampleTags });
             var snapshot = _desktopWorkspace.Snapshot;
             var nowUtc = snapshot.UtcNow;
             var ordinaryName = "验证主窗口倒计时";
@@ -2914,7 +2924,7 @@ public sealed partial class MainWindow
                 null,
                 ordinaryName,
                 nowUtc.AddDays(4).AddHours(13).AddMinutes(18).AddSeconds(59),
-                Array.Empty<string>()));
+                sampleTags));
             if (ordinaryResult.Succeeded)
             {
                 var added = _desktopWorkspace.Snapshot.Settings.Countdowns
@@ -2930,7 +2940,7 @@ public sealed partial class MainWindow
                 null,
                 longName,
                 nowUtc.AddDays(2_000_000),
-                Array.Empty<string>()));
+                sampleTags));
             if (longResult.Succeeded)
             {
                 var added = _desktopWorkspace.Snapshot.Settings.Countdowns
@@ -2984,6 +2994,24 @@ public sealed partial class MainWindow
                 }
             }
 
+            var ordinaryRecord = _desktopWorkspace.Snapshot.Settings.Countdowns.FirstOrDefault(item =>
+                temporaryIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase) && item.Name == ordinaryName);
+            if (ordinaryRecord is not null)
+            {
+                var sampleNowUtc = _desktopWorkspace.Snapshot.UtcNow;
+                var targetUtc = sampleNowUtc.AddDays(999).AddHours(13).AddMinutes(18).AddSeconds(59);
+                var saved = _desktopWorkspace.Apply(new SaveCountdownChange(
+                    ordinaryRecord.Id, ordinaryName, targetUtc, sampleTags)).Succeeded;
+                WindowValidationInput.Pump(Dispatcher);
+                UpdateTime(ChinaStandardTime.ToBeijingTime(sampleNowUtc));
+                UpdateLayout();
+                if (CountdownRemainingTextsForValidation.TryGetValue(ordinaryRecord.Id, out var text))
+                {
+                    samples.Add(CaptureMainCountdownRemaining("Second999Days", ordinaryRecord,
+                        "999 天 13 小时 18 分钟 59 秒", text, saved));
+                }
+            }
+
             return samples;
         }
         finally
@@ -2991,6 +3019,10 @@ public sealed partial class MainWindow
             foreach (var id in temporaryIds.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 _desktopWorkspace.Apply(new DeleteCountdownChange(id));
+            }
+            if (sampleTagId is not null)
+            {
+                _desktopWorkspace.Apply(new DeleteTagChange(sampleTagId));
             }
             _desktopWorkspace.Apply(new SavePreferencesChange(
                 originalPreferences.DisplayPrecision,
@@ -3023,6 +3055,29 @@ public sealed partial class MainWindow
             Math.Max(0, formatted.OverhangTrailing) + 2 / dpi.DpiScaleX;
         var columnWidth = (text.Parent as Grid)?.ColumnDefinitions.ElementAtOrDefault(1)?.Width.Value ?? 0;
         var actualColumnWidth = (text.Parent as Grid)?.ColumnDefinitions.ElementAtOrDefault(1)?.ActualWidth ?? 0;
+        var host = text.Tag as MainCountdownBlocksHost;
+        var pairs = host is null ? Array.Empty<StackPanel>() : ProbeVisualDescendants<StackPanel>(host.Surface)
+            .Where(pair => pair.Children.Count == 2 && pair.Children[0] is Border { Child: TextBlock } &&
+                pair.Children[1] is TextBlock).ToArray();
+        var title = text.Parent is Grid layout ? ProbeVisualDescendants<TextBlock>(layout)
+            .SingleOrDefault(candidate => candidate.Uid == "CountdownRowTitleText") : null;
+        var values = pairs.Select(pair => (TextBlock)((Border)pair.Children[0]).Child).ToArray();
+        var renderedBlocks = string.Join(" ", pairs.SelectMany(pair => new[]
+            { ((TextBlock)((Border)pair.Children[0]).Child).Text, ((TextBlock)pair.Children[1]).Text }));
+        var blocksFit = host is not null && pairs.Length > 0 && pairs.All(pair =>
+        {
+            var bounds = pair.TransformToAncestor(host.Surface).TransformBounds(new Rect(pair.RenderSize));
+            return bounds.Left >= -0.5 && bounds.Right <= host.Surface.ActualWidth + 0.5;
+        }) && values.All(value =>
+        {
+            var bounds = value.TransformToAncestor(host.Surface).TransformBounds(new Rect(value.RenderSize));
+            var glyphs = new FormattedText(value.Text, CultureInfo.CurrentCulture, value.FlowDirection,
+                new Typeface(value.FontFamily, value.FontStyle, value.FontWeight, value.FontStretch),
+                value.FontSize, Brushes.Black, dpi.PixelsPerDip);
+            return value.IsVisible && value.TextWrapping == TextWrapping.NoWrap && value.TextTrimming == TextTrimming.None &&
+                glyphs.WidthIncludingTrailingWhitespace + Math.Max(0, glyphs.OverhangTrailing) <= value.ActualWidth + 0.5 &&
+                glyphs.Height <= value.ActualHeight + 0.5 && bounds.Left >= -0.5 && bounds.Right <= host.Surface.ActualWidth + 0.5;
+        });
         return new MainCountdownRemainingMeasurement(
             precision,
             record.Name,
@@ -3037,7 +3092,12 @@ public sealed partial class MainWindow
             text.TextWrapping == TextWrapping.NoWrap && text.TextTrimming == TextTrimming.None,
             requiredWidth <= text.ActualWidth + 0.5 && !text.Text.Contains('\n') && !text.Text.Contains('\r') && !text.Text.Contains('…'),
             text.Typography.NumeralAlignment == FontNumeralAlignment.Tabular,
-            preferenceSaved);
+            preferenceSaved,
+            host?.IsPrimary == true,
+            values.FirstOrDefault()?.FontSize ?? 0,
+            title?.FontSize ?? 0,
+            renderedBlocks,
+            blocksFit);
     }
 
     private Rect ValidationBounds(FrameworkElement element) =>
@@ -4696,7 +4756,12 @@ internal sealed record MainCountdownRemainingMeasurement(
     bool IsSingleLineAndUntrimmed,
     bool IsFullyVisible,
     bool UsesTabularNumerals,
-    bool PreferenceSaved);
+    bool PreferenceSaved,
+    bool IsPrimary,
+    double ValueFontSize,
+    double TitleFontSize,
+    string RenderedBlockText,
+    bool BlocksFullyVisible);
 
 internal sealed record FloatingUiPolishScenarios(
     bool DatePickerKeyboardLifecycleWorks,
@@ -4793,9 +4858,17 @@ internal static class WindowValidationInput
     {
         var deadline = Stopwatch.GetTimestamp() +
             (long)(timeoutMilliseconds * (double)Stopwatch.Frequency / 1000d);
+        // An isolated desktop has no presented DWM frame. Request a real WPF
+        // render so its animation clock can finish; never assign close state.
         while (popup.IsOpen && Stopwatch.GetTimestamp() < deadline)
         {
             Pump(popup.Dispatcher);
+            if (popup.IsOpen && popup.Child is Visual visual)
+            {
+                var renderTick = new System.Windows.Media.Imaging.RenderTargetBitmap(1, 1, 96, 96, PixelFormats.Pbgra32);
+                renderTick.Render(visual);
+                renderTick.Freeze();
+            }
             System.Threading.Thread.Sleep(5);
         }
 

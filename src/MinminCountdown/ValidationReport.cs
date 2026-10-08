@@ -550,6 +550,7 @@ internal static class ValidationReport
         "src/MinminCountdown/FloatingWindow.xaml",
         "src/MinminCountdown/FloatingWindow.xaml.cs",
         "src/MinminCountdown/MinminCountdown.csproj",
+        "src/MinminCountdown/MotionBehavior.cs",
         "src/MinminCountdown/UiControls.cs"
     };
     private static readonly string[] FloatingReferenceBaselineNegativeFixtures =
@@ -636,6 +637,8 @@ internal static class ValidationReport
         "src/MinminCountdown/MainWindow.xaml",
         "src/MinminCountdown/MainWindow.xaml.cs",
         "src/MinminCountdown/MinminCountdown.csproj",
+        "src/MinminCountdown/MotionBehavior.cs",
+        "src/MinminCountdown/SegmentIndicator.cs",
         "src/MinminCountdown/UiControls.cs",
         "tools/Build-MainDayOrnamentScene.ps1",
         "tools/MainDecorationSceneBands.psd1",
@@ -1391,7 +1394,7 @@ internal static class ValidationReport
             ValidationExercises.RunVisualReferenceBaselineInterfaceBehavior();
         var floatingReferenceBaselineGateIsolationBehavior =
             ValidationExercises.RunFloatingReferenceManifestGateIsolationBehavior() &&
-            visualReferenceBaselineInterfaceBehavior;
+            visualReferenceBaselineInterfaceBehavior && RunReferenceSourceDriftBehavior(isMain: false);
         var floatingReferenceFreshnessGateIsolationBehavior =
             ValidationExercises.RunFloatingReferenceFreshnessGateIsolationBehavior();
         var floatingPrimaryCountdownContrastGateIsolationBehavior =
@@ -1533,17 +1536,21 @@ internal static class ValidationReport
             new MainCountdownRemainingGateInputs(
                 mainCountdownRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
                 mainCountdownRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
-                mainCountdownRemainingSamples.Count == 5,
+                mainCountdownRemainingSamples.Count == 6,
                 mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ColumnWidth - 300) <= 0.01),
                 mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ActualColumnWidth - 300) <= 0.5),
                 mainCountdownRemainingSamples.All(sample => sample.IsRightAligned),
                 mainCountdownRemainingSamples.All(sample => sample.IsSingleLineAndUntrimmed),
-                mainCountdownRemainingSamples.All(sample => sample.IsFullyVisible),
+                mainCountdownRemainingSamples.All(sample => sample.IsFullyVisible && sample.BlocksFullyVisible &&
+                    sample.RenderedBlockText == sample.ExpectedText.Replace("小时", "时").Replace("分钟", "分")),
                 mainCountdownRemainingSamples.All(sample => sample.UsesTabularNumerals),
                 mainCountdownRemainingSamples.All(sample => sample.PreferenceSaved),
-                mainCountdownRemainingSamples.Count == 5 &&
-                    mainCountdownRemainingSamples.Take(4).All(sample => Math.Abs(sample.FontSize - 26) <= 0.01) &&
-                    mainCountdownRemainingSamples[4].FontSize is >= 14 and < 26));
+                mainCountdownRemainingSamples.Count == 6 &&
+                    mainCountdownRemainingSamples.Take(4).All(sample => Math.Abs(sample.FontSize - 26) <= 0.01 &&
+                        sample.IsPrimary && sample.ValueFontSize is >= 26 and <= 28 && sample.ValueFontSize > sample.TitleFontSize) &&
+                    mainCountdownRemainingSamples[4].FontSize is >= 14 and < 26 &&
+                    mainCountdownRemainingSamples[5].IsPrimary &&
+                    mainCountdownRemainingSamples[5].ValueFontSize > mainCountdownRemainingSamples[5].TitleFontSize));
         var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
@@ -1579,7 +1586,7 @@ internal static class ValidationReport
         var daySingleBorderGateIsolationBehavior = RunDaySingleBorderGateIsolationBehavior();
         var mainReferenceBaselineGateIsolationBehavior =
             ValidationExercises.RunMainReferenceManifestGateIsolationBehavior() &&
-            visualReferenceBaselineInterfaceBehavior;
+            visualReferenceBaselineInterfaceBehavior && RunReferenceSourceDriftBehavior(isMain: true);
         var mainStressCountdownTitleGateIsolationBehavior =
             ValidationExercises.RunMainStressCountdownTitleGateIsolationBehavior();
 
@@ -4412,20 +4419,7 @@ internal static class ValidationReport
 
             var currentSourceBindings = GetMainReferenceSourceBindings(sourceRoot);
             var currentSourceAggregate = AggregateMainReferenceSourceBindings(currentSourceBindings);
-            var sourceHashesMatch =
-                sourceBindings.Length == currentSourceBindings.Count &&
-                sourceBindings.Select(binding => binding.Path)
-                    .SequenceEqual(MainReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
-                sourceBindings.Zip(currentSourceBindings).All(pair =>
-                    string.Equals(pair.First.Path, pair.Second.Path, StringComparison.Ordinal) &&
-                    IsUpperSha256(pair.First.Sha256) &&
-                    string.Equals(pair.First.Sha256, pair.Second.Sha256, StringComparison.Ordinal)) &&
-                IsUpperSha256(manifestAggregateSha256) &&
-                string.Equals(
-                    manifestAggregateSha256,
-                    AggregateMainReferenceSourceBindings(sourceBindings),
-                    StringComparison.Ordinal) &&
-                string.Equals(manifestAggregateSha256, currentSourceAggregate, StringComparison.Ordinal);
+            var sourceHashesMatch = MainReferenceSourcesMatch(sourceBindings, currentSourceBindings, manifestAggregateSha256);
 
             var processPath = Environment.ProcessPath;
             var executableSha256 = !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
@@ -4899,6 +4893,54 @@ internal static class ValidationReport
             return new MainReferenceSourceBinding(relativePath, Sha256File(path));
         }).ToArray();
 
+    private static bool MainReferenceSourcesMatch(
+        IReadOnlyList<MainReferenceSourceBinding> manifest,
+        IReadOnlyList<MainReferenceSourceBinding> current,
+        string aggregate) =>
+        manifest.Count == current.Count &&
+        manifest.Select(binding => binding.Path).SequenceEqual(MainReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
+        manifest.Zip(current).All(pair => pair.First.Path == pair.Second.Path && IsUpperSha256(pair.First.Sha256) &&
+            pair.First.Sha256 == pair.Second.Sha256) &&
+        IsUpperSha256(aggregate) && aggregate == AggregateMainReferenceSourceBindings(manifest) &&
+        aggregate == AggregateMainReferenceSourceBindings(current);
+
+    private static bool RunReferenceSourceDriftBehavior(bool isMain)
+    {
+        // Exercise the same source comparison used by the real manifest reader.
+        // A self-consistent stale manifest must still reject a changed motion source.
+        const string motionPath = "src/MinminCountdown/MotionBehavior.cs";
+        const string indicatorPath = "src/MinminCountdown/SegmentIndicator.cs";
+        var paths = isMain ? MainReferenceCanonicalSourcePaths : FloatingReferenceCanonicalSourcePaths;
+        var requiredPaths = isMain ? new[] { motionPath, indicatorPath } : new[] { motionPath };
+        var currentHash = new string('A', 64);
+        var staleHash = new string('B', 64);
+        foreach (var changedPath in requiredPaths)
+        {
+            if (!paths.Contains(changedPath, StringComparer.Ordinal))
+            {
+                Console.Error.WriteLine($"REFERENCE_SOURCE_DRIFT_DIAGNOSTIC main={isMain}, missing={changedPath}");
+                return false;
+            }
+            if (isMain)
+            {
+                var current = paths.Select(path => new MainReferenceSourceBinding(path, currentHash)).ToArray();
+                var stale = current.Select(binding => binding.Path == changedPath ? binding with { Sha256 = staleHash } : binding).ToArray();
+                if (!MainReferenceSourcesMatch(current, current, AggregateMainReferenceSourceBindings(current)) ||
+                    MainReferenceSourcesMatch(stale, current, AggregateMainReferenceSourceBindings(stale)))
+                    return false;
+            }
+            else
+            {
+                var current = paths.Select(path => new FloatingReferenceSourceBinding(path, currentHash)).ToArray();
+                var stale = current.Select(binding => binding.Path == changedPath ? binding with { Sha256 = staleHash } : binding).ToArray();
+                if (!FloatingReferenceSourcesMatch(current, current, AggregateFloatingReferenceSourceBindings(current)) ||
+                    FloatingReferenceSourcesMatch(stale, current, AggregateFloatingReferenceSourceBindings(stale)))
+                    return false;
+            }
+        }
+        return true;
+    }
+
     private static string AggregateMainReferenceSourceBindings(
         IEnumerable<MainReferenceSourceBinding> bindings)
     {
@@ -5365,16 +5407,6 @@ internal static class ValidationReport
             referenceWindow.ApplyTheme();
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
-            var primaryCountdownContrastGates =
-                ValidationExercises.EvaluateFloatingPrimaryCountdownContrastGates(
-                    new FloatingPrimaryCountdownContrastGateInputs(
-                        primaryCountdownContrastMeasurements
-                            .Select(measurement => measurement.ContrastRatio)
-                            .ToArray(),
-                        primaryCountdownContrastMeasurements.All(measurement =>
-                            measurement.UsesExpectedSemanticAccent &&
-                            measurement.AccentTrackUsesAccentToken &&
-                            measurement.AccentDiffersFromPlushGlow)));
             referenceWindow.ApplyTheme();
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
@@ -5414,6 +5446,8 @@ internal static class ValidationReport
                     rows,
                     ordinaryPrimaryTargetUtc,
                     afterWorkdayUtc);
+            primaryCountdownContrastMeasurements.Add(CaptureFloatingPrimaryCountdownContrast(
+                referenceWindow, rows, panel, "Ordinary"));
             // 徽章排他性：主项由普通倒计时承担时不得出现「超期待！」徽章。
             var ordinaryPrimaryBadgeAbsent = !Descendants<TextBlock>(rows)
                 .Any(text => string.Equals(text.Text, "超期待！", StringComparison.Ordinal));
@@ -5422,6 +5456,29 @@ internal static class ValidationReport
                 out _);
             referenceWindow.UpdateTime(afterWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
+
+            var tripleDigitAdded = referenceSession.TrySaveCountdown(
+                "reference-999-primary", "999 天主项", afterWorkdayUtc.AddDays(999).AddHours(13).AddMinutes(18).AddSeconds(59),
+                Array.Empty<string>(), out _);
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
+            var tripleDigitMeasurement = CaptureFloatingPrimaryCountdownContrast(referenceWindow, rows, panel, "999Days");
+            primaryCountdownContrastMeasurements.Add(tripleDigitMeasurement);
+            var tripleDigitDeleted = referenceSession.TryDeleteCountdown("reference-999-primary", out _);
+            if (!tripleDigitAdded || !tripleDigitDeleted)
+            {
+                throw new InvalidOperationException("999 天悬浮主项夹具未能完整保存和恢复。");
+            }
+            referenceWindow.UpdateTime(afterWorkdayUtc);
+            WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
+            var primaryCountdownContrastGates =
+                ValidationExercises.EvaluateFloatingPrimaryCountdownContrastGates(
+                    new FloatingPrimaryCountdownContrastGateInputs(
+                        primaryCountdownContrastMeasurements.Select(measurement => measurement.ContrastRatio).ToArray(),
+                        primaryCountdownContrastMeasurements.All(measurement =>
+                            measurement.UsesExpectedSemanticAccent &&
+                            measurement.AccentTrackUsesAccentToken &&
+                            measurement.AccentDiffersFromPlushGlow)));
 
             var extremePrimaryUtc = referenceUtc.AddDays(2_000_000);
             var extremePrimaryAdded = referenceSession.TrySaveCountdown(
@@ -6252,7 +6309,8 @@ internal static class ValidationReport
     private static FloatingPrimaryCountdownContrastMeasurement CaptureFloatingPrimaryCountdownContrast(
         FloatingWindow window,
         StackPanel rows,
-        Border taskCard)
+        Border taskCard,
+        string scenario = "Workday")
     {
         var primaryCard = rows.Children.OfType<Border>().First();
         var primaryRoot = primaryCard.Child as Grid
@@ -6269,6 +6327,21 @@ internal static class ValidationReport
             ?? throw new InvalidOperationException("悬浮窗缺少主项数字语义 token。");
         var numberText = Descendants<TextBlock>(primaryCard).First(text =>
             ReferenceEquals(text.Foreground, expectedNumber));
+        var title = Descendants<TextBlock>(primaryCard).First(text =>
+            text.Parent is Grid && text.FontWeight == FontWeights.SemiBold &&
+            !ReferenceEquals(text.Foreground, expectedNumber));
+        var cluster = FloatingRemainingCluster(primaryRoot);
+        var pairs = RemainingBlockPairs(cluster).ToArray();
+        var remainingText = string.Join(" ", pairs.SelectMany(pair => new[] { pair.Value.Text, pair.Unit.Text }));
+        var clusterBounds = cluster is null ? Rect.Empty : BoundsIn(cluster, primaryRoot);
+        var fullyVisible = cluster is not null && pairs.Length == 4 && RemainingClusterIsSingleLine(cluster) &&
+            FitsInsideFloatingViewport(cluster, window) && pairs.All(pair =>
+            {
+                var bounds = BoundsIn(pair.Block, primaryRoot);
+                var unitBounds = BoundsIn(pair.Unit, primaryRoot);
+                return pair.Value.IsVisible && pair.Unit.IsVisible &&
+                    bounds.Left >= clusterBounds.Left - 0.5 && unitBounds.Right <= clusterBounds.Right + 0.5;
+            });
         var numberBlock = numberText.Parent as Border
             ?? throw new InvalidOperationException("悬浮窗主倒计时数字未落在色块内。");
         var foreground = numberText.Foreground as SolidColorBrush
@@ -6305,7 +6378,8 @@ internal static class ValidationReport
             Math.Round(numberText.FontSize, 2),
             ReferenceEquals(numberText.Foreground, expectedNumber),
             expectedAccent is not null && ReferenceEquals(accentTrack.Background, expectedAccent),
-            !string.Equals(foreground.Color.ToString(), plushGlow.Color.ToString(), StringComparison.Ordinal));
+            !string.Equals(foreground.Color.ToString(), plushGlow.Color.ToString(), StringComparison.Ordinal),
+            scenario, remainingText, title.FontSize, fullyVisible);
     }
 
     private static Color CompositeColor(Color foreground, double elementOpacity, Color background)
@@ -6822,23 +6896,8 @@ internal static class ValidationReport
                     .Count() == captures.Length;
 
             var currentSourceBindings = GetFloatingReferenceSourceBindings(sourceRoot);
-            var currentSourceAggregate = AggregateFloatingReferenceSourceBindings(
-                currentSourceBindings);
-            var sourceHashesMatch =
-                sourceBindings.Length == currentSourceBindings.Count &&
-                sourceBindings.Select(binding => binding.Path)
-                    .SequenceEqual(FloatingReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
-                sourceBindings.Zip(currentSourceBindings)
-                    .All(pair =>
-                        string.Equals(pair.First.Path, pair.Second.Path, StringComparison.Ordinal) &&
-                        IsUpperSha256(pair.First.Sha256) &&
-                        string.Equals(pair.First.Sha256, pair.Second.Sha256, StringComparison.Ordinal)) &&
-                IsUpperSha256(manifestAggregateSha256) &&
-                string.Equals(
-                    manifestAggregateSha256,
-                    AggregateFloatingReferenceSourceBindings(sourceBindings),
-                    StringComparison.Ordinal) &&
-                string.Equals(manifestAggregateSha256, currentSourceAggregate, StringComparison.Ordinal);
+            var currentSourceAggregate = AggregateFloatingReferenceSourceBindings(currentSourceBindings);
+            var sourceHashesMatch = FloatingReferenceSourcesMatch(sourceBindings, currentSourceBindings, manifestAggregateSha256);
 
             var processPath = Environment.ProcessPath;
             var executableSha256 = !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
@@ -7396,6 +7455,17 @@ internal static class ValidationReport
 
             return new FloatingReferenceSourceBinding(relativePath, Sha256File(path));
         }).ToArray();
+
+    private static bool FloatingReferenceSourcesMatch(
+        IReadOnlyList<FloatingReferenceSourceBinding> manifest,
+        IReadOnlyList<FloatingReferenceSourceBinding> current,
+        string aggregate) =>
+        manifest.Count == current.Count &&
+        manifest.Select(binding => binding.Path).SequenceEqual(FloatingReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
+        manifest.Zip(current).All(pair => pair.First.Path == pair.Second.Path && IsUpperSha256(pair.First.Sha256) &&
+            pair.First.Sha256 == pair.Second.Sha256) &&
+        IsUpperSha256(aggregate) && aggregate == AggregateFloatingReferenceSourceBindings(manifest) &&
+        aggregate == AggregateFloatingReferenceSourceBindings(current);
 
     private static string AggregateFloatingReferenceSourceBindings(
         IEnumerable<FloatingReferenceSourceBinding> bindings)
@@ -16088,7 +16158,11 @@ internal static class ValidationReport
         double FontSize,
         bool UsesExpectedSemanticAccent,
         bool AccentTrackUsesAccentToken,
-        bool AccentDiffersFromPlushGlow);
+        bool AccentDiffersFromPlushGlow,
+        string Scenario,
+        string RemainingText,
+        double TitleFontSize,
+        bool IsSingleLineAndFullyVisible);
 
     private sealed record FloatingPrimaryCountdownContrastValidation(
         FloatingPrimaryCountdownContrastGateResults Gates,

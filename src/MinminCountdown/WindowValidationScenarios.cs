@@ -1220,7 +1220,7 @@ public sealed partial class MainWindow
             ring.CornerRadius.TopLeft == ringRadius;
     }
 
-    // #154：悬浮工作区分段样式（App 级资源，主窗内无实例）用模板宿主实例化后检查胶囊圆角 18。
+    // #154：内层表面和外层焦点环分别按各自短边的一半保持全圆角。
     // 实例化模式与 RegularFocusVisualThicknessIs 相同（模板无 FrameworkElementFactory）。
     private bool FloatingSegmentStyleUsesPillCorner()
     {
@@ -1243,8 +1243,13 @@ public sealed partial class MainWindow
         {
             host.ApplyTemplate();
             WindowValidationInput.Pump(Dispatcher);
+            host.UpdateLayout();
             return host.Template?.FindName("Surface", host) is Border surface &&
-                surface.CornerRadius.TopLeft == 18;
+                host.Template.FindName("FocusRing", host) is Border ring &&
+                Math.Abs(surface.ActualHeight - 32) <= 0.01 &&
+                Math.Abs(ring.ActualHeight - 36) <= 0.01 &&
+                surface.CornerRadius == new CornerRadius(Math.Min(surface.ActualWidth, surface.ActualHeight) / 2) &&
+                ring.CornerRadius == new CornerRadius(Math.Min(ring.ActualWidth, ring.ActualHeight) / 2);
         }
         finally
         {
@@ -1348,12 +1353,14 @@ public sealed partial class MainWindow
             var surface = popup.Child as DependencyObject;
             if (surface is null || !popup.IsOpen)
             {
+                ReportFailure("not-open", Keyboard.FocusedElement);
                 return false;
             }
 
             var first = Keyboard.FocusedElement;
             if (expectedInitialFocus is not null && !ReferenceEquals(first, expectedInitialFocus))
             {
+                ReportFailure("initial-focus", first);
                 return false;
             }
 
@@ -1375,12 +1382,30 @@ public sealed partial class MainWindow
                 wrappedToFirst = stayedInside && ReferenceEquals(current, first);
             }
 
+            if (!stayedInside || !wrappedToFirst)
+            {
+                ReportFailure(stayedInside ? "did-not-wrap" : "escaped-layer", current);
+            }
+
             return stayedInside && wrappedToFirst;
         }
         finally
         {
             WindowValidationInput.ClosePopupForCleanup(popup);
         }
+
+        void ReportFailure(string phase, IInputElement? focused) =>
+            Console.Error.WriteLine("POPUP_TAB_DIAGNOSTIC " +
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Popup = popup.Name,
+                    phase,
+                    popup.IsOpen,
+                    IsClosing = PopupMotionBehavior.IsClosing(popup),
+                    Expected = (expectedInitialFocus as FrameworkElement)?.Name,
+                    Actual = (focused as FrameworkElement)?.Name,
+                    Type = focused?.GetType().Name
+                }));
     }
 
     private bool ProbeLegacyInlineReminderControlsStayHidden()
@@ -2015,8 +2040,14 @@ public sealed partial class MainWindow
                     StringComparison.Ordinal);
             Keyboard.Focus(CloseButton);
             WindowValidationInput.Pump(Dispatcher);
-            var helpClosesOnBlur = helpTooltip is null || !helpTooltip.IsOpen;
+            var helpClosesOnBlur = helpTooltip is not null &&
+                WindowValidationInput.WaitUntil(Dispatcher, () => !helpTooltip.IsOpen);
             var helpFocusShowsHelpText = helpOpensOnFocus && helpTextProvided && helpClosesOnBlur;
+            if (!helpFocusShowsHelpText)
+            {
+                Console.Error.WriteLine("HELP_FOCUS_DIAGNOSTIC " +
+                    System.Text.Json.JsonSerializer.Serialize(new { helpOpensOnFocus, helpTextProvided, helpClosesOnBlur }));
+            }
 
             // #208: the 1165 x 1350 canvas is laid out at 1:1 DIP, so the
             // compact controls keep their 38 DIP hit slots without a Viewbox.
@@ -2075,22 +2106,18 @@ public sealed partial class MainWindow
             Activate();
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            _workspaceTabIndicator.SnapToTargetForValidation();
-            var countdownTabAligned = _workspaceTabIndicator.IsAlignedTo(CountdownTab);
+            var countdownTabAligned = ObserveIndicator(_workspaceTabIndicator, CountdownTab, MainWorkspaceTabHost);
 
             ShowWorkspace(WorkspaceKind.Notes);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            _workspaceTabIndicator.SnapToTargetForValidation();
-            _notesSegmentIndicator.SnapToTargetForValidation();
-            var notesTabAligned = _workspaceTabIndicator.IsAlignedTo(NotesTab);
-            var activeSegmentAligned = _notesSegmentIndicator.IsAlignedTo(ActiveNotesSegment);
+            var notesTabAligned = ObserveIndicator(_workspaceTabIndicator, NotesTab, MainWorkspaceTabHost);
+            var activeSegmentAligned = ObserveIndicator(_notesSegmentIndicator, ActiveNotesSegment, NotesSegmentHost);
 
             SelectNotesSegment(showCompleted: true);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            _notesSegmentIndicator.SnapToTargetForValidation();
-            var completedSegmentAligned = _notesSegmentIndicator.IsAlignedTo(CompletedNotesSegment);
+            var completedSegmentAligned = ObserveIndicator(_notesSegmentIndicator, CompletedNotesSegment, NotesSegmentHost);
 
             var rapidSwitchStaysAligned =
                 SegmentIndicatorRapidSwitchIsStableForValidation;
@@ -2111,6 +2138,26 @@ public sealed partial class MainWindow
             ShowWorkspace(originalWorkspace);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
+        }
+
+        bool ObserveIndicator(SegmentIndicator indicator, FrameworkElement target, FrameworkElement root)
+        {
+            var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target));
+            if (!aligned)
+            {
+                var targetBounds = target.TransformToAncestor(root).TransformBounds(new Rect(target.RenderSize));
+                Console.Error.WriteLine("SEGMENT_GEOMETRY_DIAGNOSTIC " +
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        target.Name,
+                        target.IsVisible,
+                        Actual = indicator.CurrentVisualBounds.ToString(CultureInfo.InvariantCulture),
+                        Target = targetBounds.ToString(CultureInfo.InvariantCulture),
+                        LastTarget = indicator.LastTargetBounds.ToString(CultureInfo.InvariantCulture)
+                    }));
+            }
+
+            return aligned;
         }
     }
 
@@ -2262,7 +2309,15 @@ public sealed partial class MainWindow
             CountdownReminderNoRadio
         };
 
-        return controls.All(TemplateHasHoverFeedback);
+        var failures = controls.Where(control => !TemplateHasHoverFeedback(control))
+            .Select(control => control.Name).ToArray();
+        if (failures.Length > 0)
+        {
+            Console.Error.WriteLine("HOVER_FEEDBACK_DIAGNOSTIC " +
+                System.Text.Json.JsonSerializer.Serialize(failures));
+        }
+
+        return failures.Length == 0;
     }
 
     private static bool TemplateHasHoverFeedback(Control control)
@@ -2289,9 +2344,12 @@ public sealed partial class MainWindow
             .Where(trigger => trigger.Property == UIElement.IsMouseOverProperty)
             .SelectMany(trigger => trigger.Setters.OfType<Setter>())
             .Any(setter =>
-                setter.TargetName is "Surface" or "FocusRing" or "Circle" or "Box" &&
+                setter.TargetName is "Surface" or "FocusRing" or "Circle" or "Ring" or "Box" &&
                 (setter.Property == Border.BackgroundProperty ||
                     setter.Property == Border.BorderBrushProperty ||
+                    (setter.Property == Shape.StrokeProperty &&
+                     template.FindName(setter.TargetName, control) is Shape &&
+                     MarkupResourceKeyIs(setter.Value, "ActiveHoverBrush")) ||
                     setter.Property == UIElement.OpacityProperty));
     }
 
@@ -2343,55 +2401,106 @@ public sealed partial class MainWindow
         return constantRing && pressedDoesNotResize;
     }
 
-    // WPF 区分键盘导航和鼠标输入时会更新 ShowKeyboardFocusVisual。模板以该附加
-    // 属性作为第二条件，因此鼠标点击取得实际焦点也不会残留键盘焦点环。
+    // Start from a keyboard focus ring, then use the same native pointer seam
+    // as the date/combobox probes. Only product input handlers change modality.
     private bool MouseClickDoesNotLeaveFocusRing()
     {
-        if (SaveCountdownButton.Template?.FindName("FocusRing", SaveCountdownButton) is not Border ring)
-        {
-            return false;
-        }
-
-        var previous = FocusVisualState.GetIsKeyboardFocusVisible(SaveCountdownButton);
+        var originalWorkspace = _workspace;
+        var originalCompleted = _completedSegmentSelected;
+        var originalName = CountdownName.Text;
+        var originalMessage = CountdownMessage.Text;
         try
         {
-            _mouseFocusPending = true;
-            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, false);
-            Keyboard.Focus(SaveCountdownButton);
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            Activate();
             WindowValidationInput.Pump(Dispatcher);
-            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, false);
-            return IsTransparent(ring.BorderBrush);
+            // A required empty name keeps the real save click inside the
+            // validation fixture, without creating a countdown as a side effect.
+            CountdownName.Text = string.Empty;
+            var saveWorks = PointerRemovesKeyboardRing(SaveCountdownButton);
+            var countdownTabWorks = PointerRemovesKeyboardRing(CountdownTab);
+            var notesTabWorks = PointerRemovesKeyboardRing(NotesTab);
+            var activeWorks = PointerRemovesKeyboardRing(ActiveNotesSegment);
+            var completedWorks = PointerRemovesKeyboardRing(CompletedNotesSegment);
+            if (!(saveWorks && countdownTabWorks && notesTabWorks && activeWorks && completedWorks))
+            {
+                Console.Error.WriteLine("POINTER_FOCUS_DIAGNOSTIC " +
+                    System.Text.Json.JsonSerializer.Serialize(new { saveWorks, countdownTabWorks, notesTabWorks, activeWorks, completedWorks }));
+            }
+
+            return saveWorks && countdownTabWorks && notesTabWorks && activeWorks && completedWorks;
         }
         finally
         {
-            _mouseFocusPending = false;
-            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, previous);
+            CountdownName.Text = originalName;
+            ClearCountdownFieldErrors();
+            CountdownMessage.Text = originalMessage;
+            _completedSegmentSelected = originalCompleted;
+            ShowWorkspace(originalWorkspace);
             Keyboard.Focus(CloseButton);
             WindowValidationInput.Pump(Dispatcher);
+        }
+
+        bool PointerRemovesKeyboardRing(Control control)
+        {
+            control.BringIntoView();
+            Keyboard.Focus(CloseButton);
+            Keyboard.Focus(control);
+            WindowValidationInput.Pump(Dispatcher);
+            control.ApplyTemplate();
+            var ring = control.Template?.FindName("FocusRing", control) as Border;
+            var keyboardRingWasVisible = control.IsKeyboardFocused &&
+                FocusVisualState.GetIsKeyboardFocusVisible(control) &&
+                ring is not null && !IsTransparent(ring.BorderBrush);
+            Keyboard.Focus(CloseButton);
+            WindowValidationInput.Pump(Dispatcher);
+            var pointerFocused = WindowValidationInput.ClickForFocusValidation(control);
+            return keyboardRingWasVisible && pointerFocused &&
+                !FocusVisualState.GetIsKeyboardFocusVisible(control) &&
+                ring is not null && IsTransparent(ring.BorderBrush);
         }
     }
 
     private bool KeyboardFocusRingShowsOnTab()
     {
-        if (SaveCountdownButton.Template?.FindName("FocusRing", SaveCountdownButton) is not Border ring)
-        {
-            return false;
-        }
-
-        var previous = FocusVisualState.GetIsKeyboardFocusVisible(SaveCountdownButton);
+        var originalWorkspace = _workspace;
         try
         {
-            _mouseFocusPending = false;
-            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, true);
-            Keyboard.Focus(SaveCountdownButton);
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            Activate();
             WindowValidationInput.Pump(Dispatcher);
-            return UsesResourceBrush(ring.BorderBrush, "MainActionFocusBrush");
+            var previous = CancelCountdownEdit.IsVisible
+                ? (UIElement)CancelCountdownEdit
+                : CountdownReminderCustomRadio;
+            var saveButtonWorks = TabReachesVisibleRing(
+                previous, SaveCountdownButton, FocusNavigationDirection.Next, "MainActionFocusBrush");
+
+            ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher);
+            var completedWorks = TabReachesVisibleRing(
+                ActiveNotesSegment, CompletedNotesSegment, FocusNavigationDirection.Next, "ActiveBrush");
+            var activeWorks = TabReachesVisibleRing(
+                CompletedNotesSegment, ActiveNotesSegment, FocusNavigationDirection.Previous, "ActiveBrush");
+            return saveButtonWorks && completedWorks && activeWorks;
         }
         finally
         {
-            FocusVisualState.SetIsKeyboardFocusVisible(SaveCountdownButton, previous);
+            ShowWorkspace(originalWorkspace);
             Keyboard.Focus(CloseButton);
             WindowValidationInput.Pump(Dispatcher);
+        }
+
+        bool TabReachesVisibleRing(UIElement from, Control target, FocusNavigationDirection direction, string resourceKey)
+        {
+            Keyboard.Focus(from);
+            WindowValidationInput.Pump(Dispatcher);
+            var moved = from.MoveFocus(new TraversalRequest(direction));
+            WindowValidationInput.Pump(Dispatcher);
+            target.ApplyTemplate();
+            return moved && target.IsKeyboardFocused &&
+                target.Template?.FindName("FocusRing", target) is Border ring &&
+                ring.BorderThickness == new Thickness(2) &&
+                UsesResourceBrush(ring.BorderBrush, resourceKey);
         }
     }
 
@@ -2399,37 +2508,40 @@ public sealed partial class MainWindow
     // 预先加粗，确保视觉权重不会被悬停红环反转。
     private bool SelectedTabWeightDominates()
     {
-        return SelectedTabTemplateUsesWeight(CountdownTab, "PinkTintBrush") &&
-            SelectedTabTemplateUsesWeight(NotesTab, "PinkTintBrush");
+        var originalWorkspace = _workspace;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            var countdownDominates = SelectedTabHasWeight(CountdownTab, NotesTab);
+            ShowWorkspace(WorkspaceKind.Notes);
+            return countdownDominates && SelectedTabHasWeight(NotesTab, CountdownTab);
+        }
+        finally
+        {
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
     }
 
-    private static bool SelectedTabTemplateUsesWeight(Control control, string backgroundResource)
+    private bool SelectedTabHasWeight(ToggleButton selected, ToggleButton unselected)
     {
-        control.ApplyTemplate();
-        if (control.Template?.Triggers is not { } triggers)
+        selected.ApplyTemplate();
+        unselected.ApplyTemplate();
+        if (selected.Template?.FindName("Surface", selected) is not Border selectedSurface ||
+            unselected.Template?.FindName("Surface", unselected) is not Border unselectedSurface)
         {
             return false;
         }
 
-        var checkedTrigger = triggers
-            .OfType<Trigger>()
-            .FirstOrDefault(trigger =>
-                trigger.Property == ToggleButton.IsCheckedProperty &&
-                Equals(trigger.Value, true));
-        if (checkedTrigger is null)
-        {
-            return false;
-        }
-
-        var selectedFill = checkedTrigger.Setters.OfType<Setter>().Any(setter =>
-            setter.TargetName == "Surface" &&
-            setter.Property == Border.BackgroundProperty &&
-            MarkupResourceKeyIs(setter.Value, backgroundResource));
-        var selectedWeight = checkedTrigger.Setters.OfType<Setter>().Any(setter =>
-            setter.Property == Control.FontWeightProperty &&
-            setter.Value is FontWeight weight &&
-            weight == FontWeights.SemiBold);
-        return selectedFill && selectedWeight;
+        // Observe the actual color after the bounded transition; a declared token
+        // or a trigger setter alone does not prove that the selected fill rendered.
+        return WindowValidationInput.WaitUntil(Dispatcher, () =>
+            selected.IsChecked == true &&
+            unselected.IsChecked == false &&
+            UsesResourceBrush(selectedSurface.Background, "PinkTintBrush") &&
+            !UsesResourceBrush(unselectedSurface.Background, "PinkTintBrush") &&
+            selected.FontWeight == FontWeights.SemiBold &&
+            unselected.FontWeight == FontWeights.Normal);
     }
 
     private static bool IsTransparent(Brush? brush) =>
@@ -4626,6 +4738,38 @@ internal sealed record ComboBoxPointerExerciseResult(
 
 internal static class WindowValidationInput
 {
+    public static bool ClickForFocusValidation(Control target)
+    {
+        target.BringIntoView();
+        Pump(target.Dispatcher);
+        using var pointer = new PickerPointerState();
+        var pressed = RaisePickerPointer(target, UIElement.PreviewMouseLeftButtonDownEvent);
+        Pump(target.Dispatcher);
+        var focusedOnPress = target.IsKeyboardFocusWithin;
+        var released = RaisePickerPointer(target, UIElement.PreviewMouseLeftButtonUpEvent);
+        Pump(target.Dispatcher);
+        return pressed && released && focusedOnPress;
+    }
+
+    public static bool WaitUntil(Dispatcher dispatcher, Func<bool> condition, int timeoutMilliseconds = 300)
+    {
+        var deadline = Stopwatch.GetTimestamp() +
+            (long)(timeoutMilliseconds * (double)Stopwatch.Frequency / 1000d);
+        do
+        {
+            Pump(dispatcher);
+            if (condition())
+            {
+                return true;
+            }
+
+            System.Threading.Thread.Sleep(5);
+        }
+        while (Stopwatch.GetTimestamp() < deadline);
+
+        return false;
+    }
+
     // #205 regression: raising Click alone bypasses ButtonBase.OnClick and its
     // command source. UIA Invoke follows the same command path as a real click.
     public static bool InvokeButton(Button button)
@@ -4668,7 +4812,10 @@ internal static class WindowValidationInput
         if (popup.IsOpen)
         {
             popup.IsOpen = false;
-            Pump(popup.Dispatcher);
+            if (!WaitForPopupClosed(popup))
+            {
+                throw new InvalidOperationException("Popup fixture did not finish closing within 300 ms.");
+            }
         }
     }
 

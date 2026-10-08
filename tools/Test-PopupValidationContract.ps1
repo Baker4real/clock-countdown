@@ -41,6 +41,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 public sealed class PopupValidationContractResult
@@ -57,6 +58,42 @@ public sealed class PopupValidationContractResult
 
 public static class PopupValidationContractHarness
 {
+    public static object CheckCaptureComposite(string assemblyPath)
+    {
+        var method = Assembly.LoadFrom(assemblyPath).GetType("MinminCountdown.ValidationReport", true)
+            .GetMethod("CompositeOverOpaqueBackground", BindingFlags.NonPublic | BindingFlags.Static);
+        byte[] Composite(byte[] pixel, PixelFormat format, Color backdrop)
+        {
+            var source = BitmapSource.Create(1, 1, 96, 96, format, null, pixel, 4);
+            var result = (BitmapSource)method.Invoke(null, new object[] { source, backdrop });
+            var actual = new byte[4];
+            result.CopyPixels(actual, 4, 0);
+            return actual;
+        }
+        bool Matches(byte[] actual, byte b, byte g, byte r) =>
+            actual[0] == b && actual[1] == g && actual[2] == r && actual[3] == 255;
+        var backdrop = Color.FromRgb(20, 40, 60);
+        var straight = Composite(new byte[] { 50, 100, 200, 128 }, PixelFormats.Bgra32, backdrop);
+        var premultiplied = Composite(new byte[] { 128, 128, 128, 128 }, PixelFormats.Pbgra32, Colors.Black);
+        var white = Composite(new byte[] { 255, 255, 255, 128 }, PixelFormats.Bgra32, Colors.White);
+        var opaque = Composite(new byte[] { 30, 40, 50, 255 }, PixelFormats.Bgra32, backdrop);
+        bool transparentRejected = false;
+        try { Composite(new byte[] { 0, 0, 0, 0 }, PixelFormats.Bgra32, backdrop); }
+        catch (TargetInvocationException exception) when (exception.InnerException is InvalidOperationException)
+        { transparentRejected = true; }
+        return new
+        {
+            StraightActualBgra = straight,
+            PremultipliedActualBgra = premultiplied,
+            WhiteActualBgra = white,
+            StraightAlphaMatches = Matches(straight, 55, 70, 110),
+            PremultipliedInputMatches = Matches(premultiplied, 128, 128, 128),
+            HalfWhiteOverWhiteStaysWhite = Matches(white, 255, 255, 255),
+            OpaqueSourcePreserved = Matches(opaque, 30, 40, 50),
+            TransparentFrameRejected = transparentRejected
+        };
+    }
+
     public static PopupValidationContractResult Run(string assemblyPath, string scenario)
     {
         // Match ApplicationValidation's renderer on an isolated desktop, which
@@ -198,6 +235,12 @@ $results = @(
     }
 )
 $failures = [Collections.Generic.List[string]]::new()
+$captureComposite = [PopupValidationContractHarness]::CheckCaptureComposite($resolvedAssembly)
+if (-not ($captureComposite.StraightAlphaMatches -and $captureComposite.PremultipliedInputMatches -and
+          $captureComposite.HalfWhiteOverWhiteStaysWhite -and $captureComposite.OpaqueSourcePreserved -and
+          $captureComposite.TransparentFrameRejected)) {
+    $failures.Add('参考帧一像素透明合成或全透明拒绝合同未通过。')
+}
 foreach ($result in $results) {
     if ($result.HandledEscapeCount -lt 1) {
         $failures.Add("$($result.Scenario)：未实际走到已处理的 Esc 事件。")
@@ -227,6 +270,7 @@ foreach ($result in $results) {
     AssemblyPath = $resolvedAssembly
     AssemblySHA256 = (Get-FileHash -LiteralPath $resolvedAssembly -Algorithm SHA256).Hash
     Results = $results
+    CaptureComposite = $captureComposite
     Failures = @($failures)
     Passed = $failures.Count -eq 0
 } | ConvertTo-Json -Depth 5

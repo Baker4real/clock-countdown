@@ -3622,7 +3622,10 @@ Assert-Equal 519 @($releaseContract.PackageFiles).Count 'Release contract declar
 Assert-Equal 515 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 61 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal 60 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
+Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight helper'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
 Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
 $expectedInstalledSupportFiles = @(
     'Countdown.Core.psm1',

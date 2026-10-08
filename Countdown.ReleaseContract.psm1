@@ -117,7 +117,6 @@ $script:offlineHolidayDataFiles = @(
 
 $script:sourceBuildNonAssetFiles = @(
     'global.json',
-    'tools\Countdown.BuildPreflight.psm1',
     'src\MinminCountdown.Core\CalendarOccurrenceCalculator.cs',
     'src\MinminCountdown.Core\MinminCountdown.Core.csproj',
     'src\MinminCountdown.Core\SettingsContract.cs',
@@ -257,6 +256,7 @@ $script:nonAssetHashes = [ordered]@{
 
 $script:nonAssetIntegrityPaths = @(
     'Build-CountdownApplication.ps1',
+    'tools\Countdown.BuildPreflight.psm1',
     'Countdown.App.psm1',
     'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',

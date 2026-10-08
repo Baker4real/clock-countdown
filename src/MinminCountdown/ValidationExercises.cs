@@ -5733,6 +5733,9 @@ internal static class ValidationExercises
             Guid.Parse("33333333-0000-0000-0000-000000000000")
         };
         var actionsWorked = false;
+        var formModesWorked = false;
+        var editCancelWorked = false;
+        var copyCancelWorked = false;
         var editor = new ReminderRulesEditorWindow(
             Array.Empty<ReminderRule>(),
             clock,
@@ -5741,6 +5744,7 @@ internal static class ValidationExercises
         {
             editor.Dispatcher.BeginInvoke(new Action(() =>
             {
+                formModesWorked = ProbeReminderRuleFormModes(editor, supportsRelative: false);
                 var firstDue = ChinaStandardTime.ToBeijingTime(nowUtc).AddDays(1);
                 firstDue = new DateTimeOffset(
                     firstDue.Year,
@@ -5757,9 +5761,15 @@ internal static class ValidationExercises
                     string.Equals(button.Content?.ToString(), "编辑", StringComparison.Ordinal));
                 var originalId = originalEdit.Tag as string;
                 InvokeRuleEditorButton(originalEdit);
+                editCancelWorked = CancelRuleEditHasVisibleLabelAndResetsForm(editor);
+                InvokeRuleEditorButton(originalEdit);
                 SetEditorSchedule(editor, ReminderEditingMode.Once, firstDue.AddHours(1), 30);
                 InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
 
+                InvokeRuleEditorButton(VisualDescendants<Button>(editor).Single(button =>
+                        string.Equals(button.Content?.ToString(), "复制", StringComparison.Ordinal) &&
+                        string.Equals(button.Tag as string, originalId, StringComparison.Ordinal)));
+                copyCancelWorked = CancelRuleEditHasVisibleLabelAndResetsForm(editor);
                 InvokeRuleEditorButton(VisualDescendants<Button>(editor).Single(button =>
                         string.Equals(button.Content?.ToString(), "复制", StringComparison.Ordinal) &&
                         string.Equals(button.Tag as string, originalId, StringComparison.Ordinal)));
@@ -5783,6 +5793,8 @@ internal static class ValidationExercises
             var accepted = editor.ShowDialog() == true;
             Must(accepted, "共享提醒规则编辑器未接受有效的新增、编辑、复制与删除草稿。");
             Must(actionsWorked, "共享提醒规则编辑器未保留复制项、删除原项或提交 dirty 草稿。");
+            Must(formModesWorked && editCancelWorked && copyCancelWorked,
+                $"提醒规则可见表单回归：modeRows={formModesWorked}, editCancel={editCancelWorked}, copyCancel={copyCancelWorked}。");
         }
         finally
         {
@@ -5878,10 +5890,12 @@ internal static class ValidationExercises
             new ValidationGuidSource(relativeRuleId),
             countdownTargetUtc: targetUtc);
         var editedExistingRule = false;
+        var formModesWorked = false;
         try
         {
             editor.Dispatcher.BeginInvoke(new Action(() =>
             {
+                formModesWorked = ProbeReminderRuleFormModes(editor, supportsRelative: true);
                 var mode = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
                 mode.SelectedIndex = 2;
                 FindByAutomationId<TextBox>(editor, "ReminderRuleRelativeOffsetMinutes").Text = "0";
@@ -5914,6 +5928,7 @@ internal static class ValidationExercises
                 "倒计时相对规则编辑器未接受有效的创建和编辑草稿。");
             Must(editedExistingRule,
                 "倒计时相对规则编辑器未保留 rule ID、最大 offset 或完整类型列表。");
+            Must(formModesWorked, "倒计时提醒规则模式切换后存在孤立标签、时刻分隔符或未折叠空行。");
         }
         finally
         {
@@ -6189,6 +6204,90 @@ internal static class ValidationExercises
                 countdownEditor.Close();
             }
         }
+    }
+
+    private static bool CancelRuleEditHasVisibleLabelAndResetsForm(ReminderRulesEditorWindow editor)
+    {
+        editor.UpdateLayout();
+        var cancel = FindByAutomationId<Button>(editor, "CancelReminderRuleEditButton");
+        var labeled = cancel.IsVisible && cancel.ActualWidth > 0 && cancel.ActualHeight > 0 &&
+            string.Equals(cancel.Content as string, "取消编辑", StringComparison.Ordinal);
+        var originalCount = VisualDescendants<Button>(editor).Count(button =>
+            string.Equals(button.Content as string, "编辑", StringComparison.Ordinal));
+        InvokeRuleEditorButton(cancel);
+        return labeled && !cancel.IsVisible &&
+            string.Equals(FindByAutomationId<Button>(editor, "SaveReminderRuleButton").Content as string,
+                "添加规则", StringComparison.Ordinal) &&
+            VisualDescendants<Button>(editor).Count(button =>
+                string.Equals(button.Content as string, "编辑", StringComparison.Ordinal)) == originalCount;
+    }
+
+    private static bool ProbeReminderRuleFormModes(ReminderRulesEditorWindow editor, bool supportsRelative)
+    {
+        var mode = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
+        var knownLabels = new[] { "规则类型", "首次提醒", "开始日期", "固定间隔", "提前分钟", "日历频率", "重复间隔", "日历选择" };
+        var passed = true;
+        void Check(string scenario, params string[] expected)
+        {
+            WindowValidationInput.Pump(editor.Dispatcher);
+            editor.UpdateLayout();
+            var labels = VisualDescendants<TextBlock>(editor)
+                .Where(label => label.Parent is Grid &&
+                    knownLabels.Contains(label.Text, StringComparer.Ordinal)).ToArray();
+            var actual = labels.Where(label => label.IsVisible).Select(label => label.Text).ToArray();
+            var firstDueVisible = expected.Contains("首次提醒") || expected.Contains("开始日期");
+            var visibleFields = new[]
+            {
+                ("ReminderRuleFirstDueDate", firstDueVisible),
+                ("ReminderRuleFirstDueHour", firstDueVisible),
+                ("ReminderRuleFirstDueMinute", firstDueVisible),
+                ("ReminderRuleInterval", expected.Contains("固定间隔")),
+                ("ReminderRuleRelativeOffsetMinutes", expected.Contains("提前分钟")),
+                ("ReminderRuleCalendarFrequency", expected.Contains("日历频率")),
+                ("ReminderRuleCalendarInterval", expected.Contains("重复间隔"))
+            }.All(field => FindByAutomationId<FrameworkElement>(editor, field.Item1).IsVisible == field.Item2);
+            var timeSeparatorMatches = VisualDescendants<TextBlock>(editor)
+                .Any(text => text.Text == ":" && text.IsVisible) == firstDueVisible;
+            var emptyRowsCollapse = VisualDescendants<Grid>(editor)
+                .Where(grid => grid.IsVisible &&
+                    (grid.IsAncestorOf(mode) || labels.Any(label => ReferenceEquals(label.Parent, grid))))
+                .All(grid => grid.RowDefinitions.Select((row, index) => (row, index)).All(pair =>
+                    grid.Children.Cast<UIElement>().Any(child => Grid.GetRow(child) == pair.index && child.IsVisible) ||
+                    pair.row.ActualHeight <= 0.01));
+            var result = actual.Order(StringComparer.Ordinal).SequenceEqual(expected.Order(StringComparer.Ordinal)) &&
+                visibleFields && timeSeparatorMatches && emptyRowsCollapse;
+            passed &= result;
+            if (!result)
+            {
+                Console.Error.WriteLine("REMINDER_FORM_DIAGNOSTIC " + JsonSerializer.Serialize(new
+                { scenario, supportsRelative, expected, actual, visibleFields, timeSeparatorMatches, emptyRowsCollapse }));
+            }
+        }
+
+        mode.SelectedIndex = 0;
+        Check("once", "规则类型", "首次提醒");
+        mode.SelectedIndex = 1;
+        Check("interval", "规则类型", "首次提醒", "固定间隔");
+        FindByAutomationId<ComboBox>(editor, "ReminderRuleInterval").SelectedIndex = 3;
+        FindByAutomationId<TextBox>(editor, "ReminderRuleCustomInterval").Text = "0";
+        InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
+        passed &= FindByAutomationId<TextBlock>(editor, "ReminderRuleIntervalError").IsVisible;
+        mode.SelectedIndex = 0;
+        Check("once-after-error", "规则类型", "首次提醒");
+        passed &= !FindByAutomationId<TextBlock>(editor, "ReminderRuleIntervalError").IsVisible;
+        if (supportsRelative)
+        {
+            mode.SelectedIndex = 2;
+            Check("relative", "规则类型", "提前分钟");
+        }
+        mode.SelectedIndex = supportsRelative ? 3 : 2;
+        FindByAutomationId<ComboBox>(editor, "ReminderRuleCalendarFrequency").SelectedIndex = 1;
+        Check("calendar-weekly", "规则类型", "开始日期", "日历频率", "重复间隔", "日历选择");
+        FindByAutomationId<ComboBox>(editor, "ReminderRuleCalendarFrequency").SelectedIndex = 3;
+        Check("calendar-yearly", "规则类型", "开始日期", "日历频率", "重复间隔", "日历选择");
+        mode.SelectedIndex = 0;
+        Check("once-after-calendar", "规则类型", "首次提醒");
+        return passed;
     }
 
     private static void SetEditorSchedule(
@@ -8377,7 +8476,7 @@ internal static class ValidationExercises
     public static MainCountdownRemainingGateResults EvaluateMainCountdownRemainingGates(
         MainCountdownRemainingGateInputs input) =>
         new(
-            input.ExpectedTexts.Count == 5 &&
+            input.ExpectedTexts.Count == 6 &&
                 input.RenderedTexts.SequenceEqual(input.ExpectedTexts, StringComparer.Ordinal),
                 input.HasExpectedSampleCount &&
                 input.ColumnsAre300Pixels &&
@@ -8397,7 +8496,8 @@ internal static class ValidationExercises
             "4 天 13 小时",
             "4 天 13 小时 18 分钟",
             "4 天 13 小时 18 分钟 59 秒",
-            "2000000 天 00 小时 00 分钟 00 秒"
+            "2000000 天 00 小时 00 分钟 00 秒",
+            "999 天 13 小时 18 分钟 59 秒"
         };
         var passing = new MainCountdownRemainingGateInputs(
             expected,

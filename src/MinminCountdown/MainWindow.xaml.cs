@@ -1619,7 +1619,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return total;
         }
 
-        var availableWidth = CountdownRemainingColumnWidth - CountdownRemainingLeftMargin;
+        // The visible block host owns the full column. The left margin belongs
+        // only to the separate fallback text; subtracting it here left less
+        // space than four minimum-width blocks need, even at the font floor.
+        var availableWidth = CountdownRemainingColumnWidth;
         if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
         {
             blockPadding = 2;

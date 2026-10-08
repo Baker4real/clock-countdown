@@ -42,6 +42,7 @@ internal sealed class ReminderRulesEditorWindow : Window
     private readonly Button _saveRuleButton = new() { MinWidth = 104 };
     private readonly Button _cancelRuleEditButton = new()
     {
+        Content = "取消编辑",
         MinWidth = 92,
         Margin = new Thickness(8, 0, 0, 0)
     };
@@ -294,12 +295,18 @@ internal sealed class ReminderRulesEditorWindow : Window
         form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
         form.ColumnDefinitions.Add(new ColumnDefinition());
         AddFormRow(form, 0, "规则类型", _mode, _modeError);
-        _firstDueLabel = AddFormRow(form, 1, "首次提醒", BuildFirstDueRow(), _firstDueError);
-        AddFormRow(form, 2, "固定间隔", BuildIntervalRow(), _intervalError);
-        AddFormRow(form, 3, "提前分钟", _relativeOffset, _relativeOffsetError);
-        AddFormRow(form, 4, "日历频率", _calendarFrequency, ErrorText());
-        AddFormRow(form, 5, "重复间隔", _calendarInterval, _calendarIntervalError);
-        AddFormRow(form, 6, "日历选择", _calendarSelector, _calendarSelectorError);
+        _firstDueLabel = AddFormRow(form, 1, "首次提醒", BuildFirstDueRow(), _firstDueError,
+            nameof(ReminderRulesEditorViewModel.IsFirstDueVisible));
+        AddFormRow(form, 2, "固定间隔", BuildIntervalRow(), _intervalError,
+            nameof(ReminderRulesEditorViewModel.IsIntervalVisible));
+        AddFormRow(form, 3, "提前分钟", _relativeOffset, _relativeOffsetError,
+            nameof(ReminderRulesEditorViewModel.IsRelativeVisible));
+        AddFormRow(form, 4, "日历频率", _calendarFrequency, ErrorText(),
+            nameof(ReminderRulesEditorViewModel.IsCalendarFrequencyVisible));
+        AddFormRow(form, 5, "重复间隔", _calendarInterval, _calendarIntervalError,
+            nameof(ReminderRulesEditorViewModel.IsCalendarIntervalVisible));
+        AddFormRow(form, 6, "日历选择", _calendarSelector, _calendarSelectorError,
+            nameof(ReminderRulesEditorViewModel.IsCalendarSelectorVisible));
 
         _saveRuleButton.SetResourceReference(StyleProperty, "PrimaryButton");
         var ruleActions = new StackPanel
@@ -420,15 +427,24 @@ internal sealed class ReminderRulesEditorWindow : Window
         _calendarSelector.Children.Add(_calendarDateSelector);
     }
 
-    private static TextBlock AddFormRow(
+    private TextBlock AddFormRow(
         Grid form,
         int rowIndex,
         string label,
         UIElement input,
-        TextBlock error)
+        TextBlock error,
+        string? visibilityProperty = null)
     {
         form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        if (visibilityProperty is not null)
+        {
+            Bind(row, UIElement.VisibilityProperty, visibilityProperty, _viewModel, converter: _visibilityConverter);
+        }
         var labelBlock = new TextBlock
         {
             Text = label,
@@ -437,15 +453,17 @@ internal sealed class ReminderRulesEditorWindow : Window
         };
         labelBlock.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
         labelBlock.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-        input.SetValue(Grid.RowProperty, rowIndex * 2);
+        input.SetValue(Grid.RowProperty, 0);
         input.SetValue(Grid.ColumnProperty, 1);
         input.SetValue(FrameworkElement.MarginProperty, new Thickness(0, rowIndex == 0 ? 0 : 10, 0, 0));
-        Grid.SetRow(labelBlock, rowIndex * 2);
-        Grid.SetRow(error, rowIndex * 2 + 1);
+        Grid.SetRow(error, 1);
         Grid.SetColumn(error, 1);
-        form.Children.Add(labelBlock);
-        form.Children.Add(input);
-        form.Children.Add(error);
+        row.Children.Add(labelBlock);
+        row.Children.Add(input);
+        row.Children.Add(error);
+        Grid.SetRow(row, rowIndex);
+        Grid.SetColumnSpan(row, 2);
+        form.Children.Add(row);
         return labelBlock;
     }
 

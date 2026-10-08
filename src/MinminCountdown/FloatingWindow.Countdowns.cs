@@ -356,7 +356,9 @@ public sealed partial class FloatingWindow
 
         if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
         {
-            pairGap = 3;
+            // Preserve the primary 26 DIP hierarchy in the fixed 194 DIP slot
+            // before applying the long-number font fit.
+            pairGap = isPrimary ? 2 : 3;
         }
 
         var required = RequiredWidth(valueFontSize, blockPadding, pairGap);

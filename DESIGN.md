@@ -553,7 +553,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | Component 组件 | 悬浮窗画刷、控件样式、排版/间距/圆角/焦点 token | App.xaml 第 3 层 | 色值一律绑回 Primitive（`Color="{DynamicResource *Color}"`），不得自持字面色值 |
 
 - 控件不得新增同义色值：新视觉需求先找既有 Semantic 角色；确需新角色时新增 Primitive + Semantic 两层，并同步 `ApplicationTheme.Tokens`。
-- 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#B84A36` → `ActiveHover` / `MainActionHover`；`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#FFFDFC` → `MainActionText` / `PinkBadgeText`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#F6DFD3` → `NoteTimeline` / `PeachLine`（#146 收口补录：该值级重复在 #131 线工作树演化中已存在（App.xaml 与 `ApplicationTheme.Tokens` 两处同步），清单此前漏记，本条只补记录、不新增重复）。
+- 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#B84A36` → `ActiveHover` / `MainActionHover`；`#C23E68` → `MainAction` / `PinkAccentStrong`（#199 统一主行动家族）；`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#FFFDFC` → `MainActionText` / `PinkBadgeText`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#F6DFD3` → `NoteTimeline` / `PeachLine`（#146 收口补录：该值级重复在 #131 线工作树演化中已存在（App.xaml 与 `ApplicationTheme.Tokens` 两处同步），清单此前漏记，本条只补记录、不新增重复）。
 - XAML 允许 6 位与 8 位十六进制写法并存（如 `#FEE0E4` 与 `#FFFEE0E4`），同步校验按解析后 ARGB 相等判断，不强制统一记法。
 
 ### 13.2 排版层级 token

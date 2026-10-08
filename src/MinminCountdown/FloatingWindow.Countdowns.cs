@@ -48,6 +48,19 @@ public sealed partial class FloatingWindow
             record.TargetUtc,
             nowUtc,
             displayPrecision);
+        var currentSeconds = ParseRemainingPairs(remaining)?.FirstOrDefault(static pair =>
+            string.Equals(pair.Unit, "秒", StringComparison.Ordinal))?.Value;
+        var secondsChanged = currentSeconds is not null &&
+            _lastCountdownSeconds.TryGetValue(record.Id, out var previousSeconds) &&
+            !string.Equals(previousSeconds, currentSeconds, StringComparison.Ordinal);
+        if (currentSeconds is null)
+        {
+            _lastCountdownSeconds.Remove(record.Id);
+        }
+        else
+        {
+            _lastCountdownSeconds[record.Id] = currentSeconds;
+        }
         var root = new Grid
         {
             MinHeight = isPrimary ? 68 : 39,
@@ -103,8 +116,8 @@ public sealed partial class FloatingWindow
         });
 
         root.Children.Add(isPrimary
-            ? BuildWarmPaperPrimaryContent(record, remaining)
-            : BuildWarmPaperSecondaryContent(record, remaining));
+            ? BuildWarmPaperPrimaryContent(record, remaining, secondsChanged)
+            : BuildWarmPaperSecondaryContent(record, remaining, secondsChanged));
         return new Border
         {
             Child = root,
@@ -117,7 +130,8 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildWarmPaperPrimaryContent(
         CountdownRecord record,
-        string remaining)
+        string remaining,
+        bool fadeSeconds)
     {
         var layout = new Grid
         {
@@ -198,7 +212,10 @@ public sealed partial class FloatingWindow
         }
 
         Grid.SetColumn(copy, 0);
-        var remainingBlocks = BuildRemainingBlocks(remaining, isPrimary: true);
+        var remainingBlocks = BuildRemainingBlocks(
+            remaining,
+            isPrimary: true,
+            fadeSeconds: fadeSeconds);
         Grid.SetColumn(remainingBlocks, 1);
         layout.Children.Add(copy);
         layout.Children.Add(remainingBlocks);
@@ -207,7 +224,8 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildWarmPaperSecondaryContent(
         CountdownRecord record,
-        string remaining)
+        string remaining,
+        bool fadeSeconds)
     {
         var layout = new Grid
         {
@@ -225,14 +243,20 @@ public sealed partial class FloatingWindow
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = _floatingPrimaryBrush
         };
-        var remainingBlocks = BuildRemainingBlocks(remaining, isPrimary: false);
+        var remainingBlocks = BuildRemainingBlocks(
+            remaining,
+            isPrimary: false,
+            fadeSeconds: fadeSeconds);
         Grid.SetColumn(remainingBlocks, 1);
         layout.Children.Add(name);
         layout.Children.Add(remainingBlocks);
         return layout;
     }
 
-    private FrameworkElement BuildRemainingBlocks(string remaining, bool isPrimary)
+    private FrameworkElement BuildRemainingBlocks(
+        string remaining,
+        bool isPrimary,
+        bool fadeSeconds = false)
     {
         var pairs = ParseRemainingPairs(remaining);
         if (pairs is null || pairs.Count == 0)
@@ -408,6 +432,11 @@ public sealed partial class FloatingWindow
             pair.Children.Add(block);
             pair.Children.Add(unit);
             pairsPanel.Children.Add(pair);
+
+            if (fadeSeconds && string.Equals(pairs[index].Unit, "秒", StringComparison.Ordinal))
+            {
+                MotionBehavior.FadeCountdownDigit(value);
+            }
         }
 
         var cluster = new Grid

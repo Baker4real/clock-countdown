@@ -65,6 +65,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.RemoteDeployment.psm1`：办公室候选安装、验证门禁、事务验收、回滚、提交后收尾，以及成功/失败回执、部署 binding、独立回读与回滚前诊断的严格契约 module
 - `Countdown.TransferLedger.psm1`：办公室全部 SCP 与 SSH 证据回读共用的计时、吞吐和失败尝试账本 module
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
+- `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录和 safe-tree-delete 能力；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检
 - `CountdownLauncher.cs`：无控制台桌面启动器源码；仓库编译产物为 `CountdownLauncher.exe`
 - `CountdownLauncher.exe`：仓库中的启动器文件；安装后桌面名为 `敏敏子倒计时.exe`，双击直接启动宿主
 - `countdown-icon.ico`：窗口和桌面启动器图标
@@ -78,7 +79,9 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.Core.Tests.ps1`：核心与发布契约测试可直跑；含 `-ReleaseContractOnly` 时会嵌套验证套件窗口步骤（自行隔离），不要当成全程无窗口
 - `Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`、`Invoke-CountdownSourceValidation.ps1`：窗口套件内层实现，仅由低影响启动器转发，直跑 fail-closed
 - `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化 13 步收口验证 runner 与桌面启动 T0–T4 分段时延探针；收口包含 `Countdown.TransferLedger.Tests.ps1`，探针样本只用于归因，不汇入门槛样本池
-- `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），六阶段套件默认入口；Build 绿后 Core/CSharp/Ui/SourceValidation/InstallValidate 五阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
+- `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），六阶段套件默认入口；Build 绿后 Core/CSharp/Ui/SourceValidation/InstallValidate 五阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。`Countdown.SuiteRun.psm1` 负责原子 run/summary、阶段超时、取消和失效 owner 的 `Interrupted` 回读；配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
+- `tools/Test-CountdownTooling.ps1`：无窗口自检 issue 验收 schema、回写 dry-run、PowerShell 解析和 `git diff --check`；`tools/Test-PopupValidationContract.ps1` 由低影响启动器的 `ValidationHarness` 阶段执行弹层真实动作与反例
+- `docs/agents/issue-acceptance.md`、`docs/agents/issue-acceptance.json`：按 docs / behavior / visual / release / office / gate 区分检查、证据和明确的 N/A 理由；`tools/Invoke-IssueWriteback.ps1` 默认只生成可回读的评论计划，只有显式 `-Apply` 才写 GitHub
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
 当前迁移决策、WPF module/seam 划分和 Tauri 闸门边界见 [架构与语言迁移](docs/架构与语言迁移.md)；父级 PRD 为 [GitHub #189](https://github.com/Baker4real/clock-countdown/issues/189)。
@@ -96,6 +99,19 @@ WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方�
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
 ```
 
+构建前先做只读环境预检和无窗口工具自检；`-RequireClean` 只在当前 safe-tree-delete policy 登记了该 checkout 的正式清理路径时使用：
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownBuildPreflight.ps1 -Json
+pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownTooling.ps1 -Json
+```
+
+弹层验证和工具自检也可单独经官方入口运行，入口会写出 `logs\suite-runs\*-run.json` 与 `*-summary.json`；启动器异常、取消、超时和失效 owner 都以非成功终态保存，不能把缺少 summary 当成通过：
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness,Tooling
+```
+
 兼容旧命令仍可显式传入 `-IsolatedDesktop`（与默认相同）。调试关隔离：
 
 ```powershell
@@ -105,6 +121,8 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Al
 标注：本文档命令的脚本路径统一用 `./` 前缀：该写法在 PowerShell、cmd 与 Git Bash 下均可直接执行；`.\` 前缀会被 Git Bash 等 POSIX shell 当作转义符吃掉反斜杠，导致 `pwsh -File` 报找不到脚本。
 
 标注：六阶段套件与 13 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/6/8/10/11/12 步与六阶段逐字相同，连跑等于整套跑两遍；第 9 步单独覆盖 `Countdown.TransferLedger.Tests.ps1`。收口 runner 的 CSharp/Ui/SourceValidation 走同一隔离启动器；`desktop-launcher` 与 `instance-activation-matrix` 默认拒绝前台跑，需要时显式 `-AllowForegroundWindowedSteps`（用户正在用电脑时禁止）。
+
+标注：issue 关闭前按 [`docs/agents/issue-acceptance.md`](docs/agents/issue-acceptance.md) 生成结构化记录；`candidate`、`dry-run`、`deployed` 和 `live verified` 分开记录。`tools/Invoke-IssueWriteback.ps1` 不带 `-Apply` 时只生成评论和父票汇总计划，不发送 GitHub 请求。
 
 标注：`pwsh.exe -NoLogo -NoProfile -File ./Build-CountdownApplication.ps1 -Incremental` 是开发者本地迭代手动工具（显式非默认开关：跳过受管清理、保留增量编译），不属于六阶段套件；直跑时须保持 BelowNormal 等低影响等价措施。增量产物不用于发布收口，收口仍走全量 `-Clean` + R2R 与六阶段套件。
 

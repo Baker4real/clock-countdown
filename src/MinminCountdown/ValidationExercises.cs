@@ -1474,9 +1474,9 @@ internal static class ValidationExercises
         }
         finally
         {
-            filter.IsOpen = false;
-            tagManager.IsOpen = false;
-            selector.IsPopupOpen = false;
+            WindowValidationInput.ClosePopupForCleanup(filter);
+            WindowValidationInput.ClosePopupForCleanup(tagManager);
+            WindowValidationInput.ClosePopupForCleanup(selector.Popup);
             main.ShowWorkspace(originalWorkspace);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
         }
@@ -1523,7 +1523,7 @@ internal static class ValidationExercises
         }
         finally
         {
-            filter.IsOpen = false;
+            WindowValidationInput.ClosePopupForCleanup(filter);
             options.Children.Clear();
             foreach (var child in originalChildren)
             {

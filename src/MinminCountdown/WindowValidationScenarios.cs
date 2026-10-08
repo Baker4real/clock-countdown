@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
@@ -1250,8 +1251,7 @@ public sealed partial class MainWindow
 
         try
         {
-            popup.IsOpen = false;
-            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.ClosePopupForCleanup(popup);
             Activate();
             Keyboard.Focus(trigger);
             WindowValidationInput.Pump(Dispatcher);
@@ -1288,8 +1288,9 @@ public sealed partial class MainWindow
 
             var escapeHandled = WindowValidationInput.RaisePreviewKey(menuDelete ?? menuEdit, Key.Escape);
             WindowValidationInput.Pump(Dispatcher);
+            var popupClosedAfterEscape = WindowValidationInput.WaitForPopupClosed(popup);
             var closedBackToTrigger =
-                !popup.IsOpen &&
+                popupClosedAfterEscape &&
                 (trigger.IsKeyboardFocusWithin ||
                  ReferenceEquals(FocusManager.GetFocusedElement(this), trigger));
             return
@@ -1301,8 +1302,7 @@ public sealed partial class MainWindow
         }
         finally
         {
-            popup.IsOpen = false;
-            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.ClosePopupForCleanup(popup);
         }
     }
 
@@ -1314,8 +1314,7 @@ public sealed partial class MainWindow
     {
         try
         {
-            popup.IsOpen = false;
-            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.ClosePopupForCleanup(popup);
             Activate();
             WindowValidationInput.Pump(Dispatcher);
             popup.IsOpen = true;
@@ -1355,8 +1354,7 @@ public sealed partial class MainWindow
         }
         finally
         {
-            popup.IsOpen = false;
-            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.ClosePopupForCleanup(popup);
         }
     }
 
@@ -3967,36 +3965,41 @@ public sealed partial class FloatingWindow
     /// </summary>
     private bool ProbeNoteOverflowMenuKeyboard(Button trigger, Popup popup, Button menuEdit)
     {
-        popup.IsOpen = false;
-        WindowValidationInput.Pump(Dispatcher);
-        Window.GetWindow(trigger)?.Activate();
-        Keyboard.Focus(trigger);
-        WindowValidationInput.Pump(Dispatcher);
-        trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-        WindowValidationInput.Pump(Dispatcher);
-        WindowValidationInput.Pump(Dispatcher);
-        var openedWithFocusOnEdit =
-            popup.IsOpen &&
-            ReferenceEquals(Keyboard.FocusedElement, menuEdit);
-        menuEdit.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
-        WindowValidationInput.Pump(Dispatcher);
-        var deleteButton = popup.Child is { } root
-            ? ValidationDescendants<Button>(root).FirstOrDefault(button =>
-                string.Equals(button.Content as string, "删除", StringComparison.Ordinal))
-            : null;
-        var tabReachesDelete =
-            deleteButton is not null &&
-            ReferenceEquals(Keyboard.FocusedElement, deleteButton);
-        var escapeHandled = deleteButton is not null &&
-            WindowValidationInput.RaisePreviewKey(deleteButton, Key.Escape);
-        WindowValidationInput.Pump(Dispatcher);
-        var closedBackToTrigger =
-            !popup.IsOpen &&
-            (trigger.IsKeyboardFocusWithin ||
-             ReferenceEquals(FocusManager.GetFocusedElement(this), trigger));
-        popup.IsOpen = false;
-        WindowValidationInput.Pump(Dispatcher);
-        return openedWithFocusOnEdit && tabReachesDelete && escapeHandled && closedBackToTrigger;
+        try
+        {
+            WindowValidationInput.ClosePopupForCleanup(popup);
+            Window.GetWindow(trigger)?.Activate();
+            Keyboard.Focus(trigger);
+            WindowValidationInput.Pump(Dispatcher);
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.Pump(Dispatcher);
+            var openedWithFocusOnEdit =
+                popup.IsOpen &&
+                ReferenceEquals(Keyboard.FocusedElement, menuEdit);
+            menuEdit.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            WindowValidationInput.Pump(Dispatcher);
+            var deleteButton = popup.Child is { } root
+                ? ValidationDescendants<Button>(root).FirstOrDefault(button =>
+                    string.Equals(button.Content as string, "删除", StringComparison.Ordinal))
+                : null;
+            var tabReachesDelete =
+                deleteButton is not null &&
+                ReferenceEquals(Keyboard.FocusedElement, deleteButton);
+            var escapeHandled = deleteButton is not null &&
+                WindowValidationInput.RaisePreviewKey(deleteButton, Key.Escape);
+            WindowValidationInput.Pump(Dispatcher);
+            var closedBackToTrigger =
+                escapeHandled &&
+                WindowValidationInput.WaitForPopupClosed(popup) &&
+                (trigger.IsKeyboardFocusWithin ||
+                 ReferenceEquals(FocusManager.GetFocusedElement(this), trigger));
+            return openedWithFocusOnEdit && tabReachesDelete && closedBackToTrigger;
+        }
+        finally
+        {
+            WindowValidationInput.ClosePopupForCleanup(popup);
+        }
     }
 
     private void EnsureProbeNotes(List<string> createdIds, int minimumVisible)
@@ -4602,6 +4605,38 @@ internal sealed record ComboBoxPointerExerciseResult(
 
 internal static class WindowValidationInput
 {
+    /// <summary>
+    /// Waits for the popup's own close path to complete without changing its state.
+    /// Callers use this only as an observation before an assertion; fixture cleanup
+    /// belongs in <c>ClosePopupForCleanup</c> from setup/finally blocks.
+    /// </summary>
+    public static bool WaitForPopupClosed(Popup popup, int timeoutMilliseconds = 300)
+    {
+        var deadline = Stopwatch.GetTimestamp() +
+            (long)(timeoutMilliseconds * (double)Stopwatch.Frequency / 1000d);
+        while (popup.IsOpen && Stopwatch.GetTimestamp() < deadline)
+        {
+            Pump(popup.Dispatcher);
+            System.Threading.Thread.Sleep(5);
+        }
+
+        return !popup.IsOpen;
+    }
+
+    /// <summary>
+    /// Restores a popup fixture after a scenario. This is deliberately separate
+    /// from <see cref="WaitForPopupClosed"/> so cleanup cannot turn a failed
+    /// close assertion into a passing result.
+    /// </summary>
+    public static void ClosePopupForCleanup(Popup popup)
+    {
+        if (popup.IsOpen)
+        {
+            popup.IsOpen = false;
+            Pump(popup.Dispatcher);
+        }
+    }
+
     public static void Pump(Dispatcher dispatcher)
     {
         var frame = new DispatcherFrame();
@@ -4628,7 +4663,7 @@ internal static class WindowValidationInput
         var triggerFocused = false;
         try
         {
-            popup.IsOpen = false;
+            ClosePopupForCleanup(popup);
             Window.GetWindow(trigger)?.Activate();
             Keyboard.Focus(trigger);
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -4638,7 +4673,7 @@ internal static class WindowValidationInput
             escapeHandled = initialFocus is UIElement input &&
                 RaisePreviewKey(input, Key.Escape);
             Pump(popup.Dispatcher);
-            popupClosedAfterEscape = !popup.IsOpen;
+            popupClosedAfterEscape = WaitForPopupClosed(popup);
             triggerFocused = trigger.IsKeyboardFocusWithin ||
                 (Window.GetWindow(trigger) is { } triggerWindow &&
                  ReferenceEquals(FocusManager.GetFocusedElement(triggerWindow), trigger));
@@ -4662,11 +4697,9 @@ internal static class WindowValidationInput
                 RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent
             });
             Pump(popup.Dispatcher);
-            popup.IsOpen = false;
-            Pump(popup.Dispatcher);
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Pump(popup.Dispatcher);
-            triggerSecondClickCloses = openedForSecondClick && !popup.IsOpen;
+            triggerSecondClickCloses = openedForSecondClick && WaitForPopupClosed(popup);
 
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Pump(popup.Dispatcher);
@@ -4675,10 +4708,11 @@ internal static class WindowValidationInput
             Pump(popup.Dispatcher);
             var triggerEscapeHandled = RaisePreviewKey(trigger, Key.Escape);
             Pump(popup.Dispatcher);
+            var triggerEscapeClosed = WaitForPopupClosed(popup);
             escapeFromTriggerClosesAndKeepsFocus =
                 openedForTriggerEscape &&
                 triggerEscapeHandled &&
-                !popup.IsOpen &&
+                triggerEscapeClosed &&
                 (trigger.IsKeyboardFocusWithin ||
                  (Window.GetWindow(trigger) is { } triggerWindowAfterEscape &&
                   ReferenceEquals(FocusManager.GetFocusedElement(triggerWindowAfterEscape), trigger)));
@@ -4686,15 +4720,13 @@ internal static class WindowValidationInput
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Pump(popup.Dispatcher);
             Keyboard.Focus(outsideFocus);
-            popup.IsOpen = false;
             Pump(popup.Dispatcher);
             outsideFocusPreserved =
-                outsideFocus.IsKeyboardFocusWithin;
+                popup.IsOpen && outsideFocus.IsKeyboardFocusWithin;
         }
         finally
         {
-            popup.IsOpen = false;
-            Pump(popup.Dispatcher);
+            ClosePopupForCleanup(popup);
         }
 
         return new PopupFocusExerciseResult(

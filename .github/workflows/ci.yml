@@ -30,12 +30,26 @@ jobs:
         with:
           dotnet-version: '10.0.302'
 
+      - name: Run read-only build preflight
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\tools\Test-CountdownBuildPreflight.ps1 -Json
+          $preflightExit = $LASTEXITCODE
+          if ($preflightExit -ne 0) { exit $preflightExit }
+
       - name: Build C# artifacts
         shell: pwsh
         run: |
           & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Build-CountdownApplication.ps1
           $buildExit = $LASTEXITCODE
           if ($buildExit -ne 0) { exit $buildExit }
+
+      - name: Run low-impact tooling and popup guards
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\tools\Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness,Tooling -StageTimeoutSeconds 300
+          $suiteExit = $LASTEXITCODE
+          if ($suiteExit -ne 0) { exit $suiteExit }
 
       - name: Test release contract
         shell: pwsh

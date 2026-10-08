@@ -3618,11 +3618,11 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 580 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs and offline holiday data'
-Assert-Equal 577 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs and offline holiday data'
+Assert-Equal 519 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs and offline holiday data'
+Assert-Equal 515 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 55 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal 61 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
 Assert-Equal 502 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload including offline holiday data'
 foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
@@ -6237,9 +6237,13 @@ Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('CommitState')
 Write-TestSegmentTiming -Name 'InstallerValidation'
 $installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Install-Countdown.ps1'), [System.Text.Encoding]::UTF8)
 $buildSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1'), [System.Text.Encoding]::UTF8)
+$buildPreflightSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'tools\Countdown.BuildPreflight.psm1'), [System.Text.Encoding]::UTF8)
+$buildPreflightScript = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'tools\Test-CountdownBuildPreflight.ps1'), [System.Text.Encoding]::UTF8)
 $deploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
-Assert-Equal $true $buildSource.Contains("`$dotnetRoot = 'D:\Codex\tools\dotnet\10.0'") 'Build uses the canonical managed dotnet 10.0 root'
-Assert-Equal $false ([regex]::IsMatch($buildSource, 'dotnet\\10(?:\\|[''\"]|\s*$)')) 'Build contains no literal or dynamically joined dotnet 10 root without the minor version'
+Assert-Equal $true ($buildSource.Contains("tools\Countdown.BuildPreflight.psm1") -and $buildSource.Contains('Resolve-CountdownBuildDotnet') -and $buildSource.Contains('Get-CountdownBuildPaths')) 'Build reuses the shared SDK and clean-path preflight module'
+Assert-Equal $true ($buildPreflightSource.Contains("`$env:COUNTDOWN_DOTNET_EXE") -and $buildPreflightSource.Contains("D:\Codex\tools\dotnet\10.0\dotnet.exe") -and $buildPreflightSource.Contains('Get-Command dotnet')) 'Shared preflight preserves parameter, environment, managed and PATH SDK resolution order'
+Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$RepositoryRoot 'global.json'") -and $buildPreflightSource.Contains('Test-CountdownSdkVersionMatch')) 'Shared preflight resolves and checks the repository global.json SDK contract'
+Assert-Equal $true ($buildPreflightScript.Contains('[switch]$RequireClean') -and $buildPreflightScript.Contains('[switch]$Json') -and $buildPreflightScript.Contains('Failures')) 'Build preflight entry point exposes clean gating and structured failure output'
 $installerDotnetPathIndex = $installerSource.IndexOf("`$dotnetPath = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'")
 $installerDotnetCheckIndex = $installerSource.IndexOf('if (-not (Test-Path -LiteralPath $dotnetPath -PathType Leaf))', $installerDotnetPathIndex)
 $installerDotnetErrorIndex = $installerSource.IndexOf('未找到验收套件所需的受管 dotnet', $installerDotnetCheckIndex)
@@ -6253,19 +6257,10 @@ Assert-Equal $true `
         $installerDotnetPassIndex -gt $installerValidationSuiteIndex) `
     'Installer validates and passes the canonical managed dotnet 10.0 executable before invoking the validation suite'
 Assert-Equal 2 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'Both self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
-$managedBuildIntermediates = @(
-    'src\MinminCountdown.Core\bin',
-    'src\MinminCountdown.Core\obj',
-    'src\MinminCountdown\bin',
-    'src\MinminCountdown\obj',
-    'src\MinminCountdown.Verification\bin',
-    'src\MinminCountdown.Verification\obj'
-)
-foreach ($relativePath in $managedBuildIntermediates) {
-    Assert-Equal $true $buildSource.Contains("'$relativePath'") "Clean build removes managed intermediate directory $relativePath"
-}
-Assert-Equal $true $buildSource.Contains('$managedCleanCandidates = @($applicationOutput, $verificationOutput)') 'Clean build derives removal candidates from actual output paths independently of the allowlist'
-Assert-Equal $true $buildSource.Contains('$projectDirectories = @($coreProject, $applicationProject, $verificationProject)') 'Clean build derives intermediate candidates from all actual C# project paths'
+Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$project 'bin'") -and $buildPreflightSource.Contains("Join-Path `$project 'obj'")) 'Shared build path contract includes managed bin and obj directories for each project'
+Assert-Equal $true $buildSource.Contains('$buildPaths = Get-CountdownBuildPaths -RepositoryRoot $PSScriptRoot') 'Clean build derives candidates from the shared build path contract'
+Assert-Equal $true $buildSource.Contains('$managedCleanCandidates = @($buildPaths.CleanCandidates)') 'Clean build passes the shared candidate list to the managed cleanup gate'
+Assert-Equal $true ($buildPreflightSource.Contains("'MinminCountdown.Core'") -and $buildPreflightSource.Contains("'MinminCountdown'") -and $buildPreflightSource.Contains("'MinminCountdown.Verification'")) 'Shared build path contract covers all three C# projects'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build rejects absolute removal targets outside the repository root'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath -notin $expectedCleanPaths') 'Clean build validates every absolute removal target against its exact allowlist'
 Assert-Equal $true $buildSource.Contains("`$runEvidenceCapabilityRoot = 'D:\agents\run-evidence'") 'Clean build uses the governed run-evidence capability root for isolated release clones'

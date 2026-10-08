@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "evidenceState": "candidate",
+  "executionState": "dry-run",
+  "runtime": "static-html-no-tauri-runtime",
+  "window": {
+    "width": 520,
+    "height": 390
+  },
+  "productionPath": false,
+  "realSettingsWrite": false,
+  "commands": {
+    "getSnapshot": {
+      "version": 1,
+      "request": {
+        "kind": "get_snapshot",
+        "source": "isolated-fixture"
+      },
+      "response": {
+        "kind": "snapshot",
+        "schemaVersion": 10,
+        "readOnly": true
+      }
+    },
+    "setFilter": {
+      "version": 1,
+      "request": {
+        "kind": "set_filter",
+        "status": "all"
+      },
+      "response": {
+        "kind": "rejected",
+        "reason": "candidate_is_read_only"
+      }
+    }
+  },
+  "reference": {
+    "path": "assets/ui-references/floating-window/520x390/2026-09-11-v22/floating-countdowns-day.png",
+    "sha256": "2C9854511782A7949912F3239EF48CA19C10CDC8A26BCB5671C6896737877390"
+  },
+  "candidateRender": {
+    "path": "docs/evidence/clock-countdown-issue-209-tauri-candidate/candidate-render.png",
+    "sha256": "5B2531FC92D7CCCFDD2329A3046EDC4ADBFC13E661DBECF81A6ACD0926644A6E",
+    "renderKind": "headless-browser-static-html"
+  },
+  "comparison": {
+    "path": "docs/evidence/clock-countdown-issue-209-tauri-candidate/side-by-side.png",
+    "sha256": "F0644CC5C2360E171BC2ED13A60AEC04DF606738294979D6A8607DE30DEAAB36"
+  },
+  "candidateSource": {
+    "path": "docs/evidence/clock-countdown-issue-209-tauri-candidate/candidate.html",
+    "sha256": "5A5224AEA69203493A18CF3CCD7A74475E397E13E12BCBC7B7C0C9C6856F5786"
+  }
+}

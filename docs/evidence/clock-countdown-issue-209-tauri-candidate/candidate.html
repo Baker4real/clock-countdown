@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=520, height=390, initial-scale=1">
+  <title>敏敏子倒计时 · #209 candidate</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #fffaf5;
+      --peach: #ffe5dc;
+      --pink: #f4b0bd;
+      --pink-strong: #d4526a;
+      --ink: #3b190d;
+      --muted: #865e55;
+      --line: #efcfc6;
+      --number: #c23e68;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 520px; height: 390px; background: transparent; }
+    .shell { width: 520px; height: 390px; padding: 18px 18px 14px; border: 1px solid var(--line); border-radius: 22px; background: radial-gradient(circle at 88% 5%, #fff0e8 0 18%, transparent 42%), var(--paper); box-shadow: 0 18px 44px #9a62552b; }
+    header { display: flex; align-items: center; justify-content: space-between; height: 40px; }
+    .brand { display: flex; gap: 10px; align-items: center; font-weight: 700; color: var(--ink); }
+    .mascot { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--peach); font-size: 18px; }
+    .actions { display: flex; gap: 6px; }
+    button { border: 1px solid transparent; border-radius: 999px; padding: 7px 11px; color: var(--ink); background: #fff; font: inherit; font-size: 12px; }
+    button.primary { color: #fff; background: var(--pink-strong); }
+    main { display: grid; gap: 10px; margin-top: 12px; }
+    .card { display: grid; grid-template-columns: 1fr auto; align-items: center; min-height: 103px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(115deg, #fff6ef, #ffe7e2); }
+    .card.secondary { min-height: 82px; background: #fff; }
+    .copy { min-width: 0; }
+    .title { overflow: hidden; color: var(--ink); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .deadline { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .digits { display: flex; align-items: center; gap: 4px; color: var(--number); font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; }
+    .block { min-width: 32px; padding: 7px 4px; border-radius: 9px; background: var(--pink); text-align: center; font-size: 22px; font-weight: 700; line-height: 1; }
+    .secondary .block { min-width: 26px; padding: 6px 3px; background: #f8e9e4; font-size: 18px; }
+    .unit { color: var(--muted); font-size: 11px; }
+    footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; color: var(--muted); font-size: 11px; }
+    .candidate-badge { color: var(--pink-strong); font-weight: 700; }
+  </style>
+</head>
+<body data-evidence-state="candidate" data-production-path="false">
+  <section class="shell" aria-label="Tauri 闸门候选静态切片">
+    <header>
+      <div class="brand"><span class="mascot" aria-hidden="true">♡</span><span>今天也要按时出发</span></div>
+      <div class="actions"><button aria-label="打开管理窗口">设置</button><button class="primary" aria-label="新增便签">＋ 便签</button></div>
+    </header>
+    <main>
+      <article class="card"><div class="copy"><div class="title">距离下班</div><div class="deadline">今天 7 月 18 日 · 工作日</div></div><div class="digits" aria-label="4 天 13 小时 18 分钟 59 秒"><span class="block">4</span><span class="unit">天</span><span class="block">13</span><span class="unit">时</span><span class="block">18</span><span class="unit">分</span></div></article>
+      <article class="card secondary"><div class="copy"><div class="title">准备周末的小旅行</div><div class="deadline">7 月 18 日 09:30</div></div><div class="digits" aria-label="12 天 00 小时"><span class="block">12</span><span class="unit">天</span><span class="block">00</span><span class="unit">时</span></div></article>
+    </main>
+    <footer><span class="candidate-badge">candidate · read-only fixture</span><span>reduced motion ready</span></footer>
+  </section>
+</body>
+</html>

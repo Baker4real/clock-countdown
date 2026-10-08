@@ -15,7 +15,11 @@ param(
     [Parameter(Mandatory)] [string] $WorkingDirectory,
     [Parameter(Mandatory)] [string] $StdoutPath,
     [Parameter(Mandatory)] [string] $StderrPath,
-    [string] $DesktopName = 'MinminSuiteIso'
+    [string] $DesktopName = 'MinminSuiteIso',
+    [ValidateRange(1, 86400)] [int] $TimeoutSeconds = 1800,
+    [string] $ProcessIdentityPath,
+    [int] $OwnerProcessId = 0,
+    [string] $OwnerStartedAtUtc
 )
 
 Set-StrictMode -Version Latest
@@ -37,8 +41,10 @@ public static class IsolatedSuiteProcess
     private const uint FileAttributeNormal = 0x00000080;
     private const uint BelowNormalPriorityClass = 0x00004000;
     private const uint CreateUnicodeEnvironment = 0x00000400;
+    private const uint CreateSuspended = 0x00000004;
     private const int StartfUseStdHandles = 0x00000100;
     private const uint Infinite = 0xFFFFFFFF;
+    private const uint WaitTimeout = 0x00000102;
     private static readonly IntPtr InvalidHandleValue = new IntPtr(-1);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -93,6 +99,47 @@ public static class IsolatedSuiteProcess
     private static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoCounters
+    {
+        public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount;
+        public ulong ReadTransferCount, WriteTransferCount, OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BasicLimitInformation
+    {
+        public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass, SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ExtendedLimitInformation
+    {
+        public BasicLimitInformation BasicLimitInformation;
+        public IoCounters IoInfo;
+        public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateJobObjectW(IntPtr jobAttributes, string name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref ExtendedLimitInformation info, uint length);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint ResumeThread(IntPtr thread);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
 
     private static IntPtr OpenInheritableFile(string path, uint access, uint creationDisposition)
@@ -110,7 +157,24 @@ public static class IsolatedSuiteProcess
         return handle;
     }
 
-    public static int Run(string desktopName, string application, string commandLine, string workingDirectory, string stdoutPath, string stderrPath)
+    private static bool IsOwnerAlive(int ownerProcessId, string ownerStartedAtUtc)
+    {
+        if (ownerProcessId <= 0 || String.IsNullOrWhiteSpace(ownerStartedAtUtc)) return true;
+        try
+        {
+            using (var owner = System.Diagnostics.Process.GetProcessById(ownerProcessId))
+            {
+                if (owner.HasExited) return false;
+                var expected = DateTime.Parse(ownerStartedAtUtc, null, System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime();
+                return owner.StartTime.ToUniversalTime().Ticks == expected.Ticks;
+            }
+        }
+        catch (ArgumentException) { return false; }
+        catch (InvalidOperationException) { return false; }
+        catch (System.ComponentModel.Win32Exception) { return false; }
+    }
+
+    public static int Run(string desktopName, string application, string commandLine, string workingDirectory, string stdoutPath, string stderrPath, int timeoutSeconds, string identityPath, int ownerProcessId, string ownerStartedAtUtc)
     {
         IntPtr desktop = CreateDesktopW(desktopName, IntPtr.Zero, IntPtr.Zero, 0, GenericAll, IntPtr.Zero);
         if (desktop == IntPtr.Zero)
@@ -121,6 +185,8 @@ public static class IsolatedSuiteProcess
         IntPtr stdin = IntPtr.Zero;
         IntPtr stdout = IntPtr.Zero;
         IntPtr stderr = IntPtr.Zero;
+        IntPtr job = IntPtr.Zero;
+        bool assignedJob = false;
         ProcessInformation info = null;
         try
         {
@@ -138,15 +204,64 @@ public static class IsolatedSuiteProcess
                 StdError = stderr
             };
             info = new ProcessInformation();
+            job = CreateJobObjectW(IntPtr.Zero, null);
+            if (job == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("CreateJobObjectW 失败 error=" + Marshal.GetLastWin32Error());
+            }
+            var limits = new ExtendedLimitInformation();
+            limits.BasicLimitInformation.LimitFlags = 0x00002000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            if (!SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimitInformation))))
+            {
+                throw new InvalidOperationException("SetInformationJobObject 失败 error=" + Marshal.GetLastWin32Error());
+            }
             var mutableCommandLine = new StringBuilder(commandLine, 32768);
             bool created = CreateProcessW(application, mutableCommandLine, IntPtr.Zero, IntPtr.Zero, true,
-                BelowNormalPriorityClass | CreateUnicodeEnvironment, IntPtr.Zero, workingDirectory, startup, info);
+                BelowNormalPriorityClass | CreateUnicodeEnvironment | CreateSuspended, IntPtr.Zero, workingDirectory, startup, info);
             if (!created)
             {
                 throw new InvalidOperationException("CreateProcessW 失败: " + application + " error=" + Marshal.GetLastWin32Error());
             }
-
-            WaitForSingleObject(info.Process, Infinite);
+            if (!AssignProcessToJobObject(job, info.Process))
+            {
+                throw new InvalidOperationException("AssignProcessToJobObject 失败 error=" + Marshal.GetLastWin32Error());
+            }
+            assignedJob = true;
+            if (!String.IsNullOrWhiteSpace(identityPath))
+            {
+                var started = System.Diagnostics.Process.GetProcessById(info.ProcessId).StartTime.ToUniversalTime();
+                var identityJson = "{\"ProcessId\":" + info.ProcessId + ",\"StartedAtUtc\":\"" + started.ToString("o") + "\"}";
+                var identityTempPath = identityPath + ".tmp-" + Guid.NewGuid().ToString("N");
+                System.IO.File.WriteAllText(identityTempPath, identityJson, Encoding.UTF8);
+                System.IO.File.Move(identityTempPath, identityPath, true);
+            }
+            if (ResumeThread(info.Thread) == 0xFFFFFFFF)
+            {
+                throw new InvalidOperationException("ResumeThread 失败 error=" + Marshal.GetLastWin32Error());
+            }
+            var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+            while (true)
+            {
+                if (!IsOwnerAlive(ownerProcessId, ownerStartedAtUtc))
+                {
+                    TerminateProcess(info.Process, 125);
+                    WaitForSingleObject(info.Process, 5000);
+                    return 125;
+                }
+                var remaining = deadline - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    TerminateProcess(info.Process, 124);
+                    WaitForSingleObject(info.Process, 5000);
+                    return 124;
+                }
+                var waitResult = WaitForSingleObject(info.Process, (uint)Math.Min(250, Math.Max(1, (int)remaining.TotalMilliseconds)));
+                if (waitResult == 0) break;
+                if (waitResult != WaitTimeout)
+                {
+                    throw new InvalidOperationException("WaitForSingleObject 失败 error=" + Marshal.GetLastWin32Error());
+                }
+            }
             uint code;
             if (!GetExitCodeProcess(info.Process, out code))
             {
@@ -158,9 +273,15 @@ public static class IsolatedSuiteProcess
         {
             if (info != null)
             {
+                if (!assignedJob && info.Process != IntPtr.Zero)
+                {
+                    TerminateProcess(info.Process, 1);
+                    WaitForSingleObject(info.Process, 5000);
+                }
                 if (info.Process != IntPtr.Zero) CloseHandle(info.Process);
                 if (info.Thread != IntPtr.Zero) CloseHandle(info.Thread);
             }
+            if (job != IntPtr.Zero) CloseHandle(job);
             if (stdin != IntPtr.Zero) CloseHandle(stdin);
             if (stdout != IntPtr.Zero) CloseHandle(stdout);
             if (stderr != IntPtr.Zero) CloseHandle(stderr);
@@ -179,5 +300,5 @@ foreach ($argument in $ArgumentList) {
 $commandLine = $quoted -join ' '
 
 $code = [IsolatedSuiteProcess]::Run(
-    $DesktopName, $FilePath, $commandLine, $WorkingDirectory, $StdoutPath, $StderrPath)
+    $DesktopName, $FilePath, $commandLine, $WorkingDirectory, $StdoutPath, $StderrPath, $TimeoutSeconds, $ProcessIdentityPath, $OwnerProcessId, $OwnerStartedAtUtc)
 Write-Output $code

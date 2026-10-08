@@ -39,6 +39,7 @@ public sealed partial class FloatingWindow : Window
     private WorkspaceKind _renderedWorkspace = WorkspaceKind.Countdowns;
     private readonly Dictionary<WorkspaceKind, double> _workspaceScrollOffsets = new();
     private readonly Dictionary<string, string> _noteCardErrors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _lastCountdownSeconds = new(StringComparer.Ordinal);
     private int _floatingRowsRenderVersion;
     private bool _settingDefaultDate;
     private bool _dateDirty;
@@ -1655,6 +1656,16 @@ public sealed partial class FloatingWindow : Window
                 _calendar.GetWorkdayEndCountdown(nowUtc, snapshot.Settings.Preferences) is { } workdayEnd)
             {
                 records.Insert(0, workdayEnd);
+            }
+
+            var visibleCountdownIds = records
+                .Select(static record => record.Id)
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var staleId in _lastCountdownSeconds.Keys
+                         .Where(id => !visibleCountdownIds.Contains(id))
+                         .ToArray())
+            {
+                _lastCountdownSeconds.Remove(staleId);
             }
 
             FloatingCountdownCount = records.Count(record => record.Id != "__workday_end__");

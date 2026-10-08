@@ -10,6 +10,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'tools\Countdown.BuildPreflight.psm1') -Force
+
 if ($Incremental -and $Clean) {
     throw '-Incremental 与 -Clean 互斥：增量构建不清理受管构建目录，发布收口仍走全量 -Clean。'
 }
@@ -25,23 +27,8 @@ function Write-BuildSegmentTiming {
     Write-Output ("BUILD_SEGMENT_SECONDS {0}={1}" -f $Name, $seconds.ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture))
 }
 
-$dotnetRoot = 'D:\Codex\tools\dotnet\10.0'
-$dotnet = if ($DotnetExe) {
-    $DotnetExe
-}
-elseif ($env:COUNTDOWN_DOTNET_EXE) {
-    $env:COUNTDOWN_DOTNET_EXE
-}
-else {
-    Join-Path $dotnetRoot 'dotnet.exe'
-}
-if (-not (Test-Path -LiteralPath $dotnet -PathType Leaf)) {
-    $pathDotnet = Get-Command dotnet -ErrorAction SilentlyContinue
-    if ($null -eq $pathDotnet) {
-        throw "未找到受管 .NET SDK：$dotnet"
-    }
-    $dotnet = $pathDotnet.Source
-}
+$dotnetResolution = Resolve-CountdownBuildDotnet -RepositoryRoot $PSScriptRoot -DotnetExe $DotnetExe
+$dotnet = $dotnetResolution.Path
 
 $env:DOTNET_ROOT = Split-Path -Parent $dotnet
 if (-not $env:DOTNET_CLI_HOME -and (Test-Path -LiteralPath 'D:\Codex\.dotnet-cli' -PathType Container)) {
@@ -110,23 +97,9 @@ if ($Clean) {
     if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
         throw "未找到受管构建目录清理入口：$safeTreeDelete"
     }
-    $expectedCleanPaths = @(
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'app')),
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'verification')),
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Core\bin')),
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Core\obj')),
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown\bin')),
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown\obj')),
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\bin')),
-        [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\obj'))
-    )
-    $projectDirectories = @($coreProject, $applicationProject, $verificationProject) |
-        ForEach-Object { Split-Path -Parent $_ }
-    $managedCleanCandidates = @($applicationOutput, $verificationOutput)
-    foreach ($projectDirectory in $projectDirectories) {
-        $managedCleanCandidates += Join-Path $projectDirectory 'bin'
-        $managedCleanCandidates += Join-Path $projectDirectory 'obj'
-    }
+    $buildPaths = Get-CountdownBuildPaths -RepositoryRoot $PSScriptRoot
+    $managedCleanCandidates = @($buildPaths.CleanCandidates)
+    $expectedCleanPaths = @($buildPaths.CleanCandidates | ForEach-Object { [System.IO.Path]::GetFullPath($_) })
     $repositoryRootPrefix = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') + '\'
     $runEvidenceRootPrefix = [System.IO.Path]::GetFullPath($runEvidenceCapabilityRoot).TrimEnd('\') + '\'
     foreach ($cleanPath in $managedCleanCandidates) {

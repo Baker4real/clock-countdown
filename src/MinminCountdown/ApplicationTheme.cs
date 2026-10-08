@@ -145,7 +145,6 @@ internal sealed class ApplicationTheme
         {
             EasingMode = EasingMode.EaseOut
         };
-        _resources["MotionQuarticEaseOut"] = MotionTokens.CreateEaseOut();
     }
 
     internal static bool MeetsContrast(Brush background, Brush foreground, double minimum)

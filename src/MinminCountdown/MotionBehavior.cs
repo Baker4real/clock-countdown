@@ -1201,8 +1201,7 @@ internal static class PopupMotionBehavior
         private IEasingFunction ResolveEasing()
         {
             var source = _visual ?? (FrameworkElement)_owner;
-            return source.TryFindResource("MotionQuarticEaseOut") as IEasingFunction ??
-                source.TryFindResource("MotionEaseOut") as IEasingFunction ??
+            return source.TryFindResource("MotionEaseOut") as IEasingFunction ??
                 MotionTokens.CreateEaseOut();
         }
     }

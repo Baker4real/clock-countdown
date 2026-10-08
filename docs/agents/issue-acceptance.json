@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "recordFields": [
+    "number",
+    "taskType",
+    "requiredChecks",
+    "evidence",
+    "notApplicable",
+    "status",
+    "summary",
+    "missing",
+    "next"
+  ],
+  "statuses": [
+    "candidate",
+    "open",
+    "closed"
+  ],
+  "checks": {
+    "diff-check": "git diff --check",
+    "docs-links": "all local Markdown links resolve",
+    "low-impact-suite": "the README low-impact launcher reports the required stages completed",
+    "runtime-behavior": "the changed user-visible behavior passes its runtime exercise",
+    "visual-baseline": "the required current-source WPF frames and manifest/sourceBinding are present",
+    "release-contract": "the release contract and package closure pass",
+    "office-live": "office deployment receipt, transfer ledger, and independent remote rereads pass",
+    "candidate-runtime": "the candidate runtime, offline path, and rollback evidence pass"
+  },
+  "taskTypes": {
+    "docs": {
+      "requiredChecks": [
+        "diff-check",
+        "docs-links"
+      ],
+      "optionalChecks": [
+        "low-impact-suite"
+      ],
+      "n/aChecks": [
+        "runtime-behavior",
+        "visual-baseline",
+        "release-contract",
+        "office-live",
+        "candidate-runtime"
+      ],
+      "n/aRule": "Only mark a check not applicable when the record names the untouched runtime surface and gives a concrete reason."
+    },
+    "behavior": {
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior"
+      ],
+      "optionalChecks": [
+        "visual-baseline"
+      ],
+      "n/aChecks": [
+        "docs-links",
+        "release-contract",
+        "office-live",
+        "candidate-runtime"
+      ],
+      "n/aRule": "A visual check is not applicable only when no rendered surface changes."
+    },
+    "visual": {
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "visual-baseline"
+      ],
+      "optionalChecks": [],
+      "n/aChecks": [
+        "docs-links",
+        "release-contract",
+        "office-live",
+        "candidate-runtime"
+      ],
+      "n/aRule": "Every affected surface, viewport, state, and current-source manifest binding must be listed in evidence."
+    },
+    "release": {
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "release-contract"
+      ],
+      "optionalChecks": [
+        "runtime-behavior"
+      ],
+      "n/aChecks": [
+        "docs-links",
+        "visual-baseline",
+        "office-live",
+        "candidate-runtime"
+      ],
+      "n/aRule": "Office live evidence remains separate unless the issue explicitly changes office deployment."
+    },
+    "office": {
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "release-contract",
+        "office-live"
+      ],
+      "optionalChecks": [],
+      "n/aChecks": [
+        "docs-links",
+        "runtime-behavior",
+        "visual-baseline",
+        "candidate-runtime"
+      ],
+      "n/aRule": "The office-live check cannot be replaced by ValidateOnly or a local build."
+    },
+    "gate": {
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "candidate-runtime"
+      ],
+      "optionalChecks": [
+        "visual-baseline"
+      ],
+      "n/aChecks": [
+        "docs-links",
+        "release-contract",
+        "office-live"
+      ],
+      "n/aRule": "A candidate or dry-run never satisfies candidate-runtime; it must be recorded as incomplete."
+    }
+  }
+}

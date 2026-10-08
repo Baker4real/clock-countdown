@@ -4483,6 +4483,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $mainWindowXamlSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml') -Raw -Encoding UTF8
     Assert-Equal $true (
+        $mainWindowXamlSource -match '<Grid x:Name="MainScaleViewport"' -and
+        $mainWindowXamlSource -match 'Width="1165"\s+Height="1350"\s+MinWidth="1165"\s+MinHeight="1350"' -and
+        $mainWindowXamlSource -notmatch '<Viewbox[^>]+x:Name="MainScaleViewport"') '#208 主窗口直接使用 1165×1350 DIP 网格，不再以 Viewbox 缩放'
+    Assert-Equal $true (
         $mainWindowXamlSource -match 'x:Name="NoteDateFilterLabel"') '筛选弹层便签日期带可见标签元素（#153 源码契约）'
     Assert-Equal $true (
         $mainWindowXamlSource -match 'x:Name="EmptyNotesMessage"(?s).*?TextWrapping="Wrap"') '便签空态文案允许换行（#153 源码契约）'
@@ -4765,8 +4769,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.CountdownRemainingGateIsolationBehavior) '主窗口倒计时剩余时间门禁负向夹具独立失败'
     Assert-Equal 5 @($adapterValidation.CountdownRemainingSamples).Count '主窗口倒计时剩余时间覆盖四种精度和超长天数'
     Assert-Equal 0 @($adapterValidation.CountdownRemainingSamples | Where-Object { [Math]::Abs([double] $_.ColumnWidth - 300) -gt 0.01 -or [Math]::Abs([double] $_.ActualColumnWidth - 300) -gt 0.5 -or -not $_.IsFullyVisible }).Count '主窗口五项剩余时间样本均完整位于实际 300px 固定列'
-    Assert-Equal '20;20;20;20' ((@($adapterValidation.CountdownRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '主窗口四种普通精度保持 20 DIP'
-    Assert-Equal $true ([bool] ([double] @($adapterValidation.CountdownRemainingSamples)[4].FontSize -ge 14 -and [double] @($adapterValidation.CountdownRemainingSamples)[4].FontSize -lt 20)) '主窗口超长天数仅对长文本执行有界字号适配'
+    Assert-Equal '26;26;26;26' ((@($adapterValidation.CountdownRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '主窗口四种普通精度保持 26 DIP'
+    Assert-Equal $true ([bool] ([double] @($adapterValidation.CountdownRemainingSamples)[4].FontSize -ge 14 -and [double] @($adapterValidation.CountdownRemainingSamples)[4].FontSize -lt 26)) '主窗口超长天数仅对长文本执行有界字号适配'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionTargetSizeAndBehavior) '主窗口便签完成复选框达到 24px 模板与交互合同'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionOtherUserSizesUnchanged) '标签选择器与悬浮窗复选框保持原尺寸'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionGateIsolationBehavior) '主窗口便签完成尺寸门与样式隔离门可独立失败'
@@ -4947,8 +4951,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal '4 天;4 天 13 小时;4 天 13 小时 18 分钟;4 天 13 小时 18 分钟 59 秒;2000000 天 00 小时 00 分钟 00 秒' ((@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { $_.RenderedText }) -join ';') '次级倒计时 WPF 文本逐项保留单位分隔空格'
     Assert-Equal $true ([bool] (@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { [Math]::Abs([double] $_.ColumnWidth - 194) -le 0.01 } | Where-Object { -not $_ } | Measure-Object).Count -eq 0) '次级倒计时所有样本声明 194px 固定列'
     Assert-Equal $true ([bool] (@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { [Math]::Abs([double] $_.ActualWidth - 194) -le 0.5 } | Where-Object { -not $_ } | Measure-Object).Count -eq 0) '次级倒计时所有样本实际布局宽度保持在 194px 舍入容差内'
-    Assert-Equal '13;13;13;13' ((@($adapterValidation.FloatingSecondaryRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '次级倒计时四种常规精度保持 13px'
-    Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -ge 10 -and [double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -le 13)) '超长次级倒计时在 194px 列内保持可读字号并完整分格显示'
+    Assert-Equal '20;20;20;20' ((@($adapterValidation.FloatingSecondaryRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '次级倒计时四种常规精度保持 20px'
+    Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -ge 10 -and [double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -lt 20)) '超长次级倒计时在 194px 列内保持可读字号并完整分格显示'
     foreach ($fieldName in @(
         'FloatingScrollBarLocalStyleScoped',
         'FloatingScrollBarHitTargetUsable',
@@ -5142,6 +5146,16 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $segmentIndicatorSource -match 'EffectiveDuration\(' -and
         $segmentIndicatorSource -match 'clientAreaAnimationsEnabled' -and
         $segmentIndicatorSource -match 'TransformGroup') '指示条动画消费 160ms token、从当前值可中断续接并提供 reduced-motion 即时等价（#196 源码契约）'
+    $motionBehaviorSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\MotionBehavior.cs') -Raw -Encoding UTF8
+    $floatingCountdownsSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.Countdowns.cs') -Raw -Encoding UTF8
+    Assert-Equal $true (
+        $motionBehaviorSource -match 'FadeCountdownDigit\(' -and
+        $motionBehaviorSource -match 'MotionCountdownDuration' -and
+        $motionBehaviorSource -match 'HandoffBehavior\.SnapshotAndReplace' -and
+        $mainWindowCodeSource -match 'FadeCountdownDigit\(' -and
+        $floatingCountdownsSource -match 'FadeCountdownDigit\(') '主窗与悬浮窗秒位刷新消费 90ms 淡入 token，并从当前动画状态续接（#198 源码契约）'
     Assert-Equal $true ([bool] $adapterValidation.MotionClientAreaAnimationSwitchReadable) '已接入系统客户区动画开关读取点（未来动效即时等价入口）'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxArrowIsNotTabStop) '下拉箭头不是独立 Tab 停靠点'

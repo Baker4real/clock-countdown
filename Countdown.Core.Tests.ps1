@@ -3624,7 +3624,29 @@ Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-pl
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 61 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
-Assert-Equal 502 @($releaseContract.InstalledFiles).Count 'Release contract preserves the installed runtime payload including offline holiday data'
+$expectedInstalledSupportFiles = @(
+    'Countdown.Core.psm1',
+    'Countdown.InstallTransaction.psm1',
+    'Countdown.Notes.psm1',
+    'Countdown.Runtime.psm1',
+    'Countdown.Settings.psm1',
+    'Countdown.Tags.psm1',
+    '敏敏子倒计时.ps1',
+    'CountdownLauncher.exe',
+    'countdown-icon.ico',
+    'sanrio-official-mymelody.png',
+    'sanrio-official-cinnamoroll.png',
+    'sanrio-official-kuromi.png',
+    'holiday-data\2026.json',
+    'holiday-data\README.md',
+    'holiday-data\LICENSE.txt'
+)
+$installedSupportFiles = @($releaseContract.InstalledFiles | Where-Object { $_ -notlike 'app\*' })
+Assert-Equal (($expectedInstalledSupportFiles | Sort-Object) -join ',') (($installedSupportFiles | Sort-Object) -join ',') 'Release contract installs exactly the runtime support files and offline holiday data'
+$installedApplicationFiles = @($releaseContract.InstalledFiles | Where-Object { $_ -like 'app\*' })
+$publishedPayloadManifest = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot 'app\published-payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+Assert-Equal ((@($publishedPayloadManifest.files.path) | Sort-Object) -join ',') (($installedApplicationFiles | Sort-Object) -join ',') 'Release contract preserves every published application file without extra runtime files'
 foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Release contract packages offline holiday data: $offlineHolidayFile"
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"
@@ -3653,14 +3675,14 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-08-v25\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v23 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-10-08-v27\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v27 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-10-08-v25\\manifest\.json').Count) `
-    'Validation suite pins the main-window visual manifest to the current v23 baseline'
+        'assets\\ui-references\\main-window\\1165x1350\\2026-10-08-v27\\manifest\.json').Count) `
+    'Validation suite pins the main-window visual manifest to the current v27 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
     'Validation suite no longer references the retired main-window v17 baseline'
@@ -3686,8 +3708,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-08-v25\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-08-v25\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-08-v27\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-08-v27\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3696,19 +3718,19 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-08-v25'
+        ExpectedVersion = '2026-10-08-v27'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-08-v25/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-08-v27/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-08-v25'
+        ExpectedVersion = '2026-10-08-v27'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3719,7 +3741,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-representative',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-08-v25/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-08-v27/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {

@@ -9507,13 +9507,13 @@ internal static class ValidationExercises
     public static FloatingPrimaryCountdownContrastGateResults EvaluateFloatingPrimaryCountdownContrastGates(
         FloatingPrimaryCountdownContrastGateInputs input) =>
         new(
-            input.ContrastRatios.Count == 1 && input.ContrastRatios.All(ratio => ratio >= 3),
+            input.ContrastRatios.Count == 3 && input.ContrastRatios.All(ratio => ratio >= 3),
             input.AccentSeparatedFromPlushGlow);
 
     public static bool RunFloatingPrimaryCountdownContrastGateIsolationBehavior()
     {
         var passing = new FloatingPrimaryCountdownContrastGateInputs(
-            new[] { 3.96 },
+            new[] { 3.96, 3.96, 3.96 },
             true);
         var passingResult = EvaluateFloatingPrimaryCountdownContrastGates(passing);
         Must(
@@ -9521,7 +9521,7 @@ internal static class ValidationExercises
             "悬浮窗主倒计时对比度与语义分离全通过夹具被错误拒绝。");
 
         var lowContrast = EvaluateFloatingPrimaryCountdownContrastGates(
-            passing with { ContrastRatios = new[] { 2.9 } });
+            passing with { ContrastRatios = new[] { 3.96, 2.9, 3.96 } });
         Must(
             !lowContrast.TextContrast && lowContrast.AccentSeparatedFromPlushGlow,
             "主倒计时低对比度负向夹具未单独让对比度门禁变红。");

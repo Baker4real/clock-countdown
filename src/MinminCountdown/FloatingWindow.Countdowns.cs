@@ -143,7 +143,7 @@ public sealed partial class FloatingWindow
         var copy = new Grid
         {
             MinWidth = 0,
-            Margin = new Thickness(0, 0, 4, 0),
+            Margin = new Thickness(0, 0, 3, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         copy.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -359,6 +359,15 @@ public sealed partial class FloatingWindow
             // Preserve the primary 26 DIP hierarchy in the fixed 194 DIP slot
             // before applying the long-number font fit.
             pairGap = isPrimary ? 2 : 3;
+        }
+
+        if (isPrimary && RequiredWidth(KeyTextMinimumFontSize, blockPadding, pairGap) > availableWidth)
+        {
+            // Very long day counts must still fit at the readable font floor.
+            // Use the remaining inner spacing before reducing the numerals;
+            // block sizes, unit font and the fixed column stay unchanged.
+            blockPadding = 0;
+            pairGap = 0;
         }
 
         var required = RequiredWidth(valueFontSize, blockPadding, pairGap);

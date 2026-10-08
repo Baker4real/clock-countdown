@@ -655,6 +655,11 @@ internal static class PopupMotionBehavior
         popup?.ReadLocalValue(ControllerProperty) is PopupMotionController controller &&
         controller.IsClosing;
 
+    internal static string DescribeTransitionForValidation(Popup popup) =>
+        popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller
+            ? controller.DescribeTransition()
+            : "unattached";
+
     private static void OnIsEnabledChanged(
         DependencyObject dependencyObject,
         DependencyPropertyChangedEventArgs args)
@@ -747,6 +752,8 @@ internal static class PopupMotionBehavior
         private TranslateTransform? _translation;
         private TransitionKind _transition;
         private long _transitionVersion;
+        internal string DescribeTransition() =>
+            $"version={_transitionVersion},kind={_transition},requested={_requestedOpen},opacity={_visual?.Opacity:R}";
         private bool _suppress;
         private bool _requestedOpen;
         private bool _hasPresented;

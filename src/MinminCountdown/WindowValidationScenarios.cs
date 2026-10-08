@@ -4954,7 +4954,12 @@ internal static class WindowValidationInput
             Pump(popup.Dispatcher);
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Pump(popup.Dispatcher);
+            var closeBefore = PopupMotionBehavior.DescribeTransitionForValidation(popup);
             triggerSecondClickCloses = openedForSecondClick && WaitForPopupClosed(popup);
+            if (!triggerSecondClickCloses)
+            {
+                Console.Error.WriteLine($"POPUP_SECOND_CLICK_DIAGNOSTIC trigger={trigger.Name}, opened={openedForSecondClick}, before={closeBefore}, after={PopupMotionBehavior.DescribeTransitionForValidation(popup)}");
+            }
 
             trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             Pump(popup.Dispatcher);

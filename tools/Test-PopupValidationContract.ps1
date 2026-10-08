@@ -9,6 +9,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
+if ([Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') -eq '1') {
+    throw '动效验证夹具拒绝非隔离绕过；必须经官方 ValidationHarness 隔离阶段执行。'
+}
 Assert-SuiteIsolatedDesktop
 if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
     throw '弹出层验证反例必须由官方 ValidationHarness 阶段在 STA 隔离桌面中运行。'
@@ -34,6 +37,8 @@ $references = @(
 Add-Type -ReferencedAssemblies $references -TypeDefinition @'
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -42,6 +47,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
@@ -179,10 +185,7 @@ public static class PopupValidationContractHarness
         // has no composited DWM surface for WPF's hardware animation clocks.
         RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
         AppContext.SetSwitch("Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable", true);
-        if (Application.Current is null)
-        {
-            new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
+        MotionValidationContractHarness.InitializeApplication(assemblyPath);
         Assembly application = Assembly.LoadFrom(assemblyPath);
         Type input = application.GetType("MinminCountdown.WindowValidationInput", true);
         MethodInfo exercise = input.GetMethod("ExercisePopup", BindingFlags.Public | BindingFlags.Static);
@@ -306,6 +309,664 @@ public static class PopupValidationContractHarness
         }
     }
 }
+
+public sealed class MotionObservation
+{
+    public string Phase { get; set; }
+    public double ElapsedMilliseconds { get; set; }
+    public double[] Values { get; set; }
+    public bool HasAnimation { get; set; }
+    public bool? IsOpen { get; set; }
+}
+
+public sealed class MotionScenarioResult
+{
+    public string Scenario { get; set; }
+    public bool Enabled { get; set; }
+    public double[] TokenMilliseconds { get; set; }
+    public double[] EffectiveMilliseconds { get; set; }
+    public List<MotionObservation> Observations { get; } = new List<MotionObservation>();
+    public List<string> Failures { get; } = new List<string>();
+    public bool SystemPreferenceUnchanged { get; set; }
+    public bool PreferenceRestored { get; set; }
+    public bool ResourcesRestored { get; set; }
+    public bool ExpectedExceptionObserved { get; set; }
+    public bool Passed => Failures.Count == 0;
+    internal Stopwatch Clock = Stopwatch.StartNew();
+}
+
+public static class MotionValidationContractHarness
+{
+    private const int DeadlineMilliseconds = 300;
+    private static readonly string[] DurationKeys = {
+        "MotionHoverDuration", "MotionPressDuration", "MotionPopupEnterDuration",
+        "MotionPopupExitDuration", "MotionIndicatorDuration", "MotionCountdownDuration"
+    };
+    private static readonly double[] EnabledMilliseconds = { 120, 100, 140, 90, 160, 90 };
+    private static readonly string[] ResourceKeys = DurationKeys.Concat(
+        new[] { "MotionEaseOut", "MotionCubicEaseOut" }).ToArray();
+    private static Assembly _assembly;
+    private static Application _application;
+    private static object _theme;
+    private static bool _applicationExitObserved;
+
+    private static Type AppType(string name) => _assembly.GetType("MinminCountdown." + name, true);
+
+    private static object Invoke(Type type, object owner, string name, params object[] args)
+    {
+        var flags = BindingFlags.Public | BindingFlags.NonPublic |
+            (owner == null ? BindingFlags.Static : BindingFlags.Instance);
+        var method = type.GetMethods(flags).Single(candidate =>
+            candidate.Name == name && candidate.GetParameters().Length == args.Length &&
+            candidate.GetParameters().Select((parameter, index) =>
+                args[index] == null || parameter.ParameterType.IsInstanceOfType(args[index])).All(value => value));
+        try { return method.Invoke(owner, args); }
+        catch (TargetInvocationException error) { throw error.InnerException ?? error; }
+    }
+
+    private static object Call(string type, string name, params object[] args) =>
+        Invoke(AppType(type), null, name, args);
+
+    private static object Property(Type type, object owner, string name) =>
+        type.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic |
+            (owner == null ? BindingFlags.Static : BindingFlags.Instance)).GetValue(owner);
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+
+    public static void InitializeApplication(string assemblyPath)
+    {
+        if (_application != null)
+        {
+            Require(ReferenceEquals(Application.Current, _application), "验证 Application 被替换。");
+            return;
+        }
+
+        Require(Application.Current == null, "不能把动效夹具接到已有的非夹具 Application。");
+        _assembly = Assembly.LoadFrom(assemblyPath);
+        var appType = AppType("App");
+        var startup = appType.GetMethod("OnStartup", BindingFlags.NonPublic | BindingFlags.Instance |
+            BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(StartupEventArgs) }, null);
+        Require(startup != null, "无法确认生产 Startup 处理器，拒绝初始化资源。");
+        var initialize = appType.GetMethod("InitializeComponent", BindingFlags.Public | BindingFlags.Instance);
+        Require(initialize != null, "无法找到生产 App.xaml 资源入口。");
+        var app = (Application)Activator.CreateInstance(appType);
+        var handler = (StartupEventHandler)Delegate.CreateDelegate(typeof(StartupEventHandler), app, startup);
+        try { initialize.Invoke(app, null); }
+        finally { app.Startup -= handler; }
+        // No App.Run / Shutdown / OnExit calls. In particular, pump only after
+        // removing the handler registered by generated InitializeComponent.
+        app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        app.Exit += (sender, args) => _applicationExitObserved = true;
+        _application = app;
+        _theme = Activator.CreateInstance(AppType("ApplicationTheme"),
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+            null, new object[] { app.Resources }, null);
+        Invoke(_theme.GetType(), _theme, "Apply");
+        Require(ProductionServicesAbsent(), "资源夹具意外启动了生产服务。");
+    }
+
+    private static bool ProductionServicesAbsent()
+    {
+        return new[] { "_options", "_logger", "_desktopWorkspace", "_floatingTrayController",
+            "_instanceActivationServer", "_reminderDeliveryCoordinator", "_clockTimer" }
+            .All(name => AppType("App").GetField(name, BindingFlags.NonPublic |
+                BindingFlags.Instance).GetValue(_application) == null);
+    }
+
+    private static void Pump() => Call("WindowValidationInput", "Pump", _application.Dispatcher);
+
+    private static void RenderTick(Visual visual)
+    {
+        Pump();
+        var tick = new RenderTargetBitmap(1, 1, 96, 96, PixelFormats.Pbgra32);
+        tick.Render(visual);
+        tick.Freeze();
+        Pump();
+    }
+
+    private static Window ShowFixture(FrameworkElement content)
+    {
+        var window = new Window {
+            Title = "MinminCountdown Motion Validation Contract",
+            Width = 360, Height = 260, ShowInTaskbar = false,
+            ShowActivated = false, Content = content
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            RenderTick(content);
+            Require(ProductionServicesAbsent(), "Dispatcher Pump 触发了生产启动流程。");
+            return window;
+        }
+        catch
+        {
+            window.Close();
+            Pump();
+            throw;
+        }
+    }
+
+    private static bool Animated(DependencyObject owner, DependencyProperty property) =>
+        DependencyPropertyHelper.GetValueSource(owner, property).IsAnimated;
+
+    private static TranslateTransform Translation(FrameworkElement visual)
+    {
+        if (visual.RenderTransform is TranslateTransform direct) return direct;
+        if (visual.RenderTransform is TransformGroup group)
+            return group.Children.OfType<TranslateTransform>().LastOrDefault();
+        return null;
+    }
+
+    private static MotionObservation Observe(MotionScenarioResult result, string phase,
+        Func<double[]> values, Func<bool> animated, Func<bool> isOpen = null)
+    {
+        var observation = new MotionObservation {
+            Phase = phase, ElapsedMilliseconds = result.Clock.Elapsed.TotalMilliseconds,
+            Values = values(), HasAnimation = animated(), IsOpen = isOpen == null ? (bool?)null : isOpen()
+        };
+        result.Observations.Add(observation);
+        return observation;
+    }
+
+    private static MotionObservation WaitFor(MotionScenarioResult result, string phase,
+        Visual visual, Func<double[]> values, Func<bool> animated,
+        Func<double[], bool> condition, Func<bool> isOpen = null)
+    {
+        var watch = Stopwatch.StartNew();
+        do
+        {
+            RenderTick(visual);
+            var current = values();
+            if (watch.Elapsed.TotalMilliseconds <= DeadlineMilliseconds && condition(current))
+            {
+                var observed = Observe(result, phase, values, animated, isOpen);
+                if (watch.Elapsed.TotalMilliseconds <= DeadlineMilliseconds && condition(observed.Values))
+                    return observed;
+            }
+            System.Threading.Thread.Sleep(5);
+        }
+        while (watch.ElapsedMilliseconds < DeadlineMilliseconds);
+        Observe(result, phase + "-unobserved", values, animated, isOpen);
+        throw new InvalidOperationException(phase + "：300 ms 内未取得所需真实样本；不把终态或缺帧当通过。");
+    }
+
+    private static bool Near(double[] actual, double[] expected, double tolerance) =>
+        actual.Length == expected.Length && actual.Zip(expected, (left, right) =>
+            !double.IsNaN(left) && Math.Abs(left - right) <= tolerance).All(value => value);
+
+    private static bool Intermediate(double[] start, double[] current, double[] end)
+    {
+        if (start.Length != current.Length || current.Length != end.Length ||
+            current.Any(value => double.IsNaN(value) || double.IsInfinity(value))) return false;
+        var changed = false;
+        for (int index = 0; index < start.Length; index++)
+        {
+            var span = end[index] - start[index];
+            if (Math.Abs(span) < 0.000001) continue;
+            var progress = (current[index] - start[index]) / span;
+            if (progress < 0.1 || progress > 0.9) return false;
+            changed = true;
+        }
+        return changed;
+    }
+
+    // Bound the first rendered observation by the real elapsed time and the
+    // contract's quartic ease-out; a whole skipped transition is not evidence.
+    private static bool Continues(MotionObservation before, MotionObservation after,
+        double[] target, double durationMs, double tolerance)
+    {
+        var elapsed = after.ElapsedMilliseconds - before.ElapsedMilliseconds;
+        if (elapsed < 0 || elapsed >= durationMs || before.Values.Length != after.Values.Length)
+            return false;
+        var maximum = 1 - Math.Pow(1 - Math.Min(1, (elapsed + 1) / durationMs), 4);
+        var moved = false;
+        for (int index = 0; index < target.Length; index++)
+        {
+            var span = target[index] - before.Values[index];
+            var step = after.Values[index] - before.Values[index];
+            if (double.IsNaN(step) || double.IsInfinity(step)) return false;
+            if (Math.Abs(span) <= tolerance)
+            {
+                if (Math.Abs(step) > tolerance) return false;
+                continue;
+            }
+            if (step * Math.Sign(span) < -tolerance ||
+                Math.Abs(step) > Math.Abs(span) * maximum + tolerance) return false;
+            if (Math.Abs(target[index] - after.Values[index]) > tolerance) moved = true;
+        }
+        return moved;
+    }
+
+    private static bool Immediate(double[] values, double[] target, bool animated, double tolerance) =>
+        !animated && Near(values, target, tolerance);
+
+    private static MotionScenarioResult RunCase(string scenario, bool enabled,
+        Action<MotionScenarioResult> exercise, bool expectedException = false)
+    {
+        var result = new MotionScenarioResult { Scenario = scenario, Enabled = enabled };
+        var systemBefore = SystemParameters.ClientAreaAnimation;
+        var saved = ResourceKeys.ToDictionary(key => key, key => _application.Resources[key]);
+        IDisposable scope = null;
+        try
+        {
+            scope = (IDisposable)Call("ApplicationTheme", "OverrideAnimationPreferenceForValidation", enabled);
+            Invoke(_theme.GetType(), _theme, "Apply");
+            result.TokenMilliseconds = DurationKeys.Select(key =>
+                ((Duration)_application.Resources[key]).TimeSpan.TotalMilliseconds).ToArray();
+            result.EffectiveMilliseconds = EnabledMilliseconds.Select(value =>
+                ((TimeSpan)Call("ApplicationTheme", "GetEffectiveMotionDuration",
+                    TimeSpan.FromMilliseconds(value))).TotalMilliseconds).ToArray();
+            var expected = enabled ? EnabledMilliseconds : new double[6];
+            Require(Near(result.TokenMilliseconds, expected, 0) &&
+                Near(result.EffectiveMilliseconds, expected, 0), "token 或有效时长不符合注入模式。");
+            Require(_application.Resources["MotionEaseOut"] is QuarticEase easing &&
+                easing.EasingMode == EasingMode.EaseOut, "生产缓动不是 quartic ease-out。");
+            exercise(result);
+            Require(!expectedException, "异常恢复负例没有实际抛出。");
+        }
+        catch (ExpectedFixtureException)
+        {
+            result.ExpectedExceptionObserved = expectedException;
+            if (!expectedException) result.Failures.Add("意外夹具异常。");
+        }
+        catch (Exception error) { result.Failures.Add(error.GetType().Name + ": " + error.Message); }
+        finally
+        {
+            try { scope?.Dispose(); }
+            catch (Exception error) { result.Failures.Add("偏好恢复失败：" + error.Message); }
+            foreach (var item in saved) _application.Resources[item.Key] = item.Value;
+            result.SystemPreferenceUnchanged = SystemParameters.ClientAreaAnimation == systemBefore;
+            result.PreferenceRestored = !(bool)Property(AppType("ApplicationTheme"), null,
+                "HasAnimationPreferenceOverrideForValidation") &&
+                (bool)Property(AppType("ApplicationTheme"), null, "ClientAreaAnimationEnabled") ==
+                    SystemParameters.ClientAreaAnimation;
+            result.ResourcesRestored = saved.All(item => Equals(_application.Resources[item.Key], item.Value));
+            if (!result.SystemPreferenceUnchanged || !result.PreferenceRestored || !result.ResourcesRestored)
+                result.Failures.Add("系统偏好、输入偏好或 token 资源没有恢复。");
+        }
+        return result;
+    }
+
+    private sealed class ExpectedFixtureException : Exception { }
+
+    private static double[] ColorValues(Border surface)
+    {
+        var color = ((SolidColorBrush)surface.Background).Color;
+        return new[] { (double)color.R, color.G, color.B };
+    }
+
+    private static void Buttons(MotionScenarioResult result)
+    {
+        var button = new Button { Content = "Motion fixture", Width = 140, Height = 40,
+            Style = (Style)_application.FindResource("PrimaryButton") };
+        var panel = new StackPanel { Children = { button } };
+        Window window = null;
+        FrameworkElement host = null;
+        try
+        {
+            window = ShowFixture(panel);
+            button.ApplyTemplate();
+            host = (FrameworkElement)button.Template.FindName("InteractionSurface", button);
+            var surface = (Border)button.Template.FindName("Surface", button);
+            Require(host != null && surface != null, "PrimaryButton 生产模板缺少交互面。");
+            Action<bool, bool> input = (hover, pressed) =>
+                Call("MotionBehavior", "SetInputForValidation", host, hover, pressed);
+            Action commit = () => _application.Dispatcher.Invoke(DispatcherPriority.Render, new Action(() => { }));
+            Func<double[]> color = () => ColorValues(surface);
+            Func<bool> colorClock = () => Animated(surface, Border.BackgroundProperty);
+            Func<double[]> scale = () => {
+                var transform = (ScaleTransform)surface.RenderTransform;
+                return new[] { transform.ScaleX, transform.ScaleY };
+            };
+            Func<bool> scaleClock = () => {
+                var transform = (ScaleTransform)surface.RenderTransform;
+                return Animated(transform, ScaleTransform.ScaleXProperty) ||
+                    Animated(transform, ScaleTransform.ScaleYProperty);
+            };
+            Func<string, double[]> expectedColor = key => {
+                var value = ((SolidColorBrush)_application.FindResource(key)).Color;
+                return new[] { (double)value.R, value.G, value.B };
+            };
+            var normal = expectedColor("MainActionBrush");
+            var hoverTarget = expectedColor("MainActionHoverBrush");
+            var pressedTarget = expectedColor("MainActionPressedBrush");
+            var size = button.RenderSize;
+            input(false, false); commit();
+            WaitFor(result, "button-normal", surface, color, colorClock, value => Near(value, normal, 1));
+            input(true, false); commit();
+            Observe(result, "hover-immediate", color, colorClock);
+            if (!result.Enabled)
+            {
+                Require(Immediate(color(), hoverTarget, colorClock(), 0), "off hover 未直接到目标色。");
+                input(true, true); commit();
+                Observe(result, "press-off", scale, scaleClock);
+                Require(Immediate(scale(), new[] { 0.97, 0.97 }, scaleClock(), 0.000001) &&
+                    Immediate(color(), pressedTarget, colorClock(), 0), "off press 仍有动画或目标错误。");
+                input(false, false); commit();
+                Observe(result, "release-off", scale, scaleClock);
+                Require(Immediate(scale(), new[] { 1.0, 1.0 }, scaleClock(), 0.000001) &&
+                    Immediate(color(), normal, colorClock(), 0), "off release 未直接复位。");
+            }
+            else
+            {
+                var hoverMiddle = WaitFor(result, "hover-middle", surface, color, colorClock,
+                    value => Intermediate(normal, value, hoverTarget));
+                var before = Observe(result, "hover-reverse-before", color, colorClock);
+                input(false, false); commit();
+                Observe(result, "hover-reverse-committed", color, colorClock);
+                RenderTick(surface);
+                var after = Observe(result, "hover-reverse-first-frame", color, colorClock);
+                Require(Continues(before, after, normal, 120, 1), "hover 反转首帧未从当前颜色续接。");
+                WaitFor(result, "hover-reverse-middle", surface, color, colorClock,
+                    value => Intermediate(before.Values, value, normal));
+                input(true, true); commit();
+                var pressed = WaitFor(result, "press-middle", surface, scale, scaleClock,
+                    value => Intermediate(new[] { 1.0, 1.0 }, value, new[] { 0.97, 0.97 }));
+                before = Observe(result, "release-before", scale, scaleClock);
+                input(true, false); commit();
+                Observe(result, "release-committed", scale, scaleClock);
+                RenderTick(surface);
+                after = Observe(result, "release-first-frame", scale, scaleClock);
+                Require(Continues(before, after, new[] { 1.0, 1.0 }, 100, 0.0002),
+                    "press 中断释放未从当前缩放续接。");
+                WaitFor(result, "release-middle", surface, scale, scaleClock,
+                    value => Intermediate(before.Values, value, new[] { 1.0, 1.0 }));
+                before = Observe(result, "repress-before", scale, scaleClock);
+                input(true, true); commit(); RenderTick(surface);
+                after = Observe(result, "repress-first-frame", scale, scaleClock);
+                Require(Continues(before, after, new[] { 0.97, 0.97 }, 100, 0.0002),
+                    "连续 press 反转未从当前缩放续接。");
+                WaitFor(result, "press-final", surface, scale, scaleClock,
+                    value => Near(value, new[] { 0.97, 0.97 }, 0.00001));
+                input(false, false); commit();
+                WaitFor(result, "release-final", surface, scale, scaleClock,
+                    value => Near(value, new[] { 1.0, 1.0 }, 0.00001));
+            }
+            Require(button.RenderSize == size, "按钮动效改变了布局尺寸。");
+        }
+        finally
+        {
+            try
+            {
+                if (host != null) Call("MotionBehavior", "ClearInputForValidation", host);
+                Pump();
+            }
+            finally { window?.Close(); Pump(); }
+        }
+    }
+
+    private static void ExercisePopupMotion(MotionScenarioResult result, string category)
+    {
+        var panel = new StackPanel();
+        var trigger = new Button { Content = category, Width = 160, Height = 38 };
+        panel.Children.Add(trigger);
+        DependencyObject owner = null;
+        FrameworkElement visual = null;
+        Window window = null;
+        Action open = null;
+        Action close = null;
+        Func<bool> isOpen = null;
+        try
+        {
+            if (category == "calendar")
+            {
+                var picker = new DatePicker { SelectedDate = new DateTime(2026, 10, 8), Width = 220 };
+                panel.Children.Add(picker);
+                window = ShowFixture(panel); picker.ApplyTemplate();
+                var popup = (Popup)picker.Template.FindName("PART_Popup", picker);
+                owner = popup; visual = (FrameworkElement)popup.Child;
+                open = () => picker.IsDropDownOpen = true;
+                close = () => picker.IsDropDownOpen = false;
+                isOpen = () => popup.IsOpen;
+            }
+            else if (category == "combobox")
+            {
+                var combo = new ComboBox { Width = 220, Items = { "One", "Two" }, SelectedIndex = 0 };
+                panel.Children.Add(combo);
+                window = ShowFixture(panel); combo.ApplyTemplate();
+                var popup = (Popup)combo.Template.FindName("PART_Popup", combo);
+                owner = popup; visual = (FrameworkElement)popup.Child;
+                open = () => combo.IsDropDownOpen = true;
+                close = () => combo.IsDropDownOpen = false;
+                isOpen = () => popup.IsOpen;
+            }
+            else if (category == "tags")
+            {
+                var tags = (FrameworkElement)Activator.CreateInstance(AppType("TagSelector"), true);
+                panel.Children.Add(tags);
+                window = ShowFixture(panel);
+                var popup = (Popup)Property(tags.GetType(), tags, "Popup");
+                owner = popup; visual = (FrameworkElement)popup.Child;
+                var property = tags.GetType().GetProperty("IsPopupOpen");
+                open = () => property.SetValue(tags, true);
+                close = () => property.SetValue(tags, false);
+                isOpen = () => popup.IsOpen;
+            }
+            else
+            {
+                var tooltip = new ToolTip { Content = "Production tooltip motion", PlacementTarget = trigger,
+                    Style = (Style)_application.FindResource(typeof(ToolTip)) };
+                owner = tooltip; visual = tooltip;
+                window = ShowFixture(panel);
+                open = () => Call("PopupMotionBehavior", "Open", tooltip);
+                close = () => Call("PopupMotionBehavior", "Close", tooltip);
+                isOpen = () => tooltip.IsOpen;
+                Require((bool)Call("PopupMotionBehavior", "GetIsToolTipEnabled", tooltip),
+                    "ToolTip 没有生产动效样式。");
+            }
+            Require(owner != null && visual != null, category + " 没有真实弹层内容。");
+            if (owner is Popup actualPopup)
+                Require((bool)Call("PopupMotionBehavior", "IsAttached", actualPopup),
+                    category + " 未附加生产动效。");
+            Func<double[]> values = () => new[] { visual.Opacity, Translation(visual)?.Y ?? double.NaN };
+            Func<bool> animated = () => Animated(visual, UIElement.OpacityProperty) ||
+                (Translation(visual) is TranslateTransform move && Animated(move, TranslateTransform.YProperty));
+            open();
+            var initial = Observe(result, category + "-open-immediate", values, animated, isOpen);
+            if (!result.Enabled)
+            {
+                Require(isOpen() && Immediate(initial.Values, new[] { 1.0, 0.0 }, animated(), 0.000001),
+                    category + " off 打开不是即时终态。");
+                close();
+                var closed = Observe(result, category + "-close-immediate", values, animated, isOpen);
+                Require(!isOpen() && Immediate(closed.Values, new[] { 0.0, 4.0 }, animated(), 0.000001),
+                    category + " off 关闭没有即时完成。");
+                return;
+            }
+            WaitFor(result, category + "-opening-middle", visual, values, animated,
+                value => Intermediate(new[] { 0.0, 4.0 }, value, new[] { 1.0, 0.0 }), isOpen);
+            var before = Observe(result, category + "-close-before", values, animated, isOpen);
+            close();
+            var immediate = Observe(result, category + "-close-committed", values, animated, isOpen);
+            Require(isOpen(), category + " 有动画关闭未保留当前可见弹层。");
+            RenderTick(visual);
+            var after = Observe(result, category + "-close-first-frame", values, animated, isOpen);
+            Require(Continues(before, after, new[] { 0.0, 4.0 }, 90, 0.002),
+                category + " 打开中途关闭未从当前值续接。");
+            WaitFor(result, category + "-closing-middle", visual, values, animated,
+                value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen);
+            before = Observe(result, category + "-reopen-before", values, animated, isOpen);
+            open();
+            Observe(result, category + "-reopen-committed", values, animated, isOpen);
+            RenderTick(visual);
+            after = Observe(result, category + "-reopen-first-frame", values, animated, isOpen);
+            Require(Continues(before, after, new[] { 1.0, 0.0 }, 140, 0.002),
+                category + " 退出中途重开未从当前值续接。");
+            WaitFor(result, category + "-reopen-final", visual, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            close();
+            WaitFor(result, category + "-close-final", visual, values, animated,
+                value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+        }
+        finally
+        {
+            try
+            {
+                if (owner is Popup popup)
+                    Call("WindowValidationInput", "ClosePopupForCleanup", popup);
+                else if (owner is ToolTip tooltip)
+                {
+                    // Cleanup follows the recorded verdict; it is not a close observation.
+                    Call("PopupMotionBehavior", "SetIsToolTipEnabled", tooltip, false);
+                    tooltip.IsOpen = false;
+                }
+            }
+            finally { window?.Close(); Pump(); }
+        }
+    }
+
+    private static void Indicator(MotionScenarioResult result)
+    {
+        var root = new Grid { Width = 240, Height = 44 };
+        var targets = new Canvas();
+        var left = new Border { Width = 80, Height = 40, Background = Brushes.White };
+        var right = new Border { Width = 100, Height = 40, Background = Brushes.White };
+        Canvas.SetLeft(right, 120);
+        targets.Children.Add(left); targets.Children.Add(right);
+        var layer = new Canvas();
+        var indicator = new Border { Width = 1, Height = 4, Background = Brushes.Pink };
+        layer.Children.Add(indicator);
+        root.Children.Add(targets); root.Children.Add(layer);
+        var type = AppType("SegmentIndicator");
+        var controller = Activator.CreateInstance(type, BindingFlags.Public | BindingFlags.NonPublic |
+            BindingFlags.Instance, null, new object[] { root, layer, indicator }, null);
+        Window window = null;
+        try
+        {
+            window = ShowFixture(root);
+            Action<FrameworkElement> move = target => Invoke(type, controller, "MoveTo", target);
+            Func<double[]> values = () => {
+                var bounds = (Rect)Property(type, controller, "CurrentVisualBounds");
+                return new[] { bounds.X, bounds.Width };
+            };
+            Func<bool> animated = () => ((TransformGroup)indicator.RenderTransform).Children.Any(value =>
+                value.HasAnimatedProperties);
+            move(left);
+            WaitFor(result, "indicator-left", indicator, values, animated,
+                value => Near(value, new[] { 0.0, 80.0 }, 0.00001));
+            move(right);
+            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+            var immediate = Observe(result, "indicator-right-committed", values, animated);
+            if (!result.Enabled)
+            {
+                Require(Immediate(immediate.Values, new[] { 120.0, 100.0 }, animated(), 0.00001),
+                    "off 指示器未在生产提交后即时对齐。");
+                return;
+            }
+            WaitFor(result, "indicator-middle", indicator, values, animated,
+                value => Intermediate(new[] { 0.0, 80.0 }, value, new[] { 120.0, 100.0 }));
+            var before = Observe(result, "indicator-reverse-before", values, animated);
+            move(left);
+            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+            Observe(result, "indicator-reverse-committed", values, animated);
+            RenderTick(indicator);
+            var after = Observe(result, "indicator-reverse-first-frame", values, animated);
+            Require(Continues(before, after, new[] { 0.0, 80.0 }, 160, 0.02),
+                "指示器反转未沿当前几何继续。");
+            WaitFor(result, "indicator-reverse-middle", indicator, values, animated,
+                value => Intermediate(before.Values, value, new[] { 0.0, 80.0 }));
+            move(right);
+            WaitFor(result, "indicator-last-target", indicator, values, animated,
+                value => Near(value, new[] { 120.0, 100.0 }, 0.00001));
+            Require((bool)Invoke(type, controller, "IsAlignedTo", right, 0.75), "指示器最终目标错误。");
+            Require(indicator.Width == 1 && indicator.Height == 4, "指示器动效改变了布局尺寸。");
+        }
+        finally { window?.Close(); Pump(); }
+    }
+
+    private static void Digit(MotionScenarioResult result)
+    {
+        var text = new TextBlock { Text = "59", FontSize = 26, Width = 80, Height = 42 };
+        Window window = null;
+        try
+        {
+            window = ShowFixture(text);
+            Func<double[]> values = () => new[] { text.Opacity };
+            Func<bool> animated = () => Animated(text, UIElement.OpacityProperty);
+            Action pulse = () => Call("MotionBehavior", "FadeCountdownDigit", text);
+            if (!result.Enabled)
+            {
+                // A real pre-existing WPF opacity clock must be removed too.
+                text.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.6, 1,
+                    TimeSpan.FromMilliseconds(90)), HandoffBehavior.SnapshotAndReplace);
+                text.Text = "58";
+                pulse();
+                var instant = Observe(result, "digit-off-immediate", values, animated);
+                Require(text.Text == "58" && Immediate(instant.Values, new[] { 1.0 }, animated(), 0),
+                    "off 秒位没有直接切换到无动画终态。");
+                return;
+            }
+            pulse();
+            Observe(result, "digit-first-committed", values, animated);
+            WaitFor(result, "digit-middle", text, values, animated,
+                value => Intermediate(new[] { 0.6 }, value, new[] { 1.0 }));
+            var before = Observe(result, "digit-repeat-before", values, animated);
+            text.Text = "58";
+            pulse();
+            var immediate = Observe(result, "digit-repeat-committed", values, animated);
+            RenderTick(text);
+            var after = Observe(result, "digit-repeat-first-frame", values, animated);
+            Require(Continues(before, after, new[] { 1.0 }, 90, 0.002),
+                "秒位中断把 opacity 重置到 0.6 或终点。");
+            WaitFor(result, "digit-repeat-middle", text, values, animated,
+                value => Intermediate(before.Values, value, new[] { 1.0 }));
+            WaitFor(result, "digit-final", text, values, animated,
+                value => Near(value, new[] { 1.0 }, 0.000001));
+        }
+        finally { window?.Close(); Pump(); }
+    }
+
+    public static object Run(string assemblyPath)
+    {
+        InitializeApplication(assemblyPath);
+        var systemBefore = SystemParameters.ClientAreaAnimation;
+        var results = new List<MotionScenarioResult>();
+        foreach (var enabled in new[] { false, true })
+        {
+            results.Add(RunCase("button-hover-press", enabled, Buttons));
+            foreach (var category in new[] { "calendar", "combobox", "tags", "tooltip" })
+                results.Add(RunCase("popup-" + category, enabled, result => ExercisePopupMotion(result, category)));
+            results.Add(RunCase("segment-indicator", enabled, Indicator));
+            results.Add(RunCase("countdown-digit", enabled, Digit));
+        }
+        results.Add(RunCase("override-restoration-after-exception", false,
+            result => { throw new ExpectedFixtureException(); }, true));
+        var before = new MotionObservation { ElapsedMilliseconds = 10, Values = new[] { 0.65 } };
+        var negatives = new Dictionary<string, bool> {
+            ["missing-intermediate"] = !Intermediate(new[] { 0.0 }, new[] { 1.0 }, new[] { 1.0 }),
+            ["nonfinite-intermediate"] = !Intermediate(new[] { 0.0 }, new[] { double.NaN }, new[] { 1.0 }),
+            ["restart-from-origin"] = !Continues(before,
+                new MotionObservation { ElapsedMilliseconds = 11, Values = new[] { 0.0 } },
+                new[] { 1.0 }, 90, 0.002),
+            ["reverse-jumps-to-target"] = !Continues(before,
+                new MotionObservation { ElapsedMilliseconds = 11, Values = new[] { 0.0 } },
+                new[] { 0.0 }, 90, 0.002),
+            ["whole-transition-missed"] = !Continues(before,
+                new MotionObservation { ElapsedMilliseconds = 110, Values = new[] { 1.0 } },
+                new[] { 1.0 }, 90, 0.002),
+            ["off-retains-clock"] = !Immediate(new[] { 1.0 }, new[] { 1.0 }, true, 0),
+            ["off-wrong-target"] = !Immediate(new[] { 0.6 }, new[] { 1.0 }, false, 0)
+        };
+        var startupAbsent = ProductionServicesAbsent();
+        var systemUnchanged = SystemParameters.ClientAreaAnimation == systemBefore;
+        return new {
+            Scope = "production-WPF-software-renderer-with-fixture-inputs",
+            SystemPreferenceBefore = systemBefore,
+            SystemPreferenceAfter = SystemParameters.ClientAreaAnimation,
+            ProductionStartupStayedInactive = startupAbsent,
+            ApplicationExitNotInvoked = !_applicationExitObserved,
+            DeadlineMilliseconds,
+            Results = results,
+            NegativeControls = negatives,
+            Passed = startupAbsent && !_applicationExitObserved && systemUnchanged && results.All(result => result.Passed) &&
+                negatives.Values.All(value => value)
+        };
+    }
+}
 '@
 
 $results = @(
@@ -337,6 +998,10 @@ if (-not ($captureComposite.StraightAlphaMatches -and $captureComposite.Premulti
           $captureComposite.TransparentFrameRejected)) {
     $failures.Add('参考帧一像素透明合成或全透明拒绝合同未通过。')
 }
+$motion = [MotionValidationContractHarness]::Run($resolvedAssembly)
+if (-not $motion.Passed) {
+    $failures.Add('生产 WPF 动效模式、连续中断、负例或作用域恢复未通过；详见 Motion.Results。')
+}
 foreach ($result in $results) {
     if ($result.HandledEscapeCount -lt 1) {
         $failures.Add("$($result.Scenario)：未实际走到已处理的 Esc 事件。")
@@ -361,17 +1026,32 @@ foreach ($result in $results) {
     }
 }
 
+$trayMenu = $null
+try {
+    & (Join-Path $PSScriptRoot 'Test-CountdownTrayMenu.ps1') -AssemblyPath $resolvedAssembly |
+        ForEach-Object { $trayMenu = $_ }
+}
+catch {
+    $failures.Add($_.Exception.Message)
+}
+if ($null -eq $trayMenu) {
+    $failures.Add('托盘菜单验证未返回可回读的报告。')
+}
+
 [pscustomobject]@{
     Suite = 'PopupValidationContract'
     AssemblyPath = $resolvedAssembly
     AssemblySHA256 = (Get-FileHash -LiteralPath $resolvedAssembly -Algorithm SHA256).Hash
+    HarnessSHA256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     Results = $results
     CaptureComposite = $captureComposite
     ClosedPopupResults = $closedPopupResults
     ToolTipCollectibility = $tooltipCollectibility
+    Motion = $motion
+    TrayMenu = $trayMenu
     Failures = @($failures)
     Passed = $failures.Count -eq 0
-} | ConvertTo-Json -Depth 5
+} | ConvertTo-Json -Depth 10
 if ($failures.Count -gt 0) {
     throw ($failures -join [Environment]::NewLine)
 }

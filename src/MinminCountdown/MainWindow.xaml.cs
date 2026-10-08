@@ -210,6 +210,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _notesSegmentIndicator.IsAlignedTo(
             _completedSegmentSelected ? CompletedNotesSegment : ActiveNotesSegment);
 
+    internal bool VisibleSegmentIndicatorsSettledForCapture =>
+        _workspaceTabIndicator.IsAlignedTo(
+            _workspace == WorkspaceKind.Countdowns ? CountdownTab : NotesTab, tolerance: 0) &&
+        (_workspace != WorkspaceKind.Notes || _notesSegmentIndicator.IsAlignedTo(
+            _completedSegmentSelected ? CompletedNotesSegment : ActiveNotesSegment, tolerance: 0));
+
     internal bool SegmentIndicatorRapidSwitchIsStableForValidation
     {
         get

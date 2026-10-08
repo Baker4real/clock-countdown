@@ -52,6 +52,10 @@ public sealed partial class MainWindow
         var originalDate = NoteDate.SelectedDate;
         var originalEditingId = _editingNoteId;
         var originalDateDirty = _noteDateDirty;
+        var originalTagIds = NoteTags.SelectedTagIds.ToArray();
+        var originalReminderRules = _noteReminderRules;
+        var originalSaveContent = SaveNoteButton.Content;
+        var originalCancelVisibility = CancelNoteEdit.Visibility;
         string? temporaryNoteId = null;
         try
         {
@@ -156,6 +160,11 @@ public sealed partial class MainWindow
             NoteDate.SelectedDate = originalDate;
             _settingDefaultDate = false;
             _noteDateDirty = originalDateDirty;
+            NoteTags.SetSelection(originalTagIds);
+            _noteReminderRules = originalReminderRules;
+            UpdateNoteReminderRulesSummary();
+            SaveNoteButton.Content = originalSaveContent;
+            CancelNoteEdit.Visibility = originalCancelVisibility;
             ClearNoteFieldErrors();
             NoteMessage.Text = string.Empty;
             ResetCountdownEditor();

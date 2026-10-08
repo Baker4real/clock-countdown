@@ -356,7 +356,17 @@ public sealed class MotionSamplingWindow
     public double ElapsedMilliseconds { get; set; }
     public double? FirstRenderingTimeMilliseconds { get; set; }
     public double? LastRenderingTimeMilliseconds { get; set; }
+    public List<double> RequestTimesMilliseconds { get; } = new List<double>();
+    public List<MotionFrameTiming> CallbackTimes { get; } = new List<MotionFrameTiming>();
+    public double GcPauseMilliseconds { get; set; }
     public bool Matched { get; set; }
+}
+
+public sealed class MotionFrameTiming
+{
+    public double EnteredMilliseconds { get; set; }
+    public double CompletedMilliseconds { get; set; }
+    public double RenderingTimeMilliseconds { get; set; }
 }
 
 public sealed class MotionScenarioResult
@@ -469,6 +479,7 @@ public static class MotionValidationContractHarness
     {
         visual.Dispatcher.VerifyAccess();
         var sampling = new MotionSamplingWindow { Phase = phase };
+        var gcPauseAtStart = GC.GetTotalPauseDuration();
         var watch = Stopwatch.StartNew();
         var frame = new DispatcherFrame();
         var timeout = new DispatcherTimer(DispatcherPriority.Send, visual.Dispatcher) {
@@ -483,10 +494,14 @@ public static class MotionValidationContractHarness
         Exception failure = null;
         EventHandler expired = (sender, args) => frame.Continue = false;
         void OnRendering(object sender, EventArgs args) {
-            // A persistent Rendering subscriber keeps MediaContext active;
-            // observe one requested frame, then yield to native Input work.
-            CompositionTarget.Rendering -= OnRendering;
+            var callbackTiming = new MotionFrameTiming {
+                EnteredMilliseconds = watch.Elapsed.TotalMilliseconds,
+                RenderingTimeMilliseconds = ((RenderingEventArgs)args).RenderingTime.TotalMilliseconds
+            };
+            sampling.CallbackTimes.Add(callbackTiming);
             sampling.RenderingCallbackCount++;
+            try
+            {
             if (watch.Elapsed.TotalMilliseconds > DeadlineMilliseconds)
             {
                 frame.Continue = false;
@@ -507,10 +522,13 @@ public static class MotionValidationContractHarness
                 }
             }
             catch (Exception error) { failure = error; frame.Continue = false; }
+            }
+            finally { callbackTiming.CompletedMilliseconds = watch.Elapsed.TotalMilliseconds; }
         }
         EventHandler rendering = OnRendering;
         EventHandler requestFrame = (sender, args) => {
             sampling.FrameRequestCount++;
+            sampling.RequestTimesMilliseconds.Add(watch.Elapsed.TotalMilliseconds);
             // Adding Rendering posts a render request even when a visual is
             // already dirty; repeated InvalidateVisual calls can be coalesced.
             CompositionTarget.Rendering -= rendering;
@@ -533,6 +551,7 @@ public static class MotionValidationContractHarness
             frameRequests.Tick -= requestFrame;
             CompositionTarget.Rendering -= rendering;
             sampling.ElapsedMilliseconds = watch.Elapsed.TotalMilliseconds;
+            sampling.GcPauseMilliseconds = (GC.GetTotalPauseDuration() - gcPauseAtStart).TotalMilliseconds;
             sampling.Matched &= sampling.ElapsedMilliseconds <= DeadlineMilliseconds;
         }
         if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();

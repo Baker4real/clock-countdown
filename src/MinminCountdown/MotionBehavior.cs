@@ -1262,6 +1262,7 @@ internal static class PopupMotionBehavior
 
         private void CompleteClose()
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             _transitionVersion++;
             _transition = TransitionKind.None;
             _hasPresented = false;
@@ -1270,12 +1271,25 @@ internal static class PopupMotionBehavior
                 SetVisualValues(0, 4);
             }
 
+            var visualMilliseconds = watch.Elapsed.TotalMilliseconds;
             if (IsOpen)
             {
                 SetIsOpen(false);
             }
 
+            var nativeMilliseconds = watch.Elapsed.TotalMilliseconds;
             RestoreCapturePolicy();
+            if (watch.Elapsed.TotalMilliseconds > 20)
+            {
+                Console.Error.WriteLine("[DEBUG-popup-complete-close] " + System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    owner = _owner.GetType().Name,
+                    child = _visual?.GetType().Name,
+                    visualMilliseconds,
+                    nativeMilliseconds,
+                    totalMilliseconds = watch.Elapsed.TotalMilliseconds
+                }));
+            }
         }
 
         private void ResolveVisual()

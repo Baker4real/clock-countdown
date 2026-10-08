@@ -3622,23 +3622,14 @@ internal static class ValidationReport
         }
 
         var bands = ReadMainDecorationBands(sourceRoot);
-        // #146 战役收口（待维护者复核）：ExpectedEdges/Label 区间是空态基线帧的精确几何金丝。
-        // 原常数编码 #135 工作台骨架之前的布局；#135/#136/#139 定稿并重拍 v22 后按新基线帧
-        // 重推导（x=200 列，delta≥30，证据 run-evidence\clock-countdown-issue-146-final-closure）。
-        // Notes-Day 标签带收窄至 [405,424]：[425,426] 是 #135 sanction 的工作区卡片顶边（全宽），
-        // 旧 [405,440] 会在新布局下把 sanctioned 卡边误计为标签带违规；标签字形仍被精确行金丝覆盖。
-        // 2026-09-17 深夜：捕获口径改 Aliased+Ideal 并重拍 v22 后按新帧再次重推导（同一 x=200/delta≥30 口径）。
+        // #189: v25 reflects the approved font scale, warm palette and real DIP layout.
+        // Independently re-read x=200 with the existing delta>=30 rule; glyph edges
+        // are part of this exact canary. Scan ranges, label bands and negative fixtures
+        // are unchanged (run-evidence/clock-countdown/implement-spec-189-20261008).
         var specs = new[]
         {
-            // #151：编辑卡标题落 TypeH2（27→22）并收紧字段行距（20→SpacingFieldRow 10）后，
-            // 空态基线帧 x=200 列控制边按同一口径（delta≥30）对新帧重推导（证据 run 20260918T211928 后重拍帧）。
-            // 输入面改白纸 PanelBrush 后输入框上下边对差从 24 升到 33，进入 canary 可见集（509/563）；
-            // 标签带随布局上移 10px 收窄为 [480,502]（「名称」标签字形现位于 485–501），sanction 509 输入框顶边。
-            // #154：倒计时页手写体退出表单测量（装饰层化）使标题行收紧 ~11px，字段整体上移，
-            // 控制边对新帧再次重推导 → {498,518,519,531,532,552}；「名称」字形现位于 474–490，标签带 [469,491]
-            // （同一字形±5/+1 口径；证据 run-evidence\clock-countdown-issue-154-closure 重拍帧）。
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 498, 518, 519, 531, 532, 552 }, 469, 491),
-            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 497, 498, 499, 501, 502, 503, 505, 506, 514, 515 }, 405, 424)
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 521, 522, 534, 535 }, 469, 491),
+            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 495, 496, 497, 499, 500, 501, 503, 504, 512, 513 }, 405, 424)
         };
         var directory = Path.Combine(
             Path.GetFullPath(sourceRoot),

@@ -4867,22 +4867,37 @@ internal static class WindowValidationInput
     /// </summary>
     public static bool WaitForPopupClosed(Popup popup, int timeoutMilliseconds = 300)
     {
+        var diagnosticWatch = Stopwatch.StartNew();
+        var diagnosticPumpCount = 0;
+        var diagnosticRenderCount = 0;
+        double diagnosticMaxPump = 0;
+        double diagnosticMaxRender = 0;
         var deadline = Stopwatch.GetTimestamp() +
             (long)(timeoutMilliseconds * (double)Stopwatch.Frequency / 1000d);
         // An isolated desktop has no presented DWM frame. Request a real WPF
         // render so its animation clock can finish; never assign close state.
         while (popup.IsOpen && Stopwatch.GetTimestamp() < deadline)
         {
+            var stepStarted = diagnosticWatch.Elapsed.TotalMilliseconds;
             Pump(popup.Dispatcher);
+            diagnosticPumpCount++;
+            diagnosticMaxPump = Math.Max(diagnosticMaxPump, diagnosticWatch.Elapsed.TotalMilliseconds - stepStarted);
             if (popup.IsOpen && popup.Child is Visual visual)
             {
+                stepStarted = diagnosticWatch.Elapsed.TotalMilliseconds;
                 var renderTick = new System.Windows.Media.Imaging.RenderTargetBitmap(1, 1, 96, 96, PixelFormats.Pbgra32);
                 renderTick.Render(visual);
                 renderTick.Freeze();
+                diagnosticRenderCount++;
+                diagnosticMaxRender = Math.Max(diagnosticMaxRender, diagnosticWatch.Elapsed.TotalMilliseconds - stepStarted);
             }
             System.Threading.Thread.Sleep(5);
         }
 
+        if (popup.IsOpen)
+        {
+            Console.Error.WriteLine($"[DEBUG-popup-clock] elapsed={diagnosticWatch.Elapsed.TotalMilliseconds:F3}, pumps={diagnosticPumpCount}, renders={diagnosticRenderCount}, maxPump={diagnosticMaxPump:F3}, maxRender={diagnosticMaxRender:F3}, transition={PopupMotionBehavior.DescribeTransitionForValidation(popup)}");
+        }
         return !popup.IsOpen;
     }
 

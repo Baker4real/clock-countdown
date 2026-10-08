@@ -1039,9 +1039,41 @@ public static class MotionValidationContractHarness
                 WaitFor(result, category + "-native-reopen-final", visual, values, animated,
                     value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
             }
+            // Reopen at the real final animation frame, while the native hide
+            // is queued. The earlier close must not win over this new request.
+            close();
+            var completionReopened = false;
+            WaitFor(result, category + "-completion-reopen", visual, values, animated, value => {
+                if (!isOpen() || animated() || !Near(value, new[] { 0.0, 4.0 }, 0.000001)) return false;
+                open();
+                completionReopened = isOpen();
+                return completionReopened;
+            }, isOpen);
+            Require(completionReopened, category + " 退出完成帧的新打开请求没有生效。");
+            WaitFor(result, category + "-completion-reopen-final", visual, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            result.InputChecks["CompletionReopenSurvivedQueuedClose"] = true;
             close();
             WaitFor(result, category + "-close-final", visual, values, animated,
-                value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+                value => !isOpen() && PresentationSource.FromVisual(visual) == null &&
+                    Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+            open();
+            WaitFor(result, category + "-detach-open-final", visual, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            close();
+            WaitFor(result, category + "-detach-at-completion", visual, values, animated, value => {
+                if (!isOpen() || animated() || !Near(value, new[] { 0.0, 4.0 }, 0.000001)) return false;
+                var popupSource = PresentationSource.FromVisual(visual);
+                Call("PopupMotionBehavior", owner is ToolTip ? "SetIsToolTipEnabled" : "SetIsEnabled", owner, false);
+                Require(!isOpen(), category + " 禁用行为后遗留了透明打开弹层。");
+                Require(!(Mouse.Captured is Visual captured) ||
+                    !ReferenceEquals(PresentationSource.FromVisual(captured), popupSource),
+                    category + " 禁用行为后仍由透明弹层捕获鼠标。");
+                return true;
+            }, isOpen);
+            WaitFor(result, category + "-detach-closed", visual, values, animated,
+                value => !isOpen() && PresentationSource.FromVisual(visual) == null, isOpen);
+            result.InputChecks["CompletionDetachSettledClose"] = true;
         }
         finally
         {

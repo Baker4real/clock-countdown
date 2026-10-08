@@ -872,6 +872,13 @@ internal static class PopupMotionBehavior
 
             _attached = false;
             _transitionVersion++;
+            if (_transition == TransitionKind.Closing && !_requestedOpen)
+            {
+                // Detaching cancels the queued callback, not the user's close
+                // request. Settle it before releasing the visual/capture state.
+                CompleteClose();
+            }
+
             BindingOperations.ClearBinding(this, ObservedIsOpenProperty);
             BindingOperations.ClearBinding(this, ObservedPlacementTargetProperty);
             if (_owner is Popup popup)
@@ -1219,7 +1226,7 @@ internal static class PopupMotionBehavior
             {
                 if (version == _transitionVersion)
                 {
-                    CompleteTransition(version, kind, targetOpacity, targetY);
+                    CompleteTransition(version, kind, targetOpacity, targetY, deferClose: true);
                 }
             };
             _visual.BeginAnimation(
@@ -1242,7 +1249,8 @@ internal static class PopupMotionBehavior
             long version,
             TransitionKind kind,
             double targetOpacity,
-            double targetY)
+            double targetY,
+            bool deferClose = false)
         {
             if (version != _transitionVersion || _visual is null)
             {
@@ -1250,19 +1258,34 @@ internal static class PopupMotionBehavior
             }
 
             SetVisualValues(targetOpacity, targetY);
-            _transition = TransitionKind.None;
             if (kind == TransitionKind.Opening)
             {
+                _transition = TransitionKind.None;
                 _hasPresented = true;
                 return;
             }
 
-            CompleteClose();
+            if (!deferClose)
+            {
+                CompleteClose();
+                return;
+            }
+
+            // Popup's native hide synchronizes with the compositor. Let the
+            // current animation/render tick submit its work before hiding the
+            // HWND. Keep Closing until then so a new open request can cancel it.
+            _owner.Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+            {
+                if (_attached && version == _transitionVersion &&
+                    !_requestedOpen && _transition == TransitionKind.Closing)
+                {
+                    CompleteClose();
+                }
+            }));
         }
 
         private void CompleteClose()
         {
-            var watch = System.Diagnostics.Stopwatch.StartNew();
             _transitionVersion++;
             _transition = TransitionKind.None;
             _hasPresented = false;
@@ -1271,25 +1294,12 @@ internal static class PopupMotionBehavior
                 SetVisualValues(0, 4);
             }
 
-            var visualMilliseconds = watch.Elapsed.TotalMilliseconds;
             if (IsOpen)
             {
                 SetIsOpen(false);
             }
 
-            var nativeMilliseconds = watch.Elapsed.TotalMilliseconds;
             RestoreCapturePolicy();
-            if (watch.Elapsed.TotalMilliseconds > 20)
-            {
-                Console.Error.WriteLine("[DEBUG-popup-complete-close] " + System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    owner = _owner.GetType().Name,
-                    child = _visual?.GetType().Name,
-                    visualMilliseconds,
-                    nativeMilliseconds,
-                    totalMilliseconds = watch.Elapsed.TotalMilliseconds
-                }));
-            }
         }
 
         private void ResolveVisual()

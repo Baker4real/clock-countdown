@@ -199,6 +199,7 @@ $script:nonAssetHashes = [ordered]@{
     'holiday-data\2026.json' = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
     'holiday-data\README.md' = 'DBACB482409A7CFD0845C1D26BE49C67B93C8A678E11EACA8BA4047C228716DF'
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
+    'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md' = 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80'
     'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
     'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
     'assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
@@ -281,6 +282,7 @@ $script:nonAssetIntegrityPaths = @(
     'CountdownLauncher.cs',
     'countdown-icon.ico',
     'assets\floating-plush\SOURCES.md'
+    'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md'
 ) + @($script:sourceBuildNonAssetFiles) + @($script:offlineHolidayDataFiles)
 
 # 构建产物（如验证程序 exe）跨环境字节不可复现，不进静态哈希钉死；仍必须随发布包传输。

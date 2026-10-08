@@ -27,6 +27,96 @@ function Write-BuildSegmentTiming {
     Write-Output ("BUILD_SEGMENT_SECONDS {0}={1}" -f $Name, $seconds.ToString('0.0', [System.Globalization.CultureInfo]::InvariantCulture))
 }
 
+function Get-CountdownThirdPartyLicenseFiles {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $RepositoryRoot,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $RestoredAssets
+    )
+
+    # Pin the actual package license bytes, not a license URL or the latest package.
+    # H.NotifyIcon's three nupkgs omit the license, so their shared upstream text is vendored below.
+    $packages = @(
+        @{
+            Id = 'CommunityToolkit.Mvvm'; Version = '8.4.2'
+            Commit = '35dfe7b12da0e64384bfaec7ebc0883196a89f9f'
+            Files = [ordered]@{
+                'License.md' = '651997EF19DBB9ECB8DD660DBC86444A65AF21F18CFE08DAA69BF201CD5CFDFC'
+                'ThirdPartyNotices.txt' = '7774F8B0AB66BFB47EC154CE24A2D6D574FEBC44A74D940B8A037D1C56756163'
+            }
+        }
+        @{
+            Id = 'WPF-UI'; Version = '4.3.0'
+            Commit = '153baadeaf475875a81a4605881ca5c2dbe53972'
+            Files = [ordered]@{
+                'LICENSE.md' = 'EFB68DBCCB1BE73CD78729B76F39720132126BACFF8194EED934323BAB6455B7'
+                'ThirdPartyNotices.txt' = '871E788E025383423FAE377A97229DAFCB9254687CE917D63EBBF7B10F34C588'
+            }
+        }
+        @{
+            Id = 'WPF-UI.Abstractions'; Version = '4.3.0'
+            Commit = '153baadeaf475875a81a4605881ca5c2dbe53972'
+            Files = [ordered]@{
+                'LICENSE.md' = 'EFB68DBCCB1BE73CD78729B76F39720132126BACFF8194EED934323BAB6455B7'
+                'ThirdPartyNotices.txt' = '871E788E025383423FAE377A97229DAFCB9254687CE917D63EBBF7B10F34C588'
+            }
+        }
+        @{ Id = 'H.NotifyIcon.Wpf'; Version = '2.4.1'; Commit = 'bcaaabecf16566dd910a3798fe874014e251b28d'; Files = @{} }
+        @{ Id = 'H.NotifyIcon'; Version = '2.4.1'; Commit = 'bcaaabecf16566dd910a3798fe874014e251b28d'; Files = @{} }
+        @{ Id = 'H.GeneratedIcons.System.Drawing'; Version = '2.4.1'; Commit = 'bcaaabecf16566dd910a3798fe874014e251b28d'; Files = @{} }
+    )
+    $files = [System.Collections.Generic.List[object]]::new()
+    foreach ($package in $packages) {
+        $identity = "$($package.Id)/$($package.Version)"
+        $cachePath = "$($package.Id.ToLowerInvariant())/$($package.Version)"
+        if (-not $RestoredAssets.libraries.Contains($identity) -or
+            $RestoredAssets.libraries[$identity].type -ne 'package' -or
+            $RestoredAssets.libraries[$identity].path -ne $cachePath) {
+            throw "发布许可证包版本或缓存路径不符合固定清单：$identity"
+        }
+        $packageDirectory = $null
+        $nuspecName = $package.Id.ToLowerInvariant() + '.nuspec'
+        foreach ($folder in $RestoredAssets.packageFolders.Keys) {
+            $candidate = Join-Path $folder $cachePath
+            if (Test-Path -LiteralPath (Join-Path $candidate $nuspecName) -PathType Leaf) {
+                $packageDirectory = $candidate
+                break
+            }
+        }
+        if (-not $packageDirectory) {
+            throw "本次还原的 NuGet cache 缺少发布许可证来源包：$identity"
+        }
+        $nuspec = [xml](Get-Content -LiteralPath (Join-Path $packageDirectory $nuspecName) -Raw -Encoding UTF8)
+        $metadata = $nuspec.package.metadata
+        if ([string]$metadata.id -ne $package.Id -or [string]$metadata.version -ne $package.Version -or
+            [string]$metadata.license.type -ne 'expression' -or [string]$metadata.license.InnerText -ne 'MIT' -or
+            [string]$metadata.repository.commit -ne $package.Commit) {
+            throw "发布许可证来源包的身份、许可证或源码提交发生变化：$identity"
+        }
+        foreach ($license in $package.Files.GetEnumerator()) {
+            $files.Add([pscustomobject]@{
+                Source = Join-Path $packageDirectory $license.Key
+                RelativePath = Join-Path 'licenses' "$identity/$($license.Key)"
+                SHA256 = [string]$license.Value
+            })
+        }
+    }
+    $files.Add([pscustomobject]@{
+        Source = Join-Path $RepositoryRoot 'docs/third-party/H.NotifyIcon/2.4.1/LICENSE.md'
+        RelativePath = Join-Path 'licenses' 'H.NotifyIcon/2.4.1/LICENSE.md'
+        SHA256 = 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80'
+    })
+    foreach ($file in $files) {
+        if (-not (Test-Path -LiteralPath $file.Source -PathType Leaf)) {
+            throw "发布缺少许可证或 notices 源文件：$($file.Source)"
+        }
+        if ((Get-FileHash -LiteralPath $file.Source -Algorithm SHA256).Hash -ne $file.SHA256) {
+            throw "发布许可证哈希不符合已核实来源：$($file.Source)"
+        }
+    }
+    return $files.ToArray()
+}
+
 $dotnetResolution = Resolve-CountdownBuildDotnet -RepositoryRoot $PSScriptRoot -DotnetExe $DotnetExe
 $dotnet = $dotnetResolution.Path
 
@@ -165,6 +255,33 @@ if (-not (Test-Path -LiteralPath $sourceApplicationDll -PathType Leaf)) {
 }
 Write-BuildSegmentTiming -Name 'SourceDllBuild'
 
+$restoredAssetsPath = Join-Path $applicationProjectDirectory 'obj/project.assets.json'
+$restoredAssets = Get-Content -LiteralPath $restoredAssetsPath -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
+$thirdPartyLicenseFiles = @(Get-CountdownThirdPartyLicenseFiles -RepositoryRoot $PSScriptRoot -RestoredAssets $restoredAssets)
+$expectedLicensePaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($license in $thirdPartyLicenseFiles) {
+    $target = Join-Path $applicationOutput $license.RelativePath
+    $targetDirectory = Split-Path -Parent $target
+    if (-not (Test-Path -LiteralPath $targetDirectory -PathType Container)) {
+        New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+    }
+    Copy-Item -LiteralPath $license.Source -Destination $target -Force
+    if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne $license.SHA256) {
+        throw "发布许可证复制校验失败：$target"
+    }
+    [void]$expectedLicensePaths.Add([System.IO.Path]::GetRelativePath($applicationOutput, $target))
+}
+$publishedLicenseFiles = @(Get-ChildItem -LiteralPath (Join-Path $applicationOutput 'licenses') -File -Recurse)
+foreach ($publishedLicense in $publishedLicenseFiles) {
+    $relativePath = [System.IO.Path]::GetRelativePath($applicationOutput, $publishedLicense.FullName)
+    if (-not $expectedLicensePaths.Contains($relativePath)) {
+        throw "发布包含未声明许可证文件：$relativePath"
+    }
+}
+if ($publishedLicenseFiles.Count -ne $thirdPartyLicenseFiles.Count) {
+    throw "发布许可证数量无效：期望 $($thirdPartyLicenseFiles.Count)，实际 $($publishedLicenseFiles.Count)。"
+}
+
 foreach ($asset in $assetManifest) {
     $target = $asset.Target
     $targetDirectory = Split-Path -Parent $target
@@ -260,6 +377,7 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     $utf8NoBom)
 Write-Output "PUBLISHED_PAYLOAD_COUNT=$($payloadFiles.Count)"
 Write-Output "PUBLISHED_PAYLOAD_AGGREGATE=$payloadAggregate"
+Write-Output "PUBLISHED_LICENSE_COUNT=$($thirdPartyLicenseFiles.Count)"
 Write-BuildSegmentTiming -Name 'AssetValidationAndPayloadHash'
 
 & $dotnet publish $verificationProject -c Release -r win-x64 --self-contained true `

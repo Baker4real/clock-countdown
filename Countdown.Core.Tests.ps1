@@ -3618,8 +3618,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 519 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs and offline holiday data'
-Assert-Equal 515 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs and offline holiday data'
+Assert-Equal 527 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 523 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 60 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
@@ -3650,6 +3650,26 @@ $installedApplicationFiles = @($releaseContract.InstalledFiles | Where-Object { 
 $publishedPayloadManifest = Get-Content -LiteralPath (
     Join-Path $PSScriptRoot 'app\published-payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-Equal ((@($publishedPayloadManifest.files.path) | Sort-Object) -join ',') (($installedApplicationFiles | Sort-Object) -join ',') 'Release contract preserves every published application file without extra runtime files'
+$expectedPublishedLicenseFiles = @(
+    'app\licenses\CommunityToolkit.Mvvm\8.4.2\License.md',
+    'app\licenses\CommunityToolkit.Mvvm\8.4.2\ThirdPartyNotices.txt',
+    'app\licenses\WPF-UI\4.3.0\LICENSE.md',
+    'app\licenses\WPF-UI\4.3.0\ThirdPartyNotices.txt',
+    'app\licenses\WPF-UI.Abstractions\4.3.0\LICENSE.md',
+    'app\licenses\WPF-UI.Abstractions\4.3.0\ThirdPartyNotices.txt',
+    'app\licenses\H.NotifyIcon\2.4.1\LICENSE.md'
+)
+$actualPublishedLicenseFiles = @($publishedPayloadManifest.files.path | Where-Object { $_ -like 'app\licenses\*' })
+Assert-Equal (($expectedPublishedLicenseFiles | Sort-Object) -join ',') (($actualPublishedLicenseFiles | Sort-Object) -join ',') 'Published payload retains the complete audited license and notices set'
+foreach ($publishedLicenseFile in $expectedPublishedLicenseFiles) {
+    Assert-Equal $true ($publishedLicenseFile -in @($releaseContract.InstalledFiles)) "Third-party license is installed: $publishedLicenseFile"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($publishedLicenseFile) "Third-party license is integrity protected: $publishedLicenseFile"
+}
+$notifyIconLicenseSource = 'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md'
+Assert-Equal $true ($notifyIconLicenseSource -in @($releaseContract.PackageFiles)) 'Release package preserves the vendored H.NotifyIcon license needed by the build script'
+Assert-Equal 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80' $releaseContract.IntegrityHashes[$notifyIconLicenseSource] 'Vendored H.NotifyIcon license matches the upstream commit bytes'
+Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.SourceBuildFiles)) 'Build-script license input is not an MSBuild project item'
+Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.InstalledFiles)) 'Runtime uses the published license copy instead of the repository source path'
 foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Release contract packages offline holiday data: $offlineHolidayFile"
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"

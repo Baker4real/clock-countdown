@@ -17,7 +17,7 @@ internal sealed class ReminderRulesEditorWindow : Window
     private readonly StackPanel _rulesHost = new();
     private readonly TextBlock _countText = new();
     private readonly ComboBox _mode = new();
-    private readonly DatePicker _firstDueDate = new();
+    private readonly DatePicker _firstDueDate = new WpfUiDatePicker();
     private readonly ComboBox _firstDueHour = new();
     private readonly ComboBox _firstDueMinute = new();
     private readonly ComboBox _interval = new();
@@ -143,15 +143,6 @@ internal sealed class ReminderRulesEditorWindow : Window
         }
 
         BuildCalendarSelector();
-        ThemedDatePickerBehavior.Attach(_firstDueDate);
-        ThemedComboBoxBehavior.Attach(_mode);
-        ThemedComboBoxBehavior.Attach(_firstDueHour);
-        ThemedComboBoxBehavior.Attach(_firstDueMinute);
-        ThemedComboBoxBehavior.Attach(_interval);
-        ThemedComboBoxBehavior.Attach(_calendarFrequency);
-        ThemedComboBoxBehavior.Attach(_calendarMonth);
-        ThemedComboBoxBehavior.Attach(_calendarDay);
-
         NameControl(_mode, "提醒规则类型");
         NameControl(_firstDueDate, "首次提醒日期");
         NameControl(_firstDueHour, "首次提醒小时");

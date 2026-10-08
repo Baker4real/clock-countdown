@@ -585,7 +585,7 @@
               <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Padding" Value="18,0" />
             </Style>
-            <Style TargetType="{x:Type DatePicker}"
+            <Style TargetType="{x:Type local:WpfUiDatePicker}"
                    BasedOn="{StaticResource {x:Type DatePicker}}">
               <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
             </Style>
@@ -611,8 +611,8 @@
               <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             </Style>
             <Style x:Key="MainCompactDateInput"
-                   TargetType="{x:Type DatePicker}"
-                   BasedOn="{StaticResource {x:Type DatePicker}}">
+                   TargetType="{x:Type local:WpfUiDatePicker}"
+                   BasedOn="{StaticResource {x:Type local:WpfUiDatePicker}}">
               <Setter Property="Height" Value="56" />
               <Setter Property="Padding" Value="16,0" />
               <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
@@ -1199,7 +1199,7 @@
                           <StackPanel Grid.Column="2">
                             <TextBlock x:Name="CountdownDateLabel" Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
                             <Grid Margin="0,4,0,0">
-                              <DatePicker x:Name="CountdownDate"
+                              <local:WpfUiDatePicker x:Name="CountdownDate"
                                           Width="384"
                                           Style="{StaticResource MainCompactDateInput}"
                                           Padding="48,0,16,0" />
@@ -1575,9 +1575,9 @@
                           </Grid.RowDefinitions>
                           <Grid Grid.Row="0" x:Name="MainNotePrimaryLabels">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="534" />
+                              <ColumnDefinition Width="522" />
                               <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="284" />
+                              <ColumnDefinition Width="296" />
                               <ColumnDefinition Width="7" />
                               <ColumnDefinition Width="132" />
                               <ColumnDefinition Width="8" />
@@ -1601,9 +1601,9 @@
                           </Grid>
                           <Grid Grid.Row="1" x:Name="MainNotePrimaryInputs" Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="534" />
+                              <ColumnDefinition Width="522" />
                               <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="284" />
+                              <ColumnDefinition Width="296" />
                               <ColumnDefinition Width="7" />
                               <ColumnDefinition Width="132" />
                               <ColumnDefinition Width="8" />
@@ -1643,8 +1643,8 @@
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                               <Grid>
-                                <DatePicker x:Name="NoteDate"
-                                            Width="284"
+                                <local:WpfUiDatePicker x:Name="NoteDate"
+                                            Width="296"
                                             MinHeight="68"
                                             Padding="48,0,16,0" />
                                 <Path Width="20"
@@ -2195,7 +2195,7 @@
                                  Margin="0,0,8,0"
                                  Foreground="{DynamicResource BodyBrush}"
                                  Text="日期" />
-                      <DatePicker x:Name="NoteDateFilter" Width="230" />
+                      <local:WpfUiDatePicker x:Name="NoteDateFilter" Width="254" />
                       <Button x:Name="ClearNoteDateFilter"
                               Width="76"
                               Margin="8,0,0,0"

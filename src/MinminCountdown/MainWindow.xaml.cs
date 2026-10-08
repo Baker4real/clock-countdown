@@ -987,14 +987,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NameControl(CreateTagButton, "新建标签");
         // #156：筛选「清除」的可访问名说明清除的是便签日期筛选，不是只读一个「清除」。
         NameControl(ClearNoteDateFilter, "清除便签日期筛选");
-        ThemedDatePickerBehavior.Attach(CountdownDate);
-        ThemedDatePickerBehavior.Attach(NoteDate);
-        ThemedDatePickerBehavior.Attach(NoteDateFilter);
-        ThemedComboBoxBehavior.Attach(CountdownHour);
-        ThemedComboBoxBehavior.Attach(CountdownMinute);
-        ThemedComboBoxBehavior.Attach(CountdownSecond);
-        ThemedComboBoxBehavior.Attach(DisplayPrecision);
-        ThemedComboBoxBehavior.Attach(NoteGroupingSelector);
         UiAccessibility.MarkLive(StatusText);
         // #156：数量变化由一处状态区域说出完整句子——命令栏数量文字（N 个待办 / N 个倒计时）
         // 是唯一的数量直播区；分段徽章与分段名只承载视觉与可访问名，不再各自播报。

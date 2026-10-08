@@ -4558,6 +4558,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.ThemeControlInventoryCovered) 'adapter 验证主题控件资产清单'
     Assert-Equal $true ([bool] $adapterValidation.ThemedControlTemplatesApplied) 'adapter 验证真实 WPF 主题模板'
     Assert-Equal $true ([bool] $adapterValidation.LiveDatePickerPopupIsThemed) 'adapter 验证真实 DatePicker Popup 主题'
+    Assert-Equal $true ([bool] $adapterValidation.WpfUiPickerStylesIntegrated) '生产日期与下拉实际继承 WPF-UI 样式并使用库提供的切换模板（#206）'
+    Assert-Equal $true ([bool] $adapterValidation.DatePickerSelectedDateTextMatchesContract) '全部生产日期框在日期变化与日历关闭后保持中文空格格式（#206）'
     # #129 去重迁移（U1 独有断言）：DatePicker 文本点击与主题弹层系列。
     Assert-Equal $true ([bool] $adapterValidation.DateInputReadOnly) '日期选择不接受自由文本输入（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.DatePickerButtonOpensCalendar) '点击日期下拉按钮打开日历弹层（#129 自 U1 迁移）'
@@ -5163,6 +5165,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingCountdownsSource -match 'FadeCountdownDigit\(') '主窗与悬浮窗秒位刷新消费 90ms 淡入 token，并从当前动画状态续接（#198 源码契约）'
     Assert-Equal $true ([bool] $adapterValidation.MotionClientAreaAnimationSwitchReadable) '已接入系统客户区动画开关读取点（未来动效即时等价入口）'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
+    Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.KeyboardPathsWork) '生产下拉支持 F4、Alt+Down、方向键，并在正常动画下以 Esc 完成关闭'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxArrowIsNotTabStop) '下拉箭头不是独立 Tab 停靠点'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.ArrowIsNotTabStop) '生产 ComboBox 箭头测量均非 Tab 停靠点'
     Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowHeaderDrag.HeaderRequestsDrag) '提醒中心与规则编辑器头部拖动请求原生 DragMove'

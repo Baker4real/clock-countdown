@@ -5150,6 +5150,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Join-Path $PSScriptRoot 'src\MinminCountdown\MotionBehavior.cs') -Raw -Encoding UTF8
     $floatingCountdownsSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.Countdowns.cs') -Raw -Encoding UTF8
+    $countdownDesignSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'DESIGN.md') -Raw -Encoding UTF8
+    Assert-Equal $true (
+        $countdownDesignSource -match '主项 `52 x 78`、次项 `46 x 69`' -and
+        $countdownDesignSource -match '0\.6.*?透明度淡入到.*?`1`.*?90ms') '主/次倒计时分格几何与秒位 0.6→1/90ms 合同同步写入 DESIGN（#198）'
     Assert-Equal $true (
         $motionBehaviorSource -match 'FadeCountdownDigit\(' -and
         $motionBehaviorSource -match 'MotionCountdownDuration' -and

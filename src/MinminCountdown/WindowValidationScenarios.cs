@@ -233,6 +233,20 @@ public sealed partial class MainWindow
             ResetCountdownEditor();
             WindowValidationInput.Pump(Dispatcher);
             var customEditorOpenedAndCancelled = false;
+            var customEditorTimedOut = false;
+            var customEditorTimeout = new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher)
+            {
+                Interval = TimeSpan.FromSeconds(3)
+            };
+            customEditorTimeout.Tick += (_, _) =>
+            {
+                customEditorTimeout.Stop();
+                customEditorTimedOut = true;
+                foreach (var editor in OwnedWindows.OfType<ReminderRulesEditorWindow>().ToArray())
+                {
+                    editor.Close();
+                }
+            };
             Dispatcher.BeginInvoke(
                 DispatcherPriority.ApplicationIdle,
                 new Action(() =>
@@ -244,18 +258,27 @@ public sealed partial class MainWindow
                     customEditorOpenedAndCancelled = editors.Length == 1 && editors[0].IsVisible;
                     if (editors.Length == 1)
                     {
-                        ProbeVisualDescendants<Button>(editors[0])
+                        var cancel = ProbeVisualDescendants<Button>(editors[0])
                             .Single(button => string.Equals(
                                 AutomationProperties.GetAutomationId(button),
                                 "CancelReminderRulesButton",
-                                StringComparison.Ordinal))
-                            .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                                StringComparison.Ordinal));
+                        customEditorOpenedAndCancelled &= WindowValidationInput.InvokeButton(cancel);
                     }
                 }));
-            CountdownReminderCustomRadio.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            customEditorTimeout.Start();
+            try
+            {
+                CountdownReminderCustomRadio.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            }
+            finally
+            {
+                customEditorTimeout.Stop();
+            }
             WindowValidationInput.Pump(Dispatcher);
             var customCancelRestoresDerivedMode =
                 customEditorOpenedAndCancelled &&
+                !customEditorTimedOut &&
                 CountdownReminderCustomRadio.IsChecked != true &&
                 CountdownReminderNoRadio.IsChecked == true &&
                 _countdownReminderRules.Count == 0;

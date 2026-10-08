@@ -79,6 +79,7 @@ internal static class ValidationReport
             CloseMainDatePickerDropdowns(validationMain);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
             ClearCaptureKeyboardFocus();
+            WaitForMainReferenceMotion(validationMain, root);
             var pngBytes = EncodePng(CaptureOpaqueMainSurface(root, captureWidth, captureHeight));
             // #134：实拍证据先落盘再走基线门禁——门禁失败（如 v22 基线与在途改动漂移）
             // 时，失败 run 仍保留可审查的实拍证据与原始错误，而不是什么都不落。
@@ -164,6 +165,7 @@ internal static class ValidationReport
             window.UpdateTime(beijingTime);
             PumpDispatcher();
             CloseMainDatePickerDropdowns(window);
+            WaitForMainReferenceMotion(window, root);
         }
 
         // 变体一：1165×1350 设计坐标下的主窗口便签空态（#134 指定必交证据）。
@@ -511,7 +513,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-08-v24";
+    private const string FloatingReferenceBaselineVersion = "2026-10-08-v25";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -603,7 +605,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-08-v24";
+    private const string MainReferenceBaselineVersion = "2026-10-08-v25";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -1930,7 +1932,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-08-v24 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-08-v25 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["EffectiveThemeTextContrast"] = contrast,
@@ -2892,7 +2894,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-08-v24 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-08-v25 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -4133,8 +4135,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-08-v24", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-08-v24", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-08-v25", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-08-v25", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -7661,7 +7663,7 @@ internal static class ValidationReport
             stablePasses = ready && unchanged ? stablePasses + 1 : 0;
             if (stablePasses >= requiredStablePasses)
             {
-                if (!WindowValidationInput.WaitUntil(root.Dispatcher, () => CaptureTextMotionSettled(root)))
+                if (!WaitForRenderedCaptureState(root, () => CaptureTextMotionSettled(root)))
                 {
                     throw new InvalidOperationException("悬浮窗参考帧数字未在 300ms 内完成淡入。");
                 }
@@ -8554,7 +8556,7 @@ internal static class ValidationReport
             throw new InvalidOperationException("筛选弹层打开态参考帧的 Popup.Child 尚未完成布局。");
         }
 
-        if (!WindowValidationInput.WaitUntil(child.Dispatcher, () =>
+        if (!WaitForRenderedCaptureState(child, () =>
                 popup.IsOpen && !PopupMotionBehavior.IsClosing(popup) &&
                 child.Opacity == 1 && child.RenderTransform.Value.IsIdentity))
         {
@@ -15022,13 +15024,23 @@ internal static class ValidationReport
 
     private static void WaitForMainReferenceMotion(MainWindow window, FrameworkElement root)
     {
-        if (!WindowValidationInput.WaitUntil(window.Dispatcher, () =>
+        if (!WaitForRenderedCaptureState(root, () =>
                 window.VisibleSegmentIndicatorsSettledForCapture && CaptureTextMotionSettled(root)))
         {
             throw new InvalidOperationException(
                 $"主窗口参考帧未在 300ms 内到达选中指示条与数字终态：{window.CurrentWorkspace}。");
         }
     }
+
+    private static bool WaitForRenderedCaptureState(FrameworkElement visual, Func<bool> isReady) =>
+        WindowValidationInput.WaitUntil(visual.Dispatcher, () =>
+        {
+            // An offscreen isolated HWND can stop requesting frames before an
+            // animation's final tick. Render to observe the real clock; do not
+            // seek it, change its duration, or replace the animated value.
+            _ = RenderVisualToBitmap(visual, 1, 1);
+            return isReady();
+        });
 
     private sealed record TextFit(bool Fits, double Available, double Required);
 

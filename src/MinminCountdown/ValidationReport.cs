@@ -15185,7 +15185,7 @@ internal static class ValidationReport
     {
         const int timeoutMilliseconds = 300;
         visual.Dispatcher.VerifyAccess();
-        var watch = Stopwatch.StartNew();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var frame = new DispatcherFrame();
         var ready = false;
         Exception? failure = null;

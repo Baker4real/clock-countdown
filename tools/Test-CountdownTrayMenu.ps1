@@ -122,7 +122,6 @@ public sealed class TrayMenuFocusEvidence
     public bool MenuIsKeyboardFocusWithin { get; set; }
     public bool FirstItemIsKeyboardFocused { get; set; }
     public bool FirstItemIsKeyboardFocusWithin { get; set; }
-    public bool FirstItemIsSelected { get; set; }
     public bool FirstItemIsHighlighted { get; set; }
 }
 
@@ -297,7 +296,6 @@ public static class CountdownTrayMenuHarness
             MenuIsKeyboardFocusWithin = menu.IsKeyboardFocusWithin,
             FirstItemIsKeyboardFocused = firstItem.IsKeyboardFocused,
             FirstItemIsKeyboardFocusWithin = firstItem.IsKeyboardFocusWithin,
-            FirstItemIsSelected = firstItem.IsSelected,
             FirstItemIsHighlighted = firstItem.IsHighlighted
         };
     }

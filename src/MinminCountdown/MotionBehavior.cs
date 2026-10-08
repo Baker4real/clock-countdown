@@ -983,6 +983,10 @@ internal static class PopupMotionBehavior
             DependencyObject? target = _isToolTip
                 ? ((ToolTip)_owner).PlacementTarget
                 : ((Popup)_owner).PlacementTarget;
+            // Template popups can position relative to their template parent
+            // without setting PlacementTarget. Observe that owner's request
+            // so reopening can interrupt an exit while IsOpen is still true.
+            target ??= (_owner as FrameworkElement)?.TemplatedParent;
             if (ReferenceEquals(target, _placementTarget))
             {
                 return;

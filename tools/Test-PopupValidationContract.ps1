@@ -7,6 +7,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 if ([Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') -eq '1') {
@@ -563,8 +564,9 @@ public static class MotionValidationContractHarness
             var expected = enabled ? EnabledMilliseconds : new double[6];
             Require(Near(result.TokenMilliseconds, expected, 0) &&
                 Near(result.EffectiveMilliseconds, expected, 0), "token 或有效时长不符合注入模式。");
-            Require(_application.Resources["MotionEaseOut"] is QuarticEase easing &&
-                easing.EasingMode == EasingMode.EaseOut, "生产缓动不是 quartic ease-out。");
+            Require(_application.Resources["MotionEaseOut"] is PowerEase easing &&
+                easing.Power == 4 && easing.EasingMode == EasingMode.EaseOut,
+                "生产缓动不是 quartic ease-out。");
             exercise(result);
             Require(!expectedException, "异常恢复负例没有实际抛出。");
         }

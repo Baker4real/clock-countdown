@@ -1057,14 +1057,15 @@ public static class MotionValidationContractHarness
             pointerState = (IDisposable)Activator.CreateInstance(AppType("WindowValidationInput+PickerPointerState"), true);
             var pointerActions = new List<object>();
             result.InputChecks["PointerActions"] = pointerActions;
-            Action<Control> click = target => {
+            void click(Control target, bool advanceDispatcher = true)
+            {
                 var pressed = (bool)Call("WindowValidationInput", "RaisePickerPointer", target,
                     UIElement.PreviewMouseLeftButtonDownEvent);
-                Pump();
+                if (advanceDispatcher) Pump();
                 var focusedOnPress = target.IsKeyboardFocusWithin;
                 var released = (bool)Call("WindowValidationInput", "RaisePickerPointer", target,
                     UIElement.PreviewMouseLeftButtonUpEvent);
-                Pump();
+                if (advanceDispatcher) Pump();
                 pointerActions.Add(new {
                     Target = target.Name, Type = target.GetType().FullName,
                     Visible = target.IsVisible, Enabled = target.IsEnabled,
@@ -1075,7 +1076,7 @@ public static class MotionValidationContractHarness
                     Require(focusedOnPress && target.IsKeyboardFocusWithin, "隔离 pointer 未把焦点交给外部输入框。");
                 else
                     Require(released, "隔离 pointer release 未被触发器处理：" + target.Name);
-            };
+            }
             Func<double[]> values = () => new[] { calendar.Opacity, Translation(calendar)?.Y ?? double.NaN };
             Func<bool> animated = () => Animated(calendar, UIElement.OpacityProperty);
             Func<bool> isOpen = () => popup.IsOpen;
@@ -1139,7 +1140,7 @@ public static class MotionValidationContractHarness
                 "重开注入前日历已完成退出，未覆盖中途重开。");
             var openedBeforeReopen = openedCount;
             var closedBeforeReopen = closedCount;
-            click(trigger);
+            click(trigger, false);
             result.InputChecks["PointerReopenedDuringExit"] = picker.IsDropDownOpen && popup.IsOpen;
             result.InputChecks["EscapeReopenRetainedSurface"] =
                 openedCount == openedBeforeReopen && closedCount == closedBeforeReopen;
@@ -1150,6 +1151,8 @@ public static class MotionValidationContractHarness
             Require(!popup.StaysOpen, "重开日历后未恢复原生外点关闭策略。");
             WaitFor(result, "pointer-reopen-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            Require(openedCount == openedBeforeReopen && closedCount == closedBeforeReopen,
+                "重开的后续真实帧出现了延迟弹层重建。");
             activatePopupCapture("Outside");
             click(outside);
             var outsideFocused = outside.IsKeyboardFocusWithin;
@@ -1173,7 +1176,7 @@ public static class MotionValidationContractHarness
                 "日期选择后的重开注入前已完成退出。");
             openedBeforeReopen = openedCount;
             closedBeforeReopen = closedCount;
-            click(trigger);
+            click(trigger, false);
             Require(picker.IsDropDownOpen, "选择日期后的退出没有被真实触发器重新打开。");
             result.InputChecks["SelectionReopenRetainedSurface"] =
                 openedCount == openedBeforeReopen && closedCount == closedBeforeReopen;
@@ -1181,12 +1184,56 @@ public static class MotionValidationContractHarness
                 "选择日期后的重开已重建弹层，未覆盖同一表面的中途反向。");
             WaitFor(result, "selection-reopen-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
-            Require((bool)Call("WindowValidationInput", "RaisePreviewKey", calendar, Key.Escape, ModifierKeys.None),
+            Require(openedCount == openedBeforeReopen && closedCount == closedBeforeReopen,
+                "日期选择后重开的后续真实帧出现了延迟弹层重建。");
+            activatePopupCapture("Selection");
+            CalendarDayButton FindSelectedDay(DependencyObject root)
+            {
+                if (root is CalendarDayButton candidate && candidate.DataContext is DateTime date && date.Date == selected)
+                    return candidate;
+                for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+                {
+                    var found = FindSelectedDay(VisualTreeHelper.GetChild(root, index));
+                    if (found != null) return found;
+                }
+                return null;
+            }
+            var selectedDay = FindSelectedDay(calendar);
+            Require(selectedDay != null && selectedDay.IsVisible, "日历缺少已选日期的真实单元格。");
+            Keyboard.Focus(selectedDay);
+            Pump();
+            Require(ReferenceEquals(Keyboard.FocusedElement, selectedDay) && selectedDay.IsKeyboardFocused,
+                "Esc 前焦点未进入真实日期单元格。");
+            Call("WindowValidationInput", "RaiseKey", selectedDay, Key.Right, ModifierKeys.None);
+            Pump();
+            var previewDate = selected.AddDays(1);
+            var escapeTarget = Keyboard.FocusedElement as CalendarDayButton;
+            Require(picker.SelectedDate == previewDate && escapeTarget?.DataContext is DateTime focusedDate &&
+                focusedDate.Date == previewDate, "真实方向键没有进入本轮待取消的日期预选。");
+            result.InputChecks["KeyboardPreviewDate"] = picker.SelectedDate?.ToString("yyyy-MM-dd");
+            var pickerDateEvents = new List<string>();
+            var calendarDateEvents = new List<string>();
+            picker.SelectedDateChanged += (sender, args) => pickerDateEvents.AddRange(
+                args.AddedItems.OfType<DateTime>().Select(date => date.ToString("yyyy-MM-dd")));
+            calendar.SelectedDatesChanged += (sender, args) => calendarDateEvents.AddRange(
+                args.AddedItems.OfType<DateTime>().Select(date => date.ToString("yyyy-MM-dd")));
+            result.InputChecks["FinalEscapeTarget"] = Keyboard.FocusedElement.GetType().FullName;
+            Require((bool)Call("WindowValidationInput", "RaisePreviewKey", escapeTarget, Key.Escape, ModifierKeys.None),
                 "重新打开后 Esc 没有被生产控件处理。");
             WaitFor(result, "selection-escape-final", calendar, values, animated,
                 value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
             result.InputChecks["SelectedDateAfterReopenEscape"] = picker.SelectedDate?.ToString("yyyy-MM-dd");
             Require(picker.SelectedDate == selected, "重新打开后的 Esc 回滚到了上一轮打开前的日期。");
+            result.InputChecks["PickerEscapeDateEvents"] = pickerDateEvents;
+            result.InputChecks["CalendarEscapeDateEvents"] = calendarDateEvents;
+            Require(pickerDateEvents.SequenceEqual(new[] { selected.ToString("yyyy-MM-dd") }) &&
+                calendarDateEvents.SequenceEqual(new[] { selected.ToString("yyyy-MM-dd") }),
+                "Esc 日期通知泄露了旧日期或重复回写。");
+            picker.CoerceValue(DatePicker.SelectedDateProperty);
+            Require(picker.SelectedDate == selected, "再次 coercion 暴露了潜伏的旧日期基值。");
+            picker.SelectedDate = selected.AddDays(2);
+            result.InputChecks["LaterSelectionAccepted"] = picker.SelectedDate == selected.AddDays(2);
+            Require((bool)result.InputChecks["LaterSelectionAccepted"], "Esc 路由结束后仍阻止正常日期修改。");
             result.InputChecks["DismissPolicyRestoredAfterClose"] = !popup.StaysOpen;
             Require(!popup.StaysOpen, "日历完成退出后未恢复外点关闭策略。");
         }

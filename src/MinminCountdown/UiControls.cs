@@ -616,9 +616,13 @@ internal static class WpfUiPickerStyles
 internal sealed class WpfUiDatePicker : DatePicker
 {
     internal const string SpacedChineseDateFormat = "yyyy 年 M 月 d 日";
+    private static readonly CoerceValueCallback? BaseCoerceSelectedDate =
+        SelectedDateProperty.GetMetadata(typeof(DatePicker)).CoerceValueCallback;
     private DatePickerTextBox? _textBox;
     private Calendar? _openCalendar;
     private bool _returnFocusAfterClose;
+    private DateTime? _selectedDateAtOpen;
+    private bool _handlingEscapeSelection;
 
     static WpfUiDatePicker()
     {
@@ -629,9 +633,23 @@ internal sealed class WpfUiDatePicker : DatePicker
                 {
                     // A retained popup does not raise CalendarOpened again.
                     // Reopening cancels the previous Escape focus request.
-                    ((WpfUiDatePicker)owner)._returnFocusAfterClose = false;
+                    var picker = (WpfUiDatePicker)owner;
+                    picker._returnFocusAfterClose = false;
+                    picker._selectedDateAtOpen = picker.SelectedDate;
                 }
             }));
+        SelectedDateProperty.OverrideMetadata(typeof(WpfUiDatePicker),
+            new FrameworkPropertyMetadata(null, null, CoerceSelectedDate));
+    }
+
+    private static object CoerceSelectedDate(DependencyObject owner, object value)
+    {
+        var picker = (WpfUiDatePicker)owner;
+        // WPF's day-button handler runs even for handled Escape keys and uses
+        // the last physical opening's snapshot. Replace that value before the
+        // base coercion can update Calendar or raise selection notifications.
+        var candidate = picker._handlingEscapeSelection ? picker._selectedDateAtOpen : value;
+        return BaseCoerceSelectedDate is { } coerce ? coerce(owner, candidate!) : candidate!;
     }
 
     public override void OnApplyTemplate()
@@ -712,9 +730,30 @@ internal sealed class WpfUiDatePicker : DatePicker
     {
         if (eventArgs.Key == Key.Escape && IsDropDownOpen)
         {
+            var selection = _selectedDateAtOpen;
+            _handlingEscapeSelection = true;
             _returnFocusAfterClose = true;
-            IsDropDownOpen = false;
-            eventArgs.Handled = true;
+            try
+            {
+                SetCurrentValue(SelectedDateProperty, selection);
+                IsDropDownOpen = false;
+                eventArgs.Handled = true;
+            }
+            finally
+            {
+                // Complete this key route before restoring the uncoerced
+                // value. Send priority clears the guard before later input;
+                // the cancelled native value must not survive for recoercion.
+                Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
+                {
+                    try { SetCurrentValue(SelectedDateProperty, selection); }
+                    finally
+                    {
+                        _handlingEscapeSelection = false;
+                        CoerceValue(SelectedDateProperty);
+                    }
+                }));
+            }
         }
     }
 

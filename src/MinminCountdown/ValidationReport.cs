@@ -513,7 +513,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-08-v26";
+    private const string FloatingReferenceBaselineVersion = "2026-10-08-v27";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -606,7 +606,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-08-v26";
+    private const string MainReferenceBaselineVersion = "2026-10-08-v27";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -1939,7 +1939,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-08-v26 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-08-v27 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["EffectiveThemeTextContrast"] = contrast,
@@ -2901,7 +2901,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-08-v26 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-08-v27 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -4133,8 +4133,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-08-v26", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-08-v26", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-08-v27", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-08-v27", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -5011,12 +5011,13 @@ internal static class ValidationReport
         var expectedBackdrop = new NormalizedRect(0.0511, 0.1381, 0.8867, 0.7947);
         var expectedPanel = new NormalizedRect(0.0863, 0.1851, 0.8232, 0.7053);
         var expectedHeader = new NormalizedRect(0.0994, 0.1851, 0.8101, 0.1593);
-        // #148：主卡高度随徽章字号（9→12 DIP、行高 17）与截止行「M 月 d 日」空格后的新构成更新；
-        // 与 v22 重拍帧（floating-countdowns-day）同几何，次卡 Y 随主卡底边相邻移动。
+        // #189：按两行主标题、16 DIP 正文和 13 DIP 截止行的真实 WPF 测量固定卡高。
+        // 75.35 DIP 主卡及跟随的次卡位置独立回读于 floating-geometry-after-title-wrap；
+        // 外壳、面板、标题栏、卡片宽度、次卡高度及 0.007 容差保持原合同。
         var expectedCards = new[]
         {
-            new NormalizedRect(0.1154, 0.3791, 0.7723, 0.1865),
-            new NormalizedRect(0.1154, 0.5656, 0.7723, 0.1004)
+            new NormalizedRect(0.1154, 0.3791, 0.7723, 0.1932),
+            new NormalizedRect(0.1154, 0.5726, 0.7723, 0.1004)
         };
         var expectedMascots = new[]
         {
@@ -14496,9 +14497,13 @@ internal static class ValidationReport
             primaryTitle is not null &&
             Math.Abs(primaryTitle.FontSize - 16) <= 0.01 &&
             primaryTitle.FontWeight == FontWeights.SemiBold &&
-            primaryTitle.TextWrapping == TextWrapping.NoWrap &&
+            primaryTitle.TextWrapping == TextWrapping.Wrap &&
             primaryTitle.TextTrimming == TextTrimming.CharacterEllipsis &&
-            Math.Abs(primaryTitle.MaxHeight - 20) <= 0.01 &&
+            primaryTitle.LineStackingStrategy == LineStackingStrategy.BlockLineHeight &&
+            Math.Abs(primaryTitle.LineHeight - 20) <= 0.01 &&
+            Math.Abs(primaryTitle.MaxHeight - 40) <= 0.01 &&
+            primaryTitle.IsVisible && primaryTitle.ActualHeight > 0 &&
+            primaryTitle.ActualHeight <= 40.01 &&
             string.Equals(BrushColor(primaryTitle.Foreground), "#FF3B190D", StringComparison.Ordinal) &&
             primaryDeadline is not null &&
             Math.Abs(primaryDeadline.FontSize - 13) <= 0.01 &&

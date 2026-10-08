@@ -425,6 +425,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 后续项目改为单列规则线，`CardAltBrush` 底、`InkBrush` 数字色块（`SecondaryBlockBrush`），不再重复独立卡片阴影；标题保持单行省略。
 - 主项与次项的剩余时间都使用固定 `194px` 列右对齐，必须单行显示且不得省略。
 - 动态内容右侧至少保留 `54px` 角色安全区，装饰背景、强调轨和规则线都不参与命中测试。
+- #189 字号同步后的主项标题按 `20 DIP` 行高最多两行，保持 16 DIP 正文和 13 DIP 截止行；固定参考场景的主卡实测约 `75.35 DIP`，次卡随主卡底边移动。归一化几何期望只更新主卡高度与次卡纵坐标，外壳、面板、标题栏、卡片宽度、次卡高度、玩偶锚点及 `0.007` 容差不变。
 - 底部区域：月薪大于 0 时显示今日已赚金额；月薪等于 0 时显示 §4 的手写体鼓励文案。两个工作区共用同一规则。
 - `520 x 390` 倒计时表面不增加提醒规则控件；现有标题栏“管理”入口继续打开主窗口，用户倒计时的规则入口位于主窗口编辑表单。“距离下班”仍无编辑入口或提醒动作。
 - 主倒计时数字与粉红强调轨共用 §2 的 `PrimaryCountdownNumberBrush` 与 `FloatingDayPrimaryCountdownAccentBrush`；两者不得复用玩偶阴影资源，实际合成背景上的文字对比度不得低于 `4.5:1`。
@@ -470,7 +471,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役四帧与场景对应（v26 基线 `assets/ui-references/floating-window/520x390/2026-10-08-v26/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
+现役四帧与场景对应（v27 基线 `assets/ui-references/floating-window/520x390/2026-10-08-v27/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -523,11 +524,11 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-09-19，#157 重拍与探针确定性收口）：#157 把 #151–#156 遗留的 CSharp 套件夹具红 `FloatingReferenceViewportStatesMatch` 定性为探针缺陷并按根因修复：悬浮视口右缘的旧比较口径 `bodyViewport.X + ViewportWidth` 把 WPF 滚动条列宽计入视口，而该列宽在本地样式 `Width=10` 之外仍被系统滚动条度量撑大（Windows 滚动条度量：100% 缩放 17 DIP、125% 缩放 17.6 DIP），使「卡右缘 ≤ 视口右缘 + 0.25」成为会话显示缩放的函数（#157 插桩实测：同一几何下 125% 缩放红 0.55 DIP、100% 缩放仅过 0.05 DIP，§11 漂移族），与产品几何无关。修复后该比较改为确定性口径——滚动内容槽右缘（`bodyViewport.X + ActualWidth`，只由 520 外壳固定边距决定）扣除 §10 设计命中轨宽（模板 `FloatingScrollBarHitRail`，应用自有几何），滚动条隐藏时零扣除；新增 `FloatingViewportGeometryGateIsolationBehavior` 反例门禁钉住该边界语义（卡/印记/快速新增越界即红、滚动条隐藏零扣除、边界容差精确到 0.25），并以源码契约钉住捕获方法不得回到 `ViewportWidth` 口径。真实滚动条列宽可宽于 10 DIP 命中轨（系统度量、透明不可见），属观察事实记录，不改变可视基线几何。v22 全部 12 帧与双 manifest 按现役 Aliased+Ideal 口径在独立隔离会话整套重拍（归档于 `run-evidence\clock-countdown-issue-157-closure\v22-prev-20260919\`）：12 帧与重拍前逐字节一致、双 manifest 内容零差异（主窗聚合 `3C6480EB2FE83ACC4BE4383F6093AFBBECFDBF5E55878DB930A011521D265B4D`、悬浮窗聚合 `AB30954E10800E46B863DEC0FBC93DA9E345CA0DEB1DEDF364910440550A2686`），证明该修复渲染中性、基线稳定档位可复现。提醒中心继续无像素帧，父票对该表面的验收由代码探针覆盖且全真（`ReminderCenterEscapeFocusesAcknowledge`、`ReminderCenterTwoRowActionsLayout`、`ReminderCenterEntryVisualIdentity`、`ReminderCenterTypographyWeightWhitelist`、`ReminderCenterRepresentativeCaptureRendered` 与设置恢复壳 `SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette`），未静默跳过。
 
-1. #189 的 WPF 改版使用纯日间 **v26** 真实渲染系列，版本目录为 `2026-10-08-v26`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+1. #189 的 WPF 改版使用纯日间 **v27** 真实渲染系列，版本目录为 `2026-10-08-v27`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
 
-2. v26 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-08-v26/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v26 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v26。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+2. v27 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-08-v27/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v27 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v27。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

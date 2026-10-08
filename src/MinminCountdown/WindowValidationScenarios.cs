@@ -4829,21 +4829,81 @@ internal static class WindowValidationInput
 
     public static bool WaitUntil(Dispatcher dispatcher, Func<bool> condition, int timeoutMilliseconds = 300)
     {
-        var deadline = Stopwatch.GetTimestamp() +
-            (long)(timeoutMilliseconds * (double)Stopwatch.Frequency / 1000d);
-        do
+        dispatcher.VerifyAccess();
+        if (timeoutMilliseconds <= 0)
         {
-            Pump(dispatcher);
-            if (condition())
+            return condition();
+        }
+
+        var watch = Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var observed = false;
+        Exception? failure = null;
+        var timeout = new DispatcherTimer(DispatcherPriority.Send, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
+        };
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Render, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        void Observe()
+        {
+            if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
             {
-                return true;
+                frame.Continue = false;
+                return;
             }
 
-            System.Threading.Thread.Sleep(5);
+            try
+            {
+                if (condition())
+                {
+                    observed = true;
+                    frame.Continue = false;
+                }
+            }
+            catch (Exception error)
+            {
+                failure = error;
+                frame.Continue = false;
+            }
         }
-        while (Stopwatch.GetTimestamp() < deadline);
 
-        return false;
+        EventHandler rendering = (_, _) => Observe();
+        EventHandler requestFrame = (_, _) =>
+        {
+            // Also observe between frames: WPF defers popup HWND destruction
+            // until after IsOpen=false, and it need not produce another frame.
+            Observe();
+            if (!frame.Continue) return;
+
+            // Adding Rendering posts a real WPF render request. Invalidations
+            // can merge on the isolated desktop; a bitmap does not tick clocks.
+            CompositionTarget.Rendering -= rendering;
+            CompositionTarget.Rendering += rendering;
+        };
+        EventHandler expired = (_, _) => frame.Continue = false;
+        try
+        {
+            timeout.Tick += expired;
+            frameRequests.Tick += requestFrame;
+            timeout.Start();
+            frameRequests.Start();
+            requestFrame(null, EventArgs.Empty);
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timeout.Stop();
+            timeout.Tick -= expired;
+            frameRequests.Stop();
+            frameRequests.Tick -= requestFrame;
+            CompositionTarget.Rendering -= rendering;
+        }
+
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        return observed && watch.Elapsed.TotalMilliseconds <= timeoutMilliseconds;
     }
 
     // #205 regression: raising Click alone bypasses ButtonBase.OnClick and its
@@ -4869,67 +4929,7 @@ internal static class WindowValidationInput
     {
         bool IsFullyClosed() => !popup.IsOpen &&
             (popup.Child is not Visual visual || PresentationSource.FromVisual(visual) is null);
-        if (IsFullyClosed() || timeoutMilliseconds <= 0)
-        {
-            return IsFullyClosed();
-        }
-
-        var watch = Stopwatch.StartNew();
-        var frame = new DispatcherFrame();
-        var observedClosed = false;
-        var timeout = new DispatcherTimer(DispatcherPriority.Send, popup.Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
-        };
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Render, popup.Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(10)
-        };
-        void Observe()
-        {
-            if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
-            {
-                frame.Continue = false;
-            }
-            else if (IsFullyClosed())
-            {
-                observedClosed = true;
-                frame.Continue = false;
-            }
-        }
-
-        // Request real WPF frames on the isolated desktop. A bitmap capture
-        // does not advance animation clocks; neither observation path sets
-        // IsOpen, disables motion, or seeks the production clock. IsOpen=false
-        // precedes WPF's deferred HWND destruction and Closed notification;
-        // the next gesture must start after that native lifecycle has ended.
-        EventHandler requestFrame = (_, _) =>
-        {
-            popup.Child?.InvalidateVisual();
-            Observe();
-        };
-        EventHandler rendering = (_, _) => Observe();
-        EventHandler expired = (_, _) => frame.Continue = false;
-        try
-        {
-            timeout.Tick += expired;
-            frameRequests.Tick += requestFrame;
-            CompositionTarget.Rendering += rendering;
-            timeout.Start();
-            frameRequests.Start();
-            popup.Child?.InvalidateVisual();
-            Dispatcher.PushFrame(frame);
-        }
-        finally
-        {
-            timeout.Stop();
-            timeout.Tick -= expired;
-            frameRequests.Stop();
-            frameRequests.Tick -= requestFrame;
-            CompositionTarget.Rendering -= rendering;
-        }
-
-        return observedClosed;
+        return WaitUntil(popup.Dispatcher, IsFullyClosed, timeoutMilliseconds);
     }
 
     /// <summary>

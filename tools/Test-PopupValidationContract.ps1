@@ -330,6 +330,9 @@ public sealed class PopupInputObservation
     public string TemplatedParentType { get; set; }
     public string InputControlType { get; set; }
     public bool? IsDropDownOpen { get; set; }
+    public string MouseCaptureType { get; set; }
+    public bool MouseCaptureInPopupSource { get; set; }
+    public bool? StaysOpen { get; set; }
 }
 
 public sealed class MotionObservation
@@ -340,6 +343,18 @@ public sealed class MotionObservation
     public bool HasAnimation { get; set; }
     public bool? IsOpen { get; set; }
     public PopupInputObservation PopupInput { get; set; }
+    public double? RenderingTimeMilliseconds { get; set; }
+    public string ReusedFromPhase { get; set; }
+}
+
+public sealed class MotionSamplingWindow
+{
+    public string Phase { get; set; }
+    public int FrameCount { get; set; }
+    public double ElapsedMilliseconds { get; set; }
+    public double? FirstRenderingTimeMilliseconds { get; set; }
+    public double? LastRenderingTimeMilliseconds { get; set; }
+    public bool Matched { get; set; }
 }
 
 public sealed class MotionScenarioResult
@@ -349,6 +364,7 @@ public sealed class MotionScenarioResult
     public double[] TokenMilliseconds { get; set; }
     public double[] EffectiveMilliseconds { get; set; }
     public List<MotionObservation> Observations { get; } = new List<MotionObservation>();
+    public List<MotionSamplingWindow> SamplingWindows { get; } = new List<MotionSamplingWindow>();
     public List<string> Failures { get; } = new List<string>();
     public bool SystemPreferenceUnchanged { get; set; }
     public bool PreferenceRestored { get; set; }
@@ -443,13 +459,65 @@ public static class MotionValidationContractHarness
 
     private static void Pump() => Call("WindowValidationInput", "Pump", _application.Dispatcher);
 
+    // Rendering is raised after TimeManager.Tick and layout. A synchronous
+    // RenderTargetBitmap capture is not an animation-clock tick source.
+    private static MotionSamplingWindow SampleRendering(Visual visual, string phase,
+        Func<RenderingEventArgs, bool> sample)
+    {
+        visual.Dispatcher.VerifyAccess();
+        var sampling = new MotionSamplingWindow { Phase = phase };
+        var watch = Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var timeout = new DispatcherTimer(DispatcherPriority.Send, visual.Dispatcher) {
+            Interval = TimeSpan.FromMilliseconds(DeadlineMilliseconds)
+        };
+        Exception failure = null;
+        EventHandler expired = (sender, args) => frame.Continue = false;
+        EventHandler rendering = (sender, args) => {
+            if (watch.Elapsed.TotalMilliseconds > DeadlineMilliseconds)
+            {
+                frame.Continue = false;
+                return;
+            }
+            var rendered = (RenderingEventArgs)args;
+            var time = rendered.RenderingTime.TotalMilliseconds;
+            if (sampling.LastRenderingTimeMilliseconds == time) return;
+            sampling.FirstRenderingTimeMilliseconds ??= time;
+            sampling.LastRenderingTimeMilliseconds = time;
+            sampling.FrameCount++;
+            try
+            {
+                if (sample(rendered) && watch.Elapsed.TotalMilliseconds <= DeadlineMilliseconds)
+                {
+                    sampling.Matched = true;
+                    frame.Continue = false;
+                }
+            }
+            catch (Exception error) { failure = error; frame.Continue = false; }
+        };
+        try
+        {
+            timeout.Tick += expired;
+            CompositionTarget.Rendering += rendering;
+            timeout.Start();
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timeout.Stop();
+            timeout.Tick -= expired;
+            CompositionTarget.Rendering -= rendering;
+            sampling.ElapsedMilliseconds = watch.Elapsed.TotalMilliseconds;
+            sampling.Matched &= sampling.ElapsedMilliseconds <= DeadlineMilliseconds;
+        }
+        if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        return sampling;
+    }
+
     private static void RenderTick(Visual visual)
     {
-        Pump();
-        var tick = new RenderTargetBitmap(1, 1, 96, 96, PixelFormats.Pbgra32);
-        tick.Render(visual);
-        tick.Freeze();
-        Pump();
+        Require(SampleRendering(visual, "fixture-first-frame", rendered => true).Matched,
+            "300 ms 内没有真实 WPF Rendering 帧；不以位图捕获或 Dispatcher Pump 代替。");
     }
 
     private static Window ShowFixture(FrameworkElement content)
@@ -487,37 +555,60 @@ public static class MotionValidationContractHarness
     }
 
     private static MotionObservation Observe(MotionScenarioResult result, string phase,
-        Func<double[]> values, Func<bool> animated, Func<bool> isOpen = null)
+        Func<double[]> values, Func<bool> animated, Func<bool> isOpen = null,
+        RenderingEventArgs rendering = null, bool record = true)
     {
         var observation = new MotionObservation {
             Phase = phase, ElapsedMilliseconds = result.Clock.Elapsed.TotalMilliseconds,
             Values = values(), HasAnimation = animated(), IsOpen = isOpen == null ? (bool?)null : isOpen(),
-            PopupInput = result.CapturePopupInput?.Invoke()
+            PopupInput = result.CapturePopupInput?.Invoke(),
+            RenderingTimeMilliseconds = rendering?.RenderingTime.TotalMilliseconds
         };
-        result.Observations.Add(observation);
+        if (record) result.Observations.Add(observation);
         return observation;
     }
 
+    private static MotionObservation ObserveFrame(MotionScenarioResult result, string phase,
+        Visual visual, Func<double[]> values, Func<bool> animated, Func<bool> isOpen = null) =>
+        WaitFor(result, phase, visual, values, animated, current => true, isOpen);
+
     private static MotionObservation WaitFor(MotionScenarioResult result, string phase,
         Visual visual, Func<double[]> values, Func<bool> animated,
-        Func<double[], bool> condition, Func<bool> isOpen = null)
+        Func<double[], bool> condition, Func<bool> isOpen = null, MotionObservation firstFrame = null)
     {
-        var watch = Stopwatch.StartNew();
-        do
+        // The caller already checked continuity. Its first real rendered frame
+        // may also be the required intermediate sample; do not discard it.
+        if (firstFrame?.RenderingTimeMilliseconds != null &&
+            ReferenceEquals(result.Observations.LastOrDefault(), firstFrame) &&
+            result.Clock.Elapsed.TotalMilliseconds - firstFrame.ElapsedMilliseconds <= DeadlineMilliseconds &&
+            condition(firstFrame.Values))
         {
-            RenderTick(visual);
-            var current = values();
-            if (watch.Elapsed.TotalMilliseconds <= DeadlineMilliseconds && condition(current))
-            {
-                var observed = Observe(result, phase, values, animated, isOpen);
-                if (watch.Elapsed.TotalMilliseconds <= DeadlineMilliseconds && condition(observed.Values))
-                    return observed;
-            }
-            System.Threading.Thread.Sleep(5);
+            var reused = new MotionObservation {
+                Phase = phase, ElapsedMilliseconds = firstFrame.ElapsedMilliseconds,
+                Values = firstFrame.Values.ToArray(), HasAnimation = firstFrame.HasAnimation,
+                IsOpen = firstFrame.IsOpen, PopupInput = firstFrame.PopupInput,
+                RenderingTimeMilliseconds = firstFrame.RenderingTimeMilliseconds,
+                ReusedFromPhase = firstFrame.Phase
+            };
+            result.Observations.Add(reused);
+            return reused;
         }
-        while (watch.ElapsedMilliseconds < DeadlineMilliseconds);
+        MotionObservation observed = null;
+        var sampling = SampleRendering(visual, phase, rendered => {
+            var candidate = Observe(result, phase, values, animated, isOpen, rendered, record: false);
+            if (!condition(candidate.Values)) return false;
+            observed = candidate;
+            return true;
+        });
+        result.SamplingWindows.Add(sampling);
+        if (sampling.Matched)
+        {
+            result.Observations.Add(observed);
+            return observed;
+        }
         Observe(result, phase + "-unobserved", values, animated, isOpen);
-        throw new InvalidOperationException(phase + "：300 ms 内未取得所需真实样本；不把终态或缺帧当通过。");
+        throw new InvalidOperationException(phase + "：300 ms 内未取得所需真实样本；renderedFrames=" +
+            sampling.FrameCount + "；不把终态或缺帧当通过。");
     }
 
     private static bool Near(double[] actual, double[] expected, double tolerance) =>
@@ -717,26 +808,24 @@ public static class MotionValidationContractHarness
                 var before = Observe(result, "hover-reverse-before", color, colorClock);
                 input(false, false); commit();
                 Observe(result, "hover-reverse-committed", color, colorClock);
-                RenderTick(surface);
-                var after = Observe(result, "hover-reverse-first-frame", color, colorClock);
+                var after = ObserveFrame(result, "hover-reverse-first-frame", surface, color, colorClock);
                 Require(Continues(before, after, normal, 120, 1), "hover 反转首帧未从当前颜色续接。");
                 WaitFor(result, "hover-reverse-middle", surface, color, colorClock,
-                    value => Intermediate(before.Values, value, normal));
+                    value => Intermediate(before.Values, value, normal), firstFrame: after);
                 input(true, true); commit();
                 var pressed = WaitFor(result, "press-middle", surface, scale, scaleClock,
                     value => Intermediate(new[] { 1.0, 1.0 }, value, new[] { 0.97, 0.97 }));
                 before = Observe(result, "release-before", scale, scaleClock);
                 input(true, false); commit();
                 Observe(result, "release-committed", scale, scaleClock);
-                RenderTick(surface);
-                after = Observe(result, "release-first-frame", scale, scaleClock);
+                after = ObserveFrame(result, "release-first-frame", surface, scale, scaleClock);
                 Require(Continues(before, after, new[] { 1.0, 1.0 }, 100, 0.0002),
                     "press 中断释放未从当前缩放续接。");
                 WaitFor(result, "release-middle", surface, scale, scaleClock,
-                    value => Intermediate(before.Values, value, new[] { 1.0, 1.0 }));
+                    value => Intermediate(before.Values, value, new[] { 1.0, 1.0 }), firstFrame: after);
                 before = Observe(result, "repress-before", scale, scaleClock);
-                input(true, true); commit(); RenderTick(surface);
-                after = Observe(result, "repress-first-frame", scale, scaleClock);
+                input(true, true); commit();
+                after = ObserveFrame(result, "repress-first-frame", surface, scale, scaleClock);
                 Require(Continues(before, after, new[] { 0.97, 0.97 }, 100, 0.0002),
                     "连续 press 反转未从当前缩放续接。");
                 WaitFor(result, "press-final", surface, scale, scaleClock,
@@ -774,7 +863,9 @@ public static class MotionValidationContractHarness
         {
             if (category == "calendar")
             {
-                var picker = new DatePicker { SelectedDate = new DateTime(2026, 10, 8), Width = 220 };
+                var picker = (DatePicker)Activator.CreateInstance(AppType("WpfUiDatePicker"), true);
+                picker.SelectedDate = new DateTime(2026, 10, 8);
+                picker.Width = 220;
                 inputControl = picker;
                 panel.Children.Add(picker);
                 window = ShowFixture(panel); picker.ApplyTemplate();
@@ -831,7 +922,12 @@ public static class MotionValidationContractHarness
                     TemplatedParentType = (owner as FrameworkElement)?.TemplatedParent?.GetType().FullName,
                     InputControlType = inputControl?.GetType().FullName,
                     IsDropDownOpen = inputControl is ComboBox comboState ? (bool?)comboState.IsDropDownOpen :
-                        inputControl is DatePicker pickerState ? (bool?)pickerState.IsDropDownOpen : null
+                        inputControl is DatePicker pickerState ? (bool?)pickerState.IsDropDownOpen : null,
+                    MouseCaptureType = Mouse.Captured?.GetType().FullName,
+                    MouseCaptureInPopupSource = Mouse.Captured is Visual captured &&
+                        PresentationSource.FromVisual(visual) is PresentationSource popupSource &&
+                        ReferenceEquals(PresentationSource.FromVisual(captured), popupSource),
+                    StaysOpen = owner is Popup capturedPopup ? (bool?)capturedPopup.StaysOpen : null
                 };
             };
             result.PopupInputBeforeOpen = result.CapturePopupInput();
@@ -859,23 +955,46 @@ public static class MotionValidationContractHarness
             close();
             var immediate = Observe(result, category + "-close-committed", values, animated, isOpen);
             Require(isOpen(), category + " 有动画关闭未保留当前可见弹层。");
-            RenderTick(visual);
-            var after = Observe(result, category + "-close-first-frame", values, animated, isOpen);
+            Require(immediate.PopupInput.IsDropDownOpen != true,
+                category + " 退出期间把宿主关闭请求回写成了打开。");
+            var after = ObserveFrame(result, category + "-close-first-frame", visual, values, animated, isOpen);
             Require(ContinuesFromSnapshot(before, immediate, after, new[] { 0.0, 4.0 }, 90, 0.002),
                 category + " 打开中途关闭未从当前值续接。");
             WaitFor(result, category + "-closing-middle", visual, values, animated,
-                value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen);
+                value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen, after);
             before = Observe(result, category + "-reopen-before", values, animated, isOpen);
             open();
             immediate = Observe(result, category + "-reopen-committed", values, animated, isOpen);
-            RenderTick(visual);
-            after = Observe(result, category + "-reopen-first-frame", values, animated, isOpen);
+            after = ObserveFrame(result, category + "-reopen-first-frame", visual, values, animated, isOpen);
             Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0, 0.0 }, 140, 0.002),
                 category + " 退出中途重开未从当前值续接。");
             WaitFor(result, category + "-reopening-middle", visual, values, animated,
-                value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen);
+                value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen, after);
             WaitFor(result, category + "-reopen-final", visual, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            if (owner is Popup nativePopup && (inputControl is DatePicker || inputControl is ComboBox))
+            {
+                before = Observe(result, category + "-native-close-before", values, animated, isOpen);
+                nativePopup.SetCurrentValue(Popup.IsOpenProperty, false);
+                immediate = Observe(result, category + "-native-close-committed", values, animated, isOpen);
+                Require(isOpen() && immediate.PopupInput.IsDropDownOpen == false,
+                    category + " 原生关闭没有分离宿主请求与仍可见的退出表面。");
+                after = ObserveFrame(result, category + "-native-close-first-frame", visual, values, animated, isOpen);
+                Require(ContinuesFromSnapshot(before, immediate, after, new[] { 0.0, 4.0 }, 90, 0.002),
+                    category + " 原生关闭没有从当前值退出。");
+                WaitFor(result, category + "-native-closing-middle", visual, values, animated,
+                    value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen, after);
+                before = Observe(result, category + "-native-reopen-before", values, animated, isOpen);
+                open();
+                immediate = Observe(result, category + "-native-reopen-committed", values, animated, isOpen);
+                after = ObserveFrame(result, category + "-native-reopen-first-frame", visual, values, animated, isOpen);
+                Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0, 0.0 }, 140, 0.002),
+                    category + " 原生退出中途重开没有从当前值续接。");
+                WaitFor(result, category + "-native-reopening-middle", visual, values, animated,
+                    value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen, after);
+                WaitFor(result, category + "-native-reopen-final", visual, values, animated,
+                    value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            }
             close();
             WaitFor(result, category + "-close-final", visual, values, animated,
                 value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
@@ -942,12 +1061,11 @@ public static class MotionValidationContractHarness
             move(left);
             _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
             Observe(result, "indicator-reverse-committed", values, animated);
-            RenderTick(indicator);
-            var after = Observe(result, "indicator-reverse-first-frame", values, animated);
+            var after = ObserveFrame(result, "indicator-reverse-first-frame", indicator, values, animated);
             Require(Continues(before, after, new[] { 0.0, 80.0 }, 160, 0.02),
                 "指示器反转未沿当前几何继续。");
             WaitFor(result, "indicator-reverse-middle", indicator, values, animated,
-                value => Intermediate(before.Values, value, new[] { 0.0, 80.0 }));
+                value => Intermediate(before.Values, value, new[] { 0.0, 80.0 }), firstFrame: after);
             move(right);
             WaitFor(result, "indicator-last-target", indicator, values, animated,
                 value => Near(value, new[] { 120.0, 100.0 }, 0.00001));
@@ -987,12 +1105,11 @@ public static class MotionValidationContractHarness
             text.Text = "58";
             pulse();
             var immediate = Observe(result, "digit-repeat-committed", values, animated);
-            RenderTick(text);
-            var after = Observe(result, "digit-repeat-first-frame", values, animated);
+            var after = ObserveFrame(result, "digit-repeat-first-frame", text, values, animated);
             Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0 }, 90, 0.002),
                 "秒位中断把 opacity 重置到 0.6 或终点。");
             WaitFor(result, "digit-repeat-middle", text, values, animated,
-                value => Intermediate(before.Values, value, new[] { 1.0 }));
+                value => Intermediate(before.Values, value, new[] { 1.0 }), firstFrame: after);
             WaitFor(result, "digit-final", text, values, animated,
                 value => Near(value, new[] { 1.0 }, 0.000001));
         }
@@ -1060,7 +1177,7 @@ public static class MotionValidationContractHarness
         var startupAbsent = ProductionServicesAbsent();
         var systemUnchanged = SystemParameters.ClientAreaAnimation == systemBefore;
         return new {
-            Scope = "production-WPF-software-renderer-with-fixture-inputs",
+            Scope = "production-WPF-rendering-events-with-fixture-inputs",
             SystemPreferenceBefore = systemBefore,
             SystemPreferenceAfter = SystemParameters.ClientAreaAnimation,
             ProductionStartupStayedInactive = startupAbsent,

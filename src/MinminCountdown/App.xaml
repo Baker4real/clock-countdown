@@ -910,7 +910,7 @@
                   </ToggleButton>
                 </Grid>
               </Border>
-              <Popup x:Name="PART_Popup"
+              <focus:MotionPopup x:Name="PART_Popup"
                      Placement="Bottom"
                      AllowsTransparency="True"
                      Focusable="False"
@@ -930,7 +930,7 @@
                     <ItemsPresenter />
                   </ScrollViewer>
                 </Border>
-              </Popup>
+              </focus:MotionPopup>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -1009,7 +1009,7 @@
                       AutomationProperties.Name="打开日历">
                 <Path Width="10" Height="6" Fill="{DynamicResource BodyBrush}" Data="M 0,0 L 10,0 L 5,6 Z" />
               </ui:Button>
-              <Popup x:Name="PART_Popup"
+              <focus:MotionPopup x:Name="PART_Popup"
                      Grid.ColumnSpan="2"
                      Placement="Bottom"
                      StaysOpen="False"
@@ -1017,7 +1017,7 @@
                      Focusable="False"
                      focus:PopupMotionBehavior.IsEnabled="True"
                      PopupAnimation="None"
-                     IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                     IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay}">
                 <Calendar x:Name="PART_Calendar"
                           Margin="0,5,0,0"
                           Style="{TemplateBinding CalendarStyle}"
@@ -1025,7 +1025,7 @@
                           CalendarDayButtonStyle="{StaticResource {x:Type primitives:CalendarDayButton}}"
                           CalendarButtonStyle="{StaticResource {x:Type primitives:CalendarButton}}"
                           SelectedDate="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
-              </Popup>
+              </focus:MotionPopup>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">

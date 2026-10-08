@@ -116,7 +116,11 @@ public sealed class TrayMenuFocusEvidence
     public string KeyboardFocusRequestReturned { get; set; }
     public bool? MoveFocusReturned { get; set; }
     public string FocusedElement { get; set; }
+    public string FocusedElementHwnd { get; set; }
     public string MenuHwnd { get; set; }
+    public string MouseOverElement { get; set; }
+    public string MouseOverHwnd { get; set; }
+    public string NativeCaptureHwnd { get; set; }
     public bool OwnerIsActive { get; set; }
     public bool MenuIsOpen { get; set; }
     public bool MenuIsKeyboardFocusWithin { get; set; }
@@ -125,17 +129,33 @@ public sealed class TrayMenuFocusEvidence
     public bool FirstItemIsHighlighted { get; set; }
 }
 
+public sealed class TrayMenuSourceActivationEvidence
+{
+    public string MenuHwnd { get; set; }
+    public double[] MenuBlankPoint { get; set; }
+    public int[] HwndPoint { get; set; }
+    public bool BlankPointOutsideItems { get; set; }
+    public string CaptureBefore { get; set; }
+    public string CaptureAfterActivation { get; set; }
+    public bool NativeCaptureAcquired { get; set; }
+    public bool MouseMoveSent { get; set; }
+    public int[] CallbackDeltas { get; set; }
+    public string CaptureAfterCleanup { get; set; }
+    public bool CaptureRestored { get; set; }
+}
+
 public sealed class TrayMenuVerificationEvidence
 {
     public string Factory { get; } = "MinminCountdown.TrayMenuFactory.Create";
     public string InputPath { get; } = "WindowValidationInput.ClickForFocusValidation";
-    public string HighlightInputPath { get; } = "DispatcherPriority.Input: Keyboard.Focus(menu), then menu.MoveFocus(First)";
+    public string HighlightInputPath { get; } = "Own menu HWND: SetCapture + WM_MOUSEMOVE(blank); DispatcherPriority.Input: Keyboard.Focus(menu), then menu.MoveFocus(First)";
     public bool ShellRegistrationPerformed { get; } = false;
     public bool ShellDoubleClickValidated { get; } = false;
     public bool ControllerBehaviorValidated { get; } = false;
     public bool SettingsAccessPerformed { get; } = false;
     public string CaptureScope { get; } = "WPF ContextMenu client visual; native Shell opening and system shadow are not covered";
     public bool KeyboardHighlightReached { get; set; }
+    public TrayMenuSourceActivationEvidence SourceActivation { get; set; }
     public List<TrayMenuFocusEvidence> KeyboardFocusSteps { get; } = new List<TrayMenuFocusEvidence>();
     public List<TrayMenuCaptureEvidence> Captures { get; } = new List<TrayMenuCaptureEvidence>();
     public List<TrayMenuActionEvidence> Actions { get; } = new List<TrayMenuActionEvidence>();
@@ -211,27 +231,56 @@ public static class CountdownTrayMenuHarness
             Open(menu, pump);
             TryCapture("tray-menu-open", menu, items, capture, writePng, evidenceDirectory, result);
             result.KeyboardFocusSteps.Add(ReadFocusState("after-open", owner, menu, items[0]));
-            // Let the popup finish opening before entering its keyboard scope.
-            // WPF navigation owns selection/highlight; the fixture never assigns either state.
-            IInputElement focusReturned = null;
-            menu.Dispatcher.BeginInvoke(DispatcherPriority.Input,
-                new Action(() => focusReturned = Keyboard.Focus(menu)));
-            Pump(pump, menu.Dispatcher);
-            var focusedMenu = ReadFocusState("after-menu-focus", owner, menu, items[0]);
-            focusedMenu.KeyboardFocusRequestReturned = DescribeFocus(focusReturned);
-            result.KeyboardFocusSteps.Add(focusedMenu);
-            bool moveFocusReturned = false;
-            menu.Dispatcher.BeginInvoke(DispatcherPriority.Input,
-                new Action(() => moveFocusReturned = menu.MoveFocus(
-                    new TraversalRequest(FocusNavigationDirection.First))));
-            Pump(pump, menu.Dispatcher);
-            var navigated = ReadFocusState("after-first-navigation", owner, menu, items[0]);
-            navigated.MoveFocusReturned = moveFocusReturned;
-            result.KeyboardFocusSteps.Add(navigated);
-            result.KeyboardHighlightReached = items[0].IsKeyboardFocusWithin && items[0].IsHighlighted;
-            if (!result.KeyboardHighlightReached)
-                result.Failures.Add("通过隔离菜单的键盘焦点未进入首项高亮态。");
-            TryCapture("tray-menu-keyboard-highlight", menu, items, capture, writePng, evidenceDirectory, result);
+            var captureBefore = MenuNativeInput.GetCapture();
+            var countsBeforeKeyboard = (int[])counts.Clone();
+            var activation = new TrayMenuSourceActivationEvidence { CaptureBefore = DescribeHwnd(captureBefore) };
+            result.SourceActivation = activation;
+            try
+            {
+                ActivateMenuInputSource(menu, items, activation);
+                Pump(pump, menu.Dispatcher);
+                result.KeyboardFocusSteps.Add(ReadFocusState("after-source-activation", owner, menu, items[0]));
+                // WPF navigation owns selection/highlight; the fixture never assigns either state.
+                IInputElement focusReturned = null;
+                menu.Dispatcher.BeginInvoke(DispatcherPriority.Input,
+                    new Action(() => focusReturned = Keyboard.Focus(menu)));
+                Pump(pump, menu.Dispatcher);
+                var focusedMenu = ReadFocusState("after-menu-focus", owner, menu, items[0]);
+                focusedMenu.KeyboardFocusRequestReturned = DescribeFocus(focusReturned);
+                result.KeyboardFocusSteps.Add(focusedMenu);
+                bool moveFocusReturned = false;
+                menu.Dispatcher.BeginInvoke(DispatcherPriority.Input,
+                    new Action(() => moveFocusReturned = menu.MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.First))));
+                Pump(pump, menu.Dispatcher);
+                var navigated = ReadFocusState("after-first-navigation", owner, menu, items[0]);
+                navigated.MoveFocusReturned = moveFocusReturned;
+                result.KeyboardFocusSteps.Add(navigated);
+            }
+            catch (Exception exception)
+            {
+                result.Failures.Add("菜单 HWND 输入源激活/键盘导航异常：" + Detail(exception));
+            }
+            finally
+            {
+                activation.CallbackDeltas = counts.Select((count, i) => count - countsBeforeKeyboard[i]).ToArray();
+                if (activation.CallbackDeltas.Any(count => count != 0))
+                    result.Failures.Add("菜单空白输入源激活/键盘导航意外触发了业务回调。");
+                result.KeyboardHighlightReached = items[0].IsKeyboardFocusWithin && items[0].IsHighlighted;
+                if (!result.KeyboardHighlightReached)
+                    result.Failures.Add("通过隔离菜单的键盘焦点未进入首项高亮态。");
+                // Save the observed frame before restoring capture or closing the fixture.
+                TryCapture("tray-menu-keyboard-highlight", menu, items, capture, writePng, evidenceDirectory, result);
+                if (MenuNativeInput.GetCapture() != captureBefore)
+                {
+                    if (captureBefore == IntPtr.Zero) MenuNativeInput.ReleaseCapture();
+                    else MenuNativeInput.SetCapture(captureBefore);
+                }
+                activation.CaptureAfterCleanup = DescribeHwnd(MenuNativeInput.GetCapture());
+                activation.CaptureRestored = MenuNativeInput.GetCapture() == captureBefore;
+                if (!activation.CaptureRestored)
+                    result.Failures.Add("菜单输入源激活后的原生捕获未恢复。");
+            }
             menu.IsOpen = false;
             Pump(pump, menu.Dispatcher);
 
@@ -282,6 +331,40 @@ public static class CountdownTrayMenuHarness
     private static void Pump(MethodInfo pump, Dispatcher dispatcher) =>
         pump.Invoke(null, new object[] { dispatcher });
 
+    private static void ActivateMenuInputSource(
+        ContextMenu menu, MenuItem[] items, TrayMenuSourceActivationEvidence evidence)
+    {
+        menu.Dispatcher.VerifyAccess();
+        var source = PresentationSource.FromVisual(menu) as System.Windows.Interop.HwndSource;
+        if (source == null || !(source.RootVisual is Visual root) || source.CompositionTarget == null)
+            throw new InvalidOperationException("菜单输入源不是当前夹具的真实 HWND。");
+        evidence.MenuHwnd = DescribeHwnd(source.Handle);
+        var itemBounds = items.Select(item => item.TransformToAncestor(menu)
+            .TransformBounds(new Rect(item.RenderSize))).ToArray();
+        var topGap = itemBounds.Min(bounds => bounds.Top);
+        var point = new Point(menu.RenderSize.Width / 2, topGap / 2);
+        evidence.MenuBlankPoint = new[] { point.X, point.Y };
+        evidence.BlankPointOutsideItems = topGap > 0 && new Rect(menu.RenderSize).Contains(point) &&
+            itemBounds.All(bounds => !bounds.Contains(point));
+        if (!evidence.BlankPointOutsideItems)
+            throw new InvalidOperationException("菜单顶部没有可用于输入源激活的真实空白区。");
+        var rootPoint = menu.TransformToAncestor(root).Transform(point);
+        var devicePoint = source.CompositionTarget.TransformToDevice.Transform(rootPoint);
+        var x = (int)Math.Round(devicePoint.X);
+        var y = (int)Math.Round(devicePoint.Y);
+        evidence.HwndPoint = new[] { x, y };
+        // Match RaisePickerPointer's isolated input-source activation, without
+        // a button press, a menu-item target, physical cursor movement, or global input.
+        MenuNativeInput.SetCapture(source.Handle);
+        evidence.CaptureAfterActivation = DescribeHwnd(MenuNativeInput.GetCapture());
+        evidence.NativeCaptureAcquired = MenuNativeInput.GetCapture() == source.Handle;
+        if (!evidence.NativeCaptureAcquired)
+            throw new InvalidOperationException("隔离菜单 HWND 未能取得自身输入捕获。");
+        MenuNativeInput.SendMessage(source.Handle, 0x0200, IntPtr.Zero,
+            new IntPtr((y << 16) | (x & 0xffff)));
+        evidence.MouseMoveSent = true;
+    }
+
     private static TrayMenuFocusEvidence ReadFocusState(
         string stage, Window owner, ContextMenu menu, MenuItem firstItem)
     {
@@ -290,7 +373,11 @@ public static class CountdownTrayMenuHarness
         {
             Stage = stage,
             FocusedElement = DescribeFocus(Keyboard.FocusedElement),
-            MenuHwnd = source == null ? null : "0x" + source.Handle.ToInt64().ToString("X", CultureInfo.InvariantCulture),
+            FocusedElementHwnd = InputElementHwnd(Keyboard.FocusedElement),
+            MenuHwnd = source == null ? null : DescribeHwnd(source.Handle),
+            MouseOverElement = DescribeFocus(Mouse.DirectlyOver),
+            MouseOverHwnd = InputElementHwnd(Mouse.DirectlyOver),
+            NativeCaptureHwnd = DescribeHwnd(MenuNativeInput.GetCapture()),
             OwnerIsActive = owner.IsActive,
             MenuIsOpen = menu.IsOpen,
             MenuIsKeyboardFocusWithin = menu.IsKeyboardFocusWithin,
@@ -298,6 +385,15 @@ public static class CountdownTrayMenuHarness
             FirstItemIsKeyboardFocusWithin = firstItem.IsKeyboardFocusWithin,
             FirstItemIsHighlighted = firstItem.IsHighlighted
         };
+    }
+
+    private static string DescribeHwnd(IntPtr handle) => "0x" + handle.ToInt64().ToString("X", CultureInfo.InvariantCulture);
+
+    private static string InputElementHwnd(IInputElement element)
+    {
+        var source = element is Visual visual
+            ? PresentationSource.FromVisual(visual) as System.Windows.Interop.HwndSource : null;
+        return source == null ? null : DescribeHwnd(source.Handle);
     }
 
     private static string DescribeFocus(IInputElement element)
@@ -428,6 +524,22 @@ public static class CountdownTrayMenuHarness
         (exception is TargetInvocationException && exception.InnerException != null
             ? exception.InnerException : exception).Message;
 
+    private static class MenuNativeInput
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        internal static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        internal static extern IntPtr SetCapture(IntPtr window);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        internal static extern IntPtr GetCapture();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        internal static extern bool ReleaseCapture();
+    }
+
     private sealed class Pixels
     {
         private readonly byte[] _bytes;
@@ -487,6 +599,7 @@ $report = [pscustomobject]@{
     InputPath = $measured.InputPath
     HighlightInputPath = $measured.HighlightInputPath
     KeyboardHighlightReached = $measured.KeyboardHighlightReached
+    SourceActivation = $measured.SourceActivation
     KeyboardFocusSteps = @($measured.KeyboardFocusSteps)
     Captures = @($measured.Captures)
     Actions = @($measured.Actions)

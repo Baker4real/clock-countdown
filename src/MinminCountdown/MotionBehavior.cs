@@ -595,6 +595,27 @@ internal static class MotionBehavior
 /// A close request keeps the host open until the exit clock has completed, which
 /// lets a rapid reopen reverse the same opacity/translation values in place.
 /// </summary>
+internal sealed class MotionPopup : Popup
+{
+    private static readonly CoerceValueCallback? BaseCoerceIsOpen =
+        IsOpenProperty.GetMetadata(typeof(Popup)).CoerceValueCallback;
+
+    static MotionPopup()
+    {
+        IsOpenProperty.OverrideMetadata(typeof(MotionPopup),
+            new FrameworkPropertyMetadata(false, null, CoerceIsOpen));
+    }
+
+    private static object CoerceIsOpen(DependencyObject owner, object value)
+    {
+        // Preserve WPF's open-on-load gate before retaining an existing surface
+        // for its exit. Hiding and reopening a DatePicker popup would itself
+        // turn the owner's IsDropDownOpen request back on via Popup.Opened.
+        var requestedOpen = (bool)(BaseCoerceIsOpen?.Invoke(owner, value) ?? value);
+        return PopupMotionBehavior.CoerceIsOpen((Popup)owner, requestedOpen);
+    }
+}
+
 internal static class PopupMotionBehavior
 {
     public static readonly DependencyProperty IsEnabledProperty =
@@ -634,6 +655,11 @@ internal static class PopupMotionBehavior
 
     internal static bool IsAttached(Popup? popup) =>
         popup is not null && popup.ReadLocalValue(ControllerProperty) is PopupMotionController;
+
+    internal static bool CoerceIsOpen(Popup popup, bool requestedOpen) =>
+        popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller
+            ? controller.CoerceIsOpen(requestedOpen)
+            : requestedOpen;
 
     internal static void Open(Popup popup)
     {
@@ -857,6 +883,47 @@ internal static class PopupMotionBehavior
             ClearAnimations();
             _visual = null;
             _translation = null;
+            if (_owner is MotionPopup popupWithRetainedExit)
+            {
+                popupWithRetainedExit.CoerceValue(Popup.IsOpenProperty);
+            }
+        }
+
+        public bool CoerceIsOpen(bool requestedOpen)
+        {
+            if (_suppress || !_attached)
+            {
+                return requestedOpen;
+            }
+
+            if (requestedOpen)
+            {
+                if (IsOpen && _transition == TransitionKind.Closing)
+                {
+                    RequestOpen();
+                }
+
+                return true;
+            }
+
+            if (!IsOpen)
+            {
+                return false;
+            }
+
+            if (_transition == TransitionKind.Closing)
+            {
+                return true;
+            }
+
+            if (_requestedOpen &&
+                ResolveDuration("MotionPopupExitDuration", MotionTokens.PopupExitDuration) > TimeSpan.Zero)
+            {
+                RequestClose();
+                return true;
+            }
+
+            return false;
         }
 
         public void RequestOpen()
@@ -880,11 +947,17 @@ internal static class PopupMotionBehavior
                 return;
             }
 
+            if (!_requestedOpen && _transition == TransitionKind.Closing)
+            {
+                return;
+            }
+
             _requestedOpen = false;
             var duration = ResolveDuration("MotionPopupExitDuration", MotionTokens.PopupExitDuration);
             if (duration <= TimeSpan.Zero)
             {
                 CompleteClose();
+                SynchronizeTargetCloseRequest();
                 return;
             }
 
@@ -896,6 +969,22 @@ internal static class PopupMotionBehavior
             }
 
             StartTransition(TransitionKind.Closing);
+            // The exit already owns the visible surface before the native
+            // picker callback can write Popup.IsOpen=false again. An outside
+            // close must also make the next trigger click an open request.
+            SynchronizeTargetCloseRequest();
+        }
+
+        private void SynchronizeTargetCloseRequest()
+        {
+            if (_placementTarget is DatePicker { IsDropDownOpen: true } datePicker)
+            {
+                datePicker.SetCurrentValue(DatePicker.IsDropDownOpenProperty, false);
+            }
+            else if (_placementTarget is ComboBox { IsDropDownOpen: true } comboBox)
+            {
+                comboBox.SetCurrentValue(ComboBox.IsDropDownOpenProperty, false);
+            }
         }
 
         public void RequestToggle()

@@ -62,7 +62,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private readonly Dictionary<string, Button> _noteSourceFocusTargets =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
-    private readonly HashSet<Control> _focusVisualStateWired = new();
     private readonly SegmentIndicator _workspaceTabIndicator;
     private readonly SegmentIndicator _notesSegmentIndicator;
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
@@ -941,15 +940,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             if (element is Control control)
             {
                 control.FocusVisualStyle = keyboardFocusVisual;
-                WireFocusVisualState(control);
+                FocusVisualState.Attach(control);
             }
         }
 
-        WireFocusVisualState(SaveCountdownButton);
-        WireFocusVisualState(SaveNoteButton);
-        WireFocusVisualState(TopmostCheck);
-        WireFocusVisualState(ActiveNotesSegment);
-        WireFocusVisualState(CompletedNotesSegment);
+        FocusVisualState.Attach(SaveCountdownButton);
+        FocusVisualState.Attach(SaveNoteButton);
+        FocusVisualState.Attach(TopmostCheck);
+        FocusVisualState.Attach(ActiveNotesSegment);
+        FocusVisualState.Attach(CompletedNotesSegment);
 
         ConfigureReminderHelpFocusHelpText();
 
@@ -1035,34 +1034,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         return false;
-    }
-
-    // #191：WPF 的 IsKeyboardFocused 同时覆盖鼠标取得的焦点。记录一次鼠标
-    // 指针聚焦并在焦点事件完成后压低自定义焦点环；Tab/方向键取得焦点时恢复。
-    private void WireFocusVisualState(Control control)
-    {
-        if (!_focusVisualStateWired.Add(control))
-        {
-            return;
-        }
-        control.PreviewMouseLeftButtonDown += (_, _) =>
-        {
-            _mouseFocusPending = true;
-            Dispatcher.BeginInvoke(
-                DispatcherPriority.Input,
-                new Action(() =>
-                {
-                    FocusVisualState.SetIsKeyboardFocusVisible(control, false);
-                    _mouseFocusPending = false;
-                }));
-        };
-        control.GotKeyboardFocus += (_, _) =>
-        {
-            if (!_mouseFocusPending)
-            {
-                FocusVisualState.SetIsKeyboardFocusVisible(control, true);
-            }
-        };
     }
 
     private static void SetAutomationIds(params (DependencyObject Control, string Id)[] controls)
@@ -1941,6 +1912,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     isCompleted,
                     chevronRotation)
             };
+            FocusVisualState.Attach(sectionToggle);
             SetNoteDateSectionState(
                 sectionToggle,
                 sectionRows,
@@ -2149,6 +2121,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Style = (Style)MainContentProjection.FindResource("MainNoteCompletionCheck")
             },
             note.IsCompleted ? $"恢复便签 {note.Text}" : $"完成便签 {note.Text}");
+        FocusVisualState.Attach(completion);
         completion.Checked += OnNoteCompletionChanged;
         completion.Unchecked += OnNoteCompletionChanged;
         _noteCompletionBoxes[note.Id] = completion;
@@ -3826,6 +3799,13 @@ internal sealed record ReminderModeClickResult(
 /// </summary>
 internal static class FocusVisualState
 {
+    private static readonly DependencyProperty IsAttachedProperty =
+        DependencyProperty.RegisterAttached(
+            "IsAttached",
+            typeof(bool),
+            typeof(FocusVisualState),
+            new FrameworkPropertyMetadata(false));
+
     internal static readonly DependencyProperty IsKeyboardFocusVisibleProperty =
         DependencyProperty.RegisterAttached(
             "IsKeyboardFocusVisible",
@@ -3838,4 +3818,30 @@ internal static class FocusVisualState
 
     internal static bool GetIsKeyboardFocusVisible(DependencyObject target) =>
         (bool)target.GetValue(IsKeyboardFocusVisibleProperty);
+
+    internal static void Attach(Control control)
+    {
+        if ((bool)control.GetValue(IsAttachedProperty))
+        {
+            return;
+        }
+
+        control.SetValue(IsAttachedProperty, true);
+        var mouseFocusPending = false;
+        control.PreviewMouseLeftButtonDown += (_, _) =>
+        {
+            mouseFocusPending = true;
+            SetIsKeyboardFocusVisible(control, false);
+            control.Dispatcher.BeginInvoke(
+                DispatcherPriority.Input,
+                new Action(() => mouseFocusPending = false));
+        };
+        control.GotKeyboardFocus += (_, _) =>
+        {
+            if (!mouseFocusPending)
+            {
+                SetIsKeyboardFocusVisible(control, true);
+            }
+        };
+    }
 }

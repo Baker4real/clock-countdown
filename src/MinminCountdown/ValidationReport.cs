@@ -11880,7 +11880,13 @@ internal static class ValidationReport
             {
                 focusedTargets.Add(focusedTarget);
             }
-            focusVisualsVisible &= HasVisibleMainKeyboardFocus(target, focused);
+            var focusVisible = HasVisibleMainKeyboardFocus(target, focused);
+            focusVisualsVisible &= focusVisible;
+            if (!focusVisible)
+            {
+                Console.Error.WriteLine("MAIN_TAB_FOCUS_DIAGNOSTIC " +
+                    System.Text.Json.JsonSerializer.Serialize(new { direction, focusedTarget }));
+            }
 
             if (string.Equals(target.Id, endId, StringComparison.Ordinal))
             {

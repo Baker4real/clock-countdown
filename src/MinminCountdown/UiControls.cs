@@ -620,6 +620,20 @@ internal sealed class WpfUiDatePicker : DatePicker
     private Calendar? _openCalendar;
     private bool _returnFocusAfterClose;
 
+    static WpfUiDatePicker()
+    {
+        IsDropDownOpenProperty.OverrideMetadata(typeof(WpfUiDatePicker),
+            new FrameworkPropertyMetadata(false, (owner, args) =>
+            {
+                if (args.NewValue is true)
+                {
+                    // A retained popup does not raise CalendarOpened again.
+                    // Reopening cancels the previous Escape focus request.
+                    ((WpfUiDatePicker)owner)._returnFocusAfterClose = false;
+                }
+            }));
+    }
+
     public override void OnApplyTemplate()
     {
         DetachOpenCalendar();
@@ -678,7 +692,7 @@ internal sealed class WpfUiDatePicker : DatePicker
             _returnFocusAfterClose = false;
             Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
             {
-                if (GetTemplateChild("PART_Button") is Button trigger)
+                if (!IsDropDownOpen && GetTemplateChild("PART_Button") is Button trigger)
                 {
                     trigger.Focusable = true;
                     if (Window.GetWindow(this) is { } owner)

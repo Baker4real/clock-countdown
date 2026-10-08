@@ -1082,41 +1082,46 @@ public static class MotionValidationContractHarness
             Func<bool> popupCapture = () => Mouse.Captured is Visual captured &&
                 PresentationSource.FromVisual(calendar) is PresentationSource popupSource &&
                 ReferenceEquals(PresentationSource.FromVisual(captured), popupSource);
+            // The hidden desktop has no physical cursor over the popup HWND.
+            // Activate that input source, then let WPF's StaysOpen callback
+            // acquire its own PopupRoot capture. Never substitute child capture.
+            Action<string> activatePopupCapture = phase => {
+                var popupSource = PresentationSource.FromVisual(calendar) as HwndSource;
+                Require(popupSource?.RootVisual is Visual, "日历没有可激活的真实 Popup HWND。");
+                var selectedBeforeActivation = picker.SelectedDate;
+                var openEventsBeforeActivation = openedCount;
+                var closeEventsBeforeActivation = closedCount;
+                result.InputChecks[phase + "CaptureBeforeSourceActivation"] = Mouse.Captured?.GetType().FullName ?? "none";
+                Require(!popup.StaysOpen, "日历捕获前提要求原生外点关闭。");
+                popup.SetCurrentValue(Popup.StaysOpenProperty, true);
+                try
+                {
+                    Call("WindowValidationInput+PickerNativeInput", "SetCapture", popupSource.Handle);
+                    Require((IntPtr)Call("WindowValidationInput+PickerNativeInput", "GetCapture") == popupSource.Handle,
+                        "隔离日历 HWND 未能激活输入源。");
+                    var point = calendar.TransformToAncestor((Visual)popupSource.RootVisual).Transform(
+                        new Point(calendar.ActualWidth / 2, 1));
+                    point = popupSource.CompositionTarget.TransformToDevice.Transform(point);
+                    var coordinates = new IntPtr(((int)point.Y << 16) | ((int)point.X & 0xffff));
+                    Call("WindowValidationInput+PickerNativeInput", "SendMessage",
+                        popupSource.Handle, (uint)0x0200, IntPtr.Zero, coordinates);
+                }
+                finally { popup.SetCurrentValue(Popup.StaysOpenProperty, false); }
+                Pump();
+                result.InputChecks[phase + "SourceActivationKeptPickerState"] = picker.IsDropDownOpen && popup.IsOpen &&
+                    picker.SelectedDate == selectedBeforeActivation && openedCount == openEventsBeforeActivation &&
+                    closedCount == closeEventsBeforeActivation;
+                Require((bool)result.InputChecks[phase + "SourceActivationKeptPickerState"],
+                    "隔离输入源激活意外改变了日期或弹层开关。");
+                result.InputChecks[phase + "PopupCaptureEstablished"] = popupCapture();
+                Require(popupCapture(), "隔离输入源激活后未建立原生 PopupRoot 捕获。");
+            };
             click(outside);
             click(trigger);
             Require(picker.IsDropDownOpen && popup.IsOpen, "真实触发器 pointer 没有打开日历。");
             WaitFor(result, "pointer-open-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
-            // The hidden desktop has no physical cursor over the popup HWND.
-            // Activate that input source, then let WPF's StaysOpen callback
-            // acquire its own PopupRoot capture. Never substitute child capture.
-            var popupSource = PresentationSource.FromVisual(calendar) as HwndSource;
-            Require(popupSource?.RootVisual is Visual, "日历没有可激活的真实 Popup HWND。");
-            var selectedBeforeActivation = picker.SelectedDate;
-            var openEventsBeforeActivation = openedCount;
-            var closeEventsBeforeActivation = closedCount;
-            result.InputChecks["CaptureBeforeSourceActivation"] = Mouse.Captured?.GetType().FullName ?? "none";
-            Require(!popup.StaysOpen, "日历捕获前提要求原生外点关闭。");
-            popup.SetCurrentValue(Popup.StaysOpenProperty, true);
-            try
-            {
-                Call("WindowValidationInput+PickerNativeInput", "SetCapture", popupSource.Handle);
-                Require((IntPtr)Call("WindowValidationInput+PickerNativeInput", "GetCapture") == popupSource.Handle,
-                    "隔离日历 HWND 未能激活输入源。");
-                var point = calendar.TransformToAncestor((Visual)popupSource.RootVisual).Transform(
-                    new Point(calendar.ActualWidth / 2, 1));
-                point = popupSource.CompositionTarget.TransformToDevice.Transform(point);
-                var coordinates = new IntPtr(((int)point.Y << 16) | ((int)point.X & 0xffff));
-                Call("WindowValidationInput+PickerNativeInput", "SendMessage",
-                    popupSource.Handle, (uint)0x0200, IntPtr.Zero, coordinates);
-            }
-            finally { popup.SetCurrentValue(Popup.StaysOpenProperty, false); }
-            Pump();
-            result.InputChecks["SourceActivationKeptPickerState"] = picker.IsDropDownOpen && popup.IsOpen &&
-                picker.SelectedDate == selectedBeforeActivation && openedCount == openEventsBeforeActivation &&
-                closedCount == closeEventsBeforeActivation;
-            Require((bool)result.InputChecks["SourceActivationKeptPickerState"],
-                "隔离输入源激活意外改变了日期或弹层开关。");
+            activatePopupCapture("Initial");
             result.InputChecks["CaptureBeforeEscape"] = Mouse.Captured?.GetType().FullName ?? "none";
             result.InputChecks["PopupCapturedBeforeEscape"] = popupCapture();
             Require(popupCapture(), "日历打开后未建立捕获，不能据此验证退出时释放捕获。");
@@ -1145,6 +1150,7 @@ public static class MotionValidationContractHarness
             Require(!popup.StaysOpen, "重开日历后未恢复原生外点关闭策略。");
             WaitFor(result, "pointer-reopen-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            activatePopupCapture("Outside");
             click(outside);
             var outsideFocused = outside.IsKeyboardFocusWithin;
             result.InputChecks["OutsideFocusedBeforeClose"] = outsideFocused;

@@ -4867,9 +4867,11 @@ internal static class WindowValidationInput
     /// </summary>
     public static bool WaitForPopupClosed(Popup popup, int timeoutMilliseconds = 300)
     {
-        if (!popup.IsOpen || timeoutMilliseconds <= 0)
+        bool IsFullyClosed() => !popup.IsOpen &&
+            (popup.Child is not Visual visual || PresentationSource.FromVisual(visual) is null);
+        if (IsFullyClosed() || timeoutMilliseconds <= 0)
         {
-            return !popup.IsOpen;
+            return IsFullyClosed();
         }
 
         var watch = Stopwatch.StartNew();
@@ -4889,7 +4891,7 @@ internal static class WindowValidationInput
             {
                 frame.Continue = false;
             }
-            else if (!popup.IsOpen)
+            else if (IsFullyClosed())
             {
                 observedClosed = true;
                 frame.Continue = false;
@@ -4898,7 +4900,9 @@ internal static class WindowValidationInput
 
         // Request real WPF frames on the isolated desktop. A bitmap capture
         // does not advance animation clocks; neither observation path sets
-        // IsOpen, disables motion, or seeks the production clock.
+        // IsOpen, disables motion, or seeks the production clock. IsOpen=false
+        // precedes WPF's deferred HWND destruction and Closed notification;
+        // the next gesture must start after that native lifecycle has ended.
         EventHandler requestFrame = (_, _) =>
         {
             popup.Child?.InvalidateVisual();
@@ -4938,10 +4942,11 @@ internal static class WindowValidationInput
         if (popup.IsOpen)
         {
             popup.IsOpen = false;
-            if (!WaitForPopupClosed(popup))
-            {
-                throw new InvalidOperationException("Popup fixture did not finish closing within 300 ms.");
-            }
+        }
+
+        if (!WaitForPopupClosed(popup))
+        {
+            throw new InvalidOperationException("Popup fixture did not finish closing within 300 ms.");
         }
     }
 

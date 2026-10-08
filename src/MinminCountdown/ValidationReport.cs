@@ -13652,17 +13652,39 @@ internal static class ValidationReport
     private static (bool MeetsNeighborContrast, bool UsesWarmGoldToken)
         ValidateFloatingCapsuleFocusRing(FloatingWindow floating)
     {
+        var countdownButton = Required<ToggleButton>(floating, "FloatingCountdownsButton");
         var notesButton = Required<ToggleButton>(floating, "FloatingNotesButton");
-        var originalChecked = notesButton.IsChecked;
+        var originalWorkspace = notesButton.IsChecked == true ? WorkspaceKind.Notes : WorkspaceKind.Countdowns;
         try
         {
             floating.Activate();
-            notesButton.IsChecked = true;
-            Keyboard.Focus(notesButton);
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            var notes = MeasureFromAdjacentButton(countdownButton, notesButton, FocusNavigationDirection.Next);
+            floating.ShowWorkspace(WorkspaceKind.Countdowns);
+            var countdowns = MeasureFromAdjacentButton(notesButton, countdownButton, FocusNavigationDirection.Previous);
+            return (
+                notes.MeetsNeighborContrast && countdowns.MeetsNeighborContrast,
+                notes.UsesWarmGoldToken && countdowns.UsesWarmGoldToken);
+        }
+        finally
+        {
+            floating.ShowWorkspace(originalWorkspace);
             PumpDispatcher();
-            notesButton.ApplyTemplate();
-            var capsuleSurface = notesButton.Template?.FindName("Surface", notesButton) as Border;
-            if (capsuleSurface?.BorderBrush is not SolidColorBrush ring ||
+        }
+
+        static (bool MeetsNeighborContrast, bool UsesWarmGoldToken) MeasureFromAdjacentButton(
+            ToggleButton adjacent,
+            ToggleButton selected,
+            FocusNavigationDirection direction)
+        {
+            Keyboard.Focus(adjacent);
+            PumpDispatcher();
+            var moved = adjacent.MoveFocus(new TraversalRequest(direction));
+            PumpDispatcher();
+            selected.ApplyTemplate();
+            var focusRing = selected.Template?.FindName("FocusRing", selected) as Border;
+            if (!moved || !selected.IsKeyboardFocused || selected.IsChecked != true ||
+                focusRing?.BorderBrush is not SolidColorBrush ring ||
                 Application.Current.FindResource("MainActionFocusBrush") is not SolidColorBrush warmGold ||
                 Application.Current.FindResource("PinkAccentStrongColor") is not Color deepPink)
             {
@@ -13672,17 +13694,12 @@ internal static class ValidationReport
             var usesWarmGold = ring.Color == warmGold.Color;
             var thickness = new[]
             {
-                capsuleSurface.BorderThickness.Left,
-                capsuleSurface.BorderThickness.Top,
-                capsuleSurface.BorderThickness.Right,
-                capsuleSurface.BorderThickness.Bottom
-            }.Max();
+                focusRing.BorderThickness.Left,
+                focusRing.BorderThickness.Top,
+                focusRing.BorderThickness.Right,
+                focusRing.BorderThickness.Bottom
+            }.Min();
             return (usesWarmGold && thickness >= 2 && ContrastRatio(ring.Color, deepPink) >= 3, usesWarmGold);
-        }
-        finally
-        {
-            notesButton.IsChecked = originalChecked;
-            PumpDispatcher();
         }
     }
 

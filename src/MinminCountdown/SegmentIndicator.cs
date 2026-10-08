@@ -80,18 +80,6 @@ internal sealed class SegmentIndicator
         ApplyWhenReady(version);
     }
 
-    /// <summary>
-    /// Completes the current target immediately for geometry probes after layout settles.
-    /// Production transitions always go through <see cref="MoveTo"/>.
-    /// </summary>
-    internal void SnapToTargetForValidation()
-    {
-        if (_target is not null && TryGetTargetBounds(_target, out var bounds))
-        {
-            ApplyTarget(IndicatorBounds(bounds), immediate: true);
-        }
-    }
-
     private void ApplyWhenReady(long version)
     {
         if (version != _requestVersion || _target is null)
@@ -127,7 +115,7 @@ internal sealed class SegmentIndicator
         ApplyTarget(IndicatorBounds(_lastTargetBounds));
     }
 
-    private void ApplyTarget(Rect targetBounds, bool immediate = false)
+    private void ApplyTarget(Rect targetBounds)
     {
         _layer.IsHitTestVisible = false;
         _indicator.Visibility = Visibility.Visible;
@@ -136,9 +124,7 @@ internal sealed class SegmentIndicator
             duration.HasTimeSpan
                 ? duration.TimeSpan
                 : MotionTokens.IndicatorDuration;
-        var effectiveDuration = immediate
-            ? TimeSpan.Zero
-            : EffectiveDuration(configuredDuration, ApplicationTheme.ClientAreaAnimationEnabled);
+        var effectiveDuration = EffectiveDuration(configuredDuration, ApplicationTheme.ClientAreaAnimationEnabled);
         var easing = _coordinateRoot.TryFindResource("MotionEaseOut") as IEasingFunction ??
             MotionTokens.CreateEaseOut();
 

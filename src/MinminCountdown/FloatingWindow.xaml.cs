@@ -654,10 +654,37 @@ public sealed partial class FloatingWindow : Window
     {
         ApplyTheme();
         UpdateLayout();
-        return FloatingCountdownsButton.IsChecked == true &&
+        var survives = FloatingCountdownsButton.IsChecked == true &&
             FloatingNotesButton.IsChecked == false &&
             HeaderControlHasAccessibleContrast(FloatingCountdownsButton) &&
             HeaderControlHasAccessibleContrast(FloatingNotesButton);
+        if (!survives)
+        {
+            var before = new[] { ReadHeaderState(FloatingCountdownsButton), ReadHeaderState(FloatingNotesButton) };
+            var reachedSelectedColor = WindowValidationInput.WaitUntil(Dispatcher, () =>
+                FloatingCountdownsButton.Template?.FindName("Surface", FloatingCountdownsButton) is Border surface &&
+                surface.Background is SolidColorBrush background &&
+                FindResource("PinkAccentStrongBrush") is SolidColorBrush target &&
+                background.Color == target.Color);
+            var after = new[] { ReadHeaderState(FloatingCountdownsButton), ReadHeaderState(FloatingNotesButton) };
+            Console.Error.WriteLine("FLOATING_SELECTION_DIAGNOSTIC " +
+                System.Text.Json.JsonSerializer.Serialize(new { before, reachedSelectedColor, after }));
+        }
+
+        return survives;
+
+        object ReadHeaderState(ToggleButton button)
+        {
+            var surface = button.Template?.FindName("Surface", button) as Border;
+            return new
+            {
+                button.Name,
+                button.IsChecked,
+                Background = surface?.Background?.ToString(),
+                Foreground = button.Foreground?.ToString(),
+                ContrastPasses = HeaderControlHasAccessibleContrast(button)
+            };
+        }
     }
 
 
@@ -1477,6 +1504,8 @@ public sealed partial class FloatingWindow : Window
         FloatingTags.SetTags(_desktopWorkspace.Snapshot.Settings.Tags);
         AutomationProperties.SetName(FloatingCountdownsButton, "显示悬浮倒计时");
         AutomationProperties.SetName(FloatingNotesButton, "显示悬浮便签");
+        WireWorkspaceFocusVisualState(FloatingCountdownsButton);
+        WireWorkspaceFocusVisualState(FloatingNotesButton);
         AutomationProperties.SetName(MinimizeToTrayButton, "缩小到系统托盘");
         AutomationProperties.SetName(OpenManagerButton, "打开管理窗口");
         AutomationProperties.SetName(CloseFloatingButton, "退出应用");
@@ -1495,6 +1524,26 @@ public sealed partial class FloatingWindow : Window
         UiAccessibility.MarkLive(FloatingNoteDateError);
         UiAccessibility.MarkLive(FloatingReminderMessage);
         UiAccessibility.MarkLive(FloatingNoteMessage);
+    }
+
+    private static void WireWorkspaceFocusVisualState(Control control)
+    {
+        var mouseFocusPending = false;
+        control.PreviewMouseLeftButtonDown += (_, _) =>
+        {
+            mouseFocusPending = true;
+            FocusVisualState.SetIsKeyboardFocusVisible(control, false);
+            control.Dispatcher.BeginInvoke(
+                DispatcherPriority.Input,
+                new Action(() => mouseFocusPending = false));
+        };
+        control.GotKeyboardFocus += (_, _) =>
+        {
+            if (!mouseFocusPending)
+            {
+                FocusVisualState.SetIsKeyboardFocusVisible(control, true);
+            }
+        };
     }
 
     private void WireEvents()

@@ -219,14 +219,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             _workspaceTabIndicator.MoveTo(CountdownTab);
             _workspaceTabIndicator.MoveTo(NotesTab);
             _workspaceTabIndicator.MoveTo(CountdownTab);
-            _workspaceTabIndicator.SnapToTargetForValidation();
-            var workspaceStable = _workspaceTabIndicator.IsAlignedTo(CountdownTab);
+            var workspaceStable = WindowValidationInput.WaitUntil(
+                Dispatcher, () => _workspaceTabIndicator.IsAlignedTo(CountdownTab));
 
             _notesSegmentIndicator.MoveTo(ActiveNotesSegment);
             _notesSegmentIndicator.MoveTo(CompletedNotesSegment);
             _notesSegmentIndicator.MoveTo(ActiveNotesSegment);
-            _notesSegmentIndicator.SnapToTargetForValidation();
-            var notesStable = _notesSegmentIndicator.IsAlignedTo(ActiveNotesSegment);
+            var notesStable = WindowValidationInput.WaitUntil(
+                Dispatcher, () => _notesSegmentIndicator.IsAlignedTo(ActiveNotesSegment));
             return workspaceStable && notesStable;
         }
     }
@@ -948,6 +948,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         WireFocusVisualState(SaveCountdownButton);
         WireFocusVisualState(SaveNoteButton);
         WireFocusVisualState(TopmostCheck);
+        WireFocusVisualState(ActiveNotesSegment);
+        WireFocusVisualState(CompletedNotesSegment);
 
         ConfigureReminderHelpFocusHelpText();
 

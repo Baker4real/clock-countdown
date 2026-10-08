@@ -4209,7 +4209,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.ValidateOnlySettingsIsolationBehavior) 'validate-only 强制使用显式非根 settings 路径且不改变生产默认路径'
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    Assert-Equal 671 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量保持兼容（变化即误增删顶层键；#157 新增悬浮视口几何确定性口径反例门禁 1 个字段）'
+    # #189 adds 13 measured behavior fields; six existing note/date/fallback
+    # fields had also been added since the old 671-field shape was pinned.
+    # Removing those 19 additions reproduces the original name:type SHA exactly.
+    Assert-Equal 690 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段和 #189 的 13 个测量字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4696,9 +4699,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Assert-Equal $true ([bool] $adapterValidation.$crossInterfaceGate) "跨界面整合门禁 $crossInterfaceGate 通过"
     }
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-08-v25') {
-        throw '跨界面整合证据未记录 v22 真实帧'
+        throw '跨界面整合证据未记录 v25 真实帧'
     }
-    Assert-Equal '70C5CFD53091D14CA34178EF0257B93A5B1A215564B43C9B632F51C1E67CDD44' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状保持兼容（671 字段；变化即误增删顶层键）'
+    Assert-Equal '9E51D9DC228419D7D2F19D0347992333147217092B2DA8C885FB6C8917422BC0' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（690 字段；原字段名称和类型保持兼容）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'

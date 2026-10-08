@@ -4839,6 +4839,9 @@ internal static class WindowValidationInput
         var frame = new DispatcherFrame();
         var observed = false;
         Exception? failure = null;
+        var frameRequestCount = 0;
+        var renderingCount = 0;
+        var observedMilliseconds = -1d;
         var timeout = new DispatcherTimer(DispatcherPriority.Send, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
@@ -4860,6 +4863,7 @@ internal static class WindowValidationInput
                 if (condition())
                 {
                     observed = true;
+                    observedMilliseconds = watch.Elapsed.TotalMilliseconds;
                     frame.Continue = false;
                 }
             }
@@ -4870,7 +4874,7 @@ internal static class WindowValidationInput
             }
         }
 
-        EventHandler rendering = (_, _) => Observe();
+        EventHandler rendering = (_, _) => { renderingCount++; Observe(); };
         EventHandler requestFrame = (_, _) =>
         {
             // Also observe between frames: WPF defers popup HWND destruction
@@ -4880,6 +4884,7 @@ internal static class WindowValidationInput
 
             // Adding Rendering posts a real WPF render request. Invalidations
             // can merge on the isolated desktop; a bitmap does not tick clocks.
+            frameRequestCount++;
             CompositionTarget.Rendering -= rendering;
             CompositionTarget.Rendering += rendering;
         };
@@ -4903,7 +4908,17 @@ internal static class WindowValidationInput
         }
 
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        return observed && watch.Elapsed.TotalMilliseconds <= timeoutMilliseconds;
+        var passed = observed && watch.Elapsed.TotalMilliseconds <= timeoutMilliseconds;
+        if (!passed)
+        {
+            Console.Error.WriteLine("[DEBUG-frame-wait] " + System.Text.Json.JsonSerializer.Serialize(new
+            {
+                timeoutMilliseconds, observed, observedMilliseconds,
+                elapsedMilliseconds = watch.Elapsed.TotalMilliseconds,
+                frameRequestCount, renderingCount
+            }));
+        }
+        return passed;
     }
 
     // #205 regression: raising Click alone bypasses ButtonBase.OnClick and its
@@ -4929,7 +4944,18 @@ internal static class WindowValidationInput
     {
         bool IsFullyClosed() => !popup.IsOpen &&
             (popup.Child is not Visual visual || PresentationSource.FromVisual(visual) is null);
-        return WaitUntil(popup.Dispatcher, IsFullyClosed, timeoutMilliseconds);
+        var closed = WaitUntil(popup.Dispatcher, IsFullyClosed, timeoutMilliseconds);
+        if (!closed)
+        {
+            Console.Error.WriteLine("[DEBUG-popup-close] " + System.Text.Json.JsonSerializer.Serialize(new
+            {
+                popup.IsOpen,
+                sourceAttached = popup.Child is Visual child && PresentationSource.FromVisual(child) is not null,
+                childType = popup.Child?.GetType().Name,
+                transition = PopupMotionBehavior.DescribeTransitionForValidation(popup)
+            }));
+        }
+        return closed;
     }
 
     /// <summary>
@@ -5101,7 +5127,7 @@ internal static class WindowValidationInput
                 picker.CalendarStyle is not null &&
                 ReferenceEquals(calendar?.Style, picker.CalendarStyle);
             diagnostic = $"FocusEntered={focusEntered}; EscapeHandled={escapeHandled}; " +
-                $"Closed={!picker.IsDropDownOpen}; FocusReturned={focusReturned}; " +
+                $"Closed={!picker.IsDropDownOpen}; PopupClosed={popupClosed}; FocusReturned={focusReturned}; " +
                 $"CalendarStyleMatches={ReferenceEquals(calendar?.Style, picker.CalendarStyle)}; " +
                 $"TriggerFocusable={triggerButton?.Focusable}; FocusedType={Keyboard.FocusedElement?.GetType().Name}";
             return works;

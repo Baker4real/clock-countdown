@@ -218,6 +218,46 @@ $stateValue = if ($mode -eq 'state-mismatch' -and $issueNumber -eq 101) { 'open'
     finally { $invokePath = $savedInvoke }
     $results.Add([pscustomobject]@{ Name = 'header-legacy-interpolation-negative-control'; Passed = $true })
 
+    $resolveRoot = Join-Path $testRoot 'repo-resolve-fixture'
+    $resolveTools = Join-Path $resolveRoot 'tools'
+    $resolveDocs = Join-Path $resolveRoot 'docs/agents'
+    [IO.Directory]::CreateDirectory($resolveTools) | Out-Null
+    [IO.Directory]::CreateDirectory($resolveDocs) | Out-Null
+    Copy-Item $invokePath (Join-Path $resolveTools 'Invoke-IssueWriteback.ps1')
+    Copy-Item (Join-Path $PSScriptRoot 'Test-IssueAcceptance.ps1') $resolveTools
+    Copy-Item (Join-Path $repoRoot 'docs/agents/issue-acceptance.json') $resolveDocs
+    & git -C $resolveRoot init -q
+    if ($LASTEXITCODE -ne 0) { throw 'repo-resolve fixture 的 git init 失败。' }
+    & git -C $resolveRoot remote add origin 'https://github.com/fake/fixture-origin.git'
+    if ($LASTEXITCODE -ne 0) { throw 'repo-resolve fixture 的 remote add 失败。' }
+    $savedInvoke = $invokePath
+    try {
+        $invokePath = Join-Path $resolveTools 'Invoke-IssueWriteback.ps1'
+        $resolveDir = Join-Path $testRoot 'repo-resolved-output'
+        $resolved = Invoke-WritebackTool -Arguments @('-RecordPath', $recordPath, '-GhPath', $fakeGhPath, '-OutputDirectory', $resolveDir, '-Json') -Environment @{
+            ISSUE_WRITEBACK_FAKE_STATE = $statePath; ISSUE_WRITEBACK_FAKE_MODE = 'success'
+        }
+        Assert-True ($resolved.ExitCode -eq 0 -and $resolved.Json.Valid) '缺省 -Repo 时应从 origin 解析。'
+        $resolvedPlan = Get-Content -LiteralPath (Join-Path $resolveDir 'plan.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-True ([string] $resolvedPlan.repo -ceq 'fake/fixture-origin') "origin 解析结果不符：$($resolvedPlan.repo)"
+    }
+    finally { $invokePath = $savedInvoke }
+    $results.Add([pscustomobject]@{ Name = 'repo-defaults-from-origin'; Passed = $true })
+
+    $pristineInvoke = Join-Path $negativeTools 'Invoke-IssueWriteback.pristine.ps1'
+    [IO.File]::WriteAllText($pristineInvoke, $original, $utf8)
+    $savedInvoke = $invokePath
+    try {
+        $invokePath = $pristineInvoke
+        $noRepo = Invoke-WritebackTool -Arguments @('-RecordPath', $recordPath, '-OutputDirectory', (Join-Path $testRoot 'repo-missing-output'), '-Json') -Environment @{
+            GIT_CEILING_DIRECTORIES = $testRoot
+        }
+        Assert-True ($noRepo.ExitCode -ne 0 -and -not $noRepo.Json.Valid) '非 git 目录缺省 -Repo 应失败。'
+        Assert-True ($noRepo.Text -match '\-Repo' -and $noRepo.Text -match 'origin') '缺省 -Repo 的失败信息应点名 -Repo 与 origin。'
+    }
+    finally { $invokePath = $savedInvoke }
+    $results.Add([pscustomobject]@{ Name = 'repo-missing-fails-closed'; Passed = $true })
+
     $successDir = Join-Path $testRoot 'success'
     $success = Invoke-WritebackTool -Arguments @('-RecordPath', $recordPath, '-Repo', 'fake/example', '-GhPath', $fakeGhPath, '-Apply', '-CloseSatisfied', '-OutputDirectory', $successDir, '-Json') -Environment @{
         ISSUE_WRITEBACK_FAKE_STATE = $statePath; ISSUE_WRITEBACK_FAKE_MODE = 'success'

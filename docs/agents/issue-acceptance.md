@@ -24,7 +24,7 @@ intent: 按 issue 类型定义必需检查、可选检查和明确的免测理�
 
 ## 回写与恢复
 
-`tools/Invoke-IssueWriteback.ps1` 默认生成正文和计划；只有 `-Apply` 才发请求，关闭票还须 `-CloseSatisfied`。每票在 POST 前保存意图、取得评论 ID 后立即保存，再独立回读正文和状态。父票在所有子票回读通过后处理。
+`tools/Invoke-IssueWriteback.ps1` 默认生成正文和计划；只有 `-Apply` 才发请求，关闭票还须 `-CloseSatisfied`。`-Repo` 缺省时从当前仓库 `origin` 远端解析 `owner/repo`，解析失败即拒绝运行。每票在 POST 前保存意图、取得评论 ID 后立即保存，再独立回读正文和状态。父票在所有子票回读通过后处理。
 
 GET 默认最多尝试 3 次，可用 `-GetAttempts`（1–5）和 `-GetRetryDelaySeconds`（0–30）调整；POST 和 PATCH 不自动重试。中断后使用原记录、原仓库及关闭选项，指定 `-ResumeFrom <旧输出目录>` 和新的 `-OutputDirectory <新输出目录>`。恢复会核对整批正文 SHA、票号、父票和目标状态，重新回读已有评论 ID，仅对未发送票创建评论。旧目录保持原样。
 

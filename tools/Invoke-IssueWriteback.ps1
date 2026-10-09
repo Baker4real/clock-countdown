@@ -308,8 +308,20 @@ function Set-LedgerStatus {
     $script:ledger.status = $Status; $script:ledger.finishedAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); Write-Ledger
 }
 
+function Resolve-WritebackRepo {
+    if (-not [string]::IsNullOrWhiteSpace($Repo)) { return $Repo }
+    $remoteUrl = $null
+    try { $remoteUrl = (& git -C $repoRoot remote get-url origin 2>$null) } catch { $remoteUrl = $null }
+    if (-not [string]::IsNullOrWhiteSpace($remoteUrl) -and
+        $remoteUrl -match 'github\.com[:/](?<o>[^/]+)/(?<r>[^/]+?)(?:\.git)?\s*$') {
+        return "$($Matches.o)/$($Matches.r)"
+    }
+    throw '-Repo 缺失且无法从 origin 远端解析（期望 github.com/<owner>/<repo>）；请显式传入 -Repo。'
+}
+
 function Invoke-Writeback {
     param([Parameter(Mandatory)] [object] $Document)
+    $script:Repo = Resolve-WritebackRepo
     if ($Apply -and [string]::IsNullOrWhiteSpace($Repo)) { throw '-Apply 必须提供 -Repo。' }
     if ($CloseSatisfied -and -not $Apply) { throw '-CloseSatisfied 只能与 -Apply 一起使用。' }
     $records = Get-Records -Document $Document; Assert-WritebackRecords -Records $records

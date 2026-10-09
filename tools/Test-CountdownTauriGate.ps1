@@ -49,8 +49,15 @@ try {
     }
     # The official parent owns the isolated desktop, process Job, timeout and
     # cancellation. Do not kill or activate any pre-existing slice process.
-    & $application '--floating-gate' 1> (Join-Path $EvidenceDirectory 'application.out.log') 2> (Join-Path $EvidenceDirectory 'application.err.log')
-    $exitCode = $LASTEXITCODE
+    # 发布切片是 GUI 子系统可执行文件：pwsh 用 & 调用不会等待进程退出（实测
+    # $LASTEXITCODE 保持未赋值），必须 Start-Process -Wait 显式等待，输出由
+    # 重定向直接落证据文件，不经 pwsh 管道，避免 WebView2 子进程持有句柄卡住。
+    $process = Start-Process -FilePath $application -ArgumentList '--floating-gate' `
+        -WorkingDirectory $repoRoot `
+        -RedirectStandardOutput (Join-Path $EvidenceDirectory 'application.out.log') `
+        -RedirectStandardError (Join-Path $EvidenceDirectory 'application.err.log') `
+        -Wait -PassThru
+    $exitCode = $process.ExitCode
     if ($exitCode -ne 0) { throw "Tauri 切片退出码 $exitCode；保留全部运行证据。" }
     $receiptPath = Join-Path $capturesDirectory 'floating-gate-receipt.json'
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json

@@ -81,6 +81,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），六阶段套件默认入口；Build 绿后 Core/CSharp/Ui/SourceValidation/InstallValidate 五阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
+Issue 的结构化验收、回写与恢复合同见 [Issue 验收契约](docs/agents/issue-acceptance.md)。`tools/Invoke-IssueWriteback.ps1` 默认只生成 dry-run，真实写入须显式 `-Apply`；回写回归已接入 Tooling 和 CI。
 当前迁移决策、WPF module/seam 划分和 Tauri 闸门边界见 [架构与语言迁移](docs/架构与语言迁移.md)；父级 PRD 为 [GitHub #189](https://github.com/Baker4real/clock-countdown/issues/189)。
 WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方案](docs/现代化重构方案.md)；现行栈状态与候选闸门范围见 [技术栈决策](docs/stack.md)。Tauri/React/Rust 文档只描述可回滚的候选切片，不代表已批准的目标栈。
 倒计时、便签与共享标签的产品证据、现役边界和后续候选见 [倒计时、便签与标签协同调研](docs/标签与倒计时应用调研.md)。
@@ -101,6 +102,14 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -AllowUnisolatedDesktop -Stage Core
 ```
+
+无窗口工具自检覆盖 issue 验收 schema、回写回归、PowerShell 解析、文档链接及完整发布差异：
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -NonInteractive -File ./tools/Test-CountdownTooling.ps1 -Json
+```
+
+发布差异同时检查基点到候选提交、候选到暂存区、暂存区到工作树。默认基点为 `origin/main`，候选为 `HEAD`；集成树或手动验收须用 `-BaseCommit <发布基点>`、`-CandidateCommit <候选提交>`，或环境变量 `COUNTDOWN_DIFF_BASE`、`COUNTDOWN_DIFF_CANDIDATE` 明确指定。基点必须是候选祖先，工作树修正不能掩盖旧提交错误。CI 按 push / PR / 手动事件解析并固定 SHA，手动运行须填写 `publication_base`。
 
 标注：本文档命令的脚本路径统一用 `./` 前缀：该写法在 PowerShell、cmd 与 Git Bash 下均可直接执行；`.\` 前缀会被 Git Bash 等 POSIX shell 当作转义符吃掉反斜杠，导致 `pwsh -File` 报找不到脚本。
 

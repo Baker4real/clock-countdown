@@ -10,7 +10,7 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 ## 状态
 
 - 状态：WPF 渐进升级优先；Tauri + React + Rust 仅作为后置闸门候选，未批准全面迁移。
-- 记录日期：2026-10-08。
+- 记录日期：2026-10-09。
 - 父级 PRD：[GitHub #189：WPF 渐进式 UI 精致化与现代化（替代全面重写为先）](https://github.com/Baker4real/clock-countdown/issues/189)。
 - 现行生产基线：C# / .NET 10 WPF + PowerShell 7。它继续拥有用户界面、Windows 生命周期、schema v10 设置和办公室发布路径。
 - 当前目标栈：在不改变数据、安装和部署合同的前提下，按 #189 的批次逐步改进 WPF；当前没有已批准的替代运行时。
@@ -30,7 +30,7 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 | Windows 能力 | 单实例、托盘、开机启动、窗口位置、拖动、焦点恢复、独立多窗口 |
 | 数据 | 兼容 schema v1-v10，只写 canonical schema v10；保留两代合法设置备份 |
 | 发布 | 继续使用现行 Windows 安装包、哈希清单、远端事务验收和独立回读；Tauri 离线 WebView2 只属于闸门成本评估 |
-| 仓库拓扑 | 现行单仓 WPF 与 PowerShell；`ui/`、`src-tauri/` 只有闸门获批后才可创建 |
+| 仓库拓扑 | WPF 与 PowerShell 是生产路径；已有 Tauri 候选目录和隔离工作树不代表生产栈已切换 |
 | 供应链 | 现行依赖按精确版本和发布契约管理；闸门候选依赖必须在切片前另行锁定、审查许可证并纳入闭包 |
 
 ## 现行生产技术栈
@@ -44,7 +44,7 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 
 ## Tauri 闸门候选（不构成目标栈）
 
-以下版本和模块是后置切片的研究起点，不是当前依赖承诺；只有闸门获批后才在独立提交中锁定并验证。
+以下模块属于后置切片。候选中的精确版本以其独立锁文件和验证证据为准，不升级为 WPF 的生产依赖承诺。
 
 | 槽位 | 候选 | 切片边界 |
 | --- | --- | --- |
@@ -68,6 +68,6 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 ## 版本与升级策略
 
 - 现行 WPF 与 PowerShell 依赖继续按各项目文件、发布契约和许可证证据管理。
-- 只有独立闸门任务获批后，才锁定 Tauri、React、TypeScript、Vite、Rust 或 WebView2 版本；升级必须通过视觉、数据、安装和部署门禁。
+- Tauri、React、TypeScript、Vite、Rust 或 WebView2 版本只在隔离候选中锁定和验证；生产采用另受视觉、数据、安装和部署门禁约束。
 - `candidate`、`dry-run`、`deployed` 与 `live verified` 分开记录；本地切片、合成探针或 `ValidateOnly` 不得替代办公室验收。
 - 任何改变 `Countdown.ReleaseContract.psm1` `IntegrityHashes` 覆盖文件的提交，按 README 和项目规则更新静态哈希；本票只改文档，不新增覆盖文件。

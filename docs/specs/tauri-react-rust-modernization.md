@@ -13,7 +13,7 @@ intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScri
 
 当前项目还承担一组不能因换 UI 而丢失的行为：北京时间语义、schema v1-v10 数据迁移、两代合法设置备份、提醒 occurrence/cursor/disposition/snooze、单实例激活、托盘、登录启动、悬浮窗位置、提醒中心、无障碍、发布哈希、事务回滚、办公室传输账本和独立远端回读。
 
-用户需要一个真正现代化的桌面应用，而不是在 WPF 外壳上继续堆叠视觉补丁；同时升级不能牺牲已有数据、Windows 能力、部署安全和可复核验收。
+当前目标是先改善现有 WPF 的真实使用体验，再用有界实验判断更换运行时是否有足够收益；升级继续保留数据、Windows 能力、部署安全和可复核验收。
 
 ## Solution
 
@@ -23,7 +23,17 @@ intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScri
 
 切片采用可回滚的隔离验证：复用现有 WPF 基线和脱敏 fixture，只验证一扇真实 WebView2 窗口、typed command/event、窗口边界、托盘恢复、第二实例发现和关键无障碍路径。切片只能作为 candidate 或 dry-run；不得以浏览器截图、合成探针或本机打包宣称 deployed 或 live verified。
 
-## User Stories
+## 当前闸门的验收范围
+
+- 一个真实 Tauri/WebView2 `520 x 390` 悬浮窗，与 WPF 改版在相同场景下保留原始帧、源身份、尺寸和 SHA-256；浏览器截图不能替代桌面运行。
+- 逐项验证工作区切换、滚动、搜索、键盘焦点、自动化名、reduced-motion，以及窗口边界、托盘恢复和第二实例发现。
+- 对比首帧与刷新性能、近似实施工作量、离线 WebView2 成本和回滚路径；未实测维度明确记录为未知。
+- Core 复用须说明实际采用 C# sidecar 还是 Rust fixture parity，并保留对应实证，不能以相同 JSON 结构宣称领域行为等价。
+- 给出继续、停止或部分采用的结论，并更新技术栈决策；候选全过程只消费脱敏 fixture 或自己的隔离设置。
+
+## 历史背景：全面迁移用户故事
+
+以下保留旧全面重写草案的研究背景，不属于 #189 或 #209 的现行实施清单。主窗口、提醒中心、真实数据迁移和生产入口切换均在本次切片范围之外。
 
 1. As a countdown user, I want the main window to use a modern component-based interface, so that I can read and edit countdowns without the visual limitations of WPF controls.
 2. As a countdown user, I want the warm-pink daytime visual system to be implemented with reusable design tokens, so that all windows remain visually consistent.
@@ -58,7 +68,9 @@ intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScri
 31. As a maintainer, I want the old WPF application to remain a rollback candidate until the new release is live verified, so that the migration can be reversed without deleting user data.
 32. As a maintainer, I want old WPF code removed only after its replacement evidence is archived, so that cleanup does not erase the only reproducible verification path.
 
-## Implementation Decisions
+## 历史背景：全面迁移实现设想
+
+以下版本和方案属于旧草案，不是已批准或已锁定的生产依赖。当前切片只采用前文的单窗口与隔离边界；autostart 注册、部署改造、完整 Rust 领域移植和新增 CI 仍需独立决定。
 
 - For the optional gate slice, the desktop shell is Tauri 2; the UI is React 19.3 with TypeScript, Vite 8 and Tailwind CSS 4. Design tokens remain CSS Variables owned by `DESIGN.md`; these are candidate dependencies, not current production dependencies.
 - Inside that isolated slice, Rust may own the exercised domain seam and Tauri window commands. It does not replace the current WPF owner of real settings, reminder scheduling, deployment or startup acceptance.
@@ -83,7 +95,9 @@ intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScri
 - The CI pipeline adds Node lockfile installation, TypeScript checks, frontend tests/build, Rust formatting/lint/tests, Tauri Windows packaging and migration fixture checks to the existing Windows workflow.
 - Release state is recorded separately as candidate, dry-run, deployed and live verified. A local build, synthetic probe or unit test alone cannot close the migration.
 
-## Testing Decisions
+## 历史背景：全面迁移测试设想
+
+以下是未来全面迁移才会涉及的测试面；当前闸门以“当前闸门的验收范围”为准，不能从本节推导生产切换授权或宣称这些测试已执行。
 
 - Tests assert externally observable behavior at the highest available seam. The primary seam is the real Tauri application process with its typed command/event boundary and real Windows windows; lower-level Rust tests support deterministic domain and persistence failures.
 - The existing schema and deployment fixtures are preferred over inventing a parallel test oracle. The C# verifier remains a comparison oracle only until Rust parity is established.
@@ -100,6 +114,7 @@ intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScri
 
 ## Out of Scope
 
+- Replacing the WPF main window, reminder center, production settings owner, startup entry or deployment path as part of this gate slice.
 - Shipping a web/SaaS version or adding SSR, SEO, server-side rendering or cloud synchronization.
 - Supporting macOS, Linux, mobile or browser-only deployment in the first migration.
 - Replacing JSON with SQLite without a separate performance or data-volume requirement.

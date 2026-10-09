@@ -132,6 +132,7 @@ $applicationOutput = Join-Path $PSScriptRoot 'app'
 $verificationOutput = Join-Path $PSScriptRoot 'verification'
 $applicationAssetsOutput = Join-Path $applicationOutput 'assets'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 $releaseContract = Get-CountdownReleaseContract
 $assetManifest = @(
     foreach ($asset in $releaseContract.BuildAssets) {
@@ -379,6 +380,18 @@ Write-Output "PUBLISHED_PAYLOAD_COUNT=$($payloadFiles.Count)"
 Write-Output "PUBLISHED_PAYLOAD_AGGREGATE=$payloadAggregate"
 Write-Output "PUBLISHED_LICENSE_COUNT=$($thirdPartyLicenseFiles.Count)"
 Write-BuildSegmentTiming -Name 'AssetValidationAndPayloadHash'
+
+# 生产启动链 fail-closed：app\startup-request.json 缺失时宿主拒绝启动，而 -Clean 会清空 app\。
+# 每次构建后补写手动启动形态的请求；安装器部署时用自己的请求重写它。
+$startupRequestPath = Join-Path $applicationOutput 'startup-request.json'
+if (Test-Path -LiteralPath $startupRequestPath -PathType Leaf) {
+    Write-Output 'STARTUP_REQUEST_PRESERVED=existing'
+}
+else {
+    [void] (New-CountdownStartupRequest -Path $startupRequestPath)
+    Write-Output 'STARTUP_REQUEST_RESTORED=app\startup-request.json'
+}
+Write-BuildSegmentTiming -Name 'StartupRequestRestore'
 
 & $dotnet publish $verificationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `

@@ -3618,8 +3618,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 528 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 524 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 529 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 525 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 60 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
@@ -3628,6 +3628,8 @@ Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
 Assert-Equal $true ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight entry point'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Test-CountdownBuildPreflight.ps1') 'PowerShell build preflight entry point remains integrity protected'
+Assert-Equal $true ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Release package keeps the design contract read by remote C# tests'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('DESIGN.md') 'Design contract remains integrity protected'
 Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
 $expectedInstalledSupportFiles = @(
     'Countdown.Core.psm1',

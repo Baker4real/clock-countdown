@@ -3618,14 +3618,16 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 527 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 523 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 528 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 524 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 60 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight helper'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
+Assert-Equal $true ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight entry point'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Test-CountdownBuildPreflight.ps1') 'PowerShell build preflight entry point remains integrity protected'
 Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
 $expectedInstalledSupportFiles = @(
     'Countdown.Core.psm1',
@@ -6357,6 +6359,8 @@ $keptMtime = ($mtimeJson | ConvertFrom-Json -DateKind String).ExpectedSettingsMt
 Assert-Equal $true ($coercedMtime -is [datetime] -or [string] $keptMtime -eq $mtimeSample) 'ConvertFrom-Json either keeps the settings mtime string or yields a DateTime the fingerprint helper can normalize'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script required by remote core tests'
 Assert-Equal $true ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the build script required by remote core tests'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Test-CountdownBuildPreflight.ps1') 'Release contract protects the preflight entry script read by remote core tests'
+Assert-Equal $true ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the preflight entry script read by remote core tests'
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
 [System.IO.File]::WriteAllText($clearTestPath, '{}')
 [System.IO.File]::WriteAllText("$clearTestPath.tmp", '{}')

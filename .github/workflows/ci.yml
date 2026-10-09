@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publication_base:
+        description: 'Ancestor commit or ref to check against the selected candidate'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,6 +29,23 @@ jobs:
       DOTNET_NOLOGO: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bind publication diff range
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BASE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MANUAL_BASE: ${{ inputs.publication_base }}
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          $range = & .\tools\Test-CountdownPublicationDiff.ps1 -EventName $env:EVENT_NAME -PushBase $env:PUSH_BASE -PullRequestBase $env:PR_BASE -ManualBase $env:MANUAL_BASE -CandidateCommit $env:CANDIDATE_SHA -Json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not $range.Valid) { throw ($range.Failures -join '; ') }
+          "COUNTDOWN_DIFF_BASE=$($range.BaseCommit)" >> $env:GITHUB_ENV
+          "COUNTDOWN_DIFF_CANDIDATE=$($range.CandidateCommit)" >> $env:GITHUB_ENV
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4

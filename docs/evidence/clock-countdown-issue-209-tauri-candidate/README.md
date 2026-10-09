@@ -28,4 +28,3 @@
 - `side-by-side.png` 是候选对比证据；右侧来自 headless Chrome 对静态 HTML 的渲染，不能证明 Tauri/WebView2 已运行。
 - 没有 deployed、office accepted 或 `live verified` 状态；没有写入真实设置、计划任务、托盘入口或安装目录。
 - 左侧 WPF 参考帧的路径和 SHA 绑定记录在 `candidate-boundary.json`，便于独立回读。
-

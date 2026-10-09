@@ -106,6 +106,8 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownBuildPreflight.ps1 -Json
 pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownTooling.ps1 -Json
 ```
 
+Tooling 的发布差异检查同时覆盖基点到候选提交、候选到暂存区、暂存区到工作树。默认使用 `origin/main` 和 `HEAD`；集成树或手动验收须显式提供 `-BaseCommit <发布基点>`、`-CandidateCommit <候选提交>`，或通过 `COUNTDOWN_DIFF_BASE`、`COUNTDOWN_DIFF_CANDIDATE` 传给启动器。基点必须是候选祖先；旧提交的错误不能由工作树修正掩盖。CI 按 push / PR / 手动事件解析并固定实际 SHA，手动运行须填写 `publication_base`。
+
 弹层验证和工具自检也可单独经官方入口运行，入口会写出 `logs\suite-runs\*-run.json` 与 `*-summary.json`；启动器异常、取消、超时和失效 owner 都以非成功终态保存，不能把缺少 summary 当成通过：
 
 ```powershell

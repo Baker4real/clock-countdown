@@ -1,6 +1,10 @@
 #requires -Version 7.0
 [CmdletBinding()]
-param([switch] $Json)
+param(
+    [switch] $Json,
+    [string] $BaseCommit = $env:COUNTDOWN_DIFF_BASE,
+    [string] $CandidateCommit = $env:COUNTDOWN_DIFF_CANDIDATE
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -31,6 +35,8 @@ foreach ($requiredPath in @(
         'tools/Test-IssueAcceptance.ps1',
         'tools/Invoke-IssueWriteback.ps1',
         'tools/Test-IssueWriteback.ps1',
+        'tools/Test-CountdownPublicationDiff.ps1',
+        'tools/Test-CountdownPublicationDiff.Tests.ps1',
         'tools/Test-CountdownBuildPreflight.ps1',
         'tools/Countdown.BuildPreflight.psm1',
         'tools/Countdown.SuiteRun.psm1',
@@ -41,6 +47,10 @@ $schemaTest = & (Join-Path $PSScriptRoot 'Test-IssueAcceptance.ps1') -SelfTest -
 Add-ToolingCheck -Name 'issue-acceptance:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $schemaTest.Valid) -Detail ($schemaTest | ConvertTo-Json -Compress)
 $writebackTest = & (Join-Path $PSScriptRoot 'Invoke-IssueWriteback.ps1') -SelfTest -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'issue-writeback:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $writebackTest.Valid) -Detail ($writebackTest | ConvertTo-Json -Compress)
+$writebackRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-IssueWriteback.ps1') -Json | ConvertFrom-Json -Depth 20
+Add-ToolingCheck -Name 'issue-writeback:regression' -Passed ($LASTEXITCODE -eq 0 -and [bool] $writebackRegression.Valid) -Detail ($writebackRegression | ConvertTo-Json -Compress -Depth 20)
+$diffRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.Tests.ps1') -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'publication-diff:regression' -Passed ($LASTEXITCODE -eq 0 -and [bool] $diffRegression.Valid) -Detail ($diffRegression | ConvertTo-Json -Compress -Depth 10)
 
 $parseErrors = [System.Collections.Generic.List[string]]::new()
 $scriptPaths = @(
@@ -83,8 +93,10 @@ foreach ($markdownFile in $markdownFiles) {
 $docLinkDetail = if ($docLinkFailures.Count -eq 0) { "$($markdownFiles.Count) Markdown files" } else { $docLinkFailures -join ' | ' }
 Add-ToolingCheck -Name 'docs:local-links' -Passed ($docLinkFailures.Count -eq 0) -Detail $docLinkDetail
 
-$diffOutput = & git -C $repoRoot diff --check 2>&1 | Out-String
-Add-ToolingCheck -Name 'git:diff-check' -Passed ($LASTEXITCODE -eq 0) -Detail ($diffOutput.Trim())
+if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }
+if ([string]::IsNullOrWhiteSpace($CandidateCommit)) { $CandidateCommit = 'HEAD' }
+$diffCheck = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.ps1') -RepositoryRoot $repoRoot -BaseCommit $BaseCommit -CandidateCommit $CandidateCommit -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'git:publication-diff-check' -Passed ($LASTEXITCODE -eq 0 -and [bool] $diffCheck.Valid) -Detail ($diffCheck | ConvertTo-Json -Compress -Depth 10)
 
 $result = [pscustomobject]@{
     Valid = $failures.Count -eq 0

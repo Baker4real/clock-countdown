@@ -9,6 +9,9 @@ param(
     [switch] $SelfTest,
     [switch] $Json,
     [string] $OutputDirectory,
+    [string] $ResumeFrom,
+    [ValidateRange(1, 5)] [int] $GetAttempts = 3,
+    [ValidateRange(0, 30)] [int] $GetRetryDelaySeconds = 1,
     [int] $ParentIssue,
     [string] $GhPath = 'gh'
 )
@@ -26,10 +29,13 @@ $schemaPath = Join-Path $repoRoot 'docs/agents/issue-acceptance.json'
 $validatorPath = Join-Path $scriptRoot 'Test-IssueAcceptance.ps1'
 $script:outputRoot = $null
 $script:ledger = $null
+$script:resumeRoot = $null
 
 function Write-JsonFile {
     param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] [object] $Value, [int] $Depth = 30)
-    [System.IO.File]::WriteAllText($Path, ($Value | ConvertTo-Json -Depth $Depth), $utf8)
+    $temporary = "$Path.tmp"
+    [System.IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth $Depth), $utf8)
+    [System.IO.File]::Move($temporary, $Path, $true)
 }
 
 function Read-JsonFile {
@@ -97,7 +103,7 @@ function Assert-WritebackRecords {
 function Convert-WritebackComment {
     param([Parameter(Mandatory)] [object] $Record)
     $lines = [System.Collections.Generic.List[string]]::new()
-    $lines.Add("验收回写：issue #$($Record.number)（类型 `$($Record.taskType)`，状态 `$($Record.status)`）。")
+    $lines.Add(('验收回写：issue #{0}（类型 `{1}`，状态 `{2}`）。' -f $Record.number, $Record.taskType, $Record.status))
     $lines.Add('')
     $lines.Add("**摘要**：$($Record.summary)")
     $lines.Add('')
@@ -138,7 +144,14 @@ function Convert-ParentSummary {
 
 function Invoke-GhJson {
     param([Parameter(Mandatory)] [string[]] $Arguments)
-    $output = @(& $GhPath @Arguments 2>&1); $exitCode = $LASTEXITCODE
+    $isGet = '--method' -notin $Arguments -or ($Arguments[[Array]::IndexOf($Arguments, '--method') + 1] -eq 'GET')
+    $attempts = if ($isGet) { $GetAttempts } else { 1 }
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        try { $output = @(& $GhPath @Arguments 2>&1); $exitCode = $LASTEXITCODE }
+        catch { $output = @($_.Exception.Message); $exitCode = 1 }
+        if ($exitCode -eq 0 -or $attempt -eq $attempts) { break }
+        if ($GetRetryDelaySeconds -gt 0) { Start-Sleep -Seconds $GetRetryDelaySeconds }
+    }
     $text = ($output -join [Environment]::NewLine).Trim()
     if ($exitCode -ne 0) { throw "gh 失败（$exitCode）：$text" }
     if ([string]::IsNullOrWhiteSpace($text)) { throw "gh 没有返回 JSON：$($Arguments -join ' ')" }
@@ -170,6 +183,93 @@ function Write-Ledger {
 function Write-IssueResult {
     param([Parameter(Mandatory)] [object] $Entry)
     Write-JsonFile -Path (Join-Path $script:outputRoot "issue-$($Entry.number).result.json") -Value $Entry
+}
+
+function Invoke-CommentTransaction {
+    param([int] $Number, [string] $Body, [string] $BodyPath, [string] $ExpectedState, [string] $Prefix)
+    $resultName = "$Prefix-$Number.result.json"
+    $resultPath = Join-Path $script:outputRoot $resultName
+    $entry = [ordered]@{ number = $Number; status = 'running'; action = 'comment-and-readback'; bodyPath = $BodyPath; expectedBodySha256 = Get-TextSha256 -Text $Body; expectedIssueState = $ExpectedState; phase = 'ready' }
+    try {
+        if ($null -ne $script:resumeRoot) {
+            $previousPath = Join-Path $script:resumeRoot $resultName
+            if (Test-Path -LiteralPath $previousPath -PathType Leaf) {
+                $previous = Read-JsonFile -Path $previousPath
+                if ($previous.PSObject.Properties.Name -contains 'commentId' -and [long] $previous.commentId -gt 0) {
+                    if ([string] $previous.expectedBodySha256 -cne $entry.expectedBodySha256 -or [string] $previous.expectedIssueState -cne $ExpectedState) { throw "issue $Number 恢复记录与本次正文或目标状态不符。" }
+                    $entry.commentId = [long] $previous.commentId
+                    $entry.phase = 'comment-posted'
+                }
+                elseif ([string] $previous.status -ne 'skipped') {
+                    throw "issue $Number 的先前写入结果未知；拒绝自动重复 POST，请先独立核对评论。"
+                }
+            }
+        }
+        Write-JsonFile -Path $resultPath -Value $entry
+        if (-not $entry.Contains('commentId')) {
+            $requestPath = Join-Path $script:outputRoot "$Prefix-$Number.comment-request.json"
+            Write-JsonFile -Path $requestPath -Value ([ordered]@{ body = $Body })
+            # Persist intent before POST: a lost response must never trigger an automatic duplicate.
+            $entry.phase = 'comment-pending'; Write-JsonFile -Path $resultPath -Value $entry
+            $comment = Invoke-GhJson -Arguments @('api', '--method', 'POST', "repos/$Repo/issues/$Number/comments", '--input', $requestPath)
+            if ([long] $comment.id -le 0) { throw "issue $Number 的 gh comment 响应没有有效 id。" }
+            $entry.commentId = [long] $comment.id; $entry.commentUrl = [string] $comment.html_url
+            $entry.phase = 'comment-posted'; Write-JsonFile -Path $resultPath -Value $entry
+        }
+        $entry.commentReadback = Get-CommentReadback -Number $Number -RepoName $Repo -CommentId $entry.commentId -ExpectedBody $Body
+        $entry.phase = 'comment-verified'; Write-JsonFile -Path $resultPath -Value $entry
+        $state = Get-IssueState -Number $Number -RepoName $Repo
+        if ($ExpectedState -eq 'CLOSED' -and $state -ne 'CLOSED') {
+            $entry.phase = 'close-pending'; Write-JsonFile -Path $resultPath -Value $entry
+            [void] (Invoke-GhJson -Arguments @('api', '--method', 'PATCH', "repos/$Repo/issues/$Number", '-f', 'state=closed'))
+        }
+        $entry.issueState = Get-IssueState -Number $Number -RepoName $Repo
+        if ($entry.issueState -ne $ExpectedState) { throw "issue $Number 状态回读不符（期望 $ExpectedState，实际 $($entry.issueState)）。" }
+        $entry.phase = 'verified'; $entry.status = 'processed'
+    }
+    catch { $entry.status = 'failed'; $entry.error = $_.Exception.Message }
+    Write-JsonFile -Path $resultPath -Value $entry
+    return $entry
+}
+
+function Assert-ResumePlan {
+    param([object] $Plan, [string] $ParentBody)
+    if ([string]::IsNullOrWhiteSpace($ResumeFrom)) { return }
+    if (-not $Apply) { throw '-ResumeFrom 只能与 -Apply 一起使用。' }
+    $script:resumeRoot = (Resolve-Path -LiteralPath $ResumeFrom).Path
+    $previous = Read-JsonFile -Path (Join-Path $script:resumeRoot 'plan.json')
+    if (-not $previous.apply -or [string] $previous.repo -cne $Repo -or [bool] $previous.closeSatisfied -ne [bool] $CloseSatisfied -or [string] $previous.parentIssue -ne [string] $Plan.parentIssue) { throw '恢复 plan 的仓库、Apply/Close 或父票不匹配。' }
+    if (@($previous.records).Count -ne @($Plan.records).Count) { throw '恢复 plan 的票数不匹配。' }
+    foreach ($record in $Plan.records) {
+        $old = @($previous.records | Where-Object number -eq $record.number)
+        if ($old.Count -ne 1 -or [string] $old[0].bodySha256 -cne [string] $record.bodySha256 -or [string] $old[0].expectedIssueState -cne [string] $record.expectedIssueState) { throw "issue $($record.number) 恢复 plan 不匹配。" }
+    }
+    if ($null -ne $Plan.parentIssue) {
+        $oldBody = [System.IO.File]::ReadAllText((Join-Path $script:resumeRoot "parent-$($Plan.parentIssue).md"), $utf8)
+        if ((Get-TextSha256 -Text $oldBody) -cne (Get-TextSha256 -Text $ParentBody)) { throw '恢复父票正文不匹配。' }
+    }
+    # Seed the entire resume checkpoint before publishing its plan or making any requests.
+    # An interrupted early readback must not lose later tickets' transaction state.
+    $names = @($Plan.records | ForEach-Object { "issue-$($_.number).result.json" })
+    if ($null -ne $Plan.parentIssue) { $names += "parent-$($Plan.parentIssue).result.json" }
+    foreach ($name in $names) {
+        $oldPath = Join-Path $script:resumeRoot $name
+        if (Test-Path -LiteralPath $oldPath -PathType Leaf) {
+            Write-JsonFile -Path (Join-Path $script:outputRoot $name) -Value (Read-JsonFile -Path $oldPath)
+        }
+    }
+}
+
+function Save-DeferredResult {
+    param([object] $Skipped, [string] $Prefix)
+    $name = "$Prefix-$($Skipped.number).result.json"
+    $previousPath = if ($null -ne $script:resumeRoot) { Join-Path $script:resumeRoot $name } else { $null }
+    if ($null -ne $previousPath -and (Test-Path -LiteralPath $previousPath -PathType Leaf)) {
+        # Carry the full transaction state across failed resumes, including unknown POST outcomes.
+        Write-JsonFile -Path (Join-Path $script:outputRoot $name) -Value (Read-JsonFile -Path $previousPath)
+        $Skipped.resumeResultPreserved = $true
+    }
+    else { Write-JsonFile -Path (Join-Path $script:outputRoot $name) -Value $Skipped }
 }
 
 function Initialize-Output {
@@ -226,6 +326,7 @@ function Invoke-Writeback {
     $parentBody = $null; $parentBodyPath = $null
     if ($parent -gt 0) { $parentBody = Convert-ParentSummary -Number $parent -Records $records -RepoName $Repo; $parentBodyPath = Join-Path $root "parent-$parent.md"; [System.IO.File]::WriteAllText($parentBodyPath, $parentBody, $utf8) }
     $plan = [ordered]@{ schemaVersion = 1; createdAtUtc = [DateTimeOffset]::UtcNow.ToString('o'); repo = $Repo; apply = [bool] $Apply; closeSatisfied = [bool] $CloseSatisfied; outputDirectory = $root; records = @($planEntries); parentIssue = if ($parent -gt 0) { $parent } else { $null }; parentBodyPath = $parentBodyPath }
+    Assert-ResumePlan -Plan $plan -ParentBody $parentBody
     $planPath = Join-Path $root 'plan.json'; Write-JsonFile -Path $planPath -Value $plan; Add-LedgerEvent -Kind 'plan-created' -Detail "已生成 $($records.Count) 条逐票正文。"
     if (-not $Apply) {
         foreach ($entry in $planEntries) { $processed = [ordered]@{ number = $entry.number; status = 'processed'; action = 'dry-run-comment'; bodyPath = $entry.bodyPath; bodySha256 = $entry.bodySha256 }; Write-IssueResult -Entry $processed; $script:ledger.issues = @($script:ledger.issues) + [pscustomobject] $processed }
@@ -237,38 +338,28 @@ function Invoke-Writeback {
     }
     $failed = $false
     foreach ($record in $records) {
-        $number = [int] $record.number; $entry = [ordered]@{ number = $number; status = 'running'; action = 'comment-and-readback'; bodyPath = Join-Path $root "issue-$number.md"; expectedBodySha256 = Get-TextSha256 -Text $bodyByNumber[$number]; expectedIssueState = if ([string] $record.status -eq 'closed' -and $CloseSatisfied) { 'CLOSED' } else { 'OPEN' } }
-        try {
-            $requestPath = Join-Path $root "issue-$number.comment-request.json"; Write-JsonFile -Path $requestPath -Value ([ordered]@{ body = $bodyByNumber[$number] })
-            $comment = Invoke-GhJson -Arguments @('api', '--method', 'POST', "repos/$Repo/issues/$number/comments", '--input', $requestPath); $commentId = [long] $comment.id
-            if ($commentId -le 0) { throw "issue $number 的 gh comment 响应没有有效 id。" }
-            $entry.commentId = $commentId; $entry.commentUrl = [string] $comment.html_url; $entry.commentReadback = Get-CommentReadback -Number $number -RepoName $Repo -CommentId $commentId -ExpectedBody $bodyByNumber[$number]
-            if ([string] $record.status -eq 'closed') { if (-not $CloseSatisfied) { throw "issue $number 为 closed，必须传 -CloseSatisfied 才能 Apply。" }; [void] (Invoke-GhJson -Arguments @('api', '--method', 'PATCH', "repos/$Repo/issues/$number", '-f', 'state=closed')) }
-            $entry.issueState = Get-IssueState -Number $number -RepoName $Repo; if ($entry.issueState -ne $entry.expectedIssueState) { throw "issue $number 状态回读不符（期望 $($entry.expectedIssueState)，实际 $($entry.issueState)）。" }
-            $entry.status = 'processed'; Write-IssueResult -Entry $entry; $script:ledger.issues = @($script:ledger.issues) + [pscustomobject] $entry; Add-LedgerEvent -Kind 'issue-processed' -Detail "issue #$number 评论、正文和状态均已独立回读。"
+        $number = [int] $record.number
+        $expected = if ([string] $record.status -eq 'closed' -and $CloseSatisfied) { 'CLOSED' } else { 'OPEN' }
+        $entry = Invoke-CommentTransaction -Number $number -Body $bodyByNumber[$number] -BodyPath (Join-Path $root "issue-$number.md") -ExpectedState $expected -Prefix 'issue'
+        $script:ledger.issues = @($script:ledger.issues) + [pscustomobject] $entry
+        if ($entry.status -eq 'failed') {
+            Add-LedgerEvent -Kind 'issue-failed' -Detail "issue #$number 失败：$($entry.error)"; $failed = $true; break
         }
-        catch {
-            $entry.status = 'failed'; $entry.error = $_.Exception.Message; Write-IssueResult -Entry $entry; $script:ledger.issues = @($script:ledger.issues) + [pscustomobject] $entry; Add-LedgerEvent -Kind 'issue-failed' -Detail "issue #$number 失败：$($entry.error)"; $failed = $true; break
-        }
+        Add-LedgerEvent -Kind 'issue-processed' -Detail "issue #$number 评论、正文和状态均已独立回读。"
     }
     if ($failed) {
         $doneNumbers = @($script:ledger.issues | ForEach-Object { [int] $_.number })
-        foreach ($record in $records | Where-Object { [int] $_.number -notin $doneNumbers }) { $skipped = [ordered]@{ number = [int] $record.number; status = 'skipped'; action = 'stopped-after-failure'; reason = '前一条 issue 写入或独立回读失败。' }; Write-IssueResult -Entry $skipped; $script:ledger.issues = @($script:ledger.issues) + [pscustomobject] $skipped }
-        if ($parent -gt 0) { $parentSkipped = [ordered]@{ number = $parent; status = 'skipped'; action = 'parent-stopped-after-child-failure'; reason = '子 issue 失败，停止依赖父票写入。' }; $script:ledger.parent = $parentSkipped; Write-JsonFile -Path (Join-Path $root "parent-$parent.result.json") -Value $parentSkipped }
+        foreach ($record in $records | Where-Object { [int] $_.number -notin $doneNumbers }) { $skipped = [ordered]@{ number = [int] $record.number; status = 'skipped'; action = 'stopped-after-failure'; reason = '前一条 issue 写入或独立回读失败。' }; Save-DeferredResult -Skipped $skipped -Prefix 'issue'; $script:ledger.issues = @($script:ledger.issues) + [pscustomobject] $skipped }
+        if ($parent -gt 0) { $parentSkipped = [ordered]@{ number = $parent; status = 'skipped'; action = 'parent-stopped-after-child-failure'; reason = '子 issue 失败，停止依赖父票写入。' }; Save-DeferredResult -Skipped $parentSkipped -Prefix 'parent'; $script:ledger.parent = $parentSkipped }
         Set-LedgerStatus -Status 'failed'; throw 'issue 回写中止；已完成评论和 ledger 已保留，未重试或写入父票。'
     }
     if ($parent -gt 0) {
-        $parentEntry = [ordered]@{ number = $parent; status = 'running'; action = 'parent-summary-and-readback'; bodyPath = $parentBodyPath; expectedBodySha256 = Get-TextSha256 -Text $parentBody; expectedIssueState = 'OPEN' }
-        try {
-            $requestPath = Join-Path $root "parent-$parent.comment-request.json"; Write-JsonFile -Path $requestPath -Value ([ordered]@{ body = $parentBody })
-            $comment = Invoke-GhJson -Arguments @('api', '--method', 'POST', "repos/$Repo/issues/$parent/comments", '--input', $requestPath); $parentEntry.commentId = [long] $comment.id; $parentEntry.commentUrl = [string] $comment.html_url
-            $parentEntry.commentReadback = Get-CommentReadback -Number $parent -RepoName $Repo -CommentId $parentEntry.commentId -ExpectedBody $parentBody; $parentEntry.issueState = Get-IssueState -Number $parent -RepoName $Repo
-            if ($parentEntry.issueState -ne 'OPEN') { throw "父 issue #$parent 状态回读不符（期望 OPEN，实际 $($parentEntry.issueState)）。" }
-            $parentEntry.status = 'processed'; $script:ledger.parent = $parentEntry; Write-JsonFile -Path (Join-Path $root "parent-$parent.result.json") -Value $parentEntry; Add-LedgerEvent -Kind 'parent-processed' -Detail "父 issue #$parent 汇总评论和状态均已独立回读。"
+        $parentEntry = Invoke-CommentTransaction -Number $parent -Body $parentBody -BodyPath $parentBodyPath -ExpectedState 'OPEN' -Prefix 'parent'
+        $script:ledger.parent = $parentEntry; Write-Ledger
+        if ($parentEntry.status -eq 'failed') {
+            Add-LedgerEvent -Kind 'parent-failed' -Detail "父 issue #$parent 失败：$($parentEntry.error)"; Set-LedgerStatus -Status 'failed'; throw '子 issue 已完成，但父票写入或回读失败；已保留全部 ledger 和评论。'
         }
-        catch {
-            $parentEntry.status = 'failed'; $parentEntry.error = $_.Exception.Message; $script:ledger.parent = $parentEntry; Write-JsonFile -Path (Join-Path $root "parent-$parent.result.json") -Value $parentEntry; Add-LedgerEvent -Kind 'parent-failed' -Detail "父 issue #$parent 失败：$($parentEntry.error)"; Set-LedgerStatus -Status 'failed'; throw '子 issue 已完成，但父票写入或回读失败；已保留全部 ledger 和评论。'
-        }
+        Add-LedgerEvent -Kind 'parent-processed' -Detail "父 issue #$parent 汇总评论和状态均已独立回读。"
     }
     Set-LedgerStatus -Status 'complete'
     $successResult = [pscustomobject]@{ Valid = $true; Applied = $true; OutputDirectory = $root; PlanPath = $planPath; LedgerPath = Join-Path $root 'ledger.json'; ResultPath = Join-Path $root 'result.json'; ParentSummaryPath = $parentBodyPath; Issues = @($script:ledger.issues); Parent = $script:ledger.parent }

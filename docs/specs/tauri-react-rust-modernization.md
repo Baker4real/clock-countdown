@@ -5,7 +5,7 @@ tags: [spec, tauri, react, rust, migration, wpf, windows]
 intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScript、Vite、Tailwind 和 Rust 悬浮窗对比切片，不把它当作当前生产目标。"
 ---
 
-> 状态：候选规格，依赖 [#189：WPF 渐进式 UI 精致化与现代化（替代全面重写为先）](https://github.com/Baker4real/clock-countdown/issues/189) 的后置闸门（#209）。当前生产宿主仍是 C# / .NET 10 WPF + PowerShell 7；本文件不批准全面迁移、真实设置写入或生产入口切换。
+> 状态：已关闭的候选规格。#209 闸门已于 2026-10-09 执行并决定停止全面重写，Tauri 切片不进入生产；当前生产宿主仍是 C# / .NET 10 WPF + PowerShell 7。本文件仅作为候选研究的历史记录保留。
 
 ## Problem Statement
 

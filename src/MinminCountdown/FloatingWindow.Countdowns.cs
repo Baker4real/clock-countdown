@@ -285,7 +285,8 @@ public sealed partial class FloatingWindow
         const double blockWidthSecondary = 20;
         const double blockHeightPrimary = 42;
         const double blockHeightSecondary = 30;
-        const double availableWidth = PrimaryRemainingWidth - 2;
+        const double rightInset = 2;
+        const double availableWidth = PrimaryRemainingWidth - rightInset;
         const double blockWidthReserve = 3;
 
         var valueBlocks = pairs
@@ -402,7 +403,10 @@ public sealed partial class FloatingWindow
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center,
+            // Apply the width calculation's reserved inset to layout as well;
+            // pixel rounding must not push the final unit outside the column.
+            Margin = new Thickness(0, 0, rightInset, 0)
         };
         for (var index = 0; index < pairs.Count; index++)
         {

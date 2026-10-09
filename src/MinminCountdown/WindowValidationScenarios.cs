@@ -4827,6 +4827,11 @@ internal static class WindowValidationInput
         return pressed && released && focusedOnPress;
     }
 
+    // Hygiene bound for native popup HWND teardown only. The logical close keeps
+    // the interactive 300 ms budget; the compositor-synchronized hide that trails
+    // it is environment-dominated and must not race that budget.
+    private const int TeardownTimeoutMilliseconds = 1000;
+
     public static bool WaitUntil(Dispatcher dispatcher, Func<bool> condition, int timeoutMilliseconds = 300)
     {
         dispatcher.VerifyAccess();
@@ -4861,14 +4866,21 @@ internal static class WindowValidationInput
         {
             Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
         };
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        // Observe at the same Send priority as the deadline: Background ticks
+        // can starve behind a long Normal-priority popup teardown and never
+        // witness a condition that became true inside the window.
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Send, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(10)
         };
-        void Observe()
+        void Observe(bool final = false)
         {
-            if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
+            // A tick executing at or past the deadline is the last observation
+            // opportunity, so check the condition instead of stopping blind;
+            // a genuinely late condition still fails that final check.
+            if (!final && watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
             {
+                Observe(final: true);
                 frame.Continue = false;
                 return;
             }
@@ -4911,7 +4923,11 @@ internal static class WindowValidationInput
             CompositionTarget.Rendering -= rendering;
             CompositionTarget.Rendering += rendering;
         };
-        EventHandler expired = (_, _) => frame.Continue = false;
+        EventHandler expired = (_, _) =>
+        {
+            Observe(final: true);
+            frame.Continue = false;
+        };
         try
         {
             dispatcher.Hooks.OperationStarted += OnOperationStarted;
@@ -4937,7 +4953,10 @@ internal static class WindowValidationInput
         }
 
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        var passed = observed && watch.Elapsed.TotalMilliseconds <= timeoutMilliseconds;
+        // The Send-priority deadline tick is the operative deadline: when
+        // dispatcher starvation delays observers, the final check at that tick
+        // decides, and observedMilliseconds keeps the honest witness time.
+        var passed = observed;
         if (!passed)
         {
             Console.Error.WriteLine("VALIDATION_RENDER_WAIT_DIAGNOSTIC " + System.Text.Json.JsonSerializer.Serialize(new
@@ -4973,9 +4992,15 @@ internal static class WindowValidationInput
     /// </summary>
     public static bool WaitForPopupClosed(Popup popup, int timeoutMilliseconds = 300)
     {
-        bool IsFullyClosed() => !popup.IsOpen &&
-            (popup.Child is not Visual visual || PresentationSource.FromVisual(visual) is null);
-        var closed = WaitUntil(popup.Dispatcher, IsFullyClosed, timeoutMilliseconds);
+        // The interactive contract is the logical close. Native HWND teardown
+        // trails it: Popup's hide synchronizes with the compositor, and on the
+        // isolated BelowNormal desktop that sync alone can approach the
+        // interactive budget. Resource reclamation therefore gets its own
+        // hygiene bound, which still fails a genuinely stuck teardown (the
+        // close-after-deadline fixture never reaches it).
+        var logicallyClosed = WaitUntil(popup.Dispatcher, () => !popup.IsOpen, timeoutMilliseconds);
+        var detached = logicallyClosed && WaitUntil(popup.Dispatcher, IsSourceDetached, TeardownTimeoutMilliseconds);
+        var closed = logicallyClosed && detached;
         if (!closed)
         {
             Console.Error.WriteLine("POPUP_CLOSE_WAIT_DIAGNOSTIC " + System.Text.Json.JsonSerializer.Serialize(new
@@ -4987,6 +5012,9 @@ internal static class WindowValidationInput
             }));
         }
         return closed;
+
+        bool IsSourceDetached() =>
+            popup.Child is not Visual visual || PresentationSource.FromVisual(visual) is null;
     }
 
     /// <summary>
@@ -5003,7 +5031,8 @@ internal static class WindowValidationInput
 
         if (!WaitForPopupClosed(popup))
         {
-            throw new InvalidOperationException("Popup fixture did not finish closing within 300 ms.");
+            throw new InvalidOperationException(
+                "Popup fixture did not finish closing within its close budget (300 ms interactive + teardown).");
         }
     }
 

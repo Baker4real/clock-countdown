@@ -1,0 +1,10 @@
+{
+  "Valid": true,
+  "ApplicationPath": "D:\\agents\\projects\\时钟倒计时-tauri-slice\\tauri-app\\src-tauri\\target\\release\\minmin-countdown-slice.exe",
+  "ApplicationSha256": "E7F368D034F45DEBADE46EC24EFAEA961C8D36742C264040944781F4F27665EA",
+  "StartedAtUtc": "2026-10-09T05:41:41.8799995Z",
+  "FinishedAtUtc": "2026-10-09T05:41:47.5547938Z",
+  "ExitCode": 0,
+  "SettingsUnchanged": true,
+  "CaptureReceipt": "D:\\agents\\projects\\clock-countdown-integration\\logs\\ui-captures\\tauri-gate-20261009T134026\\captures\\floating-gate-receipt.json"
+}

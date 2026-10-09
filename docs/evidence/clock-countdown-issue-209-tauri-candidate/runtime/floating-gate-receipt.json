@@ -1,0 +1,110 @@
+{
+  "captures": [
+    {
+      "byteLength": 151157,
+      "captureId": "floating-countdowns-day",
+      "height": 390,
+      "path": "floating-countdowns-day.png",
+      "sha256": "26D174EAD5A87D1FC1DE3CF126009E71744510507FC3FCBBD2D23591955BD9BE",
+      "width": 520
+    },
+    {
+      "byteLength": 158173,
+      "captureId": "long-notes-day-top",
+      "height": 390,
+      "path": "long-notes-day-top.png",
+      "sha256": "6681D51C6D3193AEF3259277C676DB2E1542F786AFA1C629259124199FF3B78D",
+      "width": 520
+    },
+    {
+      "byteLength": 155278,
+      "captureId": "long-notes-day-bottom",
+      "height": 390,
+      "path": "long-notes-day-bottom.png",
+      "sha256": "A333671859E4FFD5CEC472A6847F24EEBF10268450067A0AC29F4B92C6BD7DFE",
+      "width": 520
+    },
+    {
+      "byteLength": 155081,
+      "captureId": "notes-search-expanded-day",
+      "height": 390,
+      "path": "notes-search-expanded-day.png",
+      "sha256": "6D9CF1527CD695854357236D4626B411DBBD8371D638B7A370B533E23DA1CDF9",
+      "width": 520
+    }
+  ],
+  "criticalInteractionsPassed": true,
+  "error": null,
+  "finishedUtc": "2026-10-09T05:41:47.369972100+00:00",
+  "height": 390,
+  "interactions": [
+    {
+      "id": "workspace-switch",
+      "input": "cdp-mouse",
+      "passed": true
+    },
+    {
+      "after": {
+        "client": 144,
+        "height": 1216,
+        "ok": true,
+        "top": 1072
+      },
+      "before": {
+        "client": 144,
+        "height": 1216,
+        "ok": true,
+        "top": 0
+      },
+      "id": "scroll",
+      "input": "cdp-mouse-wheel",
+      "passed": true
+    },
+    {
+      "id": "search-and-escape",
+      "input": "cdp-mouse+cdp-key",
+      "passed": true
+    },
+    {
+      "id": "quick-add-open",
+      "input": "cdp-mouse",
+      "passed": true
+    }
+  ],
+  "offlineWebView2Installation": "not-tested",
+  "processRelease": "requires-owner-readback",
+  "runtimeIdentity": {
+    "binaryPath": "D:\\agents\\projects\\时钟倒计时-tauri-slice\\tauri-app\\src-tauri\\target\\release\\minmin-countdown-slice.exe",
+    "binarySha256": "E7F368D034F45DEBADE46EC24EFAEA961C8D36742C264040944781F4F27665EA",
+    "captureMethod": "WebView2.CapturePreview",
+    "cargoLockSha256": "93BB9DF5275EF0B802412FD83BA7B0464843AE8451AAEF1E4A4875D095A4B311",
+    "desktop": "MinminSuiteIso-TauriGate",
+    "evidenceFeature": true,
+    "fixture": "visual_fixture::floating_reference",
+    "fixtureEpochMs": 1910315460000,
+    "internalTimeoutSeconds": 120,
+    "packageLockSha256": "7E15297537D23E3657E9AFC34120D17949F3CC94613F01FB7F7E4DD10C718B29",
+    "packageVersion": "0.3.0-n3",
+    "processId": 3984,
+    "viewport": {
+      "devicePixelRatio": 1,
+      "height": 390,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0",
+      "width": 520
+    },
+    "webview2": {
+      "jsVersion": "15.4.11.9",
+      "product": "Edg/154.0.4258.62",
+      "protocolVersion": "1.3",
+      "revision": "@49f7c5590dad654f33b924537ccc8be227c5a43a",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Edg/154.0.0.0"
+    },
+    "webviewDataDirectory": "D:\\agents\\projects\\clock-countdown-integration\\logs\\ui-captures\\tauri-gate-20261009T134026\\state\\webview2"
+  },
+  "schemaVersion": 1,
+  "startedUtc": "2026-10-09T05:41:41.942221600+00:00",
+  "status": "passed",
+  "userVisualAcceptance": "not-performed",
+  "width": 520,
+  "windowCount": 1
+}

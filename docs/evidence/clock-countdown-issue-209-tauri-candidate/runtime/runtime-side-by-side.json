@@ -1,0 +1,15 @@
+{
+  "reference": {
+    "path": "assets/ui-references/floating-window/520x390/2026-10-09-v32/floating-countdowns-day.png",
+    "sha256": "BA5EEF3042C503D2A91D483D5DDC706BF290BE36F8AAADBD27D5232068543C75"
+  },
+  "tauriCapture": {
+    "path": "docs/evidence/clock-countdown-issue-209-tauri-candidate/runtime/floating-countdowns-day.png",
+    "sha256": "26D174EAD5A87D1FC1DE3CF126009E71744510507FC3FCBBD2D23591955BD9BE",
+    "captureKind": "tauri-webview2-runtime"
+  },
+  "comparison": {
+    "path": "docs/evidence/clock-countdown-issue-209-tauri-candidate/side-by-side-runtime.png",
+    "sha256": "3C3312DF4EC18A353DF7C4C7B42D96E4D3CF583FDE255FA6D4125B0786EC631D"
+  }
+}

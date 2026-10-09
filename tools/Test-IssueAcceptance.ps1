@@ -79,7 +79,7 @@ function Assert-IssueAcceptance {
         foreach ($entry in $na) {
             if ($null -eq $entry.check -or $entry.check -notin $knownChecks) { throw "issue $number 的 notApplicable 检查无效。" }
             if ([string]::IsNullOrWhiteSpace([string] $entry.reason)) { throw "issue $number 的 $($entry.check) 缺少免测理由。" }
-            if ($entry.check -notin $notApplicableChecks -or $entry.check -in $required -or $entry.check -in $recordRequired) {
+            if ($entry.check -notin @($notApplicableChecks + $optional) -or $entry.check -in $recordRequired) {
                 throw "issue $number 的 $($entry.check) 不允许按该类型标为 notApplicable。"
             }
         }
@@ -90,7 +90,7 @@ function Assert-IssueAcceptance {
         }
         if ([string] $record.status -eq 'closed') {
             if (@($record.missing).Count -gt 0) { throw "issue $number 标为 closed 但仍有 missing。" }
-            foreach ($check in $required) {
+            foreach ($check in $recordRequired) {
                 if (@($record.evidence | Where-Object { $_.check -eq $check -and $_.status -eq 'processed' }).Count -eq 0) {
                     throw "issue $number 标为 closed 但缺少已处理证据：$check"
                 }

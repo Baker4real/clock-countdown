@@ -9,7 +9,7 @@ intent: 按 issue 类型定义必需检查、可选检查和明确的免测理�
 
 机器可读的类型和检查定义在 [`issue-acceptance.json`](issue-acceptance.json)。每条 issue 回写记录必须包含 `number`、`taskType`、`requiredChecks`、`evidence`、`notApplicable`、`status`、`summary`、`missing` 和 `next`。
 
-`requiredChecks` 是关闭前必须为 `processed` 的检查；`optionalChecks` 可以因范围明确跳过；`notApplicable` 必须逐项给出理由，不能用空数组或“未涉及”代替证据。`candidate`、`open` 和 `closed` 记录的是 issue 状态，不等价于实现、部署或 live verified。
+`requiredChecks` 是关闭前必须为 `processed` 的检查，包含记录自行提升为必需的可选检查；`optionalChecks` 未提升时可以因范围明确跳过或带具体理由标为不适用；`notApplicable` 必须逐项给出理由，不能用空数组或“未涉及”代替证据。任何必需检查都不能免测。`candidate`、`open` 和 `closed` 记录的是 issue 状态，不等价于实现、部署或 live verified。
 
 任务类型的边界如下：
 

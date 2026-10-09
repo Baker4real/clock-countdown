@@ -4,7 +4,7 @@ param([switch] $Json)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$testRoot = Join-Path 'D:/Codex/tmp' "clock-countdown-publication-diff-test-$([guid]::NewGuid().ToString('N'))"
+$testRoot = Join-Path ([System.IO.Path]::GetTempPath()) "clock-countdown-publication-diff-test-$([guid]::NewGuid().ToString('N'))"
 [System.IO.Directory]::CreateDirectory($testRoot) | Out-Null
 $checks = [System.Collections.Generic.List[string]]::new()
 $failures = @()

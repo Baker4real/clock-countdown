@@ -138,6 +138,43 @@ $stateValue = if ($mode -eq 'state-mismatch' -and $issueNumber -eq 101) { 'open'
     [System.IO.File]::WriteAllText($recordPath, ($records | ConvertTo-Json -Depth 20), $utf8)
 
     $results = [System.Collections.Generic.List[object]]::new()
+    $acceptancePath = Join-Path $PSScriptRoot 'Test-IssueAcceptance.ps1'
+    $acceptanceRecordPath = Join-Path $testRoot 'acceptance-record.json'
+    $behaviorRecord = [ordered]@{
+        number = 103; taskType = 'behavior'; requiredChecks = @('diff-check', 'low-impact-suite', 'runtime-behavior')
+        evidence = @(
+            [ordered]@{ check = 'diff-check'; status = 'processed'; detail = 'fake diff clean' }
+            [ordered]@{ check = 'low-impact-suite'; status = 'processed'; detail = 'fake suite complete' }
+            [ordered]@{ check = 'runtime-behavior'; status = 'processed'; detail = 'fake behavior complete' }
+        )
+        notApplicable = @([ordered]@{ check = 'visual-baseline'; reason = '仅修改非渲染逻辑，没有渲染表面变化。' })
+        status = 'closed'; summary = '行为检查齐全'; missing = @(); next = '无。'
+    }
+    [IO.File]::WriteAllText($acceptanceRecordPath, ($behaviorRecord | ConvertTo-Json -Depth 20), $utf8)
+    $acceptanceOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $acceptancePath -RecordPath $acceptanceRecordPath -Json)
+    $acceptanceExit = $LASTEXITCODE
+    $acceptanceResult = $acceptanceOutput -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($acceptanceExit -eq 0 -and $acceptanceResult.Valid) '未提升的可选视觉检查应允许具体免测理由。'
+    $results.Add([pscustomobject]@{ Name = 'acceptance-optional-check-not-applicable'; Passed = $true })
+
+    $behaviorRecord.requiredChecks += 'visual-baseline'
+    $behaviorRecord.notApplicable = @()
+    [IO.File]::WriteAllText($acceptanceRecordPath, ($behaviorRecord | ConvertTo-Json -Depth 20), $utf8)
+    $acceptanceOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $acceptancePath -RecordPath $acceptanceRecordPath -Json)
+    $acceptanceExit = $LASTEXITCODE
+    $acceptanceResult = $acceptanceOutput -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($acceptanceExit -ne 0 -and -not $acceptanceResult.Valid) 'closed 不得缺少提升为 required 的可选检查证据。'
+    $results.Add([pscustomobject]@{ Name = 'acceptance-promoted-check-requires-evidence'; Passed = $true })
+
+    $behaviorRecord.evidence += [ordered]@{ check = 'visual-baseline'; status = 'processed'; detail = 'fake current-source frames complete' }
+    $behaviorRecord.notApplicable = @([ordered]@{ check = 'visual-baseline'; reason = '不得免除已提升检查。' })
+    [IO.File]::WriteAllText($acceptanceRecordPath, ($behaviorRecord | ConvertTo-Json -Depth 20), $utf8)
+    $acceptanceOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $acceptancePath -RecordPath $acceptanceRecordPath -Json)
+    $acceptanceExit = $LASTEXITCODE
+    $acceptanceResult = $acceptanceOutput -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($acceptanceExit -ne 0 -and -not $acceptanceResult.Valid) '提升为 required 的检查不得标为 notApplicable。'
+    $results.Add([pscustomobject]@{ Name = 'acceptance-promoted-check-cannot-be-waived'; Passed = $true })
+
     $dryDir = Join-Path $testRoot 'dry-run'
     $dry = Invoke-WritebackTool -Arguments @('-RecordPath', $recordPath, '-Repo', 'fake/example', '-GhPath', $fakeGhPath, '-ParentIssue', '900', '-OutputDirectory', $dryDir, '-Json') -Environment @{
         ISSUE_WRITEBACK_FAKE_STATE = $statePath; ISSUE_WRITEBACK_FAKE_MODE = 'success'

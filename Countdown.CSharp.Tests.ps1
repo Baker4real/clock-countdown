@@ -4209,10 +4209,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.ValidateOnlySettingsIsolationBehavior) 'validate-only 强制使用显式非根 settings 路径且不改变生产默认路径'
     Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    # #189 adds 13 measured behavior fields; six existing note/date/fallback
-    # fields had also been added since the old 671-field shape was pinned.
-    # Removing those 19 additions reproduces the original name:type SHA exactly.
-    Assert-Equal 690 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段和 #189 的 13 个测量字段）'
+    # #212 adds 9 stable-refresh fields; #189 adds 13 measured behavior fields; six
+    # existing note/date/fallback fields had also been added since the old 671-field shape was pinned.
+    Assert-Equal 699 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（690 字段加 #212 渲染签名稳定刷新的 9 个字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4701,7 +4700,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-09-v32') {
         throw '跨界面整合证据未记录 v32 真实帧'
     }
-    Assert-Equal '9E51D9DC228419D7D2F19D0347992333147217092B2DA8C885FB6C8917422BC0' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（690 字段；原字段名称和类型保持兼容）'
+    Assert-Equal '9E51D9DC228419D7D2F19D0347992333147217092B2DA8C885FB6C8917422BC0' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（699 字段，含 #212 的 9 个稳定刷新字段；原字段名称和类型保持兼容）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -4953,6 +4952,15 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # 不随系统滚动条度量/显示缩放漂移；隔离负向夹具用会失败的反例保住门禁语义。
     Assert-Equal $true ([bool] $adapterValidation.FloatingViewportGeometryGateIsolationBehavior) '悬浮视口几何门禁用会失败的反例保住确定性边界：卡/印记/快速新增越界即红、滚动条隐藏零扣除（#157）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingViewportScrollAndFocusRestored) '悬浮窗刷新后恢复当前滚动位置与便签焦点'
+    # #212 渲染签名稳定刷新：签名不变只就地更新数字、焦点按角色恢复、隐藏/最小化跳过渲染。
+    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshScenariosPass) '悬浮窗渲染签名稳定刷新：tick 就地更新、角色焦点恢复、隐藏/最小化门控全链路通过（#212）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshFocusStaysOnOverflowTrigger) '悬浮窗 tick 后焦点停留在便签「…」触发器且便签未被误完成、滚动位置不动（#212）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshCountdownUpdatesInPlace) '悬浮窗倒计时 tick 行实例保留且剩余时间分格就地更新（#212）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshNoteCardsPreserved) '悬浮窗便签卡与完成复选框实例跨 tick 保留（#212）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshRebuildRestoresFocusByRole) '悬浮窗数据变化重建后焦点按「记录 ID + 控件角色」回到「…」触发器并还原滚动（#212）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshHiddenSkipsRenderUntilVisible) '悬浮窗隐藏期间 tick 与数据变化跳过渲染，恢复可见立即渲染一次（#212）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshMinimizedSkipsRenderUntilRestored) '悬浮窗最小化期间 tick 跳过渲染，还原正常态立即渲染一次（#212）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingRenderSignatureGateIsolationBehavior) '渲染签名隔离反例：同输入同签名，标题/精度/筛选/结构变化改签名，剩余时间仅数值变化不改签名（#212）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteFailureAppearsInSourceCard) '悬浮便签完成失败时在来源卡片显示可访问错误'
     Assert-Equal $true ([bool] $adapterValidation.FloatingResolvedNoteCardErrorDoesNotReturn) '便签完成并恢复后不会重新显示旧卡片错误'
     Assert-Equal $true ([bool] $adapterValidation.FloatingSecondaryRemainingTextFullyVisible) '超长次级倒计时在固定视口内单行完整显示'

@@ -302,6 +302,8 @@ function Assert-CountdownApplicationValidationReport {
         'FloatingInitialWorkspaceStateMatches',
         'FloatingWorkspaceSwitchingStaysSynchronized',
         'FloatingCountdownSelectionSurvivesRefresh',
+        'FloatingStableRefreshScenariosPass',
+        'FloatingRenderSignatureGateIsolationBehavior',
         'FloatingQuickAddDayResourcesFollowLocalTheme',
         'FloatingQuickAddIndependentFromApplicationTheme',
         'FloatingQuickAddThemeResourceIsolationBehavior',

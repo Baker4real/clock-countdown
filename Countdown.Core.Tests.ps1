@@ -251,6 +251,8 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
                 'FloatingInitialWorkspaceStateMatches',
                 'FloatingWorkspaceSwitchingStaysSynchronized',
                 'FloatingCountdownSelectionSurvivesRefresh',
+                'FloatingStableRefreshScenariosPass',
+                'FloatingRenderSignatureGateIsolationBehavior',
                 'FloatingNoteSearchScenariosPass',
                 'NoteSearchSyncsFromSharedFilter',
                 'FloatingQuickAddDayResourcesFollowLocalTheme',

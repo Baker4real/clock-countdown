@@ -8673,6 +8673,104 @@ internal static class ValidationExercises
         return true;
     }
 
+    /// <summary>
+    ///     #212：悬浮窗渲染签名的隔离反例——同输入同签名；标题/精度/筛选/错误/结构变化必须改签名；
+    ///     剩余时间仅数值变化（位数不变或变化）不得改签名。
+    /// </summary>
+    public static bool RunFloatingRenderSignatureGateIsolationBehavior()
+    {
+        var filterFingerprint = "tag-a\u001eAny\u001eFalse\u001eAll\u001eAll\u001e\u001e\u001eFalse";
+        var entries = new[]
+        {
+            "id-1\u001e报告截止\u001e639000000000000000\u001e0 天 0 小时 0 分钟 0 秒"
+        };
+        var baseline = FloatingWindow.BuildFloatingRenderSignature(
+            WorkspaceKind.Countdowns,
+            "Second",
+            filterFingerprint,
+            entries);
+        Must(string.Equals(
+                baseline,
+                FloatingWindow.BuildFloatingRenderSignature(
+                    WorkspaceKind.Countdowns,
+                    "Second",
+                    filterFingerprint,
+                    entries),
+                StringComparison.Ordinal),
+            "渲染签名同输入必须逐字节稳定。");
+        Must(!string.Equals(
+                baseline,
+                FloatingWindow.BuildFloatingRenderSignature(
+                    WorkspaceKind.Countdowns,
+                    "Second",
+                    filterFingerprint,
+                    new[] { "id-1\u001e改名\u001e639000000000000000\u001e0 天 0 小时 0 分钟 0 秒" }),
+                StringComparison.Ordinal),
+            "标题变化必须改变渲染签名。");
+        Must(!string.Equals(
+                baseline,
+                FloatingWindow.BuildFloatingRenderSignature(
+                    WorkspaceKind.Countdowns,
+                    "Minute",
+                    filterFingerprint,
+                    entries),
+                StringComparison.Ordinal),
+            "显示精度变化必须改变渲染签名。");
+        Must(!string.Equals(
+                baseline,
+                FloatingWindow.BuildFloatingRenderSignature(
+                    WorkspaceKind.Countdowns,
+                    "Second",
+                    filterFingerprint + "\u001etag-b",
+                    entries),
+                StringComparison.Ordinal),
+            "筛选指纹变化必须改变渲染签名。");
+        Must(!string.Equals(
+                baseline,
+                FloatingWindow.BuildFloatingRenderSignature(
+                    WorkspaceKind.Notes,
+                    "Second",
+                    filterFingerprint,
+                    entries),
+                StringComparison.Ordinal),
+            "工作区变化必须改变渲染签名。");
+        Must(!string.Equals(
+                baseline,
+                FloatingWindow.BuildFloatingRenderSignature(
+                    WorkspaceKind.Countdowns,
+                    "Second",
+                    filterFingerprint,
+                    new[] { "id-1\u001e报告截止\u001e639000000000000000\u001e0 天 0 小时 0 分钟" }),
+                StringComparison.Ordinal),
+            "剩余时间结构变化（单位序列变化）必须改变渲染签名。");
+        Must(!string.Equals(
+                baseline,
+                FloatingWindow.BuildFloatingRenderSignature(
+                    WorkspaceKind.Countdowns,
+                    "Second",
+                    filterFingerprint,
+                    entries.Concat(new[] { "id-2\u001e新记录\u001e639000000000000000\u001e0 天" })),
+                StringComparison.Ordinal),
+            "记录序列变化必须改变渲染签名。");
+
+        Must(string.Equals(
+                FloatingWindow.NormalizeFloatingRemainingStructure("12 天 03 小时 7 分钟 09 秒"),
+                FloatingWindow.NormalizeFloatingRemainingStructure("9 天 3 小时 40 分钟 8 秒"),
+                StringComparison.Ordinal),
+            "剩余时间仅数值变化（含位数变化）必须保持同一签名结构。");
+        Must(!string.Equals(
+                FloatingWindow.NormalizeFloatingRemainingStructure("2 天 0 小时"),
+                FloatingWindow.NormalizeFloatingRemainingStructure("2 天 0 小时 0 分钟"),
+                StringComparison.Ordinal),
+            "剩余时间单位序列变化必须产生不同签名结构。");
+        Must(string.Equals(
+                FloatingWindow.NormalizeFloatingRemainingStructure("已到期"),
+                "已到期",
+                StringComparison.Ordinal),
+            "到期回落文案不含数字，结构归一化必须保持原文。");
+        return true;
+    }
+
     public static ConfirmationDialogGateResults EvaluateConfirmationDialogGates(
         ConfirmationDialogGateInputs input) =>
         new(

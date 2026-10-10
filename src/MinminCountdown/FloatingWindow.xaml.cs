@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -40,7 +41,10 @@ public sealed partial class FloatingWindow : Window
     private readonly Dictionary<WorkspaceKind, double> _workspaceScrollOffsets = new();
     private readonly Dictionary<string, string> _noteCardErrors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _lastCountdownSeconds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FrameworkElement> _countdownRowElements = new(StringComparer.Ordinal);
     private int _floatingRowsRenderVersion;
+    private string? _floatingRenderSignature;
+    private bool _hasBeenVisible;
     private bool _settingDefaultDate;
     private bool _dateDirty;
     private bool _searchExpanded;
@@ -412,6 +416,25 @@ public sealed partial class FloatingWindow : Window
     internal IReadOnlyList<string> FloatingCountdownTexts { get; private set; } = Array.Empty<string>();
 
     internal int FloatingCountdownCount { get; private set; }
+
+    // #212：渲染签名稳定刷新的验证可观察计数——渲染趟数（就地+重建）、重建代数、隐藏/最小化跳过次数。
+    internal long FloatingRowsRenderPassCountForValidation { get; private set; }
+
+    internal long FloatingRowsRebuildGenerationForValidation { get; private set; }
+
+    internal long FloatingRowsSkippedRenderCountForValidation { get; private set; }
+
+    internal bool FloatingLastRenderWasInPlaceForValidation { get; private set; }
+
+    // #212：便签卡内可聚焦控件的角色标记；焦点恢复按「记录 ID + 角色」精确匹配。
+    internal static readonly DependencyProperty NoteControlRoleProperty =
+        DependencyProperty.RegisterAttached(
+            "NoteControlRole",
+            typeof(string),
+            typeof(FloatingWindow));
+
+    internal const string NoteControlRoleCompletion = "completion";
+    internal const string NoteControlRoleOverflow = "overflow";
 
     internal string IncomeText => FloatingIncome.Text;
 
@@ -1575,7 +1598,18 @@ public sealed partial class FloatingWindow : Window
         {
             if (IsVisible)
             {
+                // #212：恢复可见时立即渲染一次（隐藏/托盘期间 tick 跳过渲染）。
+                _hasBeenVisible = true;
                 Reanchor();
+                Refresh();
+            }
+        };
+        StateChanged += (_, _) =>
+        {
+            // #212：从最小化还原到正常态且窗口可见时立即渲染一次。
+            if (WindowState == WindowState.Normal && IsVisible)
+            {
+                Refresh();
             }
         };
         Loaded += (_, _) =>
@@ -1661,9 +1695,40 @@ public sealed partial class FloatingWindow : Window
 
     private void RenderRows(DateTimeOffset nowUtc)
     {
+        // #212：隐藏（托盘）或最小化时 tick 跳过渲染；恢复可见/正常态时立即渲染一次。
+        // 首次显示前允许渲染，保证构造期初始内容与未 Show 的验证路径不变。
+        if (WindowState == WindowState.Minimized || (_hasBeenVisible && !IsVisible))
+        {
+            FloatingRowsSkippedRenderCountForValidation++;
+            return;
+        }
+
+        FloatingRowsRenderPassCountForValidation++;
         var previouslyRenderedWorkspace = _renderedWorkspace;
         _workspaceScrollOffsets[previouslyRenderedWorkspace] = FloatingBodyScroller.VerticalOffset;
         var workspace = _workspace;
+        var snapshot = _desktopWorkspace.Snapshot;
+        var signature = ComputeRenderSignature(snapshot, workspace, nowUtc);
+        // TDD-RED 临时：禁用签名就地路径，模拟整表重建旧行为，验证探针变红；转绿前必须还原。
+        if (false &&
+            string.Equals(signature, _floatingRenderSignature, StringComparison.Ordinal) &&
+            workspace == _renderedWorkspace)
+        {
+            // #212：签名不变只就地更新剩余时间数字与底部状态（今日已赚）；
+            // 行与便签卡实例、滚动位置与键盘焦点原样保留（DESIGN §10 渲染签名稳定刷新）。
+            // 不 bump _floatingRowsRenderVersion：上一次重建排队的视口恢复回调仍然有效，
+            // 避免同周期内的就地 tick 把尚未执行的滚动/焦点恢复取消掉。
+            FloatingLastRenderWasInPlaceForValidation = true;
+            if (workspace == WorkspaceKind.Countdowns)
+            {
+                UpdateCountdownRowsInPlace(snapshot, nowUtc);
+            }
+
+            ApplyFloatingBottomStatus(snapshot, workspace, nowUtc);
+            return;
+        }
+
+        FloatingLastRenderWasInPlaceForValidation = false;
         var targetScrollOffset = _workspaceScrollOffsets.TryGetValue(workspace, out var savedScrollOffset)
             ? savedScrollOffset
             : 0;
@@ -1674,18 +1739,9 @@ public sealed partial class FloatingWindow : Window
 
         FloatingRows.Children.Clear();
         ClearNoteDateStampStickyEntries();
-        var snapshot = _desktopWorkspace.Snapshot;
         if (workspace == WorkspaceKind.Countdowns)
         {
-            var records = snapshot.VisibleCountdowns
-                .Where(record => record.TargetUtc > nowUtc)
-                .ToList();
-            if (!snapshot.HasFilterConstraints &&
-                _calendar.GetWorkdayEndCountdown(nowUtc, snapshot.Settings.Preferences) is { } workdayEnd)
-            {
-                records.Insert(0, workdayEnd);
-            }
-
+            var records = ResolveFloatingCountdownRecords(snapshot, nowUtc);
             var visibleCountdownIds = records
                 .Select(static record => record.Id)
                 .ToHashSet(StringComparer.Ordinal);
@@ -1704,12 +1760,15 @@ public sealed partial class FloatingWindow : Window
                     nowUtc,
                     snapshot.Settings.Preferences.DisplayPrecision))
                 .ToArray();
-            foreach (var row in BuildWarmPaperCountdownRows(
-                         records,
-                         nowUtc,
-                         snapshot.Settings.Preferences.DisplayPrecision))
+            _countdownRowElements.Clear();
+            var countdownRows = BuildWarmPaperCountdownRows(
+                records,
+                nowUtc,
+                snapshot.Settings.Preferences.DisplayPrecision);
+            for (var index = 0; index < countdownRows.Count; index++)
             {
-                FloatingRows.Children.Add(row);
+                _countdownRowElements[records[index].Id] = countdownRows[index];
+                FloatingRows.Children.Add(countdownRows[index]);
             }
 
             if (records.Count == 0)
@@ -1757,6 +1816,191 @@ public sealed partial class FloatingWindow : Window
             }
         }
 
+        ApplyFloatingBottomStatus(snapshot, workspace, nowUtc);
+        _renderedWorkspace = workspace;
+        RestoreFloatingViewportAfterRender(
+            workspace,
+            targetScrollOffset,
+            focusedNoteTag,
+            renderVersion);
+        _floatingRenderSignature = signature;
+        FloatingRowsRebuildGenerationForValidation++;
+    }
+
+    private List<CountdownRecord> ResolveFloatingCountdownRecords(
+        DesktopWorkspaceSnapshot snapshot,
+        DateTimeOffset nowUtc)
+    {
+        var records = snapshot.VisibleCountdowns
+            .Where(record => record.TargetUtc > nowUtc)
+            .ToList();
+        if (!snapshot.HasFilterConstraints &&
+            _calendar.GetWorkdayEndCountdown(nowUtc, snapshot.Settings.Preferences) is { } workdayEnd)
+        {
+            records.Insert(0, workdayEnd);
+        }
+
+        return records;
+    }
+
+    // #212：签名不变的就地更新——逐条重建行内剩余时间分格（在行容器内原位替换，
+    // 行实例保留），秒位变化仍按 #198 执行 0.6→1 fade；底部状态由调用方统一 Apply。
+    private void UpdateCountdownRowsInPlace(DesktopWorkspaceSnapshot snapshot, DateTimeOffset nowUtc)
+    {
+        var precision = snapshot.Settings.Preferences.DisplayPrecision;
+        var records = ResolveFloatingCountdownRecords(snapshot, nowUtc);
+        FloatingCountdownCount = records.Count(record => record.Id != "__workday_end__");
+        FloatingCountdownTexts = records
+            .Where(record => record.Id != "__workday_end__")
+            .Select(record => CountdownFormatting.FormatRemaining(record.TargetUtc, nowUtc, precision))
+            .ToArray();
+        for (var index = 0; index < records.Count; index++)
+        {
+            var record = records[index];
+            if (!_countdownRowElements.TryGetValue(record.Id, out var row) ||
+                FindRemainingBlocksCluster(row) is not { } cluster ||
+                VisualTreeHelper.GetParent(cluster) is not Grid host)
+            {
+                // 签名一致时行必然在册；防御性跳过，下一次签名变化会走整表重建。
+                continue;
+            }
+
+            var remaining = CountdownFormatting.FormatRemaining(record.TargetUtc, nowUtc, precision);
+            var fadeSeconds = TrackSecondsChange(record.Id, remaining);
+            var fresh = BuildRemainingBlocks(remaining, isPrimary: index == 0, fadeSeconds: fadeSeconds);
+            var childIndex = host.Children.IndexOf(cluster);
+            host.Children.RemoveAt(childIndex);
+            Grid.SetColumn(fresh, 1);
+            host.Children.Insert(childIndex, fresh);
+        }
+    }
+
+    private static Grid? FindRemainingBlocksCluster(DependencyObject element)
+    {
+        if (element is Grid grid &&
+            grid.Tag is string tag &&
+            string.Equals(tag, RemainingBlocksTag, StringComparison.Ordinal))
+        {
+            return grid;
+        }
+
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+        {
+            if (FindRemainingBlocksCluster(VisualTreeHelper.GetChild(element, index)) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    // #212：渲染签名只比较语义输入；剩余时间的数值变化（同一结构、同一精度下的下一秒）
+    // 不改变签名，由就地路径更新数字。
+    private string ComputeRenderSignature(
+        DesktopWorkspaceSnapshot snapshot,
+        WorkspaceKind workspace,
+        DateTimeOffset nowUtc)
+    {
+        var filter = snapshot.Filter;
+        var filterFingerprint = string.Join("\u001e", new[]
+        {
+            string.Join(",", filter.SelectedTagIds),
+            filter.MatchMode.ToString(),
+            filter.UntaggedOnly.ToString(),
+            filter.CountdownStatus.ToString(),
+            filter.NoteStatus.ToString(),
+            filter.NoteSearch,
+            filter.NoteDate ?? string.Empty,
+            filter.UndatedNotesOnly.ToString()
+        });
+        var entries = new List<string>();
+        if (workspace == WorkspaceKind.Countdowns)
+        {
+            var precision = snapshot.Settings.Preferences.DisplayPrecision;
+            foreach (var record in ResolveFloatingCountdownRecords(snapshot, nowUtc))
+            {
+                entries.Add(string.Join("\u001e", new[]
+                {
+                    record.Id,
+                    record.Name,
+                    record.TargetUtc.UtcTicks.ToString(CultureInfo.InvariantCulture),
+                    NormalizeFloatingRemainingStructure(CountdownFormatting.FormatRemaining(
+                        record.TargetUtc,
+                        nowUtc,
+                        precision))
+                }));
+            }
+        }
+        else
+        {
+            foreach (var note in snapshot.VisibleActiveNotes)
+            {
+                var nextReminder = ReminderSchedule.GetNextDueUtc(snapshot.Settings, note, nowUtc);
+                entries.Add(string.Join("\u001e", new[]
+                {
+                    note.Id,
+                    note.Text,
+                    note.Date ?? string.Empty,
+                    note.IsCompleted.ToString(),
+                    string.Join(",", note.TagIds),
+                    nextReminder?.UtcTicks.ToString(CultureInfo.InvariantCulture) ?? "-",
+                    _noteCardErrors.TryGetValue(note.Id, out var error) ? error : string.Empty
+                }));
+            }
+        }
+
+        return BuildFloatingRenderSignature(
+            workspace,
+            snapshot.Settings.Preferences.DisplayPrecision,
+            filterFingerprint,
+            entries);
+    }
+
+    internal static string BuildFloatingRenderSignature(
+        WorkspaceKind workspace,
+        string displayPrecision,
+        string filterFingerprint,
+        IEnumerable<string> entryFingerprints) =>
+        string.Concat(
+            workspace.ToString(),
+            "\u001f",
+            displayPrecision,
+            "\u001f",
+            filterFingerprint,
+            "\u001f",
+            string.Join("\u001f", entryFingerprints));
+
+    // 剩余时间签名只保留结构与单位：数字串折叠为单个 0，位数变化由行内分格重建吸收。
+    internal static string NormalizeFloatingRemainingStructure(string remaining)
+    {
+        var builder = new StringBuilder(remaining.Length);
+        var inDigits = false;
+        foreach (var character in remaining)
+        {
+            if (char.IsDigit(character))
+            {
+                if (!inDigits)
+                {
+                    builder.Append('0');
+                    inDigits = true;
+                }
+
+                continue;
+            }
+
+            inDigits = false;
+            builder.Append(character);
+        }
+
+        return builder.ToString();
+    }
+
+    private void ApplyFloatingBottomStatus(
+        DesktopWorkspaceSnapshot snapshot,
+        WorkspaceKind workspace,
+        DateTimeOffset nowUtc)
+    {
         var preferences = snapshot.Settings.Preferences;
         var encouragementText = workspace == WorkspaceKind.Notes
             ? FloatingBottomStatus.NotesEncouragementText
@@ -1772,12 +2016,6 @@ public sealed partial class FloatingWindow : Window
             _floatingMutedBrush,
             ThemeBrush("DecoTextSoftBrush"),
             (FontFamily)FindResource("HandwrittenDecoFontFamily"));
-        _renderedWorkspace = workspace;
-        RestoreFloatingViewportAfterRender(
-            workspace,
-            targetScrollOffset,
-            focusedNoteTag,
-            renderVersion);
     }
 
     private TextBlock EmptyText(string text) => new()
@@ -2234,7 +2472,7 @@ public sealed partial class FloatingWindow : Window
         yield return FloatingManageReminderRules;
     }
 
-    private string? FocusedFloatingNoteTag()
+    private (string NoteId, string? Role)? FocusedFloatingNoteTag()
     {
         if (Keyboard.FocusedElement is not FrameworkElement focused ||
             focused.Tag is not string noteId ||
@@ -2244,13 +2482,13 @@ public sealed partial class FloatingWindow : Window
             return null;
         }
 
-        return noteId;
+        return (noteId, focused.GetValue(NoteControlRoleProperty) as string);
     }
 
     private void RestoreFloatingViewportAfterRender(
         WorkspaceKind workspace,
         double targetScrollOffset,
-        string? focusedNoteTag,
+        (string NoteId, string? Role)? focusedNoteTag,
         int renderVersion)
     {
         Dispatcher.BeginInvoke(new Action(() =>
@@ -2263,8 +2501,8 @@ public sealed partial class FloatingWindow : Window
             }
 
             FloatingBodyScroller.UpdateLayout();
-            if (focusedNoteTag is not null &&
-                FindFocusableFloatingNoteControl(focusedNoteTag) is { } focusTarget)
+            if (focusedNoteTag is { } focusTag &&
+                FindFocusableFloatingNoteControl(focusTag.NoteId, focusTag.Role) is { } focusTarget)
             {
                 focusTarget.Focus();
             }
@@ -2290,13 +2528,27 @@ public sealed partial class FloatingWindow : Window
         return Math.Min(offset, FloatingBodyScroller.ScrollableHeight);
     }
 
-    private FrameworkElement? FindFocusableFloatingNoteControl(string noteId)
+    // #212：重建后焦点按「记录 ID + 控件角色」恢复；角色控件缺失时回退到同 ID 首个可聚焦控件。
+    private FrameworkElement? FindFocusableFloatingNoteControl(string noteId, string? role)
     {
         foreach (UIElement row in FloatingRows.Children)
         {
-            if (FindFocusableFloatingNoteControl(row, noteId) is { } control)
+            if (FindFocusableFloatingNoteControl(row, noteId, role) is { } control)
             {
                 return control;
+            }
+        }
+
+        if (role is null)
+        {
+            return null;
+        }
+
+        foreach (UIElement row in FloatingRows.Children)
+        {
+            if (FindFocusableFloatingNoteControl(row, noteId, null) is { } fallback)
+            {
+                return fallback;
             }
         }
 
@@ -2305,14 +2557,20 @@ public sealed partial class FloatingWindow : Window
 
     private static FrameworkElement? FindFocusableFloatingNoteControl(
         DependencyObject element,
-        string noteId)
+        string noteId,
+        string? role)
     {
         if (element is FrameworkElement candidate &&
             candidate.Tag is string candidateTag &&
             string.Equals(candidateTag, noteId, StringComparison.Ordinal) &&
             candidate.Focusable &&
             candidate.IsEnabled &&
-            candidate.IsVisible)
+            candidate.IsVisible &&
+            (role is null ||
+             string.Equals(
+                 candidate.GetValue(NoteControlRoleProperty) as string,
+                 role,
+                 StringComparison.Ordinal)))
         {
             return candidate;
         }
@@ -2321,7 +2579,8 @@ public sealed partial class FloatingWindow : Window
         {
             if (FindFocusableFloatingNoteControl(
                     VisualTreeHelper.GetChild(element, index),
-                    noteId) is { } child)
+                    noteId,
+                    role) is { } child)
             {
                 return child;
             }

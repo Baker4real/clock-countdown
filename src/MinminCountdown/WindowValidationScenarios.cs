@@ -3139,6 +3139,8 @@ public sealed partial class FloatingWindow
             var uiPolish = ProbeUiPolishScenarios();
             var workspace = ProbeWorkspaceScenarios(initialStateMatches);
             var noteSearch = ProbeNoteSearchScenarios();
+            // #212：渲染签名稳定刷新探针（焦点/实例保留、隐藏与最小化门控）。
+            var stableRefresh = ProbeStableRefreshScenarios();
             // 放在最后：设置按钮与“…”编辑会揭示管理窗口，避免扰动前面的聚焦类探针。
             var bottomCommand = ProbeBottomCommandScenarios();
 
@@ -3151,6 +3153,7 @@ public sealed partial class FloatingWindow
                 uiPolish,
                 workspace,
                 noteSearch,
+                stableRefresh,
                 bottomCommand);
         }
         finally
@@ -3756,6 +3759,276 @@ public sealed partial class FloatingWindow
             handle.X2 > handle.X1 &&
             handle.Y2 > handle.Y1;
     }
+
+    /// <summary>
+    ///     #212：渲染签名稳定刷新探针——tick 签名不变时行/卡实例保留、剩余时间就地更新、
+    ///     焦点不因 tick 迁移；数据变化重建后焦点按「记录 ID + 控件角色」恢复并还原滚动；
+    ///     隐藏与最小化跳过渲染，恢复可见/正常态立即渲染一次。
+    /// </summary>
+    private FloatingStableRefreshScenarios ProbeStableRefreshScenarios()
+    {
+        var originalWorkspace = _workspace;
+        var originalFilter = _desktopWorkspace.Snapshot.Filter;
+        var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
+        var temporaryCountdownIds = new List<string>();
+        var temporaryNoteIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
+            var precisionSaved = _desktopWorkspace.Apply(new SavePreferencesChange(
+                "Second",
+                originalPreferences.MonthlySalary,
+                originalPreferences.WorkStart,
+                originalPreferences.WorkEnd)).Succeeded;
+            for (var index = 0; index < 2; index++)
+            {
+                var name = $"验证悬浮稳定刷新-{index}";
+                var result = _desktopWorkspace.Apply(new SaveCountdownChange(
+                    null,
+                    name,
+                    nowUtc.AddHours(2 + index),
+                    Array.Empty<string>()));
+                var added = _desktopWorkspace.Snapshot.Settings.Countdowns
+                    .LastOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal));
+                if (!result.Succeeded || added is null)
+                {
+                    return FloatingStableRefreshScenarios.Failed;
+                }
+
+                temporaryCountdownIds.Add(added.Id);
+            }
+
+            UpdateTime(nowUtc);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var countdownRowsBefore = FloatingRows.Children.Cast<FrameworkElement>().ToArray();
+            var countdownTextsBefore = FloatingCountdownTexts.ToArray();
+            var clusterNamesBefore = FloatingCountdownClusterNames();
+            var rebuildBeforeTick = FloatingRowsRebuildGenerationForValidation;
+            UpdateTime(nowUtc.AddSeconds(1));
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var countdownRowsPreservedAndTextUpdatesInPlace =
+                precisionSaved &&
+                countdownRowsBefore.Length > 0 &&
+                countdownRowsBefore.SequenceEqual(FloatingRows.Children.Cast<FrameworkElement>()) &&
+                FloatingRowsRebuildGenerationForValidation == rebuildBeforeTick &&
+                FloatingLastRenderWasInPlaceForValidation &&
+                !countdownTextsBefore.SequenceEqual(FloatingCountdownTexts) &&
+                !clusterNamesBefore.SequenceEqual(FloatingCountdownClusterNames());
+
+            ShowWorkspace(WorkspaceKind.Notes);
+            var today = _desktopWorkspace.Snapshot.BeijingNow.Date;
+            string? noteB = null;
+            foreach (var (suffix, date) in new[]
+                     {
+                         ("A", today.AddDays(1)),
+                         ("B", today.AddDays(2)),
+                         ("C", today.AddDays(3))
+                     })
+            {
+                var text = $"验证悬浮稳定刷新便签-{suffix}-{Guid.NewGuid():N}"[..30];
+                var result = _desktopWorkspace.Apply(new SaveNoteChange(
+                    null,
+                    text,
+                    date,
+                    false,
+                    Array.Empty<string>(),
+                    NoReminder.Instance));
+                var added = _desktopWorkspace.Snapshot.Settings.Notes
+                    .LastOrDefault(item => string.Equals(item.Text, text, StringComparison.Ordinal));
+                if (!result.Succeeded || added is null)
+                {
+                    return FloatingStableRefreshScenarios.Failed;
+                }
+
+                temporaryNoteIds.Add(added.Id);
+                if (suffix == "B")
+                {
+                    noteB = added.Id;
+                }
+            }
+
+            UpdateTime(nowUtc);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var noteCardsBefore = FloatingRows.Children.Cast<FrameworkElement>().ToArray();
+            var completionB = ValidationDescendants<CheckBox>(FloatingRows).FirstOrDefault(checkBox =>
+                string.Equals(checkBox.Tag as string, noteB, StringComparison.Ordinal));
+            var triggerB = ValidationDescendants<Button>(FloatingRows).FirstOrDefault(button =>
+                string.Equals(button.Tag as string, noteB, StringComparison.Ordinal));
+            if (completionB is null || triggerB is null)
+            {
+                return FloatingStableRefreshScenarios.Failed;
+            }
+
+            Keyboard.Focus(triggerB);
+            WindowValidationInput.Pump(Dispatcher);
+            var focusLandedOnTrigger = ReferenceEquals(Keyboard.FocusedElement, triggerB);
+            FloatingBodyScroller.ScrollToVerticalOffset(FloatingBodyScroller.ScrollableHeight);
+            WindowValidationInput.Pump(Dispatcher);
+            var offsetBeforeTicks = FloatingBodyScroller.VerticalOffset;
+            for (var tick = 1; tick <= 3; tick++)
+            {
+                UpdateTime(nowUtc.AddMilliseconds(250 * tick));
+                WindowValidationInput.Pump(Dispatcher);
+            }
+
+            UpdateLayout();
+            var noteBUncompleted = _desktopWorkspace.Snapshot.Settings.Notes
+                .FirstOrDefault(note => string.Equals(note.Id, noteB, StringComparison.Ordinal))
+                is { IsCompleted: false };
+            var focusStaysOnOverflowTriggerAcrossTicks =
+                focusLandedOnTrigger &&
+                ReferenceEquals(Keyboard.FocusedElement, triggerB) &&
+                noteBUncompleted &&
+                Math.Abs(FloatingBodyScroller.VerticalOffset - offsetBeforeTicks) <= 0.1;
+            var noteCardInstancesPreservedAcrossTicks =
+                noteCardsBefore.Length > 0 &&
+                noteCardsBefore.SequenceEqual(FloatingRows.Children.Cast<FrameworkElement>()) &&
+                ValidationDescendants<CheckBox>(FloatingRows).Any(checkBox =>
+                    ReferenceEquals(checkBox, completionB));
+
+            var offsetBeforeRebuild = FloatingBodyScroller.VerticalOffset;
+            var rebuildGenerationBeforeAdd = FloatingRowsRebuildGenerationForValidation;
+            var earlierText = $"验证悬浮稳定刷新便签-Z-{Guid.NewGuid():N}"[..30];
+            var earlierResult = _desktopWorkspace.Apply(new SaveNoteChange(
+                null,
+                earlierText,
+                today,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance));
+            var earlierNote = _desktopWorkspace.Snapshot.Settings.Notes
+                .LastOrDefault(item => string.Equals(item.Text, earlierText, StringComparison.Ordinal));
+            if (earlierNote is not null)
+            {
+                temporaryNoteIds.Add(earlierNote.Id);
+            }
+
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var focusedAfterRebuild = Keyboard.FocusedElement;
+            var rebuildRestoresFocusAndScrollByRole =
+                earlierResult.Succeeded &&
+                earlierNote is not null &&
+                FloatingRowsRebuildGenerationForValidation > rebuildGenerationBeforeAdd &&
+                focusedAfterRebuild is Button focusedButton &&
+                string.Equals(focusedButton.Tag as string, noteB, StringComparison.Ordinal) &&
+                string.Equals(
+                    focusedButton.GetValue(NoteControlRoleProperty) as string,
+                    NoteControlRoleOverflow,
+                    StringComparison.Ordinal) &&
+                !ReferenceEquals(focusedAfterRebuild, completionB) &&
+                (offsetBeforeRebuild <= 0 ||
+                 Math.Abs(FloatingBodyScroller.VerticalOffset - offsetBeforeRebuild) <= 1);
+
+            var passBeforeHide = FloatingRowsRenderPassCountForValidation;
+            var skippedBeforeHide = FloatingRowsSkippedRenderCountForValidation;
+            var rebuildBeforeHide = FloatingRowsRebuildGenerationForValidation;
+            Hide();
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateTime(nowUtc.AddSeconds(3));
+            UpdateTime(nowUtc.AddSeconds(4));
+            WindowValidationInput.Pump(Dispatcher);
+            var hiddenText = $"验证悬浮稳定刷新便签-H-{Guid.NewGuid():N}"[..30];
+            var hiddenResult = _desktopWorkspace.Apply(new SaveNoteChange(
+                null,
+                hiddenText,
+                today,
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance));
+            var hiddenNote = _desktopWorkspace.Snapshot.Settings.Notes
+                .LastOrDefault(item => string.Equals(item.Text, hiddenText, StringComparison.Ordinal));
+            if (hiddenNote is not null)
+            {
+                temporaryNoteIds.Add(hiddenNote.Id);
+            }
+
+            WindowValidationInput.Pump(Dispatcher);
+            var hiddenSkipsRender =
+                FloatingRowsSkippedRenderCountForValidation > skippedBeforeHide &&
+                FloatingRowsRenderPassCountForValidation == passBeforeHide &&
+                FloatingRowsRebuildGenerationForValidation == rebuildBeforeHide &&
+                hiddenNote is not null &&
+                !GetFloatingRenderedNoteIds().Contains(hiddenNote.Id, StringComparer.Ordinal);
+            Show();
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var hiddenSkipsRenderUntilVisible =
+                hiddenResult.Succeeded &&
+                hiddenSkipsRender &&
+                FloatingRowsRenderPassCountForValidation > passBeforeHide &&
+                FloatingRowsRebuildGenerationForValidation > rebuildBeforeHide &&
+                hiddenNote is not null &&
+                GetFloatingRenderedNoteIds().Contains(hiddenNote.Id, StringComparer.Ordinal);
+
+            var passBeforeMinimize = FloatingRowsRenderPassCountForValidation;
+            var skippedBeforeMinimize = FloatingRowsSkippedRenderCountForValidation;
+            WindowState = WindowState.Minimized;
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateTime(nowUtc.AddSeconds(5));
+            UpdateTime(nowUtc.AddSeconds(6));
+            WindowValidationInput.Pump(Dispatcher);
+            var minimizedSkipsRender =
+                FloatingRowsSkippedRenderCountForValidation > skippedBeforeMinimize &&
+                FloatingRowsRenderPassCountForValidation == passBeforeMinimize;
+            WindowState = WindowState.Normal;
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var minimizedSkipsRenderUntilRestored =
+                minimizedSkipsRender &&
+                FloatingRowsRenderPassCountForValidation > passBeforeMinimize;
+
+            return new FloatingStableRefreshScenarios(
+                focusStaysOnOverflowTriggerAcrossTicks,
+                countdownRowsPreservedAndTextUpdatesInPlace,
+                noteCardInstancesPreservedAcrossTicks,
+                rebuildRestoresFocusAndScrollByRole,
+                hiddenSkipsRenderUntilVisible,
+                minimizedSkipsRenderUntilRestored);
+        }
+        finally
+        {
+            if (WindowState != WindowState.Normal)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            if (!IsVisible)
+            {
+                Show();
+            }
+
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            _desktopWorkspace.Apply(new SavePreferencesChange(
+                originalPreferences.DisplayPrecision,
+                originalPreferences.MonthlySalary,
+                originalPreferences.WorkStart,
+                originalPreferences.WorkEnd));
+            foreach (var id in temporaryCountdownIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteCountdownChange(id));
+            }
+
+            foreach (var id in temporaryNoteIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(id));
+            }
+
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    private string[] FloatingCountdownClusterNames() =>
+        ValidationDescendants<Grid>(FloatingRows)
+            .Where(grid => grid.Tag is string tag &&
+                string.Equals(tag, RemainingBlocksTag, StringComparison.Ordinal))
+            .Select(grid => AutomationProperties.GetName(grid) ?? string.Empty)
+            .ToArray();
 
     /// <summary>
     ///     #117 悬浮窗便签底部命令区与卡片新视觉探针：默认收起的“＋ 添加便签”、“设置”打开主窗口、
@@ -4560,7 +4833,29 @@ internal sealed record FloatingWindowValidationScenarios(
     FloatingUiPolishScenarios UiPolish,
     FloatingWorkspaceValidationScenarios Workspace,
     FloatingNoteSearchValidationScenarios NoteSearch,
+    FloatingStableRefreshScenarios StableRefresh,
     FloatingBottomCommandScenarios BottomCommand);
+
+/// <summary>#212：渲染签名稳定刷新探针结果，语义见 DESIGN §10「渲染签名稳定刷新」。</summary>
+internal sealed record FloatingStableRefreshScenarios(
+    bool FocusStaysOnOverflowTriggerAcrossTicks,
+    bool CountdownRowsPreservedAndTextUpdatesInPlace,
+    bool NoteCardInstancesPreservedAcrossTicks,
+    bool RebuildRestoresFocusAndScrollByRole,
+    bool HiddenSkipsRenderUntilVisible,
+    bool MinimizedSkipsRenderUntilRestored)
+{
+    public bool AllPassed =>
+        FocusStaysOnOverflowTriggerAcrossTicks &&
+        CountdownRowsPreservedAndTextUpdatesInPlace &&
+        NoteCardInstancesPreservedAcrossTicks &&
+        RebuildRestoresFocusAndScrollByRole &&
+        HiddenSkipsRenderUntilVisible &&
+        MinimizedSkipsRenderUntilRestored;
+
+    public static FloatingStableRefreshScenarios Failed { get; } = new(
+        false, false, false, false, false, false);
+}
 
 internal sealed record FloatingBottomCommandScenarios(
     bool DefaultCollapsedInNotes,

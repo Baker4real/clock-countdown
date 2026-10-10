@@ -888,6 +888,8 @@ internal static class ValidationReport
             ValidationExercises.RunMainStructuralAnnouncementGateIsolationBehavior();
         var countdownIncrementalRefreshGateIsolationBehavior =
             ValidationExercises.RunCountdownIncrementalRefreshGateIsolationBehavior();
+        var floatingRenderSignatureGateIsolationBehavior =
+            ValidationExercises.RunFloatingRenderSignatureGateIsolationBehavior();
         var floatingEmptyStateTextIsolationBehavior =
             ValidationExercises.RunFloatingEmptyStateTextIsolationBehavior();
         var floatingUiPolish = floatingWindowScenarios.UiPolish;
@@ -1874,6 +1876,23 @@ internal static class ValidationReport
                 floatingWindowScenarios.BottomCommand.NoteMenuKeyboardLifecycle,
             ["FloatingConstrainedEmptyStateProvidesAction"] =
                 floatingWindowScenarios.NoteSearch.ConstrainedEmptyProvidesAction,
+            ["FloatingStableRefreshScenarios"] = floatingWindowScenarios.StableRefresh,
+            ["FloatingStableRefreshScenariosPass"] =
+                floatingWindowScenarios.StableRefresh.AllPassed,
+            ["FloatingStableRefreshFocusStaysOnOverflowTrigger"] =
+                floatingWindowScenarios.StableRefresh.FocusStaysOnOverflowTriggerAcrossTicks,
+            ["FloatingStableRefreshCountdownUpdatesInPlace"] =
+                floatingWindowScenarios.StableRefresh.CountdownRowsPreservedAndTextUpdatesInPlace,
+            ["FloatingStableRefreshNoteCardsPreserved"] =
+                floatingWindowScenarios.StableRefresh.NoteCardInstancesPreservedAcrossTicks,
+            ["FloatingStableRefreshRebuildRestoresFocusByRole"] =
+                floatingWindowScenarios.StableRefresh.RebuildRestoresFocusAndScrollByRole,
+            ["FloatingStableRefreshHiddenSkipsRenderUntilVisible"] =
+                floatingWindowScenarios.StableRefresh.HiddenSkipsRenderUntilVisible,
+            ["FloatingStableRefreshMinimizedSkipsRenderUntilRestored"] =
+                floatingWindowScenarios.StableRefresh.MinimizedSkipsRenderUntilRestored,
+            ["FloatingRenderSignatureGateIsolationBehavior"] =
+                floatingRenderSignatureGateIsolationBehavior,
             ["FloatingDateStampPastelRotationMatches"] =
                 floatingWindowScenarios.BottomCommand.PastelIndexPass,
             ["FloatingNotesHandwrittenDecorationPass"] =

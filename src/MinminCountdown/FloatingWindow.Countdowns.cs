@@ -48,19 +48,7 @@ public sealed partial class FloatingWindow
             record.TargetUtc,
             nowUtc,
             displayPrecision);
-        var currentSeconds = ParseRemainingPairs(remaining)?.FirstOrDefault(static pair =>
-            string.Equals(pair.Unit, "秒", StringComparison.Ordinal))?.Value;
-        var secondsChanged = currentSeconds is not null &&
-            _lastCountdownSeconds.TryGetValue(record.Id, out var previousSeconds) &&
-            !string.Equals(previousSeconds, currentSeconds, StringComparison.Ordinal);
-        if (currentSeconds is null)
-        {
-            _lastCountdownSeconds.Remove(record.Id);
-        }
-        else
-        {
-            _lastCountdownSeconds[record.Id] = currentSeconds;
-        }
+        var secondsChanged = TrackSecondsChange(record.Id, remaining);
         var root = new Grid
         {
             MinHeight = isPrimary ? 68 : 39,
@@ -476,6 +464,26 @@ public sealed partial class FloatingWindow
         string remaining,
         bool isPrimary) =>
         BuildRemainingBlocks(remaining, isPrimary);
+
+    // #198/#212：秒位变化判定与每条记录的上次秒值簿记，重建路径与就地更新路径共用。
+    private bool TrackSecondsChange(string recordId, string remaining)
+    {
+        var currentSeconds = ParseRemainingPairs(remaining)?.FirstOrDefault(static pair =>
+            string.Equals(pair.Unit, "秒", StringComparison.Ordinal))?.Value;
+        var secondsChanged = currentSeconds is not null &&
+            _lastCountdownSeconds.TryGetValue(recordId, out var previousSeconds) &&
+            !string.Equals(previousSeconds, currentSeconds, StringComparison.Ordinal);
+        if (currentSeconds is null)
+        {
+            _lastCountdownSeconds.Remove(recordId);
+        }
+        else
+        {
+            _lastCountdownSeconds[recordId] = currentSeconds;
+        }
+
+        return secondsChanged;
+    }
 
     private static IReadOnlyList<RemainingPair>? ParseRemainingPairs(string remaining)
     {

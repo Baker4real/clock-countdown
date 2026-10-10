@@ -58,6 +58,7 @@ public sealed partial class FloatingWindow
                 Foreground = _floatingPrimaryBrush
             },
             $"完成便签 {note.Text}");
+        completion.SetValue(NoteControlRoleProperty, NoteControlRoleCompletion);
         if (_noteCardErrors.TryGetValue(note.Id, out var savedError))
         {
             SetNoteCardError(noteError, completion, savedError);
@@ -259,6 +260,7 @@ public sealed partial class FloatingWindow
                 }
             },
             $"更多操作：编辑或删除便签 {note.Text}");
+        trigger.SetValue(NoteControlRoleProperty, NoteControlRoleOverflow);
 
         var menuEdit = UiAccessibility.Name(
             new Button

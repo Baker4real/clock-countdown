@@ -1040,6 +1040,10 @@ internal static class ValidationReport
             ValidationExercises.RunAssistiveNarrationBehavior();
         var windowPositionReset =
             ValidationExercises.RunWindowPositionResetBehavior();
+        var mainWindowWorkAreaFit =
+            ValidationExercises.RunMainWindowWorkAreaFitBehavior();
+        var mainWindowIdentityZoneDrag =
+            ValidationExercises.RunMainWindowIdentityZoneDragBehavior();
         var reminderCenterDeliveryFailureActionGate =
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
         var reminderCenterEnterActsOnFocusedEntry =
@@ -1222,11 +1226,20 @@ internal static class ValidationReport
         var originalMainWidth = main.Width;
         main.Width = main.MinWidth;
         main.UpdateLayout();
+        // #211：最小宽度下业务内容不缩放，「保存设置」经窗口级横向滚动兜底可达且完整落入视口。
+        var mainScrollHost = Required<ScrollViewer>(main, "MainWindowScrollHost");
+        savePreferencesButton.BringIntoView();
+        PumpDispatcher();
+        main.UpdateLayout();
+        var savePreferencesButtonLeftInViewport =
+            savePreferencesButton.TranslatePoint(new Point(0, 0), mainScrollHost).X;
         var savePreferencesButtonIsVisibleAtMinimumWidth =
-            savePreferencesButton.TranslatePoint(new Point(0, 0), main).X >= 0 &&
-            savePreferencesButton.TranslatePoint(
-                new Point(savePreferencesButton.ActualWidth, 0),
-                main).X <= main.ActualWidth;
+            mainScrollHost.ScrollableWidth > 0.5 &&
+            savePreferencesButtonLeftInViewport >= -0.5 &&
+            savePreferencesButtonLeftInViewport + savePreferencesButton.ActualWidth <=
+                mainScrollHost.ViewportWidth + 0.5;
+        mainScrollHost.ScrollToLeftEnd();
+        mainScrollHost.ScrollToTop();
         main.Width = originalMainWidth;
         main.UpdateLayout();
         theme.Apply();
@@ -2210,6 +2223,10 @@ internal static class ValidationReport
                 assistiveNarration,
             ["WindowPositionResetsWithoutDrag"] =
                 windowPositionReset,
+            ["MainWindowFitsInjectedWorkAreas"] =
+                mainWindowWorkAreaFit,
+            ["MainWindowIdentityZoneDragRegion"] =
+                mainWindowIdentityZoneDrag,
             ["ReminderCenterDeliveryFailureDisablesDispositions"] =
                 reminderCenterDeliveryFailureActionGate,
             ["ReminderCenterEnterActsOnFocusedEntry"] =
@@ -3780,8 +3797,9 @@ internal static class ValidationReport
         var originalHeight = main.Height;
         try
         {
-            main.Width = main.MinWidth;
-            main.Height = main.MinHeight;
+            // #211：便签卡提醒字号在设计首选尺寸下测量（最小尺寸已放宽，不再代表设计尺寸）。
+            main.Width = MainWindow.PreferredWidth;
+            main.Height = MainWindow.PreferredHeight;
             PumpDispatcher();
             main.UpdateLayout();
 

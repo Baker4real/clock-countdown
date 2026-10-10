@@ -104,9 +104,9 @@
         "topCaptureId": "long-notes-day-top",
         "bottomCaptureId": "long-notes-day-bottom",
         "maxAbsoluteChannelDelta": 240,
-        "meanAbsoluteError": 6.149662,
-        "rootMeanSquareError": 25.036113,
-        "changedPixelCount": 43455
+        "meanAbsoluteError": 6.639511,
+        "rootMeanSquareError": 31.205555,
+        "changedPixelCount": 43023
       }
     ]
   },
@@ -119,7 +119,7 @@
       "path": "assets/ui-references/floating-window/520x390/2026-10-10-v33/floating-countdowns-day.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "BA5EEF3042C503D2A91D483D5DDC706BF290BE36F8AAADBD27D5232068543C75",
+      "pngSha256": "A3FC3EEB18742B1A36CA4B379798C899E64C49651E15FF4A28AD93B921A6C3F2",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
         "sha256": "B5DECF9D636E640D8DF8CD975F24C2E5BE307724EC69352FBDFDE3C3C432E343",
@@ -137,9 +137,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 46259,
-        "nonOpaquePixelCount": 51554,
-        "opaquePixelCount": 151246
+        "transparentPixelCount": 45820,
+        "nonOpaquePixelCount": 50221,
+        "opaquePixelCount": 152579
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -147,8 +147,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 359,
-        "pixelCount": 154021
+        "height": 360,
+        "pixelCount": 154216
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,
@@ -165,17 +165,17 @@
       "path": "assets/ui-references/floating-window/520x390/2026-10-10-v33/long-notes-day-top.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "F9A4D6AA81C906C57505DA49245A8A21B3FFA0B47D9BD5494C6567D93A968E81",
+      "pngSha256": "C66A106D6B35196E62B5D01F97A1541625B76497B0FB3B0FC562F5C6D65A1B06",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "C29108F98316766C952D58A0809813482DE4D8E6283215EE6F232DAE676359EA",
+        "sha256": "66F6069673BA10F56FA007F3FB83804E7602AF373E1D9451DA2DECA70797038D",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-1",
         "noteTextSha256": "F5F77918BA836A251A5CC842AA8FC6BE8AA2DE0F0EC7C35A4E0D97689E18ED52",
         "viewportState": "Top",
         "verticalOffset": 0,
-        "scrollableHeight": 885.73,
+        "scrollableHeight": 893.06,
         "firstVisibleAnchor": "reference-note-1:\u9996\u951A\u70B9\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709\u624B\u5DE5",
         "lastVisibleAnchor": "reference-note-1:\u53F7 1 \u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\u3002"
       },
@@ -183,9 +183,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 46259,
-        "nonOpaquePixelCount": 51712,
-        "opaquePixelCount": 151088
+        "transparentPixelCount": 45820,
+        "nonOpaquePixelCount": 50379,
+        "opaquePixelCount": 152421
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -193,8 +193,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 359,
-        "pixelCount": 154021
+        "height": 360,
+        "pixelCount": 154216
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,
@@ -211,17 +211,17 @@
       "path": "assets/ui-references/floating-window/520x390/2026-10-10-v33/long-notes-day-bottom.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "D9CD5E02AB7E112C0611755880547A0050F64AC7A0B67AF9BC56B50C90EADD0E",
+      "pngSha256": "DACC5A1DF02042E3CA05AE241E2D2F34BFBD8BBA00B612D3FE3B6E5E0CFBBECD",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "593C1D52A6DCFF47338A7FC4F61361A2BCA92E689FD8029D0950E543BF11434B",
+        "sha256": "A185FC838B1BC9E6E5BAA0EA10ACE5B7A35C18D1CCFB1D8EA7B16DC1F75A9CEC",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-6",
         "noteTextSha256": "EDD146B6B25D26BD5A0BC7964B73DAAD9544C3EC194275D126E1768BFD5982C3",
         "viewportState": "Bottom",
-        "verticalOffset": 885.73,
-        "scrollableHeight": 885.73,
+        "verticalOffset": 893.06,
+        "scrollableHeight": 893.06,
         "firstVisibleAnchor": "reference-note-6:\u4E2D\u6BB5\u951A\u70B96\uFF1A\u8FD9\u662F\u4E00\u6761\u6CA1\u6709",
         "lastVisibleAnchor": "reference-note-6:\u7684\u672B\u5C3E\u6821\u9A8C\u6587\u5B57\uFF0C\u5C3E\u951A\u70B9\u3002"
       },
@@ -229,9 +229,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 46259,
-        "nonOpaquePixelCount": 51712,
-        "opaquePixelCount": 151088
+        "transparentPixelCount": 45820,
+        "nonOpaquePixelCount": 50379,
+        "opaquePixelCount": 152421
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -239,8 +239,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 359,
-        "pixelCount": 154021
+        "height": 360,
+        "pixelCount": 154216
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,
@@ -257,17 +257,17 @@
       "path": "assets/ui-references/floating-window/520x390/2026-10-10-v33/notes-search-expanded-day.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "B1AA836A31D0BC5DB4B1ACB208EBB476ABCC5321816A8964544FEAD94E151718",
+      "pngSha256": "838EF801AF2D5C4A928EDED1FDA8898D2034E2BBF4754B6CE2591CC374763045",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "7AA7D84D3D7F85D02312811600885149DBF73DC71323D6069076A2E3EFA2669D",
+        "sha256": "DD440DAB6A82073E0A0D3729B33482F3AB1333959F842303C61B15355259E033",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "",
         "noteTextSha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
         "viewportState": "Expanded",
-        "verticalOffset": 929.73,
-        "scrollableHeight": 929.73,
+        "verticalOffset": 937.06,
+        "scrollableHeight": 937.06,
         "firstVisibleAnchor": "search-expanded",
         "lastVisibleAnchor": "search-expanded"
       },
@@ -275,9 +275,9 @@
         "algorithm": "BGRA8 alpha scan",
         "minimum": 0,
         "maximum": 255,
-        "transparentPixelCount": 46259,
-        "nonOpaquePixelCount": 51894,
-        "opaquePixelCount": 150906
+        "transparentPixelCount": 45820,
+        "nonOpaquePixelCount": 50589,
+        "opaquePixelCount": 152211
       },
       "contentRoi": {
         "algorithm": "minimal bounding rectangle of pixels with alpha \u003E 32",
@@ -285,8 +285,8 @@
         "x": 7,
         "y": 4,
         "width": 513,
-        "height": 359,
-        "pixelCount": 154021
+        "height": 360,
+        "pixelCount": 154216
       },
       "comparison": {
         "maxAbsoluteChannelDelta": 0,

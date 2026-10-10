@@ -110,6 +110,8 @@ internal static class ValidationReportContract
         "CountdownHandwrittenDecoOutOfFormMeasurement",
         "FloatingShellLargeShadowRemoved",
         "MainWindowSquareChromeNoTransparency",
+        "MainWindowFitsInjectedWorkAreas",
+        "MainWindowIdentityZoneDragRegion",
         "TabsRenderAboveDecorationBand",
         "FloatingQuickAddDayResourcesFollowLocalTheme",
         "FloatingQuickAddIndependentFromApplicationTheme",

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -10,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -4382,6 +4384,333 @@ internal static class ValidationExercises
             DeleteSettingsFiles(settingsPath);
             DeleteFileIfPresent(diagnosticPath);
         }
+    }
+
+    // #211：管理窗口装进任意工作区。注入 1080p 在 100%/125%/150% 缩放下的三档
+    // 工作区高度（1032/826/688 DIP），窗口必须取「首选 1165×1350 与工作区−安全边距」
+    // 的较小值并完整落在工作区内；顶端置顶/最小化/关闭免滚动可达；状态栏经外层
+    // 纵向滚动完整可见；倒计时前三行逐行滚动可达完整可见；内容不缩放。用户调整
+    // 的720×560 位置尺寸在隐藏后再显示时保留；越界显示与 WM_DISPLAYCHANGE 工作区
+    // 变化时夹回所在显示器工作区。全程经注入工作区，不依赖真实显示拓扑。
+    public static bool RunMainWindowWorkAreaFitBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-main-workarea-fit-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        try
+        {
+            var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var seedBase = new DateTimeOffset(2038, 7, 9, 1, 0, 0, TimeSpan.Zero);
+            for (var index = 0; index < 3; index++)
+            {
+                MustApply(workspace, new SaveCountdownChange(
+                    null,
+                    $"工作区适配倒计时 {index + 1}",
+                    seedBase.AddDays(index + 1),
+                    Array.Empty<string>(),
+                    Array.Empty<ReminderRule>()));
+            }
+
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            var workAreaCases = new[]
+            {
+                (Width: 1920.0, Height: 1032.0, Dpi: 1.0),
+                (Width: 1536.0, Height: 826.0, Dpi: 1.25),
+                (Width: 1280.0, Height: 688.0, Dpi: 1.5)
+            };
+            foreach (var workAreaCase in workAreaCases)
+            {
+                using var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                    new MonitorWorkArea(
+                        new Rect(0, 0, workAreaCase.Width, workAreaCase.Height),
+                        workAreaCase.Dpi,
+                        workAreaCase.Dpi));
+                Must(
+                    Math.Abs(MonitorWorkAreaResolver.ResolveForScreenRect(new Rect(100, 100, 200, 200), 1, 1).DpiScaleX - workAreaCase.Dpi) <= 0.001,
+                    "注入的工作区解析应按注入值返回 DIP 矩形与 DPI。");
+                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                PrepareOffscreenValidationWindow(main);
+                try
+                {
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+
+                    var usableWidth = workAreaCase.Width - 24;
+                    var usableHeight = workAreaCase.Height - 24;
+                    var expectedWidth = Math.Min(MainWindow.PreferredWidth, usableWidth);
+                    var expectedHeight = Math.Min(MainWindow.PreferredHeight, usableHeight);
+                    Must(
+                        Math.Abs(main.Width - expectedWidth) <= 0.5 &&
+                        Math.Abs(main.Height - expectedHeight) <= 0.5,
+                        $"注入 {workAreaCase.Width}x{workAreaCase.Height}@{workAreaCase.Dpi} 工作区时窗口应取首选与工作区−安全边距的较小值" +
+                        $"（期望 {expectedWidth}x{expectedHeight}，实际 {main.Width}x{main.Height}）。");
+                    Must(
+                        main.Left >= 12 - 0.5 &&
+                        main.Top >= 12 - 0.5 &&
+                        main.Left + main.Width <= workAreaCase.Width - 12 + 0.5 &&
+                        main.Top + main.Height <= workAreaCase.Height - 12 + 0.5,
+                        $"窗口四角应完全落在注入工作区安全边距内（实际 Left={main.Left} Top={main.Top} " +
+                        $"Right={main.Left + main.Width} Bottom={main.Top + main.Height}）。");
+
+                    foreach (var controlName in new[] { "TopmostCheck", "MinimizeButton", "CloseButton" })
+                    {
+                        var control = (FrameworkElement)main.FindName(controlName);
+                        var controlBounds = control.TransformToAncestor(main).TransformBounds(
+                            new Rect(new Point(0, 0), control.RenderSize));
+                        Must(
+                            controlBounds.X >= -0.5 &&
+                            controlBounds.Y >= -0.5 &&
+                            controlBounds.Right <= main.ActualWidth + 0.5 &&
+                            controlBounds.Bottom <= main.ActualHeight + 0.5,
+                            $"{controlName} 应无需滚动完整落在窗口可视区内（{controlBounds}，窗口 {main.ActualWidth}x{main.ActualHeight}）。");
+                    }
+
+                    var scrollHost = (ScrollViewer)main.FindName("MainWindowScrollHost");
+                    Must(
+                        scrollHost.ScrollableHeight > 0.5,
+                        $"窗口收缩到 {main.ActualWidth}x{main.ActualHeight} 后外层滚动容器应有纵向可滚动区间。");
+                    scrollHost.ScrollToBottom();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    var statusBar = (FrameworkElement)main.FindName("MainStatusBarSurface");
+                    var statusBounds = statusBar.TransformToAncestor(main).TransformBounds(
+                        new Rect(new Point(0, 0), statusBar.RenderSize));
+                    Must(
+                        statusBounds.Y >= -0.5 &&
+                        statusBounds.Bottom <= main.ActualHeight + 0.5,
+                        $"滚到底后状态栏应完整落入窗口可视区（{statusBounds}，窗口高 {main.ActualHeight}）。");
+                    scrollHost.ScrollToTop();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+
+                    var listRegion = (ScrollViewer)main.FindName("CountdownListRegion");
+                    var rows = (Panel)main.FindName("CountdownRows");
+                    var firstRows = rows.Children.OfType<FrameworkElement>().Take(3).ToArray();
+                    Must(firstRows.Length == 3, "倒计时列表种子应提供至少 3 行。");
+                    for (var rowIndex = 0; rowIndex < firstRows.Length; rowIndex++)
+                    {
+                        firstRows[rowIndex].BringIntoView();
+                        WindowValidationInput.Pump(main.Dispatcher);
+                        main.UpdateLayout();
+                        var rowBounds = firstRows[rowIndex].TransformToAncestor(listRegion).TransformBounds(
+                            new Rect(new Point(0, 0), firstRows[rowIndex].RenderSize));
+                        Must(
+                            rowBounds.Y >= -0.5 &&
+                            rowBounds.Bottom <= listRegion.ViewportHeight + 0.5,
+                            $"第 {rowIndex + 1} 行倒计时应能滚动到在内层视口完整可见" +
+                            $"（行 {rowBounds}，内层视口高 {listRegion.ViewportHeight}）。");
+                    }
+
+                    var scaleViewport = (FrameworkElement)main.FindName("MainScaleViewport");
+                    Must(
+                        Math.Abs(scaleViewport.ActualWidth - MainWindow.PreferredWidth) <= 0.5 &&
+                        Math.Abs(scaleViewport.ActualHeight - MainWindow.PreferredHeight) <= 0.5,
+                        "窗口收缩时业务内容不得缩放：MainScaleViewport 应保持 1165×1350 设计尺寸、字号不变。");
+                }
+                finally
+                {
+                    main.Close();
+                }
+            }
+
+            using (var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                       new MonitorWorkArea(new Rect(0, 0, 1920, 1032), 1, 1)))
+            {
+                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                PrepareOffscreenValidationWindow(main);
+                try
+                {
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+
+                    var handle = new WindowInteropHelper(main).Handle;
+                    Must(handle != IntPtr.Zero, "窗口应已创建 HWND。");
+                    // 真实用户拖动/缩放手势走 WM_ENTERSIZEMOVE→几何变化→WM_EXITSIZEMOVE；
+                    // 探针沿同一 Win32 路径标记「用户调整过位置和尺寸」。
+                    NativeWorkAreaProbe.SendMessage(
+                        handle,
+                        NativeWorkAreaProbe.WmEnterSizeMove,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    main.Width = 720;
+                    main.Height = 560;
+                    main.Left = 500;
+                    main.Top = 300;
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    NativeWorkAreaProbe.SendMessage(
+                        handle,
+                        NativeWorkAreaProbe.WmExitSizeMove,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Hide();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    Must(
+                        Math.Abs(main.Width - 720) <= 0.5 &&
+                        Math.Abs(main.Height - 560) <= 0.5 &&
+                        Math.Abs(main.Left - 500) <= 0.5 &&
+                        Math.Abs(main.Top - 300) <= 0.5,
+                        $"隐藏后再显示应保留本次运行内用户调整的位置和尺寸（实际 Left={main.Left} Top={main.Top} {main.Width}x{main.Height}）。");
+
+                    var scrollHost = (ScrollViewer)main.FindName("MainWindowScrollHost");
+                    Must(
+                        scrollHost.ScrollableWidth > 0.5 && scrollHost.ScrollableHeight > 0.5,
+                        "最小尺寸 720×560 下外层容器应纵横双向可滚动（横向兜底），内容不被裁切。");
+
+                    main.Left = 5000;
+                    main.Top = 5000;
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Hide();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    Must(
+                        main.Left >= 12 - 0.5 &&
+                        main.Top >= 12 - 0.5 &&
+                        main.Left + main.ActualWidth <= 1920 - 12 + 0.5 &&
+                        main.Top + main.ActualHeight <= 1032 - 12 + 0.5,
+                        $"越界位置在显示时应夹回所在显示器工作区（实际 Left={main.Left} Top={main.Top}）。");
+
+                    using var smallerOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                        new MonitorWorkArea(new Rect(0, 0, 1280, 688), 1.5, 1.5));
+                    NativeWorkAreaProbe.SendMessage(
+                        handle,
+                        NativeWorkAreaProbe.WmDisplayChange,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    Must(
+                        main.Left >= 12 - 0.5 &&
+                        main.Top >= 12 - 0.5 &&
+                        main.Left + main.ActualWidth <= 1280 - 12 + 0.5 &&
+                        main.Top + main.ActualHeight <= 688 - 12 + 0.5 &&
+                        Math.Abs(main.Width - 720) <= 0.5 &&
+                        Math.Abs(main.Height - 560) <= 0.5,
+                        $"显示器工作区变化后窗口应夹回新工作区且保留用户尺寸" +
+                        $"（实际 Left={main.Left} Top={main.Top} {main.Width}x{main.Height}）。");
+                }
+                finally
+                {
+                    main.Close();
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #211：标题拖动区覆盖整个身份区空白，身份区内控件仍可点击。经真实
+    // WM_NCHITTEST 路径判定：身份区中缝空白返回 HTCAPTION，置顶控件中心返回 HTCLIENT。
+    public static bool RunMainWindowIdentityZoneDragBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-main-identity-drag-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        try
+        {
+            var workspace = DesktopWorkspace.Load(
+                settingsPath,
+                new SettingsStore(clock: new AdvancingValidationClock(
+                    new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero))));
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            using var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                new MonitorWorkArea(new Rect(0, 0, 2560, 1600), 1, 1));
+            var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            try
+            {
+                main.Show();
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+
+                var identityZone = (FrameworkElement)main.FindName("MainIdentityZone");
+                var titleZone = (FrameworkElement)main.FindName("MainTitleZone");
+                var windowControls = (FrameworkElement)main.FindName("MainWindowControls");
+                var topmostCheck = (FrameworkElement)main.FindName("TopmostCheck");
+
+                Rect BoundsInMain(FrameworkElement element) =>
+                    element.TransformToAncestor(main).TransformBounds(
+                        new Rect(new Point(0, 0), element.RenderSize));
+                var identityBounds = BoundsInMain(identityZone);
+                var titleBounds = BoundsInMain(titleZone);
+                var controlsBounds = BoundsInMain(windowControls);
+                var emptyX = (titleBounds.Right + controlsBounds.Left) / 2;
+                var emptyY = identityBounds.Top + (identityBounds.Height / 2);
+                Must(
+                    emptyX > titleBounds.Right + 8 &&
+                    emptyX < controlsBounds.Left - 8 &&
+                    emptyY > identityBounds.Top + 8 &&
+                    emptyY < identityBounds.Bottom - 8,
+                    $"探针空白点应落在身份区中缝（x={emptyX} 应位于标题右缘 {titleBounds.Right} 与控件左缘 {controlsBounds.Left} 之间）。");
+
+                var emptyHit = SendWindowHitTest(main, new Point(emptyX, emptyY));
+                Must(
+                    emptyHit == NativeWorkAreaProbe.HitCaption,
+                    $"身份区空白处应作为标题拖动区（HTCAPTION=2），实际命中 {emptyHit}。");
+
+                var topmostCenter = topmostCheck.TransformToAncestor(main).Transform(
+                    new Point(topmostCheck.RenderSize.Width / 2, topmostCheck.RenderSize.Height / 2));
+                var controlHit = SendWindowHitTest(main, topmostCenter);
+                Must(
+                    controlHit == NativeWorkAreaProbe.HitClient,
+                    $"身份区内置顶控件应保持可点击（HTCLIENT=1），实际命中 {controlHit}。");
+                return true;
+            }
+            finally
+            {
+                main.Close();
+            }
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    private static int SendWindowHitTest(Window window, Point dipPoint)
+    {
+        var screenPoint = window.PointToScreen(dipPoint);
+        var coordinates = new IntPtr(((int)screenPoint.Y << 16) | ((int)screenPoint.X & 0xffff));
+        var handle = new WindowInteropHelper(window).Handle;
+        return NativeWorkAreaProbe
+            .SendMessage(handle, NativeWorkAreaProbe.WmNcHitTest, IntPtr.Zero, coordinates)
+            .ToInt32();
+    }
+
+    private static class NativeWorkAreaProbe
+    {
+        internal const int WmNcHitTest = 0x0084;
+        internal const int WmDisplayChange = 0x007E;
+        internal const int WmEnterSizeMove = 0x0231;
+        internal const int WmExitSizeMove = 0x0232;
+        internal const int HitClient = 1;
+        internal const int HitCaption = 2;
+
+        [DllImport("user32.dll", ExactSpelling = true, EntryPoint = "SendMessageW")]
+        internal static extern IntPtr SendMessage(
+            IntPtr windowHandle,
+            uint message,
+            IntPtr wordParameter,
+            IntPtr longParameter);
     }
 
     private static bool WindowIntersectsWorkArea(Window window)

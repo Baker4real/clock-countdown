@@ -45,7 +45,8 @@ internal sealed class HolidayCalendar : IDisposable
 
     public string State { get; private set; } = "Pending";
 
-    public string StatusText { get; private set; } = "节假日日历未就绪";
+    // 首次渲染早于首次刷新完成，初始文案必须是加载中而不是未就绪（#218）。
+    public string StatusText { get; private set; } = "节假日日历正在加载";
 
     public Task<bool> RefreshAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken)
     {

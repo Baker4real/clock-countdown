@@ -173,7 +173,7 @@ $script:nonAssetHashes = [ordered]@{
     'Build-CountdownApplication.ps1' = 'F1B895DC67657A8124B60C8D617B87F60EB7555AFA51C015844E8617BC979724'
     'tools\Countdown.BuildPreflight.psm1' = '8B6609C8299F58C65CD80FE6A1F35F66D2DEEB1C50FCD488A9F766954407F1B5'
     'tools\Test-CountdownBuildPreflight.ps1' = '06C387D084227C8F5B56DEBD258F9FCB62248CD973B3D24AA5AA9F5C0E1A3D06'
-    'DESIGN.md' = '516F776A87F75B74B84AC08AECFCA94A1110D74C6E1818193795EF384B8B4DA6'
+    'DESIGN.md' = '5665ED7885303350621227BFF2508BA4DA01C16187C9C2B6CF3D4A0F06015F16'
     'Countdown.App.psm1' = '604681FC3CF7D32B4D6DC45FC98A4B3FBF1BFBD4FFB958A5CE616F3FB716705B'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = '5A9FAAE019095134D53586886A83581F3794654B9790102A17751860B157B08E'
@@ -185,8 +185,8 @@ $script:nonAssetHashes = [ordered]@{
     'Countdown.Runtime.psm1' = '6EAD9634FAB49CED2C588D74DC62541FEC6852F0DE694EBC53147FD967CD3A88'
     'Countdown.Settings.psm1' = '507BB437A209CC6F340B00D7089171C6D78EFF6C6EF597A87F49E45BF40E95DC'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = 'C6DB0CA76E46B6800DFC27D41A4B5EA590DB019B3AAC19EBF0CF4B49643CA6F3'
-    'Countdown.Ui.Tests.ps1' = '1C4910D2E9E58E14BD984A4CDD2CFB7EFDDB7B2BD244139459FD018B34C45322'
+    'Countdown.Core.Tests.ps1' = 'CD405C7084796AEB3FCEAC69C0C52D653C22876CFCBD5828C74408B34F64B31C'
+    'Countdown.Ui.Tests.ps1' = '676487447DFFBE5D6D36CCDE36B709E7F93103801009784533648CA7A11EE8A9'
     'Countdown.CSharp.Tests.ps1' = '768CFFA859997AD0F23E59F61234A663019BA4279686EC7E07474130CA2D64BF'
     'tools\Build-MainDayOrnamentScene.ps1' = '1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036'
     'tools\MainDecorationSceneBands.psd1' = '9DAEDF905F2FD6A0E8396E8718A06B115566EA4A8799354347E3A30D2E41C6B7'
@@ -199,7 +199,7 @@ $script:nonAssetHashes = [ordered]@{
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'assets\floating-plush\SOURCES.md' = '7B6A95A1EADEA0ED9A9FD4C44128BBE2F05F9D2C2675AF37998133C6228F5846'
     'holiday-data\2026.json' = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
-    'holiday-data\README.md' = 'DBACB482409A7CFD0845C1D26BE49C67B93C8A678E11EACA8BA4047C228716DF'
+    'holiday-data\README.md' = 'E177C43E1EA189D8C191A058DFC46E0E524ED4DA78881DD1E95CD600E508D53F'
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
     'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md' = 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80'
     'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
@@ -226,14 +226,14 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\DiagnosticLogger.cs' = '234EB941A3F13FF23DB6D58B96A1783FD7C9D7A23BA2B87EAAC0D0CE4762A241'
     'src\MinminCountdown\DwmWindowChrome.cs' = '8D535ABC40E5903F454C5806BA6EBD2EE844E59843778235FC6FDB057C0D2BBA'
     'src\MinminCountdown\DomainLogic.cs' = 'FBFB34378DF7468B8FF911038268BCEEAE8F64D975A5D229A72282BC95DE8248'
-    'src\MinminCountdown\FloatingBottomStatus.cs' = 'BDDB919E3A0C2DAC13F45B113652938E2BBB72F2C6F31189A4B4DA169A8ECF05'
+    'src\MinminCountdown\FloatingBottomStatus.cs' = '9A1C0FEA92E20C363E87E15C1BC98AFAA5CCFEC9C062816B67DC14C57B04BD76'
     'src\MinminCountdown\FloatingTrayController.cs' = 'C0905CDE21B666B9412EF822C15A6C567E5C2401CB7F0C48D454219BA8795326'
     'src\MinminCountdown\FloatingWindow.Countdowns.cs' = '9007DA3ECF359E54B129CBC3EF12B3D59E8E7634DF65E507DA23B63517CD4CF8'
     'src\MinminCountdown\FloatingWindow.Notes.cs' = '9CB4762E3CE0A23186FF6F8D7481F9F4D398D6F9BD5EFFDB75284559CEDA5E6A'
     'src\MinminCountdown\FloatingWindow.xaml' = 'E6E084084EB630EC14D035761F35C5293F80931F8504E16CAF525E1B77398EAD'
     'src\MinminCountdown\FloatingWindow.xaml.cs' = '4D611267056B97B8BA4AD8621B191D9C1490B0F1895404BF76B69E8C0538A475'
     'src\MinminCountdown\GlobalUsings.cs' = '9EB56B713F4BD450C169F140E74FF7B6D5E456F3742A30188B947223D01628E4'
-    'src\MinminCountdown\HolidayCalendar.cs' = '331422DAD096D07324937E0ABF89962ACE072EB854830CF2B631F682BB0A4AF1'
+    'src\MinminCountdown\HolidayCalendar.cs' = 'F7BAB6C842203EFC0445452181EEA46A920C081DFA039124A0E75847AFD48A94'
     'src\MinminCountdown\HostOptions.cs' = '4C3BB5ED222319195A459C0BA4323A49EAB03D119250E926AFE988F25339A4F3'
     'src\MinminCountdown\InstanceActivation.cs' = '26A31C9A31EC7FF860E3102DBE23EFD840810CD31FDE0F232B91421B2F16D7CE'
     'src\MinminCountdown\MainWindow.xaml' = 'B72A527286BD2BE3FB2BD32540D6CC0F20B7DE20E59CA44CC25888288A06414F'
@@ -254,7 +254,7 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\ValidationReport.cs' = 'D441FC1A8A73D2967A5A7BB5A4A5A5F439C657F11100CB9D83DDF6A725D4E44F'
     'src\MinminCountdown\ValidationReportContract.cs' = '72A2CBEEA3F5CC78A7284AEBA127B4F69E8BC1A4FADC61412E09259BCF920273'
     'src\MinminCountdown\VisualReferenceBaseline.cs' = 'DF0E749EA0D7234AFB6E850AF9F17B46BBB5EE0ACDE11083725FD2B08008FB61'
-    'src\MinminCountdown\WindowValidationScenarios.cs' = '889DBE81FAE7CE8C1E9763868F24B68C866056C2A88A5D09C3B58352A1E9FF5E'
+    'src\MinminCountdown\WindowValidationScenarios.cs' = 'D9E8BC6590EEB630433611FE33EE425D1FFF7C6CF76A74B574DA6CDB59A75174'
 }
 
 $script:nonAssetIntegrityPaths = @(
@@ -331,6 +331,47 @@ function Assert-CountdownUniqueReleasePaths {
         if (-not $seen.Add($path)) {
             throw "发布契约的 $Name 包含重复路径：$path"
         }
+    }
+}
+
+# #218 节假日年度覆盖守卫：纯函数，注入北京时间与随包覆盖年份集合。北京时间进入 12 月后，
+# 随包数据必须已覆盖下一年；否则验证明确失败并指明缺失年份与补数据流程。
+function Test-CountdownHolidayYearCoverage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [DateTimeOffset] $BeijingNow,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [int[]] $PackagedYears
+    )
+
+    $nextYear = $BeijingNow.Year + 1
+    if ($BeijingNow.Month -lt 12 -or $PackagedYears.Contains($nextYear)) {
+        return [pscustomobject]@{
+            Covered = $true
+            MissingYear = $null
+            Message = ''
+        }
+    }
+
+    [pscustomobject]@{
+        Covered = $false
+        MissingYear = $nextYear
+        Message = "随包节假日数据尚未覆盖 $nextYear 年：当前北京时间已进入 $($BeijingNow.Year) 年 12 月。请按 holiday-data/README.md 的更新流程补齐 $nextYear 年随包数据（固定上游提交、重新生成全年 days 数组、更新来源提交、年份与 IntegrityHashes，工单 #234），再重新运行验证。"
+    }
+}
+
+function Assert-CountdownHolidayYearCoverage {
+    $packagedYears = @(
+        foreach ($file in $script:offlineHolidayDataFiles) {
+            if ($file -match '^holiday-data\\(\d{4})\.json$') {
+                [int] $Matches[1]
+            }
+        }
+    )
+    $beijingNow = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
+        [DateTimeOffset]::UtcNow, 'China Standard Time')
+    $coverage = Test-CountdownHolidayYearCoverage -BeijingNow $beijingNow -PackagedYears $packagedYears
+    if (-not $coverage.Covered) {
+        throw $coverage.Message
     }
 }
 
@@ -556,6 +597,9 @@ function Assert-CountdownReleaseContractDefinition {
             throw "UI 参考图不得进入发布运行时：$path"
         }
     }
+
+    # #218 年度覆盖守卫：北京时间进入 12 月后随包数据必须已覆盖下一年。
+    Assert-CountdownHolidayYearCoverage
 }
 
 function Resolve-CountdownReleasePackagePath {
@@ -612,4 +656,4 @@ function Assert-CountdownReleasePackage {
 }
 
 Assert-CountdownReleaseContractDefinition
-Export-ModuleMember -Function Get-CountdownReleaseContract, Assert-CountdownReleasePackage
+Export-ModuleMember -Function Get-CountdownReleaseContract, Assert-CountdownReleasePackage, Test-CountdownHolidayYearCoverage

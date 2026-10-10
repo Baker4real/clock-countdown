@@ -534,7 +534,7 @@ try {
     if (-not $listValidation.CardActionsBoundByTag) { throw 'Card edit/delete actions are not bound to their countdown ID.' }
     if ($listValidation.FloatingCountdownCount -ne 1) { throw "Expected one active floating countdown card, got $($listValidation.FloatingCountdownCount)." }
     if ((@($listValidation.FloatingCountdownTexts).Count -ne 1) -or $listValidation.FloatingCountdownTexts[0] -notmatch '天 .*小时 .*分钟 .*秒') { throw "Floating countdowns did not use the unified unit format: $(@($listValidation.FloatingCountdownTexts) -join ',')" }
-    if ($listValidation.FloatingIncomeText -notmatch '今日已赚 ￥|节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复|加油！美好的事情正在靠近') { throw "Floating income text is missing: $($listValidation.FloatingIncomeText)" }
+    if ($listValidation.FloatingIncomeText -notmatch '今日已赚 ￥|节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复|节假日日历正在加载|加油！美好的事情正在靠近') { throw "Floating income text is missing: $($listValidation.FloatingIncomeText)" }
     if (-not $listValidation.FloatingNoteSearch.HintNamesDescribeAction) { throw 'Floating search hint accessible name lost the expand action semantics.' }
     if (-not $listValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) { throw 'A 140-character search term did not trim inside the floating search hint slot.' }
     if (-not $listValidation.FloatingNoteSearch.NoteFilterEmptyStateDistinguished) { throw 'Floating notes workspace did not distinguish filter-no-match from no-data empty state.' }

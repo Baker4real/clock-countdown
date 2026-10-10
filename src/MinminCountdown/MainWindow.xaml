@@ -7,8 +7,8 @@
         Title="敏敏子倒计时"
         Width="1165"
         Height="1350"
-        MinWidth="1165"
-        MinHeight="1350"
+        MinWidth="720"
+        MinHeight="560"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize"
@@ -29,7 +29,9 @@
     </Style>
   </Window.Resources>
   <shell:WindowChrome.WindowChrome>
-    <shell:WindowChrome CaptionHeight="58"
+    <!-- #211：标题拖动区覆盖整个身份区（行高 176）的空白；身份区内置顶/最小化/关闭
+         控件以 IsHitTestVisibleInChrome 保持可点击。 -->
+    <shell:WindowChrome CaptionHeight="176"
                         ResizeBorderThickness="6"
                         CornerRadius="0"
                         GlassFrameThickness="0"
@@ -37,15 +39,21 @@
   </shell:WindowChrome.WindowChrome>
 
   <Grid Background="{DynamicResource BackgroundBrush}">
-    <!-- 1165 x 1350 is the real DIP layout.  The named grid is retained as the
-         reference surface and popup clipping root; it no longer performs a
-         non-integer Viewbox transform. -->
-    <Grid x:Name="MainScaleViewport"
-          Width="1165"
-          Height="1350"
-          HorizontalAlignment="Center"
-          VerticalAlignment="Center"
-          ClipToBounds="True">
+    <!-- #211：1165×1350 是首选尺寸而非最小尺寸。窗口随所在显示器工作区收缩时，
+         业务内容整体进入窗口级滚动容器（纵向为主、宽度不足横向兜底），控件与字号
+         不缩放；视口不小于内容时 MainScaleViewport 仍居中，首选构图与直排一致。
+         The named grid is retained as the reference surface and popup clipping root;
+         it no longer performs a non-integer Viewbox transform. -->
+    <ScrollViewer x:Name="MainWindowScrollHost"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto"
+                  Focusable="False">
+      <Grid x:Name="MainScaleViewport"
+            Width="1165"
+            Height="1350"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            ClipToBounds="True">
       <Canvas x:Name="MainLayoutSurface"
               Width="1165"
               Height="1350"
@@ -2269,5 +2277,6 @@
         </Grid>
       </Canvas>
     </Grid>
+    </ScrollViewer>
   </Grid>
 </Window>

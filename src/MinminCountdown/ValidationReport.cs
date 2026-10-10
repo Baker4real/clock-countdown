@@ -1042,8 +1042,12 @@ internal static class ValidationReport
             ValidationExercises.RunWindowPositionResetBehavior();
         var reminderCenterDeliveryFailureActionGate =
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
-        var reminderCenterEnterActsOnFocusedEntry =
-            ValidationExercises.RunReminderCenterEnterActsOnFocusedEntryBehavior();
+        var reminderCenterEnterUsesNativeButtonActivation =
+            ValidationExercises.RunReminderCenterEnterUsesNativeButtonActivationBehavior();
+        var reminderCenterArrivalKeepsForegroundAndFlashesTaskbar =
+            ValidationExercises.RunReminderCenterArrivalKeepsForegroundAndFlashesTaskbarBehavior();
+        var reminderCenterMinimizeToTaskbarPreservesEntries =
+            ValidationExercises.RunReminderCenterMinimizeToTaskbarPreservesEntriesBehavior();
         var reminderCenterSnoozeGatedDuringCompletionRetry =
             ValidationExercises.RunReminderCenterSnoozeGatedDuringCompletionRetryBehavior();
         var reminderCenterCustomSnoozeErrorRoutesByCode =
@@ -1600,7 +1604,7 @@ internal static class ValidationReport
             new ReminderCenterKeyboardGateInputs(
                 reminderKeyboardExercise.TabTraversalWorks,
                 reminderKeyboardExercise.CloseGuardWorks,
-                reminderKeyboardExercise.InitialFocusAndAccessibleNameWork,
+                reminderKeyboardExercise.ShowPreservesFocusAndAccessibleName,
                 reminderKeyboardExercise.EscapeFocusesAcknowledge));
         var reminderCenterKeyboardGateIsolationBehavior =
             ValidationExercises.RunReminderCenterKeyboardGateIsolationBehavior();
@@ -2210,8 +2214,12 @@ internal static class ValidationReport
                 windowPositionReset,
             ["ReminderCenterDeliveryFailureDisablesDispositions"] =
                 reminderCenterDeliveryFailureActionGate,
-            ["ReminderCenterEnterActsOnFocusedEntry"] =
-                reminderCenterEnterActsOnFocusedEntry,
+            ["ReminderCenterEnterUsesNativeButtonActivation"] =
+                reminderCenterEnterUsesNativeButtonActivation,
+            ["ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar"] =
+                reminderCenterArrivalKeepsForegroundAndFlashesTaskbar,
+            ["ReminderCenterMinimizeToTaskbarPreservesEntries"] =
+                reminderCenterMinimizeToTaskbarPreservesEntries,
             ["ReminderCenterSnoozeGatedDuringCompletionRetry"] =
                 reminderCenterSnoozeGatedDuringCompletionRetry,
             ["ReminderCenterCustomSnoozeErrorRoutesByCode"] =
@@ -2247,8 +2255,8 @@ internal static class ValidationReport
             ["ReminderCenterIsThemed"] = reminderThemed,
             ["ReminderCenterSupportsKeyboardNavigation"] =
                 reminderCenterKeyboardGates.AllPassed,
-            ["ReminderCenterInitialFocusAndAccessibleNameWork"] =
-                reminderCenterKeyboardGates.InitialFocusAndAccessibleNameWork,
+            ["ReminderCenterShowPreservesFocusAndAccessibleName"] =
+                reminderCenterKeyboardGates.ShowPreservesFocusAndAccessibleName,
             ["ReminderCenterEscapeFocusesAcknowledge"] =
                 reminderCenterKeyboardGates.EscapeFocusesAcknowledge,
             ["ReminderCenterTypographyWeightWhitelist"] =
@@ -9819,7 +9827,11 @@ internal static class ValidationReport
                     AutomationProperties.GetAutomationId(button),
                     "ReminderCenterAcknowledgeAll",
                     StringComparison.Ordinal)) == 1 &&
-                buttons.Length == 9;
+                buttons.Count(button => string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderCenterMinimizeToTaskbar",
+                    StringComparison.Ordinal)) == 1 &&
+                buttons.Length == 10;
             var accessible =
                 center is not null &&
                 string.Equals(AutomationProperties.GetName(center), "提醒中心", StringComparison.Ordinal) &&
@@ -12808,6 +12820,9 @@ internal static class ValidationReport
             PumpDispatcher();
             window.SetDeliveryReady(key);
             PumpDispatcher();
+            // #215：出现不再抢焦点；键盘遍历断言显式激活窗口，模拟用户切到中心后的操作。
+            window.Activate();
+            PumpDispatcher();
             var buttons = Descendants<Button>(window).ToArray();
             var acknowledge = buttons.Single(button =>
                 AutomationProperties.GetName(button).StartsWith("知道了：", StringComparison.Ordinal));
@@ -12821,6 +12836,11 @@ internal static class ValidationReport
                 string.Equals(
                     AutomationProperties.GetAutomationId(button),
                     "ReminderCenterAcknowledgeAll",
+                    StringComparison.Ordinal));
+            var minimizeToTaskbar = buttons.Single(button =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderCenterMinimizeToTaskbar",
                     StringComparison.Ordinal));
             var snoozeChoice = Descendants<ComboBox>(window).Single(comboBox =>
                 comboBox.IsVisible &&
@@ -12923,6 +12943,8 @@ internal static class ValidationReport
                 openSource.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, acknowledgeAll) &&
                 acknowledgeAll.MoveFocus(tabRequest) &&
+                ReferenceEquals(Keyboard.FocusedElement, minimizeToTaskbar) &&
+                minimizeToTaskbar.MoveFocus(tabRequest) &&
                 Keyboard.FocusedElement is DependencyObject wrapped &&
                 entryRow.IsAncestorOf(wrapped);
             tabTraverses =
@@ -12962,7 +12984,7 @@ internal static class ValidationReport
             return new ReminderKeyboardExerciseResult(
                 tabTraverses,
                 window.IsVisible,
-                window.ShowActivated &&
+                !window.ShowActivated &&
                 !string.IsNullOrWhiteSpace(AutomationProperties.GetName(window)),
                 escapeFocusesAcknowledge);
         }
@@ -15525,7 +15547,7 @@ internal static class ValidationReport
     private sealed record ReminderKeyboardExerciseResult(
         bool TabTraversalWorks,
         bool CloseGuardWorks,
-        bool InitialFocusAndAccessibleNameWork,
+        bool ShowPreservesFocusAndAccessibleName,
         bool EscapeFocusesAcknowledge);
 
     private sealed record ReminderDeliveryExerciseResult(

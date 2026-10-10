@@ -4212,7 +4212,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #189 adds 13 measured behavior fields; six existing note/date/fallback
     # fields had also been added since the old 671-field shape was pinned.
     # Removing those 19 additions reproduces the original name:type SHA exactly.
-    Assert-Equal 690 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段和 #189 的 13 个测量字段）'
+    # #215 swaps Enter/initial-focus keys for arrival/minimize/native-activation keys (690 -> 692).
+    Assert-Equal 692 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段、#189 的 13 个测量字段与 #215 的净 2 个提醒中心字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4701,7 +4702,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-09-v32') {
         throw '跨界面整合证据未记录 v32 真实帧'
     }
-    Assert-Equal '9E51D9DC228419D7D2F19D0347992333147217092B2DA8C885FB6C8917422BC0' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（690 字段；原字段名称和类型保持兼容）'
+    Assert-Equal '3DCCD44D8A4ED6D6EF5E91E81DA935BD1A99BE17B2B17E3E86ADF724EF1DF640' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（692 字段；原字段名称和类型保持兼容，#215 净增 2 个提醒中心字段）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -4799,7 +4800,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesUpdated) '主窗口便签完成复选框可访问名称随状态更新'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesHaveNoLineBreaks) 'settings JSON 注入含换行便签后可访问名称不含换行'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionStyleScoped) '兼容便签完成样式门保持通过'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterInitialFocusAndAccessibleNameWork) '提醒中心打开后建立初始焦点与可访问名称'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterShowPreservesFocusAndAccessibleName) '提醒中心出现时不抢焦点且保留可访问名称'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterKeyboardGateIsolationBehavior) '提醒中心 Tab 遍历、关闭守卫与初始焦点/可访问名负向夹具可独立失败'
     Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLoaded) 'adapter 验证角色图片资产已加载'
     Assert-Equal 3 ([int] $adapterValidation.MainCharacterPanelDockCount) '主窗口角色场景栏保留三个玩偶底座'
@@ -5499,7 +5500,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
             'ReminderCenterAccessible',
             'ReminderCenterIsThemed',
             'ReminderCenterSupportsKeyboardNavigation',
-            'ReminderCenterInitialFocusAndAccessibleNameWork',
+            'ReminderCenterShowPreservesFocusAndAccessibleName',
+            'ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar',
+            'ReminderCenterMinimizeToTaskbarPreservesEntries',
             'ReminderCenterAcknowledgeAllWritesAllDispositions',
             'ReminderCenterAcknowledgeAllMatchesSingleSemantics',
             'ReminderCenterAcknowledgeAllFailureRetainsAllAtomically',
@@ -5521,7 +5524,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
             'ReminderCenterCompleteClickIsAtomic',
             'ReminderCenterCompleteRequiresConfirmation',
             'ReminderCenterDeliveryFailureDisablesDispositions',
-            'ReminderCenterEnterActsOnFocusedEntry',
+            'ReminderCenterEnterUsesNativeButtonActivation',
             'ReminderCenterSnoozeGatedDuringCompletionRetry',
             'ReminderCenterCustomSnoozeErrorRoutesByCode',
             'ReminderCenterShowFailureRollsBack',

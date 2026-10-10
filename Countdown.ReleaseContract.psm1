@@ -29,24 +29,6 @@ $script:buildAssetDefinitions = @(
         Category = 'OfficialCharacter'
     },
     [pscustomobject]@{
-        SourcePath = 'assets\floating-plush\floating-plush-mymelody-reference.png'
-        PublishedPath = 'app\assets\floating-plush\floating-plush-mymelody-reference.png'
-        SHA256 = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
-        Category = 'CurrentFloating'
-    },
-    [pscustomobject]@{
-        SourcePath = 'assets\floating-plush\floating-plush-cinnamoroll-reference.png'
-        PublishedPath = 'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png'
-        SHA256 = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
-        Category = 'CurrentFloating'
-    },
-    [pscustomobject]@{
-        SourcePath = 'assets\floating-plush\floating-plush-kuromi-reference.png'
-        PublishedPath = 'app\assets\floating-plush\floating-plush-kuromi-reference.png'
-        SHA256 = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
-        Category = 'CurrentFloating'
-    },
-    [pscustomobject]@{
         SourcePath = 'assets\floating-plush\component-day-outer-shell.png'
         PublishedPath = 'app\assets\floating-plush\component-day-outer-shell.png'
         SHA256 = 'A4F2F78163F8AA5217C4161F0EE2BFB924686E8BED5768C527F3B5C7D6CC4924'
@@ -170,24 +152,24 @@ $script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @('countdown-ic
 )
 
 $script:nonAssetHashes = [ordered]@{
-    'Build-CountdownApplication.ps1' = 'F1B895DC67657A8124B60C8D617B87F60EB7555AFA51C015844E8617BC979724'
+    'Build-CountdownApplication.ps1' = '18C519DB7673DE92AD54907D88367935EC5DE0D10F4D67AA689B5C3285CC13D1'
     'tools\Countdown.BuildPreflight.psm1' = '8B6609C8299F58C65CD80FE6A1F35F66D2DEEB1C50FCD488A9F766954407F1B5'
     'tools\Test-CountdownBuildPreflight.ps1' = '06C387D084227C8F5B56DEBD258F9FCB62248CD973B3D24AA5AA9F5C0E1A3D06'
-    'DESIGN.md' = '67569C0AA4297779801C73144F15181C16899D35BA09518FF8D578F3EC89C5A1'
+    'DESIGN.md' = 'FCDEFFFFAABE3180BE0A734C0700B653105C7B57C3E29966C79450BED8188591'
     'Countdown.App.psm1' = '604681FC3CF7D32B4D6DC45FC98A4B3FBF1BFBD4FFB958A5CE616F3FB716705B'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = '5A9FAAE019095134D53586886A83581F3794654B9790102A17751860B157B08E'
     'Countdown.RemoteDeployment.psm1' = '0340A4F41F64BFB1A3BCB7A554FFC042330E0EC8040FF9C47A7ECADE34BE34FC'
     'Countdown.TransactionAcceptance.psm1' = 'EC8D18BDBF438D9050A842A3DE7BCFA79EB58F4E9433D856F2062F83882FFE93'
     'Countdown.TransferLedger.psm1' = 'B3051D0F5AF1F7E0351A9637B076E0402DCC9500A21CC41C02594EC9012D88B8'
-    'Countdown.Validation.psm1' = '4643447D54C63E92A8D600764B9DCD4E1224C8C12E86B0D760A8B2614A02AE3A'
+    'Countdown.Validation.psm1' = '7DAC9C5939FADB7A68BA9BB5633C52A9B97DA83BCC37CBE8A4BB7109EC3079C1'
     'Countdown.Notes.psm1' = 'CF41E5A29B5FCFB0807E1EA1E6F52AC7FADE4478A18990698F2BA6F725E08CA0'
     'Countdown.Runtime.psm1' = '6EAD9634FAB49CED2C588D74DC62541FEC6852F0DE694EBC53147FD967CD3A88'
     'Countdown.Settings.psm1' = '507BB437A209CC6F340B00D7089171C6D78EFF6C6EF597A87F49E45BF40E95DC'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = 'C6DB0CA76E46B6800DFC27D41A4B5EA590DB019B3AAC19EBF0CF4B49643CA6F3'
-    'Countdown.Ui.Tests.ps1' = '1C4910D2E9E58E14BD984A4CDD2CFB7EFDDB7B2BD244139459FD018B34C45322'
-    'Countdown.CSharp.Tests.ps1' = '56347F3121277C05B528B4DBB40C215D6CF5B4C16C3A986AB2BECEF1ECCF0482'
+    'Countdown.Core.Tests.ps1' = 'E22CB412EDBF596FFFDABA6FE6A0AC67ACE737D79554EB95E4F00E508E6C6631'
+    'Countdown.Ui.Tests.ps1' = 'F68AF1839C31D2A88DDECDC0157EA4117EB1C2CB54ECA2675024A4CF425C6250'
+    'Countdown.CSharp.Tests.ps1' = '52FE7469884C5F495B0695EA41B2892000A31A009D3391D58074E78010743923'
     'tools\Build-MainDayOrnamentScene.ps1' = '1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036'
     'tools\MainDecorationSceneBands.psd1' = '9DAEDF905F2FD6A0E8396E8718A06B115566EA4A8799354347E3A30D2E41C6B7'
     'tools\Test-MainDayOrnamentScene.ps1' = '2291AA01AB03161F8500B98E68335F55BD2946795EBE0341687480179563BF81'
@@ -197,7 +179,7 @@ $script:nonAssetHashes = [ordered]@{
     'CountdownLauncher.exe' = '4B4C66274278049FF185C7824685D1B5A85F5DA10557F70A1D7E458778066440'
     'CountdownLauncher.cs' = 'FF4602D8C63A42C1237855B7CF787F47A8F09CEA4F49D9006F777A367BBFDC42'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
-    'assets\floating-plush\SOURCES.md' = '7B6A95A1EADEA0ED9A9FD4C44128BBE2F05F9D2C2675AF37998133C6228F5846'
+    'assets\floating-plush\SOURCES.md' = '0F17E6B2C45AA160A5B6D69135C7FB9BCCBE774B4E5C656908D01D9B6643B272'
     'holiday-data\2026.json' = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
     'holiday-data\README.md' = 'DBACB482409A7CFD0845C1D26BE49C67B93C8A678E11EACA8BA4047C228716DF'
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
@@ -208,6 +190,10 @@ $script:nonAssetHashes = [ordered]@{
     'assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
     'assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
     'assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
+    # #231：三张派生姿态参考图只作悬浮窗视觉基线 sourceBinding 输入，随发布（验证）包分发但不装进应用。
+    'assets\floating-plush\floating-plush-mymelody-reference.png' = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
+    'assets\floating-plush\floating-plush-cinnamoroll-reference.png' = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
+    'assets\floating-plush\floating-plush-kuromi-reference.png' = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
     'global.json' = 'B132D105648C7DBE49F2C391FE0B9898027E470DDC7CFD4D7239AF5DF63401FA'
     'src\MinminCountdown.Core\CalendarOccurrenceCalculator.cs' = 'DCDC8D652A32A01914EBCBA9E9FCA55762AC9CCC8DF6BC5968D9F8168845FF66'
     'src\MinminCountdown.Core\MinminCountdown.Core.csproj' = 'D8CB86FE56DC5E8AB7C61BCBB920969667AA80EBD65E88C33B1590B61338390B'
@@ -221,7 +207,7 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\App.xaml.cs' = '3895FAFA593C235C72A6B9BBE7D5021F62C14A5607F2C5B754C14CEC519E9FD8'
     'src\MinminCountdown\ApplicationSession.cs' = 'D87A95A65905C7A05533AFB35F44DCAF7AC5F0A12B2B7260BBD299907933BDC4'
     'src\MinminCountdown\ApplicationTheme.cs' = '8C5294EE7D4734CD9FB70651367AFB8B3B93419984EA7D8FD734602847B09E52'
-    'src\MinminCountdown\ApplicationValidation.cs' = '1C6B7DE097ADD47EC6385433D7DBFCBDDDD8B3AF24E2D2C6AE8FEE8E0E418B78'
+    'src\MinminCountdown\ApplicationValidation.cs' = '9EE93A629AD1CCFCFAA364FDA1E9BB15B84180C70BED2445340F55925EEE6E6B'
     'src\MinminCountdown\DesktopWorkspace.cs' = 'BDF3410B3944CC5A59F3DC4E87C5F9B2B8D34F1896E22529DBEC3B2A4F5A18BC'
     'src\MinminCountdown\DiagnosticLogger.cs' = '234EB941A3F13FF23DB6D58B96A1783FD7C9D7A23BA2B87EAAC0D0CE4762A241'
     'src\MinminCountdown\DwmWindowChrome.cs' = '8D535ABC40E5903F454C5806BA6EBD2EE844E59843778235FC6FDB057C0D2BBA'
@@ -237,8 +223,8 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\HostOptions.cs' = '4C3BB5ED222319195A459C0BA4323A49EAB03D119250E926AFE988F25339A4F3'
     'src\MinminCountdown\InstanceActivation.cs' = '26A31C9A31EC7FF860E3102DBE23EFD840810CD31FDE0F232B91421B2F16D7CE'
     'src\MinminCountdown\MainWindow.xaml' = 'B72A527286BD2BE3FB2BD32540D6CC0F20B7DE20E59CA44CC25888288A06414F'
-    'src\MinminCountdown\MainWindow.xaml.cs' = 'F68D6DEE519674970D7B100DCE916CD91ED793EB59812D64F4FCE4F9EDFE82EB'
-    'src\MinminCountdown\MinminCountdown.csproj' = '521E14DE2DA1A271CD2B989240FB63D13BB2F8537971D5338B889974CF2A1E36'
+    'src\MinminCountdown\MainWindow.xaml.cs' = 'DF3982290C46E61D7948B4018EB2778BF80C8CC35BAE1400B06C1AEEE35A2B30'
+    'src\MinminCountdown\MinminCountdown.csproj' = '2CE8992128E23CEB81F981776BC37987362D3649C791BFF26F28C1A993184C72'
     'src\MinminCountdown\MotionBehavior.cs' = 'AFC949EB99719C2B0F14C24FAC3AFC7BEF7166D2A08A29B8FB9A523AFD767B32'
     'src\MinminCountdown\ReminderCenterViewModel.cs' = '908ACB085AF79BC64448F988F717C57AEDE0C6C1FD906E0412975D59D0E03784'
     'src\MinminCountdown\ReminderEditing.cs' = '952F7935F4971A7BDFA145938525A7E7D14F8CE4305EA8ECEC52F4AA5E2FB138'
@@ -250,9 +236,9 @@ $script:nonAssetHashes = [ordered]@{
     'src\MinminCountdown\SettingsRecoveryWindow.cs' = 'CF0159D4DB2DE8DDA837D491A209F1E9E6718E4A7B48C76194FD96BF2806EBEE'
     'src\MinminCountdown\TrayIconHost.cs' = '1B815B8B2F9BE86184A0CD14A4BA2D2BBFC0CB9B7878A674345F01965362F5B6'
     'src\MinminCountdown\UiControls.cs' = '54B9556DAEE237214228B78A069E7E5AE5951358205945665C63FFAA77243B8E'
-    'src\MinminCountdown\ValidationExercises.cs' = '97D0C670A8C9F455D9603645453CF23A0A9E710192388E35F70D628FCAD297AB'
-    'src\MinminCountdown\ValidationReport.cs' = 'BD108AB8AD2735C054FADAC20B467B4C30086CFABB0EEB5151B4A7E84EB62604'
-    'src\MinminCountdown\ValidationReportContract.cs' = 'F949B43D7CBD00E9EDAF77D20BD771444F13D4F756B7720DD22C523D04AFF595'
+    'src\MinminCountdown\ValidationExercises.cs' = '583F316742A99F51FBD88300ADC4E82563148F4B8763375EF3D04A78940DB97A'
+    'src\MinminCountdown\ValidationReport.cs' = 'A6B966176F5883A30DC84A589626E89115FB66AA949528AA9D298D36A8C9BF3A'
+    'src\MinminCountdown\ValidationReportContract.cs' = 'A60B6F5AEB944181712CF8F0A088D32726B76DC0054BEE0B6F06B6B9FBDA5188'
     'src\MinminCountdown\VisualReferenceBaseline.cs' = 'DF0E749EA0D7234AFB6E850AF9F17B46BBB5EE0ACDE11083725FD2B08008FB61'
     'src\MinminCountdown\WindowValidationScenarios.cs' = '889DBE81FAE7CE8C1E9763868F24B68C866056C2A88A5D09C3B58352A1E9FF5E'
 }
@@ -476,7 +462,11 @@ function New-CountdownReleaseContractSnapshot {
         'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
         'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
         'app\assets\floating-plush\floating-plush-kuromi-front.png',
-        'app\assets\floating-plush\floating-plush-kuromi-pose.png'
+        'app\assets\floating-plush\floating-plush-kuromi-pose.png',
+        # #231：参考图自本版起不再随应用安装，清理既有安装的残留副本。
+        'app\assets\floating-plush\floating-plush-mymelody-reference.png',
+        'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+        'app\assets\floating-plush\floating-plush-kuromi-reference.png'
     )
     $compatibilityFixtures = @('Countdown.App.psm1') + $officialCharacterAssets + $script:legacyFloatingRegressionAssets
     $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys) + @($script:buildOutputPackageFiles)

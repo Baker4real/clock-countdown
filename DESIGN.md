@@ -471,7 +471,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役四帧与场景对应（v32 基线 `assets/ui-references/floating-window/520x390/2026-10-09-v32/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
+现役四帧与场景对应（v33 基线 `assets/ui-references/floating-window/520x390/2026-10-10-v33/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -524,11 +524,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-09-19，#157 重拍与探针确定性收口）：#157 把 #151–#156 遗留的 CSharp 套件夹具红 `FloatingReferenceViewportStatesMatch` 定性为探针缺陷并按根因修复：悬浮视口右缘的旧比较口径 `bodyViewport.X + ViewportWidth` 把 WPF 滚动条列宽计入视口，而该列宽在本地样式 `Width=10` 之外仍被系统滚动条度量撑大（Windows 滚动条度量：100% 缩放 17 DIP、125% 缩放 17.6 DIP），使「卡右缘 ≤ 视口右缘 + 0.25」成为会话显示缩放的函数（#157 插桩实测：同一几何下 125% 缩放红 0.55 DIP、100% 缩放仅过 0.05 DIP，§11 漂移族），与产品几何无关。修复后该比较改为确定性口径——滚动内容槽右缘（`bodyViewport.X + ActualWidth`，只由 520 外壳固定边距决定）扣除 §10 设计命中轨宽（模板 `FloatingScrollBarHitRail`，应用自有几何），滚动条隐藏时零扣除；新增 `FloatingViewportGeometryGateIsolationBehavior` 反例门禁钉住该边界语义（卡/印记/快速新增越界即红、滚动条隐藏零扣除、边界容差精确到 0.25），并以源码契约钉住捕获方法不得回到 `ViewportWidth` 口径。真实滚动条列宽可宽于 10 DIP 命中轨（系统度量、透明不可见），属观察事实记录，不改变可视基线几何。v22 全部 12 帧与双 manifest 按现役 Aliased+Ideal 口径在独立隔离会话整套重拍（归档于 `run-evidence\clock-countdown-issue-157-closure\v22-prev-20260919\`）：12 帧与重拍前逐字节一致、双 manifest 内容零差异（主窗聚合 `3C6480EB2FE83ACC4BE4383F6093AFBBECFDBF5E55878DB930A011521D265B4D`、悬浮窗聚合 `AB30954E10800E46B863DEC0FBC93DA9E345CA0DEB1DEDF364910440550A2686`），证明该修复渲染中性、基线稳定档位可复现。提醒中心继续无像素帧，父票对该表面的验收由代码探针覆盖且全真（`ReminderCenterEscapeFocusesAcknowledge`、`ReminderCenterTwoRowActionsLayout`、`ReminderCenterEntryVisualIdentity`、`ReminderCenterTypographyWeightWhitelist`、`ReminderCenterRepresentativeCaptureRendered` 与设置恢复壳 `SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette`），未静默跳过。
 
-1. #189 的 WPF 改版使用纯日间 **v32** 真实渲染系列，版本目录为 `2026-10-09-v32`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+当前状态（2026-10-10，#231 重拍）：#231 图片解码与随包资产瘦身——主窗口两张整页装饰 PNG 改为首次显示只解码当前页、切换到另一页时按需解码（解码尺寸等于原生 1165×1350，渲染像素不变），三张 sanrio 立绘按 92×64 空态吉祥物显示盒的受限边解码（角色背景/面板兜底层共用同一解码结果，生产环境兜底层不显示），`floating-plush-*-reference.png` 三张派生姿态参考图不再随 `app` 安装（仅作悬浮 sourceBinding 哈希输入留在仓库与验证包，既有安装经 RetiredRuntimeFiles 清理）。`MainWindow.xaml.cs` 与 `MinminCountdown.csproj` 随本次改动进入双 manifest `sourceBinding` 哈希更新，故按现役 Aliased+Ideal 口径新开 `2026-10-10-v33` 目录整套重拍 12 帧与双 manifest：主窗聚合 SHA-256 `F4BD7E4FCD7BA3BC089A98B54901F03DFA06853C8442B901FD2A5B3D689CE410`，悬浮窗聚合 `637F502A762AC1400DCC104E6A5E89F737D959C9628C829309EB691980034FDD`，双 manifest 绑定的 `app/MinminCountdown.exe` SHA-256 为 `785ECBDA5FA48535A786DCB4F559A1720D1CF07B0B4CEEE3154D299BE8924D37`。与 v32 逐帧比对：10/12 帧逐字节一致（装饰图按原生尺寸解码，渲染等价）；仅 `main-day-countdowns-empty` 与 `main-day-notes-empty` 两帧在空态吉祥物区域有差异（分别 1095 像素、最大通道差 103、bbox (542,1060)-(624,1099)；1074 像素、最大通道差 100、bbox (554,896)-(607,958)），成因为 92×64 解码时重采样替代全尺寸解码+渲染时重采样，吉祥物构图与位置不变，属预期内基线迁移，逐帧旧件保留在 `2026-10-09-v32/` 归档目录。
 
-2. v32 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-09-v32/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v32 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v32。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+1. #189 的 WPF 改版启用纯日间真实渲染系列；现役版本为 **v33**（#231 重拍），版本目录为 `2026-10-10-v33`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v33 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-10-v33/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v33 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22 与 v32 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v33。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

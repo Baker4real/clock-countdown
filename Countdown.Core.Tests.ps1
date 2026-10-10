@@ -3593,9 +3593,6 @@ $expectedBuildAssets = @(
     'sanrio-official-mymelody.png=>app\assets\sanrio-official-mymelody.png',
     'sanrio-official-cinnamoroll.png=>app\assets\sanrio-official-cinnamoroll.png',
     'sanrio-official-kuromi.png=>app\assets\sanrio-official-kuromi.png',
-    'assets\floating-plush\floating-plush-mymelody-reference.png=>app\assets\floating-plush\floating-plush-mymelody-reference.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-reference.png=>app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
-    'assets\floating-plush\floating-plush-kuromi-reference.png=>app\assets\floating-plush\floating-plush-kuromi-reference.png',
     'assets\floating-plush\component-day-outer-shell.png=>app\assets\floating-plush\component-day-outer-shell.png',
     'assets\floating-plush\component-day-header-blank.png=>app\assets\floating-plush\component-day-header-blank.png',
     'assets\floating-plush\component-day-card-blank.png=>app\assets\floating-plush\component-day-card-blank.png',
@@ -3618,11 +3615,11 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 529 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 525 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 526 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 522 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 60 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal 57 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight helper'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
@@ -3630,7 +3627,7 @@ Assert-Equal $true ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContr
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Test-CountdownBuildPreflight.ps1') 'PowerShell build preflight entry point remains integrity protected'
 Assert-Equal $true ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Release package keeps the design contract read by remote C# tests'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('DESIGN.md') 'Design contract remains integrity protected'
-Assert-Equal 12 @($releaseContract.BuildAssets).Count 'Release contract declares twelve explicit application asset mappings'
+Assert-Equal 9 @($releaseContract.BuildAssets).Count 'Release contract declares nine explicit application asset mappings'
 $expectedInstalledSupportFiles = @(
     'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',
@@ -3679,7 +3676,19 @@ foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Offline holiday data is installed: $offlineHolidayFile"
 }
-Assert-Equal 20 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
+Assert-Equal 23 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
+foreach ($verificationOnlyReference in @(
+        'assets\floating-plush\floating-plush-mymelody-reference.png',
+        'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+        'assets\floating-plush\floating-plush-kuromi-reference.png'
+    )) {
+    $installedReference = $verificationOnlyReference -replace '^assets\\', 'app\assets\'
+    Assert-Equal $true ($verificationOnlyReference -in @($releaseContract.PackageFiles)) "Plush reference stays in the release (verification) package: $verificationOnlyReference"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($verificationOnlyReference) "Plush reference remains integrity protected: $verificationOnlyReference"
+    Assert-Equal $false ($installedReference -in @($releaseContract.PackageFiles)) "Plush reference no longer ships inside the application: $installedReference"
+    Assert-Equal $false ($installedReference -in @($releaseContract.InstalledFiles)) "Plush reference is not installed as a runtime file: $installedReference"
+    Assert-Equal $true ($installedReference -in @($releaseContract.RetiredRuntimeFiles)) "Plush reference is cleaned from existing installations: $installedReference"
+}
 Assert-Equal ($expectedBuildAssets -join ',') ($actualBuildAssets -join ',') 'Release contract exposes the exact build asset mappings'
 Assert-Equal ($expectedCompatibilityFixtures -join ',') (@($releaseContract.CompatibilityFixtureFiles) -join ',') 'Release contract exposes the exact compatibility fixtures'
 Assert-Equal $true ('Countdown.TransactionAcceptance.psm1' -in @($releaseContract.PackageFiles)) 'Transaction acceptance is packaged'
@@ -3702,14 +3711,14 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-09-v32\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v32 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-10-10-v33\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v33 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-10-09-v32\\manifest\.json').Count) `
-    'Validation suite pins the main-window visual manifest to the current v32 baseline'
+        'assets\\ui-references\\main-window\\1165x1350\\2026-10-10-v33\\manifest\.json').Count) `
+    'Validation suite pins the main-window visual manifest to the current v33 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
     'Validation suite no longer references the retired main-window v17 baseline'
@@ -3735,8 +3744,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-09-v32\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-09-v32\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-10-v33\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-10-v33\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3745,19 +3754,19 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-09-v32'
+        ExpectedVersion = '2026-10-10-v33'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-09-v32/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-10-v33/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-09-v32'
+        ExpectedVersion = '2026-10-10-v33'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3768,7 +3777,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-representative',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-09-v32/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-10-v33/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {

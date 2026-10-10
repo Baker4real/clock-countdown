@@ -4762,7 +4762,7 @@ internal static class ValidationExercises
         }
     }
 
-    public static bool RunReminderCenterEnterActsOnFocusedEntryBehavior()
+    public static bool RunReminderCenterEnterUsesNativeButtonActivationBehavior()
     {
         var dueUtc = new DateTimeOffset(2036, 5, 14, 1, 0, 0, TimeSpan.Zero);
         var settingsPath = Path.Combine(
@@ -4817,7 +4817,10 @@ internal static class ValidationExercises
                 VisualDescendants<Button>(center).All(button => !button.IsDefault),
                 "提醒中心按钮不应再声明 IsDefault 默认按钮。");
 
+            // #215：窗口级不再拦截 Enter——焦点在条目按钮上时，按在窗口上的 Enter 不处置任何条目。
             var snoozeBeta = FindReminderEntryButton(center, keyBeta, "稍后提醒：");
+            center.Activate();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Keyboard.Focus(snoozeBeta);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
@@ -4825,29 +4828,234 @@ internal static class ValidationExercises
                 "Enter 前键盘焦点未落在条目乙的稍后提醒按钮。");
             WindowValidationInput.RaiseKey(center, Key.Enter);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                session.Current.ReminderStates[ruleBeta.Id].ActiveSnooze is null &&
+                center.IsSnoozeEnabled(keyBeta),
+                "按在窗口上的 Enter 不应处置焦点条目。");
+            // 焦点离开条目后按 Enter 同样不处置。
+            Keyboard.ClearFocus();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            WindowValidationInput.RaiseKey(center, Key.Enter);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                session.Current.ReminderStates[ruleBeta.Id].ActiveSnooze is null,
+                "焦点离开条目后 Enter 不应处置任何条目。");
+
+            // 按钮键盘激活交给控件原生行为：按在聚焦按钮自身的 Enter 触发该按钮命令。
+            Keyboard.Focus(snoozeBeta);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                ReferenceEquals(Keyboard.FocusedElement, snoozeBeta),
+                "Enter 前键盘焦点未落回条目乙的稍后提醒按钮。");
+            WindowValidationInput.RaiseKey(snoozeBeta, Key.Enter);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var stateBeta = session.Current.ReminderStates[ruleBeta.Id];
             Must(
                 coordinator.ActiveEntryCount == 1 &&
                 stateBeta.ActiveSnooze?.OccurrenceKey ==
                     ReminderOccurrenceKey.Create(ruleBeta, dueUtc).ToString() &&
                 stateBeta.ActiveSnooze.SnoozeUntilUtc == dueUtc.AddMinutes(10),
-                "焦点条目上的 Enter 没有触发该条目的 10 分钟稍后提醒。");
+                "聚焦按钮上的 Enter 没有原生触发该条目的 10 分钟稍后提醒。");
             Must(
                 session.Current.ReminderStates[ruleAlpha.Id].ActiveSnooze is null &&
                 center.IsAcknowledgeEnabled(keyAlpha),
-                "焦点外条目甲被 Enter 误处置。");
+                "焦点外条目甲被误处置。");
 
             var acknowledgeAlpha = FindReminderEntryButton(center, keyAlpha, "知道了：");
             Keyboard.Focus(acknowledgeAlpha);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
-            WindowValidationInput.RaiseKey(center, Key.Enter);
+            WindowValidationInput.RaiseKey(acknowledgeAlpha, Key.Enter);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
                 coordinator.ActiveEntryCount == 0 &&
                 coordinator.ActiveWindowCount == 0 &&
                 session.Current.ReminderStates[ruleAlpha.Id].LastDispositionOccurrenceKey ==
                     ReminderOccurrenceKey.Create(ruleAlpha, dueUtc).ToString(),
-                "焦点知道了按钮上的 Enter 没有确认最后一条并收起空中心。");
+                "聚焦知道了按钮上的 Enter 没有原生确认最后一条并收起空中心。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterArrivalKeepsForegroundAndFlashesTaskbarBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 6, 22, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-arrival-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心到达不抢焦点条目",
+                    new DateTime(2036, 6, 22),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立到达条目。");
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心到达二次条目",
+                    new DateTime(2036, 6, 22),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(dueUtc.AddMinutes(15)),
+                    out _),
+                "无法建立到达二次条目。");
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            center.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 1 && center.IsVisible,
+                "到达提醒没有进入可见提醒中心。");
+            // #215：出现时不激活、不抢焦点、不持续置顶；显示在任务栏且标题带条目数。
+            Must(
+                !center.ShowActivated && !center.Topmost && center.ShowInTaskbar,
+                "提醒中心出现时必须不激活、不置顶并显示在任务栏。");
+            Must(
+                !center.IsActive &&
+                (Keyboard.FocusedElement is not DependencyObject focused ||
+                 !center.IsAncestorOf(focused)),
+                "提醒中心到达不得抢占激活态或键盘焦点。");
+            Must(
+                center.Title.Contains("1 条", StringComparison.Ordinal),
+                "提醒中心任务栏标题必须携带条目数。");
+            Must(
+                center.TaskbarFlashRequestCount >= 1,
+                "未激活时新提醒到达必须请求任务栏闪烁。");
+
+            // 用户已激活窗口时，后续到达不再闪烁。
+            center.Activate();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(center.IsActive, "到达探针未能激活提醒中心。");
+            clock.UtcNow = dueUtc.AddMinutes(15);
+            coordinator.Tick(dueUtc.AddMinutes(15));
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                center.TaskbarFlashRequestCount == 1 &&
+                center.Title.Contains("2 条", StringComparison.Ordinal),
+                "已激活的提醒中心再次到达不应重复闪烁任务栏。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterMinimizeToTaskbarPreservesEntriesBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 7, 8, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-minimize-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心收起条目甲",
+                    new DateTime(2036, 7, 8),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立收起条目甲。");
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心收起条目乙",
+                    new DateTime(2036, 7, 8),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立收起条目乙。");
+            var ruleAlpha = session.Current.Notes
+                .Single(note => note.Text == "提醒中心收起条目甲")
+                .ReminderRules.Single();
+            var keyAlpha = new ActiveReminderOccurrenceKey(ruleAlpha.Id, dueUtc);
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            center.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsAcknowledgeEnabled(keyAlpha),
+                "两条到点提醒没有全部进入可处置状态。");
+
+            // #215：头部「收起」按钮把窗口最小化到任务栏，条目、标题计数与关闭守卫全部保留。
+            var minimize = VisualDescendants<Button>(center).FirstOrDefault(button =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderCenterMinimizeToTaskbar",
+                    StringComparison.Ordinal)) ??
+                throw new InvalidOperationException("提醒中心头部缺少「收起」按钮。");
+            Must(
+                minimize.Content is StackPanel content &&
+                content.Children.Count == 2 &&
+                content.Children[0] is System.Windows.Shapes.Path &&
+                content.Children[1] is TextBlock label &&
+                string.Equals(label.Text, "收起", StringComparison.Ordinal),
+                "「收起」按钮必须是图标加「收起」文字。");
+            Must(
+                string.Equals(
+                    AutomationProperties.GetName(minimize),
+                    "收起提醒中心到任务栏",
+                    StringComparison.Ordinal),
+                "「收起」按钮缺少可访问名。");
+
+            minimize.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.WindowState == WindowState.Minimized && center.IsVisible,
+                "点击「收起」后窗口必须最小化且保持可见。");
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsAcknowledgeEnabled(keyAlpha) &&
+                center.Title.Contains("2 条", StringComparison.Ordinal),
+                "收起后条目与任务栏标题计数必须保留。");
+            center.Close();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.IsVisible && center.WindowState == WindowState.Minimized,
+                "有条目时收起态仍必须拒绝直接关闭。");
+
+            center.WindowState = WindowState.Normal;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.WindowState == WindowState.Normal &&
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsAcknowledgeEnabled(keyAlpha),
+                "从任务栏恢复后条目必须完好。");
             return true;
         }
         finally
@@ -9178,7 +9386,7 @@ internal static class ValidationExercises
         new(
             input.TabTraversalWorks,
             input.CloseGuardWorks,
-            input.InitialFocusAndAccessibleNameWork,
+            input.ShowPreservesFocusAndAccessibleName,
             input.EscapeFocusesAcknowledge);
 
     public static bool RunReminderCenterKeyboardGateIsolationBehavior()
@@ -9193,8 +9401,8 @@ internal static class ValidationExercises
             passing with { CloseGuardWorks = false },
             nameof(ReminderCenterKeyboardGateResults.CloseGuardWorks));
         VerifyOnlyReminderCenterKeyboardGateFails(
-            passing with { InitialFocusAndAccessibleNameWork = false },
-            nameof(ReminderCenterKeyboardGateResults.InitialFocusAndAccessibleNameWork));
+            passing with { ShowPreservesFocusAndAccessibleName = false },
+            nameof(ReminderCenterKeyboardGateResults.ShowPreservesFocusAndAccessibleName));
         VerifyOnlyReminderCenterKeyboardGateFails(
             passing with { EscapeFocusesAcknowledge = false },
             nameof(ReminderCenterKeyboardGateResults.EscapeFocusesAcknowledge));
@@ -11294,13 +11502,13 @@ internal sealed record SecondaryWindowTypographyGateResults(
 internal sealed record ReminderCenterKeyboardGateInputs(
     bool TabTraversalWorks,
     bool CloseGuardWorks,
-    bool InitialFocusAndAccessibleNameWork,
+    bool ShowPreservesFocusAndAccessibleName,
     bool EscapeFocusesAcknowledge);
 
 internal sealed record ReminderCenterKeyboardGateResults(
     bool TabTraversalWorks,
     bool CloseGuardWorks,
-    bool InitialFocusAndAccessibleNameWork,
+    bool ShowPreservesFocusAndAccessibleName,
     bool EscapeFocusesAcknowledge)
 {
     public bool AllPassed => FailedChecks.Count == 0;
@@ -11309,7 +11517,7 @@ internal sealed record ReminderCenterKeyboardGateResults(
     {
         (nameof(TabTraversalWorks), TabTraversalWorks),
         (nameof(CloseGuardWorks), CloseGuardWorks),
-        (nameof(InitialFocusAndAccessibleNameWork), InitialFocusAndAccessibleNameWork),
+        (nameof(ShowPreservesFocusAndAccessibleName), ShowPreservesFocusAndAccessibleName),
         (nameof(EscapeFocusesAcknowledge), EscapeFocusesAcknowledge)
     }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
 }

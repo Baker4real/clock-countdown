@@ -980,9 +980,15 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             }
         }
 
-        if (added && _window?.IsVisible != true)
+        if (added)
         {
-            ShowCenter();
+            if (_window?.IsVisible != true)
+            {
+                ShowCenter();
+            }
+
+            // #215：窗口可见但未激活时闪烁任务栏按钮，不抢焦点。
+            _window?.NotifyReminderArrived();
         }
     }
 

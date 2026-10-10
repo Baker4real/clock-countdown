@@ -4,10 +4,12 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Windows.Data;
+using System.Runtime.InteropServices;
 using MinminCountdown.Core;
 using Path = System.Windows.Shapes.Path;
 
@@ -18,6 +20,7 @@ internal sealed class ReminderCenterWindow : Window
     private readonly StackPanel _itemsHost;
     private readonly TextBlock _countText;
     private readonly Button _acknowledgeAll;
+    private readonly Button _minimizeToTaskbar;
     private readonly Dictionary<ActiveReminderOccurrenceKey, ReminderCenterEntry> _entries = new();
     private readonly ReminderCenterViewModel _viewModel;
     private readonly Border _dragHeader;
@@ -28,6 +31,7 @@ internal sealed class ReminderCenterWindow : Window
     private bool _hasManualWindowPlacement;
     private int _nativeWindowDragRequestCount;
     private int _nativeWindowDragCompletionCount;
+    private int _taskbarFlashRequestCount;
 
     public ReminderCenterWindow()
     {
@@ -41,9 +45,10 @@ internal sealed class ReminderCenterWindow : Window
         MinHeight = 360;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.CanResizeWithGrip;
-        ShowInTaskbar = false;
-        ShowActivated = true;
-        Topmost = true;
+        // #215：出现时不激活、不抢焦点、不置顶；显示在任务栏且标题带条目数。
+        ShowInTaskbar = true;
+        ShowActivated = false;
+        Topmost = false;
         Background = Brushes.Transparent;
         AllowsTransparency = true;
         DataContext = _viewModel;
@@ -90,12 +95,31 @@ internal sealed class ReminderCenterWindow : Window
         _acknowledgeAll.SetBinding(
             Button.CommandProperty,
             new Binding(nameof(ReminderCenterViewModel.AcknowledgeAllCommand)));
+        // #215：头部右端「收起」把窗口最小化到任务栏；有条目时关闭守卫不变。
+        _minimizeToTaskbar = UiAccessibility.Name(
+            new Button
+            {
+                Content = CreateIconTextContent(CreateMinimizeIcon("InkBrush"), "收起"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0),
+                Cursor = Cursors.Hand
+            },
+            "收起提醒中心到任务栏");
+        AutomationProperties.SetAutomationId(_minimizeToTaskbar, "ReminderCenterMinimizeToTaskbar");
+        _minimizeToTaskbar.Click += (_, _) => WindowState = WindowState.Minimized;
+        var headerActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        headerActions.Children.Add(_acknowledgeAll);
+        headerActions.Children.Add(_minimizeToTaskbar);
         var headerGrid = new Grid();
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition());
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(_acknowledgeAll, 1);
+        Grid.SetColumn(headerActions, 1);
         headerGrid.Children.Add(titleRow);
-        headerGrid.Children.Add(_acknowledgeAll);
+        headerGrid.Children.Add(headerActions);
         _dragHeader = new Border
         {
             Child = headerGrid,
@@ -151,28 +175,6 @@ internal sealed class ReminderCenterWindow : Window
                 args.Cancel = true;
             }
         };
-        KeyDown += (_, args) =>
-        {
-            if (args.Key != Key.Enter ||
-                Keyboard.FocusedElement is not Button { IsEnabled: true } focused ||
-                !_itemsHost.IsAncestorOf(focused))
-            {
-                return;
-            }
-
-            args.Handled = true;
-            if (focused.Command is { } command)
-            {
-                if (command.CanExecute(focused.CommandParameter))
-                {
-                    command.Execute(focused.CommandParameter);
-                }
-            }
-            else
-            {
-                focused.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, focused));
-            }
-        };
         // #150：有条目时 Esc 不关闭提醒中心，只把焦点移到首条目的「知道了」；
         // 「知道了」被失败态禁用时落到始终可用的「打开来源」。
         KeyDown += (_, args) =>
@@ -186,6 +188,8 @@ internal sealed class ReminderCenterWindow : Window
             FocusEscapeTarget();
         };
         Loaded += (_, _) => ApplyAutomaticPlacementIfNeeded();
+        // #215：初始焦点只在用户真正激活窗口后落下，出现时不得抢焦点。
+        Activated += (_, _) => EnsureInitialFocus();
     }
 
     internal bool HasManualWindowPlacement => _hasManualWindowPlacement;
@@ -678,6 +682,7 @@ internal sealed class ReminderCenterWindow : Window
         }
 
         _itemsHost.Children.Insert(insertionIndex, row);
+        UpdateTitle();
         if (_contentRendered)
         {
             ScheduleRenderedProbe(entry);
@@ -702,6 +707,14 @@ internal sealed class ReminderCenterWindow : Window
         entry.ViewModel.OpenSourceRequested -= OnViewModelOpenSourceRequested;
         _viewModel.Remove(key);
         _itemsHost.Children.Remove(entry.Row);
+        UpdateTitle();
+    }
+
+    private void UpdateTitle()
+    {
+        Title = _entries.Count == 0
+            ? "提醒中心"
+            : $"提醒中心（{_entries.Count} 条）";
     }
 
     internal void SetDeliveryReady(ActiveReminderOccurrenceKey key)
@@ -898,7 +911,8 @@ internal sealed class ReminderCenterWindow : Window
 
     private void EnsureInitialFocus()
     {
-        if (_initialFocusAssigned || !IsVisible)
+        // #215：不激活、不抢焦点——只有窗口已被用户激活时才落初始焦点。
+        if (_initialFocusAssigned || !IsVisible || !IsActive)
         {
             return;
         }
@@ -915,9 +929,36 @@ internal sealed class ReminderCenterWindow : Window
             return;
         }
 
-        Activate();
         Keyboard.Focus(target);
         _initialFocusAssigned = true;
+    }
+
+    internal int TaskbarFlashRequestCount => _taskbarFlashRequestCount;
+
+    // #215：窗口可见但未激活时新提醒到达，闪烁任务栏按钮直到用户切到前台。
+    internal void NotifyReminderArrived()
+    {
+        if (!IsVisible || IsActive)
+        {
+            return;
+        }
+
+        _taskbarFlashRequestCount++;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var info = new FLASHWINFO
+        {
+            cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
+            hwnd = handle,
+            dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG,
+            uCount = 0,
+            dwTimeout = 0
+        };
+        FlashWindowEx(ref info);
     }
 
     private void FocusEscapeTarget()
@@ -1027,6 +1068,22 @@ internal sealed class ReminderCenterWindow : Window
                 "C 7.64,5.36 6,7.92 6,11 L 6,16 L 4,18 L 4,19 L 20,19 L 20,18 Z")
         };
         path.SetResourceReference(Shape.FillProperty, fillKey);
+        return path;
+    }
+
+    private static FrameworkElement CreateMinimizeIcon(string strokeKey)
+    {
+        var path = new Path
+        {
+            Width = 13,
+            Height = 13,
+            Stretch = Stretch.Uniform,
+            Data = Geometry.Parse("M 2.5,12 L 21.5,12"),
+            StrokeThickness = 2,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round
+        };
+        path.SetResourceReference(Shape.StrokeProperty, strokeKey);
         return path;
     }
 
@@ -1191,6 +1248,23 @@ internal sealed class ReminderCenterWindow : Window
 
         public bool RenderedRaised { get; set; }
     }
+
+    private const uint FLASHW_TRAY = 0x2;
+    private const uint FLASHW_TIMERNOFG = 0xC;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FLASHWINFO
+    {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
 }
 
 internal sealed class ReminderCenterEntryEventArgs(ActiveReminderOccurrenceKey key) : EventArgs

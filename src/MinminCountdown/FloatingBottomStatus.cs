@@ -18,13 +18,17 @@ internal sealed record FloatingBottomStatusPresentation(
 /// <summary>
 ///     悬浮窗两个工作区（倒计时、便签）共用的底部区域规则：
 ///     月薪大于 0 且日历就绪时显示今日已赚金额；月薪等于 0 且日历就绪时显示手写体鼓励文案；
-///     其余情况显示日历状态文本。便签工作区直接复用本组件，仅鼓励文案可以不同。
+///     日历未就绪时统一显示 <see cref="CalendarUnavailableText" />（#218），其余情况显示日历状态文本。
+///     便签工作区直接复用本组件，仅鼓励文案可以不同。
 /// </summary>
 internal static class FloatingBottomStatus
 {
     public const string CountdownEncouragementText = "加油！美好的事情正在靠近 ~";
 
     public const string NotesEncouragementText = "Have a nice day!";
+
+    // #218 日历未就绪时统一说明影响范围与恢复方式，两个工作区同文案。
+    public const string CalendarUnavailableText = "节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复";
 
     public static FloatingBottomStatusPresentation Resolve(
         decimal? earnings,
@@ -42,6 +46,11 @@ internal static class FloatingBottomStatus
             string.Equals(calendarState, "Ready", StringComparison.Ordinal))
         {
             return new(FloatingBottomStatusKind.Encouragement, encouragementText);
+        }
+
+        if (string.Equals(calendarState, "Unavailable", StringComparison.Ordinal))
+        {
+            return new(FloatingBottomStatusKind.Status, CalendarUnavailableText);
         }
 
         return new(FloatingBottomStatusKind.Status, calendarStatusText);

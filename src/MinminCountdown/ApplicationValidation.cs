@@ -24,6 +24,11 @@ internal static class ApplicationValidation
         // The switch must be set before the first MediaContext is created.
         AppContext.SetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, true);
         EnsureIsolatedValidationDesktop();
+        // #211：窗口几何与工作区解析在验证全程注入确定性大工作区（96 DPI），
+        // 使 1165×1350 首选构图、窗口夹取与基线捕获与机器真实显示拓扑解耦；
+        // 几何探针在其内再注入小工作区并以栈式恢复收口。
+        using var validationWorkArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 1600), 1, 1));
         logger.Info(
             "ValidationRenderMode " +
             $"tier=0x{RenderCapability.Tier:X} " +

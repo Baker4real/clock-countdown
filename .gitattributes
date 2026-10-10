@@ -7,3 +7,4 @@
 *.psd1 text eol=lf
 *.psm1 text eol=lf
 *.xaml text eol=lf
+holiday-data/LICENSE.txt text eol=lf

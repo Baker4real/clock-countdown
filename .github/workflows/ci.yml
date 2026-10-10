@@ -93,3 +93,9 @@ jobs:
           & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.TransferLedger.Tests.ps1
           $testExit = $LASTEXITCODE
           if ($testExit -ne 0) { exit $testExit }
+
+      - name: Test deployment status and checkout bytes
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File ./tools/Test-OfficeDeploymentStatus.ps1 -Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

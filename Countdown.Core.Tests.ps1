@@ -3829,7 +3829,7 @@ $deploySnapshotExportIndex = if ($deployCommitGateIndex -ge 0) {
 else { -1 }
 $deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $sourceRoot')
 $transferLedgerImportIndex = $deploySource.IndexOf("-Stage '传输账本模块导入'")
-$credentialImportIndex = $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'")
+$credentialImportIndex = $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'", $transferLedgerImportIndex)
 Assert-Equal $true (
     $deployValidationExitIndex -ge 0 -and
     $deployCandidateValidationIndex -gt $deployValidationExitIndex -and
@@ -4406,9 +4406,9 @@ $adapterCalls = @(
             $node.GetCommandName() -eq 'New-CountdownRemoteDeploymentReadbackSshAdapter'
         }, $true)
 )
-Assert-Equal 1 $adapterCalls.Count 'Office deploy constructs one independent readback SSH adapter'
+Assert-Equal 2 $adapterCalls.Count 'Office deploy and read-only recheck each construct an independent readback SSH adapter'
 $adapterParameterNames = @(
-    $adapterCalls[0].CommandElements |
+    $adapterCalls[-1].CommandElements |
         Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } |
         ForEach-Object { [string] $_.ParameterName }
 )

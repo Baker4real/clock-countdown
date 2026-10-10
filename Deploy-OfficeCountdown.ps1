@@ -3,6 +3,9 @@
 [CmdletBinding()]
 param(
     [switch] $ValidateOnly,
+    [switch] $StatusOnly,
+    [switch] $RecheckLatest,
+    [switch] $Redeploy,
     [Parameter(DontShow)] [switch] $LoadFunctionsOnly
 )
 
@@ -1095,7 +1098,105 @@ function Write-OfficeSshClientIdentityEvidence {
     $path
 }
 
+function Get-OfficeDeploymentStatus {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [ValidatePattern('^[0-9a-fA-F]{40}$')] [string] $Commit,
+        [string] $EvidenceBase = 'D:\agents\run-evidence\clock-countdown-deploy'
+    )
+    $runs = @()
+    $commitRoot = Join-Path $EvidenceBase $Commit.Substring(0, 7)
+    if (Test-Path -LiteralPath $commitRoot -PathType Container) {
+        $runs = @(Get-ChildItem -LiteralPath $commitRoot -Directory |
+            Where-Object Name -Match '^\d{17}-[0-9a-f]{8}$' | Sort-Object Name -Descending)
+    }
+    $results = @(foreach ($run in $runs) {
+        $result = [ordered]@{ RunId=$run.Name; EvidenceRoot=$run.FullName; State='Incomplete'; VerifiedAtUtc=$null; Reason=$null; SuccessReceipt=$null; Binding=$null; ExecutableSha256=$null }
+        try {
+            if (($run.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw '证据目录不得是 reparse point。' }
+            $sourceArchive = Join-Path $run.FullName 'commit-source.zip'
+            # git archive ZIP ends with the 22-byte EOCD and a 40-byte commit comment.
+            # Read that footer without depending on newer ZipArchive.Comment runtimes.
+            $archiveItem = Get-Item -LiteralPath $sourceArchive -Force
+            if (($archiveItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw '提交快照不得是 reparse point。' }
+            $stream = [IO.File]::OpenRead($sourceArchive)
+            try {
+                if ($stream.Length -lt 62) { throw '提交快照缺少 Git ZIP footer。' }
+                [void] $stream.Seek(-62, [IO.SeekOrigin]::End)
+                $footer = [byte[]]::new(62)
+                if ($stream.Read($footer,0,62) -ne 62 -or [BitConverter]::ToUInt32($footer,0) -ne 0x06054b50 -or
+                    [BitConverter]::ToUInt16($footer,20) -ne 40 -or
+                    [Text.Encoding]::ASCII.GetString($footer,22,40) -cne $Commit) { throw '提交快照的完整 commit 与目标不一致。' }
+            } finally { $stream.Dispose() }
+            $success = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson (Read-OfficeEvidenceText $run.FullName 'remote-deployment-success.json')
+            # Read data literals only; never execute historical scripts or modules.
+            $install = Read-OfficeEvidenceText $run.FullName 'remote-install.ps1' -MaxBytes 1048576
+            $bindingMatch = [regex]::Matches($install, "(?m)^  DeploymentBindingSha256 = '([A-Fa-f0-9]{64})'\r?$")
+            $manifestMatch = [regex]::Matches($install, "(?m)^    \[Convert\]::FromBase64String\('([A-Za-z0-9+/=]+)'\)\)\r?$")
+            if ($bindingMatch.Count -ne 1 -or $manifestMatch.Count -ne 1) { throw '安装脚本的绑定或发布清单不唯一。' }
+            $manifest = [Text.UTF8Encoding]::new($false,$true).GetString([Convert]::FromBase64String($manifestMatch[0].Groups[1].Value)) | ConvertFrom-Json -AsHashtable
+            $exeHash = [string] $manifest['app\MinminCountdown.exe']
+            if ($exeHash -notmatch '^[A-Fa-f0-9]{64}$') { throw '安装清单缺少程序哈希。' }
+            $binding = ConvertFrom-CountdownRemoteDeploymentBindingJson `
+                -Json (Read-OfficeEvidenceText $run.FullName 'deployment-binding.json') `
+                -ExpectedDeploymentBindingSha256 $bindingMatch[0].Groups[1].Value -ExpectedProcessId $success.RuntimeProcessId
+            $readback = ConvertFrom-CountdownRemoteDeploymentReadbackJson `
+                -Json (Read-OfficeEvidenceText $run.FullName 'post-deployment-independent-readback.json') `
+                -ExpectedProcessId $success.RuntimeProcessId -ExpectedExecutableSha256 $exeHash `
+                -ExpectedTokenSha256 $binding.TokenSha256 -ExpectedSettingsSha256 $success.SettingsHashAfter
+            if ($readback.SettingsLength -ne $success.SettingsLengthAfter -or
+                $readback.SettingsMtimeUtc -cne $success.SettingsMtimeUtcAfter -or
+                $readback.SettingsUnchanged -ne $success.SettingsUnchanged) { throw '设置元数据与成功回执不匹配。' }
+            $ledger = Read-OfficeEvidenceText $run.FullName 'transfer-attempts.json' | ConvertFrom-Json -DateKind String
+            $ids = @('deployment-package','remote-install-script','remote-deployment-binding','post-deployment-independent-readback-script','post-deployment-independent-readback')
+            $methods = @('scp','scp','ssh','scp','ssh')
+            if ($ledger.transferAttemptsVersion -cne '1.0' -or @($ledger.attempts).Count -ne 5) { throw '传输账本版本或条目数量不匹配。' }
+            for ($i=0; $i -lt $ids.Count; $i++) {
+                $attempt = $ledger.attempts[$i]
+                if ($attempt.id -cne $ids[$i] -or $attempt.method -cne $methods[$i] -or
+                    $attempt.status -cne 'succeeded' -or $attempt.exitCode -ne 0 -or
+                    $attempt.transferStarted -isnot [bool] -or -not $attempt.transferStarted -or
+                    $attempt.bytesVerified -isnot [bool] -or -not $attempt.bytesVerified -or
+                    $attempt.metrics.bytes -le 0 -or $attempt.metrics.elapsed_seconds -le 0) { throw '传输账本未全部成功。' }
+            }
+            [void] [DateTimeOffset]::Parse($ledger.generatedAtUtc, [Globalization.CultureInfo]::InvariantCulture)
+            $result.State = 'HistoricallyVerified'
+            $result.VerifiedAtUtc = $ledger.generatedAtUtc
+            $result.SuccessReceipt = $success
+            $result.Binding = $binding
+            $result.ExecutableSha256 = $exeHash
+        }
+        catch { $result.Reason = $_.Exception.Message }
+        [pscustomobject] $result
+    })
+    $complete = @($results | Where-Object State -EQ 'HistoricallyVerified' | Select-Object -First 1)
+    [pscustomobject]@{
+        Commit = $Commit
+        State = if ($complete.Count) { 'HistoricallyVerified' } elseif ($runs.Count -eq 0) { 'NotFound' } else { 'Incomplete' }
+        LiveVerified = $false
+        LatestComplete = if ($complete.Count) { $complete[0] } else { $null }
+        Runs = @($results | Select-Object RunId,EvidenceRoot,State,VerifiedAtUtc,Reason)
+    }
+}
+
+function Read-OfficeEvidenceText {
+    param([string] $Root, [string] $Name, [long] $MaxBytes = 32768)
+    $file = Get-Item -LiteralPath (Join-Path $Root $Name) -Force
+    if ($file -isnot [IO.FileInfo] -or $file.Length -gt $MaxBytes -or
+        ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "证据文件无效：$Name" }
+    [Text.UTF8Encoding]::new($false,$true).GetString([IO.File]::ReadAllBytes($file.FullName))
+}
+
+function Write-OfficeDeploymentProgress {
+    param([Parameter(Mandatory)] [string] $Stage)
+    [Console]::Error.WriteLine("[office-deploy] $([DateTime]::UtcNow.ToString('o')) $Stage")
+}
+
 if ($LoadFunctionsOnly) { return }
+
+if (@(@($ValidateOnly,$StatusOnly,$RecheckLatest,$Redeploy) | Where-Object { $_.IsPresent }).Count -gt 1) {
+    throw 'ValidateOnly、StatusOnly、RecheckLatest、Redeploy 不能组合使用。'
+}
 
 if ($ValidateOnly) {
     $releaseContractPath = Join-Path $repoRoot 'Countdown.ReleaseContract.psm1'
@@ -1125,6 +1226,72 @@ if ($ValidateOnly) {
 
 $gitPath = (Get-Command git.exe -CommandType Application -ErrorAction Stop |
     Select-Object -First 1 -ExpandProperty Source)
+$statusCommit = Get-CountdownDeploymentGitScalar -GitPath $gitPath -RepositoryRoot $repoRoot -Arguments @('rev-parse','--verify','HEAD')
+$statusIdentities = New-CountdownDeploymentCommitIdentityManifest -GitPath $gitPath -RepositoryRoot $repoRoot -Commit $statusCommit `
+    -RelativePaths @('Countdown.TransferLedger.psm1','Countdown.RemoteDeployment.psm1')
+Invoke-CountdownDeploymentLockedCommitFile -GitPath $gitPath -RepositoryRoot $repoRoot -Root $repoRoot `
+    -RelativePath 'Countdown.TransferLedger.psm1' -ExpectedIdentity $statusIdentities['Countdown.TransferLedger.psm1'] `
+    -Stage '状态查询依赖校验' -Action {
+        param($lockedLedgerPath,$sha256)
+        Import-Module $lockedLedgerPath -Force -Global | Out-Null
+        Invoke-CountdownDeploymentLockedCommitFile -GitPath $gitPath -RepositoryRoot $repoRoot -Root $repoRoot `
+            -RelativePath 'Countdown.RemoteDeployment.psm1' -ExpectedIdentity $statusIdentities['Countdown.RemoteDeployment.psm1'] `
+            -Stage '状态查询模块校验' -Action { param($lockedPath,$sha256) Import-Module $lockedPath -Force -Global | Out-Null }
+    }
+$deploymentStatus = Get-OfficeDeploymentStatus -Commit $statusCommit
+if ($StatusOnly) {
+    $deploymentStatus | ConvertTo-Json -Depth 8
+    exit 0
+}
+if ($RecheckLatest -or ($null -ne $deploymentStatus.LatestComplete -and -not $Redeploy)) {
+    if ($null -eq $deploymentStatus.LatestComplete) { throw '没有通过本地交叉校验的完整成功记录；只读复核不会启动安装。' }
+    if (-not $RecheckLatest) {
+        [void] (Invoke-CountdownDeploymentGit -GitPath $gitPath -RepositoryRoot $repoRoot -Arguments @('fetch','--no-tags','origin','main'))
+        $published = Get-CountdownDeploymentGitScalar -GitPath $gitPath -RepositoryRoot $repoRoot -Arguments @('rev-parse','--verify','refs/remotes/origin/main')
+        $branch = Get-CountdownDeploymentGitScalar -GitPath $gitPath -RepositoryRoot $repoRoot -Arguments @('branch','--show-current')
+        if ($published -ne $statusCommit -or $branch -ne 'main') { throw '部署目标必须是与 origin/main 一致的 main。' }
+    }
+    $completed = $deploymentStatus.LatestComplete
+    Write-OfficeDeploymentProgress "发现历史成功记录 $($completed.RunId)，验证时间 $($completed.VerifiedAtUtc)；开始只读远端复核"
+    . 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1' | Out-Null
+    $destination = [string] $env:REPLICATOR_OFFICE_SSH_DESTINATION
+    $separator = $destination.LastIndexOf('@')
+    if ($separator -lt 1 -or $separator -ge $destination.Length-1) { throw '受管 office helper 返回的 SSH destination 无效。' }
+    $script:sshOptions = @(
+        '-i', $env:REPLICATOR_OFFICE_SSH_IDENTITY_FILE,
+        '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
+        '-o', "ConnectTimeout=$env:REPLICATOR_OFFICE_SSH_CONNECT_TIMEOUT_SECONDS",
+        '-o', "ConnectionAttempts=$env:REPLICATOR_OFFICE_SSH_CONNECTION_ATTEMPTS",
+        '-o', "UserKnownHostsFile=$env:REPLICATOR_OFFICE_SSH_USER_KNOWN_HOSTS_FILE",
+        '-o', "KexAlgorithms=$env:REPLICATOR_OFFICE_SSH_KEX_ALGORITHMS")
+    $identity = Resolve-OfficeSshClientIdentity
+    $script:sshExecutablePath = $identity.SshPath
+    $remoteRoot = "D:\Codex\deploy\clock-countdown-$($statusCommit.Substring(0,7))-$($completed.RunId)"
+    $checkRoot = Join-Path $completed.EvidenceRoot "rechecks/$([guid]::NewGuid().ToString('N'))"
+    [void] (New-Item -ItemType Directory -Path $checkRoot -Force)
+    $adapter = New-CountdownRemoteDeploymentReadbackSshAdapter -Options $script:sshOptions -Destination $destination `
+        -RemoteRoot $remoteRoot -ScpExecutablePath $identity.ScpPath -ScpOptions $script:sshOptions `
+        -CommandRunner { param($FileName,$Arguments) Invoke-CountdownExternalCommandProcess -FileName $script:sshExecutablePath -Arguments $Arguments }
+    # Reuse the already uploaded reader. The existing short SSH wrapper checks its hash
+    # against the freshly generated reader before execution. No remote writes or installs.
+    $existingReader = Join-Path $remoteRoot 'post-deployment-independent-readback.ps1'
+    $adapter.UploadIndependentReadbackScript = { param($Context) $existingReader }.GetNewClosure()
+    try {
+        [void] (Invoke-CountdownRemoteDeploymentIndependentReadback `
+            -LedgerPath (Join-Path $checkRoot 'transfer-attempts.json') `
+            -DeploymentBindingEvidencePath (Join-Path $checkRoot 'deployment-binding.json') `
+            -IndependentReadbackEvidencePath (Join-Path $checkRoot 'post-deployment-independent-readback.json') `
+            -RemoteDeploymentBindingPath (Join-Path $remoteRoot 'deployment-binding.json') `
+            -DeploymentBindingSha256 $completed.Binding.DeploymentBindingSha256 -SuccessReceipt $completed.SuccessReceipt `
+            -ExpectedExecutableSha256 $completed.ExecutableSha256 -ExpectedRemoteHost $destination.Substring($separator+1) `
+            -ExpectedRemoteUser $destination.Substring(0,$separator) -Adapter $adapter)
+    }
+    catch { throw "历史部署当前复核失败；未安装、未回滚。证据：$checkRoot；$($_.Exception.Message)" }
+    Write-OfficeDeploymentProgress '只读复核完成；沿用已部署版本'
+    [pscustomobject]@{ Commit=$statusCommit; RunId=$completed.RunId; LiveVerified=$true; VerifiedAtUtc=[DateTime]::UtcNow.ToString('o'); ReusedDeployment=$true; EvidenceRoot=$checkRoot } | ConvertTo-Json
+    exit 0
+}
+Write-OfficeDeploymentProgress "历史证据状态：$($deploymentStatus.State)；开始部署源检查"
 $initialRepositoryState = Assert-CountdownDeploymentRepositoryState `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
@@ -1156,6 +1323,7 @@ $extractRoot = Join-Path $evidenceRoot 'package-check'
 $archive = Join-Path $evidenceRoot 'clock-countdown-windows.zip'
 $transferLedgerPath = Join-Path $evidenceRoot 'transfer-attempts.json'
 New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
+Write-OfficeDeploymentProgress "提交快照与构建：$shortCommit / $runId"
 Export-CountdownDeploymentCommitSnapshot `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
@@ -1283,6 +1451,7 @@ Assert-CountdownDeploymentRepositoryAndManifest `
     -ManifestFirst
 
 $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
+Write-OfficeDeploymentProgress '构建及发布包校验完成；检查远端连接'
 
 Assert-CountdownDeploymentRepositoryAndManifest `
     -GitPath $gitPath `
@@ -1383,6 +1552,7 @@ Invoke-CountdownRecordedScpTransfer `
     -RemoteBytesProbe $remoteBytesProbe | Out-Null
 
 $expectedFileManifestJson = $packageManifest | ConvertTo-Json -Compress
+Write-OfficeDeploymentProgress '部署包上传完成；准备安装控制脚本'
 $expectedFileManifestBase64 = [Convert]::ToBase64String(
     [System.Text.UTF8Encoding]::new($false).GetBytes($expectedFileManifestJson))
 $remoteInstall = @"
@@ -1508,6 +1678,7 @@ finally {
 }
 "@
 try {
+    Write-OfficeDeploymentProgress '上传完成；远端安装及事务验收中'
     $remoteExecutionOutput = @(
         Invoke-OfficeEncodedCommand -ScriptText $remoteInstallInvocation
     )
@@ -1583,6 +1754,7 @@ $remoteExecutionJson = (@($remoteExecutionOutput) | ForEach-Object { [string] $_
 $successReceipt = Write-CountdownRemoteDeploymentSuccessReceipt `
     -Path $successReceiptEvidencePath `
     -Json $remoteExecutionJson
+Write-OfficeDeploymentProgress '远端事务已提交；执行两次独立回读'
 $expectedExecutableSha256 = [string] $releaseContract.IntegrityHashes['app\MinminCountdown.exe']
 $postDeploymentReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter `
     -Options $script:sshOptions `
@@ -1606,4 +1778,5 @@ $postDeploymentReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter
         -ExpectedRemoteHost $officeHost `
         -ExpectedRemoteUser $officeUser `
         -Adapter $postDeploymentReadbackAdapter)
+Write-OfficeDeploymentProgress '部署及独立回读全部完成'
 $successReceipt | ConvertTo-Json -Compress -Depth 4

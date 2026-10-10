@@ -3226,16 +3226,23 @@ public sealed partial class FloatingWindow
                 incomePreferences.WorkEnd)).Succeeded;
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            // 月薪未输入：不渲染金额；日历未就绪路径保持状态文本，就绪路径显示当前工作区的手写体鼓励文案。
+            // 月薪未输入：不渲染金额；渲染结果必须等于底部状态解析对当前日历状态的决定——
+            // 就绪路径是当前工作区的手写体鼓励文案，未就绪路径是 #218 的统一说明文案，
+            // 加载中路径保持日历状态文本。
             var expectedEncouragement = _workspace == WorkspaceKind.Notes
                 ? FloatingBottomStatus.NotesEncouragementText
                 : FloatingBottomStatus.CountdownEncouragementText;
+            var expectedBottomStatusText = FloatingBottomStatus.Resolve(
+                null,
+                0m,
+                _calendar.State,
+                _calendar.StatusText,
+                expectedEncouragement).Text;
             incomeHiddenWithoutSalary =
                 zeroSalaryApplied &&
                 !(IncomeText ?? string.Empty).StartsWith("今日已赚", StringComparison.Ordinal) &&
                 FloatingIncome.Visibility == Visibility.Visible &&
-                (string.Equals(IncomeText, expectedEncouragement, StringComparison.Ordinal) ||
-                 string.Equals(IncomeText, _calendar.StatusText, StringComparison.Ordinal));
+                string.Equals(IncomeText, expectedBottomStatusText, StringComparison.Ordinal);
         }
         finally
         {

@@ -1709,9 +1709,7 @@ public sealed partial class FloatingWindow : Window
         var workspace = _workspace;
         var snapshot = _desktopWorkspace.Snapshot;
         var signature = ComputeRenderSignature(snapshot, workspace, nowUtc);
-        // TDD-RED 临时：禁用签名就地路径，模拟整表重建旧行为，验证探针变红；转绿前必须还原。
-        if (false &&
-            string.Equals(signature, _floatingRenderSignature, StringComparison.Ordinal) &&
+        if (string.Equals(signature, _floatingRenderSignature, StringComparison.Ordinal) &&
             workspace == _renderedWorkspace)
         {
             // #212：签名不变只就地更新剩余时间数字与底部状态（今日已赚）；

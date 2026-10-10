@@ -19,89 +19,98 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 ## 2. 色板与角色
 
-应用固定为单一日间主题：没有夜间色板、没有自动/夜间模式、没有主题切换入口。旧设置中的 `Auto` / `Night` 偏好一律按日间解释。色板取自 5 张 AI 优化稿的实际像素采样（采样口径见 §11）；它是实现选色依据，不是像素门禁的期望值。
+应用固定为单一日间主题：没有夜间色板、没有自动/夜间模式、没有主题切换入口。旧设置中的 `Auto` / `Night` 偏好一律按日间解释。
+
+本节只定义语义角色与用途，不记录色值：现值以 `src/MinminCountdown/App.xaml` 的 Primitive 层为唯一真源（运行时副本 `ApplicationTheme.Tokens` 逐键同步），承载文字、图形或焦点的现值与对比度门槛见 §13.4，允许的同值 alias 见 §13.1。色板方向来自 5 张 AI 优化稿的像素采样（采样口径见 §11），采样值不是像素门禁的期望值。
 
 ### 画布与表面
 
-| 角色 token | 值 | 用途 |
-| --- | --- | --- |
-| `CanvasBrush` | `#FDF3EB` | 主窗口页面画布暖奶油底；页面下缘由装饰 raster 渐深，采样到约 `#FDE8DC` |
-| `CanvasDeepBrush` | `#FDE8DC` | 画布底部渐深端点 |
-| `BackgroundBrush` | `#FDF0E4` | 悬浮窗外壳奶油底 |
-| `CardBrush` | `#FEFCFB` | 主窗口区块卡表面（新增倒计时、新增便签、显示设置、状态区） |
-| `PanelBrush` | `#FFFDFC` | 内嵌输入面、白纸便签卡 |
-| `CardAltBrush` | `#FEF9F5` | 次级区块表面（倒计时列表条目底、次级按钮悬停面） |
-| `StatusBarBrush` | `#FDFAF8` | 窗口底部状态条 |
+| 角色 token | 用途 |
+| --- | --- |
+| `CanvasBrush` | 主窗口页面画布暖奶油底；页面下缘由装饰 raster 渐深到 `CanvasDeepBrush` |
+| `CanvasDeepBrush` | 画布底部渐深端点 |
+| `BackgroundBrush` | 悬浮窗外壳奶油底；主窗口倒计时编辑区与设置区的不透明底层（§4「倒计时紧凑输入」） |
+| `CardBrush` | 主窗口区块卡表面（新增倒计时、新增便签、显示设置、状态区） |
+| `PanelBrush` | 内嵌输入面、白纸便签卡 |
+| `CardAltBrush` | 次级区块表面（倒计时列表条目底、次级按钮悬停面） |
+| `CharacterPanelBrush` | 倒计时页面板底（便签页同位置用 `NoteBrush`） |
+| `StatusBarBrush` | 窗口底部状态条 |
 
 ### 文字与结构线
 
-| 角色 token | 值 | 用途 |
-| --- | --- | --- |
-| `InkBrush` | `#3B190D` | 主文字、区块标题、列表标题、提醒中心标题与来源标签 |
-| `BodyBrush` | `#6B4A3C` | 正文、卡片副标题、字段标签 |
-| `MutedBrush` | `#82665F` | 辅助文字、占位文、单位字、时间戳、数量；#198 调深以满足暖色背景上的文字对比 |
-| `PeachLineBrush` | `#F6DFD3` | 1px 结构边界、区块分隔线、输入框常态边界 |
-| `ActiveBrush` | `#E05A4A` | 悬停与按压反馈、键盘焦点边界 |
-| `SelectionBrush` | `#D4526A` | 文本选区高亮（独立语义色，#151）：按 `0.4` SelectionOpacity 合成在白纸输入面上肉眼可辨；不得复用 1px 结构线色 |
-| `WorkspacePanelBrush` | `#00FFFDFC` | 主窗口装饰带以外的透明面板底（不遮挡装饰图） |
-| `WorkspacePanelLineBrush` | `#00F6DFD3` | 同上，透明面板边界 |
+| 角色 token | 用途 |
+| --- | --- |
+| `InkBrush` | 主文字、区块标题、列表标题、提醒中心标题与来源标签 |
+| `BodyBrush` | 正文、卡片副标题、字段标签 |
+| `MutedBrush` | 辅助文字、占位文、单位字、时间戳、数量；#198 调深以满足暖色背景上的文字对比 |
+| `PeachLineBrush` | 1px 结构边界、区块分隔线、输入框常态边界 |
+| `ActiveBrush` | 悬停与按压反馈、键盘焦点边界、复选与单选的选中图形 |
+| `ActiveHoverBrush` | 未选中控件悬停时替换桃色结构线的更深暖边（§4「基础控件状态契约」） |
+| `SelectionBrush` | 文本选区高亮（独立语义色，#151）：按 `0.4` SelectionOpacity 合成在白纸输入面上肉眼可辨；不得复用 1px 结构线色 |
+| `WorkspacePanelBrush` | 主窗口装饰带以外的透明面板底（不遮挡装饰图） |
+| `WorkspacePanelLineBrush` | 同上，透明面板边界 |
 
 ### 强调与控件
 
-| 角色 token | 值 | 用途 |
-| --- | --- | --- |
-| `MainActionBrush` | `#C23E68` | 主行动实心按钮（主窗口、悬浮窗和提醒中心“知道了”等）；与悬浮窗玫粉主按钮统一，白字对比度约 4.95:1 |
-| `MainActionHoverBrush` | `#B0355D` | 主行动按钮悬停；白字对比度约 5.89:1 |
-| `MainActionPressedBrush` | `#9B2D50` | 主行动按钮按压；白字对比度约 7.18:1 |
-| `MainActionTextBrush` | `#FFFDFC` | 主行动按钮文字与图标 |
-| `CoralActionBrush` | `#D68481` | 主窗口次级实心按钮（「保存设置」），比主行动更浅；文字用 `InkBrush` 主文字色（白字实测 2.77 不达 4.5，#151 禁止浅珊瑚配白字） |
-| `PinkAccentBrush` | `#DE5863` | 主窗口顶部激活页签文字、粉色强调文字 |
-| `PinkAccentStrongBrush` | `#C23E68` | 悬浮窗粉色实心主按钮（“＋ 添加便签”）与悬浮窗激活分段胶囊；与 `MainActionBrush` 共用玫粉主行动底 |
-| `IconAccentBrush` | `#F28995` | 区块标题图标、粉色圆形加号、日历/标签/时钟等字段图标 |
-| `PinkBadgeBrush` | `#FD97A1` | “超期待！”徽章底、粉色小胶囊徽章底 |
-| `PinkBadgeTextBrush` | `#FFFDFC` | 主行动白字的值级 alias（#148 起“超期待！”文字改绑 `InkBrush`，该 token 不再绑到徽章文字） |
-| `PinkTintBrush` | `#FEDDDE` | 主窗口顶部激活页签胶囊底 |
-| `PinkTintSoftBrush` | `#FEF0F1` | 悬浮窗主项卡片底、粉色淡底 |
-| `PinkBlockBrush` | `#FEE0E4` | 主项数字色块底 |
-| `SecondaryBlockBrush` | `#FAF0EA` | 次项数字色块底（暖米色空槽） |
-| `PrimaryCountdownNumberBrush` | `#C0102F` | 主项数字色块内的数值；#198 对粉色格底保持至少 `4.5:1` 对比 |
-| `FloatingDayPrimaryCountdownAccentBrush` | `#EE2B46` | 悬浮窗主项左强调轨；该 token 不得复用玩偶阴影资源，合成背景上文字对比度不低于 `4.5:1` |
-| `PeachTintBrush` | `#FEEFE1` | 便签页激活分段胶囊底 |
-| `PeachRailBrush` | `#CD623E` | 激活分段胶囊左强调轨、`#` 标签芯片暖橙描边、日期分组标题圆点 |
-| `PeachBadgeBrush` | `#FBAE90` | 激活分段数量徽章底（文字白） |
-| `PeachBadgeMutedBrush` | `#F3DED8` | 未激活分段数量徽章底（文字 `MutedBrush`） |
+| 角色 token | 用途 |
+| --- | --- |
+| `MainActionBrush` | 主行动实心按钮（主窗口、悬浮窗和提醒中心“知道了”等）；与悬浮窗玫粉主按钮统一 |
+| `MainActionHoverBrush` | 主行动按钮悬停 |
+| `MainActionPressedBrush` | 主行动按钮按压 |
+| `MainActionTextBrush` | 主行动按钮文字与图标 |
+| `MainActionFocusBrush` | 主操作按钮与置顶开关的暖金焦点环，全应用唯一焦点例外（§6） |
+| `CoralActionBrush` | 主窗口次级实心按钮（「保存设置」），比主行动更浅；文字用 `InkBrush`，#151 禁止浅珊瑚配白字 |
+| `PinkAccentBrush` | 当前无生产消费者（#133 起激活页签文字改绑 `InkBrush`），去留见 #232 |
+| `PinkAccentStrongBrush` | 悬浮窗粉色实心主按钮（“＋ 添加便签”）与悬浮窗激活分段胶囊；与 `MainActionBrush` 共用玫粉主行动底 |
+| `IconAccentBrush` | 区块标题图标、粉色圆形加号、日历/标签/时钟等字段图标（装饰类，§13.5） |
+| `PinkBadgeBrush` | “超期待！”徽章底、粉色小胶囊徽章底 |
+| `PinkBadgeTextBrush` | 当前无生产消费者（#148 起“超期待！”文字改绑 `InkBrush`），去留见 #232 |
+| `PinkTintBrush` | 主窗口顶部激活页签胶囊底 |
+| `PinkTintSoftBrush` | 悬浮窗主项卡片底、粉色淡底 |
+| `PinkBlockBrush` | 主项数字色块底 |
+| `SecondaryBlockBrush` | 次项数字色块底（暖米色空槽） |
+| `PrimaryCountdownNumberBrush` | 主项数字色块内的数值 |
+| `FloatingDayPrimaryCountdownAccentBrush` | 悬浮窗主项左强调轨；不得复用玩偶阴影资源 |
+| `PeachTintBrush` | 便签页激活分段胶囊底 |
+| `SegmentSelectedBrush` | 分段与筛选选项的选中底 |
+| `SegmentSelectedForegroundBrush` | 分段选中文字 |
+| `PeachRailBrush` | 激活分段胶囊左强调轨、`#` 标签芯片暖橙描边、日期分组标题圆点 |
+| `PeachBadgeBrush` | 激活分段数量徽章底（文字 `InkBrush`） |
+| `PeachBadgeMutedBrush` | 未激活分段数量徽章底（文字 `BodyBrush`） |
 
 ### 便签与提醒
 
-| 角色 token | 值 | 用途 |
-| --- | --- | --- |
-| `NoteBrush` | `#FEF5DC` | 便签黄卡片（活跃/未完成条目）、分组标题卡暖黄底 |
-| `NoteLineBrush` | `#F6D9B2` | 便签黄卡 1px 边界、复选框暖黄描边 |
-| `NoteWhiteBrush` | `#FEFDFD` | 白纸便签卡（无需强调的条目），边界用 `PeachLineBrush` |
-| `DangerBrush` | `#B94D3A` | 删除文字与图标；砖红仅保留给 Danger 操作，与玫粉主行动区分 |
-| `SuccessBrush` | `#529F8C` | 完成/成功语义 |
-| `ExpiredBrush` | `#F9DFDB` | 已到期倒计时弱化底 |
-| `TagChipBrush` | `#FFF7E8` | 默认标签芯片底（无持久化颜色时） |
-| `TagChipTextBrush` | `#3B190D` | 标签芯片文字 |
-| `WarningAccentBrush` | `#DC6922` | 提醒中心“待处理”徽章文字与感叹号圆图标 |
-| `WarningTintBrush` | `#FDEDD8` | 提醒中心“待处理”徽章底 |
-| `ReminderCardBrush` | `#FEF9E8` | 提醒中心条目卡暖黄底 |
-| `ReminderPageBrush` | `#FEFEFE` | 提醒中心页面白底 |
-| `SourceNoteIconBrush` | `#FED67F` | 提醒中心便签来源图标底；倒计时来源图标用 `PinkTintSoftBrush` 底加粉边 |
-| `DecoTextBrush` | `#D9B7B1` | 主窗口手写体装饰文案、角落文案 |
-| `DecoTextSoftBrush` | `#E5AE9C` | 悬浮窗手写体装饰文案 |
+| 角色 token | 用途 |
+| --- | --- |
+| `NoteBrush` | 便签黄卡片（活跃/未完成条目）、分组标题卡暖黄底 |
+| `NoteLineBrush` | 便签黄卡 1px 边界、复选框暖黄描边 |
+| `NoteWhiteBrush` | 白纸便签卡（无需强调的条目），边界用 `PeachLineBrush` |
+| `NoteTimelineBrush` | 便签日期轨道的 1px 暖色线 |
+| `NoteActiveRailBrush` / `NoteCompletedRailBrush` | 日期轨道上未完成 / 已完成便签的轨道标记 |
+| `DangerBrush` | 删除文字与图标、字段错误文字；砖红仅保留给危险操作，与玫粉主行动区分 |
+| `SuccessBrush` | 完成/成功语义 |
+| `ExpiredBrush` | 已到期倒计时弱化底 |
+| `TagBrush` | 默认标签芯片底（无持久化颜色时） |
+| `TagChipTextBrush` | 标签芯片文字 |
+| `WarningAccentBrush` | 提醒中心“待处理”徽章文字与感叹号圆图标 |
+| `WarningTintBrush` | 提醒中心“待处理”徽章底 |
+| `ReminderCardBrush` | 提醒中心条目卡暖黄底 |
+| `ReminderPageBrush` | 提醒中心页面白底 |
+| `SourceNoteIconBrush` | 提醒中心便签来源图标底；倒计时来源图标用 `PinkTintSoftBrush` 底加粉边 |
+| `DecoTextBrush` | 主窗口手写体装饰文案、角落文案（装饰类，§13.5） |
+| `DecoTextSoftBrush` | 悬浮窗手写体装饰文案（装饰类，§13.5） |
 
 ### 日期印记 pastel 轮换
 
-| 角色 token | 底 | 数字 |
-| --- | --- | --- |
-| `StampPinkBrush` / `StampPinkTextBrush` | `#FEEFF1` | `#D41F57` |
-| `StampBlueBrush` / `StampBlueTextBrush` | `#EEF5FE` | `#2F86DB` |
-| `StampGreenBrush` / `StampGreenTextBrush` | `#EDF6E8` | `#318939` |
+| 角色 token | 用途 |
+| --- | --- |
+| `StampPinkBrush` / `StampPinkTextBrush` | 粉色印记底 / 当日数字 |
+| `StampBlueBrush` / `StampBlueTextBrush` | 蓝色印记底 / 当日数字 |
+| `StampGreenBrush` / `StampGreenTextBrush` | 绿色印记底 / 当日数字 |
 
 装饰带与玩偶层的像素不受以上 token 约束；它们是随包版本化的 raster 资产，只改 `Brush` 归属不改资产本身。
 
-标签颜色规则：默认标签仍来自暖色组；AI 稿中出现的 pastel 芯片（粉 `#FEE0E3`、淡紫 `#EFE8FE`、薄荷 `#DDF7ED`、暖黄 `#FEF5DC`）作为**标签芯片可选 pastel 组**记录，仅用于按条目轮换的展示；任何已持久化的标签颜色保持原值，不迁移、不强制改写。
+标签颜色规则：默认标签仍来自暖色组；任何已持久化的标签颜色保持原值，不迁移、不强制改写。AI 稿中出现的 pastel 芯片（粉 `#FEE0E3`、淡紫 `#EFE8FE`、薄荷 `#DDF7ED`、暖黄 `#FEF5DC`）只作为候选采样记录，当前没有落地为标签色板或 token。
 
 ## 3. 排版规则
 
@@ -434,7 +443,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 ### 便签：pastel 分格索引
 
 - 每条便签是固定宽度 `319px` 的规则线纸面，该宽度**已内含**右侧 `48px` 日期印记列，不得再把 `58+319+48` 相加去核对 `x=396`。卡片必须完整收在滚动内容视口内；卡片、日期印记和滚动热区最右都不得超过 `x=396`。
-- 右侧 `48px` 日期印记按条目 pastel 轮换：粉 `#FEEFF1`（数字 `#D41F57`）→ 蓝 `#EEF5FE`（数字 `#2F86DB`）→ 绿 `#EDF6E8`（数字 `#318939`），按列表顺序循环。印记显示 `M月`、`dd`、`周X` 三行，只有 `dd` 是当日数字并与印记同色。长卡被视口裁切时，印记三行以「卡片可见区域内居中」的粘性方式整体保持可见（#149），不得只剩「日 / 周」；当卡片可见条带本身低于印记高度时（如搜索展开态压缩视口），印记按可达的最大可见度对齐可见条带底部，不再是空白列。pastel 背景列仍铺满卡片高度，仅三行文字位移，印记继续不可点击、不可聚焦。
+- 右侧 `48px` 日期印记按条目 pastel 轮换：粉（`StampPinkBrush` 底、`StampPinkTextBrush` 数字）→ 蓝（`StampBlueBrush` / `StampBlueTextBrush`）→ 绿（`StampGreenBrush` / `StampGreenTextBrush`），按列表顺序循环。印记显示 `M月`、`dd`、`周X` 三行，只有 `dd` 是当日数字并与印记同色。长卡被视口裁切时，印记三行以「卡片可见区域内居中」的粘性方式整体保持可见（#149），不得只剩「日 / 周」；当卡片可见条带本身低于印记高度时（如搜索展开态压缩视口），印记按可达的最大可见度对齐可见条带底部，不再是空白列。pastel 背景列仍铺满卡片高度，仅三行文字位移，印记继续不可点击、不可聚焦。
 - 便签列表滚动内容以 `12 DIP` 尾随内边距收尾（#149）：滚到底时末卡与底部状态行、命令区之间保留稳定空隙，不视觉顶住。
 - 便签卡底也参与轮换：暖黄 `NoteBrush` 与白纸 `NoteWhiteBrush` 交替，形成条带节奏。
 - 日期印记只帮助扫读，不是侧栏、筛选器或新导航；它不可点击、不可聚焦，也不能覆盖复选框、正文、提醒或 `…` 菜单。
@@ -498,31 +507,10 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 视觉基线演进口径
 
-“视觉基线”指 manifest 钉死的真实 WPF 渲染截图集合，是视觉变化的唯一验收依据。演进口径如下：
+“视觉基线”指 manifest 钉死的真实 WPF 渲染截图集合，是视觉变化的唯一验收依据。
 
-#146 收口重拍（2026-09-17）：v22 已于 2026-09-17 按 #131 线终态（#135/#136/#138/#139/#140/#143 及 #146 收口修正之后的工作台骨架、便签试点、倒计时页重构、悬浮窗命中区几何与滚动条 Focusable 语义）原目录重拍，主窗口 8 帧 + 悬浮窗 4 帧与双 manifest 均在库；manifest 的 `sourceBinding`（主窗 15 个、悬浮窗 9 个视觉源文件）与工作树逐字节一致，主窗聚合 SHA-256 为 `4E256D3988D44CD883BCC1AFB07B6C83504F71352BCAD8246400D5B96DBC12E2`，悬浮窗聚合为 `775A78672BEE050AF83A0B8A8FC25C15A8FE55A66230BF03716C35A4367FEFCC`。2026-09-17 源码树 validate-only run 与六阶段并行套件 run（20260917T153158，全绿）中主窗口十六项基线门禁与悬浮窗基线门禁全部通过，v22 自此继续担任现役验收基线，v21 及更早目录仅归档自指（现役代码与脚本零引用）。历史帧归档：2026-09-14 版于 `run-evidence\clock-countdown-issue-146-final-closure\v22-prev-20260914\`；2026-09-17 第一/二次重拍帧与最终版逐字节相同（12/12 PNG SHA 一致，`...-152513\` 归档即最终帧副本）。
-
-2026-09-17 深夜补拍（捕获口径环境解耦）：当晚 21:09 GameViewer 虚拟显示适配器加入显示拓扑后，WPF 在无 `Avalon.Graphics` 覆盖键时按显示环境推导的文本渲染参数整体漂移——灰阶抗锯齿的 gamma/对比度变化（细笔画出现/消失）叠加 Display 格式化像素对齐度量变化（长便签列表 `ScrollableHeight` 871.4→879.67）——v22 双基线自 21:49 起在 SourceTree validate 中持续误红（`PngHashesMatch`/`PixelMetricsWithinThresholds` 超阈值 2-3 个数量级，渲染本身逐次确定）。根因修复：`ValidationReport.PinDeterministicTextOptions` 由「灰阶抗锯齿 + Display 格式化」改为 **Aliased + Ideal**（1-bit 光栅化不经灰阶 gamma/对比度管线，浮点格式化无像素网格 hinting，捕获像素与布局不再含显示推导参数入口），并按该口径原目录重拍 v22 全部 12 帧与双 manifest；灰阶/Display 旧帧归档于 `run-evidence\clock-countdown-issue-146-final-closure\v22-prev-20260917-234056\`。基线像素门禁自此对显示拓扑/时段变化免疫。仍保留的注意事项：显示器链路休眠的无人值守时段（`GetDeviceGammaRamp` 失败）历史上还伴随「捕获整幅透明」类 flake（与文本渲染参数无关的窗口合成路径问题）；该类 flake 未被本次口径钉死，视觉复验遇整幅透明时仍应在显示器唤醒的会话时段重试。
-
-当前状态（2026-09-18，#148 重拍）：#148 倒计时列表可读收口改动了全部 12 帧的可见构成——管理窗口倒计时行分格改为竖长 2:3（主项 42×63、次项 38×57 设计坐标）、移除管理窗口「超期待！」徽章、到期剩余文字换绑主项数字色/正文色、NowText 与分格数值表格数字、月薪输入改 N2；悬浮窗「超期待！」徽章字号 9→12 DIP 并垂直居中、文字换绑 `InkBrush`、主项截止行改「M 月 d 日 HH:mm」空格与表格数字、`FloatingIncome` 表格数字；便签分段数量徽章文字换绑 `InkBrush`/`BodyBrush`——故按现役 Aliased+Ideal 口径原目录重拍 v22 全部 12 帧与双 manifest，主窗聚合 SHA-256 为 `BB0BE1DCBB2D96A2192D2DC400404A711701D1E201FC4F8D4500599C404FC5EF`，悬浮窗聚合为 `D26B0026A7620389D564CA61F50BFFD0C457ADEC0C12FE74039CBB628605EA0D`；`sourceBinding` 与工作树逐字节一致（并顺带修正 77b4a33 遥测改动后悬浮 sourceBinding 中 `FloatingWindow.xaml.cs` 的陈旧哈希记录，该改动视觉等价）。悬浮参考构图探针 `RunFloatingReferenceExercise` 的主卡归一化高度 0.1742→0.1865、次卡 Y 0.5533→0.5656 随新构成同步（外壳/面板/标题栏矩形不变）。2026-09-18 套件 run（20260918T162458，Build/CSharp/SourceValidation/InstallValidate 全绿）中双基线门禁、悬浮参考构图与 #148 新增可读性探针全部通过，v22 继续担任现役验收基线。
-
-当前状态（2026-09-18，#149 重拍）：#149 悬浮便签工作区收口改动了悬浮窗 3 个便签帧的可见构成——长便签滚到底时日期印记三行以「卡片可见区域内居中」的粘性方式整体可见（`long-notes-day-bottom`、`notes-search-expanded-day` 中被裁长卡的印记不再是空列或只剩「日 / 周」）、便签列表滚动内容以 12 DIP 尾随内边距收尾（`long-notes-day-bottom` 末卡下移）——`floating-countdowns-day` 与 #148 版逐字节一致（改动严格限定便签工作区）。悬浮窗 manifest 按现役 Aliased+Ideal 口径原目录重拍 4 帧并更新，悬浮窗 `sourceBinding` 聚合 SHA-256 为 `B37B970B8BC3FF87609ACCA7966CA55F6A90C875269F03447249C205C1B64D51`，与工作树逐字节一致；主窗 8 帧与主窗 manifest 不变（聚合仍为 `BB0BE1DCBB2D96A2192D2DC400404A711701D1E201FC4F8D4500599C404FC5EF`）。#148 版悬浮 4 帧归档于 `run-evidence\clock-countdown-issue-149-closure\v22-prev-20260918-floating\`。
-
-当前状态（2026-09-18，#150）：#150 提醒中心逃逸路径与设置恢复/激活失败窗暖粉壳收口只改动提醒中心与次级窗源码、探针与合同条款，未改动 v22 双 manifest `sourceBinding` 覆盖的任何视觉源文件，v22 全部 12 帧与双 manifest 原样有效（主窗聚合 `BB0BE1DC…`、悬浮窗聚合 `B37B970B…`）。提醒中心继续无 v22 像素基线帧，其逃逸路径、两行按钮居中不拉伸、来源图标退出朗读与字重白名单由代码探针钉住（`ReminderCenterEscapeFocusesAcknowledge`、`ReminderCenterTypographyWeightWhitelist` 与既有 `ReminderCenterTwoRowActionsLayout`/`ReminderCenterEntryVisualIdentity` 扩展），设置恢复/激活失败窗的无边框暖粉壳与现役静态色副本由 `SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette` 探针钉住；排版报告扩展为覆盖五种次级窗口。
-
-当前状态（2026-09-18，#151 重拍）：#151 倒计时编辑收口改动了主窗全部 8 帧的可见构成——底部状态栏新增 `MainStatusBarSurface` 状态条表面（`StatusBarBrush` 底 + 1px `PeachLineBrush` 边）、倒计时页紧凑输入面改白纸 `PanelBrush`（名称/月薪/上下班文本框、时/分/秒与显示精度下拉；日期框内嵌文字区经 `DatePickerTextBoxStyle` 同步改白纸，主窗便签编辑卡日期框同享该 §4 合同语义）、「保存设置」换珊瑚次级实心（`CoralActionBrush` + `InkBrush` 文字）、提醒规则选中圆点/描边换绑 `ActiveBrush`、编辑卡与偏好卡区块标题 27→`TypeH2FontSize`（22px 设计坐标）、字段行距 20→`SpacingFieldRow`、错误行去除固定高度裁切（常态不可见不影响帧构成，构成变化主要来自前三项与排版收紧）。App.xaml/ApplicationTheme.cs（新增 `CoralActionColor/Brush`、`SelectionColor/Brush`）同入双 manifest `sourceBinding`，故主窗 8 帧与悬浮窗 4 帧按现役 Aliased+Ideal 口径原目录重拍并重写双 manifest：主窗聚合 SHA-256 `ED7C310A6FA3B353103BE54D34435FC10C75FB2C4C0B4C3B207FAA098F7C143B`，悬浮窗聚合 `47B08A3348A3547525A45862344D190B67AF1D5B9F5DE96D2F63F7BEBDF5AFA6`。悬浮 4 帧的可见构图（卡片、印记、命令区、搜索槽）与 #149 版一致，最终重拍钉住的布局度量与 #149 版同值（`ScrollableHeight` 883.19 / 927.19）；期间一次中间重拍会话实测到 890.52/934.52 的显示拓扑漂移档位（同 2026-09-17 深夜补拍记录的 871.4→879.67 一类，悬浮源文件零改动下出现），证实该漂移为会话级环境档位而非源码变化，最终以稳定档位重拍收口。#151 前的 12 帧与中间档位帧分别归档于 `run-evidence\clock-countdown-issue-151-closure\`（`v22-prev-20260918-main` / `v22-prev-20260918-floating` / `v22-epochA-main` / `v22-epochA-floating`）。
-
-当前状态（2026-09-19，#152 重拍）：#152 主窗可操作收口改动了主窗 8 帧的可见构成——主按钮/次级实心/两枚页签模板改为常驻 2px 透明环 + 内缩 Surface（常态静置即可见的外缩边距变化）、置顶/完成勾选框改常驻 2px 结构线边、完成勾选命中槽位 30→38 设计坐标（可见框仍 24）、提醒帮助按钮 34→38 设计坐标、筛选芯片高度 34→36 与相邻间距 6→8（`main-day-notes-filter-open`）。悬浮 4 帧预期构图不变（胶囊焦点色只在聚焦出现、捕获前清焦；App.xaml/ApplicationTheme.cs 同入悬浮 sourceBinding 故随双 manifest 一并重写）。双 manifest 按现役 Aliased+Ideal 口径原目录重拍：主窗聚合 SHA-256 `260ACD5A829D30B738342855ED775CE31D544D6004372BAD5D6743607DCEC0EC`，悬浮窗聚合 `C777A2E53B8A5457E38E5F549C83866DD83C82BA21060537D6F80EE318917C5F`。#152 前的 12 帧归档于 `run-evidence\clock-countdown-issue-152-closure\`（`v22-prev-20260919-main` / `v22-prev-20260919-floating`）。
-
-当前状态（2026-09-18，#153 重拍）：#153 便签列表收口改动了主窗 6 帧的可见构成——倒计时列表条目标题 25→`TypeH2FontSize`（22px 设计坐标，`main-day-countdowns-representative/-stress`）、便签正文补行高 28（BlockLineHeight）与提醒摘要分开、标签芯片单行省略+MaxWidth 200+全文 ToolTip、便签卡内边距/卡间距/日期章节间距消费间距 token、日期选择器选中日期文本改「`yyyy 年 M 月 d 日`」空格中文格式（`main-day-notes-edit`、`main-day-notes-filter-open` 加日期筛选可见标签；`main-day-notes-empty` 无卡片构成不变、`main-day-countdowns-empty` 无列表行不变，两帧与 #152 版逐字节一致）。`UiControls.cs` 弹层 Tab 层内循环、`ThemedDatePickerBehavior` 写回合同日期文本属行为改动，帧构图除上述日期文本外不变。悬浮 4 帧与 #152 版逐字节一致（悬浮无可见日期框；App.xaml/UiControls.cs 同入悬浮 sourceBinding 故随 manifest 重写）。双 manifest 按现役 Aliased+Ideal 口径原目录重拍：主窗聚合 SHA-256 `4A6C432FEE63391C77FF3D96EC29C33668968EE788BF4B27392830A613E0E2BA`，悬浮窗聚合 `6A14228B111C8A60630AE636B07F265CB193A74CFBC3BFAF80815422A67FA3A9`。#153 前的 12 帧归档于 `run-evidence\clock-countdown-issue-153-closure\v22-prev-20260918\`。
-
-当前状态（2026-09-19，#154 重拍）：#154 视觉铬收口改动了全部 12 帧的可见构成与 sourceBinding——管理窗口：筛选漏斗改 `InkBrush` 实心填充（运行时筛选摘要改写 `FilterButtonText`，不再整体替换 Button.Content 销毁图标；v22 旧帧实证描边漏斗在 Aliased 口径下只剩「筛选」两字）、便签页标签旁重复搜索镜移除且输入框内搜索镜统一描边圆环+手柄、最小/关闭改与悬浮窗同几何的矢量路径（12x12 坐标、2px 圆头描边）、页签与状态分段激活胶囊短边一半全圆角（27/22）、倒计时页两处手写体迁至 `CountdownWorkspace` Canvas 装饰层（视觉位置与迁移前一致）；悬浮窗：`TaskCard` 字面色大面积投影移除（旧帧捕获中该投影实际不可见，帧像素仅胶囊区变化）与工作区分段激活胶囊 18（`FloatingHeaderSegmentButton` 模板不再 `RadiusControl`）。`App.xaml`/`FloatingWindow.xaml`/`MainWindow.xaml(.cs)` 同入双 manifest `sourceBinding`，按现役 Aliased+Ideal 口径原目录重拍 12 帧并重写双 manifest：主窗聚合 SHA-256 `8BAA6EBA0A40D788625DE55005C855DF340DACFAE223F10BED0F17251B5C4401`，悬浮窗聚合 `17F08064EE85399862887B2851643C3240A4EC38CF07E639E4599F67E5C5C6A1`。#154 前的 12 帧归档于 `run-evidence\clock-countdown-issue-154-closure\v22-prev-20260919\`。
-
-当前状态（2026-09-19，#155 重拍）：#155 删除撤销、完成确认与脏退出收口为行为流改动——状态条新增常驻 `MainStatusUndoButton`（常态 `Collapsed`，撤销入口只在删除成功后短时出现，捕获帧不含该状态）与 `ConfirmationDialog` 参数化（删除场景默认「确认删除」+ `DangerButton` 不变），运行态 v22 帧可见构成零变化。sourceBinding 覆盖的 `MainWindow.xaml(.cs)`、`UiControls.cs`、`DesktopWorkspace.cs`、`FloatingWindow.Notes.cs(.xaml.cs)` 哈希随本次改动更新（`App.xaml.cs` 等其余行为源由发布契约 IntegrityHashes 钉住，不入 sourceBinding），按现役 Aliased+Ideal 口径原目录重拍 12 帧（与改动前帧逐字节一致，归档于 `run-evidence\clock-countdown-issue-155-closure\v22-prev-20260919\`）并重写双 manifest：主窗聚合 SHA-256 `3D973FAE0D7B5E4F9F6FBDAEB107163A1CBA679087AFA179D3209BB9E1FA7F3E`，悬浮窗聚合 `BFC7ACF1302EFBFABD9E084BDA33C2E2D57908208C704A4ED3B25152CF78C881`。
-
-当前状态（2026-09-19，#156 重拍）：#156 辅助技术与快捷键收口为自动化语义改动——装饰手写体与分段裸数字改 `SilentTextBlock`（无自动化 peer，渲染与 `TextBlock` 完全一致，旧「装饰文案」可访问名废除）、可见标签字段改 `LabeledBy` 标签关系、命令栏数量文字挂 polite 直播区、筛选「清除」改「清除便签日期筛选」、托盘菜单与 `Ctrl+R` 复位入口均为非可见语义，v22 帧可见构成零变化。sourceBinding 覆盖的 `MainWindow.xaml(.cs)`、`FloatingWindow.xaml(.xaml.cs)`、`UiControls.cs` 哈希随本次改动更新，按现役 Aliased+Ideal 口径原目录重拍 12 帧（与改动前帧逐字节一致，归档于 `run-evidence\clock-countdown-issue-156-closure\v22-prev-20260919\`）并重写双 manifest：主窗聚合 SHA-256 `3C6480EB2FE83ACC4BE4383F6093AFBBECFDBF5E55878DB930A011521D265B4D`，悬浮窗聚合 `AB30954E10800E46B863DEC0FBC93DA9E345CA0DEB1DEDF364910440550A2686`。
-
-当前状态（2026-09-19，#157 重拍与探针确定性收口）：#157 把 #151–#156 遗留的 CSharp 套件夹具红 `FloatingReferenceViewportStatesMatch` 定性为探针缺陷并按根因修复：悬浮视口右缘的旧比较口径 `bodyViewport.X + ViewportWidth` 把 WPF 滚动条列宽计入视口，而该列宽在本地样式 `Width=10` 之外仍被系统滚动条度量撑大（Windows 滚动条度量：100% 缩放 17 DIP、125% 缩放 17.6 DIP），使「卡右缘 ≤ 视口右缘 + 0.25」成为会话显示缩放的函数（#157 插桩实测：同一几何下 125% 缩放红 0.55 DIP、100% 缩放仅过 0.05 DIP，§11 漂移族），与产品几何无关。修复后该比较改为确定性口径——滚动内容槽右缘（`bodyViewport.X + ActualWidth`，只由 520 外壳固定边距决定）扣除 §10 设计命中轨宽（模板 `FloatingScrollBarHitRail`，应用自有几何），滚动条隐藏时零扣除；新增 `FloatingViewportGeometryGateIsolationBehavior` 反例门禁钉住该边界语义（卡/印记/快速新增越界即红、滚动条隐藏零扣除、边界容差精确到 0.25），并以源码契约钉住捕获方法不得回到 `ViewportWidth` 口径。真实滚动条列宽可宽于 10 DIP 命中轨（系统度量、透明不可见），属观察事实记录，不改变可视基线几何。v22 全部 12 帧与双 manifest 按现役 Aliased+Ideal 口径在独立隔离会话整套重拍（归档于 `run-evidence\clock-countdown-issue-157-closure\v22-prev-20260919\`）：12 帧与重拍前逐字节一致、双 manifest 内容零差异（主窗聚合 `3C6480EB2FE83ACC4BE4383F6093AFBBECFDBF5E55878DB930A011521D265B4D`、悬浮窗聚合 `AB30954E10800E46B863DEC0FBC93DA9E345CA0DEB1DEDF364910440550A2686`），证明该修复渲染中性、基线稳定档位可复现。提醒中心继续无像素帧，父票对该表面的验收由代码探针覆盖且全真（`ReminderCenterEscapeFocusesAcknowledge`、`ReminderCenterTwoRowActionsLayout`、`ReminderCenterEntryVisualIdentity`、`ReminderCenterTypographyWeightWhitelist`、`ReminderCenterRepresentativeCaptureRendered` 与设置恢复壳 `SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette`），未静默跳过。
+- 捕获口径固定为 Aliased + Ideal 文本渲染（灰阶抗锯齿与 Display 格式化会随显示拓扑漂移），基线像素门禁因此不受显示拓扑和时段影响。视觉复验遇到“捕获整幅透明”时，在显示器唤醒的会话时段重试。
+- v21、v22 时期的历次重拍记录（#146–#157 的构成变化、聚合 SHA-256 与旧帧归档位置）见 [视觉基线与 token 收口演进史](docs/视觉基线演进史.md)，仅供追溯，不是现役规则。
 
 1. #189 的 WPF 改版使用纯日间 **v32** 真实渲染系列，版本目录为 `2026-10-09-v32`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
 
@@ -551,7 +539,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ## 13. Token 分层与可读性基线
 
-本节是暖粉日间 token 的实现基线（issue #132）：三层资源模型、排版/间距/圆角/焦点 token、对比度门槛与装饰限制。实现权威源是 `src/MinminCountdown/App.xaml` 与 `src/MinminCountdown/ApplicationTheme.cs`（两者逐键同步）；本节与 §2 的采样色值表冲突时，以实现文件为准并在本节记录差异。
+本节是暖粉日间 token 的实现基线（issue #132）：三层资源模型、排版/间距/圆角/焦点 token、对比度门槛与装饰限制。实现权威源是 `src/MinminCountdown/App.xaml` 与 `src/MinminCountdown/ApplicationTheme.cs`（两者逐键同步）；§2 只定义语义角色，色值以实现文件为准。
 
 ### 13.1 三层 token 模型
 
@@ -562,7 +550,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | Component 组件 | 悬浮窗画刷、控件样式、排版/间距/圆角/焦点 token | App.xaml 第 3 层 | 色值一律绑回 Primitive（`Color="{DynamicResource *Color}"`），不得自持字面色值 |
 
 - 控件不得新增同义色值：新视觉需求先找既有 Semantic 角色；确需新角色时新增 Primitive + Semantic 两层，并同步 `ApplicationTheme.Tokens`。
-- 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#B84A36` → `ActiveHover` / `MainActionHover`；`#C23E68` → `MainAction` / `PinkAccentStrong`（#199 统一主行动家族）；`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#FFFDFC` → `MainActionText` / `PinkBadgeText`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#F6DFD3` → `NoteTimeline` / `PeachLine`（#146 收口补录：该值级重复在 #131 线工作树演化中已存在（App.xaml 与 `ApplicationTheme.Tokens` 两处同步），清单此前漏记，本条只补记录、不新增重复）。
+- 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#C23E68` → `MainAction` / `PinkAccentStrong`（#199 统一主行动家族）；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#F6DFD3` → `NoteTimeline` / `PeachLine`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#FFFDFC` → `Panel` / `MainActionText` / `PinkBadgeText`（`Panel` 为补录：现役 App.xaml 已存在该重复，本条只补记录、不新增重复）。Tooling 的 design-token 漂移检查双向核对本清单与 App.xaml。
 - XAML 允许 6 位与 8 位十六进制写法并存（如 `#FEE0E4` 与 `#FFFEE0E4`），同步校验按解析后 ARGB 相等判断，不强制统一记法。
 
 ### 13.2 排版层级 token
@@ -643,30 +631,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `DecoTextSoftColor` | `#E5AE9C` | `BackgroundBrush` | 1.73 | 豁免 | decorative | 记录 | 悬浮手写装饰 |
 | `IconAccentColor` | `#F28995` | `CardBrush` | 2.34 | 豁免 | decorative | 记录 | 伴随 labeled 字段的装饰图标 |
 
-本节点完成的修正（新值仍在 §2 采样方向内）：
-
-- `SuccessColor` `#529F8C → #266B5E`；`WarningAccentColor` `#DC6922 → #AD4A10`；`StampBlueTextColor` `#2F86DB → #1D6BB0`；`StampGreenTextColor` `#318939 → #26732D`。
-- `PrimaryButton` 底/边 `ActiveBrush → MainActionBrush`（白字对 `#E05A4A` 3.61 不达 4.5）；日历选中日与含选区月份底同步改绑 `MainActionBrush`。`ActiveBrush` 继续承担悬停、按压、焦点边与复选图形（≥3:1）。
-
-#133 换绑收口（消费侧文字换绑，未新增/修改 token 值）：
-
-- 主窗口激活页签文字：`PinkAccentBrush` → `InkBrush`（`PinkTintBrush` 底实测 12.5，达标）；便签页激活分段文字：`PeachRailBrush` → `InkBrush`（`PeachTintBrush` 底实测 14.0，达标）。`ValidationReport.HasSelectedSegmentContrast` 以 4.5:1 达标即过，换绑后保持绿。
-
-#148 收口（消费侧文字换绑与门禁改写，未新增/修改 token 值）：
-
-- “超期待！”徽章文字（悬浮窗）：白 `PinkBadgeTextBrush` → `InkBrush`（`PinkBadgeBrush` 底实测 7.60）；字号 9 → 12 DIP（关键状态下限），并垂直居中于标题行。徽章只挂“距离下班”主项；管理窗口不渲染“距离下班”，列表不再出现该徽章。
-- 激活数量徽章文字：白 `MainActionTextBrush` → `InkBrush`（`PeachBadgeBrush` 底实测 8.69）；未激活数量徽章文字：`MutedBrush` → `BodyBrush`（`PeachBadgeMutedBrush` 底实测 6.09）。`ValidationReport.BadgeFollowsSegmentState` 同步改为钉住 `InkBrush`/`BodyBrush` 并用主题公式核对 ≥4.5。
-- 到期剩余文字（管理窗口）：次项删除红 `DangerBrush` → `BodyBrush`（`ExpiredBrush` 底实测 6.22；旧红实测 3.97 不达标），主项到期回落 `PrimaryCountdownNumberBrush`（`ExpiredBrush` 底实测 4.95）；「已到期」文案继续显示。悬浮窗到期回落路径同样不再用强调轨色当字。
-- 到期卡单位字/辅助文字对比统一由上述语义色承担；装饰手写体与伴随带标签字段的浅粉图标维持 §13.5 装饰豁免，不得拿去当状态。
-- `ValidationReport.HasSelectedSegmentContrast` 删除「不达标但匹配方向稿采样对则放过」的旧分支：选中段文字必须以主题公式对实际邻色达到 4.5:1。
-- 分格几何：管理窗口与悬浮窗同一套竖长比例（约 2:3）、单位在块外、间距约块宽三分之一；管理窗口单位字固定设计坐标 13px（≈8.5 DIP，落在 caption 阶梯），数值字族例外见 §3（Bahnschrift + 中文回退）。
-
-#152 收口（主窗可操作：焦点、命中与邻色门槛，未新增/修改 token 值）：
-
-- 常规键盘焦点 2px 暖边：`MainKeyboardFocusVisual` 由 3px 收到 `FocusBorderThickness`（2px）；主按钮/置顶只保留模板内 `MainActionFocusBrush` 暖粉焦点环，`ConfigureControls` 不再对其套 `FocusVisualStyle` 第二套更粗描边。
-- 主窗本地控件焦点/按压全部改为常驻透明环变色（环厚恒为 `FocusBorderThickness`），悬停/按压/聚焦不再改写边厚挤布局。选中粉底页签环对实际邻色（1px 间隙后的 `CardAltBrush`，3.50）达标；悬浮选中实心粉胶囊环换绑 `MainActionFocusBrush` 暖金（对 `PinkAccentStrongBrush` 3.62）达标；`ValidateKeyboardFocusRingContrast` 扩展覆盖两个邻色场景并按上下文钉唯一期望 token，无旧强调色放过分支。
-- 便签完成勾选与提醒帮助命中槽位 38 设计坐标（默认缩放 ≈24.8 DIP ≥ 桌面紧凑下限 24）；筛选芯片高度 36、相邻间距 8，日历翻月按钮 36。悬浮窗 36 下限与头部 3px、滚动条 10px 例外未放宽。
-- 接入 `ApplicationTheme.ClientAreaAnimationEnabled`（系统「客户区动画」开关）读取点；#194 将悬停颜色和按下缩放接入 §9 token，关闭系统动画时有效时长为 0。
+历次调值与消费侧换绑（#132、#133、#148、#152）的原因记录见 [视觉基线与 token 收口演进史](docs/视觉基线演进史.md)；仍在生效的规则已写在 §4 对应组件条款和上表中。
 
 ### 13.5 装饰文字的非信息性限制
 

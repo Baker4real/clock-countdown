@@ -37,6 +37,7 @@ foreach ($requiredPath in @(
         'tools/Test-IssueWriteback.ps1',
         'tools/Test-CountdownPublicationDiff.ps1',
         'tools/Test-CountdownPublicationDiff.Tests.ps1',
+        'tools/Test-DesignTokenDrift.ps1',
         'tools/Test-CountdownBuildPreflight.ps1',
         'tools/Countdown.BuildPreflight.psm1',
         'tools/Countdown.SuiteRun.psm1',
@@ -51,6 +52,10 @@ $writebackRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Pat
 Add-ToolingCheck -Name 'issue-writeback:regression' -Passed ($LASTEXITCODE -eq 0 -and [bool] $writebackRegression.Valid) -Detail ($writebackRegression | ConvertTo-Json -Compress -Depth 20)
 $diffRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.Tests.ps1') -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'publication-diff:regression' -Passed ($LASTEXITCODE -eq 0 -and [bool] $diffRegression.Valid) -Detail ($diffRegression | ConvertTo-Json -Compress -Depth 10)
+$designTokenSelfTest = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-DesignTokenDrift.ps1') -SelfTest -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'design-token:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenSelfTest.Valid) -Detail ($designTokenSelfTest | ConvertTo-Json -Compress -Depth 10)
+$designTokenDrift = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-DesignTokenDrift.ps1') -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'design-token:drift' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenDrift.Valid) -Detail ($designTokenDrift | ConvertTo-Json -Compress -Depth 10)
 
 $parseErrors = [System.Collections.Generic.List[string]]::new()
 $scriptPaths = @(

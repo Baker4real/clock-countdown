@@ -56,3 +56,8 @@ verification/
 validation-suite-test-runs/
 # Release-contract fixtures are disposable per-run roots; interrupted tests may leave them behind.
 release-contract-test-*/
+# impeccable 的评审快照、构建产物与机器本地配置只属于当前设备；评审结论以 GitHub issue 为准。
+# .impeccable/config.json 是共享配置，保留跟踪。
+.impeccable/critique/
+.impeccable/build/
+.impeccable/config.local.json

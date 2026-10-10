@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -20,6 +21,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 {
     private const double CountdownRemainingColumnWidth = 300;
     private const double CountdownRemainingLeftMargin = 16;
+    // #211：1165×1350 由钉死尺寸改为首选尺寸；窗口随所在显示器工作区收缩，
+    // 业务内容滚动而不缩放（DESIGN.md §8）。最小尺寸由 XAML MinWidth/MinHeight 钉住。
+    internal const double PreferredWidth = 1165;
+    internal const double PreferredHeight = 1350;
+    // #211：工作区安全边距（每边），对齐悬浮窗 12 DIP 边距惯例。
+    private const double WorkAreaSafetyMargin = 12;
+    private const int WmDisplayChangeMessage = 0x007E;
+    private const int WmExitSizeMoveMessage = 0x0232;
     // #198: the remaining time is the primary visual anchor.  These are real
     // DIP values now that the main window no longer scales a design canvas.
     private const double CountdownRemainingBaseFontSize = 26;
@@ -74,6 +83,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _loadingPreferences;
     private bool _syncingNoteSearch;
     private bool _loadingCountdownEditor;
+    // #211：用户经真实拖动/缩放（WM_EXITSIZEMOVE）调整过的几何在本次运行内保留，不持久化。
+    private bool _hasUserWindowPlacement;
     private DwmWindowChromeResult _dwmWindowChromeResult = DwmWindowChromeResult.NotAttempted;
     private CountdownReminderMode _countdownReminderMode = CountdownReminderMode.None;
     private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();
@@ -180,6 +191,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SourceInitialized += (_, _) =>
         {
             _dwmWindowChromeResult = DwmWindowChrome.ApplyMainWindow(this, _logger);
+            var hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            hwndSource?.AddHook(WorkAreaChangeHook);
+        };
+        IsVisibleChanged += (_, args) =>
+        {
+            if (args.NewValue is true)
+            {
+                ApplyWorkAreaGeometry();
+            }
         };
         Loaded += (_, _) =>
         {
@@ -666,6 +686,69 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     }
 
     void IManagerWorkspaceHost.Reveal(WorkspaceKind workspace) => Reveal(workspace);
+
+    // #211：每次显示以及显示器工作区变化时，把窗口夹回所在显示器工作区（DESIGN.md §8）。
+    // 未经用户调整的显示取「首选 1165×1350 与工作区−安全边距」的较小值并在工作区内居中；
+    // 用户调整过的位置尺寸在本次运行内保留，只夹回工作区。
+    private void ApplyWorkAreaGeometry()
+    {
+        var resolved = MonitorWorkAreaResolver.ResolveForWindow(this);
+        var usable = Rect.Inflate(
+            resolved.WorkAreaDip,
+            -WorkAreaSafetyMargin,
+            -WorkAreaSafetyMargin);
+        if (usable.IsEmpty || usable.Width < MinWidth || usable.Height < MinHeight)
+        {
+            // 退化工作区（比最小尺寸还小）：退守完整工作区矩形，宁可溢出也不产出负几何。
+            usable = resolved.WorkAreaDip;
+            if (usable.IsEmpty || usable.Width <= 0 || usable.Height <= 0)
+            {
+                return;
+            }
+        }
+
+        var maximumWidth = Math.Max(MinWidth, usable.Width);
+        var maximumHeight = Math.Max(MinHeight, usable.Height);
+        if (!_hasUserWindowPlacement)
+        {
+            Width = Math.Min(PreferredWidth, maximumWidth);
+            Height = Math.Min(PreferredHeight, maximumHeight);
+            Left = usable.Left + Math.Max(0, (usable.Width - Width) / 2);
+            Top = usable.Top + Math.Max(0, (usable.Height - Height) / 2);
+            return;
+        }
+
+        Width = Math.Min(Math.Max(Width, MinWidth), maximumWidth);
+        Height = Math.Min(Math.Max(Height, MinHeight), maximumHeight);
+        var maximumLeft = usable.Right - Width;
+        var maximumTop = usable.Bottom - Height;
+        Left = Math.Min(Math.Max(Left, usable.Left), Math.Max(usable.Left, maximumLeft));
+        Top = Math.Min(Math.Max(Top, usable.Top), Math.Max(usable.Top, maximumTop));
+    }
+
+    private IntPtr WorkAreaChangeHook(
+        IntPtr hwnd,
+        int message,
+        IntPtr wordParameter,
+        IntPtr longParameter,
+        ref bool handled)
+    {
+        switch (message)
+        {
+            case WmDisplayChangeMessage:
+                if (IsVisible)
+                {
+                    ApplyWorkAreaGeometry();
+                }
+
+                break;
+            case WmExitSizeMoveMessage:
+                _hasUserWindowPlacement = true;
+                break;
+        }
+
+        return IntPtr.Zero;
+    }
 
     internal void Reveal(WorkspaceKind workspace)
     {

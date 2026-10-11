@@ -4243,7 +4243,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.TabsRenderAboveDecorationBand) '#135 工作台骨架次序：页签在装饰带之上（#154）'
     # #155 删除撤销、完成确认与脏退出（新增 3 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.DeleteUndoRestoresLastDelete) '删除成功后状态区提供短时「撤销」：确认取消为安全默认、撤销同事务恢复记录与规则提醒状态、只保留最近一次、入口短时过期（#155）'
-    Assert-Equal $true ([bool] $adapterValidation.DirtyExitConfirmsUnsavedWork) '进程退出在显示设置或编辑器脏时先确认：退出描述完整、确认框取消为安全默认、确认文案「退出」、干净状态直接放行（#155）'
+    Assert-Equal $true ([bool] $adapterValidation.DirtyExitConfirmsUnsavedWork) '关闭悬浮窗和 Alt+F4 都会确认，正文包含「退出后不再提醒」；有未保存内容时列出未保存项；取消后悬浮窗和提醒派发仍在（#213）'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCompleteRequiresConfirmation) '提醒中心「完成便签」先确认再提交：取消全量保留便签与条目、确认原子完成并移除条目（#155）'
     # #156 辅助技术与快捷键：朗读、Ctrl+F、清除名称与位置复位（新增 2 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.AssistiveNarrationExitsDecorationAndLabelsFields) '装饰手写体与分段裸数字退出朗读、可见标签经标签关系指向输入不读两遍、数量由一处状态区播完整句、筛选「清除」可访问名说明清除便签日期筛选（#156）'
@@ -4265,9 +4265,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true ($confirmationDialogCtorBody.Length -gt 0) '确认框构造参数化且删除场景保持「确认删除」+ DangerButton 默认（#155 源码契约）'
     Assert-Equal $true (
-        $uiControlsSource -match 'confirmText: "退出"' -and
-        $uiControlsSource -match 'confirmStyleKey: "DangerButton"' -and
-        $uiControlsSource -match 'reasons\.Count == 0') '退出确认帮助器在无未保存内容时直接放行、确认文案为「退出」且取消为安全默认（#155 源码契约）'
+        $appHostSource -match 'confirmText: "退出"' -and
+        $appHostSource -match 'confirmStyleKey: "DangerButton"' -and
+        $appHostSource -match '退出后不再提醒' -and
+        $appHostSource -notmatch 'if \(reasons\.Count == 0\)\s*\{\s*return true;') '进程退出确认每次都弹出，正文包含「退出后不再提醒」，确认文案为「退出」，没有未保存内容时也不直接放行（#213）'
     $shutdownInteractiveHostBody = [regex]::Match(
         $appHostSource,
         'private void ShutdownInteractiveHost\(bool confirmDirtyExit = true\).*?\r?\n    private bool ConfirmDirtyExitAllowed',
@@ -4283,7 +4284,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $confirmDirtyExitAllowedBody -match '_mainWindow\?\.DescribeUnsavedExitWork\(\)' -and
         $confirmDirtyExitAllowedBody -match '_floatingWindow\?\.DescribeUnsavedExitWork\(\)' -and
-        $confirmDirtyExitAllowedBody -match 'ExitConfirmation\.Confirm\(owner, reasons\)') '退出确认咨询主窗与悬浮窗的未保存描述并经统一确认入口（#155 源码契约）'
+        $confirmDirtyExitAllowedBody -match 'ProcessExitConfirmation\.Confirm\(owner, reasons\)' -and
+        $confirmDirtyExitAllowedBody -notmatch '(?<!Process)ExitConfirmation\.Confirm' -and
+        $confirmDirtyExitAllowedBody -notmatch 'if \(reasons\.Count == 0\)') '退出确认咨询主窗与悬浮窗的未保存描述，干净状态也经统一确认入口（#213 源码契约）'
+    Assert-Equal $true (
+        $appHostSource -match 'FloatingWindowCloseBridge\.Attach\(' -and
+        $appHostSource -match 'ManagerWindowRestore\.HideManagerOnly\(window\)' -and
+        $appHostSource -notmatch '_floatingTrayController\?\.MinimizeToTray\(\)') 'Alt+F4 走关闭桥，管理窗口最小化不再把悬浮窗收进托盘（#213 源码契约）'
     Assert-Equal $true (
         $appHostSource -match 'ShutdownInteractiveHost\(confirmDirtyExit: false\);') '测试自动退出（ExitAfterReadyForTest）不进交互脏确认（#155 源码契约）'
     Assert-Equal $true (
@@ -4381,12 +4388,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $trayIconHostSource -match 'using H\.NotifyIcon;' -and
         $trayIconHostSource -match 'TaskbarIcon' -and
-        $trayIconHostSource -match 'TrayLeftMouseDoubleClick' -and
+        $trayIconHostSource -match 'TrayLeftMouseUp' -and
+        $trayIconHostSource -notmatch 'TrayLeftMouseDoubleClick' -and
+        $trayIconHostSource -match '打开管理窗口' -and
         $trayIconHostSource -notmatch 'System\.Windows\.Forms' -and
         $trayIconHostSource -match '#FFFDFC' -and
         $trayIconHostSource -match '#3B190D' -and
         $trayIconHostSource -match '#F6DFD3' -and
-        $trayIconHostSource -match '#D4526A') 'H.NotifyIcon 托盘保留双击恢复与四项入口，并使用局部 WPF 暖粉菜单样式（#202）'
+        $trayIconHostSource -match '#D4526A') 'H.NotifyIcon 托盘单击恢复，菜单含打开管理窗口，并使用局部 WPF 暖粉菜单样式（#213）'
     Assert-Equal $true (
         $floatingTraySource -match 'private void ResetWindowPosition\(\) => _floatingWindow\.ResetPositionIntoWorkArea\(\);') '托盘复位动作直达悬浮窗夹取实现（#156 源码契约）'
     $resetPositionBody = [regex]::Match(
@@ -5012,8 +5021,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.FloatingDragSurfaceCoversWindowBackground) '悬浮窗非交互背景均可接收拖动手势'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayButtonAccessibility) '悬浮窗缩小按钮提供明确 ToolTip 与可访问名称'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayProductionControllerActive) '应用宿主与托盘验收共用生产切换控制器'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayMinimizeHidesWindowAndShowsIcon) '悬浮窗缩小按钮隐藏窗口并显示系统托盘图标'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayRestoreShowsWindowAndHidesIcon) '系统托盘打开命令恢复悬浮窗并隐藏托盘图标'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayMinimizeHidesWindowAndShowsIcon) '悬浮窗缩小按钮隐藏悬浮窗，托盘图标在窗口仍可见时已经常驻（#213）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayRestoreShowsWindowAndHidesIcon) '单击托盘图标或「打开悬浮窗」恢复悬浮窗且图标保持常驻；「打开管理窗口」保留草稿和筛选（#213）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayExitRequestsApplicationExit) '系统托盘退出命令触发应用退出请求'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry) '恢复判定失败时托盘图标保留且可再次恢复'
     Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleReceivesPointerGestures) '悬浮窗标题拖动区接收真实 WPF 左键手势'
@@ -5317,7 +5326,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $expectedNotesFocusedTargetsBackward = @($notesTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedNotesFocusedTargetsBackward)
     Assert-Equal ($expectedNotesFocusedTargetsBackward -join ',') ([string]::Join(',', @($notesTabPath.BackwardFocusedTargets))) '便签每个实际焦点目标反向严格对称'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.CommandsWork) '主窗口纯快捷键真实触发全部主要命令'
+    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.CommandResults.Minimize) '最小化按钮和 Ctrl+M 只收起管理窗口，悬浮窗保持可见（#213）'
     Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口真实 KeyEvent 精确覆盖八个命令（#156 起 Ctrl+F 便签页新增 NoteSearch）'
     Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '主窗口八个快捷键均产生真实预期结果'
     Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口八个快捷键均报告真实 handled 与效果诊断'

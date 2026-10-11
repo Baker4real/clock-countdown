@@ -1035,7 +1035,8 @@ internal static class ValidationReport
         var deleteUndoOffer =
             ValidationExercises.RunDeleteUndoOfferBehavior();
         var dirtyExitConfirmation =
-            ValidationExercises.RunDirtyExitConfirmationBehavior();
+            ValidationExercises.RunDirtyExitConfirmationBehavior() &&
+            ValidationExercises.RunAlwaysConfirmExitKeepsReminderBehavior();
         var assistiveNarration =
             ValidationExercises.RunAssistiveNarrationBehavior();
         var windowPositionReset =
@@ -1572,9 +1573,11 @@ internal static class ValidationReport
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
         var floatingTrayInteraction = RunFloatingTrayInteractionExercise(
+            main,
             floating,
             minimizeToTrayButton,
-            floatingTrayController);
+            floatingTrayController,
+            desktopWorkspace);
         var mainKeyboardBehavior = ValidateMainKeyboardBehavior(
             main,
             floating,
@@ -11758,13 +11761,38 @@ internal static class ValidationReport
             var mainOpacity = main.Opacity;
             var floatingOpacity = floating.Opacity;
             var floatingWasVisible = floating.IsVisible;
+            minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher();
+            var buttonHidManagerOnly =
+                !main.IsVisible &&
+                floating.IsVisible &&
+                trayController.IsTrayIconVisible;
+            if (!main.IsVisible)
+            {
+                main.Show();
+                main.Left = mainLeft;
+                main.Top = mainTop;
+                main.Opacity = mainOpacity;
+                main.ShowInTaskbar = false;
+                PumpDispatcher();
+            }
+
             var minimizeHandled = RaiseShortcut(ModifierKeys.Control, Key.M);
             PumpDispatcher();
             var minimizedToTray =
+                buttonHidManagerOnly &&
                 minimizeHandled &&
                 !main.IsVisible &&
-                !floating.IsVisible &&
+                floating.IsVisible &&
                 trayController.IsTrayIconVisible;
+            if (!minimizedToTray)
+            {
+                throw new InvalidOperationException(
+                    "#213 管理窗口最小化探针失败：" +
+                    $"button={buttonHidManagerOnly} shortcut={minimizeHandled} " +
+                    $"mainVisible={main.IsVisible} floatingVisible={floating.IsVisible} " +
+                    $"tray={trayController.IsTrayIconVisible}");
+            }
             commandResults["Minimize"] = minimizedToTray;
             commandDiagnostics["Minimize"] = new(
                 minimizeHandled,
@@ -14720,9 +14748,11 @@ internal static class ValidationReport
     }
 
     private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(
+        MainWindow main,
         FloatingWindow floating,
         Button minimizeButton,
-        FloatingTrayController trayController)
+        FloatingTrayController trayController,
+        DesktopWorkspace workspace)
     {
         var wasVisible = floating.IsVisible;
         var exitRequested = false;
@@ -14730,18 +14760,38 @@ internal static class ValidationReport
         trayController.ExitRequested += exitHandler;
         try
         {
+            var residentWhileVisible = floating.IsVisible && trayController.IsTrayIconVisible;
             minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             PumpDispatcher();
             var minimizeWorks =
+                residentWhileVisible &&
                 !floating.IsVisible &&
                 trayController.IsTrayIconVisible;
 
-            trayController.InvokeRestoreForValidation();
+            trayController.InvokeIconClickForValidation();
             PumpDispatcher();
-            var restoreWorks =
+            var clickRestores =
                 floating.IsVisible &&
                 floating.WindowState == WindowState.Normal &&
-                !trayController.IsTrayIconVisible;
+                trayController.IsTrayIconVisible;
+
+            minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher();
+            trayController.InvokeRestoreForValidation();
+            PumpDispatcher();
+            var menuRestores =
+                floating.IsVisible &&
+                floating.WindowState == WindowState.Normal &&
+                trayController.IsTrayIconVisible;
+            var headersMatch = TrayMenuHeadersMatch();
+            var managerPreserved = TrayOpenManagerPreservesDraftAndFilter(main, workspace, trayController);
+            if (!minimizeWorks || !clickRestores || !menuRestores || !headersMatch || !managerPreserved)
+            {
+                throw new InvalidOperationException(
+                    "#213 托盘探针失败：" +
+                    $"residentMinimize={minimizeWorks} click={clickRestores} menu={menuRestores} " +
+                    $"headers={headersMatch} manager={managerPreserved}");
+            }
 
             minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             PumpDispatcher();
@@ -14750,16 +14800,16 @@ internal static class ValidationReport
             return new FloatingTrayInteractionExerciseResult(
                 trayController.IsActive,
                 minimizeWorks,
-                restoreWorks,
+                clickRestores && menuRestores && headersMatch && managerPreserved,
                 exitRequested,
                 RunFailedRestoreKeepsTrayStateProbe(floating));
         }
         finally
         {
             trayController.ExitRequested -= exitHandler;
-            if (trayController.IsTrayIconVisible)
+            if (!floating.IsVisible)
             {
-                trayController.InvokeRestoreForValidation();
+                floating.Show();
                 PumpDispatcher();
             }
 
@@ -14767,6 +14817,54 @@ internal static class ValidationReport
             {
                 floating.Show();
             }
+        }
+    }
+
+    private static bool TrayMenuHeadersMatch()
+    {
+        var (_, openManager, restore, resetPosition, exit) = TrayMenuFactory.Create(
+            static () => { },
+            static () => { },
+            static () => { },
+            static () => { });
+        return string.Equals(openManager.Header as string, "打开管理窗口", StringComparison.Ordinal) &&
+            string.Equals(restore.Header as string, "打开悬浮窗", StringComparison.Ordinal) &&
+            string.Equals(resetPosition.Header as string, "复位窗口位置", StringComparison.Ordinal) &&
+            string.Equals(exit.Header as string, "退出", StringComparison.Ordinal);
+    }
+
+    private static bool TrayOpenManagerPreservesDraftAndFilter(
+        MainWindow main,
+        DesktopWorkspace workspace,
+        FloatingTrayController trayController)
+    {
+        var noteText = Required<TextBox>(main, "NoteText");
+        var previousDraft = noteText.Text;
+        var previousFilter = workspace.Snapshot.Filter;
+        var mainWasVisible = main.IsVisible;
+        try
+        {
+            noteText.Text = "托盘恢复草稿";
+            workspace.ApplyFilter(previousFilter with { NoteSearch = "托盘保留筛选" });
+            PumpDispatcher();
+            ManagerWindowRestore.HideManagerOnly(main);
+            PumpDispatcher();
+            trayController.InvokeOpenManagerForValidation();
+            PumpDispatcher();
+            return main.IsVisible &&
+                string.Equals(noteText.Text, "托盘恢复草稿", StringComparison.Ordinal) &&
+                string.Equals(workspace.Snapshot.Filter.NoteSearch, "托盘保留筛选", StringComparison.Ordinal);
+        }
+        finally
+        {
+            noteText.Text = previousDraft;
+            workspace.ApplyFilter(previousFilter);
+            if (mainWasVisible && !main.IsVisible)
+            {
+                main.Show();
+            }
+
+            PumpDispatcher();
         }
     }
 
@@ -14794,7 +14892,7 @@ internal static class ValidationReport
                 retrySucceeded &&
                 floating.IsVisible &&
                 floating.WindowState == WindowState.Normal &&
-                !controller.IsTrayIconVisible;
+                controller.IsTrayIconVisible;
 
             return failureReturnsFalse && trayIconKeptAfterFailure && retryRestoresFully;
         }

@@ -342,11 +342,8 @@ public sealed partial class App : Application
         window.ApplyTheme();
 
         window.CloseRequested += (_, _) => window.Hide();
-        window.MinimizeToTrayRequested += (_, _) =>
-        {
-            window.Hide();
-            _floatingTrayController?.MinimizeToTray();
-        };
+        // #213：管理窗口最小化只收起管理窗口，不把悬浮窗一起收进托盘。
+        window.MinimizeToTrayRequested += (_, _) => ManagerWindowRestore.HideManagerOnly(window);
         window.Closing += (_, eventArgs) =>
         {
             if (_shuttingDown)
@@ -378,6 +375,11 @@ public sealed partial class App : Application
             throw new InvalidOperationException("应用宿主尚未初始化。");
         }
 
+        // #213：Alt+F4 与标题栏关闭走同一条退出确认；取消时不关掉最后一扇窗。
+        FloatingWindowCloseBridge.Attach(
+            _floatingWindow,
+            () => ShutdownInteractiveHost(),
+            () => _shuttingDown);
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
         // #155：悬浮窗删除便签成功后，撤销入口统一呈现在主窗口状态条（最近一次删除）。
         _floatingWindow.NoteDeleted += (_, undo) => _mainWindow?.RegisterDeleteUndo(undo);
@@ -430,7 +432,14 @@ public sealed partial class App : Application
         _floatingTrayController = new FloatingTrayController(
             _floatingWindow,
             Path.Combine(_applicationRoot, "countdown-icon.ico"),
-            () => !_shuttingDown);
+            () => !_shuttingDown,
+            openManager: () =>
+            {
+                if (_managerLifecycle is not null)
+                {
+                    _managerLifecycle.RestorePreservingState();
+                }
+            });
         _floatingTrayController.Minimized +=
             (_, _) => _logger?.Info("FloatingWindowMinimizedToTray");
         _floatingTrayController.Restored +=
@@ -668,9 +677,10 @@ public sealed partial class App : Application
             return;
         }
 
-        // #155：用户发起的进程退出（悬浮退出、托盘退出、悬浮窗关闭）在显示设置或编辑器脏时
-        // 先确认；测试自动退出（ExitAfterReadyForTest）与干净状态不弹确认框。
+        // #155 / #213：用户发起的进程退出（悬浮退出、托盘退出、悬浮窗关闭、Alt+F4）每次都先确认。
+        // 测试自动退出（ExitAfterReadyForTest）不进交互确认。
         // 管理窗口关闭/隐藏不经过本方法（AttachManagerWindow 继续 Cancel+Hide 并保留草稿）。
+        // 取消时在置 _shuttingDown 与释放提醒派发之前返回，进程和悬浮窗都留在。
         if (confirmDirtyExit && !ConfirmDirtyExitAllowed())
         {
             return;
@@ -709,18 +719,19 @@ public sealed partial class App : Application
             reasons.Add(floatingReason);
         }
 
-        if (reasons.Count == 0)
-        {
-            return true;
-        }
-
         // 对话框归属当前可见窗口：悬浮退出时归悬浮窗，托盘退出（悬浮已隐藏）时归管理窗口。
+        // #213：没有未保存内容时也要确认，不能在这里直接放行。
         Window? owner =
             _floatingWindow?.IsVisible == true ? _floatingWindow :
             _mainWindow?.IsVisible == true ? _mainWindow :
-            _floatingWindow;
+            (Window?)_floatingWindow ?? _mainWindow;
+        if (owner is null)
+        {
+            return false;
+        }
+
         _logger?.Info("ExitConfirmationOffered");
-        var confirmed = ExitConfirmation.Confirm(owner, reasons);
+        var confirmed = ProcessExitConfirmation.Confirm(owner, reasons);
         _logger?.Info(confirmed ? "ExitConfirmationConfirmed" : "ExitConfirmationCancelled");
         return confirmed;
     }
@@ -756,6 +767,63 @@ public sealed partial class App : Application
     {
         _logger?.Warning("UnobservedTaskException", eventArgs.Exception);
         eventArgs.SetObserved();
+    }
+}
+
+// #213：进程退出确认。干净状态也弹出，正文写明退出后不再提醒；有未保存项时额外列出。
+internal static class ProcessExitConfirmation
+{
+    internal static bool Confirm(Window owner, IReadOnlyList<string> reasons)
+    {
+        var message = reasons.Count == 0
+            ? "退出后不再提醒。确定退出吗？"
+            : string.Join(string.Empty, reasons) + "退出后不再提醒。未保存内容将丢失。确定退出吗？";
+        return new ConfirmationDialog(
+            owner,
+            "退出敏敏子倒计时",
+            message,
+            confirmText: "退出",
+            confirmStyleKey: "DangerButton").ShowDialog() == true;
+    }
+}
+
+// #213：系统关闭（Alt+F4）在窗口消失前转入与标题栏关闭相同的退出请求。
+// 推迟到 Closing 返回之后再确认，避免在 Closing 内再次 Close。
+internal static class FloatingWindowCloseBridge
+{
+    internal static void Attach(Window window, Action requestExit, Func<bool> isShuttingDown)
+    {
+        window.Closing += (_, args) =>
+        {
+            if (isShuttingDown())
+            {
+                return;
+            }
+
+            args.Cancel = true;
+            window.Dispatcher.BeginInvoke(DispatcherPriority.Normal, requestExit);
+        };
+    }
+}
+
+// #213：管理窗口最小化只 Hide 自己；从托盘恢复时不重置草稿、筛选或工作区。
+internal static class ManagerWindowRestore
+{
+    internal static void HideManagerOnly(Window manager) => manager.Hide();
+
+    internal static void ShowPreservingState(Window manager)
+    {
+        if (!manager.IsVisible)
+        {
+            manager.Show();
+        }
+
+        if (manager.WindowState == WindowState.Minimized)
+        {
+            manager.WindowState = WindowState.Normal;
+        }
+
+        manager.Activate();
     }
 }
 
@@ -801,6 +869,9 @@ internal sealed class ManagerWindowLifecycle : IManagerWorkspaceHost
     }
 
     public void Reveal(WorkspaceKind workspace) => EnsureCreated().Reveal(workspace);
+
+    public void RestorePreservingState() =>
+        ManagerWindowRestore.ShowPreservingState(EnsureCreated());
 
     public bool OpenReminderSource(ReminderSourceKind sourceKind, string sourceId) =>
         EnsureCreated().OpenReminderSource(sourceKind, sourceId);
@@ -869,6 +940,8 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
         _windowFactory = windowFactory;
         _workspace.StateChanged += OnWorkspaceStateChanged;
     }
+
+    internal bool IsDispatching => !_disposed;
 
     internal ReminderCenterWindow? ActiveWindow => _window;
 

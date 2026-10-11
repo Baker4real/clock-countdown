@@ -9,13 +9,21 @@ internal sealed class FloatingTrayController : IDisposable
     private readonly ITrayIconHost _trayIcon;
     private readonly Func<bool> _canTransition;
     private readonly TrayForegroundInterop _foregroundInterop;
+    private readonly Action? _openManager;
     private bool _disposed;
 
     public FloatingTrayController(
         FloatingWindow floatingWindow,
         string iconPath,
-        Func<bool>? canTransition = null)
-        : this(floatingWindow, iconPath, canTransition, foregroundInterop: null, attachShellNotifyIcon: true)
+        Func<bool>? canTransition = null,
+        Action? openManager = null)
+        : this(
+            floatingWindow,
+            iconPath,
+            canTransition,
+            foregroundInterop: null,
+            attachShellNotifyIcon: true,
+            openManager: openManager)
     {
     }
 
@@ -24,7 +32,13 @@ internal sealed class FloatingTrayController : IDisposable
         string iconPath,
         Func<bool>? canTransition,
         TrayForegroundInterop? foregroundInterop)
-        : this(floatingWindow, iconPath, canTransition, foregroundInterop, attachShellNotifyIcon: true)
+        : this(
+            floatingWindow,
+            iconPath,
+            canTransition,
+            foregroundInterop,
+            attachShellNotifyIcon: true,
+            openManager: null)
     {
     }
 
@@ -33,20 +47,25 @@ internal sealed class FloatingTrayController : IDisposable
         string iconPath,
         Func<bool>? canTransition,
         TrayForegroundInterop? foregroundInterop,
-        bool attachShellNotifyIcon)
+        bool attachShellNotifyIcon,
+        Action? openManager = null)
     {
         _floatingWindow = floatingWindow;
         _canTransition = canTransition ?? (() => true); // Production default: allow tray transitions unless a host supplies a guard.
         _foregroundInterop = foregroundInterop ?? TrayForegroundInterop.System;
+        _openManager = openManager;
         _trayIcon = attachShellNotifyIcon
             ? new TrayIconHost(
                 iconPath,
                 floatingWindow.Dispatcher,
                 Restore,
                 RequestExit,
-                ResetWindowPosition)
-            : new MemoryTrayIconHost(Restore, RequestExit, ResetWindowPosition);
+                ResetWindowPosition,
+                OpenManager)
+            : new MemoryTrayIconHost(Restore, RequestExit, ResetWindowPosition, OpenManager);
         _floatingWindow.MinimizeToTrayRequested += OnMinimizeRequested;
+        // #213：应用运行期间托盘图标常驻，不等到悬浮窗隐藏才出现。
+        _trayIcon.Show();
     }
 
     internal bool IsActive => !_disposed;
@@ -64,6 +83,10 @@ internal sealed class FloatingTrayController : IDisposable
     internal void InvokeResetPositionForValidation() => _trayIcon.InvokeResetPositionForValidation();
 
     internal void InvokeExitForValidation() => _trayIcon.InvokeExitForValidation();
+
+    internal void InvokeOpenManagerForValidation() => _trayIcon.InvokeOpenManagerForValidation();
+
+    internal void InvokeIconClickForValidation() => _trayIcon.InvokeIconClickForValidation();
 
     internal string ActivationState => !_floatingWindow.IsVisible
         ? IsTrayIconVisible ? "Tray" : "Hidden"
@@ -149,14 +172,11 @@ internal sealed class FloatingTrayController : IDisposable
                _floatingWindow.WindowState == System.Windows.WindowState.Normal &&
                isForeground &&
                (activateAccepted || focusAccepted || foregroundAccepted || isForeground);
-        if (restored)
-        {
-            // 判定恢复成功才隐藏托盘图标；失败时保留图标让外部请求可再次重试。
-            _trayIcon.Hide();
-        }
-
+        // #213：托盘图标在整个运行期间保持可见，恢复悬浮窗不再把它藏起来。
         return restored;
     }
+
+    private void OpenManager() => _openManager?.Invoke();
 
     private void RequestExit()
     {

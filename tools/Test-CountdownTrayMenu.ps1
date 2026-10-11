@@ -200,19 +200,20 @@ public static class CountdownTrayMenuHarness
             if (factory == null || pump == null || pointer == null || pointerState == null || capture == null || writePng == null)
                 throw new InvalidOperationException("当前构建缺少生产菜单工厂或既有输入/截图接口。");
 
-            var counts = new int[3];
-            var built = (ValueTuple<ContextMenu, MenuItem, MenuItem, MenuItem>)factory.Invoke(null, new object[]
+            var counts = new int[4];
+            var built = (ValueTuple<ContextMenu, MenuItem, MenuItem, MenuItem, MenuItem>)factory.Invoke(null, new object[]
             {
                 new Action(() => counts[0]++),
                 new Action(() => counts[1]++),
-                new Action(() => counts[2]++)
+                new Action(() => counts[2]++),
+                new Action(() => counts[3]++)
             });
             menu = built.Item1;
-            var items = new[] { built.Item2, built.Item3, built.Item4 };
-            var expectedHeaders = new[] { "打开悬浮窗", "复位窗口位置", "退出" };
-            if (menu.Items.Count != 3 || !items.Select(item => item.Header as string).SequenceEqual(expectedHeaders) ||
+            var items = new[] { built.Item2, built.Item3, built.Item4, built.Item5 };
+            var expectedHeaders = new[] { "打开管理窗口", "打开悬浮窗", "复位窗口位置", "退出" };
+            if (menu.Items.Count != 4 || !items.Select(item => item.Header as string).SequenceEqual(expectedHeaders) ||
                 !menu.Items.Cast<object>().SequenceEqual(items.Cast<object>()))
-                throw new InvalidOperationException("生产菜单必须按顺序包含打开悬浮窗、复位窗口位置、退出三个真实菜单项。");
+                throw new InvalidOperationException("生产菜单必须按顺序包含打开管理窗口、打开悬浮窗、复位窗口位置、退出四个真实菜单项。");
 
             owner = new Window
             {

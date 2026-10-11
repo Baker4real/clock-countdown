@@ -4287,7 +4287,7 @@ internal static class ValidationExercises
                 liveRegionRegistered &&
                 SawNarratorNotice(log, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
                 "字段错误更新后必须触发礼貌 LiveRegionChanged。" +
-                $" registered={liveRegionRegistered} raw={log.RawCount} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
+                $" registered={liveRegionRegistered} raw={log.RawCount} callbacks={UiAccessibility.LiveRegionCallbacks} raises={UiAccessibility.LiveRegionRaises} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
                 DescribeNarratorNotices(log));
 
             ((TextBox)main.FindName("CountdownName")).Text = "讲述人保存探针";
@@ -4498,15 +4498,9 @@ internal static class ValidationExercises
 
     private static void FlushNarrator(Dispatcher dispatcher)
     {
-        for (var attempt = 0; attempt < 8; attempt++)
-        {
-            WindowValidationInput.Pump(dispatcher);
-            var frame = new DispatcherFrame();
-            dispatcher.BeginInvoke(
-                DispatcherPriority.SystemIdle,
-                new Action(() => frame.Continue = false));
-            Dispatcher.PushFrame(frame);
-        }
+        WindowValidationInput.Pump(dispatcher);
+        dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+        WindowValidationInput.Pump(dispatcher);
     }
 
     private static AutomationLiveSetting ReadLiveSetting(object? setting)

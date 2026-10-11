@@ -52,6 +52,10 @@ internal static class UiAccessibility
         return builder.ToString();
     }
 
+    internal static int LiveRegionCallbacks { get; private set; }
+
+    internal static int LiveRegionRaises { get; private set; }
+
     public static void MarkLive(TextBlock textBlock)
     {
         AutomationProperties.SetLiveSetting(textBlock, AutomationLiveSetting.Polite);
@@ -77,6 +81,7 @@ internal static class UiAccessibility
             DispatcherPriority.ApplicationIdle,
             new Action(() =>
             {
+                LiveRegionCallbacks++;
                 if (!string.Equals(target.Text, announced, StringComparison.Ordinal))
                 {
                     return;
@@ -84,7 +89,13 @@ internal static class UiAccessibility
 
                 var peer = UIElementAutomationPeer.FromElement(target)
                     ?? UIElementAutomationPeer.CreatePeerForElement(target);
-                peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+                if (peer is null)
+                {
+                    return;
+                }
+
+                peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+                LiveRegionRaises++;
             }));
     }
 

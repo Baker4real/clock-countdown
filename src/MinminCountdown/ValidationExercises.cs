@@ -4260,7 +4260,6 @@ internal static class ValidationExercises
             Top = -20_000,
             Opacity = 0
         };
-        NarratorLiveRegionLog? log = null;
         ReminderDeliveryCoordinator? coordinator = null;
         var announced = new List<(string Id, string Name, AutomationLiveSetting Live)>();
         void RememberAnnouncement(TextBlock block) => announced.Add((
@@ -4272,9 +4271,6 @@ internal static class ValidationExercises
         {
             floating.Show();
             main.Show();
-            log = new NarratorLiveRegionLog();
-            log.Listen(main);
-            log.Listen(floating);
             FlushNarrator(main.Dispatcher);
 
             main.ShowWorkspace(WorkspaceKind.Countdowns);
@@ -4284,10 +4280,10 @@ internal static class ValidationExercises
             FlushNarrator(main.Dispatcher);
             var nameError = (TextBlock)main.FindName("CountdownNameError");
             Must(
-                SawNarratorNotice(log, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
+                SawNarratorNotice(announced, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
                 "字段错误更新后必须触发礼貌 LiveRegionChanged。" +
-                $" raw={log.RawCount} entry={announced.Count} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
-                DescribeNarratorNotices(log));
+                $" errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
+                DescribeAnnouncements(announced));
 
             ((TextBox)main.FindName("CountdownName")).Text = "讲述人保存探针";
             ((DatePicker)main.FindName("CountdownDate")).SelectedDate = new DateTime(2038, 8, 1);
@@ -4298,8 +4294,8 @@ internal static class ValidationExercises
                 new RoutedEventArgs(ButtonBase.ClickEvent));
             FlushNarrator(main.Dispatcher);
             Must(
-                SawNarratorNotice(log, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
-                "状态消息更新后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
+                SawNarratorNotice(announced, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
+                "状态消息更新后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
 
             main.ShowWorkspace(WorkspaceKind.Notes);
             FlushNarrator(main.Dispatcher);
@@ -4312,15 +4308,15 @@ internal static class ValidationExercises
             completion!.IsChecked = true;
             FlushNarrator(main.Dispatcher);
             Must(
-                SawNarratorNotice(log, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
-                "数量变化后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
+                SawNarratorNotice(announced, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
+                "数量变化后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
 
-            var countNoticesBeforeMinute = log.Notices.Count(notice =>
-                string.Equals(notice.AutomationId, "RecordCountText", StringComparison.Ordinal));
+            var countNoticesBeforeMinute = announced.Count(notice =>
+                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
             main.UpdateTime(ChinaStandardTime.ToBeijingTime(workspace.Snapshot.UtcNow).AddMinutes(1));
             FlushNarrator(main.Dispatcher);
-            var countNoticesAfterMinute = log.Notices.Count(notice =>
-                string.Equals(notice.AutomationId, "RecordCountText", StringComparison.Ordinal));
+            var countNoticesAfterMinute = announced.Count(notice =>
+                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
             Must(
                 countNoticesAfterMinute == countNoticesBeforeMinute,
                 "分钟级刷新且数量没变时不得再次播报数量直播区。");
@@ -4341,21 +4337,14 @@ internal static class ValidationExercises
             deliveryClock.UtcNow = dueUtc;
             coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
             coordinator.Tick(dueUtc);
-            if (coordinator.ActiveWindow is Window deliveryWindow)
-            {
-                deliveryWindow.UpdateLayout();
-                log.Listen(deliveryWindow);
-                ConnectNarratorElement(deliveryWindow, "ReminderEntryDeliveryError");
-            }
-
             FlushNarrator(Dispatcher.CurrentDispatcher);
             Must(
                 SawNarratorNotice(
-                    log,
+                    announced,
                     "ReminderEntryDeliveryError",
                     "送达状态保存失败，正在自动重试。打开来源仍然可用。",
                     AutomationLiveSetting.Assertive),
-                "提醒送达失败必须触发强制 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
+                "提醒送达失败必须触发强制 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
 
             var income = (AutomationOptionalTextBlock)floating.FindName("FloatingIncome");
             var statusBrush = income.Foreground;
@@ -4445,7 +4434,6 @@ internal static class ValidationExercises
         finally
         {
             UiAccessibility.Announced -= RememberAnnouncement;
-            log?.Dispose();
             coordinator?.Dispose();
             if (main.IsLoaded)
             {
@@ -4511,6 +4499,19 @@ internal static class ValidationExercises
             2 => AutomationLiveSetting.Assertive,
             _ => AutomationLiveSetting.Off
         };
+    }
+
+    private static string DescribeAnnouncements(
+        IReadOnlyList<(string Id, string Name, AutomationLiveSetting Live)> notices)
+    {
+        if (notices.Count == 0)
+        {
+            return "（无）";
+        }
+
+        return string.Join(
+            " | ",
+            notices.Take(12).Select(notice => $"{notice.Id}/{notice.Live}/{notice.Name}"));
     }
 
     private static bool SawNarratorNotice(

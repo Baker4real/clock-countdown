@@ -3946,6 +3946,306 @@ internal static class ValidationExercises
         }
     }
 
+    // #214：悬浮窗删除就地撤销。管理窗口从未创建时，底部状态行出现「撤销」并恢复便签与规则提醒状态；
+    // 管理窗口删除仍走状态条。Ctrl+Z 在撤销期间生效。焦点或悬停暂停 10 秒计时，移开后按剩余时间继续。
+    public static bool RunDeleteUndoInPlaceBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-undo-inplace-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+        var clock = new AdvancingValidationClock(nowUtc);
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        var rule = new AbsoluteOnceReminderRule("floating-undo-rule", nowUtc.AddMinutes(30));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "悬浮撤销便签甲",
+            new DateTime(2038, 7, 8),
+            false,
+            Array.Empty<string>(),
+            new ReminderRule[] { rule }));
+        var noteA = workspace.Snapshot.Settings.Notes.Single();
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "悬浮撤销便签乙",
+            new DateTime(2038, 7, 9),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        var noteB = workspace.Snapshot.Settings.Notes.First(item =>
+            !string.Equals(item.Id, noteA.Id, StringComparison.OrdinalIgnoreCase));
+        MustApply(workspace, new SaveCountdownChange(
+            null,
+            "管理撤销倒计时",
+            nowUtc.AddDays(4),
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        var countdown = workspace.Snapshot.Settings.Countdowns.Single();
+        clock.UtcNow = rule.ScheduledUtc;
+        Must(
+            workspace.ConfirmReminderDisplayed(
+                ReminderSourceKind.Note,
+                noteA.Id,
+                rule.Id,
+                rule.ScheduledUtc).Succeeded,
+            "无法预置便签提醒已送达状态。");
+        var stateBefore = workspace.Snapshot.Settings.ReminderStates[rule.Id];
+
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var preexistingWindows = Application.Current.Windows.Cast<Window>().ToHashSet();
+        var lifecycle = new ManagerWindowLifecycle(
+            () => new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory),
+            PrepareOffscreenValidationWindow);
+        var floating = new FloatingWindow(
+            workspace,
+            calendar,
+            lifecycle,
+            AppContext.BaseDirectory);
+        MainWindow? main = null;
+        try
+        {
+            PrepareOffscreenValidationWindow(floating);
+            floating.Show();
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                lifecycle.Window is null &&
+                CurrentCreatedMainWindows(preexistingWindows).Length == 0 &&
+                floating.FloatingDeleteUndoLine.Visibility == Visibility.Collapsed,
+                "探针开始时管理窗口必须尚未创建，悬浮撤销行必须收起。");
+
+            string? cancelBody = null;
+            var cancelIsSafeDefault = false;
+            DriveFloatingNoteDelete(floating, noteA, confirm: false, inspect: dialog =>
+            {
+                cancelBody = dialog.BodyText.Text;
+                cancelIsSafeDefault =
+                    dialog.CancelButton.IsDefault &&
+                    dialog.CancelButton.IsCancel &&
+                    !dialog.ConfirmButton.IsDefault;
+            });
+            Must(
+                cancelBody is not null &&
+                cancelBody.Contains("删除后 10 秒内可撤销", StringComparison.Ordinal) &&
+                cancelIsSafeDefault &&
+                workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteA.Id) &&
+                floating.DeleteUndoForValidation is null &&
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Collapsed &&
+                lifecycle.Window is null,
+                "删除确认框必须写明 10 秒内可撤销，取消仍是安全默认，且不出现撤销入口。");
+
+            DriveFloatingNoteDelete(floating, noteA, confirm: true);
+            Must(
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteA.Id) &&
+                !workspace.Snapshot.Settings.ReminderStates.ContainsKey(rule.Id) &&
+                floating.DeleteUndoForValidation is not null &&
+                floating.FloatingDeleteUndoLine.Visibility == Visibility.Visible &&
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible &&
+                string.Equals(
+                    floating.FloatingDeleteUndoButton.Content?.ToString(),
+                    "撤销",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    AutomationProperties.GetName(floating.FloatingDeleteUndoButton),
+                    $"撤销删除便签「{noteA.Text}」",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    floating.FloatingDeleteUndoText.Text,
+                    $"已删除便签「{noteA.Text}」。",
+                    StringComparison.Ordinal) &&
+                lifecycle.Window is null,
+                "管理窗口从未创建时，悬浮窗删除后底部必须出现撤销，且提醒状态随删除清理。");
+
+            floating.FloatingDeleteUndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            var restoredA = workspace.Snapshot.Settings.Notes.FirstOrDefault(item => item.Id == noteA.Id);
+            Must(
+                restoredA is not null &&
+                string.Equals(restoredA.Text, noteA.Text, StringComparison.Ordinal) &&
+                workspace.Snapshot.Settings.ReminderStates.TryGetValue(rule.Id, out var restoredState) &&
+                restoredState == stateBefore &&
+                floating.DeleteUndoForValidation is null &&
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Collapsed,
+                "点击悬浮窗撤销必须原样恢复便签及其规则提醒状态。");
+
+            DriveFloatingNoteDelete(floating, noteA, confirm: true);
+            Must(
+                WindowValidationInput.RaisePreviewKey(floating, Key.Z, ModifierKeys.Control),
+                "撤销期间 Ctrl+Z 必须被悬浮窗处理。");
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteA.Id) &&
+                workspace.Snapshot.Settings.ReminderStates.ContainsKey(rule.Id) &&
+                floating.DeleteUndoForValidation is null,
+                "悬浮窗 Ctrl+Z 必须撤销刚刚的删除。");
+
+            DriveFloatingNoteDelete(floating, noteA, confirm: true);
+            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(7));
+            Must(
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible,
+                "未到 10 秒时撤销入口必须仍在。");
+            RaiseMouseTransition(floating.FloatingDeleteUndoButton, Mouse.MouseEnterEvent);
+            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(10));
+            Must(
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible &&
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteA.Id),
+                "鼠标停在撤销按钮上时不得自动收起。");
+            RaiseMouseTransition(floating.FloatingDeleteUndoButton, Mouse.MouseLeaveEvent);
+            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(2));
+            Must(
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible,
+                "移开鼠标后必须按剩余时间继续，而不是重新算满 10 秒。");
+            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(2));
+            Must(
+                floating.DeleteUndoForValidation is null &&
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Collapsed &&
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteA.Id),
+                "悬停移开后计时必须继续，到点收起且不恢复便签。");
+
+            DriveFloatingNoteDelete(floating, noteB, confirm: true);
+            Must(
+                floating.DeleteUndoForValidation is not null &&
+                lifecycle.Window is null,
+                "第二张便签的撤销仍必须留在悬浮窗，且管理窗口仍未创建。");
+            RaiseMouseTransition(floating.FloatingDeleteUndoButton, Mouse.MouseEnterEvent);
+
+            var openManager = (Button)floating.FindName("OpenManagerButton");
+            openManager.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            main = lifecycle.Window;
+            Must(
+                main is not null &&
+                CurrentCreatedMainWindows(preexistingWindows).Length == 1 &&
+                floating.DeleteUndoForValidation is not null &&
+                string.Equals(
+                    floating.DeleteUndoForValidation.Description,
+                    noteB.Text,
+                    StringComparison.Ordinal) &&
+                floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible,
+                "打开管理窗口不得清掉悬浮窗上尚未撤销的删除。");
+            main!.ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(main.Dispatcher);
+            string? mainBody = null;
+            QueueConfirmationDialogResponse(
+                main,
+                confirm: true,
+                inspect: dialog => mainBody = dialog.BodyText.Text);
+            Button MainDeleteButton(string id)
+            {
+                var button = VisualDescendants<Button>(main).FirstOrDefault(candidate =>
+                    string.Equals(candidate.Content?.ToString(), "删除", StringComparison.Ordinal) &&
+                    string.Equals(candidate.Tag as string, id, StringComparison.OrdinalIgnoreCase));
+                Must(button is not null, $"无法定位记录 {id} 的行内删除按钮。");
+                return button!;
+            }
+
+            MainDeleteButton(countdown.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                mainBody is not null &&
+                mainBody.Contains("删除后 10 秒内可撤销", StringComparison.Ordinal) &&
+                !workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdown.Id) &&
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteB.Id) &&
+                floating.FloatingDeleteUndoLine.Visibility == Visibility.Collapsed &&
+                floating.DeleteUndoForValidation is null &&
+                main.DeleteUndoForValidation is not null &&
+                main.MainStatusUndoButton.Visibility == Visibility.Visible &&
+                string.Equals(
+                    AutomationProperties.GetName(main.MainStatusUndoButton),
+                    $"撤销删除倒计时「{countdown.Name}」",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    main.StatusText.Text,
+                    $"已删除倒计时「{countdown.Name}」。",
+                    StringComparison.Ordinal),
+                "管理窗口删除必须改由状态条提供撤销，并替换悬浮窗上一次未完成的撤销。");
+
+            Must(
+                WindowValidationInput.RaisePreviewKey(main, Key.Z, ModifierKeys.Control),
+                "管理窗口撤销期间 Ctrl+Z 必须生效。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdown.Id) &&
+                !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteB.Id) &&
+                main.DeleteUndoForValidation is null &&
+                main.MainStatusUndoButton.Visibility == Visibility.Collapsed,
+                "管理窗口 Ctrl+Z 只能恢复最近一次删除。");
+
+            QueueConfirmationDialogResponse(main, confirm: true);
+            MainDeleteButton(countdown.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.Activate();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(
+                main.MainStatusUndoButton.Focus(),
+                "撤销按钮必须能获得键盘焦点。");
+            main.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(15));
+            Must(
+                main.MainStatusUndoButton.Visibility == Visibility.Visible &&
+                !workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdown.Id),
+                "焦点停在撤销按钮上时不得自动收起。");
+            Must(main.StatusText.Focus(), "焦点必须能离开撤销按钮。");
+            main.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(12));
+            Must(
+                main.DeleteUndoForValidation is null &&
+                main.MainStatusUndoButton.Visibility == Visibility.Collapsed &&
+                !workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdown.Id),
+                "焦点移开后计时必须继续并到点收起。");
+            return true;
+        }
+        finally
+        {
+            main?.Close();
+            floating.Close();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+
+        static void DriveFloatingNoteDelete(
+            FloatingWindow floating,
+            NoteRecord note,
+            bool confirm,
+            Action<ConfirmationDialog>? inspect = null)
+        {
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(floating.Dispatcher);
+            floating.UpdateLayout();
+            var trigger = VisualDescendants<Button>(floating).FirstOrDefault(candidate =>
+                string.Equals(
+                    AutomationProperties.GetName(candidate),
+                    $"更多操作：编辑或删除便签 {note.Text}",
+                    StringComparison.Ordinal));
+            Must(trigger is not null, $"无法定位便签「{note.Text}」的更多操作。");
+            var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger!);
+            Must(popup is not null, "便签更多操作没有弹出层。");
+            if (!popup!.IsOpen)
+            {
+                trigger!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                WindowValidationInput.Pump(floating.Dispatcher);
+                floating.UpdateLayout();
+            }
+
+            Must(popup.IsOpen, "便签更多操作没有打开。");
+            QueueConfirmationDialogResponse(floating, confirm, inspect);
+            var menuDelete = VisualDescendants<Button>(popup.Child).FirstOrDefault(candidate =>
+                string.Equals(candidate.Content as string, "删除", StringComparison.Ordinal));
+            Must(menuDelete is not null, "无法定位悬浮便签删除按钮。");
+            menuDelete!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+        }
+
+        static void RaiseMouseTransition(UIElement element, RoutedEvent routedEvent)
+        {
+            element.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
+            {
+                RoutedEvent = routedEvent,
+                Source = element
+            });
+        }
+    }
+
     // #155 / #213：脏状态描述沿用既有语义；退出确认框以取消为安全默认，
     // 确认文案为「退出」，正文包含「退出后不再提醒」并列出未保存项。
     public static bool RunDirtyExitConfirmationBehavior()

@@ -324,12 +324,15 @@ public sealed partial class FloatingWindow
 
     private void RequestNoteDelete(NoteRecord note)
     {
-        if (new ConfirmationDialog(this, "删除便签", $"确定删除“{note.Text}”吗？").ShowDialog() != true)
+        if (new ConfirmationDialog(
+                this,
+                "删除便签",
+                DeleteConfirmationCopy.For(note.Text)).ShowDialog() != true)
         {
             return;
         }
 
-        // #155：删除成功后把撤销载荷交给主窗口状态条（App 接线 NoteDeleted → RegisterDeleteUndo）。
+        // #214：撤销留在发起删除的悬浮窗，不转交管理窗口。
         var snapshot = _desktopWorkspace.Snapshot;
         var undo = DeletedRecordUndo.ForNote(
             note,
@@ -343,7 +346,7 @@ public sealed partial class FloatingWindow
             return;
         }
 
-        NoteDeleted?.Invoke(this, undo);
+        DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Floating, undo);
     }
 
     private static void SetNoteCardError(TextBlock error, Control source, string message)

@@ -1033,7 +1033,8 @@ internal static class ValidationReport
         var reminderCenterCompleteRequiresConfirmation =
             ValidationExercises.RunReminderCenterCompleteRequiresConfirmationBehavior();
         var deleteUndoOffer =
-            ValidationExercises.RunDeleteUndoOfferBehavior();
+            ValidationExercises.RunDeleteUndoOfferBehavior() &&
+            ValidationExercises.RunDeleteUndoInPlaceBehavior();
         var dirtyExitConfirmation =
             ValidationExercises.RunDirtyExitConfirmationBehavior();
         var assistiveNarration =

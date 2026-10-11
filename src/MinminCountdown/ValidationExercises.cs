@@ -197,6 +197,76 @@ internal static class ValidationExercises
         }
     }
 
+    // #231：管理窗口装饰 PNG 按需、按显示尺寸解码——首次显示只解码当前页装饰图，
+    // 切换到另一页时才解码那一张；空态吉祥物按 92x64 显示尺寸解码。
+    public static bool RunMainDecorationOnDemandDecodeBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-decoration-decode-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var preexistingWindows = Application.Current.Windows.Cast<Window>().ToHashSet();
+        HolidayCalendar? calendar = null;
+        try
+        {
+            var workspace = DesktopWorkspace.Load(settingsPath);
+            calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            var window = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+            WindowValidationInput.Pump(window.Dispatcher);
+
+            var countdownDecoration = (Image)window.FindName("CountdownReferenceDecoration");
+            var notesDecoration = (Image)window.FindName("NotesReferenceDecoration");
+            var countdownMascot = (Image)window.FindName("CountdownEmptyMascot");
+            var notesMascot = (Image)window.FindName("NotesEmptyMascot");
+
+            var firstShowDecodesOnlyActivePage =
+                window.CurrentWorkspace == WorkspaceKind.Countdowns &&
+                countdownDecoration.Source is BitmapImage { PixelWidth: 1165, PixelHeight: 1350 } &&
+                notesDecoration.Source is null;
+            var mascotsDecodeAtDisplaySize =
+                countdownMascot.Source is BitmapImage countdownMascotImage &&
+                countdownMascotImage.PixelWidth <= 92 &&
+                countdownMascotImage.PixelHeight <= 64 &&
+                notesMascot.Source is BitmapImage notesMascotImage &&
+                notesMascotImage.PixelWidth <= 92 &&
+                notesMascotImage.PixelHeight <= 64;
+
+            window.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(window.Dispatcher);
+            var switchDecodesNotesPageOnDemand =
+                notesDecoration.Source is BitmapImage { PixelWidth: 1165, PixelHeight: 1350 } &&
+                notesDecoration.Visibility == Visibility.Visible;
+
+            window.ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(window.Dispatcher);
+            var decorationsStayCachedPerPage =
+                countdownDecoration.Source is BitmapImage &&
+                notesDecoration.Source is BitmapImage &&
+                countdownDecoration.Visibility == Visibility.Visible &&
+                notesDecoration.Visibility == Visibility.Collapsed;
+
+            return firstShowDecodesOnlyActivePage &&
+                   mascotsDecodeAtDisplaySize &&
+                   switchDecodesNotesPageOnDemand &&
+                   decorationsStayCachedPerPage;
+        }
+        finally
+        {
+            foreach (var window in Application.Current.Windows.Cast<Window>().ToArray())
+            {
+                if (!preexistingWindows.Contains(window))
+                {
+                    window.Close();
+                }
+            }
+
+            calendar?.Dispose();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
     private static void PrepareOffscreenValidationWindow(Window window)
     {
         window.ShowInTaskbar = false;

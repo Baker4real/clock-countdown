@@ -74,6 +74,11 @@ internal static class ApplicationValidation
                 throw new InvalidOperationException("懒加载管理窗口生命周期验证失败。");
             }
 
+            if (!ValidationExercises.RunMainDecorationOnDemandDecodeBehavior())
+            {
+                throw new InvalidOperationException("管理窗口装饰图按需与按显示尺寸解码验证失败（#231）。");
+            }
+
             var desktopWorkspace = DesktopWorkspace.Load(settingsPath);
             var theme = new ApplicationTheme(resources);
             theme.Apply();

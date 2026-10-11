@@ -29,24 +29,6 @@ $script:buildAssetDefinitions = @(
         Category = 'OfficialCharacter'
     },
     [pscustomobject]@{
-        SourcePath = 'assets\floating-plush\floating-plush-mymelody-reference.png'
-        PublishedPath = 'app\assets\floating-plush\floating-plush-mymelody-reference.png'
-        SHA256 = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
-        Category = 'CurrentFloating'
-    },
-    [pscustomobject]@{
-        SourcePath = 'assets\floating-plush\floating-plush-cinnamoroll-reference.png'
-        PublishedPath = 'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png'
-        SHA256 = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
-        Category = 'CurrentFloating'
-    },
-    [pscustomobject]@{
-        SourcePath = 'assets\floating-plush\floating-plush-kuromi-reference.png'
-        PublishedPath = 'app\assets\floating-plush\floating-plush-kuromi-reference.png'
-        SHA256 = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
-        Category = 'CurrentFloating'
-    },
-    [pscustomobject]@{
         SourcePath = 'assets\floating-plush\component-day-outer-shell.png'
         PublishedPath = 'app\assets\floating-plush\component-day-outer-shell.png'
         SHA256 = 'A4F2F78163F8AA5217C4161F0EE2BFB924686E8BED5768C527F3B5C7D6CC4924'
@@ -172,7 +154,7 @@ $script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @('countdown-ic
 )
 
 $script:nonAssetHashes = [ordered]@{
-    'Build-CountdownApplication.ps1' = 'F1B895DC67657A8124B60C8D617B87F60EB7555AFA51C015844E8617BC979724'
+    'Build-CountdownApplication.ps1' = '18C519DB7673DE92AD54907D88367935EC5DE0D10F4D67AA689B5C3285CC13D1'
     'tools\Countdown.BuildPreflight.psm1' = '8B6609C8299F58C65CD80FE6A1F35F66D2DEEB1C50FCD488A9F766954407F1B5'
     'tools\Test-CountdownBuildPreflight.ps1' = '06C387D084227C8F5B56DEBD258F9FCB62248CD973B3D24AA5AA9F5C0E1A3D06'
     'DESIGN.md' = '1BE4FF2073901A05757754BFDFCA8CB811FC5A8BBCCAF318AAFB9182A9DD67EA'
@@ -199,7 +181,7 @@ $script:nonAssetHashes = [ordered]@{
     'CountdownLauncher.exe' = '4B4C66274278049FF185C7824685D1B5A85F5DA10557F70A1D7E458778066440'
     'CountdownLauncher.cs' = 'FF4602D8C63A42C1237855B7CF787F47A8F09CEA4F49D9006F777A367BBFDC42'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
-    'assets\floating-plush\SOURCES.md' = '7B6A95A1EADEA0ED9A9FD4C44128BBE2F05F9D2C2675AF37998133C6228F5846'
+    'assets\floating-plush\SOURCES.md' = '0F17E6B2C45AA160A5B6D69135C7FB9BCCBE774B4E5C656908D01D9B6643B272'
     'holiday-data\2026.json' = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
     'holiday-data\README.md' = 'E177C43E1EA189D8C191A058DFC46E0E524ED4DA78881DD1E95CD600E508D53F'
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
@@ -210,6 +192,10 @@ $script:nonAssetHashes = [ordered]@{
     'assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
     'assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
     'assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
+    # #231：三张派生姿态参考图只作悬浮窗视觉基线 sourceBinding 输入，随发布（验证）包分发但不装进应用。
+    'assets\floating-plush\floating-plush-mymelody-reference.png' = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
+    'assets\floating-plush\floating-plush-cinnamoroll-reference.png' = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
+    'assets\floating-plush\floating-plush-kuromi-reference.png' = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
     'global.json' = 'B132D105648C7DBE49F2C391FE0B9898027E470DDC7CFD4D7239AF5DF63401FA'
     'src\MinminCountdown.Core\CalendarOccurrenceCalculator.cs' = 'DCDC8D652A32A01914EBCBA9E9FCA55762AC9CCC8DF6BC5968D9F8168845FF66'
     'src\MinminCountdown.Core\MinminCountdown.Core.csproj' = 'D8CB86FE56DC5E8AB7C61BCBB920969667AA80EBD65E88C33B1590B61338390B'
@@ -521,7 +507,11 @@ function New-CountdownReleaseContractSnapshot {
         'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
         'app\assets\floating-plush\floating-plush-cinnamoroll-pose.png',
         'app\assets\floating-plush\floating-plush-kuromi-front.png',
-        'app\assets\floating-plush\floating-plush-kuromi-pose.png'
+        'app\assets\floating-plush\floating-plush-kuromi-pose.png',
+        # #231：参考图自本版起不再随应用安装，清理既有安装的残留副本。
+        'app\assets\floating-plush\floating-plush-mymelody-reference.png',
+        'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+        'app\assets\floating-plush\floating-plush-kuromi-reference.png'
     )
     $compatibilityFixtures = @('Countdown.App.psm1') + $officialCharacterAssets + $script:legacyFloatingRegressionAssets
     $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys) + @($script:buildOutputPackageFiles)

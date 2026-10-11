@@ -74,6 +74,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private readonly SegmentIndicator _workspaceTabIndicator;
     private readonly SegmentIndicator _notesSegmentIndicator;
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
+    private string? _assetRoot;
     private string? _editingCountdownId;
     private string? _editingNoteId;
     private bool _completedSegmentSelected;
@@ -700,6 +701,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownFilterOptions.Visibility = showCountdowns ? Visibility.Visible : Visibility.Collapsed;
         NoteFilterOptions.Visibility = showCountdowns ? Visibility.Collapsed : Visibility.Visible;
         SaveCountdownButton.IsEnabled = showCountdowns;
+        EnsureReferenceDecoration(workspace);
         UpdateReferenceDecorationVisibility();
         RenderVisibleWorkspace();
         SetMessage(StatusText, workspace == WorkspaceKind.Countdowns ? "当前工作区：倒计时" : "当前工作区：便签", false);
@@ -3784,10 +3786,19 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void LoadCharacterAssets(string assetRoot)
     {
+        _assetRoot = assetRoot;
         var characterRoot = Path.Combine(assetRoot, "assets");
-        var myMelody = LoadImage(Path.Combine(characterRoot, "sanrio-official-mymelody.png"));
-        var cinnamoroll = LoadImage(Path.Combine(characterRoot, "sanrio-official-cinnamoroll.png"));
-        var kuromi = LoadImage(Path.Combine(characterRoot, "sanrio-official-kuromi.png"));
+        // #231：三丽鸥立绘运行时只以 92x64 空态吉祥物显示，按显示盒的受限边解码并保留宽高比；
+        // 角色背景与面板层仅在装饰图缺失时兜底显示，共用同一解码结果。
+        var myMelody = LoadImage(
+            Path.Combine(characterRoot, "sanrio-official-mymelody.png"),
+            decodePixelHeight: 64);
+        var cinnamoroll = LoadImage(
+            Path.Combine(characterRoot, "sanrio-official-cinnamoroll.png"),
+            decodePixelWidth: 92);
+        var kuromi = LoadImage(
+            Path.Combine(characterRoot, "sanrio-official-kuromi.png"),
+            decodePixelHeight: 64);
         MyMelodyBackground.Source = myMelody;
         CinnamorollBackground.Source = cinnamoroll;
         KuromiBackground.Source = kuromi;
@@ -3796,19 +3807,40 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         KuromiPanelCharacter.Source = kuromi;
         CountdownEmptyMascot.Source = cinnamoroll;
         NotesEmptyMascot.Source = myMelody;
-        CountdownReferenceDecoration.Source = LoadImage(Path.Combine(
-            characterRoot,
-            "main-decorations",
-            "main-countdown-scene-day.png"));
-        NotesReferenceDecoration.Source = LoadImage(Path.Combine(
-            characterRoot,
-            "main-decorations",
-            "main-notes-scene-day.png"));
+    }
+
+    // #231：整页装饰图首次显示时只解码当前页，另一页在切换到时才解码；
+    // 解码尺寸等于 PNG 原生尺寸 1165x1350，渲染像素不变。
+    private void EnsureReferenceDecoration(WorkspaceKind workspace)
+    {
+        if (_assetRoot is null)
+        {
+            return;
+        }
+
+        var target = workspace == WorkspaceKind.Notes
+            ? NotesReferenceDecoration
+            : CountdownReferenceDecoration;
+        if (target.Source is not null)
+        {
+            return;
+        }
+
+        var fileName = workspace == WorkspaceKind.Notes
+            ? "main-notes-scene-day.png"
+            : "main-countdown-scene-day.png";
+        target.Source = LoadImage(
+            Path.Combine(_assetRoot, "assets", "main-decorations", fileName),
+            decodePixelWidth: 1165,
+            decodePixelHeight: 1350);
     }
 
     private void UpdateReferenceDecorationVisibility()
     {
-        var useReferenceDecorations = MainReferenceDecorationsLoaded;
+        // #231：按当前页装饰图是否已解码判定，未解码页回到角色兜底层。
+        var useReferenceDecorations = _workspace == WorkspaceKind.Notes
+            ? NotesReferenceDecoration.Source is not null
+            : CountdownReferenceDecoration.Source is not null;
         CharacterBackgroundLayer.Visibility = useReferenceDecorations
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -3825,7 +3857,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 : Visibility.Collapsed;
     }
 
-    internal static BitmapImage? LoadImage(string path)
+    internal static BitmapImage? LoadImage(string path, int decodePixelWidth = 0, int decodePixelHeight = 0)
     {
         if (!File.Exists(path))
         {
@@ -3835,6 +3867,16 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var image = new BitmapImage();
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
+        if (decodePixelWidth > 0)
+        {
+            image.DecodePixelWidth = decodePixelWidth;
+        }
+
+        if (decodePixelHeight > 0)
+        {
+            image.DecodePixelHeight = decodePixelHeight;
+        }
+
         image.UriSource = new Uri(path, UriKind.Absolute);
         image.EndInit();
         image.Freeze();

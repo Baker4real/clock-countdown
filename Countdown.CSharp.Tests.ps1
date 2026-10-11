@@ -3548,15 +3548,28 @@ $dayRasterComponentFiles = @(
     'component-day-card-blank.png',
     'component-day-mascots.png'
 )
-$currentFloatingRuntimeAssetFiles = @(
+# #231：现役悬浮窗运行时资产只剩四张日间组件；三张派生姿态参考图只作视觉基线
+# sourceBinding 输入，留在仓库与发布（验证）包，不再随应用包分发。
+$verificationOnlyReferenceFiles = @(
     'floating-plush-mymelody-reference.png',
     'floating-plush-cinnamoroll-reference.png',
     'floating-plush-kuromi-reference.png'
-) + $dayRasterComponentFiles
-foreach ($file in $currentFloatingRuntimeAssetFiles) {
+)
+foreach ($file in $dayRasterComponentFiles) {
     $publishedComponent = Join-Path $PSScriptRoot "app\assets\floating-plush\$file"
     if (-not (Test-Path -LiteralPath $publishedComponent -PathType Leaf)) {
         throw "C# 发布缺少复刻版悬浮窗资产：$publishedComponent"
+    }
+}
+foreach ($file in $verificationOnlyReferenceFiles) {
+    $publishedReference = Join-Path $PSScriptRoot "app\assets\floating-plush\$file"
+    if (Test-Path -LiteralPath $publishedReference -PathType Leaf) {
+        throw "C# 发布不应包含验证专用参考图：$publishedReference"
+    }
+
+    $repositoryReference = Join-Path $PSScriptRoot "assets\floating-plush\$file"
+    if (-not (Test-Path -LiteralPath $repositoryReference -PathType Leaf)) {
+        throw "验证专用参考图必须随发布（验证）包保留：$repositoryReference"
     }
 }
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
@@ -4214,8 +4227,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # Removing those 19 additions reproduces the original name:type SHA exactly.
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
-    # #212 adds 9 stable-refresh fields.
-    Assert-Equal 703 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段、#189 的 13 个测量字段、#211 的 2 个工作区适配字段、#215 的净 2 个提醒中心字段与 #212 的 9 个稳定刷新字段）'
+    # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
+    Assert-Equal 704 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段、#189 的 13 个测量字段、#211 的 2 个工作区适配字段、#215 的净 2 个提醒中心字段、#212 的 9 个稳定刷新字段与 #231 的 1 个行为字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4788,9 +4801,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Assert-Equal $true ([bool] $adapterValidation.$crossInterfaceGate) "跨界面整合门禁 $crossInterfaceGate 通过"
     }
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-10-v33') {
-        throw '跨界面整合证据未记录 v32 真实帧'
+        throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '1DCCB86A8A27BEE7DBD14D61783D3ADDEA2F978DCEF2F5621EDFBBABA785FBFF' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（703 字段，含 #211 的 2 个工作区适配字段、#215 的净 2 个提醒中心字段与 #212 的 9 个稳定刷新字段；该摘要仍是合并前 692 字段钉，validate-only 在悬浮 sourceBinding 门之前退出，703 字段摘要尚未重测）'
+    Assert-Equal '1DCCB86A8A27BEE7DBD14D61783D3ADDEA2F978DCEF2F5621EDFBBABA785FBFF' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（该摘要仍是合并前 692 字段钉；#212/#214/#216/#231 叠加后的 704 字段摘要尚未重测，validate-only 目前在 sourceBinding 门之前退出）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -5203,6 +5216,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal '#FFFFF7E8' ([string] $adapterValidation.MainThemeCharacterPanelColors) '主窗口角色场景栏使用暖白配色'
     Assert-Equal $true ([bool] $adapterValidation.MainCharacterPanelDocksFollowDayTheme) '主窗口三个玩偶底座使用日间配色'
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationAssetsLoaded) '主窗口日间参考装饰资产已加载'
+    Assert-Equal $true ([bool] $adapterValidation.MainDecorationOnDemandDecodeBehavior) '主窗口装饰图按当前页按需解码且解码尺寸等于显示尺寸（#231）'
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationsAreNonInteractive) '主窗口日间参考装饰不会阻断真实控件输入'
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationsFollowDayTheme) '主窗口日间参考装饰按工作区切换'
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationLayerOrderMatches) '主窗口装饰层级顺序独立通过'

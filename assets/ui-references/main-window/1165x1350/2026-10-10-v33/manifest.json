@@ -17,7 +17,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "A5C57A9EB6D6F43C20F4BBECFDC20F0A55B93EDABD1D84F0332FE249CEE3A328",
+    "aggregateSha256": "122DD1F2BE22A34DC7D2CBFC0A7B50AE587219C998CC3D78D9EF43B2603FAC88",
     "files": [
       {
         "path": "assets/main-decorations/main-countdown-scene-day.png",
@@ -57,11 +57,11 @@
       },
       {
         "path": "src/MinminCountdown/MainWindow.xaml.cs",
-        "sha256": "5D45946AB2F9C5B890E8FC08D404C315676A514D157183FAC1204BA65CAD7F03"
+        "sha256": "1524B5ABBE2DE05EA9DF2EB1B6E304B0ECCA23B2DCD751199DEA6785DCF92DDE"
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
-        "sha256": "521E14DE2DA1A271CD2B989240FB63D13BB2F8537971D5338B889974CF2A1E36"
+        "sha256": "2CE8992128E23CEB81F981776BC37987362D3649C791BFF26F28C1A993184C72"
       },
       {
         "path": "src/MinminCountdown/MotionBehavior.cs",

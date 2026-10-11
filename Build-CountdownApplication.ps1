@@ -176,7 +176,7 @@ $contractAssetMappings = @(
         Sort-Object
 )
 if (($projectAssetMappings -join ',') -ne ($contractAssetMappings -join ',')) {
-    throw 'C# 项目必须显式打包发布契约声明的十四个应用资产，且不得使用通配。'
+    throw "C# 项目必须显式打包发布契约声明的 $($contractAssetMappings.Count) 个应用资产，且不得使用通配。"
 }
 
 $buildSegmentStopwatch = [System.Diagnostics.Stopwatch]::StartNew()

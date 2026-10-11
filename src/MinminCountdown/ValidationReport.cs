@@ -1075,6 +1075,8 @@ internal static class ValidationReport
             ValidationExercises.RunValidateOnlySettingsIsolationBehavior();
         var lazyManagerLifecycle =
             ValidationExercises.RunLazyManagerLifecycleBehavior();
+        var mainDecorationOnDemandDecode =
+            ValidationExercises.RunMainDecorationOnDemandDecodeBehavior();
         var countdownReminderWpf =
             ValidationExercises.RunCountdownReminderWpfBehavior();
         var reminderDelivery = ValidateReminderDeliveryCoordinator();
@@ -2294,6 +2296,7 @@ internal static class ValidationReport
             ["ValidateOnlySettingsIsolationBehavior"] =
                 validateOnlySettingsIsolation,
             ["LazyManagerLifecycleBehavior"] = lazyManagerLifecycle,
+            ["MainDecorationOnDemandDecodeBehavior"] = mainDecorationOnDemandDecode,
             ["CountdownReminderWpfBehavior"] = countdownReminderWpf,
             ["ReminderAcknowledgementMonotonicAcrossOccurrences"] =
                 repeatingReminderDelivery.AcknowledgementMonotonicAcrossOccurrences,

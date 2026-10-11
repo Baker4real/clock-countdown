@@ -63,6 +63,7 @@ internal static class ValidationReportContract
         "HolidayCalendarInterfaceBehavior",
         "MainReferenceDecorationsShareScaleAtMinimumAndWideSizes",
         "MainReferenceDecorationLayerOrderMatches",
+        "MainDecorationOnDemandDecodeBehavior",
         "MainWorkspaceResourcesFollowDayTheme",
         "MainDynamicCountdownCardsUseThemeResources",
         "MainDynamicNoteCardsUseThemeResources",

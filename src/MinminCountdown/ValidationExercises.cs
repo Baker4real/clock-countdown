@@ -4028,13 +4028,18 @@ internal static class ValidationExercises
             });
             Must(
                 cancelBody is not null &&
-                cancelBody.Contains("删除后 10 秒内可撤销", StringComparison.Ordinal) &&
-                cancelIsSafeDefault &&
+                cancelBody.Contains("删除后 10 秒内可撤销", StringComparison.Ordinal),
+                "删除确认框必须写明 10 秒内可撤销。实际正文：" + (cancelBody ?? "<null>"));
+            Must(
+                cancelIsSafeDefault,
+                "删除确认框取消必须仍是安全默认。");
+            Must(
                 workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteA.Id) &&
                 floating.DeleteUndoForValidation is null &&
+                floating.FloatingDeleteUndoLine.Visibility == Visibility.Collapsed &&
                 floating.FloatingDeleteUndoButton.Visibility == Visibility.Collapsed &&
                 lifecycle.Window is null,
-                "删除确认框必须写明 10 秒内可撤销，取消仍是安全默认，且不出现撤销入口。");
+                "取消删除必须保留便签，且不出现撤销入口、不创建管理窗口。");
 
             DriveFloatingNoteDelete(floating, noteA, confirm: true);
             Must(

@@ -519,7 +519,8 @@
                       MinHeight="28"
                       Padding="10,0"
                       Content="撤销"
-                      Style="{DynamicResource SecondaryButton}" />
+                      Style="{DynamicResource SecondaryButton}"
+                      Visibility="Collapsed" />
             </Grid>
             <StackPanel Grid.Row="1"
                         HorizontalAlignment="Center"

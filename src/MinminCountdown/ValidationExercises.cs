@@ -4267,6 +4267,9 @@ internal static class ValidationExercises
             log = new NarratorLiveRegionLog();
             floating.Show();
             main.Show();
+            log.Listen(main);
+            log.Listen(floating);
+            var liveRegionRegistered = WaitForLiveRegionRegistration(main.Dispatcher);
             FlushNarrator(main.Dispatcher);
             ConnectNarratorElement(main, "StatusText");
             ConnectNarratorElement(main, "CountdownNameError");
@@ -4277,9 +4280,13 @@ internal static class ValidationExercises
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
                 new RoutedEventArgs(ButtonBase.ClickEvent));
             FlushNarrator(main.Dispatcher);
+            var nameError = (TextBlock)main.FindName("CountdownNameError");
             Must(
+                liveRegionRegistered &&
                 SawNarratorNotice(log, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
-                "字段错误更新后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
+                "字段错误更新后必须触发礼貌 LiveRegionChanged。" +
+                $" registered={liveRegionRegistered} raw={log.RawCount} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
+                DescribeNarratorNotices(log));
 
             ((TextBox)main.FindName("CountdownName")).Text = "讲述人保存探针";
             ((DatePicker)main.FindName("CountdownDate")).SelectedDate = new DateTime(2038, 8, 1);
@@ -4449,6 +4456,25 @@ internal static class ValidationExercises
         }
     }
 
+    private static bool WaitForLiveRegionRegistration(Dispatcher dispatcher)
+    {
+        var map = typeof(UIElement).Assembly.GetType("MS.Internal.Automation.EventMap");
+        var method = map?.GetMethod(
+            "GetRegisteredEvent",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            if (method?.Invoke(null, new object[] { AutomationEvents.LiveRegionChanged }) is not null)
+            {
+                return true;
+            }
+
+            FlushNarrator(dispatcher);
+        }
+
+        return method?.Invoke(null, new object[] { AutomationEvents.LiveRegionChanged }) is not null;
+    }
+
     private static void ConnectNarratorElement(Window window, string automationId)
     {
         var root = AutomationElement.FromHandle(new WindowInteropHelper(window).EnsureHandle());
@@ -4517,7 +4543,22 @@ internal static class ValidationExercises
         private static readonly AutomationProperty LiveSettingProperty = AutomationProperty.LookupById(30135);
 
         private readonly List<AutomationElement> _pending = new();
+        private readonly List<AutomationElement> _scopes = new();
         private readonly List<NarratorLiveRegionNotice> _notices = new();
+        private int _rawCount;
+
+        public int RawCount => Volatile.Read(ref _rawCount);
+
+        public void Listen(Window window)
+        {
+            var element = AutomationElement.FromHandle(new WindowInteropHelper(window).EnsureHandle());
+            Automation.AddAutomationEventHandler(
+                LiveRegionChangedEvent,
+                element,
+                TreeScope.Subtree,
+                OnChanged);
+            _scopes.Add(element);
+        }
 
         public NarratorLiveRegionLog()
         {
@@ -4537,14 +4578,24 @@ internal static class ValidationExercises
             }
         }
 
-        public void Dispose() =>
+        public void Dispose()
+        {
             Automation.RemoveAutomationEventHandler(
                 LiveRegionChangedEvent,
                 AutomationElement.RootElement,
                 OnChanged);
+            foreach (var scope in _scopes)
+            {
+                Automation.RemoveAutomationEventHandler(
+                    LiveRegionChangedEvent,
+                    scope,
+                    OnChanged);
+            }
+        }
 
         private void OnChanged(object sender, AutomationEventArgs args)
         {
+            Interlocked.Increment(ref _rawCount);
             if (sender is AutomationElement element)
             {
                 lock (_pending)

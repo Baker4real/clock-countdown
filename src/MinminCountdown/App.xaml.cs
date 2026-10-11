@@ -381,8 +381,6 @@ public sealed partial class App : Application
             () => ShutdownInteractiveHost(),
             () => _shuttingDown);
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
-        // #155：悬浮窗删除便签成功后，撤销入口统一呈现在主窗口状态条（最近一次删除）。
-        _floatingWindow.NoteDeleted += (_, undo) => _mainWindow?.RegisterDeleteUndo(undo);
         _floatingWindow.Closed += (_, _) =>
         {
             if (!_shuttingDown)

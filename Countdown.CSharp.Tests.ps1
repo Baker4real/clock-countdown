@@ -4244,7 +4244,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainWindowSquareChromeNoTransparency) '管理窗请求 Windows 11 DWM 原生圆角与系统阴影、失败安全降级且不开整窗透明（#200）'
     Assert-Equal $true ([bool] $adapterValidation.TabsRenderAboveDecorationBand) '#135 工作台骨架次序：页签在装饰带之上（#154）'
     # #155 删除撤销、完成确认与脏退出（新增 3 个顶层键 + 源码契约）。
-    Assert-Equal $true ([bool] $adapterValidation.DeleteUndoRestoresLastDelete) '删除成功后状态区提供短时「撤销」：确认取消为安全默认、撤销同事务恢复记录与规则提醒状态、只保留最近一次、入口短时过期（#155）'
+    Assert-Equal $true ([bool] $adapterValidation.DeleteUndoRestoresLastDelete) '删除成功后撤销出现在发起删除的窗口：悬浮窗就地恢复便签与规则提醒状态，管理窗口仍走状态条；Ctrl+Z 生效；焦点或悬停暂停 10 秒计时；确认框写明可撤销且取消为安全默认（#155/#214）'
     Assert-Equal $true ([bool] $adapterValidation.DirtyExitConfirmsUnsavedWork) '关闭悬浮窗和 Alt+F4 都会确认，正文包含「退出后不再提醒」；有未保存内容时列出未保存项；取消后悬浮窗和提醒派发仍在（#213）'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCompleteRequiresConfirmation) '提醒中心「完成便签」先确认再提交：取消全量保留便签与条目、确认原子完成并移除条目（#155）'
     # #156 辅助技术与快捷键：朗读、Ctrl+F、清除名称与位置复位（新增 2 个顶层键 + 源码契约）。
@@ -4298,7 +4298,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $appHostSource -match '_floatingWindow\.ExitRequested \+= \(_, _\) => ShutdownInteractiveHost\(\);' -and
         $appHostSource -match '_floatingTrayController\.ExitRequested \+= \(_, _\) => ShutdownInteractiveHost\(\);' -and
-        $appHostSource -match '_floatingWindow\.NoteDeleted \+= \(_, undo\) => _mainWindow\?\.RegisterDeleteUndo\(undo\);') '悬浮退出、托盘退出走脏确认且悬浮删除便签的撤销入口统一落在主窗状态条（#155 源码契约）'
+        $appHostSource -notmatch 'NoteDeleted') '悬浮退出、托盘退出走脏确认；悬浮窗删除撤销不再转交主窗（#214 源码契约）'
     $onCompleteRequestedBody = [regex]::Match(
         $appHostSource,
         'private void OnCompleteRequested\(ActiveReminderOccurrenceKey key\).*?\r?\n    private void CompleteNote',
@@ -4323,10 +4323,12 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'private void RequestNoteDelete\(NoteRecord note\).*?\r?\n    private static void SetNoteCardError',
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true (
-        $requestNoteDeleteBody -match 'new ConfirmationDialog\(this, "删除便签"' -and
+        $requestNoteDeleteBody -match 'new ConfirmationDialog\(\s*this,\s*"删除便签"' -and
+        $requestNoteDeleteBody -match 'DeleteConfirmationCopy\.For\(note\.Text\)' -and
         $requestNoteDeleteBody -match 'ShowDialog\(\) != true' -and
         $requestNoteDeleteBody -match 'DeletedRecordUndo\.ForNote' -and
-        $requestNoteDeleteBody -match 'NoteDeleted\?\.Invoke\(this, undo\);') '悬浮窗删除便签确认取消为默认、成功后经 NoteDeleted 交付撤销载荷（#155 源码契约）'
+        $requestNoteDeleteBody -match 'DeleteUndoSurface\.Floating' -and
+        $requestNoteDeleteBody -notmatch 'NoteDeleted') '悬浮窗删除便签确认写明 10 秒可撤销，成功后在悬浮窗就地登记撤销载荷（#214 源码契约）'
     # #156 源码契约：朗读退出映射、标签关系、快捷键与窗口复位钉在实现面，运行态由探针共同钉住。
     Assert-Equal $true (
         $uiControlsSource -match 'internal sealed class SilentTextBlock : TextBlock' -and
@@ -5589,7 +5591,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true ($onDeleteCountdownBody.Length -gt 0) '倒计时删除 OnDeleteCountdown 方法体可定位（#140 删除确认源码契约）'
     Assert-Equal $true (
-        $onDeleteCountdownBody -match 'new ConfirmationDialog\(this, "删除倒计时"' -and
+        $onDeleteCountdownBody -match 'new ConfirmationDialog\(\s*this,\s*"删除倒计时"' -and
         $onDeleteCountdownBody -match 'ShowDialog\(\) != true' -and
         $onDeleteCountdownBody -match 'new DeleteCountdownChange\(id\)') '倒计时删除先经确认弹层（取消即返回不删）再提交 DeleteCountdownChange（#140 删除确认源码契约）'
     Assert-Equal $true (
@@ -5602,7 +5604,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true ($onDeleteNoteBody.Length -gt 0) '便签删除 OnDeleteNote 方法体可定位（#155 源码契约）'
     Assert-Equal $true (
-        $onDeleteNoteBody -match 'new ConfirmationDialog\(this, "删除便签"' -and
+        $onDeleteNoteBody -match 'new ConfirmationDialog\(\s*this,\s*"删除便签"' -and
         $onDeleteNoteBody -match 'ShowDialog\(\) != true' -and
         $onDeleteNoteBody -match 'new DeleteNoteChange\(id\)' -and
         $onDeleteNoteBody -match 'DeletedRecordUndo\.ForNote' -and
@@ -5614,7 +5616,26 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $registerDeleteUndoBody.Length -gt 0 -and
         $registerDeleteUndoBody -match 'MainStatusUndoButton\.Visibility = Visibility\.Visible' -and
-        $registerDeleteUndoBody -match 'ResetDeleteUndoTimer\(\);') '删除撤销入口经主窗状态条呈现并重置短时过期计时（#155 源码契约）'
+        $registerDeleteUndoBody -match 'ResetDeleteUndoTimer\(\);' -and
+        $registerDeleteUndoBody -match 'DeleteUndoSurface\.Main') '删除撤销入口经主窗状态条呈现并重置短时过期计时（#155/#214 源码契约）'
+    Assert-Equal $true (
+        $mainWindowCountdownBehaviorSource -match 'Key\.Z' -and
+        $mainWindowCountdownBehaviorSource -match 'SetHovering\(true\)' -and
+        $mainWindowCountdownBehaviorSource -match 'SetFocused\(true\)') '管理窗口撤销期间 Ctrl+Z 生效，焦点或悬停暂停计时（#214 源码契约）'
+    $floatingWindowCodeSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.xaml.cs') -Raw -Encoding UTF8
+    $deleteUndoOfferSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown\DeleteUndoOffer.cs') -Raw -Encoding UTF8
+    Assert-Equal $true (
+        $deleteUndoOfferSource -match '删除后 10 秒内可撤销' -and
+        $deleteUndoOfferSource -match 'TimeSpan\.FromSeconds\(10\)') '删除确认写明 10 秒可撤销，撤销窗口为 10 秒（#214 源码契约）'
+    Assert-Equal $true (
+        $floatingWindowCodeSource -match 'Key\.Z' -and
+        $floatingWindowCodeSource -match 'DeleteUndoSurface\.Floating' -and
+        $floatingWindowCodeSource -match 'SetHovering\(true\)' -and
+        $floatingWindowCodeSource -match 'SetFocused\(true\)' -and
+        $floatingWindowXamlSource -match 'x:Name="FloatingDeleteUndoLine"[\s\S]{0,240}Visibility="Collapsed"' -and
+        $floatingWindowXamlSource -match 'x:Name="FloatingDeleteUndoButton"') '悬浮窗底部撤销行常态收起，Ctrl+Z 与悬停/焦点暂停接到同一撤销槽（#214 源码契约）'
     $describeUnsavedExitWorkBody = [regex]::Match(
         $mainWindowCountdownBehaviorSource,
         'internal string\? DescribeUnsavedExitWork\(\).*?\r?\n    private void OnNoteCompletionChanged',

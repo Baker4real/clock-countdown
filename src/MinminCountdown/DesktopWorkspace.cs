@@ -472,8 +472,8 @@ internal sealed record SetNoteCompletionChange(string Id, bool Completed) : Desk
 
 internal sealed record DeleteNoteChange(string Id) : DesktopWorkspaceChange;
 
-// #155：撤销删除的恢复事务——被删记录与其规则提醒状态在同一事务原样恢复；
-// 不引入通用撤销栈，撤销载荷只保留最近一次删除（持有方为主窗口状态条）。
+// #155/#214：撤销删除的恢复事务——被删记录与其规则提醒状态在同一事务原样恢复；
+// 不引入通用撤销栈。撤销载荷只保留最近一次删除，由发起删除的窗口呈现。
 internal sealed record RestoreDeletedCountdownChange(
     CountdownRecord Record,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
@@ -482,8 +482,8 @@ internal sealed record RestoreDeletedNoteChange(
     NoteRecord Record,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
 
-// #155：最近一次删除的撤销载荷。记录与规则状态在删除前捕获；Description 为
-// 倒计时名称或便签正文，供状态条「撤销」入口的可访问名与消息文案使用。
+// #155/#214：最近一次删除的撤销载荷。记录与规则状态在删除前捕获；Description 为
+// 倒计时名称或便签正文，供「撤销」入口的可访问名与消息文案使用。
 internal sealed record DeletedRecordUndo(
     CountdownRecord? Countdown,
     NoteRecord? Note,

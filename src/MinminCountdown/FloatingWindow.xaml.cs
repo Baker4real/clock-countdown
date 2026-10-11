@@ -66,6 +66,8 @@ public sealed partial class FloatingWindow : Window
     private int _nativeWindowDragCompletionCount;
     private readonly string _assetRoot;
     private bool _assetsLoaded;
+    private readonly DeleteUndoCountdown _deleteUndoCountdown;
+    private bool _retainFloatingUndoMessage;
 
     internal FloatingWindow(
         DesktopWorkspace desktopWorkspace,
@@ -84,6 +86,7 @@ public sealed partial class FloatingWindow : Window
             LoadAssets(assetRoot);
         }
 
+        _deleteUndoCountdown = new DeleteUndoCountdown(Dispatcher, ExpireOwnedFloatingDeleteUndo);
         ConfigureControls();
         WireEvents();
         PreviewKeyDown += OnPreviewKeyDown;
@@ -441,9 +444,6 @@ public sealed partial class FloatingWindow : Window
     internal event EventHandler? ExitRequested;
 
     internal event EventHandler? MinimizeToTrayRequested;
-
-    // #155：悬浮窗删除便签成功后携带撤销载荷；由 App 转交主窗口状态条呈现短时「撤销」。
-    internal event EventHandler<DeletedRecordUndo>? NoteDeleted;
 
     // #155：退出确认的脏状态描述——快速新增正文非空即视为未保存草稿（保存成功后正文被清空）。
     internal string? DescribeUnsavedExitWork() =>
@@ -1575,6 +1575,18 @@ public sealed partial class FloatingWindow : Window
         };
         FloatingOpenSettings.Click += (_, _) => _manager.Reveal(_workspace);
         FloatingSearchNotes.Click += (_, _) => ToggleNoteSearch();
+        FloatingDeleteUndoButton.Click += (_, _) => CommitFloatingDeleteUndo();
+        FloatingDeleteUndoButton.MouseEnter += (_, _) => _deleteUndoCountdown.SetHovering(true);
+        FloatingDeleteUndoButton.MouseLeave += (_, _) => _deleteUndoCountdown.SetHovering(false);
+        FloatingDeleteUndoButton.GotKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(true);
+        FloatingDeleteUndoButton.LostKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(false);
+        var floatingUndo = DeleteUndoOffers.For(_desktopWorkspace);
+        floatingUndo.Changed += OnFloatingDeleteUndoChanged;
+        Closed += (_, _) =>
+        {
+            _deleteUndoCountdown.Stop();
+            floatingUndo.Changed -= OnFloatingDeleteUndoChanged;
+        };
         // #149：滚动时把被裁切长卡的日期印记粘在卡片可见区域内（三行始终可见）。
         FloatingBodyScroller.ScrollChanged += (_, _) => UpdateNoteDateStampStickyOffsets();
         FloatingNoteSearch.TextChanged += (_, _) => OnNoteSearchTextChanged();
@@ -2100,9 +2112,112 @@ public sealed partial class FloatingWindow : Window
         });
     }
 
+    private void OnFloatingDeleteUndoChanged(object? sender, EventArgs eventArgs)
+    {
+        var slot = DeleteUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == DeleteUndoSurface.Floating && slot.Payload is { } undo)
+        {
+            _retainFloatingUndoMessage = false;
+            PresentFloatingDeleteUndo(undo);
+            return;
+        }
+
+        _deleteUndoCountdown.Stop();
+        FloatingDeleteUndoButton.Visibility = Visibility.Collapsed;
+        if (!_retainFloatingUndoMessage)
+        {
+            FloatingDeleteUndoLine.Visibility = Visibility.Collapsed;
+            FloatingDeleteUndoText.Text = string.Empty;
+        }
+
+        _retainFloatingUndoMessage = false;
+    }
+
+    private void PresentFloatingDeleteUndo(DeletedRecordUndo undo)
+    {
+        FloatingDeleteUndoText.Text = $"已删除{undo.KindName}「{undo.Description}」。";
+        AutomationProperties.SetName(
+            FloatingDeleteUndoButton,
+            $"撤销删除{undo.KindName}「{undo.Description}」");
+        FloatingDeleteUndoButton.Visibility = Visibility.Visible;
+        FloatingDeleteUndoLine.Visibility = Visibility.Visible;
+        _deleteUndoCountdown.Restart();
+    }
+
+    private void CommitFloatingDeleteUndo()
+    {
+        var slot = DeleteUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface != DeleteUndoSurface.Floating || slot.Payload is not { } undo)
+        {
+            return;
+        }
+
+        var result = _desktopWorkspace.Apply(undo.ToChange());
+        if (!result.Succeeded)
+        {
+            FloatingDeleteUndoText.Text = $"撤销失败：{result.Error}";
+            FloatingDeleteUndoLine.Visibility = Visibility.Visible;
+            return;
+        }
+
+        FloatingDeleteUndoText.Text = $"已撤销删除{undo.KindName}「{undo.Description}」。";
+        _retainFloatingUndoMessage = true;
+        slot.Clear();
+    }
+
+    private void ExpireOwnedFloatingDeleteUndo()
+    {
+        var slot = DeleteUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface != DeleteUndoSurface.Floating)
+        {
+            return;
+        }
+
+        _retainFloatingUndoMessage = true;
+        slot.Clear();
+    }
+
+    internal void AdvanceDeleteUndoForValidation(TimeSpan elapsed) =>
+        _deleteUndoCountdown.Advance(elapsed);
+
+    internal DeletedRecordUndo? DeleteUndoForValidation
+    {
+        get
+        {
+            var slot = DeleteUndoOffers.For(_desktopWorkspace);
+            return slot.Surface == DeleteUndoSurface.Floating ? slot.Payload : null;
+        }
+    }
+
+    internal void ExpireDeleteUndoForValidation() => ExpireOwnedFloatingDeleteUndo();
+
+    internal void DismissDeleteUndoForValidation()
+    {
+        _retainFloatingUndoMessage = false;
+        var slot = DeleteUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == DeleteUndoSurface.Floating)
+        {
+            slot.Clear();
+            return;
+        }
+
+        FloatingDeleteUndoButton.Visibility = Visibility.Collapsed;
+        FloatingDeleteUndoLine.Visibility = Visibility.Collapsed;
+        FloatingDeleteUndoText.Text = string.Empty;
+    }
+
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
         var modifiers = MainShortcutInput.ResolveModifiers(args);
+        if (modifiers == ModifierKeys.Control &&
+            args.Key == Key.Z &&
+            DeleteUndoOffers.For(_desktopWorkspace).Surface == DeleteUndoSurface.Floating)
+        {
+            CommitFloatingDeleteUndo();
+            args.Handled = true;
+            return;
+        }
+
         if (modifiers == ModifierKeys.Control && args.Key == Key.R)
         {
             // #156：Ctrl+R 是非拖动的窗口复位入口（与托盘「复位窗口位置」共用实现）；

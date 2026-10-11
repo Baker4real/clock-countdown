@@ -497,8 +497,32 @@
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <StackPanel Grid.Row="0"
+            <!-- #214：悬浮窗删除后的短时撤销。常态 Collapsed，不进入基线帧。 -->
+            <Grid x:Name="FloatingDeleteUndoLine"
+                  Grid.Row="0"
+                  Visibility="Collapsed">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="FloatingDeleteUndoText"
+                         Margin="0,0,8,0"
+                         VerticalAlignment="Center"
+                         Foreground="{DynamicResource FloatingMutedBrush}"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
+                         TextTrimming="CharacterEllipsis" />
+              <Button x:Name="FloatingDeleteUndoButton"
+                      Grid.Column="1"
+                      MinWidth="56"
+                      MinHeight="28"
+                      Padding="10,0"
+                      Content="撤销"
+                      Style="{DynamicResource SecondaryButton}"
+                      Visibility="Collapsed" />
+            </Grid>
+            <StackPanel Grid.Row="1"
                         HorizontalAlignment="Center"
                         Orientation="Horizontal">
               <Button x:Name="FloatingAddNoteToggle"
@@ -563,7 +587,7 @@
                 </StackPanel>
               </Button>
             </StackPanel>
-            <Grid Grid.Row="1"
+            <Grid Grid.Row="2"
                   Margin="0,2,0,0">
               <!-- #156：悬浮窗手写体装饰退出控件朗读（SilentTextBlock 无自动化 peer，§4/#156 合同）。 -->
               <local:SilentTextBlock x:Name="FloatingNotesDecoTextLeft"

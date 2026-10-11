@@ -93,12 +93,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private string? _reminderSourceCountdownId;
     private string? _reminderSourceNoteId;
     private string? _countdownRenderSignature;
-    // #155：最近一次删除的撤销载荷；只保留最近一次，不引入通用撤销栈。
-    private DeletedRecordUndo? _deleteUndo;
-    private DispatcherTimer? _deleteUndoTimer;
-
-    // #155：撤销入口的短时窗口。过期后自动隐藏，删除本身不受影响。
-    private static readonly TimeSpan DeleteUndoOfferDuration = TimeSpan.FromSeconds(10);
+    // #155/#214：本窗口的撤销计时。载荷在 DeleteUndoOffers 上只有一份。
+    private readonly DeleteUndoCountdown _deleteUndoCountdown;
 
     internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
     internal long CountdownRowRebuildGenerationForValidation { get; private set; }
@@ -179,6 +175,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         PopupFocusLifecycle.ClipToCanvas(NoteTags.Popup, MainLayoutSurface);
         PopupFocusLifecycle.ClipToCanvas(CountdownTags.Popup, MainLayoutSurface);
         LoadCharacterAssets(assetRoot);
+        _deleteUndoCountdown = new DeleteUndoCountdown(Dispatcher, ExpireOwnedMainDeleteUndo);
         ConfigureControls();
         WireEvents();
         PreviewKeyDown += OnPreviewKeyDown;
@@ -286,10 +283,33 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
-        if (TryExecuteShortcut(MainShortcutInput.ResolveModifiers(args), args.Key))
+        var modifiers = MainShortcutInput.ResolveModifiers(args);
+        if (TryUndoDeleteFromShortcut(modifiers, args.Key))
+        {
+            args.Handled = true;
+            return;
+        }
+
+        if (TryExecuteShortcut(modifiers, args.Key))
         {
             args.Handled = true;
         }
+    }
+
+    private bool TryUndoDeleteFromShortcut(ModifierKeys modifiers, Key key)
+    {
+        if (modifiers != ModifierKeys.Control || key != Key.Z)
+        {
+            return false;
+        }
+
+        if (DeleteUndoOffers.For(_desktopWorkspace).Surface != DeleteUndoSurface.Main)
+        {
+            return false;
+        }
+
+        CommitMainDeleteUndo();
+        return true;
     }
 
     internal bool TryExecuteShortcut(ModifierKeys modifiers, Key key)
@@ -1198,6 +1218,17 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ManageNoteReminderRulesButton.Click += (_, _) => OpenNoteReminderRulesEditor();
         NoteText.TextChanged += (_, _) => ClearNoteFieldError(NoteTextError);
         MainStatusUndoButton.Click += OnUndoDeleteClick;
+        MainStatusUndoButton.MouseEnter += (_, _) => _deleteUndoCountdown.SetHovering(true);
+        MainStatusUndoButton.MouseLeave += (_, _) => _deleteUndoCountdown.SetHovering(false);
+        MainStatusUndoButton.GotKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(true);
+        MainStatusUndoButton.LostKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(false);
+        var mainUndo = DeleteUndoOffers.For(_desktopWorkspace);
+        mainUndo.Changed += OnMainDeleteUndoChanged;
+        Closed += (_, _) =>
+        {
+            _deleteUndoCountdown.Stop();
+            mainUndo.Changed -= OnMainDeleteUndoChanged;
+        };
         NoteSearch.TextChanged += (_, _) =>
         {
             if (_syncingNoteSearch)
@@ -2643,7 +2674,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         var snapshot = _desktopWorkspace.Snapshot;
         var record = snapshot.Settings.Countdowns.First(item => item.Id == id);
-        if (new ConfirmationDialog(this, "删除倒计时", $"确定删除“{record.Name}”吗？").ShowDialog() != true)
+        if (new ConfirmationDialog(
+                this,
+                "删除倒计时",
+                DeleteConfirmationCopy.For(record.Name)).ShowDialog() != true)
         {
             return;
         }
@@ -2702,7 +2736,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         var snapshot = _desktopWorkspace.Snapshot;
         var note = snapshot.Settings.Notes.First(item => item.Id == id);
-        if (new ConfirmationDialog(this, "删除便签", $"确定删除“{note.Text}”吗？").ShowDialog() != true)
+        if (new ConfirmationDialog(
+                this,
+                "删除便签",
+                DeleteConfirmationCopy.For(note.Text)).ShowDialog() != true)
         {
             return;
         }
@@ -2722,11 +2759,27 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         RegisterDeleteUndo(undo);
     }
 
-    // #155：最近一次删除的短时撤销——状态条入口以 #151 状态条表面合同呈现；
-    // 主窗口与悬浮窗便签删除成功后都会经 RegisterDeleteUndo 提供同一入口。
+    // #155/#214：管理窗口删除仍经状态条呈现；悬浮窗删除由悬浮窗自己呈现同一份载荷。
     internal void RegisterDeleteUndo(DeletedRecordUndo undo)
     {
-        _deleteUndo = undo;
+        DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Main, undo);
+    }
+
+    private void OnMainDeleteUndoChanged(object? sender, EventArgs eventArgs)
+    {
+        var slot = DeleteUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == DeleteUndoSurface.Main && slot.Payload is { } undo)
+        {
+            PresentMainDeleteUndo(undo);
+            return;
+        }
+
+        _deleteUndoCountdown.Stop();
+        MainStatusUndoButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void PresentMainDeleteUndo(DeletedRecordUndo undo)
+    {
         SetMessage(StatusText, $"已删除{undo.KindName}「{undo.Description}」。", false);
         AutomationProperties.SetName(
             MainStatusUndoButton,
@@ -2735,10 +2788,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ResetDeleteUndoTimer();
     }
 
-    private void OnUndoDeleteClick(object sender, RoutedEventArgs eventArgs)
+    private void OnUndoDeleteClick(object sender, RoutedEventArgs eventArgs) =>
+        CommitMainDeleteUndo();
+
+    private void CommitMainDeleteUndo()
     {
-        var undo = _deleteUndo;
-        if (undo is null)
+        var slot = DeleteUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface != DeleteUndoSurface.Main || slot.Payload is not { } undo)
         {
             return;
         }
@@ -2750,37 +2806,34 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        ExpireDeleteUndo();
+        slot.Clear();
         SetMessage(StatusText, $"已撤销删除{undo.KindName}「{undo.Description}」。", false);
     }
 
-    private void ResetDeleteUndoTimer()
+    private void ResetDeleteUndoTimer() => _deleteUndoCountdown.Restart();
+
+    private void ExpireOwnedMainDeleteUndo()
     {
-        _deleteUndoTimer ??= new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        var slot = DeleteUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == DeleteUndoSurface.Main)
         {
-            Interval = DeleteUndoOfferDuration
-        };
-        _deleteUndoTimer.Stop();
-        _deleteUndoTimer.Tick -= OnDeleteUndoTimerTick;
-        _deleteUndoTimer.Tick += OnDeleteUndoTimerTick;
-        _deleteUndoTimer.Start();
+            slot.Clear();
+        }
     }
 
-    private void OnDeleteUndoTimerTick(object? sender, EventArgs eventArgs)
+    internal DeletedRecordUndo? DeleteUndoForValidation
     {
-        ExpireDeleteUndo();
+        get
+        {
+            var slot = DeleteUndoOffers.For(_desktopWorkspace);
+            return slot.Surface == DeleteUndoSurface.Main ? slot.Payload : null;
+        }
     }
 
-    private void ExpireDeleteUndo()
-    {
-        _deleteUndoTimer?.Stop();
-        _deleteUndo = null;
-        MainStatusUndoButton.Visibility = Visibility.Collapsed;
-    }
+    internal void AdvanceDeleteUndoForValidation(TimeSpan elapsed) =>
+        _deleteUndoCountdown.Advance(elapsed);
 
-    internal DeletedRecordUndo? DeleteUndoForValidation => _deleteUndo;
-
-    internal void ExpireDeleteUndoForValidation() => ExpireDeleteUndo();
+    internal void ExpireDeleteUndoForValidation() => ExpireOwnedMainDeleteUndo();
 
     // #155：退出确认的脏状态描述——显示设置脏沿用既有 HasUnsavedSettingsEdits 语义；
     // 编辑器脏指倒计时编辑、便签编辑与便签草稿正文，进程退出会丢弃这些未保存内容。

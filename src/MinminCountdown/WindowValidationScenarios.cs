@@ -4438,12 +4438,14 @@ public sealed partial class FloatingWindow
         {
             return WindowValidationInput.InvokeButton(dialog!.ConfirmButton);
         });
-        return
-            cancelled &&
+        var deleted = cancelled &&
             noteStillExistsAfterCancel &&
             confirmed &&
             !_desktopWorkspace.Snapshot.Settings.Notes.Any(note =>
                 string.Equals(note.Id, noteId, StringComparison.Ordinal));
+        // #214：就地撤销是瞬时状态，布局探针继续测量收起后的命令区。
+        DismissDeleteUndoForValidation();
+        return deleted;
     }
 
     /// <summary>

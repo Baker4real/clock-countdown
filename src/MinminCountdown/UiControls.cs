@@ -59,6 +59,7 @@ internal static class UiAccessibility
 
     // #216：全仓直播区文本的唯一更新入口。文本真正变化后才改可访问名并触发
     // LiveRegionChanged；相同文本（分钟级刷新、重复筛选摘要）不播报。
+    internal static event Action<TextBlock>? Announced;
     public static void Announce(TextBlock target, string text, Action<TextBlock>? afterText = null)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -77,13 +78,8 @@ internal static class UiAccessibility
             DispatcherPriority.ApplicationIdle,
             new Action(() =>
             {
-                var tracePath = Path.Combine(AppContext.BaseDirectory, "narrator-216-trace.txt");
-                try
-                {
-                File.AppendAllText(tracePath, "enter" + Environment.NewLine);
                 if (!string.Equals(target.Text, announced, StringComparison.Ordinal))
                 {
-                    File.AppendAllText(tracePath, "stale" + Environment.NewLine);
                     return;
                 }
 
@@ -100,14 +96,7 @@ internal static class UiAccessibility
                 var peer = UIElementAutomationPeer.FromElement(target)
                     ?? UIElementAutomationPeer.CreatePeerForElement(target);
                 peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-                File.AppendAllText(
-                    tracePath,
-                    $"{AutomationProperties.GetAutomationId(target)} raised" + Environment.NewLine);
-                }
-                catch (Exception exception)
-                {
-                    File.AppendAllText(tracePath, exception + Environment.NewLine);
-                }
+                Announced?.Invoke(target);
             }));
     }
 

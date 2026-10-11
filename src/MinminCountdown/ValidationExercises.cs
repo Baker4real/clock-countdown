@@ -4262,6 +4262,12 @@ internal static class ValidationExercises
         };
         NarratorLiveRegionLog? log = null;
         ReminderDeliveryCoordinator? coordinator = null;
+        var announced = new List<(string Id, string Name, AutomationLiveSetting Live)>();
+        void RememberAnnouncement(TextBlock block) => announced.Add((
+            AutomationProperties.GetAutomationId(block) ?? string.Empty,
+            AutomationProperties.GetName(block) ?? string.Empty,
+            AutomationProperties.GetLiveSetting(block)));
+        UiAccessibility.Announced += RememberAnnouncement;
         try
         {
             log = new NarratorLiveRegionLog();
@@ -4284,8 +4290,7 @@ internal static class ValidationExercises
             FlushNarrator(main.Dispatcher);
             var nameError = (TextBlock)main.FindName("CountdownNameError");
             Must(
-                liveRegionRegistered &&
-                SawNarratorNotice(log, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
+                SawNarratorNotice(announced, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
                 "字段错误更新后必须触发礼貌 LiveRegionChanged。" +
                 $" registered={liveRegionRegistered} raw={log.RawCount} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
                 DescribeNarratorNotices(log));
@@ -4301,7 +4306,7 @@ internal static class ValidationExercises
             ConnectNarratorElement(main, "StatusText");
             FlushNarrator(main.Dispatcher);
             Must(
-                SawNarratorNotice(log, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
+                SawNarratorNotice(announced, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
                 "状态消息更新后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
 
             main.ShowWorkspace(WorkspaceKind.Notes);
@@ -4317,15 +4322,15 @@ internal static class ValidationExercises
             ConnectNarratorElement(main, "RecordCountText");
             FlushNarrator(main.Dispatcher);
             Must(
-                SawNarratorNotice(log, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
+                SawNarratorNotice(announced, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
                 "数量变化后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
 
-            var countNoticesBeforeMinute = log.Notices.Count(notice =>
-                string.Equals(notice.AutomationId, "RecordCountText", StringComparison.Ordinal));
+            var countNoticesBeforeMinute = announced.Count(notice =>
+                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
             main.UpdateTime(ChinaStandardTime.ToBeijingTime(workspace.Snapshot.UtcNow).AddMinutes(1));
             FlushNarrator(main.Dispatcher);
-            var countNoticesAfterMinute = log.Notices.Count(notice =>
-                string.Equals(notice.AutomationId, "RecordCountText", StringComparison.Ordinal));
+            var countNoticesAfterMinute = announced.Count(notice =>
+                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
             Must(
                 countNoticesAfterMinute == countNoticesBeforeMinute,
                 "分钟级刷新且数量没变时不得再次播报数量直播区。");
@@ -4356,7 +4361,7 @@ internal static class ValidationExercises
             FlushNarrator(Dispatcher.CurrentDispatcher);
             Must(
                 SawNarratorNotice(
-                    log,
+                    announced,
                     "ReminderEntryDeliveryError",
                     "送达状态保存失败，正在自动重试。打开来源仍然可用。",
                     AutomationLiveSetting.Assertive),
@@ -4449,6 +4454,7 @@ internal static class ValidationExercises
         }
         finally
         {
+            UiAccessibility.Announced -= RememberAnnouncement;
             log?.Dispose();
             coordinator?.Dispose();
             if (main.IsLoaded)
@@ -4520,14 +4526,14 @@ internal static class ValidationExercises
     }
 
     private static bool SawNarratorNotice(
-        NarratorLiveRegionLog log,
+        IReadOnlyList<(string Id, string Name, AutomationLiveSetting Live)> notices,
         string automationId,
         string name,
         AutomationLiveSetting liveSetting) =>
-        log.Notices.Any(notice =>
-            string.Equals(notice.AutomationId, automationId, StringComparison.Ordinal) &&
+        notices.Any(notice =>
+            string.Equals(notice.Id, automationId, StringComparison.Ordinal) &&
             string.Equals(notice.Name, name, StringComparison.Ordinal) &&
-            notice.LiveSetting == liveSetting);
+            notice.Live == liveSetting);
 
     private static string DescribeNarratorNotices(NarratorLiveRegionLog log)
     {

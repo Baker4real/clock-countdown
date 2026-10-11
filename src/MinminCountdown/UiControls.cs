@@ -74,7 +74,7 @@ internal static class UiAccessibility
         var announced = text;
         // 布局完成后再触发：折叠错误行刚变为可见时，同步 Raise 的 peer 还没有 UIA provider，事件会被丢掉。
         target.Dispatcher.BeginInvoke(
-            DispatcherPriority.Loaded,
+            DispatcherPriority.ApplicationIdle,
             new Action(() =>
             {
                 if (!string.Equals(target.Text, announced, StringComparison.Ordinal))

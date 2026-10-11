@@ -4279,6 +4279,8 @@ internal static class ValidationExercises
             FlushNarrator(main.Dispatcher);
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
                 new RoutedEventArgs(ButtonBase.ClickEvent));
+            main.UpdateLayout();
+            ConnectNarratorElement(main, "CountdownNameError");
             FlushNarrator(main.Dispatcher);
             var nameError = (TextBlock)main.FindName("CountdownNameError");
             Must(
@@ -4295,6 +4297,8 @@ internal static class ValidationExercises
             ((ComboBox)main.FindName("CountdownSecond")).SelectedIndex = 0;
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
                 new RoutedEventArgs(ButtonBase.ClickEvent));
+            main.UpdateLayout();
+            ConnectNarratorElement(main, "StatusText");
             FlushNarrator(main.Dispatcher);
             Must(
                 SawNarratorNotice(log, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
@@ -4309,6 +4313,8 @@ internal static class ValidationExercises
                     !note.IsCompleted));
             Must(completion is not null, "无法定位讲述人探针便签的完成勾选。");
             completion!.IsChecked = true;
+            main.UpdateLayout();
+            ConnectNarratorElement(main, "RecordCountText");
             FlushNarrator(main.Dispatcher);
             Must(
                 SawNarratorNotice(log, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
@@ -4340,6 +4346,13 @@ internal static class ValidationExercises
             deliveryClock.UtcNow = dueUtc;
             coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
             coordinator.Tick(dueUtc);
+            if (coordinator.ActiveWindow is Window deliveryWindow)
+            {
+                deliveryWindow.UpdateLayout();
+                log.Listen(deliveryWindow);
+                ConnectNarratorElement(deliveryWindow, "ReminderEntryDeliveryError");
+            }
+
             FlushNarrator(Dispatcher.CurrentDispatcher);
             Must(
                 SawNarratorNotice(
@@ -4490,7 +4503,7 @@ internal static class ValidationExercises
             WindowValidationInput.Pump(dispatcher);
             var frame = new DispatcherFrame();
             dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
+                DispatcherPriority.SystemIdle,
                 new Action(() => frame.Continue = false));
             Dispatcher.PushFrame(frame);
         }

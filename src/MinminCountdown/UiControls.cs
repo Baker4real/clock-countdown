@@ -94,6 +94,19 @@ internal static class UiAccessibility
 
                 var peer = UIElementAutomationPeer.FromElement(target)
                     ?? UIElementAutomationPeer.CreatePeerForElement(target);
+                object? provider = null;
+                if (peer is not null)
+                {
+                    var providerMethod = typeof(AutomationPeer).GetMethod(
+                        "ProviderFromPeer",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    provider = providerMethod?.GetParameters().Length == 0
+                        ? providerMethod.Invoke(peer, null)
+                        : providerMethod?.Invoke(peer, new object[] { peer });
+                }
+                File.AppendAllText(
+                    Path.Combine(Path.GetTempPath(), "narrator-216-trace.txt"),
+                    $"{AutomationProperties.GetAutomationId(target)} peer={peer is not null} provider={provider is not null}{Environment.NewLine}");
                 peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
             }));
     }

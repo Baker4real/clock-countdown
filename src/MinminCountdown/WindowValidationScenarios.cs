@@ -825,12 +825,16 @@ public sealed partial class MainWindow
                 editorFieldsDoNotOverlap,
                 legacyInlineReminderControlsStayHidden,
                 editorLabelsVisible,
+                // #211：1165×1350 改为首选尺寸（MainWindow.PreferredWidth/Height），
+                // 最小尺寸放宽为 720×560，窗口随工作区收缩时业务内容滚动而非缩放。
                 // Native pixel rounding can report Width=1164.8 at 125% DPI
-                // while WPF still lays out the required 1165 DIP surface.
+                // while WPF still lays out the required DIP surface.
                 ActualWidth >= MinWidth &&
                 ActualHeight >= MinHeight &&
-                Math.Abs(MinWidth - 1165) <= 0.1 &&
-                Math.Abs(MinHeight - 1350) <= 0.1,
+                Math.Abs(MinWidth - 720) <= 0.1 &&
+                Math.Abs(MinHeight - 560) <= 0.1 &&
+                Math.Abs(MainWindow.PreferredWidth - 1165) <= 0.1 &&
+                Math.Abs(MainWindow.PreferredHeight - 1350) <= 0.1,
                 filterPopup.EscapeReturnsFocus &&
                 tagManagerPopup.EscapeReturnsFocus &&
                 tagSelectorPopup.EscapeReturnsFocus,
@@ -3226,16 +3230,23 @@ public sealed partial class FloatingWindow
                 incomePreferences.WorkEnd)).Succeeded;
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            // 月薪未输入：不渲染金额；日历未就绪路径保持状态文本，就绪路径显示当前工作区的手写体鼓励文案。
+            // 月薪未输入：不渲染金额；渲染结果必须等于底部状态解析对当前日历状态的决定——
+            // 就绪路径是当前工作区的手写体鼓励文案，未就绪路径是 #218 的统一说明文案，
+            // 加载中路径保持日历状态文本。
             var expectedEncouragement = _workspace == WorkspaceKind.Notes
                 ? FloatingBottomStatus.NotesEncouragementText
                 : FloatingBottomStatus.CountdownEncouragementText;
+            var expectedBottomStatusText = FloatingBottomStatus.Resolve(
+                null,
+                0m,
+                _calendar.State,
+                _calendar.StatusText,
+                expectedEncouragement).Text;
             incomeHiddenWithoutSalary =
                 zeroSalaryApplied &&
                 !(IncomeText ?? string.Empty).StartsWith("今日已赚", StringComparison.Ordinal) &&
                 FloatingIncome.Visibility == Visibility.Visible &&
-                (string.Equals(IncomeText, expectedEncouragement, StringComparison.Ordinal) ||
-                 string.Equals(IncomeText, _calendar.StatusText, StringComparison.Ordinal));
+                string.Equals(IncomeText, expectedBottomStatusText, StringComparison.Ordinal);
         }
         finally
         {

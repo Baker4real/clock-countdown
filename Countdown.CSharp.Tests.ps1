@@ -38,9 +38,9 @@ function Write-TestSegmentTotal {
         ('[test-segment-total] seconds={0:F3}' -f $script:testClock.Elapsed.TotalSeconds))
 }
 
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-09-v32\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-10-v33\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-09-v32\manifest.json'
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-10-v33\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
 
 function Resolve-ReferenceBaselineMode {
@@ -4212,7 +4212,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #189 adds 13 measured behavior fields; six existing note/date/fallback
     # fields had also been added since the old 671-field shape was pinned.
     # Removing those 19 additions reproduces the original name:type SHA exactly.
-    Assert-Equal 690 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段和 #189 的 13 个测量字段）'
+    # #215 净增 2 个提醒中心字段（690 -> 692），#211 再加 2 个工作区适配字段。
+    Assert-Equal 694 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段、#189 的 13 个测量字段、#215 的净 2 个提醒中心字段与 #211 的 2 个工作区适配字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4242,11 +4243,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.TabsRenderAboveDecorationBand) '#135 工作台骨架次序：页签在装饰带之上（#154）'
     # #155 删除撤销、完成确认与脏退出（新增 3 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.DeleteUndoRestoresLastDelete) '删除成功后状态区提供短时「撤销」：确认取消为安全默认、撤销同事务恢复记录与规则提醒状态、只保留最近一次、入口短时过期（#155）'
-    Assert-Equal $true ([bool] $adapterValidation.DirtyExitConfirmsUnsavedWork) '进程退出在显示设置或编辑器脏时先确认：退出描述完整、确认框取消为安全默认、确认文案「退出」、干净状态直接放行（#155）'
+    Assert-Equal $true ([bool] $adapterValidation.DirtyExitConfirmsUnsavedWork) '关闭悬浮窗和 Alt+F4 都会确认，正文包含「退出后不再提醒」；有未保存内容时列出未保存项；取消后悬浮窗和提醒派发仍在（#213）'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCompleteRequiresConfirmation) '提醒中心「完成便签」先确认再提交：取消全量保留便签与条目、确认原子完成并移除条目（#155）'
     # #156 辅助技术与快捷键：朗读、Ctrl+F、清除名称与位置复位（新增 2 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.AssistiveNarrationExitsDecorationAndLabelsFields) '装饰手写体与分段裸数字退出朗读、可见标签经标签关系指向输入不读两遍、数量由一处状态区播完整句、筛选「清除」可访问名说明清除便签日期筛选（#156）'
     Assert-Equal $true ([bool] $adapterValidation.WindowPositionResetsWithoutDrag) '越界悬浮窗可经 Ctrl+R 或托盘「复位窗口位置」夹回工作区，隐藏态复位先恢复再夹回（#156）'
+    Assert-Equal $true ([bool] $adapterValidation.MainWindowFitsInjectedWorkAreas) '管理窗口装进 1032/826/688 DIP 注入工作区：首选尺寸收缩、顶端控件与状态栏可达、倒计时三行滚动可见、720×560 滚动不裁切、隐藏再显保留用户几何、越界与工作区变化夹回（#211）'
+    Assert-Equal $true ([bool] $adapterValidation.MainWindowIdentityZoneDragRegion) '身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.NoteSearch) '主窗便签页 Ctrl+F 聚焦便签搜索（#156）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.Filter) '倒计时页没有正文搜索时 Ctrl+F 仍打开筛选（#156）'
     # #155 源码契约：删除/完成/退出流的行为钉在实现面，运行态由上述探针共同钉住。
@@ -4262,9 +4265,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true ($confirmationDialogCtorBody.Length -gt 0) '确认框构造参数化且删除场景保持「确认删除」+ DangerButton 默认（#155 源码契约）'
     Assert-Equal $true (
-        $uiControlsSource -match 'confirmText: "退出"' -and
-        $uiControlsSource -match 'confirmStyleKey: "DangerButton"' -and
-        $uiControlsSource -match 'reasons\.Count == 0') '退出确认帮助器在无未保存内容时直接放行、确认文案为「退出」且取消为安全默认（#155 源码契约）'
+        $appHostSource -match 'confirmText: "退出"' -and
+        $appHostSource -match 'confirmStyleKey: "DangerButton"' -and
+        $appHostSource -match '退出后不再提醒' -and
+        $appHostSource -notmatch 'if \(reasons\.Count == 0\)\s*\{\s*return true;') '进程退出确认每次都弹出，正文包含「退出后不再提醒」，确认文案为「退出」，没有未保存内容时也不直接放行（#213）'
     $shutdownInteractiveHostBody = [regex]::Match(
         $appHostSource,
         'private void ShutdownInteractiveHost\(bool confirmDirtyExit = true\).*?\r?\n    private bool ConfirmDirtyExitAllowed',
@@ -4280,7 +4284,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $confirmDirtyExitAllowedBody -match '_mainWindow\?\.DescribeUnsavedExitWork\(\)' -and
         $confirmDirtyExitAllowedBody -match '_floatingWindow\?\.DescribeUnsavedExitWork\(\)' -and
-        $confirmDirtyExitAllowedBody -match 'ExitConfirmation\.Confirm\(owner, reasons\)') '退出确认咨询主窗与悬浮窗的未保存描述并经统一确认入口（#155 源码契约）'
+        $confirmDirtyExitAllowedBody -match 'ProcessExitConfirmation\.Confirm\(owner, reasons\)' -and
+        $confirmDirtyExitAllowedBody -notmatch '(?<!Process)ExitConfirmation\.Confirm' -and
+        $confirmDirtyExitAllowedBody -notmatch 'if \(reasons\.Count == 0\)') '退出确认咨询主窗与悬浮窗的未保存描述，干净状态也经统一确认入口（#213 源码契约）'
+    Assert-Equal $true (
+        $appHostSource -match 'FloatingWindowCloseBridge\.Attach\(' -and
+        $appHostSource -match 'ManagerWindowRestore\.HideManagerOnly\(window\)' -and
+        $appHostSource -notmatch '_floatingTrayController\?\.MinimizeToTray\(\)') 'Alt+F4 走关闭桥，管理窗口最小化不再把悬浮窗收进托盘（#213 源码契约）'
     Assert-Equal $true (
         $appHostSource -match 'ShutdownInteractiveHost\(confirmDirtyExit: false\);') '测试自动退出（ExitAfterReadyForTest）不进交互脏确认（#155 源码契约）'
     Assert-Equal $true (
@@ -4378,12 +4388,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $trayIconHostSource -match 'using H\.NotifyIcon;' -and
         $trayIconHostSource -match 'TaskbarIcon' -and
-        $trayIconHostSource -match 'TrayLeftMouseDoubleClick' -and
+        $trayIconHostSource -match 'TrayLeftMouseUp' -and
+        $trayIconHostSource -notmatch 'TrayLeftMouseDoubleClick' -and
+        $trayIconHostSource -match '打开管理窗口' -and
         $trayIconHostSource -notmatch 'System\.Windows\.Forms' -and
         $trayIconHostSource -match '#FFFDFC' -and
         $trayIconHostSource -match '#3B190D' -and
         $trayIconHostSource -match '#F6DFD3' -and
-        $trayIconHostSource -match '#D4526A') 'H.NotifyIcon 托盘保留双击恢复与四项入口，并使用局部 WPF 暖粉菜单样式（#202）'
+        $trayIconHostSource -match '#D4526A') 'H.NotifyIcon 托盘单击恢复，菜单含打开管理窗口，并使用局部 WPF 暖粉菜单样式（#213）'
     Assert-Equal $true (
         $floatingTraySource -match 'private void ResetWindowPosition\(\) => _floatingWindow\.ResetPositionIntoWorkArea\(\);') '托盘复位动作直达悬浮窗夹取实现（#156 源码契约）'
     $resetPositionBody = [regex]::Match(
@@ -4486,9 +4498,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $mainWindowXamlSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml') -Raw -Encoding UTF8
     Assert-Equal $true (
+        $mainWindowXamlSource -match '<ScrollViewer x:Name="MainWindowScrollHost"' -and
         $mainWindowXamlSource -match '<Grid x:Name="MainScaleViewport"' -and
-        $mainWindowXamlSource -match 'Width="1165"\s+Height="1350"\s+MinWidth="1165"\s+MinHeight="1350"' -and
-        $mainWindowXamlSource -notmatch '<Viewbox[^>]+x:Name="MainScaleViewport"') '#208 主窗口直接使用 1165×1350 DIP 网格，不再以 Viewbox 缩放'
+        $mainWindowXamlSource -match 'Width="1165"\s+Height="1350"\s+MinWidth="720"\s+MinHeight="560"' -and
+        $mainWindowXamlSource -notmatch '<Viewbox[^>]+x:Name="MainScaleViewport"') '#211 主窗口首选 1165×1350、最小 720×560，业务内容由窗口级滚动容器承载，不以 Viewbox 缩放'
     Assert-Equal $true (
         $mainWindowXamlSource -match 'x:Name="NoteDateFilterLabel"') '筛选弹层便签日期带可见标签元素（#153 源码契约）'
     Assert-Equal $true (
@@ -4601,7 +4614,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorFieldsDoNotOverlap) '主窗口提醒入口、规则摘要与错误区互不重叠'
     Assert-Equal $true ([bool] $adapterValidation.LegacyInlineReminderControlsStayHidden) '编辑单条一次/固定间隔便签后旧版内嵌提醒控件保持收起且摘要不被遮挡'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorLabelsVisible) '主窗口便签编辑器保留可见字段标签'
-    Assert-Equal $true ([bool] $adapterValidation.MainMinimumSizeMatchesDefault) '主窗口默认尺寸与最小可用尺寸一致'
+    Assert-Equal $true ([bool] $adapterValidation.MainMinimumSizeMatchesDefault) '主窗口首选尺寸 1165×1350、最小可用尺寸 720×560（#211）'
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.CountdownElementsVisible) '倒计时首次空态显示角色、标题、说明和新增入口'
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.NotesElementsVisible) '便签首次空态显示角色、标题、说明和新增入口'
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.AddActionsFocusEditors) '两个空态新增入口聚焦对应编辑器'
@@ -4614,7 +4627,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
     if ($mainReferenceBaselineRequired) {
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest'
-    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-10-09-v32/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
+    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-10-10-v33/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
     Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
@@ -4634,7 +4647,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 8 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口八个 Theme/Workspace/State 组合唯一'
     Assert-Equal 8 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口八帧 PNG hash 全部唯一'
     Assert-Equal 8 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口八帧状态指纹全部唯一'
-    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-10-09-v32/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口八帧路径可移植且基线与实拍 SHA 一致'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-10-10-v33/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口八帧路径可移植且基线与实拍 SHA 一致'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 1572750 }).Count '主窗口八帧 1165×1350 画布全部不透明'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 1165x1350 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 1165 -or $_.ContentRoi.Height -ne 1350 -or $_.ContentRoi.PixelCount -ne 1572750 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口八帧像素指标未超过 manifest 固定阈值'
@@ -4698,10 +4711,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
             'CrossInterfaceIntegration')) {
         Assert-Equal $true ([bool] $adapterValidation.$crossInterfaceGate) "跨界面整合门禁 $crossInterfaceGate 通过"
     }
-    if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-09-v32') {
+    if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-10-v33') {
         throw '跨界面整合证据未记录 v32 真实帧'
     }
-    Assert-Equal '9E51D9DC228419D7D2F19D0347992333147217092B2DA8C885FB6C8917422BC0' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（690 字段；原字段名称和类型保持兼容）'
+    Assert-Equal '18BE000776A7120A66C8A0289C6D30D75815517CC225AD3B7E16E9EC3888B9F1' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（694 字段；原字段名称和类型保持兼容，#215 净增 2 个提醒中心字段，#211 增加 2 个工作区适配字段）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -4799,7 +4812,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesUpdated) '主窗口便签完成复选框可访问名称随状态更新'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesHaveNoLineBreaks) 'settings JSON 注入含换行便签后可访问名称不含换行'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionStyleScoped) '兼容便签完成样式门保持通过'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterInitialFocusAndAccessibleNameWork) '提醒中心打开后建立初始焦点与可访问名称'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterShowPreservesFocusAndAccessibleName) '提醒中心出现时不抢焦点且保留可访问名称'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterKeyboardGateIsolationBehavior) '提醒中心 Tab 遍历、关闭守卫与初始焦点/可访问名负向夹具可独立失败'
     Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLoaded) 'adapter 验证角色图片资产已加载'
     Assert-Equal 3 ([int] $adapterValidation.MainCharacterPanelDockCount) '主窗口角色场景栏保留三个玩偶底座'
@@ -4810,7 +4823,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLowContrast) '官方角色背景保持低对比不干扰应用内容（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonTextFits) '设置保存按钮文字完整显示'
     Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisible) '设置保存按钮完整位于主窗口内'
-    Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisibleAtMinimumWidth) '最小主窗口宽度下设置保存按钮仍完整可见'
+    Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisibleAtMinimumWidth) '最小主窗口宽度下设置保存按钮经横向滚动可达且完整落入视口（#211）'
     Assert-Equal $true ([bool] $adapterValidation.NegativeMonthlySalaryRejectedKeepsDraft) '负月薪保存被拒绝、原偏好与草稿文本保留并提示月薪不能小于 0'
     Assert-Equal $true ([bool] $adapterValidation.ZeroMonthlySalaryStillSavesAsUnset) '月薪 0 仍合法保存为未输入状态'
     # #129 去重迁移（U1 独有断言）：草稿保留、保存回显与旧数据拒绝系列。
@@ -4864,8 +4877,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
         Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日间截图通过版本化 manifest'
-        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-10-09-v32/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
-        Assert-Equal '2026-10-09-v32' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
+        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-10-10-v33/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal '2026-10-10-v33' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
@@ -5008,8 +5021,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.FloatingDragSurfaceCoversWindowBackground) '悬浮窗非交互背景均可接收拖动手势'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayButtonAccessibility) '悬浮窗缩小按钮提供明确 ToolTip 与可访问名称'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayProductionControllerActive) '应用宿主与托盘验收共用生产切换控制器'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayMinimizeHidesWindowAndShowsIcon) '悬浮窗缩小按钮隐藏窗口并显示系统托盘图标'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayRestoreShowsWindowAndHidesIcon) '系统托盘打开命令恢复悬浮窗并隐藏托盘图标'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayMinimizeHidesWindowAndShowsIcon) '悬浮窗缩小按钮隐藏悬浮窗，托盘图标在窗口仍可见时已经常驻（#213）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayRestoreShowsWindowAndHidesIcon) '单击托盘图标或「打开悬浮窗」恢复悬浮窗且图标保持常驻；「打开管理窗口」保留草稿和筛选（#213）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayExitRequestsApplicationExit) '系统托盘退出命令触发应用退出请求'
     Assert-Equal $true ([bool] $adapterValidation.FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry) '恢复判定失败时托盘图标保留且可再次恢复'
     Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleReceivesPointerGestures) '悬浮窗标题拖动区接收真实 WPF 左键手势'
@@ -5280,7 +5293,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainShortcutScopeIsSafe) '主窗口快捷键避开输入控件和弹层上下文'
     # #129 去重迁移（U1 独有断言）：键盘焦点基线证据版本钉死。
     Assert-Equal $false ([bool] $adapterValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-09-v32')) '键盘焦点基线证据记录再生的 2026-10-09-v32 帧（#129 自 U1 迁移）'
+    Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-10-v33')) '键盘焦点基线证据记录再生的 2026-10-10-v33 帧（#129 自 U1 迁移）'
     Assert-Equal 'CountdownTab' ([string] $adapterValidation.MainKeyboardBehavior.InitialFocusedAutomationId) '主窗口 Loaded 后真实焦点落到倒计时工作区'
     Assert-Equal 'CountdownTab,NotesTab,FilterButton,TagManagerButton' ([string]::Join(',', @($adapterValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
     $countdownTabPath = $adapterValidation.MainKeyboardBehavior.CountdownTabPath
@@ -5313,7 +5326,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $expectedNotesFocusedTargetsBackward = @($notesTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedNotesFocusedTargetsBackward)
     Assert-Equal ($expectedNotesFocusedTargetsBackward -join ',') ([string]::Join(',', @($notesTabPath.BackwardFocusedTargets))) '便签每个实际焦点目标反向严格对称'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.CommandsWork) '主窗口纯快捷键真实触发全部主要命令'
+    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.CommandResults.Minimize) '最小化按钮和 Ctrl+M 只收起管理窗口，悬浮窗保持可见（#213）'
     Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口真实 KeyEvent 精确覆盖八个命令（#156 起 Ctrl+F 便签页新增 NoteSearch）'
     Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '主窗口八个快捷键均产生真实预期结果'
     Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口八个快捷键均报告真实 handled 与效果诊断'
@@ -5499,7 +5512,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
             'ReminderCenterAccessible',
             'ReminderCenterIsThemed',
             'ReminderCenterSupportsKeyboardNavigation',
-            'ReminderCenterInitialFocusAndAccessibleNameWork',
+            'ReminderCenterShowPreservesFocusAndAccessibleName',
+            'ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar',
+            'ReminderCenterMinimizeToTaskbarPreservesEntries',
             'ReminderCenterAcknowledgeAllWritesAllDispositions',
             'ReminderCenterAcknowledgeAllMatchesSingleSemantics',
             'ReminderCenterAcknowledgeAllFailureRetainsAllAtomically',
@@ -5521,7 +5536,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
             'ReminderCenterCompleteClickIsAtomic',
             'ReminderCenterCompleteRequiresConfirmation',
             'ReminderCenterDeliveryFailureDisablesDispositions',
-            'ReminderCenterEnterActsOnFocusedEntry',
+            'ReminderCenterEnterUsesNativeButtonActivation',
             'ReminderCenterSnoozeGatedDuringCompletionRetry',
             'ReminderCenterCustomSnoozeErrorRoutesByCode',
             'ReminderCenterShowFailureRollsBack',

@@ -513,7 +513,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-09-v32";
+    private const string FloatingReferenceBaselineVersion = "2026-10-10-v33";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -606,7 +606,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-09-v32";
+    private const string MainReferenceBaselineVersion = "2026-10-10-v33";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -1040,10 +1040,18 @@ internal static class ValidationReport
             ValidationExercises.RunAssistiveNarrationBehavior();
         var windowPositionReset =
             ValidationExercises.RunWindowPositionResetBehavior();
+        var mainWindowWorkAreaFit =
+            ValidationExercises.RunMainWindowWorkAreaFitBehavior();
+        var mainWindowIdentityZoneDrag =
+            ValidationExercises.RunMainWindowIdentityZoneDragBehavior();
         var reminderCenterDeliveryFailureActionGate =
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
-        var reminderCenterEnterActsOnFocusedEntry =
-            ValidationExercises.RunReminderCenterEnterActsOnFocusedEntryBehavior();
+        var reminderCenterEnterUsesNativeButtonActivation =
+            ValidationExercises.RunReminderCenterEnterUsesNativeButtonActivationBehavior();
+        var reminderCenterArrivalKeepsForegroundAndFlashesTaskbar =
+            ValidationExercises.RunReminderCenterArrivalKeepsForegroundAndFlashesTaskbarBehavior();
+        var reminderCenterMinimizeToTaskbarPreservesEntries =
+            ValidationExercises.RunReminderCenterMinimizeToTaskbarPreservesEntriesBehavior();
         var reminderCenterSnoozeGatedDuringCompletionRetry =
             ValidationExercises.RunReminderCenterSnoozeGatedDuringCompletionRetryBehavior();
         var reminderCenterCustomSnoozeErrorRoutesByCode =
@@ -1220,11 +1228,20 @@ internal static class ValidationReport
         var originalMainWidth = main.Width;
         main.Width = main.MinWidth;
         main.UpdateLayout();
+        // #211：最小宽度下业务内容不缩放，「保存设置」经窗口级横向滚动兜底可达且完整落入视口。
+        var mainScrollHost = Required<ScrollViewer>(main, "MainWindowScrollHost");
+        savePreferencesButton.BringIntoView();
+        PumpDispatcher();
+        main.UpdateLayout();
+        var savePreferencesButtonLeftInViewport =
+            savePreferencesButton.TranslatePoint(new Point(0, 0), mainScrollHost).X;
         var savePreferencesButtonIsVisibleAtMinimumWidth =
-            savePreferencesButton.TranslatePoint(new Point(0, 0), main).X >= 0 &&
-            savePreferencesButton.TranslatePoint(
-                new Point(savePreferencesButton.ActualWidth, 0),
-                main).X <= main.ActualWidth;
+            mainScrollHost.ScrollableWidth > 0.5 &&
+            savePreferencesButtonLeftInViewport >= -0.5 &&
+            savePreferencesButtonLeftInViewport + savePreferencesButton.ActualWidth <=
+                mainScrollHost.ViewportWidth + 0.5;
+        mainScrollHost.ScrollToLeftEnd();
+        mainScrollHost.ScrollToTop();
         main.Width = originalMainWidth;
         main.UpdateLayout();
         theme.Apply();
@@ -1554,10 +1571,15 @@ internal static class ValidationReport
         var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
+        // #213 退出探针会再开窗口。放在参考帧捕获之后，避免打乱 v33 像素。
+        dirtyExitConfirmation = dirtyExitConfirmation &&
+            ValidationExercises.RunAlwaysConfirmExitKeepsReminderBehavior();
         var floatingTrayInteraction = RunFloatingTrayInteractionExercise(
+            main,
             floating,
             minimizeToTrayButton,
-            floatingTrayController);
+            floatingTrayController,
+            desktopWorkspace);
         var mainKeyboardBehavior = ValidateMainKeyboardBehavior(
             main,
             floating,
@@ -1600,7 +1622,7 @@ internal static class ValidationReport
             new ReminderCenterKeyboardGateInputs(
                 reminderKeyboardExercise.TabTraversalWorks,
                 reminderKeyboardExercise.CloseGuardWorks,
-                reminderKeyboardExercise.InitialFocusAndAccessibleNameWork,
+                reminderKeyboardExercise.ShowPreservesFocusAndAccessibleName,
                 reminderKeyboardExercise.EscapeFocusesAcknowledge));
         var reminderCenterKeyboardGateIsolationBehavior =
             ValidationExercises.RunReminderCenterKeyboardGateIsolationBehavior();
@@ -1939,7 +1961,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-09-v32 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-10-v33 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["EffectiveThemeTextContrast"] = contrast,
@@ -2208,10 +2230,18 @@ internal static class ValidationReport
                 assistiveNarration,
             ["WindowPositionResetsWithoutDrag"] =
                 windowPositionReset,
+            ["MainWindowFitsInjectedWorkAreas"] =
+                mainWindowWorkAreaFit,
+            ["MainWindowIdentityZoneDragRegion"] =
+                mainWindowIdentityZoneDrag,
             ["ReminderCenterDeliveryFailureDisablesDispositions"] =
                 reminderCenterDeliveryFailureActionGate,
-            ["ReminderCenterEnterActsOnFocusedEntry"] =
-                reminderCenterEnterActsOnFocusedEntry,
+            ["ReminderCenterEnterUsesNativeButtonActivation"] =
+                reminderCenterEnterUsesNativeButtonActivation,
+            ["ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar"] =
+                reminderCenterArrivalKeepsForegroundAndFlashesTaskbar,
+            ["ReminderCenterMinimizeToTaskbarPreservesEntries"] =
+                reminderCenterMinimizeToTaskbarPreservesEntries,
             ["ReminderCenterSnoozeGatedDuringCompletionRetry"] =
                 reminderCenterSnoozeGatedDuringCompletionRetry,
             ["ReminderCenterCustomSnoozeErrorRoutesByCode"] =
@@ -2247,8 +2277,8 @@ internal static class ValidationReport
             ["ReminderCenterIsThemed"] = reminderThemed,
             ["ReminderCenterSupportsKeyboardNavigation"] =
                 reminderCenterKeyboardGates.AllPassed,
-            ["ReminderCenterInitialFocusAndAccessibleNameWork"] =
-                reminderCenterKeyboardGates.InitialFocusAndAccessibleNameWork,
+            ["ReminderCenterShowPreservesFocusAndAccessibleName"] =
+                reminderCenterKeyboardGates.ShowPreservesFocusAndAccessibleName,
             ["ReminderCenterEscapeFocusesAcknowledge"] =
                 reminderCenterKeyboardGates.EscapeFocusesAcknowledge,
             ["ReminderCenterTypographyWeightWhitelist"] =
@@ -2901,7 +2931,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-09-v32 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-10-v33 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -3777,8 +3807,9 @@ internal static class ValidationReport
         var originalHeight = main.Height;
         try
         {
-            main.Width = main.MinWidth;
-            main.Height = main.MinHeight;
+            // #211：便签卡提醒字号在设计首选尺寸下测量（最小尺寸已放宽，不再代表设计尺寸）。
+            main.Width = MainWindow.PreferredWidth;
+            main.Height = MainWindow.PreferredHeight;
             PumpDispatcher();
             main.UpdateLayout();
 
@@ -4133,8 +4164,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-09-v32", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-09-v32", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-10-v33", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-10-v33", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -9819,7 +9850,11 @@ internal static class ValidationReport
                     AutomationProperties.GetAutomationId(button),
                     "ReminderCenterAcknowledgeAll",
                     StringComparison.Ordinal)) == 1 &&
-                buttons.Length == 9;
+                buttons.Count(button => string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderCenterMinimizeToTaskbar",
+                    StringComparison.Ordinal)) == 1 &&
+                buttons.Length == 10;
             var accessible =
                 center is not null &&
                 string.Equals(AutomationProperties.GetName(center), "提醒中心", StringComparison.Ordinal) &&
@@ -11728,13 +11763,38 @@ internal static class ValidationReport
             var mainOpacity = main.Opacity;
             var floatingOpacity = floating.Opacity;
             var floatingWasVisible = floating.IsVisible;
+            minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher();
+            var buttonHidManagerOnly =
+                !main.IsVisible &&
+                floating.IsVisible &&
+                trayController.IsTrayIconVisible;
+            if (!main.IsVisible)
+            {
+                main.Show();
+                main.Left = mainLeft;
+                main.Top = mainTop;
+                main.Opacity = mainOpacity;
+                main.ShowInTaskbar = false;
+                PumpDispatcher();
+            }
+
             var minimizeHandled = RaiseShortcut(ModifierKeys.Control, Key.M);
             PumpDispatcher();
             var minimizedToTray =
+                buttonHidManagerOnly &&
                 minimizeHandled &&
                 !main.IsVisible &&
-                !floating.IsVisible &&
+                floating.IsVisible &&
                 trayController.IsTrayIconVisible;
+            if (!minimizedToTray)
+            {
+                throw new InvalidOperationException(
+                    "#213 管理窗口最小化探针失败：" +
+                    $"button={buttonHidManagerOnly} shortcut={minimizeHandled} " +
+                    $"mainVisible={main.IsVisible} floatingVisible={floating.IsVisible} " +
+                    $"tray={trayController.IsTrayIconVisible}");
+            }
             commandResults["Minimize"] = minimizedToTray;
             commandDiagnostics["Minimize"] = new(
                 minimizeHandled,
@@ -12808,6 +12868,9 @@ internal static class ValidationReport
             PumpDispatcher();
             window.SetDeliveryReady(key);
             PumpDispatcher();
+            // #215：出现不再抢焦点；键盘遍历断言显式激活窗口，模拟用户切到中心后的操作。
+            window.Activate();
+            PumpDispatcher();
             var buttons = Descendants<Button>(window).ToArray();
             var acknowledge = buttons.Single(button =>
                 AutomationProperties.GetName(button).StartsWith("知道了：", StringComparison.Ordinal));
@@ -12821,6 +12884,11 @@ internal static class ValidationReport
                 string.Equals(
                     AutomationProperties.GetAutomationId(button),
                     "ReminderCenterAcknowledgeAll",
+                    StringComparison.Ordinal));
+            var minimizeToTaskbar = buttons.Single(button =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderCenterMinimizeToTaskbar",
                     StringComparison.Ordinal));
             var snoozeChoice = Descendants<ComboBox>(window).Single(comboBox =>
                 comboBox.IsVisible &&
@@ -12923,6 +12991,8 @@ internal static class ValidationReport
                 openSource.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, acknowledgeAll) &&
                 acknowledgeAll.MoveFocus(tabRequest) &&
+                ReferenceEquals(Keyboard.FocusedElement, minimizeToTaskbar) &&
+                minimizeToTaskbar.MoveFocus(tabRequest) &&
                 Keyboard.FocusedElement is DependencyObject wrapped &&
                 entryRow.IsAncestorOf(wrapped);
             tabTraverses =
@@ -12962,7 +13032,7 @@ internal static class ValidationReport
             return new ReminderKeyboardExerciseResult(
                 tabTraverses,
                 window.IsVisible,
-                window.ShowActivated &&
+                !window.ShowActivated &&
                 !string.IsNullOrWhiteSpace(AutomationProperties.GetName(window)),
                 escapeFocusesAcknowledge);
         }
@@ -14680,9 +14750,11 @@ internal static class ValidationReport
     }
 
     private static FloatingTrayInteractionExerciseResult RunFloatingTrayInteractionExercise(
+        MainWindow main,
         FloatingWindow floating,
         Button minimizeButton,
-        FloatingTrayController trayController)
+        FloatingTrayController trayController,
+        DesktopWorkspace workspace)
     {
         var wasVisible = floating.IsVisible;
         var exitRequested = false;
@@ -14690,18 +14762,38 @@ internal static class ValidationReport
         trayController.ExitRequested += exitHandler;
         try
         {
+            var residentWhileVisible = floating.IsVisible && trayController.IsTrayIconVisible;
             minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             PumpDispatcher();
             var minimizeWorks =
+                residentWhileVisible &&
                 !floating.IsVisible &&
                 trayController.IsTrayIconVisible;
 
-            trayController.InvokeRestoreForValidation();
+            trayController.InvokeIconClickForValidation();
             PumpDispatcher();
-            var restoreWorks =
+            var clickRestores =
                 floating.IsVisible &&
                 floating.WindowState == WindowState.Normal &&
-                !trayController.IsTrayIconVisible;
+                trayController.IsTrayIconVisible;
+
+            minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            PumpDispatcher();
+            trayController.InvokeRestoreForValidation();
+            PumpDispatcher();
+            var menuRestores =
+                floating.IsVisible &&
+                floating.WindowState == WindowState.Normal &&
+                trayController.IsTrayIconVisible;
+            var headersMatch = TrayMenuHeadersMatch();
+            var managerPreserved = TrayOpenManagerPreservesDraftAndFilter(main, workspace, trayController);
+            if (!minimizeWorks || !clickRestores || !menuRestores || !headersMatch || !managerPreserved)
+            {
+                throw new InvalidOperationException(
+                    "#213 托盘探针失败：" +
+                    $"residentMinimize={minimizeWorks} click={clickRestores} menu={menuRestores} " +
+                    $"headers={headersMatch} manager={managerPreserved}");
+            }
 
             minimizeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             PumpDispatcher();
@@ -14710,16 +14802,16 @@ internal static class ValidationReport
             return new FloatingTrayInteractionExerciseResult(
                 trayController.IsActive,
                 minimizeWorks,
-                restoreWorks,
+                clickRestores && menuRestores && headersMatch && managerPreserved,
                 exitRequested,
                 RunFailedRestoreKeepsTrayStateProbe(floating));
         }
         finally
         {
             trayController.ExitRequested -= exitHandler;
-            if (trayController.IsTrayIconVisible)
+            if (!floating.IsVisible)
             {
-                trayController.InvokeRestoreForValidation();
+                floating.Show();
                 PumpDispatcher();
             }
 
@@ -14727,6 +14819,54 @@ internal static class ValidationReport
             {
                 floating.Show();
             }
+        }
+    }
+
+    private static bool TrayMenuHeadersMatch()
+    {
+        var (_, openManager, restore, resetPosition, exit) = TrayMenuFactory.Create(
+            static () => { },
+            static () => { },
+            static () => { },
+            static () => { });
+        return string.Equals(openManager.Header as string, "打开管理窗口", StringComparison.Ordinal) &&
+            string.Equals(restore.Header as string, "打开悬浮窗", StringComparison.Ordinal) &&
+            string.Equals(resetPosition.Header as string, "复位窗口位置", StringComparison.Ordinal) &&
+            string.Equals(exit.Header as string, "退出", StringComparison.Ordinal);
+    }
+
+    private static bool TrayOpenManagerPreservesDraftAndFilter(
+        MainWindow main,
+        DesktopWorkspace workspace,
+        FloatingTrayController trayController)
+    {
+        var noteText = Required<TextBox>(main, "NoteText");
+        var previousDraft = noteText.Text;
+        var previousFilter = workspace.Snapshot.Filter;
+        var mainWasVisible = main.IsVisible;
+        try
+        {
+            noteText.Text = "托盘恢复草稿";
+            workspace.ApplyFilter(previousFilter with { NoteSearch = "托盘保留筛选" });
+            PumpDispatcher();
+            ManagerWindowRestore.HideManagerOnly(main);
+            PumpDispatcher();
+            trayController.InvokeOpenManagerForValidation();
+            PumpDispatcher();
+            return main.IsVisible &&
+                string.Equals(noteText.Text, "托盘恢复草稿", StringComparison.Ordinal) &&
+                string.Equals(workspace.Snapshot.Filter.NoteSearch, "托盘保留筛选", StringComparison.Ordinal);
+        }
+        finally
+        {
+            noteText.Text = previousDraft;
+            workspace.ApplyFilter(previousFilter);
+            if (mainWasVisible && !main.IsVisible)
+            {
+                main.Show();
+            }
+
+            PumpDispatcher();
         }
     }
 
@@ -14754,7 +14894,7 @@ internal static class ValidationReport
                 retrySucceeded &&
                 floating.IsVisible &&
                 floating.WindowState == WindowState.Normal &&
-                !controller.IsTrayIconVisible;
+                controller.IsTrayIconVisible;
 
             return failureReturnsFalse && trayIconKeptAfterFailure && retryRestoresFully;
         }
@@ -15525,7 +15665,7 @@ internal static class ValidationReport
     private sealed record ReminderKeyboardExerciseResult(
         bool TabTraversalWorks,
         bool CloseGuardWorks,
-        bool InitialFocusAndAccessibleNameWork,
+        bool ShowPreservesFocusAndAccessibleName,
         bool EscapeFocusesAcknowledge);
 
     private sealed record ReminderDeliveryExerciseResult(

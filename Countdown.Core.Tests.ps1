@@ -3618,11 +3618,11 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 529 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 525 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 530 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 526 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 60 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal 61 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight helper'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
@@ -3702,13 +3702,13 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-09-v32\\manifest\.json').Count) `
+        'assets\\ui-references\\floating-window\\520x390\\2026-10-10-v33\\manifest\.json').Count) `
     'Validation suite pins the floating visual manifest to the current v32 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-10-09-v32\\manifest\.json').Count) `
+        'assets\\ui-references\\main-window\\1165x1350\\2026-10-10-v33\\manifest\.json').Count) `
     'Validation suite pins the main-window visual manifest to the current v32 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
@@ -3735,8 +3735,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-09-v32\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-09-v32\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-10-v33\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-10-v33\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3745,19 +3745,19 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-09-v32'
+        ExpectedVersion = '2026-10-10-v33'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-09-v32/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-10-v33/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-09-v32'
+        ExpectedVersion = '2026-10-10-v33'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3768,7 +3768,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-representative',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-09-v32/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-10-v33/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
@@ -5340,6 +5340,76 @@ $invalidRejected = $false
 try { ConvertTo-CountdownTargetUtc -DateText '2026-02-30' -TimeText '18:00:00' | Out-Null }
 catch { $invalidRejected = $true }
 Assert-Equal $true $invalidRejected 'Invalid date rejected'
+
+# #218 悬浮窗底部状态解析（纯函数 seam）：直接编译现役 src\MinminCountdown\FloatingBottomStatus.cs，
+# 覆盖 月薪 >0 / =0 与 日历就绪 / 加载中 / 未就绪 的组合；日历未就绪必须返回说明影响范围与
+# 恢复方式的新文案，而不是旧状态文本或鼓励文案。
+$holidayUnavailableCopy = '节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复'
+$floatingBottomStatusSource = [System.IO.File]::ReadAllText(
+    (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingBottomStatus.cs'),
+    [System.Text.Encoding]::UTF8)
+$floatingBottomStatusDotnet = if ($isCIEnvironment) {
+    (Get-Command dotnet -ErrorAction Stop).Path
+} else {
+    'D:\Codex\tools\dotnet\10.0\dotnet.exe'
+}
+$floatingBottomStatusDotnetRoot = Split-Path -Parent $floatingBottomStatusDotnet
+$netCoreRefPackRoot = Join-Path $floatingBottomStatusDotnetRoot 'packs\Microsoft.NETCore.App.Ref'
+$windowsDesktopRefPackRoot = Join-Path $floatingBottomStatusDotnetRoot 'packs\Microsoft.WindowsDesktop.App.Ref'
+$netCoreRefPack = Join-Path $netCoreRefPackRoot (
+    Get-ChildItem -LiteralPath $netCoreRefPackRoot -Directory |
+        Sort-Object { [version] $_.Name } -Descending |
+        Select-Object -First 1 -ExpandProperty Name)
+$windowsDesktopRefPack = Join-Path $windowsDesktopRefPackRoot (
+    Get-ChildItem -LiteralPath $windowsDesktopRefPackRoot -Directory |
+        Sort-Object { [version] $_.Name } -Descending |
+        Select-Object -First 1 -ExpandProperty Name)
+$floatingBottomStatusRefs = @(
+    Get-ChildItem -LiteralPath (Join-Path $netCoreRefPack 'ref\net10.0') -Filter '*.dll' -File |
+        ForEach-Object { $_.FullName }
+) + @(
+    'PresentationFramework.dll', 'PresentationCore.dll', 'WindowsBase.dll', 'System.Xaml.dll' |
+        ForEach-Object { Join-Path $windowsDesktopRefPack "ref\net10.0\$_" }
+)
+$compiledBottomStatusTypes = Add-Type -TypeDefinition ("using System;`n" + $floatingBottomStatusSource) `
+    -ReferencedAssemblies $floatingBottomStatusRefs -IgnoreWarnings -PassThru
+$floatingBottomStatusType = @($compiledBottomStatusTypes |
+    Where-Object { $_.FullName -eq 'MinminCountdown.FloatingBottomStatus' })[0]
+Assert-Equal $true ($null -ne $floatingBottomStatusType) 'Floating bottom status resolver compiles from current source'
+$encouragementSentinel = 'ENCOURAGEMENT-SENTINEL'
+$bottomEarningsReady = $floatingBottomStatusType::Resolve([decimal]41.13, [decimal]6200, 'Ready', 'STATUS-SENTINEL', $encouragementSentinel)
+Assert-Equal 'Earnings' ([string] $bottomEarningsReady.Kind) 'Bottom status shows earnings for positive salary and ready calendar'
+Assert-Equal '今日已赚 ￥41.13' ([string] $bottomEarningsReady.Text) 'Bottom status formats earnings amount'
+$bottomLoadingPositiveSalary = $floatingBottomStatusType::Resolve($null, [decimal]6200, 'Pending', '节假日日历正在加载', $encouragementSentinel)
+Assert-Equal 'Status' ([string] $bottomLoadingPositiveSalary.Kind) 'Bottom status keeps calendar status while loading with positive salary'
+Assert-Equal '节假日日历正在加载' ([string] $bottomLoadingPositiveSalary.Text) 'Bottom status passes through the loading text with positive salary'
+$bottomUnavailablePositiveSalary = $floatingBottomStatusType::Resolve($null, [decimal]6200, 'Unavailable', '节假日日历未就绪', $encouragementSentinel)
+Assert-Equal 'Status' ([string] $bottomUnavailablePositiveSalary.Kind) 'Bottom status stays a calendar status when unavailable with positive salary'
+Assert-Equal $holidayUnavailableCopy ([string] $bottomUnavailablePositiveSalary.Text) 'Bottom status explains the unavailable calendar with positive salary'
+$bottomEncouragementReady = $floatingBottomStatusType::Resolve($null, [decimal]0, 'Ready', 'STATUS-SENTINEL', $encouragementSentinel)
+Assert-Equal 'Encouragement' ([string] $bottomEncouragementReady.Kind) 'Bottom status shows encouragement for zero salary and ready calendar'
+Assert-Equal $encouragementSentinel ([string] $bottomEncouragementReady.Text) 'Bottom status uses the workspace encouragement text for zero salary'
+$bottomLoadingZeroSalary = $floatingBottomStatusType::Resolve($null, [decimal]0, 'Pending', '节假日日历正在加载', $encouragementSentinel)
+Assert-Equal 'Status' ([string] $bottomLoadingZeroSalary.Kind) 'Bottom status keeps calendar status while loading with zero salary'
+Assert-Equal '节假日日历正在加载' ([string] $bottomLoadingZeroSalary.Text) 'Bottom status passes through the loading text with zero salary'
+$bottomUnavailableZeroSalary = $floatingBottomStatusType::Resolve($null, [decimal]0, 'Unavailable', '节假日日历未就绪', $encouragementSentinel)
+Assert-Equal 'Status' ([string] $bottomUnavailableZeroSalary.Kind) 'Bottom status does not show encouragement when the calendar is unavailable'
+Assert-Equal $holidayUnavailableCopy ([string] $bottomUnavailableZeroSalary.Text) 'Bottom status explains the unavailable calendar with zero salary'
+
+# #218 节假日年度覆盖守卫（纯函数）：注入北京时间与随包覆盖年份集合；北京时间进入 12 月且
+# 缺少下一年随包数据时守卫必须失败，失败信息指明缺失年份与补数据流程。
+$holidayGuardNovember = Test-CountdownHolidayYearCoverage -BeijingNow ([DateTimeOffset]'2026-11-30T23:59:00+08:00') -PackagedYears @(2026)
+Assert-Equal $true ([bool] $holidayGuardNovember.Covered) 'Holiday year guard passes before December'
+$holidayGuardDecemberReady = Test-CountdownHolidayYearCoverage -BeijingNow ([DateTimeOffset]'2026-12-01T00:00:00+08:00') -PackagedYears @(2026, 2027)
+Assert-Equal $true ([bool] $holidayGuardDecemberReady.Covered) 'Holiday year guard passes when the next year is packaged'
+$holidayGuardDecemberMissing = Test-CountdownHolidayYearCoverage -BeijingNow ([DateTimeOffset]'2026-12-01T00:00:00+08:00') -PackagedYears @(2026)
+Assert-Equal $false ([bool] $holidayGuardDecemberMissing.Covered) 'Holiday year guard fails in December without the next year'
+Assert-Equal 2027 ([int] $holidayGuardDecemberMissing.MissingYear) 'Holiday year guard names the missing year'
+Assert-Equal $true ([string] $holidayGuardDecemberMissing.Message.Contains('2027')) 'Holiday year guard message names the missing year'
+Assert-Equal $true ([string] $holidayGuardDecemberMissing.Message.Contains('holiday-data/README.md')) 'Holiday year guard message points to the data refresh runbook'
+$holidayGuardLateDecember = Test-CountdownHolidayYearCoverage -BeijingNow ([DateTimeOffset]'2026-12-31T23:00:00+08:00') -PackagedYears @(2026)
+Assert-Equal $false ([bool] $holidayGuardLateDecember.Covered) 'Holiday year guard still fails at the end of December without the next year'
+Assert-Equal 2027 ([int] $holidayGuardLateDecember.MissingYear) 'Holiday year guard names the missing year at the end of December'
 
 $runtimeTestRoot = Join-Path $PSScriptRoot ("runtime-test-" + [guid]::NewGuid().ToString('N'))
 $runtimeStatusTestPath = Join-Path $runtimeTestRoot 'runtime-status.json'

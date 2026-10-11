@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -10,6 +11,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -3944,8 +3946,8 @@ internal static class ValidationExercises
         }
     }
 
-    // #155：脏退出确认——显示设置脏与编辑器脏都产生退出描述；退出确认框以取消为安全默认，
-    // 确认文案为「退出」并携带完整未保存内容描述；干净状态直接放行、不弹框。
+    // #155 / #213：脏状态描述沿用既有语义；退出确认框以取消为安全默认，
+    // 确认文案为「退出」，正文包含「退出后不再提醒」并列出未保存项。
     public static bool RunDirtyExitConfirmationBehavior()
     {
         var settingsPath = Path.Combine(
@@ -4049,9 +4051,10 @@ internal static class ValidationExercises
                             "退出",
                             StringComparison.Ordinal) &&
                         dialog.BodyText.Text.Contains("显示设置", StringComparison.Ordinal) &&
-                        dialog.BodyText.Text.Contains("便签编辑器", StringComparison.Ordinal);
+                        dialog.BodyText.Text.Contains("便签编辑器", StringComparison.Ordinal) &&
+                        dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal);
                 });
-            var confirmed = ExitConfirmation.Confirm(
+            var confirmed = ProcessExitConfirmation.Confirm(
                 main,
                 new[] { main.DescribeUnsavedExitWork()! });
             WindowValidationInput.Pump(main.Dispatcher);
@@ -4061,7 +4064,7 @@ internal static class ValidationExercises
                 "退出确认框必须以取消为安全默认、携带完整描述且取消时不退出。");
 
             QueueConfirmationDialogResponse(main, confirm: true);
-            confirmed = ExitConfirmation.Confirm(
+            confirmed = ProcessExitConfirmation.Confirm(
                 main,
                 new[] { main.DescribeUnsavedExitWork()! });
             WindowValidationInput.Pump(main.Dispatcher);
@@ -4071,6 +4074,144 @@ internal static class ValidationExercises
         finally
         {
             main.Close();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #213：没有未保存内容时，关闭悬浮窗和系统关闭（Alt+F4 走 Closing）都弹出退出确认，
+    // 正文包含「退出后不再提醒」。取消后悬浮窗仍可见，提醒派发未被释放。
+    public static bool RunAlwaysConfirmExitKeepsReminderBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-exit-confirm-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+        PrepareOffscreenValidationWindow(main);
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        PrepareOffscreenValidationWindow(floating);
+        var coordinator = new ReminderDeliveryCoordinator(workspace, logger);
+        var shuttingDown = false;
+        void RequestShutdown()
+        {
+            if (shuttingDown)
+            {
+                return;
+            }
+
+            var reasons = new List<string>();
+            if (main.DescribeUnsavedExitWork() is { } mainReason)
+            {
+                reasons.Add(mainReason);
+            }
+
+            if (floating.DescribeUnsavedExitWork() is { } floatingReason)
+            {
+                reasons.Add(floatingReason);
+            }
+
+            if (!ProcessExitConfirmation.Confirm(floating, reasons))
+            {
+                return;
+            }
+
+            shuttingDown = true;
+            coordinator.Dispose();
+            floating.Close();
+        }
+
+        FloatingWindowCloseBridge.Attach(floating, RequestShutdown, () => shuttingDown);
+        floating.ExitRequested += (_, _) => RequestShutdown();
+        try
+        {
+            main.Show();
+            floating.Show();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                main.DescribeUnsavedExitWork() is null &&
+                floating.DescribeUnsavedExitWork() is null,
+                "干净退出探针开始时不应有未保存内容。");
+
+            var dialogInspected = false;
+            QueueConfirmationDialogResponse(
+                floating,
+                confirm: false,
+                inspect: dialog =>
+                {
+                    dialogInspected =
+                        dialog.CancelButton.IsDefault &&
+                        dialog.CancelButton.IsCancel &&
+                        dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal) &&
+                        !dialog.BodyText.Text.Contains("未保存", StringComparison.Ordinal);
+                });
+            var confirmed = ProcessExitConfirmation.Confirm(floating, Array.Empty<string>());
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(dialogInspected && !confirmed, "干净状态也必须弹出含「退出后不再提醒」的退出确认，取消不放行。");
+            Must(floating.IsVisible && coordinator.IsDispatching, "直接取消退出后悬浮窗和提醒派发必须仍在。");
+            coordinator.Tick(workspace.Snapshot.UtcNow);
+
+            dialogInspected = false;
+            QueueConfirmationDialogResponse(
+                floating,
+                confirm: false,
+                inspect: dialog =>
+                {
+                    dialogInspected = dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal);
+                });
+            var closeButton = floating.FindName("CloseFloatingButton") as Button
+                ?? throw new InvalidOperationException("无法定位悬浮窗关闭按钮。");
+            closeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                dialogInspected && floating.IsVisible && coordinator.IsDispatching,
+                "关闭悬浮窗取消后，悬浮窗和提醒派发必须仍在运行。");
+            coordinator.Tick(workspace.Snapshot.UtcNow);
+
+            dialogInspected = false;
+            QueueConfirmationDialogResponse(
+                floating,
+                confirm: false,
+                inspect: dialog =>
+                {
+                    dialogInspected = dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal);
+                });
+            floating.Close();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                dialogInspected && floating.IsVisible && coordinator.IsDispatching,
+                "Alt+F4 取消后必须留在应用里，不能留下没有窗口的进程，提醒派发必须仍在。");
+            coordinator.Tick(workspace.Snapshot.UtcNow);
+
+            QueueConfirmationDialogResponse(floating, confirm: true);
+            floating.Close();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                !floating.IsVisible && !coordinator.IsDispatching,
+                "确认退出后必须关掉悬浮窗并停止提醒派发。");
+            return true;
+        }
+        finally
+        {
+            if (coordinator.IsDispatching)
+            {
+                coordinator.Dispose();
+            }
+
+            if (main.IsLoaded)
+            {
+                main.Close();
+            }
+
+            if (floating.IsLoaded)
+            {
+                floating.Close();
+            }
+
             DeleteSettingsFiles(settingsPath);
             DeleteFileIfPresent(diagnosticPath);
         }
@@ -4314,6 +4455,333 @@ internal static class ValidationExercises
         }
     }
 
+    // #211：管理窗口装进任意工作区。注入 1080p 在 100%/125%/150% 缩放下的三档
+    // 工作区高度（1032/826/688 DIP），窗口必须取「首选 1165×1350 与工作区−安全边距」
+    // 的较小值并完整落在工作区内；顶端置顶/最小化/关闭免滚动可达；状态栏经外层
+    // 纵向滚动完整可见；倒计时前三行逐行滚动可达完整可见；内容不缩放。用户调整
+    // 的720×560 位置尺寸在隐藏后再显示时保留；越界显示与 WM_DISPLAYCHANGE 工作区
+    // 变化时夹回所在显示器工作区。全程经注入工作区，不依赖真实显示拓扑。
+    public static bool RunMainWindowWorkAreaFitBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-main-workarea-fit-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        try
+        {
+            var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var seedBase = new DateTimeOffset(2038, 7, 9, 1, 0, 0, TimeSpan.Zero);
+            for (var index = 0; index < 3; index++)
+            {
+                MustApply(workspace, new SaveCountdownChange(
+                    null,
+                    $"工作区适配倒计时 {index + 1}",
+                    seedBase.AddDays(index + 1),
+                    Array.Empty<string>(),
+                    Array.Empty<ReminderRule>()));
+            }
+
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            var workAreaCases = new[]
+            {
+                (Width: 1920.0, Height: 1032.0, Dpi: 1.0),
+                (Width: 1536.0, Height: 826.0, Dpi: 1.25),
+                (Width: 1280.0, Height: 688.0, Dpi: 1.5)
+            };
+            foreach (var workAreaCase in workAreaCases)
+            {
+                using var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                    new MonitorWorkArea(
+                        new Rect(0, 0, workAreaCase.Width, workAreaCase.Height),
+                        workAreaCase.Dpi,
+                        workAreaCase.Dpi));
+                Must(
+                    Math.Abs(MonitorWorkAreaResolver.ResolveForScreenRect(new Rect(100, 100, 200, 200), 1, 1).DpiScaleX - workAreaCase.Dpi) <= 0.001,
+                    "注入的工作区解析应按注入值返回 DIP 矩形与 DPI。");
+                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                PrepareOffscreenValidationWindow(main);
+                try
+                {
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+
+                    var usableWidth = workAreaCase.Width - 24;
+                    var usableHeight = workAreaCase.Height - 24;
+                    var expectedWidth = Math.Min(MainWindow.PreferredWidth, usableWidth);
+                    var expectedHeight = Math.Min(MainWindow.PreferredHeight, usableHeight);
+                    Must(
+                        Math.Abs(main.Width - expectedWidth) <= 0.5 &&
+                        Math.Abs(main.Height - expectedHeight) <= 0.5,
+                        $"注入 {workAreaCase.Width}x{workAreaCase.Height}@{workAreaCase.Dpi} 工作区时窗口应取首选与工作区−安全边距的较小值" +
+                        $"（期望 {expectedWidth}x{expectedHeight}，实际 {main.Width}x{main.Height}）。");
+                    Must(
+                        main.Left >= 12 - 0.5 &&
+                        main.Top >= 12 - 0.5 &&
+                        main.Left + main.Width <= workAreaCase.Width - 12 + 0.5 &&
+                        main.Top + main.Height <= workAreaCase.Height - 12 + 0.5,
+                        $"窗口四角应完全落在注入工作区安全边距内（实际 Left={main.Left} Top={main.Top} " +
+                        $"Right={main.Left + main.Width} Bottom={main.Top + main.Height}）。");
+
+                    foreach (var controlName in new[] { "TopmostCheck", "MinimizeButton", "CloseButton" })
+                    {
+                        var control = (FrameworkElement)main.FindName(controlName);
+                        var controlBounds = control.TransformToAncestor(main).TransformBounds(
+                            new Rect(new Point(0, 0), control.RenderSize));
+                        Must(
+                            controlBounds.X >= -0.5 &&
+                            controlBounds.Y >= -0.5 &&
+                            controlBounds.Right <= main.ActualWidth + 0.5 &&
+                            controlBounds.Bottom <= main.ActualHeight + 0.5,
+                            $"{controlName} 应无需滚动完整落在窗口可视区内（{controlBounds}，窗口 {main.ActualWidth}x{main.ActualHeight}）。");
+                    }
+
+                    var scrollHost = (ScrollViewer)main.FindName("MainWindowScrollHost");
+                    Must(
+                        scrollHost.ScrollableHeight > 0.5,
+                        $"窗口收缩到 {main.ActualWidth}x{main.ActualHeight} 后外层滚动容器应有纵向可滚动区间。");
+                    scrollHost.ScrollToBottom();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    var statusBar = (FrameworkElement)main.FindName("MainStatusBarSurface");
+                    var statusBounds = statusBar.TransformToAncestor(main).TransformBounds(
+                        new Rect(new Point(0, 0), statusBar.RenderSize));
+                    Must(
+                        statusBounds.Y >= -0.5 &&
+                        statusBounds.Bottom <= main.ActualHeight + 0.5,
+                        $"滚到底后状态栏应完整落入窗口可视区（{statusBounds}，窗口高 {main.ActualHeight}）。");
+                    scrollHost.ScrollToTop();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+
+                    var listRegion = (ScrollViewer)main.FindName("CountdownListRegion");
+                    var rows = (Panel)main.FindName("CountdownRows");
+                    var firstRows = rows.Children.OfType<FrameworkElement>().Take(3).ToArray();
+                    Must(firstRows.Length == 3, "倒计时列表种子应提供至少 3 行。");
+                    for (var rowIndex = 0; rowIndex < firstRows.Length; rowIndex++)
+                    {
+                        firstRows[rowIndex].BringIntoView();
+                        WindowValidationInput.Pump(main.Dispatcher);
+                        main.UpdateLayout();
+                        var rowBounds = firstRows[rowIndex].TransformToAncestor(listRegion).TransformBounds(
+                            new Rect(new Point(0, 0), firstRows[rowIndex].RenderSize));
+                        Must(
+                            rowBounds.Y >= -0.5 &&
+                            rowBounds.Bottom <= listRegion.ViewportHeight + 0.5,
+                            $"第 {rowIndex + 1} 行倒计时应能滚动到在内层视口完整可见" +
+                            $"（行 {rowBounds}，内层视口高 {listRegion.ViewportHeight}）。");
+                    }
+
+                    var scaleViewport = (FrameworkElement)main.FindName("MainScaleViewport");
+                    Must(
+                        Math.Abs(scaleViewport.ActualWidth - MainWindow.PreferredWidth) <= 0.5 &&
+                        Math.Abs(scaleViewport.ActualHeight - MainWindow.PreferredHeight) <= 0.5,
+                        "窗口收缩时业务内容不得缩放：MainScaleViewport 应保持 1165×1350 设计尺寸、字号不变。");
+                }
+                finally
+                {
+                    main.Close();
+                }
+            }
+
+            using (var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                       new MonitorWorkArea(new Rect(0, 0, 1920, 1032), 1, 1)))
+            {
+                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                PrepareOffscreenValidationWindow(main);
+                try
+                {
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+
+                    var handle = new WindowInteropHelper(main).Handle;
+                    Must(handle != IntPtr.Zero, "窗口应已创建 HWND。");
+                    // 真实用户拖动/缩放手势走 WM_ENTERSIZEMOVE→几何变化→WM_EXITSIZEMOVE；
+                    // 探针沿同一 Win32 路径标记「用户调整过位置和尺寸」。
+                    NativeWorkAreaProbe.SendMessage(
+                        handle,
+                        NativeWorkAreaProbe.WmEnterSizeMove,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    main.Width = 720;
+                    main.Height = 560;
+                    main.Left = 500;
+                    main.Top = 300;
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    NativeWorkAreaProbe.SendMessage(
+                        handle,
+                        NativeWorkAreaProbe.WmExitSizeMove,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Hide();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    Must(
+                        Math.Abs(main.Width - 720) <= 0.5 &&
+                        Math.Abs(main.Height - 560) <= 0.5 &&
+                        Math.Abs(main.Left - 500) <= 0.5 &&
+                        Math.Abs(main.Top - 300) <= 0.5,
+                        $"隐藏后再显示应保留本次运行内用户调整的位置和尺寸（实际 Left={main.Left} Top={main.Top} {main.Width}x{main.Height}）。");
+
+                    var scrollHost = (ScrollViewer)main.FindName("MainWindowScrollHost");
+                    Must(
+                        scrollHost.ScrollableWidth > 0.5 && scrollHost.ScrollableHeight > 0.5,
+                        "最小尺寸 720×560 下外层容器应纵横双向可滚动（横向兜底），内容不被裁切。");
+
+                    main.Left = 5000;
+                    main.Top = 5000;
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Hide();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.Show();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    Must(
+                        main.Left >= 12 - 0.5 &&
+                        main.Top >= 12 - 0.5 &&
+                        main.Left + main.ActualWidth <= 1920 - 12 + 0.5 &&
+                        main.Top + main.ActualHeight <= 1032 - 12 + 0.5,
+                        $"越界位置在显示时应夹回所在显示器工作区（实际 Left={main.Left} Top={main.Top}）。");
+
+                    using var smallerOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                        new MonitorWorkArea(new Rect(0, 0, 1280, 688), 1.5, 1.5));
+                    NativeWorkAreaProbe.SendMessage(
+                        handle,
+                        NativeWorkAreaProbe.WmDisplayChange,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    Must(
+                        main.Left >= 12 - 0.5 &&
+                        main.Top >= 12 - 0.5 &&
+                        main.Left + main.ActualWidth <= 1280 - 12 + 0.5 &&
+                        main.Top + main.ActualHeight <= 688 - 12 + 0.5 &&
+                        Math.Abs(main.Width - 720) <= 0.5 &&
+                        Math.Abs(main.Height - 560) <= 0.5,
+                        $"显示器工作区变化后窗口应夹回新工作区且保留用户尺寸" +
+                        $"（实际 Left={main.Left} Top={main.Top} {main.Width}x{main.Height}）。");
+                }
+                finally
+                {
+                    main.Close();
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #211：标题拖动区覆盖整个身份区空白，身份区内控件仍可点击。经真实
+    // WM_NCHITTEST 路径判定：身份区中缝空白返回 HTCAPTION，置顶控件中心返回 HTCLIENT。
+    public static bool RunMainWindowIdentityZoneDragBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-main-identity-drag-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        try
+        {
+            var workspace = DesktopWorkspace.Load(
+                settingsPath,
+                new SettingsStore(clock: new AdvancingValidationClock(
+                    new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero))));
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var logger = new DiagnosticLogger(diagnosticPath);
+            using var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
+                new MonitorWorkArea(new Rect(0, 0, 2560, 1600), 1, 1));
+            var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            try
+            {
+                main.Show();
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+
+                var identityZone = (FrameworkElement)main.FindName("MainIdentityZone");
+                var titleZone = (FrameworkElement)main.FindName("MainTitleZone");
+                var windowControls = (FrameworkElement)main.FindName("MainWindowControls");
+                var topmostCheck = (FrameworkElement)main.FindName("TopmostCheck");
+
+                Rect BoundsInMain(FrameworkElement element) =>
+                    element.TransformToAncestor(main).TransformBounds(
+                        new Rect(new Point(0, 0), element.RenderSize));
+                var identityBounds = BoundsInMain(identityZone);
+                var titleBounds = BoundsInMain(titleZone);
+                var controlsBounds = BoundsInMain(windowControls);
+                var emptyX = (titleBounds.Right + controlsBounds.Left) / 2;
+                var emptyY = identityBounds.Top + (identityBounds.Height / 2);
+                Must(
+                    emptyX > titleBounds.Right + 8 &&
+                    emptyX < controlsBounds.Left - 8 &&
+                    emptyY > identityBounds.Top + 8 &&
+                    emptyY < identityBounds.Bottom - 8,
+                    $"探针空白点应落在身份区中缝（x={emptyX} 应位于标题右缘 {titleBounds.Right} 与控件左缘 {controlsBounds.Left} 之间）。");
+
+                var emptyHit = SendWindowHitTest(main, new Point(emptyX, emptyY));
+                Must(
+                    emptyHit == NativeWorkAreaProbe.HitCaption,
+                    $"身份区空白处应作为标题拖动区（HTCAPTION=2），实际命中 {emptyHit}。");
+
+                var topmostCenter = topmostCheck.TransformToAncestor(main).Transform(
+                    new Point(topmostCheck.RenderSize.Width / 2, topmostCheck.RenderSize.Height / 2));
+                var controlHit = SendWindowHitTest(main, topmostCenter);
+                Must(
+                    controlHit == NativeWorkAreaProbe.HitClient,
+                    $"身份区内置顶控件应保持可点击（HTCLIENT=1），实际命中 {controlHit}。");
+                return true;
+            }
+            finally
+            {
+                main.Close();
+            }
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    private static int SendWindowHitTest(Window window, Point dipPoint)
+    {
+        var screenPoint = window.PointToScreen(dipPoint);
+        var coordinates = new IntPtr(((int)screenPoint.Y << 16) | ((int)screenPoint.X & 0xffff));
+        var handle = new WindowInteropHelper(window).Handle;
+        return NativeWorkAreaProbe
+            .SendMessage(handle, NativeWorkAreaProbe.WmNcHitTest, IntPtr.Zero, coordinates)
+            .ToInt32();
+    }
+
+    private static class NativeWorkAreaProbe
+    {
+        internal const int WmNcHitTest = 0x0084;
+        internal const int WmDisplayChange = 0x007E;
+        internal const int WmEnterSizeMove = 0x0231;
+        internal const int WmExitSizeMove = 0x0232;
+        internal const int HitClient = 1;
+        internal const int HitCaption = 2;
+
+        [DllImport("user32.dll", ExactSpelling = true, EntryPoint = "SendMessageW")]
+        internal static extern IntPtr SendMessage(
+            IntPtr windowHandle,
+            uint message,
+            IntPtr wordParameter,
+            IntPtr longParameter);
+    }
+
     private static bool WindowIntersectsWorkArea(Window window)
     {
         var area = SystemParameters.WorkArea;
@@ -4433,7 +4901,7 @@ internal static class ValidationExercises
         }
     }
 
-    public static bool RunReminderCenterEnterActsOnFocusedEntryBehavior()
+    public static bool RunReminderCenterEnterUsesNativeButtonActivationBehavior()
     {
         var dueUtc = new DateTimeOffset(2036, 5, 14, 1, 0, 0, TimeSpan.Zero);
         var settingsPath = Path.Combine(
@@ -4488,7 +4956,10 @@ internal static class ValidationExercises
                 VisualDescendants<Button>(center).All(button => !button.IsDefault),
                 "提醒中心按钮不应再声明 IsDefault 默认按钮。");
 
+            // #215：窗口级不再拦截 Enter——焦点在条目按钮上时，按在窗口上的 Enter 不处置任何条目。
             var snoozeBeta = FindReminderEntryButton(center, keyBeta, "稍后提醒：");
+            center.Activate();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Keyboard.Focus(snoozeBeta);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
@@ -4496,29 +4967,234 @@ internal static class ValidationExercises
                 "Enter 前键盘焦点未落在条目乙的稍后提醒按钮。");
             WindowValidationInput.RaiseKey(center, Key.Enter);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                session.Current.ReminderStates[ruleBeta.Id].ActiveSnooze is null &&
+                center.IsSnoozeEnabled(keyBeta),
+                "按在窗口上的 Enter 不应处置焦点条目。");
+            // 焦点离开条目后按 Enter 同样不处置。
+            Keyboard.ClearFocus();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            WindowValidationInput.RaiseKey(center, Key.Enter);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                session.Current.ReminderStates[ruleBeta.Id].ActiveSnooze is null,
+                "焦点离开条目后 Enter 不应处置任何条目。");
+
+            // 按钮键盘激活交给控件原生行为：按在聚焦按钮自身的 Enter 触发该按钮命令。
+            Keyboard.Focus(snoozeBeta);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                ReferenceEquals(Keyboard.FocusedElement, snoozeBeta),
+                "Enter 前键盘焦点未落回条目乙的稍后提醒按钮。");
+            WindowValidationInput.RaiseKey(snoozeBeta, Key.Enter);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var stateBeta = session.Current.ReminderStates[ruleBeta.Id];
             Must(
                 coordinator.ActiveEntryCount == 1 &&
                 stateBeta.ActiveSnooze?.OccurrenceKey ==
                     ReminderOccurrenceKey.Create(ruleBeta, dueUtc).ToString() &&
                 stateBeta.ActiveSnooze.SnoozeUntilUtc == dueUtc.AddMinutes(10),
-                "焦点条目上的 Enter 没有触发该条目的 10 分钟稍后提醒。");
+                "聚焦按钮上的 Enter 没有原生触发该条目的 10 分钟稍后提醒。");
             Must(
                 session.Current.ReminderStates[ruleAlpha.Id].ActiveSnooze is null &&
                 center.IsAcknowledgeEnabled(keyAlpha),
-                "焦点外条目甲被 Enter 误处置。");
+                "焦点外条目甲被误处置。");
 
             var acknowledgeAlpha = FindReminderEntryButton(center, keyAlpha, "知道了：");
             Keyboard.Focus(acknowledgeAlpha);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
-            WindowValidationInput.RaiseKey(center, Key.Enter);
+            WindowValidationInput.RaiseKey(acknowledgeAlpha, Key.Enter);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
                 coordinator.ActiveEntryCount == 0 &&
                 coordinator.ActiveWindowCount == 0 &&
                 session.Current.ReminderStates[ruleAlpha.Id].LastDispositionOccurrenceKey ==
                     ReminderOccurrenceKey.Create(ruleAlpha, dueUtc).ToString(),
-                "焦点知道了按钮上的 Enter 没有确认最后一条并收起空中心。");
+                "聚焦知道了按钮上的 Enter 没有原生确认最后一条并收起空中心。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterArrivalKeepsForegroundAndFlashesTaskbarBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 6, 22, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-arrival-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心到达不抢焦点条目",
+                    new DateTime(2036, 6, 22),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立到达条目。");
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心到达二次条目",
+                    new DateTime(2036, 6, 22),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(dueUtc.AddMinutes(15)),
+                    out _),
+                "无法建立到达二次条目。");
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            center.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 1 && center.IsVisible,
+                "到达提醒没有进入可见提醒中心。");
+            // #215：出现时不激活、不抢焦点、不持续置顶；显示在任务栏且标题带条目数。
+            Must(
+                !center.ShowActivated && !center.Topmost && center.ShowInTaskbar,
+                "提醒中心出现时必须不激活、不置顶并显示在任务栏。");
+            Must(
+                !center.IsActive &&
+                (Keyboard.FocusedElement is not DependencyObject focused ||
+                 !center.IsAncestorOf(focused)),
+                "提醒中心到达不得抢占激活态或键盘焦点。");
+            Must(
+                center.Title.Contains("1 条", StringComparison.Ordinal),
+                "提醒中心任务栏标题必须携带条目数。");
+            Must(
+                center.TaskbarFlashRequestCount >= 1,
+                "未激活时新提醒到达必须请求任务栏闪烁。");
+
+            // 用户已激活窗口时，后续到达不再闪烁。
+            center.Activate();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(center.IsActive, "到达探针未能激活提醒中心。");
+            clock.UtcNow = dueUtc.AddMinutes(15);
+            coordinator.Tick(dueUtc.AddMinutes(15));
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                center.TaskbarFlashRequestCount == 1 &&
+                center.Title.Contains("2 条", StringComparison.Ordinal),
+                "已激活的提醒中心再次到达不应重复闪烁任务栏。");
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(settingsPath + ".tmp");
+        }
+    }
+
+    public static bool RunReminderCenterMinimizeToTaskbarPreservesEntriesBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 7, 8, 1, 0, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-reminder-center-minimize-{Guid.NewGuid():N}.settings.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心收起条目甲",
+                    new DateTime(2036, 7, 8),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立收起条目甲。");
+            Must(
+                session.TrySaveNote(
+                    null,
+                    "提醒中心收起条目乙",
+                    new DateTime(2036, 7, 8),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立收起条目乙。");
+            var ruleAlpha = session.Current.Notes
+                .Single(note => note.Text == "提醒中心收起条目甲")
+                .ReminderRules.Single();
+            var keyAlpha = new ActiveReminderOccurrenceKey(ruleAlpha.Id, dueUtc);
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ??
+                         throw new InvalidOperationException("提醒中心未打开。");
+            center.UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsAcknowledgeEnabled(keyAlpha),
+                "两条到点提醒没有全部进入可处置状态。");
+
+            // #215：头部「收起」按钮把窗口最小化到任务栏，条目、标题计数与关闭守卫全部保留。
+            var minimize = VisualDescendants<Button>(center).FirstOrDefault(button =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderCenterMinimizeToTaskbar",
+                    StringComparison.Ordinal)) ??
+                throw new InvalidOperationException("提醒中心头部缺少「收起」按钮。");
+            Must(
+                minimize.Content is StackPanel content &&
+                content.Children.Count == 2 &&
+                content.Children[0] is System.Windows.Shapes.Path &&
+                content.Children[1] is TextBlock label &&
+                string.Equals(label.Text, "收起", StringComparison.Ordinal),
+                "「收起」按钮必须是图标加「收起」文字。");
+            Must(
+                string.Equals(
+                    AutomationProperties.GetName(minimize),
+                    "收起提醒中心到任务栏",
+                    StringComparison.Ordinal),
+                "「收起」按钮缺少可访问名。");
+
+            minimize.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.WindowState == WindowState.Minimized && center.IsVisible,
+                "点击「收起」后窗口必须最小化且保持可见。");
+            Must(
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsAcknowledgeEnabled(keyAlpha) &&
+                center.Title.Contains("2 条", StringComparison.Ordinal),
+                "收起后条目与任务栏标题计数必须保留。");
+            center.Close();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.IsVisible && center.WindowState == WindowState.Minimized,
+                "有条目时收起态仍必须拒绝直接关闭。");
+
+            center.WindowState = WindowState.Normal;
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                center.WindowState == WindowState.Normal &&
+                coordinator.ActiveEntryCount == 2 &&
+                center.IsAcknowledgeEnabled(keyAlpha),
+                "从任务栏恢复后条目必须完好。");
             return true;
         }
         finally
@@ -8751,7 +9427,7 @@ internal static class ValidationExercises
         new(
             input.TabTraversalWorks,
             input.CloseGuardWorks,
-            input.InitialFocusAndAccessibleNameWork,
+            input.ShowPreservesFocusAndAccessibleName,
             input.EscapeFocusesAcknowledge);
 
     public static bool RunReminderCenterKeyboardGateIsolationBehavior()
@@ -8766,8 +9442,8 @@ internal static class ValidationExercises
             passing with { CloseGuardWorks = false },
             nameof(ReminderCenterKeyboardGateResults.CloseGuardWorks));
         VerifyOnlyReminderCenterKeyboardGateFails(
-            passing with { InitialFocusAndAccessibleNameWork = false },
-            nameof(ReminderCenterKeyboardGateResults.InitialFocusAndAccessibleNameWork));
+            passing with { ShowPreservesFocusAndAccessibleName = false },
+            nameof(ReminderCenterKeyboardGateResults.ShowPreservesFocusAndAccessibleName));
         VerifyOnlyReminderCenterKeyboardGateFails(
             passing with { EscapeFocusesAcknowledge = false },
             nameof(ReminderCenterKeyboardGateResults.EscapeFocusesAcknowledge));
@@ -10867,13 +11543,13 @@ internal sealed record SecondaryWindowTypographyGateResults(
 internal sealed record ReminderCenterKeyboardGateInputs(
     bool TabTraversalWorks,
     bool CloseGuardWorks,
-    bool InitialFocusAndAccessibleNameWork,
+    bool ShowPreservesFocusAndAccessibleName,
     bool EscapeFocusesAcknowledge);
 
 internal sealed record ReminderCenterKeyboardGateResults(
     bool TabTraversalWorks,
     bool CloseGuardWorks,
-    bool InitialFocusAndAccessibleNameWork,
+    bool ShowPreservesFocusAndAccessibleName,
     bool EscapeFocusesAcknowledge)
 {
     public bool AllPassed => FailedChecks.Count == 0;
@@ -10882,7 +11558,7 @@ internal sealed record ReminderCenterKeyboardGateResults(
     {
         (nameof(TabTraversalWorks), TabTraversalWorks),
         (nameof(CloseGuardWorks), CloseGuardWorks),
-        (nameof(InitialFocusAndAccessibleNameWork), InitialFocusAndAccessibleNameWork),
+        (nameof(ShowPreservesFocusAndAccessibleName), ShowPreservesFocusAndAccessibleName),
         (nameof(EscapeFocusesAcknowledge), EscapeFocusesAcknowledge)
     }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
 }

@@ -82,6 +82,16 @@ internal static class UiAccessibility
                     return;
                 }
 
+                if (Window.GetWindow(target) is Window owner)
+                {
+                    var windowPeer = UIElementAutomationPeer.FromElement(owner)
+                        ?? UIElementAutomationPeer.CreatePeerForElement(owner);
+                    if (windowPeer is not null)
+                    {
+                        RealizeAutomationTree(windowPeer);
+                    }
+                }
+
                 var peer = UIElementAutomationPeer.FromElement(target)
                     ?? UIElementAutomationPeer.CreatePeerForElement(target);
                 peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
@@ -109,6 +119,29 @@ internal static class UiAccessibility
             }
         };
         Push();
+    }
+
+    private static void RealizeAutomationTree(AutomationPeer peer)
+    {
+        IReadOnlyList<AutomationPeer>? children;
+        try
+        {
+            children = peer.GetChildren();
+        }
+        catch (ElementNotAvailableException)
+        {
+            return;
+        }
+
+        if (children is null)
+        {
+            return;
+        }
+
+        foreach (var child in children)
+        {
+            RealizeAutomationTree(child);
+        }
     }
 }
 

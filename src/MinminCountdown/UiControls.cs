@@ -72,32 +72,54 @@ internal static class UiAccessibility
         target.Text = text;
         AutomationProperties.SetName(target, text);
         afterText?.Invoke(target);
-        var announced = text;
-        // 布局完成后再触发：折叠错误行刚变为可见时，同步 Raise 的 peer 还没有 UIA provider，事件会被丢掉。
-        target.Dispatcher.BeginInvoke(
-            DispatcherPriority.ApplicationIdle,
-            new Action(() =>
+        RaiseLiveRegionChanged(target);
+        Announced?.Invoke(target);
+    }
+
+    private static void RaiseLiveRegionChanged(TextBlock target)
+    {
+        var peer = UIElementAutomationPeer.FromElement(target)
+            ?? UIElementAutomationPeer.CreatePeerForElement(target);
+        if (peer is null)
+        {
+            return;
+        }
+
+        if (!HasAutomationProvider(peer) && Window.GetWindow(target) is Window owner)
+        {
+            owner.UpdateLayout();
+            var windowPeer = UIElementAutomationPeer.FromElement(owner)
+                ?? UIElementAutomationPeer.CreatePeerForElement(owner);
+            if (windowPeer is not null)
             {
-                if (!string.Equals(target.Text, announced, StringComparison.Ordinal))
-                {
-                    return;
-                }
+                RealizeAutomationTree(windowPeer);
+            }
 
-                if (Window.GetWindow(target) is Window owner)
-                {
-                    var windowPeer = UIElementAutomationPeer.FromElement(owner)
-                        ?? UIElementAutomationPeer.CreatePeerForElement(owner);
-                    if (windowPeer is not null)
-                    {
-                        RealizeAutomationTree(windowPeer);
-                    }
-                }
+            peer = UIElementAutomationPeer.FromElement(target) ?? peer;
+        }
 
-                var peer = UIElementAutomationPeer.FromElement(target)
-                    ?? UIElementAutomationPeer.CreatePeerForElement(target);
-                peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
-                Announced?.Invoke(target);
-            }));
+        peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    private static bool HasAutomationProvider(AutomationPeer peer)
+    {
+        var method = typeof(AutomationPeer).GetMethod(
+            "ProviderFromPeer",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (method is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var arguments = method.GetParameters().Length == 0 ? null : new object[] { peer };
+            return method.Invoke(peer, arguments) is not null;
+        }
+        catch (TargetInvocationException)
+        {
+            return false;
+        }
     }
 
     public static void BindAnnouncedText(

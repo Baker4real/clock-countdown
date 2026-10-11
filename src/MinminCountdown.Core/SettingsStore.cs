@@ -168,6 +168,11 @@ public sealed class SettingsStore
 
             // Preflight history without consuming the caller's domain clock or GUID source.
             ValidateSettingsFile(settingsPath);
+            if (IsReadOnlySettingsFile(settingsPath))
+            {
+                throw new UnauthorizedAccessException("主设置是只读文件，无法替换。");
+            }
+
             _files.WriteUtf8NoBomText(temporaryPath, payload);
 
             if (TryReadLegalSettings(backupOnePath))
@@ -250,6 +255,18 @@ public sealed class SettingsStore
         else if (_files.FileExists(backupTwoPath))
         {
             _files.DeleteFile(backupTwoPath);
+        }
+    }
+
+    private static bool IsReadOnlySettingsFile(string path)
+    {
+        try
+        {
+            return (File.GetAttributes(path) & FileAttributes.ReadOnly) != 0;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

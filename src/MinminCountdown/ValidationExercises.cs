@@ -4270,29 +4270,23 @@ internal static class ValidationExercises
         UiAccessibility.Announced += RememberAnnouncement;
         try
         {
-            log = new NarratorLiveRegionLog();
             floating.Show();
             main.Show();
+            log = new NarratorLiveRegionLog();
             log.Listen(main);
             log.Listen(floating);
-            var liveRegionRegistered = WaitForLiveRegionRegistration(main.Dispatcher);
             FlushNarrator(main.Dispatcher);
-            ConnectNarratorElement(main, "StatusText");
-            ConnectNarratorElement(main, "CountdownNameError");
-            ConnectNarratorElement(main, "RecordCountText");
 
             main.ShowWorkspace(WorkspaceKind.Countdowns);
             FlushNarrator(main.Dispatcher);
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
                 new RoutedEventArgs(ButtonBase.ClickEvent));
-            main.UpdateLayout();
-            ConnectNarratorElement(main, "CountdownNameError");
             FlushNarrator(main.Dispatcher);
             var nameError = (TextBlock)main.FindName("CountdownNameError");
             Must(
-                SawNarratorNotice(announced, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
+                SawNarratorNotice(log, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
                 "字段错误更新后必须触发礼貌 LiveRegionChanged。" +
-                $" registered={liveRegionRegistered} raw={log.RawCount} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
+                $" raw={log.RawCount} entry={announced.Count} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
                 DescribeNarratorNotices(log));
 
             ((TextBox)main.FindName("CountdownName")).Text = "讲述人保存探针";
@@ -4302,11 +4296,9 @@ internal static class ValidationExercises
             ((ComboBox)main.FindName("CountdownSecond")).SelectedIndex = 0;
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
                 new RoutedEventArgs(ButtonBase.ClickEvent));
-            main.UpdateLayout();
-            ConnectNarratorElement(main, "StatusText");
             FlushNarrator(main.Dispatcher);
             Must(
-                SawNarratorNotice(announced, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
+                SawNarratorNotice(log, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
                 "状态消息更新后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
 
             main.ShowWorkspace(WorkspaceKind.Notes);
@@ -4318,19 +4310,17 @@ internal static class ValidationExercises
                     !note.IsCompleted));
             Must(completion is not null, "无法定位讲述人探针便签的完成勾选。");
             completion!.IsChecked = true;
-            main.UpdateLayout();
-            ConnectNarratorElement(main, "RecordCountText");
             FlushNarrator(main.Dispatcher);
             Must(
-                SawNarratorNotice(announced, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
+                SawNarratorNotice(log, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
                 "数量变化后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeNarratorNotices(log));
 
-            var countNoticesBeforeMinute = announced.Count(notice =>
-                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
+            var countNoticesBeforeMinute = log.Notices.Count(notice =>
+                string.Equals(notice.AutomationId, "RecordCountText", StringComparison.Ordinal));
             main.UpdateTime(ChinaStandardTime.ToBeijingTime(workspace.Snapshot.UtcNow).AddMinutes(1));
             FlushNarrator(main.Dispatcher);
-            var countNoticesAfterMinute = announced.Count(notice =>
-                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
+            var countNoticesAfterMinute = log.Notices.Count(notice =>
+                string.Equals(notice.AutomationId, "RecordCountText", StringComparison.Ordinal));
             Must(
                 countNoticesAfterMinute == countNoticesBeforeMinute,
                 "分钟级刷新且数量没变时不得再次播报数量直播区。");
@@ -4361,7 +4351,7 @@ internal static class ValidationExercises
             FlushNarrator(Dispatcher.CurrentDispatcher);
             Must(
                 SawNarratorNotice(
-                    announced,
+                    log,
                     "ReminderEntryDeliveryError",
                     "送达状态保存失败，正在自动重试。打开来源仍然可用。",
                     AutomationLiveSetting.Assertive),
@@ -4505,8 +4495,6 @@ internal static class ValidationExercises
     private static void FlushNarrator(Dispatcher dispatcher)
     {
         WindowValidationInput.Pump(dispatcher);
-        dispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
-        WindowValidationInput.Pump(dispatcher);
     }
 
     private static AutomationLiveSetting ReadLiveSetting(object? setting)
@@ -4524,6 +4512,17 @@ internal static class ValidationExercises
             _ => AutomationLiveSetting.Off
         };
     }
+
+    private static bool SawNarratorNotice(
+        NarratorLiveRegionLog log,
+        string automationId,
+        string name,
+        AutomationLiveSetting liveSetting) =>
+        SawNarratorNotice(
+            log.Notices.Select(notice => (notice.AutomationId, notice.Name, notice.LiveSetting)).ToArray(),
+            automationId,
+            name,
+            liveSetting);
 
     private static bool SawNarratorNotice(
         IReadOnlyList<(string Id, string Name, AutomationLiveSetting Live)> notices,
@@ -4575,11 +4574,6 @@ internal static class ValidationExercises
 
         public NarratorLiveRegionLog()
         {
-            Automation.AddAutomationEventHandler(
-                LiveRegionChangedEvent,
-                AutomationElement.RootElement,
-                TreeScope.Subtree,
-                OnChanged);
         }
 
         public IReadOnlyList<NarratorLiveRegionNotice> Notices
@@ -4593,10 +4587,6 @@ internal static class ValidationExercises
 
         public void Dispose()
         {
-            Automation.RemoveAutomationEventHandler(
-                LiveRegionChangedEvent,
-                AutomationElement.RootElement,
-                OnChanged);
             foreach (var scope in _scopes)
             {
                 Automation.RemoveAutomationEventHandler(
@@ -11438,7 +11428,11 @@ internal static class ValidationExercises
             string? backupPath,
             bool ignoreMetadataErrors)
         {
-            File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+            SettingsFileReplace.Replace(
+                sourcePath,
+                destinationPath,
+                backupPath,
+                ignoreMetadataErrors);
             if (string.Equals(Path.GetFullPath(destinationPath), _settingsPath, StringComparison.OrdinalIgnoreCase) &&
                 backupPath is not null &&
                 backupPath.Contains(".recovery-rollback-", StringComparison.Ordinal))

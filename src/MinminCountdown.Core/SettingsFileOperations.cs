@@ -97,7 +97,7 @@ internal sealed class SystemSettingsFileOperations : ISettingsFileOperations
         string destinationPath,
         string? backupPath,
         bool ignoreMetadataErrors) =>
-        File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+        SettingsFileReplace.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
 
     public void DeleteFile(string path) => File.Delete(path);
 
@@ -108,5 +108,33 @@ internal sealed class SystemSettingsFileOperations : ISettingsFileOperations
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(content);
         stream.Flush(flushToDisk: true);
+    }
+}
+
+public static class SettingsFileReplace
+{
+    // 本机 File.Replace 在回滚或杀毒扫描时会偶发失败，留下已轮换的 backup。
+    // 短暂重试让失败替换仍能把原字节放回去。
+    public static void Replace(
+        string sourcePath,
+        string destinationPath,
+        string? backupPath,
+        bool ignoreMetadataErrors)
+    {
+        const int attempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+                return;
+            }
+            catch (Exception exception) when (
+                attempt < attempts &&
+                exception is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(20 * attempt);
+            }
+        }
     }
 }

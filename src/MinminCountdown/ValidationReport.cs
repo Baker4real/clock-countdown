@@ -1035,8 +1035,7 @@ internal static class ValidationReport
         var deleteUndoOffer =
             ValidationExercises.RunDeleteUndoOfferBehavior();
         var dirtyExitConfirmation =
-            ValidationExercises.RunDirtyExitConfirmationBehavior() &&
-            ValidationExercises.RunAlwaysConfirmExitKeepsReminderBehavior();
+            ValidationExercises.RunDirtyExitConfirmationBehavior();
         var assistiveNarration =
             ValidationExercises.RunAssistiveNarrationBehavior();
         var windowPositionReset =
@@ -1572,6 +1571,9 @@ internal static class ValidationReport
         var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
         var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
+        // #213 退出探针会再开窗口。放在参考帧捕获之后，避免打乱 v33 像素。
+        dirtyExitConfirmation = dirtyExitConfirmation &&
+            ValidationExercises.RunAlwaysConfirmExitKeepsReminderBehavior();
         var floatingTrayInteraction = RunFloatingTrayInteractionExercise(
             main,
             floating,

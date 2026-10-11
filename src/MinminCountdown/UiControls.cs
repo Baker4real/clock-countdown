@@ -196,6 +196,13 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
         new[] { typeof(DependencyObject) })
         ?? throw new InvalidOperationException("WPF AutomationPeerField 缺少 ClearValue。");
 
+    // ClearValue 只清掉 peer 对象。HasAutomationPeer 仍为 true 时，WPF 直接返回空缓存，
+    // 不再调用 OnCreateAutomationPeer，鼓励语之后切回金额或日历状态就回不了自动化树。
+    private static readonly PropertyInfo HasAutomationPeerProperty = typeof(UIElement).GetProperty(
+        "HasAutomationPeer",
+        BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("WPF 未公开 HasAutomationPeer，无法在退出鼓励语后恢复自动化树。");
+
     private bool _excludedFromAutomationTree;
 
     internal void SetExcludedFromAutomationTree(bool excluded)
@@ -209,6 +216,7 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
         var uncommonField = AutomationPeerField.GetValue(null)
             ?? throw new InvalidOperationException("AutomationPeerField 尚未初始化。");
         ClearAutomationPeer.Invoke(uncommonField, new object[] { this });
+        HasAutomationPeerProperty.SetValue(this, false);
         var parent = VisualTreeHelper.GetParent(this) as UIElement;
         while (parent is not null)
         {

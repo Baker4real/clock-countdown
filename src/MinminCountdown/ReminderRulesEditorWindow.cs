@@ -207,13 +207,13 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_saveRuleButton, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.SaveRuleCommand), _viewModel);
         Bind(_cancelRuleEditButton, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.CancelRuleEditCommand), _viewModel);
 
-        BindError(_modeError, nameof(ReminderRulesEditorViewModel.ModeError), nameof(ReminderRulesEditorViewModel.IsModeErrorVisible));
-        BindError(_firstDueError, nameof(ReminderRulesEditorViewModel.FirstDueError), nameof(ReminderRulesEditorViewModel.IsFirstDueErrorVisible));
-        BindError(_intervalError, nameof(ReminderRulesEditorViewModel.IntervalError), nameof(ReminderRulesEditorViewModel.IsIntervalErrorVisible));
-        BindError(_relativeOffsetError, nameof(ReminderRulesEditorViewModel.RelativeOffsetError), nameof(ReminderRulesEditorViewModel.IsRelativeOffsetErrorVisible));
-        BindError(_calendarIntervalError, nameof(ReminderRulesEditorViewModel.CalendarIntervalError), nameof(ReminderRulesEditorViewModel.IsCalendarIntervalErrorVisible));
-        BindError(_calendarSelectorError, nameof(ReminderRulesEditorViewModel.CalendarSelectorError), nameof(ReminderRulesEditorViewModel.IsCalendarSelectorErrorVisible));
-        BindError(_collectionError, nameof(ReminderRulesEditorViewModel.CollectionError), nameof(ReminderRulesEditorViewModel.IsCollectionErrorVisible));
+        BindError(_modeError, nameof(ReminderRulesEditorViewModel.ModeError), nameof(ReminderRulesEditorViewModel.IsModeErrorVisible), () => _viewModel.ModeError);
+        BindError(_firstDueError, nameof(ReminderRulesEditorViewModel.FirstDueError), nameof(ReminderRulesEditorViewModel.IsFirstDueErrorVisible), () => _viewModel.FirstDueError);
+        BindError(_intervalError, nameof(ReminderRulesEditorViewModel.IntervalError), nameof(ReminderRulesEditorViewModel.IsIntervalErrorVisible), () => _viewModel.IntervalError);
+        BindError(_relativeOffsetError, nameof(ReminderRulesEditorViewModel.RelativeOffsetError), nameof(ReminderRulesEditorViewModel.IsRelativeOffsetErrorVisible), () => _viewModel.RelativeOffsetError);
+        BindError(_calendarIntervalError, nameof(ReminderRulesEditorViewModel.CalendarIntervalError), nameof(ReminderRulesEditorViewModel.IsCalendarIntervalErrorVisible), () => _viewModel.CalendarIntervalError);
+        BindError(_calendarSelectorError, nameof(ReminderRulesEditorViewModel.CalendarSelectorError), nameof(ReminderRulesEditorViewModel.IsCalendarSelectorErrorVisible), () => _viewModel.CalendarSelectorError);
+        BindError(_collectionError, nameof(ReminderRulesEditorViewModel.CollectionError), nameof(ReminderRulesEditorViewModel.IsCollectionErrorVisible), () => _viewModel.CollectionError);
 
         Bind(_firstDueDate, DatePicker.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
         Bind(_firstDueHour, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
@@ -604,11 +604,10 @@ internal sealed class ReminderRulesEditorWindow : Window
         return button;
     }
 
-    private void BindError(TextBlock target, string textPath, string visibilityPath)
+    private void BindError(TextBlock target, string textPath, string visibilityPath, Func<string?> readText)
     {
-        Bind(target, TextBlock.TextProperty, textPath, _viewModel);
+        UiAccessibility.BindAnnouncedText(target, _viewModel, textPath, readText);
         Bind(target, TextBlock.VisibilityProperty, visibilityPath, _viewModel, converter: _visibilityConverter);
-        Bind(target, AutomationProperties.NameProperty, textPath, _viewModel);
     }
 
     private void BindHelpText(Control target, string path) =>

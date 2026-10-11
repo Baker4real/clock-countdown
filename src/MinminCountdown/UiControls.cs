@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Reflection;
 using System.Text;
 using System.Windows;
 using System.Windows.Automation;
@@ -54,6 +56,48 @@ internal static class UiAccessibility
     {
         AutomationProperties.SetLiveSetting(textBlock, AutomationLiveSetting.Polite);
     }
+
+    // #216：全仓直播区文本的唯一更新入口。文本真正变化后才改可访问名并触发
+    // LiveRegionChanged；相同文本（分钟级刷新、重复筛选摘要）不播报。
+    public static void Announce(TextBlock target, string text, Action<TextBlock>? afterText = null)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (string.Equals(target.Text, text, StringComparison.Ordinal))
+        {
+            afterText?.Invoke(target);
+            return;
+        }
+
+        target.Text = text;
+        AutomationProperties.SetName(target, text);
+        afterText?.Invoke(target);
+        var peer = UIElementAutomationPeer.FromElement(target)
+            ?? UIElementAutomationPeer.CreatePeerForElement(target);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    public static void BindAnnouncedText(
+        TextBlock target,
+        INotifyPropertyChanged source,
+        string propertyName,
+        Func<string?> readText)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(readText);
+
+        void Push() => Announce(target, readText() ?? string.Empty);
+
+        source.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is null ||
+                string.Equals(args.PropertyName, propertyName, StringComparison.Ordinal))
+            {
+                Push();
+            }
+        };
+        Push();
+    }
 }
 
 /// <summary>
@@ -65,6 +109,47 @@ internal static class UiAccessibility
 internal sealed class SilentTextBlock : TextBlock
 {
     protected override AutomationPeer? OnCreateAutomationPeer() => null;
+}
+
+/// <summary>
+/// #216：同一底部文案在鼓励语模式下退出自动化树，金额与日历状态模式保留可朗读的 peer。
+/// WPF 会缓存已创建的 peer，且没有公开 API 能卸下它，因此模式切换时清掉内部缓存并让祖先重列子节点。
+/// </summary>
+internal sealed class AutomationOptionalTextBlock : TextBlock
+{
+    private static readonly FieldInfo AutomationPeerField = typeof(UIElement).GetField(
+        "AutomationPeerField",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("WPF 未公开 AutomationPeerField，无法在鼓励语模式下退出自动化树。");
+
+    private static readonly MethodInfo ClearAutomationPeer = AutomationPeerField.FieldType.GetMethod(
+        "ClearValue",
+        new[] { typeof(DependencyObject) })
+        ?? throw new InvalidOperationException("WPF AutomationPeerField 缺少 ClearValue。");
+
+    private bool _excludedFromAutomationTree;
+
+    internal void SetExcludedFromAutomationTree(bool excluded)
+    {
+        if (_excludedFromAutomationTree == excluded)
+        {
+            return;
+        }
+
+        _excludedFromAutomationTree = excluded;
+        var uncommonField = AutomationPeerField.GetValue(null)
+            ?? throw new InvalidOperationException("AutomationPeerField 尚未初始化。");
+        ClearAutomationPeer.Invoke(uncommonField, new object[] { this });
+        var parent = VisualTreeHelper.GetParent(this) as UIElement;
+        while (parent is not null)
+        {
+            UIElementAutomationPeer.FromElement(parent)?.ResetChildrenCache();
+            parent = VisualTreeHelper.GetParent(parent) as UIElement;
+        }
+    }
+
+    protected override AutomationPeer? OnCreateAutomationPeer() =>
+        _excludedFromAutomationTree ? null : base.OnCreateAutomationPeer();
 }
 /// <summary>
 /// 便签行「…」溢出菜单：把弹出层挂在其触发按钮上，供真实渲染验证读取。

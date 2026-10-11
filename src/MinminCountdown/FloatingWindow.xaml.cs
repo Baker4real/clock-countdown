@@ -2175,10 +2175,8 @@ public sealed partial class FloatingWindow : Window
             $"快速便签提醒规则摘要：{FloatingReminderRulesSummary.Text}");
     }
 
-    private void SetNoteMessage(string text)
-    {
-        FloatingNoteMessage.Text = text;
-    }
+    private void SetNoteMessage(string text) =>
+        UiAccessibility.Announce(FloatingNoteMessage, text);
 
     private void ClearNoteFieldErrors()
     {
@@ -2219,12 +2217,13 @@ public sealed partial class FloatingWindow : Window
 
     private static void SetNoteFieldError(TextBlock field, string message)
     {
-        field.Text = message;
-        AutomationProperties.SetName(field, message);
-        AutomationProperties.SetHelpText(field, message);
-        field.Visibility = string.IsNullOrWhiteSpace(message)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        UiAccessibility.Announce(field, message, block =>
+        {
+            AutomationProperties.SetHelpText(block, message);
+            block.Visibility = string.IsNullOrWhiteSpace(message)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        });
     }
 
     private IEnumerable<Control> NoteValidationControls()

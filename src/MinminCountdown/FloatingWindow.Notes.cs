@@ -348,13 +348,14 @@ public sealed partial class FloatingWindow
 
     private static void SetNoteCardError(TextBlock error, Control source, string message)
     {
-        error.Text = message;
-        error.Visibility = string.IsNullOrWhiteSpace(message)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        AutomationProperties.SetName(error, message);
-        AutomationProperties.SetHelpText(error, message);
-        AutomationProperties.SetHelpText(source, message);
+        UiAccessibility.Announce(error, message, block =>
+        {
+            block.Visibility = string.IsNullOrWhiteSpace(message)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            AutomationProperties.SetHelpText(block, message);
+            AutomationProperties.SetHelpText(source, message);
+        });
     }
 
     private Border CreateCalendarIndexDateStamp(

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 
@@ -57,7 +58,7 @@ internal static class FloatingBottomStatus
     }
 
     public static void Apply(
-        TextBlock target,
+        AutomationOptionalTextBlock target,
         FloatingBottomStatusPresentation presentation,
         Brush statusBrush,
         Brush encouragementBrush,
@@ -65,6 +66,15 @@ internal static class FloatingBottomStatus
     {
         var isEncouragement = presentation.Kind == FloatingBottomStatusKind.Encouragement;
         target.Text = presentation.Text;
+        target.SetExcludedFromAutomationTree(isEncouragement);
+        if (isEncouragement)
+        {
+            AutomationProperties.SetName(target, string.Empty);
+        }
+        else
+        {
+            AutomationProperties.SetName(target, presentation.Text);
+        }
         target.Visibility = string.IsNullOrEmpty(presentation.Text)
             ? Visibility.Collapsed
             : Visibility.Visible;

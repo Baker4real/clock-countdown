@@ -1038,6 +1038,8 @@ internal static class ValidationReport
             ValidationExercises.RunDirtyExitConfirmationBehavior();
         var assistiveNarration =
             ValidationExercises.RunAssistiveNarrationBehavior();
+        var narratorLiveRegions =
+            ValidationExercises.RunNarratorLiveRegionBehavior();
         var windowPositionReset =
             ValidationExercises.RunWindowPositionResetBehavior();
         var mainWindowWorkAreaFit =
@@ -2228,6 +2230,8 @@ internal static class ValidationReport
                 dirtyExitConfirmation,
             ["AssistiveNarrationExitsDecorationAndLabelsFields"] =
                 assistiveNarration,
+            ["NarratorAnnouncesLiveRegionChanges"] =
+                narratorLiveRegions,
             ["WindowPositionResetsWithoutDrag"] =
                 windowPositionReset,
             ["MainWindowFitsInjectedWorkAreas"] =

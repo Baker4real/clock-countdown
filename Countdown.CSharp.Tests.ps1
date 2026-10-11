@@ -4247,6 +4247,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCompleteRequiresConfirmation) '提醒中心「完成便签」先确认再提交：取消全量保留便签与条目、确认原子完成并移除条目（#155）'
     # #156 辅助技术与快捷键：朗读、Ctrl+F、清除名称与位置复位（新增 2 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.AssistiveNarrationExitsDecorationAndLabelsFields) '装饰手写体与分段裸数字退出朗读、可见标签经标签关系指向输入不读两遍、数量由一处状态区播完整句、筛选「清除」可访问名说明清除便签日期筛选（#156）'
+    Assert-Equal $true ([bool] $adapterValidation.NarratorAnnouncesLiveRegionChanges) '状态消息、字段错误、数量变化和提醒送达失败触发与声明一致的 LiveRegionChanged；数量不变的分钟刷新不播报；鼓励语退出自动化树，金额与日历状态名称正确（#216）'
     Assert-Equal $true ([bool] $adapterValidation.WindowPositionResetsWithoutDrag) '越界悬浮窗可经 Ctrl+R 或托盘「复位窗口位置」夹回工作区，隐藏态复位先恢复再夹回（#156）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowFitsInjectedWorkAreas) '管理窗口装进 1032/826/688 DIP 注入工作区：首选尺寸收缩、顶端控件与状态栏可达、倒计时三行滚动可见、720×560 滚动不裁切、隐藏再显保留用户几何、越界与工作区变化夹回（#211）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowIdentityZoneDragRegion) '身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）'
@@ -4368,6 +4369,77 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $mainWindowCodeSource -match 'UiAccessibility\.MarkLive\(RecordCountText\);' -and
         $mainWindowCodeSource -match 'SetRecordCountText\(RecordCountText,') '命令栏数量文字是唯一的数量直播区且只在数值变化时更新（#156 源码契约）'
+    # #216 源码契约：全仓直播区文本只经 Announce 更新，并在文本写入之后触发 LiveRegionChanged。
+    $narratorSources = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown') -Filter *.cs
+    $narratorRaiseFiles = New-Object System.Collections.Generic.List[string]
+    $narratorViolations = New-Object System.Collections.Generic.List[string]
+    $narratorLiveNames = @(
+        'StatusText', 'RecordCountText', 'CountdownMessage', 'NoteMessage', 'TagManagerMessage',
+        'EmptyCountdownMessage', 'EmptyNotesMessage',
+        'CountdownNameError', 'CountdownDateError', 'NoteTextError', 'NoteDateError',
+        'MonthlySalaryError', 'WorkStartError', 'WorkEndError',
+        'FloatingNoteTextError', 'FloatingNoteDateError', 'FloatingReminderMessage', 'FloatingNoteMessage'
+    )
+    foreach ($narratorFile in $narratorSources) {
+        $narratorText = Get-Content -LiteralPath $narratorFile.FullName -Raw -Encoding UTF8
+        if ([regex]::IsMatch($narratorText, 'RaiseAutomationEvent\(AutomationEvents\.LiveRegionChanged\)')) {
+            $narratorRaiseFiles.Add($narratorFile.Name)
+        }
+        foreach ($narratorLiveName in $narratorLiveNames) {
+            if ([regex]::IsMatch($narratorText, "\b$([regex]::Escape($narratorLiveName))\.Text\s*=")) {
+                $narratorViolations.Add("$($narratorFile.Name): $narratorLiveName.Text")
+            }
+        }
+        foreach ($narratorMark in [regex]::Matches($narratorText, '(?:MarkLive|SetLiveSetting)\(\s*([A-Za-z_][A-Za-z0-9_]*)')) {
+            $narratorIdent = $narratorMark.Groups[1].Value
+            if ([regex]::IsMatch($narratorText, "\b$([regex]::Escape($narratorIdent))\.Text\s*=")) {
+                $narratorViolations.Add("$($narratorFile.Name): $narratorIdent.Text")
+            }
+        }
+        if ([regex]::IsMatch($narratorText, 'BindEntry\(\s*(error|customError)\s*,\s*TextBlock\.TextProperty')) {
+            $narratorViolations.Add("$($narratorFile.Name): BindEntry live TextProperty")
+        }
+        if ([regex]::IsMatch($narratorText, 'Bind\(\s*target\s*,\s*TextBlock\.TextProperty')) {
+            $narratorViolations.Add("$($narratorFile.Name): BindError TextProperty")
+        }
+    }
+    $narratorUiSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown\UiControls.cs') -Raw -Encoding UTF8
+    $narratorAnnounceBody = [regex]::Match(
+        $narratorUiSource,
+        'public static void Announce\(TextBlock target, string text, Action<TextBlock>\? afterText = null\).*?\r?\n    public static void BindAnnouncedText',
+        [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorTextAssignAt = $narratorAnnounceBody.IndexOf('target.Text = text')
+    $narratorRaiseAt = $narratorAnnounceBody.IndexOf('RaiseAutomationEvent(AutomationEvents.LiveRegionChanged)')
+    $narratorFloatingCode = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.xaml.cs') -Raw -Encoding UTF8
+    $narratorNotesCode = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.Notes.cs') -Raw -Encoding UTF8
+    $narratorRulesCode = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown\ReminderRulesEditorWindow.cs') -Raw -Encoding UTF8
+    $narratorSetMessage = [regex]::Match($mainWindowCodeSource, 'private void SetMessage\(TextBlock target, string text, bool isError\).*?\r?\n    // #151', [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorSetFieldError = [regex]::Match($mainWindowCodeSource, 'private static void SetFieldError\(TextBlock field, string message\).*?\r?\n    private IEnumerable<Control> CountdownValidationControls', [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorSetCount = [regex]::Match($mainWindowCodeSource, 'private static void SetRecordCountText\(TextBlock target, string text\).*?\r?\n    // #156：可见标签', [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorSetNoteMessage = [regex]::Match($narratorFloatingCode, 'private void SetNoteMessage\(string text\).*?\r?\n    private void ClearNoteFieldErrors', [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorSetNoteField = [regex]::Match($narratorFloatingCode, 'private static void SetNoteFieldError\(TextBlock field, string message\).*?\r?\n    private IEnumerable<Control> NoteValidationControls', [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorSetCardError = [regex]::Match($narratorNotesCode, 'private static void SetNoteCardError\(TextBlock error, Control source, string message\).*?\r?\n    private Border CreateCalendarIndexDateStamp', [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorBindError = [regex]::Match($narratorRulesCode, 'private void BindError\(TextBlock target, string textPath, string visibilityPath, Func<string\?> readText\).*?\r?\n    private void BindHelpText', [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    $narratorUpdaters = @(
+        $narratorSetMessage, $narratorSetFieldError, $narratorSetCount,
+        $narratorSetNoteMessage, $narratorSetNoteField, $narratorSetCardError, $narratorBindError
+    )
+    $narratorUpdaterOk = $true
+    foreach ($narratorUpdater in $narratorUpdaters) {
+        if ([string]::IsNullOrWhiteSpace($narratorUpdater) -or
+            $narratorUpdater -match '\.Text\s*=' -or
+            $narratorUpdater -notmatch 'UiAccessibility\.(Announce|BindAnnouncedText)\(') {
+            $narratorUpdaterOk = $false
+        }
+    }
+    $narratorViolationText = if ($narratorViolations.Count -eq 0) { '' } else { ' 越界：' + ($narratorViolations -join ', ') }
+    Assert-Equal $true (
+        $narratorRaiseFiles.Count -eq 1 -and
+        $narratorRaiseFiles[0] -eq 'UiControls.cs' -and
+        $narratorViolations.Count -eq 0 -and
+        $narratorTextAssignAt -ge 0 -and
+        $narratorRaiseAt -gt $narratorTextAssignAt -and
+        $narratorUpdaterOk) "直播区文本只经 Announce 更新，并在写入之后触发 LiveRegionChanged（#216 源码契约）。$narratorViolationText"
     Assert-Equal $true (
         $mainWindowCodeSource -match 'NameControl\(ClearNoteDateFilter, "清除便签日期筛选"\);') '筛选「清除」的可访问名说明清除的是便签日期筛选（#156 源码契约）'
     $trayIconHostSource = Get-Content -LiteralPath (

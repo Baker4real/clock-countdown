@@ -3946,8 +3946,8 @@ internal static class ValidationExercises
         }
     }
 
-    // #155：脏退出确认——显示设置脏与编辑器脏都产生退出描述；退出确认框以取消为安全默认，
-    // 确认文案为「退出」并携带完整未保存内容描述；干净状态直接放行、不弹框。
+    // #155 / #213：脏状态描述沿用既有语义；退出确认框以取消为安全默认，
+    // 确认文案为「退出」，正文包含「退出后不再提醒」并列出未保存项。
     public static bool RunDirtyExitConfirmationBehavior()
     {
         var settingsPath = Path.Combine(
@@ -4051,9 +4051,10 @@ internal static class ValidationExercises
                             "退出",
                             StringComparison.Ordinal) &&
                         dialog.BodyText.Text.Contains("显示设置", StringComparison.Ordinal) &&
-                        dialog.BodyText.Text.Contains("便签编辑器", StringComparison.Ordinal);
+                        dialog.BodyText.Text.Contains("便签编辑器", StringComparison.Ordinal) &&
+                        dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal);
                 });
-            var confirmed = ExitConfirmation.Confirm(
+            var confirmed = ProcessExitConfirmation.Confirm(
                 main,
                 new[] { main.DescribeUnsavedExitWork()! });
             WindowValidationInput.Pump(main.Dispatcher);
@@ -4063,7 +4064,7 @@ internal static class ValidationExercises
                 "退出确认框必须以取消为安全默认、携带完整描述且取消时不退出。");
 
             QueueConfirmationDialogResponse(main, confirm: true);
-            confirmed = ExitConfirmation.Confirm(
+            confirmed = ProcessExitConfirmation.Confirm(
                 main,
                 new[] { main.DescribeUnsavedExitWork()! });
             WindowValidationInput.Pump(main.Dispatcher);
@@ -4073,6 +4074,144 @@ internal static class ValidationExercises
         finally
         {
             main.Close();
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #213：没有未保存内容时，关闭悬浮窗和系统关闭（Alt+F4 走 Closing）都弹出退出确认，
+    // 正文包含「退出后不再提醒」。取消后悬浮窗仍可见，提醒派发未被释放。
+    public static bool RunAlwaysConfirmExitKeepsReminderBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-exit-confirm-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+        PrepareOffscreenValidationWindow(main);
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        PrepareOffscreenValidationWindow(floating);
+        var coordinator = new ReminderDeliveryCoordinator(workspace, logger);
+        var shuttingDown = false;
+        void RequestShutdown()
+        {
+            if (shuttingDown)
+            {
+                return;
+            }
+
+            var reasons = new List<string>();
+            if (main.DescribeUnsavedExitWork() is { } mainReason)
+            {
+                reasons.Add(mainReason);
+            }
+
+            if (floating.DescribeUnsavedExitWork() is { } floatingReason)
+            {
+                reasons.Add(floatingReason);
+            }
+
+            if (!ProcessExitConfirmation.Confirm(floating, reasons))
+            {
+                return;
+            }
+
+            shuttingDown = true;
+            coordinator.Dispose();
+            floating.Close();
+        }
+
+        FloatingWindowCloseBridge.Attach(floating, RequestShutdown, () => shuttingDown);
+        floating.ExitRequested += (_, _) => RequestShutdown();
+        try
+        {
+            main.Show();
+            floating.Show();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                main.DescribeUnsavedExitWork() is null &&
+                floating.DescribeUnsavedExitWork() is null,
+                "干净退出探针开始时不应有未保存内容。");
+
+            var dialogInspected = false;
+            QueueConfirmationDialogResponse(
+                floating,
+                confirm: false,
+                inspect: dialog =>
+                {
+                    dialogInspected =
+                        dialog.CancelButton.IsDefault &&
+                        dialog.CancelButton.IsCancel &&
+                        dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal) &&
+                        !dialog.BodyText.Text.Contains("未保存", StringComparison.Ordinal);
+                });
+            var confirmed = ProcessExitConfirmation.Confirm(floating, Array.Empty<string>());
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(dialogInspected && !confirmed, "干净状态也必须弹出含「退出后不再提醒」的退出确认，取消不放行。");
+            Must(floating.IsVisible && coordinator.IsDispatching, "直接取消退出后悬浮窗和提醒派发必须仍在。");
+            coordinator.Tick(workspace.Snapshot.UtcNow);
+
+            dialogInspected = false;
+            QueueConfirmationDialogResponse(
+                floating,
+                confirm: false,
+                inspect: dialog =>
+                {
+                    dialogInspected = dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal);
+                });
+            var closeButton = floating.FindName("CloseFloatingButton") as Button
+                ?? throw new InvalidOperationException("无法定位悬浮窗关闭按钮。");
+            closeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                dialogInspected && floating.IsVisible && coordinator.IsDispatching,
+                "关闭悬浮窗取消后，悬浮窗和提醒派发必须仍在运行。");
+            coordinator.Tick(workspace.Snapshot.UtcNow);
+
+            dialogInspected = false;
+            QueueConfirmationDialogResponse(
+                floating,
+                confirm: false,
+                inspect: dialog =>
+                {
+                    dialogInspected = dialog.BodyText.Text.Contains("退出后不再提醒", StringComparison.Ordinal);
+                });
+            floating.Close();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                dialogInspected && floating.IsVisible && coordinator.IsDispatching,
+                "Alt+F4 取消后必须留在应用里，不能留下没有窗口的进程，提醒派发必须仍在。");
+            coordinator.Tick(workspace.Snapshot.UtcNow);
+
+            QueueConfirmationDialogResponse(floating, confirm: true);
+            floating.Close();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(
+                !floating.IsVisible && !coordinator.IsDispatching,
+                "确认退出后必须关掉悬浮窗并停止提醒派发。");
+            return true;
+        }
+        finally
+        {
+            if (coordinator.IsDispatching)
+            {
+                coordinator.Dispose();
+            }
+
+            if (main.IsLoaded)
+            {
+                main.Close();
+            }
+
+            if (floating.IsLoaded)
+            {
+                floating.Close();
+            }
+
             DeleteSettingsFiles(settingsPath);
             DeleteFileIfPresent(diagnosticPath);
         }

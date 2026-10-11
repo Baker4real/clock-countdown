@@ -23,6 +23,10 @@ internal interface ITrayIconHost : IDisposable
     void InvokeResetPositionForValidation();
 
     void InvokeExitForValidation();
+
+    void InvokeOpenManagerForValidation();
+
+    void InvokeIconClickForValidation();
 }
 
 internal sealed class MemoryTrayIconHost : ITrayIconHost
@@ -30,14 +34,16 @@ internal sealed class MemoryTrayIconHost : ITrayIconHost
     private readonly Action _restore;
     private readonly Action _exit;
     private readonly Action? _resetPosition;
+    private readonly Action? _openManager;
     private bool _visible;
     private bool _disposed;
 
-    public MemoryTrayIconHost(Action restore, Action exit, Action? resetPosition = null)
+    public MemoryTrayIconHost(Action restore, Action exit, Action? resetPosition = null, Action? openManager = null)
     {
         _restore = restore;
         _exit = exit;
         _resetPosition = resetPosition;
+        _openManager = openManager;
     }
 
     public bool IsVisible => !_disposed && _visible;
@@ -62,6 +68,10 @@ internal sealed class MemoryTrayIconHost : ITrayIconHost
 
     public void InvokeExitForValidation() => _exit();
 
+    public void InvokeOpenManagerForValidation() => _openManager?.Invoke();
+
+    public void InvokeIconClickForValidation() => _restore();
+
     public void Dispose()
     {
         _visible = false;
@@ -75,7 +85,9 @@ internal sealed class TrayIconHost : ITrayIconHost
     private readonly Action _restore;
     private readonly Action _exit;
     private readonly Action? _resetPosition;
+    private readonly Action? _openManager;
     private readonly Icon _icon;
+    private readonly MenuItem _openManagerItem;
     private readonly MenuItem _restoreItem;
     private readonly MenuItem _resetPositionItem;
     private readonly MenuItem _exitItem;
@@ -89,14 +101,17 @@ internal sealed class TrayIconHost : ITrayIconHost
         Dispatcher dispatcher,
         Action restore,
         Action exit,
-        Action? resetPosition = null)
+        Action? resetPosition = null,
+        Action? openManager = null)
     {
         _dispatcher = dispatcher;
         _restore = restore;
         _exit = exit;
         _resetPosition = resetPosition;
+        _openManager = openManager;
         _icon = LoadIcon(iconPath);
-        (_menu, _restoreItem, _resetPositionItem, _exitItem) = TrayMenuFactory.Create(
+        (_menu, _openManagerItem, _restoreItem, _resetPositionItem, _exitItem) = TrayMenuFactory.Create(
+            () => Invoke(OpenManager),
             () => Invoke(_restore),
             () => Invoke(ResetPosition),
             () => Invoke(_exit));
@@ -104,10 +119,11 @@ internal sealed class TrayIconHost : ITrayIconHost
         {
             ContextMenu = _menu,
             Icon = _icon,
-            ToolTipText = "敏敏子倒计时 - 双击打开",
+            ToolTipText = "敏敏子倒计时 - 单击打开",
             Visibility = Visibility.Collapsed
         };
-        _taskbarIcon.TrayLeftMouseDoubleClick += (_, _) => Invoke(_restore);
+        // #213：单击恢复悬浮窗。双击会先产生单击，恢复动作本身可重复。
+        _taskbarIcon.TrayLeftMouseUp += (_, _) => Invoke(_restore);
     }
 
     public bool IsVisible => !_disposed && _visible;
@@ -130,6 +146,10 @@ internal sealed class TrayIconHost : ITrayIconHost
     }
 
     public void InvokeRestoreForValidation() => _restoreItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+    public void InvokeOpenManagerForValidation() => _openManagerItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+    public void InvokeIconClickForValidation() => _restore();
 
     public void InvokeResetPositionForValidation() => _resetPositionItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
@@ -163,6 +183,8 @@ internal sealed class TrayIconHost : ITrayIconHost
 
     private void ResetPosition() => _resetPosition?.Invoke();
 
+    private void OpenManager() => _openManager?.Invoke();
+
     private static Icon LoadIcon(string iconPath)
     {
         if (File.Exists(iconPath))
@@ -183,11 +205,13 @@ internal sealed class TrayIconHost : ITrayIconHost
 // validation harness can render and exercise these same WPF controls.
 internal static class TrayMenuFactory
 {
-    internal static (ContextMenu Menu, MenuItem Restore, MenuItem ResetPosition, MenuItem Exit) Create(
+    internal static (ContextMenu Menu, MenuItem OpenManager, MenuItem Restore, MenuItem ResetPosition, MenuItem Exit) Create(
+        Action openManager,
         Action restore,
         Action resetPosition,
         Action exit)
     {
+        var openManagerItem = new MenuItem { Header = "打开管理窗口" };
         var restoreItem = new MenuItem { Header = "打开悬浮窗" };
         // #156：非拖动的窗口复位/贴边入口——悬浮窗被拖出屏幕时，托盘仍可达并把窗夹回工作区。
         var resetPositionItem = new MenuItem { Header = "复位窗口位置" };
@@ -201,13 +225,15 @@ internal static class TrayMenuFactory
             HasDropShadow = true
         };
         menu.Resources.Add(typeof(MenuItem), CreateMenuItemStyle());
+        menu.Items.Add(openManagerItem);
         menu.Items.Add(restoreItem);
         menu.Items.Add(resetPositionItem);
         menu.Items.Add(exitItem);
+        openManagerItem.Click += (_, _) => openManager();
         restoreItem.Click += (_, _) => restore();
         resetPositionItem.Click += (_, _) => resetPosition();
         exitItem.Click += (_, _) => exit();
-        return (menu, restoreItem, resetPositionItem, exitItem);
+        return (menu, openManagerItem, restoreItem, resetPositionItem, exitItem);
     }
 
     private static Style CreateMenuItemStyle()
@@ -233,7 +259,7 @@ internal static class TrayMenuFactory
 
     private static ControlTemplate CreateMenuItemTemplate()
     {
-        // These three leaf commands have no icon, checkmark, or submenu. Bind
+        // These leaf commands have no icon, checkmark, or submenu. Bind
         // the rendered surface so the native theme cannot paint a blue highlight.
         var surface = new FrameworkElementFactory(typeof(Border));
         surface.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));

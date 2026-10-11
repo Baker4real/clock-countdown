@@ -95,12 +95,11 @@ internal static class ApplicationValidation
                 // Validate-only must be allowed to exercise tray transitions; this is not an acceptance gate.
                 static () => true,
                 foregroundInterop: null,
-                attachShellNotifyIcon: false);
+                attachShellNotifyIcon: false,
+                openManager: () => ManagerWindowRestore.ShowPreservingState(mainWindow));
+            // #213：与生产宿主相同，最小化只收起管理窗口。
             mainWindow.MinimizeToTrayRequested += (_, _) =>
-            {
-                mainWindow.Hide();
-                floatingTrayController.MinimizeToTray();
-            };
+                ManagerWindowRestore.HideManagerOnly(mainWindow);
 
             floatingWindow.ApplyTheme();
 

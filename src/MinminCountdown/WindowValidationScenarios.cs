@@ -166,7 +166,7 @@ public sealed partial class MainWindow
             SaveNoteButton.Content = originalSaveContent;
             CancelNoteEdit.Visibility = originalCancelVisibility;
             ClearNoteFieldErrors();
-            NoteMessage.Text = string.Empty;
+            UiAccessibility.Announce(NoteMessage, string.Empty);
             ResetCountdownEditor();
             ShowWorkspace(originalWorkspace);
             WindowValidationInput.Pump(Dispatcher);
@@ -1969,7 +1969,7 @@ public sealed partial class MainWindow
             WorkEnd.Text = originalWorkEnd;
             ClearCountdownFieldErrors();
             ClearPreferenceFieldErrors();
-            CountdownMessage.Text = string.Empty;
+            UiAccessibility.Announce(CountdownMessage, string.Empty);
             ResetCountdownEditor();
             ShowWorkspace(originalWorkspace);
             WindowValidationInput.Pump(Dispatcher);
@@ -2449,7 +2449,7 @@ public sealed partial class MainWindow
         {
             CountdownName.Text = originalName;
             ClearCountdownFieldErrors();
-            CountdownMessage.Text = originalMessage;
+            UiAccessibility.Announce(CountdownMessage, originalMessage);
             _completedSegmentSelected = originalCompleted;
             ShowWorkspace(originalWorkspace);
             Keyboard.Focus(CloseButton);

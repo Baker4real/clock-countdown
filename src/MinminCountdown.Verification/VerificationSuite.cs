@@ -2185,7 +2185,11 @@ internal sealed class ReadbackFailingSettingsFileOperations : ISettingsFileOpera
         string? backupPath,
         bool ignoreMetadataErrors)
     {
-        File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+        SettingsFileReplace.Replace(
+            sourcePath,
+            destinationPath,
+            backupPath,
+            ignoreMetadataErrors);
         if (string.Equals(Path.GetFullPath(destinationPath), _settingsPath, StringComparison.OrdinalIgnoreCase) &&
             backupPath is not null &&
             backupPath.Contains(".recovery-rollback-", StringComparison.Ordinal))
@@ -2272,7 +2276,11 @@ internal sealed class SaveRollbackFailingSettingsFileOperations : ISettingsFileO
             throw new IOException("Injected backup 2 rollback failure.");
         }
 
-        File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+        SettingsFileReplace.Replace(
+            sourcePath,
+            destinationPath,
+            backupPath,
+            ignoreMetadataErrors);
     }
 
     public void DeleteFile(string path) => File.Delete(path);
@@ -2369,7 +2377,11 @@ internal sealed class RecoveryRollbackFailingSettingsFileOperations : ISettingsF
             throw new IOException("Injected original-main rollback failure.");
         }
 
-        File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+        SettingsFileReplace.Replace(
+            sourcePath,
+            destinationPath,
+            backupPath,
+            ignoreMetadataErrors);
         if (string.Equals(fullDestinationPath, _settingsPath, StringComparison.OrdinalIgnoreCase) &&
             backupPath is not null &&
             backupPath.Contains(".recovery-rollback-", StringComparison.Ordinal))
@@ -2451,7 +2463,11 @@ internal sealed class AclDeniedSettingsFileOperations : ISettingsFileOperations
         string? backupPath,
         bool ignoreMetadataErrors)
     {
-        File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+        SettingsFileReplace.Replace(
+            sourcePath,
+            destinationPath,
+            backupPath,
+            ignoreMetadataErrors);
         if (string.Equals(Path.GetFullPath(destinationPath), _settingsPath, StringComparison.OrdinalIgnoreCase) &&
             backupPath is not null &&
             backupPath.Contains(".recovery-rollback-", StringComparison.Ordinal))

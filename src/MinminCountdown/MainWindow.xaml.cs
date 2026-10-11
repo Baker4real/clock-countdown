@@ -1100,9 +1100,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         // #156：数量变化由一处状态区域说出完整句子——命令栏数量文字（N 个待办 / N 个倒计时）
         // 是唯一的数量直播区；分段徽章与分段名只承载视觉与可访问名，不再各自播报。
         UiAccessibility.MarkLive(RecordCountText);
+        AutomationProperties.SetAutomationId(RecordCountText, "RecordCountText");
         UiAccessibility.MarkLive(CountdownMessage);
         // #151：字段级错误行同样以礼貌直播区播报，镜像悬浮窗快速新增行为。
         UiAccessibility.MarkLive(CountdownNameError);
+        AutomationProperties.SetAutomationId(CountdownNameError, "CountdownNameError");
         UiAccessibility.MarkLive(CountdownDateError);
         UiAccessibility.MarkLive(NoteTextError);
         UiAccessibility.MarkLive(NoteDateError);
@@ -1424,8 +1426,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             CountdownEmptyMascot.Visibility = isFirstUse
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            EmptyCountdownMessage.Text = emptyState.Message;
             AutomationProperties.SetLiveSetting(EmptyCountdownMessage, AutomationLiveSetting.Polite);
+            UiAccessibility.Announce(EmptyCountdownMessage, emptyState.Message);
             EmptyCountdownMessage.Visibility = Visibility.Visible;
             EmptyCountdownHint.Text = CountdownEmptyStateHint;
             EmptyCountdownHint.Visibility = isFirstUse
@@ -1437,7 +1439,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             ResetEmptyCountdownFiltersButton.Visibility = emptyState.ShowReset
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            AutomationProperties.SetName(EmptyCountdownMessage, EmptyCountdownMessage.Text);
             return;
         }
         if (!shouldRebuild)
@@ -1924,8 +1925,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NotesEmptyMascot.Visibility = isFirstUse
             ? Visibility.Visible
             : Visibility.Collapsed;
-        EmptyNotesMessage.Text = emptyState.Message;
         AutomationProperties.SetLiveSetting(EmptyNotesMessage, AutomationLiveSetting.Polite);
+        UiAccessibility.Announce(EmptyNotesMessage, emptyState.Message);
         EmptyNotesMessage.Visibility = noVisibleNotes || !segmentHasNotes
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1936,7 +1937,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AddEmptyNoteButton.Visibility = isFirstUse && (noVisibleNotes || !segmentHasNotes)
             ? Visibility.Visible
             : Visibility.Collapsed;
-        AutomationProperties.SetName(EmptyNotesMessage, EmptyNotesMessage.Text);
         ResetEmptyNotesFiltersButton.Visibility = (noVisibleNotes || !segmentHasNotes) && emptyState.ShowReset
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -2895,7 +2895,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             SaveCountdownButton.Content = "＋ 添加倒计时";
             CancelCountdownEdit.Visibility = Visibility.Collapsed;
             ClearCountdownFieldErrors();
-            CountdownMessage.Text = string.Empty;
+            UiAccessibility.Announce(CountdownMessage, string.Empty);
         }
         finally
         {
@@ -2927,7 +2927,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UpdateNoteReminderRulesSummary();
         SaveNoteButton.Content = "＋ 添加";
         CancelNoteEdit.Visibility = Visibility.Collapsed;
-        NoteMessage.Text = string.Empty;
+        UiAccessibility.Announce(NoteMessage, string.Empty);
     }
 
     private void BeginNoteAddFromEmptyState()
@@ -3033,7 +3033,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         _noteReminderRules = Array.AsReadOnly(editor.ResultRules.ToArray());
         UpdateNoteReminderRulesSummary();
-        NoteMessage.Text = string.Empty;
+        UiAccessibility.Announce(NoteMessage, string.Empty);
     }
 
     private void OpenCountdownReminderRulesEditor(
@@ -3063,7 +3063,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         _countdownReminderRules = Array.AsReadOnly(editor.ResultRules.ToArray());
         SyncCountdownReminderModeFromRules();
-        CountdownMessage.Text = string.Empty;
+        UiAccessibility.Announce(CountdownMessage, string.Empty);
     }
 
     private void ApplyCountdownReminderMode(CountdownReminderMode mode)
@@ -3631,16 +3631,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private static void NameControl(FrameworkElement control, string name) =>
         UiAccessibility.Name(control, name);
 
-    // #156：数量文字只在数值真正变化时更新，避免分钟级刷新让唯一的数量直播区反复空播。
-    private static void SetRecordCountText(TextBlock target, string text)
-    {
-        if (string.Equals(target.Text, text, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        target.Text = text;
-    }
+    // #156/#216：数量文字只在句子真正变化时进入播报入口，分钟级刷新不空播。
+    private static void SetRecordCountText(TextBlock target, string text) =>
+        UiAccessibility.Announce(target, text);
 
     // #156：可见标签 → 输入的标签关系表（主窗全部带可见文字的字段）。输入一律不携带与
     // 标签重复的显式自动化名；仅在标签文本比原自动化名更短时，把原语境写入帮助文本。
@@ -3673,11 +3666,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void SetMessage(TextBlock target, string text, bool isError)
     {
-        target.Text = text;
-        AutomationProperties.SetName(target, text);
-        target.SetResourceReference(
+        UiAccessibility.Announce(target, text, block => block.SetResourceReference(
             TextBlock.ForegroundProperty,
-            isError ? "DangerBrush" : "SuccessBrush");
+            isError ? "DangerBrush" : "SuccessBrush"));
     }
 
     // #151：字段级错误反馈（镜像悬浮窗快速新增）——错误文本完整出现在字段旁、不裁切；
@@ -3730,8 +3721,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         if (!string.IsNullOrWhiteSpace(previousMessage) &&
             string.Equals(NoteMessage.Text, previousMessage, StringComparison.Ordinal))
         {
-            NoteMessage.Text = string.Empty;
-            AutomationProperties.SetName(NoteMessage, string.Empty);
+            UiAccessibility.Announce(NoteMessage, string.Empty);
         }
     }
 
@@ -3760,8 +3750,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         if (!string.IsNullOrWhiteSpace(previousMessage) &&
             string.Equals(CountdownMessage.Text, previousMessage, StringComparison.Ordinal))
         {
-            CountdownMessage.Text = string.Empty;
-            AutomationProperties.SetName(CountdownMessage, string.Empty);
+            UiAccessibility.Announce(CountdownMessage, string.Empty);
         }
     }
 
@@ -3769,12 +3758,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private static void SetFieldError(TextBlock field, string message)
     {
-        field.Text = message;
-        AutomationProperties.SetName(field, message);
-        AutomationProperties.SetHelpText(field, message);
-        field.Visibility = string.IsNullOrWhiteSpace(message)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        UiAccessibility.Announce(field, message, block =>
+        {
+            AutomationProperties.SetHelpText(block, message);
+            block.Visibility = string.IsNullOrWhiteSpace(message)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        });
     }
 
     private IEnumerable<Control> CountdownValidationControls()

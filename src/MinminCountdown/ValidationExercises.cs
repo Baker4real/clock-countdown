@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -4521,6 +4522,438 @@ internal static class ValidationExercises
             DeleteFileIfPresent(diagnosticPath);
         }
     }
+
+    // #216：讲述人只在直播区文本真正变化时收到 LiveRegionChanged，级别与元素声明一致；
+    // 分钟级刷新且数量句子不变时不播报。鼓励语退出自动化树，金额与日历状态仍可读且名称正确。
+    public static bool RunNarratorLiveRegionBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-narrator-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var deliverySettingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-narrator-delivery-{Guid.NewGuid():N}.settings.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "讲述人探针便签甲",
+            new DateTime(2038, 7, 8),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        MustApply(workspace, new SaveNoteChange(
+            null,
+            "讲述人探针便签乙",
+            new DateTime(2038, 7, 9),
+            false,
+            Array.Empty<string>(),
+            Array.Empty<ReminderRule>()));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        var lifecycle = new ManagerWindowLifecycle(
+            () => new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory),
+            PrepareOffscreenValidationWindow);
+        var floating = new FloatingWindow(workspace, calendar, lifecycle, AppContext.BaseDirectory);
+        PrepareOffscreenValidationWindow(floating);
+        var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory)
+        {
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Left = -20_000,
+            Top = -20_000,
+            Opacity = 0
+        };
+        ReminderDeliveryCoordinator? coordinator = null;
+        var announced = new List<(string Id, string Name, AutomationLiveSetting Live)>();
+        void RememberAnnouncement(TextBlock block) => announced.Add((
+            AutomationProperties.GetAutomationId(block) ?? string.Empty,
+            AutomationProperties.GetName(block) ?? string.Empty,
+            AutomationProperties.GetLiveSetting(block)));
+        UiAccessibility.Announced += RememberAnnouncement;
+        try
+        {
+            floating.Show();
+            main.Show();
+            FlushNarrator(main.Dispatcher);
+
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            FlushNarrator(main.Dispatcher);
+            ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
+                new RoutedEventArgs(ButtonBase.ClickEvent));
+            FlushNarrator(main.Dispatcher);
+            var nameError = (TextBlock)main.FindName("CountdownNameError");
+            Must(
+                SawNarratorNotice(announced, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
+                "字段错误更新后必须触发礼貌 LiveRegionChanged。" +
+                $" errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
+                DescribeAnnouncements(announced));
+
+            ((TextBox)main.FindName("CountdownName")).Text = "讲述人保存探针";
+            ((DatePicker)main.FindName("CountdownDate")).SelectedDate = new DateTime(2038, 8, 1);
+            ((ComboBox)main.FindName("CountdownHour")).SelectedIndex = 9;
+            ((ComboBox)main.FindName("CountdownMinute")).SelectedIndex = 0;
+            ((ComboBox)main.FindName("CountdownSecond")).SelectedIndex = 0;
+            ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
+                new RoutedEventArgs(ButtonBase.ClickEvent));
+            FlushNarrator(main.Dispatcher);
+            Must(
+                SawNarratorNotice(announced, "StatusText", "倒计时已保存。", AutomationLiveSetting.Polite),
+                "状态消息更新后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
+
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            FlushNarrator(main.Dispatcher);
+            var completion = VisualDescendants<CheckBox>(main).FirstOrDefault(checkBox =>
+                checkBox.Tag is string tagId &&
+                workspace.Snapshot.Settings.Notes.Any(note =>
+                    string.Equals(note.Id, tagId, StringComparison.OrdinalIgnoreCase) &&
+                    !note.IsCompleted));
+            Must(completion is not null, "无法定位讲述人探针便签的完成勾选。");
+            completion!.IsChecked = true;
+            FlushNarrator(main.Dispatcher);
+            Must(
+                SawNarratorNotice(announced, "RecordCountText", "1 个待办", AutomationLiveSetting.Polite),
+                "数量变化后必须触发礼貌 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
+
+            var countNoticesBeforeMinute = announced.Count(notice =>
+                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
+            main.UpdateTime(ChinaStandardTime.ToBeijingTime(workspace.Snapshot.UtcNow).AddMinutes(1));
+            FlushNarrator(main.Dispatcher);
+            var countNoticesAfterMinute = announced.Count(notice =>
+                string.Equals(notice.Id, "RecordCountText", StringComparison.Ordinal));
+            Must(
+                countNoticesAfterMinute == countNoticesBeforeMinute,
+                "分钟级刷新且数量没变时不得再次播报数量直播区。");
+
+            var dueUtc = new DateTimeOffset(2036, 5, 13, 1, 0, 0, TimeSpan.Zero);
+            var deliveryClock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(deliverySettingsPath, new SettingsStore(clock: deliveryClock));
+            Must(session.TrySaveNote(
+                    null,
+                    "讲述人送达失败探针",
+                    new DateTime(2036, 5, 13),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateRepeating(dueUtc, 15),
+                    out _),
+                "无法建立讲述人送达失败探针。");
+            Directory.CreateDirectory(deliverySettingsPath + ".tmp");
+            deliveryClock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            FlushNarrator(Dispatcher.CurrentDispatcher);
+            Must(
+                SawNarratorNotice(
+                    announced,
+                    "ReminderEntryDeliveryError",
+                    "送达状态保存失败，正在自动重试。打开来源仍然可用。",
+                    AutomationLiveSetting.Assertive),
+                "提醒送达失败必须触发强制 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
+
+            var income = (AutomationOptionalTextBlock)floating.FindName("FloatingIncome");
+            var statusBrush = income.Foreground;
+            var encouragementBrush = (Brush)floating.FindResource("DecoTextSoftBrush");
+            var encouragementFont = (FontFamily)floating.FindResource("HandwrittenDecoFontFamily");
+            const string amountName = "今日已赚 ￥41.13";
+            const string encouragementText = "加油！美好的事情正在靠近 ~";
+            const string calendarStatusName = "节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复";
+            var resolvedAmount = FloatingBottomStatus.Resolve(
+                41.13m,
+                8000m,
+                "Ready",
+                "unused",
+                encouragementText);
+            Must(
+                resolvedAmount.Kind == FloatingBottomStatusKind.Earnings &&
+                string.Equals(resolvedAmount.Text, amountName, StringComparison.Ordinal),
+                "金额模式的底部文案必须是今日已赚金额。");
+            FloatingBottomStatus.Apply(
+                income,
+                resolvedAmount,
+                statusBrush,
+                encouragementBrush,
+                encouragementFont);
+            floating.UpdateLayout();
+            FlushNarrator(floating.Dispatcher);
+            var floatingRoot = UIElementAutomationPeer.CreatePeerForElement(floating)
+                ?? new UIElementAutomationPeer(floating);
+            var amountPeer = FrameworkElementAutomationPeer.CreatePeerForElement(income);
+            Must(
+                amountPeer is not null &&
+                string.Equals(amountPeer.GetName(), amountName, StringComparison.Ordinal) &&
+                AutomationRawTreeContains(floatingRoot, new[] { income }),
+                "金额模式下悬浮窗底部必须留在自动化树中，名称是今日已赚金额。");
+
+            var resolvedEncouragement = FloatingBottomStatus.Resolve(
+                null,
+                0m,
+                "Ready",
+                "unused",
+                encouragementText);
+            Must(
+                resolvedEncouragement.Kind == FloatingBottomStatusKind.Encouragement &&
+                string.Equals(resolvedEncouragement.Text, encouragementText, StringComparison.Ordinal),
+                "月薪为 0 且日历就绪时底部必须是鼓励语。");
+            FloatingBottomStatus.Apply(
+                income,
+                resolvedEncouragement,
+                statusBrush,
+                encouragementBrush,
+                encouragementFont);
+            floating.UpdateLayout();
+            FlushNarrator(floating.Dispatcher);
+            Must(
+                string.Equals(income.Text, encouragementText, StringComparison.Ordinal) &&
+                income.Visibility == Visibility.Visible &&
+                FrameworkElementAutomationPeer.CreatePeerForElement(income) is null &&
+                !AutomationRawTreeContains(floatingRoot, new[] { income }),
+                "鼓励语模式下悬浮窗底部文本必须退出自动化树，可见文案仍在。");
+
+            var resolvedStatus = FloatingBottomStatus.Resolve(
+                null,
+                8000m,
+                "Unavailable",
+                "unused",
+                encouragementText);
+            Must(
+                resolvedStatus.Kind == FloatingBottomStatusKind.Status &&
+                string.Equals(resolvedStatus.Text, calendarStatusName, StringComparison.Ordinal),
+                "日历未就绪时底部必须是日历状态文案。");
+            FloatingBottomStatus.Apply(
+                income,
+                resolvedStatus,
+                statusBrush,
+                encouragementBrush,
+                encouragementFont);
+            floating.UpdateLayout();
+            FlushNarrator(floating.Dispatcher);
+            var statusPeer = FrameworkElementAutomationPeer.CreatePeerForElement(income);
+            Must(
+                statusPeer is not null &&
+                string.Equals(statusPeer.GetName(), calendarStatusName, StringComparison.Ordinal) &&
+                AutomationRawTreeContains(floatingRoot, new[] { income }),
+                "日历状态模式下悬浮窗底部必须可以读到，名称是当前状态文案。");
+            return true;
+        }
+        finally
+        {
+            UiAccessibility.Announced -= RememberAnnouncement;
+            coordinator?.Dispose();
+            if (main.IsLoaded)
+            {
+                main.Close();
+            }
+
+            if (floating.IsLoaded)
+            {
+                floating.Close();
+            }
+
+            DeleteDirectoryIfEmpty(deliverySettingsPath + ".tmp");
+            DeleteSettingsFiles(settingsPath);
+            DeleteSettingsFiles(deliverySettingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+            DeleteFileIfPresent(deliverySettingsPath + ".tmp");
+        }
+    }
+
+    private static bool WaitForLiveRegionRegistration(Dispatcher dispatcher)
+    {
+        var map = typeof(UIElement).Assembly.GetType("MS.Internal.Automation.EventMap");
+        var method = map?.GetMethod(
+            "GetRegisteredEvent",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            if (method?.Invoke(null, new object[] { AutomationEvents.LiveRegionChanged }) is not null)
+            {
+                return true;
+            }
+
+            FlushNarrator(dispatcher);
+        }
+
+        return method?.Invoke(null, new object[] { AutomationEvents.LiveRegionChanged }) is not null;
+    }
+
+    private static void ConnectNarratorElement(Window window, string automationId)
+    {
+        var root = AutomationElement.FromHandle(new WindowInteropHelper(window).EnsureHandle());
+        root.FindFirst(
+            TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+    }
+
+    private static void FlushNarrator(Dispatcher dispatcher)
+    {
+        WindowValidationInput.Pump(dispatcher);
+    }
+
+    private static AutomationLiveSetting ReadLiveSetting(object? setting)
+    {
+        var raw = setting switch
+        {
+            AutomationLiveSetting live => (int)live,
+            int number => number,
+            _ => Convert.ToInt32(setting, CultureInfo.InvariantCulture)
+        };
+        return raw switch
+        {
+            1 => AutomationLiveSetting.Polite,
+            2 => AutomationLiveSetting.Assertive,
+            _ => AutomationLiveSetting.Off
+        };
+    }
+
+    private static string DescribeAnnouncements(
+        IReadOnlyList<(string Id, string Name, AutomationLiveSetting Live)> notices)
+    {
+        if (notices.Count == 0)
+        {
+            return "（无）";
+        }
+
+        return string.Join(
+            " | ",
+            notices.Take(12).Select(notice => $"{notice.Id}/{notice.Live}/{notice.Name}"));
+    }
+
+    private static bool SawNarratorNotice(
+        NarratorLiveRegionLog log,
+        string automationId,
+        string name,
+        AutomationLiveSetting liveSetting) =>
+        SawNarratorNotice(
+            log.Notices.Select(notice => (notice.AutomationId, notice.Name, notice.LiveSetting)).ToArray(),
+            automationId,
+            name,
+            liveSetting);
+
+    private static bool SawNarratorNotice(
+        IReadOnlyList<(string Id, string Name, AutomationLiveSetting Live)> notices,
+        string automationId,
+        string name,
+        AutomationLiveSetting liveSetting) =>
+        notices.Any(notice =>
+            string.Equals(notice.Id, automationId, StringComparison.Ordinal) &&
+            string.Equals(notice.Name, name, StringComparison.Ordinal) &&
+            notice.Live == liveSetting);
+
+    private static string DescribeNarratorNotices(NarratorLiveRegionLog log)
+    {
+        var notices = log.Notices;
+        if (notices.Count == 0)
+        {
+            return "（无）";
+        }
+
+        return string.Join(
+            " | ",
+            notices.Take(12).Select(notice => $"{notice.AutomationId}/{notice.LiveSetting}/{notice.Name}"));
+    }
+
+    private sealed class NarratorLiveRegionLog : IDisposable
+    {
+        // 本机 UIAutomationClient 没有 LiveRegionChangedEvent / LiveSettingProperty 具名字段。
+        // 数值来自 Windows SDK UIAutomationClient.h。
+        private static readonly AutomationEvent LiveRegionChangedEvent = AutomationEvent.LookupById(20024);
+        private static readonly AutomationProperty LiveSettingProperty = AutomationProperty.LookupById(30135);
+
+        private readonly List<AutomationElement> _pending = new();
+        private readonly List<AutomationElement> _scopes = new();
+        private readonly List<NarratorLiveRegionNotice> _notices = new();
+        private int _rawCount;
+
+        public int RawCount => Volatile.Read(ref _rawCount);
+
+        public void Listen(Window window)
+        {
+            var element = AutomationElement.FromHandle(new WindowInteropHelper(window).EnsureHandle());
+            Automation.AddAutomationEventHandler(
+                LiveRegionChangedEvent,
+                element,
+                TreeScope.Subtree,
+                OnChanged);
+            _scopes.Add(element);
+        }
+
+        public NarratorLiveRegionLog()
+        {
+        }
+
+        public IReadOnlyList<NarratorLiveRegionNotice> Notices
+        {
+            get
+            {
+                Drain();
+                return _notices;
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var scope in _scopes)
+            {
+                Automation.RemoveAutomationEventHandler(
+                    LiveRegionChangedEvent,
+                    scope,
+                    OnChanged);
+            }
+        }
+
+        private void OnChanged(object sender, AutomationEventArgs args)
+        {
+            Interlocked.Increment(ref _rawCount);
+            if (sender is AutomationElement element)
+            {
+                lock (_pending)
+                {
+                    _pending.Add(element);
+                }
+            }
+        }
+
+        private void Drain()
+        {
+            AutomationElement[] batch;
+            lock (_pending)
+            {
+                if (_pending.Count == 0)
+                {
+                    return;
+                }
+
+                batch = _pending.ToArray();
+                _pending.Clear();
+            }
+
+            foreach (var element in batch)
+            {
+                try
+                {
+                    if (element.Current.ProcessId != Environment.ProcessId)
+                    {
+                        continue;
+                    }
+
+                    var setting = element.GetCurrentPropertyValue(LiveSettingProperty);
+                    _notices.Add(new NarratorLiveRegionNotice(
+                        element.Current.AutomationId ?? string.Empty,
+                        element.Current.Name ?? string.Empty,
+                        ReadLiveSetting(setting)));
+                }
+                catch (ElementNotAvailableException)
+                {
+                }
+            }
+        }
+    }
+
+    private readonly record struct NarratorLiveRegionNotice(
+        string AutomationId,
+        string Name,
+        AutomationLiveSetting LiveSetting);
 
     // #156：辅助技术朗读映射——装饰手写体与分段裸数字退出朗读（SilentTextBlock 无自动化
     // peer，也不出现在窗口原始自动化树中）；有可见文字的字段经标签关系（LabeledBy）指向
@@ -11399,7 +11832,11 @@ internal static class ValidationExercises
             string? backupPath,
             bool ignoreMetadataErrors)
         {
-            File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+            SettingsFileReplace.Replace(
+                sourcePath,
+                destinationPath,
+                backupPath,
+                ignoreMetadataErrors);
             if (string.Equals(Path.GetFullPath(destinationPath), _settingsPath, StringComparison.OrdinalIgnoreCase) &&
                 backupPath is not null &&
                 backupPath.Contains(".recovery-rollback-", StringComparison.Ordinal))

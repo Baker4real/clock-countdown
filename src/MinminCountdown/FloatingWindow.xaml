@@ -300,7 +300,7 @@
             <StackPanel x:Name="FloatingRows"
                         Margin="8,13,11,0" />
 
-            <TextBlock x:Name="FloatingIncome"
+            <local:AutomationOptionalTextBlock x:Name="FloatingIncome"
                        Margin="12,10,0,29"
                        Typography.NumeralAlignment="Tabular"
                        Foreground="{DynamicResource FloatingMutedBrush}" />

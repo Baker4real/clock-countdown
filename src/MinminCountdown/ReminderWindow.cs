@@ -371,18 +371,18 @@ internal sealed class ReminderCenterWindow : Window
         };
         error.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Assertive);
-        BindEntry(error, TextBlock.TextProperty, nameof(ReminderCenterEntryViewModel.ErrorMessage), viewModel);
+        AutomationProperties.SetAutomationId(error, "ReminderEntryDeliveryError");
+        UiAccessibility.BindAnnouncedText(
+            error,
+            viewModel,
+            nameof(ReminderCenterEntryViewModel.ErrorMessage),
+            () => viewModel.ErrorMessage);
         BindEntry(
             error,
             TextBlock.VisibilityProperty,
             nameof(ReminderCenterEntryViewModel.IsFailureVisible),
             viewModel,
             _visibilityConverter);
-        BindEntry(
-            error,
-            AutomationProperties.NameProperty,
-            nameof(ReminderCenterEntryViewModel.ErrorMessage),
-            viewModel);
         var divider = new Border
         {
             Height = 1,
@@ -530,22 +530,18 @@ internal sealed class ReminderCenterWindow : Window
         };
         customError.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         AutomationProperties.SetLiveSetting(customError, AutomationLiveSetting.Assertive);
-        BindEntry(
+        AutomationProperties.SetAutomationId(customError, "ReminderEntryCustomError");
+        UiAccessibility.BindAnnouncedText(
             customError,
-            TextBlock.TextProperty,
+            viewModel,
             nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
-            viewModel);
+            () => viewModel.CustomErrorMessage);
         BindEntry(
             customError,
             TextBlock.VisibilityProperty,
             nameof(ReminderCenterEntryViewModel.IsCustomErrorVisible),
             viewModel,
             _visibilityConverter);
-        BindEntry(
-            customError,
-            AutomationProperties.NameProperty,
-            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
-            viewModel);
         var snooze = UiAccessibility.Name(
             new Button
             {

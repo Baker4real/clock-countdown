@@ -4287,7 +4287,7 @@ internal static class ValidationExercises
                 liveRegionRegistered &&
                 SawNarratorNotice(log, "CountdownNameError", "请先填写倒计时名称。", AutomationLiveSetting.Polite),
                 "字段错误更新后必须触发礼貌 LiveRegionChanged。" +
-                $" registered={liveRegionRegistered} raw={log.RawCount} callbacks={UiAccessibility.LiveRegionCallbacks} raises={UiAccessibility.LiveRegionRaises} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
+                $" registered={liveRegionRegistered} raw={log.RawCount} errorText={nameError.Text} live={AutomationProperties.GetLiveSetting(nameError)} 已收到：" +
                 DescribeNarratorNotices(log));
 
             ((TextBox)main.FindName("CountdownName")).Text = "讲述人保存探针";

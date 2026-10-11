@@ -5348,6 +5348,22 @@ $holidayUnavailableCopy = '节假日安排未就绪：距离下班和今日已�
 $floatingBottomStatusSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingBottomStatus.cs'),
     [System.Text.Encoding]::UTF8)
+# Apply 的参数是应用内的 AutomationOptionalTextBlock。这里只验证 Resolve，
+# 编进一个空的同名类型，避免把整份 UiControls 拉进这个纯函数编译。
+$floatingBottomStatusPeerStub = @"
+internal sealed class AutomationOptionalTextBlock : System.Windows.Controls.TextBlock
+{
+    internal void SetExcludedFromAutomationTree(bool excluded)
+    {
+    }
+}
+
+"@
+$floatingBottomStatusCompileSource = [regex]::Replace(
+    $floatingBottomStatusSource,
+    'namespace MinminCountdown;\r?\n',
+    { param($match) $match.Value + $floatingBottomStatusPeerStub },
+    1)
 $floatingBottomStatusDotnet = if ($isCIEnvironment) {
     (Get-Command dotnet -ErrorAction Stop).Path
 } else {
@@ -5371,7 +5387,7 @@ $floatingBottomStatusRefs = @(
     'PresentationFramework.dll', 'PresentationCore.dll', 'WindowsBase.dll', 'System.Xaml.dll' |
         ForEach-Object { Join-Path $windowsDesktopRefPack "ref\net10.0\$_" }
 )
-$compiledBottomStatusTypes = Add-Type -TypeDefinition ("using System;`n" + $floatingBottomStatusSource) `
+$compiledBottomStatusTypes = Add-Type -TypeDefinition ("using System;`n" + $floatingBottomStatusCompileSource) `
     -ReferencedAssemblies $floatingBottomStatusRefs -IgnoreWarnings -PassThru
 $floatingBottomStatusType = @($compiledBottomStatusTypes |
     Where-Object { $_.FullName -eq 'MinminCountdown.FloatingBottomStatus' })[0]

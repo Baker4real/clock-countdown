@@ -68,9 +68,13 @@ public sealed partial class FloatingWindow
 
         completion.Checked += (_, _) =>
         {
+            var card = _noteDateStampStickyEntries.Select(entry => entry.Card)
+                .FirstOrDefault(candidate => candidate.Child is Grid grid && grid.Children.Contains(completion));
+            var exit = NoteCompletionExit.Capture(card, FloatingBodyScroller);
             var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(note.Id, true));
             if (!result.Succeeded)
             {
+                exit?.Dispose();
                 completion.IsChecked = false;
                 _noteCardErrors[note.Id] = result.Error;
                 SetNoteCardError(noteError, completion, result.Error);
@@ -79,6 +83,9 @@ public sealed partial class FloatingWindow
             }
             else
             {
+                DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Floating, new CompletedNoteUndo(note.Id, note.Text));
+                _noteCompletionExit = exit;
+                exit?.Start();
                 var previousError = noteError.Text;
                 _noteCardErrors.Remove(note.Id);
                 SetNoteCardError(noteError, completion, string.Empty);

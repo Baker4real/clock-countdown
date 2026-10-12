@@ -484,17 +484,38 @@ internal sealed record RestoreDeletedNoteChange(
     NoteRecord Record,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
 
-// #155/#214：最近一次删除的撤销载荷。记录与规则状态在删除前捕获；Description 为
-// 倒计时名称或便签正文，供「撤销」入口的可访问名与消息文案使用。
+// #214/#233：唯一最近操作槽的载荷与反馈。Description 为来源名称或便签正文。
+internal abstract record WorkspaceUndo(string Description)
+{
+    public abstract DesktopWorkspaceChange ToChange();
+    public abstract string OfferedMessage { get; }
+    public abstract string AccessibleName { get; }
+    public abstract string RestoredMessage { get; }
+}
+
+// #233：完成撤销只重新打开同一便签，不回写旧cursor或已处置的提醒状态。
+internal sealed record CompletedNoteUndo(string Id, string Description) : WorkspaceUndo(Description)
+{
+    public override DesktopWorkspaceChange ToChange() => new SetNoteCompletionChange(Id, false);
+    public override string OfferedMessage => $"已完成「{Description}」·";
+    public override string AccessibleName => $"撤销完成便签「{Description}」";
+    public override string RestoredMessage => $"已撤销完成便签「{Description}」。";
+}
+
+// #155/#214：删除前捕获记录与规则状态，撤销删除时原样恢复。
 internal sealed record DeletedRecordUndo(
     CountdownRecord? Countdown,
     NoteRecord? Note,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates,
-    string Description)
+    string Description) : WorkspaceUndo(Description)
 {
     public string KindName => Countdown is not null ? "倒计时" : "便签";
 
-    public DesktopWorkspaceChange ToChange() => Countdown is { } countdown
+    public override string OfferedMessage => $"已删除{KindName}「{Description}」。";
+    public override string AccessibleName => $"撤销删除{KindName}「{Description}」";
+    public override string RestoredMessage => $"已撤销删除{KindName}「{Description}」。";
+
+    public override DesktopWorkspaceChange ToChange() => Countdown is { } countdown
         ? new RestoreDeletedCountdownChange(countdown, ReminderStates)
         : new RestoreDeletedNoteChange(Note!, ReminderStates);
 

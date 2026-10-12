@@ -3,7 +3,7 @@ using System.Windows.Threading;
 
 namespace MinminCountdown;
 
-// #214：最近一次删除只有一份撤销载荷。发起删除的窗口负责呈现，恢复仍走 DeletedRecordUndo.ToChange()。
+// #214/#233：删除与完成共用一份最近操作载荷。发起窗口呈现，撤销经各自的现行事务。
 internal enum DeleteUndoSurface
 {
     None,
@@ -13,13 +13,13 @@ internal enum DeleteUndoSurface
 
 internal sealed class DeleteUndoSlot
 {
-    public DeletedRecordUndo? Payload { get; private set; }
+    public WorkspaceUndo? Payload { get; private set; }
 
     public DeleteUndoSurface Surface { get; private set; }
 
     public event EventHandler? Changed;
 
-    public void Offer(DeleteUndoSurface surface, DeletedRecordUndo payload)
+    public void Offer(DeleteUndoSurface surface, WorkspaceUndo payload)
     {
         Payload = payload;
         Surface = surface;

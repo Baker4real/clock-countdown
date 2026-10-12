@@ -67,6 +67,7 @@ public sealed partial class FloatingWindow : Window
     private readonly string _assetRoot;
     private bool _assetsLoaded;
     private readonly DeleteUndoCountdown _deleteUndoCountdown;
+    private NoteCompletionExit? _noteCompletionExit;
     private bool _retainFloatingUndoMessage;
 
     internal FloatingWindow(
@@ -1785,6 +1786,8 @@ public sealed partial class FloatingWindow : Window
             : null;
         var renderVersion = ++_floatingRowsRenderVersion;
 
+        _noteCompletionExit?.Dispose();
+        _noteCompletionExit = null;
         FloatingRows.Children.Clear();
         ClearNoteDateStampStickyEntries();
         if (workspace == WorkspaceKind.Countdowns)
@@ -2198,12 +2201,12 @@ public sealed partial class FloatingWindow : Window
         _retainFloatingUndoMessage = false;
     }
 
-    private void PresentFloatingDeleteUndo(DeletedRecordUndo undo)
+    private void PresentFloatingDeleteUndo(WorkspaceUndo undo)
     {
-        FloatingDeleteUndoText.Text = $"已删除{undo.KindName}「{undo.Description}」。";
+        FloatingDeleteUndoText.Text = undo.OfferedMessage;
         AutomationProperties.SetName(
             FloatingDeleteUndoButton,
-            $"撤销删除{undo.KindName}「{undo.Description}」");
+            undo.AccessibleName);
         FloatingDeleteUndoButton.Visibility = Visibility.Visible;
         FloatingDeleteUndoLine.Visibility = Visibility.Visible;
         _deleteUndoCountdown.Restart();
@@ -2225,7 +2228,7 @@ public sealed partial class FloatingWindow : Window
             return;
         }
 
-        FloatingDeleteUndoText.Text = $"已撤销删除{undo.KindName}「{undo.Description}」。";
+        FloatingDeleteUndoText.Text = undo.RestoredMessage;
         _retainFloatingUndoMessage = true;
         slot.Clear();
     }
@@ -2250,7 +2253,7 @@ public sealed partial class FloatingWindow : Window
         get
         {
             var slot = DeleteUndoOffers.For(_desktopWorkspace);
-            return slot.Surface == DeleteUndoSurface.Floating ? slot.Payload : null;
+            return slot.Surface == DeleteUndoSurface.Floating ? slot.Payload as DeletedRecordUndo : null;
         }
     }
 

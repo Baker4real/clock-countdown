@@ -73,6 +73,19 @@ jobs:
           $suiteExit = $LASTEXITCODE
           if ($suiteExit -ne 0) { exit $suiteExit }
 
+      - name: Prepare display for work-area geometry tests
+        shell: pwsh
+        run: |
+          # The geometry fixtures cover a 1920x1032 work area. WPF also applies
+          # the real desktop's native maximum tracking size to shown windows.
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+          Add-Type -AssemblyName System.Windows.Forms
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          Write-Output "CI display: $($bounds.Width)x$($bounds.Height)"
+          if ($bounds.Width -lt 1920 -or $bounds.Height -lt 1080) {
+            throw 'The display cannot host the required work-area geometry fixtures.'
+          }
+
       - name: Test release contract
         shell: pwsh
         run: |

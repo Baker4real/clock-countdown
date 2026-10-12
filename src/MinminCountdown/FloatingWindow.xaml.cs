@@ -799,11 +799,6 @@ public sealed partial class FloatingWindow : Window
     internal void ApplyTheme()
     {
         var nextTheme = FloatingThemePalette.Daylight;
-        if (ReferenceEquals(_activeTheme, nextTheme))
-        {
-            return;
-        }
-
         _activeTheme = nextTheme;
         ApplyQuickAddThemeResources(nextTheme);
         SetActiveThemeBrush("FloatingHeaderTextBrush", nextTheme.HeaderTextBrushKey);
@@ -814,14 +809,19 @@ public sealed partial class FloatingWindow : Window
         SetActiveThemeBrush("FloatingNoteInputTextBrush", nextTheme.NoteInputTextBrushKey);
         SetActiveThemeBrush("FloatingErrorBrush", nextTheme.ErrorBrushKey);
         SetActiveThemeBrush("FloatingMutedBrush", nextTheme.MutedBrushKey);
-        FloatingDayRasterScene.Visibility = Visibility.Visible;
-        TaskCard.Background = Brushes.Transparent;
-        TaskCard.BorderBrush = Brushes.Transparent;
+        var contrast = ApplicationTheme.HighContrastEnabled;
+        var decorationVisibility = contrast ? Visibility.Collapsed : Visibility.Visible;
+        FloatingDayRasterScene.Visibility = decorationVisibility;
+        FloatingPlushScene.Visibility = decorationVisibility;
+        FloatingNotesDecoTextLeft.Visibility = decorationVisibility;
+        FloatingNotesDecoText.Visibility = decorationVisibility;
+        TaskCard.Background = contrast ? ThemeBrush("CanvasBrush") : Brushes.Transparent;
+        TaskCard.BorderBrush = contrast ? ThemeBrush("ControlBorderBrush") : Brushes.Transparent;
         TaskCard.Effect = null;
-        FloatingThemeBackdrop.Background = Brushes.Transparent;
-        FloatingThemeBackdrop.BorderBrush = Brushes.Transparent;
-        FloatingHeaderSurface.Background = Brushes.Transparent;
-        FloatingHeaderSurface.BorderBrush = Brushes.Transparent;
+        FloatingThemeBackdrop.Background = contrast ? ThemeBrush("CanvasBrush") : Brushes.Transparent;
+        FloatingThemeBackdrop.BorderBrush = contrast ? ThemeBrush("ControlBorderBrush") : Brushes.Transparent;
+        FloatingHeaderSurface.Background = contrast ? ThemeBrush("CanvasBrush") : Brushes.Transparent;
+        FloatingHeaderSurface.BorderBrush = contrast ? ThemeBrush("ControlBorderBrush") : Brushes.Transparent;
         FloatingRows.Margin = new Thickness(9, 13, 10, 0);
         SetRasterTranslation(FloatingTitle, -1, -1);
         SetRasterTranslation(FloatingCountdownsButton, 0, 1);
@@ -876,7 +876,10 @@ public sealed partial class FloatingWindow : Window
 
         foreach (var binding in bindings)
         {
-            scope[binding.LocalKey] = ThemeBrush(binding.ThemeKey);
+            scope[binding.LocalKey] = ApplicationTheme.HighContrastEnabled &&
+                binding.LocalKey is "ActiveBrush" or "ActiveHoverBrush"
+                ? Application.Current.FindResource(binding.LocalKey)
+                : ThemeBrush(binding.ThemeKey);
         }
     }
 
@@ -899,6 +902,8 @@ public sealed partial class FloatingWindow : Window
         yield return FloatingNoteEntry.Resources;
         yield return FloatingNoteDate.Resources;
         yield return FloatingTags.Resources;
+        if (PickerTemplateParts.GetCalendar(FloatingNoteDate) is { } calendar)
+            yield return calendar.Resources;
     }
 
     internal FloatingQuickAddThemeProbeResult ProbeQuickAddThemeResources()
@@ -1469,7 +1474,7 @@ public sealed partial class FloatingWindow : Window
 
     private void ApplyPlushSceneTheme(FloatingThemePalette theme)
     {
-        DayMascotsImage.Visibility = Visibility.Visible;
+        DayMascotsImage.Visibility = ApplicationTheme.HighContrastEnabled ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private string PlushGlowColor() =>

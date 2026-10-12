@@ -4296,7 +4296,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 733 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#227 删除主行菜单字段、新增两项行为并迁移键盘及分组字段）'
+    Assert-Equal 736 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#227 主行合同与 #220 三个系统对比度行为字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4887,7 +4887,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v47') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '33D0A3135195CB1FC5943FF1CF294944403CDE7B0512F4530F2342C318C50685' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（733字段，#227 主行行为与编辑列表分离合同）'
+    Assert-Equal '8CCFE24A92C89D26804B3AA168B0C529A3F10F154432243981B1C7DCA620C686' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（736字段；#220/#227 合并合同）'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastUpdatesOpenWindows) '#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastAccessibleStates) '#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastColorChangesAndCustomSurfaces) '#220 系统配色运行中变化更新弹层、自选标签和日期印记并恢复日间原色'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'

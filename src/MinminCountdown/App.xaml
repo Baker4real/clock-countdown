@@ -66,7 +66,6 @@
     <Color x:Key="DecoTextColor">#D9B7B1</Color>
     <Color x:Key="DecoTextSoftColor">#E5AE9C</Color>
     <Color x:Key="PinkBadgeColor">#FD97A1</Color>
-    <Color x:Key="PinkBadgeTextColor">#FFFDFC</Color>
     <Color x:Key="PinkTintColor">#FFFEDDDE</Color>
     <Color x:Key="PinkBlockColor">#FEE0E4</Color>
     <Color x:Key="PrimaryCountdownNumberColor">#FFC0102F</Color>
@@ -76,7 +75,6 @@
     <Color x:Key="PeachRailColor">#CD623E</Color>
     <Color x:Key="PeachBadgeColor">#FBAE90</Color>
     <Color x:Key="PeachBadgeMutedColor">#F3DED8</Color>
-    <Color x:Key="PinkAccentColor">#FFDE5863</Color>
     <Color x:Key="PinkAccentStrongColor">#FFC23E68</Color>
     <Color x:Key="StampPinkColor">#FEEFF1</Color>
     <Color x:Key="StampPinkTextColor">#D41F57</Color>
@@ -138,7 +136,6 @@
     <SolidColorBrush x:Key="DecoTextBrush" Color="{DynamicResource DecoTextColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="DecoTextSoftBrush" Color="{DynamicResource DecoTextSoftColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PinkBadgeBrush" Color="{DynamicResource PinkBadgeColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PinkBadgeTextBrush" Color="{DynamicResource PinkBadgeTextColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PinkTintBrush" Color="{DynamicResource PinkTintColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PinkBlockBrush" Color="{DynamicResource PinkBlockColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PrimaryCountdownNumberBrush" Color="{DynamicResource PrimaryCountdownNumberColor}" po:Freeze="False" />
@@ -148,7 +145,6 @@
     <SolidColorBrush x:Key="PeachRailBrush" Color="{DynamicResource PeachRailColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PeachBadgeBrush" Color="{DynamicResource PeachBadgeColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PeachBadgeMutedBrush" Color="{DynamicResource PeachBadgeMutedColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PinkAccentBrush" Color="{DynamicResource PinkAccentColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PinkAccentStrongBrush" Color="{DynamicResource PinkAccentStrongColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="StampPinkBrush" Color="{DynamicResource StampPinkColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="StampPinkTextBrush" Color="{DynamicResource StampPinkTextColor}" po:Freeze="False" />

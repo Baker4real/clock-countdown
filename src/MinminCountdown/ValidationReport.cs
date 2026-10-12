@@ -550,10 +550,12 @@ internal static class ValidationReport
         "src/MinminCountdown/DesktopWorkspace.cs",
         "src/MinminCountdown/DeleteUndoOffer.cs",
         "src/MinminCountdown/DomainLogic.cs",
+        "src/MinminCountdown/FloatingBottomStatus.cs",
         "src/MinminCountdown/FloatingWindow.Countdowns.cs",
         "src/MinminCountdown/FloatingWindow.Notes.cs",
         "src/MinminCountdown/FloatingWindow.xaml",
         "src/MinminCountdown/FloatingWindow.xaml.cs",
+        "src/MinminCountdown/HolidayCalendar.cs",
         "src/MinminCountdown/MinminCountdown.csproj",
         "src/MinminCountdown/MotionBehavior.cs",
         "src/MinminCountdown/NoteCompletionExit.cs",
@@ -5062,10 +5064,12 @@ internal static class ValidationReport
         const string workspacePath = "src/MinminCountdown/DesktopWorkspace.cs";
         const string completionExitPath = "src/MinminCountdown/NoteCompletionExit.cs";
         const string undoPath = "src/MinminCountdown/DeleteUndoOffer.cs";
+        const string bottomStatusPath = "src/MinminCountdown/FloatingBottomStatus.cs";
+        const string holidayPath = "src/MinminCountdown/HolidayCalendar.cs";
         var paths = isMain ? MainReferenceCanonicalSourcePaths : FloatingReferenceCanonicalSourcePaths;
         var requiredPaths = isMain
             ? new[] { motionPath, indicatorPath, datePath, orderPath, sessionPath, workspacePath, completionExitPath, undoPath }
-            : new[] { motionPath, datePath, orderPath, sessionPath, workspacePath, completionExitPath, undoPath };
+            : new[] { motionPath, datePath, orderPath, sessionPath, workspacePath, completionExitPath, undoPath, bottomStatusPath, holidayPath };
         var currentHash = new string('A', 64);
         var staleHash = new string('B', 64);
         foreach (var changedPath in requiredPaths)
@@ -5092,7 +5096,8 @@ internal static class ValidationReport
                 var missing = current.Where(binding => binding.Path != changedPath).ToArray();
                 if (!FloatingReferenceSourcesMatch(current, current, AggregateFloatingReferenceSourceBindings(current)) ||
                     FloatingReferenceSourcesMatch(missing, current, AggregateFloatingReferenceSourceBindings(missing)) ||
-                    FloatingReferenceSourcesMatch(stale, current, AggregateFloatingReferenceSourceBindings(stale)))
+                    FloatingReferenceSourcesMatch(stale, current, AggregateFloatingReferenceSourceBindings(stale)) ||
+                    FloatingReferenceSourcesMatch(missing, missing, AggregateFloatingReferenceSourceBindings(missing)))
                     return false;
             }
         }
@@ -11527,7 +11532,6 @@ internal static class ValidationReport
                 ("SegmentSelectedColor", "#FFFEEFE1"),
                 ("SegmentSelectedForegroundColor", "#FF3B190D"),
                 ("PinkTintColor", "#FFFEDDDE"),
-                ("PinkAccentColor", "#FFDE5863"),
                 ("PinkAccentStrongColor", "#FFC23E68"),
                 ("WorkspacePanelColor", "#00FFFDFC"),
                 ("WorkspacePanelLineColor", "#00F6DFD3"),
@@ -15465,7 +15469,7 @@ internal static class ValidationReport
                 floating.IsVisible &&
                 floating.WindowState == WindowState.Normal &&
                 trayController.IsTrayIconVisible;
-            var headersMatch = TrayMenuHeadersMatch();
+            var headersMatch = TrayMenuHeadersMatch(floating);
             var managerPreserved = TrayOpenManagerPreservesDraftAndFilter(main, workspace, trayController);
             if (!minimizeWorks || !clickRestores || !menuRestores || !headersMatch || !managerPreserved)
             {
@@ -15502,18 +15506,98 @@ internal static class ValidationReport
         }
     }
 
-    private static bool TrayMenuHeadersMatch()
+    private static bool TrayMenuHeadersMatch(FloatingWindow floating)
     {
-        var (_, openManager, restore, resetPosition, exit) = TrayMenuFactory.Create(
+        var (menu, openManager, restore, resetPosition, exit) = TrayMenuFactory.Create(
             static () => { },
             static () => { },
             static () => { },
             static () => { });
+        IDisposable? menuInput = null;
+        try
+        {
+            // Establish native keyboard focus on this thread before menu mode.
+            // This window is not the menu PlacementTarget or resource owner.
+            floating.Activate();
+            floating.Focus();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            if (TrayProbeGetFocus() == IntPtr.Zero)
+                throw new InvalidOperationException("#232 菜单打开前当前线程没有 Win32 键盘焦点。");
+            // The production TaskbarIcon owns a standalone menu, outside window aliases.
+            menu.Placement = PlacementMode.AbsolutePoint;
+            menu.IsOpen = true;
+            WindowValidationInput.Pump(menu.Dispatcher);
+            var items = new[] { openManager, restore, resetPosition, exit };
+            foreach (var item in items) item.ApplyTemplate();
+            if (!ReferenceEquals(menu.Background, Application.Current.FindResource("CanvasBrush")) ||
+                !ReferenceEquals(menu.BorderBrush, Application.Current.FindResource("ControlBorderBrush")) ||
+                !items.All(item => item.FontSize == (double)Application.Current.FindResource("TypeBodyFontSize") &&
+                    item.FontFamily.Source == ((FontFamily)Application.Current.FindResource("UiFontFamily")).Source &&
+                    ReferenceEquals(item.Foreground, Application.Current.FindResource("InkBrush"))))
+            {
+                throw new InvalidOperationException("#232 托盘实际菜单未使用主题文字、背景、边界和字号 token。" +
+                    $" background={menu.Background}; border={menu.BorderBrush}; items=" +
+                    string.Join("|", items.Select(item => $"{item.Header}:highlight={item.IsHighlighted},font={item.FontFamily.Source},size={item.FontSize},foreground={item.Foreground}")));
+            }
+            menuInput = WindowValidationInput.AcquireContextMenuInputForValidation(menu);
+            // Use ContextMenu's normal keyboard navigation, which selects the
+            // first item through NavigateToStart and real keyboard focus.
+            Keyboard.Focus(menu);
+            WindowValidationInput.Pump(menu.Dispatcher);
+            WindowValidationInput.RaiseKey(menu, Key.Down);
+            WindowValidationInput.Pump(menu.Dispatcher);
+            if (!openManager.IsKeyboardFocused || !openManager.IsHighlighted ||
+                !ReferenceEquals(openManager.Background, Application.Current.FindResource("MainActionBrush")) ||
+                !ReferenceEquals(openManager.Foreground, Application.Current.FindResource("MainActionTextBrush")))
+                throw new InvalidOperationException("#232 托盘真实键盘高亮未使用主行动配色。" +
+                    $" open={menu.IsOpen}; focused={Keyboard.FocusedElement}; enabled={openManager.IsEnabled}; visible={openManager.IsVisible}; focusable={openManager.Focusable}; highlighted={openManager.IsHighlighted}; background={openManager.Background}; foreground={openManager.Foreground}");
+
+            static bool ColorIs(Brush brush, Color color) => brush is SolidColorBrush solid && solid.Color == color;
+            var dayCanvas = ((SolidColorBrush)menu.Background).Color;
+            var dayHighlight = ((SolidColorBrush)openManager.Background).Color;
+            using (var preference = ApplicationTheme.OverrideHighContrastForValidation(true))
+            {
+                PumpDispatcher();
+                if (!ColorIs(menu.Background, SystemColors.WindowColor) ||
+                    !ColorIs(menu.BorderBrush, SystemColors.WindowTextColor) ||
+                    !ColorIs(openManager.Background, SystemColors.HighlightColor) ||
+                    !ColorIs(openManager.Foreground, SystemColors.HighlightTextColor))
+                    throw new InvalidOperationException("#232 已打开托盘未响应系统高对比开关。");
+                var palette = new ApplicationTheme.SystemContrastPalette(
+                    Colors.Black, Colors.White, Colors.Navy, Colors.White,
+                    Colors.Yellow, Colors.Black, Colors.Silver);
+                preference.ChangeColors(palette);
+                PumpDispatcher();
+                if (!ColorIs(menu.Background, palette.Window) ||
+                    !ColorIs(menu.BorderBrush, palette.WindowText) ||
+                    !ColorIs(openManager.Background, palette.Highlight) ||
+                    !ColorIs(openManager.Foreground, palette.HighlightText))
+                    throw new InvalidOperationException("#232 已打开托盘未响应运行中系统配色变化。");
+            }
+            PumpDispatcher();
+            if (!ColorIs(menu.Background, dayCanvas) || !ColorIs(openManager.Background, dayHighlight))
+                throw new InvalidOperationException("#232 关闭系统高对比后托盘未恢复主题。");
+        }
+        finally
+        {
+            try
+            {
+                menu.IsOpen = false;
+                WindowValidationInput.Pump(menu.Dispatcher);
+            }
+            finally
+            {
+                menuInput?.Dispose();
+            }
+        }
         return string.Equals(openManager.Header as string, "打开管理窗口", StringComparison.Ordinal) &&
             string.Equals(restore.Header as string, "打开悬浮窗", StringComparison.Ordinal) &&
             string.Equals(resetPosition.Header as string, "复位窗口位置", StringComparison.Ordinal) &&
             string.Equals(exit.Header as string, "退出", StringComparison.Ordinal);
     }
+
+    [DllImport("user32.dll", EntryPoint = "GetFocus", ExactSpelling = true)]
+    private static extern IntPtr TrayProbeGetFocus();
 
     private static bool TrayOpenManagerPreservesDraftAndFilter(
         MainWindow main,
@@ -16489,7 +16573,7 @@ internal static class ValidationReport
                 dayActive,
                 independent &&
                 dayCanvas == "#FFFEFCFB" &&
-                dayActive == "#FFB74C39",
+                ReferenceEquals(floating.FindResource("ActiveBrush"), Application.Current.FindResource("ActiveBrush")),
                 dayBindings);
         }
         finally

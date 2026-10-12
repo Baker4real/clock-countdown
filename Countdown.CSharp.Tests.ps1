@@ -377,11 +377,63 @@ public static class MinminCountdownActivationWindowProbe
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetThreadDesktop(uint threadId);
+
+    [DllImport("user32.dll", EntryPoint = "GetUserObjectInformationW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetUserObjectInformation(
+        IntPtr handle, int index, out int value, uint size, out uint needed);
+
+    public static bool CurrentDesktopReceivesInput()
+    {
+        var desktop = GetThreadDesktop(GetCurrentThreadId());
+        if (desktop == IntPtr.Zero ||
+            !GetUserObjectInformation(desktop, 6 /* UOI_IO */, out var value, sizeof(int), out _))
+        {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        return value != 0;
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
 }
 '@
+}
+
+function Test-InstanceActivationForegroundEvidence {
+    param(
+        [long] $WindowHandle,
+        [long] $ForegroundHandle,
+        [bool] $WindowIsActive,
+        [bool] $PermissionGranted,
+        [bool] $InactiveIsolatedDesktop
+    )
+    return $WindowHandle -ne 0 -and (
+        $WindowHandle -eq $ForegroundHandle -or
+        ($WindowIsActive -and (
+            -not $PermissionGranted -or
+            ($InactiveIsolatedDesktop -and $ForegroundHandle -eq 0))))
+}
+
+$foregroundEvidenceCases = @(
+    @('native foreground', 101, 101, $false, $true, $false, $true),
+    @('inactive isolated desktop', 101, 0, $true, $true, $true, $true),
+    @('input desktop cannot use empty foreground', 101, 0, $true, $true, $false, $false),
+    @('inactive window is not activation', 101, 0, $false, $true, $true, $false),
+    @('wrong nonzero foreground with permission', 101, 202, $true, $true, $true, $false),
+    @('existing denied-permission WPF path', 101, 202, $true, $false, $false, $true),
+    @('missing window handle', 0, 0, $true, $true, $true, $false)
+)
+foreach ($case in $foregroundEvidenceCases) {
+    Assert-Equal $case[6] (Test-InstanceActivationForegroundEvidence `
+        -WindowHandle $case[1] -ForegroundHandle $case[2] -WindowIsActive $case[3] `
+        -PermissionGranted $case[4] -InactiveIsolatedDesktop $case[5]) $case[0]
 }
 
 function Get-ProcessTopLevelWindows {
@@ -2354,14 +2406,26 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
                 Assert-Equal 1 $floatingWindows.Count 'Win32 枚举确认主进程只有一个可见悬浮窗'
                 $foregroundMatchesFloating = [long] $floatingWindows[0].Handle -eq
                     [long] $activationHandled[0].activationForegroundWindowHandle
-                Assert-Equal $true (
-                    $foregroundMatchesFloating -or
-                    ([bool] $activationHandled[0].activationFloatingWindowIsActive -and
-                     -not [bool] $activationClientResult[0].activationForegroundPermissionGranted)
-                ) ("匹配 ACK 由真实前台 HWND 或 WPF IsActive 证明（foregroundMatches={0}, floatingIsActive={1}, permissionGranted={2}, observedForeground={3}, floatingHandle={4}）" -f `
+                # Foreground permission is granted before activation. On a non-input
+                # suite desktop it may succeed while no native foreground HWND exists.
+                # Require native desktop identity and WPF activation for that case.
+                $desktopName = Get-SuiteThreadDesktopName
+                $desktopReceivesInput = [MinminCountdownActivationWindowProbe]::CurrentDesktopReceivesInput()
+                $inactiveIsolatedDesktop = (Test-SuiteIsolatedDesktopName -DesktopName $desktopName) -and
+                    -not $desktopReceivesInput
+                [Console]::Error.WriteLine(
+                    "CSHARP_ACTIVATION_DESKTOP name=$desktopName receivesInput=$desktopReceivesInput")
+                Assert-Equal $true (Test-InstanceActivationForegroundEvidence `
+                    -WindowHandle ([long] $floatingWindows[0].Handle) `
+                    -ForegroundHandle ([long] $activationHandled[0].activationForegroundWindowHandle) `
+                    -WindowIsActive ([bool] $activationHandled[0].activationFloatingWindowIsActive) `
+                    -PermissionGranted ([bool] $activationClientResult[0].activationForegroundPermissionGranted) `
+                    -InactiveIsolatedDesktop $inactiveIsolatedDesktop
+                ) ("匹配 ACK 由真实前台 HWND 或 WPF IsActive 证明（foregroundMatches={0}, floatingIsActive={1}, permissionGranted={2}, observedForeground={3}, floatingHandle={4}, desktop={5}, receivesInput={6}）" -f `
                     $foregroundMatchesFloating, $activationHandled[0].activationFloatingWindowIsActive,
                     $activationClientResult[0].activationForegroundPermissionGranted,
-                    $activationHandled[0].activationForegroundWindowHandle, $floatingWindows[0].Handle)
+                    $activationHandled[0].activationForegroundWindowHandle, $floatingWindows[0].Handle,
+                    $desktopName, $desktopReceivesInput)
                 Assert-Equal $floatingWindows.Count ([int] $activationHandled[0].interactiveFloatingWindowCount `
                     ) 'WPF FloatingWindow 计数与外部可见窗口枚举一致'
             }

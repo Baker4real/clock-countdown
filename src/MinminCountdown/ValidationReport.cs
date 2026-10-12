@@ -12488,9 +12488,19 @@ internal static class ValidationReport
         var measurements = new List<ConfirmationDialogMeasurement>();
         var originalOwnerLeft = owner.Left;
         var originalOwnerTop = owner.Top;
+        var originalOwnerWidth = owner.Width;
+        var originalOwnerHeight = owner.Height;
         try
         {
             var workArea = SystemParameters.WorkArea;
+            // The suite injects a large logical work area for reference captures.
+            // After hide/show, SSH desktops can retain that requested size while
+            // the native HWND is smaller. WPF-UI centers using Width/Height, so
+            // prepare this owner to fit the real desktop before measuring it.
+            owner.Width = Math.Min(owner.ActualWidth, Math.Max(owner.MinWidth, workArea.Width - 48));
+            owner.Height = Math.Min(owner.ActualHeight, Math.Max(owner.MinHeight, workArea.Height - 48));
+            owner.UpdateLayout();
+            PumpDispatcher();
             owner.Left = workArea.Left + Math.Max(24, (workArea.Width - owner.ActualWidth) / 2);
             owner.Top = workArea.Top + Math.Max(24, (workArea.Height - owner.ActualHeight) / 2);
             owner.UpdateLayout();
@@ -12600,6 +12610,8 @@ internal static class ValidationReport
         }
         finally
         {
+            owner.Width = originalOwnerWidth;
+            owner.Height = originalOwnerHeight;
             owner.Left = originalOwnerLeft;
             owner.Top = originalOwnerTop;
             owner.UpdateLayout();

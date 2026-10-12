@@ -80,7 +80,7 @@ internal static class ValidationReport
             PumpDispatcher();
             CloseMainDatePickerDropdowns(validationMain);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
-            ClearCaptureKeyboardFocus();
+            ClearCaptureKeyboardFocus(root);
             WaitForMainReferenceMotion(validationMain, root);
             var pngBytes = EncodePng(CaptureOpaqueMainSurface(root, captureWidth, captureHeight));
             // #134：实拍证据先落盘再走基线门禁——门禁失败（如 v22 基线与在途改动漂移）
@@ -515,7 +515,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-12-v48";
+    private const string FloatingReferenceBaselineVersion = "2026-10-12-v49";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -616,7 +616,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-12-v48";
+    private const string MainReferenceBaselineVersion = "2026-10-12-v49";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -2068,7 +2068,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-12-v48 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-12-v49 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
@@ -3069,7 +3069,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v48 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v49 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -3337,7 +3337,7 @@ internal static class ValidationReport
             PumpDispatcher();
             CloseMainDatePickerDropdowns(main);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
-            ClearCaptureKeyboardFocus();
+            ClearCaptureKeyboardFocus(root);
             WaitForMainReferenceMotion(main, root);
             var countdownCapture = CaptureOpaqueMainSurface(root, captureWidth, captureHeight);
 
@@ -3347,7 +3347,7 @@ internal static class ValidationReport
             PumpDispatcher();
             CloseMainDatePickerDropdowns(main);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
-            ClearCaptureKeyboardFocus();
+            ClearCaptureKeyboardFocus(root);
             WaitForMainReferenceMotion(main, root);
             var notesCapture = CaptureOpaqueMainSurface(root, captureWidth, captureHeight);
 
@@ -3701,7 +3701,7 @@ internal static class ValidationReport
                         var overlayPopup = spec.State == "FilterOpen"
                             ? Required<Popup>(validationMain, "FilterPopup")
                             : null;
-                        ClearCaptureKeyboardFocus();
+                        ClearCaptureKeyboardFocus(root);
                         WaitForMainReferenceMotion(validationMain, root);
                         var pngBytes = EncodePng(CaptureOpaqueMainSurface(root, captureWidth, captureHeight, overlayPopup));
                         if (string.Equals(
@@ -4301,8 +4301,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-12-v48", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-12-v48", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-12-v49", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-12-v49", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -5407,7 +5407,7 @@ internal static class ValidationReport
                     referenceWorkdayTargetUtc,
                     referenceUtc) &&
                 string.Equals(referenceWindow.IncomeText, "今日已赚 ￥41.13", StringComparison.Ordinal);
-            ClearCaptureKeyboardFocus();
+            ClearCaptureKeyboardFocus(root);
             var actualCapture = CaptureVisual(root);
             var framedCapture = ScaleToFrame(actualCapture, captureWidth, captureHeight);
             var captureBytes = EncodePng(framedCapture);
@@ -5805,7 +5805,7 @@ internal static class ValidationReport
             var countdownScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
             countdownScroller.ScrollToVerticalOffset(countdownScroller.ScrollableHeight);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
-            ClearCaptureKeyboardFocus();
+            ClearCaptureKeyboardFocus(root);
             scrolledCountdownsCaptureBytes = EncodePng(ScaleToFrame(
                 CaptureVisual(root),
                 captureWidth,
@@ -5878,7 +5878,7 @@ internal static class ValidationReport
 
             bodyScroller.ScrollToVerticalOffset(bodyScroller.ScrollableHeight);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
-            ClearCaptureKeyboardFocus();
+            ClearCaptureKeyboardFocus(root);
             scrolledNotesCaptureBytes = EncodePng(ScaleToFrame(
                 CaptureVisual(root),
                 captureWidth,
@@ -6422,7 +6422,7 @@ internal static class ValidationReport
                     bodyScroller.ScrollableHeight,
                     firstVisibleAnchor,
                     lastVisibleAnchor);
-                ClearCaptureKeyboardFocus();
+                ClearCaptureKeyboardFocus(root);
                 var pngBytes = EncodePng(ScaleToFrame(
                     CaptureVisual(root),
                     captureWidth,
@@ -6761,7 +6761,7 @@ internal static class ValidationReport
                 root,
                 rows,
                 rows.Children.OfType<Border>().Count());
-            ClearCaptureKeyboardFocus();
+            ClearCaptureKeyboardFocus(root);
             const string captureId = "notes-search-expanded-day";
             var spec = FloatingReferenceCaptureSpecs.Single(candidate =>
                 string.Equals(candidate.CaptureId, captureId, StringComparison.Ordinal));
@@ -8032,7 +8032,7 @@ internal static class ValidationReport
                     BrushColor((parts.ThumbVisual.Child as Border)?.Background ?? parts.ThumbVisual.Background),
                     BrushColor(parts.ThumbVisual.BorderBrush),
                     RenderedOuterContrast(root, parts.ThumbVisual, verticalOnly: true)));
-                ClearCaptureKeyboardFocus();
+                ClearCaptureKeyboardFocus(root);
                 captures[$"day-{state.Name}"] =
                     EncodePng(ScaleToFrame(
                         CaptureVisual(root),
@@ -16281,10 +16281,25 @@ internal static class ValidationReport
         Dispatcher.PushFrame(frame);
     }
 
-    private static void ClearCaptureKeyboardFocus()
+    private static void ClearCaptureKeyboardFocus(FrameworkElement captureRoot)
     {
-        Keyboard.Focus(null);
+        // Focus(null) targets the active presentation source's root, which can
+        // restore its focused child. ClearFocus keeps the target null and lets
+        // normal LostKeyboardFocus/style triggers remove the actual focus ring.
+        Keyboard.ClearFocus();
         PumpDispatcher();
+        var focusedVisual = Descendants<UIElement>(captureRoot).Prepend(captureRoot)
+            .FirstOrDefault(element => element.IsVisible &&
+                (element.IsKeyboardFocused || element.IsKeyboardFocusWithin));
+        if (Keyboard.FocusedElement is not null || focusedVisual is not null)
+        {
+            var focusedName = Keyboard.FocusedElement is FrameworkElement focused
+                ? $"{focused.GetType().Name}/{focused.Name}"
+                : Keyboard.FocusedElement?.GetType().Name ?? "none";
+            throw new InvalidOperationException(
+                $"参考帧捕获前仍有键盘焦点：root={captureRoot.Name}; focused={focusedName}; " +
+                $"visibleFocus={focusedVisual?.GetType().Name ?? "none"}。");
+        }
     }
 
     private static bool CaptureTextMotionSettled(FrameworkElement root) =>

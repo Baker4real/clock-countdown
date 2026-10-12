@@ -177,7 +177,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         PopupFocusLifecycle.Attach(PreferencesPopup, PreferencesButton, () => DisplayPrecision);
         PopupFocusLifecycle.ClipToCanvas(FilterPopup, MainLayoutSurface);
         PopupFocusLifecycle.ClipToCanvas(TagManagerPopup, MainLayoutSurface);
-        PopupFocusLifecycle.ClipToCanvas(PreferencesPopup, MainLayoutSurface);
+        PopupFocusLifecycle.ClipToCanvas(PreferencesPopup, MainWindowScrollHost);
         PopupFocusLifecycle.ClipToCanvas(NoteTags.Popup, MainLayoutSurface);
         PopupFocusLifecycle.ClipToCanvas(CountdownTags.Popup, MainLayoutSurface);
         LoadCharacterAssets(assetRoot);
@@ -2597,12 +2597,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         if (GetCountdownTargetUtc() is not { } target)
         {
+            SetCountdownEditorExpanded(true);
+            var invalidTime = new[] { CountdownHour, CountdownMinute, CountdownSecond }
+                .First(control => control.SelectedIndex < 0 || control.SelectedIndex >= control.Items.Count);
             ShowCountdownValidationError(
                 CountdownDateError,
                 "请先选择完整的倒计时截止时间。",
-                CountdownDate);
+                invalidTime);
             SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
-            CountdownDate.Focus();
+            invalidTime.Focus();
             return;
         }
 
@@ -2617,6 +2620,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             SetMessage(CountdownMessage, $"保存失败：{result.Error}", true);
             if (result.ReminderRuleErrorTarget != ReminderRuleEditingErrorTarget.None)
             {
+                SetCountdownEditorExpanded(true);
                 OpenCountdownReminderRulesEditor(
                     result.ReminderRuleErrorTarget,
                     result.Error);

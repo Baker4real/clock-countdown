@@ -662,7 +662,7 @@ public sealed partial class MainWindow
             WindowValidationInput.Pump(Dispatcher);
             var zeroSalaryStillSavesAsUnset =
                 _desktopWorkspace.Snapshot.Settings.Preferences.MonthlySalary == 0m &&
-                string.Equals(StatusText.Text, "偏好已保存。", StringComparison.Ordinal);
+                string.Equals(StatusText.Text, "设置已保存", StringComparison.Ordinal);
 
             return new SettingsDraftRetentionProbe(
                 inputsRetainedOnRefresh,

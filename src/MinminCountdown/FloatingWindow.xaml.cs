@@ -1634,6 +1634,19 @@ public sealed partial class FloatingWindow : Window
         };
         Loaded += (_, _) =>
         {
+            var recoveryMessage = _desktopWorkspace.Recovery switch
+            {
+                SettingsRecoveryOutcome.RestoredWithOriginalPreserved => "已恢复备份；原文件已另存。",
+                SettingsRecoveryOutcome.RestoredWithoutOriginal => "已恢复备份；原文件无法读取，未能另存。",
+                _ => null
+            };
+            if (recoveryMessage is not null)
+            {
+                SettingsRecoveryCompletedStatus.Foreground = (Brush)Application.Current.FindResource("BodyBrush");
+                SettingsRecoveryCompletedStatus.Visibility = Visibility.Visible;
+                UiAccessibility.MarkLive(SettingsRecoveryCompletedStatus);
+                UiAccessibility.Announce(SettingsRecoveryCompletedStatus, recoveryMessage);
+            }
             UpdateFloatingBodyScrollBarPlacement();
             Reanchor();
             _trackManualWindowPlacement = true;

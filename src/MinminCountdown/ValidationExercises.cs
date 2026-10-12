@@ -600,7 +600,7 @@ internal static class ValidationExercises
                     "ReminderCenterAcknowledgeAll",
                     StringComparison.Ordinal));
             if (acknowledgeAll is null ||
-                !ButtonHasIconAndText(acknowledgeAll, "全部已读") ||
+                !ButtonHasIconAndText(acknowledgeAll, "全部知道了") ||
                 !window.IsAncestorOf(acknowledgeAll))
             {
                 return false;
@@ -780,7 +780,7 @@ internal static class ValidationExercises
                 var badgeText = badge is null
                     ? null
                     : VisualDescendants<TextBlock>(badge).SingleOrDefault(text =>
-                        string.Equals(text.Text, "待处理", StringComparison.Ordinal));
+                        string.Equals(text.Text, "刚刚", StringComparison.Ordinal));
                 if (badge is null ||
                     badge.Focusable ||
                     !ReferenceEquals(badge.Background, warningTint) ||
@@ -790,7 +790,7 @@ internal static class ValidationExercises
                     return false;
                 }
 
-                // #150：「待处理」徽章的感叹号是矢量图形（竖条 + 圆点），不是文本字重。
+                // #223：相对时间徽章使用矢量时钟，不靠文字字重构造图标。
                 var badgePanel = badge.Child as StackPanel;
                 var badgeMark = badgePanel is { Children.Count: 2 } badgeIconText
                     ? badgeIconText.Children[0] as Grid
@@ -867,7 +867,7 @@ internal static class ValidationExercises
             AutomationProperties.GetName(button).StartsWith(accessibleNamePrefix, StringComparison.Ordinal));
 
     // #150：提醒中心不引入第三种字重——窗口内全部文字只用 Regular/SemiBold（无 Bold），
-    // 且「待处理」徽章的感叹号是纯矢量图形而不是文本。
+    // 且相对时间徽章的时钟是纯矢量图形而不是文本（#223）。
     public static bool ProbeReminderCenterTypographyWeightWhitelist()
     {
         var key = new ActiveReminderOccurrenceKey(
@@ -3153,6 +3153,73 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunReminderCenterRelativeTimeBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 8, 20, 1, 30, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"MinminCountdown-relative-time-{Guid.NewGuid():N}.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            for (var index = 0; index < 6; index++)
+            {
+                Must(session.TrySaveNote(null, $"相对时间便签 {index}", new DateTime(2036, 8, 20), false,
+                    Array.Empty<string>(), ReminderSchedule.CreateOnce(dueUtc), out _), "无法建立相对时间发生项。");
+            }
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ?? throw new InvalidOperationException("相对时间提醒中心未打开。");
+            WindowValidationInput.Pump(center.Dispatcher);
+            center.UpdateLayout();
+            var rows = VisualDescendants<Border>(center).Where(row => row.Tag is ActiveReminderOccurrenceKey).ToArray();
+            var models = rows.Select(row => row.DataContext).ToArray();
+            var badges = rows.Select(row => VisualDescendants<Border>(row).Single(border =>
+                AutomationProperties.GetAutomationId(border) == "ReminderEntryPendingBadge")).ToArray();
+            var labels = badges.Select(badge => VisualDescendants<TextBlock>(badge).Single()).ToArray();
+            var scroller = VisualDescendants<ScrollViewer>(center).Single(scroll => scroll.Content is StackPanel);
+            var focus = FindEntryButton(rows.Last(), "打开便签来源：")!;
+            center.ShowDeliveryFailure((ActiveReminderOccurrenceKey)rows[0].Tag);
+            var error = VisualDescendants<TextBlock>(rows[0]).Single(text =>
+                AutomationProperties.GetAutomationId(text) == "ReminderEntryDeliveryError");
+            var errorText = error.Text;
+            center.Activate();
+            WindowValidationInput.Pump(center.Dispatcher);
+            Keyboard.Focus(focus);
+            scroller.ScrollToEnd();
+            WindowValidationInput.Pump(center.Dispatcher);
+            var offset = scroller.VerticalOffset;
+            Must(offset > 0 && ReferenceEquals(Keyboard.FocusedElement, focus), "时间刷新前须有非零滚动及真实按钮焦点。");
+            var commits = 0;
+            session.StateChanged += (_, _) => commits++;
+            foreach (var (seconds, expected) in new[] { (0, "刚刚"), (59, "刚刚"), (60, "已过 1 分钟"), (3599, "已过 59 分钟"), (3600, "已过 1 小时"), (7200, "已过 2 小时") })
+            {
+                clock.UtcNow = dueUtc.AddSeconds(seconds);
+                coordinator.Tick(clock.UtcNow);
+                WindowValidationInput.Pump(center.Dispatcher);
+                center.UpdateLayout();
+                if (labels.Any(label => label.Text != expected) ||
+                    badges.Any(badge => AutomationProperties.GetName(badge) != expected) ||
+                    !rows.SequenceEqual(VisualDescendants<Border>(center).Where(row => row.Tag is ActiveReminderOccurrenceKey)) ||
+                    !models.SequenceEqual(rows.Select(row => row.DataContext)) ||
+                    !labels.SequenceEqual(badges.Select(badge => VisualDescendants<TextBlock>(badge).Single())) ||
+                    !ReferenceEquals(Keyboard.FocusedElement, focus) || Math.Abs(scroller.VerticalOffset - offset) > 0.1 ||
+                    commits != 0 || error.Text != errorText || error.Visibility != Visibility.Visible)
+                {
+                    Console.Error.WriteLine($"#223 relative time at {seconds}s: expected={expected}, actual={labels[0].Text}, commits={commits}");
+                    return false;
+                }
+            }
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteSettingsFiles(settingsPath);
+        }
+    }
+
     public static ReminderCenterAcknowledgeAllExerciseResult RunReminderCenterAcknowledgeAllBehavior()
     {
         var dueUtc = new DateTimeOffset(2036, 8, 20, 1, 30, 0, TimeSpan.Zero);
@@ -3204,7 +3271,7 @@ internal static class ValidationExercises
                 return ReminderCenterAcknowledgeAllExerciseResult.Failed;
             }
 
-            // 第一条走逐条「知道了」作为语义对照，其余两条走头部「全部已读」。
+            // 第一条走逐条「知道了」作为语义对照，其余两条走头部「全部知道了」。
             var singleAcknowledged = center.RequestAcknowledgement(keys[0]);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var commitCount = 0;
@@ -3256,6 +3323,14 @@ internal static class ValidationExercises
                     false,
                     Array.Empty<string>(),
                     ReminderSchedule.CreateOnce(failDueUtc),
+                    out _) &&
+                session.TrySaveNote(
+                    null,
+                    "批量失败后删除探针己",
+                    new DateTime(2036, 8, 20),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(failDueUtc),
                     out _);
             clock.UtcNow = failDueUtc;
             coordinator.Tick(failDueUtc);
@@ -3271,7 +3346,7 @@ internal static class ValidationExercises
                 .ToArray();
             if (!failureSaved ||
                 failureCenter is null ||
-                coordinator.ActiveEntryCount != 2 ||
+                coordinator.ActiveEntryCount != 3 ||
                 failureKeys.Any(key => !failureCenter.IsAcknowledgeEnabled(key)) ||
                 !failureCenter.IsAcknowledgeAllEnabled)
             {
@@ -3289,7 +3364,7 @@ internal static class ValidationExercises
             var diskDuringFailure = new SettingsStore(clock: clock).Load(settingsPath).Settings;
             var failureRetainsAllAtomically =
                 failureRaised &&
-                coordinator.ActiveEntryCount == 2 &&
+                coordinator.ActiveEntryCount == 3 &&
                 failureKeys.All(key => failureCenter.IsFailureVisible(key)) &&
                 failureKeys.All(key => !failureCenter.IsAcknowledgeEnabled(key)) &&
                 failureKeys.All(key => failureCenter.IsOpenSourceEnabled(key)) &&
@@ -3299,25 +3374,46 @@ internal static class ValidationExercises
                     session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey is null &&
                     diskDuringFailure.ReminderStates[rule.Id].LastDispositionOccurrenceKey is null);
 
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            clock.UtcNow = failDueUtc.AddSeconds(3);
+            var deletedNote = session.Current.Notes.Single(note => note.Text == "批量失败后删除探针己");
+            Must(session.TryDeleteNote(deletedNote.Id, out _), "批量失败后通过来源删除条目失败。");
+            Must(session.TrySaveNote(null, "批量失败期间新到达", new DateTime(2036, 8, 20), false,
+                Array.Empty<string>(), ReminderSchedule.CreateOnce(failDueUtc.AddSeconds(4)), out _),
+                "无法建立原批次之外的新发生项。");
             clock.UtcNow = failDueUtc.AddSeconds(4);
             coordinator.Tick(clock.UtcNow);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var newRule = session.Current.Notes.Single(note => note.Text == "批量失败期间新到达").ReminderRules.Single();
+            var newKey = new ActiveReminderOccurrenceKey(newRule.Id, failDueUtc.AddSeconds(4));
+            var retainedFailureKeys = failureKeys.Take(2).ToArray();
+            bool HasRow(ActiveReminderOccurrenceKey key) => VisualDescendants<Border>(failureCenter)
+                .Any(row => row.Tag is ActiveReminderOccurrenceKey rowKey && rowKey == key);
             var noEarlyRetry =
-                coordinator.ActiveEntryCount == 2 &&
-                failureKeys.All(key => failureCenter.IsFailureVisible(key));
-            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+                coordinator.ActiveEntryCount == 3 &&
+                retainedFailureKeys.All(key => failureCenter.IsFailureVisible(key)) &&
+                !HasRow(failureKeys[2]) && failureCenter.IsAcknowledgeEnabled(newKey);
             clock.UtcNow = failDueUtc.AddSeconds(5);
+            commitCount = 0;
+            session.StateChanged += countCommit;
             coordinator.Tick(clock.UtcNow);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            session.StateChanged -= countCommit;
+            Console.Error.WriteLine($"REMINDER_BATCH_RETRY_COMMITS: {commitCount}");
             var failureOccurrenceKeys = failureRules
                 .Select(rule => ReminderOccurrenceKey.Create(rule, failDueUtc).ToString())
                 .ToArray();
             var persistedAfterRetry = new SettingsStore(clock: clock).Load(settingsPath).Settings;
             var backoffRetryCompletesBatch =
                 noEarlyRetry &&
-                coordinator.ActiveEntryCount == 0 &&
-                !failureCenter.IsVisible &&
-                failureRules
+                commitCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                failureCenter.IsVisible && HasRow(newKey) &&
+                !HasRow(failureKeys[2]) &&
+                !session.Current.ReminderStates.ContainsKey(failureRules[2].Id) &&
+                session.Current.ReminderStates[newRule.Id].LastDispositionOccurrenceKey is null &&
+                persistedAfterRetry.ReminderStates[newRule.Id].LastDispositionOccurrenceKey is null &&
+                failureRules.Take(2)
                     .Select((rule, index) => (rule, index))
                     .All(pair =>
                         string.Equals(
@@ -3780,7 +3876,7 @@ internal static class ValidationExercises
     }
 
     // #155：「完成便签」确认框行为——先取消（安全默认，便签/条目/可完成状态原样保留），
-    // 再确认（原子完成便签、移除中心条目、写入处置 key）。「全部已读」不经本入口。
+    // 再确认（原子完成便签、移除中心条目、写入处置 key）。「全部知道了」不经本入口。
     public static bool RunReminderCenterCompleteRequiresConfirmationBehavior()
     {
         var dueUtc = new DateTimeOffset(2036, 5, 12, 1, 0, 0, TimeSpan.Zero);

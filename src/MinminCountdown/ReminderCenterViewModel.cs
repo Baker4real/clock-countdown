@@ -82,6 +82,14 @@ internal sealed class ReminderCenterViewModel : ObservableObject
     internal ReminderCenterEntryViewModel? Find(ActiveReminderOccurrenceKey key) =>
         _entries.FirstOrDefault(entry => entry.Item.Key == key);
 
+    internal void UpdateTime(DateTimeOffset nowUtc)
+    {
+        foreach (var entry in _entries)
+        {
+            entry.UpdateTime(nowUtc);
+        }
+    }
+
     private void OnEntryPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         if (args.PropertyName is nameof(ReminderCenterEntryViewModel.IsAcknowledgeEnabled) or
@@ -114,6 +122,7 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     private string _customErrorMessage = string.Empty;
     private ReminderSnoozeOption _selectedSnoozeOption = ReminderSnoozeOption.TenMinutes;
     private DateTime? _customDate;
+    private string _relativeTimeText = "刚刚";
     private int _customHourIndex = -1;
     private int _customMinuteIndex = -1;
 
@@ -133,6 +142,22 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     }
 
     public ReminderCenterItem Item { get; }
+
+    public string RelativeTimeText
+    {
+        get => _relativeTimeText;
+        private set => SetProperty(ref _relativeTimeText, value);
+    }
+
+    internal void UpdateTime(DateTimeOffset nowUtc)
+    {
+        var elapsed = nowUtc.ToUniversalTime() - Item.Key.ScheduledUtc.ToUniversalTime();
+        RelativeTimeText = elapsed.TotalSeconds < 60
+            ? "刚刚"
+            : elapsed.TotalHours < 1
+                ? $"已过 {Math.Floor(elapsed.TotalMinutes):0} 分钟"
+                : $"已过 {Math.Floor(elapsed.TotalHours):0} 小时";
+    }
 
     public bool CanComplete => _canComplete;
 

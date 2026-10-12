@@ -4245,7 +4245,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 724 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（含 #230 的 707 字段基点，#219 增加 7 字段，#217 增加 10 字段）'
+    Assert-Equal 726 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#217/#219 集成724字段，#223增加2字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4829,7 +4829,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v45') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal 'A74A84EFA016F339E66C24050077C3FB735F7E2B88FFB4D4FD868B525C8C55D1' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（724 字段；去掉 #217 的 10 项恢复 #219 集成的 714 字段形状）'
+    Assert-Equal '8F119A080BE5992E1F32494226C5577FCCE4BE59A659736D809C583879B445AE' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（726字段；去掉#223两项恢复724字段 A74A84EF 形状）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -5333,7 +5333,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.RuleEditorInlineDeleteUsesDangerButton) '规则编辑器行内删除使用 DangerButton'
     Assert-Equal $true ([bool] $adapterValidation.SettingsRecoverySecondaryUsesCanvas) '设置恢复次级按钮使用现役暖白画布副本 #FFFDF3EB'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterTwoRowActionsLayout) '提醒中心动作按 DESIGN 两行布局且按钮为图标加文字'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterEntryVisualIdentity) '提醒中心页面、卡片、待处理徽章与来源图标符合 DESIGN 视觉标识'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterEntryVisualIdentity) '提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN 视觉标识'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterContentHierarchy) '#223 提醒正文为H2标题、来源为caption且可访问名称保来源'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterRelativeTimeUpdatesInPlace) '#223 相对时间按分钟/小时原位更新，保条目、焦点、滚动与失败信息且对比至少4.5'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterEscapeFocusesAcknowledge) '提醒中心有条目时 Esc 不关窗只把焦点移到知道了（失败态回落打开来源）'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterTypographyWeightWhitelist) '提醒中心字重只用 Regular 与 SemiBold 且感叹号为矢量图形'
     Assert-Equal $true ([bool] $adapterValidation.ReminderCenterRepresentativeCaptureRendered) '提醒中心代表态真实帧渲染出白底页面、暖黄卡、待处理徽章、主行动按钮与便签来源图标'

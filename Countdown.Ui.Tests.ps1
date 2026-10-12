@@ -518,8 +518,8 @@ try {
         throw "Rendered manager note order is incorrect: $(@($listValidation.RenderedManagerNoteIds) -join ',')."
     }
     if (-not $listValidation.FloatingNotesKeepExistingSortOrder -or
-        @($listValidation.RenderedFloatingNoteIds) -join ',' -ne 'note-active-old,note-active-new-first,note-active-new-second') {
-        throw "Floating note order changed unexpectedly: $(@($listValidation.RenderedFloatingNoteIds) -join ',')."
+        @($listValidation.RenderedFloatingNoteIds) -join ',' -ne 'note-active-new-second,note-active-new-first,note-active-old') {
+        throw "Floating notes must use shared newest-date and newest-entry order (#226): $(@($listValidation.RenderedFloatingNoteIds) -join ',')."
     }
     if (-not $listValidation.NoteDateSectionsCanCollapse) { throw 'Sticky-note date sections cannot be expanded and collapsed independently.' }
     if (-not $listValidation.NoteDateSectionsAreIndependent) { throw 'Active and completed date sections do not retain independent collapse state.' }

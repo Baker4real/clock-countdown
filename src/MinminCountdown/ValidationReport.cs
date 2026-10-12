@@ -12850,7 +12850,7 @@ internal static class ValidationReport
                     "ReminderCenterContentRoot",
                     "提醒中心",
                     "排版验证正文",
-                    $"计划：{ChinaStandardTime.ToBeijingTime(reminderKey.ScheduledUtc):yyyy年M月d日 HH:mm}（北京时间）",
+                    "计划：2031 年 4 月 5 日 09:00（北京时间）",
                     "便签"),
                 MeasureSecondaryTypography(
                     editor,

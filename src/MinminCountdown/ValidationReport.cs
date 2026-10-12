@@ -33,7 +33,7 @@ internal static class ValidationReport
         var awarenessElevatedByProbe = EnableCaptureProbePerMonitorV2Awareness();
         var dayBeijing = new DateTimeOffset(2032, 5, 18, 10, 15, 30, TimeSpan.FromHours(8));
         var referenceUtc = dayBeijing.ToUniversalTime();
-        var theme = new ApplicationTheme(resources);
+        using var theme = new ApplicationTheme(resources);
         var temporaryRoot = Path.Combine(
             Path.GetTempPath(),
             $"MinminCountdown-empty-day-probe-{Guid.NewGuid():N}");
@@ -1992,6 +1992,8 @@ internal static class ValidationReport
             ["MainIdleTextInputBoundaryContrast"] = mainIdleTextInputBoundaryContrast,
             ["IdleControlBoundariesVisible"] = idleControlBoundaries.Values.All(value => value),
             ["IdleControlBoundaryChecks"] = idleControlBoundaries,
+            ["SystemContrastUpdatesOpenWindows"] = ValidateSystemContrastUpdatesOpenWindows(main, floating),
+            ["SystemContrastAccessibleStates"] = ValidateSystemContrastAccessibleStates(main, floating),
             ["SelectedControlSignalsVisible"] = selectedControlSignals.Values.All(value => value) &&
                 mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "MainWindow" && sample.UsesDedicatedStyle) &&
                 mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "FloatingWindow" && sample.UsesCompletionSuccessStyle),
@@ -13737,6 +13739,150 @@ internal static class ValidationReport
                 Math.Abs(measured[0] - measured[1]) > .5;
         }
         finally { host.Close(); }
+    }
+
+    private static bool ValidateSystemContrastUpdatesOpenWindows(MainWindow main, FloatingWindow floating)
+    {
+        static bool ColorIs(Brush? brush, Color color) => brush is SolidColorBrush solid && solid.Color == color;
+        var mainInput = (TextBox)main.FindName("CountdownName");
+        var floatingSurface = (Border)floating.FindName("TaskCard");
+        var originalText = mainInput.Text;
+        var originalBackground = ((SolidColorBrush)main.Background).Color;
+        bool enabled;
+        using (ApplicationTheme.OverrideHighContrastForValidation(true))
+        {
+            PumpDispatcher();
+            enabled = ColorIs(main.Background, SystemColors.WindowColor) &&
+                ColorIs(mainInput.Foreground, SystemColors.WindowTextColor) &&
+                ColorIs(mainInput.BorderBrush, SystemColors.WindowTextColor) &&
+                ColorIs(floatingSurface.Background, SystemColors.WindowColor) &&
+                ((FrameworkElement)main.FindName("MainReferenceDecorationLayer")).Visibility == Visibility.Collapsed &&
+                ((FrameworkElement)floating.FindName("FloatingDayRasterScene")).Visibility == Visibility.Collapsed &&
+                mainInput.Text == originalText;
+            Console.Error.WriteLine($"SYSTEM_CONTRAST_COLORS: main={main.Background}; input={mainInput.Foreground}; border={mainInput.BorderBrush}; floating={floatingSurface.Background}; window={SystemColors.WindowColor}; text={SystemColors.WindowTextColor}; mainDecor={((FrameworkElement)main.FindName("MainReferenceDecorationLayer")).Visibility}; floatingDecor={((FrameworkElement)floating.FindName("FloatingDayRasterScene")).Visibility}");
+        }
+        PumpDispatcher();
+        var restored = ColorIs(main.Background, originalBackground) &&
+            ReferenceEquals(mainInput, main.FindName("CountdownName")) && mainInput.Text == originalText;
+        Console.Error.WriteLine($"SYSTEM_CONTRAST_OPEN_WINDOWS: enabled={enabled}; restored={restored}");
+        return enabled && restored;
+    }
+
+    private static bool ValidateSystemContrastAccessibleStates(MainWindow main, FloatingWindow floating)
+    {
+        static bool ColorIs(Brush? brush, Color color) => brush is SolidColorBrush solid && solid.Color == color;
+        var checks = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var workspace = main.CurrentWorkspace;
+        var focus = Keyboard.FocusedElement;
+        var input = Required<TextBox>(main, "CountdownName");
+        var originalText = input.Text;
+        var floatingVisible = floating.IsVisible;
+        var now = new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero);
+        var reminder = new ReminderCenterWindow { ShowInTaskbar = false, Opacity = 0 };
+        reminder.AddEntry(new ReminderCenterItem(new ActiveReminderOccurrenceKey("contrast-rule", now),
+            new NoteRecord("contrast-note", "系统对比度提醒", "2031-04-05", false, [], NoReminder.Instance), 0, 0));
+        reminder.SetDeliveryReady(new ActiveReminderOccurrenceKey("contrast-rule", now));
+        var editor = new ReminderRulesEditorWindow([], new ValidationClock(now))
+            { Owner = main, ShowInTaskbar = false, ShowActivated = false, Opacity = 0 };
+        var dialog = new ConfirmationDialog(main, "对比度确认", "保留用户草稿与当前选区")
+            { ShowInTaskbar = false, ShowActivated = false, Opacity = 0 };
+        try
+        {
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            if (!floatingVisible) floating.Show();
+            reminder.Show(); editor.Show(); dialog.Show();
+            PumpDispatcher();
+            var reminderSurface = (Border)reminder.Content;
+            var editorSurface = (Border)editor.Content;
+            var dialogSurface = (Border)dialog.Content;
+            var dayColors = new[] { reminderSurface.Background, editorSurface.Background, dialog.Background }
+                .Select(brush => ((SolidColorBrush)brush).Color).ToArray();
+            var originalRows = Descendants<FrameworkElement>(reminder)
+                .Where(element => AutomationProperties.GetAutomationId(element) == "ReminderEntryPendingBadge").ToArray();
+            input.Text = "对比度草稿保留";
+            input.Select(1, 3);
+            main.Activate(); Keyboard.Focus(input); PumpDispatcher();
+            var wasFocused = input.IsKeyboardFocused;
+            var generation = main.CountdownRowRebuildGenerationForValidation;
+            using (ApplicationTheme.OverrideHighContrastForValidation(true))
+            {
+                PumpDispatcher();
+                checks["DraftSelectionFocus"] = wasFocused && input.IsKeyboardFocused &&
+                    input.Text == "对比度草稿保留" && input.SelectionStart == 1 && input.SelectionLength == 3 &&
+                    main.CountdownRowRebuildGenerationForValidation == generation;
+                checks["ReminderSurface"] = ColorIs(reminderSurface.Background, SystemColors.WindowColor) &&
+                    ColorIs(reminderSurface.BorderBrush, SystemColors.WindowTextColor) && reminder.EntryCount == 1 &&
+                    Descendants<TextBlock>(reminder).Any(text => text.Text == "系统对比度提醒" && ColorIs(text.Foreground, SystemColors.WindowTextColor));
+                checks["RuleEditorSurface"] = ColorIs(editorSurface.Background, SystemColors.WindowColor) &&
+                    ColorIs(editorSurface.BorderBrush, SystemColors.WindowTextColor) &&
+                    Descendants<TextBlock>(editor).Any(text => text.Text == "提醒规则" && ColorIs(text.Foreground, SystemColors.WindowTextColor));
+                checks["ConfirmationSurface"] = ColorIs(dialog.Background, SystemColors.WindowColor) &&
+                    ColorIs(dialog.Foreground, SystemColors.WindowTextColor) &&
+                    ColorIs(dialogSurface.BorderBrush, SystemColors.WindowTextColor) &&
+                    ColorIs(dialog.BodyText.Foreground, SystemColors.WindowTextColor);
+                checks["TextSelection"] = ColorIs(input.SelectionBrush, SystemColors.HighlightColor) &&
+                    input.SelectionOpacity == 1 && ColorIs(input.SelectionTextBrush, SystemColors.HighlightTextColor);
+                var actions = new (string Name, Window Window, Button Button)[]
+                {
+                    ("Main", main, Required<Button>(main, "SaveCountdownButton")),
+                    ("Floating", floating, Required<Button>(floating, "OpenManagerButton")),
+                    ("Reminder", reminder, Descendants<Button>(reminder).Single(button => AutomationProperties.GetAutomationId(button) == "ReminderCenterAcknowledgeAll")),
+                    ("Rules", editor, Descendants<Button>(editor).First(button => button.IsVisible && ReferenceEquals(button.Style, Application.Current.FindResource("PrimaryButton")))),
+                    ("Confirmation", dialog, dialog.CancelButton)
+                };
+                foreach (var action in actions)
+                {
+                    action.Window.Activate(); Keyboard.Focus(action.Button);
+                    FocusVisualState.SetIsKeyboardFocusVisible(action.Button, true);
+                    PumpDispatcher();
+                    var ring = action.Button.Template?.FindName("FocusRing", action.Button) as Border;
+                    checks[action.Name + "Focus"] = action.Button.IsKeyboardFocused && ring is not null &&
+                        ColorIs(ring.BorderBrush, SystemColors.HighlightColor);
+                    if (!checks[action.Name + "Focus"])
+                        Console.Error.WriteLine($"SYSTEM_CONTRAST_FOCUS {action.Name}: keyboard={action.Button.IsKeyboardFocused}; ring={ring?.BorderBrush}; visible={action.Button.IsVisible}; state={action.Window.WindowState}");
+                    var enabled = action.Button.IsEnabled;
+                    action.Button.SetCurrentValue(UIElement.IsEnabledProperty, false); PumpDispatcher();
+                    checks[action.Name + "Disabled"] = ColorIs(action.Button.Foreground, SystemColors.GrayTextColor);
+                    action.Button.SetCurrentValue(UIElement.IsEnabledProperty, enabled);
+                }
+                var toggle = Required<ToggleButton>(floating, "FloatingCountdownsButton");
+                var originalChecked = toggle.IsChecked;
+                toggle.SetCurrentValue(ToggleButton.IsCheckedProperty, true); PumpDispatcher();
+                var selected = toggle.Template?.FindName("Surface", toggle) as Border;
+                checks["FloatingSelection"] = selected is not null && ColorIs(selected.Background, SystemColors.HighlightColor) &&
+                    ColorIs(toggle.Foreground, SystemColors.HighlightTextColor);
+                toggle.SetCurrentValue(ToggleButton.IsCheckedProperty, originalChecked);
+                var mode = Descendants<ComboBox>(editor).Single(combo => AutomationProperties.GetAutomationId(combo) == "ReminderRuleMode");
+                editor.Activate(); mode.IsDropDownOpen = true; PumpDispatcher();
+                var selectedItem = mode.ItemContainerGenerator.ContainerFromIndex(mode.SelectedIndex) as ComboBoxItem;
+                var selectedSurface = selectedItem?.Template?.FindName("Surface", selectedItem) as Border;
+                checks["RulePopupSelection"] = mode.IsDropDownOpen && selectedSurface is not null &&
+                    ColorIs(selectedSurface.Background, SystemColors.HighlightColor) &&
+                    ColorIs(selectedItem!.Foreground, SystemColors.HighlightTextColor);
+                mode.IsDropDownOpen = false;
+                main.ShowWorkspace(WorkspaceKind.Notes); PumpDispatcher();
+                checks["DecorationsStayHiddenAfterNavigation"] = new[] { "MainReferenceDecorationLayer", "CharacterBackgroundLayer", "CharacterPanelLayer", "CountdownDecoTextTop", "CountdownDecoTextBottom", "NotesDecoText", "CountdownEmptyMascot", "NotesEmptyMascot" }
+                    .All(name => !Required<FrameworkElement>(main, name).IsVisible) &&
+                    new[] { "FloatingDayRasterScene", "FloatingPlushScene", "FloatingNotesDecoTextLeft", "FloatingNotesDecoText" }
+                    .All(name => !Required<FrameworkElement>(floating, name).IsVisible);
+            }
+            PumpDispatcher();
+            checks["AllSurfacesRestore"] = ColorIs(reminderSurface.Background, dayColors[0]) &&
+                ColorIs(editorSurface.Background, dayColors[1]) && ColorIs(dialog.Background, dayColors[2]);
+            checks["RowsRemain"] = originalRows.Length == 1 && originalRows.SequenceEqual(Descendants<FrameworkElement>(reminder)
+                .Where(element => AutomationProperties.GetAutomationId(element) == "ReminderEntryPendingBadge"));
+            checks["FloatingRasterRestores"] = Required<FrameworkElement>(floating, "FloatingDayRasterScene").Visibility == Visibility.Visible;
+        }
+        finally
+        {
+            dialog.Close(); editor.Close(); reminder.ForceClose();
+            if (!floatingVisible) floating.Hide();
+            input.Text = originalText;
+            main.ShowWorkspace(workspace);
+            if (focus is UIElement previous) Keyboard.Focus(previous);
+        }
+        Console.Error.WriteLine("SYSTEM_CONTRAST_STATES: " + JsonSerializer.Serialize(checks));
+        return checks.Count > 15 && checks.Values.All(value => value);
     }
 
     private static IReadOnlyDictionary<string, bool> ValidateIdleControlBoundaries(MainWindow main)

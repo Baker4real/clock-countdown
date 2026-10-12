@@ -282,6 +282,7 @@ internal static class MotionBehavior
             }
 
             _attached = true;
+            ApplicationTheme.PaletteChanged += OnPaletteChanged;
             ApplyState(
                 CurrentBrushColor(surface.Background),
                 CurrentBrushColor(surface.BorderBrush),
@@ -291,6 +292,7 @@ internal static class MotionBehavior
 
         private void DetachFromControl()
         {
+            ApplicationTheme.PaletteChanged -= OnPaletteChanged;
             _stateVersion++;
             if (_control is not null)
             {
@@ -329,6 +331,14 @@ internal static class MotionBehavior
                 CurrentBrushColor(_surface.BorderBrush),
                 CurrentScale(_surface),
                 animateColors: false);
+        }
+
+        private void OnPaletteChanged(object? sender, EventArgs args)
+        {
+            _stateVersion++;
+            if (_surface is not null)
+                ApplyState(CurrentBrushColor(_surface.Background), CurrentBrushColor(_surface.BorderBrush),
+                    CurrentScale(_surface), animateColors: false);
         }
 
         private void OnStateChanged(object? sender, EventArgs args)

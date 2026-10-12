@@ -152,6 +152,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -211,6 +220,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -273,6 +291,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -332,6 +359,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -396,6 +432,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -454,6 +499,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -529,6 +583,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -586,6 +649,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -699,6 +771,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -756,6 +837,15 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>

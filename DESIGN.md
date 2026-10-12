@@ -377,6 +377,12 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 3. 使用 `8px` 基准间距与暖中性色层级；状态章节 10px、日期章节 12px、卡间 8px 都从该节奏派生。
 4. 采用低存在感的多层暖色深度：不堆灰阴影，优先用 1px 边界、背景角色和留白表达层级；主行动按钮允许一层极轻的暖色投影以表达可点击性。
 
+### 管理窗口稳定刷新（#230）
+
+- 管理窗口不可见时，时间 tick 跳过倒计时分格、时间文字和便签列表渲染；恢复可见立即按当前北京时间刷新。
+- 便签分钟 tick 按可见记录 ID、日期标签、提醒摘要与临时来源揭示状态比较签名。内容不变时保留列表；日期或下一次提醒改变时只就地更新文字与对应可访问名，保留便签行控件、具体操作按钮焦点和滚动位置。
+- 数据、筛选或临时来源揭示状态变化继续走原重绘入口；倒计时既有签名、到期切换和分格几何合同不变。
+
 ## 6. 深度层级
 
 页面画布为 Level 0；内容区块为 Level 1（`CardBrush` 表面 + 1px `PeachLineBrush`）；便签卡与提醒条目卡为 Level 2（棕黄或白纸底 + 1px 边界）。不使用外发光、霓虹阴影或浮动大卡片。常规焦点使用 `ActiveBrush` 边界，不能依赖默认系统蓝。#217 主操作按钮、浮窗选中胶囊与已勾选置顶共用 `MainActionFocusBrush` 暖金焦点资源（调深为 `#A87324`）；未勾选置顶使用常规 `ActiveBrush`。所有焦点环按外侧可见邻色 ≥3:1 验收，暖金对六种浅色面的最低值为 Background 上的 3.65:1；保留暖金角色，不保留旧浅金数值。按压与悬停仍使用既有 `ActiveBrush` 语义。焦点只改变常驻 2px 边框颜色，不加厚、不挤布局、不叠第二套描边。
@@ -495,7 +501,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役四帧与场景对应（v43 基线 `assets/ui-references/floating-window/520x390/2026-10-10-v43/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
+现役四帧与场景对应（v45 基线 `assets/ui-references/floating-window/520x390/2026-10-12-v45/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -531,10 +537,12 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-10-12，集成尖端重拍）：#212 悬浮窗稳定刷新、#214 就地撤销、#216 讲述人播报和 #231 按显示尺寸解码叠在同一棵树上，v33 的 sourceBinding 已对不上。现役验收基线改为 `2026-10-10-v43`。BaselineGenerate `20261012T024658620-d4e1fc33` 在物理屏 2560×1440 上生成双 manifest：主窗 8 帧聚合 SHA-256 `567E564D6494DB59E1BAFEBC902B7F59494313904E1B29EEC045430FCC7C9FED`，悬浮窗 4 帧聚合 `64D79233EDC4AEB2B6D41A0B8B88853B09E02B51C3492106E977DA6DA59772DD`，`executable.sha256` 均为 `785ECBDA5FA48535A786DCB4F559A1720D1CF07B0B4CEEE3154D299BE8924D37`。v33 保留为 #211 的历史捕获，不再作为现役门禁。
 
-1. #189 的 WPF 改版使用纯日间 **v43** 真实渲染系列，版本目录为 `2026-10-10-v43`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+当前集成候选（2026-10-12，#230）：管理窗口隐藏与分钟刷新改为稳定更新，主窗源码绑定需要刷新。候选基线为 `2026-10-12-v45`，双 manifest 重拍与独立 CSharp / Ui 回归通过前不视为验收完成；v43 保留为此前集成快照，主工作树 v44 不覆盖。
 
-2. v43 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-10-v43/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v43 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+1. #189 的 WPF 改版使用纯日间 **v45** 真实渲染系列，版本目录为 `2026-10-12-v45`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v45 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-12-v45/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v45 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
 4. v21、v22、v32、v33 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v43。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 

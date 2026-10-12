@@ -359,7 +359,7 @@ public sealed class SettingsStore
                     "恢复候选在用户确认后发生变化，应用将退出且不会写入设置。");
             }
 
-            PreserveDamagedMainEvidence(settingsPath);
+            var originalPreserved = PreserveDamagedMainEvidence(settingsPath);
             var canonicalPayload = SettingsContract.SerializeCanonical(currentCandidate.Loaded.Settings);
             _files.WriteUtf8NoBomText(temporaryPath, canonicalPayload);
             _files.ReplaceFile(temporaryPath, settingsPath, rollbackPath, ignoreMetadataErrors: true);
@@ -368,7 +368,12 @@ public sealed class SettingsStore
             {
                 var reloaded = Load(settingsPath, migrationUtc);
                 TryDeleteFile(rollbackPath);
-                return reloaded;
+                return reloaded with
+                {
+                    Recovery = originalPreserved
+                        ? SettingsRecoveryOutcome.RestoredWithOriginalPreserved
+                        : SettingsRecoveryOutcome.RestoredWithoutOriginal
+                };
             }
             catch (Exception readbackException) when (
                 readbackException is SettingsValidationException or IOException or UnauthorizedAccessException)
@@ -401,7 +406,7 @@ public sealed class SettingsStore
         }
     }
 
-    private void PreserveDamagedMainEvidence(string settingsPath)
+    private bool PreserveDamagedMainEvidence(string settingsPath)
     {
         byte[] bytes;
         try
@@ -410,7 +415,7 @@ public sealed class SettingsStore
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return;
+            return false;
         }
 
         var parentDirectory = Path.GetDirectoryName(Path.GetFullPath(settingsPath))
@@ -422,6 +427,7 @@ public sealed class SettingsStore
             evidenceDirectory,
             $"settings.corrupt.{timestamp}.{Guid.NewGuid():N}.json");
         _files.WriteNewFileAndFlush(evidencePath, bytes);
+        return true;
     }
 
     private void TryDeleteFile(string path)

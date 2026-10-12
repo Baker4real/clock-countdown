@@ -1207,6 +1207,7 @@ internal static class VerificationSuite
                 });
             Equal(0, firstRun.Settings.Countdowns.Count, "首次运行空倒计时");
             Equal(0, firstRun.Settings.Notes.Count, "首次运行空便签");
+            Equal(SettingsRecoveryOutcome.None, firstRun.Recovery, "首次运行没有恢复结果");
 
             File.WriteAllText(
                 settingsPath + ".backup1",
@@ -1224,6 +1225,7 @@ internal static class VerificationSuite
             Equal(0, promptCount, "恢复提示次数");
             Equal(0, loaded.Settings.Countdowns.Count, "合法空主设置优先于非空备份");
             Equal(0, loaded.Settings.Notes.Count, "合法空主设置便签");
+            Equal(SettingsRecoveryOutcome.None, loaded.Recovery, "合法主设置没有恢复结果");
         });
     }
 
@@ -1262,6 +1264,7 @@ internal static class VerificationSuite
 
             Equal(1, promptCount, "恢复提示次数");
             Equal(2468m, loaded.Settings.Preferences.MonthlySalary, "恢复返回设置");
+            Equal(SettingsRecoveryOutcome.RestoredWithOriginalPreserved, loaded.Recovery, "恢复结果确认原字节已另存");
             Equal(
                 2468m,
                 new SettingsStore().Load(settingsPath).Settings.Preferences.MonthlySalary,
@@ -1410,6 +1413,7 @@ internal static class VerificationSuite
 
             Equal(1, approvePromptCount, "ACL 拒绝主设置的恢复提示次数");
             Equal(2468m, loaded.Settings.Preferences.MonthlySalary, "ACL 拒绝后恢复返回设置");
+            Equal(SettingsRecoveryOutcome.RestoredWithoutOriginal, loaded.Recovery, "ACL 恢复结果不虚构原文件副本");
             Equal(
                 2468m,
                 approveStore.Load(approvePath).Settings.Preferences.MonthlySalary,

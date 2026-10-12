@@ -14046,7 +14046,7 @@ internal static class ValidationReport
         {
             var recoveryButton = LogicalDescendants<Button>(recovery)
                 .Single(button =>
-                    string.Equals(AutomationProperties.GetName(button), "恢复备份", StringComparison.Ordinal));
+                    string.Equals(AutomationProperties.GetAutomationId(button), "SettingsRecoveryRecover", StringComparison.Ordinal));
             var activationButton = LogicalDescendants<Button>(activation)
                 .Single(button =>
                     string.Equals(

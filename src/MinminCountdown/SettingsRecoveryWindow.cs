@@ -14,7 +14,7 @@ internal sealed class SettingsRecoveryWindow : Window
     // 允许在主题尚未 Apply 时渲染；探针把它们与活体主题 token 逐值核对。
     private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFD, 0xF3, 0xEB));
     private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x3B, 0x19, 0x0D));
-    private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x82, 0x66, 0x5F));
+    private static readonly SolidColorBrush BodyBrush = new(Color.FromRgb(0x6B, 0x4A, 0x3C));
     private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC2, 0x3E, 0x68));
     private static readonly SolidColorBrush MainActionTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));
     private static readonly SolidColorBrush ShellLineBrush = new(Color.FromRgb(0xF6, 0xDF, 0xD3));
@@ -52,7 +52,7 @@ internal sealed class SettingsRecoveryWindow : Window
             Margin = new Thickness(0, 14, 0, 22),
             LineHeight = 25,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = MutedBrush
+            Foreground = BodyBrush
         };
         messageText.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
 
@@ -63,18 +63,19 @@ internal sealed class SettingsRecoveryWindow : Window
         };
         if (canRecover)
         {
-            var recover = CreateButton("恢复备份", isPrimary: true);
+            var recover = CreateButton("恢复备份并继续", isPrimary: true);
             recover.IsDefault = true;
             recover.Click += (_, _) =>
             {
                 _decision = SettingsRecoveryDecision.RecoverBackup;
                 DialogResult = true;
             };
-            AutomationProperties.SetName(recover, "恢复备份");
+            AutomationProperties.SetName(recover, "恢复备份并继续");
+            AutomationProperties.SetAutomationId(recover, "SettingsRecoveryRecover");
             commands.Children.Add(recover);
         }
 
-        var exit = CreateButton("退出", isPrimary: false);
+        var exit = CreateButton(canRecover ? "不改设置，退出" : "退出", isPrimary: false);
         exit.IsCancel = true;
         if (!canRecover)
         {
@@ -85,7 +86,8 @@ internal sealed class SettingsRecoveryWindow : Window
             _decision = SettingsRecoveryDecision.Exit;
             DialogResult = false;
         };
-        AutomationProperties.SetName(exit, "退出");
+        AutomationProperties.SetName(exit, exit.Content.ToString());
+        AutomationProperties.SetAutomationId(exit, "SettingsRecoveryExit");
         commands.Children.Add(exit);
         var body = new StackPanel
         {
@@ -102,7 +104,7 @@ internal sealed class SettingsRecoveryWindow : Window
     public static SettingsRecoveryDecision Choose(SettingsRecoveryPrompt prompt)
     {
         var window = new SettingsRecoveryWindow(
-            $"主设置无法读取或未通过严格校验。检测到第 {prompt.BackupGeneration} 代合法备份；请选择恢复备份或退出。",
+            $"当前设置无法打开。找到一份可用备份，生成于北京时间 {ChinaStandardTime.ToBeijingTime(prompt.BackupLastWriteTimeUtc):yyyy-MM-dd HH:mm}。\n\n选择恢复后，将使用这份备份继续运行；若原文件可读，恢复时会先逐字节另存原文件。选择退出不会修改设置。",
             canRecover: true);
         window.ShowDialog();
         return window._decision;
@@ -151,7 +153,7 @@ internal sealed class InstanceActivationFailureWindow : Window
 {
     internal const string PromptTitle = "敏敏子倒计时";
     internal const string PromptHeading = "主程序未响应";
-    internal const string PromptMessage = "请稍后重试，或检查已在运行的倒计时程序状态。";
+    internal const string PromptMessage = "请先从任务栏或系统托盘打开已有窗口，或关闭此提示后重试。若仍无响应，请先保存其他工作，再正常重启电脑。";
     internal const string DismissButtonText = "知道了";
 
     private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFD, 0xF3, 0xEB));

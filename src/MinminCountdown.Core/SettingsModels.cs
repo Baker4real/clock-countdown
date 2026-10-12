@@ -474,10 +474,20 @@ public sealed record CountdownSettings(
         new Dictionary<string, ReminderRuleState>(StringComparer.OrdinalIgnoreCase));
 }
 
+public enum SettingsRecoveryOutcome
+{
+    None,
+    RestoredWithOriginalPreserved,
+    RestoredWithoutOriginal
+}
+
 public sealed record SettingsLoadResult(
     CountdownSettings Settings,
     int SourceSchemaVersion,
-    bool Migrated);
+    bool Migrated)
+{
+    public SettingsRecoveryOutcome Recovery { get; init; }
+}
 
 public interface IGuidSource
 {

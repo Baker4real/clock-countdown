@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -214,6 +215,80 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
         ?? throw new InvalidOperationException("WPF 未公开 HasAutomationPeer，无法在退出鼓励语后恢复自动化树。");
 
     private bool _excludedFromAutomationTree;
+    private bool _isInvokable;
+    private bool _pointerPressed;
+    private bool _mouseFocusPending;
+
+    internal event EventHandler? Invoked;
+
+    internal bool IsInvokable
+    {
+        get => _isInvokable;
+        set
+        {
+            _isInvokable = value;
+            if (!value) _pointerPressed = false;
+            Focusable = value;
+            KeyboardNavigation.SetIsTabStop(this, value);
+            Cursor = value ? Cursors.Hand : null;
+            AutomationProperties.SetHelpText(this, value ? "按 Enter 或空格切换金额显示" : string.Empty);
+        }
+    }
+
+    private void InvokeAction()
+    {
+        if (IsInvokable && IsEnabled) Invoked?.Invoke(this, EventArgs.Empty);
+    }
+
+    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonDown(e);
+        if (!IsInvokable || !IsEnabled) return;
+        _pointerPressed = true;
+        _mouseFocusPending = true;
+        FocusVisualState.SetIsKeyboardFocusVisible(this, false);
+        try { Focus(); }
+        finally { _mouseFocusPending = false; }
+        e.Handled = true;
+    }
+
+    protected override void OnMouseLeave(MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        _pointerPressed = false;
+    }
+
+    protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseLeftButtonUp(e);
+        var invoke = _pointerPressed && IsInvokable && IsEnabled;
+        _pointerPressed = false;
+        if (!invoke) return;
+        InvokeAction();
+        e.Handled = true;
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (!IsInvokable || !IsEnabled || e.Key is not (Key.Enter or Key.Space)) return;
+        FocusVisualState.SetIsKeyboardFocusVisible(this, true);
+        if (!e.IsRepeat) InvokeAction();
+        e.Handled = true;
+    }
+
+    protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnGotKeyboardFocus(e);
+        FocusVisualState.SetIsKeyboardFocusVisible(this, !_mouseFocusPending);
+    }
+
+    protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnLostKeyboardFocus(e);
+        _pointerPressed = false;
+        FocusVisualState.SetIsKeyboardFocusVisible(this, false);
+    }
 
     internal void SetExcludedFromAutomationTree(bool excluded)
     {
@@ -236,7 +311,24 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
     }
 
     protected override AutomationPeer? OnCreateAutomationPeer() =>
-        _excludedFromAutomationTree ? null : base.OnCreateAutomationPeer();
+        _excludedFromAutomationTree ? null : new OptionalTextActionPeer(this);
+
+    private sealed class OptionalTextActionPeer(AutomationOptionalTextBlock owner)
+        : TextBlockAutomationPeer(owner), IInvokeProvider
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() =>
+            owner.IsInvokable ? AutomationControlType.Button : AutomationControlType.Text;
+
+        public override object? GetPattern(PatternInterface patternInterface) =>
+            patternInterface == PatternInterface.Invoke && owner.IsInvokable
+                ? this : base.GetPattern(patternInterface);
+
+        void IInvokeProvider.Invoke()
+        {
+            if (!owner.IsEnabled || !owner.IsInvokable) throw new ElementNotEnabledException();
+            owner.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(owner.InvokeAction));
+        }
+    }
 }
 /// <summary>
 /// 便签行「…」溢出菜单：把弹出层挂在其触发按钮上，供真实渲染验证读取。

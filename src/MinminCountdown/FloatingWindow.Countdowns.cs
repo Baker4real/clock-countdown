@@ -127,21 +127,14 @@ public sealed partial class FloatingWindow
         };
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var copy = new Grid
-        {
-            MinWidth = 0,
-            Margin = new Thickness(0, 0, 3, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        copy.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        copy.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        copy.ColumnDefinitions.Add(new ColumnDefinition());
-        copy.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var title = new TextBlock
         {
             Text = record.Name,
             MaxHeight = 40,
+            Margin = new Thickness(0, 0, 3, 0),
+            VerticalAlignment = VerticalAlignment.Center,
             FontSize = (double)FindResource("TypeBodyFontSize"),
             FontWeight = FontWeights.SemiBold,
             LineHeight = 20,
@@ -152,27 +145,30 @@ public sealed partial class FloatingWindow
         };
         Grid.SetRow(title, 0);
         Grid.SetColumn(title, 0);
-        copy.Children.Add(title);
+        layout.Children.Add(title);
+        var deadlineRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 3, 0, 0)
+        };
         var deadline = new TextBlock
         {
             // #148：截止行数字与「月」「日」之间留空格，并使用表格数字避免刷新跳动。
             Text = DateDisplay.Deadline(record.TargetUtc),
-            Margin = new Thickness(0, 3, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(0, 0, 3, 0),
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             TextTrimming = TextTrimming.None,
             TextWrapping = TextWrapping.NoWrap,
             Foreground = _floatingMutedBrush
         };
         Typography.SetNumeralAlignment(deadline, FontNumeralAlignment.Tabular);
-        Grid.SetRow(deadline, 1);
-        Grid.SetColumn(deadline, 0);
-        Grid.SetColumnSpan(deadline, 2);
-        copy.Children.Add(deadline);
+        deadlineRow.Children.Add(deadline);
 
         if (string.Equals(record.Id, WorkdayEndCountdownId, StringComparison.Ordinal))
         {
             // #148：徽章只挂距离下班；文字用主文字色（旧白字对比不足），
-            // 字号不低于 12 DIP 关键状态下限，并垂直居中于标题行。
+            // #229：与截止日期同行，给四字标题留出完整宽度。
             var badge = new Border
             {
                 Margin = new Thickness(12, 0, 0, 0),
@@ -195,18 +191,17 @@ public sealed partial class FloatingWindow
                 Foreground = ThemeBrush("InkBrush")
             };
             UiAccessibility.Name(badge, EncourageBadgeText);
-            Grid.SetRow(badge, 0);
-            Grid.SetColumn(badge, 1);
-            copy.Children.Add(badge);
+            deadlineRow.Children.Add(badge);
         }
 
-        Grid.SetColumn(copy, 0);
+        Grid.SetRow(deadlineRow, 1);
+        Grid.SetColumnSpan(deadlineRow, 2);
         var remainingBlocks = BuildRemainingBlocks(
             remaining,
             isPrimary: true,
             fadeSeconds: fadeSeconds);
         Grid.SetColumn(remainingBlocks, 1);
-        layout.Children.Add(copy);
+        layout.Children.Add(deadlineRow);
         layout.Children.Add(remainingBlocks);
         return layout;
     }
@@ -251,7 +246,7 @@ public sealed partial class FloatingWindow
         if (pairs is null || pairs.Count == 0)
         {
             var fallback = CountdownRemainingText(
-                remaining,
+                pairs is { Count: 0 } ? "少于 1 天" : remaining,
                 isPrimary
                     ? (double)FindResource("SecondaryWindowTitleFontSize")
                     : (double)FindResource("SecondaryWindowSectionFontSize"),
@@ -501,7 +496,7 @@ public sealed partial class FloatingWindow
         var pairs = new List<RemainingPair>(tokens.Length / 2);
         for (var index = 0; index + 1 < tokens.Length; index += 2)
         {
-            if (!long.TryParse(tokens[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            if (!long.TryParse(tokens[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
             {
                 return null;
             }
@@ -519,7 +514,10 @@ public sealed partial class FloatingWindow
                 return null;
             }
 
-            pairs.Add(new RemainingPair(tokens[index], unit));
+            if (unit != "天" || value != 0)
+            {
+                pairs.Add(new RemainingPair(tokens[index], unit));
+            }
         }
 
         return pairs;

@@ -60,6 +60,28 @@ function Resolve-ReferenceBaselineMode {
     throw '主窗口与悬浮窗视觉 manifest 必须同时存在或同时缺失；部分基线状态已失败闭锁。'
 }
 
+function Get-FloatingInformationFontTokenFailures {
+    param([Parameter(Mandatory)] [string] $RepositoryRoot)
+    [xml] $xaml = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'src/MinminCountdown/FloatingWindow.xaml') -Raw
+    foreach ($element in $xaml.SelectNodes('//*[local-name()="TextBlock" or local-name()="AutomationOptionalTextBlock" or local-name()="SilentTextBlock"]')) {
+        if ($element.GetAttribute('FontSize') -notmatch '^\{DynamicResource \w+FontSize\}$') {
+            'XAML:' + $element.GetAttribute('Name', 'http://schemas.microsoft.com/winfx/2006/xaml') + ':' + $element.GetAttribute('Text')
+        }
+    }
+    foreach ($file in @('FloatingWindow.xaml.cs', 'FloatingWindow.Notes.cs', 'FloatingWindow.Countdowns.cs')) {
+        $source = Get-Content -LiteralPath (Join-Path $RepositoryRoot "src/MinminCountdown/$file") -Raw
+        foreach ($block in [regex]::Matches($source, '(?s)new TextBlock\s*\{(?<body>.*?)\r?\n\s*\}')) {
+            if ($block.Groups['body'].Value -notmatch 'FontSize\s*=\s*(?:\(double\)FindResource\("\w+FontSize"\)|fontSize\b|unitFontSize\b|isPrimary\s*\?\s*valueFontPrimary\s*:\s*valueFontSecondary)') {
+                "$file`:TextBlock at offset $($block.Index)"
+            }
+        }
+        if ($file -eq 'FloatingWindow.xaml.cs' -and
+            $source -notmatch '(?s)private TextBlock EmptyText\(string text\) => new\(\).*?FontSize = \(double\)FindResource\("TypeCaptionFontSize"\).*?\r?\n    \};') {
+            "$file`:EmptyText"
+        }
+    }
+}
+
 function Invoke-CheckedNativeCommand {
     param(
         [Parameter(Mandatory)] [string] $FilePath,
@@ -4296,7 +4318,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 740 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#220 与 #224 合并行为合同）'
+    Assert-Equal 743 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#224/#229/#233 合并行为合同）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4435,6 +4457,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml') -Raw -Encoding UTF8
     $floatingWindowXamlSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.xaml') -Raw -Encoding UTF8
+    Assert-Equal 0 @(Get-FloatingInformationFontTokenFailures -RepositoryRoot $PSScriptRoot).Count '悬浮窗所有 XAML 与动态信息 TextBlock 显式消费字号 token（#229）'
     $mainWindowCodeSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml.cs') -Raw -Encoding UTF8
     Assert-Equal $true (
@@ -4887,7 +4910,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v47') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal 'EB81AF5A30F28E221B8357643157D3346A3E80D8676E8D4DC83B8B72750178B1' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（742字段；#224/#233 合并合同）'
+    Assert-Equal '093DD5DC4E67C91969597006BA5B2AB3366E82ADC3CD231EF85B292B6FD362E6' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（743字段；#224/#229/#233 合并合同）'
     Assert-Equal $true ([bool] $adapterValidation.NoteCompletionUndoFeedback) '#233 两窗真实完成、重新打开事务、失败回滚、唯一撤销槽及10秒到期行为'
     Assert-Equal $true ([bool] $adapterValidation.NoteCompletionExitTransition) '#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断'
     Assert-Equal $true ([bool] $adapterValidation.SystemContrastUpdatesOpenWindows) '#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复'
@@ -5133,6 +5156,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainCountdownEditingGateIsolationBehavior) '倒计时编辑门禁用会失败的反例保住（#151）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeUsesTabularNumerals) '悬浮窗今日已赚使用表格数字'
     Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeEncouragementWithoutSalary) '悬浮窗参考会话月薪清零后底部显示手写体鼓励文案并随正数月薪还原'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomePrivacyBehavior) '悬浮金额鼠标键盘 Invoke 切换，tick 切页临时无金额后仍隐藏，真实自动化树不泄露且新实例默认显示（#229）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceScenarioMatches) '悬浮窗参考场景将距离下班作为首行主项，并保持两张卡片、收入和主项单行剩余时间'
     Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryDeadlineTextFullyVisible) '悬浮窗主项的最宽日期在有无滚动条时均完整可见'
     Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryExtremeRemainingShrinks) '超长天数主项剩余时间在 194px 列内收缩且完整分格显示'

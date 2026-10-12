@@ -27,6 +27,7 @@ internal static class FloatingBottomStatus
     public const string CountdownEncouragementText = "加油！美好的事情正在靠近 ~";
 
     public const string NotesEncouragementText = "Have a nice day!";
+    public const string HiddenEarningsText = "今日已赚 ¥••••";
 
     // #218 日历未就绪时统一说明影响范围与恢复方式，两个工作区同文案。
     public const string CalendarUnavailableText = "节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复";
@@ -36,11 +37,13 @@ internal static class FloatingBottomStatus
         decimal monthlySalary,
         string calendarState,
         string calendarStatusText,
-        string encouragementText)
+        string encouragementText,
+        bool hideEarnings = false)
     {
         if (earnings is not null)
         {
-            return new(FloatingBottomStatusKind.Earnings, $"今日已赚 ￥{earnings.Value:N2}");
+            return new(FloatingBottomStatusKind.Earnings,
+                hideEarnings ? HiddenEarningsText : $"今日已赚 ￥{earnings.Value:N2}");
         }
 
         if (monthlySalary <= 0 &&
@@ -65,6 +68,7 @@ internal static class FloatingBottomStatus
         FontFamily encouragementFontFamily)
     {
         var isEncouragement = presentation.Kind == FloatingBottomStatusKind.Encouragement;
+        target.IsInvokable = presentation.Kind == FloatingBottomStatusKind.Earnings;
         target.Text = presentation.Text;
         target.SetExcludedFromAutomationTree(isEncouragement);
         if (isEncouragement)

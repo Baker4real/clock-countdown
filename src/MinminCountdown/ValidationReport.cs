@@ -9949,7 +9949,7 @@ internal static class ValidationReport
                 visibleText.Count(text => string.Equals(text, "便签", StringComparison.Ordinal)) == 2 &&
                 visibleText.Contains(firstNote.Text, StringComparer.Ordinal) &&
                 visibleText.Contains(secondNote.Text, StringComparer.Ordinal) &&
-                visibleText.Count(text => text.Contains("2031年5月6日 09:30", StringComparison.Ordinal) &&
+                visibleText.Count(text => text.Contains("2031 年 5 月 6 日 09:30", StringComparison.Ordinal) &&
                                           text.Contains("北京时间", StringComparison.Ordinal)) == 2;
             static bool NameStartsWith(Button button, string prefix) =>
                 AutomationProperties.GetName(button).StartsWith(prefix, StringComparison.Ordinal);

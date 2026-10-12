@@ -6066,8 +6066,10 @@ internal static class ValidationExercises
                 center.TaskbarFlashRequestCount >= 1,
                 "未激活时新提醒到达必须请求任务栏闪烁。");
 
-            // 用户已激活窗口时，后续到达不再闪烁。
-            center.Activate();
+            // Activate the real HWND on this thread's isolated desktop. WPF's
+            // Activate() requests the foreground desktop, which CI may deny.
+            // The IsActive assertion below still requires a native activation.
+            SetActiveWindow(new WindowInteropHelper(center).Handle);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(center.IsActive, "到达探针未能激活提醒中心。");
             clock.UtcNow = dueUtc.AddMinutes(15);
@@ -6088,6 +6090,9 @@ internal static class ValidationExercises
             DeleteFileIfPresent(settingsPath + ".tmp");
         }
     }
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern IntPtr SetActiveWindow(IntPtr windowHandle);
 
     public static bool RunReminderCenterMinimizeToTaskbarPreservesEntriesBehavior()
     {

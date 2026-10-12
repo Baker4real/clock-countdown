@@ -43,7 +43,8 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `InkBrush` | 主文字、区块标题、列表标题、提醒中心标题与来源标签 |
 | `BodyBrush` | 正文、卡片副标题、字段标签 |
 | `MutedBrush` | 辅助文字、占位文、单位字、时间戳、数量；#198 调深以满足暖色背景上的文字对比 |
-| `PeachLineBrush` | 1px 结构边界、区块分隔线、输入框常态边界 |
+| `PeachLineBrush` | 1px 结构边界、区块分隔线 |
+| `ControlBorderBrush` | 控件常态边界（#217）；复选框、单选圈、输入控件、滚动条和次级按钮消费，对 Background、Canvas、Card、Note、NoteWhite 均达到 3:1；次级按钮常态底为 CardAlt |
 | `ActiveBrush` | 悬停与按压反馈、键盘焦点边界、复选与单选的选中图形 |
 | `ActiveHoverBrush` | 未选中控件悬停时替换桃色结构线的更深暖边（§4「基础控件状态契约」） |
 | `SelectionBrush` | 文本选区高亮（独立语义色，#151）：按 `0.4` SelectionOpacity 合成在白纸输入面上肉眼可辨；不得复用 1px 结构线色 |
@@ -59,7 +60,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `MainActionPressedBrush` | 主行动按钮按压 |
 | `MainActionTextBrush` | 主行动按钮文字与图标 |
 | `MainActionFocusBrush` | 主操作按钮与置顶开关的暖金焦点环，全应用唯一焦点例外（§6） |
-| `CoralActionBrush` | 主窗口次级实心按钮（「保存设置」），比主行动更浅；文字用 `InkBrush`，#151 禁止浅珊瑚配白字 |
+| `CoralActionBrush` | 历史语义色；#217 次级按钮改用 `CardAltBrush` + `ControlBorderBrush`，仅保留兼容 token |
 | `PinkAccentBrush` | 当前无生产消费者（#133 起激活页签文字改绑 `InkBrush`），去留见 #232 |
 | `PinkAccentStrongBrush` | 悬浮窗粉色实心主按钮（“＋ 添加便签”）与悬浮窗激活分段胶囊；与 `MainActionBrush` 共用玫粉主行动底 |
 | `IconAccentBrush` | 区块标题图标、粉色圆形加号、日历/标签/时钟等字段图标（装饰类，§13.5） |
@@ -72,7 +73,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `PrimaryCountdownNumberBrush` | 主项数字色块内的数值 |
 | `FloatingDayPrimaryCountdownAccentBrush` | 悬浮窗主项左强调轨；不得复用玩偶阴影资源 |
 | `PeachTintBrush` | 便签页激活分段胶囊底 |
-| `SegmentSelectedBrush` | 分段与筛选选项的选中底 |
+| `SegmentSelectedBrush` | 分段选中底；#217 筛选选项使用 PeachTint 与矢量勾号 |
 | `SegmentSelectedForegroundBrush` | 分段选中文字 |
 | `PeachRailBrush` | 激活分段胶囊左强调轨、`#` 标签芯片暖橙描边、日期分组标题圆点 |
 | `PeachBadgeBrush` | 激活分段数量徽章底（文字 `InkBrush`） |
@@ -168,7 +169,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 倒计时页的提醒规则区改为一组三选一单选（`RadioButton`），标签依次为 `不提醒`、`按时间提醒`、`自定义提醒`。
 
 - 组左侧是 `提醒规则` 标签与一个 `?` 帮助图标；帮助图标可聚焦并在悬停/聚焦时给出说明。
-- 选中单选圈为 `ActiveBrush` 实心圆点带同色描边（#151 换绑：对编辑卡画布实测 3.27 ≥ 3:1 非文本门槛；装饰浅粉 `IconAccentBrush` 实测 2.13，不得承载选中态）；未选中为 `PeachLineBrush` 描边空心圈。
+- 选中单选圈为 `ActiveBrush` 实心圆点带同色描边（#151 换绑：对编辑卡画布实测 3.27 ≥ 3:1 非文本门槛；装饰浅粉 `IconAccentBrush` 实测 2.13，不得承载选中态）；未选中为 `ControlBorderBrush` 描边空心圈（#217）。
 - 语义映射（照既有语义执行，不新增解释）：`不提醒` = 清空规则；`按时间提醒` = 创建 `absoluteOnce` 到点规则（offset 0）；`自定义提醒` = 打开现有 0~8 条规则次级编辑器。
 - 该组不再包含“设为现在”控件。
 
@@ -300,8 +301,8 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 字段级校验按字段拆开：名称、截止日期（含时/分/秒不完整）的校验错误以独立错误行出现在对应字段下方，文字 `DangerBrush`、字号消费 `TypeBodyFontSize`（16px 设计坐标）、可换行、不裁切；提交失败聚焦第一个无效控件；字段值修正后对应错误立即清除。错误行的名称与帮助文本携带完整消息，来源控件帮助文本同步，错误行以礼貌直播区播报（与悬浮窗快速新增同一套语义）。
 - 唯一错误行（保存失败等工作区级错误）不设固定高度、不使用省略号，长错误完整换行可见；错误出现时同步在唯一错误行镜像首个字段错误消息。
 - 偏好（月薪、上下班时间）格式错误出现在对应字段下方，并同时镜像到底部状态栏；不再只出现在窗口底栏。错误同样在字段修正后清除。
-- 每页一枚实心主行动：倒计时页是「＋ 添加倒计时」（`MainActionBrush` 实心 + 白字）；「保存设置」是该页次级实心（`CoralActionBrush` 底 + `InkBrush` 主文字色，悬停/按压/焦点走 `ActiveBrush` 边的常规状态语言，不是主行动角色）；便签页「＋ 添加」仍是该页唯一实心主按钮（`MainActionBrush`）。
-- 底部状态栏消费状态条表面：`MainStatusBarSurface` 以 `StatusBarBrush` 为底、1px `PeachLineBrush` 边、圆角消费 `RadiusOverlay`、内边距消费间距节奏（`14,8`）；错误字 `DangerBrush` 在该表面实测 4.83 ≥ 4.5 信息文本门槛，不达标时改用更深文字色而不放宽门槛。
+- 每页一枚实心主行动：倒计时页是「＋ 添加倒计时」（`MainActionBrush` 实心 + 白字）；「保存设置」是次级 `CardAltBrush` 表面 + `ControlBorderBrush` 边；便签页「＋ 添加」仍是该页唯一实心主按钮（`MainActionBrush`）。
+- 底部状态栏消费状态条表面：`MainStatusBarSurface` 以 `StatusBarBrush` 为底、1px `PeachLineBrush` 边、圆角消费 `RadiusOverlay`、内边距消费间距节奏（`14,8`）；#217 错误字 `DangerBrush` 在该表面实测 4.92 ≥ 4.5 信息文本门槛，不达标时改用更深文字色而不放宽门槛。
 - 排版与间距：编辑卡与偏好卡区块标题落 `TypeH1FontSize`（26px 设计坐标，#197 收敛标题阶梯）；字段行组间距消费 `SpacingFieldRow`（10px），错误行上间距消费 `SpacingUnit`（8px），不再使用与节奏无关的随机边距。
 
 ### 基础控件状态契约（#133）
@@ -321,6 +322,8 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 分段控件选中或取消选中时，前景与底色在同一帧切换到目标色，避免白字先出现于尚未变深的底色、深字先出现于尚未退去的深粉底。此规则不改变悬停与按压过渡；主窗口的选中指示条继续按 §9 滑动。
 - MainWindow 本地样式（`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderModeRadio`、`MainTopmostCheck`、`MainNoteCompletionCheck`、`MainReminderHelpButton`、`MainNoteDateDisclosureButton`）沿用窗口内模板：#133 仅对其中两处激活页签文字执行 §13.4 换绑。#152 已补齐遗留缺口：`MainSegmentButton`/`MainNotesSegmentButton`/`MainReminderHelpButton`/`MainReminderModeRadio`/`MainNoteDateDisclosureButton` 具备按压（环换 `ActiveBrush`，与键盘焦点同语言）与禁用（整体 `Opacity` 0.45）外观；`MainPrimaryButton`/`MainSecondarySolidButton`/`MainTopmostCheck`/`MainNoteCompletionCheck` 的焦点/按压改为常驻环变色（见下方「主窗可操作性」）。
 - 图标按钮必须具备 `AutomationProperties.Name`；动态列表行、标签芯片与分段按钮通过既有 `UiAccessibility`/`NameControl` 命名并经 `ToggleButton`/`CheckBox` 的 Toggle 语义暴露选中状态（MainWindow.xaml.cs / FloatingWindow*.cs 既有接线，#133 复核无缺口）。
+- #217 选中态：筛选芯片常态用 `CardAltBrush` + `ControlBorderBrush`；选中后用 `PeachTintBrush` + `PeachRailBrush`，左侧出现同色矢量勾号。勾号槽位常驻，不因切换挤动文字；非文本差异以选中后新增勾号对浅底 ≥3:1 验收，不把两种浅底本身的微小色差当作唯一信号。主窗与浮窗完成勾选用 `SuccessBrush` 底及白色勾号，悬停、按压和键盘焦点仍用 `ActiveBrush` 边；普通标签复选不使用成功色。
+- #217 滚动条：共享滚动条常态使用 `ControlBorderBrush`；浮窗 4px thumb 使用不透明的 1px `ControlBorderBrush` 边，内部填充保留 normal/hover/drag 的 0.52/0.78/0.96 透明度，10px 命中轨与内容安全区保持原合同。运行态按实际 `TaskCard` 外侧邻色测量 alpha 合成后边界 ≥3:1。
 
 ### 日期与下拉接入（#206）
 
@@ -328,8 +331,8 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 主窗可操作性与紧凑命中（#152）
 
-- **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。主按钮（`＋ 添加倒计时`/`＋ 添加`）与 `窗口置顶` 继续用 `MainActionFocusBrush` 暖粉焦点例外（唯一焦点例外，§6），且不得再套 `FocusVisualStyle` 第二套焦点描边；其余键盘路径控件继续消费 2px 暖边 `MainKeyboardFocusVisual`。
-- **选中粉底/实心粉邻色**：选中页签（`PinkTintBrush`）的焦点环与粉底之间常驻 1px 间隙（Surface 外缩 3），环的实际邻色是容器 `CardAltBrush`（实测 3.50 ≥ 3:1），不直接贴粉底（`ActiveBrush`×`PinkTintBrush` 实测 2.90 不达标）。悬浮窗选中实心粉工作区胶囊（`PinkAccentStrongBrush`）按裁决用 `MainActionFocusBrush` 暖金做外环（实测 3.62 ≥ 3:1）。键盘焦点环验收按上下文钉唯一期望 token（常规 `ActiveBrush`/实心粉邻色暖金），不存在「不达标但匹配旧强调色则放过」的分支。
+- **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。#217 主按钮（`＋ 添加倒计时`/`＋ 添加`）与已勾选的 `窗口置顶` 使用调深的 `MainActionFocusBrush` 暖金；未勾选置顶使用常规 `ActiveBrush`。不得再套 `FocusVisualStyle` 第二套描边，其余键盘路径控件继续消费 2px 暖边 `MainKeyboardFocusVisual`。
+- **选中粉底/实心粉邻色**：选中页签（`PinkTintBrush`）的焦点环与粉底之间常驻 1px 间隙（Surface 外缩 3），环的实际邻色是容器 `CardAltBrush`（实测 3.50 ≥ 3:1）。#217 悬浮窗选中实心粉工作区胶囊仍用暖金外环，但按外侧 `FloatingHeaderSurface` 的实际背景量度（3.75 ≥3:1），不能以内侧深粉填充冒充外侧邻色。键盘焦点环按上下文钉唯一期望 token，不存在仅匹配 token 就放过对比度的分支。
 - **悬停区分**：未选中页签悬停使用 `CardAltBrush` + `ActiveHoverBrush`，不得复用选中实心底；选中页签统一使用 `PinkTintBrush` 底和 `SemiBold` 字重，悬停不得反转层级。
 - **帮助聚焦**：提醒规则 `?` 帮助在键盘聚焦时即时打开与悬停相同的 ToolTip 说明，并以 `AutomationProperties.HelpText` 提供同一份帮助文本。
 - **紧凑命中下限（24 DIP）**：主窗口真实 DIP 布局中，便签完成勾选与提醒规则帮助的命中区不得低于桌面紧凑下限 24 DIP——两者命中槽位为 38 DIP，勾选可见框保持 24 DIP 居中。悬浮窗既有 36 下限与头部 3px、滚动条 10px 例外不变、不借此放宽。筛选芯片（`FilterOptionButton`/`TagToggleButton`）高度与日历翻月按钮（`CalendarNavigationButton`）统一为 36，筛选芯片相邻间距 8（含筛选标签芯片 0,0,8,8）。
@@ -376,7 +379,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ## 6. 深度层级
 
-页面画布为 Level 0；内容区块为 Level 1（`CardBrush` 表面 + 1px `PeachLineBrush`）；便签卡与提醒条目卡为 Level 2（棕黄或白纸底 + 1px 边界）。不使用外发光、霓虹阴影或浮动大卡片。常规焦点使用 `ActiveBrush` 边界，不能依赖默认系统蓝。主操作按钮与置顶开关共用同一暖粉焦点资源，这是全应用唯一的焦点例外。按压与悬停反馈仍使用既有 `ActiveBrush` 语义。#152 起主窗口焦点一律以常驻 `FocusBorderThickness` 透明环变色表达（键盘聚焦只换色、不加厚、不挤布局），主窗口不再给主按钮/置顶叠 `FocusVisualStyle` 第二套更粗描边。
+页面画布为 Level 0；内容区块为 Level 1（`CardBrush` 表面 + 1px `PeachLineBrush`）；便签卡与提醒条目卡为 Level 2（棕黄或白纸底 + 1px 边界）。不使用外发光、霓虹阴影或浮动大卡片。常规焦点使用 `ActiveBrush` 边界，不能依赖默认系统蓝。#217 主操作按钮、浮窗选中胶囊与已勾选置顶共用 `MainActionFocusBrush` 暖金焦点资源（调深为 `#A87324`）；未勾选置顶使用常规 `ActiveBrush`。所有焦点环按外侧可见邻色 ≥3:1 验收，暖金对六种浅色面的最低值为 Background 上的 3.65:1；保留暖金角色，不保留旧浅金数值。按压与悬停仍使用既有 `ActiveBrush` 语义。焦点只改变常驻 2px 边框颜色，不加厚、不挤布局、不叠第二套描边。
 
 ## 7. Do's / Don'ts
 
@@ -622,7 +625,8 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `BodyColor` | `#6B4A3C` | 全浅色表面最差（`PinkTintBrush`） | 6.22 | 4.5 | text | PASS | 正文 |
 | `BodyColor` | `#6B4A3C` | `CanvasBrush` | 7.19 | 7.0 | text-7.0 | PASS | 正文 7:1 目标（对 `NoteBrush` 7.23） |
 | `MutedColor` | `#82665F` | `CanvasBrush` | 4.78 | 4.5 | text | PASS | 辅助文字（对 `NoteBrush` 4.81） |
-| `DangerColor` | `#B94D3A` | `CanvasBrush` | 4.59 | 4.5 | text | PASS | 删除/错误（对 `CardBrush` 4.91、`NoteBrush` 4.61） |
+| `ControlBorderColor` | `#A87866` | 五种浅色表面最差（`BackgroundBrush`） | 3.38 | 3.0 | graphic | PASS | #217 控件常态边界；真实未聚焦输入框同时检查五种表面及自身输入底色 |
+| `DangerColor` | `#B74C39` | `BackgroundBrush` | 4.57 | 4.5 | text | PASS | #217 删除/错误六底复核：Canvas 4.68、Card 5.00、Note 4.70、StatusBar 4.92、ReminderCard 4.85 |
 | `SuccessColor` | `#266B5E` | `CanvasBrush` | 5.74 | 4.5 | text | PASS | #132 由 `#529F8C`（2.87）调深 |
 | `WarningAccentColor` | `#AD4A10` | `WarningTintBrush` | 4.86 | 4.5 | text | PASS | #132 由 `#DC6922`（3.00）调深 |
 | `MainActionTextColor` | `#FFFDFC` | `MainActionBrush` | 4.95 | 4.5 | text | PASS | 主行动按钮；同族 hover 5.89、pressed 7.18，悬浮粉按钮 4.95 |
@@ -637,12 +641,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `BodyColor` | `#6B4A3C` | `PeachBadgeMutedBrush` | 6.09 | 4.5 | text | PASS | 未激活数量徽章文字（#148 换绑，替代 Muted 4.05） |
 | `BodyColor` | `#6B4A3C` | `ExpiredBrush` | 6.22 | 4.5 | text | PASS | 到期剩余/辅助文字（#148 换绑，替代删除红 3.97） |
 | `PrimaryCountdownNumberColor` | `#C0102F` | `ExpiredBrush` | 4.95 | 4.5 | text | PASS | 到期主项剩余文字（#148） |
-| `InkColor` | `#3B190D` | `CoralActionBrush` | 5.62 | 4.5 | text | PASS | 「保存设置」次级实心文字（#151 新增；白字 2.77 不达标故禁用浅珊瑚配白字） |
-| `DangerColor` | `#B94D3A` | `StatusBarBrush` | 4.83 | 4.5 | text | PASS | 状态条表面上的错误字（#151；旧画布奶油底上 4.48 不达标） |
+| `InkColor` | `#3B190D` | `CoralActionBrush` | 5.62 | 4.5 | text | PASS | 历史珊瑚配主文字；#217 保存设置已改为 CardAlt 次级表面 |
+| `DangerColor` | `#B74C39` | `StatusBarBrush` | 4.92 | 4.5 | text | PASS | #217 调深砖红；含旧画布奶油底在内的六种表面全部达标 |
 | `ActiveColor` | `#E05A4A` | `PanelBrush` | 3.61 | 3.0 | graphic | PASS | 焦点边/复选图形；`PrimaryButton` 底已改绑 `MainActionBrush`（3.61→4.95） |
 | `ActiveColor` | `#E05A4A` | `BackgroundBrush` | 3.27 | 3.0 | graphic | PASS | 提醒规则选中圆点/描边（#151 换绑；`IconAccentBrush` 2.13 属装饰不承载选中态） |
 | `ActiveColor` | `#E05A4A` | `CardAltBrush` | 3.50 | 3.0 | graphic | PASS | 选中粉底页签焦点环实际邻色（#152；环与粉底间常驻 1px 间隙，`PinkTintBrush` 直贴 2.90 不达标被间隙规避） |
-| `MainActionFocusColor` | `#FFD49A` | `PinkAccentStrongBrush` | 3.62 | 3.0 | graphic | PASS | 悬浮选中实心粉工作区胶囊焦点环（#152 换绑暖金；`ActiveBrush` 直贴深粉 1.37 不达标） |
+| `MainActionFocusColor` | `#A87324` | `BackgroundBrush` | 3.65 | 3.0 | graphic | PASS | #217 暖金焦点对外侧浅底；Canvas 3.73、Card 3.99、Note 3.75、NoteWhite 4.02、CardAlt 3.90 |
+| `PeachRailColor` | `#CD623E` | `PeachTintBrush` | 3.44 | 3.0 | graphic | PASS | #217 筛选芯片选中矢量勾号；常态无勾号，选中后以形状及描边双重标记 |
 | `DecoTextColor` | `#D9B7B1` | `CanvasBrush` | 1.69 | 豁免 | decorative | 记录 | 手写装饰 |
 | `DecoTextSoftColor` | `#E5AE9C` | `BackgroundBrush` | 1.73 | 豁免 | decorative | 记录 | 悬浮手写装饰 |
 | `IconAccentColor` | `#F28995` | `CardBrush` | 2.34 | 豁免 | decorative | 记录 | 伴随 labeled 字段的装饰图标 |

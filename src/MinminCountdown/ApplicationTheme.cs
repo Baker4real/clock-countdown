@@ -41,12 +41,13 @@ internal sealed class ApplicationTheme
         Token("MainActionColor", "MainActionBrush", "#FFC23E68"),
         Token("MainActionHoverColor", "MainActionHoverBrush", "#FFB0355D"),
         Token("MainActionPressedColor", "MainActionPressedBrush", "#FF9B2D50"),
-        Token("MainActionFocusColor", "MainActionFocusBrush", "#FFFFD49A"),
+        Token("MainActionFocusColor", "MainActionFocusBrush", "#FFA87324"),
         Token("MainActionTextColor", "MainActionTextBrush", "#FFFDFC"),
-        // #151：主窗口次级实心按钮（「保存设置」）珊瑚语义色，文字用主文字色。
+        // 历史珊瑚语义色；#217 次级按钮使用 CardAlt + ControlBorder。
         Token("CoralActionColor", "CoralActionBrush", "#FFD68481"),
         Token("PeachLineColor", "PeachLineBrush", "#FFF6DFD3"),
-        Token("DangerColor", "DangerBrush", "#FFB94D3A"),
+        Token("ControlBorderColor", "ControlBorderBrush", "#FFA87866"),
+        Token("DangerColor", "DangerBrush", "#FFB74C39"),
         Token("SuccessColor", "SuccessBrush", "#FF266B5E"),
         Token("TagColor", "TagBrush", "#FFF7E8"),
         Token("TagChipTextColor", "TagChipTextBrush", "#FF3B190D"),

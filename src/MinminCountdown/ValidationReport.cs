@@ -1124,9 +1124,17 @@ internal static class ValidationReport
         toolTip.ApplyTemplate();
         var toolTipMaterializes = toolTip.Template is not null;
         var contrast = ValidateThemeContrast(theme, workspaceSnapshot.UtcNow);
+        var mainIdleTextInputBoundaryContrast = ValidateMainIdleTextInputBoundaryContrast(main);
+        var idleControlBoundaries = ValidateIdleControlBoundaries(main);
+        var selectedControlSignals = ValidateSelectedControlSignals(main);
+        var focusOuterNeighbors = ValidateFocusOuterNeighbors(main);
         var dangerContrast = ContrastRatio(
             (Color)Application.Current.FindResource("CanvasColor"),
             (Color)Application.Current.FindResource("DangerColor")) >= 4.5;
+        var dangerSurfaces = new[] { "Background", "Canvas", "Card", "Note", "StatusBar", "ReminderCard" }
+            .ToDictionary(name => name, name => ContrastRatio(
+                (Color)Application.Current.FindResource(name + "Color"),
+                (Color)Application.Current.FindResource("DangerColor")), StringComparer.Ordinal);
 
         var countdownRows = Required<StackPanel>(main, "CountdownRows");
         var activeNoteRows = Required<StackPanel>(main, "ActiveNoteRows");
@@ -1716,10 +1724,10 @@ internal static class ValidationReport
                 workStart,
                 workEnd
             }
-            // #151：输入面按 §4 合同改绑白纸面板色（PanelBrush），与页面画布分开；边界/文字 token 不变。
+            // #151 保持白纸输入面；#217 输入控件使用可辨识的常态边界。
             .All(control =>
                 ReferenceEquals(control.Background, Application.Current.FindResource("PanelBrush")) &&
-                ReferenceEquals(control.BorderBrush, Application.Current.FindResource("PeachLineBrush")) &&
+                ReferenceEquals(control.BorderBrush, Application.Current.FindResource("ControlBorderBrush")) &&
                 ReferenceEquals(control.Foreground, Application.Current.FindResource("InkBrush")));
         countdownDate.ApplyTemplate();
         var compactInputHorizontalPaddingAligned =
@@ -1945,6 +1953,15 @@ internal static class ValidationReport
             ["TagChipTextContrast"] = tagChipTextContrast,
             ["ThemedInteractiveStates"] = mainThemeTemplate && comboThemed && dateFamilyThemed,
             ["ThemeTextContrast"] = contrast,
+            ["MainIdleTextInputBoundaryContrast"] = mainIdleTextInputBoundaryContrast,
+            ["IdleControlBoundariesVisible"] = idleControlBoundaries.Values.All(value => value),
+            ["IdleControlBoundaryChecks"] = idleControlBoundaries,
+            ["SelectedControlSignalsVisible"] = selectedControlSignals.Values.All(value => value) &&
+                mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "MainWindow" && sample.UsesDedicatedStyle) &&
+                mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "FloatingWindow" && sample.UsesCompletionSuccessStyle),
+            ["SelectedControlSignalChecks"] = selectedControlSignals,
+            ["FocusOuterNeighborsMeetContrast"] = focusOuterNeighbors.Values.All(value => value),
+            ["FocusOuterNeighborChecks"] = focusOuterNeighbors,
             ["ReminderCenterSourceLabelContrast"] = reminderCenterSourceLabelContrast,
             ["SystemDialogPrimaryButtonContrast"] = systemDialogPrimaryButtonContrast,
             ["KeyboardFocusRingContrast"] = keyboardFocusRingContrast,
@@ -1988,6 +2005,8 @@ internal static class ValidationReport
                 "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-10-v43 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
+            ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
+            ["DangerSurfaceMeasurements"] = dangerSurfaces,
             ["EffectiveThemeTextContrast"] = contrast,
             ["DestructiveConfirmationIsSafe"] = confirmationThemed && confirmationCancelSafeDefault,
             ["ConfirmationDialogLongestButtonsVisible"] = confirmationButtonsVisible,
@@ -2706,6 +2725,9 @@ internal static class ValidationReport
                 floatingReferenceExercise.ScrollBar.StateCapturesReady,
             ["FloatingScrollBarStateMeasurements"] =
                 floatingReferenceExercise.ScrollBar.Measurements,
+            ["FloatingThumbBoundaryContrast"] =
+                floatingReferenceExercise.ScrollBar.Measurements.Count > 0 &&
+                floatingReferenceExercise.ScrollBar.Measurements.All(sample => sample.BoundaryContrast >= 3),
             ["FloatingScrollBarWheelOffsets"] = new[]
             {
                 floatingReferenceExercise.ScrollBar.WheelOffsetBefore,
@@ -7875,7 +7897,7 @@ internal static class ValidationReport
                         window.FindResource("FloatingMutedBrush")) &&
                     ReferenceEquals(
                         parts.ThumbVisual.BorderBrush,
-                        window.FindResource("PeachLineBrush"));
+                        window.FindResource("ControlBorderBrush"));
                 var bodyBounds = BoundsIn(bodyScroller, root);
                 measurements.Add(new FloatingScrollBarStateMeasurement(
                     "Day",
@@ -7884,7 +7906,7 @@ internal static class ValidationReport
                         Math.Min(parts.HitRail.ActualWidth, parts.Thumb.ActualWidth),
                         2),
                     Math.Round(parts.ThumbVisual.ActualWidth, 2),
-                    Math.Round(parts.ThumbVisual.Opacity, 2),
+                    Math.Round((parts.ThumbVisual.Child as Border)?.Opacity ?? parts.ThumbVisual.Opacity, 2),
                     Math.Round(BoundsIn(parts.Track, root).Right, 2),
                     Math.Round(BoundsIn(parts.Thumb, root).Left, 2),
                     Math.Round(BoundsIn(parts.Thumb, root).Right, 2),
@@ -7897,8 +7919,10 @@ internal static class ValidationReport
                     contentIsClear,
                     doesNotObscureContent,
                     usesThemeTokens,
-                    BrushColor(parts.ThumbVisual.Background),
-                    BrushColor(parts.ThumbVisual.BorderBrush)));
+                    BrushColor((parts.ThumbVisual.Child as Border)?.Background ?? parts.ThumbVisual.Background),
+                    BrushColor(parts.ThumbVisual.BorderBrush),
+                    CompositedContrast(parts.ThumbVisual.BorderBrush, parts.ThumbVisual.Opacity,
+                        Required<Border>(window, "TaskCard").Background)));
                 ClearCaptureKeyboardFocus();
                 captures[$"day-{state.Name}"] =
                     EncodePng(ScaleToFrame(
@@ -11462,7 +11486,7 @@ internal static class ValidationReport
                 ("MainActionColor", "#FFC23E68"),
                 ("MainActionHoverColor", "#FFB0355D"),
                 ("MainActionPressedColor", "#FF9B2D50"),
-                ("DangerColor", "#FFB94D3A"),
+                ("DangerColor", "#FFB74C39"),
                 ("PrimaryCountdownNumberColor", "#FFC0102F"),
                 ("PeachLineColor", "#FFF6DFD3"),
                 ("TagColor", "#FFF7E8"),
@@ -11593,16 +11617,15 @@ internal static class ValidationReport
             return false;
         }
 
-        // #151：「保存设置」改为珊瑚语义次级实心（MainSecondarySolidButton），不得再与主行动共用样式，
-        // 文字用主文字色并对珊瑚底达 4.5:1（浅珊瑚配白字 2.77 被禁止）。
+        // #217：保存设置作为次级按钮使用 CardAlt + ControlBorder，保留主次角色差异。
         // 样式定义在 MainWindow.xaml MainContentProjection 的 Grid.Resources 内，
         // 必须经按钮自身沿逻辑树解析，Window.TryFindResource 看不到嵌套资源字典。
         var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
         if (savePreferencesButton.TryFindResource("MainSecondarySolidButton") is not Style secondarySolidStyle ||
             !ReferenceEquals(savePreferencesButton.Style, secondarySolidStyle) ||
-            Application.Current.FindResource("CoralActionColor") is not Color coralAction ||
-            Application.Current.FindResource("InkColor") is not Color inkOnCoral ||
-            !ApplicationTheme.MeetsContrast(coralAction, inkOnCoral, 4.5))
+            !ApplicationTheme.MeetsContrast(
+                (Brush)Application.Current.FindResource("CardAltBrush"),
+                (Brush)Application.Current.FindResource("InkBrush"), 4.5))
         {
             return false;
         }
@@ -13306,8 +13329,9 @@ internal static class ValidationReport
             dedicatedStyle is not null && ReferenceEquals(checkBox.Style, dedicatedStyle),
             box is not null && tick is not null &&
             ReferenceEquals(box.Background, Application.Current.FindResource("CanvasBrush")) &&
-            ReferenceEquals(box.BorderBrush, Application.Current.FindResource("PeachLineBrush")) &&
-            ReferenceEquals(tick.Stroke, Application.Current.FindResource("MainActionTextBrush")));
+            ReferenceEquals(box.BorderBrush, Application.Current.FindResource("ControlBorderBrush")) &&
+            ReferenceEquals(tick.Stroke, Application.Current.FindResource("MainActionTextBrush")),
+            ReferenceEquals(checkBox.Style, Application.Current.TryFindResource("CompletionCheckBox")));
     }
 
     private static CountdownEmptyStateContrastValidation ValidateCountdownEmptyStateContrast(
@@ -13563,6 +13587,198 @@ internal static class ValidationReport
         (actual is SolidColorBrush actualBrush &&
          expected is SolidColorBrush expectedBrush &&
          actualBrush.Color == expectedBrush.Color);
+
+    private static double CompositedContrast(Brush foreground, double opacity, Brush background)
+    {
+        if (foreground is not SolidColorBrush fg || background is not SolidColorBrush bg) return 0;
+        var alpha = fg.Color.A / 255d * fg.Opacity * opacity;
+        byte Channel(byte front, byte back) => (byte)Math.Round(front * alpha + back * (1 - alpha));
+        var visible = Color.FromRgb(Channel(fg.Color.R, bg.Color.R),
+            Channel(fg.Color.G, bg.Color.G), Channel(fg.Color.B, bg.Color.B));
+        return ContrastRatio(visible, bg.Color);
+    }
+
+    private static IReadOnlyDictionary<string, bool> ValidateIdleControlBoundaries(MainWindow main)
+    {
+        var projection = Required<FrameworkElement>(main, "MainContentProjection");
+        var controls = new (string Name, Control Control, string Part)[]
+        {
+            ("CheckBox", new CheckBox(), "Box"),
+            ("Pin", new CheckBox { Style = (Style)projection.FindResource("MainTopmostCheck") }, "Box"),
+            ("Completion", new CheckBox { Style = (Style)projection.FindResource("MainNoteCompletionCheck") }, "Box"),
+            ("Radio", new RadioButton(), "Ring"),
+            ("MainRadio", new RadioButton { Style = (Style)projection.FindResource("MainReminderModeRadio") }, "Ring"),
+            ("Combo", new ComboBox(), "Surface"),
+            ("Date", new WpfUiDatePicker(), "PART_TextBox"),
+            ("Secondary", new Button { Style = (Style)Application.Current.FindResource("SecondaryButton") }, "Surface"),
+            ("MainSecondary", new Button { Style = (Style)projection.FindResource("MainSecondaryButton") }, "Surface"),
+            ("SavePreferencesSecondary", new Button { Style = Required<Button>(main, "SavePreferencesButton").Style }, "Surface"),
+            ("ScrollBar", new ScrollBar { Maximum = 100, ViewportSize = 20, Height = 100 }, "PART_Track")
+        };
+        var panel = new StackPanel();
+        foreach (var (_, control, _) in controls) panel.Children.Add(control);
+        var host = new Window { Content = panel, Width = 240, Height = 700, ShowInTaskbar = false,
+            Left = -20_000, Top = -20_000, WindowStartupLocation = WindowStartupLocation.Manual, Opacity = 0 };
+        var checks = new Dictionary<string, bool>(StringComparer.Ordinal);
+        try
+        {
+            host.Show();
+            PumpDispatcher();
+            foreach (var (name, control, partName) in controls)
+            {
+                control.ApplyTemplate();
+                var part = control.Template?.FindName(partName, control);
+                Brush? boundary = part switch
+                {
+                    Border border => border.BorderBrush,
+                    System.Windows.Shapes.Shape shape => shape.Stroke,
+                    TextBox text => text.BorderBrush,
+                    Track track => Descendants<Border>(track.Thumb).FirstOrDefault()?.Background,
+                    _ => null
+                };
+                checks[name] = boundary is not null &&
+                    BrushMatchesExpected(boundary, Application.Current.FindResource("ControlBorderBrush")) &&
+                    new[] { "BackgroundBrush", "CanvasBrush", "CardBrush", "NoteBrush", "NoteWhiteBrush" }
+                        .All(key => ApplicationTheme.MeetsContrast((Brush)Application.Current.FindResource(key), boundary, 3));
+                if (name.Contains("Secondary", StringComparison.Ordinal))
+                {
+                    checks[name] &= part is Border surface &&
+                        BrushMatchesExpected(surface.Background, Application.Current.FindResource("CardAltBrush"));
+                }
+            }
+            return checks;
+        }
+        finally { host.Close(); }
+    }
+
+    private static IReadOnlyDictionary<string, bool> ValidateSelectedControlSignals(MainWindow main)
+    {
+        var projection = Required<FrameworkElement>(main, "MainContentProjection");
+        var completionStyle = Application.Current.TryFindResource("CompletionCheckBox") as Style;
+        var chip = new ToggleButton { Content = "已完成", Style = Required<ToggleButton>(main, "NoteCompletedFilter").Style };
+        var completion = new CheckBox { Style = (Style)projection.FindResource("MainNoteCompletionCheck") };
+        var floatingCompletion = new CheckBox { Style = completionStyle };
+        var radio = new RadioButton();
+        var panel = new StackPanel();
+        foreach (var control in new Control[] { chip, completion, floatingCompletion, radio }) panel.Children.Add(control);
+        var host = new Window { Content = panel, Width = 240, Height = 240, ShowInTaskbar = false,
+            Left = -20_000, Top = -20_000, WindowStartupLocation = WindowStartupLocation.Manual, Opacity = 0 };
+        using var motion = ApplicationTheme.OverrideAnimationPreferenceForValidation(false);
+        try
+        {
+            host.Show();
+            PumpDispatcher();
+            var tick = chip.Template?.FindName("SelectedTick", chip) as WpfPath;
+            var absentBeforeSelection = tick is null || tick.Visibility != Visibility.Visible;
+            chip.IsChecked = true;
+            completion.IsChecked = true;
+            floatingCompletion.IsChecked = true;
+            radio.IsChecked = true;
+            PumpDispatcher();
+            tick = chip.Template?.FindName("SelectedTick", chip) as WpfPath;
+            var surface = chip.Template?.FindName("Surface", chip) as Border;
+            bool CompletionUsesSuccess(CheckBox control)
+            {
+                var box = control.Template?.FindName("Box", control) as Border;
+                var mark = control.Template?.FindName("Tick", control) as WpfPath;
+                return box is not null && mark?.Visibility == Visibility.Visible &&
+                    BrushMatchesExpected(box.Background, Application.Current.FindResource("SuccessBrush")) &&
+                    ApplicationTheme.MeetsContrast(box.Background, mark.Stroke, 3) &&
+                    ApplicationTheme.MeetsContrast((Brush)Application.Current.FindResource("BackgroundBrush"), box.Background, 3);
+            }
+            var dot = radio.Template?.FindName("Dot", radio) as System.Windows.Shapes.Ellipse;
+            return new Dictionary<string, bool>(StringComparer.Ordinal)
+            {
+                ["Chip"] = absentBeforeSelection && tick?.Visibility == Visibility.Visible && surface is not null &&
+                    BrushMatchesExpected(surface.Background, Application.Current.FindResource("PeachTintBrush")) &&
+                    BrushMatchesExpected(surface.BorderBrush, Application.Current.FindResource("PeachRailBrush")) &&
+                    ApplicationTheme.MeetsContrast(surface.Background, tick.Stroke, 3),
+                ["MainCompletion"] = CompletionUsesSuccess(completion),
+                ["FloatingCompletion"] = completionStyle is not null && CompletionUsesSuccess(floatingCompletion),
+                ["Radio"] = dot?.Visibility == Visibility.Visible &&
+                    ApplicationTheme.MeetsContrast((Brush)Application.Current.FindResource("BackgroundBrush"), dot.Fill, 3)
+            };
+        }
+        finally { host.Close(); }
+    }
+
+    private static IReadOnlyDictionary<string, bool> ValidateFocusOuterNeighbors(MainWindow main)
+    {
+        var projection = Required<FrameworkElement>(main, "MainContentProjection");
+        var controls = new (string Name, Control Control, string Part, string Expected)[]
+        {
+            ("Button", new Button(), "FocusRing", "ActiveBrush"),
+            ("Primary", new Button { Style = (Style)Application.Current.FindResource("PrimaryButton") }, "FocusRing", "MainActionFocusBrush"),
+            ("MainPrimary", new Button { Style = Required<Button>(main, "SaveCountdownButton").Style }, "FocusRing", "MainActionFocusBrush"),
+            ("FloatingAccent", new Button { Style = (Style)Application.Current.FindResource("FloatingAccentButton") }, "FocusRing", "MainActionFocusBrush"),
+            ("FloatingCapsule", new ToggleButton { IsChecked = true, Style = (Style)Application.Current.FindResource("FloatingHeaderSegmentButton") }, "FocusRing", "MainActionFocusBrush"),
+            ("PinUnchecked", new CheckBox { IsChecked = false, Style = (Style)projection.FindResource("MainTopmostCheck") }, "Box", "ActiveBrush"),
+            ("PinChecked", new CheckBox { IsChecked = true, Style = (Style)projection.FindResource("MainTopmostCheck") }, "Box", "MainActionFocusBrush")
+        };
+        var panel = new StackPanel();
+        foreach (var (_, control, _, _) in controls)
+        {
+            control.MinHeight = 40;
+            panel.Children.Add(control);
+        }
+        var host = new Window { Content = panel, Width = 240, Height = 360, ShowInTaskbar = false,
+            Left = -20_000, Top = -20_000, WindowStartupLocation = WindowStartupLocation.Manual, Opacity = 0 };
+        var checks = new Dictionary<string, bool>(StringComparer.Ordinal);
+        try
+        {
+            host.Show();
+            host.Activate();
+            PumpDispatcher();
+            foreach (var (name, control, part, expected) in controls)
+            {
+                Keyboard.Focus(control);
+                FocusVisualState.SetIsKeyboardFocusVisible(control, true);
+                PumpDispatcher();
+                var ring = control.Template?.FindName(part, control) as Border;
+                checks[name] = control.IsKeyboardFocused && ring is not null &&
+                    ring.BorderThickness.Left >= 2 &&
+                    BrushMatchesExpected(ring.BorderBrush, Application.Current.FindResource(expected)) &&
+                    new[] { "BackgroundBrush", "CanvasBrush", "CardBrush", "NoteBrush", "NoteWhiteBrush", "CardAltBrush" }
+                        .All(key => ApplicationTheme.MeetsContrast((Brush)Application.Current.FindResource(key), ring.BorderBrush, 3));
+            }
+            return checks;
+        }
+        finally { host.Close(); }
+    }
+
+    private static bool ValidateMainIdleTextInputBoundaryContrast(MainWindow main)
+    {
+        var input = Required<TextBox>(main, "CountdownName");
+        var previousFocus = Keyboard.FocusedElement;
+        try
+        {
+            // Measure the materialized idle border, rather than a palette entry that
+            // the input might not actually consume (#217).
+            Keyboard.Focus(Required<ToggleButton>(main, "CountdownTab"));
+            PumpDispatcher();
+            input.ApplyTemplate();
+            if (input.IsKeyboardFocused ||
+                input.Template?.FindName("Surface", input) is not Border surface ||
+                surface.BorderBrush is not SolidColorBrush border ||
+                surface.BorderThickness.Left <= 0)
+            {
+                return false;
+            }
+
+            return new[] { "BackgroundBrush", "CanvasBrush", "CardBrush", "NoteBrush", "NoteWhiteBrush" }
+                .All(key => Application.Current.FindResource(key) is Brush background &&
+                    ApplicationTheme.MeetsContrast(background, border, 3)) &&
+                ApplicationTheme.MeetsContrast(surface.Background, border, 3);
+        }
+        finally
+        {
+            if (previousFocus is not null)
+            {
+                Keyboard.Focus(previousFocus);
+                PumpDispatcher();
+            }
+        }
+    }
 
     private static bool ValidateThemeContrast(ApplicationTheme theme, DateTimeOffset restoreUtc)
     {
@@ -13898,8 +14114,7 @@ internal static class ValidationReport
                 Application.Current.FindResource("MainActionFocusBrush") is SolidColorBrush focusToken &&
                 active.Color != focusToken.Color;
 
-            // #152：悬浮窗选中实心粉工作区胶囊（PinkAccentStrongBrush）上的焦点环，
-            // 按裁决优先用主按钮焦点色暖金做外环，对深粉实测 ≥3:1。
+            // #217：焦点外环量度真实外侧标题栏邻色，不能用内侧选中填充替代。
             var floatingCapsule = ValidateFloatingCapsuleFocusRing(floating);
 
             return new KeyboardFocusRingContrastValidation(
@@ -13932,9 +14147,10 @@ internal static class ValidationReport
         {
             floating.Activate();
             floating.ShowWorkspace(WorkspaceKind.Notes);
-            var notes = MeasureFromAdjacentButton(countdownButton, notesButton, FocusNavigationDirection.Next);
+            var outerNeighbor = Required<Border>(floating, "FloatingHeaderSurface").Background;
+            var notes = MeasureFromAdjacentButton(countdownButton, notesButton, FocusNavigationDirection.Next, outerNeighbor);
             floating.ShowWorkspace(WorkspaceKind.Countdowns);
-            var countdowns = MeasureFromAdjacentButton(notesButton, countdownButton, FocusNavigationDirection.Previous);
+            var countdowns = MeasureFromAdjacentButton(notesButton, countdownButton, FocusNavigationDirection.Previous, outerNeighbor);
             return (
                 notes.MeetsNeighborContrast && countdowns.MeetsNeighborContrast,
                 notes.UsesWarmGoldToken && countdowns.UsesWarmGoldToken);
@@ -13948,7 +14164,8 @@ internal static class ValidationReport
         static (bool MeetsNeighborContrast, bool UsesWarmGoldToken) MeasureFromAdjacentButton(
             ToggleButton adjacent,
             ToggleButton selected,
-            FocusNavigationDirection direction)
+            FocusNavigationDirection direction,
+            Brush outerNeighbor)
         {
             Keyboard.Focus(adjacent);
             PumpDispatcher();
@@ -13959,7 +14176,7 @@ internal static class ValidationReport
             if (!moved || !selected.IsKeyboardFocused || selected.IsChecked != true ||
                 focusRing?.BorderBrush is not SolidColorBrush ring ||
                 Application.Current.FindResource("MainActionFocusBrush") is not SolidColorBrush warmGold ||
-                Application.Current.FindResource("PinkAccentStrongColor") is not Color deepPink)
+                outerNeighbor is not SolidColorBrush outerSurface)
             {
                 return (false, false);
             }
@@ -13972,7 +14189,8 @@ internal static class ValidationReport
                 focusRing.BorderThickness.Right,
                 focusRing.BorderThickness.Bottom
             }.Min();
-            var contrastPasses = usesWarmGold && thickness >= 2 && ContrastRatio(ring.Color, deepPink) >= 3;
+            var contrastPasses = usesWarmGold && thickness >= 2 &&
+                ApplicationTheme.MeetsContrast(outerSurface, ring, 3);
             var pointerClearsKeyboardRing = WindowValidationInput.ClickForFocusValidation(selected) &&
                 !FocusVisualState.GetIsKeyboardFocusVisible(selected) &&
                 focusRing.BorderBrush is SolidColorBrush pointerRing && pointerRing.Color.A == 0;
@@ -15836,7 +16054,7 @@ internal static class ValidationReport
                 dayActive,
                 independent &&
                 dayCanvas == "#FFFEFCFB" &&
-                dayActive == "#FFB94D3A",
+                dayActive == "#FFB74C39",
                 dayBindings);
         }
         finally
@@ -16499,7 +16717,8 @@ internal static class ValidationReport
         double TickHeight,
         double CornerRadius,
         bool UsesDedicatedStyle,
-        bool UsesWarmTokens);
+        bool UsesWarmTokens,
+        bool UsesCompletionSuccessStyle);
 
     private sealed record MainNoteCompletionInteractionValidation(
         bool Checked,
@@ -16518,9 +16737,9 @@ internal static class ValidationReport
             [Main, TagSelector, Floating];
 
         public static MainNoteCompletionValidation Failed { get; } = new(
-            new("MainWindow", 0, 0, 0, 0, 0, false, false),
-            new("TagSelector", 0, 0, 0, 0, 0, false, false),
-            new("FloatingWindow", 0, 0, 0, 0, 0, false, false),
+            new("MainWindow", 0, 0, 0, 0, 0, false, false, false),
+            new("TagSelector", 0, 0, 0, 0, 0, false, false, false),
+            new("FloatingWindow", 0, 0, 0, 0, 0, false, false, false),
             new(false, false, false, false));
     }
 
@@ -16608,7 +16827,8 @@ internal static class ValidationReport
         bool DoesNotObscureContent,
         bool UsesThemeTokens,
         string ThumbColor,
-        string BorderColor);
+        string BorderColor,
+        double BoundaryContrast);
 
     private sealed record FloatingScrollBarValidation(
         FloatingScrollBarGateResults Gates,

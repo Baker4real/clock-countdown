@@ -41,12 +41,13 @@
     <Color x:Key="MainActionColor">#FFC23E68</Color>
     <Color x:Key="MainActionHoverColor">#FFB0355D</Color>
     <Color x:Key="MainActionPressedColor">#FF9B2D50</Color>
-    <Color x:Key="MainActionFocusColor">#FFFFD49A</Color>
+    <Color x:Key="MainActionFocusColor">#FFA87324</Color>
     <Color x:Key="MainActionTextColor">#FFFDFC</Color>
     <!-- #151：主窗口次级实心按钮（「保存设置」）珊瑚语义色，比主行动更浅，文字用主文字色。 -->
     <Color x:Key="CoralActionColor">#FFD68481</Color>
     <Color x:Key="PeachLineColor">#FFF6DFD3</Color>
-    <Color x:Key="DangerColor">#FFB94D3A</Color>
+    <Color x:Key="ControlBorderColor">#FFA87866</Color>
+    <Color x:Key="DangerColor">#FFB74C39</Color>
     <Color x:Key="SuccessColor">#FF266B5E</Color>
     <Color x:Key="TagColor">#FFF7E8</Color>
     <Color x:Key="TagChipTextColor">#FF3B190D</Color>
@@ -117,6 +118,7 @@
     <SolidColorBrush x:Key="MainActionTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="CoralActionBrush" Color="{DynamicResource CoralActionColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="PeachLineBrush" Color="{DynamicResource PeachLineColor}" po:Freeze="False" />
+    <SolidColorBrush x:Key="ControlBorderBrush" Color="{DynamicResource ControlBorderColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" po:Freeze="False" />
     <SolidColorBrush x:Key="TagBrush" Color="{DynamicResource TagColor}" po:Freeze="False" />
@@ -241,7 +243,7 @@
     <Style TargetType="{x:Type Button}">
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="13,0" />
       <Setter Property="MinWidth" Value="40" />
@@ -353,7 +355,9 @@
 
     <Style x:Key="SecondaryButton"
            TargetType="{x:Type Button}"
-           BasedOn="{StaticResource {x:Type Button}}" />
+           BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+    </Style>
 
     <Style x:Key="FloatingAccentButton"
            TargetType="{x:Type Button}">
@@ -627,8 +631,55 @@
            BasedOn="{StaticResource SegmentButton}">
       <!-- #152：筛选芯片高度向桌面紧凑下限族（#143 的 36）靠拢；相邻间距由消费侧统一 8px。 -->
       <Setter Property="Height" Value="36" />
-      <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
+      <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type ToggleButton}">
+            <Grid x:Name="InteractionSurface" Background="Transparent"
+                  focus:MotionBehavior.IsEnabled="True"
+                  focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
+                  focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
+                  focus:MotionBehavior.CheckedBackgroundResourceKey="PeachTintBrush"
+                  focus:MotionBehavior.CheckedBorderBrushResourceKey="PeachRailBrush">
+              <Border x:Name="FocusRing" Background="Transparent" BorderBrush="Transparent"
+                      BorderThickness="{DynamicResource FocusBorderThickness}"
+                      CornerRadius="{DynamicResource RadiusControl}" />
+              <Border x:Name="Surface" Margin="{DynamicResource FocusBorderThickness}"
+                      Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="{DynamicResource RadiusControl}" Padding="{TemplateBinding Padding}">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Path x:Name="SelectedTick" Width="10" Height="8" Margin="0,0,6,0"
+                        Stroke="{DynamicResource PeachRailBrush}" StrokeThickness="2"
+                        StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                        Data="M 1,4 L 4,7 L 9,1" Visibility="Hidden" />
+                  <ContentPresenter VerticalAlignment="Center" />
+                </StackPanel>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="SelectedTick" Property="Visibility" Value="Visible" />
+                <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsKeyboardFocused" Value="True" />
+                  <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              </MultiTrigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style x:Key="TagToggleButton"
@@ -640,7 +691,7 @@
     <Style TargetType="{x:Type TextBox}">
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="11,0" />
       <Setter Property="MinHeight" Value="40" />
@@ -678,6 +729,8 @@
 
     <Style TargetType="{x:Type CheckBox}">
       <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
+      <Setter Property="Background" Value="{DynamicResource ActiveBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>
@@ -693,7 +746,7 @@
                       Width="18"
                       Height="18"
                       Background="{DynamicResource CanvasBrush}"
-                      BorderBrush="{DynamicResource PeachLineBrush}"
+                      BorderBrush="{DynamicResource ControlBorderBrush}"
                       BorderThickness="{DynamicResource FocusBorderThickness}"
                       CornerRadius="{DynamicResource RadiusChip}"
                       VerticalAlignment="Center">
@@ -712,8 +765,13 @@
                                 VerticalAlignment="Center" />
             </Grid>
             <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}" />
+                <Setter TargetName="Box" Property="BorderBrush" Value="{Binding BorderBrush, RelativeSource={RelativeSource TemplatedParent}}" />
+                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+              </Trigger>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
@@ -722,11 +780,6 @@
                     <ScaleTransform ScaleX="0.97" ScaleY="0.97" />
                   </Setter.Value>
                 </Setter>
-              </Trigger>
-              <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Box" Property="Background" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -742,6 +795,12 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+    </Style>
+
+    <Style x:Key="CompletionCheckBox" TargetType="{x:Type CheckBox}"
+           BasedOn="{StaticResource {x:Type CheckBox}}">
+      <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
     </Style>
 
     <!-- #133 隐式 RadioButton：未显式套样的单选钮不再落到系统默认外观（含系统蓝焦点）。
@@ -767,12 +826,12 @@
                 <Grid Width="18" Height="18">
                   <Ellipse x:Name="Ring"
                            Fill="Transparent"
-                           Stroke="{DynamicResource PeachLineBrush}"
+                           Stroke="{DynamicResource ControlBorderBrush}"
                            StrokeThickness="2" />
                   <Ellipse x:Name="Dot"
                            Width="8"
                            Height="8"
-                           Fill="{DynamicResource IconAccentBrush}"
+                           Fill="{DynamicResource ActiveBrush}"
                            Visibility="Collapsed" />
                 </Grid>
                 <ContentPresenter Margin="8,0,12,0"
@@ -795,7 +854,7 @@
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
-                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource IconAccentBrush}" />
+                <Setter TargetName="Ring" Property="Stroke" Value="{DynamicResource ActiveBrush}" />
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -848,7 +907,7 @@
       <Setter Property="ContextMenu" Value="{x:Null}" />
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="10,0,0,0" />
       <Setter Property="MinHeight" Value="40" />
@@ -967,7 +1026,7 @@
       <Setter Property="ContextMenu" Value="{x:Null}" />
       <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
       <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource PeachLineBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="11,0" />
       <Setter Property="CalendarStyle" Value="{DynamicResource {x:Type Calendar}}" />
@@ -1232,7 +1291,7 @@
       <Setter Property="Width" Value="10" />
       <Setter Property="Height" Value="Auto" />
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Foreground" Value="{DynamicResource PeachLineBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource ControlBorderBrush}" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ScrollBar}">

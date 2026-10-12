@@ -52,6 +52,7 @@ public sealed partial class FloatingWindow
             new CheckBox
             {
                 Tag = note.Id,
+                Style = (Style)FindResource("CompletionCheckBox"),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 Margin = new Thickness(0, 0, 1, 0),

@@ -482,7 +482,7 @@ try {
     if (-not $listValidation.TagPersistenceRoundTrip) { throw 'Shared tag persistence round-trip failed.' }
     if ($listValidation.LoadedNotes -ne 5) { throw "Expected five loaded sticky notes, got $($listValidation.LoadedNotes)." }
     if ($listValidation.ActiveNoteCount -ne 3 -or $listValidation.CompletedNoteCount -ne 2) { throw "Unexpected sticky-note grouping: active=$($listValidation.ActiveNoteCount), completed=$($listValidation.CompletedNoteCount)." }
-    $dynamicCountdownFocusedTargets = [string[]] ('TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,CountdownTags,CountdownReminderHelp,CountdownReminderNoRadio,CountdownReminderTimeRadio,CountdownReminderCustomRadio,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,CountdownListRegion.Edit,CountdownListRegion.Delete,CountdownListRegion.Edit,CountdownListRegion.Delete,StatusText' -split ',')
+    $dynamicCountdownFocusedTargets = [string[]] ('TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,CountdownName,CountdownDate,SaveCountdownButton,CountdownEditorExpandButton,CountdownListRegion,CountdownListRegion.Edit,CountdownListRegion.Delete,CountdownListRegion.Edit,CountdownListRegion.Delete,StatusText' -split ',')
     $dynamicCountdownTabPath = $listValidation.MainKeyboardBehavior.CountdownTabPath
     if (-not $dynamicCountdownTabPath.FocusVisualsVisible -or
         -not (Test-ExactSymmetricTabTargets `
@@ -491,7 +491,7 @@ try {
             -ActualBackward @($dynamicCountdownTabPath.BackwardFocusedTargets))) {
         throw 'The populated Countdowns workspace did not traverse both Edit/Delete controls for every row symmetrically with visible focus.'
     }
-    $dynamicNotesFocusedTargets = [string[]] ('TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,NotesListRegion.ActiveSegment,NotesListRegion.CompletedSegment,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText' -split ',')
+    $dynamicNotesFocusedTargets = [string[]] ('TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,NotesListRegion.ActiveSegment,NotesListRegion.CompletedSegment,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText' -split ',')
     $dynamicNotesTabPath = $listValidation.MainKeyboardBehavior.NotesTabPath
     if (-not $dynamicNotesTabPath.FocusVisualsVisible -or
         -not (Test-ExactSymmetricTabTargets `

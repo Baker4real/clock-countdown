@@ -5280,7 +5280,12 @@ internal static class ValidationExercises
             using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(probe, capacity);
             try
             {
+                var preparedHandle = new WindowInteropHelper(probe).Handle;
+                Must(preparedHandle != IntPtr.Zero && !probe.IsVisible,
+                    "原生尺寸夹具应在首次显示前初始化不可见 HWND。");
                 probe.Show();
+                Must(new WindowInteropHelper(probe).Handle == preparedHandle,
+                    "首次显示应复用已设置尺寸容量的 HWND。");
                 probe.Width = 1165;
                 probe.Height = 1008;
                 WindowValidationInput.Pump(probe.Dispatcher);
@@ -5623,6 +5628,17 @@ internal static class ValidationExercises
                 _window = window;
                 _capacity = capacity;
                 window.SourceInitialized += OnSourceInitialized;
+                try
+                {
+                    // Show raises visibility before creating its HWND. Initialize
+                    // the native limits before business visibility handlers run.
+                    new WindowInteropHelper(window).EnsureHandle();
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
             }
 
             private void OnSourceInitialized(object? sender, EventArgs args)

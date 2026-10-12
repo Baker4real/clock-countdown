@@ -2354,11 +2354,28 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
                 Assert-Equal 1 $floatingWindows.Count 'Win32 枚举确认主进程只有一个可见悬浮窗'
                 $foregroundMatchesFloating = [long] $floatingWindows[0].Handle -eq
                     [long] $activationHandled[0].activationForegroundWindowHandle
-                Assert-Equal $true (
+                $activationWindowEvidenceMatches = (
                     $foregroundMatchesFloating -or
                     ([bool] $activationHandled[0].activationFloatingWindowIsActive -and
                      -not [bool] $activationClientResult[0].activationForegroundPermissionGranted)
-                ) '匹配 ACK 由真实前台 HWND 或 WPF IsActive 证明'
+                )
+                if (-not $activationWindowEvidenceMatches) {
+                    # Preserve only the already-validated non-content activation fields before fixture purge.
+                    $activationFailureEvidence = [ordered]@{
+                        clientMode = $InstanceActivationClientMode
+                        testState = $InstanceActivationTestState
+                        floatingHandle = [long] $floatingWindows[0].Handle
+                        primary = $activationHandled[0] | Select-Object -Property $allowedActivationDiagnosticFields
+                        client = $activationClientResult[0] | Select-Object -Property $allowedActivationDiagnosticFields
+                    }
+                    [Console]::Error.WriteLine(('INSTANCE_ACTIVATION_FAILURE_EVIDENCE=' +
+                            ($activationFailureEvidence | ConvertTo-Json -Depth 4 -Compress)))
+                }
+                Assert-Equal $true $activationWindowEvidenceMatches (
+                    "匹配 ACK 由真实前台 HWND 或 WPF IsActive 证明（foregroundMatches={0}, floatingIsActive={1}, permissionGranted={2}, observedForeground={3}, floatingHandle={4}）" -f `
+                        $foregroundMatchesFloating, $activationHandled[0].activationFloatingWindowIsActive,
+                        $activationClientResult[0].activationForegroundPermissionGranted,
+                        $activationHandled[0].activationForegroundWindowHandle, $floatingWindows[0].Handle)
                 Assert-Equal $floatingWindows.Count ([int] $activationHandled[0].interactiveFloatingWindowCount `
                     ) 'WPF FloatingWindow 计数与外部可见窗口枚举一致'
             }

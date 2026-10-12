@@ -47,6 +47,9 @@ internal static class ValidationExercises
             Keyboard.Focus(rows[0]); WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);
             WindowValidationInput.RaisePreviewKey(rows[0], Key.Down, ModifierKeys.Shift);
             WindowValidationInput.Pump(main.Dispatcher);
+            Must(ReferenceEquals(Keyboard.FocusedElement, rows[1]) &&
+                ReferenceEquals(rows[1].FocusVisualStyle, main.FindResource("MainKeyboardFocusVisual")),
+                "#235：选择行方向键移动后必须保留真实键盘焦点和现役可见焦点样式。");
             Must(count.Text == "已选择 2 条" && UIElementAutomationPeer.CreatePeerForElement(rows[1]) is { } peer &&
                 peer.GetName().Contains("已选择", StringComparison.Ordinal) &&
                 peer.GetItemStatus() == "已选择" && announcements.Contains("已选择 2 条") &&

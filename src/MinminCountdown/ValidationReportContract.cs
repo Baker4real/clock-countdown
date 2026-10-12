@@ -96,6 +96,7 @@ internal static class ValidationReportContract
         "FloatingSettingsButtonOpensManager",
         "FloatingEmptyStateTextIsolationBehavior",
         "FloatingIncomePrivacyBehavior",
+        "FloatingWorkdayCompletionBehavior",
         "NoteSearchSyncsFromSharedFilter",
         "NoteDateUsesSpacedChineseFormat",
         "NoteCardBodyLineHeightSeparatesSummary",
@@ -604,6 +605,8 @@ internal static class ValidationReportContract
 
     private static void RunBehaviorExercise()
     {
+        MustReject(report => report["FloatingWorkdayCompletionBehavior"] = false, false,
+            "契约未拒绝 #236 下班收尾行为失败。");
         MustReject(report => report["FloatingIncomePrivacyBehavior"] = false, false,
             "契约未拒绝 #229 金额隐私行为失败。");
         foreach (var field in new[]

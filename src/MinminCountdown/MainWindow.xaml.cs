@@ -37,7 +37,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             if (note is null) continue;
             var selectionCard = (NoteSelectionCard)row;
             selectionCard.IsSelected = selected;
-            row.SetResourceReference(Border.BorderBrushProperty, selected || row.IsKeyboardFocused || note.Id == _reminderSourceNoteId
+            row.SetResourceReference(Border.BorderBrushProperty, selected || note.Id == _reminderSourceNoteId
                 ? "ActiveBrush" : selectionCard.BoundaryResource);
             row.SetResourceReference(Border.BackgroundProperty, selected ? "PeachTintBrush" : selectionCard.SurfaceResource);
             UiAccessibility.Name(row, note.Id == _reminderSourceNoteId ? $"当前提醒来源便签：{note.Text}" :
@@ -73,6 +73,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private void AttachNoteSelection(Border row, NoteRecord note)
     {
         row.Uid = "SelectableNoteRow"; row.Tag = note.Id; row.Focusable = true;
+        row.FocusVisualStyle = (Style)FindResource("MainKeyboardFocusVisual");
         row.ToolTip = "单击选择；Ctrl+单击切换选择；Shift+单击连续选择。键盘使用 Ctrl+空格、Shift+方向键。";
         KeyboardNavigation.SetIsTabStop(row, true);
         row.PreviewMouseLeftButtonDown += (_, args) =>

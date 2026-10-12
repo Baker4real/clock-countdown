@@ -3763,6 +3763,7 @@ $visualBaselineDefinitions = @(
         ExpectedVersion = '2026-10-12-v49'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
+            'floating-workday-complete-day',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'notes-search-expanded-day'

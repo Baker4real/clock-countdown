@@ -112,6 +112,8 @@ internal static class ValidationReportContract
         "MainWindowSquareChromeNoTransparency",
         "MainWindowFitsInjectedWorkAreas",
         "MainWindowIdentityZoneDragRegion",
+        "MainWindowHiddenTickSkipsRenderAndShowRefreshes",
+        "MainWindowNoteMinutePreservesFocusAndScroll",
         "TabsRenderAboveDecorationBand",
         "FloatingQuickAddDayResourcesFollowLocalTheme",
         "FloatingQuickAddIndependentFromApplicationTheme",

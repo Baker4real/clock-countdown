@@ -4266,6 +4266,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.WindowPositionResetsWithoutDrag) '越界悬浮窗可经 Ctrl+R 或托盘「复位窗口位置」夹回工作区，隐藏态复位先恢复再夹回（#156）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowFitsInjectedWorkAreas) '管理窗口装进 1032/826/688 DIP 注入工作区：首选尺寸收缩、顶端控件与状态栏可达、倒计时三行滚动可见、720×560 滚动不裁切、隐藏再显保留用户几何、越界与工作区变化夹回（#211）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowIdentityZoneDragRegion) '身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）'
+    Assert-Equal $true ([bool] $adapterValidation.MainWindowHiddenTickSkipsRenderAndShowRefreshes) '管理窗口隐藏期间 tick 不重建分格，重新显示立即同步最新时间（#230）'
+    Assert-Equal $true ([bool] $adapterValidation.MainWindowNoteMinutePreservesFocusAndScroll) '便签数据不变的分钟刷新保留行控件、键盘焦点和非零滚动位置（#230）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.NoteSearch) '主窗便签页 Ctrl+F 聚焦便签搜索（#156）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.Filter) '倒计时页没有正文搜索时 Ctrl+F 仍打开筛选（#156）'
     # #155 源码契约：删除/完成/退出流的行为钉在实现面，运行态由上述探针共同钉住。

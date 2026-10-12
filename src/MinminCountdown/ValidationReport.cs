@@ -1049,6 +1049,10 @@ internal static class ValidationReport
             ValidationExercises.RunMainWindowWorkAreaFitBehavior();
         var mainWindowIdentityZoneDrag =
             ValidationExercises.RunMainWindowIdentityZoneDragBehavior();
+        var mainWindowHiddenRefresh =
+            ValidationExercises.RunMainWindowHiddenRefreshBehavior();
+        var mainWindowNoteMinuteRefresh =
+            ValidationExercises.RunMainWindowNoteMinuteRefreshBehavior();
         var reminderCenterDeliveryFailureActionGate =
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
         var reminderCenterEnterUsesNativeButtonActivation =
@@ -2260,6 +2264,10 @@ internal static class ValidationReport
                 mainWindowWorkAreaFit,
             ["MainWindowIdentityZoneDragRegion"] =
                 mainWindowIdentityZoneDrag,
+            ["MainWindowHiddenTickSkipsRenderAndShowRefreshes"] =
+                mainWindowHiddenRefresh,
+            ["MainWindowNoteMinutePreservesFocusAndScroll"] =
+                mainWindowNoteMinuteRefresh,
             ["ReminderCenterDeliveryFailureDisablesDispositions"] =
                 reminderCenterDeliveryFailureActionGate,
             ["ReminderCenterEnterUsesNativeButtonActivation"] =

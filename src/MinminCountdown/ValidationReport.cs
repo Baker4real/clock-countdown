@@ -1248,28 +1248,37 @@ internal static class ValidationReport
         var tagChipsUseUid = tagChips.All(chip => chip.Uid.Length > 0);
 
         var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
+        var preferencesPopup = Required<Popup>(main, "PreferencesPopup");
+        preferencesPopup.IsOpen = true;
+        PumpDispatcher();
         var savePreferencesButtonFit = MeasureButtonFit(savePreferencesButton);
         var savePreferencesButtonRight = savePreferencesButton
             .TranslatePoint(new Point(savePreferencesButton.ActualWidth, 0), main)
             .X;
         var savePreferencesButtonIsVisible =
+            savePreferencesButton.IsVisible &&
             savePreferencesButton.TranslatePoint(new Point(0, 0), main).X >= 0 &&
             savePreferencesButtonRight <= main.ActualWidth;
+        WindowValidationInput.ClosePopupForCleanup(preferencesPopup);
         var originalMainWidth = main.Width;
         main.Width = main.MinWidth;
         main.UpdateLayout();
-        // #211：最小宽度下业务内容不缩放，「保存设置」经窗口级横向滚动兜底可达且完整落入视口。
+        // #211/#221：最小宽度下经窗口级滚动到达齿轮，再实际打开弹层测量保存按钮。
         var mainScrollHost = Required<ScrollViewer>(main, "MainWindowScrollHost");
-        savePreferencesButton.BringIntoView();
+        Required<Button>(main, "PreferencesButton").BringIntoView();
+        PumpDispatcher();
+        preferencesPopup.IsOpen = true;
         PumpDispatcher();
         main.UpdateLayout();
         var savePreferencesButtonLeftInViewport =
             savePreferencesButton.TranslatePoint(new Point(0, 0), mainScrollHost).X;
         var savePreferencesButtonIsVisibleAtMinimumWidth =
+            savePreferencesButton.IsVisible &&
             mainScrollHost.ScrollableWidth > 0.5 &&
             savePreferencesButtonLeftInViewport >= -0.5 &&
             savePreferencesButtonLeftInViewport + savePreferencesButton.ActualWidth <=
                 mainScrollHost.ViewportWidth + 0.5;
+        WindowValidationInput.ClosePopupForCleanup(preferencesPopup);
         mainScrollHost.ScrollToLeftEnd();
         mainScrollHost.ScrollToTop();
         main.Width = originalMainWidth;
@@ -1684,6 +1693,13 @@ internal static class ValidationReport
         var monthlySalary = Required<TextBox>(main, "MonthlySalary");
         var workStart = Required<TextBox>(main, "WorkStart");
         var workEnd = Required<TextBox>(main, "WorkEnd");
+        var compactOriginalWorkspace = main.CurrentWorkspace;
+        var compactWasExpanded = Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible;
+        main.ShowWorkspace(WorkspaceKind.Countdowns);
+        if (!compactWasExpanded)
+            Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Required<Popup>(main, "PreferencesPopup").IsOpen = true;
+        PumpDispatcher();
         var compactSelection =
             countdownDate.Width is >= 290 and <= 310 &&
             countdownHour.Width is >= 180 and <= 205 &&
@@ -1697,7 +1713,7 @@ internal static class ValidationReport
                 countdownHour,
                 countdownMinute,
                 countdownSecond
-            }.All(control => control.ActualHeight is >= 55 and <= 57);
+            }.All(control => control.IsVisible && control.ActualHeight is >= 55 and <= 57);
         var compactPreferences =
             displayPrecision.ActualWidth >= 96 &&
             monthlySalary.ActualWidth >= 112 &&
@@ -1709,7 +1725,12 @@ internal static class ValidationReport
                 monthlySalary,
                 workStart,
                 workEnd
-            }.All(control => control.ActualHeight is >= 55 and <= 57);
+            }.All(control => control.IsVisible && control.ActualHeight is >= 55 and <= 57);
+        WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
+        if (!compactWasExpanded)
+            Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        main.ShowWorkspace(compactOriginalWorkspace);
+        PumpDispatcher();
         var characterBackgroundImages = Required<Canvas>(main, "CharacterBackgroundLayer")
             .Children
             .OfType<Image>()

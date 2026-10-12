@@ -5473,13 +5473,14 @@ internal static class ValidationExercises
                         settingsButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
                         WindowValidationInput.Pump(main.Dispatcher);
                         var revealed = host is MainWindow direct ? direct : lifecycle.Window!;
-                        Must(revealed.IsVisible && revealed.CurrentWorkspace == WorkspaceKind.Notes &&
+                        Must(WindowValidationInput.WaitUntil(revealed.Dispatcher, () => revealed.IsVisible && revealed.CurrentWorkspace == WorkspaceKind.Notes &&
                              ((Popup)revealed.FindName("PreferencesPopup")).IsOpen &&
-                             ((ComboBox)revealed.FindName("DisplayPrecision")).IsKeyboardFocusWithin,
+                             ((ComboBox)revealed.FindName("DisplayPrecision")).IsKeyboardFocusWithin),
                             $"#221：悬浮设置应支持直接与懒加载宿主，并直接打开管理窗设置弹层；host={host.GetType().Name}; " +
                             $"visible={revealed.IsVisible}; workspace={revealed.CurrentWorkspace}; " +
                             $"popup={((Popup)revealed.FindName("PreferencesPopup")).IsOpen}; " +
-                            $"focus={Keyboard.FocusedElement}。");
+                            $"focus={Keyboard.FocusedElement}; active={revealed.IsActive}; " +
+                            $"precisionVisible={((ComboBox)revealed.FindName("DisplayPrecision")).IsVisible}。");
                         WindowValidationInput.ClosePopupForCleanup((Popup)revealed.FindName("PreferencesPopup"));
                         revealed.Hide();
                     }
@@ -5509,6 +5510,7 @@ internal static class ValidationExercises
         {
             PrepareOffscreenValidationWindow(main);
             main.Show();
+            main.Activate();
             WindowValidationInput.Pump(main.Dispatcher);
             var name = (TextBox)main.FindName("CountdownName");
             var hour = (ComboBox)main.FindName("CountdownHour");
@@ -5537,6 +5539,42 @@ internal static class ValidationExercises
                 "#221：取消编辑返回折叠新增，不写入或删除记录。");
             Must(DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Single().Name == "编辑展开",
                 "#221：取消编辑不得改变持久记录。");
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            name.Text = "无效时间草稿";
+            hour.SelectedIndex = -1;
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible && hour.IsKeyboardFocusWithin && name.Text == "无效时间草稿" &&
+                 ((TextBlock)main.FindName("CountdownMessage")).IsVisible &&
+                 !string.IsNullOrEmpty(((TextBlock)main.FindName("CountdownMessage")).Text) &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Count == 1,
+                "#221：收起后的非法时间草稿提交必须重新展开并聚焦无效时间，保留草稿且不写入。");
+            hour.SelectedIndex = 7;
+            ((DatePicker)main.FindName("CountdownDate")).SelectedDate = DateTime.Today.AddDays(-1);
+            ((RadioButton)main.FindName("CountdownReminderTimeRadio")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            var reminderErrorFocused = false;
+            main.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var editor = main.OwnedWindows.OfType<ReminderRulesEditorWindow>().SingleOrDefault();
+                if (editor is null) return;
+                try
+                {
+                    var firstDue = VisualDescendants<DatePicker>(editor).Single(control =>
+                        AutomationProperties.GetAutomationId(control) == "ReminderRuleFirstDueDate");
+                    var error = VisualDescendants<TextBlock>(editor).Single(control =>
+                        AutomationProperties.GetAutomationId(control) == "ReminderRuleFirstDueError");
+                    reminderErrorFocused = editor.IsVisible && firstDue.IsKeyboardFocusWithin &&
+                        error.IsVisible && !string.IsNullOrEmpty(error.Text);
+                }
+                finally { editor.Close(); }
+            }));
+            ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible && reminderErrorFocused && name.Text == "无效时间草稿" &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Count == 1,
+                "#221：收起后的非法提醒提交必须展开提醒区域并在规则窗口聚焦错误，取消后保留草稿。");
             return true;
         }
         finally

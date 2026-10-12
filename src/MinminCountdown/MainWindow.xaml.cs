@@ -734,7 +734,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     internal void RevealPreferences(WorkspaceKind workspace)
     {
         Reveal(workspace);
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => PreferencesPopup.IsOpen = true));
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            PreferencesButton.Focus();
+            Keyboard.Focus(PreferencesButton);
+            PreferencesPopup.IsOpen = true;
+        }));
     }
 
     private void UpdateCountdownListHeight()

@@ -555,7 +555,7 @@ public sealed partial class FloatingWindow : Window
         _workspace = workspace;
         FloatingCountdownsButton.IsChecked = workspace == WorkspaceKind.Countdowns;
         FloatingNotesButton.IsChecked = workspace == WorkspaceKind.Notes;
-        FloatingTitle.Text = workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签";
+        FloatingTitle.Text = workspace == WorkspaceKind.Countdowns ? "倒计时" : "待办便签";
         FloatingBodyScroller.Margin = workspace == WorkspaceKind.Notes
             ? new Thickness(0, 0, 76, 0)
             : new Thickness(0);
@@ -1805,6 +1805,10 @@ public sealed partial class FloatingWindow : Window
             if (records.Count == 0)
             {
                 FloatingRows.Children.Add(EmptyText(CountdownEmptyStateText(snapshot.Filter)));
+                if (CountdownConstraintsActive(snapshot.Filter))
+                {
+                    FloatingRows.Children.Add(BuildCountdownConstrainedEmptyStateAction());
+                }
             }
         }
         else
@@ -2073,7 +2077,7 @@ public sealed partial class FloatingWindow : Window
         CountdownConstraintsActive(filter) ? "没有匹配的倒计时。" : "没有未到期的倒计时。";
 
     internal static string NoteEmptyStateText(DesktopWorkspaceFilter filter) =>
-        NoteConstraintsActive(filter) ? "没有匹配的便签。" : "今天还没有待办便签。";
+        NoteConstraintsActive(filter) ? "没有匹配的便签。" : "还没有待办便签。";
 
     private FrameworkElement BuildNoteSearchEmptyState()
     {
@@ -2117,6 +2121,29 @@ public sealed partial class FloatingWindow : Window
             },
             "清除便签筛选");
         clear.Click += (_, _) => ClearNoteFilterConstraints();
+        return clear;
+    }
+
+    private FrameworkElement BuildCountdownConstrainedEmptyStateAction()
+    {
+        var clear = UiAccessibility.Name(
+            new Button
+            {
+                Content = "清除筛选",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Style = TryFindResource("SecondaryButton") as Style
+            },
+            "清除倒计时筛选");
+        clear.Click += (_, _) =>
+        {
+            var filter = _desktopWorkspace.Snapshot.Filter;
+            _desktopWorkspace.ApplyFilter(filter with
+            {
+                SelectedTagIds = Array.Empty<string>(),
+                UntaggedOnly = false,
+                CountdownStatus = CountdownStatusFilter.All
+            });
+        };
         return clear;
     }
 

@@ -3315,7 +3315,7 @@ public sealed partial class FloatingWindow
             FloatingNotesButton.IsChecked == (workspace == WorkspaceKind.Notes) &&
             string.Equals(
                 FloatingTitle.Text,
-                workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签",
+                workspace == WorkspaceKind.Countdowns ? "倒计时" : "待办便签",
                 StringComparison.Ordinal) &&
             FloatingNotesCommandArea.Visibility == (workspace == WorkspaceKind.Notes
                 ? Visibility.Visible
@@ -3360,7 +3360,7 @@ public sealed partial class FloatingWindow
                 ? emptyNoteMessages.Length == 0
                 : emptyNoteMessages.Length == 1 && string.Equals(
                     emptyNoteMessages[0],
-                    "今天还没有待办便签。",
+                    "还没有待办便签。",
                     StringComparison.Ordinal));
     }
 

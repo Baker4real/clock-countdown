@@ -9,6 +9,7 @@ internal static class VerificationSuite
     public static IReadOnlyList<VerificationResult> RunAll(string? externalSettingsPath)
     {
         var results = new List<VerificationResult>();
+        Run(results, "notes-share-status-date-and-reverse-insertion-order-without-mutation", VerifyNoteOrdering);
         Run(results, "visible-date-full-moments-use-beijing-and-spaced-chinese-dates", VerifyVisibleFullDates);
         Run(results, "visible-date-note-groups-preserve-relative-labels-and-years", VerifyVisibleNoteGroups);
         foreach (var fixture in SettingsFixtures.AllVersions)
@@ -69,6 +70,26 @@ internal static class VerificationSuite
         }
 
         return results;
+    }
+
+    private static void VerifyNoteOrdering()
+    {
+        var notes = new[]
+        {
+            new NoteRecord("older", "较早日期", "2034-05-05", false, [], NoReminder.Instance),
+            new NoteRecord("same-first", "A 先添加", "2034-05-06", false, [], NoReminder.Instance),
+            new NoteRecord("done-first", "A 已完成先添加", "2034-05-07", true, [], NoReminder.Instance),
+            new NoteRecord("undated", "无日期", null, false, [], NoReminder.Instance),
+            new NoteRecord("done-undated", "已完成无日期", null, true, [], NoReminder.Instance),
+            new NoteRecord("same-last", "Z 后添加", "2034-05-06", false, [], NoReminder.Instance),
+            new NoteRecord("done-last", "Z 已完成后添加", "2034-05-07", true, [], NoReminder.Instance)
+        };
+        var original = notes.ToArray();
+        const string expected = "same-last,same-first,older,undated,done-last,done-first,done-undated";
+        Equal(expected, string.Join(",", NoteOrdering.Sort(notes).Select(note => note.Id)), "共享便签排序");
+        Equal(true, notes.SequenceEqual(original), "排序不改原始添加顺序或记录");
+        notes[1] = notes[1] with { Text = "ZZZ 编辑正文不改变添加顺序" };
+        Equal(expected, string.Join(",", NoteOrdering.Sort(notes).Select(note => note.Id)), "正文编辑不改变同日顺序");
     }
 
     private static void VerifySchemaMigration(int version, string json)

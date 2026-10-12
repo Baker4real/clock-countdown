@@ -3781,6 +3781,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-empty',
             'main-day-notes-filter-open',
             'main-day-notes-representative',
+            'main-day-notes-selected',
             'main-day-notes-stress'
         )
         ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-12-v49/'

@@ -390,17 +390,14 @@ internal sealed class ApplicationSession
             out error);
 
     public bool TrySetNoteCompletion(string id, bool completed, out string error)
-    {
-        var note = Current.Notes.FirstOrDefault(
-            item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (note is null)
-        {
-            error = "未找到便签。";
-            return false;
-        }
+        => TrySetNotesCompletion(new[] { id }, completed, out error);
 
+    public bool TrySetNotesCompletion(IReadOnlyList<string> ids, bool completed, out string error)
+    {
+        if (!TryResolveNotes(ids, out var selected, out error)) return false;
+        var transitionUtc = _store.Clock.UtcNow;
         var records = Current.Notes
-            .Select(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)
+            .Select(item => selected.Contains(item.Id)
                 ? item with { IsCompleted = completed }
                 : item)
             .ToArray();
@@ -408,12 +405,20 @@ internal sealed class ApplicationSession
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
-        if (note.IsCompleted != completed)
+        foreach (var note in Current.Notes.Where(note => selected.Contains(note.Id) && note.IsCompleted != completed))
         {
-            AdvanceNoteRulesThroughTransition(note, _store.Clock.UtcNow, states);
+            AdvanceNoteRulesThroughTransition(note, transitionUtc, states);
         }
 
-        return TryCommit(Current with { Notes = records, ReminderStates = states }, out error);
+        return TryCommit(Current with { Notes = records, ReminderStates = states }, transitionUtc, out error);
+    }
+
+    private bool TryResolveNotes(IReadOnlyList<string> ids, out HashSet<string> selected, out string error)
+    {
+        selected = ids.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var available = Current.Notes.Select(note => note.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        error = selected.Count == 0 || !selected.IsSubsetOf(available) ? "未找到所选便签，请重新选择。" : string.Empty;
+        return error.Length == 0;
     }
 
     private static void AdvanceNoteRulesThroughTransition(
@@ -799,18 +804,17 @@ internal sealed class ApplicationSession
     }
 
     public bool TryDeleteNote(string id, out string error)
+        => TryDeleteNotes(new[] { id }, out error);
+
+    public bool TryDeleteNotes(IReadOnlyList<string> ids, out string error)
     {
+        if (!TryResolveNotes(ids, out var selected, out error)) return false;
         var records = Current.Notes
-            .Where(note => !string.Equals(note.Id, id, StringComparison.OrdinalIgnoreCase))
+            .Where(note => !selected.Contains(note.Id))
             .ToArray();
-        if (records.Length == Current.Notes.Count)
-        {
-            error = "未找到便签。";
-            return false;
-        }
 
         var removedRuleIds = Current.Notes
-            .Where(note => string.Equals(note.Id, id, StringComparison.OrdinalIgnoreCase))
+            .Where(note => selected.Contains(note.Id))
             .SelectMany(static note => note.ReminderRules)
             .Select(static rule => rule.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -856,6 +860,22 @@ internal sealed class ApplicationSession
         return TryCommit(
             Current with { Notes = Current.Notes.Append(record).ToArray(), ReminderStates = states },
             out error);
+    }
+
+    public bool TryRestoreNotes(IReadOnlyList<DeletedNoteEntry> records,
+        IReadOnlyDictionary<string, ReminderRuleState> reminderStates, out string error)
+    {
+        var ids = records.Select(entry => entry.Record.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (records.Count == 0 || ids.Count != records.Count || Current.Notes.Any(note => ids.Contains(note.Id)))
+        {
+            error = "便签已存在或撤销载荷无效，无法撤销删除。";
+            return false;
+        }
+        var restored = Current.Notes.ToList();
+        foreach (var entry in records.OrderBy(entry => entry.Index))
+            restored.Insert(Math.Clamp(entry.Index, 0, restored.Count), entry.Record);
+        return TryCommit(Current with { Notes = restored.ToArray(),
+            ReminderStates = MergeRestoredReminderStates(Current.ReminderStates, reminderStates) }, out error);
     }
 
     private static IReadOnlyDictionary<string, ReminderRuleState> MergeRestoredReminderStates(

@@ -1740,8 +1740,8 @@
                       </Border>
                     </Grid>
                     <Grid Grid.Row="2" x:Name="NotesListCard">
-                      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                      <Border x:Name="NotesListSurface" Grid.RowSpan="2"
+                      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                      <Border x:Name="NotesListSurface" Grid.RowSpan="3"
                               Background="{DynamicResource CardBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
                               BorderThickness="1"
@@ -1795,7 +1795,19 @@
                               </TextBlock>
                             </Grid>
                           </StackPanel>
-                      <ScrollViewer x:Name="NotesListRegion" Grid.Row="1"
+                      <WrapPanel x:Name="NoteBatchActions" Grid.Row="1" Margin="20,8,20,0" Visibility="Collapsed">
+                        <TextBlock x:Name="SelectedNotesCount" VerticalAlignment="Center" Margin="0,0,12,0"
+                                   FontSize="{DynamicResource TypeBodyFontSize}" Foreground="{DynamicResource InkBrush}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="CompleteSelectedNotesButton" Content="完成所选" Style="{StaticResource SecondaryButton}"
+                                Click="OnCompleteSelectedNotes" ToolTip="完成所选便签（Enter）" Margin="0,0,8,0" />
+                        <Button x:Name="DeleteSelectedNotesButton" Content="删除所选" Style="{StaticResource SecondaryButton}"
+                                Foreground="{DynamicResource DangerBrush}" Click="OnDeleteSelectedNotes"
+                                ToolTip="删除所选便签（Delete）" Margin="0,0,8,0" />
+                        <Button x:Name="ClearSelectedNotesButton" Content="取消选择" Style="{StaticResource SecondaryButton}"
+                                Click="OnClearSelectedNotes" ToolTip="取消选择（Esc）" />
+                      </WrapPanel>
+                      <ScrollViewer x:Name="NotesListRegion" Grid.Row="2"
                                   FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
                                   Focusable="True"
                                   IsTabStop="True"

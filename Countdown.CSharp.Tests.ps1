@@ -4447,7 +4447,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $requestNoteDeleteBody -match 'DeleteConfirmationCopy\.For\(note\.Text\)' -and
         $requestNoteDeleteBody -match 'ShowDialog\(\) != true' -and
         $requestNoteDeleteBody -match 'DeletedRecordUndo\.ForNote' -and
-        $requestNoteDeleteBody -match 'DeleteUndoSurface\.Floating' -and
+        $requestNoteDeleteBody -match 'WorkspaceUndoSurface\.Floating' -and
         $requestNoteDeleteBody -notmatch 'NoteDeleted') '悬浮窗删除便签确认写明 10 秒可撤销，成功后在悬浮窗就地登记撤销载荷（#214 源码契约）'
     # #156 源码契约：朗读退出映射、标签关系、快捷键与窗口复位钉在实现面，运行态由探针共同钉住。
     Assert-Equal $true (
@@ -4839,13 +4839,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'main-day-notes-empty',
         'main-day-notes-filter-open',
         'main-day-notes-representative',
+        'main-day-notes-selected',
         'main-day-notes-stress'
     )
-    Assert-Equal 8 $mainReferenceCaptures.Count '主窗口正式 manifest 严格绑定八帧'
+    Assert-Equal 9 $mainReferenceCaptures.Count '主窗口正式 manifest 严格绑定九帧'
     Assert-Equal ($expectedMainReferenceCaptureIds -join ',') ((@($mainReferenceCaptures.CaptureId) | Sort-Object) -join ',') '主窗口八场景 capture ID 固定'
-    Assert-Equal 8 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口八个 Theme/Workspace/State 组合唯一'
-    Assert-Equal 8 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口八帧 PNG hash 全部唯一'
-    Assert-Equal 8 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口八帧状态指纹全部唯一'
+    Assert-Equal 9 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口九个 Theme/Workspace/State 组合唯一'
+    Assert-Equal 9 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口九帧 PNG hash 全部唯一'
+    Assert-Equal 9 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口九帧状态指纹全部唯一'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-10-12-v49/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口八帧路径可移植且基线与实拍 SHA 一致'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 1572750 }).Count '主窗口八帧 1165×1350 画布全部不透明'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 1165x1350 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 1165 -or $_.ContentRoi.Height -ne 1350 -or $_.ContentRoi.PixelCount -ne 1572750 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
@@ -4915,6 +4916,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     }
     Assert-Equal '093DD5DC4E67C91969597006BA5B2AB3366E82ADC3CD231EF85B292B6FD362E6' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（743字段；#224/#229/#233 合并合同）'
     Assert-Equal $true ([bool] $adapterValidation.NoteCompletionUndoFeedback) '#233 两窗真实完成、重新打开事务、失败回滚、唯一撤销槽及10秒到期行为'
+    Assert-Equal $true ([bool] $adapterValidation.NoteBatchKeyboardCompletion) '#235 键盘多选与原子完成，推进cursor并移除对应中心条目，失败整批保留'
+    Assert-Equal $true ([bool] $adapterValidation.NoteBatchDeleteUndo) '#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝'
+    Assert-Equal $true ([bool] $adapterValidation.NoteSelectionAccessibility) '#235 选中数量直播区、行peer、刷新保留与筛选折叠清理'
     Assert-Equal $true ([bool] $adapterValidation.NoteCompletionExitTransition) '#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断'
     Assert-Equal $true ([bool] $adapterValidation.SystemContrastUpdatesOpenWindows) '#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复'
     Assert-Equal $true ([bool] $adapterValidation.SystemContrastAccessibleStates) '#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿'
@@ -5831,7 +5835,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $registerDeleteUndoBody.Length -gt 0 -and
         $registerDeleteUndoBody -match 'MainStatusUndoButton\.Visibility = Visibility\.Visible' -and
         $registerDeleteUndoBody -match 'ResetDeleteUndoTimer\(\);' -and
-        $registerDeleteUndoBody -match 'DeleteUndoSurface\.Main') '删除撤销入口经主窗状态条呈现并重置短时过期计时（#155/#214 源码契约）'
+        $registerDeleteUndoBody -match 'WorkspaceUndoSurface\.Main') '删除撤销入口经主窗状态条呈现并重置短时过期计时（#155/#214 源码契约）'
     Assert-Equal $true (
         $mainWindowCountdownBehaviorSource -match 'Key\.Z' -and
         $mainWindowCountdownBehaviorSource -match 'SetHovering\(true\)' -and
@@ -5845,7 +5849,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $deleteUndoOfferSource -match 'TimeSpan\.FromSeconds\(10\)') '删除确认写明 10 秒可撤销，撤销窗口为 10 秒（#214 源码契约）'
     Assert-Equal $true (
         $floatingWindowCodeSource -match 'Key\.Z' -and
-        $floatingWindowCodeSource -match 'DeleteUndoSurface\.Floating' -and
+        $floatingWindowCodeSource -match 'WorkspaceUndoSurface\.Floating' -and
         $floatingWindowCodeSource -match 'SetHovering\(true\)' -and
         $floatingWindowCodeSource -match 'SetFocused\(true\)' -and
         $floatingWindowXamlSource -match 'x:Name="FloatingDeleteUndoLine"[\s\S]{0,240}Visibility="Collapsed"' -and

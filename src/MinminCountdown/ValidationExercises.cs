@@ -23,6 +23,203 @@ namespace MinminCountdown;
 
 internal static class ValidationExercises
 {
+    public static bool RunNoteSelectionAccessibility()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-note-selection-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var announcements = new List<string>();
+        void RecordSelection(TextBlock block)
+        {
+            if (block.Name == "SelectedNotesCount") announcements.Add(AutomationProperties.GetName(block));
+        }
+        UiAccessibility.Announced += RecordSelection;
+        try
+        {
+            for (var index = 0; index < 6; index++)
+                MustApply(workspace, new SaveNoteChange(null, $"选择便签 {index}", new DateTime(2038, 7, 8).AddDays(index / 2), false, [], Array.Empty<ReminderRule>()));
+            PrepareOffscreenValidationWindow(main); main.Show(); main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var rows = VisualDescendants<Border>(main).Where(row => row.Uid == "SelectableNoteRow" && row.IsVisible).ToArray();
+            var count = (TextBlock)main.FindName("SelectedNotesCount");
+            Keyboard.Focus(rows[0]); WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);
+            WindowValidationInput.RaisePreviewKey(rows[0], Key.Down, ModifierKeys.Shift);
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(count.Text == "已选择 2 条" && UIElementAutomationPeer.CreatePeerForElement(rows[1]) is { } peer &&
+                peer.GetName().Contains("已选择", StringComparison.Ordinal) &&
+                peer.GetItemStatus() == "已选择" && announcements.Contains("已选择 2 条") &&
+                UIElementAutomationPeer.CreatePeerForElement(count)?.GetLiveSetting() == AutomationLiveSetting.Polite,
+                "#235：选择行与选中数量必须可被讲述人读取，数量改变发出真实直播区事件。");
+            var focused = Keyboard.FocusedElement;
+            clock.UtcNow = clock.UtcNow.AddMinutes(1); main.UpdateTime(clock.UtcNow);
+            Must(ReferenceEquals(focused, Keyboard.FocusedElement) && count.Text == "已选择 2 条",
+                "#235：分钟刷新不得丢失选择与焦点。");
+            var selected = workspace.Snapshot.AllNotes.Single(note => note.Id == (string)rows[0].Tag);
+            MustApply(workspace, new SaveNoteChange(selected.Id, selected.Text + "已更新", DateTime.Parse(selected.Date!), false, [], Array.Empty<ReminderRule>()));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(count.Text == "已选择 2 条", "#235：仍可见记录的数据刷新必须保留有效选择。");
+            ((TextBox)main.FindName("NoteSearch")).Text = "选择便签 0";
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(count.Text == "已选择 0 条" && !((Panel)main.FindName("NoteBatchActions")).IsVisible,
+                "#235：筛选隐藏的便签不能继续留在批量选择中。");
+            ((TextBox)main.FindName("NoteSearch")).Text = string.Empty;
+            WindowValidationInput.Pump(main.Dispatcher);
+            rows = VisualDescendants<Border>(main).Where(row => row.Uid == "SelectableNoteRow" && row.IsVisible).ToArray();
+            Keyboard.Focus(rows[0]); WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);
+            var disclosure = VisualDescendants<Button>(main).First(button => button.Uid == "NoteDateDisclosure" && button.IsVisible);
+            disclosure.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Must(count.Text == "已选择 0 条", "#235：折叠分组必须移除隐藏选择。");
+            disclosure.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Keyboard.Focus(rows[0]); WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);
+            ((ToggleButton)main.FindName("CompletedNotesSegment")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Must(count.Text == "已选择 0 条", "#235：切换完成状态分段必须移除隐藏选择。");
+            return true;
+        }
+        finally { UiAccessibility.Announced -= RecordSelection; main.Close(); DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log"); }
+    }
+
+    public static bool RunNoteBatchDeleteUndo()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-batch-delete-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            for (var index = 0; index < 3; index++)
+                MustApply(workspace, new SaveNoteChange(null, $"删除批量 {index}", new DateTime(2038, 7, 8), false, [],
+                    new ReminderRule[] { new FixedIntervalReminderRule($"batch-delete-{index}", clock.UtcNow.AddMinutes(1), new ReminderInterval(15)) }));
+            clock.UtcNow = clock.UtcNow.AddMinutes(1);
+            foreach (var note in workspace.Snapshot.AllNotes)
+            {
+                Must(workspace.ConfirmReminderDisplayed(note, note.ReminderRules[0].Id, clock.UtcNow).Succeeded, "批量删除送达夹具失败。");
+                Must(workspace.SnoozeReminder(note, note.ReminderRules[0].Id, clock.UtcNow,
+                    ReminderSnoozeOption.TenMinutes, null).Succeeded, "批量删除稍后夹具失败。");
+            }
+            PrepareOffscreenValidationWindow(main); main.Show(); main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var delete = main.FindName("DeleteSelectedNotesButton") as Button;
+            Must(delete is not null, "#235：缺少批量删除入口。");
+            var rows = VisualDescendants<Border>(main).Where(row => row.Uid == "SelectableNoteRow" && row.IsVisible).ToArray();
+            Keyboard.Focus(rows[0]); WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);
+            Keyboard.Focus(rows[2]); WindowValidationInput.RaisePreviewKey(rows[2], Key.Space, ModifierKeys.Control);
+            var ids = new[] { (string)rows[0].Tag, (string)rows[2].Tag };
+            var original = new SettingsStore(clock: clock).Load(path).Settings;
+            var bytes = File.ReadAllText(path);
+            QueueConfirmationDialogResponse(main, confirm: false);
+            Keyboard.Focus(delete); WindowValidationInput.RaiseKey(delete!, Key.Enter);
+            Must(File.ReadAllText(path) == bytes && ((TextBlock)main.FindName("SelectedNotesCount")).Text == "已选择 2 条",
+                "#235：安全默认取消必须保留全部记录和选择。");
+            Directory.CreateDirectory(path + ".tmp");
+            QueueConfirmationDialogResponse(main, confirm: true);
+            delete!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Must(File.ReadAllText(path) == bytes && workspace.Snapshot.AllNotes.Count == 3 && !main.MainStatusUndoButton.IsVisible,
+                "#235：批量删除写盘失败必须整批回滚且没有新撤销。");
+            DeleteDirectoryIfEmpty(path + ".tmp");
+            QueueConfirmationDialogResponse(main, confirm: true);
+            delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var disk = new SettingsStore(clock: clock).Load(path).Settings;
+            Must(disk.Notes.Count == 1 && disk.Notes.All(note => !ids.Contains(note.Id)) && disk.ReminderStates.Count == 1 &&
+                main.MainStatusUndoButton.IsVisible, "#235：确认一次必须删除全部所选和规则状态，提供一次撤销。");
+            Directory.CreateDirectory(path + ".tmp");
+            var deletedBytes = File.ReadAllText(path);
+            main.MainStatusUndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Must(File.ReadAllText(path) == deletedBytes && main.MainStatusUndoButton.IsVisible,
+                "#235：撤销写盘失败必须整批不恢复并保留载荷。");
+            DeleteDirectoryIfEmpty(path + ".tmp");
+            var collision = original.Notes.First(note => ids.Contains(note.Id));
+            MustApply(workspace, new RestoreDeletedNoteChange(collision,
+                DeletedRecordUndo.CaptureReminderStates(original.ReminderStates, collision.ReminderRules)));
+            var conflictBytes = File.ReadAllText(path);
+            main.MainStatusUndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Must(File.ReadAllText(path) == conflictBytes && main.MainStatusUndoButton.IsVisible,
+                "#235：一条同ID冲突必须拒绝整批撤销，不覆盖现有记录。");
+            MustApply(workspace, new DeleteNoteChange(collision.Id));
+            main.MainStatusUndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            disk = new SettingsStore(clock: clock).Load(path).Settings;
+            Must(JsonSerializer.Serialize(disk.Notes) == JsonSerializer.Serialize(original.Notes) &&
+                original.ReminderStates.All(pair => disk.ReminderStates.TryGetValue(pair.Key, out var state) && state == pair.Value) &&
+                !main.MainStatusUndoButton.IsVisible,
+                "#235：一次撤销必须恢复全部记录、原顺序和每条规则的cursor/送达/处置/活动稍后。");
+            return true;
+        }
+        finally
+        {
+            main.Close(); DeleteDirectoryIfEmpty(path + ".tmp"); DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunNoteBatchKeyboardCompletion()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-batch-notes-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        using var coordinator = new ReminderDeliveryCoordinator(workspace, new DiagnosticLogger(path + ".log"));
+        try
+        {
+            for (var index = 0; index < 3; index++)
+                MustApply(workspace, new SaveNoteChange(null, $"批量便签 {index}", new DateTime(2038, 7, 8), false, [],
+                    new ReminderRule[] { new FixedIntervalReminderRule($"batch-rule-{index}", clock.UtcNow.AddMinutes(1), new ReminderInterval(15)) }));
+            var firstDue = clock.UtcNow.AddMinutes(1);
+            clock.UtcNow = firstDue;
+            coordinator.Tick(clock.UtcNow); WindowValidationInput.Pump(main.Dispatcher);
+            Must(coordinator.ActiveEntryCount == 3, "#235：批量完成探针必须先真实送达三个提醒中心条目。");
+            PrepareOffscreenValidationWindow(main);
+            main.Show(); main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var complete = main.FindName("CompleteSelectedNotesButton") as Button;
+            Must(complete is not null, "#235：缺少主窗口批量完成入口。");
+            var rows = VisualDescendants<Border>(main).Where(row => row.Uid == "SelectableNoteRow" && row.IsVisible).ToArray();
+            Must(rows.Length == 3, "#235：便签必须提供键盘可达的选择行。");
+            Keyboard.Focus(rows[0]);
+            WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);
+            WindowValidationInput.RaisePreviewKey(rows[0], Key.Down, ModifierKeys.Shift);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var count = (TextBlock)main.FindName("SelectedNotesCount");
+            Must(count.Text == "已选择 2 条" && count.IsVisible &&
+                AutomationProperties.GetLiveSetting(count) == AutomationLiveSetting.Polite,
+                "#235：Ctrl+Space、Shift+Down 必须选中两条并提供可访问数量。");
+            var ids = rows.Take(2).Select(row => (string)row.Tag).ToHashSet();
+            clock.UtcNow = firstDue.AddMinutes(37);
+            var before = File.ReadAllText(path);
+            Directory.CreateDirectory(path + ".tmp");
+            complete!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Must(File.ReadAllText(path) == before && workspace.Snapshot.AllNotes.All(note => !note.IsCompleted) &&
+                count.Text == "已选择 2 条" && !main.MainStatusUndoButton.IsVisible && coordinator.ActiveEntryCount == 3,
+                "#235：批量完成写盘失败必须整批不变并保留选择。");
+            DeleteDirectoryIfEmpty(path + ".tmp");
+            Keyboard.Focus(complete);
+            WindowValidationInput.RaiseKey(complete, Key.Enter);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var disk = new SettingsStore(clock: clock).Load(path).Settings;
+            Must(disk.Notes.Where(note => ids.Contains(note.Id)).All(note => note.IsCompleted) &&
+                 disk.Notes.Where(note => !ids.Contains(note.Id)).All(note => !note.IsCompleted) &&
+                 disk.ReminderStates.Values.Count(state => state.HandledThroughUtc == clock.UtcNow.AddMinutes(-7)) == 2 &&
+                 coordinator.ActiveEntryCount == 1 && disk.Notes.Where(note => ids.Contains(note.Id)).All(note =>
+                    disk.ReminderStates[note.ReminderRules[0].Id].LastDispositionOccurrenceKey ==
+                    disk.ReminderStates[note.ReminderRules[0].Id].LastDeliveredOccurrenceKey),
+                "#235：批量完成须逐条推进cursor，未选项不变。");
+            Must(main.MainStatusUndoButton.IsVisible, "#235：批量完成应保留唯一撤销入口。");
+            clock.UtcNow = clock.UtcNow.AddMinutes(15);
+            main.MainStatusUndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            disk = new SettingsStore(clock: clock).Load(path).Settings;
+            Must(disk.Notes.All(note => !note.IsCompleted) && disk.Notes.Where(note => ids.Contains(note.Id)).All(note =>
+                    disk.ReminderStates[note.ReminderRules[0].Id].HandledThroughUtc == firstDue.AddMinutes(45)),
+                "#235：一次撤销应重新打开全部本次完成的便签。");
+            return true;
+        }
+        finally
+        {
+            main.Close(); DeleteDirectoryIfEmpty(path + ".tmp");
+            DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool ProbeMotionTokens()
     {
         var resources = Application.Current?.Resources;

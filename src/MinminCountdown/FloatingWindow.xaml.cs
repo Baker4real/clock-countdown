@@ -67,7 +67,7 @@ public sealed partial class FloatingWindow : Window
     private int _nativeWindowDragCompletionCount;
     private readonly string _assetRoot;
     private bool _assetsLoaded;
-    private readonly DeleteUndoCountdown _deleteUndoCountdown;
+    private readonly WorkspaceUndoCountdown _deleteUndoCountdown;
     private NoteCompletionExit? _noteCompletionExit;
     private bool _retainFloatingUndoMessage;
 
@@ -88,7 +88,7 @@ public sealed partial class FloatingWindow : Window
             LoadAssets(assetRoot);
         }
 
-        _deleteUndoCountdown = new DeleteUndoCountdown(Dispatcher, ExpireOwnedFloatingDeleteUndo);
+        _deleteUndoCountdown = new WorkspaceUndoCountdown(Dispatcher, ExpireOwnedFloatingDeleteUndo);
         ConfigureControls();
         WireEvents();
         WindowWorkAreaGeometry.TrackChanges(this, Reanchor);
@@ -1613,7 +1613,7 @@ public sealed partial class FloatingWindow : Window
         FloatingDeleteUndoButton.MouseLeave += (_, _) => _deleteUndoCountdown.SetHovering(false);
         FloatingDeleteUndoButton.GotKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(true);
         FloatingDeleteUndoButton.LostKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(false);
-        var floatingUndo = DeleteUndoOffers.For(_desktopWorkspace);
+        var floatingUndo = WorkspaceUndoOffers.For(_desktopWorkspace);
         floatingUndo.Changed += OnFloatingDeleteUndoChanged;
         Closed += (_, _) =>
         {
@@ -2192,8 +2192,8 @@ public sealed partial class FloatingWindow : Window
 
     private void OnFloatingDeleteUndoChanged(object? sender, EventArgs eventArgs)
     {
-        var slot = DeleteUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface == DeleteUndoSurface.Floating && slot.Payload is { } undo)
+        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == WorkspaceUndoSurface.Floating && slot.Payload is { } undo)
         {
             _retainFloatingUndoMessage = false;
             PresentFloatingDeleteUndo(undo);
@@ -2224,8 +2224,8 @@ public sealed partial class FloatingWindow : Window
 
     private void CommitFloatingDeleteUndo()
     {
-        var slot = DeleteUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface != DeleteUndoSurface.Floating || slot.Payload is not { } undo)
+        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface != WorkspaceUndoSurface.Floating || slot.Payload is not { } undo)
         {
             return;
         }
@@ -2245,8 +2245,8 @@ public sealed partial class FloatingWindow : Window
 
     private void ExpireOwnedFloatingDeleteUndo()
     {
-        var slot = DeleteUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface != DeleteUndoSurface.Floating)
+        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface != WorkspaceUndoSurface.Floating)
         {
             return;
         }
@@ -2262,8 +2262,8 @@ public sealed partial class FloatingWindow : Window
     {
         get
         {
-            var slot = DeleteUndoOffers.For(_desktopWorkspace);
-            return slot.Surface == DeleteUndoSurface.Floating ? slot.Payload as DeletedRecordUndo : null;
+            var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+            return slot.Surface == WorkspaceUndoSurface.Floating ? slot.Payload as DeletedRecordUndo : null;
         }
     }
 
@@ -2272,8 +2272,8 @@ public sealed partial class FloatingWindow : Window
     internal void DismissDeleteUndoForValidation()
     {
         _retainFloatingUndoMessage = false;
-        var slot = DeleteUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface == DeleteUndoSurface.Floating)
+        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == WorkspaceUndoSurface.Floating)
         {
             slot.Clear();
             return;
@@ -2298,7 +2298,7 @@ public sealed partial class FloatingWindow : Window
             args.Key == Key.Z &&
             IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen &&
             Keyboard.FocusedElement is not TextBoxBase &&
-            DeleteUndoOffers.For(_desktopWorkspace).Surface == DeleteUndoSurface.Floating)
+            WorkspaceUndoOffers.For(_desktopWorkspace).Surface == WorkspaceUndoSurface.Floating)
         {
             CommitFloatingDeleteUndo();
             args.Handled = true;

@@ -333,7 +333,7 @@ function Assert-CountdownApplicationValidationReport {
     }
 
     $baselines = @(
-        [pscustomobject]@{ Name = 'Main'; Label = '主窗口'; Required = $MainManifestRequired; CaptureCount = 8 }
+        [pscustomobject]@{ Name = 'Main'; Label = '主窗口'; Required = $MainManifestRequired; CaptureCount = 9 }
         [pscustomobject]@{ Name = 'Floating'; Label = '悬浮窗'; Required = $FloatingManifestRequired; CaptureCount = 4 }
     )
     $baselineStates = [ordered]@{}

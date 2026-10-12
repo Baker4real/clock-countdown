@@ -19,6 +19,131 @@ namespace MinminCountdown;
 
 public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 {
+    private readonly HashSet<string> _selectedNoteIds = new(StringComparer.OrdinalIgnoreCase);
+    private string? _noteSelectionAnchor;
+
+    private Border[] VisibleNoteSelectionRows() =>
+        _noteSourceRows.Values.OfType<Border>().Where(row => row.IsVisible).ToArray();
+
+    private void UpdateNoteSelection()
+    {
+        var visible = VisibleNoteSelectionRows().Select(row => (string)row.Tag).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _selectedNoteIds.IntersectWith(visible);
+        if (_noteSelectionAnchor is not null && !visible.Contains(_noteSelectionAnchor)) _noteSelectionAnchor = null;
+        foreach (var row in _noteSourceRows.Values.OfType<Border>())
+        {
+            var selected = _selectedNoteIds.Contains((string)row.Tag);
+            var note = _desktopWorkspace.Snapshot.AllNotes.FirstOrDefault(item => item.Id == (string)row.Tag);
+            if (note is null) continue;
+            var selectionCard = (NoteSelectionCard)row;
+            selectionCard.IsSelected = selected;
+            row.SetResourceReference(Border.BorderBrushProperty, selected || row.IsKeyboardFocused || note.Id == _reminderSourceNoteId
+                ? "ActiveBrush" : selectionCard.BoundaryResource);
+            row.SetResourceReference(Border.BackgroundProperty, selected ? "PeachTintBrush" : selectionCard.SurfaceResource);
+            UiAccessibility.Name(row, note.Id == _reminderSourceNoteId ? $"当前提醒来源便签：{note.Text}" :
+                $"{(selected ? "已选择" : "未选择")}便签：{note.Text}");
+        }
+        NoteBatchActions.Visibility = _selectedNoteIds.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        CompleteSelectedNotesButton.IsEnabled = _selectedNoteIds.Count > 0 && CompletedNotesSegment.IsChecked != true;
+        UiAccessibility.Announce(SelectedNotesCount, $"已选择 {_selectedNoteIds.Count} 条");
+    }
+
+    private void SelectNoteRow(Border row, ModifierKeys modifiers)
+    {
+        var id = (string)row.Tag;
+        var rows = VisibleNoteSelectionRows();
+        if (modifiers.HasFlag(ModifierKeys.Shift) && _noteSelectionAnchor is not null)
+        {
+            var anchor = Array.FindIndex(rows, item => (string)item.Tag == _noteSelectionAnchor);
+            var target = Array.IndexOf(rows, row);
+            if (anchor < 0 || target < 0) return;
+            if (!modifiers.HasFlag(ModifierKeys.Control)) _selectedNoteIds.Clear();
+            for (var index = Math.Min(anchor, target); index <= Math.Max(anchor, target); index++)
+                _selectedNoteIds.Add((string)rows[index].Tag);
+        }
+        else
+        {
+            if (!modifiers.HasFlag(ModifierKeys.Control)) _selectedNoteIds.Clear();
+            if (!_selectedNoteIds.Add(id) && modifiers.HasFlag(ModifierKeys.Control)) _selectedNoteIds.Remove(id);
+            _noteSelectionAnchor = id;
+        }
+        UpdateNoteSelection();
+    }
+
+    private void AttachNoteSelection(Border row, NoteRecord note)
+    {
+        row.Uid = "SelectableNoteRow"; row.Tag = note.Id; row.Focusable = true;
+        row.ToolTip = "单击选择；Ctrl+单击切换选择；Shift+单击连续选择。键盘使用 Ctrl+空格、Shift+方向键。";
+        KeyboardNavigation.SetIsTabStop(row, true);
+        row.PreviewMouseLeftButtonDown += (_, args) =>
+        {
+            var source = args.OriginalSource as DependencyObject;
+            while (source is not null && source != row)
+            {
+                if (source is ButtonBase or TextBoxBase) return;
+                source = VisualTreeHelper.GetParent(source);
+            }
+            row.Focus(); SelectNoteRow(row, Keyboard.Modifiers); args.Handled = true;
+        };
+        row.GotKeyboardFocus += (_, _) => UpdateNoteSelection();
+        row.LostKeyboardFocus += (_, _) => UpdateNoteSelection();
+        row.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Handled || !row.IsKeyboardFocused || !MainShortcutScopeIsSafe) return;
+            var modifiers = MainShortcutInput.ResolveModifiers(args);
+            if (args.Key == Key.Space)
+            { SelectNoteRow(row, modifiers); args.Handled = true; }
+            else if (args.Key is Key.Down or Key.Up)
+            {
+                var rows = VisibleNoteSelectionRows();
+                var index = Math.Clamp(Array.IndexOf(rows, row) + (args.Key == Key.Down ? 1 : -1), 0, rows.Length - 1);
+                if (modifiers.HasFlag(ModifierKeys.Shift) && _noteSelectionAnchor is null) _noteSelectionAnchor = note.Id;
+                if (modifiers != ModifierKeys.Control) SelectNoteRow(rows[index], modifiers);
+                rows[index].Focus(); rows[index].BringIntoView(); args.Handled = true;
+            }
+            else if (args.Key == Key.Escape)
+            { OnClearSelectedNotes(this, new RoutedEventArgs()); args.Handled = true; }
+        };
+    }
+
+    private void OnClearSelectedNotes(object sender, RoutedEventArgs args)
+    {
+        _selectedNoteIds.Clear(); _noteSelectionAnchor = null; UpdateNoteSelection();
+    }
+
+    private void OnCompleteSelectedNotes(object sender, RoutedEventArgs args)
+    {
+        var ids = _selectedNoteIds.ToArray();
+        if (ids.Length == 0) return;
+        var result = _desktopWorkspace.Apply(new SetNotesCompletionChange(ids, true));
+        if (!result.Succeeded) { SetMessage(StatusText, $"完成失败：{result.Error}", true); return; }
+        OnClearSelectedNotes(this, args);
+        WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Main, new CompletedNotesUndo(ids));
+        MainStatusUndoButton.Focus();
+    }
+
+    private void OnDeleteSelectedNotes(object sender, RoutedEventArgs args)
+    {
+        var ids = _selectedNoteIds.ToArray();
+        if (ids.Length == 0) return;
+        var focus = Keyboard.FocusedElement;
+        if (new ConfirmationDialog(this, "删除所选便签", $"确定删除所选 {ids.Length} 条便签吗？{DeleteConfirmationCopy.UndoWindowNotice}。").ShowDialog() != true)
+        {
+            if (focus is UIElement { IsVisible: true } element) Keyboard.Focus(element);
+            return;
+        }
+        var settings = _desktopWorkspace.Snapshot.Settings;
+        var records = settings.Notes.Select((note, index) => new DeletedNoteEntry(note, index))
+            .Where(entry => ids.Contains(entry.Record.Id, StringComparer.OrdinalIgnoreCase)).ToArray();
+        var undo = new DeletedNotesUndo(records, DeletedRecordUndo.CaptureReminderStates(settings.ReminderStates,
+            records.SelectMany(entry => entry.Record.ReminderRules).ToArray()));
+        var result = _desktopWorkspace.Apply(new DeleteNotesChange(ids));
+        if (!result.Succeeded) { SetMessage(StatusText, $"删除失败：{result.Error}", true); return; }
+        OnClearSelectedNotes(this, args);
+        WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Main, undo);
+        MainStatusUndoButton.Focus();
+    }
+
     private const double CountdownRemainingColumnWidth = 300;
     private const double CountdownRemainingLeftMargin = 16;
     // #211：1165×1350 由钉死尺寸改为首选尺寸；窗口随所在显示器工作区收缩，
@@ -97,8 +222,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private string? _reminderSourceCountdownId;
     private string? _reminderSourceNoteId;
     private string? _countdownRenderSignature;
-    // #155/#214：本窗口的撤销计时。载荷在 DeleteUndoOffers 上只有一份。
-    private readonly DeleteUndoCountdown _deleteUndoCountdown;
+    // #155/#214：本窗口的撤销计时。载荷在 WorkspaceUndoOffers 上只有一份。
+    private readonly WorkspaceUndoCountdown _deleteUndoCountdown;
     private NoteCompletionExit? _noteCompletionExit;
 
     internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
@@ -182,7 +307,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         PopupFocusLifecycle.ClipToCanvas(NoteTags.Popup, MainLayoutSurface);
         PopupFocusLifecycle.ClipToCanvas(CountdownTags.Popup, MainLayoutSurface);
         LoadCharacterAssets(assetRoot);
-        _deleteUndoCountdown = new DeleteUndoCountdown(Dispatcher, ExpireOwnedMainDeleteUndo);
+        _deleteUndoCountdown = new WorkspaceUndoCountdown(Dispatcher, ExpireOwnedMainDeleteUndo);
         ConfigureControls();
         WireEvents();
         SizeChanged += (_, _) => UpdateCountdownListHeight();
@@ -317,7 +442,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return false;
         }
 
-        if (DeleteUndoOffers.For(_desktopWorkspace).Surface != DeleteUndoSurface.Main)
+        if (WorkspaceUndoOffers.For(_desktopWorkspace).Surface != WorkspaceUndoSurface.Main)
         {
             return false;
         }
@@ -1318,7 +1443,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         MainStatusUndoButton.MouseLeave += (_, _) => _deleteUndoCountdown.SetHovering(false);
         MainStatusUndoButton.GotKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(true);
         MainStatusUndoButton.LostKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(false);
-        var mainUndo = DeleteUndoOffers.For(_desktopWorkspace);
+        var mainUndo = WorkspaceUndoOffers.For(_desktopWorkspace);
         mainUndo.Changed += OnMainDeleteUndoChanged;
         Closed += (_, _) =>
         {
@@ -2117,6 +2242,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             : Visibility.Collapsed;
         SetNoteStatusSegmentState(ActiveNotesSegment, "未完成", activeCount);
         SetNoteStatusSegmentState(CompletedNotesSegment, "已完成", completedCount);
+        UpdateNoteSelection();
     }
 
     private void UpdateSegmentIndicators()
@@ -2208,6 +2334,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     groupedNotes.Length,
                     isCompleted,
                     expand);
+                UpdateNoteSelection();
             };
             var dateText = ((Grid)sectionToggle.Content).Children.OfType<TextBlock>()
                 .Single(text => text.Uid == "NoteDateLabel");
@@ -2462,7 +2589,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         grid.Children.Add(tagChips);
         grid.Children.Add(actions);
         var card = NoteCard(grid, note.IsCompleted || visibleIndex % 2 == 1);
-        AttachRowDeleteShortcut(card, delete);
+        AttachNoteSelection(card, note);
+        card.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Handled || args.Key != Key.Delete || MainShortcutInput.ResolveModifiers(args) != ModifierKeys.None ||
+                !MainShortcutScopeIsSafe || IsTextEntryFocus(Keyboard.FocusedElement)) return;
+            args.Handled = true;
+            if (card.IsKeyboardFocused && _selectedNoteIds.Contains(note.Id)) OnDeleteSelectedNotes(this, args);
+            else delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        };
         _noteSourceRows[note.Id] = card;
         _noteSourceFocusTargets[note.Id] = edit;
         if (string.Equals(note.Id, _reminderSourceNoteId, StringComparison.OrdinalIgnoreCase))
@@ -2870,13 +3005,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     // #155/#214：管理窗口删除仍经状态条呈现；悬浮窗删除由悬浮窗自己呈现同一份载荷。
     internal void RegisterDeleteUndo(DeletedRecordUndo undo)
     {
-        DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Main, undo);
+        WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Main, undo);
     }
 
     private void OnMainDeleteUndoChanged(object? sender, EventArgs eventArgs)
     {
-        var slot = DeleteUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface == DeleteUndoSurface.Main && slot.Payload is { } undo)
+        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == WorkspaceUndoSurface.Main && slot.Payload is { } undo)
         {
             PresentMainDeleteUndo(undo);
             return;
@@ -2901,8 +3036,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void CommitMainDeleteUndo()
     {
-        var slot = DeleteUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface != DeleteUndoSurface.Main || slot.Payload is not { } undo)
+        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface != WorkspaceUndoSurface.Main || slot.Payload is not { } undo)
         {
             return;
         }
@@ -2922,8 +3057,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void ExpireOwnedMainDeleteUndo()
     {
-        var slot = DeleteUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface == DeleteUndoSurface.Main)
+        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+        if (slot.Surface == WorkspaceUndoSurface.Main)
         {
             slot.Clear();
         }
@@ -2933,8 +3068,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         get
         {
-            var slot = DeleteUndoOffers.For(_desktopWorkspace);
-            return slot.Surface == DeleteUndoSurface.Main ? slot.Payload as DeletedRecordUndo : null;
+            var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
+            return slot.Surface == WorkspaceUndoSurface.Main ? slot.Payload as DeletedRecordUndo : null;
         }
     }
 
@@ -2991,7 +3126,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
         else if (desired)
         {
-            DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Main, new CompletedNoteUndo(id, current.Text));
+            WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Main, new CompletedNoteUndo(id, current.Text));
             _noteCompletionExit = exit;
             exit?.Start();
         }
@@ -3616,11 +3751,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         return card;
     }
 
-    private Border NoteCard(UIElement content, bool useWhiteSurface)
+    private NoteSelectionCard NoteCard(UIElement content, bool useWhiteSurface)
     {
-        var card = new Border
+        var card = new NoteSelectionCard
         {
             Child = content,
+            SurfaceResource = useWhiteSurface ? "NoteWhiteBrush" : "NoteBrush",
+            BoundaryResource = useWhiteSurface ? "PeachLineBrush" : "NoteLineBrush",
             // #153：卡片内边距与卡间距消费间距 token（§13.3 SpacingCardPadding=14 / SpacingUnit=8），
             // 不再各写字面量。
             Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingUnit")),

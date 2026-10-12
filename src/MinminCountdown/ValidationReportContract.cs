@@ -56,6 +56,9 @@ internal static class ValidationReportContract
     private static readonly string[] RequiredTrueBooleanFields =
     [
         "Valid",
+        "NoteBatchKeyboardCompletion",
+        "NoteBatchDeleteUndo",
+        "NoteSelectionAccessibility",
         "DesktopWorkspaceInterfaceBehavior",
         "ReminderEditingInterfaceBehavior",
         "CalendarReminderBehavior",

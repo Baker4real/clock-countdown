@@ -15,6 +15,21 @@ using MinminCountdown.Core;
 
 namespace MinminCountdown;
 
+// #235：可聚焦的便签卡。选中状态通过行名称与 ItemStatus 暴露，数量由独立直播区播报。
+internal sealed class NoteSelectionCard : Border
+{
+    internal string SurfaceResource { get; init; } = "NoteBrush";
+    internal string BoundaryResource { get; init; } = "NoteLineBrush";
+    internal bool IsSelected { get; set; }
+    protected override AutomationPeer OnCreateAutomationPeer() => new NoteSelectionPeer(this);
+    private sealed class NoteSelectionPeer(NoteSelectionCard owner) : FrameworkElementAutomationPeer(owner)
+    {
+        protected override string GetClassNameCore() => nameof(NoteSelectionCard);
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.ListItem;
+        protected override string GetItemStatusCore() => owner.IsSelected ? "已选择" : "未选择";
+    }
+}
+
 internal static class UiAccessibility
 {
     public static T Name<T>(T element, string name)

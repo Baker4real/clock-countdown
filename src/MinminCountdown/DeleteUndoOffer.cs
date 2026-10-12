@@ -4,22 +4,22 @@ using System.Windows.Threading;
 namespace MinminCountdown;
 
 // #214/#233：删除与完成共用一份最近操作载荷。发起窗口呈现，撤销经各自的现行事务。
-internal enum DeleteUndoSurface
+internal enum WorkspaceUndoSurface
 {
     None,
     Main,
     Floating
 }
 
-internal sealed class DeleteUndoSlot
+internal sealed class WorkspaceUndoSlot
 {
     public WorkspaceUndo? Payload { get; private set; }
 
-    public DeleteUndoSurface Surface { get; private set; }
+    public WorkspaceUndoSurface Surface { get; private set; }
 
     public event EventHandler? Changed;
 
-    public void Offer(DeleteUndoSurface surface, WorkspaceUndo payload)
+    public void Offer(WorkspaceUndoSurface surface, WorkspaceUndo payload)
     {
         Payload = payload;
         Surface = surface;
@@ -28,22 +28,22 @@ internal sealed class DeleteUndoSlot
 
     public void Clear()
     {
-        if (Payload is null && Surface == DeleteUndoSurface.None)
+        if (Payload is null && Surface == WorkspaceUndoSurface.None)
         {
             return;
         }
 
         Payload = null;
-        Surface = DeleteUndoSurface.None;
+        Surface = WorkspaceUndoSurface.None;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }
 
-internal static class DeleteUndoOffers
+internal static class WorkspaceUndoOffers
 {
-    private static readonly ConditionalWeakTable<DesktopWorkspace, DeleteUndoSlot> Slots = new();
+    private static readonly ConditionalWeakTable<DesktopWorkspace, WorkspaceUndoSlot> Slots = new();
 
-    public static DeleteUndoSlot For(DesktopWorkspace workspace) =>
+    public static WorkspaceUndoSlot For(DesktopWorkspace workspace) =>
         Slots.GetOrCreateValue(workspace);
 }
 
@@ -56,7 +56,7 @@ internal static class DeleteConfirmationCopy
 }
 
 // #214：10 秒撤销计时。焦点或悬停暂停，移开后按剩余时间继续，而不是重新算满 10 秒。
-internal sealed class DeleteUndoCountdown
+internal sealed class WorkspaceUndoCountdown
 {
     public static readonly TimeSpan Duration = TimeSpan.FromSeconds(10);
 
@@ -69,7 +69,7 @@ internal sealed class DeleteUndoCountdown
     private bool _focused;
     private bool _hovering;
 
-    public DeleteUndoCountdown(Dispatcher dispatcher, Action expire)
+    public WorkspaceUndoCountdown(Dispatcher dispatcher, Action expire)
     {
         _expire = expire;
         _timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)

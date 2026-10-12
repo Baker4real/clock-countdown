@@ -84,7 +84,7 @@ public sealed partial class FloatingWindow
             }
             else
             {
-                DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Floating, new CompletedNoteUndo(note.Id, note.Text));
+                WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Floating, new CompletedNoteUndo(note.Id, note.Text));
                 _noteCompletionExit = exit;
                 exit?.Start();
                 var previousError = noteError.Text;
@@ -367,7 +367,7 @@ public sealed partial class FloatingWindow
             return;
         }
 
-        DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Floating, undo);
+        WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Floating, undo);
     }
 
     private static void SetNoteCardError(TextBlock error, Control source, string message)

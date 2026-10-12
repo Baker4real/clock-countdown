@@ -687,7 +687,8 @@ internal static class ValidationReport
         new("main-day-notes-representative", "Day", "Notes", "Representative", "main-day-notes-representative.png"),
         new("main-day-notes-stress", "Day", "Notes", "Stress", "main-day-notes-stress.png"),
         new("main-day-notes-edit", "Day", "Notes", "Edit", "main-day-notes-edit.png"),
-        new("main-day-notes-filter-open", "Day", "Notes", "FilterOpen", "main-day-notes-filter-open.png")
+        new("main-day-notes-filter-open", "Day", "Notes", "FilterOpen", "main-day-notes-filter-open.png"),
+        new("main-day-notes-selected", "Day", "Notes", "Selected", "main-day-notes-selected.png")
     };
 
     /// <summary>
@@ -2013,6 +2014,9 @@ internal static class ValidationReport
             ["IdleControlBoundariesVisible"] = idleControlBoundaries.Values.All(value => value),
             ["IdleControlBoundaryChecks"] = idleControlBoundaries,
             ["NoteCompletionUndoFeedback"] = ValidationExercises.RunNoteCompletionUndoFeedback(),
+            ["NoteBatchKeyboardCompletion"] = ValidationExercises.RunNoteBatchKeyboardCompletion(),
+            ["NoteBatchDeleteUndo"] = ValidationExercises.RunNoteBatchDeleteUndo(),
+            ["NoteSelectionAccessibility"] = ValidationExercises.RunNoteSelectionAccessibility(),
             ["NoteCompletionExitTransition"] = ValidationExercises.RunNoteCompletionExitTransition(),
             ["SystemContrastUpdatesOpenWindows"] = ValidateSystemContrastUpdatesOpenWindows(main, floating),
             ["SystemContrastAccessibleStates"] = ValidateSystemContrastAccessibleStates(main, floating),
@@ -3613,7 +3617,7 @@ internal static class ValidationReport
 
         try
         {
-            foreach (var state in new[] { "Empty", "Representative", "Stress", "Edit", "FilterOpen" })
+            foreach (var state in new[] { "Empty", "Representative", "Stress", "Edit", "FilterOpen", "Selected" })
             {
                 var temporaryRoot = Path.Combine(
                     Path.GetTempPath(),
@@ -3625,7 +3629,7 @@ internal static class ValidationReport
 
                 try
                 {
-                    var settingsState = state is "Edit" or "FilterOpen" ? "Representative" : state;
+                    var settingsState = state is "Edit" or "FilterOpen" or "Selected" ? "Representative" : state;
                     var settings = CreateMainReferenceSettings(settingsState, referenceUtc);
                     var store = new SettingsStore(clock: new ValidationClock(referenceUtc));
                     store.Save(settingsPath, settings);
@@ -3688,6 +3692,16 @@ internal static class ValidationReport
                         }
 
                         PumpDispatcher();
+                        if (state == "Selected")
+                        {
+                            var selectedRows = Descendants<NoteSelectionCard>(validationMain).Where(row => row.IsVisible).ToArray();
+                            Keyboard.Focus(selectedRows[0]);
+                            WindowValidationInput.RaisePreviewKey(selectedRows[0], Key.Space, ModifierKeys.Control);
+                            WindowValidationInput.RaisePreviewKey(selectedRows[0], Key.Down, ModifierKeys.Shift);
+                            PumpDispatcher();
+                            if (Required<TextBlock>(validationMain, "SelectedNotesCount").Text != "已选择 2 条")
+                                throw new InvalidOperationException("#235 selected参考帧必须真实选中两条并显示批量操作条。");
+                        }
                         if (state is "Empty" or "Representative" or "Stress")
                         {
                             CloseMainDatePickerDropdowns(validationMain);

@@ -77,9 +77,14 @@ internal sealed class DesktopWorkspace
         SetNoteCompletionChange completion => Result(
             _session.TrySetNoteCompletion(completion.Id, completion.Completed, out var error),
             error),
+        SetNotesCompletionChange completion => Result(
+            _session.TrySetNotesCompletion(completion.Ids, completion.Completed, out var error), error),
         DeleteNoteChange deleteNote => Result(
             _session.TryDeleteNote(deleteNote.Id, out var error),
             error),
+        DeleteNotesChange deleteNotes => Result(_session.TryDeleteNotes(deleteNotes.Ids, out var error), error),
+        RestoreDeletedNotesChange restoreNotes => Result(
+            _session.TryRestoreNotes(restoreNotes.Records, restoreNotes.ReminderStates, out var error), error),
         CreateTagChange createTag => ApplyCreateTag(createTag),
         RenameTagChange renameTag => Result(
             _session.TryRenameTag(renameTag.Id, renameTag.Name, renameTag.Color, out var error),
@@ -471,8 +476,22 @@ internal sealed record SaveNoteChange : DesktopWorkspaceChange
 }
 
 internal sealed record SetNoteCompletionChange(string Id, bool Completed) : DesktopWorkspaceChange;
+internal sealed record SetNotesCompletionChange(IReadOnlyList<string> Ids, bool Completed) : DesktopWorkspaceChange;
 
 internal sealed record DeleteNoteChange(string Id) : DesktopWorkspaceChange;
+internal sealed record DeleteNotesChange(IReadOnlyList<string> Ids) : DesktopWorkspaceChange;
+internal sealed record DeletedNoteEntry(NoteRecord Record, int Index);
+internal sealed record RestoreDeletedNotesChange(IReadOnlyList<DeletedNoteEntry> Records,
+    IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
+
+internal sealed record DeletedNotesUndo(IReadOnlyList<DeletedNoteEntry> Records,
+    IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : WorkspaceUndo($"{Records.Count} 条便签")
+{
+    public override DesktopWorkspaceChange ToChange() => new RestoreDeletedNotesChange(Records, ReminderStates);
+    public override string OfferedMessage => $"已删除 {Records.Count} 条便签。";
+    public override string AccessibleName => $"撤销删除 {Records.Count} 条便签";
+    public override string RestoredMessage => $"已撤销删除 {Records.Count} 条便签。";
+}
 
 // #155/#214：撤销删除的恢复事务——被删记录与其规则提醒状态在同一事务原样恢复；
 // 不引入通用撤销栈。撤销载荷只保留最近一次删除，由发起删除的窗口呈现。
@@ -500,6 +519,14 @@ internal sealed record CompletedNoteUndo(string Id, string Description) : Worksp
     public override string OfferedMessage => $"已完成「{Description}」·";
     public override string AccessibleName => $"撤销完成便签「{Description}」";
     public override string RestoredMessage => $"已撤销完成便签「{Description}」。";
+}
+
+internal sealed record CompletedNotesUndo(IReadOnlyList<string> Ids) : WorkspaceUndo($"{Ids.Count} 条便签")
+{
+    public override DesktopWorkspaceChange ToChange() => new SetNotesCompletionChange(Ids, false);
+    public override string OfferedMessage => $"已完成 {Ids.Count} 条便签 ·";
+    public override string AccessibleName => $"撤销完成 {Ids.Count} 条便签";
+    public override string RestoredMessage => $"已撤销完成 {Ids.Count} 条便签。";
 }
 
 // #155/#214：删除前捕获记录与规则状态，撤销删除时原样恢复。

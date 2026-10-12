@@ -491,7 +491,7 @@ try {
             -ActualBackward @($dynamicCountdownTabPath.BackwardFocusedTargets))) {
         throw 'The populated Countdowns workspace did not traverse both Edit/Delete controls for every row symmetrically with visible focus.'
     }
-    $dynamicNotesFocusedTargets = [string[]] ('TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,NotesListRegion.ActiveSegment,NotesListRegion.CompletedSegment,NotesListRegion.Grouping,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.More,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.More,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.More,StatusText' -split ',')
+    $dynamicNotesFocusedTargets = [string[]] ('TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,NotesListRegion.ActiveSegment,NotesListRegion.CompletedSegment,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText' -split ',')
     $dynamicNotesTabPath = $listValidation.MainKeyboardBehavior.NotesTabPath
     if (-not $dynamicNotesTabPath.FocusVisualsVisible -or
         -not (Test-ExactSymmetricTabTargets `

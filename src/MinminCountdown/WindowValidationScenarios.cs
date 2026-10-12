@@ -1026,8 +1026,8 @@ public sealed partial class MainWindow
                 (rowTitles.Length > 0 &&
                  rowTitles.All(text => Math.Abs(text.FontSize - rowTitleTypeH2) <= 0.01));
 
-            // AC6：管理窗便签 `…` 打开后键盘进入「编辑 / 删除」、层内 Tab 循环、Esc 关闭归还触发器。
-            var overflowMenuKeyboard = ProbeMainWindowNoteRowOverflowMenuKeyboard();
+            // #227：非空真实便签行的编辑/删除键盘动作与取消后的焦点归还。
+            var rowActionsKeyboard = ProbeMainWindowNoteRowActionsKeyboard(createdNoteId);
 
             // AC7：筛选 / 标签管理 / 标签选择器弹层 Tab 层内循环。
             ShowWorkspace(WorkspaceKind.Notes);
@@ -1046,12 +1046,11 @@ public sealed partial class MainWindow
                 tagChipSingleLine,
                 emptyStateTextAllowsWrap,
                 filterDateHasVisibleLabel,
-                overflowMenuKeyboard,
+                rowActionsKeyboard,
                 cardSpacingConsumesTokens,
                 filterCycles,
                 tagManagerCycles,
-                tagSelectorCycles,
-                overflowMenuKeyboard);
+                tagSelectorCycles);
         }
         finally
         {
@@ -1272,82 +1271,50 @@ public sealed partial class MainWindow
         }
     }
 
-    /// <summary>#153：管理窗便签 `…` 菜单键盘生命周期——打开聚焦「编辑」、Tab 到「删除」、再 Tab 回「编辑」（层内循环）、Esc 关闭归还触发器。</summary>
-    private bool ProbeMainWindowNoteRowOverflowMenuKeyboard()
+    // #227：自建记录必须存在；不以空列表作为键盘门通过证据。
+    private bool ProbeMainWindowNoteRowActionsKeyboard(string noteId)
     {
         ShowWorkspace(WorkspaceKind.Notes);
         UpdateLayout();
         WindowValidationInput.Pump(Dispatcher);
-        var trigger = MainValidationDescendants<Button>(ActiveNoteRows)
-            .FirstOrDefault(button =>
-                string.Equals(button.Uid, "NoteRowOverflowMenu", StringComparison.Ordinal));
-        if (trigger is null)
-        {
-            // 空便签列表没有可打开的 `…` 菜单，视为满足（空洞真，与 NoteRowOverflowMenuWorks 同语义）；
-            // 有便签行而找不到触发器才是失败。
-            return _noteSourceRows.Count == 0;
-        }
-
-        var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger);
-        if (popup is null)
-        {
+        if (string.IsNullOrEmpty(noteId) || !_noteSourceRows.TryGetValue(noteId, out var row))
             return false;
-        }
-
+        var buttons = MainValidationDescendants<Button>(row).ToArray();
+        var edit = buttons.SingleOrDefault(button => Equals(button.Content, "编辑"));
+        var delete = buttons.SingleOrDefault(button => Equals(button.Content, "删除"));
+        if (edit is null || delete is null || buttons.Length != 2) return false;
+        var note = _desktopWorkspace.Snapshot.Settings.Notes.Single(item => item.Id == noteId);
         try
         {
-            WindowValidationInput.ClosePopupForCleanup(popup);
             Activate();
-            Keyboard.Focus(trigger);
+            Keyboard.Focus(edit);
+            edit.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
             WindowValidationInput.Pump(Dispatcher);
-            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if (!ReferenceEquals(Keyboard.FocusedElement, delete)) return false;
+            delete.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous));
             WindowValidationInput.Pump(Dispatcher);
+            if (!ReferenceEquals(Keyboard.FocusedElement, edit)) return false;
+            WindowValidationInput.RaiseKey(edit, Key.Enter);
             WindowValidationInput.Pump(Dispatcher);
-            var menuEdit = MainValidationDescendants<Button>(popup.Child)
-                .FirstOrDefault(button =>
-                    string.Equals(button.Content as string, "编辑", StringComparison.Ordinal));
-            var openedWithFocusOnEdit =
-                popup.IsOpen &&
-                menuEdit is not null &&
-                ReferenceEquals(Keyboard.FocusedElement, menuEdit);
-            if (menuEdit is null)
-            {
+            if (_editingNoteId != noteId || NoteText.Text != note.Text || !NoteEditorTitle.IsVisible)
                 return false;
-            }
-
-            menuEdit.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
-            WindowValidationInput.Pump(Dispatcher);
-            var menuDelete = MainValidationDescendants<Button>(popup.Child)
-                .FirstOrDefault(button =>
-                    string.Equals(button.Content as string, "删除", StringComparison.Ordinal));
-            var tabReachesDelete =
-                menuDelete is not null &&
-                ReferenceEquals(Keyboard.FocusedElement, menuDelete);
-            var tabWrapsBackToEdit = false;
-            if (menuDelete is not null)
+            CancelNoteEdit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if (_editingNoteId is not null || NoteEditorTitle.IsVisible) return false;
+            Keyboard.Focus(delete);
+            var dialogCorrect = false;
+            ValidationExercises.QueueConfirmationDialogResponse(this, false, dialog =>
             {
-                menuDelete.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
-                WindowValidationInput.Pump(Dispatcher);
-                tabWrapsBackToEdit = ReferenceEquals(Keyboard.FocusedElement, menuEdit);
-            }
-
-            var escapeHandled = WindowValidationInput.RaisePreviewKey(menuDelete ?? menuEdit, Key.Escape);
+                dialogCorrect = dialog.BodyText.Text.Contains(note.Text, StringComparison.Ordinal) &&
+                    dialog.CancelButton.IsDefault && !dialog.ConfirmButton.IsDefault;
+            });
+            WindowValidationInput.RaiseKey(delete, Key.Enter);
             WindowValidationInput.Pump(Dispatcher);
-            var popupClosedAfterEscape = WindowValidationInput.WaitForPopupClosed(popup);
-            var closedBackToTrigger =
-                popupClosedAfterEscape &&
-                (trigger.IsKeyboardFocusWithin ||
-                 ReferenceEquals(FocusManager.GetFocusedElement(this), trigger));
-            return
-                openedWithFocusOnEdit &&
-                tabReachesDelete &&
-                tabWrapsBackToEdit &&
-                escapeHandled &&
-                closedBackToTrigger;
+            return dialogCorrect && _desktopWorkspace.Snapshot.Settings.Notes.Any(item => item.Id == noteId) &&
+                (delete.IsKeyboardFocusWithin || ReferenceEquals(FocusManager.GetFocusedElement(this), delete));
         }
         finally
         {
-            WindowValidationInput.ClosePopupForCleanup(popup);
+            ResetNoteEditor();
         }
     }
 
@@ -5021,12 +4988,11 @@ internal sealed record MainNoteListPolishScenarios(
     bool TagChipSingleLineEllipsisWithFullText,
     bool EmptyStateTextAllowsWrap,
     bool FilterDateHasVisibleLabel,
-    bool OverflowMenuKeyboardLifecycleWorks,
+    bool MainNoteRowActionsKeyboardWorks,
     bool CardSpacingConsumesTokens,
     bool FilterPopupTabCyclesInsideLayer,
     bool TagManagerPopupTabCyclesInsideLayer,
-    bool TagSelectorPopupTabCyclesInsideLayer,
-    bool OverflowMenuPopupTabCyclesInsideLayer);
+    bool TagSelectorPopupTabCyclesInsideLayer);
 
 /// <summary>
 ///     #154：视觉铬探针结果——漏斗实心可识别、图标描边统一无重复搜索镜、矢量窗铬、

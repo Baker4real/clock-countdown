@@ -14697,9 +14697,7 @@ internal static class ValidationReport
 
         var dpi = VisualTreeHelper.GetDpi(textBox);
         var formatted = new FormattedText(
-            new DateTime(2031, 12, 31).ToString(
-                WpfUiDatePicker.SpacedChineseDateFormat,
-                CultureInfo.InvariantCulture),
+            DateDisplay.FullDate(new DateOnly(2031, 12, 31)),
             CultureInfo.CurrentCulture,
             textBox.FlowDirection,
             new Typeface(

@@ -787,7 +787,6 @@ internal static class WpfUiPickerStyles
 
 internal sealed class WpfUiDatePicker : DatePicker
 {
-    internal const string SpacedChineseDateFormat = "yyyy 年 M 月 d 日";
     private static readonly CoerceValueCallback? BaseCoerceSelectedDate =
         SelectedDateProperty.GetMetadata(typeof(DatePicker)).CoerceValueCallback;
     private DatePickerTextBox? _textBox;
@@ -940,7 +939,7 @@ internal sealed class WpfUiDatePicker : DatePicker
         if (_textBox is not null)
         {
             _textBox.Text = SelectedDate is { } date
-                ? date.ToString(SpacedChineseDateFormat, System.Globalization.CultureInfo.InvariantCulture)
+                ? DateDisplay.FullDate(DateOnly.FromDateTime(date))
                 : string.Empty;
         }
     }

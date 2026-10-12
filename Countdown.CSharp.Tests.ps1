@@ -4664,7 +4664,15 @@ function Get-RejectionMessage([string[]] $Arguments) {
         (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.Notes.cs') -Raw -Encoding UTF8))
     Assert-Equal 0 @($countdownTypographySources | Where-Object { $_ -match 'new FontFamily\("(?:Bahnschrift|Microsoft YaHei UI)' }).Count '#197 倒计时与日期数字不在代码中直接构造字族字面量'
     Assert-Equal $true (
-        $appXamlSource -match 'StringFormat=\{\}\{0:yyyy 年 M 月 d 日\}\}') '日期选择器选中日期文本数字与「月」「日」之间留空格（#153 源码契约）'
+        $appXamlSource.Contains('StringFormat={x:Static core:DateDisplay.FullDateBindingFormat}')) '#225 日期选择器消费统一中文日期格式'
+    $visibleDateConsumers = @(
+        'MainWindow.xaml.cs', 'ReminderWindow.cs', 'FloatingWindow.Notes.cs',
+        'FloatingWindow.Countdowns.cs', 'ReminderRulesEditorViewModel.cs', 'SettingsRecoveryWindow.cs', 'UiControls.cs')
+    foreach ($relativeDateConsumer in $visibleDateConsumers) {
+        $dateConsumerSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot "src\MinminCountdown\$relativeDateConsumer") -Raw -Encoding UTF8
+        Assert-Equal $true ($dateConsumerSource.Contains('DateDisplay.')) "#225 $relativeDateConsumer 消费统一日期入口"
+        Assert-Equal $false ($dateConsumerSource -match '(?:yyyy[-年]|M ?月 ?d ?日).*HH:mm|yyyy 年 M 月 d 日') "#225 $relativeDateConsumer 不散落可见日期格式"
+    }
     $mainWindowXamlSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml') -Raw -Encoding UTF8
     Assert-Equal $true (

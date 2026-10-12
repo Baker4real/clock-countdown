@@ -110,7 +110,7 @@ public sealed partial class FloatingWindow
         {
             body.Children.Add(new TextBlock
             {
-                Text = $"下次提醒：{ChinaStandardTime.ToBeijingTime(nextReminder.Value):M月d日 HH:mm}",
+                Text = $"下次提醒：{DateDisplay.Deadline(nextReminder.Value)}",
                 Margin = new Thickness(0, 4, 0, 0),
                 FontSize = (double)FindResource("TypeCaptionFontSize"),
                 LineHeight = 17,

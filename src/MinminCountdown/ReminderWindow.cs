@@ -360,7 +360,7 @@ internal sealed class ReminderCenterWindow : Window
         body.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         var scheduled = new TextBlock
         {
-            Text = $"计划：{ChinaStandardTime.ToBeijingTime(item.Key.ScheduledUtc):yyyy年M月d日 HH:mm}（北京时间）",
+            Text = $"计划：{DateDisplay.FullMoment(item.Key.ScheduledUtc)}（北京时间）",
             VerticalAlignment = VerticalAlignment.Center
         };
         scheduled.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
@@ -648,7 +648,7 @@ internal sealed class ReminderCenterWindow : Window
         row.SetResourceReference(Border.BorderBrushProperty, "NoteLineBrush");
         UiAccessibility.Name(
             row,
-            $"{(item.Source.Kind == ReminderSourceKind.Countdown ? "倒计时" : "便签")}提醒：{item.Source.DisplayText}；计划 {ChinaStandardTime.ToBeijingTime(item.Key.ScheduledUtc):yyyy年M月d日 HH:mm} 北京时间");
+            $"{(item.Source.Kind == ReminderSourceKind.Countdown ? "倒计时" : "便签")}提醒：{item.Source.DisplayText}；计划 {DateDisplay.FullMoment(item.Key.ScheduledUtc)} 北京时间");
 
         var entry = new ReminderCenterEntry(
             item,

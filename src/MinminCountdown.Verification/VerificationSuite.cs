@@ -9,6 +9,8 @@ internal static class VerificationSuite
     public static IReadOnlyList<VerificationResult> RunAll(string? externalSettingsPath)
     {
         var results = new List<VerificationResult>();
+        Run(results, "visible-date-full-moments-use-beijing-and-spaced-chinese-dates", VerifyVisibleFullDates);
+        Run(results, "visible-date-note-groups-preserve-relative-labels-and-years", VerifyVisibleNoteGroups);
         foreach (var fixture in SettingsFixtures.AllVersions)
         {
             Run(
@@ -1189,6 +1191,29 @@ internal static class VerificationSuite
                 store.Load(settingsPath + ".backup2").Settings.Preferences.MonthlySalary,
                 "backup 2");
         });
+    }
+
+    private static void VerifyVisibleFullDates()
+    {
+        Equal("2032 年 1 月 2 日", DateDisplay.FullDate(new DateOnly(2032, 1, 2)), "个位月日无前导零");
+        var beforeMidnight = new DateTimeOffset(2031, 12, 31, 15, 59, 59, TimeSpan.Zero);
+        Equal("2031 年 12 月 31 日 23:59:59", DateDisplay.FullMoment(beforeMidnight, includeSeconds: true), "北京时间跨年前一秒");
+        Equal("2032 年 1 月 1 日 00:00:00", DateDisplay.FullMoment(beforeMidnight.AddSeconds(1), includeSeconds: true), "北京时间跨年午夜");
+        Equal("2032 年 1 月 1 日 00:00", DateDisplay.FullMoment(beforeMidnight.AddSeconds(1)), "完整时刻分钟精度");
+        Equal("2032 年 1 月 1 日 00:00", DateDisplay.FullMoment(beforeMidnight.AddSeconds(1).ToOffset(TimeSpan.FromHours(-5))), "输入偏移不改变北京时间");
+        Equal("12 月 31 日 23:59", DateDisplay.Deadline(beforeMidnight), "截止跨年前一分钟");
+        Equal("1 月 1 日 00:00", DateDisplay.Deadline(beforeMidnight.AddSeconds(1)), "截止跨年午夜");
+    }
+
+    private static void VerifyVisibleNoteGroups()
+    {
+        var now = new DateTimeOffset(2031, 12, 31, 16, 0, 0, TimeSpan.Zero);
+        Equal("今天 · 1 月 1 日", DateDisplay.NoteGroup(new DateOnly(2032, 1, 1), now), "午夜今天使用北京时间");
+        Equal("昨天 · 2031 年 12 月 31 日", DateDisplay.NoteGroup(new DateOnly(2031, 12, 31), now), "跨年昨天保留年份");
+        Equal("2031 年 12 月 30 日 · 周二", DateDisplay.NoteGroup(new DateOnly(2031, 12, 30), now), "跨年组头保留年份和周名");
+        Equal("1 月 2 日 · 周五", DateDisplay.NoteGroup(new DateOnly(2032, 1, 2), now), "同年组头省略年份");
+        Equal("今天 · 12 月 31 日", DateDisplay.NoteGroup(new DateOnly(2031, 12, 31), now.AddSeconds(-1)), "午夜前组头仍是今天");
+        Equal("未设置日期", DateDisplay.NoteGroup(null, now), "历史未设日期不伪造日期");
     }
 
     private static void VerifyStartupPrefersMissingOrStrictValidMain()

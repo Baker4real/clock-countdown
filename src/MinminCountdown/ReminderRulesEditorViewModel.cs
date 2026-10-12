@@ -860,9 +860,9 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     internal static string Describe(ReminderRule rule) => rule switch
     {
         AbsoluteOnceReminderRule once =>
-            $"提醒一次 · {ChinaStandardTime.ToBeijingTime(once.ScheduledUtc):yyyy-MM-dd HH:mm}",
+            $"提醒一次 · {DateDisplay.FullMoment(once.ScheduledUtc)}",
         FixedIntervalReminderRule repeating =>
-            $"每隔一段时间 · 每 {repeating.Interval.Minutes} 分钟 · {ChinaStandardTime.ToBeijingTime(repeating.FirstDueUtc):yyyy-MM-dd HH:mm} 起",
+            $"每隔一段时间 · 每 {repeating.Interval.Minutes} 分钟 · {DateDisplay.FullMoment(repeating.FirstDueUtc)} 起",
         CountdownRelativeReminderRule relative => relative.OffsetMinutesBefore == 0
             ? "截止前提醒 · 截止时提醒"
             : $"截止前提醒 · 提前 {relative.OffsetMinutesBefore} 分钟",

@@ -4246,7 +4246,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
     # #230 adds hidden-tick and note-minute-refresh behavior fields.
-    Assert-Equal 707 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 705 字段类型不变，#230 增加 2 个管理窗口刷新行为字段）'
+    Assert-Equal 711 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#221 增加 4 个列表优先行为字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4286,6 +4286,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainWindowIdentityZoneDragRegion) '身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowHiddenTickSkipsRenderAndShowRefreshes) '管理窗口隐藏期间 tick 不重建分格，重新显示立即同步最新时间（#230）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowNoteMinutePreservesFocusAndScroll) '便签数据不变的分钟刷新保留行控件、键盘焦点和非零滚动位置（#230）'
+    Assert-Equal $true ([bool] $adapterValidation.CountdownListFirstBehavior) '倒计时默认折叠新增，首选尺寸至少三行，窗口增高显示更多完整行（#221）'
+    Assert-Equal $true ([bool] $adapterValidation.CountdownPreferencesPopupBehavior) '设置弹层焦点、Tab/Esc、草稿、字段错误、持久化及浮窗双宿主入口（#221）'
+    Assert-Equal $true ([bool] $adapterValidation.CountdownEditorExpansionBehavior) '展开保留草稿，编辑自动展开，取消回到折叠新增并保全持久记录（#221）'
+    Assert-Equal $true ([bool] $adapterValidation.CountdownRowDeadlineAndSecondaryDeleteBehavior) '倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.NoteSearch) '主窗便签页 Ctrl+F 聚焦便签搜索（#156）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.Filter) '倒计时页没有正文搜索时 Ctrl+F 仍打开筛选（#156）'
     # #155 源码契约：删除/完成/退出流的行为钉在实现面，运行态由上述探针共同钉住。
@@ -5414,9 +5418,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $false ([bool] $adapterValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-12-v45')) '键盘焦点基线证据记录再生的 2026-10-12-v45 帧（#129 自 U1 迁移）'
     Assert-Equal 'CountdownTab' ([string] $adapterValidation.MainKeyboardBehavior.InitialFocusedAutomationId) '主窗口 Loaded 后真实焦点落到倒计时工作区'
-    Assert-Equal 'CountdownTab,NotesTab,FilterButton,TagManagerButton' ([string]::Join(',', @($adapterValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
+    Assert-Equal 'CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton' ([string]::Join(',', @($adapterValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
     $countdownTabPath = $adapterValidation.MainKeyboardBehavior.CountdownTabPath
-    $expectedCountdownTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,CountdownName,CountdownDate,CountdownHour,CountdownMinute,CountdownSecond,CountdownTags,CountdownReminderHelp,CountdownReminderNoRadio,CountdownReminderTimeRadio,CountdownReminderCustomRadio,SaveCountdownButton,DisplayPrecision,MonthlySalary,WorkStart,WorkEnd,SavePreferencesButton,CountdownListRegion,StatusText'
+    $expectedCountdownTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,CountdownName,CountdownDate,SaveCountdownButton,CountdownEditorExpandButton,CountdownListRegion,StatusText'
     Assert-Equal $expectedCountdownTabPath ([string]::Join(',', @($countdownTabPath.ExpectedSequence))) '倒计时工作区完整 Tab 契约包含标签触发器和列表区'
     Assert-Equal $expectedCountdownTabPath ([string]::Join(',', @($countdownTabPath.ForwardSequence))) '倒计时工作区真实正向 Tab 路径完整'
     $expectedCountdownTabPathBackward = @($countdownTabPath.ExpectedSequence)
@@ -5431,7 +5435,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     [array]::Reverse($expectedCountdownFocusedTargetsBackward)
     Assert-Equal ($expectedCountdownFocusedTargetsBackward -join ',') ([string]::Join(',', @($countdownTabPath.BackwardFocusedTargets))) '倒计时每个实际焦点目标反向严格对称'
     $notesTabPath = $adapterValidation.MainKeyboardBehavior.NotesTabPath
-    $expectedNotesTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
+    $expectedNotesTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ExpectedSequence))) '便签工作区完整 Tab 契约包含标签触发器和列表区'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ForwardSequence))) '便签工作区真实正向 Tab 路径完整'
     $expectedNotesTabPathBackward = @($notesTabPath.ExpectedSequence)

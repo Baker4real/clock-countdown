@@ -839,6 +839,7 @@ internal static class ManagerWindowRestore
 internal interface IManagerWorkspaceHost
 {
     void Reveal(WorkspaceKind workspace);
+    void RevealPreferences(WorkspaceKind workspace);
 }
 
 internal sealed class ManagerWindowLifecycle : IManagerWorkspaceHost
@@ -878,6 +879,8 @@ internal sealed class ManagerWindowLifecycle : IManagerWorkspaceHost
     }
 
     public void Reveal(WorkspaceKind workspace) => EnsureCreated().Reveal(workspace);
+
+    public void RevealPreferences(WorkspaceKind workspace) => EnsureCreated().RevealPreferences(workspace);
 
     public void RestorePreservingState() =>
         ManagerWindowRestore.ShowPreservingState(EnsureCreated());

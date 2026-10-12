@@ -5354,6 +5354,230 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunCountdownListFirstBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-list-first-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        using var workArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 2000), 1, 1));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            for (var index = 0; index < 8; index++)
+                MustApply(workspace, new SaveCountdownChange(null, $"列表优先 {index}",
+                    clock.UtcNow.AddDays(index + 1), Array.Empty<string>(), Array.Empty<ReminderRule>()));
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.UpdateLayout();
+            var list = (ScrollViewer)main.FindName("CountdownListRegion");
+            var rows = (Panel)main.FindName("CountdownRows");
+            Must(!((FrameworkElement)main.FindName("CountdownHour")).IsVisible &&
+                 ((Button)main.FindName("SaveCountdownButton")).IsVisible &&
+                 ((TextBox)main.FindName("CountdownName")).IsVisible &&
+                 ((DatePicker)main.FindName("CountdownDate")).IsVisible &&
+                 !((FrameworkElement)main.FindName("MonthlySalary")).IsVisible,
+                "#221：默认新增必须收起，名称/日期/添加可达，偏好不占据列表页面。");
+            var third = (FrameworkElement)rows.Children[2];
+            var thirdBottom = third.TranslatePoint(new Point(0, third.ActualHeight), list).Y;
+            Must(thirdBottom <= list.ViewportHeight + 1,
+                $"#221：首选尺寸至少三行完整可见；thirdBottom={thirdBottom}; viewport={list.ViewportHeight}。");
+            main.Height = 900;
+            WindowValidationInput.Pump(main.Dispatcher);
+            var shortHeight = list.ViewportHeight;
+            var shortRows = FullyVisibleRows();
+            main.Height = 1200;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(list.ViewportHeight > shortHeight + 100 && FullyVisibleRows() > shortRows,
+                $"#221：窗口加高时列表须显示更多完整行；before={shortHeight}/{shortRows}; after={list.ViewportHeight}/{FullyVisibleRows()}。");
+            return true;
+
+            int FullyVisibleRows() => rows.Children.OfType<FrameworkElement>().Count(row =>
+                row.TranslatePoint(new Point(), list).Y >= -1 &&
+                row.TranslatePoint(new Point(0, row.ActualHeight), list).Y <= list.ViewportHeight + 1);
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunCountdownPreferencesPopupBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-preferences-popup-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            main.Activate();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(main.FindName("PreferencesButton") is Button,
+                "#221：命令栏应提供设置齿轮入口。");
+            var trigger = (Button)main.FindName("PreferencesButton");
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            var popup = (Popup)main.FindName("PreferencesPopup");
+            var precision = (ComboBox)main.FindName("DisplayPrecision");
+            var salary = (TextBox)main.FindName("MonthlySalary");
+            var save = (Button)main.FindName("SavePreferencesButton");
+            Must(popup.IsOpen && precision.IsKeyboardFocusWithin,
+                "#221：设置弹层打开时应聚焦显示精度。");
+            save.Focus();
+            save.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(precision.IsKeyboardFocusWithin, "#221：设置弹层 Tab 必须层内循环。");
+            salary.Text = "12345";
+            WindowValidationInput.RaisePreviewKey(salary, Key.Escape, ModifierKeys.None);
+            Must(WindowValidationInput.WaitUntil(main.Dispatcher, () => !popup.IsOpen && trigger.IsKeyboardFocusWithin),
+                "#221：设置弹层 Esc 关闭并归还齿轮焦点。");
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(salary.Text == "12345", "#221：设置弹层收起后保留未保存草稿。");
+            salary.Text = "invalid";
+            save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(((TextBlock)main.FindName("MonthlySalaryError")).IsVisible && salary.IsKeyboardFocusWithin &&
+                 ((TextBlock)main.FindName("StatusText")).Text == "月薪格式无效。",
+                "#221：设置字段错误必须在弹层中可见且镜像状态栏。");
+            salary.Text = "12345";
+            save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(((TextBlock)main.FindName("StatusText")).Text == "设置已保存" &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Preferences.MonthlySalary == 12345,
+                "#221：设置保存应持久化并显示设置已保存。");
+            WindowValidationInput.ClosePopupForCleanup(popup);
+            main.Hide();
+            var lifecycle = new ManagerWindowLifecycle(
+                () => new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory),
+                PrepareOffscreenValidationWindow);
+            try
+            {
+                foreach (var host in new IManagerWorkspaceHost[] { main, lifecycle })
+                {
+                    var floating = new FloatingWindow(workspace, calendar, host, AppContext.BaseDirectory);
+                    try
+                    {
+                        PrepareOffscreenValidationWindow(floating);
+                        floating.Show();
+                        floating.ShowWorkspace(WorkspaceKind.Notes);
+                        WindowValidationInput.Pump(main.Dispatcher);
+                        var settingsButton = (Button)floating.FindName("FloatingOpenSettings");
+                        Must(settingsButton.IsVisible, "#221：悬浮便签页设置入口应可见。");
+                        settingsButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        WindowValidationInput.Pump(main.Dispatcher);
+                        var revealed = host is MainWindow direct ? direct : lifecycle.Window!;
+                        Must(revealed.IsVisible && revealed.CurrentWorkspace == WorkspaceKind.Notes &&
+                             ((Popup)revealed.FindName("PreferencesPopup")).IsOpen &&
+                             ((ComboBox)revealed.FindName("DisplayPrecision")).IsKeyboardFocusWithin,
+                            $"#221：悬浮设置应支持直接与懒加载宿主，并直接打开管理窗设置弹层；host={host.GetType().Name}; " +
+                            $"visible={revealed.IsVisible}; workspace={revealed.CurrentWorkspace}; " +
+                            $"popup={((Popup)revealed.FindName("PreferencesPopup")).IsOpen}; " +
+                            $"focus={Keyboard.FocusedElement}。");
+                        WindowValidationInput.ClosePopupForCleanup((Popup)revealed.FindName("PreferencesPopup"));
+                        revealed.Hide();
+                    }
+                    finally { floating.Close(); }
+                }
+            }
+            finally { lifecycle.Window?.Close(); }
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunCountdownEditorExpansionBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-editor-expansion-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        MustApply(workspace, new SaveCountdownChange(null, "编辑展开", DateTimeOffset.UtcNow.AddDays(3),
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var name = (TextBox)main.FindName("CountdownName");
+            var hour = (ComboBox)main.FindName("CountdownHour");
+            var toggle = (Button)main.FindName("CountdownEditorExpandButton");
+            var rows = (Panel)main.FindName("CountdownRows");
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible, "#221：展开新增应显示时分秒、标签及提醒规则。");
+            name.Text = "未保存草稿";
+            hour.SelectedIndex = 7;
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(name.Text == "未保存草稿" && hour.SelectedIndex == 7 && !hour.IsVisible,
+                "#221：收起和切页须保留新增草稿。");
+            var edit = VisualDescendants<Button>(rows).First(button => Equals(button.Content, "编辑"));
+            edit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible && ((TextBlock)main.FindName("CountdownEditorTitle")).Text == "编辑倒计时" &&
+                 ((Button)main.FindName("CancelCountdownEdit")).IsVisible,
+                "#221：编辑现有倒计时应自动展开并显示编辑标题和取消。");
+            ((Button)main.FindName("CancelCountdownEdit")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(!hour.IsVisible && name.Text.Length == 0 && main.EditingCountdownId is null,
+                "#221：取消编辑返回折叠新增，不写入或删除记录。");
+            Must(DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Single().Name == "编辑展开",
+                "#221：取消编辑不得改变持久记录。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunCountdownRowDeadlineAndSecondaryDeleteBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-row-deadline-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        MustApply(workspace, new SaveCountdownChange(null, "截止行验证", new DateTimeOffset(2038, 7, 8, 1, 30, 0, TimeSpan.Zero),
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var rows = (Panel)main.FindName("CountdownRows");
+            Must(VisualDescendants<TextBlock>(rows).Any(text => text.IsVisible && text.Text == "7 月 8 日 09:30 截止"),
+                "#221：倒计时列表应显示北京时区的月日时分截止行。");
+            var delete = VisualDescendants<Button>(rows).Single(button => Equals(button.Content, "删除"));
+            Must(delete.Foreground is SolidColorBrush foreground && foreground.Color == (Color)main.FindResource("DangerColor") &&
+                 delete.BorderBrush is SolidColorBrush border && border.Color.A == 0 &&
+                 VisualDescendants<System.Windows.Shapes.Path>(delete).Any(path => path.IsVisible),
+                "#221：行删除为危险色文字加图标，不使用红色边框。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunMainWindowNoteMinuteRefreshBehavior()
     {
         var settingsPath = Path.Combine(
@@ -5547,8 +5771,9 @@ internal static class ValidationExercises
 
                     var scrollHost = (ScrollViewer)main.FindName("MainWindowScrollHost");
                     Must(
-                        scrollHost.ScrollableHeight > 0.5,
-                        $"窗口收缩到 {main.ActualWidth}x{main.ActualHeight} 后外层滚动容器应有纵向可滚动区间。");
+                        scrollHost.ScrollableHeight > 0.5 ||
+                            ((ScrollViewer)main.FindName("CountdownListRegion")).ViewportHeight >= 251,
+                        $"窗口收缩时列表保有最小可读视口，必要时外层纵向滚动，实际 {main.ActualWidth}x{main.ActualHeight}。");
                     scrollHost.ScrollToBottom();
                     WindowValidationInput.Pump(main.Dispatcher);
                     main.UpdateLayout();
@@ -5584,8 +5809,10 @@ internal static class ValidationExercises
                     var scaleViewport = (FrameworkElement)main.FindName("MainScaleViewport");
                     Must(
                         Math.Abs(scaleViewport.ActualWidth - MainWindow.PreferredWidth) <= 0.5 &&
-                        Math.Abs(scaleViewport.ActualHeight - MainWindow.PreferredHeight) <= 0.5,
-                        "窗口收缩时业务内容不得缩放：MainScaleViewport 应保持 1165×1350 设计尺寸、字号不变。");
+                        scaleViewport.LayoutTransform.Value.IsIdentity &&
+                        Math.Abs(((TextBox)main.FindName("CountdownName")).FontSize -
+                            (double)main.FindResource("TypeH2FontSize")) <= 0.01,
+                        "窗口收缩时业务内容不得缩放：宽度保持 1165 DIP、字号不变，列表使用剩余高度。");
                 }
                 finally
                 {

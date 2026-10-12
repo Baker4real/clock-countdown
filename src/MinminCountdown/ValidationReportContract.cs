@@ -114,6 +114,10 @@ internal static class ValidationReportContract
         "MainWindowIdentityZoneDragRegion",
         "MainWindowHiddenTickSkipsRenderAndShowRefreshes",
         "MainWindowNoteMinutePreservesFocusAndScroll",
+        "CountdownListFirstBehavior",
+        "CountdownPreferencesPopupBehavior",
+        "CountdownEditorExpansionBehavior",
+        "CountdownRowDeadlineAndSecondaryDeleteBehavior",
         "TabsRenderAboveDecorationBand",
         "FloatingQuickAddDayResourcesFollowLocalTheme",
         "FloatingQuickAddIndependentFromApplicationTheme",
@@ -563,6 +567,15 @@ internal static class ValidationReportContract
 
     private static void RunBehaviorExercise()
     {
+        foreach (var field in new[]
+                 {
+                     "CountdownListFirstBehavior", "CountdownPreferencesPopupBehavior",
+                     "CountdownEditorExpansionBehavior", "CountdownRowDeadlineAndSecondaryDeleteBehavior"
+                 })
+        {
+            MustReject(report => report[field] = false, false,
+                $"契约未拒绝 #221 行为失败：{field}。");
+        }
         var duplicateProjection = new ValidationReportProjection
         {
             ["DuplicateKey"] = true

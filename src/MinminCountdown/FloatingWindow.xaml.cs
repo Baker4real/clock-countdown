@@ -1573,7 +1573,7 @@ public sealed partial class FloatingWindow : Window
         {
             SetQuickAddExpanded(!_quickAddExpanded);
         };
-        FloatingOpenSettings.Click += (_, _) => _manager.Reveal(_workspace);
+        FloatingOpenSettings.Click += (_, _) => _manager.RevealPreferences(_workspace);
         FloatingSearchNotes.Click += (_, _) => ToggleNoteSearch();
         FloatingDeleteUndoButton.Click += (_, _) => CommitFloatingDeleteUndo();
         FloatingDeleteUndoButton.MouseEnter += (_, _) => _deleteUndoCountdown.SetHovering(true);

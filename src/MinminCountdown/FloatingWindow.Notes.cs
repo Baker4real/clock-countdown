@@ -40,6 +40,7 @@ public sealed partial class FloatingWindow
     {
         var noteError = new TextBlock
         {
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
             Margin = new Thickness(0, 5, 0, 0),
             Foreground = ThemeBrush((_activeTheme ??
                 throw new InvalidOperationException("悬浮窗主题尚未初始化。")).ErrorBrushKey),

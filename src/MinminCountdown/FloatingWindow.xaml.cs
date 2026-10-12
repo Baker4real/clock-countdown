@@ -50,6 +50,7 @@ public sealed partial class FloatingWindow : Window
     private bool _searchExpanded;
     private bool _syncingSearch;
     private bool _quickAddExpanded;
+    private bool _earningsHidden;
     private IReadOnlyList<ReminderRule> _floatingReminderRules = Array.Empty<ReminderRule>();
     private FloatingThemePalette? _activeTheme;
     private Brush _floatingPrimaryBrush = Brushes.Black;
@@ -626,7 +627,7 @@ public sealed partial class FloatingWindow : Window
         UiAccessibility.Name(FloatingAddNoteToggle, "添加便签");
     }
 
-    private static StackPanel CreateAddNoteToggleContent()
+    private StackPanel CreateAddNoteToggleContent()
     {
         var circle = new System.Windows.Shapes.Ellipse { Width = 16, Height = 16 };
         circle.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "MainActionTextBrush");
@@ -655,6 +656,7 @@ public sealed partial class FloatingWindow : Window
                 new TextBlock
                 {
                     Text = "添加便签",
+                    FontSize = (double)FindResource("TypeCaptionFontSize"),
                     Margin = new Thickness(7, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center
                 }
@@ -1558,6 +1560,11 @@ public sealed partial class FloatingWindow : Window
 
     private void WireEvents()
     {
+        FloatingIncome.Invoked += (_, _) =>
+        {
+            _earningsHidden = !_earningsHidden;
+            Refresh();
+        };
         FloatingCountdownsButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Countdowns);
         FloatingNotesButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Notes);
         MinimizeToTrayButton.Click += (_, _) => MinimizeToTrayRequested?.Invoke(this, EventArgs.Empty);
@@ -2047,7 +2054,8 @@ public sealed partial class FloatingWindow : Window
                 preferences.MonthlySalary,
                 _calendar.State,
                 _calendar.StatusText,
-                encouragementText),
+                encouragementText,
+                _earningsHidden),
             _floatingMutedBrush,
             ThemeBrush("DecoTextSoftBrush"),
             (FontFamily)FindResource("HandwrittenDecoFontFamily"));
@@ -2056,6 +2064,7 @@ public sealed partial class FloatingWindow : Window
     private TextBlock EmptyText(string text) => new()
     {
         Text = text,
+        FontSize = (double)FindResource("TypeCaptionFontSize"),
         Margin = new Thickness(2, 8, 2, 8),
         HorizontalAlignment = HorizontalAlignment.Center,
         Foreground = _floatingMutedBrush
@@ -2087,6 +2096,7 @@ public sealed partial class FloatingWindow : Window
         };
         panel.Children.Add(new TextBlock
         {
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
             Text = "没有匹配的便签。",
             Margin = new Thickness(0, 0, 0, 8),
             HorizontalAlignment = HorizontalAlignment.Center,

@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
@@ -549,6 +551,7 @@ internal static class ValidationReport
         "src/MinminCountdown/ApplicationTheme.cs",
         "src/MinminCountdown/DesktopWorkspace.cs",
         "src/MinminCountdown/DomainLogic.cs",
+        "src/MinminCountdown/FloatingBottomStatus.cs",
         "src/MinminCountdown/FloatingWindow.Countdowns.cs",
         "src/MinminCountdown/FloatingWindow.Notes.cs",
         "src/MinminCountdown/FloatingWindow.xaml",
@@ -2766,6 +2769,7 @@ internal static class ValidationReport
                 floatingReferenceExercise.SecondaryRemainingTextFullyVisible,
             ["FloatingIncomeEncouragementWithoutSalary"] =
                 floatingReferenceExercise.IncomeEncouragementWithoutSalary,
+            ["FloatingIncomePrivacyBehavior"] = floatingReferenceExercise.IncomePrivacyBehavior,
             ["FloatingSecondaryRemainingUnitSpacingMatches"] =
                 floatingReferenceExercise.SecondaryRemainingGates.UnitSpacingMatches,
             ["FloatingSecondaryRemainingLayoutMatches"] =
@@ -5051,10 +5055,11 @@ internal static class ValidationReport
         const string orderPath = "src/MinminCountdown.Core/NoteOrdering.cs";
         const string sessionPath = "src/MinminCountdown/ApplicationSession.cs";
         const string workspacePath = "src/MinminCountdown/DesktopWorkspace.cs";
+        const string bottomStatusPath = "src/MinminCountdown/FloatingBottomStatus.cs";
         var paths = isMain ? MainReferenceCanonicalSourcePaths : FloatingReferenceCanonicalSourcePaths;
         var requiredPaths = isMain
             ? new[] { motionPath, indicatorPath, datePath, orderPath, sessionPath, workspacePath }
-            : new[] { motionPath, datePath, orderPath, sessionPath, workspacePath };
+            : new[] { motionPath, datePath, orderPath, sessionPath, workspacePath, bottomStatusPath };
         var currentHash = new string('A', 64);
         var staleHash = new string('B', 64);
         foreach (var changedPath in requiredPaths)
@@ -5163,13 +5168,13 @@ internal static class ValidationReport
         var expectedBackdrop = new NormalizedRect(0.0511, 0.1381, 0.8867, 0.7947);
         var expectedPanel = new NormalizedRect(0.0863, 0.1851, 0.8232, 0.7053);
         var expectedHeader = new NormalizedRect(0.0994, 0.1851, 0.8101, 0.1593);
-        // #189：按两行主标题、16 DIP 正文和 13 DIP 截止行的真实 WPF 测量固定卡高。
-        // 75.35 DIP 主卡及跟随的次卡位置独立回读于 floating-geometry-after-title-wrap；
+        // #229：标题与数字在首行，日期和徽章在下一行；实际主卡高度 78 DIP。
+        // 主卡与跟随次卡位置独立回读于 20261012T184511969-334e25b5；
         // 外壳、面板、标题栏、卡片宽度、次卡高度及 0.007 容差保持原合同。
         var expectedCards = new[]
         {
-            new NormalizedRect(0.1154, 0.3791, 0.7723, 0.1932),
-            new NormalizedRect(0.1154, 0.5726, 0.7723, 0.1004)
+            new NormalizedRect(0.1154, 0.3791, 0.7723, 0.2000),
+            new NormalizedRect(0.1154, 0.5795, 0.7723, 0.1004)
         };
         var expectedMascots = new[]
         {
@@ -5244,9 +5249,10 @@ internal static class ValidationReport
                 .ToArray();
             File.WriteAllText(holidayPath, JsonSerializer.Serialize(new { days }));
 
+            var referenceClock = new MutableValidationClock(referenceUtc);
             var referenceSession = ApplicationSession.Load(
                 settingsPath,
-                new SettingsStore(clock: new ValidationClock(referenceUtc)));
+                new SettingsStore(clock: referenceClock));
             using var referenceCalendar = new HolidayCalendar(temporaryRoot);
             referenceCalendar.RefreshAsync(referenceUtc, CancellationToken.None).GetAwaiter().GetResult();
             referenceWindow = new FloatingWindow(
@@ -5276,6 +5282,10 @@ internal static class ValidationReport
             var income = Required<TextBlock>(referenceWindow, "FloatingIncome");
             var plushScene = Required<Canvas>(referenceWindow, "FloatingPlushScene");
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
+            VerifyWorkdayPrimaryTitleAndBadge(rows);
+            VerifyFloatingZeroDayBlocks(referenceWindow);
+            var incomePrivacyBehavior = VerifyFloatingIncomePrivacy(
+                referenceWindow, referenceSession, referenceCalendar, manager, assetRoot, settingsPath, referenceClock);
             var actualWidth = root.ActualWidth;
             var actualHeight = root.ActualHeight;
             var actualBackdrop = Normalize(BoundsIn(backdrop, root), actualWidth, actualHeight);
@@ -6162,6 +6172,7 @@ internal static class ValidationReport
                 secondaryRemainingTextFullyVisible,
                 floatingIncomeEncouragementWithoutSalary &&
                     incomeRestoredAfterEncouragement,
+                incomePrivacyBehavior,
                 secondaryRemainingGates,
                 secondaryRemainingSamples,
                 floatingScrollBarValidation,
@@ -6478,7 +6489,8 @@ internal static class ValidationReport
         var pairs = RemainingBlockPairs(cluster).ToArray();
         var remainingText = string.Join(" ", pairs.SelectMany(pair => new[] { pair.Value.Text, pair.Unit.Text }));
         var clusterBounds = cluster is null ? Rect.Empty : BoundsIn(cluster, primaryRoot);
-        var fullyVisible = cluster is not null && pairs.Length == 4 && RemainingClusterIsSingleLine(cluster) &&
+        var expectedPairCount = scenario == "Workday" ? 3 : 4;
+        var fullyVisible = cluster is not null && pairs.Length == expectedPairCount && RemainingClusterIsSingleLine(cluster) &&
             FitsInsideFloatingViewport(cluster, window) && pairs.All(pair =>
             {
                 var bounds = BoundsIn(pair.Block, primaryRoot);
@@ -14932,6 +14944,183 @@ internal static class ValidationReport
             });
     }
 
+    private static bool VerifyFloatingIncomePrivacy(
+        FloatingWindow window, ApplicationSession session, HolidayCalendar calendar, MainWindow manager,
+        string assetRoot, string settingsPath, MutableValidationClock clock)
+    {
+        var income = Required<TextBlock>(window, "FloatingIncome");
+        var originalTime = clock.UtcNow;
+        var savedBytes = File.ReadAllBytes(settingsPath);
+        var savedSettings = SettingsContract.SerializeCanonical(session.Current);
+        static void Require(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException("#229 金额隐私：" + message);
+        }
+        void RequireHidden()
+        {
+            PumpDispatcher();
+            window.UpdateLayout();
+            Require(income.Text == "今日已赚 ¥••••", "隐藏态可见文案没有遮罩。");
+            var root = UIElementAutomationPeer.CreatePeerForElement(window)!;
+            var pending = new Queue<AutomationPeer>();
+            var seen = new HashSet<AutomationPeer>();
+            pending.Enqueue(root);
+            var foundMaskedPeer = false;
+            while (pending.TryDequeue(out var peer))
+            {
+                if (!seen.Add(peer)) continue;
+                var texts = new List<string> { peer.GetName(), peer.GetHelpText(), peer.GetItemStatus() };
+                if (peer.GetPattern(PatternInterface.Value) is IValueProvider value) texts.Add(value.Value);
+                if (peer.GetPattern(PatternInterface.Text) is ITextProvider text) texts.Add(text.DocumentRange.GetText(-1));
+                foundMaskedPeer |= peer.GetName() == "今日已赚 ¥••••";
+                Require(texts.All(text => !text.Contains("41.13", StringComparison.Ordinal) && !text.Contains("59.97", StringComparison.Ordinal)),
+                    "真实 AutomationPeer 子树仍暴露金额。");
+                foreach (var child in peer.GetChildren() ?? []) pending.Enqueue(child);
+            }
+            Require(foundMaskedPeer, "自动化树没有提供遮罩名称。");
+            Require(Descendants<FrameworkElement>(window).All(element =>
+                    !Convert.ToString(element.ToolTip, CultureInfo.InvariantCulture)!.Contains("41.13", StringComparison.Ordinal) &&
+                    !Convert.ToString(element.ToolTip, CultureInfo.InvariantCulture)!.Contains("59.97", StringComparison.Ordinal)),
+                "ToolTip 暴露金额。");
+        }
+        income.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
+        Require(income.Text == "今日已赚 ￥41.13", "未在金额上按下的释放不应切换金额。");
+        income.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            { RoutedEvent = UIElement.MouseLeftButtonDownEvent });
+        income.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
+            { RoutedEvent = UIElement.MouseLeaveEvent });
+        income.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
+        Require(income.Text == "今日已赚 ￥41.13", "按下后移出金额区域不应触发切换。");
+        income.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            { RoutedEvent = UIElement.MouseLeftButtonDownEvent });
+        income.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
+        RequireHidden();
+        var focusRing = Required<Border>(window, "FloatingIncomeFocusRing");
+        Require(IsTransparent(focusRing.BorderBrush), "鼠标操作后残留键盘焦点环。");
+        Required<Control>(window, "FloatingNotesButton").Focus();
+        window.Activate();
+        income.Focus();
+        PumpDispatcher();
+        Require(income.IsKeyboardFocused && focusRing.BorderThickness == new Thickness(2) &&
+            BrushColor(focusRing.BorderBrush) == BrushColor((Brush)window.FindResource("ActiveBrush")),
+            "金额实际获键盘焦点后没有 2 DIP 暖边。");
+        clock.UtcNow = originalTime.AddHours(1);
+        window.UpdateTime(clock.UtcNow);
+        RequireHidden();
+        clock.UtcNow = originalTime.AddYears(1);
+        window.UpdateTime(clock.UtcNow);
+        Require(!income.Text.StartsWith("今日已赚", StringComparison.Ordinal) &&
+            UIElementAutomationPeer.CreatePeerForElement(income)?.GetPattern(PatternInterface.Invoke) is null,
+            "日历无该年金额时不应保留金额或金额动作。");
+        clock.UtcNow = originalTime.AddHours(1);
+        window.UpdateTime(clock.UtcNow);
+        RequireHidden();
+        window.ShowWorkspace(WorkspaceKind.Notes);
+        RequireHidden();
+        window.ShowWorkspace(WorkspaceKind.Countdowns);
+        window.ApplyTheme();
+        window.UpdateTime(clock.UtcNow);
+        RequireHidden();
+        Require(File.ReadAllBytes(settingsPath).SequenceEqual(savedBytes) &&
+            SettingsContract.SerializeCanonical(session.Current) == savedSettings, "切换、tick 或切页写入设置。");
+
+        FloatingWindow? restarted = null;
+        try
+        {
+            restarted = new FloatingWindow(new DesktopWorkspace(ApplicationSession.Load(settingsPath,
+                new SettingsStore(clock: clock))), calendar, manager, assetRoot)
+            { ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000, Opacity = 0.01 };
+            restarted.Show();
+            restarted.UpdateTime(clock.UtcNow);
+            PumpDispatcher();
+            Require(restarted.IncomeText == "今日已赚 ￥59.97", "新实例未恢复显示当前金额。");
+        }
+        finally { restarted?.Close(); }
+
+        var peer = UIElementAutomationPeer.CreatePeerForElement(income);
+        Require(income.Focusable && KeyboardNavigation.GetIsTabStop(income) &&
+            peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider, "金额入口缺少键盘或 Invoke 语义。");
+        ((IInvokeProvider)peer!.GetPattern(PatternInterface.Invoke)).Invoke();
+        PumpDispatcher();
+        Require(income.Text == "今日已赚 ￥59.97", "Invoke 后未显示最新金额。");
+        WindowValidationInput.RaiseKey(income, Key.Enter);
+        RequireHidden();
+        var preferences = session.Current.Preferences;
+        Require(session.TrySavePreferences(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd, out _), "零薪资夹具失败。");
+        window.UpdateTime(clock.UtcNow);
+        Require(income.Text == FloatingBottomStatus.CountdownEncouragementText &&
+            UIElementAutomationPeer.CreatePeerForElement(income) is null, "鼓励语合同改变。");
+        Require(session.TrySavePreferences(preferences.DisplayPrecision, preferences.MonthlySalary,
+            preferences.WorkStart, preferences.WorkEnd, out _), "薪资恢复夹具失败。");
+        window.UpdateTime(clock.UtcNow);
+        RequireHidden();
+        WindowValidationInput.RaiseKey(income, Key.Space);
+        clock.UtcNow = originalTime;
+        window.UpdateTime(originalTime);
+        Require(income.Text == "今日已赚 ￥41.13", "空格切换后没有恢复显示。");
+        Require(File.ReadAllBytes(settingsPath).SequenceEqual(savedBytes), "运行期遮罩状态进入设置文件。");
+        // Restore the original reference composition after advancing the fixture clock.
+        window.ShowWorkspace(WorkspaceKind.Notes);
+        window.ShowWorkspace(WorkspaceKind.Countdowns);
+        window.UpdateTime(originalTime);
+        PumpDispatcher();
+        return true;
+    }
+
+    private static void VerifyFloatingZeroDayBlocks(FloatingWindow window)
+    {
+        foreach (var sample in new[]
+        {
+            ("0 天", ""), ("0 天 06 小时", "时"), ("0 天 06 小时 49 分钟", "时,分"),
+            ("0 天 06 小时 49 分钟 00 秒", "时,分,秒"),
+            ("1 天 06 小时 49 分钟 00 秒", "天,时,分,秒"),
+            ("999 天 13 小时 18 分钟 59 秒", "天,时,分,秒"),
+            ("2000000 天 00 小时 00 分钟 00 秒", "天,时,分,秒")
+        })
+        {
+            foreach (var isPrimary in new[] { true, false })
+            {
+                var element = window.BuildRemainingBlocksForValidation(sample.Item1, isPrimary);
+                element.Measure(new Size(194, 60));
+                element.Arrange(new Rect(0, 0, 194, element.DesiredSize.Height));
+                var cluster = element as Grid;
+                var pairs = RemainingBlockPairs(cluster).ToArray();
+                if (string.Join(",", pairs.Select(pair => pair.Unit.Text)) != sample.Item2 ||
+                    (sample.Item2.Length == 0 && element is not TextBlock { Text: "少于 1 天" }) ||
+                    (sample.Item2.Length > 0 && (cluster is null || Math.Abs(cluster.Width - 194) > 0.01 ||
+                        !RemainingClusterIsSingleLine(cluster) || pairs.Any(pair => pair.Value.FontSize < 12))))
+                    throw new InvalidOperationException($"#229 零天省略或非零分格合同失败：{sample.Item1}, primary={isPrimary}");
+            }
+        }
+    }
+
+    private static void VerifyWorkdayPrimaryTitleAndBadge(StackPanel rows)
+    {
+        var card = (Border)rows.Children[0];
+        var title = Descendants<TextBlock>(card).Single(text => text.Text == "距离下班");
+        var deadline = Descendants<TextBlock>(card).Single(text => text.Text == "7 月 15 日 18:00");
+        var badge = Descendants<Border>(card).Single(border => border.Child is TextBlock text && text.Text == "超期待！");
+        var titleBounds = BoundsIn(title, card);
+        var deadlineBounds = BoundsIn(deadline, card);
+        var badgeBounds = BoundsIn(badge, card);
+        if (title.ActualHeight > 20.01 || !SingleLineTextFits(title) ||
+            titleBounds.Right > card.ActualWidth - 54 ||
+            Math.Abs(deadlineBounds.Top + deadlineBounds.Height / 2 - badgeBounds.Top - badgeBounds.Height / 2) > 2 ||
+            badgeBounds.Left < deadlineBounds.Right || badge.IsHitTestVisible || badge.Focusable)
+            throw new InvalidOperationException($"#229 主项四字标题或截止行徽章不符合合同：title={titleBounds}; deadline={deadlineBounds}; badge={badgeBounds}");
+    }
+
+    private static bool SingleLineTextFits(TextBlock text)
+    {
+        var formatted = new FormattedText(text.Text, CultureInfo.CurrentCulture, text.FlowDirection,
+            new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+            text.FontSize, text.Foreground, VisualTreeHelper.GetDpi(text).PixelsPerDip);
+        return formatted.WidthIncludingTrailingWhitespace + Math.Max(0, formatted.OverhangTrailing) <= text.ActualWidth;
+    }
+
     private static bool WorkdayCountdownUsesPrimaryVisual(
         FloatingWindow window,
         StackPanel rows,
@@ -15056,7 +15245,8 @@ internal static class ValidationReport
                 AutomationProperties.GetName(primaryCluster),
                 primaryRemaining,
                 StringComparison.Ordinal) &&
-            primaryBlockPairs.Length == 4 &&
+            primaryBlockPairs.Length == 3 &&
+            primaryBlockPairs.All(pair => pair.Unit.Text != "天") &&
             primaryBlockPairs.All(pair =>
                 ReferenceEquals(pair.Block.Background, pinkBlock) &&
                 Math.Abs(pair.Block.CornerRadius.TopLeft - 7) <= 0.01 &&
@@ -15146,7 +15336,7 @@ internal static class ValidationReport
         var valueBlocks = RemainingBlockPairs(cluster).Select(pair => pair.Value).ToArray();
         return cluster is not null &&
                Math.Abs(cluster.Width - 194) <= 0.01 &&
-               valueBlocks.Length == 4 &&
+               valueBlocks.Length == (targetUtc - nowUtc < TimeSpan.FromDays(1) ? 3 : 4) &&
                valueBlocks.All(value =>
                     Math.Abs(value.FontSize - 26) <= 0.01 &&
                    value.FontWeight == FontWeights.SemiBold &&
@@ -16986,6 +17176,7 @@ internal static class ValidationReport
         bool ResolvedNoteCardErrorDoesNotReturn,
         bool SecondaryRemainingTextFullyVisible,
         bool IncomeEncouragementWithoutSalary,
+        bool IncomePrivacyBehavior,
         FloatingSecondaryRemainingGateResults SecondaryRemainingGates,
         IReadOnlyList<FloatingSecondaryRemainingMeasurement> SecondaryRemainingSamples,
         FloatingScrollBarValidation ScrollBar,

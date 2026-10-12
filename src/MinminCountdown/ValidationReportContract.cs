@@ -92,6 +92,7 @@ internal static class ValidationReportContract
         "FloatingNotesHandwrittenDecorationPass",
         "FloatingSettingsButtonOpensManager",
         "FloatingEmptyStateTextIsolationBehavior",
+        "FloatingIncomePrivacyBehavior",
         "NoteSearchSyncsFromSharedFilter",
         "NoteDateUsesSpacedChineseFormat",
         "NoteCardBodyLineHeightSeparatesSummary",
@@ -588,6 +589,8 @@ internal static class ValidationReportContract
 
     private static void RunBehaviorExercise()
     {
+        MustReject(report => report["FloatingIncomePrivacyBehavior"] = false, false,
+            "契约未拒绝 #229 金额隐私行为失败。");
         foreach (var field in new[]
                  {
                      "CountdownListFirstBehavior", "CountdownPreferencesPopupBehavior",

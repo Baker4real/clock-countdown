@@ -197,6 +197,7 @@
               <Button.ContentTemplate>
                 <DataTemplate>
                   <TextBlock Text="{Binding}"
+                             FontSize="{DynamicResource TypeCaptionFontSize}"
                              TextTrimming="CharacterEllipsis" />
                 </DataTemplate>
               </Button.ContentTemplate>
@@ -309,10 +310,31 @@
             <StackPanel x:Name="FloatingRows"
                         Margin="8,13,11,0" />
 
-            <local:AutomationOptionalTextBlock x:Name="FloatingIncome"
-                       Margin="12,10,0,29"
+            <Grid Margin="12,10,0,29">
+              <local:AutomationOptionalTextBlock x:Name="FloatingIncome"
+                       FontSize="{DynamicResource TypeCaptionFontSize}"
+                       FocusVisualStyle="{x:Null}"
                        Typography.NumeralAlignment="Tabular"
                        Foreground="{DynamicResource FloatingMutedBrush}" />
+              <Border x:Name="FloatingIncomeFocusRing"
+                      Margin="-2" BorderThickness="2" CornerRadius="8"
+                      IsHitTestVisible="False">
+                <Border.Style>
+                  <Style TargetType="Border">
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                    <Style.Triggers>
+                      <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                          <Condition Binding="{Binding IsKeyboardFocused, ElementName=FloatingIncome}" Value="True" />
+                          <Condition Binding="{Binding Path=(local:FocusVisualState.IsKeyboardFocusVisible), ElementName=FloatingIncome}" Value="True" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </MultiDataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Border.Style>
+              </Border>
+            </Grid>
           </StackPanel>
         </ScrollViewer>
 
@@ -452,6 +474,7 @@
                 </TextBlock>
               </Grid>
               <TextBlock x:Name="FloatingNoteTextError"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
                          Margin="2,4,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap"
@@ -471,16 +494,19 @@
                         Style="{DynamicResource SecondaryButton}" />
               </Grid>
               <TextBlock x:Name="FloatingNoteDateError"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
                          Margin="2,4,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap"
                          Visibility="Collapsed" />
               <TextBlock x:Name="FloatingReminderRulesSummary"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
                          Margin="2,5,2,0"
                          Foreground="{DynamicResource FloatingNoteInputTextBrush}"
                          Text="不提醒"
                          TextWrapping="Wrap" />
               <TextBlock x:Name="FloatingReminderMessage"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
                          Margin="2,4,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap"
@@ -499,6 +525,7 @@
                         Style="{DynamicResource PrimaryButton}" />
               </Grid>
               <TextBlock x:Name="FloatingNoteMessage"
+                         FontSize="{DynamicResource TypeCaptionFontSize}"
                          Margin="2,6,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap" />
@@ -594,6 +621,7 @@
                              StrokeThickness="1.1" />
                   </Grid>
                   <TextBlock Text="设置"
+                             FontSize="{DynamicResource TypeCaptionFontSize}"
                              Margin="6,0,0,0"
                              VerticalAlignment="Center" />
                 </StackPanel>

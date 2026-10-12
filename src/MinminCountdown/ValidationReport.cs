@@ -874,6 +874,8 @@ internal static class ValidationReport
         var popupFocusTabGateIsolationBehavior =
             ValidationExercises.RunPopupFocusTabGateIsolationBehavior();
         var countdownListFirst = ValidationExercises.RunCountdownListFirstBehavior();
+        var mainTopmostStateSynchronization = ValidationExercises.RunMainTopmostStateSynchronization();
+        var mainRedundancyCleanup = ValidationExercises.RunMainRedundancyCleanup();
         var countdownPreferencesPopup = ValidationExercises.RunCountdownPreferencesPopupBehavior();
         var countdownEditorExpansion = ValidationExercises.RunCountdownEditorExpansionBehavior();
         var countdownRowPresentation = ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior();
@@ -881,8 +883,8 @@ internal static class ValidationReport
         var mainStructuralAnnouncementGates =
             ValidationExercises.EvaluateMainStructuralAnnouncementGates(
                 new MainStructuralAnnouncementGateInputs(
-                    mainStructuralAnnouncements.CountdownWorkspaceAnnounced &&
-                        mainStructuralAnnouncements.NotesWorkspaceAnnounced,
+                    mainStructuralAnnouncements.CountdownWorkspaceSelectionIsAccessible &&
+                        mainStructuralAnnouncements.NotesWorkspaceSelectionIsAccessible,
                     mainStructuralAnnouncements.FilterResultAnnounced,
                     mainStructuralAnnouncements.CountdownFirstUseEmptyAnnounced &&
                         mainStructuralAnnouncements.NotesFirstUseEmptyAnnounced &&
@@ -2321,6 +2323,8 @@ internal static class ValidationReport
             ["MainWindowFitsInjectedWorkAreas"] =
                 mainWindowWorkAreaFit,
             ["CountdownListFirstBehavior"] = countdownListFirst,
+            ["MainTopmostStateSynchronization"] = mainTopmostStateSynchronization,
+            ["MainRedundancyCleanup"] = mainRedundancyCleanup,
             ["CountdownPreferencesPopupBehavior"] = countdownPreferencesPopup,
             ["CountdownEditorExpansionBehavior"] = countdownEditorExpansion,
             ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = countdownRowPresentation,
@@ -12396,9 +12400,11 @@ internal static class ValidationReport
 
             window.ShowWorkspace(WorkspaceKind.Countdowns);
             PumpDispatcher();
-            var countdownWorkspaceAnnounced = VisiblePoliteTextEquals(
-                status,
-                "当前工作区：倒计时");
+            var countdownWorkspaceSelectionIsAccessible =
+                Required<ToggleButton>(window, "CountdownTab").IsChecked == true &&
+                Required<ToggleButton>(window, "NotesTab").IsChecked == false &&
+                AutomationProperties.GetName(Required<ToggleButton>(window, "CountdownTab")) == "倒计时工作区" &&
+                !status.Text.Contains("当前工作区", StringComparison.Ordinal);
             var countdownFirstUseEmptyAnnounced = VisiblePoliteTextEquals(
                 emptyCountdowns,
                 "还没有倒计时");
@@ -12415,9 +12421,11 @@ internal static class ValidationReport
                 Required<TextBox>(window, "CountdownName"));
             window.ShowWorkspace(WorkspaceKind.Notes);
             PumpDispatcher();
-            var notesWorkspaceAnnounced = VisiblePoliteTextEquals(
-                status,
-                "当前工作区：便签");
+            var notesWorkspaceSelectionIsAccessible =
+                Required<ToggleButton>(window, "NotesTab").IsChecked == true &&
+                Required<ToggleButton>(window, "CountdownTab").IsChecked == false &&
+                AutomationProperties.GetName(Required<ToggleButton>(window, "NotesTab")) == "便签工作区" &&
+                !status.Text.Contains("当前工作区", StringComparison.Ordinal);
             var notesFirstUseEmptyAnnounced = VisiblePoliteTextEquals(
                 emptyNotes,
                 "还没有便签");
@@ -12530,8 +12538,8 @@ internal static class ValidationReport
             restoredEmptyState &= notesEmptyContent.IsVisible;
 
             return new MainStructuralAnnouncementsResult(
-                countdownWorkspaceAnnounced,
-                notesWorkspaceAnnounced,
+                countdownWorkspaceSelectionIsAccessible,
+                notesWorkspaceSelectionIsAccessible,
                 countdownFilterResultAnnounced && notesFilterResultAnnounced,
                 countdownFirstUseEmptyAnnounced,
                 notesFirstUseEmptyAnnounced,
@@ -14543,7 +14551,7 @@ internal static class ValidationReport
             };
             Required<Button>(main, "PreferencesButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             PumpDispatcher();
-            mainResults.Add(MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision")));
+            mainResults.Add(MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision"), Required<Popup>(main, "PreferencesPopup")));
             WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
 
             reminderCenter = new ReminderCenterWindow
@@ -14633,9 +14641,9 @@ internal static class ValidationReport
         }
     }
 
-    private static ComboBoxPointerExerciseResult MeasureCombo(string name, ComboBox comboBox)
+    private static ComboBoxPointerExerciseResult MeasureCombo(string name, ComboBox comboBox, Popup? containingPopup = null)
     {
-        var result = WindowValidationInput.ExerciseComboBox(comboBox);
+        var result = WindowValidationInput.ExerciseComboBox(comboBox, containingPopup);
         if (!result.ArrowIsNotTabStop)
             Console.Error.WriteLine($"COMBO_TAB_DIAGNOSTIC {name}; visible={comboBox.IsVisible}; result={result}");
         return result;
@@ -16026,8 +16034,8 @@ internal static class ValidationReport
     private sealed record MainTabTarget(string Id, FrameworkElement Element);
 
     private sealed record MainStructuralAnnouncementsResult(
-        bool CountdownWorkspaceAnnounced,
-        bool NotesWorkspaceAnnounced,
+        bool CountdownWorkspaceSelectionIsAccessible,
+        bool NotesWorkspaceSelectionIsAccessible,
         bool FilterResultAnnounced,
         bool CountdownFirstUseEmptyAnnounced,
         bool NotesFirstUseEmptyAnnounced,

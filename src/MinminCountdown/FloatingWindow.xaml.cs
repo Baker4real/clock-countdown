@@ -555,7 +555,7 @@ public sealed partial class FloatingWindow : Window
         _workspace = workspace;
         FloatingCountdownsButton.IsChecked = workspace == WorkspaceKind.Countdowns;
         FloatingNotesButton.IsChecked = workspace == WorkspaceKind.Notes;
-        FloatingTitle.Text = workspace == WorkspaceKind.Countdowns ? "倒计时" : "今日便签";
+        FloatingTitle.Text = workspace == WorkspaceKind.Countdowns ? "倒计时" : "待办便签";
         FloatingBodyScroller.Margin = workspace == WorkspaceKind.Notes
             ? new Thickness(0, 0, 76, 0)
             : new Thickness(0);
@@ -799,11 +799,6 @@ public sealed partial class FloatingWindow : Window
     internal void ApplyTheme()
     {
         var nextTheme = FloatingThemePalette.Daylight;
-        if (ReferenceEquals(_activeTheme, nextTheme))
-        {
-            return;
-        }
-
         _activeTheme = nextTheme;
         ApplyQuickAddThemeResources(nextTheme);
         SetActiveThemeBrush("FloatingHeaderTextBrush", nextTheme.HeaderTextBrushKey);
@@ -814,14 +809,19 @@ public sealed partial class FloatingWindow : Window
         SetActiveThemeBrush("FloatingNoteInputTextBrush", nextTheme.NoteInputTextBrushKey);
         SetActiveThemeBrush("FloatingErrorBrush", nextTheme.ErrorBrushKey);
         SetActiveThemeBrush("FloatingMutedBrush", nextTheme.MutedBrushKey);
-        FloatingDayRasterScene.Visibility = Visibility.Visible;
-        TaskCard.Background = Brushes.Transparent;
-        TaskCard.BorderBrush = Brushes.Transparent;
+        var contrast = ApplicationTheme.HighContrastEnabled;
+        var decorationVisibility = contrast ? Visibility.Collapsed : Visibility.Visible;
+        FloatingDayRasterScene.Visibility = decorationVisibility;
+        FloatingPlushScene.Visibility = decorationVisibility;
+        FloatingNotesDecoTextLeft.Visibility = decorationVisibility;
+        FloatingNotesDecoText.Visibility = decorationVisibility;
+        TaskCard.Background = contrast ? ThemeBrush("CanvasBrush") : Brushes.Transparent;
+        TaskCard.BorderBrush = contrast ? ThemeBrush("ControlBorderBrush") : Brushes.Transparent;
         TaskCard.Effect = null;
-        FloatingThemeBackdrop.Background = Brushes.Transparent;
-        FloatingThemeBackdrop.BorderBrush = Brushes.Transparent;
-        FloatingHeaderSurface.Background = Brushes.Transparent;
-        FloatingHeaderSurface.BorderBrush = Brushes.Transparent;
+        FloatingThemeBackdrop.Background = contrast ? ThemeBrush("CanvasBrush") : Brushes.Transparent;
+        FloatingThemeBackdrop.BorderBrush = contrast ? ThemeBrush("ControlBorderBrush") : Brushes.Transparent;
+        FloatingHeaderSurface.Background = contrast ? ThemeBrush("CanvasBrush") : Brushes.Transparent;
+        FloatingHeaderSurface.BorderBrush = contrast ? ThemeBrush("ControlBorderBrush") : Brushes.Transparent;
         FloatingRows.Margin = new Thickness(9, 13, 10, 0);
         SetRasterTranslation(FloatingTitle, -1, -1);
         SetRasterTranslation(FloatingCountdownsButton, 0, 1);
@@ -855,7 +855,6 @@ public sealed partial class FloatingWindow : Window
         ResourceDictionary scope,
         FloatingThemePalette theme)
     {
-        var activeBrushKey = theme.HeaderDangerBrushKey;
         var bindings = new (string LocalKey, string ThemeKey)[]
         {
             ("CanvasBrush", theme.SurfaceBrushKey),
@@ -867,8 +866,8 @@ public sealed partial class FloatingWindow : Window
             ("MutedBrush", theme.MutedBrushKey),
             ("PeachLineBrush", theme.BorderBrushKey),
             ("ControlBorderBrush", "ControlBorderBrush"),
-            ("ActiveBrush", activeBrushKey),
-            ("ActiveHoverBrush", theme.HeaderHoverBrushKey),
+            ("ActiveBrush", "ActiveBrush"),
+            ("ActiveHoverBrush", "ActiveHoverBrush"),
             ("DangerBrush", theme.HeaderDangerBrushKey),
             ("SegmentSelectedBrush", theme.HeaderSelectedBrushKey),
             ("SegmentSelectedForegroundBrush", theme.HeaderSelectedTextBrushKey)
@@ -876,7 +875,9 @@ public sealed partial class FloatingWindow : Window
 
         foreach (var binding in bindings)
         {
-            scope[binding.LocalKey] = ThemeBrush(binding.ThemeKey);
+            scope[binding.LocalKey] = binding.LocalKey is "ActiveBrush" or "ActiveHoverBrush"
+                ? Application.Current.FindResource(binding.LocalKey)
+                : ThemeBrush(binding.ThemeKey);
         }
     }
 
@@ -899,6 +900,8 @@ public sealed partial class FloatingWindow : Window
         yield return FloatingNoteEntry.Resources;
         yield return FloatingNoteDate.Resources;
         yield return FloatingTags.Resources;
+        if (PickerTemplateParts.GetCalendar(FloatingNoteDate) is { } calendar)
+            yield return calendar.Resources;
     }
 
     internal FloatingQuickAddThemeProbeResult ProbeQuickAddThemeResources()
@@ -921,6 +924,18 @@ public sealed partial class FloatingWindow : Window
             FloatingTags.SetSelection([probeTag.Id]);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
+
+            // #232: validate the rendered focus boundary against the application
+            // interaction role; matching the local (possibly misbound) alias is insufficient.
+            Activate();
+            Keyboard.Focus(FloatingNoteText);
+            WindowValidationInput.Pump(Dispatcher);
+            var focusSurface = FloatingNoteText.Template.FindName("Surface", FloatingNoteText) as Border;
+            if (!FloatingNoteText.IsKeyboardFocused ||
+                !ReferenceEquals(focusSurface?.BorderBrush, Application.Current.FindResource("ActiveBrush")))
+            {
+                throw new InvalidOperationException("#232 快速新增实际输入焦点必须使用 Active，而非 Danger。");
+            }
 
             var textBoxes = new[] { FloatingNoteText, FloatingNoteSearch };
             var datePickers = new[] { FloatingNoteDate };
@@ -1469,7 +1484,7 @@ public sealed partial class FloatingWindow : Window
 
     private void ApplyPlushSceneTheme(FloatingThemePalette theme)
     {
-        DayMascotsImage.Visibility = Visibility.Visible;
+        DayMascotsImage.Visibility = ApplicationTheme.HighContrastEnabled ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private string PlushGlowColor() =>
@@ -1807,6 +1822,10 @@ public sealed partial class FloatingWindow : Window
             if (records.Count == 0)
             {
                 FloatingRows.Children.Add(EmptyText(CountdownEmptyStateText(snapshot.Filter)));
+                if (CountdownConstraintsActive(snapshot.Filter))
+                {
+                    FloatingRows.Children.Add(BuildCountdownConstrainedEmptyStateAction());
+                }
             }
         }
         else
@@ -2075,7 +2094,7 @@ public sealed partial class FloatingWindow : Window
         CountdownConstraintsActive(filter) ? "没有匹配的倒计时。" : "没有未到期的倒计时。";
 
     internal static string NoteEmptyStateText(DesktopWorkspaceFilter filter) =>
-        NoteConstraintsActive(filter) ? "没有匹配的便签。" : "今天还没有待办便签。";
+        NoteConstraintsActive(filter) ? "没有匹配的便签。" : "还没有待办便签。";
 
     private FrameworkElement BuildNoteSearchEmptyState()
     {
@@ -2119,6 +2138,29 @@ public sealed partial class FloatingWindow : Window
             },
             "清除便签筛选");
         clear.Click += (_, _) => ClearNoteFilterConstraints();
+        return clear;
+    }
+
+    private FrameworkElement BuildCountdownConstrainedEmptyStateAction()
+    {
+        var clear = UiAccessibility.Name(
+            new Button
+            {
+                Content = "清除筛选",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Style = TryFindResource("SecondaryButton") as Style
+            },
+            "清除倒计时筛选");
+        clear.Click += (_, _) =>
+        {
+            var filter = _desktopWorkspace.Snapshot.Filter;
+            _desktopWorkspace.ApplyFilter(filter with
+            {
+                SelectedTagIds = Array.Empty<string>(),
+                UntaggedOnly = false,
+                CountdownStatus = CountdownStatusFilter.All
+            });
+        };
         return clear;
     }
 

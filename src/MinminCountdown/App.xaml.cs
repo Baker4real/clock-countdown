@@ -748,6 +748,8 @@ public sealed partial class App : Application
 
     protected override void OnExit(ExitEventArgs eventArgs)
     {
+        _theme?.Dispose();
+        _theme = null;
         _reminderDeliveryCoordinator?.Dispose();
         _reminderDeliveryCoordinator = null;
         _instanceActivationServer?.Dispose();

@@ -1129,6 +1129,27 @@ internal static class SecondaryWindowChrome
 
 internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
 {
+    private Style? _dayCancelStyle;
+    private Style? _dayConfirmStyle;
+    private bool _systemContrastApplied;
+
+    internal void ApplySystemContrast()
+    {
+        if (CancelButton is null || ConfirmButton is null || _systemContrastApplied == ApplicationTheme.HighContrastEnabled) return;
+        if (ApplicationTheme.HighContrastEnabled)
+        {
+            _dayCancelStyle = CancelButton.Style;
+            _dayConfirmStyle = ConfirmButton.Style;
+            CancelButton.Style = (Style)Application.Current.FindResource("SecondaryButton");
+            ConfirmButton.Style = (Style)Application.Current.FindResource("PrimaryButton");
+        }
+        else
+        {
+            CancelButton.Style = _dayCancelStyle;
+            ConfirmButton.Style = _dayConfirmStyle;
+        }
+        _systemContrastApplied = ApplicationTheme.HighContrastEnabled;
+    }
     internal Button CancelButton { get; private set; } = null!;
     internal Button ConfirmButton { get; private set; } = null!;
     internal TextBlock BodyText { get; private set; } = null!;
@@ -1282,6 +1303,7 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         UiAccessibility.Name(ConfirmButton, SecondaryButtonText);
         AutomationProperties.SetAutomationId(CancelButton, "ConfirmationCancelButton");
         AutomationProperties.SetAutomationId(ConfirmButton, "ConfirmationConfirmButton");
+        ApplySystemContrast();
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root)

@@ -4296,7 +4296,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 737 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#224 新增四项键盘行为合同）'
+    Assert-Equal 740 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#220 与 #224 合并行为合同）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4887,7 +4887,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v47') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '0F66DFD2A63E8EEE3291054427973AEC68A93AF00391C0E48921A45B02509D32' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（737字段，#224 键盘提交与删除合同）'
+    Assert-Equal 'AF1341F02639019A66F14F2FD1E0B617AE478D085F13CDCD25A3E3B0B6E02586' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（740字段；#220/#224 合并合同）'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastUpdatesOpenWindows) '#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastAccessibleStates) '#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastColorChangesAndCustomSurfaces) '#220 系统配色运行中变化更新弹层、自选标签和日期印记并恢复日间原色'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -5214,8 +5217,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.FloatingInteractiveControlsDoNotRequestWindowDrag) '悬浮窗按钮、输入和滚动控件不请求窗口拖动'
     Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleExcludesInteractiveControls) '悬浮窗标题拖动区不覆盖按钮或输入控件'
     Assert-Equal $true ([bool] $adapterValidation.FloatingWindowManualPositionPersistsAndRemainsVisibleAfterRefresh) '悬浮窗手动移动后内容刷新会保留位置并限制在工作区内'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTitleTextFits) '悬浮窗今日便签标题在实际父布局槽内完整可见'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTitleTextHasVerticalClearance) '悬浮窗今日便签标题保留完整字形所需的垂直余量'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingTitleTextFits) '悬浮窗待办便签标题在实际父布局槽内完整可见'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingTitleTextHasVerticalClearance) '悬浮窗待办便签标题保留完整字形所需的垂直余量'
     # #129 去重迁移（U1 独有断言）：悬浮窗存在性、工作区底部锚定、标题与页签文字测量系列。
     Assert-Equal $true ([bool] $adapterValidation.FloatingWindowPresent) '桌面悬浮倒计时窗口存在（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.FloatingWindowStaysAboveWorkAreaBottom) '悬浮窗不遮挡任务栏工作区（#129 自 U1 迁移）'
@@ -5293,7 +5296,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 'TextBox,DatePicker,DatePickerPopup,ComboBox,ComboBoxPopup,TagSelector,TagSelectorPopup,CheckBox,ScrollViewer,ScrollBar' ([string]::Join(',', @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties.Name))) '悬浮窗快速新增日间资源枚举覆盖全部真实控件族'
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '悬浮窗快速新增日间资源枚举没有失败项'
     Assert-Equal '#FFFEFCFB' ([string] $adapterValidation.FloatingQuickAddLocalCanvasColor) '悬浮窗快速新增局部表面使用暖白'
-    Assert-Equal '#FFB74C39' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增局部交互强调使用珊瑚'
+    Assert-Equal '#FFE05A4A' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增焦点和按压使用 Active，不复用 Danger（#232）'
     Assert-Equal $true ([bool] $adapterValidation.TagPopupFollowsDayTheme) '打开的标签弹层保持日间主题'
     Assert-Equal '#FFFDF0E4' ([string] $adapterValidation.MainThemeBackgroundColors) '主窗口背景使用预期的暖白配色'
     Assert-Equal '8' ([string] $adapterValidation.MainThemeCharacterOpacities) '主窗口角色装饰在日间主题下保持低对比度'
@@ -5445,7 +5448,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.NoteDateSectionsAreIndependent) '同一日期的未完成与已完成折叠状态互不影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateSectionStateSurvivesRefresh) '日期折叠状态在管理窗口刷新后保持'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentsSwitchExclusively) '未完成/已完成分段切换互斥、两状态不同屏且刷新后保持'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNotesKeepExistingSortOrder) '悬浮窗继续使用既有便签排序'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNotesKeepExistingSortOrder) '悬浮窗使用共享领域便签排序'
     Assert-Equal '24,60' ([string]::Join(',', @($adapterValidation.NoteReminderTimeOptionCounts))) '共享提醒规则编辑器首次提醒小时与分钟选项完整'
     Assert-Equal $true ([bool] $adapterValidation.CalendarReminderStartLabelsUseCalendarSemantics) '日历模式开始日期/本地时刻标签与其余模式首次提醒标签区分'
     Assert-Equal $true ([bool] $adapterValidation.CrossDayReminderSelectionWorks) '便签提醒支持跨天选择并按北京时间触发'

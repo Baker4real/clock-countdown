@@ -95,30 +95,10 @@ internal sealed class ApplicationSession
 
     public IReadOnlyList<NoteRecord> GetSortedNotes(bool applyFilter = true)
     {
-        return GetNoteEntries(applyFilter)
-            .OrderBy(entry => entry.Note.IsCompleted ? 1 : 0)
-            .ThenBy(entry => entry.Note.Date is null ? 1 : 0)
-            .ThenBy(entry => entry.Note.Date, StringComparer.Ordinal)
-            .ThenBy(entry => entry.Note.Text, StringComparer.CurrentCulture)
-            .Select(entry => entry.Note)
+        return NoteOrdering.Sort(Current.Notes)
+            .Where(note => !applyFilter || Filter.Matches(note))
             .ToArray();
     }
-
-    public IReadOnlyList<NoteRecord> GetSortedManagerNotes(bool applyFilter = true)
-    {
-        return GetNoteEntries(applyFilter)
-            .OrderBy(entry => entry.Note.IsCompleted ? 1 : 0)
-            .ThenBy(entry => entry.Note.Date is null ? 1 : 0)
-            .ThenByDescending(entry => entry.Note.Date, StringComparer.Ordinal)
-            .ThenByDescending(entry => entry.EntryIndex)
-            .Select(entry => entry.Note)
-            .ToArray();
-    }
-
-    private IEnumerable<(NoteRecord Note, int EntryIndex)> GetNoteEntries(bool applyFilter) =>
-        Current.Notes
-            .Select((note, entryIndex) => (Note: note, EntryIndex: entryIndex))
-            .Where(entry => !applyFilter || Filter.Matches(entry.Note));
 
     public bool TrySaveCountdown(
         string? existingId,

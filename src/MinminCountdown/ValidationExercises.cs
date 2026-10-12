@@ -10954,6 +10954,7 @@ internal static class ValidationExercises
 
     public static bool RunFloatingEmptyStateTextIsolationBehavior()
     {
+        VerifyFloatingWorkspaceOrderAndFilterAction();
         var clearFilter = DesktopWorkspaceFilter.Empty;
         Must(
             string.Equals(
@@ -10962,7 +10963,7 @@ internal static class ValidationExercises
                 StringComparison.Ordinal) &&
             string.Equals(
                 FloatingWindow.NoteEmptyStateText(clearFilter),
-                "今天还没有待办便签。",
+                "还没有待办便签。",
                 StringComparison.Ordinal),
             "悬浮窗无筛选空态文案漂移。");
 
@@ -11007,7 +11008,7 @@ internal static class ValidationExercises
                 StringComparison.Ordinal) &&
             string.Equals(
                 FloatingWindow.NoteEmptyStateText(searchOnlyFilter),
-                "今天还没有待办便签。",
+                "还没有待办便签。",
                 StringComparison.Ordinal),
             "仅搜索词不应触发悬浮窗筛选无匹配文案。");
 
@@ -11027,10 +11028,128 @@ internal static class ValidationExercises
                 StringComparison.Ordinal) &&
             string.Equals(
                 FloatingWindow.NoteEmptyStateText(countdownStatusFilter),
-                "今天还没有待办便签。",
+                "还没有待办便签。",
                 StringComparison.Ordinal),
             "悬浮窗两工作区筛选约束不应串扰空态文案。");
         return true;
+    }
+
+    private static void VerifyFloatingWorkspaceOrderAndFilterAction()
+    {
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"MinminCountdown-workspace-order-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        MainWindow? main = null;
+        FloatingWindow? floating = null;
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        try
+        {
+            var notes = new[]
+            {
+                new NoteRecord("older", "较早日期", "2034-05-05", false, [], NoReminder.Instance),
+                new NoteRecord("same-first", "A 先添加", "2034-05-06", false, [], NoReminder.Instance),
+                new NoteRecord("undated", "无日期", null, false, [], NoReminder.Instance),
+                new NoteRecord("same-last", "Z 后添加", "2034-05-06", false, [], NoReminder.Instance),
+                new NoteRecord("done", "已完成", "2034-05-07", true, [], NoReminder.Instance)
+            };
+            var clock = new WorkspaceValidationClock(new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero));
+            var store = new SettingsStore(clock: clock);
+            var countdown = new CountdownRecord("restored-countdown", "清除后恢复的倒计时", clock.UtcNow.AddDays(2), ["present-tag"]);
+            store.Save(settingsPath, new CountdownSettings([countdown], notes,
+                [new TagRecord("present-tag", "已有标签", "#F4B6A6")], CountdownSettings.Empty.Preferences));
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            main = new MainWindow(workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
+            floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            PrepareOffscreenValidationWindow(floating);
+            main.Show();
+            floating.Show();
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.UpdateLayout();
+            floating.UpdateLayout();
+            var expectedActive = new[] { "same-last", "same-first", "older", "undated" };
+            Must(VisualDescendants<CheckBox>(floating).Where(box => box.Tag is string)
+                    .Select(box => (string)box.Tag).SequenceEqual(expectedActive, StringComparer.Ordinal),
+                "悬浮便签未按日期倒序、同日添加倒序、无日期最后显示。");
+            Must(VisualDescendants<CheckBox>(main).Where(box => box.Tag is string id && notes.Any(note => note.Id == id))
+                    .Select(box => (string)box.Tag).SequenceEqual(expectedActive.Append("done"), StringComparer.Ordinal),
+                "管理便签未遵循同一独立领域顺序。");
+
+            var savedBytes = File.ReadAllBytes(settingsPath);
+            foreach (var filter in new[]
+            {
+                DesktopWorkspaceFilter.Empty with
+                {
+                    SelectedTagIds = new[] { "missing-tag" }, MatchMode = TagMatchMode.All,
+                    NoteStatus = NoteStatusFilter.Completed, NoteSearch = "保留搜索", NoteDate = "2034-05-06"
+                },
+                DesktopWorkspaceFilter.Empty with
+                {
+                    UntaggedOnly = true, MatchMode = TagMatchMode.All,
+                    NoteStatus = NoteStatusFilter.Active, NoteSearch = "保留无日期搜索", UndatedNotesOnly = true
+                },
+                DesktopWorkspaceFilter.Empty with
+                {
+                    CountdownStatus = CountdownStatusFilter.Expired,
+                    NoteStatus = NoteStatusFilter.Completed, NoteSearch = "保留状态搜索", NoteDate = "2034-05-05"
+                }
+            })
+            {
+                workspace.ApplyFilter(filter);
+                floating.ShowWorkspace(WorkspaceKind.Countdowns);
+                WindowValidationInput.Pump(floating.Dispatcher);
+                floating.UpdateLayout();
+                Must(floating.FloatingCountdownCount == 0, "倒计时清除筛选夹具未进入空态。");
+                var clear = VisualDescendants<Button>(floating).SingleOrDefault(button =>
+                    button.IsVisible && AutomationProperties.GetName(button) == "清除倒计时筛选");
+                Must(clear is not null && Equals(clear.Content, "清除筛选"), "倒计时筛选空态缺少当前可见的清除筛选动作。");
+                clear!.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                WindowValidationInput.Pump(floating.Dispatcher);
+                floating.UpdateLayout();
+                var after = workspace.Snapshot;
+                Must(after.Filter.SelectedTagIds.Count == 0 && !after.Filter.UntaggedOnly &&
+                        after.Filter.CountdownStatus == CountdownStatusFilter.All,
+                    "倒计时清除筛选未清除标签、无标签或状态约束。");
+                Must(after.Filter.NoteStatus == filter.NoteStatus && after.Filter.NoteSearch == filter.NoteSearch &&
+                        after.Filter.NoteDate == filter.NoteDate && after.Filter.UndatedNotesOnly == filter.UndatedNotesOnly &&
+                        after.Filter.MatchMode == filter.MatchMode,
+                    "倒计时清除筛选损坏便签专属条件或标签匹配模式。");
+                Must(after.VisibleCountdowns.Select(record => record.Id).SequenceEqual(new[] { "restored-countdown" }) &&
+                        floating.FloatingCountdownCount == 1 && VisualDescendants<TextBlock>(floating).Any(text => text.Text == countdown.Name),
+                    "点击倒计时清除筛选后没有恢复原记录与真实行。");
+                Must(File.ReadAllBytes(settingsPath).SequenceEqual(savedBytes), "清除筛选不应写入持久化设置。");
+            }
+            Must(workspace.Apply(new DeleteCountdownChange(countdown.Id)).Succeeded, "倒计时空态夹具删除失败。");
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { NoteStatus = NoteStatusFilter.Completed });
+            WindowValidationInput.Pump(floating.Dispatcher);
+            floating.UpdateLayout();
+            Must(floating.FloatingCountdownCount == 0 && !VisualDescendants<Button>(floating).Any(button =>
+                    button.IsVisible && Equals(button.Content, "清除筛选")),
+                "仅便签条件不应在倒计时空态提供清除筛选。");
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must((floating.FindName("FloatingTitle") as TextBlock)?.Text == "待办便签",
+                "悬浮便签工作区标题仍暗示只展示今日记录。");
+            foreach (var note in notes)
+            {
+                Must(workspace.Apply(new DeleteNoteChange(note.Id)).Succeeded, "便签默认空态夹具删除失败。");
+            }
+            WindowValidationInput.Pump(floating.Dispatcher);
+            floating.UpdateLayout();
+            Must(VisualDescendants<TextBlock>(floating).Any(text => text.IsVisible && text.Text == "还没有待办便签。") &&
+                    !VisualDescendants<Button>(floating).Any(button => button.IsVisible && Equals(button.Content, "清除筛选")),
+                "无筛选便签空态应如实说明没有待办，并且不提供清除筛选。");
+        }
+        finally
+        {
+            floating?.Close();
+            main?.Close();
+            WindowValidationInput.Pump(Application.Current.Dispatcher);
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
     }
 
     public static MainNoteCompletionGateResults EvaluateMainNoteCompletionGates(

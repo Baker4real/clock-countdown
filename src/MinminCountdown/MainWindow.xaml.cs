@@ -1520,7 +1520,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var emptyState = CountdownEmptyStatePresentation(hasSavedCountdowns);
             var isFirstUse = !hasSavedCountdowns;
             CountdownEmptyStateContent.Visibility = Visibility.Visible;
-            CountdownEmptyMascot.Visibility = isFirstUse
+            CountdownEmptyMascot.Visibility = isFirstUse && !ApplicationTheme.HighContrastEnabled
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             AutomationProperties.SetLiveSetting(EmptyCountdownMessage, AutomationLiveSetting.Polite);
@@ -2075,7 +2075,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NotesEmptyStateContent.Visibility = noVisibleNotes || !segmentHasNotes
             ? Visibility.Visible
             : Visibility.Collapsed;
-        NotesEmptyMascot.Visibility = isFirstUse
+        NotesEmptyMascot.Visibility = isFirstUse && !ApplicationTheme.HighContrastEnabled
             ? Visibility.Visible
             : Visibility.Collapsed;
         AutomationProperties.SetLiveSetting(EmptyNotesMessage, AutomationLiveSetting.Polite);
@@ -3564,7 +3564,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             }
             else
             {
-                chip.Background = savedBackground;
+                ApplicationTheme.ApplyContrastAwareBrush(chip, Border.BackgroundProperty, savedBackground, "TagBrush");
             }
             panel.Children.Add(chip);
         }
@@ -3930,14 +3930,24 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void UpdateReferenceDecorationVisibility()
     {
+        var contrast = ApplicationTheme.HighContrastEnabled;
+        var decorationVisibility = contrast ? Visibility.Collapsed : Visibility.Visible;
+        MainReferenceDecorationLayer.Visibility = decorationVisibility;
+        CountdownDecoTextTop.Visibility = decorationVisibility;
+        CountdownDecoTextBottom.Visibility = decorationVisibility;
+        NotesDecoText.Visibility = decorationVisibility;
+        CountdownEmptyMascot.Visibility = !contrast && _desktopWorkspace.Snapshot.Settings.Countdowns.Count == 0
+            ? Visibility.Visible : Visibility.Collapsed;
+        NotesEmptyMascot.Visibility = !contrast && _desktopWorkspace.Snapshot.Settings.Notes.Count == 0
+            ? Visibility.Visible : Visibility.Collapsed;
         // #231：按当前页装饰图是否已解码判定，未解码页回到角色兜底层。
         var useReferenceDecorations = _workspace == WorkspaceKind.Notes
             ? NotesReferenceDecoration.Source is not null
             : CountdownReferenceDecoration.Source is not null;
-        CharacterBackgroundLayer.Visibility = useReferenceDecorations
+        CharacterBackgroundLayer.Visibility = useReferenceDecorations || contrast
             ? Visibility.Collapsed
             : Visibility.Visible;
-        CharacterPanelLayer.Visibility = useReferenceDecorations
+        CharacterPanelLayer.Visibility = useReferenceDecorations || contrast
             ? Visibility.Collapsed
             : Visibility.Visible;
         CountdownReferenceDecoration.Visibility =

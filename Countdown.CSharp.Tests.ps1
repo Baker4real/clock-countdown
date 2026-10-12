@@ -4228,7 +4228,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 705 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 671 字段类型不变，加 6 个既有行为字段、#189 的 13 个测量字段、#211 的 2 个工作区适配字段、#215 的净 2 个提醒中心字段、#212 的 9 个稳定刷新字段、#216 的 1 个讲述人字段与 #231 的 1 个行为字段）'
+    # #230 adds hidden-tick and note-minute-refresh behavior fields.
+    Assert-Equal 707 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 705 字段类型不变，#230 增加 2 个管理窗口刷新行为字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4805,7 +4806,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-10-v43') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '1F70D55C7386858CE63D789D7060A9165540F00D737A3E2FEF7FAA69D58F3B66' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（705 字段；相对已发布 694 字段，#212 增加 9 个稳定刷新字段，#216 增加 1 个讲述人字段，#231 增加 1 个按需解码字段）'
+    Assert-Equal 'CA8FFB9C805CBA1BA023A259E68300F77E412C8394182932227A00548AFAFF57' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（707 字段；相对原 705 字段仅增加 #230 的 2 个管理窗口刷新行为字段）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'

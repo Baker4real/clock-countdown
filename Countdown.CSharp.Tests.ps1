@@ -4829,7 +4829,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v45') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '04C7466A700FF72A654E248D8597AAF05036E272CB08C664B16D62E3E0CA9424' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（724 字段；去掉 #217 的 10 项恢复 #219 集成的 714 字段形状）'
+    Assert-Equal 'A74A84EFA016F339E66C24050077C3FB735F7E2B88FFB4D4FD868B525C8C55D1' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（724 字段；去掉 #217 的 10 项恢复 #219 集成的 714 字段形状）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'

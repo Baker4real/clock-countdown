@@ -542,6 +542,7 @@ internal static class ValidationReport
         "assets/floating-plush/floating-plush-cinnamoroll-reference.png",
         "assets/floating-plush/floating-plush-kuromi-reference.png",
         "assets/floating-plush/floating-plush-mymelody-reference.png",
+        "src/MinminCountdown.Core/DateDisplay.cs",
         "src/MinminCountdown/App.xaml",
         "src/MinminCountdown/ApplicationTheme.cs",
         "src/MinminCountdown/DomainLogic.cs",
@@ -628,6 +629,7 @@ internal static class ValidationReport
     {
         "assets/main-decorations/main-countdown-scene-day.png",
         "assets/main-decorations/main-notes-scene-day.png",
+        "src/MinminCountdown.Core/DateDisplay.cs",
         "src/MinminCountdown.Core/SettingsContract.cs",
         "src/MinminCountdown.Core/SettingsModels.cs",
         "src/MinminCountdown/App.xaml",
@@ -5037,11 +5039,12 @@ internal static class ValidationReport
     private static bool RunReferenceSourceDriftBehavior(bool isMain)
     {
         // Exercise the same source comparison used by the real manifest reader.
-        // A self-consistent stale manifest must still reject a changed motion source.
+        // A self-consistent stale manifest must still reject changed visual sources.
         const string motionPath = "src/MinminCountdown/MotionBehavior.cs";
         const string indicatorPath = "src/MinminCountdown/SegmentIndicator.cs";
+        const string datePath = "src/MinminCountdown.Core/DateDisplay.cs";
         var paths = isMain ? MainReferenceCanonicalSourcePaths : FloatingReferenceCanonicalSourcePaths;
-        var requiredPaths = isMain ? new[] { motionPath, indicatorPath } : new[] { motionPath };
+        var requiredPaths = isMain ? new[] { motionPath, indicatorPath, datePath } : new[] { motionPath, datePath };
         var currentHash = new string('A', 64);
         var staleHash = new string('B', 64);
         foreach (var changedPath in requiredPaths)

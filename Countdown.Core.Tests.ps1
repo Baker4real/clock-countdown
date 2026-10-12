@@ -347,10 +347,10 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
             $sourceTreeValidationReport."${baselineName}ReferenceBaselineValidated" = $true
         }
         $sourceTreeValidationReport.MainReferenceBaselineCaptures = @(
-            1..8 | ForEach-Object { [pscustomobject]@{ CaptureId = "main-$_" } }
+            1..9 | ForEach-Object { [pscustomobject]@{ CaptureId = "main-$_" } }
         )
         $sourceTreeValidationReport.FloatingReferenceBaselineCaptures = @(
-            1..4 | ForEach-Object { [pscustomobject]@{ CaptureId = "floating-$_" } }
+            1..5 | ForEach-Object { [pscustomobject]@{ CaptureId = "floating-$_" } }
         )
         Assert-Equal `
             $true `
@@ -383,7 +383,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
         $missingSourceCaptureReport = $sourceTreeValidationReport | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $missingSourceCaptureReport.FloatingReferenceBaselineCaptures = @()
         Assert-Equal `
-            '应用 validate-only 的悬浮窗参考基线必须包含 4 个 captures，实际为 0。' `
+            '应用 validate-only 的悬浮窗参考基线必须包含 5 个 captures，实际为 0。' `
             (Get-CountdownApplicationValidationReportFailure `
                 -Report $missingSourceCaptureReport `
                 -MainManifestRequired $true `

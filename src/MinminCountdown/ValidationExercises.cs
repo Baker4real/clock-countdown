@@ -450,7 +450,7 @@ internal static class ValidationExercises
             var body = ((Border)window.Content).Child as StackPanel;
             var message = body!.Children.OfType<TextBlock>().Last();
             var buttons = VisualDescendants<Button>(window).ToArray();
-            correct = message.Text.Contains("2031-01-02 11:04", StringComparison.Ordinal) &&
+            correct = message.Text.Contains("2031 年 1 月 2 日 11:04", StringComparison.Ordinal) &&
                 message.Text.Contains("北京时间", StringComparison.Ordinal) &&
                 message.Text.Contains("逐字节另存", StringComparison.Ordinal) &&
                 message.Text.Contains("若原文件可读", StringComparison.Ordinal) &&
@@ -5571,7 +5571,7 @@ internal static class ValidationExercises
                 main.UpdateLayout();
                 Must(
                     main.IsVisible &&
-                    nowText.Text == "当前北京时间：2038年07月08日 09:02:00" &&
+                    nowText.Text == "当前北京时间：2038 年 7 月 8 日 09:02:00" &&
                     main.CountdownRemainingTextsForValidation.Values.Single().Text != remainingBefore,
                     "#230：管理窗口重新显示后必须立即显示最新时刻与剩余时间，不等待下一次 tick。");
                 return true;
@@ -5982,6 +5982,8 @@ internal static class ValidationExercises
                 main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
                 WindowValidationInput.Pump(main.Dispatcher);
                 main.UpdateLayout();
+                Must(((TextBlock)main.FindName("NowText")).Text == "当前北京时间：2038 年 7 月 8 日 09:00:00",
+                    "#225 状态栏应显示无前导零、带中文空格的北京时间。");
                 var scroller = (ScrollViewer)main.FindName("NotesListRegion");
                 var activeRows = (Panel)main.FindName("ActiveNoteRows");
                 var trigger = VisualDescendants<Button>(activeRows)
@@ -6021,6 +6023,7 @@ internal static class ValidationExercises
                 var summary = VisualDescendants<TextBlock>(activeRows).Single(text =>
                     AutomationProperties.GetAutomationId(text) == MainWindow.NoteCardReminderSummaryAutomationId);
                 Must(summary.Text.Contains("09:02", StringComparison.Ordinal), "周期便签初始摘要应指向首次提醒。");
+                ProbeVisibleReminderDates(workspace, calendar, main, note, dueUtc);
                 clock.UtcNow = dueUtc;
                 main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
                 WindowValidationInput.Pump(main.Dispatcher);
@@ -6444,6 +6447,36 @@ internal static class ValidationExercises
         }
 
         return false;
+    }
+
+    private static void ProbeVisibleReminderDates(
+        DesktopWorkspace workspace, HolidayCalendar calendar, MainWindow main, NoteRecord note, DateTimeOffset dueUtc)
+    {
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        var center = new ReminderCenterWindow();
+        PrepareOffscreenValidationWindow(floating);
+        PrepareOffscreenValidationWindow(center);
+        var key = new ActiveReminderOccurrenceKey("visible-date-probe", dueUtc);
+        center.AddEntry(new ReminderCenterItem(key, note, 0, 0));
+        try
+        {
+            floating.Show();
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            center.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(VisualDescendants<TextBlock>(floating).Any(text => text.IsVisible && text.Text == "下次提醒：7 月 8 日 09:02"),
+                "#225 浮窗便签下次提醒应使用带中文空格的截止时刻格式。");
+            Must(VisualDescendants<TextBlock>(center).Any(text => text.IsVisible && text.Text == "计划：2038 年 7 月 8 日 09:02（北京时间）") &&
+                VisualDescendants<FrameworkElement>(center).Any(element =>
+                    AutomationProperties.GetName(element).Contains("计划 2038 年 7 月 8 日 09:02 北京时间", StringComparison.Ordinal)),
+                "#225 提醒中心可见计划与可访问名应使用同一完整北京时间。");
+        }
+        finally
+        {
+            center.RemoveEntry(key);
+            center.Close();
+            floating.Close();
+        }
     }
 
     public static bool RunReminderCenterDeliveryFailureActionGateBehavior()
@@ -8182,8 +8215,8 @@ internal static class ValidationExercises
         var labels = new[] { "提醒一次", "每隔一段时间", "截止前提醒", "按日历重复" };
         var descriptions = new[]
         {
-            "提醒一次 · 2031-01-01 09:00",
-            "每隔一段时间 · 每 30 分钟 · 2031-01-01 10:00 起",
+            "提醒一次 · 2031 年 1 月 1 日 09:00",
+            "每隔一段时间 · 每 30 分钟 · 2031 年 1 月 1 日 10:00 起",
             "截止前提醒 · 提前 15 分钟",
             "按日历重复 · 每 1 日 · 09:30"
         };
@@ -8197,7 +8230,7 @@ internal static class ValidationExercises
                 var modes = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
                 Must(modes.Items.Cast<string>().SequenceEqual(labels), "#228 规则类型未使用平实文案。");
                 Must(descriptions.All(expected => VisualDescendants<TextBlock>(editor).Any(text => text.Text == expected)),
-                    "#228 四类规则摘要未保留新文案和完整时间信息。");
+                    "#225/#228 四类规则摘要未保留平实文案和带空格的完整时间信息。");
                 foreach (var (rule, index) in rules.Select((rule, index) => (rule, index)))
                 {
                     var edit = VisualDescendants<Button>(editor).Single(button =>

@@ -3617,13 +3617,13 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 531 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 527 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 532 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 528 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\app.manifest') '#219 source rebuild includes the PerMonitorV2 manifest'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\app.manifest') '#219 manifest is integrity protected'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 62 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
+Assert-Equal 63 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight helper'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
@@ -3715,13 +3715,13 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-12-v46\\manifest\.json').Count) `
+        'assets\\ui-references\\floating-window\\520x390\\2026-10-12-v47\\manifest\.json').Count) `
     'Validation suite pins the floating visual manifest to the current v33 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-10-12-v46\\manifest\.json').Count) `
+        'assets\\ui-references\\main-window\\1165x1350\\2026-10-12-v47\\manifest\.json').Count) `
     'Validation suite pins the main-window visual manifest to the current v33 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
@@ -3748,8 +3748,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v46\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v46\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v47\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v47\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3758,19 +3758,19 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-12-v46'
+        ExpectedVersion = '2026-10-12-v47'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-12-v46/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-12-v47/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-12-v46'
+        ExpectedVersion = '2026-10-12-v47'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3781,7 +3781,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-representative',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-12-v46/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-12-v47/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {

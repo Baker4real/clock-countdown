@@ -513,7 +513,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-12-v46";
+    private const string FloatingReferenceBaselineVersion = "2026-10-12-v47";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -542,6 +542,7 @@ internal static class ValidationReport
         "assets/floating-plush/floating-plush-cinnamoroll-reference.png",
         "assets/floating-plush/floating-plush-kuromi-reference.png",
         "assets/floating-plush/floating-plush-mymelody-reference.png",
+        "src/MinminCountdown.Core/DateDisplay.cs",
         "src/MinminCountdown/App.xaml",
         "src/MinminCountdown/ApplicationTheme.cs",
         "src/MinminCountdown/DomainLogic.cs",
@@ -606,7 +607,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-12-v46";
+    private const string MainReferenceBaselineVersion = "2026-10-12-v47";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -628,6 +629,7 @@ internal static class ValidationReport
     {
         "assets/main-decorations/main-countdown-scene-day.png",
         "assets/main-decorations/main-notes-scene-day.png",
+        "src/MinminCountdown.Core/DateDisplay.cs",
         "src/MinminCountdown.Core/SettingsContract.cs",
         "src/MinminCountdown.Core/SettingsModels.cs",
         "src/MinminCountdown/App.xaml",
@@ -2048,7 +2050,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-12-v46 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-12-v47 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
@@ -3043,7 +3045,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v46 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v47 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -4275,8 +4277,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-12-v46", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-12-v46", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-12-v47", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-12-v47", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -5040,11 +5042,12 @@ internal static class ValidationReport
     private static bool RunReferenceSourceDriftBehavior(bool isMain)
     {
         // Exercise the same source comparison used by the real manifest reader.
-        // A self-consistent stale manifest must still reject a changed motion source.
+        // A self-consistent stale manifest must still reject changed visual sources.
         const string motionPath = "src/MinminCountdown/MotionBehavior.cs";
         const string indicatorPath = "src/MinminCountdown/SegmentIndicator.cs";
+        const string datePath = "src/MinminCountdown.Core/DateDisplay.cs";
         var paths = isMain ? MainReferenceCanonicalSourcePaths : FloatingReferenceCanonicalSourcePaths;
-        var requiredPaths = isMain ? new[] { motionPath, indicatorPath } : new[] { motionPath };
+        var requiredPaths = isMain ? new[] { motionPath, indicatorPath, datePath } : new[] { motionPath, datePath };
         var currentHash = new string('A', 64);
         var staleHash = new string('B', 64);
         foreach (var changedPath in requiredPaths)
@@ -12861,7 +12864,7 @@ internal static class ValidationReport
                     "ReminderCenterContentRoot",
                     "提醒中心",
                     "排版验证正文",
-                    $"计划：{ChinaStandardTime.ToBeijingTime(reminderKey.ScheduledUtc):yyyy年M月d日 HH:mm}（北京时间）",
+                    "计划：2031 年 4 月 5 日 09:00（北京时间）",
                     "便签"),
                 MeasureSecondaryTypography(
                     editor,
@@ -14950,9 +14953,7 @@ internal static class ValidationReport
 
         var dpi = VisualTreeHelper.GetDpi(textBox);
         var formatted = new FormattedText(
-            new DateTime(2031, 12, 31).ToString(
-                WpfUiDatePicker.SpacedChineseDateFormat,
-                CultureInfo.InvariantCulture),
+            DateDisplay.FullDate(new DateOnly(2031, 12, 31)),
             CultureInfo.CurrentCulture,
             textBox.FlowDirection,
             new Typeface(

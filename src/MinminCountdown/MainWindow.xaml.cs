@@ -921,7 +921,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        NowText.Text = $"当前北京时间：{beijingNow:yyyy年MM月dd日 HH:mm:ss}";
+        NowText.Text = $"当前北京时间：{DateDisplay.FullMoment(beijingNow, includeSeconds: true)}";
         RefreshDefaultNoteDate(beijingNow);
         var nowUtc = beijingNow.ToUniversalTime();
         if (_workspace == WorkspaceKind.Countdowns)
@@ -1622,7 +1622,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var deadline = new TextBlock
             {
                 Uid = "CountdownRowDeadlineText",
-                Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M 月 d 日 HH:mm} 截止",
+                Text = $"{DateDisplay.Deadline(record.TargetUtc)} 截止",
                 Margin = new Thickness(0, 6, 0, 0),
                 FontSize = (double)FindResource("TypeCaptionFontSize")
             };
@@ -2284,7 +2284,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         if (dateValue is null)
         {
-            return "未设置日期";
+            return DateDisplay.NoteGroup(null, nowUtc);
         }
 
         if (!DateTime.TryParseExact(
@@ -2297,24 +2297,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return dateValue;
         }
 
-        var today = ChinaStandardTime.ToBeijingTime(nowUtc).Date;
-        var calendarDate = date.Year == today.Year
-            ? $"{date.Month} 月 {date.Day} 日"
-            : $"{date.Year} 年 {date.Month} 月 {date.Day} 日";
-        if (date.Date == today)
-        {
-            return $"今天 · {calendarDate}";
-        }
-
-        if (date.Date == today.AddDays(-1))
-        {
-            return $"昨天 · {calendarDate}";
-        }
-
-        var weekday = CultureInfo.GetCultureInfo("zh-CN")
-            .DateTimeFormat
-            .GetAbbreviatedDayName(date.DayOfWeek);
-        return $"{calendarDate} · {weekday}";
+        return DateDisplay.NoteGroup(DateOnly.FromDateTime(date), nowUtc);
     }
 
     private static void SetNoteDateSectionState(
@@ -2532,9 +2515,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 return "已提醒";
             }
 
-            var due = ChinaStandardTime.ToBeijingTime(once.ScheduledUtc);
             var suffix = note.IsCompleted ? "（已暂停）" : string.Empty;
-            return $"一次提醒 {due:M 月 d 日 HH:mm}{suffix}";
+            return $"一次提醒 {DateDisplay.Deadline(once.ScheduledUtc)}{suffix}";
         }
 
         if (note.ReminderRules.Count == 1 &&
@@ -2546,7 +2528,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 return $"每 {repeating.Interval.Minutes} 分钟（已暂停）";
             }
 
-            return $"下次 {ChinaStandardTime.ToBeijingTime(fixedNext!.Value):M 月 d 日 HH:mm} · 每 {repeating.Interval.Minutes} 分钟";
+            return $"下次 {DateDisplay.Deadline(fixedNext!.Value)} · 每 {repeating.Interval.Minutes} 分钟";
         }
 
         var summary = note.ReminderRules.Count == 1 ? "日历重复" : $"{note.ReminderRules.Count} 条提醒";
@@ -2561,7 +2543,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         return nextReminder is null
             ? summary
-            : $"下次 {ChinaStandardTime.ToBeijingTime(nextReminder.Value):M 月 d 日 HH:mm} · {summary}";
+            : $"下次 {DateDisplay.Deadline(nextReminder.Value)} · {summary}";
     }
 
     private void SaveCountdown()

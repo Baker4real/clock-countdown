@@ -105,7 +105,7 @@ internal sealed class SettingsRecoveryWindow : Window
     public static SettingsRecoveryDecision Choose(SettingsRecoveryPrompt prompt)
     {
         var window = new SettingsRecoveryWindow(
-            $"当前设置无法打开。找到一份可用备份，生成于北京时间 {ChinaStandardTime.ToBeijingTime(prompt.BackupLastWriteTimeUtc):yyyy-MM-dd HH:mm}。\n\n选择恢复后，将使用这份备份继续运行；若原文件可读，恢复时会先逐字节另存原文件。选择退出不会修改设置。",
+            $"当前设置无法打开。找到一份可用备份，生成于北京时间 {DateDisplay.FullMoment(prompt.BackupLastWriteTimeUtc)}。\n\n选择恢复后，将使用这份备份继续运行；若原文件可读，恢复时会先逐字节另存原文件。选择退出不会修改设置。",
             canRecover: true);
         window.ShowDialog();
         return window._decision;

@@ -123,6 +123,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 数字使用表格数字（`Typography.NumeralAlignment=Tabular`）并保持半角；中西文与数字之间留自然空格。剩余时间、北京时间、截止时刻、月薪、今日已赚与数量文字均表格对齐；月薪与今日已赚使用同一套本地数字格式（N2，当前区域千位分隔 + 两位小数）。
 - 表格数字专用字族例外（#148/#197）：数字色块数值和日期印记的数字统一使用 `NumeralFontFamily`（`Bahnschrift SemiCondensed` → `Bahnschrift` → `Microsoft YaHei UI` → `Microsoft YaHei` → `DengXian` → `Segoe UI` → `Arial` → `sans-serif`）并保持表格对齐；其余界面文字继续使用 `UiFontFamily`，单位字不使用该例外。
 - 中文截止与日期在数字与「月」「日」之间留空格（如 `7 月 15 日 18:00`），两窗同一格式；本合同由倒计时截止行先行消费，便签日期由便签列表票消费同一格式（#153：日期选择器选中日期文本 `yyyy 年 M 月 d 日` 与便签列表组头、提醒摘要同套空格）。
+- #225：可见日期统一由 Core `DateDisplay` 提供。完整日期为 `yyyy 年 M 月 d 日`，计划时间与规则摘要在完整日期后附 `HH:mm`，主窗口北京时间状态附 `HH:mm:ss`；截止行与便签下次提醒为 `M 月 d 日 HH:mm`。日期选择器绑定同一完整日期格式。便签组头保留今天／昨天前缀、同年省略年份、跨年显示年份和其余日期的 `· 周X`，既有中文空格不变。三行日期印记保留原设计；设置文件 `yyyy-MM-dd` 不属于显示格式，保持不变。
 - 设计坐标字号统一收敛为约 `1.25` 比例的 `13 / 16 / 20 / 26 / 44` 阶梯：`13px` caption、`16px` body、`20px` H2、`26px` H1、`44px` display。原 `17px` 装饰与 `18px` 字段标签并入 `16px`；字段标签保持 SemiBold；区块标题消费 `26px`，列表条目和输入内容消费 `20px`。
 - 主窗口的真实 DIP 布局以 `1165 x 1350` 首选尺寸为设计基准与基线构图尺寸；窗口实际尺寸随所在显示器工作区收缩时（下限约 `720 x 560`，见 §8 #211）业务内容滚动而非缩放，字号阶梯始终直接以 `13 / 16 / 20 / 26 / 44 DIP` 渲染，不再经过整窗非整数 Viewbox 缩放。日期与状态辅助文案只承担辅助扫读，关键状态不得再通过额外字号台阶挤入布局。
 - 字重只用 Regular、SemiBold；层级主要靠位置、颜色和间距建立。区块标题、列表标题与选中态使用 SemiBold。
@@ -514,7 +515,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役四帧与场景对应（v46 基线 `assets/ui-references/floating-window/520x390/2026-10-12-v46/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
+现役四帧与场景对应（v47 基线 `assets/ui-references/floating-window/520x390/2026-10-12-v47/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -550,12 +551,12 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-10-12，集成尖端重拍）：#212 悬浮窗稳定刷新、#214 就地撤销、#216 讲述人播报和 #231 按显示尺寸解码叠在同一棵树上，v33 的 sourceBinding 已对不上。现役验收基线改为 `2026-10-10-v43`。BaselineGenerate `20261012T024658620-d4e1fc33` 在物理屏 2560×1440 上生成双 manifest：主窗 8 帧聚合 SHA-256 `567E564D6494DB59E1BAFEBC902B7F59494313904E1B29EEC045430FCC7C9FED`，悬浮窗 4 帧聚合 `64D79233EDC4AEB2B6D41A0B8B88853B09E02B51C3492106E977DA6DA59772DD`，`executable.sha256` 均为 `785ECBDA5FA48535A786DCB4F559A1720D1CF07B0B4CEEE3154D299BE8924D37`。v33 保留为 #211 的历史捕获，不再作为现役门禁。
 
-当前集成候选（2026-10-12，#217 / #219）：常态控件边界、焦点与选中态对比度，以及多显示器工作区与 DPI 行为已更新。候选基线为 `2026-10-12-v46`，双 manifest 重拍与独立 CSharp / Ui 回归通过前不视为验收完成；v45 为 #230 已通过完整本机套件的集成快照，主工作树 v44 不覆盖。
+当前集成候选（2026-10-12，#221 / #222 / #223 / #225 / #228）：管理窗口列表优先、设置弹层、冗余信息精简与置顶同步、提醒中心内容与批量重试、统一日期显示、恢复结果提示已更新。候选基线为 `2026-10-12-v47`，双 manifest 重拍与独立 CSharp / Ui 回归通过前不视为验收完成；v46 为 #217 / #219 已通过完整相关本机检查的集成快照，主工作树 v44 不覆盖。
 
-1. #189 的 WPF 改版使用纯日间 **v46** 真实渲染系列，版本目录为 `2026-10-12-v46`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+1. #189 的 WPF 改版使用纯日间 **v47** 真实渲染系列，版本目录为 `2026-10-12-v47`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
 
-2. v46 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-12-v46/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v46 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+2. v47 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-12-v47/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v47 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
 4. v21、v22、v32、v33 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v43。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 

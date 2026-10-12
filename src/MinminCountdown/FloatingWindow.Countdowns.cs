@@ -156,7 +156,7 @@ public sealed partial class FloatingWindow
         var deadline = new TextBlock
         {
             // #148：截止行数字与「月」「日」之间留空格，并使用表格数字避免刷新跳动。
-            Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M 月 d 日 HH:mm}",
+            Text = DateDisplay.Deadline(record.TargetUtc),
             Margin = new Thickness(0, 3, 0, 0),
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             TextTrimming = TextTrimming.None,

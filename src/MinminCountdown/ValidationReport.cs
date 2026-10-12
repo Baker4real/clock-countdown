@@ -3763,13 +3763,13 @@ internal static class ValidationReport
         }
 
         var bands = ReadMainDecorationBands(sourceRoot);
-        // #217: v46 makes the existing input boundaries darker. Independent PNG
-        // sampling at x=200 adds their now-visible edges to this exact canary.
-        // Keep delta>=30, scan ranges, label bands and all #189 negative fixtures.
+        // #221: v47 moves the opaque compact countdown form above the former
+        // decoration-band boundary. Scan its actual bounds, independently sampled
+        // from the PNG at x=200; retain delta>=30 and every #189 negative fixture.
         var specs = new[]
         {
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 499, 500, 521, 522, 534, 535, 554 }, 469, 491),
-            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 470, 471, 495, 496, 497, 499, 500, 501, 503, 504, 512, 513 }, 405, 424)
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 365, 440, new[] { 370, 371, 390, 391, 397, 398, 405, 406, 425, 427 }, 343, 364),
+            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 416, 525, new[] { 425, 426, 470, 471, 495, 496, 497, 499, 500, 501, 503, 504, 512, 513 }, 405, 424)
         };
         var directory = Path.Combine(
             Path.GetFullPath(sourceRoot),
@@ -3787,7 +3787,7 @@ internal static class ValidationReport
             var source = DecodeBitmap(File.ReadAllBytes(path));
             var (pixels, stride) = GetBgra32Pixels(source);
             var edges = new List<int>();
-            var controlScanTop = Math.Max(spec.ScanTop, band.TopBandEnd + 1);
+            var controlScanTop = spec.ScanTop;
             for (var y = controlScanTop; y <= spec.ScanBottom; y++)
             {
                 var offset = y * stride + 200 * 4;
@@ -9949,7 +9949,7 @@ internal static class ValidationReport
                 visibleText.Count(text => string.Equals(text, "便签", StringComparison.Ordinal)) == 2 &&
                 visibleText.Contains(firstNote.Text, StringComparer.Ordinal) &&
                 visibleText.Contains(secondNote.Text, StringComparer.Ordinal) &&
-                visibleText.Count(text => text.Contains("2031年5月6日 09:30", StringComparison.Ordinal) &&
+                visibleText.Count(text => text.Contains("2031 年 5 月 6 日 09:30", StringComparison.Ordinal) &&
                                           text.Contains("北京时间", StringComparison.Ordinal)) == 2;
             static bool NameStartsWith(Button button, string prefix) =>
                 AutomationProperties.GetName(button).StartsWith(prefix, StringComparison.Ordinal);

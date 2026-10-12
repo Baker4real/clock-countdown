@@ -1152,10 +1152,12 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         Owner = owner;
         Title = title;
         Width = 390;
-        Height = Math.Min(360, Math.Max(240, SystemParameters.WorkArea.Height - 48));
+        Height = Math.Min(360, Math.Max(240, MonitorWorkAreaResolver.ResolveForWindow(owner).WorkAreaDip.Height - 48));
         MaxWidth = 390;
         MaxHeight = Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        WindowWorkAreaGeometry.TrackChanges(this, () => WindowWorkAreaGeometry.Fit(this,
+            MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip, 18));
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
@@ -1241,6 +1243,8 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
     protected override void OnLoaded()
     {
         base.OnLoaded();
+        WindowWorkAreaGeometry.Fit(this,
+            MonitorWorkAreaResolver.ResolveForWindow(Owner).WorkAreaDip, 18, centerOnOwner: true);
 
         // MessageBox's Loaded handler runs before all TemplateBinding values are
         // observable on the generated button elements. Defer one dispatcher

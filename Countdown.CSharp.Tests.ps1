@@ -4245,8 +4245,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    # #230 adds hidden-tick and note-minute-refresh behavior fields.
-    Assert-Equal 707 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（原 705 字段类型不变，#230 增加 2 个管理窗口刷新行为字段）'
+    Assert-Equal 724 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（含 #230 的 707 字段基点，#219 增加 7 字段，#217 增加 10 字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4283,6 +4282,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.NarratorAnnouncesLiveRegionChanges) '状态消息、字段错误、数量变化和提醒送达失败触发与声明一致的 LiveRegionChanged；数量不变的分钟刷新不播报；鼓励语退出自动化树，金额与日历状态名称正确（#216）'
     Assert-Equal $true ([bool] $adapterValidation.WindowPositionResetsWithoutDrag) '越界悬浮窗可经 Ctrl+R 或托盘「复位窗口位置」夹回工作区，隐藏态复位先恢复再夹回（#156）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowFitsInjectedWorkAreas) '管理窗口装进 1032/826/688 DIP 注入工作区：首选尺寸收缩、顶端控件与状态栏可达、倒计时三行滚动可见、720×560 滚动不裁切、隐藏再显保留用户几何、越界与工作区变化夹回（#211）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowStaysOnSecondaryMonitor) '#219 悬浮窗保留副屏手动位置，键盘与托盘复位夹回当前屏，保持 520×390 DIP'
+    Assert-Equal $true ([bool] $adapterValidation.OwnerDialogsFitSecondaryMonitor) '#219 所有者弹窗装进副屏，规则编辑器底部按钮与缩放手柄可达'
+    Assert-Equal $true ([bool] $adapterValidation.ReminderUsesSourceMonitor) '#219 提醒中心首次在悬浮所在屏右上，此后保留手动位置'
+    Assert-Equal $true ([bool] $adapterValidation.OpenWindowsFollowMonitorChanges) '#219 显示器与工作区变化后所有已打开窗口归位'
+    Assert-Equal $true ([bool] $adapterValidation.MixedDpiUsesPhysicalMonitorGeometry) '#219 重叠 DIP 坐标按物理像素与目标屏 DPI 解析'
+    Assert-Equal $true ([bool] $adapterValidation.ProductManifestDeclaresPerMonitorV2) '#219 发布 EXE 嵌入清单声明 PerMonitorV2'
+    Assert-Equal $true ([bool] $adapterValidation.RuntimeDpiChangeUpdatesWindowLayout) '#219 真实 DPI 事件更新比例、窗口几何与可操作布局'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowIdentityZoneDragRegion) '身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowHiddenTickSkipsRenderAndShowRefreshes) '管理窗口隐藏期间 tick 不重建分格，重新显示立即同步最新时间（#230）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowNoteMinutePreservesFocusAndScroll) '便签数据不变的分钟刷新保留行控件、键盘焦点和非零滚动位置（#230）'
@@ -4823,7 +4829,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v45') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal 'F79CDC8FE9C61A282AD1370AE1F88948A43EC0C7E75454B2F91AFAACFFBBA3B9' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（717 字段；#217 在含 #230 的 707 字段基点增加 10 个非文本对比与状态字段）'
+    Assert-Equal '04C7466A700FF72A654E248D8597AAF05036E272CB08C664B16D62E3E0CA9424' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（724 字段；去掉 #217 的 10 项恢复 #219 集成的 714 字段形状）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'

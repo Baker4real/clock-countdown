@@ -1049,6 +1049,13 @@ internal static class ValidationReport
             ValidationExercises.RunMainWindowWorkAreaFitBehavior();
         var mainWindowIdentityZoneDrag =
             ValidationExercises.RunMainWindowIdentityZoneDragBehavior();
+        var floatingSecondaryMonitor = MonitorGeometryValidation.FloatingWindowStaysOnSecondaryMonitor();
+        var ownerDialogsFitSecondaryMonitor = MonitorGeometryValidation.OwnerDialogsFitSecondaryMonitor();
+        var reminderUsesSourceMonitor = MonitorGeometryValidation.ReminderUsesSourceMonitor();
+        var openWindowsFollowMonitorChanges = MonitorGeometryValidation.OpenWindowsFollowMonitorChanges();
+        var mixedDpiPhysicalGeometry = MonitorGeometryValidation.MixedDpiUsesPhysicalMonitorGeometry();
+        var productManifestPerMonitorV2 = MonitorGeometryValidation.ProductManifestDeclaresPerMonitorV2();
+        var runtimeDpiLayout = MonitorGeometryValidation.RuntimeDpiChangeUpdatesWindowLayout();
         var mainWindowHiddenRefresh =
             ValidationExercises.RunMainWindowHiddenRefreshBehavior();
         var mainWindowNoteMinuteRefresh =
@@ -1298,7 +1305,7 @@ internal static class ValidationReport
         main.ApplyTheme();
         PumpDispatcher();
         main.UpdateLayout();
-        var workArea = SystemParameters.WorkArea;
+        var workArea = MonitorWorkAreaResolver.ResolveForWindow(floating).WorkAreaDip;
         var floatingBottomMargin = Math.Round(workArea.Bottom - (floating.Top + floating.ActualHeight), 2);
         var taskCard = Required<Border>(floating, "TaskCard");
         var taskCardBounds = taskCard
@@ -2283,6 +2290,13 @@ internal static class ValidationReport
                 mainWindowWorkAreaFit,
             ["MainWindowIdentityZoneDragRegion"] =
                 mainWindowIdentityZoneDrag,
+            ["FloatingWindowStaysOnSecondaryMonitor"] = floatingSecondaryMonitor,
+            ["OwnerDialogsFitSecondaryMonitor"] = ownerDialogsFitSecondaryMonitor,
+            ["ReminderUsesSourceMonitor"] = reminderUsesSourceMonitor,
+            ["OpenWindowsFollowMonitorChanges"] = openWindowsFollowMonitorChanges,
+            ["MixedDpiUsesPhysicalMonitorGeometry"] = mixedDpiPhysicalGeometry,
+            ["ProductManifestDeclaresPerMonitorV2"] = productManifestPerMonitorV2,
+            ["RuntimeDpiChangeUpdatesWindowLayout"] = runtimeDpiLayout,
             ["MainWindowHiddenTickSkipsRenderAndShowRefreshes"] =
                 mainWindowHiddenRefresh,
             ["MainWindowNoteMinutePreservesFocusAndScroll"] =
@@ -14446,7 +14460,7 @@ internal static class ValidationReport
             reminder.Show();
             PumpDispatcher();
             reminder.UpdateLayout();
-            var workArea = SystemParameters.WorkArea;
+            var workArea = MonitorWorkAreaResolver.ResolveForWindow(reminder).WorkAreaDip;
             var firstLeft = reminder.Left;
             var firstTop = reminder.Top;
             var firstAppearanceTopRight =

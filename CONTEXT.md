@@ -85,6 +85,8 @@ intent: 定义时钟倒计时项目的统一领域词汇和时间语义。
 
 完成便签会在一个候选事务中标记完成、推进规则 cursor、清除活动稍后并移除该便签的中心条目；失败时全部保持原样。重新打开便签时再次推进到提交时刻，之后只恢复严格未来的周期，但从未到期的绝对规则仍可正常触发。最后一项成功移除后中心关闭，新发生项之后会重新打开中心。“打开来源”会恢复已最小化的管理窗口，只揭示并聚焦准确来源，不改变送达、处置、筛选或编辑草稿；便签日期不参与提醒计算。送达边界由 [#13](https://github.com/Baker4real/clock-countdown/issues/13) 定义，稳定规则与 cursor 由 [#14](https://github.com/Baker4real/clock-countdown/issues/14) 定义，单一提醒中心由 [#15](https://github.com/Baker4real/clock-countdown/issues/15) 定义，持久化处置、稍后提醒与完成动作由 [#17](https://github.com/Baker4real/clock-countdown/issues/17) 定义，倒计时相对规则与统一来源由 [#18](https://github.com/Baker4real/clock-countdown/issues/18) 定义，类型化日历重复由 [#19](https://github.com/Baker4real/clock-countdown/issues/19) 定义，完整提醒系统范围见 [#12](https://github.com/Baker4real/clock-countdown/issues/12)。
 
+主窗口与悬浮窗复选框完成成功后提供就地短时撤销（#233），与删除共享唯一最近操作槽和10秒时限。撤销完成提交 `SetNoteCompletionChange(id, false)`，按撤销提交时刻推进 cursor；它不恢复完成前的提醒状态快照，也不补发撤销时刻以前的周期。反馈与离场动画只消费提交结果，不改变领域事务。
+
 ## 标签
 
 倒计时和便签共用的多选组织项。标签由稳定 ID、唯一名称和可选颜色组成；新建标签默认使用暖白、蜜桃、便签黄和珊瑚组，芯片文字固定为深暖墨以跨日夜保持可读性。既有持久化颜色不迁移；记录只保存标签 ID，因此改名会同步显示，删除只解除关联而不删除记录。

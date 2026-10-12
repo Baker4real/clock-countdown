@@ -4887,7 +4887,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v47') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '8CCFE24A92C89D26804B3AA168B0C529A3F10F154432243981B1C7DCA620C686' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（736字段；#220/#227 合并合同）'
+    Assert-Equal 'C46AFD7D3D4464079DC407619CC4F9A7449FD65E0BEF9E265FED420219BB869D' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（738字段；#233 完成反馈与离场）'
+    Assert-Equal $true ([bool] $adapterValidation.NoteCompletionUndoFeedback) '#233 两窗真实完成、重新打开事务、失败回滚、唯一撤销槽及10秒到期行为'
+    Assert-Equal $true ([bool] $adapterValidation.NoteCompletionExitTransition) '#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断'
     Assert-Equal $true ([bool] $adapterValidation.SystemContrastUpdatesOpenWindows) '#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复'
     Assert-Equal $true ([bool] $adapterValidation.SystemContrastAccessibleStates) '#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿'
     Assert-Equal $true ([bool] $adapterValidation.SystemContrastColorChangesAndCustomSurfaces) '#220 系统配色运行中变化更新弹层、自选标签和日期印记并恢复日间原色'

@@ -484,8 +484,7 @@ internal sealed record RestoreDeletedNoteChange(
     NoteRecord Record,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
 
-// #155/#214：最近一次删除的撤销载荷。记录与规则状态在删除前捕获；Description 为
-// 倒计时名称或便签正文，供「撤销」入口的可访问名与消息文案使用。
+// #214/#233：唯一最近操作槽的载荷与反馈。Description 为来源名称或便签正文。
 internal abstract record WorkspaceUndo(string Description)
 {
     public abstract DesktopWorkspaceChange ToChange();
@@ -503,6 +502,7 @@ internal sealed record CompletedNoteUndo(string Id, string Description) : Worksp
     public override string RestoredMessage => $"已撤销完成便签「{Description}」。";
 }
 
+// #155/#214：删除前捕获记录与规则状态，撤销删除时原样恢复。
 internal sealed record DeletedRecordUndo(
     CountdownRecord? Countdown,
     NoteRecord? Note,

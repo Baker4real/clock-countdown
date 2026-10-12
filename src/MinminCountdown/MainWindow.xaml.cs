@@ -99,6 +99,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private string? _countdownRenderSignature;
     // #155/#214：本窗口的撤销计时。载荷在 DeleteUndoOffers 上只有一份。
     private readonly DeleteUndoCountdown _deleteUndoCountdown;
+    private NoteCompletionExit? _noteCompletionExit;
 
     internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
     internal long CountdownRowRebuildGenerationForValidation { get; private set; }
@@ -2000,6 +2001,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         _renderedNoteRevealId = _reminderSourceNoteId;
+        _noteCompletionExit?.Dispose();
+        _noteCompletionExit = null;
         ActiveNoteRows.Children.Clear();
         CompletedNoteRows.Children.Clear();
         _noteCompletionBoxes.Clear();
@@ -2928,15 +2931,20 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
+        var exit = desired && _noteSourceRows.TryGetValue(id, out var card)
+            ? NoteCompletionExit.Capture(card, NotesListRegion) : null;
         var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(id, desired));
         if (!result.Succeeded)
         {
+            exit?.Dispose();
             SetMessage(StatusText, $"便签状态保存失败：{result.Error}", true);
             checkBox.IsChecked = current.IsCompleted;
         }
         else if (desired)
         {
             DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Main, new CompletedNoteUndo(id, current.Text));
+            _noteCompletionExit = exit;
+            exit?.Start();
         }
     }
 

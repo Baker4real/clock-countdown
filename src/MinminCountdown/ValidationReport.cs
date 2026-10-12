@@ -548,6 +548,7 @@ internal static class ValidationReport
         "src/MinminCountdown/ApplicationSession.cs",
         "src/MinminCountdown/ApplicationTheme.cs",
         "src/MinminCountdown/DesktopWorkspace.cs",
+        "src/MinminCountdown/DeleteUndoOffer.cs",
         "src/MinminCountdown/DomainLogic.cs",
         "src/MinminCountdown/FloatingWindow.Countdowns.cs",
         "src/MinminCountdown/FloatingWindow.Notes.cs",
@@ -555,6 +556,7 @@ internal static class ValidationReport
         "src/MinminCountdown/FloatingWindow.xaml.cs",
         "src/MinminCountdown/MinminCountdown.csproj",
         "src/MinminCountdown/MotionBehavior.cs",
+        "src/MinminCountdown/NoteCompletionExit.cs",
         "src/MinminCountdown/UiControls.cs"
     };
     private static readonly string[] FloatingReferenceBaselineNegativeFixtures =
@@ -640,11 +642,13 @@ internal static class ValidationReport
         "src/MinminCountdown/ApplicationSession.cs",
         "src/MinminCountdown/ApplicationTheme.cs",
         "src/MinminCountdown/DesktopWorkspace.cs",
+        "src/MinminCountdown/DeleteUndoOffer.cs",
         "src/MinminCountdown/DomainLogic.cs",
         "src/MinminCountdown/MainWindow.xaml",
         "src/MinminCountdown/MainWindow.xaml.cs",
         "src/MinminCountdown/MinminCountdown.csproj",
         "src/MinminCountdown/MotionBehavior.cs",
+        "src/MinminCountdown/NoteCompletionExit.cs",
         "src/MinminCountdown/SegmentIndicator.cs",
         "src/MinminCountdown/UiControls.cs",
         "tools/Build-MainDayOrnamentScene.ps1",
@@ -2001,6 +2005,7 @@ internal static class ValidationReport
             ["IdleControlBoundariesVisible"] = idleControlBoundaries.Values.All(value => value),
             ["IdleControlBoundaryChecks"] = idleControlBoundaries,
             ["NoteCompletionUndoFeedback"] = ValidationExercises.RunNoteCompletionUndoFeedback(),
+            ["NoteCompletionExitTransition"] = ValidationExercises.RunNoteCompletionExitTransition(),
             ["SystemContrastUpdatesOpenWindows"] = ValidateSystemContrastUpdatesOpenWindows(main, floating),
             ["SystemContrastAccessibleStates"] = ValidateSystemContrastAccessibleStates(main, floating),
             ["SystemContrastColorChangesAndCustomSurfaces"] = ValidateSystemContrastCustomSurfaces(assetRoot),
@@ -5055,10 +5060,12 @@ internal static class ValidationReport
         const string orderPath = "src/MinminCountdown.Core/NoteOrdering.cs";
         const string sessionPath = "src/MinminCountdown/ApplicationSession.cs";
         const string workspacePath = "src/MinminCountdown/DesktopWorkspace.cs";
+        const string completionExitPath = "src/MinminCountdown/NoteCompletionExit.cs";
+        const string undoPath = "src/MinminCountdown/DeleteUndoOffer.cs";
         var paths = isMain ? MainReferenceCanonicalSourcePaths : FloatingReferenceCanonicalSourcePaths;
         var requiredPaths = isMain
-            ? new[] { motionPath, indicatorPath, datePath, orderPath, sessionPath, workspacePath }
-            : new[] { motionPath, datePath, orderPath, sessionPath, workspacePath };
+            ? new[] { motionPath, indicatorPath, datePath, orderPath, sessionPath, workspacePath, completionExitPath, undoPath }
+            : new[] { motionPath, datePath, orderPath, sessionPath, workspacePath, completionExitPath, undoPath };
         var currentHash = new string('A', 64);
         var staleHash = new string('B', 64);
         foreach (var changedPath in requiredPaths)
@@ -5072,7 +5079,9 @@ internal static class ValidationReport
             {
                 var current = paths.Select(path => new MainReferenceSourceBinding(path, currentHash)).ToArray();
                 var stale = current.Select(binding => binding.Path == changedPath ? binding with { Sha256 = staleHash } : binding).ToArray();
+                var missing = current.Where(binding => binding.Path != changedPath).ToArray();
                 if (!MainReferenceSourcesMatch(current, current, AggregateMainReferenceSourceBindings(current)) ||
+                    MainReferenceSourcesMatch(missing, current, AggregateMainReferenceSourceBindings(missing)) ||
                     MainReferenceSourcesMatch(stale, current, AggregateMainReferenceSourceBindings(stale)))
                     return false;
             }
@@ -5080,7 +5089,9 @@ internal static class ValidationReport
             {
                 var current = paths.Select(path => new FloatingReferenceSourceBinding(path, currentHash)).ToArray();
                 var stale = current.Select(binding => binding.Path == changedPath ? binding with { Sha256 = staleHash } : binding).ToArray();
+                var missing = current.Where(binding => binding.Path != changedPath).ToArray();
                 if (!FloatingReferenceSourcesMatch(current, current, AggregateFloatingReferenceSourceBindings(current)) ||
+                    FloatingReferenceSourcesMatch(missing, current, AggregateFloatingReferenceSourceBindings(missing)) ||
                     FloatingReferenceSourcesMatch(stale, current, AggregateFloatingReferenceSourceBindings(stale)))
                     return false;
             }

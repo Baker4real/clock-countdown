@@ -67,6 +67,7 @@ public sealed partial class FloatingWindow : Window
     private readonly string _assetRoot;
     private bool _assetsLoaded;
     private readonly DeleteUndoCountdown _deleteUndoCountdown;
+    private NoteCompletionExit? _noteCompletionExit;
     private bool _retainFloatingUndoMessage;
 
     internal FloatingWindow(
@@ -1773,6 +1774,8 @@ public sealed partial class FloatingWindow : Window
             : null;
         var renderVersion = ++_floatingRowsRenderVersion;
 
+        _noteCompletionExit?.Dispose();
+        _noteCompletionExit = null;
         FloatingRows.Children.Clear();
         ClearNoteDateStampStickyEntries();
         if (workspace == WorkspaceKind.Countdowns)

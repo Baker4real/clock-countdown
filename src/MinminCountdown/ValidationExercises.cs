@@ -4095,6 +4095,84 @@ internal static class ValidationExercises
 
     // #155：最近一次删除的短时撤销——确认框取消为安全默认；删除成功后主窗口状态条提供
     // 「撤销」入口；撤销在同一事务恢复记录与规则提醒状态；连续删除只保留最近一次；入口短时过期。
+    public static bool RunNoteCompletionExitTransition()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-exit-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        MustApply(workspace, new SaveNoteChange(null, "完成淡出探针", null, false, [], Array.Empty<ReminderRule>()));
+        var note = workspace.Snapshot.Settings.Notes.Single();
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main); PrepareOffscreenValidationWindow(floating);
+            main.Show(); floating.Show(); main.ShowWorkspace(WorkspaceKind.Notes); floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            foreach (var onFloating in new[] { true, false })
+            {
+                var source = onFloating ? (Window)floating : main;
+                var viewport = onFloating ? floating.FloatingBodyScroller : main.NotesListRegion;
+                var undo = onFloating ? floating.FloatingDeleteUndoButton : main.MainStatusUndoButton;
+                Adorner? ExitVisual() => AdornerLayer.GetAdornerLayer(viewport)?.GetAdorners(viewport)?
+                    .SingleOrDefault(visual => AutomationProperties.GetAutomationId(visual) == "NoteCompletionExit");
+                void Complete()
+                {
+                    var check = VisualDescendants<CheckBox>(source).Single(candidate => candidate.Tag as string == note.Id);
+                    check.BringIntoView(); WindowValidationInput.Pump(source.Dispatcher);
+                    var peer = new CheckBoxAutomationPeer(check);
+                    ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(PatternInterface.Toggle)).Toggle();
+                }
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(true))
+                {
+                    Complete();
+                    var visual = ExitVisual();
+                    Must(visual is not null && visual.HasAnimatedProperties && !visual.IsHitTestVisible &&
+                        new SettingsStore().Load(path).Settings.Notes.Single().IsCompleted,
+                        "#233：成功提交后必须立即保留不可交互的完成卡片离场视觉，不得延迟完成写盘。");
+                    Must(WindowValidationInput.WaitUntil(source.Dispatcher, () => visual!.Opacity is > 0 and < 1),
+                        "#233：离场视觉没有经过真实透明度中间态。");
+                    Must(!DependencyPropertyHelper.GetValueSource(visual!, FrameworkElement.WidthProperty).IsAnimated &&
+                        !DependencyPropertyHelper.GetValueSource(visual!, FrameworkElement.HeightProperty).IsAnimated &&
+                        !DependencyPropertyHelper.GetValueSource(visual!, FrameworkElement.MarginProperty).IsAnimated &&
+                        ((Duration)Application.Current.FindResource("MotionNoteCompletionExitDuration")).TimeSpan <= TimeSpan.FromMilliseconds(200),
+                        "#233：离场过渡不得动画布局属性，且必须不超过200ms。");
+                    Must(WindowValidationInput.WaitUntil(source.Dispatcher, () => ExitVisual() is null),
+                        "#233：完成离场没有释放视觉与动画。");
+                    undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); WindowValidationInput.Pump(source.Dispatcher);
+                    Complete();
+                    Must(ExitVisual() is not null, "#233：第二次完成没有离场视觉。");
+                    undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); WindowValidationInput.Pump(source.Dispatcher);
+                    Must(ExitVisual() is null && !new SettingsStore().Load(path).Settings.Notes.Single().IsCompleted,
+                        "#233：离场中撤销必须立即停止旧动画并落到重新打开状态。");
+                    Complete(); source.Hide(); WindowValidationInput.Pump(source.Dispatcher);
+                    Must(ExitVisual() is null, "#233：窗口隐藏后不应保留离场视觉。");
+                    source.Show(); undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); WindowValidationInput.Pump(source.Dispatcher);
+                    Complete();
+                    if (onFloating) floating.ShowWorkspace(WorkspaceKind.Countdowns);
+                    else main.ShowWorkspace(WorkspaceKind.Countdowns);
+                    WindowValidationInput.Pump(source.Dispatcher);
+                    Must(ExitVisual() is null, "#233：切换工作区后不应保留旧便签离场视觉。");
+                    if (onFloating) floating.ShowWorkspace(WorkspaceKind.Notes);
+                    else main.ShowWorkspace(WorkspaceKind.Notes);
+                    undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); WindowValidationInput.Pump(source.Dispatcher);
+                }
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(false))
+                {
+                    Complete();
+                    Must(ExitVisual() is null && new SettingsStore().Load(path).Settings.Notes.Single().IsCompleted,
+                        "#233：关闭客户区动画时必须同步到达完成终态。");
+                    undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); WindowValidationInput.Pump(source.Dispatcher);
+                }
+            }
+            return true;
+        }
+        finally
+        {
+            floating.Close(); main.Close(); DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunNoteCompletionUndoFeedback()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-undo-{Guid.NewGuid():N}.json");
@@ -4142,12 +4220,66 @@ internal static class ValidationExercises
                     workspace.GetDueReminderOccurrences(handledThrough.AddMinutes(15))
                         .Any(item => item.Rule.Id == rule.Id && item.ScheduledUtc == handledThrough.AddMinutes(15)),
                     "#233：撤销后没有只恢复严格未来的提醒周期。");
+                var beforeFailure = File.ReadAllText(path);
+                Directory.CreateDirectory(path + ".tmp");
+                check = VisualDescendants<CheckBox>(source).Single(candidate => candidate.Tag as string == note.Id);
+                peer = new CheckBoxAutomationPeer(check);
+                ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(PatternInterface.Toggle)).Toggle();
+                WindowValidationInput.Pump(source.Dispatcher);
+                Must(check.IsChecked == false && !undo.IsVisible && File.ReadAllText(path) == beforeFailure &&
+                    !(onFloating ? floating.FloatingNoteMessage.Text : main.StatusText.Text).StartsWith("已完成", StringComparison.Ordinal),
+                    "#233：完成失败后勾选、磁盘或成功撤销提示未保持失败合同。");
+                Must(!string.IsNullOrWhiteSpace(onFloating ? floating.FloatingNoteMessage.Text : main.StatusText.Text),
+                    "#233：完成失败没有保留现有错误信息。");
+                DeleteDirectoryIfEmpty(path + ".tmp");
             }
+            MustApply(workspace, new SaveNoteChange(null, "最近完成探针", null, false, [], Array.Empty<ReminderRule>()));
+            var other = workspace.Snapshot.Settings.Notes.Single(item => item.Id != note.Id);
+            void CompleteIn(Window source, string id)
+            {
+                var check = VisualDescendants<CheckBox>(source).Single(candidate => candidate.Tag as string == id);
+                var peer = new CheckBoxAutomationPeer(check);
+                ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(PatternInterface.Toggle)).Toggle();
+                WindowValidationInput.Pump(source.Dispatcher);
+            }
+            CompleteIn(floating, note.Id);
+            CompleteIn(main, other.Id);
+            Must(!floating.FloatingDeleteUndoButton.IsVisible && main.MainStatusUndoButton.IsVisible,
+                "#233：另一窗口完成后必须替换唯一撤销槽。");
+            main.MainStatusUndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            var latestDisk = new SettingsStore(clock: clock).Load(path).Settings;
+            Must(latestDisk.Notes.Single(item => item.Id == note.Id).IsCompleted &&
+                !latestDisk.Notes.Single(item => item.Id == other.Id).IsCompleted,
+                "#233：跨窗口撤销只能重新打开最近完成的便签。");
+            CompleteIn(floating, other.Id);
+            MustApply(workspace, new SaveNoteChange(null, "删除替换完成探针", null, false, [], Array.Empty<ReminderRule>()));
+            var deleted = workspace.Snapshot.Settings.Notes.Single(item => item.Id != note.Id && item.Id != other.Id);
+            QueueConfirmationDialogResponse(main, confirm: true);
+            VisualDescendants<Button>(main).Single(button => button.Tag as string == deleted.Id &&
+                button.Content?.ToString() == "删除").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(!floating.FloatingDeleteUndoButton.IsVisible && main.MainStatusUndoButton.IsVisible &&
+                main.DeleteUndoForValidation is not null, "#233：删除必须替换完成撤销，不能保留竞争槽。");
+            main.MainStatusUndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            latestDisk = new SettingsStore(clock: clock).Load(path).Settings;
+            Must(latestDisk.Notes.Any(item => item.Id == deleted.Id) &&
+                latestDisk.Notes.Single(item => item.Id == other.Id).IsCompleted &&
+                !floating.FloatingDeleteUndoButton.IsVisible, "#233：删除撤销不能恢复更早的完成撤销提示。");
+            CompleteIn(floating, deleted.Id);
+            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(9));
+            Must(floating.FloatingDeleteUndoButton.IsVisible, "#233：完成撤销应保留10秒。");
+            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(2));
+            Must(!floating.FloatingDeleteUndoButton.IsVisible &&
+                new SettingsStore(clock: clock).Load(path).Settings.Notes.Single(item => item.Id == deleted.Id).IsCompleted,
+                "#233：完成撤销到期应只关闭提示，不重新打开便签。");
             return true;
         }
         finally
         {
             floating.Close(); main.Close();
+            DeleteDirectoryIfEmpty(path + ".tmp");
             DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
         }
     }

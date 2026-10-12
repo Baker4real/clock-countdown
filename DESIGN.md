@@ -261,7 +261,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 “全部知道了”以单次事务批量写入处置 key，领域语义与逐条“知道了”一致：任一条失败则整体保留原条目，按既有退避节奏继续用单次事务重试原批次中仍活动的发生项；后续新到达的提醒不进入原失败批次，已失效的发生项不复活，不新增持久化状态字段（#223）。
 
-### 删除撤销、完成确认与脏退出（#155）
+### 删除撤销、完成反馈与脏退出（#155 / #233）
 
 破坏性动作的退路合同，五界面统一「确认框以取消为安全默认」：
 
@@ -427,6 +427,8 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 高频切换与收放保持短促反馈：按钮 hover 颜色以 120ms ease-out 过渡，按下的 `RenderTransform` 缩放到 `0.97` 以 100ms ease-out 完成，不触发重新布局。日历、下拉框、标签选择器和提示框由 `PopupMotionBehavior` 统一消费进入 140ms、退出 90ms token：进入从透明且向下 4px 移入，退出向下 4px 淡出；退出期间保留弹层打开，使打开中的关闭可以从当前值反向。所有动效时长和缓动集中在资源 token，并由 `ApplicationTheme.ClientAreaAnimationEnabled` 控制；系统关闭动画时 token 有效时长为 0，状态立即到达目标值。允许的属性只有颜色、透明度和 `RenderTransform`，单段上限 200ms；动画使用 `SnapshotAndReplace` 从当前值继续，快速 hover / 按下或弹层反向可被打断而不会闪回起点。键盘焦点反馈不增加额外动画。
 
+便签完成（#233）成功写盘后，旧卡片的只读视觉快照以 160ms 透明度淡出；快照限于列表视口，不参与布局、命中或焦点。完成事务与列表刷新同步生效，淡出不延迟写盘。撤销、切换工作区、隐藏或最小化窗口会结束旧视觉；系统关闭客户区动画时直接到达终态。
+
 现行动效 token：
 
 | 资源 token | 开启动效时长 | 缓动 | 使用落点 |
@@ -437,6 +439,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip 退出 |
 | `MotionIndicatorDuration` | 160ms | `MotionEaseOut`（quartic） | 页签/分段指示条 |
 | `MotionCountdownDuration` | 90ms | `MotionEaseOut`（quartic） | 倒计时数字轻量切换 |
+| `MotionNoteCompletionExitDuration` | 160ms | `MotionEaseOut`（quartic） | 完成便签卡片离场 |
 
 `MotionCubicEaseOut` 同时作为可复用的 cubic ease-out 资源；新增落点只能引用上述 token，不得在控件模板中写字面时长或第二套缓动。
 
@@ -484,6 +487,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 底部命令区的 `DatePicker`、`ComboBox`、标签选择器、复选框、Popup、`ScrollViewer` 和 `ScrollBar` 必须从悬浮窗局部资源解析日间主题，不得回退应用级旧主题或默认 WPF 样式。
 - 快速新增区的输入背景、输入文字、提醒标签和错误文字必须分别绑定局部 `NoteInputBrushKey`、`NoteInputTextBrushKey` 和 `ErrorBrushKey`；窗口级资源可覆盖同名应用资源，但不得改变这些输入/错误语义 token 的局部归属。
 - 完成复选框继续通过 `Tag=note.Id` 提交；失败时取消勾选并显示既有错误信息。
+- #233：完成成功后，发起窗口底部显示「已完成「X」· 撤销」，使用 #214 的唯一最近操作槽、10秒时限和焦点/悬停暂停规则。完成与删除相互替换，不形成撤销栈；撤销完成走现行重新打开事务，以撤销提交时刻推进提醒 cursor，不恢复旧提醒状态快照。失败不显示新的完成成功提示，重新打开本身不产生完成撤销。
 
 ### 渲染签名稳定刷新（#212）
 
@@ -630,7 +634,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 13.3.1 动效 token 与系统开关
 
-动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
+动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的七个时长；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
 
 ### 13.4 对比度基线
 

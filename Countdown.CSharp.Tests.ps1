@@ -378,11 +378,58 @@ public static class MinminCountdownActivationWindowProbe
     public static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseDesktop(IntPtr desktop);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetUserObjectInformationW(IntPtr handle, int index, StringBuilder info, int maxLength, out uint lengthNeeded);
+
+    public static string GetInputDesktopName()
+    {
+        IntPtr desktop = OpenInputDesktop(0, false, 0x0001); // DESKTOP_READOBJECTS
+        if (desktop == IntPtr.Zero)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        try
+        {
+            var name = new StringBuilder(256);
+            if (!GetUserObjectInformationW(desktop, 2, name, name.Capacity * 2, out _))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            return name.ToString();
+        }
+        finally { CloseDesktop(desktop); }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
 }
 '@
 }
+
+function Test-ActivationWindowEvidence {
+    param(
+        [bool] $ForegroundMatches,
+        [bool] $FloatingIsActive,
+        [AllowEmptyString()] [string] $ThreadDesktop,
+        [AllowEmptyString()] [string] $InputDesktop
+    )
+
+    # AllowSetForegroundWindow grants permission; it does not make an isolated desktop the input desktop.
+    # Only a positively identified, non-input suite desktop may use WPF activation as its observable.
+    $isolatedNonInputDesktop = (Test-SuiteIsolatedDesktopName -DesktopName $ThreadDesktop) -and
+        -not [string]::IsNullOrWhiteSpace($InputDesktop) -and
+        -not [string]::Equals($ThreadDesktop, $InputDesktop, [StringComparison]::OrdinalIgnoreCase)
+    return $ForegroundMatches -or ($FloatingIsActive -and $isolatedNonInputDesktop)
+}
+
+Assert-Equal $true (Test-ActivationWindowEvidence $false $true 'MinminSuiteIso-CSharp' 'Default') '隔离非输入桌面使用真实 WPF 激活证据'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $false 'MinminSuiteIso-CSharp' 'Default') '隔离桌面未激活不能通过'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $true 'Default' 'Default') '输入桌面仍要求真实前台 HWND'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $true 'MinminSuiteIso-CSharp' 'MinminSuiteIso-CSharp') '成为输入桌面的套件仍要求真实前台 HWND'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $true 'MinminSuiteIso-CSharp' '') '输入桌面未知不能降级'
+Assert-Equal $true (Test-ActivationWindowEvidence $true $false 'Default' 'Default') '真实前台 HWND 是直接激活证据'
 
 function Get-ProcessTopLevelWindows {
     param(
@@ -2344,21 +2391,25 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
                 ) '激活保持工作区、筛选与编辑草稿状态'
             $visibleWindows = @(Get-VisibleProcessWindows -ProcessId $primaryProcess.Id)
             $floatingWindows = @($visibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
+            $activationThreadDesktop = Get-SuiteThreadDesktopName
+            $activationInputDesktop = [MinminCountdownActivationWindowProbe]::GetInputDesktopName()
             if ($floatingWindows.Count -eq 0) {
-                Assert-Equal $true (
-                    [bool] $activationHandled[0].activationFloatingWindowIsActive -or
-                    [int] $activationHandled[0].interactiveFloatingWindowCount -eq 1
-                ) '无交互桌面时用 WPF 悬浮窗计数证明激活，不要求 Win32 可见枚举'
+                Assert-Equal $true (Test-ActivationWindowEvidence -ForegroundMatches $false `
+                    -FloatingIsActive ([bool] $activationHandled[0].activationFloatingWindowIsActive) `
+                    -ThreadDesktop $activationThreadDesktop -InputDesktop $activationInputDesktop `
+                ) '不可枚举时仍要求已确认的隔离非输入桌面与真实 WPF 激活证据'
             }
             else {
                 Assert-Equal 1 $floatingWindows.Count 'Win32 枚举确认主进程只有一个可见悬浮窗'
                 $foregroundMatchesFloating = [long] $floatingWindows[0].Handle -eq
                     [long] $activationHandled[0].activationForegroundWindowHandle
-                $activationWindowEvidenceMatches = (
-                    $foregroundMatchesFloating -or
-                    ([bool] $activationHandled[0].activationFloatingWindowIsActive -and
-                     -not [bool] $activationClientResult[0].activationForegroundPermissionGranted)
-                )
+                $activationWindowEvidenceMatches = Test-ActivationWindowEvidence `
+                    -ForegroundMatches $foregroundMatchesFloating `
+                    -FloatingIsActive ([bool] $activationHandled[0].activationFloatingWindowIsActive) `
+                    -ThreadDesktop $activationThreadDesktop -InputDesktop $activationInputDesktop
+                [Console]::Error.WriteLine(('ACTIVATION_DESKTOP_EVIDENCE: thread={0}; input={1}; foregroundMatches={2}; floatingIsActive={3}' -f `
+                    $activationThreadDesktop, $activationInputDesktop, $foregroundMatchesFloating,
+                    $activationHandled[0].activationFloatingWindowIsActive))
                 if (-not $activationWindowEvidenceMatches) {
                     # Preserve only the already-validated non-content activation fields before fixture purge.
                     $activationFailureEvidence = [ordered]@{

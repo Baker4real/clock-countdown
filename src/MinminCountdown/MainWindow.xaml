@@ -153,6 +153,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -212,6 +222,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -274,6 +294,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -333,6 +363,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -397,6 +437,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -455,6 +505,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -530,6 +590,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -587,6 +657,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -700,6 +780,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -757,6 +847,16 @@
                       <Trigger Property="IsEnabled" Value="False">
                         <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
                       </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsEnabled" Value="False" />
+                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -1432,7 +1532,12 @@
                                 BorderBrush="{DynamicResource PeachLineBrush}"
                                 BorderThickness="1"
                                 CornerRadius="16">
-                          <Grid x:Name="NoteEditorFields" Margin="24,14,0,2">
+                          <StackPanel Margin="24,14,0,2">
+                          <TextBlock x:Name="NoteEditorTitle" Text="编辑便签"
+                                     Visibility="Collapsed" Margin="0,0,0,8"
+                                     FontSize="{DynamicResource TypeH1FontSize}" FontWeight="SemiBold"
+                                     Foreground="{DynamicResource InkBrush}" />
+                          <Grid x:Name="NoteEditorFields">
                           <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -1590,14 +1695,6 @@
                                          Text="标签"
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
-                            <StackPanel Grid.Column="4" Orientation="Horizontal">
-                              <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
-                                   与悬浮窗「搜索便签」单一图标语言一致）。 -->
-                              <TextBlock x:Name="NoteSearchLabel"
-                                         Margin="8,0,0,0"
-                                         Text="搜索便签"
-                                         Style="{StaticResource MainCompactFieldLabel}" />
-                            </StackPanel>
                           </Grid>
                           <Grid Grid.Row="3" x:Name="MainNoteSecondaryInputs" Margin="0,3,0,0">
                             <Grid.ColumnDefinitions>
@@ -1618,10 +1715,48 @@
                                                Grid.Column="2"
                                                Width="172"
                                                Height="69" />
-                            <Grid Grid.Column="4">
+                          </Grid>
+                          <TextBlock x:Name="NoteReminderRulesSummary"
+                                     Grid.Row="4"
+                                     Width="790"
+                                     HorizontalAlignment="Left"
+                                     Margin="0,4,0,0"
+                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                     Foreground="{DynamicResource MutedBrush}"
+                                     TextWrapping="Wrap"
+                                     Text="不提醒" />
+                          <TextBlock x:Name="NoteMessage"
+                                     Grid.Row="5"
+                                     Width="790"
+                                     Margin="0,2,0,0"
+                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                     Foreground="{DynamicResource DangerBrush}"
+                                     TextWrapping="Wrap" />
+                        </Grid>
+                          </StackPanel>
+                        </Border>
+                      </Border>
+                    </Grid>
+                    <Grid Grid.Row="2" x:Name="NotesListCard">
+                      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                      <Border x:Name="NotesListSurface" Grid.RowSpan="2"
+                              Background="{DynamicResource CardBrush}"
+                              BorderBrush="{DynamicResource PeachLineBrush}"
+                              BorderThickness="1"
+                              CornerRadius="16" />
+                          <StackPanel Grid.Row="0" HorizontalAlignment="Right" Margin="20,12,20,0">
+                            <StackPanel Orientation="Horizontal">
+                              <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
+                                   与悬浮窗「搜索便签」单一图标语言一致）。 -->
+                              <TextBlock x:Name="NoteSearchLabel"
+                                         Margin="8,0,0,0"
+                                         Text="搜索便签"
+                                         Style="{StaticResource MainCompactFieldLabel}" />
+                            </StackPanel>
+                            <Grid>
                               <TextBox x:Name="NoteSearch"
                                        Width="220"
-                                       MinHeight="69"
+                                       MinHeight="48"
                                        MaxLength="140"
                                        Padding="48,0,16,0" />
                               <!-- #154：输入框内搜索镜统一控件层描边语言（§4 单色描边、MutedBrush 1.6、
@@ -1657,33 +1792,8 @@
                                 </TextBlock.Style>
                               </TextBlock>
                             </Grid>
-                          </Grid>
-                          <TextBlock x:Name="NoteReminderRulesSummary"
-                                     Grid.Row="4"
-                                     Width="790"
-                                     Margin="0,4,0,0"
-                                     FontSize="{DynamicResource TypeBodyFontSize}"
-                                     Foreground="{DynamicResource MutedBrush}"
-                                     TextWrapping="Wrap"
-                                     Text="不提醒" />
-                          <TextBlock x:Name="NoteMessage"
-                                     Grid.Row="5"
-                                     Width="790"
-                                     Margin="0,2,0,0"
-                                     FontSize="{DynamicResource TypeBodyFontSize}"
-                                     Foreground="{DynamicResource DangerBrush}"
-                                     TextWrapping="Wrap" />
-                        </Grid>
-                        </Border>
-                      </Border>
-                    </Grid>
-                    <Grid Grid.Row="2" x:Name="NotesListCard">
-                      <Border x:Name="NotesListSurface"
-                              Background="{DynamicResource CardBrush}"
-                              BorderBrush="{DynamicResource PeachLineBrush}"
-                              BorderThickness="1"
-                              CornerRadius="16" />
-                      <ScrollViewer x:Name="NotesListRegion"
+                          </StackPanel>
+                      <ScrollViewer x:Name="NotesListRegion" Grid.Row="1"
                                   FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
                                   Focusable="True"
                                   IsTabStop="True"
@@ -1884,17 +1994,6 @@
                               </StackPanel>
                             </Grid>
                           </Border>
-                          <ComboBox x:Name="NoteGroupingSelector"
-                                    Grid.Column="2"
-                                    Width="188"
-                                    Height="48"
-                                    MinHeight="48"
-                                    FontSize="{DynamicResource TypeBodyFontSize}"
-                                    VerticalAlignment="Center"
-                                    SelectedIndex="0"
-                                    AutomationProperties.Name="按日期分组">
-                            <ComboBoxItem Content="按日期分组" />
-                          </ComboBox>
                         </Grid>
                         <StackPanel x:Name="ActiveNoteRows" Margin="8,6,0,0" />
                         <StackPanel x:Name="CompletedNoteRows" Margin="8,6,0,0" Visibility="Collapsed" />

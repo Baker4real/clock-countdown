@@ -4318,24 +4318,25 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 733 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#229 新增金额隐私行为字段）'
+    Assert-Equal 737 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#220/#227 加 #229 金额隐私行为字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
     Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureAccessibility) 'validate-only 验证便签披露控件无障碍契约'
     Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureThemeTokens) 'validate-only 验证便签披露与分段切换日间主题 token'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusBadgeTokensFollowState) 'validate-only 验证分段数量徽章随激活态切换专用 token'
-    Assert-Equal $true ([bool] $adapterValidation.NoteRowOverflowMenuWorks) '便签行“…”按钮弹出菜单内容与既有编辑/删除一致'
-    # #153 便签列表：排版、筛选、芯片、空态与溢出菜单键盘（新增 10 个顶层键 + 源码契约）。
+    Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorSeparation) '搜索属于列表区、编辑标题与规则字段对齐、Ctrl+F及取消行为正常（#227）'
+    Assert-Equal $true ([bool] $adapterValidation.MainNoteRowsSimplified) '主便签行仅保留编辑删除、正文摘要层级和跨分组交替底色（#227）'
+    # #153/#227 便签列表：排版、筛选、芯片、空态与行内编辑/删除键盘。
     Assert-Equal $true ([bool] $adapterValidation.NoteDateUsesSpacedChineseFormat) '便签日期与倒计时截止同一中文日期格式：数字与「月」「日」之间留空格（#153）'
     Assert-Equal $true ([bool] $adapterValidation.NoteCardBodyLineHeightSeparatesSummary) '便签正文行距足够分开正文与提醒摘要（#153）'
     Assert-Equal $true ([bool] $adapterValidation.NoteRowTitleFallsToBlockTitleLevel) '列表条目标题落 H2 阶梯、与 H1 区块标题保持明确层级（#153/#197）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteRowOverflowMenuKeyboardWorks) '管理窗便签 `…` 打开后键盘进入编辑/删除、层内 Tab 循环、Esc 关闭归还触发器（#153）'
+    Assert-Equal $true ([bool] $adapterValidation.MainNoteRowActionsKeyboardWorks) '管理窗非空便签行编辑/删除键盘可达，Enter打开正确记录及安全确认，取消归还焦点（#227）'
     Assert-Equal $true ([bool] $adapterValidation.NoteCardSpacingConsumesTokens) '便签卡内边距与日期章节间距消费间距 token（#153）'
     Assert-Equal $true ([bool] $adapterValidation.TagChipSingleLineEllipsisWithFullText) '标签芯片单行不折字、集合折行、超长省略并提供全文提示（#153）'
     Assert-Equal $true ([bool] $adapterValidation.EmptyStateTextAllowsWrap) '倒计时与便签空态文案都允许换行（#153）'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateFilterHasVisibleLabel) '筛选弹层便签日期有可见标签，不是无名空下拉（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.PopupTabNavigationCyclesInsideLayer) '筛选/标签管理/标签选择器/溢出菜单弹层 Tab 层内循环，焦点不逃到被挡住的主窗（#153）'
+    Assert-Equal $true ([bool] $adapterValidation.PopupTabNavigationCyclesInsideLayer) '筛选/标签管理/标签选择器弹层 Tab 层内循环，焦点不逃到被挡住的主窗（#153/#227）'
     Assert-Equal $true ([bool] $adapterValidation.PopupTabGateIsolationBehavior) '弹层 Tab 层内循环门禁负向夹具逐项只击穿目标字段（#153）'
     # #154 视觉铬：漏斗、图标、圆角、装饰层与窗铬合同（新增 8 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.FilterFunnelIconSurvivesAliasedCapture) '筛选漏斗实心填充且常驻按钮内，运行时摘要刷新不再销毁图标（#154）'
@@ -4621,7 +4622,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $captureViewportStateBody -match 'ValidationExercises\.FloatingViewportDesignedRight\(' -and
         $captureViewportStateBody -notmatch '\.Right <= bodyContentRight' -and
         $captureViewportStateBody -notmatch 'bodyContentRight \+ 0\.25') '现役视口右缘比较走 EvaluateFloatingViewportGeometryGate 单一实现且不保留第二套右缘算术（#157 修复轮 1 源码契约）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteGroupingSelectorPlaceholder) '“按日期分组”下拉为占位单选项'
+    Assert-Equal $true ([bool] $adapterValidation.NoteGroupingSelectorAbsent) '移除只有单一选项的按日期分组下拉（#227）'
     # #137 主窗口便签交互与状态回归：便签卡四列重构后，标签选择弹层按需收起，
     # 已完成便签的删除线 + 弱化语义不得被视觉重构丢弃（AC1 删除线语义）。
     Assert-Equal $true ([bool] $adapterValidation.NoteTagPickerOpensOnDemand) 'validate-only 验证便签标签选择弹层默认按需收起'
@@ -4629,7 +4630,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml.cs') -Raw -Encoding UTF8
     $createNoteRowBody = [regex]::Match(
         $mainWindowNotesSource,
-        'private FrameworkElement CreateNoteRow\(NoteRecord note, DateTimeOffset nowUtc\).*?\r?\n    private ',
+        'private FrameworkElement CreateNoteRow\(NoteRecord note, DateTimeOffset nowUtc, int visibleIndex\).*?\r?\n    private ',
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true ($createNoteRowBody.Length -gt 0) '便签行 CreateNoteRow 方法体可定位（#137 删除线语义源码契约）'
     Assert-Equal $true (
@@ -4637,15 +4638,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $createNoteRowBody -match 'note\.IsCompleted\s*\?\s*"MutedBrush"\s*:\s*"InkBrush"') '已完成便签正文弱化为 MutedBrush、未完成正文保持 InkBrush（#137 删除线语义源码契约）'
     # #153 便签列表源码契约：键盘生命周期、间距 token 与中文日期格式钉在实现面，运行态由探针共同钉住。
-    $attachNoteRowOverflowMenuBody = [regex]::Match(
-        $mainWindowNotesSource,
-        'private void AttachNoteRowOverflowMenu\(Button trigger, NoteRecord note\).*?\r?\n    private ',
-        [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
-    Assert-Equal $true ($attachNoteRowOverflowMenuBody.Length -gt 0) '管理窗便签 … 菜单方法体可定位（#153 源码契约）'
-    Assert-Equal $true (
-        $attachNoteRowOverflowMenuBody -match 'PopupFocusLifecycle\.Attach\(popup, trigger, \(\) => menuEdit\)') '管理窗便签 … 菜单接入与筛选/标签选择器同一套弹层焦点生命周期（#153 源码契约；Esc 归还与 Tab 循环由 PopupFocusLifecycle 与运行态探针共同钉住）'
-    Assert-Equal $true (
-        $attachNoteRowOverflowMenuBody -notmatch 'suppressToggle') '管理窗便签 … 菜单不再保留 ad-hoc 二次点击/Esc 处理（#153 源码契约）'
+    Assert-Equal $false ($mainWindowNotesSource -match 'AttachNoteRowOverflowMenu|NoteRowOverflowMenu') '主便签行不再创建重复溢出菜单；悬浮菜单合同仍独立保留（#227）'
     Assert-Equal $true (
         $mainWindowNotesSource -match 'FontSize = \(double\)FindResource\("TypeH2FontSize"\)') '倒计时列表条目标题字号引用 TypeH2FontSize token（#153 源码契约）'
     Assert-Equal $true (
@@ -4917,7 +4910,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v47') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '605F1EEE611F6B5650EB632D74431B061E19F3A01F653C495F1F8BF6F877036F' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（733字段；#229 新增金额隐私行为字段）'
+    Assert-Equal '0F364F5775E4B0D1F7106C4B3EECB6115E773EFD51706AFA010D91367EF1B0C9' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（737字段；#220/#227 加 #229 金额隐私行为字段）'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastUpdatesOpenWindows) '#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastAccessibleStates) '#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿'
+    Assert-Equal $true ([bool] $adapterValidation.SystemContrastColorChangesAndCustomSurfaces) '#220 系统配色运行中变化更新弹层、自选标签和日期印记并恢复日间原色'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -5324,7 +5320,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 'TextBox,DatePicker,DatePickerPopup,ComboBox,ComboBoxPopup,TagSelector,TagSelectorPopup,CheckBox,ScrollViewer,ScrollBar' ([string]::Join(',', @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties.Name))) '悬浮窗快速新增日间资源枚举覆盖全部真实控件族'
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '悬浮窗快速新增日间资源枚举没有失败项'
     Assert-Equal '#FFFEFCFB' ([string] $adapterValidation.FloatingQuickAddLocalCanvasColor) '悬浮窗快速新增局部表面使用暖白'
-    Assert-Equal '#FFB74C39' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增局部交互强调使用珊瑚'
+    Assert-Equal '#FFE05A4A' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增焦点和按压使用 Active，不复用 Danger（#232）'
     Assert-Equal $true ([bool] $adapterValidation.TagPopupFollowsDayTheme) '打开的标签弹层保持日间主题'
     Assert-Equal '#FFFDF0E4' ([string] $adapterValidation.MainThemeBackgroundColors) '主窗口背景使用预期的暖白配色'
     Assert-Equal '8' ([string] $adapterValidation.MainThemeCharacterOpacities) '主窗口角色装饰在日间主题下保持低对比度'
@@ -5543,7 +5539,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $notesTabPath.FocusVisualsVisible) '便签工作区每个 Tab 目标都有可见焦点样式'
     $expectedNotesFocusedTargets = $expectedNotesTabPath.Replace(
         ',NotesListRegion,StatusText',
-        ',NotesListRegion,NotesListRegion.ActiveSegment,NotesListRegion.CompletedSegment,NotesListRegion.Grouping,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.More,StatusText')
+        ',NotesListRegion,NotesListRegion.ActiveSegment,NotesListRegion.CompletedSegment,NotesListRegion.DateSection,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText')
     Assert-Equal $expectedNotesFocusedTargets ([string]::Join(',', @($notesTabPath.ForwardFocusedTargets))) '便签动态分组、日期、完成框、编辑和删除均被真实遍历'
     $expectedNotesFocusedTargetsBackward = @($notesTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedNotesFocusedTargetsBackward)

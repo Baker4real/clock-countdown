@@ -406,25 +406,21 @@ public sealed partial class FloatingWindow
         {
             Child = stamp,
             Background = stampBackground,
-            BorderBrush = CreateCalendarIndexStampEdgeBrush(stampText),
             BorderThickness = new Thickness(2, 0, 0, 0),
             Padding = new Thickness(4, 8, 4, 8),
             IsHitTestVisible = false,
             Focusable = false
         };
+        ApplicationTheme.ApplyContrastAwareBrush(dateStamp, Border.BorderBrushProperty,
+            CreateCalendarIndexStampEdgeBrush(ApplicationTheme.DayColorFor(palette[1])), "ControlBorderBrush");
         return dateStamp;
     }
 
-    private static Brush CreateCalendarIndexStampEdgeBrush(Brush stampTextBrush)
+    private static Brush CreateCalendarIndexStampEdgeBrush(Color dayText)
     {
-        if (stampTextBrush is SolidColorBrush solid)
-        {
-            var edge = new SolidColorBrush(Color.FromArgb(96, solid.Color.R, solid.Color.G, solid.Color.B));
-            edge.Freeze();
-            return edge;
-        }
-
-        return stampTextBrush;
+        var edge = new SolidColorBrush(Color.FromArgb(96, dayText.R, dayText.G, dayText.B));
+        edge.Freeze();
+        return edge;
     }
 
     private static TextBlock CalendarIndexStampText(

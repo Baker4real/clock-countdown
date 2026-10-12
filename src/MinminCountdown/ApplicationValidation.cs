@@ -80,7 +80,7 @@ internal static class ApplicationValidation
             }
 
             var desktopWorkspace = DesktopWorkspace.Load(settingsPath);
-            var theme = new ApplicationTheme(resources);
+            using var theme = new ApplicationTheme(resources);
             theme.Apply();
             calendar = new HolidayCalendar(applicationRoot);
             mainWindow = new MainWindow(

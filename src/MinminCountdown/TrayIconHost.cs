@@ -2,12 +2,8 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Threading;
 using H.NotifyIcon;
-using MediaColor = System.Windows.Media.Color;
-using MediaColorConverter = System.Windows.Media.ColorConverter;
-using MediaFontFamily = System.Windows.Media.FontFamily;
 
 namespace MinminCountdown;
 
@@ -224,12 +220,12 @@ internal static class TrayMenuFactory
         var exitItem = new MenuItem { Header = "退出" };
         var menu = new ContextMenu
         {
-            Background = Brush("#FFFDFC"),
-            BorderBrush = Brush("#F6DFD3"),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(4),
             HasDropShadow = true
         };
+        menu.SetResourceReference(Control.BackgroundProperty, "CanvasBrush");
+        menu.SetResourceReference(Control.BorderBrushProperty, "ControlBorderBrush");
         menu.Resources.Add(typeof(MenuItem), CreateMenuItemStyle());
         menu.Items.Add(openManagerItem);
         menu.Items.Add(restoreItem);
@@ -245,12 +241,12 @@ internal static class TrayMenuFactory
     private static Style CreateMenuItemStyle()
     {
         var style = new Style(typeof(MenuItem));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, Brush("#3B190D")));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#FFFDFC")));
-        style.Setters.Add(new Setter(Control.BorderBrushProperty, Brush("#D4526A")));
+        style.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension("InkBrush")));
+        style.Setters.Add(new Setter(Control.BackgroundProperty, new DynamicResourceExtension("CanvasBrush")));
+        style.Setters.Add(new Setter(Control.BorderBrushProperty, new DynamicResourceExtension("ControlBorderBrush")));
         style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(16, 9, 16, 9)));
-        style.Setters.Add(new Setter(Control.FontFamilyProperty, new MediaFontFamily("Microsoft YaHei UI")));
-        style.Setters.Add(new Setter(Control.FontSizeProperty, 14d));
+        style.Setters.Add(new Setter(Control.FontFamilyProperty, new DynamicResourceExtension("UiFontFamily")));
+        style.Setters.Add(new Setter(Control.FontSizeProperty, new DynamicResourceExtension("TypeBodyFontSize")));
         style.Setters.Add(new Setter(Control.TemplateProperty, CreateMenuItemTemplate()));
 
         var highlighted = new Trigger
@@ -258,7 +254,8 @@ internal static class TrayMenuFactory
             Property = MenuItem.IsHighlightedProperty,
             Value = true
         };
-        highlighted.Setters.Add(new Setter(Control.BackgroundProperty, Brush("#F6DFD3")));
+        highlighted.Setters.Add(new Setter(Control.BackgroundProperty, new DynamicResourceExtension("MainActionBrush")));
+        highlighted.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension("MainActionTextBrush")));
         style.Triggers.Add(highlighted);
         return style;
     }
@@ -282,14 +279,6 @@ internal static class TrayMenuFactory
             new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
         surface.AppendChild(header);
         return new ControlTemplate(typeof(MenuItem)) { VisualTree = surface };
-    }
-
-    private static SolidColorBrush Brush(string hex)
-    {
-        var color = (MediaColor)MediaColorConverter.ConvertFromString(hex)!;
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
     }
 
 }

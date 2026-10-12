@@ -40,7 +40,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             row.SetResourceReference(Border.BorderBrushProperty, selected || note.Id == _reminderSourceNoteId
                 ? "ActiveBrush" : selectionCard.BoundaryResource);
             row.SetResourceReference(Border.BackgroundProperty, selected ? "PeachTintBrush" : selectionCard.SurfaceResource);
-            UiAccessibility.Name(row, note.Id == _reminderSourceNoteId ? $"当前提醒来源便签：{note.Text}" :
+            UiAccessibility.Name(row, note.Id == _reminderSourceNoteId ? $"当前提醒来源便签：{note.Text}；{(selected ? "已选择" : "未选择")}" :
                 $"{(selected ? "已选择" : "未选择")}便签：{note.Text}");
         }
         NoteBatchActions.Visibility = _selectedNoteIds.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -2605,7 +2605,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             card.BorderThickness = new Thickness(2);
             card.SetResourceReference(Border.BorderBrushProperty, "ActiveBrush");
-            UiAccessibility.Name(card, $"当前提醒来源便签：{note.Text}");
+            UiAccessibility.Name(card, $"当前提醒来源便签：{note.Text}；{(_selectedNoteIds.Contains(note.Id) ? "已选择" : "未选择")}");
         }
 
         return card;

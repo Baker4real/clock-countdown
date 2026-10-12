@@ -78,6 +78,23 @@ internal static class ValidationExercises
             Keyboard.Focus(rows[0]); WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);
             ((ToggleButton)main.FindName("CompletedNotesSegment")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Must(count.Text == "已选择 0 条", "#235：切换完成状态分段必须移除隐藏选择。");
+            var sourceNote = workspace.Snapshot.AllNotes[0];
+            Must(main.OpenReminderSource(ReminderSourceKind.Note, sourceNote.Id),
+                "#235：必须真实打开提醒来源便签以验证来源与选择名称。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            var sourceRow = VisualDescendants<NoteSelectionCard>(main).Single(row =>
+                row.IsVisible && (string)row.Tag == sourceNote.Id);
+            var sourcePeer = UIElementAutomationPeer.CreatePeerForElement(sourceRow)!;
+            var sourceName = $"当前提醒来源便签：{sourceNote.Text}；";
+            Must(sourcePeer.GetName() == sourceName + "未选择",
+                "#235：打开来源后的卡片名称必须同时包含提醒来源身份和未选择状态。");
+            Keyboard.Focus(sourceRow);
+            WindowValidationInput.RaisePreviewKey(sourceRow, Key.Space, ModifierKeys.Control);
+            Must(sourcePeer.GetName() == $"已选择便签：{sourceNote.Text}" && sourcePeer.GetItemStatus() == "已选择",
+                "#235：临时来源揭示结束后，键盘选中必须恢复普通名称并包含已选择状态。");
+            WindowValidationInput.RaisePreviewKey(sourceRow, Key.Space, ModifierKeys.Control);
+            Must(sourcePeer.GetName() == $"未选择便签：{sourceNote.Text}" && sourcePeer.GetItemStatus() == "未选择",
+                "#235：临时来源揭示结束后，取消选择必须恢复普通名称并包含未选择状态。");
             return true;
         }
         finally { UiAccessibility.Announced -= RecordSelection; main.Close(); DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log"); }
@@ -8406,7 +8423,7 @@ internal static class ValidationExercises
         VisualDescendants<Border>(main).Any(border =>
             string.Equals(
                 AutomationProperties.GetName(border),
-                $"当前提醒来源便签：{note.Text}",
+                $"当前提醒来源便签：{note.Text}；未选择",
                 StringComparison.Ordinal));
 
     public static bool RunReminderEditingInterfaceBehavior()

@@ -1778,13 +1778,22 @@ public sealed partial class MainWindow
                 string.IsNullOrEmpty(CountdownMessage.Text);
 
             // —— 偏好错误出现在对应字段下方并聚焦；错误态错误字落在状态条表面上（见下）。
+            // 前序场景可能留下已打开的设置弹层；直接点击 toggle 会启动退出动画，
+            // 使字段探针偶然测到正在消失的表面。先完成 fixture 清理，再真实打开。
+            WindowValidationInput.ClosePopupForCleanup(PreferencesPopup);
+            Activate();
+            Keyboard.Focus(PreferencesButton);
             PreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(Dispatcher);
+            if (!PreferencesPopup.IsOpen || PopupMotionBehavior.IsClosing(PreferencesPopup) ||
+                !DisplayPrecision.IsKeyboardFocusWithin)
+                throw new InvalidOperationException("偏好字段探针必须先真实打开设置弹层并聚焦首项。");
             MonthlySalary.Text = "not-a-number";
             SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
             var salaryErrorBelowField =
+                PreferencesPopup.IsOpen && !PopupMotionBehavior.IsClosing(PreferencesPopup) && MonthlySalaryError.IsVisible &&
                 MonthlySalaryError.Visibility == Visibility.Visible &&
                 string.Equals(MonthlySalaryError.Text, "月薪格式无效。", StringComparison.Ordinal) &&
                 MonthlySalary.IsKeyboardFocusWithin &&
@@ -1802,6 +1811,7 @@ public sealed partial class MainWindow
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
             var workStartErrorBelowField =
+                PreferencesPopup.IsOpen && !PopupMotionBehavior.IsClosing(PreferencesPopup) && WorkStartError.IsVisible &&
                 MonthlySalaryError.Visibility == Visibility.Collapsed &&
                 WorkStartError.Visibility == Visibility.Visible &&
                 string.Equals(WorkStartError.Text, "上班时间请使用 HH:mm。", StringComparison.Ordinal) &&
@@ -1818,7 +1828,7 @@ public sealed partial class MainWindow
                 WorkStartError.Visibility == Visibility.Collapsed;
 
             // —— 主次按钮角色：倒计时页唯一实心主行动是「＋ 添加倒计时」；
-            PreferencesPopup.IsOpen = false;
+            WindowValidationInput.ClosePopupForCleanup(PreferencesPopup);
             // #217「保存设置」为 CardAlt 次级表面 + 主文字色 + 可辨识的常态边界。
             var solidPrimaryButtons = ProbeVisualDescendants<Button>(CountdownWorkspaceBody)
                 .Where(button => ReferenceEquals(button.Background, FindResource("MainActionBrush")))

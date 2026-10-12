@@ -199,6 +199,15 @@ internal sealed class HolidayCalendar : IDisposable
         return new CountdownRecord("__workday_end__", "距离下班", targetUtc, Array.Empty<string>());
     }
 
+    public bool IsWorkdayComplete(DateTimeOffset nowUtc, CountdownPreferences preferences)
+    {
+        var beijing = ChinaStandardTime.ToBeijingTime(nowUtc);
+        return beijing.TimeOfDay >= preferences.WorkEnd &&
+            TryGetWorkdayMap(beijing.Year, out var workdayMap) &&
+            workdayMap.TryGetValue(beijing.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), out var isWorkday) &&
+            isWorkday;
+    }
+
     public decimal? GetEarnings(DateTimeOffset nowUtc, CountdownPreferences preferences)
     {
         if (preferences.MonthlySalary <= 0)

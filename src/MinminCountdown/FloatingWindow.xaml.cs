@@ -1796,6 +1796,7 @@ public sealed partial class FloatingWindow : Window
         _noteCompletionExit?.Dispose();
         _noteCompletionExit = null;
         FloatingRows.Children.Clear();
+        _workdayCompletionIncome = null;
         ClearNoteDateStampStickyEntries();
         if (workspace == WorkspaceKind.Countdowns)
         {
@@ -1819,17 +1820,20 @@ public sealed partial class FloatingWindow : Window
                     snapshot.Settings.Preferences.DisplayPrecision))
                 .ToArray();
             _countdownRowElements.Clear();
+            var hasCompletionCard = ShowWorkdayCompletion(snapshot, nowUtc);
+            if (hasCompletionCard) FloatingRows.Children.Add(BuildWorkdayCompletionRow());
             var countdownRows = BuildWarmPaperCountdownRows(
                 records,
                 nowUtc,
-                snapshot.Settings.Preferences.DisplayPrecision);
+                snapshot.Settings.Preferences.DisplayPrecision,
+                hasCompletionCard);
             for (var index = 0; index < countdownRows.Count; index++)
             {
                 _countdownRowElements[records[index].Id] = countdownRows[index];
                 FloatingRows.Children.Add(countdownRows[index]);
             }
 
-            if (records.Count == 0)
+            if (records.Count == 0 && !hasCompletionCard)
             {
                 FloatingRows.Children.Add(EmptyText(CountdownEmptyStateText(snapshot.Filter)));
                 if (CountdownConstraintsActive(snapshot.Filter))
@@ -1889,6 +1893,9 @@ public sealed partial class FloatingWindow : Window
         FloatingRowsRebuildGenerationForValidation++;
     }
 
+    private bool ShowWorkdayCompletion(DesktopWorkspaceSnapshot snapshot, DateTimeOffset nowUtc) =>
+        !snapshot.HasFilterConstraints && _calendar.IsWorkdayComplete(nowUtc, snapshot.Settings.Preferences);
+
     private List<CountdownRecord> ResolveFloatingCountdownRecords(
         DesktopWorkspaceSnapshot snapshot,
         DateTimeOffset nowUtc)
@@ -1929,7 +1936,8 @@ public sealed partial class FloatingWindow : Window
 
             var remaining = CountdownFormatting.FormatRemaining(record.TargetUtc, nowUtc, precision);
             var fadeSeconds = TrackSecondsChange(record.Id, remaining);
-            var fresh = BuildRemainingBlocks(remaining, isPrimary: index == 0, fadeSeconds: fadeSeconds);
+            var fresh = BuildRemainingBlocks(remaining,
+                isPrimary: index == 0 && !ShowWorkdayCompletion(snapshot, nowUtc), fadeSeconds: fadeSeconds);
             var childIndex = host.Children.IndexOf(cluster);
             host.Children.RemoveAt(childIndex);
             Grid.SetColumn(fresh, 1);
@@ -1979,6 +1987,11 @@ public sealed partial class FloatingWindow : Window
         var entries = new List<string>();
         if (workspace == WorkspaceKind.Countdowns)
         {
+            if (ShowWorkdayCompletion(snapshot, nowUtc))
+            {
+                entries.Add("workday-complete:" + ChinaStandardTime.ToBeijingTime(nowUtc)
+                    .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+            }
             var precision = snapshot.Settings.Preferences.DisplayPrecision;
             foreach (var record in ResolveFloatingCountdownRecords(snapshot, nowUtc))
             {
@@ -2067,15 +2080,21 @@ public sealed partial class FloatingWindow : Window
         var encouragementText = workspace == WorkspaceKind.Notes
             ? FloatingBottomStatus.NotesEncouragementText
             : FloatingBottomStatus.CountdownEncouragementText;
-        FloatingBottomStatus.Apply(
-            FloatingIncome,
-            FloatingBottomStatus.Resolve(
+        var presentation = FloatingBottomStatus.Resolve(
                 _calendar.GetEarnings(nowUtc, preferences),
                 preferences.MonthlySalary,
                 _calendar.State,
                 _calendar.StatusText,
                 encouragementText,
-                _earningsHidden),
+                _earningsHidden);
+        if (_workdayCompletionIncome is { } completionIncome)
+        {
+            completionIncome.Text = presentation.Text;
+            UiAccessibility.Name(completionIncome, presentation.Text);
+        }
+        FloatingBottomStatus.Apply(
+            FloatingIncome,
+            presentation,
             _floatingMutedBrush,
             ThemeBrush("DecoTextSoftBrush"),
             (FontFamily)FindResource("HandwrittenDecoFontFamily"));

@@ -598,6 +598,12 @@ internal static class ValidationReport
             "Baseline",
             "floating-countdowns-day.png"),
         new(
+            "floating-workday-complete-day",
+            "floating-workday-complete",
+            "Day",
+            "Complete",
+            "floating-workday-complete-day.png"),
+        new(
             "long-notes-day-top",
             FloatingLongNotesScenario,
             "Day",
@@ -2788,6 +2794,7 @@ internal static class ValidationReport
             ["FloatingIncomeEncouragementWithoutSalary"] =
                 floatingReferenceExercise.IncomeEncouragementWithoutSalary,
             ["FloatingIncomePrivacyBehavior"] = floatingReferenceExercise.IncomePrivacyBehavior,
+            ["FloatingWorkdayCompletionBehavior"] = floatingReferenceExercise.WorkdayCompletionBehavior,
             ["FloatingSecondaryRemainingUnitSpacingMatches"] =
                 floatingReferenceExercise.SecondaryRemainingGates.UnitSpacingMatches,
             ["FloatingSecondaryRemainingLayoutMatches"] =
@@ -3069,7 +3076,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v49 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v49 frames (8 main + 5 floating, including #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -5261,7 +5268,7 @@ internal static class ValidationReport
                 new[] { new TagRecord("reference-warm-tag", "长便签", "#F4B6A6") },
                 new CountdownPreferences(
                     "Second",
-                    5255.85m,
+                    5086.31m,
                     new TimeSpan(9, 0, 0),
                     new TimeSpan(18, 0, 0)));
             File.WriteAllText(settingsPath, SettingsContract.SerializeCanonical(settings));
@@ -5270,7 +5277,7 @@ internal static class ValidationReport
                 {
                     date = new DateTime(2030, 1, 1).AddDays(offset)
                         .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                    is_workday = true
+                    is_workday = new DateTime(2030, 1, 1).AddDays(offset) != new DateTime(2030, 7, 16)
                 })
                 .ToArray();
             File.WriteAllText(holidayPath, JsonSerializer.Serialize(new { days }));
@@ -5312,6 +5319,7 @@ internal static class ValidationReport
             VerifyFloatingZeroDayBlocks(referenceWindow);
             var incomePrivacyBehavior = VerifyFloatingIncomePrivacy(
                 referenceWindow, referenceSession, referenceCalendar, manager, assetRoot, settingsPath, referenceClock);
+            var completionResult = VerifyWorkdayCompletion(referenceWindow, referenceSession, referenceClock, settingsPath);
             var actualWidth = root.ActualWidth;
             var actualHeight = root.ActualHeight;
             var actualBackdrop = Normalize(BoundsIn(backdrop, root), actualWidth, actualHeight);
@@ -5602,12 +5610,13 @@ internal static class ValidationReport
             viewportStates.Add(
                 CaptureFloatingViewportState("one-countdown", referenceWindow, root, rows));
 
-            referenceWindow.UpdateTime(referenceUtc.AddHours(8));
+            // #236: use an explicit calendar non-workday; after-work now has a completion card.
+            var nonWorkdayUtc = new DateTimeOffset(2030, 7, 16, 19, 11, 0, TimeSpan.FromHours(8)).ToUniversalTime();
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             viewportStates.Add(
                 CaptureFloatingViewportState("zero-countdowns", referenceWindow, root, rows));
 
-            var afterWorkdayUtc = referenceUtc.AddHours(8);
             var ordinaryPrimaryTargetUtc = referenceUtc
                 .AddDays(4)
                 .AddHours(13)
@@ -5619,13 +5628,13 @@ internal static class ValidationReport
                 ordinaryPrimaryTargetUtc,
                 Array.Empty<string>(),
                 out _);
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var ordinaryPrimaryRemainingTextFullyVisible =
                 PrimaryRemainingTextFitsOnOneLine(
                     rows,
                     ordinaryPrimaryTargetUtc,
-                    afterWorkdayUtc);
+                    nonWorkdayUtc);
             primaryCountdownContrastMeasurements.Add(CaptureFloatingPrimaryCountdownContrast(
                 referenceWindow, rows, panel, "Ordinary"));
             // 徽章排他性：主项由普通倒计时承担时不得出现「超期待！」徽章。
@@ -5634,13 +5643,13 @@ internal static class ValidationReport
             var ordinaryPrimaryDeleted = referenceSession.TryDeleteCountdown(
                 "reference-ordinary-primary",
                 out _);
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
 
             var tripleDigitAdded = referenceSession.TrySaveCountdown(
-                "reference-999-primary", "999 天主项", afterWorkdayUtc.AddDays(999).AddHours(13).AddMinutes(18).AddSeconds(59),
+                "reference-999-primary", "999 天主项", nonWorkdayUtc.AddDays(999).AddHours(13).AddMinutes(18).AddSeconds(59),
                 Array.Empty<string>(), out _);
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var tripleDigitMeasurement = CaptureFloatingPrimaryCountdownContrast(referenceWindow, rows, panel, "999Days");
             primaryCountdownContrastMeasurements.Add(tripleDigitMeasurement);
@@ -5649,7 +5658,7 @@ internal static class ValidationReport
             {
                 throw new InvalidOperationException("999 天悬浮主项夹具未能完整保存和恢复。");
             }
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             var primaryCountdownContrastGates =
                 ValidationExercises.EvaluateFloatingPrimaryCountdownContrastGates(
@@ -5667,12 +5676,12 @@ internal static class ValidationReport
                 extremePrimaryUtc,
                 Array.Empty<string>(),
                 out _);
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var extremePrimaryCluster = FindFloatingRemainingCluster(rows, "极端长剩余时间");
             var extremePrimaryExpected = CountdownFormatting.FormatRemaining(
                 extremePrimaryUtc,
-                afterWorkdayUtc,
+                nonWorkdayUtc,
                 "Second");
             var extremePrimaryValueBlocks = RemainingBlockPairs(extremePrimaryCluster)
                 .Select(pair => pair.Value)
@@ -5697,7 +5706,7 @@ internal static class ValidationReport
             var extremePrimaryDeleted = referenceSession.TryDeleteCountdown(
                 "reference-extreme-primary",
                 out _);
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             primaryExtremeRemainingShrinks &= extremePrimaryDeleted;
 
@@ -5716,7 +5725,7 @@ internal static class ValidationReport
                 primaryDeadlineUtc,
                 Array.Empty<string>(),
                 out _);
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var primaryDeadlineWithoutScrollbar = CaptureFloatingViewportState(
                 "primary-deadline-without-scrollbar",
@@ -5743,7 +5752,7 @@ internal static class ValidationReport
                     out _);
             }
 
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 9);
             var primaryDeadlineWithScrollbar = CaptureFloatingViewportState(
                 "primary-deadline-with-scrollbar",
@@ -5765,7 +5774,7 @@ internal static class ValidationReport
             var primaryDeadlineDeleted = referenceSession.TryDeleteCountdown(
                 "reference-primary-deadline",
                 out _);
-            referenceWindow.UpdateTime(afterWorkdayUtc);
+            referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             var primaryDeadlineTextFullyVisible =
                 ordinaryPrimaryAdded &&
@@ -5845,7 +5854,7 @@ internal static class ValidationReport
                 captureHeight);
             floatingReferenceBaseline = ValidateFloatingReferenceBaseline(
                 assetRoot,
-                new[] { dayCountdownCapture }
+                new[] { dayCountdownCapture, completionResult.Capture }
                     .Concat(floatingLongNotesValidation.Captures)
                     .Concat(searchExpandedCaptures)
                     .ToArray(),
@@ -6199,6 +6208,7 @@ internal static class ValidationReport
                 floatingIncomeEncouragementWithoutSalary &&
                     incomeRestoredAfterEncouragement,
                 incomePrivacyBehavior,
+                completionResult.Passed,
                 secondaryRemainingGates,
                 secondaryRemainingSamples,
                 floatingScrollBarValidation,
@@ -15194,6 +15204,129 @@ internal static class ValidationReport
             });
     }
 
+    private static (bool Passed, FloatingReferenceActualCapture Capture) VerifyWorkdayCompletion(
+        FloatingWindow window, ApplicationSession session, MutableValidationClock clock, string settingsPath)
+    {
+        var original = clock.UtcNow;
+        var savedBytes = File.ReadAllBytes(settingsPath);
+        var savedSettings = SettingsContract.SerializeCanonical(session.Current);
+        var preferences = session.Current.Preferences;
+        var root = Required<Grid>(window, "TaskWrap");
+        var rows = Required<StackPanel>(window, "FloatingRows");
+        var income = Required<TextBlock>(window, "FloatingIncome");
+        var end = new DateTimeOffset(2030, 7, 15, 18, 0, 0, TimeSpan.FromHours(8)).ToUniversalTime();
+        static void Require(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException("#236 " + message);
+        }
+        void At(DateTimeOffset time)
+        {
+            clock.UtcNow = time;
+            window.UpdateTime(time);
+            PumpDispatcher();
+            window.UpdateLayout();
+        }
+        bool HasCompletion() => Descendants<TextBlock>(rows).Any(text => text.Text == "下班啦");
+        void ToggleIncome()
+        {
+            var peer = UIElementAutomationPeer.CreatePeerForElement(income);
+            Require(peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider, "金额缺少 Invoke。");
+            ((IInvokeProvider)peer!.GetPattern(PatternInterface.Invoke)).Invoke();
+            PumpDispatcher();
+        }
+        At(end.AddSeconds(-1));
+        Require(!HasCompletion() && Descendants<TextBlock>(rows).Any(text => text.Text == "距离下班"),
+            "下班前一秒应保留距离下班。");
+        var beforeGeneration = window.FloatingRowsRebuildGenerationForValidation;
+        At(end);
+        Require(HasCompletion() && rows.Children[0] is Border &&
+            Descendants<TextBlock>((Border)rows.Children[0]).Any(text => text.Text == "今日已赚 ￥169.54"),
+            "精确下班时刻必须替换为带当日封顶金额的收尾卡。");
+        var card = (Border)rows.Children[0];
+        Require(window.FloatingRowsRebuildGenerationForValidation > beforeGeneration &&
+            !Descendants<TextBlock>(card).Any(text => text.Text == "超期待！") &&
+            !Descendants<Grid>(card).Any(grid => grid.Tag as string == FloatingWindow.RemainingBlocksTag) &&
+            !Descendants<Control>(card).Any(), "收尾卡不应具有倒计时分格、徽章、编辑或规则控件。");
+        var secondary = (Border)rows.Children[1];
+        Require(window.FloatingCountdownCount == 1 && window.FloatingCountdownTexts.Count == 1 &&
+            AutomationProperties.GetName((DependencyObject)secondary.Child).StartsWith("倒计时 七月倒计时", StringComparison.Ordinal),
+            "系统收尾必须排除用户计数且普通首行仍为次项。");
+        var due = session.Reminders.GetDueOccurrences(session.Current, end);
+        Require(due.Count == 1 && due[0].Source is NoteReminderSource { Id: "reference-note-1" },
+            "下班系统行不能增加提醒 occurrence。");
+        Require(Descendants<TextBlock>(card).All(text => text.FontSize >= 12 && SingleLineTextFits(text)) &&
+            BoundsIn(Descendants<TextBlock>(card).First(), root).Right <= 396,
+            "收尾标题与金额必须使用可读字号并保留正文安全区。");
+        var generation = window.FloatingRowsRebuildGenerationForValidation;
+        At(end.AddSeconds(1));
+        Require(ReferenceEquals(rows.Children[0], card) &&
+            generation == window.FloatingRowsRebuildGenerationForValidation,
+            "收尾期间 tick 不应重建主卡。");
+        WaitForStableFloatingReferenceLayout(window, root, rows, 2);
+        ClearCaptureKeyboardFocus(root);
+        var spec = FloatingReferenceCaptureSpecs.Single(spec => spec.CaptureId == "floating-workday-complete-day");
+        var capture = CreateFloatingReferenceActualCapture(spec,
+            EncodePng(ScaleToFrame(CaptureVisual(root), 520, 390)),
+            CreateFloatingReferenceStateFingerprint("Day", "Countdowns", string.Empty,
+                "下班啦，今日已赚 ￥169.54", "Complete", 0, 0, "下班啦", "七月倒计时"));
+        ToggleIncome();
+        At(end.AddHours(1));
+        Require(Descendants<TextBlock>(card).Any(text => text.Text == "今日已赚 ¥••••") &&
+            income.Text == "今日已赚 ¥••••", "收尾卡和底栏必须共用运行期遮罩。");
+        var pending = new Queue<AutomationPeer>();
+        var seen = new HashSet<AutomationPeer>();
+        pending.Enqueue(UIElementAutomationPeer.CreatePeerForElement(window)!);
+        while (pending.TryDequeue(out var peer))
+        {
+            if (!seen.Add(peer)) continue;
+            var texts = new List<string> { peer.GetName(), peer.GetHelpText(), peer.GetItemStatus() };
+            if (peer.GetPattern(PatternInterface.Text) is ITextProvider text) texts.Add(text.DocumentRange.GetText(-1));
+            if (peer.GetPattern(PatternInterface.Value) is IValueProvider value) texts.Add(value.Value);
+            Require(texts.All(text => !text.Contains("169.54", StringComparison.Ordinal)),
+                "隐藏态真实 AutomationPeer 子树仍含收尾金额。");
+            foreach (var child in peer.GetChildren() ?? []) pending.Enqueue(child);
+        }
+        Require(Descendants<FrameworkElement>(window).All(element =>
+            !Convert.ToString(element.ToolTip, CultureInfo.InvariantCulture)!.Contains("169.54", StringComparison.Ordinal)),
+            "隐藏态 ToolTip 仍含收尾金额。");
+        window.ShowWorkspace(WorkspaceKind.Notes);
+        window.ShowWorkspace(WorkspaceKind.Countdowns);
+        At(end.AddHours(2));
+        Require(Descendants<TextBlock>(rows).Count(text => text.Text == "今日已赚 ¥••••") == 1 &&
+            income.Text == "今日已赚 ¥••••", "切页后收尾遮罩丢失。");
+        ToggleIncome();
+        session.Filter.UntaggedOnly = true;
+        At(end);
+        Require(!HasCompletion() && window.FloatingCountdownCount == 1, "激活筛选后收尾应退出且用户记录保留。");
+        session.Filter.UntaggedOnly = false;
+        At(end);
+        Require(HasCompletion(), "清除筛选后应恢复收尾。");
+        Require(session.TrySavePreferences(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd, out _),
+            "零薪资夹具失败。");
+        At(end);
+        Require(HasCompletion() && !Descendants<TextBlock>(rows).Any(text => text.Text.Contains("今日已赚", StringComparison.Ordinal)),
+            "零薪资收尾不能伪造金额。");
+        Require(session.TrySavePreferences(preferences.DisplayPrecision, preferences.MonthlySalary,
+            preferences.WorkStart, preferences.WorkEnd, out _), "薪资恢复夹具失败。");
+        At(end.AddHours(6).AddSeconds(-1));
+        Require(HasCompletion(), "北京时间午夜前应保留当日收尾。");
+        At(end.AddHours(6));
+        Require(!HasCompletion(), "北京时间次日零点必须去除昨日收尾。");
+        At(end.AddDays(1));
+        Require(!HasCompletion(), "日历明确非工作日不能产生收尾。");
+        At(end.AddDays(2));
+        Require(HasCompletion(), "后续真实工作日到点应产生当天收尾。");
+        At(end.AddDays(2).AddHours(6));
+        Require(!HasCompletion() && Descendants<TextBlock>(rows).Any(text => text.Text == "距离下班") &&
+            income.Text == "今日已赚 ￥0.00", "下一工作日零点必须显示新日倒计时及归零金额。");
+        At(end.AddYears(1));
+        Require(!HasCompletion(), "日历不覆盖的年份不能使用旧年收尾事实。");
+        Require(SettingsContract.SerializeCanonical(session.Current) == savedSettings &&
+            File.ReadAllBytes(settingsPath).SequenceEqual(savedBytes), "收尾状态改变了持久记录或规则。");
+        At(original);
+        return (true, capture);
+    }
+
     private static bool VerifyFloatingIncomePrivacy(
         FloatingWindow window, ApplicationSession session, HolidayCalendar calendar, MainWindow manager,
         string assetRoot, string settingsPath, MutableValidationClock clock)
@@ -17526,6 +17659,7 @@ internal static class ValidationReport
         bool SecondaryRemainingTextFullyVisible,
         bool IncomeEncouragementWithoutSalary,
         bool IncomePrivacyBehavior,
+        bool WorkdayCompletionBehavior,
         FloatingSecondaryRemainingGateResults SecondaryRemainingGates,
         IReadOnlyList<FloatingSecondaryRemainingMeasurement> SecondaryRemainingSamples,
         FloatingScrollBarValidation ScrollBar,

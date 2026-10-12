@@ -17,11 +17,13 @@ public sealed partial class FloatingWindow
     private const string WorkdayEndCountdownId = "__workday_end__";
     private const string EncourageBadgeText = "超期待！";
     private const double KeyTextMinimumFontSize = 12;
+    private TextBlock? _workdayCompletionIncome;
 
     private IReadOnlyList<FrameworkElement> BuildWarmPaperCountdownRows(
         IReadOnlyList<CountdownRecord> records,
         DateTimeOffset nowUtc,
-        string displayPrecision)
+        string displayPrecision,
+        bool hasCompletionCard = false)
     {
         var rows = new List<FrameworkElement>(records.Count);
         for (var index = 0; index < records.Count; index++)
@@ -30,7 +32,7 @@ public sealed partial class FloatingWindow
                 records[index],
                 nowUtc,
                 displayPrecision,
-                index == 0));
+                index == 0 && !hasCompletionCard));
         }
 
         return rows;
@@ -42,22 +44,51 @@ public sealed partial class FloatingWindow
         string displayPrecision,
         bool isPrimary)
     {
-        var theme = _activeTheme ??
-                    throw new InvalidOperationException("悬浮窗主题尚未初始化。");
         var remaining = CountdownFormatting.FormatRemaining(
             record.TargetUtc,
             nowUtc,
             displayPrecision);
         var secondsChanged = TrackSecondsChange(record.Id, remaining);
+        return BuildWarmPaperRow(
+            isPrimary ? BuildWarmPaperPrimaryContent(record, remaining, secondsChanged)
+                : BuildWarmPaperSecondaryContent(record, remaining, secondsChanged),
+            isPrimary ? $"主要倒计时 {record.Name}，{remaining}" : $"倒计时 {record.Name}，{remaining}",
+            isPrimary);
+    }
+
+    private FrameworkElement BuildWorkdayCompletionRow()
+    {
+        var content = new StackPanel { Margin = new Thickness(12, 8, 68, 8) };
+        content.Children.Add(new TextBlock
+        {
+            Text = "下班啦",
+            FontSize = (double)FindResource("TypeBodyFontSize"),
+            FontWeight = FontWeights.SemiBold,
+            Foreground = _floatingPrimaryBrush
+        });
+        _workdayCompletionIncome = new TextBlock
+        {
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
+            Margin = new Thickness(0, 6, 0, 0),
+            Foreground = _floatingMutedBrush,
+            TextWrapping = TextWrapping.Wrap
+        };
+        Typography.SetNumeralAlignment(_workdayCompletionIncome, FontNumeralAlignment.Tabular);
+        content.Children.Add(_workdayCompletionIncome);
+        return BuildWarmPaperRow(content, "下班啦", true);
+    }
+
+    private FrameworkElement BuildWarmPaperRow(FrameworkElement content, string accessibleName, bool isPrimary)
+    {
+        var theme = _activeTheme ??
+                    throw new InvalidOperationException("悬浮窗主题尚未初始化。");
         var root = new Grid
         {
             MinHeight = isPrimary ? 68 : 39,
             Margin = new Thickness(0),
             Background = Brushes.Transparent
         };
-        UiAccessibility.Name(
-            root,
-            isPrimary ? $"主要倒计时 {record.Name}，{remaining}" : $"倒计时 {record.Name}，{remaining}");
+        UiAccessibility.Name(root, accessibleName);
 
         if (isPrimary)
         {
@@ -103,9 +134,7 @@ public sealed partial class FloatingWindow
             IsHitTestVisible = false
         });
 
-        root.Children.Add(isPrimary
-            ? BuildWarmPaperPrimaryContent(record, remaining, secondsChanged)
-            : BuildWarmPaperSecondaryContent(record, remaining, secondsChanged));
+        root.Children.Add(content);
         return new Border
         {
             Child = root,

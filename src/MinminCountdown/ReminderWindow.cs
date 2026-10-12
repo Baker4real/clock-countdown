@@ -29,12 +29,15 @@ internal sealed class ReminderCenterWindow : Window
     private bool _coordinatorCloseRequested;
     private bool _initialFocusAssigned;
     private bool _hasManualWindowPlacement;
+    private readonly Window? _placementSource;
+    private bool _placementInitialized;
     private int _nativeWindowDragRequestCount;
     private int _nativeWindowDragCompletionCount;
     private int _taskbarFlashRequestCount;
 
-    public ReminderCenterWindow()
+    public ReminderCenterWindow(Window? placementSource = null)
     {
+        _placementSource = placementSource;
         _viewModel = new ReminderCenterViewModel();
         _viewModel.AcknowledgeAllRequested += (_, args) =>
             AcknowledgeAllRequested?.Invoke(this, args);
@@ -188,6 +191,8 @@ internal sealed class ReminderCenterWindow : Window
             FocusEscapeTarget();
         };
         Loaded += (_, _) => ApplyAutomaticPlacementIfNeeded();
+        WindowWorkAreaGeometry.TrackChanges(this, ApplyAutomaticPlacementIfNeeded,
+            () => _hasManualWindowPlacement = true);
         // #215：初始焦点只在用户真正激活窗口后落下，出现时不得抢焦点。
         Activated += (_, _) => EnsureInitialFocus();
     }
@@ -204,14 +209,15 @@ internal sealed class ReminderCenterWindow : Window
 
     private void ApplyAutomaticPlacementIfNeeded()
     {
-        if (_hasManualWindowPlacement)
+        var workArea = MonitorWorkAreaResolver.ResolveForWindow(
+            !_placementInitialized && _placementSource is { } source ? source : this).WorkAreaDip;
+        if (!_hasManualWindowPlacement)
         {
-            return;
+            Left = workArea.Right - ActualWidth - 18;
+            Top = workArea.Top + 18;
         }
-
-        var workArea = SystemParameters.WorkArea;
-        Left = workArea.Right - ActualWidth - 18;
-        Top = workArea.Top + 18;
+        WindowWorkAreaGeometry.Fit(this, workArea, 18);
+        _placementInitialized = true;
     }
 
     private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)

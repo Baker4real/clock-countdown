@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>..\..\countdown-icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>MinminCountdown</AssemblyName>
     <RootNamespace>MinminCountdown</RootNamespace>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

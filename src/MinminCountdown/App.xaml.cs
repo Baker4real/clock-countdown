@@ -184,7 +184,8 @@ public sealed partial class App : Application
             _reminderDeliveryCoordinator = new ReminderDeliveryCoordinator(
                 desktopWorkspace,
                 _logger,
-                (sourceKind, sourceId) => managerLifecycle.OpenReminderSource(sourceKind, sourceId));
+                (sourceKind, sourceId) => managerLifecycle.OpenReminderSource(sourceKind, sourceId),
+                () => new ReminderCenterWindow(_floatingWindow));
             _floatingWindow = new FloatingWindow(
                 desktopWorkspace,
                 _calendar,

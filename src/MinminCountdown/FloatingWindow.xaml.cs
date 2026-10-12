@@ -89,6 +89,7 @@ public sealed partial class FloatingWindow : Window
         _deleteUndoCountdown = new DeleteUndoCountdown(Dispatcher, ExpireOwnedFloatingDeleteUndo);
         ConfigureControls();
         WireEvents();
+        WindowWorkAreaGeometry.TrackChanges(this, Reanchor);
         PreviewKeyDown += OnPreviewKeyDown;
         ApplyTheme();
         _desktopWorkspace.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
@@ -250,7 +251,7 @@ public sealed partial class FloatingWindow : Window
     {
         get
         {
-            var workArea = SystemParameters.WorkArea;
+            var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
             return Math.Abs((Top + ActualHeight) - (workArea.Bottom - 12)) <= 2.5;
         }
     }
@@ -269,7 +270,7 @@ public sealed partial class FloatingWindow : Window
             ShowWorkspace(WorkspaceKind.Notes);
             UpdateLayout();
 
-            var workArea = SystemParameters.WorkArea;
+            var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
             var minimumLeft = workArea.Left + 12;
             var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
             var minimumTop = workArea.Top + 12;
@@ -356,7 +357,7 @@ public sealed partial class FloatingWindow : Window
         var originalBottomAnchorPosition = _bottomAnchorPosition;
         var originalLeft = Left;
         var originalTop = Top;
-        var workArea = SystemParameters.WorkArea;
+        var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
         var minimumLeft = workArea.Left + 12;
         var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
         var minimumTop = workArea.Top + 12;
@@ -737,7 +738,7 @@ public sealed partial class FloatingWindow : Window
 
     internal void Reanchor()
     {
-        var workArea = SystemParameters.WorkArea;
+        var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
         var minimumLeft = workArea.Left + 12;
         var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
         var minimumTop = workArea.Top + 12;

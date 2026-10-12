@@ -4867,7 +4867,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $singleBorderMeasurements = @($adapterValidation.MainDaySingleBorder.Measurements | Sort-Object StateId)
     Assert-Equal 'Countdown-Day,Notes-Day' ((@($singleBorderMeasurements.StateId) -join ',')) '主窗口单边框精确覆盖日间两个工作区'
     Assert-Equal 0 @($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count '主窗口两态控件边、标签隔离和声明下半装饰均由像素测量通过'
-    Assert-Equal 'Countdown-Day:499/500/521/522/534/535/554:480:1079;Notes-Day:425/426/470/471/495/496/497/499/500/501/503/504/512/513:416:845' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（#217 深色输入边界按 v46 实拍重推导，#189 扫描阈值与负控不变）'
+    Assert-Equal 'Countdown-Day:370/371/390/391/397/398/405/406/425/427:365:1079;Notes-Day:425/426/470/471/495/496/497/499/500/501/503/504/512/513:416:845' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（#221 紧凑表单按 v47 实拍定位，#189 扫描阈值与负控不变）'
     }
     else {
         Assert-Equal $false ([bool] $adapterValidation.MainReferenceBaselineValidated) '发布包不伪造未携带主窗口参考资产时的视觉验收'

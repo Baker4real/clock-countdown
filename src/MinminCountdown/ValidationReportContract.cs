@@ -96,7 +96,7 @@ internal static class ValidationReportContract
         "NoteDateUsesSpacedChineseFormat",
         "NoteCardBodyLineHeightSeparatesSummary",
         "NoteRowTitleFallsToBlockTitleLevel",
-        "NoteRowOverflowMenuKeyboardWorks",
+        "MainNoteRowActionsKeyboardWorks",
         "NoteCardSpacingConsumesTokens",
         "TagChipSingleLineEllipsisWithFullText",
         "EmptyStateTextAllowsWrap",
@@ -124,6 +124,9 @@ internal static class ValidationReportContract
         "CountdownListFirstBehavior",
         "MainTopmostStateSynchronization",
         "MainRedundancyCleanup",
+        "MainNoteEditorSeparation",
+        "MainNoteRowsSimplified",
+        "NoteGroupingSelectorAbsent",
         "CountdownPreferencesPopupBehavior",
         "CountdownEditorExpansionBehavior",
         "CountdownRowDeadlineAndSecondaryDeleteBehavior",
@@ -592,11 +595,13 @@ internal static class ValidationReportContract
                  {
                      "CountdownListFirstBehavior", "CountdownPreferencesPopupBehavior",
                      "CountdownEditorExpansionBehavior", "CountdownRowDeadlineAndSecondaryDeleteBehavior",
-                     "MainTopmostStateSynchronization", "MainRedundancyCleanup"
+                     "MainTopmostStateSynchronization", "MainRedundancyCleanup",
+                     "MainNoteEditorSeparation", "MainNoteRowsSimplified", "MainNoteRowActionsKeyboardWorks",
+                     "NoteGroupingSelectorAbsent"
                  })
         {
             MustReject(report => report[field] = false, false,
-                $"契约未拒绝 #221 行为失败：{field}。");
+                $"契约未拒绝主窗口行为失败：{field}。");
         }
         var duplicateProjection = new ValidationReportProjection
         {

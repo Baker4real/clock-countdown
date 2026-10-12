@@ -2102,6 +2102,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         DateTimeOffset nowUtc,
         string? revealNoteId = null)
     {
+        var visibleIndex = 0;
         foreach (var group in notes.GroupBy(note => note.Date, StringComparer.Ordinal))
         {
             var isFirstSection = target.Children.Count == 0;
@@ -2111,7 +2112,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var sectionRows = new StackPanel { Uid = "NoteDateRows" };
             foreach (var note in groupedNotes)
             {
-                sectionRows.Children.Add(CreateNoteRow(note, nowUtc));
+                sectionRows.Children.Add(CreateNoteRow(note, nowUtc, visibleIndex++));
             }
 
             var isExpanded = !_collapsedNoteDateSections.Contains(sectionKey) ||
@@ -2321,7 +2322,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         rows.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private FrameworkElement CreateNoteRow(NoteRecord note, DateTimeOffset nowUtc)
+    private FrameworkElement CreateNoteRow(NoteRecord note, DateTimeOffset nowUtc, int visibleIndex)
     {
         var completion = UiAccessibility.Name(
             new CheckBox
@@ -2339,15 +2340,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _noteCompletionBoxes[note.Id] = completion;
 
         var edit = NoteActionButton("编辑", note.Id, $"编辑便签 {note.Text}", "pencil");
+        edit.Uid = "NoteRowEdit";
         edit.Click += OnEditNote;
         var delete = NoteActionButton("删除", note.Id, $"删除便签 {note.Text}", "trash");
-        delete.Style = (Style)FindResource("DangerButton");
+        delete.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
+        delete.BorderBrush = Brushes.Transparent;
         delete.Click += OnDeleteNote;
-        var more = NoteActionButton("…", note.Id, $"更多操作：编辑或删除便签 {note.Text}");
-        more.Uid = "NoteRowOverflowMenu";
-        more.MinWidth = 56;
-        more.SetResourceReference(Button.ForegroundProperty, "MutedBrush");
-        AttachNoteRowOverflowMenu(more, note);
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -2355,12 +2353,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         actions.Children.Add(edit);
         actions.Children.Add(delete);
-        actions.Children.Add(more);
 
         var body = new StackPanel();
         var noteText = new TextBlock
         {
             Uid = "NoteRowBodyText",
+            FontSize = (double)FindResource("TypeBodyFontSize"),
             Text = note.Text,
             TextWrapping = TextWrapping.Wrap,
             // #153：正文行距足够分开正文与提醒摘要（NoteCardBodyLineHeight 注释推导）。
@@ -2379,8 +2377,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Text = details
             };
-            // #197/#208：摘要使用 H2 阶梯并直接以真实 DIP 渲染，保持长便签提醒的可读下限。
-            detailText.SetResourceReference(TextBlock.FontSizeProperty, "TypeH2FontSize");
+            // #227：摘要不得大于正文，仍保留真实 DIP 可读下限。
+            detailText.SetResourceReference(TextBlock.FontSizeProperty, "TypeCaptionFontSize");
             detailText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             AutomationProperties.SetAutomationId(detailText, NoteCardReminderSummaryAutomationId);
             UiAccessibility.Name(detailText, $"便签卡提醒摘要：{details}");
@@ -2412,7 +2410,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         grid.Children.Add(body);
         grid.Children.Add(tagChips);
         grid.Children.Add(actions);
-        var card = NoteCard(grid, UseWhiteNoteCard(note));
+        var card = NoteCard(grid, note.IsCompleted || visibleIndex % 2 == 1);
         _noteSourceRows[note.Id] = card;
         _noteSourceFocusTargets[note.Id] = edit;
         if (string.Equals(note.Id, _reminderSourceNoteId, StringComparison.OrdinalIgnoreCase))
@@ -2442,52 +2440,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         glyph.SetResourceReference(WpfPath.StrokeProperty, brushKey);
         return glyph;
-    }
-
-    private void AttachNoteRowOverflowMenu(Button trigger, NoteRecord note)
-    {
-        var menuEdit = NoteActionButton("编辑", note.Id, $"编辑便签 {note.Text}");
-        var menuDelete = NoteActionButton("删除", note.Id, $"删除便签 {note.Text}");
-        menuDelete.Style = (Style)FindResource("DangerButton");
-        foreach (var item in new[] { menuEdit, menuDelete })
-        {
-            item.HorizontalAlignment = HorizontalAlignment.Stretch;
-            item.HorizontalContentAlignment = HorizontalAlignment.Left;
-            item.Margin = new Thickness(0, 2, 0, 2);
-        }
-
-        var items = new StackPanel { Margin = new Thickness(4) };
-        items.Children.Add(menuEdit);
-        items.Children.Add(menuDelete);
-        var surface = new Border
-        {
-            MinWidth = 150,
-            Padding = new Thickness(6),
-            CornerRadius = new CornerRadius(12),
-            BorderThickness = new Thickness(1),
-            Child = items
-        };
-        surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
-        surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
-        var popup = new Popup
-        {
-            PlacementTarget = trigger,
-            Placement = PlacementMode.Bottom,
-            StaysOpen = false,
-            AllowsTransparency = true,
-            PopupAnimation = PopupAnimation.None,
-            Child = surface
-        };
-        NoteRowOverflowMenuBehavior.SetPopup(trigger, popup);
-        // #153：管理窗便签 `…` 菜单接入与筛选 / 标签管理 / 标签选择器 / 悬浮窗 `…` 菜单同一套
-        // 弹层焦点生命周期——打开聚焦首项「编辑」、Tab 在层内循环走完「编辑 / 删除」、
-        // Esc 关闭并把焦点归还触发按钮；不再保留 ad-hoc 的二次点击抑制与 Esc 处理。
-        PopupFocusLifecycle.Attach(popup, trigger, () => menuEdit);
-        trigger.Click += (_, _) => popup.IsOpen = !popup.IsOpen;
-        menuEdit.Click += (_, _) => popup.IsOpen = false;
-        menuEdit.Click += OnEditNote;
-        menuDelete.Click += (_, _) => popup.IsOpen = false;
-        menuDelete.Click += OnDeleteNote;
     }
 
     private static string FormatNoteDetails(NoteRecord note, DateTimeOffset nowUtc)
@@ -2816,6 +2768,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     internal void LoadNoteIntoEditor(NoteRecord note)
     {
         _editingNoteId = note.Id;
+        NoteEditorTitle.Visibility = Visibility.Visible;
         NoteText.Text = note.Text;
         _settingDefaultDate = true;
         NoteDate.SelectedDate = note.Date is null
@@ -3019,6 +2972,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private void ResetNoteEditor()
     {
         _editingNoteId = null;
+        NoteEditorTitle.Visibility = Visibility.Collapsed;
         ClearNoteFieldErrors();
         NoteText.Clear();
         _settingDefaultDate = true;
@@ -3601,17 +3555,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         return card;
     }
 
-    private static bool UseWhiteNoteCard(NoteRecord note)
-    {
-        if (note.IsCompleted)
-        {
-            return true;
-        }
-
-        var stableHash = note.Id.Aggregate(17, (hash, character) => unchecked(hash * 31 + character));
-        return (stableHash & 1) == 0;
-    }
-
     private Border NoteCard(UIElement content, bool useWhiteSurface)
     {
         var card = new Border
@@ -3727,7 +3670,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         yield return NoteDate;
         yield return SaveNoteButton;
         yield return NoteSearch;
-        yield return NoteGroupingSelector;
         yield return FilterButton;
         yield return TagManagerButton;
     }

@@ -871,13 +871,14 @@ internal static class ValidationReport
             new PopupFocusTabGateInputs(
                 noteListPolish.FilterPopupTabCyclesInsideLayer,
                 noteListPolish.TagManagerPopupTabCyclesInsideLayer,
-                noteListPolish.TagSelectorPopupTabCyclesInsideLayer,
-                noteListPolish.OverflowMenuPopupTabCyclesInsideLayer));
+                noteListPolish.TagSelectorPopupTabCyclesInsideLayer));
         var popupFocusTabGateIsolationBehavior =
             ValidationExercises.RunPopupFocusTabGateIsolationBehavior();
         var countdownListFirst = ValidationExercises.RunCountdownListFirstBehavior();
         var mainTopmostStateSynchronization = ValidationExercises.RunMainTopmostStateSynchronization();
         var mainRedundancyCleanup = ValidationExercises.RunMainRedundancyCleanup();
+        var mainNoteEditorSeparation = ValidationExercises.RunMainNoteEditorSeparation();
+        var mainNoteRowsSimplified = ValidationExercises.RunMainNoteRowsSimplified();
         var countdownPreferencesPopup = ValidationExercises.RunCountdownPreferencesPopupBehavior();
         var countdownEditorExpansion = ValidationExercises.RunCountdownEditorExpansionBehavior();
         var countdownRowPresentation = ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior();
@@ -1166,7 +1167,6 @@ internal static class ValidationReport
         var completedNotesCount = Required<TextBlock>(main, "CompletedNotesCount");
         var activeNotesBadge = Required<Border>(main, "ActiveNotesBadge");
         var completedNotesBadge = Required<Border>(main, "CompletedNotesBadge");
-        var noteGroupingSelector = Required<ComboBox>(main, "NoteGroupingSelector");
         var countdownActionButtons = Descendants<Button>(countdownRows)
             .Where(button => button.Content?.ToString() is "编辑" or "删除")
             .ToArray();
@@ -1243,8 +1243,7 @@ internal static class ValidationReport
             main,
             activeNoteRows,
             completedNoteRows);
-        var noteRowOverflowMenu = ExerciseNoteRowOverflowMenu(main, activeNoteRows);
-        var noteGroupingSelectorPlaceholder = HasNoteGroupingSelectorPlaceholder(noteGroupingSelector);
+        var noteGroupingSelectorAbsent = main.FindName("NoteGroupingSelector") is null;
         var tagChips = Descendants<Border>(countdownRows)
             .Concat(Descendants<Border>(activeNoteRows))
             .Where(border => !string.IsNullOrWhiteSpace(border.Uid))
@@ -2325,6 +2324,8 @@ internal static class ValidationReport
             ["CountdownListFirstBehavior"] = countdownListFirst,
             ["MainTopmostStateSynchronization"] = mainTopmostStateSynchronization,
             ["MainRedundancyCleanup"] = mainRedundancyCleanup,
+            ["MainNoteEditorSeparation"] = mainNoteEditorSeparation,
+            ["MainNoteRowsSimplified"] = mainNoteRowsSimplified,
             ["CountdownPreferencesPopupBehavior"] = countdownPreferencesPopup,
             ["CountdownEditorExpansionBehavior"] = countdownEditorExpansion,
             ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = countdownRowPresentation,
@@ -2603,11 +2604,10 @@ internal static class ValidationReport
             ["NoteStatusLabelsPresent"] =
                 noteStatusLabels || workspaceSnapshot.Settings.Notes.Count == 0,
             ["NoteStatusSegmentSwitch"] = noteStatusSegmentSwitch,
-            ["NoteRowOverflowMenuWorks"] = noteRowOverflowMenu,
             ["NoteDateUsesSpacedChineseFormat"] = noteListPolish.SpacedChineseDateEverywhere,
             ["NoteCardBodyLineHeightSeparatesSummary"] = noteListPolish.BodyLineHeightSeparatesSummary,
             ["NoteRowTitleFallsToBlockTitleLevel"] = noteListPolish.RowTitleFallsToBlockTitleLevel,
-            ["NoteRowOverflowMenuKeyboardWorks"] = noteListPolish.OverflowMenuKeyboardLifecycleWorks,
+            ["MainNoteRowActionsKeyboardWorks"] = noteListPolish.MainNoteRowActionsKeyboardWorks,
             ["NoteCardSpacingConsumesTokens"] = noteListPolish.CardSpacingConsumesTokens,
             ["TagChipSingleLineEllipsisWithFullText"] = noteListPolish.TagChipSingleLineEllipsisWithFullText,
             ["EmptyStateTextAllowsWrap"] = noteListPolish.EmptyStateTextAllowsWrap,
@@ -2622,7 +2622,7 @@ internal static class ValidationReport
             ["FloatingShellLargeShadowRemoved"] = floatingShellLargeShadowRemoved,
             ["MainWindowSquareChromeNoTransparency"] = visualChrome.MainWindowSquareChromeNoTransparency,
             ["TabsRenderAboveDecorationBand"] = visualChrome.TabsRenderAboveDecorationBand,
-            ["NoteGroupingSelectorPlaceholder"] = noteGroupingSelectorPlaceholder,
+            ["NoteGroupingSelectorAbsent"] = noteGroupingSelectorAbsent,
             ["NoteDateTimelineVisuals"] = noteDateTimelineVisuals,
             ["NoteDisclosureAccessibility"] = noteDisclosureAccessibility,
             ["NoteDisclosureThemeTokens"] = noteDisclosureThemeTokens,
@@ -10833,59 +10833,6 @@ internal static class ValidationReport
             name.Contains("条", StringComparison.Ordinal);
     }
 
-    private static bool HasNoteGroupingSelectorPlaceholder(ComboBox selector)
-    {
-        return
-            selector.Items.Count == 1 &&
-            selector.SelectedIndex == 0 &&
-            selector.Items[0] is ComboBoxItem { Content: "按日期分组" } &&
-            string.Equals(
-                AutomationProperties.GetName(selector),
-                "按日期分组",
-                StringComparison.Ordinal);
-    }
-
-    private static bool ExerciseNoteRowOverflowMenu(MainWindow main, Panel activeRows)
-    {
-        var trigger = Descendants<Button>(activeRows)
-            .FirstOrDefault(button =>
-                string.Equals(button.Uid, "NoteRowOverflowMenu", StringComparison.Ordinal));
-        if (trigger is null)
-        {
-            return !Descendants<Button>(activeRows)
-                .Any(button => button.Content?.ToString() is "编辑" or "删除");
-        }
-
-        trigger.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger);
-        if (popup is null || !popup.IsOpen)
-        {
-            return false;
-        }
-
-        var menuSurface = popup.Child as DependencyObject;
-        var menuActions = menuSurface is null
-            ? Array.Empty<Button>()
-            : Descendants<Button>(menuSurface)
-                .Where(button => button.Content?.ToString() is "编辑" or "删除")
-                .ToArray();
-        var actionsMirrorInlineButtons =
-            menuActions.Length == 2 &&
-            menuActions.All(button => button.Tag is string) &&
-            menuActions.Any(button => button.Content?.ToString() == "编辑") &&
-            menuActions.Any(button => button.Content?.ToString() == "删除") &&
-            menuActions.All(button =>
-            {
-                var action = (string)button.Content!;
-                var prefix = $"{action}便签 ";
-                return ValidationExercises.IsWellFormedAccessibleName(
-                    AutomationProperties.GetName(button),
-                    prefix);
-            });
-        popup.IsOpen = false;
-        return popup.IsOpen == false && actionsMirrorInlineButtons;
-    }
-
     private static bool HasNoteDateTimelineVisual(NoteDateSection section)
     {
         var content = section.Toggle.Content as Grid;
@@ -12221,11 +12168,6 @@ internal static class ValidationReport
                 return "NotesListRegion.CompletedSegment";
             }
 
-            if (ReferenceEquals(focused, Required<ComboBox>(main, "NoteGroupingSelector")))
-            {
-                return "NotesListRegion.Grouping";
-            }
-
             if (focused is Button { Uid: "NoteDateDisclosure" })
             {
                 return "NotesListRegion.DateSection";
@@ -12242,7 +12184,6 @@ internal static class ValidationReport
                 {
                     "编辑" => "NotesListRegion.Edit",
                     "删除" => "NotesListRegion.Delete",
-                    "…" => "NotesListRegion.More",
                     _ => "NotesListRegion.Button"
                 };
             }

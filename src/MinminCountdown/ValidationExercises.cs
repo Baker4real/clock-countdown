@@ -5640,6 +5640,126 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunMainNoteEditorSeparation()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-note-separation-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var search = (TextBox)main.FindName("NoteSearch");
+            var editor = (FrameworkElement)main.FindName("NoteEditorPanel");
+            var list = (FrameworkElement)main.FindName("NotesListCard");
+            Must(list.IsAncestorOf(search) && !editor.IsAncestorOf(search),
+                "#227：搜索便签必须位于状态列表区域，不属于新增编辑表单。");
+            var note = new NoteRecord("note-layout-probe", "编辑态便签", "2038-07-08", false,
+                Array.Empty<string>(), Array.Empty<ReminderRule>());
+            main.LoadNoteIntoEditor(note);
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(main.FindName("NoteEditorTitle") is TextBlock { Text: "编辑便签", IsVisible: true },
+                "#227：编辑态必须显示编辑便签标题。");
+            ((Button)main.FindName("CancelNoteEdit")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(!((FrameworkElement)main.FindName("NoteEditorTitle")).IsVisible,
+                "#227：取消编辑后不能继续显示编辑便签标题。");
+            var summary = (FrameworkElement)main.FindName("NoteReminderRulesSummary");
+            var field = (FrameworkElement)main.FindName("ManageNoteReminderRulesButton");
+            Must(Math.Abs(summary.TransformToAncestor(main).Transform(new Point()).X -
+                 field.TransformToAncestor(main).Transform(new Point()).X) <= 1,
+                "#227：规则摘要应与字段列左对齐。");
+            Keyboard.Focus((UIElement)main.FindName("NotesTab"));
+            Must(WindowValidationInput.RaisePreviewKey((UIElement)main.FindName("NotesTab"), Key.F, ModifierKeys.Control) &&
+                 search.IsKeyboardFocusWithin, "#227：Ctrl+F仍聚焦移动后的搜索便签。");
+            Must(main.FindName("NoteGroupingSelector") is null,
+                "#227：只有一个选项的按日期分组下拉应移除。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunMainNoteRowsSimplified()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-note-rows-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        for (var index = 0; index < 5; index++)
+        {
+            MustApply(workspace, new SaveNoteChange(null, $"交替便签 {index}",
+                new DateTime(2038, 7, index < 3 ? 8 : 9), false,
+                Array.Empty<string>(), new ReminderRule[] { new AbsoluteOnceReminderRule(
+                    $"note-row-rule-{index}", new DateTimeOffset(2038, 7, 10, 1, 0, 0, TimeSpan.Zero)) }));
+        }
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var rows = (Panel)main.FindName("ActiveNoteRows");
+            void VerifyRows(int count, bool completed = false)
+            {
+                main.UpdateLayout();
+                WindowValidationInput.Pump(main.Dispatcher);
+                var bodies = VisualDescendants<TextBlock>(rows).Where(text => text.Uid == "NoteRowBodyText").ToArray();
+                Must(bodies.Length == count, "#227：行样式探针必须建立预期非空便签列表。");
+                for (var index = 0; index < bodies.Length; index++)
+                {
+                    var body = bodies[index];
+                    var card = VisualDescendants<Border>(rows).Single(border => border.Child is Grid && border.IsAncestorOf(body));
+                    var buttons = VisualDescendants<Button>(card).ToArray();
+                    Must(buttons.Length == 2 && buttons.Any(button => Equals(button.Content, "编辑")) &&
+                         buttons.Any(button => Equals(button.Content, "删除")),
+                        "#227：主便签行只保留编辑和删除，不再重复显示更多菜单。");
+                    var summaries = VisualDescendants<TextBlock>(card).Where(text => AutomationProperties.GetAutomationId(text) ==
+                        MainWindow.NoteCardReminderSummaryAutomationId).ToArray();
+                    Must(Math.Abs(body.FontSize - (double)main.FindResource("TypeBodyFontSize")) <= 0.01 &&
+                         summaries.Length == 1 && summaries.All(text => text.IsVisible && text.FontSize <= body.FontSize),
+                        "#227：便签正文使用正文阶梯，提醒摘要不得大于正文。");
+                    var delete = buttons.Single(button => Equals(button.Content, "删除"));
+                    Must(delete.Foreground is SolidColorBrush foreground && foreground.Color == (Color)main.FindResource("DangerColor") &&
+                         delete.BorderBrush is SolidColorBrush borderBrush && borderBrush.Color.A == 0 &&
+                         VisualDescendants<System.Windows.Shapes.Path>(delete).Any(icon => icon.IsVisible),
+                        "#227：便签删除应为无红边框的危险色文字图标。");
+                    var expected = (SolidColorBrush)main.FindResource(completed || index % 2 == 1 ? "NoteWhiteBrush" : "NoteBrush");
+                    Must(card.Background is SolidColorBrush actual && actual.Color == expected.Color,
+                        "#227：便签底色必须按跨日期组的可见位置黄白交替，已完成全白。");
+                }
+            }
+            VerifyRows(5);
+            ((TextBox)main.FindName("NoteSearch")).Text = "交替便签 4";
+            VerifyRows(1);
+            ((TextBox)main.FindName("NoteSearch")).Clear();
+            VerifyRows(5);
+            var removed = workspace.Snapshot.Settings.Notes.First();
+            MustApply(workspace, new DeleteNoteChange(removed.Id));
+            VerifyRows(4);
+            foreach (var note in workspace.Snapshot.Settings.Notes.ToArray())
+                MustApply(workspace, new SaveNoteChange(note.Id, note.Text, DateTime.Parse(note.Date!), true,
+                    note.TagIds, note.ReminderRules));
+            ((ToggleButton)main.FindName("CompletedNotesSegment")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            rows = (Panel)main.FindName("CompletedNoteRows");
+            VerifyRows(4, completed: true);
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunMainRedundancyCleanup()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-redundancy-{Guid.NewGuid():N}.json");
@@ -5987,7 +6107,7 @@ internal static class ValidationExercises
                 var scroller = (ScrollViewer)main.FindName("NotesListRegion");
                 var activeRows = (Panel)main.FindName("ActiveNoteRows");
                 var trigger = VisualDescendants<Button>(activeRows)
-                    .Last(button => button.Uid == "NoteRowOverflowMenu");
+                    .Last(button => button.Uid == "NoteRowEdit");
                 Keyboard.Focus(trigger);
                 WindowValidationInput.Pump(main.Dispatcher);
                 scroller.ScrollToEnd();
@@ -6014,7 +6134,7 @@ internal static class ValidationExercises
                     }));
                 WindowValidationInput.Pump(main.Dispatcher);
                 trigger = VisualDescendants<Button>(activeRows)
-                    .Single(button => button.Uid == "NoteRowOverflowMenu" && (string)button.Tag == note.Id);
+                    .Single(button => button.Uid == "NoteRowEdit" && (string)button.Tag == note.Id);
                 Keyboard.Focus(trigger);
                 WindowValidationInput.Pump(main.Dispatcher);
                 scroller.ScrollToEnd();
@@ -11371,19 +11491,18 @@ internal static class ValidationExercises
         return true;
     }
 
-    // #153：弹层 Tab 层内循环门禁——筛选 / 标签管理 / 标签选择器 / 便签溢出菜单四类弹层逐一收敛，
+    // #153：弹层 Tab 层内循环门禁——筛选 / 标签管理 / 标签选择器三类弹层逐一收敛；#227 主行已不含溢出菜单，
     // 负向夹具证明每个输入位都会被独立击穿，评估器不可能是恒真。
     public static PopupFocusTabGateResults EvaluatePopupFocusTabGates(
         PopupFocusTabGateInputs input) =>
         new(
             input.FilterCyclesInsideLayer,
             input.TagManagerCyclesInsideLayer,
-            input.TagSelectorCyclesInsideLayer,
-            input.OverflowMenuCyclesInsideLayer);
+            input.TagSelectorCyclesInsideLayer);
 
     public static bool RunPopupFocusTabGateIsolationBehavior()
     {
-        var passing = new PopupFocusTabGateInputs(true, true, true, true);
+        var passing = new PopupFocusTabGateInputs(true, true, true);
         Must(
             EvaluatePopupFocusTabGates(passing).AllCyclesInsideLayer,
             "弹层 Tab 层内循环全通过夹具被错误拒绝。");
@@ -11396,9 +11515,6 @@ internal static class ValidationExercises
         VerifyOnlyPopupFocusTabGateFails(
             passing with { TagSelectorCyclesInsideLayer = false },
             nameof(PopupFocusTabGateResults.TagSelectorCyclesInsideLayer));
-        VerifyOnlyPopupFocusTabGateFails(
-            passing with { OverflowMenuCyclesInsideLayer = false },
-            nameof(PopupFocusTabGateResults.OverflowMenuCyclesInsideLayer));
         return true;
     }
 
@@ -13407,27 +13523,23 @@ internal sealed record MainKeyboardNavigationGateInputs(
 internal sealed record PopupFocusTabGateInputs(
     bool FilterCyclesInsideLayer,
     bool TagManagerCyclesInsideLayer,
-    bool TagSelectorCyclesInsideLayer,
-    bool OverflowMenuCyclesInsideLayer);
+    bool TagSelectorCyclesInsideLayer);
 
 internal sealed record PopupFocusTabGateResults(
     bool FilterCyclesInsideLayer,
     bool TagManagerCyclesInsideLayer,
-    bool TagSelectorCyclesInsideLayer,
-    bool OverflowMenuCyclesInsideLayer)
+    bool TagSelectorCyclesInsideLayer)
 {
     public bool AllCyclesInsideLayer =>
         FilterCyclesInsideLayer &&
         TagManagerCyclesInsideLayer &&
-        TagSelectorCyclesInsideLayer &&
-        OverflowMenuCyclesInsideLayer;
+        TagSelectorCyclesInsideLayer;
 
     public IReadOnlyList<string> FailedChecks => new[]
     {
         (nameof(FilterCyclesInsideLayer), FilterCyclesInsideLayer),
         (nameof(TagManagerCyclesInsideLayer), TagManagerCyclesInsideLayer),
-        (nameof(TagSelectorCyclesInsideLayer), TagSelectorCyclesInsideLayer),
-        (nameof(OverflowMenuCyclesInsideLayer), OverflowMenuCyclesInsideLayer)
+        (nameof(TagSelectorCyclesInsideLayer), TagSelectorCyclesInsideLayer)
     }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();
 }
 

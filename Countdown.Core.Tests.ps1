@@ -3617,8 +3617,10 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 533 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 529 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 534 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 530 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\NoteCompletionExit.cs') '#233 source rebuild includes completion exit animation'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\NoteCompletionExit.cs') '#233 completion exit source is integrity protected'
 Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\app.manifest') '#219 source rebuild includes the PerMonitorV2 manifest'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\app.manifest') '#219 manifest is integrity protected'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'

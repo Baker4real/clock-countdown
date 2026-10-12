@@ -5369,10 +5369,12 @@ $floatingBottomStatusSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingBottomStatus.cs'),
     [System.Text.Encoding]::UTF8)
 # Apply 的参数是应用内的 AutomationOptionalTextBlock。这里只验证 Resolve，
-# 编进一个空的同名类型，避免把整份 UiControls 拉进这个纯函数编译。
+# 编进仅承载 Apply 所需成员的同名类型，避免把整份 UiControls 拉进这个纯函数编译。
 $floatingBottomStatusPeerStub = @"
 internal sealed class AutomationOptionalTextBlock : System.Windows.Controls.TextBlock
 {
+    internal bool IsInvokable { get; set; }
+
     internal void SetExcludedFromAutomationTree(bool excluded)
     {
     }
@@ -5416,6 +5418,9 @@ $encouragementSentinel = 'ENCOURAGEMENT-SENTINEL'
 $bottomEarningsReady = $floatingBottomStatusType::Resolve([decimal]41.13, [decimal]6200, 'Ready', 'STATUS-SENTINEL', $encouragementSentinel)
 Assert-Equal 'Earnings' ([string] $bottomEarningsReady.Kind) 'Bottom status shows earnings for positive salary and ready calendar'
 Assert-Equal '今日已赚 ￥41.13' ([string] $bottomEarningsReady.Text) 'Bottom status formats earnings amount'
+$bottomEarningsHidden = $floatingBottomStatusType::Resolve([decimal]41.13, [decimal]6200, 'Ready', 'STATUS-SENTINEL', $encouragementSentinel, $true)
+Assert-Equal 'Earnings' ([string] $bottomEarningsHidden.Kind) 'Hidden earnings retain their earnings presentation kind'
+Assert-Equal '今日已赚 ¥••••' ([string] $bottomEarningsHidden.Text) 'Hidden earnings presentation contains no amount'
 $bottomLoadingPositiveSalary = $floatingBottomStatusType::Resolve($null, [decimal]6200, 'Pending', '节假日日历正在加载', $encouragementSentinel)
 Assert-Equal 'Status' ([string] $bottomLoadingPositiveSalary.Kind) 'Bottom status keeps calendar status while loading with positive salary'
 Assert-Equal '节假日日历正在加载' ([string] $bottomLoadingPositiveSalary.Text) 'Bottom status passes through the loading text with positive salary'

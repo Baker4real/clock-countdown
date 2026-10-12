@@ -3,6 +3,22 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Write-CountdownValidationStage {
+    param([string] $Path, [object] $Value)
+    $temporary = "$Path.$([guid]::NewGuid().ToString('N')).tmp"
+    [IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+    [IO.File]::Move($temporary, $Path, $true)
+}
+
+function New-CountdownValidationEvidenceDirectory {
+    param([string] $Parent)
+    if (-not $Parent) { $Parent = $env:MINMIN_VALIDATION_EVIDENCE_ROOT }
+    if (-not $Parent) { $Parent = 'D:/agents/run-evidence/clock-countdown-validation' }
+    $path = Join-Path $Parent (([datetime]::UtcNow.ToString('yyyyMMddTHHmmssfff')) + '-' + [guid]::NewGuid().ToString('N'))
+    [void][IO.Directory]::CreateDirectory($path)
+    return $path
+}
+
 function Invoke-CountdownProcess {
     param(
         [Parameter(Mandatory)] [string] $FilePath,
@@ -10,8 +26,65 @@ function Invoke-CountdownProcess {
         [Parameter(Mandatory)] [string[]] $ArgumentList,
         [hashtable] $EnvironmentVariables = @{},
         [string] $StartFailureMessage = "$Operation 无法启动进程。",
-        [string] $IsolatedDesktopName
+        [string] $IsolatedDesktopName,
+        [string] $EvidenceDirectory
     )
+
+    $workRoot = New-CountdownValidationEvidenceDirectory -Parent $EvidenceDirectory
+    $stdoutPath = Join-Path $workRoot 'stdout.log'
+    $stderrPath = Join-Path $workRoot 'stderr.log'
+    $errorPath = Join-Path $workRoot 'error.json'
+    $statePath = Join-Path $workRoot 'stage.json'
+    $stage = [ordered]@{
+        SchemaVersion=1; Operation=$Operation; Status='Running'; StartedAtUtc=[datetime]::UtcNow.ToString('o')
+        FinishedAtUtc=$null; ExitCode=$null; OwnerProcessId=$PID
+        OwnerStartedAtUtc=[Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToString('o')
+        StdoutPath=$stdoutPath; StderrPath=$stderrPath; ErrorPath=$errorPath
+    }
+    Write-CountdownValidationStage $statePath $stage
+    [Console]::Error.WriteLine("[validation-stage] $($stage.StartedAtUtc) $Operation; evidence=$workRoot")
+
+    # PowerShell -File 的错误跨进程后只剩格式化文本。用同一 pwsh/STA 参数运行
+    # 极小入口，捕获原始 ErrorRecord；不改变目标脚本的 PSScriptRoot 或 stdout。
+    $fileIndex = [Array]::IndexOf($ArgumentList, '-File')
+    if ([IO.Path]::GetFileNameWithoutExtension($FilePath) -eq 'pwsh' -and $fileIndex -ge 0) {
+        $quote = { param([string]$Text) "'" + $Text.Replace("'", "''") + "'" }
+        $target = $ArgumentList[$fileIndex + 1]
+        $tokens = @(& $quote $target)
+        for ($i = $fileIndex + 2; $i -lt $ArgumentList.Count; $i++) {
+            $argument = $ArgumentList[$i]
+            if ($argument -match '^-[A-Za-z][A-Za-z0-9]*$') { $tokens += $argument }
+            else { $tokens += (& $quote $argument) }
+        }
+        $entryPath = Join-Path $workRoot 'entry.ps1'
+        $entry = @"
+`$ErrorActionPreference = 'Stop'
+`$utf8 = [Text.UTF8Encoding]::new(`$false)
+[Console]::OutputEncoding = `$utf8
+[Console]::InputEncoding = `$utf8
+`$OutputEncoding = `$utf8
+`$LASTEXITCODE = 0
+try {
+    & $($tokens -join ' ')
+    if (`$?) { exit 0 }
+    if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }
+    exit 1
+}
+catch {
+    `$record = [ordered]@{
+        exceptionMessage = `$_.Exception.Message
+        fullyQualifiedErrorId = `$_.FullyQualifiedErrorId
+        positionMessage = `$_.InvocationInfo.PositionMessage
+        scriptStackTrace = `$_.ScriptStackTrace
+    }
+    [IO.File]::WriteAllText($(& $quote $errorPath), (`$record | ConvertTo-Json -Depth 4), `$utf8)
+    [Console]::Error.WriteLine(`$_.Exception.Message)
+    exit 1
+}
+"@
+        [IO.File]::WriteAllText($entryPath, $entry, [Text.UTF8Encoding]::new($false))
+        $ArgumentList = @($ArgumentList[0..$fileIndex]) + @($entryPath)
+    }
 
     $allowUnisolated = [string]::Equals(
         [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED'),
@@ -28,22 +101,26 @@ function Invoke-CountdownProcess {
             }
         }
     }
+    try {
     if (-not [string]::IsNullOrWhiteSpace($IsolatedDesktopName) -and -not $allowUnisolated) {
-        return Invoke-CountdownIsolatedDesktopProcess `
+        $result = Invoke-CountdownIsolatedDesktopProcess `
             -FilePath $FilePath `
             -Operation $Operation `
             -ArgumentList $ArgumentList `
             -EnvironmentVariables $EnvironmentVariables `
             -StartFailureMessage $StartFailureMessage `
-            -DesktopName $IsolatedDesktopName
+            -DesktopName $IsolatedDesktopName `
+            -StdoutPath $stdoutPath -StderrPath $stderrPath
     }
-
+    else {
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $FilePath
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $startInfo.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
     foreach ($argument in $ArgumentList) {
         [void] $startInfo.ArgumentList.Add($argument)
     }
@@ -58,39 +135,65 @@ function Invoke-CountdownProcess {
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
+    $outputStream = $null
+    $errorStream = $null
     try {
+        # 1 字节缓冲使小段 stderr 也在子进程运行期间可读。
+        $outputStream = [IO.FileStream]::new($stdoutPath, 'Create', 'Write', 'ReadWrite', 1, 'Asynchronous')
+        $errorStream = [IO.FileStream]::new($stderrPath, 'Create', 'Write', 'ReadWrite', 1, 'Asynchronous')
         if (-not $process.Start()) {
             throw $StartFailureMessage
         }
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
+        $stdoutTask = $process.StandardOutput.BaseStream.CopyToAsync($outputStream)
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync($errorStream)
+        if (-not $process.WaitForExit(1800000)) {
+            $process.Kill($true)
+            throw "$Operation 超过 1800 秒；已停止本次拥有的子进程。"
+        }
+        if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdoutTask, $stderrTask), 5000)) {
+            throw "$Operation 退出后输出管道未关闭。"
+        }
+        $outputStream.Dispose(); $outputStream = $null
+        $errorStream.Dispose(); $errorStream = $null
         $result = [pscustomobject]@{
             ExitCode = [int] $process.ExitCode
-            StandardOutput = [string] $stdoutTask.GetAwaiter().GetResult()
-            StandardError = [string] $stderrTask.GetAwaiter().GetResult()
+            StandardOutput = [IO.File]::ReadAllText($stdoutPath, [Text.Encoding]::UTF8)
+            StandardError = [IO.File]::ReadAllText($stderrPath, [Text.Encoding]::UTF8)
         }
     }
     finally {
+        if ($null -ne $outputStream) { $outputStream.Dispose() }
+        if ($null -ne $errorStream) { $errorStream.Dispose() }
         $process.Dispose()
     }
-
-    if ($result.ExitCode -ne 0) {
-        $output = $result.StandardOutput.Trim()
-        $diagnostics = $result.StandardError.Trim()
-        $failureOutput = if ([string]::IsNullOrWhiteSpace($output)) {
-            $diagnostics
-        }
-        elseif ([string]::IsNullOrWhiteSpace($diagnostics)) {
-            $output
-        }
-        else {
-            "$output$([Environment]::NewLine)$diagnostics"
-        }
-        throw "$Operation 失败，退出码：$($result.ExitCode)。$([Environment]::NewLine)$failureOutput"
     }
-
+    $stage.ExitCode = $result.ExitCode
+    if ($result.ExitCode -ne 0) {
+        $child = $null
+        $detail = (@($result.StandardOutput.Trim(), $result.StandardError.Trim()) | Where-Object { $_ }) -join "`n"
+        if (Test-Path -LiteralPath $errorPath -PathType Leaf) {
+            $child = [IO.File]::ReadAllText($errorPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+            $detail = "$($child.exceptionMessage)`n$($child.fullyQualifiedErrorId)`n$($child.positionMessage)`n$($child.scriptStackTrace)"
+        }
+        if ($detail.Length -gt 8000) { $detail = $detail.Substring(0, 8000) + ' [truncated; see evidence]' }
+        $exception = [InvalidOperationException]::new("$Operation 失败，退出码：$($result.ExitCode)。日志：$workRoot`n$detail")
+        if ($null -ne $child) { $exception.Data['ChildErrorRecord'] = $child }
+        throw $exception
+    }
+    $stage.Status = 'Completed'
+    $result | Add-Member -NotePropertyName EvidenceDirectory -NotePropertyValue $workRoot
     $result
+    }
+    catch {
+        $stage.Status = 'Failed'
+        $_.Exception.Data['ValidationEvidenceDirectory'] = $workRoot
+        throw
+    }
+    finally {
+        $stage.FinishedAtUtc = [datetime]::UtcNow.ToString('o')
+        Write-CountdownValidationStage $statePath $stage
+        [Console]::Error.WriteLine("[validation-stage] $($stage.FinishedAtUtc) $Operation $($stage.Status)")
+    }
 }
 
 function Invoke-CountdownIsolatedDesktopProcess {
@@ -100,7 +203,9 @@ function Invoke-CountdownIsolatedDesktopProcess {
         [Parameter(Mandatory)] [string[]] $ArgumentList,
         [hashtable] $EnvironmentVariables = @{},
         [string] $StartFailureMessage = "$Operation 无法启动进程。",
-        [Parameter(Mandatory)] [string] $DesktopName
+        [Parameter(Mandatory)] [string] $DesktopName,
+        [Parameter(Mandatory)] [string] $StdoutPath,
+        [Parameter(Mandatory)] [string] $StderrPath
     )
 
     $launcher = Join-Path $PSScriptRoot 'tools\Start-IsolatedSuiteProcess.ps1'
@@ -108,10 +213,6 @@ function Invoke-CountdownIsolatedDesktopProcess {
         throw "$Operation 缺少隔离启动器：$launcher"
     }
 
-    $workRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('countdown-iso-' + [guid]::NewGuid().ToString('N'))
-    [void] [System.IO.Directory]::CreateDirectory($workRoot)
-    $stdoutPath = Join-Path $workRoot 'stdout.txt'
-    $stderrPath = Join-Path $workRoot 'stderr.txt'
     $previousEnv = [ordered]@{}
     foreach ($entry in $EnvironmentVariables.GetEnumerator()) {
         $key = [string] $entry.Key
@@ -146,29 +247,10 @@ function Invoke-CountdownIsolatedDesktopProcess {
                 else { '' })
         }
     }
-    catch {
-        throw "$StartFailureMessage $($_.Exception.Message)"
-    }
     finally {
         foreach ($key in $previousEnv.Keys) {
             [Environment]::SetEnvironmentVariable($key, $previousEnv[$key])
         }
-        Remove-Item -LiteralPath $workRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    if ($result.ExitCode -ne 0) {
-        $outputText = $result.StandardOutput.Trim()
-        $diagnostics = $result.StandardError.Trim()
-        $failureOutput = if ([string]::IsNullOrWhiteSpace($outputText)) {
-            $diagnostics
-        }
-        elseif ([string]::IsNullOrWhiteSpace($diagnostics)) {
-            $outputText
-        }
-        else {
-            "$outputText$([Environment]::NewLine)$diagnostics"
-        }
-        throw "$Operation 失败，退出码：$($result.ExitCode)。$([Environment]::NewLine)$failureOutput"
     }
 
     $result
@@ -180,7 +262,8 @@ function Invoke-CountdownValidationProcess {
         [Parameter(Mandatory)] [string] $Operation,
         [Parameter(Mandatory)] [string[]] $ArgumentList,
         [hashtable] $EnvironmentVariables = @{},
-        [string] $IsolatedDesktopName
+        [string] $IsolatedDesktopName,
+        [string] $EvidenceDirectory
     )
 
     $processResult = Invoke-CountdownProcess `
@@ -189,7 +272,8 @@ function Invoke-CountdownValidationProcess {
         -ArgumentList $ArgumentList `
         -EnvironmentVariables $EnvironmentVariables `
         -StartFailureMessage "$Operation 无法启动 PowerShell 7 进程。" `
-        -IsolatedDesktopName $IsolatedDesktopName
+        -IsolatedDesktopName $IsolatedDesktopName -EvidenceDirectory $EvidenceDirectory
+    try {
     $json = ([string] $processResult.StandardOutput).Trim()
     if ([string]::IsNullOrWhiteSpace($json)) {
         throw "$Operation 未返回 JSON。"
@@ -205,6 +289,16 @@ function Invoke-CountdownValidationProcess {
     [pscustomobject]@{
         Json = $json
         Report = $report
+    }
+    }
+    catch {
+        $path = Join-Path $processResult.EvidenceDirectory 'stage.json'
+        $stage = [IO.File]::ReadAllText($path) | ConvertFrom-Json
+        $stage.Status = 'Failed'
+        Write-CountdownValidationStage $path $stage
+        [Console]::Error.WriteLine("[validation-stage] $Operation JSON Failed; evidence=$($processResult.EvidenceDirectory)")
+        $_.Exception.Data['ValidationEvidenceDirectory'] = $processResult.EvidenceDirectory
+        throw
     }
 }
 
@@ -407,7 +501,8 @@ function Invoke-CountdownValidationSuite {
         [Parameter(Mandatory)] [string] $Root,
         [Parameter(Mandatory)] [string] $PowerShell7Path,
         [Parameter(Mandatory)] [string] $DotnetPath,
-        [switch] $ParentTransactionMutexHeld
+        [switch] $ParentTransactionMutexHeld,
+        [string] $EvidenceDirectory
     )
 
     $resolvedRoot = [System.IO.Path]::GetFullPath($Root)
@@ -446,12 +541,13 @@ function Invoke-CountdownValidationSuite {
     $core = Invoke-CountdownValidationProcess `
         -PowerShell7Path $resolvedPowerShell `
         -Operation 'Core 回归' `
-        -ArgumentList $coreArguments
+        -ArgumentList $coreArguments -EvidenceDirectory $EvidenceDirectory
     $corePassed = Assert-CountdownValidationTestReport -Report $core.Report -Label 'Core 回归'
 
     [void] (Invoke-CountdownProcess `
             -FilePath $resolvedDotnet `
             -Operation '源码应用 Release 构建' `
+            -EvidenceDirectory $EvidenceDirectory `
             -ArgumentList @(
                 'build',
                 (Join-Path $resolvedRoot 'src\MinminCountdown\MinminCountdown.csproj'),
@@ -481,6 +577,7 @@ function Invoke-CountdownValidationSuite {
         -PowerShell7Path $resolvedPowerShell `
         -Operation 'C# 回归' `
         -ArgumentList $cSharpArguments `
+        -EvidenceDirectory $EvidenceDirectory `
         -EnvironmentVariables $windowedChildEnvironment `
         -IsolatedDesktopName 'MinminSuiteIso-ValidateCSharp'
     $cSharpPassed = Assert-CountdownValidationTestReport -Report $cSharp.Report -Label 'C# 回归'
@@ -488,6 +585,7 @@ function Invoke-CountdownValidationSuite {
     $ui = Invoke-CountdownValidationProcess `
         -PowerShell7Path $resolvedPowerShell `
         -Operation '兼容 UI 回归' `
+        -EvidenceDirectory $EvidenceDirectory `
         -ArgumentList @(
             '-NoLogo',
             '-NoProfile',
@@ -522,6 +620,7 @@ function Invoke-CountdownValidationSuite {
         $application = Invoke-CountdownValidationProcess `
             -PowerShell7Path $resolvedPowerShell `
             -Operation '应用 validate-only' `
+            -EvidenceDirectory $EvidenceDirectory `
             -EnvironmentVariables $applicationEnvironment `
             -ArgumentList @(
                 '-NoLogo',
@@ -580,4 +679,26 @@ function Invoke-CountdownValidationSuite {
     }
 }
 
-Export-ModuleMember -Function Assert-CountdownApplicationValidationReport, Invoke-CountdownValidationSuite
+function Invoke-CountdownCandidatePreflight {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Root,
+        [Parameter(Mandatory)] [string] $PowerShell7Path,
+        [Parameter(Mandatory)] [string] $EvidenceDirectory,
+        [switch] $OfficeSession
+    )
+    Import-Module (Join-Path $Root 'Countdown.DeploymentPreflight.psm1') -Force
+    [Console]::Error.WriteLine('[validation-stage] 部署依赖预检')
+    $null = Invoke-CountdownDeploymentPreflight -OutputPath (Join-Path $EvidenceDirectory 'dependencies.json')
+    $app = Join-Path $Root 'app'
+    $dllHash = (Get-FileHash -LiteralPath (Join-Path $app 'MinminCountdown.dll') -Algorithm SHA256).Hash
+    $environment = if ($OfficeSession) { @{ MINMIN_SUITE_ALLOW_UNISOLATED='1' } } else { @{} }
+    $window = Invoke-CountdownValidationProcess -PowerShell7Path $PowerShell7Path -Operation '候选窗口短验证' `
+        -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-STA','-File',
+            (Join-Path $Root 'tools/Test-CountdownWindowPreflight.ps1'),'-AppPath',$app,'-ExpectedDllSha256',$dllHash) `
+        -EvidenceDirectory $EvidenceDirectory -EnvironmentVariables $environment -IsolatedDesktopName 'MinminSuiteIso-Preflight'
+    $null = Assert-CountdownValidationTestReport -Report $window.Report -Label '候选窗口短验证'
+    Write-CountdownValidationStage (Join-Path $EvidenceDirectory 'window.json') $window.Report
+}
+
+Export-ModuleMember -Function Assert-CountdownApplicationValidationReport, Invoke-CountdownValidationSuite, Invoke-CountdownCandidatePreflight

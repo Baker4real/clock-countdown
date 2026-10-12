@@ -99,6 +99,11 @@ Copy-Item -LiteralPath (Join-Path $repo '.gitattributes') -Destination $fixture
 Copy-Item -LiteralPath (Join-Path $repo 'holiday-data/LICENSE.txt') -Destination "$fixture/holiday-data/LICENSE.txt"
 & git init --quiet $fixture
 if ($LASTEXITCODE -ne 0) { throw 'Fixture init failed' }
+# CLI 身份门使用已提交夹具；当前工作树中的部署模块本身正是待验候选，
+# 不得要求正式入口绕过 HEAD blob 校验来接受它。
+foreach ($source in @('Deploy-OfficeCountdown.ps1','Countdown.TransferLedger.psm1','Countdown.RemoteDeployment.psm1')) {
+    Copy-Item -LiteralPath (Join-Path $repo $source) -Destination (Join-Path $fixture $source)
+}
 & git -C $fixture -c core.autocrlf=true add .
 if ($LASTEXITCODE -ne 0) { throw 'Fixture add failed' }
 & git -C $fixture -c user.name=Test -c user.email=test@example.invalid -c core.hooksPath=NUL commit --quiet -m fixture
@@ -115,8 +120,9 @@ try {
 } finally { [Console]::SetError($priorError) }
 Assert-Status 0 $progressOutput.Count 'Progress leaves success output clean'
 Assert-Status $true ($errorCapture.ToString().Contains('远端安装及事务验收中')) 'Progress is observable on stderr'
-$entryOutput = @(& pwsh -NoProfile -File (Join-Path $repo 'Deploy-OfficeCountdown.ps1') -StatusOnly)
-Assert-Status 0 $LASTEXITCODE 'Status CLI runs with the current dirty working tree'
+[IO.File]::WriteAllText((Join-Path $clone 'unrelated-user-work.txt'), 'preserve user work')
+$entryOutput = @(& pwsh -NoProfile -File (Join-Path $clone 'Deploy-OfficeCountdown.ps1') -StatusOnly)
+Assert-Status 0 $LASTEXITCODE 'Status CLI runs with unrelated dirty working tree content'
 $entryStatus = ($entryOutput -join "`n") | ConvertFrom-Json
 Assert-Status $false $entryStatus.LiveVerified 'Status CLI emits one historical JSON result'
 [pscustomobject]@{ Valid=$true; Assertions=$assertions } | ConvertTo-Json -Compress

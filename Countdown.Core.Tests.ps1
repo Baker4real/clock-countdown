@@ -22,6 +22,9 @@ if ($ParentTransactionMutexHeld) {
 }
 
 $ErrorActionPreference = 'Stop'
+# Native validation children emit UTF-8; decoding with Windows' cached 936
+# code page can consume the closing JSON quote after a Chinese path.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 # #126 分段计时插桩：计时行只走 stderr，保持 stdout 单一 JSON 报告契约
 # （Countdown.Validation.psm1 的 Invoke-CountdownValidationProcess 严格解析整个 stdout）。
@@ -3617,8 +3620,13 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 528 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 524 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 530 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 526 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+foreach ($preflightFile in @('Countdown.DeploymentPreflight.psm1', 'tools\Test-CountdownWindowPreflight.ps1')) {
+    Assert-Equal $true ($preflightFile -in @($releaseContract.PackageFiles)) "Release package keeps deployment preflight $preflightFile"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($preflightFile) "Deployment preflight is integrity protected: $preflightFile"
+    Assert-Equal $false ($preflightFile -in @($releaseContract.InstalledFiles)) "Deployment preflight is not installed as runtime: $preflightFile"
+}
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 59 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
@@ -3840,16 +3848,21 @@ $deploySnapshotExportIndex = if ($deployCommitGateIndex -ge 0) {
 else { -1 }
 $deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $sourceRoot')
 $transferLedgerImportIndex = $deploySource.IndexOf("-Stage '传输账本模块导入'")
-$credentialImportIndex = $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'", $transferLedgerImportIndex)
+$deployControlIdentityIndex = $deploySource.IndexOf("-Stage '控制文件提交身份校验'")
+$credentialImportIndex = if ($deployControlIdentityIndex -ge 0) {
+    $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'", $deployControlIdentityIndex)
+}
+else { -1 }
 Assert-Equal $true (
     $deployValidationExitIndex -ge 0 -and
     $deployCandidateValidationIndex -gt $deployValidationExitIndex -and
     $deployCommitGateIndex -gt $deployCandidateValidationIndex -and
     $deploySnapshotExportIndex -gt $deployCommitGateIndex -and
-    $deployPackageAssertionIndex -gt $deployCommitGateIndex -and
-    $transferLedgerImportIndex -gt $deployPackageAssertionIndex -and
-    $credentialImportIndex -gt $transferLedgerImportIndex
-) 'Office deploy validates a working-tree candidate before every Git gate while formal deployment snapshots the verified commit before remote imports'
+    $deployControlIdentityIndex -gt $deploySnapshotExportIndex -and
+    $credentialImportIndex -gt $deployControlIdentityIndex -and
+    $deployPackageAssertionIndex -gt $credentialImportIndex -and
+    $transferLedgerImportIndex -gt $deployPackageAssertionIndex
+) 'Office deploy validates the candidate before Git gates and verifies commit source identity before loading SSH credentials'
 $deploymentTokens = $null
 $deploymentParseErrors = $null
 $deploymentAst = [System.Management.Automation.Language.Parser]::ParseInput(
@@ -4402,14 +4415,16 @@ Assert-Equal $false $validateOnlyBlock.Contains('Use-OfficeSshHelper.ps1') 'Vali
 Assert-Equal $false $validateOnlyBlock.Contains('tailscale') 'ValidateOnly does not touch Tailscale'
 $tailscalePingIndex = $deploySource.IndexOf('& tailscale.exe ping')
 $firstRecordedScpIndex = $deploySource.IndexOf('Invoke-CountdownRecordedScpTransfer')
-$identityResolveIndex = $deploySource.IndexOf('Resolve-OfficeSshClientIdentity', $credentialImportIndex)
-$echoProbeIndex = $deploySource.IndexOf('Invoke-OfficeSshEchoBehaviorProbe', $credentialImportIndex)
+$identityResolveIndex = if ($credentialImportIndex -ge 0) { $deploySource.IndexOf('Resolve-OfficeSshClientIdentity', $credentialImportIndex) } else { -1 }
+$echoProbeIndex = if ($credentialImportIndex -ge 0) { $deploySource.IndexOf('Invoke-OfficeSshEchoBehaviorProbe', $credentialImportIndex) } else { -1 }
 Assert-Equal $true (
+    $credentialImportIndex -ge 0 -and
     $tailscalePingIndex -gt $credentialImportIndex -and
     $identityResolveIndex -gt $tailscalePingIndex -and
     $echoProbeIndex -gt $identityResolveIndex -and
+    $buildInvocationIndex -gt $echoProbeIndex -and
     $firstRecordedScpIndex -gt $echoProbeIndex
-) 'Formal deploy resolves SSH identity and runs the echo probe after Tailscale and before the first SCP transfer'
+) 'Formal deploy resolves SSH identity and runs the echo probe after Tailscale, before the build and first SCP transfer'
 $adapterCalls = @(
     $deploymentAst.FindAll({
             param($node)

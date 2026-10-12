@@ -66,6 +66,13 @@ jobs:
           $buildExit = $LASTEXITCODE
           if ($buildExit -ne 0) { exit $buildExit }
 
+      - name: Check candidate windows before full regression
+        shell: pwsh
+        run: |
+          $dllHash = (Get-FileHash ./app/MinminCountdown.dll -Algorithm SHA256).Hash
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage GeometryPreflight -AppPath (Join-Path $PWD 'app') -ExpectedDllSha256 $dllHash -StageTimeoutSeconds 90
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run low-impact tooling and popup guards
         shell: pwsh
         run: |

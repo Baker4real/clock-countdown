@@ -22,6 +22,88 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
+    internal static object RunWindowPreflight(ResourceDictionary resources, string assetRoot)
+    {
+        var theme = new ApplicationTheme(resources);
+        theme.Apply();
+        var checks = new List<object>();
+        var failures = new List<string>();
+        var passed = 0;
+
+        bool Check(string name, Func<bool> action)
+        {
+            try
+            {
+                if (!action())
+                {
+                    throw new InvalidOperationException($"{name} returned false.");
+                }
+                checks.Add(new { Name = name, Passed = true, Error = (string?)null });
+                passed++;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"{name}: {exception.Message}");
+                checks.Add(new { Name = name, Passed = false, Error = exception.Message });
+                return false;
+            }
+        }
+
+        if (Check("MainWindowWorkAreaFit", () => ValidationExercises.RunMainWindowWorkAreaFitBehavior(assetRoot)))
+        {
+            Check("ConfirmationDialog", () => RunConfirmationWindowPreflight(theme, assetRoot));
+        }
+        return new { Passed = passed, Total = checks.Count, Failed = failures.Count, Checks = checks, Failures = failures };
+    }
+
+    private static bool RunConfirmationWindowPreflight(ApplicationTheme theme, string assetRoot)
+    {
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"window-preflight-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore());
+        using var calendar = new HolidayCalendar(assetRoot);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        using var logicalWorkArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 1600), 1, 1));
+        var owner = new MainWindow(workspace, calendar, logger, assetRoot)
+        {
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0
+        };
+        // Reproduce the SSH desktop's constrained HWND on larger local desktops
+        // too. The production confirmation validator still owns every verdict.
+        try
+        {
+            using var capacity = ValidationExercises.OverrideWindowTrackingCapacityForValidation(owner, new Size(1044, 788));
+            owner.Show();
+            PumpDispatcher();
+            owner.Hide();
+            owner.Show();
+            PumpDispatcher();
+            owner.UpdateLayout();
+            var validation = ValidateConfirmationDialog(theme, owner, DateTimeOffset.UtcNow);
+            if (!validation.Themed || !validation.Gates.AllPassed)
+            {
+                throw new InvalidOperationException(
+                    $"Confirmation dialog preflight failed: themed={validation.Themed}; " +
+                    string.Join(", ", validation.Gates.FailedChecks));
+            }
+            if (File.Exists(settingsPath))
+            {
+                throw new InvalidOperationException("The confirmation fixture wrote its empty settings file.");
+            }
+            return true;
+        }
+        finally
+        {
+            owner.Close();
+            PumpDispatcher();
+            if (File.Exists(diagnosticPath)) { File.Delete(diagnosticPath); }
+        }
+    }
+
     internal static void RunEmptyDayCaptureProbe(ResourceDictionary resources, string assetRoot)
     {
         const int captureWidth = 1165;

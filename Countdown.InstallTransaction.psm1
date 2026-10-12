@@ -795,13 +795,21 @@ function Write-CountdownInstallFailureReceipt {
 
     $exception = $ErrorRecord.Exception
     $position = if ($null -eq $ErrorRecord.InvocationInfo) { '' } else { [string] $ErrorRecord.InvocationInfo.PositionMessage }
+    $errorId = $ErrorRecord.FullyQualifiedErrorId
+    $stack = $ErrorRecord.ScriptStackTrace
+    $child = if ($null -eq $exception) { $null } else { $exception.Data['ChildErrorRecord'] }
+    if ($null -ne $child) {
+        $position = [string]$child.positionMessage
+        $errorId = [string]$child.fullyQualifiedErrorId
+        $stack = [string]$child.scriptStackTrace
+    }
     $receipt = [ordered]@{
         schemaVersion = 2
         stage = ConvertTo-CountdownInstallFailureDiagnosticText -Value $Stage -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'stage')
         exceptionMessage = ConvertTo-CountdownInstallFailureDiagnosticText -Value $(if ($null -eq $exception) { '未提供' } else { $exception.Message }) -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'exceptionMessage')
-        fullyQualifiedErrorId = ConvertTo-CountdownInstallFailureDiagnosticText -Value $ErrorRecord.FullyQualifiedErrorId -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'fullyQualifiedErrorId')
+        fullyQualifiedErrorId = ConvertTo-CountdownInstallFailureDiagnosticText -Value $errorId -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'fullyQualifiedErrorId')
         positionMessage = ConvertTo-CountdownInstallFailureDiagnosticText -Value $position -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'positionMessage')
-        scriptStackTrace = ConvertTo-CountdownInstallFailureDiagnosticText -Value $ErrorRecord.ScriptStackTrace -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'scriptStackTrace')
+        scriptStackTrace = ConvertTo-CountdownInstallFailureDiagnosticText -Value $stack -MaxUtf8Bytes (Get-CountdownInstallFailureReceiptTextByteLimit -Name 'scriptStackTrace')
         transactionStarted = $TransactionStarted
         commitState = $CommitState
         rollbackAttempted = $RollbackAttempted

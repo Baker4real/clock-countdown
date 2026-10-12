@@ -99,6 +99,14 @@ WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方�
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
 ```
 
+候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
+
+```powershell
+$appPath = Join-Path $PWD 'app'
+$dllHash = (Get-FileHash (Join-Path $appPath 'MinminCountdown.dll') -Algorithm SHA256).Hash
+pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage GeometryPreflight -AppPath $appPath -ExpectedDllSha256 $dllHash -StageTimeoutSeconds 90
+```
+
 构建前先做只读环境预检和无窗口工具自检；`-RequireClean` 只在当前 safe-tree-delete policy 登记了该 checkout 的正式清理路径时使用：
 
 ```powershell

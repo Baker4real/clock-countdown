@@ -15,13 +15,15 @@ param(
     [ValidateRange(1, 5)] [int] $MaxParallel = 2,
     [ValidateRange(1, 86400)] [int] $StageTimeoutSeconds = 1800,
     [string] $TauriExecutable,
-    [string] $TauriEvidenceDirectory
+    [string] $TauriEvidenceDirectory,
+    [string] $AppPath,
+    [string] $ExpectedDllSha256
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$allowedStages = @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'TauriGate')
+$allowedStages = @('Build', 'GeometryPreflight', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'TauriGate')
 $Stage = @($Stage | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 $invalid = @($Stage | Where-Object { $_ -notin $allowedStages })
 if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
@@ -30,6 +32,10 @@ if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
 if ('BaselineGenerate' -in $Stage -and $Stage.Count -ne 1) {
     throw 'BaselineGenerate 会创建新基线，必须单独运行；生成后另行运行回归套件。'
 }
+if ('GeometryPreflight' -in $Stage) {
+    if (-not $AppPath -or -not $ExpectedDllSha256) { throw 'GeometryPreflight 必须显式指定 -AppPath 和 -ExpectedDllSha256。' }
+    if ($Stage.Count -ne 1 -or $AllowUnisolatedDesktop) { throw 'GeometryPreflight 必须单独运行并保留隔离桌面。' }
+} elseif ($AppPath -or $ExpectedDllSha256) { throw '候选 DLL 参数只能用于 GeometryPreflight。' }
 if ('TauriGate' -in $Stage) {
     if ($Stage.Count -ne 1 -or $AllowUnisolatedDesktop) {
         throw 'TauriGate 必须单独运行并保留隔离桌面。'
@@ -61,9 +67,10 @@ try {
     catch { Write-Warning "无法设置 BelowNormal 优先级：$($_.Exception.Message)" }
 
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
+    $pwsh = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     $stageTable = @{
         Build = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $repoRoot 'Build-CountdownApplication.ps1'), '-Clean')
+        GeometryPreflight = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'Test-CountdownWindowPreflight.ps1'), '-AppPath', $AppPath, '-ExpectedDllSha256', $ExpectedDllSha256)
         Core = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $repoRoot 'Countdown.Core.Tests.ps1'))
         CSharp = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $repoRoot 'Countdown.CSharp.Tests.ps1'))
         Ui = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $repoRoot 'Countdown.Ui.Tests.ps1'))

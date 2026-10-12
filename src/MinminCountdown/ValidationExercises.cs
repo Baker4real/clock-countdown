@@ -5269,7 +5269,10 @@ internal static class ValidationExercises
     // 纵向滚动完整可见；倒计时前三行逐行滚动可达完整可见；内容不缩放。用户调整
     // 的720×560 位置尺寸在隐藏后再显示时保留；越界显示与 WM_DISPLAYCHANGE 工作区
     // 变化时夹回所在显示器工作区。全程经注入工作区，不依赖真实显示拓扑。
-    public static bool RunMainWindowWorkAreaFitBehavior()
+    public static bool RunMainWindowWorkAreaFitBehavior() =>
+        RunMainWindowWorkAreaFitBehavior(AppContext.BaseDirectory);
+
+    internal static bool RunMainWindowWorkAreaFitBehavior(string assetRoot)
     {
         // The injected monitor must not depend on the SSH desktop's 1024x768
         // native tracking limit. Verify both the constrained and roomy fixtures.
@@ -5319,7 +5322,7 @@ internal static class ValidationExercises
                     Array.Empty<ReminderRule>()));
             }
 
-            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            using var calendar = new HolidayCalendar(assetRoot);
             var logger = new DiagnosticLogger(diagnosticPath);
             var workAreaCases = new[]
             {
@@ -5337,7 +5340,7 @@ internal static class ValidationExercises
                 Must(
                     Math.Abs(MonitorWorkAreaResolver.ResolveForScreenRect(new Rect(100, 100, 200, 200), 1, 1).DpiScaleX - workAreaCase.Dpi) <= 0.001,
                     "注入的工作区解析应按注入值返回 DIP 矩形与 DPI。");
-                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                var main = new MainWindow(workspace, calendar, logger, assetRoot);
                 PrepareOffscreenValidationWindow(main);
                 using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
                 try
@@ -5427,7 +5430,7 @@ internal static class ValidationExercises
             using (var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
                        new MonitorWorkArea(new Rect(0, 0, 1920, 1032), 1, 1)))
             {
-                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                var main = new MainWindow(workspace, calendar, logger, assetRoot);
                 PrepareOffscreenValidationWindow(main);
                 using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
                 try
@@ -5603,6 +5606,9 @@ internal static class ValidationExercises
             .SendMessage(handle, NativeWorkAreaProbe.WmNcHitTest, IntPtr.Zero, coordinates)
             .ToInt32();
     }
+
+    internal static IDisposable OverrideWindowTrackingCapacityForValidation(Window window, Size capacity) =>
+        NativeWorkAreaProbe.OverrideTrackingCapacity(window, capacity);
 
     private static class NativeWorkAreaProbe
     {

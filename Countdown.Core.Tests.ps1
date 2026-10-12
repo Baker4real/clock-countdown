@@ -3713,14 +3713,14 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-10-v43\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v33 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-10-12-v44\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v44 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-10-10-v43\\manifest\.json').Count) `
-    'Validation suite pins the main-window visual manifest to the current v33 baseline'
+        'assets\\ui-references\\main-window\\1165x1350\\2026-10-12-v44\\manifest\.json').Count) `
+    'Validation suite pins the main-window visual manifest to the current v44 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
     'Validation suite no longer references the retired main-window v17 baseline'
@@ -3746,8 +3746,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-10-v43\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-10-v43\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v44\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v44\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3756,19 +3756,19 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-10-v43'
+        ExpectedVersion = '2026-10-12-v44'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-10-v43/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-12-v44/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-10-v43'
+        ExpectedVersion = '2026-10-12-v44'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3779,7 +3779,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-representative',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-10-v43/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-12-v44/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {

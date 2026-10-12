@@ -427,10 +427,21 @@ public sealed partial class App : Application
             return;
         }
 
+        // Unattended process tests still exercise the real window lifecycle, but
+        // isolated desktops and SSH sessions may have no Shell notification area.
+        var attachShellNotifyIcon = _options?.ExitAfterReadyForTest != true ||
+                                    TrayIconHost.IsShellHostAvailable;
+        if (!attachShellNotifyIcon)
+        {
+            _logger?.Info("TestTrayHostWithoutShell");
+        }
+
         _floatingTrayController = new FloatingTrayController(
             _floatingWindow,
             Path.Combine(_applicationRoot, "countdown-icon.ico"),
             () => !_shuttingDown,
+            foregroundInterop: null,
+            attachShellNotifyIcon: attachShellNotifyIcon,
             openManager: () =>
             {
                 if (_managerLifecycle is not null)

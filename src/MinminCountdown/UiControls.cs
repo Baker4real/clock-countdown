@@ -258,8 +258,12 @@ internal static class NoteRowOverflowMenuBehavior
 
 internal static class PopupFocusLifecycle
 {
-    private static readonly HashSet<Popup> Attached = new();
-    private static readonly Dictionary<Popup, FrameworkElement> ClipTargets = new();
+    // Dynamic note rows replace their menus on refresh. Keep lifecycle state on
+    // the popup so registration cannot root discarded menus or their host tree.
+    private static readonly DependencyProperty IsAttachedProperty = DependencyProperty.RegisterAttached(
+        "IsAttached", typeof(bool), typeof(PopupFocusLifecycle), new PropertyMetadata(false));
+    private static readonly DependencyProperty ClipTargetProperty = DependencyProperty.RegisterAttached(
+        "ClipTarget", typeof(FrameworkElement), typeof(PopupFocusLifecycle), new PropertyMetadata(null));
 
     public static void Attach(
         Popup popup,
@@ -270,7 +274,7 @@ internal static class PopupFocusLifecycle
         ArgumentNullException.ThrowIfNull(trigger);
         ArgumentNullException.ThrowIfNull(initialFocus);
 
-        if (!Attached.Add(popup))
+        if (IsAttached(popup))
         {
             return;
         }
@@ -279,6 +283,8 @@ internal static class PopupFocusLifecycle
         {
             throw new InvalidOperationException("弹层必须先设置可聚焦的内容容器。");
         }
+
+        popup.SetValue(IsAttachedProperty, true);
 
         // #153：弹层焦点生命周期补齐层内 Tab 循环——从最后一个可聚焦项继续 Tab 回到首项，
         // 焦点不得逃到被挡住的宿主窗口而弹层仍开着（父票键盘裁决：打开聚焦首项、Esc 关并归还、层内 Tab 循环）。
@@ -390,12 +396,12 @@ internal static class PopupFocusLifecycle
     {
         ArgumentNullException.ThrowIfNull(popup);
         ArgumentNullException.ThrowIfNull(canvas);
-        ClipTargets[popup] = canvas;
+        popup.SetValue(ClipTargetProperty, canvas);
     }
 
     private static void ClampPopupToCanvas(Popup popup)
     {
-        if (!ClipTargets.TryGetValue(popup, out var canvas) ||
+        if (popup.GetValue(ClipTargetProperty) is not FrameworkElement canvas ||
             popup.Child is not FrameworkElement child)
         {
             return;
@@ -445,7 +451,7 @@ internal static class PopupFocusLifecycle
         popup.Dispatcher.BeginInvoke(DispatcherPriority.Render, Apply);
     }
 
-    internal static bool IsAttached(Popup popup) => Attached.Contains(popup);
+    internal static bool IsAttached(Popup popup) => (bool)popup.GetValue(IsAttachedProperty);
 
     private static bool HasOpenNestedDropDown(DependencyObject root)
     {

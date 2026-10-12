@@ -309,6 +309,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             nameof(ReminderRulesEditorViewModel.IsCalendarSelectorVisible));
 
         _saveRuleButton.SetResourceReference(StyleProperty, "PrimaryButton");
+        _cancelRuleEditButton.SetResourceReference(StyleProperty, "SecondaryButton");
         var ruleActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -331,6 +332,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             Margin = new Thickness(8, 0, 0, 0)
         };
         NameControl(cancel, "取消提醒规则草稿");
+        cancel.SetResourceReference(StyleProperty, "SecondaryButton");
         AutomationProperties.SetAutomationId(cancel, "CancelReminderRulesButton");
         Bind(cancel, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.CancelDraftCommand), _viewModel);
         var dialogActions = new StackPanel

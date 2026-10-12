@@ -7929,8 +7929,7 @@ internal static class ValidationReport
                     usesThemeTokens,
                     BrushColor((parts.ThumbVisual.Child as Border)?.Background ?? parts.ThumbVisual.Background),
                     BrushColor(parts.ThumbVisual.BorderBrush),
-                    CompositedContrast(parts.ThumbVisual.BorderBrush, parts.ThumbVisual.Opacity,
-                        Required<Border>(window, "TaskCard").Background)));
+                    RenderedOuterContrast(root, parts.ThumbVisual, verticalOnly: true)));
                 ClearCaptureKeyboardFocus();
                 captures[$"day-{state.Name}"] =
                     EncodePng(ScaleToFrame(
@@ -13598,12 +13597,94 @@ internal static class ValidationReport
 
     private static double CompositedContrast(Brush foreground, double opacity, Brush background)
     {
-        if (foreground is not SolidColorBrush fg || background is not SolidColorBrush bg) return 0;
+        if (foreground is not SolidColorBrush fg || background is not SolidColorBrush bg ||
+            bg.Color.A != 255 || bg.Opacity != 1) return 0;
         var alpha = fg.Color.A / 255d * fg.Opacity * opacity;
         byte Channel(byte front, byte back) => (byte)Math.Round(front * alpha + back * (1 - alpha));
         var visible = Color.FromRgb(Channel(fg.Color.R, bg.Color.R),
             Channel(fg.Color.G, bg.Color.G), Channel(fg.Color.B, bg.Color.B));
         return ContrastRatio(visible, bg.Color);
+    }
+
+    private static double RenderedOuterContrast(FrameworkElement root, Border border, bool verticalOnly = false)
+    {
+        var frame = CaptureVisual(root);
+        var bounds = BoundsIn(border, root);
+        var neighbors = new List<Point>();
+        foreach (var fraction in new[] { .25, .5, .75 })
+        {
+            var y = bounds.Top + bounds.Height * fraction;
+            neighbors.Add(new Point(bounds.Left - 1, y));
+            neighbors.Add(new Point(bounds.Right + 1, y));
+            if (!verticalOnly)
+            {
+                var x = bounds.Left + bounds.Width * fraction;
+                neighbors.Add(new Point(x, bounds.Top - 1));
+                neighbors.Add(new Point(x, bounds.Bottom + 1));
+            }
+        }
+        var minimum = double.MaxValue;
+        foreach (var point in neighbors)
+        {
+            var x = (int)Math.Floor(point.X);
+            var y = (int)Math.Floor(point.Y);
+            if (x < 0 || y < 0 || x >= frame.PixelWidth || y >= frame.PixelHeight)
+            {
+                Console.Error.WriteLine($"RASTER_SAMPLE_OUTSIDE: point={x},{y}; bounds={bounds}; frame={frame.PixelWidth}x{frame.PixelHeight}");
+                return 0;
+            }
+            var pixel = new byte[4];
+            frame.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
+            // A transparent frame is not a color. Fail closed rather than interpreting its zero RGB as black.
+            if (pixel[3] != 255)
+            {
+                Console.Error.WriteLine($"RASTER_SAMPLE_ALPHA: point={x},{y}; alpha={pixel[3]}; bounds={bounds}; frame={frame.PixelWidth}x{frame.PixelHeight}; opacity={Window.GetWindow(root)?.Opacity}");
+                return 0;
+            }
+            var neighbor = new SolidColorBrush(Color.FromRgb(pixel[2], pixel[1], pixel[0]));
+            minimum = Math.Min(minimum, CompositedContrast(border.BorderBrush, border.Opacity, neighbor));
+        }
+        return minimum;
+    }
+
+    private static bool ValidateRasterNeighborContrastSensitivity()
+    {
+        var image = new Image { Stretch = Stretch.Fill };
+        var border = new Border { Margin = new Thickness(16), BorderThickness = new Thickness(2),
+            BorderBrush = (Brush)Application.Current.FindResource("ControlBorderBrush"), Background = Brushes.Transparent };
+        var root = new Grid { Width = 64, Height = 64 };
+        root.Children.Add(image);
+        root.Children.Add(border);
+        var host = new Window { Content = root, Width = 64, Height = 64, WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
+            Left = -20_000, Top = -20_000, WindowStartupLocation = WindowStartupLocation.Manual };
+        try
+        {
+            host.Show();
+            var edgeColor = ((SolidColorBrush)border.BorderBrush).Color;
+            var colors = new[] { Colors.White, Colors.Black, edgeColor };
+            var measured = new List<double>();
+            foreach (var color in colors)
+            {
+                var pixels = new byte[64 * 64 * 4];
+                for (var index = 0; index < pixels.Length; index += 4)
+                {
+                    pixels[index] = color.B;
+                    pixels[index + 1] = color.G;
+                    pixels[index + 2] = color.R;
+                    pixels[index + 3] = 255;
+                }
+                image.Source = BitmapSource.Create(64, 64, 96, 96, PixelFormats.Bgra32, null, pixels, 64 * 4);
+                root.UpdateLayout();
+                PumpDispatcher();
+                measured.Add(RenderedOuterContrast(root, border));
+            }
+            // Two different raster neighbors must change the reading. Matching the boundary is a real failing fixture.
+            Console.Error.WriteLine($"RASTER_NEIGHBOR_CONTRAST: {string.Join(",", measured)}");
+            return measured[0] >= 3 && measured[1] >= 3 && measured[2] < 1.01 &&
+                Math.Abs(measured[0] - measured[1]) > .5;
+        }
+        finally { host.Close(); }
     }
 
     private static IReadOnlyDictionary<string, bool> ValidateIdleControlBoundaries(MainWindow main)
@@ -13630,6 +13711,7 @@ internal static class ValidationReport
         var checks = new Dictionary<string, bool>(StringComparer.Ordinal);
         try
         {
+            checks["RasterNeighborContrastSensitivity"] = ValidateRasterNeighborContrastSensitivity();
             host.Show();
             PumpDispatcher();
             foreach (var (name, control, partName) in controls)
@@ -13654,6 +13736,29 @@ internal static class ValidationReport
                         BrushMatchesExpected(surface.Background, Application.Current.FindResource("CardAltBrush"));
                 }
             }
+            var editor = new ReminderRulesEditorWindow(
+                [new AbsoluteOnceReminderRule("secondary-probe", new DateTimeOffset(2031, 1, 1, 1, 0, 0, TimeSpan.Zero))],
+                new ValidationClock(new DateTimeOffset(2031, 1, 1, 0, 0, 0, TimeSpan.Zero)))
+            { Owner = main, ShowInTaskbar = false, Opacity = 0 };
+            try
+            {
+                editor.Show();
+                PumpDispatcher();
+                var edit = Descendants<Button>(editor).Single(button => Equals(button.Content, "编辑"));
+                edit.Command.Execute(edit.CommandParameter);
+                PumpDispatcher();
+                foreach (var id in new[] { "CancelReminderRulesButton", "CancelReminderRuleEditButton" })
+                {
+                    var button = Descendants<Button>(editor).Single(control => AutomationProperties.GetAutomationId(control) == id);
+                    button.ApplyTemplate();
+                    checks[id] = button.IsVisible && button.IsEnabled &&
+                        button.Template.FindName("Surface", button) is Border surface &&
+                        BrushMatchesExpected(surface.Background, Application.Current.FindResource("CardAltBrush")) &&
+                        BrushMatchesExpected(surface.BorderBrush, Application.Current.FindResource("ControlBorderBrush"));
+                }
+            }
+            finally { editor.Close(); }
+            Console.Error.WriteLine($"IDLE_BOUNDARY_FAILURES: {string.Join(",", checks.Where(pair => !pair.Value).Select(pair => pair.Key))}");
             return checks;
         }
         finally { host.Close(); }
@@ -14155,10 +14260,10 @@ internal static class ValidationReport
         {
             floating.Activate();
             floating.ShowWorkspace(WorkspaceKind.Notes);
-            var outerNeighbor = Required<Border>(floating, "FloatingHeaderSurface").Background;
-            var notes = MeasureFromAdjacentButton(countdownButton, notesButton, FocusNavigationDirection.Next, outerNeighbor);
+            var root = Required<Grid>(floating, "TaskWrap");
+            var notes = MeasureFromAdjacentButton(countdownButton, notesButton, FocusNavigationDirection.Next, root);
             floating.ShowWorkspace(WorkspaceKind.Countdowns);
-            var countdowns = MeasureFromAdjacentButton(notesButton, countdownButton, FocusNavigationDirection.Previous, outerNeighbor);
+            var countdowns = MeasureFromAdjacentButton(notesButton, countdownButton, FocusNavigationDirection.Previous, root);
             return (
                 notes.MeetsNeighborContrast && countdowns.MeetsNeighborContrast,
                 notes.UsesWarmGoldToken && countdowns.UsesWarmGoldToken);
@@ -14173,7 +14278,7 @@ internal static class ValidationReport
             ToggleButton adjacent,
             ToggleButton selected,
             FocusNavigationDirection direction,
-            Brush outerNeighbor)
+            FrameworkElement root)
         {
             Keyboard.Focus(adjacent);
             PumpDispatcher();
@@ -14183,8 +14288,7 @@ internal static class ValidationReport
             var focusRing = selected.Template?.FindName("FocusRing", selected) as Border;
             if (!moved || !selected.IsKeyboardFocused || selected.IsChecked != true ||
                 focusRing?.BorderBrush is not SolidColorBrush ring ||
-                Application.Current.FindResource("MainActionFocusBrush") is not SolidColorBrush warmGold ||
-                outerNeighbor is not SolidColorBrush outerSurface)
+                Application.Current.FindResource("MainActionFocusBrush") is not SolidColorBrush warmGold)
             {
                 return (false, false);
             }
@@ -14198,7 +14302,7 @@ internal static class ValidationReport
                 focusRing.BorderThickness.Bottom
             }.Min();
             var contrastPasses = usesWarmGold && thickness >= 2 &&
-                ApplicationTheme.MeetsContrast(outerSurface, ring, 3);
+                RenderedOuterContrast(root, focusRing) >= 3;
             var pointerClearsKeyboardRing = WindowValidationInput.ClickForFocusValidation(selected) &&
                 !FocusVisualState.GetIsKeyboardFocusVisible(selected) &&
                 focusRing.BorderBrush is SolidColorBrush pointerRing && pointerRing.Color.A == 0;

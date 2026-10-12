@@ -4095,6 +4095,63 @@ internal static class ValidationExercises
 
     // #155：最近一次删除的短时撤销——确认框取消为安全默认；删除成功后主窗口状态条提供
     // 「撤销」入口；撤销在同一事务恢复记录与规则提醒状态；连续删除只保留最近一次；入口短时过期。
+    public static bool RunNoteCompletionUndoFeedback()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-undo-{Guid.NewGuid():N}.json");
+        var firstDue = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+        var clock = new AdvancingValidationClock(firstDue.AddMinutes(-1));
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        var rule = new FixedIntervalReminderRule("completion-undo-repeat", firstDue, new ReminderInterval(15));
+        MustApply(workspace, new SaveNoteChange(null, "完成反馈探针", new DateTime(2038, 7, 8), false,
+            [], new ReminderRule[] { rule }));
+        var note = workspace.Snapshot.Settings.Notes.Single();
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main); PrepareOffscreenValidationWindow(floating);
+            main.Show(); floating.Show(); main.ShowWorkspace(WorkspaceKind.Notes); floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            foreach (var onFloating in new[] { true, false })
+            {
+                var source = onFloating ? (Window)floating : main;
+                clock.UtcNow = firstDue.AddMinutes(onFloating ? 7 : 70);
+                var check = VisualDescendants<CheckBox>(source).Single(candidate => candidate.Tag as string == note.Id);
+                var peer = new CheckBoxAutomationPeer(check);
+                ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(PatternInterface.Toggle)).Toggle();
+                WindowValidationInput.Pump(source.Dispatcher);
+                var disk = new SettingsStore(clock: clock).Load(path).Settings;
+                var undo = onFloating ? floating.FloatingDeleteUndoButton : main.MainStatusUndoButton;
+                var message = onFloating ? floating.FloatingDeleteUndoText : main.StatusText;
+                Must(disk.Notes.Single().IsCompleted && workspace.Snapshot.Settings.Notes.Single().IsCompleted,
+                    "#233：真实勾选没有持久化完成状态。");
+                Must(undo.IsVisible && message.Text == $"已完成「{note.Text}」·" &&
+                    undo.Content?.ToString() == "撤销" &&
+                    AutomationProperties.GetName(undo) == $"撤销完成便签「{note.Text}」",
+                    $"#233：{(onFloating ? "悬浮窗" : "管理窗口")}完成后没有就地完成反馈和撤销入口。");
+                clock.UtcNow = firstDue.AddMinutes(onFloating ? 68 : 98);
+                undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                WindowValidationInput.Pump(source.Dispatcher);
+                disk = new SettingsStore(clock: clock).Load(path).Settings;
+                var handledThrough = firstDue.AddMinutes(onFloating ? 60 : 90);
+                Must(!disk.Notes.Single().IsCompleted && !workspace.Snapshot.Settings.Notes.Single().IsCompleted &&
+                    disk.ReminderStates[rule.Id].HandledThroughUtc == handledThrough && !undo.IsVisible,
+                    "#233：撤销没有经重新打开路径持久化，或没有推进到撤销提交时刻的cursor。");
+                Must(workspace.GetDueReminderOccurrences(handledThrough.AddMinutes(14)).Count == 0 &&
+                    workspace.GetDueReminderOccurrences(handledThrough.AddMinutes(15))
+                        .Any(item => item.Rule.Id == rule.Id && item.ScheduledUtc == handledThrough.AddMinutes(15)),
+                    "#233：撤销后没有只恢复严格未来的提醒周期。");
+            }
+            return true;
+        }
+        finally
+        {
+            floating.Close(); main.Close();
+            DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunDeleteUndoOfferBehavior()
     {
         var settingsPath = Path.Combine(

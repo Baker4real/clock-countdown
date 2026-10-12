@@ -2000,6 +2000,7 @@ internal static class ValidationReport
             ["MainIdleTextInputBoundaryContrast"] = mainIdleTextInputBoundaryContrast,
             ["IdleControlBoundariesVisible"] = idleControlBoundaries.Values.All(value => value),
             ["IdleControlBoundaryChecks"] = idleControlBoundaries,
+            ["NoteCompletionUndoFeedback"] = ValidationExercises.RunNoteCompletionUndoFeedback(),
             ["SystemContrastUpdatesOpenWindows"] = ValidateSystemContrastUpdatesOpenWindows(main, floating),
             ["SystemContrastAccessibleStates"] = ValidateSystemContrastAccessibleStates(main, floating),
             ["SystemContrastColorChangesAndCustomSurfaces"] = ValidateSystemContrastCustomSurfaces(assetRoot),

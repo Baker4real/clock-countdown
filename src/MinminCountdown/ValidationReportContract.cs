@@ -182,6 +182,7 @@ internal static class ValidationReportContract
         "MainInputSurfaceWhitePaper",
         "MainIdleTextInputBoundaryContrast",
         "IdleControlBoundariesVisible",
+        "NoteCompletionUndoFeedback",
         "SystemContrastUpdatesOpenWindows",
         "SystemContrastAccessibleStates",
         "SystemContrastColorChangesAndCustomSurfaces",

@@ -78,6 +78,7 @@ public sealed partial class FloatingWindow
             }
             else
             {
+                DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Floating, new CompletedNoteUndo(note.Id, note.Text));
                 var previousError = noteError.Text;
                 _noteCardErrors.Remove(note.Id);
                 SetNoteCardError(noteError, completion, string.Empty);

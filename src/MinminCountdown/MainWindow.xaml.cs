@@ -2834,12 +2834,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         MainStatusUndoButton.Visibility = Visibility.Collapsed;
     }
 
-    private void PresentMainDeleteUndo(DeletedRecordUndo undo)
+    private void PresentMainDeleteUndo(WorkspaceUndo undo)
     {
-        SetMessage(StatusText, $"已删除{undo.KindName}「{undo.Description}」。", false);
+        SetMessage(StatusText, undo.OfferedMessage, false);
         AutomationProperties.SetName(
             MainStatusUndoButton,
-            $"撤销删除{undo.KindName}「{undo.Description}」");
+            undo.AccessibleName);
         MainStatusUndoButton.Visibility = Visibility.Visible;
         ResetDeleteUndoTimer();
     }
@@ -2863,7 +2863,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         slot.Clear();
-        SetMessage(StatusText, $"已撤销删除{undo.KindName}「{undo.Description}」。", false);
+        SetMessage(StatusText, undo.RestoredMessage, false);
     }
 
     private void ResetDeleteUndoTimer() => _deleteUndoCountdown.Restart();
@@ -2882,7 +2882,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         get
         {
             var slot = DeleteUndoOffers.For(_desktopWorkspace);
-            return slot.Surface == DeleteUndoSurface.Main ? slot.Payload : null;
+            return slot.Surface == DeleteUndoSurface.Main ? slot.Payload as DeletedRecordUndo : null;
         }
     }
 
@@ -2933,6 +2933,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             SetMessage(StatusText, $"便签状态保存失败：{result.Error}", true);
             checkBox.IsChecked = current.IsCompleted;
+        }
+        else if (desired)
+        {
+            DeleteUndoOffers.For(_desktopWorkspace).Offer(DeleteUndoSurface.Main, new CompletedNoteUndo(id, current.Text));
         }
     }
 

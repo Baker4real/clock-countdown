@@ -14,6 +14,7 @@ internal sealed class SettingsRecoveryWindow : Window
     // 允许在主题尚未 Apply 时渲染；探针把它们与活体主题 token 逐值核对。
     private static readonly SolidColorBrush CanvasBrush = new(Color.FromRgb(0xFD, 0xF3, 0xEB));
     private static readonly SolidColorBrush InkBrush = new(Color.FromRgb(0x3B, 0x19, 0x0D));
+    private static readonly SolidColorBrush MutedBrush = new(Color.FromRgb(0x82, 0x66, 0x5F));
     private static readonly SolidColorBrush BodyBrush = new(Color.FromRgb(0x6B, 0x4A, 0x3C));
     private static readonly SolidColorBrush MainActionBrush = new(Color.FromRgb(0xC2, 0x3E, 0x68));
     private static readonly SolidColorBrush MainActionTextBrush = new(Color.FromRgb(0xFF, 0xFD, 0xFC));

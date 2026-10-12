@@ -553,6 +553,11 @@ internal static class ValidationExercises
                     WindowValidationInput.Pump(floating.Dispatcher);
                     Must(status!.Text == expected && announcements.Count == 1,
                         "#228 刷新和切工作区不得覆盖或重复播报恢复结果。");
+                    floating.Hide();
+                    floating.Show();
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    Must(status.IsVisible && status.Text == expected && announcements.Count == 1,
+                        "#228 隐藏再显示浮窗不得重复播报恢复结果。");
                 }
                 finally { UiAccessibility.Announced -= Observe; floating.Close(); manager.Close(); }
             }

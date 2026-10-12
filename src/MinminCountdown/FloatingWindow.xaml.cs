@@ -902,6 +902,8 @@ public sealed partial class FloatingWindow : Window
         yield return FloatingNoteEntry.Resources;
         yield return FloatingNoteDate.Resources;
         yield return FloatingTags.Resources;
+        if (PickerTemplateParts.GetCalendar(FloatingNoteDate) is { } calendar)
+            yield return calendar.Resources;
     }
 
     internal FloatingQuickAddThemeProbeResult ProbeQuickAddThemeResources()

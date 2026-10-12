@@ -13928,15 +13928,37 @@ internal static class ValidationReport
             var oldStampEdge = ((SolidColorBrush)stamp.BorderBrush).Color;
             var noteRows = Required<StackPanel>(floating, "FloatingRows").Children.Cast<UIElement>().ToArray();
             Border? laterStamp = null;
+            floating.SetQuickAddExpanded(true);
+            var picker = Required<DatePicker>(floating, "FloatingNoteDate");
+            picker.SelectedDate = new DateTime(2031, 4, 5);
+            picker.DisplayDate = picker.SelectedDate.Value;
+            picker.IsDropDownOpen = true; PumpDispatcher();
+            var calendarPopup = PickerTemplateParts.GetCalendar(picker)!;
+            var selectedDay = Descendants<CalendarDayButton>(calendarPopup).Single(day => day.IsSelected);
+            floating.Activate(); Keyboard.Focus(selectedDay); PumpDispatcher();
+            var daySurface = (Border)selectedDay.Template.FindName("Surface", selectedDay);
             using (var preference = ApplicationTheme.OverrideHighContrastForValidation(true))
             {
                 PumpDispatcher();
+                checks["OpenDatePopupMaps"] = picker.IsDropDownOpen &&
+                    ColorIs(calendarPopup.Background, SystemColors.WindowColor) &&
+                    ColorIs(calendarPopup.BorderBrush, SystemColors.WindowTextColor) &&
+                    ColorIs(daySurface.Background, SystemColors.HighlightColor) &&
+                    ColorIs(selectedDay.Foreground, SystemColors.HighlightTextColor);
+                checks["OpenDatePopupFocus"] = selectedDay.IsKeyboardFocused &&
+                    ColorIs(daySurface.BorderBrush, SystemColors.HighlightColor);
                 checks["TagMaps"] = ColorIs(chip.Background, SystemColors.ControlColor);
                 checks["StampMaps"] = ColorIs(stamp.BorderBrush, SystemColors.WindowTextColor);
                 var palette = new ApplicationTheme.SystemContrastPalette(
                     Color.FromRgb(8, 18, 32), Colors.White, Color.FromRgb(20, 30, 46), Colors.White,
                     Colors.Yellow, Colors.Black, Colors.Silver);
                 preference.ChangeColors(palette); PumpDispatcher();
+                checks["OpenDatePopupChangesColor"] = picker.IsDropDownOpen &&
+                    ColorIs(calendarPopup.Background, palette.Window) &&
+                    ColorIs(daySurface.Background, palette.Highlight) &&
+                    ColorIs(daySurface.BorderBrush, palette.Highlight) &&
+                    ColorIs(selectedDay.Foreground, palette.HighlightText);
+                picker.IsDropDownOpen = false;
                 checks["ChangedWhileEnabled"] = ColorIs(main.Background, palette.Window) &&
                     ColorIs(Required<Border>(floating, "TaskCard").Background, palette.Window) &&
                     ColorIs(chip.Background, palette.Control) && ColorIs(stamp.BorderBrush, palette.WindowText);
@@ -13957,6 +13979,28 @@ internal static class ValidationReport
                 preference.ChangeColors(palette with { Highlight = Colors.Cyan, Window = Colors.Black }); PumpDispatcher();
                 checks["SecondColorNotification"] = ColorIs(main.Background, Colors.Black) &&
                     ColorIs(Required<Border>(floating, "TaskCard").Background, Colors.Black);
+                var lightPalette = new ApplicationTheme.SystemContrastPalette(
+                    Colors.White, Colors.Black, Colors.Black, Colors.White,
+                    Colors.Navy, Colors.White, Colors.Gray);
+                preference.ChangeColors(lightPalette); PumpDispatcher();
+                checks["LightTagTextPair"] = ColorIs(chip.Background, lightPalette.Control) &&
+                    chip.Child is TextBlock chipText && ColorIs(chipText.Foreground, lightPalette.ControlText);
+                checks["LightFloatingTextPair"] = ColorIs(Required<Border>(floating, "TaskCard").Background, lightPalette.Window) &&
+                    ColorIs(Required<TextBlock>(floating, "FloatingIncome").Foreground, lightPalette.WindowText);
+                var secondary = Required<Button>(main, "SavePreferencesButton");
+                checks["LightSecondaryTextPair"] = ColorIs(secondary.Background, lightPalette.Window) &&
+                    ColorIs(secondary.Foreground, lightPalette.WindowText);
+                var preferencesPopup = Required<Popup>(main, "PreferencesPopup");
+                preferencesPopup.IsOpen = true; PumpDispatcher();
+                secondary.IsEnabled = false; PumpDispatcher();
+                var disabledSurface = secondary.Template.FindName("Surface", secondary) as Border;
+                checks["LightDisabledBoundary"] = preferencesPopup.IsOpen && disabledSurface is not null &&
+                    ColorIs(disabledSurface.Background, lightPalette.Control) &&
+                    ColorIs(disabledSurface.BorderBrush, lightPalette.GrayText) &&
+                    ColorIs(secondary.Foreground, lightPalette.GrayText);
+                if (!checks["LightDisabledBoundary"])
+                    Console.Error.WriteLine($"SYSTEM_CONTRAST_DISABLED: open={preferencesPopup.IsOpen}; enabled={secondary.IsEnabled}; inherited={ApplicationTheme.GetIsSystemContrast(secondary)}; foreground={secondary.Foreground}; background={secondary.Background}; border={secondary.BorderBrush}; actualBackground={disabledSurface?.Background}; actualBorder={disabledSurface?.BorderBrush}");
+                secondary.IsEnabled = true; preferencesPopup.IsOpen = false;
             }
             PumpDispatcher();
             checks["CustomColorsRestore"] = ColorIs(chip.Background, oldChip) && ColorIs(stamp.BorderBrush, oldStampEdge);
@@ -13972,7 +14016,7 @@ internal static class ValidationReport
             if (!Directory.EnumerateFileSystemEntries(temporaryRoot).Any()) Directory.Delete(temporaryRoot);
         }
         Console.Error.WriteLine("SYSTEM_CONTRAST_CUSTOM: " + JsonSerializer.Serialize(checks));
-        return checks.Count == 10 && checks.Values.All(value => value);
+        return checks.Count == 17 && checks.Values.All(value => value);
     }
 
     private static IReadOnlyDictionary<string, bool> ValidateIdleControlBoundaries(MainWindow main)

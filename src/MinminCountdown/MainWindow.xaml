@@ -160,6 +160,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -228,6 +229,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -299,6 +301,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -367,6 +370,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -440,6 +444,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -507,6 +512,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -591,6 +597,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="Surface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -657,6 +664,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="Surface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -779,6 +787,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="Surface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -845,6 +854,7 @@
                         </MultiTrigger.Conditions>
                         <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                         <Setter TargetName="Surface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>

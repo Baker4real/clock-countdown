@@ -301,15 +301,16 @@ internal sealed class ApplicationTheme : IDisposable
         "NoteActiveRailBrush" or "PeachRailBrush" or "FloatingDayPrimaryCountdownAccentBrush" => palette.Highlight,
         "InkBrush" or "BodyBrush" or "MutedBrush" or "ControlBorderBrush" or "PeachLineBrush" or
         "NoteLineBrush" or "NoteCompletedRailBrush" or "NoteTimelineBrush" or "DangerBrush" or
-        "TagChipTextBrush" or
         "PrimaryCountdownNumberBrush" or "PinkAccentBrush" or "IconAccentBrush" or
         "WarningAccentBrush" or "DecoTextBrush" or "DecoTextSoftBrush" or
         "StampPinkTextBrush" or "StampBlueTextBrush" or "StampGreenTextBrush" or
         "CharacterLineBrush" or "WorkspacePanelLineBrush" => palette.WindowText,
-        "CardAltBrush" or "StatusBarBrush" or "CoralActionBrush" or "TagBrush" or
+        "TagBrush" => palette.Control,
+        "TagChipTextBrush" => palette.ControlText,
+        "CardAltBrush" or "StatusBarBrush" or "CoralActionBrush" or
         "SourceNoteIconBrush" or "PinkTintBrush" or "PinkBadgeBrush" or "PinkBlockBrush" or
         "PinkTintSoftBrush" or "SecondaryBlockBrush" or "PeachTintBrush" or "PeachBadgeBrush" or
-        "PeachBadgeMutedBrush" => palette.Control,
+        "PeachBadgeMutedBrush" => palette.Window,
         "CanvasBrush" or "CanvasDeepBrush" or "BackgroundBrush" or "CardBrush" or "PanelBrush" or
         "NoteBrush" or "NoteWhiteBrush" or "ExpiredBrush" or "WorkspacePanelBrush" or "WarningTintBrush" or
         "ReminderCardBrush" or "ReminderPageBrush" or "StampPinkBrush" or "StampBlueBrush" or "StampGreenBrush" or

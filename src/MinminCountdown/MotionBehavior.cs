@@ -271,6 +271,7 @@ internal static class MotionBehavior
                 typeof(ToggleButton));
             control.MouseEnter += OnMouseEnter;
             control.MouseLeave += OnMouseLeave;
+            control.IsEnabledChanged += OnEnabledChanged;
             if (control is ButtonBase)
             {
                 _pressedDescriptor?.AddValueChanged(control, OnStateChanged);
@@ -298,6 +299,7 @@ internal static class MotionBehavior
             {
                 _control.MouseEnter -= OnMouseEnter;
                 _control.MouseLeave -= OnMouseLeave;
+                _control.IsEnabledChanged -= OnEnabledChanged;
                 _pressedDescriptor?.RemoveValueChanged(_control, OnStateChanged);
                 _checkedDescriptor?.RemoveValueChanged(_control, OnCheckedChanged);
             }
@@ -339,6 +341,19 @@ internal static class MotionBehavior
             if (_surface is not null)
                 ApplyState(CurrentBrushColor(_surface.Background), CurrentBrushColor(_surface.BorderBrush),
                     CurrentScale(_surface), animateColors: false);
+        }
+
+        private void OnEnabledChanged(object sender, DependencyPropertyChangedEventArgs args)
+        {
+            if (!ApplicationTheme.HighContrastEnabled) return;
+            // IsEnabledChanged is raised before template triggers finish updating
+            // the control brushes. Read them at Render priority, then replace the
+            // surface's local animation values without interpolating old colors.
+            var version = ++_stateVersion;
+            _host.Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+            {
+                if (version == _stateVersion) OnPaletteChanged(sender, EventArgs.Empty);
+            }));
         }
 
         private void OnStateChanged(object? sender, EventArgs args)
@@ -431,7 +446,7 @@ internal static class MotionBehavior
             Brush? normal)
         {
             var control = _control;
-            if (control is null)
+            if (control is null || (ApplicationTheme.HighContrastEnabled && !control.IsEnabled))
             {
                 return normal ?? Brushes.Transparent;
             }

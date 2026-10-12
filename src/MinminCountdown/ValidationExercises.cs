@@ -5640,6 +5640,302 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunMainTextShortcutBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-text-shortcuts-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var name = (TextBox)main.FindName("CountdownName");
+            name.Text = "名称输入焦点保存";
+            ((DatePicker)main.FindName("CountdownDate")).SelectedDate = workspace.Snapshot.BeijingNow.AddDays(30).Date;
+            Keyboard.Focus(name);
+            Must(WindowValidationInput.RaisePreviewKey(name, Key.S, ModifierKeys.Control),
+                "#224：倒计时名称输入焦点下Ctrl+S必须响应。");
+            Must(DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Any(item => item.Name == "名称输入焦点保存"),
+                "#224：名称输入中的Ctrl+S必须真实保存倒计时。");
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            var body = (TextBox)main.FindName("NoteText");
+            body.Text = "正文快捷添加";
+            Keyboard.Focus(body);
+            Must(WindowValidationInput.RaisePreviewKey(body, Key.Enter, ModifierKeys.Control),
+                "#224：便签正文Ctrl+Enter必须响应提交。");
+            var added = DesktopWorkspace.Load(path).Snapshot.Settings.Notes.SingleOrDefault(note => note.Text == "正文快捷添加");
+            Must(added is not null, "#224：Ctrl+Enter必须持久保存便签。");
+            main.LoadNoteIntoEditor(added!);
+            body.Text = "正文快捷修改";
+            Keyboard.Focus(body);
+            Must(WindowValidationInput.RaisePreviewKey(body, Key.S, ModifierKeys.Control) &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Notes.Single().Text == "正文快捷修改",
+                "#224：便签页Ctrl+S必须保存当前编辑，不能重复添加。");
+            body.Text = "首行";
+            body.CaretIndex = body.Text.Length;
+            Keyboard.Focus(body);
+            Must(!WindowValidationInput.RaisePreviewKey(body, Key.Enter),
+                "#224：便签正文普通Enter不得被提交快捷键消费。");
+            WindowValidationInput.RaiseKey(body, Key.Enter);
+            Must(body.Text.Contains('\n') && workspace.Snapshot.Settings.Notes.Count == 1,
+                "#224：便签正文普通Enter必须真实换行且不能保存。");
+            var popup = (Popup)main.FindName("FilterPopup");
+            popup.IsOpen = true;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(!WindowValidationInput.RaisePreviewKey(body, Key.S, ModifierKeys.Control) &&
+                 !WindowValidationInput.RaisePreviewKey(body, Key.Enter, ModifierKeys.Control) &&
+                 workspace.Snapshot.Settings.Notes.Count == 1,
+                "#224：弹层打开时Ctrl+S和Ctrl+Enter不允许穿透保存草稿。");
+            WindowValidationInput.ClosePopupForCleanup(popup);
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            var countdownDate = (DatePicker)main.FindName("CountdownDate");
+            countdownDate.IsDropDownOpen = true;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(countdownDate.IsDropDownOpen &&
+                 !WindowValidationInput.RaisePreviewKey(countdownDate, Key.D2, ModifierKeys.Control) &&
+                 main.CurrentWorkspace == WorkspaceKind.Countdowns,
+                "#224：原生日历下拉打开时全局Ctrl快捷键仍被屏蔽。");
+            countdownDate.IsDropDownOpen = false;
+            ((Button)main.FindName("CountdownEditorExpandButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            var hour = (ComboBox)main.FindName("CountdownHour");
+            hour.IsDropDownOpen = true;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsDropDownOpen && !WindowValidationInput.RaisePreviewKey(hour, Key.D2, ModifierKeys.Control) &&
+                 main.CurrentWorkspace == WorkspaceKind.Countdowns,
+                "#224：时间下拉打开时全局Ctrl快捷键仍被屏蔽。");
+            hour.IsDropDownOpen = false;
+            foreach (var (id, shortcut) in new[]
+            {
+                ("CountdownTab", "Ctrl+1"), ("NotesTab", "Ctrl+2"), ("MinimizeButton", "Ctrl+M"),
+                ("FilterButton", "Ctrl+F"), ("TagManagerButton", "Ctrl+T"),
+                ("SaveCountdownButton", "Ctrl+S"), ("SaveNoteButton", "Ctrl+Enter"),
+                ("SavePreferencesButton", "Ctrl+Shift+S"), ("CreateTagButton", "Enter")
+            })
+                Must(((FrameworkElement)main.FindName(id)).ToolTip?.ToString()?.Contains(shortcut, StringComparison.Ordinal) == true,
+                    $"#224：{id} ToolTip必须提示{shortcut}。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunSingleLineEnterSubmission()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-enter-form-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var name = (TextBox)main.FindName("CountdownName");
+            var date = (DatePicker)main.FindName("CountdownDate");
+            name.Text = "名称回车保存";
+            date.SelectedDate = workspace.Snapshot.BeijingNow.AddDays(30).Date;
+            Keyboard.Focus(name);
+            Must(WindowValidationInput.RaisePreviewKey(name, Key.Enter) &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Any(item => item.Name == "名称回车保存"),
+                "#224：单行倒计时名称Enter必须持久提交所在表单。");
+            name.Clear();
+            date.SelectedDate = null;
+            Keyboard.Focus(name);
+            Must(WindowValidationInput.RaisePreviewKey(name, Key.Enter) && name.IsKeyboardFocusWithin &&
+                 ((TextBlock)main.FindName("CountdownNameError")).IsVisible && workspace.Snapshot.Settings.Countdowns.Count == 1,
+                "#224：Enter校验失败必须保留草稿并聚焦第一个无效字段。");
+            var preferences = (Popup)main.FindName("PreferencesPopup");
+            preferences.IsOpen = true;
+            WindowValidationInput.Pump(main.Dispatcher);
+            var salary = (TextBox)main.FindName("MonthlySalary");
+            var start = (TextBox)main.FindName("WorkStart");
+            var end = (TextBox)main.FindName("WorkEnd");
+            salary.Text = "56789"; start.Text = "08:15"; end.Text = "18:45";
+            Keyboard.Focus(salary);
+            Must(!WindowValidationInput.RaisePreviewKey(salary, Key.D2, ModifierKeys.Control) &&
+                 main.CurrentWorkspace == WorkspaceKind.Countdowns,
+                "#224：设置弹层文本焦点不允许全局Ctrl快捷键穿透。");
+            Must(WindowValidationInput.RaisePreviewKey(salary, Key.Enter) &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Preferences.MonthlySalary == 56789m,
+                "#224：设置弹层单行字段Enter应提交设置。");
+            salary.Text = "坏金额"; start.Text = "坏时间";
+            Keyboard.Focus(end);
+            Must(WindowValidationInput.RaisePreviewKey(end, Key.Enter) && salary.IsKeyboardFocusWithin &&
+                 ((TextBlock)main.FindName("MonthlySalaryError")).IsVisible,
+                "#224：工时Enter提交失败必须聚焦首个无效薪资字段。");
+            WindowValidationInput.ClosePopupForCleanup(preferences);
+            var tags = (Popup)main.FindName("TagManagerPopup");
+            ((Button)main.FindName("TagManagerButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            var tagName = (TextBox)main.FindName("NewTagInput");
+            tagName.Text = "回车新标签";
+            Keyboard.Focus(tagName);
+            Must(WindowValidationInput.RaisePreviewKey(tagName, Key.Enter) &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Tags.Any(tag => tag.Name == "回车新标签"),
+                "#224：新标签名Enter必须在标签弹层提交。");
+            tagName.Clear();
+            Must(WindowValidationInput.RaisePreviewKey(tagName, Key.Enter) && tagName.IsKeyboardFocusWithin &&
+                 workspace.Snapshot.Settings.Tags.Count == 1,
+                "#224：空标签Enter不得保存且保留名称焦点。");
+            WindowValidationInput.ClosePopupForCleanup(tags);
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunFloatingNoteKeyboardSubmission()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-floating-keyboard-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(floating);
+            floating.Show();
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            ((Button)floating.FindName("FloatingAddNoteToggle")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            var body = (TextBox)floating.FindName("FloatingNoteText");
+            body.Text = "浮窗正文";
+            Keyboard.Focus(body);
+            Must(WindowValidationInput.RaisePreviewKey(body, Key.Enter, ModifierKeys.Control) &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Notes.Any(note => note.Text == "浮窗正文"),
+                "#224：悬浮便签正文Ctrl+Enter必须持久提交。");
+            ((Button)floating.FindName("FloatingAddNoteToggle")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            body.Clear();
+            Keyboard.Focus(body);
+            Must(WindowValidationInput.RaisePreviewKey(body, Key.Enter, ModifierKeys.Control) && body.IsKeyboardFocusWithin &&
+                 ((TextBlock)floating.FindName("FloatingNoteTextError")).IsVisible && workspace.Snapshot.Settings.Notes.Count == 1,
+                "#224：悬浮Ctrl+Enter校验失败必须聚焦正文且不保存。");
+            body.Text = "浮窗首行";
+            body.CaretIndex = body.Text.Length;
+            Must(!WindowValidationInput.RaisePreviewKey(body, Key.Enter),
+                "#224：悬浮正文普通Enter不得提交。");
+            WindowValidationInput.RaiseKey(body, Key.Enter);
+            Must(body.Text.Contains('\n') && workspace.Snapshot.Settings.Notes.Count == 1,
+                "#224：悬浮正文Enter必须真实换行。");
+            var tags = (TagSelector)floating.FindName("FloatingTags");
+            tags.IsPopupOpen = true;
+            WindowValidationInput.Pump(floating.Dispatcher);
+            Must(!WindowValidationInput.RaisePreviewKey(body, Key.Enter, ModifierKeys.Control) &&
+                 workspace.Snapshot.Settings.Notes.Count == 1,
+                "#224：悬浮标签弹层打开时不能由Ctrl+Enter保存草稿。");
+            WindowValidationInput.ClosePopupForCleanup(tags.Popup);
+            Must(((Button)floating.FindName("FloatingAddNote")).ToolTip?.ToString()?.Contains("Ctrl+Enter", StringComparison.Ordinal) == true &&
+                 ((Button)floating.FindName("FloatingSearchNotes")).ToolTip?.ToString()?.Contains("Ctrl+F", StringComparison.Ordinal) == true,
+                "#224：悬浮添加与搜索按钮必须显示对应快捷键提示。");
+            return true;
+        }
+        finally
+        {
+            floating.Close();
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunListDeleteKeyboardBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-list-delete-key-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        MustApply(workspace, new SaveCountdownChange(null, "键盘删除倒计时", DateTimeOffset.UtcNow.AddDays(30),
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        MustApply(workspace, new SaveNoteChange(null, "键盘删除便签", workspace.Snapshot.BeijingNow.Date, false,
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        void DeleteFrom(Window owner, UIElement source, string expected, bool confirm)
+        {
+            owner.Activate(); Keyboard.Focus(source);
+            var observed = false;
+            QueueConfirmationDialogResponse(owner, confirm, dialog =>
+            {
+                observed = dialog.BodyText.Text.Contains(expected, StringComparison.Ordinal) &&
+                    dialog.CancelButton.IsDefault && !dialog.ConfirmButton.IsDefault;
+            });
+            Must(WindowValidationInput.RaisePreviewKey(source, Key.Delete),
+                "#224：列表行焦点Delete必须进入既有删除确认。");
+            WindowValidationInput.Pump(owner.Dispatcher);
+            Must(observed, "#224：Delete确认必须绑定当前行记录且默认取消。");
+        }
+        try
+        {
+            PrepareOffscreenValidationWindow(main); main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var rows = (Panel)main.FindName("CountdownRows");
+            var edit = VisualDescendants<Button>(rows).Single(button => Equals(button.Content, "编辑"));
+            DeleteFrom(main, edit, "键盘删除倒计时", false);
+            Must(workspace.Snapshot.Settings.Countdowns.Count == 1 && edit.IsKeyboardFocusWithin,
+                "#224：Delete取消保留倒计时并归还原行焦点。");
+            DeleteFrom(main, edit, "键盘删除倒计时", true);
+            Must(workspace.Snapshot.Settings.Countdowns.Count == 0 && main.DeleteUndoForValidation is not null,
+                "#224：Delete确认仍提供既有撤销。");
+            var name = (TextBox)main.FindName("CountdownName");
+            name.Text = "输入撤销"; name.CaretIndex = name.Text.Length; name.SelectedText = "保留";
+            Keyboard.Focus(name);
+            Must(!WindowValidationInput.RaisePreviewKey(name, Key.Z, ModifierKeys.Control) && name.CanUndo &&
+                 workspace.Snapshot.Settings.Countdowns.Count == 0,
+                "#224：文本Ctrl+Z必须优先保留编辑撤销，不能消耗删除撤销。");
+            // 合成Key的modifier只注入应用路由；WPF原生编辑命令经其公开RoutedCommand seam驱动。
+            ApplicationCommands.Undo.Execute(null, name);
+            Must(!name.Text.EndsWith("保留", StringComparison.Ordinal), "#224：文本Ctrl+Z必须真实撤销输入。");
+            Keyboard.Focus((UIElement)main.FindName("CountdownTab"));
+            Must(WindowValidationInput.RaisePreviewKey(main, Key.Z, ModifierKeys.Control) &&
+                 workspace.Snapshot.Settings.Countdowns.Count == 1, "#224：离开输入框后Ctrl+Z仍能撤销删除。");
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            rows = (Panel)main.FindName("ActiveNoteRows");
+            var check = VisualDescendants<CheckBox>(rows).Single();
+            DeleteFrom(main, check, "键盘删除便签", false);
+            Must(workspace.Snapshot.Settings.Notes.Count == 1 && !workspace.Snapshot.Settings.Notes.Single().IsCompleted,
+                "#224：便签行Delete取消不删除或勾选完成。");
+            DeleteFrom(main, check, "键盘删除便签", true);
+            Must(workspace.Snapshot.Settings.Notes.Count == 0, "#224：便签行Delete确认应删除目标记录。");
+            ((Button)main.FindName("MainStatusUndoButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Must(workspace.Snapshot.Settings.Notes.Count == 1, "#224：便签键盘删除后可撤销。");
+            PrepareOffscreenValidationWindow(floating); floating.Show(); floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(floating.Dispatcher);
+            var floatingCheck = VisualDescendants<CheckBox>((Panel)floating.FindName("FloatingRows")).Single();
+            DeleteFrom(floating, floatingCheck, "键盘删除便签", false);
+            Must(workspace.Snapshot.Settings.Notes.Count == 1, "#224：悬浮行Delete取消应保留便签。");
+            DeleteFrom(floating, floatingCheck, "键盘删除便签", true);
+            Must(workspace.Snapshot.Settings.Notes.Count == 0 && floating.DeleteUndoForValidation is not null,
+                "#224：悬浮行Delete确认仍提供撤销。");
+            ((Button)floating.FindName("FloatingAddNoteToggle")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            var body = (TextBox)floating.FindName("FloatingNoteText");
+            body.Text = "浮窗输入"; body.CaretIndex = body.Text.Length; body.SelectedText = "撤销";
+            Keyboard.Focus(body);
+            Must(!WindowValidationInput.RaisePreviewKey(body, Key.Z, ModifierKeys.Control) &&
+                 workspace.Snapshot.Settings.Notes.Count == 0, "#224：悬浮文本撤销不得恢复被删记录。");
+            ApplicationCommands.Undo.Execute(null, body);
+            Must(!body.Text.EndsWith("撤销", StringComparison.Ordinal), "#224：悬浮文本Ctrl+Z仍真实撤销编辑。");
+            Keyboard.Focus((UIElement)floating.FindName("FloatingNotesButton"));
+            Must(WindowValidationInput.RaisePreviewKey(floating, Key.Z, ModifierKeys.Control) && workspace.Snapshot.Settings.Notes.Count == 1,
+                "#224：悬浮非文本Ctrl+Z仍可恢复删除。");
+            return true;
+        }
+        finally
+        {
+            floating.Close(); main.Close(); DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunMainNoteEditorSeparation()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-note-separation-{Guid.NewGuid():N}.json");
@@ -11390,7 +11686,7 @@ internal static class ValidationExercises
         var expectedCommands = new[]
         {
             "CountdownsWorkspace", "Filter", "Minimize", "NoteSearch",
-            "NotesWorkspace", "SaveCountdown", "SavePreferences", "TagManager"
+            "NotesWorkspace", "SaveCountdown", "SaveNote", "SavePreferences", "TagManager"
         };
         var passingCommands = expectedCommands.ToDictionary(
             command => command,
@@ -11439,7 +11735,7 @@ internal static class ValidationExercises
         var expected = input.ExpectedCommands.Order(StringComparer.Ordinal).ToArray();
         var observed = input.ObservedCommands.Keys.Order(StringComparer.Ordinal).ToArray();
         return new MainShortcutGateResults(
-            expected.Length == 8 &&
+            expected.Length == 9 &&
                 observed.SequenceEqual(expected, StringComparer.Ordinal) &&
                 input.ObservedCommands.Values.All(value => value),
             input.TextInputPreserved,

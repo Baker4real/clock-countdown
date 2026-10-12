@@ -4296,7 +4296,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 733 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#227 删除主行菜单字段、新增两项行为并迁移键盘及分组字段）'
+    Assert-Equal 737 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#224 新增四项键盘行为合同）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4887,7 +4887,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v47') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal '33D0A3135195CB1FC5943FF1CF294944403CDE7B0512F4530F2342C318C50685' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（733字段，#227 主行行为与编辑列表分离合同）'
+    Assert-Equal '0F66DFD2A63E8EEE3291054427973AEC68A93AF00391C0E48921A45B02509D32' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（737字段，#224 键盘提交与删除合同）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -5481,7 +5481,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGateIsolationBehavior) '主窗口初始焦点与完整 Tab 路径负向夹具可独立失败'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardPathNegativeFixtures) '完整 Tab 路径负夹具可击穿缺失标签、换序、非对称和不可见焦点'
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralLiveRegionsUsePoliteSemantics) '主窗口结构变化使用既有可见 polite live region'
-    Assert-Equal $true ([bool] $adapterValidation.MainShortcutScopeIsSafe) '主窗口快捷键避开输入控件和弹层上下文'
+    Assert-Equal $true ([bool] $adapterValidation.MainTextShortcutBehavior) '输入焦点下Ctrl+S与便签Ctrl+Enter持久保存，Enter换行与弹层守卫（#224）'
+    Assert-Equal $true ([bool] $adapterValidation.SingleLineEnterSubmission) '单行名称、标签、设置Enter提交及首个无效字段焦点（#224）'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteKeyboardSubmission) '悬浮便签Ctrl+Enter提交、普通Enter换行与校验（#224）'
+    Assert-Equal $true ([bool] $adapterValidation.ListDeleteKeyboardBehavior) '列表Delete安全确认、取消归还、撤销与文本Ctrl+Z隔离（#224）'
+    Assert-Equal $true ([bool] $adapterValidation.MainShortcutScopeIsSafe) '主窗口Ctrl快捷键允许输入焦点，避开弹层与模态上下文（#224）'
     # #129 去重迁移（U1 独有断言）：键盘焦点基线证据版本钉死。
     Assert-Equal $false ([bool] $adapterValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-12-v47')) '键盘焦点基线证据记录再生的 2026-10-12-v47 帧（#129 自 U1 迁移）'
@@ -5518,14 +5522,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     [array]::Reverse($expectedNotesFocusedTargetsBackward)
     Assert-Equal ($expectedNotesFocusedTargetsBackward -join ',') ([string]::Join(',', @($notesTabPath.BackwardFocusedTargets))) '便签每个实际焦点目标反向严格对称'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.CommandResults.Minimize) '最小化按钮和 Ctrl+M 只收起管理窗口，悬浮窗保持可见（#213）'
-    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口真实 KeyEvent 精确覆盖八个命令（#156 起 Ctrl+F 便签页新增 NoteSearch）'
-    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '主窗口八个快捷键均产生真实预期结果'
-    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口八个快捷键均报告真实 handled 与效果诊断'
-    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties | Where-Object { -not [bool] $_.Value.Handled -or -not [bool] $_.Value.EffectObserved }).Count '主窗口八个快捷键均由真实 KeyEvent handled 且观察到效果'
+    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SaveNote,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口真实 KeyEvent 精确覆盖九个命令（#224 新增便签保存）'
+    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '主窗口九个快捷键均产生真实预期结果'
+    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SaveNote,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口九个快捷键均报告真实 handled 与效果诊断'
+    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties | Where-Object { -not [bool] $_.Value.Handled -or -not [bool] $_.Value.EffectObserved }).Count '主窗口九个快捷键均由真实 KeyEvent handled 且观察到效果'
     Assert-Equal '倒计时已保存。' ([string] $adapterValidation.MainKeyboardBehavior.CommandDiagnostics.SaveCountdown.StatusText) 'Ctrl+S 报告真实倒计时持久化成功状态'
     Assert-Equal '设置已保存' ([string] $adapterValidation.MainKeyboardBehavior.CommandDiagnostics.SavePreferences.StatusText) 'Ctrl+Shift+S 报告真实偏好持久化成功状态'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.TextInputPreserved) '主窗口输入焦点不会被快捷键入口劫持'
-    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.InputGuards.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count 'TextBox、DatePicker 与 ComboBox 输入 guard 均真实阻止窗口快捷键'
+    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.InputGuards.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count 'TextBox、DatePicker 与 ComboBox 允许已支持Ctrl组合，保留原生输入（#224）'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.PopupGuarded) '主窗口弹层打开时不响应窗口快捷键'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.ModalOwnerGuarded) '主窗口作为禁用模态 owner 时不响应窗口快捷键'
     Assert-Equal 0 @($adapterValidation.MainShortcutGates.FailedChecks).Count '主窗口快捷键 mapping/event evaluator 全部通过'

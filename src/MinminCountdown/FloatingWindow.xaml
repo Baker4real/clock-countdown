@@ -428,6 +428,7 @@
                 <TextBox x:Name="FloatingNoteText"
                          MaxHeight="88"
                          MaxLength="140"
+                         AcceptsReturn="True"
                          Foreground="{DynamicResource FloatingNoteInputTextBrush}"
                          TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Auto" />

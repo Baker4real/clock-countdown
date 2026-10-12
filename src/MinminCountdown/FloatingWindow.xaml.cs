@@ -1544,6 +1544,8 @@ public sealed partial class FloatingWindow : Window
         AutomationProperties.SetName(FloatingNoteDate, "快速便签日期");
         AutomationProperties.SetName(FloatingManageReminderRules, "管理快速便签提醒规则");
         AutomationProperties.SetName(FloatingAddNote, "添加快速便签");
+        FloatingAddNote.ToolTip = "添加便签（正文 Ctrl+Enter）";
+        FloatingSearchNotes.ToolTip = "搜索便签（Ctrl+F）";
         UiAccessibility.Name(FloatingSearchNotes, "搜索便签");
         UiAccessibility.Name(FloatingAddNoteToggle, "添加便签");
         UiAccessibility.Name(FloatingOpenSettings, "设置");
@@ -2230,8 +2232,17 @@ public sealed partial class FloatingWindow : Window
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
         var modifiers = MainShortcutInput.ResolveModifiers(args);
+        if (IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen &&
+            modifiers == ModifierKeys.Control && args.Key == Key.Enter && FloatingNoteText.IsKeyboardFocusWithin)
+        {
+            AddNote();
+            args.Handled = true;
+            return;
+        }
         if (modifiers == ModifierKeys.Control &&
             args.Key == Key.Z &&
+            IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen &&
+            Keyboard.FocusedElement is not TextBoxBase &&
             DeleteUndoOffers.For(_desktopWorkspace).Surface == DeleteUndoSurface.Floating)
         {
             CommitFloatingDeleteUndo();

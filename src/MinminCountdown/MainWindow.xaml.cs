@@ -290,7 +290,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         !TagManagerPopup.IsOpen &&
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen &&
-        !IsTextEntryFocus(Keyboard.FocusedElement);
+        !CountdownDate.IsDropDownOpen && !NoteDate.IsDropDownOpen &&
+        !CountdownHour.IsDropDownOpen && !CountdownMinute.IsDropDownOpen && !CountdownSecond.IsDropDownOpen;
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
@@ -309,7 +310,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private bool TryUndoDeleteFromShortcut(ModifierKeys modifiers, Key key)
     {
-        if (modifiers != ModifierKeys.Control || key != Key.Z)
+        if (modifiers != ModifierKeys.Control || key != Key.Z ||
+            !MainShortcutScopeIsSafe || IsTextEntryFocus(Keyboard.FocusedElement))
         {
             return false;
         }
@@ -360,6 +362,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 return true;
             case (ModifierKeys.Control, Key.S) when _workspace == WorkspaceKind.Countdowns:
                 SaveCountdown();
+                return true;
+            case (ModifierKeys.Control, Key.S) when _workspace == WorkspaceKind.Notes:
+            case (ModifierKeys.Control, Key.Enter) when _workspace == WorkspaceKind.Notes && NoteText.IsKeyboardFocusWithin:
+                SaveNote();
                 return true;
             case (ModifierKeys.Control | ModifierKeys.Shift, Key.S):
                 SavePreferences();
@@ -717,6 +723,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UpdateCountdownListHeight();
         CountdownTab.IsChecked = showCountdowns;
         NotesTab.IsChecked = !showCountdowns;
+        FilterButton.ToolTip = showCountdowns ? "筛选倒计时（Ctrl+F）" : "筛选便签";
         UpdateWorkspaceTabIndicator();
         CountdownFilterOptions.Visibility = showCountdowns ? Visibility.Visible : Visibility.Collapsed;
         NoteFilterOptions.Visibility = showCountdowns ? Visibility.Collapsed : Visibility.Visible;
@@ -1052,6 +1059,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         // 「按便签日期筛选」）降级为该输入的帮助文本。映射为自动化名/帮助文本/标签关系，
         // 不把 Web aria 属性原样搬到 WPF。
         WireFieldLabelRelations();
+        CountdownTab.ToolTip = "倒计时（Ctrl+1）";
+        NotesTab.ToolTip = "便签（Ctrl+2）";
+        MinimizeButton.ToolTip = "收起管理窗口（Ctrl+M）";
+        TagManagerButton.ToolTip = "标签管理（Ctrl+T）";
+        SaveCountdownButton.ToolTip = "保存倒计时（Ctrl+S；名称框 Enter）";
+        SaveNoteButton.ToolTip = "添加或保存便签（Ctrl+S；正文 Ctrl+Enter）";
+        SavePreferencesButton.ToolTip = "保存设置（字段 Enter；关闭弹层后 Ctrl+Shift+S）";
+        CreateTagButton.ToolTip = "新建标签（名称框 Enter）";
         NameControl(CountdownReminderHelp, "提醒规则说明");
         NameControl(CountdownReminderNoRadio, "提醒规则：不提醒");
         NameControl(CountdownReminderTimeRadio, "提醒规则：按时间提醒");
@@ -1168,6 +1183,29 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void MinimizeToTray() => MinimizeToTrayRequested?.Invoke(this, EventArgs.Empty);
 
+    private void AttachRowDeleteShortcut(FrameworkElement row, Button delete)
+    {
+        row.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Handled || args.Key != Key.Delete ||
+                MainShortcutInput.ResolveModifiers(args) != ModifierKeys.None ||
+                !MainShortcutScopeIsSafe || IsTextEntryFocus(Keyboard.FocusedElement)) return;
+            args.Handled = true;
+            delete.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        };
+    }
+
+    private static void AttachSingleLineSubmit(TextBox field, Action submit, Func<bool> scopeIsSafe)
+    {
+        field.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Handled || args.Key != Key.Enter ||
+                MainShortcutInput.ResolveModifiers(args) != ModifierKeys.None || !scopeIsSafe()) return;
+            args.Handled = true;
+            submit();
+        };
+    }
+
     private static bool IsTextEntryFocus(IInputElement? focused)
     {
         if (focused is ComboBoxItem or DatePickerTextBox or System.Windows.Controls.Calendar or CalendarDayButton)
@@ -1238,12 +1276,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownMinute.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
         CountdownSecond.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
+        AttachSingleLineSubmit(CountdownName, SaveCountdown, () => MainShortcutScopeIsSafe);
         PreferencesButton.Click += (_, _) => PreferencesPopup.IsOpen = !PreferencesPopup.IsOpen;
         CountdownEditorExpandButton.Click += (_, _) =>
             SetCountdownEditorExpanded(MainCountdownTimeTagRow.Visibility != Visibility.Visible);
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         AddEmptyCountdownButton.Click += (_, _) => BeginCountdownAddFromEmptyState();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
+        foreach (var field in new[] { MonthlySalary, WorkStart, WorkEnd })
+            AttachSingleLineSubmit(field, SavePreferences, () => IsEnabled && PreferencesPopup.IsOpen);
         // #151：字段值修正后立即清除对应字段错误（镜像悬浮窗快速新增）。
         CountdownName.TextChanged += (_, _) => ClearCountdownFieldError(CountdownNameError);
         CountdownDate.SelectedDateChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
@@ -1308,6 +1349,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownTags.CreateRequested += CreateTagFromSelector;
         NoteTags.CreateRequested += CreateTagFromSelector;
         CreateTagButton.Click += (_, _) => CreateTag(NewTagInput.Text, null);
+        AttachSingleLineSubmit(NewTagInput, () =>
+        {
+            if (CreateTag(NewTagInput.Text, null) is null) NewTagInput.Focus();
+        }, () => IsEnabled && TagManagerPopup.IsOpen);
 
         AnyTagMode.Click += (_, _) =>
         {
@@ -1538,6 +1583,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var edit = ActionButton("编辑", record.Id, $"编辑倒计时 {record.Name}");
             edit.Click += OnEditCountdown;
             var delete = ActionButton("删除", record.Id, $"删除倒计时 {record.Name}");
+            delete.ToolTip = "删除倒计时（Delete）";
             delete.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
             delete.BorderBrush = Brushes.Transparent;
             delete.ContentTemplate = CreateGlyphButtonTemplate(
@@ -1645,6 +1691,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             layout.Children.Add(actions);
             layout.Children.Add(deadline);
             var card = Card(layout, active ? "CardBrush" : "ExpiredBrush");
+            AttachRowDeleteShortcut(card, delete);
             _countdownSourceRows[record.Id] = card;
             _countdownSourceFocusTargets[record.Id] = edit;
             _countdownRemainingTexts[record.Id] = remaining;
@@ -2343,6 +2390,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         edit.Uid = "NoteRowEdit";
         edit.Click += OnEditNote;
         var delete = NoteActionButton("删除", note.Id, $"删除便签 {note.Text}", "trash");
+        delete.ToolTip = "删除便签（Delete）";
         delete.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
         delete.BorderBrush = Brushes.Transparent;
         delete.Click += OnDeleteNote;
@@ -2411,6 +2459,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         grid.Children.Add(tagChips);
         grid.Children.Add(actions);
         var card = NoteCard(grid, note.IsCompleted || visibleIndex % 2 == 1);
+        AttachRowDeleteShortcut(card, delete);
         _noteSourceRows[note.Id] = card;
         _noteSourceFocusTargets[note.Id] = edit;
         if (string.Equals(note.Id, _reminderSourceNoteId, StringComparison.OrdinalIgnoreCase))

@@ -878,6 +878,10 @@ internal static class ValidationReport
         var mainTopmostStateSynchronization = ValidationExercises.RunMainTopmostStateSynchronization();
         var mainRedundancyCleanup = ValidationExercises.RunMainRedundancyCleanup();
         var mainNoteEditorSeparation = ValidationExercises.RunMainNoteEditorSeparation();
+        var mainTextShortcutBehavior = ValidationExercises.RunMainTextShortcutBehavior();
+        var singleLineEnterSubmission = ValidationExercises.RunSingleLineEnterSubmission();
+        var floatingNoteKeyboardSubmission = ValidationExercises.RunFloatingNoteKeyboardSubmission();
+        var listDeleteKeyboardBehavior = ValidationExercises.RunListDeleteKeyboardBehavior();
         var mainNoteRowsSimplified = ValidationExercises.RunMainNoteRowsSimplified();
         var countdownPreferencesPopup = ValidationExercises.RunCountdownPreferencesPopupBehavior();
         var countdownEditorExpansion = ValidationExercises.RunCountdownEditorExpansionBehavior();
@@ -1635,7 +1639,7 @@ internal static class ValidationReport
                 new[]
                 {
                     "CountdownsWorkspace", "Filter", "Minimize", "NoteSearch",
-                    "NotesWorkspace", "SaveCountdown", "SavePreferences", "TagManager"
+                    "NotesWorkspace", "SaveCountdown", "SaveNote", "SavePreferences", "TagManager"
                 },
                 mainKeyboardBehavior.CommandResults,
                 mainKeyboardBehavior.TextInputPreserved,
@@ -2325,6 +2329,10 @@ internal static class ValidationReport
             ["MainTopmostStateSynchronization"] = mainTopmostStateSynchronization,
             ["MainRedundancyCleanup"] = mainRedundancyCleanup,
             ["MainNoteEditorSeparation"] = mainNoteEditorSeparation,
+            ["MainTextShortcutBehavior"] = mainTextShortcutBehavior,
+            ["SingleLineEnterSubmission"] = singleLineEnterSubmission,
+            ["FloatingNoteKeyboardSubmission"] = floatingNoteKeyboardSubmission,
+            ["ListDeleteKeyboardBehavior"] = listDeleteKeyboardBehavior,
             ["MainNoteRowsSimplified"] = mainNoteRowsSimplified,
             ["CountdownPreferencesPopupBehavior"] = countdownPreferencesPopup,
             ["CountdownEditorExpansionBehavior"] = countdownEditorExpansion,
@@ -11712,6 +11720,7 @@ internal static class ValidationReport
         var commandDiagnostics = new Dictionary<string, MainShortcutCommandDiagnostic>(StringComparer.Ordinal);
         var commandsWork = false;
         string? savedCountdownId = null;
+        string? savedNoteId = null;
         bool RaiseShortcut(ModifierKeys modifiers, Key key)
         {
             countdownTab.Focus();
@@ -11776,7 +11785,8 @@ internal static class ValidationReport
             probeCountdownHour.SelectedItem = probeTarget.ToString("HH", CultureInfo.InvariantCulture);
             probeCountdownMinute.SelectedItem = probeTarget.ToString("mm", CultureInfo.InvariantCulture);
             probeCountdownSecond.SelectedItem = probeTarget.ToString("ss", CultureInfo.InvariantCulture);
-            var countdownHandled = RaiseShortcut(ModifierKeys.Control, Key.S);
+            Keyboard.Focus(probeCountdownName);
+            var countdownHandled = WindowValidationInput.RaisePreviewKey(probeCountdownName, Key.S, ModifierKeys.Control);
             var savedCountdown = workspace.Snapshot.Settings.Countdowns.SingleOrDefault(item =>
                 string.Equals(item.Name, probeName, StringComparison.Ordinal));
             savedCountdownId = savedCountdown?.Id;
@@ -11791,6 +11801,21 @@ internal static class ValidationReport
                 countdownHandled,
                 countdownPersisted,
                 status.Text);
+
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            var probeNoteText = Required<TextBox>(main, "NoteText");
+            var probeNoteName = $"便签快捷保存-{Guid.NewGuid():N}";
+            probeNoteText.Text = probeNoteName;
+            Required<DatePicker>(main, "NoteDate").SelectedDate = workspace.Snapshot.BeijingNow.Date;
+            Keyboard.Focus(probeNoteText);
+            var noteHandled = WindowValidationInput.RaisePreviewKey(probeNoteText, Key.S, ModifierKeys.Control);
+            var savedNote = workspace.Snapshot.Settings.Notes.SingleOrDefault(note => note.Text == probeNoteName);
+            savedNoteId = savedNote?.Id;
+            var notePersisted = savedNote is not null && DesktopWorkspace.Load(workspace.Snapshot.SettingsPath)
+                .Snapshot.Settings.Notes.Any(note => note.Id == savedNote.Id);
+            commandResults["SaveNote"] = noteHandled && notePersisted;
+            commandDiagnostics["SaveNote"] = new(noteHandled, notePersisted, status.Text);
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
 
             var displayPrecision = Required<ComboBox>(main, "DisplayPrecision");
             var monthlySalary = Required<TextBox>(main, "MonthlySalary");
@@ -11882,7 +11907,7 @@ internal static class ValidationReport
             main.WindowState = WindowState.Normal;
             PumpDispatcher();
             commandsWork =
-                commandResults.Count == 8 &&
+                commandResults.Count == 9 &&
                 commandResults.Values.All(value => value);
         }
         finally
@@ -11890,6 +11915,10 @@ internal static class ValidationReport
             if (savedCountdownId is not null)
             {
                 workspace.Apply(new DeleteCountdownChange(savedCountdownId));
+            }
+            if (savedNoteId is not null)
+            {
+                workspace.Apply(new DeleteNoteChange(savedNoteId));
             }
 
             workspace.Apply(new SavePreferencesChange(
@@ -11928,28 +11957,26 @@ internal static class ValidationReport
         countdownName.Text = textSentinel;
         var textBoxFocused = countdownName.Focus();
         PumpDispatcher();
-        var workspaceBeforeTextShortcut = main.CurrentWorkspace;
         var textBoxGuarded =
-            textBoxFocused &&
-            countdownName.IsKeyboardFocused &&
-            !WindowValidationInput.RaisePreviewKey(countdownName, Key.D2, ModifierKeys.Control) &&
+            textBoxFocused && countdownName.IsKeyboardFocused &&
+            new[] { Key.A, Key.C, Key.V, Key.X, Key.Z }.All(key =>
+                !WindowValidationInput.RaisePreviewKey(countdownName, key, ModifierKeys.Control)) &&
             !WindowValidationInput.RaisePreviewKey(countdownName, Key.F, ModifierKeys.None) &&
-            main.CurrentWorkspace == workspaceBeforeTextShortcut &&
-            !Required<Popup>(main, "FilterPopup").IsOpen &&
+            WindowValidationInput.RaisePreviewKey(countdownName, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == WorkspaceKind.Notes &&
             string.Equals(countdownName.Text, textSentinel, StringComparison.Ordinal);
         countdownName.Text = originalName;
 
+        main.ShowWorkspace(WorkspaceKind.Countdowns);
         var countdownDateInput = Required<DatePicker>(main, "CountdownDate");
         var datePickerFocused = countdownDateInput.Focus();
         PumpDispatcher();
         var datePickerGuarded =
-            datePickerFocused &&
-            countdownDateInput.IsKeyboardFocusWithin &&
-            !WindowValidationInput.RaisePreviewKey(countdownDateInput, Key.D2, ModifierKeys.Control) &&
+            datePickerFocused && countdownDateInput.IsKeyboardFocusWithin &&
             !WindowValidationInput.RaisePreviewKey(countdownDateInput, Key.A, ModifierKeys.None) &&
-            main.CurrentWorkspace == workspaceBeforeTextShortcut &&
-            !Required<Popup>(main, "FilterPopup").IsOpen &&
-            !countdownDateInput.IsDropDownOpen;
+            WindowValidationInput.RaisePreviewKey(countdownDateInput, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == WorkspaceKind.Notes && !countdownDateInput.IsDropDownOpen;
+        main.ShowWorkspace(WorkspaceKind.Countdowns);
         var countdownHourInput = Required<ComboBox>(main, "CountdownHour");
         var editorWasExpanded = Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible;
         if (!editorWasExpanded)
@@ -11958,12 +11985,11 @@ internal static class ValidationReport
         var comboBoxFocused = countdownHourInput.Focus();
         PumpDispatcher();
         var comboBoxGuarded =
-            comboBoxFocused &&
-            countdownHourInput.IsKeyboardFocusWithin &&
-            !WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.D2, ModifierKeys.Control) &&
+            comboBoxFocused && countdownHourInput.IsKeyboardFocusWithin &&
             !WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.A, ModifierKeys.None) &&
-            main.CurrentWorkspace == workspaceBeforeTextShortcut &&
-            !Required<Popup>(main, "FilterPopup").IsOpen;
+            WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.D2, ModifierKeys.Control) &&
+            main.CurrentWorkspace == WorkspaceKind.Notes;
+        main.ShowWorkspace(WorkspaceKind.Countdowns);
         var textInputPreserved = textBoxGuarded && datePickerGuarded && comboBoxGuarded;
         if (!editorWasExpanded)
             Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));

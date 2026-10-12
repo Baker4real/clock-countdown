@@ -1486,6 +1486,8 @@
                               <Grid>
                                 <TextBox x:Name="NoteText"
                                          MinHeight="68"
+                                         AcceptsReturn="True" TextWrapping="Wrap"
+                                         MaxHeight="68" VerticalScrollBarVisibility="Auto"
                                          MaxLength="140" />
                                 <TextBlock Margin="18,0,0,0"
                                            Height="28"

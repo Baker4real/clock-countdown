@@ -4,6 +4,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using MinminCountdown.Core;
 
@@ -163,6 +164,15 @@ public sealed partial class FloatingWindow
             SnapsToDevicePixels = true,
             UseLayoutRounding = true
         };
+        card.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Handled || args.Key != Key.Delete ||
+                MainShortcutInput.ResolveModifiers(args) != ModifierKeys.None ||
+                !IsEnabled || FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen ||
+                NoteRowOverflowMenuBehavior.GetPopup(overflowMenu)?.IsOpen == true) return;
+            args.Handled = true;
+            RequestNoteDelete(note);
+        };
         if (rowIndex % 2 == 0)
         {
             card.Background = _floatingNoteCardBrush;
@@ -236,7 +246,7 @@ public sealed partial class FloatingWindow
     /// <summary>
     ///     每条便签右侧的“…”菜单：提供编辑/删除，编辑复用主窗口编辑流程（悬浮窗首次获得编辑能力）。
     /// </summary>
-    private FrameworkElement BuildNoteOverflowMenu(NoteRecord note)
+    private Button BuildNoteOverflowMenu(NoteRecord note)
     {
         var trigger = UiAccessibility.Name(
             new Button

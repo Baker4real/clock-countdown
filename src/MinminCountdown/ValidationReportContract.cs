@@ -125,6 +125,10 @@ internal static class ValidationReportContract
         "MainTopmostStateSynchronization",
         "MainRedundancyCleanup",
         "MainNoteEditorSeparation",
+        "MainTextShortcutBehavior",
+        "SingleLineEnterSubmission",
+        "FloatingNoteKeyboardSubmission",
+        "ListDeleteKeyboardBehavior",
         "MainNoteRowsSimplified",
         "NoteGroupingSelectorAbsent",
         "CountdownPreferencesPopupBehavior",
@@ -597,7 +601,8 @@ internal static class ValidationReportContract
                      "CountdownEditorExpansionBehavior", "CountdownRowDeadlineAndSecondaryDeleteBehavior",
                      "MainTopmostStateSynchronization", "MainRedundancyCleanup",
                      "MainNoteEditorSeparation", "MainNoteRowsSimplified", "MainNoteRowActionsKeyboardWorks",
-                     "NoteGroupingSelectorAbsent"
+                     "NoteGroupingSelectorAbsent", "MainTextShortcutBehavior", "SingleLineEnterSubmission",
+                     "FloatingNoteKeyboardSubmission", "ListDeleteKeyboardBehavior"
                  })
         {
             MustReject(report => report[field] = false, false,

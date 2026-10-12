@@ -209,15 +209,20 @@ internal sealed class ReminderCenterWindow : Window
 
     private void ApplyAutomaticPlacementIfNeeded()
     {
-        var workArea = MonitorWorkAreaResolver.ResolveForWindow(
-            !_placementInitialized && _placementSource is { } source ? source : this).WorkAreaDip;
-        if (!_hasManualWindowPlacement)
+        var monitor = MonitorWorkAreaResolver.ResolveForWindow(
+            !_placementInitialized && _placementSource is { } source ? source : this);
+        // 首次物理迁移可能同步改变 HWND DPI；用更新后的窗口 DPI 再对齐一次。
+        for (var pass = 0; pass < 2; pass++)
         {
-            Left = workArea.Right - ActualWidth - 18;
-            Top = workArea.Top + 18;
+            var workArea = MonitorWorkAreaResolver.ConvertWorkAreaToWindowDpi(monitor, this);
+            if (!_hasManualWindowPlacement)
+            {
+                Left = workArea.Right - ActualWidth - 18;
+                Top = workArea.Top + 18;
+            }
+            WindowWorkAreaGeometry.Fit(this, workArea, 18);
         }
-        WindowWorkAreaGeometry.Fit(this, workArea, 18);
-        _placementInitialized = true;
+        _placementInitialized = MonitorWorkAreaResolver.ResolveForWindow(this) == monitor;
     }
 
     private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)

@@ -34,7 +34,7 @@ internal static class MonitorWorkAreaResolver
 
         var dpi = VisualTreeHelper.GetDpi(window);
         var handle = new WindowInteropHelper(window).Handle;
-        if (s_validationMonitors is null && handle != IntPtr.Zero && GetWindowRect(handle, out var physical))
+        if (handle != IntPtr.Zero && GetWindowRect(handle, out var physical))
             return ResolvePhysicalRect(physical, dpi.DpiScaleX, dpi.DpiScaleY);
         var width = double.IsNaN(window.Width) ? window.ActualWidth : window.Width;
         var height = double.IsNaN(window.Height) ? window.ActualHeight : window.Height;
@@ -44,6 +44,29 @@ internal static class MonitorWorkAreaResolver
             new Rect(left, top, Math.Max(0, width), Math.Max(0, height)),
             dpi.DpiScaleX,
             dpi.DpiScaleY);
+    }
+
+    /// <summary>
+    /// 将某个目标显示器的物理工作区转换为指定窗口当前 DPI 的 WPF 坐标。
+    /// 首次显示跨 DPI 窗口时，目标工作区的 DIP 不能直接赋给尚未迁移到
+    /// 目标显示器的 HWND；先回到物理像素，再按窗口当前 DPI解释，才能让
+    /// Windows 把窗口真正放到目标显示器并触发后续 WM_DPICHANGED。
+    /// </summary>
+    internal static Rect ConvertWorkAreaToWindowDpi(MonitorWorkArea monitor, Window window)
+    {
+        // 单工作区覆盖是既有固定 DIP 布局夹具；多显示器夹具与生产路径
+        // 则保留物理显示器语义，以真实 HWND 回读验证跨 DPI 放置。
+        if (s_validationMonitors is null && s_validationOverride is not null)
+            return monitor.WorkAreaDip;
+        var windowDpi = VisualTreeHelper.GetDpi(window);
+        var scaleX = IsUsableScale(windowDpi.DpiScaleX) ? windowDpi.DpiScaleX : 1;
+        var scaleY = IsUsableScale(windowDpi.DpiScaleY) ? windowDpi.DpiScaleY : 1;
+        var physical = ToPhysical(monitor.WorkAreaDip, monitor.DpiScaleX, monitor.DpiScaleY);
+        return new Rect(
+            physical.Left / scaleX,
+            physical.Top / scaleY,
+            (physical.Right - physical.Left) / scaleX,
+            (physical.Bottom - physical.Top) / scaleY);
     }
 
     internal static MonitorWorkArea ResolveForScreenRect(

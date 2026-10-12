@@ -3113,13 +3113,35 @@ internal static class ValidationExercises
                 "更正后无法点击 10 分钟稍后控件。");
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var state = session.Current.ReminderStates[rule.Id];
+            var expectedOccurrenceKey = ReminderOccurrenceKey.Create(rule, dueUtc).ToString();
+            var expectedSnoozeUntilUtc = dueUtc.AddMinutes(10);
+            var persisted = new SettingsStore(clock: clock).Load(settingsPath).Settings;
+            persisted.ReminderStates.TryGetValue(rule.Id, out var persistedState);
+            var visibleErrors = string.Join(" | ", VisualDescendants<TextBlock>(center)
+                .Where(text => text.IsVisible &&
+                    (text.Text.Contains("失败", StringComparison.Ordinal) ||
+                     text.Text.Contains("必须", StringComparison.Ordinal) ||
+                     text.Text.Contains("请选择", StringComparison.Ordinal)))
+                .Select(text => text.Text));
             Must(
                 state.ActiveSnooze?.OccurrenceKey ==
-                    ReminderOccurrenceKey.Create(rule, dueUtc).ToString() &&
-                state.ActiveSnooze.SnoozeUntilUtc == dueUtc.AddMinutes(10) &&
+                    expectedOccurrenceKey &&
+                state.ActiveSnooze.SnoozeUntilUtc == expectedSnoozeUntilUtc &&
                 coordinator.ActiveEntryCount == 0 &&
-                coordinator.ActiveWindowCount == 0,
-                "提醒中心稍后点击没有持久化覆盖并关闭空中心。");
+                coordinator.ActiveWindowCount == 0 &&
+                persistedState == state,
+                "提醒中心稍后点击没有持久化覆盖并关闭空中心。" +
+                $"actualKey={state.ActiveSnooze?.OccurrenceKey ?? "<null>"}; " +
+                $"expectedKey={expectedOccurrenceKey}; " +
+                $"actualUntil={state.ActiveSnooze?.SnoozeUntilUtc:O}; " +
+                $"expectedUntil={expectedSnoozeUntilUtc:O}; " +
+                $"entries={coordinator.ActiveEntryCount}; windows={coordinator.ActiveWindowCount}; " +
+                $"persistedMatches={persistedState == state}; " +
+                $"persistedKey={persistedState?.ActiveSnooze?.OccurrenceKey ?? "<null>"}; " +
+                $"persistedUntil={persistedState?.ActiveSnooze?.SnoozeUntilUtc:O}; " +
+                $"failureVisible={center.IsFailureVisible(key)}; " +
+                $"customErrorVisible={center.IsCustomSnoozeErrorVisible(key)}; " +
+                $"pendingRetry={coordinator.HasPendingPersistenceRetry}; errors={visibleErrors}");
             return true;
         }
         finally

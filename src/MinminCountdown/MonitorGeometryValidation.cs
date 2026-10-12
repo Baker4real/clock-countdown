@@ -202,6 +202,7 @@ internal static class MonitorGeometryValidation
 
     internal static bool ReminderUsesSourceMonitor()
     {
+        if (!ReminderPlacementUsesPositiveMixedDpi()) return false;
         var source = new Window { Width = 520, Height = 390, Left = -1400, Top = 100, ShowInTaskbar = false };
         ReminderCenterWindow? center = null;
         try
@@ -216,12 +217,47 @@ internal static class MonitorGeometryValidation
             var firstPlacement = Math.Abs(center.Left + center.ActualWidth + 18) < 1 &&
                    Math.Abs(center.Top - 18) < 1 && center.Owner is null &&
                    !center.ShowActivated && center.ShowInTaskbar;
-            center.Left = -1300;
+            center.Left = -1100;
             center.Top = 120;
             SendMessageW(new WindowInteropHelper(center).Handle, 0x0232, IntPtr.Zero, IntPtr.Zero);
             center.ReapplyPlacement();
             WindowValidationInput.Pump(center.Dispatcher);
-            return firstPlacement && Math.Abs(center.Left + 1300) < 1 && Math.Abs(center.Top - 120) < 1;
+            return firstPlacement && Math.Abs(center.Left + 1100) < 1 && Math.Abs(center.Top - 120) < 1;
+        }
+        finally { center?.ForceClose(); source.Close(); }
+    }
+
+    private static bool ReminderPlacementUsesPositiveMixedDpi()
+    {
+        var source = new Window { Width = 400, Height = 300, ShowInTaskbar = false };
+        ReminderCenterWindow? center = null;
+        try
+        {
+            source.Show();
+            WindowValidationInput.Pump(source.Dispatcher);
+            var dpi = VisualTreeHelper.GetDpi(source);
+            // Main [0,1920] at the current HWND DPI; right screen [1920,3840]
+            // at twice that DPI. Its DIP origin overlaps the main screen.
+            using var monitors = MonitorWorkAreaResolver.OverrideForValidation(
+                new MonitorWorkArea(new Rect(0, 0, 1920 / dpi.DpiScaleX, 1080 / dpi.DpiScaleY), dpi.DpiScaleX, dpi.DpiScaleY),
+                new MonitorWorkArea(new Rect(960 / dpi.DpiScaleX, 0, 960 / dpi.DpiScaleX, 540 / dpi.DpiScaleY), dpi.DpiScaleX * 2, dpi.DpiScaleY * 2));
+            source.Left = 2200 / dpi.DpiScaleX;
+            source.Top = 100 / dpi.DpiScaleY;
+            WindowValidationInput.Pump(source.Dispatcher);
+            center = new ReminderCenterWindow(source);
+            center.Show();
+            WindowValidationInput.Pump(center.Dispatcher);
+            var handle = new WindowInteropHelper(center).Handle;
+            var physicalRead = GetWindowRect(handle, out var physical);
+            var visibleOnRight = physicalRead && physical.Left >= 1920 && physical.Right <= 3840 &&
+                physical.Top >= 0 && physical.Bottom <= 1080;
+            center.ReapplyPlacement();
+            WindowValidationInput.Pump(center.Dispatcher);
+            var retainedOnRight = GetWindowRect(handle, out var reapplied) &&
+                reapplied.Left >= 1920 && reapplied.Right <= 3840 &&
+                reapplied.Top >= 0 && reapplied.Bottom <= 1080;
+            Console.Error.WriteLine($"REMINDER_MIXED_DPI_PLACEMENT: physical={physical.Left},{physical.Top},{physical.Right},{physical.Bottom}; target=1920,0,3840,1080; onRight={visibleOnRight}");
+            return visibleOnRight && retainedOnRight && center.Owner is null && !center.ShowActivated && center.ShowInTaskbar;
         }
         finally { center?.ForceClose(); source.Close(); }
     }
@@ -290,6 +326,10 @@ internal static class MonitorGeometryValidation
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PhysicalRect { internal int Left, Top, Right, Bottom; }
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hwnd, out PhysicalRect rect);
 
     [DllImport("user32.dll", ExactSpelling = true)]
     private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);

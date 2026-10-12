@@ -724,7 +724,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         EnsureReferenceDecoration(workspace);
         UpdateReferenceDecorationVisibility();
         RenderVisibleWorkspace();
-        SetMessage(StatusText, workspace == WorkspaceKind.Countdowns ? "当前工作区：倒计时" : "当前工作区：便签", false);
     }
 
     void IManagerWorkspaceHost.Reveal(WorkspaceKind workspace) => Reveal(workspace);
@@ -1223,8 +1222,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         CloseButton.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         MinimizeButton.Click += (_, _) => MinimizeToTray();
-        TopmostCheck.Checked += (_, _) => Topmost = true;
-        TopmostCheck.Unchecked += (_, _) => Topmost = false;
         CountdownTab.Click += (_, _) => ShowWorkspace(WorkspaceKind.Countdowns);
         NotesTab.Click += (_, _) => ShowWorkspace(WorkspaceKind.Notes);
         FilterButton.Click += (_, _) => PopupMotionBehavior.Toggle(FilterPopup);

@@ -4296,7 +4296,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 728 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#217/#219 的 724 字段基点，#221 增加 4 个列表优先行为字段）'
+    Assert-Equal 730 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#221 的 728 字段基点，#222 增加 2 个信息精简与置顶行为字段）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4344,6 +4344,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainWindowHiddenTickSkipsRenderAndShowRefreshes) '管理窗口隐藏期间 tick 不重建分格，重新显示立即同步最新时间（#230）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowNoteMinutePreservesFocusAndScroll) '便签数据不变的分钟刷新保留行控件、键盘焦点和非零滚动位置（#230）'
     Assert-Equal $true ([bool] $adapterValidation.CountdownListFirstBehavior) '倒计时默认折叠新增，首选尺寸至少三行，窗口增高显示更多完整行（#221）'
+    Assert-Equal $true ([bool] $adapterValidation.MainTopmostStateSynchronization) '置顶首次打开与两次切换均由勾选状态单向驱动（#222）'
+    Assert-Equal $true ([bool] $adapterValidation.MainRedundancyCleanup) '数量纯文字保留唯一直播区，删除主题与工作区冗余文字（#222）'
     Assert-Equal $true ([bool] $adapterValidation.CountdownPreferencesPopupBehavior) '设置弹层焦点、Tab/Esc、草稿、字段错误、持久化及浮窗双宿主入口（#221）'
     Assert-Equal $true ([bool] $adapterValidation.CountdownEditorExpansionBehavior) '展开保留草稿，编辑自动展开，取消回到折叠新增并保全持久记录（#221）'
     Assert-Equal $true ([bool] $adapterValidation.CountdownRowDeadlineAndSecondaryDeleteBehavior) '倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）'
@@ -4884,7 +4886,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v46') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
-    Assert-Equal 'B680E23A3A3886F888C9DC8EA57047D9AA6A4558F8E31F564727049F8064BBAA' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（728 字段；#221 在 #217/#219 的 724 字段基点增加 4 个 Boolean 行为字段）'
+    Assert-Equal '7D6E21031C9764FD10603A485A8A163106B5975199B54F1B7074A35A113994F4' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（730 字段；#222 在 #221 的 728 字段基点增加 2 个 Boolean 行为字段）'
     Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
     Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
     Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
@@ -5524,15 +5526,15 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.PopupGuarded) '主窗口弹层打开时不响应窗口快捷键'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.ModalOwnerGuarded) '主窗口作为禁用模态 owner 时不响应窗口快捷键'
     Assert-Equal 0 @($adapterValidation.MainShortcutGates.FailedChecks).Count '主窗口快捷键 mapping/event evaluator 全部通过'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.CountdownWorkspaceAnnounced) '切换到倒计时工作区通过可见 polite 文本播报'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.NotesWorkspaceAnnounced) '切换到便签工作区通过可见 polite 文本播报'
+    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.CountdownWorkspaceSelectionIsAccessible) '倒计时页签选中及可访问名称表达工作区，状态栏不重复显示当前工作区（#222）'
+    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.NotesWorkspaceSelectionIsAccessible) '便签页签选中及可访问名称表达工作区，状态栏不重复显示当前工作区（#222）'
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.FilterResultAnnounced) '筛选生效后通过可见 polite 文本播报结果数量'
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.CountdownFirstUseEmptyAnnounced) '倒计时首次空态通过可见 polite 文本播报原因'
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.NotesFirstUseEmptyAnnounced) '便签首次空态通过可见 polite 文本播报原因'
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.CountdownFilterEmptyAnnounced) '倒计时筛选无结果通过不同可见 polite 文本播报原因'
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.NotesFilterEmptyAnnounced) '便签筛选无结果通过不同可见 polite 文本播报原因'
     $structuralAnnouncementGateNames = @(
-        'WorkspaceAnnouncements',
+        'WorkspaceSelectionWithoutRedundantStatus',
         'FilterResultAnnouncement',
         'EmptyStateAnnouncements'
     )
@@ -5542,11 +5544,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncementGates.AllPassed) '结构变化通知三门 evaluator 汇总通过'
     Assert-Equal 0 @($adapterValidation.MainStructuralAnnouncementGates.FailedChecks).Count '结构变化通知三门 evaluator 没有失败项'
     $structuralAnnouncementFailedChecksFixture = [pscustomobject]@{
-        WorkspaceAnnouncements = $true
+        WorkspaceSelectionWithoutRedundantStatus = $true
         FilterResultAnnouncement = $true
         EmptyStateAnnouncements = $true
         AllPassed = $true
-        FailedChecks = @('WorkspaceAnnouncements')
+        FailedChecks = @('WorkspaceSelectionWithoutRedundantStatus')
     }
     $structuralAnnouncementFailedChecksFixturePassed =
         @($structuralAnnouncementGateNames | Where-Object {

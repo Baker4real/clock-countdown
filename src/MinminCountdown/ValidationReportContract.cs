@@ -122,6 +122,8 @@ internal static class ValidationReportContract
         "MainWindowHiddenTickSkipsRenderAndShowRefreshes",
         "MainWindowNoteMinutePreservesFocusAndScroll",
         "CountdownListFirstBehavior",
+        "MainTopmostStateSynchronization",
+        "MainRedundancyCleanup",
         "CountdownPreferencesPopupBehavior",
         "CountdownEditorExpansionBehavior",
         "CountdownRowDeadlineAndSecondaryDeleteBehavior",
@@ -583,7 +585,8 @@ internal static class ValidationReportContract
         foreach (var field in new[]
                  {
                      "CountdownListFirstBehavior", "CountdownPreferencesPopupBehavior",
-                     "CountdownEditorExpansionBehavior", "CountdownRowDeadlineAndSecondaryDeleteBehavior"
+                     "CountdownEditorExpansionBehavior", "CountdownRowDeadlineAndSecondaryDeleteBehavior",
+                     "MainTopmostStateSynchronization", "MainRedundancyCleanup"
                  })
         {
             MustReject(report => report[field] = false, false,

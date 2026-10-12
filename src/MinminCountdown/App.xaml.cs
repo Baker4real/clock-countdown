@@ -1004,7 +1004,14 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             if (active.NextAcknowledgementRetryUtc is { } acknowledgementRetryUtc &&
                 nowUtc >= acknowledgementRetryUtc)
             {
-                Acknowledge(active, nowUtc);
+                if (active.AcknowledgementBatch is { } batch)
+                {
+                    AcknowledgeAll(batch.Where(member => IsActive(member) && OccurrenceIsCurrent(member)).ToArray(), nowUtc);
+                }
+                else
+                {
+                    Acknowledge(active, nowUtc);
+                }
                 continue;
             }
 
@@ -1076,6 +1083,7 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             // #215：窗口可见但未激活时闪烁任务栏按钮，不抢焦点。
             _window?.NotifyReminderArrived();
         }
+        _window?.UpdateTime(nowUtc);
     }
 
     public void Dispose()
@@ -1307,6 +1315,10 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
 
     private void AcknowledgeAll(IReadOnlyList<ActiveReminder> batch, DateTimeOffset nowUtc)
     {
+        foreach (var active in batch)
+        {
+            active.AcknowledgementBatch = batch;
+        }
         if (_persistenceWriteInFlight)
         {
             foreach (var active in batch)
@@ -1459,7 +1471,7 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
         {
             // #155：「完成便签」先确认再提交——用户主动点击时以取消为安全默认；
             // 送达失败后的自动重试路径（Tick → CompleteNote）不经确认，不改变完成语义。
-            // 「全部已读」继续是批量「知道了」，不经过本入口。
+            // 「全部知道了」继续是批量「知道了」，不经过本入口。
             if (_window is { } center &&
                 active.Source is NoteReminderSource noteSource &&
                 new ConfirmationDialog(
@@ -1664,6 +1676,8 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
         public int AcknowledgementFailureCount { get; set; }
 
         public DateTimeOffset? NextAcknowledgementRetryUtc { get; set; }
+
+        public IReadOnlyList<ActiveReminder>? AcknowledgementBatch { get; set; }
 
         public ReminderSnoozeOption PendingSnoozeOption { get; set; }
 

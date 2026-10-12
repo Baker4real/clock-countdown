@@ -492,7 +492,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役四帧与场景对应（v33 基线 `assets/ui-references/floating-window/520x390/2026-10-10-v33/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
+现役四帧与场景对应（v43 基线 `assets/ui-references/floating-window/520x390/2026-10-10-v43/manifest.json`，实际路径与哈希以该 manifest 为唯一依据）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -526,13 +526,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-10-10，#211 重拍）：#211 管理窗口工作区适配把 1165×1350 由钉死尺寸改为首选尺寸——最小 720×560、窗口级滚动宿主 `MainWindowScrollHost`（纵向为主、横向兜底）、身份区 `CaptionHeight` 58→176 使空白整区可拖动、每次显示与工作区变化时按所在显示器工作区夹回（新增 `MonitorWorkAreaResolver` 深模块，生产走 `MonitorFromRect`+`GetMonitorInfoW`，验证经 `OverrideForValidation` 注入）、用户调整在本次运行内保留不持久化。主窗 8 帧中无日期内容的 5 帧（countdowns-empty、notes-empty、notes-representative、notes-edit、notes-filter-open）与 v32 逐字节一致；其余主窗 3 帧（countdowns-representative/-stress、notes-stress）与悬浮 4 帧的全部像素差异来自参考夹具按 `referenceUtc` 相对日期排布的内容随捕获日顺延（2026-10-09→2026-10-10），非构图变化；捕获全程在注入 2560×1600@1.0 工作区下进行，窗口保持 1165×1350 首选构图、滚动条不现身。`MainWindow.xaml(.cs)` 随本次改动入主窗 `sourceBinding`（`MonitorWorkAreaResolver.cs` 为行为源不入 sourceBinding，由发布契约 IntegrityHashes 钉住），按现役 Aliased+Ideal 口径生成 v33 双 manifest：主窗聚合 SHA-256 `A5C57A9EB6D6F43C20F4BBECFDC20F0A55B93EDABD1D84F0332FE249CEE3A328`，悬浮窗聚合 `4FB37BBCB23C7DBDADEF2E49EB18C71261FCDBEFA2CA56B2B2A88C17AE3C47D3`。2026-10-10 套件 run（BaselineGenerate 20261010T191200641-556dd48c；CSharp 20261010T192514217-b627f9d3 全绿，含新探针 `MainWindowFitsInjectedWorkAreas`/`MainWindowIdentityZoneDragRegion`；Ui 20261010T191524754-3a8a87f7 绿）中双基线门禁全部通过，v33 自此担任现役验收基线，v32 解除现役引用并归档保留。
 
-当前状态（2026-10-10，#231）：主窗口整页装饰改为首次显示只解码当前页、切换到另一页时按需解码（解码尺寸 1165×1350），三张 sanrio 立绘按 92×64 空态吉祥物显示盒的受限边解码；`floating-plush-*-reference.png` 不再装进 `app`，只作悬浮 sourceBinding 输入并随发布/验证包分发。本票不重拍 v33 像素帧。现役 manifest 只把本票改过的 `MainWindow.xaml.cs` 与 `MinminCountdown.csproj` 哈希改到合并后的 blob，主窗聚合改为 `122DD1F2BE22A34DC7D2CBFC0A7B50AE587219C998CC3D78D9EF43B2603FAC88`，悬浮窗聚合改为 `637F502A762AC1400DCC104E6A5E89F737D959C9628C829309EB691980034FDD`。帧文件和 `executable.sha256` 仍是 #211 的 v33 捕获；相对该捕获源的漂移由编排方在集成尖端重拍。
+当前状态（2026-10-12，集成尖端重拍）：#212 悬浮窗稳定刷新、#214 就地撤销、#216 讲述人播报和 #231 按显示尺寸解码叠在同一棵树上，v33 的 sourceBinding 已对不上。现役验收基线改为 `2026-10-10-v43`。BaselineGenerate `20261012T024658620-d4e1fc33` 在物理屏 2560×1440 上生成双 manifest：主窗 8 帧聚合 SHA-256 `567E564D6494DB59E1BAFEBC902B7F59494313904E1B29EEC045430FCC7C9FED`，悬浮窗 4 帧聚合 `64D79233EDC4AEB2B6D41A0B8B88853B09E02B51C3492106E977DA6DA59772DD`，`executable.sha256` 均为 `785ECBDA5FA48535A786DCB4F559A1720D1CF07B0B4CEEE3154D299BE8924D37`。v33 保留为 #211 的历史捕获，不再作为现役门禁。
 
-1. #189 的 WPF 改版使用纯日间 **v33** 真实渲染系列，版本目录为 `2026-10-10-v33`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+1. #189 的 WPF 改版使用纯日间 **v43** 真实渲染系列，版本目录为 `2026-10-10-v43`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
 
-2. v33 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-10-v33/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v33 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v33。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+2. v43 主窗口帧规模 8 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-10-v43/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit` 与筛选弹层打开态 `main-day-notes-filter-open` 2 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v43 悬浮窗帧规模 4 帧：`floating-countdowns-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v43。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

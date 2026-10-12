@@ -58,13 +58,23 @@ internal static class UiAccessibility
     }
 
     // #216：全仓直播区文本的唯一更新入口。文本真正变化后才改可访问名并触发
-    // LiveRegionChanged；相同文本（分钟级刷新、重复筛选摘要）不播报。
+    // LiveRegionChanged；相同文本（分钟级刷新、重复筛选摘要）不重复播报。
+    // XAML 已写上初值时，补齐尚未设置的可访问名并只播报这一次。
     internal static event Action<TextBlock>? Announced;
     public static void Announce(TextBlock target, string text, Action<TextBlock>? afterText = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         if (string.Equals(target.Text, text, StringComparison.Ordinal))
         {
+            if (!string.Equals(AutomationProperties.GetName(target), text, StringComparison.Ordinal))
+            {
+                AutomationProperties.SetName(target, text);
+                afterText?.Invoke(target);
+                RaiseLiveRegionChanged(target);
+                Announced?.Invoke(target);
+                return;
+            }
+
             afterText?.Invoke(target);
             return;
         }

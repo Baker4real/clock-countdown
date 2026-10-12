@@ -6387,6 +6387,9 @@ $buildPreflightSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '
 $buildPreflightScript = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'tools\Test-CountdownBuildPreflight.ps1'), [System.Text.Encoding]::UTF8)
 $deploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
 Assert-Equal $true ($buildSource.Contains("tools\Countdown.BuildPreflight.psm1") -and $buildSource.Contains('Resolve-CountdownBuildDotnet') -and $buildSource.Contains('Get-CountdownBuildPaths')) 'Build reuses the shared SDK and clean-path preflight module'
+$managedCleanIndex = $buildSource.IndexOf('invoke-safe-tree-delete.cmd')
+$releaseContractImportIndex = $buildSource.IndexOf("Import-Module (Join-Path `$PSScriptRoot 'Countdown.ReleaseContract.psm1')")
+Assert-Equal $true ($managedCleanIndex -ge 0 -and $releaseContractImportIndex -gt $managedCleanIndex) 'Build -Clean removes app output before the release contract import reads a stale published payload'
 Assert-Equal $true ($buildPreflightSource.Contains("`$env:COUNTDOWN_DOTNET_EXE") -and $buildPreflightSource.Contains("D:\Codex\tools\dotnet\10.0\dotnet.exe") -and $buildPreflightSource.Contains('Get-Command dotnet')) 'Shared preflight preserves parameter, environment, managed and PATH SDK resolution order'
 Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$RepositoryRoot 'global.json'") -and $buildPreflightSource.Contains('Test-CountdownSdkVersionMatch')) 'Shared preflight resolves and checks the repository global.json SDK contract'
 Assert-Equal $true ($buildPreflightScript.Contains('[switch]$RequireClean') -and $buildPreflightScript.Contains('[switch]$Json') -and $buildPreflightScript.Contains('Failures')) 'Build preflight entry point exposes clean gating and structured failure output'

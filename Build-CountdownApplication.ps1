@@ -131,6 +131,56 @@ $verificationProject = Join-Path $PSScriptRoot 'src\MinminCountdown.Verification
 $applicationOutput = Join-Path $PSScriptRoot 'app'
 $verificationOutput = Join-Path $PSScriptRoot 'verification'
 $applicationAssetsOutput = Join-Path $applicationOutput 'assets'
+
+# -Clean 必须先于发布契约加载。导入时会读取 app\published-payload.json；
+# 残留清单若仍列出已淘汰文件，会在清理前把构建打停。
+$buildSegmentStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$buildSegmentStart = $buildSegmentStopwatch.Elapsed
+
+if ($Clean) {
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $runEvidenceCapabilityRoot = 'D:\agents\run-evidence'
+    if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
+        throw "未找到受管构建目录清理入口：$safeTreeDelete"
+    }
+    $buildPaths = Get-CountdownBuildPaths -RepositoryRoot $PSScriptRoot
+    $managedCleanCandidates = @($buildPaths.CleanCandidates)
+    $expectedCleanPaths = @($buildPaths.CleanCandidates | ForEach-Object { [System.IO.Path]::GetFullPath($_) })
+    $repositoryRootPrefix = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') + '\'
+    $runEvidenceRootPrefix = [System.IO.Path]::GetFullPath($runEvidenceCapabilityRoot).TrimEnd('\') + '\'
+    foreach ($cleanPath in $managedCleanCandidates) {
+        if (-not (Test-Path -LiteralPath $cleanPath -PathType Container)) { continue }
+        $resolvedCleanPath = [System.IO.Path]::GetFullPath($cleanPath)
+        if (-not $resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "拒绝清理仓库外构建目录：$resolvedCleanPath"
+        }
+        if ($resolvedCleanPath -notin $expectedCleanPaths) {
+            throw "拒绝清理非受管构建目录：$resolvedCleanPath"
+        }
+        $cleanupCapabilityRoot = if ($resolvedCleanPath.StartsWith($runEvidenceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $runEvidenceCapabilityRoot
+        }
+        else {
+            $resolvedCleanPath
+        }
+        $cleanupJson = & $safeTreeDelete `
+            -Mode BatchPurge `
+            -TargetPaths $resolvedCleanPath `
+            -CapabilityRoot $cleanupCapabilityRoot `
+            -ConfirmApply `
+            -ConfirmPurge `
+            -Json | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            throw "受管构建目录清理失败：$resolvedCleanPath（退出码 $LASTEXITCODE）：$($cleanupJson.Trim())"
+        }
+        $cleanup = $cleanupJson | ConvertFrom-Json
+        if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
+            throw "受管构建目录未完成清理：$resolvedCleanPath：$($cleanupJson.Trim())"
+        }
+    }
+}
+Write-BuildSegmentTiming -Name 'ManagedClean'
+
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 $releaseContract = Get-CountdownReleaseContract
@@ -178,53 +228,6 @@ $contractAssetMappings = @(
 if (($projectAssetMappings -join ',') -ne ($contractAssetMappings -join ',')) {
     throw "C# 项目必须显式打包发布契约声明的 $($contractAssetMappings.Count) 个应用资产，且不得使用通配。"
 }
-
-$buildSegmentStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$buildSegmentStart = $buildSegmentStopwatch.Elapsed
-
-if ($Clean) {
-    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-    $runEvidenceCapabilityRoot = 'D:\agents\run-evidence'
-    if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
-        throw "未找到受管构建目录清理入口：$safeTreeDelete"
-    }
-    $buildPaths = Get-CountdownBuildPaths -RepositoryRoot $PSScriptRoot
-    $managedCleanCandidates = @($buildPaths.CleanCandidates)
-    $expectedCleanPaths = @($buildPaths.CleanCandidates | ForEach-Object { [System.IO.Path]::GetFullPath($_) })
-    $repositoryRootPrefix = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\') + '\'
-    $runEvidenceRootPrefix = [System.IO.Path]::GetFullPath($runEvidenceCapabilityRoot).TrimEnd('\') + '\'
-    foreach ($cleanPath in $managedCleanCandidates) {
-        if (-not (Test-Path -LiteralPath $cleanPath -PathType Container)) { continue }
-        $resolvedCleanPath = [System.IO.Path]::GetFullPath($cleanPath)
-        if (-not $resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "拒绝清理仓库外构建目录：$resolvedCleanPath"
-        }
-        if ($resolvedCleanPath -notin $expectedCleanPaths) {
-            throw "拒绝清理非受管构建目录：$resolvedCleanPath"
-        }
-        $cleanupCapabilityRoot = if ($resolvedCleanPath.StartsWith($runEvidenceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $runEvidenceCapabilityRoot
-        }
-        else {
-            $resolvedCleanPath
-        }
-        $cleanupJson = & $safeTreeDelete `
-            -Mode BatchPurge `
-            -TargetPaths $resolvedCleanPath `
-            -CapabilityRoot $cleanupCapabilityRoot `
-            -ConfirmApply `
-            -ConfirmPurge `
-            -Json | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            throw "受管构建目录清理失败：$resolvedCleanPath（退出码 $LASTEXITCODE）：$($cleanupJson.Trim())"
-        }
-        $cleanup = $cleanupJson | ConvertFrom-Json
-        if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {
-            throw "受管构建目录未完成清理：$resolvedCleanPath：$($cleanupJson.Trim())"
-        }
-    }
-}
-Write-BuildSegmentTiming -Name 'ManagedClean'
 
 & $dotnet publish $applicationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=false `

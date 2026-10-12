@@ -1996,6 +1996,7 @@ internal static class ValidationReport
             ["IdleControlBoundaryChecks"] = idleControlBoundaries,
             ["SystemContrastUpdatesOpenWindows"] = ValidateSystemContrastUpdatesOpenWindows(main, floating),
             ["SystemContrastAccessibleStates"] = ValidateSystemContrastAccessibleStates(main, floating),
+            ["SystemContrastColorChangesAndCustomSurfaces"] = ValidateSystemContrastCustomSurfaces(assetRoot),
             ["SelectedControlSignalsVisible"] = selectedControlSignals.Values.All(value => value) &&
                 mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "MainWindow" && sample.UsesDedicatedStyle) &&
                 mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "FloatingWindow" && sample.UsesCompletionSuccessStyle),
@@ -13891,6 +13892,84 @@ internal static class ValidationReport
         }
         Console.Error.WriteLine("SYSTEM_CONTRAST_STATES: " + JsonSerializer.Serialize(checks));
         return checks.Count > 15 && checks.Values.All(value => value);
+    }
+
+    private static bool ValidateSystemContrastCustomSurfaces(string assetRoot)
+    {
+        static bool ColorIs(Brush? brush, Color color) => brush is SolidColorBrush solid && solid.Color == color;
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"MinminCountdown-system-contrast-{Guid.NewGuid():N}");
+        var settingsPath = Path.Combine(temporaryRoot, "settings.json");
+        var diagnosticPath = Path.Combine(temporaryRoot, "validation.jsonl");
+        var checks = new Dictionary<string, bool>(StringComparer.Ordinal);
+        MainWindow? main = null;
+        FloatingWindow? floating = null;
+        FloatingWindow? laterFloating = null;
+        Directory.CreateDirectory(temporaryRoot);
+        try
+        {
+            var now = new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero);
+            var store = new SettingsStore(clock: new ValidationClock(now));
+            store.Save(settingsPath, new CountdownSettings([], [new NoteRecord("contrast-note", "系统色日期印记", "2031-04-05", false, ["contrast-tag"], NoReminder.Instance)],
+                [new TagRecord("contrast-tag", "系统色标签", "#FFD36B")], CountdownSettings.Empty.Preferences));
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            using var calendar = new HolidayCalendar(temporaryRoot);
+            main = new MainWindow(workspace, calendar, new DiagnosticLogger(diagnosticPath), assetRoot)
+                { ShowInTaskbar = false, Opacity = 0 };
+            floating = new FloatingWindow(workspace, calendar, main, assetRoot)
+                { ShowInTaskbar = false, Opacity = 0 };
+            main.Show(); floating.Show(); main.ShowWorkspace(WorkspaceKind.Notes); floating.ShowWorkspace(WorkspaceKind.Notes);
+            PumpDispatcher();
+            var chip = Descendants<Border>(main).First(border => border.Uid == "contrast-tag");
+            var stamp = Descendants<Border>(floating).First(border => border.BorderThickness == new Thickness(2, 0, 0, 0));
+            var oldChip = ((SolidColorBrush)chip.Background).Color;
+            var oldStampEdge = ((SolidColorBrush)stamp.BorderBrush).Color;
+            var noteRows = Required<StackPanel>(floating, "FloatingRows").Children.Cast<UIElement>().ToArray();
+            Border? laterStamp = null;
+            using (var preference = ApplicationTheme.OverrideHighContrastForValidation(true))
+            {
+                PumpDispatcher();
+                checks["TagMaps"] = ColorIs(chip.Background, SystemColors.ControlColor);
+                checks["StampMaps"] = ColorIs(stamp.BorderBrush, SystemColors.WindowTextColor);
+                var palette = new ApplicationTheme.SystemContrastPalette(
+                    Color.FromRgb(8, 18, 32), Colors.White, Color.FromRgb(20, 30, 46), Colors.White,
+                    Colors.Yellow, Colors.Black, Colors.Silver);
+                preference.ChangeColors(palette); PumpDispatcher();
+                checks["ChangedWhileEnabled"] = ColorIs(main.Background, palette.Window) &&
+                    ColorIs(Required<Border>(floating, "TaskCard").Background, palette.Window) &&
+                    ColorIs(chip.Background, palette.Control) && ColorIs(stamp.BorderBrush, palette.WindowText);
+                laterFloating = new FloatingWindow(workspace, calendar, main, assetRoot) { ShowInTaskbar = false, Opacity = 0 };
+                laterFloating.Show(); laterFloating.ShowWorkspace(WorkspaceKind.Notes); PumpDispatcher();
+                laterStamp = Descendants<Border>(laterFloating).First(border => border.BorderThickness == new Thickness(2, 0, 0, 0));
+                checks["LaterStampUsesSystemColor"] = ColorIs(laterStamp.BorderBrush, palette.WindowText);
+                var newDialog = new ConfirmationDialog(main, "新建窗口", "使用当前系统颜色") { ShowActivated = false, Opacity = 0 };
+                try
+                {
+                    newDialog.Show(); PumpDispatcher();
+                    checks["NewWindowUsesCurrentPalette"] = ColorIs(newDialog.Background, palette.Window) &&
+                        ColorIs(newDialog.BodyText.Foreground, palette.WindowText);
+                    newDialog.CancelButton.IsEnabled = false; PumpDispatcher();
+                    checks["ChangedDisabledColor"] = ColorIs(newDialog.CancelButton.Foreground, palette.GrayText);
+                }
+                finally { newDialog.Close(); }
+                preference.ChangeColors(palette with { Highlight = Colors.Cyan, Window = Colors.Black }); PumpDispatcher();
+                checks["SecondColorNotification"] = ColorIs(main.Background, Colors.Black) &&
+                    ColorIs(Required<Border>(floating, "TaskCard").Background, Colors.Black);
+            }
+            PumpDispatcher();
+            checks["CustomColorsRestore"] = ColorIs(chip.Background, oldChip) && ColorIs(stamp.BorderBrush, oldStampEdge);
+            checks["LaterStampRestoresDayColor"] = laterStamp is not null && ColorIs(laterStamp.BorderBrush, oldStampEdge);
+            checks["CustomRowsRemain"] = noteRows.SequenceEqual(Required<StackPanel>(floating, "FloatingRows").Children.Cast<UIElement>());
+        }
+        finally
+        {
+            laterFloating?.Close(); floating?.Close(); main?.Close();
+            TryDeleteSettingsFiles(settingsPath); TryDeleteFile(diagnosticPath);
+            var cache = Path.Combine(temporaryRoot, "holiday-cache");
+            if (Directory.Exists(cache) && !Directory.EnumerateFileSystemEntries(cache).Any()) Directory.Delete(cache);
+            if (!Directory.EnumerateFileSystemEntries(temporaryRoot).Any()) Directory.Delete(temporaryRoot);
+        }
+        Console.Error.WriteLine("SYSTEM_CONTRAST_CUSTOM: " + JsonSerializer.Serialize(checks));
+        return checks.Count == 10 && checks.Values.All(value => value);
     }
 
     private static IReadOnlyDictionary<string, bool> ValidateIdleControlBoundaries(MainWindow main)

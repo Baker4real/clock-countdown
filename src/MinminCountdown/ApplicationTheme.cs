@@ -7,7 +7,7 @@ using System.Windows.Data;
 namespace MinminCountdown;
 
 /// <summary>
-/// 应用固定为单一日间主题：只应用日间画刷 token，不再解析 Auto/Day/Night，也不随 tick 变化。
+/// 应用固定为单一日间主题；Windows 对比度模式开启时将语义画刷映射为系统色。
 /// Tokens 是 Primitive 原色层（App.xaml *Color 资源）的运行时权威副本：
 /// 键与顺序与 App.xaml 的第 1 层保持一一对应，新增或修改颜色必须两处同步。
 /// 分层与可读性契约见 DESIGN.md §13。
@@ -143,6 +143,7 @@ internal sealed class ApplicationTheme : IDisposable
     private bool _disposed;
     private static bool? _validationAnimationPreference;
     private static bool? _validationHighContrast;
+    private static SystemContrastPalette? _validationSystemColors;
     private static event EventHandler? SystemPreferenceChanged;
     internal static event EventHandler? PaletteChanged;
     public static readonly DependencyProperty IsSystemContrastProperty = DependencyProperty.RegisterAttached(
@@ -159,7 +160,9 @@ internal sealed class ApplicationTheme : IDisposable
 
     internal static bool HighContrastEnabled => _validationHighContrast ?? SystemParameters.HighContrast;
 
-    internal static IDisposable OverrideHighContrastForValidation(bool enabled)
+    internal static Color DayColorFor(string brushKey) => Tokens.First(token => token.BrushKey == brushKey).Color;
+
+    internal static HighContrastPreferenceScope OverrideHighContrastForValidation(bool enabled)
     {
         EnsureMotionValidationContext();
         if (_validationHighContrast.HasValue)
@@ -172,12 +175,23 @@ internal sealed class ApplicationTheme : IDisposable
         return new HighContrastPreferenceScope();
     }
 
-    private sealed class HighContrastPreferenceScope : IDisposable
+    internal sealed record SystemContrastPalette(Color Window, Color WindowText, Color Control,
+        Color ControlText, Color Highlight, Color HighlightText, Color GrayText);
+
+    internal sealed class HighContrastPreferenceScope : IDisposable
     {
+        internal void ChangeColors(SystemContrastPalette colors)
+        {
+            EnsureMotionValidationContext();
+            _validationSystemColors = colors;
+            SystemPreferenceChanged?.Invoke(null, EventArgs.Empty);
+        }
+
         public void Dispose()
         {
             Application.Current.Dispatcher.VerifyAccess();
             _validationHighContrast = null;
+            _validationSystemColors = null;
             SystemPreferenceChanged?.Invoke(null, EventArgs.Empty);
         }
     }
@@ -193,9 +207,14 @@ internal sealed class ApplicationTheme : IDisposable
     public void Apply()
     {
         _resources["SystemContrastEnabled"] = HighContrastEnabled;
+        var systemColors = _validationSystemColors ?? new SystemContrastPalette(SystemColors.WindowColor,
+            SystemColors.WindowTextColor, SystemColors.ControlColor, SystemColors.ControlTextColor,
+            SystemColors.HighlightColor, SystemColors.HighlightTextColor, SystemColors.GrayTextColor);
+        UpdateSystemBrush("SystemContrastDisabledTextBrush", systemColors.GrayText);
+        UpdateSystemBrush("SystemContrastControlBrush", systemColors.Control);
         foreach (var token in Tokens)
         {
-            var color = HighContrastEnabled ? SystemColorFor(token.BrushKey) : token.Color;
+            var color = HighContrastEnabled ? SystemColorFor(token.BrushKey, systemColors) : token.Color;
             _resources[token.ColorKey] = color;
             if (_applied)
             {
@@ -226,6 +245,28 @@ internal sealed class ApplicationTheme : IDisposable
         PaletteChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    private void UpdateSystemBrush(string key, Color value)
+    {
+        if (_colors.TryGetValue(key, out var source)) source.Value = value;
+        else
+        {
+            source = new ThemeColor { Value = value };
+            _colors.Add(key, source);
+            _resources[key] = BoundBrush(source);
+        }
+    }
+
+    internal static void ApplyContrastAwareBrush(System.Windows.Controls.Border surface,
+        DependencyProperty property, Brush dayBrush, string contrastKey)
+    {
+        var style = new Style(typeof(System.Windows.Controls.Border), surface.Style);
+        style.Setters.Add(new Setter(property, dayBrush));
+        var trigger = new Trigger { Property = IsSystemContrastProperty, Value = true };
+        trigger.Setters.Add(new Setter(property, new DynamicResourceExtension(contrastKey)));
+        style.Triggers.Add(trigger);
+        surface.Style = style;
+    }
+
     private static SolidColorBrush BoundBrush(ThemeColor source)
     {
         var brush = new SolidColorBrush();
@@ -251,29 +292,29 @@ internal sealed class ApplicationTheme : IDisposable
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    private static Color SystemColorFor(string key) => key switch
+    private static Color SystemColorFor(string key, SystemContrastPalette palette) => key switch
     {
         "MainActionBrush" or "MainActionHoverBrush" or "MainActionPressedBrush" or
-        "PinkAccentStrongBrush" or "SelectionBrush" or "SegmentSelectedBrush" or "SuccessBrush" => SystemColors.HighlightColor,
-        "MainActionTextBrush" or "PinkBadgeTextBrush" or "SegmentSelectedForegroundBrush" => SystemColors.HighlightTextColor,
+        "PinkAccentStrongBrush" or "SelectionBrush" or "SegmentSelectedBrush" or "SuccessBrush" => palette.Highlight,
+        "MainActionTextBrush" or "PinkBadgeTextBrush" or "SegmentSelectedForegroundBrush" => palette.HighlightText,
         "ActiveBrush" or "ActiveHoverBrush" or "MainActionFocusBrush" or
-        "NoteActiveRailBrush" or "PeachRailBrush" or "FloatingDayPrimaryCountdownAccentBrush" => SystemColors.HighlightColor,
+        "NoteActiveRailBrush" or "PeachRailBrush" or "FloatingDayPrimaryCountdownAccentBrush" => palette.Highlight,
         "InkBrush" or "BodyBrush" or "MutedBrush" or "ControlBorderBrush" or "PeachLineBrush" or
         "NoteLineBrush" or "NoteCompletedRailBrush" or "NoteTimelineBrush" or "DangerBrush" or
         "TagChipTextBrush" or
         "PrimaryCountdownNumberBrush" or "PinkAccentBrush" or "IconAccentBrush" or
         "WarningAccentBrush" or "DecoTextBrush" or "DecoTextSoftBrush" or
         "StampPinkTextBrush" or "StampBlueTextBrush" or "StampGreenTextBrush" or
-        "CharacterLineBrush" or "WorkspacePanelLineBrush" => SystemColors.WindowTextColor,
+        "CharacterLineBrush" or "WorkspacePanelLineBrush" => palette.WindowText,
         "CardAltBrush" or "StatusBarBrush" or "CoralActionBrush" or "TagBrush" or
         "SourceNoteIconBrush" or "PinkTintBrush" or "PinkBadgeBrush" or "PinkBlockBrush" or
         "PinkTintSoftBrush" or "SecondaryBlockBrush" or "PeachTintBrush" or "PeachBadgeBrush" or
-        "PeachBadgeMutedBrush" => SystemColors.ControlColor,
+        "PeachBadgeMutedBrush" => palette.Control,
         "CanvasBrush" or "CanvasDeepBrush" or "BackgroundBrush" or "CardBrush" or "PanelBrush" or
         "NoteBrush" or "NoteWhiteBrush" or "ExpiredBrush" or "WorkspacePanelBrush" or "WarningTintBrush" or
         "ReminderCardBrush" or "ReminderPageBrush" or "StampPinkBrush" or "StampBlueBrush" or "StampGreenBrush" or
         "CharacterPanelBrush" or "CharacterMyMelodyDockBrush" or "CharacterCinnamorollDockBrush" or
-        "CharacterKuromiDockBrush" or "FloatingDayPlushGlowBrush" => SystemColors.WindowColor,
+        "CharacterKuromiDockBrush" or "FloatingDayPlushGlowBrush" => palette.Window,
         _ => throw new InvalidOperationException($"缺少系统对比度映射：{key}")
     };
 

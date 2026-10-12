@@ -181,6 +181,7 @@ internal static class ValidationReportContract
         "IdleControlBoundariesVisible",
         "SystemContrastUpdatesOpenWindows",
         "SystemContrastAccessibleStates",
+        "SystemContrastColorChangesAndCustomSurfaces",
         "FloatingThumbBoundaryContrast",
         "SelectedControlSignalsVisible",
         "DangerSurfacesMeetContrast",

@@ -3579,7 +3579,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             }
             else
             {
-                chip.Background = savedBackground;
+                ApplicationTheme.ApplyContrastAwareBrush(chip, Border.BackgroundProperty, savedBackground, "TagBrush");
             }
             panel.Children.Add(chip);
         }

@@ -295,8 +295,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -361,8 +361,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -434,8 +434,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -521,8 +521,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -590,8 +590,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -670,8 +670,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -735,8 +735,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -789,8 +789,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="Surface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -800,7 +800,7 @@
       <Style.Triggers>
         <Trigger Property="focus:ApplicationTheme.IsSystemContrast" Value="True">
           <Setter Property="SelectionOpacity" Value="1" />
-          <Setter Property="SelectionTextBrush" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}" />
+          <Setter Property="SelectionTextBrush" Value="{DynamicResource MainActionTextBrush}" />
         </Trigger>
       </Style.Triggers>
     </Style>
@@ -874,8 +874,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="Surface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -958,8 +958,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="Surface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -1106,8 +1106,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="Surface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
@@ -1212,8 +1212,8 @@
                   <Condition Property="IsEnabled" Value="False" />
                   <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
-                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter TargetName="PART_Root" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>

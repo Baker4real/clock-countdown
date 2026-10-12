@@ -380,6 +380,8 @@ internal static class ValidationExercises
 
     public static bool RunSettingsRecoveryWindowBehavior()
     {
+        ProbeRecoveryPromptCopyThroughChoose();
+        ProbeRecoveryCompletionMessage();
         var window = SettingsRecoveryWindow.CreateForValidation(
             "设置恢复验证消息",
             canRecover: true);
@@ -392,13 +394,13 @@ internal static class ValidationExercises
             var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
             var recover = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "恢复备份",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryRecover",
                     StringComparison.Ordinal));
             var exit = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "退出",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryExit",
                     StringComparison.Ordinal));
             var defaultDecisionIsExit =
                 window.DecisionForValidation == SettingsRecoveryDecision.Exit;
@@ -437,6 +439,132 @@ internal static class ValidationExercises
         }
     }
 
+    private static void ProbeRecoveryPromptCopyThroughChoose()
+    {
+        var expectedBackupTime = new DateTimeOffset(2031, 1, 2, 3, 4, 0, TimeSpan.Zero);
+        var inspected = false;
+        var correct = false;
+        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
+        {
+            var window = Application.Current.Windows.OfType<SettingsRecoveryWindow>().Single();
+            var body = ((Border)window.Content).Child as StackPanel;
+            var message = body!.Children.OfType<TextBlock>().Last();
+            var buttons = VisualDescendants<Button>(window).ToArray();
+            correct = message.Text.Contains("2031-01-02 11:04", StringComparison.Ordinal) &&
+                message.Text.Contains("北京时间", StringComparison.Ordinal) &&
+                message.Text.Contains("逐字节另存", StringComparison.Ordinal) &&
+                message.Text.Contains("若原文件可读", StringComparison.Ordinal) &&
+                !message.Text.Contains("原文件已另存", StringComparison.Ordinal) &&
+                message.Foreground is SolidColorBrush foreground &&
+                foreground.Color == Color.FromRgb(0x6B, 0x4A, 0x3C) &&
+                ((Border)window.Content).Background is SolidColorBrush background &&
+                ApplicationTheme.MeetsContrast(foreground, background, 4.5) &&
+                buttons.Any(button => Equals(button.Content, "恢复备份并继续")) &&
+                buttons.Any(button => Equals(button.Content, "不改设置，退出"));
+            inspected = true;
+            window.Close();
+        }));
+        var decision = SettingsRecoveryWindow.Choose(new SettingsRecoveryPrompt(2, expectedBackupTime));
+        Must(inspected && correct && decision == SettingsRecoveryDecision.Exit,
+            "#228 Choose真实恢复窗缺少备份时间、阶段准确文案、结果按钮或正文对比度。");
+    }
+
+    private static void ProbeRecoveryCompletionMessage()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"MinminCountdown-recovery-copy-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var damaged = Encoding.UTF8.GetBytes("{unreadable-settings");
+            var payload = SettingsContract.SerializeCanonical(CountdownSettings.Empty);
+            foreach (var mode in new[] { "readable", "acl", "normal", "cancel" })
+            {
+                var branch = Path.Combine(directory, mode);
+                Directory.CreateDirectory(branch);
+                var path = Path.Combine(branch, "settings.json");
+                File.WriteAllBytes(path, mode == "normal" ? Encoding.UTF8.GetBytes(payload) : damaged);
+                File.WriteAllText(path + ".backup1", payload, new UTF8Encoding(false));
+                var evidence = Path.Combine(branch, "settings-recovery-evidence");
+                var store = mode == "acl"
+                    ? new SettingsStore(fileOperations: new AclDeniedMainSettingsFileOperations(path))
+                    : new SettingsStore();
+                DesktopWorkspace? workspace = null;
+                try
+                {
+                    workspace = DesktopWorkspace.Load(path, store, _ =>
+                    {
+                        Must(!Directory.Exists(evidence), "#228 用户确认前不得写恢复证据。");
+                        return mode == "cancel" ? SettingsRecoveryDecision.Exit : SettingsRecoveryDecision.RecoverBackup;
+                    });
+                }
+                catch (SettingsRecoveryDeclinedException) when (mode == "cancel")
+                {
+                    Must(File.ReadAllBytes(path).SequenceEqual(damaged) && !Directory.Exists(evidence) &&
+                        File.ReadAllText(path + ".backup1") == payload,
+                        "#228 取消恢复必须保留主文件和备份且不写证据。");
+                    continue;
+                }
+                Must(workspace is not null && mode != "cancel", "#228 取消恢复不可启动工作区。");
+                using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+                var manager = new MainWindow(workspace!, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+                var floating = new FloatingWindow(workspace!, calendar, manager, AppContext.BaseDirectory);
+                PrepareOffscreenValidationWindow(floating);
+                var announcements = new List<string>();
+                void Observe(TextBlock text)
+                {
+                    if (AutomationProperties.GetAutomationId(text) == "SettingsRecoveryCompletedStatus")
+                        announcements.Add(text.Text);
+                }
+                UiAccessibility.Announced += Observe;
+                try
+                {
+                    floating.Show();
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    var status = VisualDescendants<TextBlock>(floating).SingleOrDefault(text =>
+                        AutomationProperties.GetAutomationId(text) == "SettingsRecoveryCompletedStatus");
+                    if (mode == "normal")
+                    {
+                        Must(status is null || !status.IsVisible, "#228 普通启动不能出现恢复成功提示。");
+                        Must(announcements.Count == 0, "#228 普通启动不播报恢复提示。");
+                        continue;
+                    }
+                    var expected = mode == "readable"
+                        ? "已恢复备份；原文件已另存。"
+                        : "已恢复备份；原文件无法读取，未能另存。";
+                    Must(status is { IsVisible: true } && status.Text == expected &&
+                        AutomationProperties.GetName(status) == expected &&
+                        AutomationProperties.GetLiveSetting(status) == AutomationLiveSetting.Polite &&
+                        announcements.SequenceEqual(new[] { expected }),
+                        "#228 恢复成功后缺少按真实副本结果呈现的一次可见播报。");
+                    var scroller = (ScrollViewer)floating.FindName("FloatingBodyScroller");
+                    var bounds = BoundsOn(status!, scroller);
+                    Must(bounds.Top >= 0 && bounds.Bottom <= scroller.ViewportHeight &&
+                        bounds.Left >= 0 && bounds.Right <= scroller.ViewportWidth + 1,
+                        "#228 恢复成功提示必须在列表首屏完整可见。");
+                    if (mode == "readable")
+                        Must(Directory.GetFiles(evidence).Length == 1 &&
+                            File.ReadAllBytes(Directory.GetFiles(evidence).Single()).SequenceEqual(damaged),
+                            "#228 已另存提示必须对应逐字节落盘副本。");
+                    else Must(!Directory.Exists(evidence), "#228 ACL不可读时不可虚构副本。");
+                    Must(new SettingsStore().Load(path).Settings.Countdowns.Count == 0,
+                        "#228 成功提示之前恢复主设置必须能严格回读。");
+                    floating.UpdateTime(DateTimeOffset.UtcNow);
+                    floating.ShowWorkspace(WorkspaceKind.Notes);
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    Must(status!.Text == expected && announcements.Count == 1,
+                        "#228 刷新和切工作区不得覆盖或重复播报恢复结果。");
+                    floating.Hide();
+                    floating.Show();
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    Must(status.IsVisible && status.Text == expected && announcements.Count == 1,
+                        "#228 隐藏再显示浮窗不得重复播报恢复结果。");
+                }
+                finally { UiAccessibility.Announced -= Observe; floating.Close(); manager.Close(); }
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     public static bool ProbeSettingsRecoveryFailureExitIsDefault()
     {
         var window = SettingsRecoveryWindow.CreateForValidation(
@@ -451,13 +579,13 @@ internal static class ValidationExercises
             var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
             var recover = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "恢复备份",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryRecover",
                     StringComparison.Ordinal));
             var exit = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "退出",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryExit",
                     StringComparison.Ordinal));
             return recover is null &&
                    buttons.Length == 1 &&
@@ -539,9 +667,9 @@ internal static class ValidationExercises
                 .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
             var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
             var recover = buttons.SingleOrDefault(button =>
-                string.Equals(AutomationProperties.GetName(button), "恢复备份", StringComparison.Ordinal));
+                string.Equals(AutomationProperties.GetAutomationId(button), "SettingsRecoveryRecover", StringComparison.Ordinal));
             var exit = buttons.SingleOrDefault(button =>
-                string.Equals(AutomationProperties.GetName(button), "退出", StringComparison.Ordinal));
+                string.Equals(AutomationProperties.GetAutomationId(button), "SettingsRecoveryExit", StringComparison.Ordinal));
             var exitUsesCanvas = exit?.Background is SolidColorBrush exitBrush &&
                                  exitBrush.Color == expected;
             if (expectExitIsDefault)
@@ -600,7 +728,7 @@ internal static class ValidationExercises
                     "ReminderCenterAcknowledgeAll",
                     StringComparison.Ordinal));
             if (acknowledgeAll is null ||
-                !ButtonHasIconAndText(acknowledgeAll, "全部已读") ||
+                !ButtonHasIconAndText(acknowledgeAll, "全部知道了") ||
                 !window.IsAncestorOf(acknowledgeAll))
             {
                 return false;
@@ -780,7 +908,7 @@ internal static class ValidationExercises
                 var badgeText = badge is null
                     ? null
                     : VisualDescendants<TextBlock>(badge).SingleOrDefault(text =>
-                        string.Equals(text.Text, "待处理", StringComparison.Ordinal));
+                        string.Equals(text.Text, "刚刚", StringComparison.Ordinal));
                 if (badge is null ||
                     badge.Focusable ||
                     !ReferenceEquals(badge.Background, warningTint) ||
@@ -790,7 +918,7 @@ internal static class ValidationExercises
                     return false;
                 }
 
-                // #150：「待处理」徽章的感叹号是矢量图形（竖条 + 圆点），不是文本字重。
+                // #223：相对时间徽章使用矢量时钟，不靠文字字重构造图标。
                 var badgePanel = badge.Child as StackPanel;
                 var badgeMark = badgePanel is { Children.Count: 2 } badgeIconText
                     ? badgeIconText.Children[0] as Grid
@@ -867,7 +995,7 @@ internal static class ValidationExercises
             AutomationProperties.GetName(button).StartsWith(accessibleNamePrefix, StringComparison.Ordinal));
 
     // #150：提醒中心不引入第三种字重——窗口内全部文字只用 Regular/SemiBold（无 Bold），
-    // 且「待处理」徽章的感叹号是纯矢量图形而不是文本。
+    // 且相对时间徽章的时钟是纯矢量图形而不是文本（#223）。
     public static bool ProbeReminderCenterTypographyWeightWhitelist()
     {
         var key = new ActiveReminderOccurrenceKey(
@@ -1960,10 +2088,20 @@ internal static class ValidationExercises
     public static bool RunInstanceActivationFailurePromptBehavior()
     {
         var window = InstanceActivationFailureWindow.CreateForValidation();
+        PrepareOffscreenValidationWindow(window);
         try
         {
+            window.Show();
+            WindowValidationInput.Pump(window.Dispatcher);
             var body = (window.Content as Border)?.Child as StackPanel;
             var texts = body?.Children.OfType<TextBlock>().ToArray() ?? Array.Empty<TextBlock>();
+            Must(texts.Any(text => text.IsVisible &&
+                text.Text.Contains("任务栏", StringComparison.Ordinal) &&
+                text.Text.Contains("托盘", StringComparison.Ordinal) &&
+                text.Text.Contains("关闭此提示后重试", StringComparison.Ordinal) &&
+                text.Text.Contains("保存其他工作", StringComparison.Ordinal) &&
+                text.Text.Contains("正常重启电脑", StringComparison.Ordinal)),
+                "#228 激活失败提示缺少可执行的打开、重试和安全恢复步骤。");
             var commands = body?.Children
                 .OfType<StackPanel>()
                 .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
@@ -3153,6 +3291,73 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunReminderCenterRelativeTimeBehavior()
+    {
+        var dueUtc = new DateTimeOffset(2036, 8, 20, 1, 30, 0, TimeSpan.Zero);
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"MinminCountdown-relative-time-{Guid.NewGuid():N}.json");
+        ReminderDeliveryCoordinator? coordinator = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(dueUtc.AddMinutes(-1));
+            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
+            for (var index = 0; index < 6; index++)
+            {
+                Must(session.TrySaveNote(null, $"相对时间便签 {index}", new DateTime(2036, 8, 20), false,
+                    Array.Empty<string>(), ReminderSchedule.CreateOnce(dueUtc), out _), "无法建立相对时间发生项。");
+            }
+            clock.UtcNow = dueUtc;
+            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);
+            coordinator.Tick(dueUtc);
+            var center = coordinator.ActiveWindow ?? throw new InvalidOperationException("相对时间提醒中心未打开。");
+            WindowValidationInput.Pump(center.Dispatcher);
+            center.UpdateLayout();
+            var rows = VisualDescendants<Border>(center).Where(row => row.Tag is ActiveReminderOccurrenceKey).ToArray();
+            var models = rows.Select(row => row.DataContext).ToArray();
+            var badges = rows.Select(row => VisualDescendants<Border>(row).Single(border =>
+                AutomationProperties.GetAutomationId(border) == "ReminderEntryPendingBadge")).ToArray();
+            var labels = badges.Select(badge => VisualDescendants<TextBlock>(badge).Single()).ToArray();
+            var scroller = VisualDescendants<ScrollViewer>(center).Single(scroll => scroll.Content is StackPanel);
+            var focus = FindEntryButton(rows.Last(), "打开便签来源：")!;
+            center.ShowDeliveryFailure((ActiveReminderOccurrenceKey)rows[0].Tag);
+            var error = VisualDescendants<TextBlock>(rows[0]).Single(text =>
+                AutomationProperties.GetAutomationId(text) == "ReminderEntryDeliveryError");
+            var errorText = error.Text;
+            center.Activate();
+            WindowValidationInput.Pump(center.Dispatcher);
+            Keyboard.Focus(focus);
+            scroller.ScrollToEnd();
+            WindowValidationInput.Pump(center.Dispatcher);
+            var offset = scroller.VerticalOffset;
+            Must(offset > 0 && ReferenceEquals(Keyboard.FocusedElement, focus), "时间刷新前须有非零滚动及真实按钮焦点。");
+            var commits = 0;
+            session.StateChanged += (_, _) => commits++;
+            foreach (var (seconds, expected) in new[] { (0, "刚刚"), (59, "刚刚"), (60, "已过 1 分钟"), (3599, "已过 59 分钟"), (3600, "已过 1 小时"), (7200, "已过 2 小时") })
+            {
+                clock.UtcNow = dueUtc.AddSeconds(seconds);
+                coordinator.Tick(clock.UtcNow);
+                WindowValidationInput.Pump(center.Dispatcher);
+                center.UpdateLayout();
+                if (labels.Any(label => label.Text != expected) ||
+                    badges.Any(badge => AutomationProperties.GetName(badge) != expected) ||
+                    !rows.SequenceEqual(VisualDescendants<Border>(center).Where(row => row.Tag is ActiveReminderOccurrenceKey)) ||
+                    !models.SequenceEqual(rows.Select(row => row.DataContext)) ||
+                    !labels.SequenceEqual(badges.Select(badge => VisualDescendants<TextBlock>(badge).Single())) ||
+                    !ReferenceEquals(Keyboard.FocusedElement, focus) || Math.Abs(scroller.VerticalOffset - offset) > 0.1 ||
+                    commits != 0 || error.Text != errorText || error.Visibility != Visibility.Visible)
+                {
+                    Console.Error.WriteLine($"#223 relative time at {seconds}s: expected={expected}, actual={labels[0].Text}, commits={commits}");
+                    return false;
+                }
+            }
+            return true;
+        }
+        finally
+        {
+            coordinator?.Dispose();
+            DeleteSettingsFiles(settingsPath);
+        }
+    }
+
     public static ReminderCenterAcknowledgeAllExerciseResult RunReminderCenterAcknowledgeAllBehavior()
     {
         var dueUtc = new DateTimeOffset(2036, 8, 20, 1, 30, 0, TimeSpan.Zero);
@@ -3204,7 +3409,7 @@ internal static class ValidationExercises
                 return ReminderCenterAcknowledgeAllExerciseResult.Failed;
             }
 
-            // 第一条走逐条「知道了」作为语义对照，其余两条走头部「全部已读」。
+            // 第一条走逐条「知道了」作为语义对照，其余两条走头部「全部知道了」。
             var singleAcknowledged = center.RequestAcknowledgement(keys[0]);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var commitCount = 0;
@@ -3256,6 +3461,14 @@ internal static class ValidationExercises
                     false,
                     Array.Empty<string>(),
                     ReminderSchedule.CreateOnce(failDueUtc),
+                    out _) &&
+                session.TrySaveNote(
+                    null,
+                    "批量失败后删除探针己",
+                    new DateTime(2036, 8, 20),
+                    false,
+                    Array.Empty<string>(),
+                    ReminderSchedule.CreateOnce(failDueUtc),
                     out _);
             clock.UtcNow = failDueUtc;
             coordinator.Tick(failDueUtc);
@@ -3271,7 +3484,7 @@ internal static class ValidationExercises
                 .ToArray();
             if (!failureSaved ||
                 failureCenter is null ||
-                coordinator.ActiveEntryCount != 2 ||
+                coordinator.ActiveEntryCount != 3 ||
                 failureKeys.Any(key => !failureCenter.IsAcknowledgeEnabled(key)) ||
                 !failureCenter.IsAcknowledgeAllEnabled)
             {
@@ -3289,7 +3502,7 @@ internal static class ValidationExercises
             var diskDuringFailure = new SettingsStore(clock: clock).Load(settingsPath).Settings;
             var failureRetainsAllAtomically =
                 failureRaised &&
-                coordinator.ActiveEntryCount == 2 &&
+                coordinator.ActiveEntryCount == 3 &&
                 failureKeys.All(key => failureCenter.IsFailureVisible(key)) &&
                 failureKeys.All(key => !failureCenter.IsAcknowledgeEnabled(key)) &&
                 failureKeys.All(key => failureCenter.IsOpenSourceEnabled(key)) &&
@@ -3299,25 +3512,46 @@ internal static class ValidationExercises
                     session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey is null &&
                     diskDuringFailure.ReminderStates[rule.Id].LastDispositionOccurrenceKey is null);
 
+            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+            clock.UtcNow = failDueUtc.AddSeconds(3);
+            var deletedNote = session.Current.Notes.Single(note => note.Text == "批量失败后删除探针己");
+            Must(session.TryDeleteNote(deletedNote.Id, out _), "批量失败后通过来源删除条目失败。");
+            Must(session.TrySaveNote(null, "批量失败期间新到达", new DateTime(2036, 8, 20), false,
+                Array.Empty<string>(), ReminderSchedule.CreateOnce(failDueUtc.AddSeconds(4)), out _),
+                "无法建立原批次之外的新发生项。");
             clock.UtcNow = failDueUtc.AddSeconds(4);
             coordinator.Tick(clock.UtcNow);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var newRule = session.Current.Notes.Single(note => note.Text == "批量失败期间新到达").ReminderRules.Single();
+            var newKey = new ActiveReminderOccurrenceKey(newRule.Id, failDueUtc.AddSeconds(4));
+            var retainedFailureKeys = failureKeys.Take(2).ToArray();
+            bool HasRow(ActiveReminderOccurrenceKey key) => VisualDescendants<Border>(failureCenter)
+                .Any(row => row.Tag is ActiveReminderOccurrenceKey rowKey && rowKey == key);
             var noEarlyRetry =
-                coordinator.ActiveEntryCount == 2 &&
-                failureKeys.All(key => failureCenter.IsFailureVisible(key));
-            DeleteDirectoryIfEmpty(settingsPath + ".tmp");
+                coordinator.ActiveEntryCount == 3 &&
+                retainedFailureKeys.All(key => failureCenter.IsFailureVisible(key)) &&
+                !HasRow(failureKeys[2]) && failureCenter.IsAcknowledgeEnabled(newKey);
             clock.UtcNow = failDueUtc.AddSeconds(5);
+            commitCount = 0;
+            session.StateChanged += countCommit;
             coordinator.Tick(clock.UtcNow);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            session.StateChanged -= countCommit;
+            Console.Error.WriteLine($"REMINDER_BATCH_RETRY_COMMITS: {commitCount}");
             var failureOccurrenceKeys = failureRules
                 .Select(rule => ReminderOccurrenceKey.Create(rule, failDueUtc).ToString())
                 .ToArray();
             var persistedAfterRetry = new SettingsStore(clock: clock).Load(settingsPath).Settings;
             var backoffRetryCompletesBatch =
                 noEarlyRetry &&
-                coordinator.ActiveEntryCount == 0 &&
-                !failureCenter.IsVisible &&
-                failureRules
+                commitCount == 1 &&
+                coordinator.ActiveEntryCount == 1 &&
+                failureCenter.IsVisible && HasRow(newKey) &&
+                !HasRow(failureKeys[2]) &&
+                !session.Current.ReminderStates.ContainsKey(failureRules[2].Id) &&
+                session.Current.ReminderStates[newRule.Id].LastDispositionOccurrenceKey is null &&
+                persistedAfterRetry.ReminderStates[newRule.Id].LastDispositionOccurrenceKey is null &&
+                failureRules.Take(2)
                     .Select((rule, index) => (rule, index))
                     .All(pair =>
                         string.Equals(
@@ -3780,7 +4014,7 @@ internal static class ValidationExercises
     }
 
     // #155：「完成便签」确认框行为——先取消（安全默认，便签/条目/可完成状态原样保留），
-    // 再确认（原子完成便签、移除中心条目、写入处置 key）。「全部已读」不经本入口。
+    // 再确认（原子完成便签、移除中心条目、写入处置 key）。「全部知道了」不经本入口。
     public static bool RunReminderCenterCompleteRequiresConfirmationBehavior()
     {
         var dueUtc = new DateTimeOffset(2036, 5, 12, 1, 0, 0, TimeSpan.Zero);
@@ -7780,6 +8014,7 @@ internal static class ValidationExercises
 
     private static bool RunReminderRulesEditorWindowBehavior(DateTimeOffset nowUtc)
     {
+        ProbePlainLanguageRuleLabelsAndPersistence();
         var clock = new AdvancingValidationClock(nowUtc);
         var ids = new[]
         {
@@ -7931,6 +8166,69 @@ internal static class ValidationExercises
                 cancelledEditor.Close();
             }
         }
+    }
+
+    private static void ProbePlainLanguageRuleLabelsAndPersistence()
+    {
+        var now = new DateTimeOffset(2031, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        ReminderRule[] rules =
+        [
+            new AbsoluteOnceReminderRule("plain-once", now.AddHours(1)),
+            new FixedIntervalReminderRule("plain-interval", now.AddHours(2), new ReminderInterval(30)),
+            new CountdownRelativeReminderRule("plain-relative", 15),
+            new CalendarReminderRule("plain-calendar", CalendarFrequency.Daily, 1,
+                new DateOnly(2031, 1, 2), new TimeOnly(9, 30), new DailyCalendarSelector())
+        ];
+        var labels = new[] { "提醒一次", "每隔一段时间", "截止前提醒", "按日历重复" };
+        var descriptions = new[]
+        {
+            "提醒一次 · 2031-01-01 09:00",
+            "每隔一段时间 · 每 30 分钟 · 2031-01-01 10:00 起",
+            "截止前提醒 · 提前 15 分钟",
+            "按日历重复 · 每 1 日 · 09:30"
+        };
+        var editor = new ReminderRulesEditorWindow(rules, new AdvancingValidationClock(now),
+            countdownTargetUtc: now.AddDays(3));
+        PrepareOffscreenValidationWindow(editor);
+        try
+        {
+            editor.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var modes = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
+                Must(modes.Items.Cast<string>().SequenceEqual(labels), "#228 规则类型未使用平实文案。");
+                Must(descriptions.All(expected => VisualDescendants<TextBlock>(editor).Any(text => text.Text == expected)),
+                    "#228 四类规则摘要未保留新文案和完整时间信息。");
+                foreach (var (rule, index) in rules.Select((rule, index) => (rule, index)))
+                {
+                    var edit = VisualDescendants<Button>(editor).Single(button =>
+                        Equals(button.Content, "编辑") && Equals(button.Tag, rule.Id));
+                    InvokeRuleEditorButton(edit);
+                    modes.SelectedItem = labels[index];
+                    InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
+                }
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "AcceptReminderRulesButton"));
+            }));
+            Must(editor.ShowDialog() == true, "#228 新类型文案无法提交规则。");
+            Must(editor.ResultRules.Select(rule => rule.GetType()).SequenceEqual(rules.Select(rule => rule.GetType())) &&
+                editor.ResultRules.Select(rule => rule.Id).SequenceEqual(rules.Select(rule => rule.Id)),
+                "#228 可见文案改变了领域类型或稳定 rule ID。");
+            string Canonical(IReadOnlyList<ReminderRule> values) => SettingsContract.SerializeCanonical(
+                CountdownSettings.Empty with { Countdowns =
+                    [new CountdownRecord("plain-countdown", "文案契约", now.AddDays(3), [], values)] });
+            Must(Canonical(editor.ResultRules) == Canonical(rules), "#228 文案变更改变了规范持久化 JSON。");
+        }
+        finally { if (editor.IsVisible) editor.Close(); }
+        var noteEditor = new ReminderRulesEditorWindow([], new AdvancingValidationClock(now));
+        PrepareOffscreenValidationWindow(noteEditor);
+        try
+        {
+            noteEditor.Show();
+            WindowValidationInput.Pump(noteEditor.Dispatcher);
+            Must(FindByAutomationId<ComboBox>(noteEditor, "ReminderRuleMode").Items.Cast<string>()
+                .SequenceEqual(new[] { "提醒一次", "每隔一段时间", "按日历重复" }),
+                "#228 便签类型文案或相对规则隐藏合同不符。");
+        }
+        finally { noteEditor.Close(); }
     }
 
     private static bool RunCountdownRelativeReminderRulesEditorWindowBehavior(

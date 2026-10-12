@@ -86,11 +86,11 @@ internal sealed class ReminderCenterWindow : Window
         _acknowledgeAll = UiAccessibility.Name(
             new Button
             {
-                Content = CreateIconTextContent(CreateBellIcon("InkBrush"), "全部已读"),
+                Content = CreateIconTextContent(CreateBellIcon("InkBrush"), "全部知道了"),
                 VerticalAlignment = VerticalAlignment.Center,
                 Cursor = Cursors.Hand
             },
-            "全部已读：当前全部提醒");
+            "全部知道了：当前全部提醒");
         AutomationProperties.SetAutomationId(_acknowledgeAll, "ReminderCenterAcknowledgeAll");
         _acknowledgeAll.SetBinding(
             Button.IsEnabledProperty,
@@ -327,24 +327,28 @@ internal sealed class ReminderCenterWindow : Window
         var source = new TextBlock
         {
             Text = sourceLabel,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Normal,
             VerticalAlignment = VerticalAlignment.Center
         };
-        source.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
+        source.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
         source.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+        var relativeTimeContent = CreateIconTextContent(CreateClockIcon("WarningAccentBrush", 13), string.Empty, 5);
+        ((TextBlock)relativeTimeContent.Children[1]).SetBinding(
+            TextBlock.TextProperty, new Binding(nameof(ReminderCenterEntryViewModel.RelativeTimeText)));
         var pendingBadge = new Border
         {
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             CornerRadius = new CornerRadius(9),
             Padding = new Thickness(8, 2, 8, 2),
-            Child = CreateIconTextContent(CreateWarningIcon(), "待处理", 5)
+            Child = relativeTimeContent
         };
         pendingBadge.SetResourceReference(Border.BackgroundProperty, "WarningTintBrush");
         pendingBadge.SetResourceReference(TextElement.ForegroundProperty, "WarningAccentBrush");
         pendingBadge.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowMinorFontSize");
         AutomationProperties.SetAutomationId(pendingBadge, "ReminderEntryPendingBadge");
-        UiAccessibility.Name(pendingBadge, "待处理");
+        pendingBadge.SetBinding(AutomationProperties.NameProperty,
+            new Binding(nameof(ReminderCenterEntryViewModel.RelativeTimeText)));
         var sourceRow = new Grid();
         sourceRow.ColumnDefinitions.Add(new ColumnDefinition());
         sourceRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -354,9 +358,11 @@ internal sealed class ReminderCenterWindow : Window
         var body = new TextBlock
         {
             Text = item.Source.DisplayText,
+            FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 7, 0, 0),
             TextWrapping = TextWrapping.Wrap
         };
+        body.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
         body.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
         var scheduled = new TextBlock
         {
@@ -716,6 +722,8 @@ internal sealed class ReminderCenterWindow : Window
         _itemsHost.Children.Remove(entry.Row);
         UpdateTitle();
     }
+
+    internal void UpdateTime(DateTimeOffset nowUtc) => _viewModel.UpdateTime(nowUtc);
 
     private void UpdateTitle()
     {
@@ -1151,40 +1159,6 @@ internal sealed class ReminderCenterWindow : Window
         };
         path.SetResourceReference(Shape.StrokeProperty, strokeKey);
         return path;
-    }
-
-    private static FrameworkElement CreateWarningIcon()
-    {
-        // #150：感叹号圆图标是矢量图形（描边竖条 + 圆点），不引入第三种字重（不使用 Bold 文本）。
-        var circle = new Ellipse
-        {
-            Width = 13,
-            Height = 13
-        };
-        circle.SetResourceReference(Shape.FillProperty, "WarningAccentBrush");
-        var bar = new Path
-        {
-            Data = Geometry.Parse("M 6.5,3.3 L 6.5,7.3"),
-            StrokeThickness = 1.8,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round
-        };
-        bar.SetResourceReference(Shape.StrokeProperty, "MainActionTextBrush");
-        var dot = new Ellipse
-        {
-            Width = 1.9,
-            Height = 1.9,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Margin = new Thickness(0, 0, 0, 1.7)
-        };
-        dot.SetResourceReference(Shape.FillProperty, "MainActionTextBrush");
-        return new Grid
-        {
-            Width = 13,
-            Height = 13,
-            Children = { circle, bar, dot }
-        };
     }
 
     private static int CompareItems(ReminderCenterItem left, ReminderCenterItem right)

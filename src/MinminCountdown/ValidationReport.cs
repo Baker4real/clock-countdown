@@ -2001,6 +2001,11 @@ internal static class ValidationReport
             ["FocusOuterNeighborsMeetContrast"] = focusOuterNeighbors.Values.All(value => value),
             ["FocusOuterNeighborChecks"] = focusOuterNeighbors,
             ["ReminderCenterSourceLabelContrast"] = reminderCenterSourceLabelContrast,
+            ["ReminderCenterContentHierarchy"] = reminderCenterSourceLabelContrast.EmphasisPreserved &&
+                reminderCenterSourceLabelContrast.TextContrast,
+            ["ReminderCenterRelativeTimeUpdatesInPlace"] =
+                ValidationExercises.RunReminderCenterRelativeTimeBehavior() &&
+                reminderCenterSourceLabelContrast.RelativeTimeTextContrast,
             ["SystemDialogPrimaryButtonContrast"] = systemDialogPrimaryButtonContrast,
             ["KeyboardFocusRingContrast"] = keyboardFocusRingContrast,
             ["ComboBoxTextClick"] = comboBoxTextClick,
@@ -12852,9 +12857,9 @@ internal static class ValidationReport
                     "ReminderCenter",
                     "ReminderCenterContentRoot",
                     "提醒中心",
-                    "便签",
                     "排版验证正文",
-                    reminderCenter.EntryCount == 1 ? "1 条" : string.Empty),
+                    $"计划：{ChinaStandardTime.ToBeijingTime(reminderKey.ScheduledUtc):yyyy年M月d日 HH:mm}（北京时间）",
+                    "便签"),
                 MeasureSecondaryTypography(
                     editor,
                     "ReminderRulesEditor",
@@ -14031,6 +14036,7 @@ internal static class ValidationReport
             1,
             0));
         var measurements = new List<ReminderCenterSourceLabelContrastMeasurement>();
+        var relativeTimeContrastRatios = new List<double>();
         try
         {
             window.Show();
@@ -14038,7 +14044,7 @@ internal static class ValidationReport
             {
                 theme.Apply();
                 PumpDispatcher();
-                var expectedFontSize = (double)Application.Current.FindResource("SecondaryWindowSectionFontSize");
+                var expectedFontSize = (double)Application.Current.FindResource("SecondaryWindowMinorFontSize");
                 var ink = Application.Current.FindResource("InkBrush");
                 var reminderCard = Application.Current.FindResource("ReminderCardBrush");
                 foreach (var kind in new[] { "便签", "倒计时" })
@@ -14058,9 +14064,22 @@ internal static class ValidationReport
                         background?.Color.ToString() ?? string.Empty,
                         ratio,
                         ReferenceEquals(label.Foreground, ink),
-                        label.FontWeight == FontWeights.SemiBold &&
-                            Math.Abs(label.FontSize - expectedFontSize) < 0.01,
+                        label.FontWeight == FontWeights.Normal &&
+                            Math.Abs(label.FontSize - expectedFontSize) < 0.01 &&
+                            Descendants<TextBlock>(card!).Any(text =>
+                                text.Text == (kind == "便签" ? "来源标签验证便签" : "来源标签验证倒计时") &&
+                                Math.Abs(text.FontSize - 20) < 0.01 &&
+                                text.FontWeight == FontWeights.SemiBold),
                         ReferenceEquals(card?.Background, reminderCard)));
+                }
+                foreach (var badge in Descendants<Border>(window).Where(border =>
+                    AutomationProperties.GetAutomationId(border) == "ReminderEntryPendingBadge"))
+                {
+                    var text = Descendants<TextBlock>(badge).Single();
+                    relativeTimeContrastRatios.Add(
+                        text.Foreground is SolidColorBrush foreground && badge.Background is SolidColorBrush background
+                            ? ContrastRatio(foreground.Color, background.Color)
+                            : 0);
                 }
             }
 
@@ -14070,7 +14089,8 @@ internal static class ValidationReport
                 measurements.All(measurement => measurement.UsesInkBrush),
                 measurements.All(measurement => measurement.EmphasisPreserved),
                 measurements.All(measurement => measurement.ReminderCardBackground),
-                measurements);
+                measurements,
+                relativeTimeContrastRatios);
         }
         finally
         {
@@ -14087,7 +14107,7 @@ internal static class ValidationReport
         {
             var recoveryButton = LogicalDescendants<Button>(recovery)
                 .Single(button =>
-                    string.Equals(AutomationProperties.GetName(button), "恢复备份", StringComparison.Ordinal));
+                    string.Equals(AutomationProperties.GetAutomationId(button), "SettingsRecoveryRecover", StringComparison.Ordinal));
             var activationButton = LogicalDescendants<Button>(activation)
                 .Single(button =>
                     string.Equals(
@@ -17130,7 +17150,12 @@ internal static class ValidationReport
         bool UsesInkBrush,
         bool EmphasisPreserved,
         bool ReminderCardBackground,
-        IReadOnlyList<ReminderCenterSourceLabelContrastMeasurement> Measurements);
+        IReadOnlyList<ReminderCenterSourceLabelContrastMeasurement> Measurements,
+        IReadOnlyList<double> RelativeTimeContrastRatios)
+    {
+        public bool RelativeTimeTextContrast => RelativeTimeContrastRatios.Count == 2 &&
+            RelativeTimeContrastRatios.All(ratio => ratio >= 4.5);
+    }
 
     private sealed record SystemDialogPrimaryButtonContrastMeasurement(
         string Window,

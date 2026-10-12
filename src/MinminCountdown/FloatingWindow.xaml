@@ -300,6 +300,12 @@
             </Style>
           </ScrollViewer.Resources>
           <StackPanel>
+            <TextBlock x:Name="SettingsRecoveryCompletedStatus"
+                       AutomationProperties.AutomationId="SettingsRecoveryCompletedStatus"
+                       Visibility="Collapsed"
+                       Margin="12,10,12,0"
+                       FontSize="{DynamicResource TypeCaptionFontSize}"
+                       TextWrapping="Wrap" />
             <StackPanel x:Name="FloatingRows"
                         Margin="8,13,11,0" />
 

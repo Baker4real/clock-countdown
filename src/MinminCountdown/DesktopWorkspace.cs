@@ -49,8 +49,8 @@ internal sealed class DesktopWorkspace
                 filter,
                 FreezeCountdowns(_session.GetSortedCountdowns(nowUtc)),
                 FreezeCountdowns(_session.GetSortedCountdowns(nowUtc, applyFilter: false)),
-                FreezeNotes(_session.GetSortedManagerNotes()),
-                FreezeNotes(_session.GetSortedManagerNotes(applyFilter: false)),
+                FreezeNotes(_session.GetSortedNotes()),
+                FreezeNotes(_session.GetSortedNotes(applyFilter: false)),
                 FreezeNotes(_session.GetSortedNotes().Where(note => !note.IsCompleted)));
         }
     }

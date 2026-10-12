@@ -4588,10 +4588,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $trayIconHostSource -notmatch 'TrayLeftMouseDoubleClick' -and
         $trayIconHostSource -match '打开管理窗口' -and
         $trayIconHostSource -notmatch 'System\.Windows\.Forms' -and
-        $trayIconHostSource -match '#FFFDFC' -and
-        $trayIconHostSource -match '#3B190D' -and
-        $trayIconHostSource -match '#F6DFD3' -and
-        $trayIconHostSource -match '#D4526A') 'H.NotifyIcon 托盘单击恢复，菜单含打开管理窗口，并使用局部 WPF 暖粉菜单样式（#213）'
+        $trayIconHostSource -match 'SetResourceReference\(Control.BackgroundProperty, "CanvasBrush"\)' -and
+        $trayIconHostSource -match 'DynamicResourceExtension\("InkBrush"\)' -and
+        $trayIconHostSource -match 'DynamicResourceExtension\("ControlBorderBrush"\)' -and
+        $trayIconHostSource -match 'DynamicResourceExtension\("MainActionBrush"\)' -and
+        $trayIconHostSource -match 'DynamicResourceExtension\("MainActionTextBrush"\)' -and
+        $trayIconHostSource -match 'DynamicResourceExtension\("UiFontFamily"\)' -and
+        $trayIconHostSource -match 'DynamicResourceExtension\("TypeBodyFontSize"\)') 'H.NotifyIcon 托盘单击恢复，菜单含打开管理窗口，并消费动态主题与字号 token（#213/#232）'
     Assert-Equal $true (
         $floatingTraySource -match 'private void ResetWindowPosition\(\) => _floatingWindow\.ResetPositionIntoWorkArea\(\);') '托盘复位动作直达悬浮窗夹取实现（#156 源码契约）'
     $resetPositionBody = [regex]::Match(

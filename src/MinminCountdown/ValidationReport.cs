@@ -3868,6 +3868,8 @@ internal static class ValidationReport
         {
             FileName = "D:\\Codex\\tools\\PowerShell\\7.6.4\\pwsh.exe",
             UseShellExecute = false,
+            // 本进程是无控制台的 WPF 应用：不设 CreateNoWindow 会给 pwsh 新建可见控制台，经默认终端委托弹到用户桌面。
+            CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };

@@ -5709,7 +5709,7 @@ internal static class WindowValidationInput
         return keyDown.Handled && keyUp.Handled;
     }
 
-    public static ComboBoxPointerExerciseResult ExerciseComboBox(ComboBox comboBox)
+    public static ComboBoxPointerExerciseResult ExerciseComboBox(ComboBox comboBox, Popup? containingPopup = null)
     {
         using var pointerState = new PickerPointerState();
         var attached = PickerTemplateParts.HasComboBoxContract(comboBox);
@@ -5733,7 +5733,7 @@ internal static class WindowValidationInput
         try
         {
             comboBox.IsEnabled = true;
-            ClosePickerForFixture(comboBox);
+            ClosePickerForFixture(comboBox, containingPopup);
             Pump(comboBox.Dispatcher);
             RaiseComboTextPointer(comboBox, textToggle, UIElement.PreviewMouseLeftButtonDownEvent);
             Pump(comboBox.Dispatcher);
@@ -5745,7 +5745,7 @@ internal static class WindowValidationInput
             Pump(comboBox.Dispatcher);
             var releaseOpened = comboBox.IsDropDownOpen;
 
-            ClosePickerForFixture(comboBox);
+            ClosePickerForFixture(comboBox, containingPopup);
             Pump(comboBox.Dispatcher);
             var arrowPressOpens = false;
             if (arrow is not null && PresentationSource.FromVisual(arrow) is not null)
@@ -5757,7 +5757,7 @@ internal static class WindowValidationInput
                 Pump(comboBox.Dispatcher);
             }
 
-            ClosePickerForFixture(comboBox);
+            ClosePickerForFixture(comboBox, containingPopup);
             Pump(comboBox.Dispatcher);
             Keyboard.Focus(comboBox);
             Pump(comboBox.Dispatcher);
@@ -5765,7 +5765,7 @@ internal static class WindowValidationInput
             Pump(comboBox.Dispatcher);
             var f4Opened = comboBox.IsDropDownOpen;
 
-            ClosePickerForFixture(comboBox);
+            ClosePickerForFixture(comboBox, containingPopup);
             Pump(comboBox.Dispatcher);
             Keyboard.Focus(comboBox);
             Pump(comboBox.Dispatcher);
@@ -5783,7 +5783,7 @@ internal static class WindowValidationInput
                 WaitForPopupClosed(escapePopup);
             var escapeCloses = escapePopupClosed && !comboBox.IsDropDownOpen;
 
-            ClosePickerForFixture(comboBox);
+            ClosePickerForFixture(comboBox, containingPopup);
             Pump(comboBox.Dispatcher);
             comboBox.IsEnabled = false;
             RaiseComboTextPointer(comboBox, textToggle, UIElement.PreviewMouseLeftButtonDownEvent);
@@ -5826,7 +5826,7 @@ internal static class WindowValidationInput
                     Equals(comboBox.SelectedItem, comboBox.Items[itemIndex]);
             }
 
-            ClosePickerForFixture(comboBox);
+            ClosePickerForFixture(comboBox, containingPopup);
             comboBox.IsEnabled = true;
             Pump(comboBox.Dispatcher);
             var arrowIsNotTabStop = MeasureComboBoxArrowIsNotTabStop(comboBox, arrow);
@@ -5852,7 +5852,7 @@ internal static class WindowValidationInput
         finally
         {
             comboBox.IsEnabled = originalEnabled;
-            ClosePickerForFixture(comboBox);
+            ClosePickerForFixture(comboBox, containingPopup);
             if (originalIndex >= 0 && originalIndex < comboBox.Items.Count)
             {
                 comboBox.SelectedIndex = originalIndex;
@@ -5998,8 +5998,14 @@ internal static class WindowValidationInput
         return null;
     }
 
-    private static void ClosePickerForFixture(Control picker)
+    private static void ClosePickerForFixture(Control picker, Popup? containingPopup = null)
     {
+        var containingPopupStaysOpen = containingPopup?.StaysOpen;
+        // Fixture resets release native ComboBox capture without a real pointer
+        // event. In an off-screen nested popup that looks like an outside click
+        // to WPF. Suspend only that cleanup-time dismissal, never user gestures.
+        if (containingPopup is { IsOpen: true, StaysOpen: false })
+            containingPopup.SetCurrentValue(Popup.StaysOpenProperty, true);
         picker.ApplyTemplate();
         var popup = picker.Template?.FindName("PART_Popup", picker) as Popup;
         var motionEnabled = popup is not null && PopupMotionBehavior.GetIsEnabled(popup);
@@ -6036,6 +6042,8 @@ internal static class WindowValidationInput
             {
                 PopupMotionBehavior.SetIsEnabled(popup!, true);
             }
+            if (containingPopup is not null && containingPopupStaysOpen is bool staysOpen)
+                containingPopup.SetCurrentValue(Popup.StaysOpenProperty, staysOpen);
         }
     }
 

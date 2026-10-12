@@ -14385,7 +14385,7 @@ internal static class ValidationReport
             };
             Required<Button>(main, "PreferencesButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             PumpDispatcher();
-            mainResults.Add(MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision")));
+            mainResults.Add(MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision"), Required<Popup>(main, "PreferencesPopup")));
             WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
 
             reminderCenter = new ReminderCenterWindow
@@ -14475,9 +14475,9 @@ internal static class ValidationReport
         }
     }
 
-    private static ComboBoxPointerExerciseResult MeasureCombo(string name, ComboBox comboBox)
+    private static ComboBoxPointerExerciseResult MeasureCombo(string name, ComboBox comboBox, Popup? containingPopup = null)
     {
-        var result = WindowValidationInput.ExerciseComboBox(comboBox);
+        var result = WindowValidationInput.ExerciseComboBox(comboBox, containingPopup);
         if (!result.ArrowIsNotTabStop)
             Console.Error.WriteLine($"COMBO_TAB_DIAGNOSTIC {name}; visible={comboBox.IsVisible}; result={result}");
         return result;

@@ -855,7 +855,6 @@ public sealed partial class FloatingWindow : Window
         ResourceDictionary scope,
         FloatingThemePalette theme)
     {
-        var activeBrushKey = theme.HeaderDangerBrushKey;
         var bindings = new (string LocalKey, string ThemeKey)[]
         {
             ("CanvasBrush", theme.SurfaceBrushKey),
@@ -867,8 +866,8 @@ public sealed partial class FloatingWindow : Window
             ("MutedBrush", theme.MutedBrushKey),
             ("PeachLineBrush", theme.BorderBrushKey),
             ("ControlBorderBrush", "ControlBorderBrush"),
-            ("ActiveBrush", activeBrushKey),
-            ("ActiveHoverBrush", theme.HeaderHoverBrushKey),
+            ("ActiveBrush", "ActiveBrush"),
+            ("ActiveHoverBrush", "ActiveHoverBrush"),
             ("DangerBrush", theme.HeaderDangerBrushKey),
             ("SegmentSelectedBrush", theme.HeaderSelectedBrushKey),
             ("SegmentSelectedForegroundBrush", theme.HeaderSelectedTextBrushKey)
@@ -876,8 +875,7 @@ public sealed partial class FloatingWindow : Window
 
         foreach (var binding in bindings)
         {
-            scope[binding.LocalKey] = ApplicationTheme.HighContrastEnabled &&
-                binding.LocalKey is "ActiveBrush" or "ActiveHoverBrush"
+            scope[binding.LocalKey] = binding.LocalKey is "ActiveBrush" or "ActiveHoverBrush"
                 ? Application.Current.FindResource(binding.LocalKey)
                 : ThemeBrush(binding.ThemeKey);
         }
@@ -926,6 +924,18 @@ public sealed partial class FloatingWindow : Window
             FloatingTags.SetSelection([probeTag.Id]);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
+
+            // #232: validate the rendered focus boundary against the application
+            // interaction role; matching the local (possibly misbound) alias is insufficient.
+            Activate();
+            Keyboard.Focus(FloatingNoteText);
+            WindowValidationInput.Pump(Dispatcher);
+            var focusSurface = FloatingNoteText.Template.FindName("Surface", FloatingNoteText) as Border;
+            if (!FloatingNoteText.IsKeyboardFocused ||
+                !ReferenceEquals(focusSurface?.BorderBrush, Application.Current.FindResource("ActiveBrush")))
+            {
+                throw new InvalidOperationException("#232 快速新增实际输入焦点必须使用 Active，而非 Danger。");
+            }
 
             var textBoxes = new[] { FloatingNoteText, FloatingNoteSearch };
             var datePickers = new[] { FloatingNoteDate };

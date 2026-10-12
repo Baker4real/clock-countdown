@@ -171,7 +171,7 @@ public sealed partial class FloatingWindow
 
         if (string.Equals(record.Id, WorkdayEndCountdownId, StringComparison.Ordinal))
         {
-            // #148：徽章只挂距离下班；文字用主文字色（PinkBadgeTextBrush 白字对比不足），
+            // #148：徽章只挂距离下班；文字用主文字色（旧白字对比不足），
             // 字号不低于 12 DIP 关键状态下限，并垂直居中于标题行。
             var badge = new Border
             {

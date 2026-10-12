@@ -5296,7 +5296,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 'TextBox,DatePicker,DatePickerPopup,ComboBox,ComboBoxPopup,TagSelector,TagSelectorPopup,CheckBox,ScrollViewer,ScrollBar' ([string]::Join(',', @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties.Name))) '悬浮窗快速新增日间资源枚举覆盖全部真实控件族'
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '悬浮窗快速新增日间资源枚举没有失败项'
     Assert-Equal '#FFFEFCFB' ([string] $adapterValidation.FloatingQuickAddLocalCanvasColor) '悬浮窗快速新增局部表面使用暖白'
-    Assert-Equal '#FFB74C39' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增局部交互强调使用珊瑚'
+    Assert-Equal '#FFE05A4A' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增焦点和按压使用 Active，不复用 Danger（#232）'
     Assert-Equal $true ([bool] $adapterValidation.TagPopupFollowsDayTheme) '打开的标签弹层保持日间主题'
     Assert-Equal '#FFFDF0E4' ([string] $adapterValidation.MainThemeBackgroundColors) '主窗口背景使用预期的暖白配色'
     Assert-Equal '8' ([string] $adapterValidation.MainThemeCharacterOpacities) '主窗口角色装饰在日间主题下保持低对比度'

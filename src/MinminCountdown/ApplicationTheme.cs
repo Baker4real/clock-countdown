@@ -62,10 +62,8 @@ internal sealed class ApplicationTheme : IDisposable
         // 强调与控件
         Token("PrimaryCountdownNumberColor", "PrimaryCountdownNumberBrush", "#FFC0102F"),
         Token("PinkTintColor", "PinkTintBrush", "#FFFEDDDE"),
-        Token("PinkAccentColor", "PinkAccentBrush", "#FFDE5863"),
         Token("PinkAccentStrongColor", "PinkAccentStrongBrush", "#FFC23E68"),
         Token("PinkBadgeColor", "PinkBadgeBrush", "#FFFD97A1"),
-        Token("PinkBadgeTextColor", "PinkBadgeTextBrush", "#FFFDFC"),
         Token("PinkBlockColor", "PinkBlockBrush", "#FEE0E4"),
         Token("PinkTintSoftColor", "PinkTintSoftBrush", "#FEF0F1"),
         Token("SecondaryBlockColor", "SecondaryBlockBrush", "#FAF0EA"),
@@ -296,12 +294,12 @@ internal sealed class ApplicationTheme : IDisposable
     {
         "MainActionBrush" or "MainActionHoverBrush" or "MainActionPressedBrush" or
         "PinkAccentStrongBrush" or "SelectionBrush" or "SegmentSelectedBrush" or "SuccessBrush" => palette.Highlight,
-        "MainActionTextBrush" or "PinkBadgeTextBrush" or "SegmentSelectedForegroundBrush" => palette.HighlightText,
+        "MainActionTextBrush" or "SegmentSelectedForegroundBrush" => palette.HighlightText,
         "ActiveBrush" or "ActiveHoverBrush" or "MainActionFocusBrush" or
         "NoteActiveRailBrush" or "PeachRailBrush" or "FloatingDayPrimaryCountdownAccentBrush" => palette.Highlight,
         "InkBrush" or "BodyBrush" or "MutedBrush" or "ControlBorderBrush" or "PeachLineBrush" or
         "NoteLineBrush" or "NoteCompletedRailBrush" or "NoteTimelineBrush" or "DangerBrush" or
-        "PrimaryCountdownNumberBrush" or "PinkAccentBrush" or "IconAccentBrush" or
+        "PrimaryCountdownNumberBrush" or "IconAccentBrush" or
         "WarningAccentBrush" or "DecoTextBrush" or "DecoTextSoftBrush" or
         "StampPinkTextBrush" or "StampBlueTextBrush" or "StampGreenTextBrush" or
         "CharacterLineBrush" or "WorkspacePanelLineBrush" => palette.WindowText,

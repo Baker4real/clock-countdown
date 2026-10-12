@@ -5241,7 +5241,7 @@ internal static class ValidationExercises
         try
         {
             WindowValidationInput.Pump(floating.Dispatcher);
-            var workArea = SystemParameters.WorkArea;
+            var workArea = MonitorWorkAreaResolver.ResolveForWindow(floating).WorkAreaDip;
 
             floating.Left = workArea.Right + 120;
             floating.Top = workArea.Top + 40;
@@ -6018,7 +6018,7 @@ internal static class ValidationExercises
 
     private static bool WindowIntersectsWorkArea(Window window)
     {
-        var area = SystemParameters.WorkArea;
+        var area = MonitorWorkAreaResolver.ResolveForWindow(window).WorkAreaDip;
         return window.Left < area.Right &&
             window.Left + window.ActualWidth > area.Left &&
             window.Top < area.Bottom &&

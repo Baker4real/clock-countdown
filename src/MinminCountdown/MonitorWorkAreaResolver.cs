@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Interop;
 
 namespace MinminCountdown;
 
@@ -14,26 +15,27 @@ internal sealed record MonitorWorkArea(
     double DpiScaleY);
 
 /// <summary>
-/// #211：显示器工作区解析。输入一个窗口（或它的屏幕矩形），返回所在显示器
-/// 的工作区（DIP）和 DPI。生产路径基于 Win32 显示器 API（WPF DIP 换算为
-/// 物理像素后定位显示器，再按同一尺度换回 DIP）；验证通过
-/// <see cref="OverrideForValidation"/> 注入固定矩形与 DPI，使窗口几何探针
-/// 不依赖真实显示拓扑。本票只有主管理窗口接入；其他窗口归 #219。
+/// 用物理屏幕矩形选择显示器，再按目标显示器 DPI 返回工作区。
+/// 已创建的窗口直接读取 HWND 矩形，避免跨屏期间使用过期 WPF DPI 定位。
 /// </summary>
 internal static class MonitorWorkAreaResolver
 {
     private const uint MonitorDefaultToNearest = 0x00000002;
 
     private static MonitorWorkArea? s_validationOverride;
+    private static IReadOnlyList<MonitorWorkArea>? s_validationMonitors;
 
     internal static MonitorWorkArea ResolveForWindow(Window window)
     {
-        if (s_validationOverride is { } injectedForWindow)
+        if (s_validationMonitors is null && s_validationOverride is { } injectedForWindow)
         {
             return injectedForWindow;
         }
 
         var dpi = VisualTreeHelper.GetDpi(window);
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle != IntPtr.Zero && GetWindowRect(handle, out var physical))
+            return ResolvePhysicalRect(physical, dpi.DpiScaleX, dpi.DpiScaleY);
         var width = double.IsNaN(window.Width) ? window.ActualWidth : window.Width;
         var height = double.IsNaN(window.Height) ? window.ActualHeight : window.Height;
         var left = double.IsNaN(window.Left) ? 0 : window.Left;
@@ -44,29 +46,71 @@ internal static class MonitorWorkAreaResolver
             dpi.DpiScaleY);
     }
 
+    /// <summary>
+    /// 将某个目标显示器的物理工作区转换为指定窗口当前 DPI 的 WPF 坐标。
+    /// 首次显示跨 DPI 窗口时，目标工作区的 DIP 不能直接赋给尚未迁移到
+    /// 目标显示器的 HWND；先回到物理像素，再按窗口当前 DPI解释，才能让
+    /// Windows 把窗口真正放到目标显示器并触发后续 WM_DPICHANGED。
+    /// </summary>
+    internal static Rect ConvertWorkAreaToWindowDpi(MonitorWorkArea monitor, Window window)
+    {
+        // 单工作区覆盖是既有固定 DIP 布局夹具；多显示器夹具与生产路径
+        // 则保留物理显示器语义，以真实 HWND 回读验证跨 DPI 放置。
+        if (s_validationMonitors is null && s_validationOverride is not null)
+            return monitor.WorkAreaDip;
+        var windowDpi = VisualTreeHelper.GetDpi(window);
+        var scaleX = IsUsableScale(windowDpi.DpiScaleX) ? windowDpi.DpiScaleX : 1;
+        var scaleY = IsUsableScale(windowDpi.DpiScaleY) ? windowDpi.DpiScaleY : 1;
+        var physical = ToPhysical(monitor.WorkAreaDip, monitor.DpiScaleX, monitor.DpiScaleY);
+        return new Rect(
+            physical.Left / scaleX,
+            physical.Top / scaleY,
+            (physical.Right - physical.Left) / scaleX,
+            (physical.Bottom - physical.Top) / scaleY);
+    }
+
     internal static MonitorWorkArea ResolveForScreenRect(
         Rect windowRectDip,
         double dpiScaleX,
         double dpiScaleY)
     {
-        if (s_validationOverride is { } injected)
-        {
-            return injected;
-        }
-
         if (!IsUsableScale(dpiScaleX) || !IsUsableScale(dpiScaleY))
         {
             dpiScaleX = 1;
             dpiScaleY = 1;
         }
+        return ResolvePhysicalRect(ToPhysical(windowRectDip, dpiScaleX, dpiScaleY), dpiScaleX, dpiScaleY);
+    }
 
-        var physical = new NativeRect
+    private static MonitorWorkArea ResolvePhysicalRect(NativeRect physical, double dpiScaleX, double dpiScaleY)
+    {
+        if (s_validationMonitors is { } monitors)
         {
-            Left = (int)Math.Floor(windowRectDip.Left * dpiScaleX),
-            Top = (int)Math.Floor(windowRectDip.Top * dpiScaleY),
-            Right = (int)Math.Ceiling(windowRectDip.Right * dpiScaleX),
-            Bottom = (int)Math.Ceiling(windowRectDip.Bottom * dpiScaleY)
-        };
+            var windowRect = ToRect(physical);
+            var selected = monitors.Select(monitor => (Monitor: monitor,
+                    Physical: ToPhysical(monitor.WorkAreaDip, monitor.DpiScaleX, monitor.DpiScaleY)))
+                .OrderByDescending(item =>
+                {
+                    var intersection = Rect.Intersect(windowRect, ToRect(item.Physical));
+                    return intersection.IsEmpty ? 0 : intersection.Width * intersection.Height;
+                })
+                .ThenBy(item =>
+                {
+                    var center = new Point(windowRect.Left + windowRect.Width / 2,
+                        windowRect.Top + windowRect.Height / 2);
+                    var area = ToRect(item.Physical);
+                    var dx = center.X - Math.Clamp(center.X, area.Left, area.Right);
+                    var dy = center.Y - Math.Clamp(center.Y, area.Top, area.Bottom);
+                    return dx * dx + dy * dy;
+                }).First();
+            return FromPhysical(selected.Physical, selected.Monitor.DpiScaleX, selected.Monitor.DpiScaleY);
+        }
+
+        if (s_validationOverride is { } injected)
+        {
+            return injected;
+        }
+
         var monitor = MonitorFromRect(ref physical, MonitorDefaultToNearest);
         var info = new NativeMonitorInfo { Size = Marshal.SizeOf<NativeMonitorInfo>() };
         if (monitor == IntPtr.Zero || !GetMonitorInfoW(monitor, ref info))
@@ -76,7 +120,24 @@ internal static class MonitorWorkAreaResolver
             return new MonitorWorkArea(SystemParameters.WorkArea, dpiScaleX, dpiScaleY);
         }
 
-        var work = info.Work;
+        if (GetDpiForMonitor(monitor, 0, out var dpiX, out var dpiY) == 0 && dpiX > 0 && dpiY > 0)
+        {
+            dpiScaleX = dpiX / 96.0;
+            dpiScaleY = dpiY / 96.0;
+        }
+        return FromPhysical(info.Work, dpiScaleX, dpiScaleY);
+    }
+
+    private static NativeRect ToPhysical(Rect rect, double scaleX, double scaleY) => new()
+    {
+        Left = (int)Math.Floor(rect.Left * scaleX), Top = (int)Math.Floor(rect.Top * scaleY),
+        Right = (int)Math.Ceiling(rect.Right * scaleX), Bottom = (int)Math.Ceiling(rect.Bottom * scaleY)
+    };
+
+    private static Rect ToRect(NativeRect rect) => new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+
+    private static MonitorWorkArea FromPhysical(NativeRect work, double dpiScaleX, double dpiScaleY)
+    {
         return new MonitorWorkArea(
             new Rect(
                 work.Left / dpiScaleX,
@@ -94,8 +155,18 @@ internal static class MonitorWorkAreaResolver
     internal static IDisposable OverrideForValidation(MonitorWorkArea workArea)
     {
         var previous = s_validationOverride;
+        var previousMonitors = s_validationMonitors;
         s_validationOverride = workArea;
-        return new OverrideScope(previous);
+        s_validationMonitors = null;
+        return new OverrideScope(previous, previousMonitors);
+    }
+
+    internal static IDisposable OverrideForValidation(params MonitorWorkArea[] monitors)
+    {
+        if (monitors.Length == 0) throw new ArgumentException("至少需要一个显示器。", nameof(monitors));
+        var scope = new OverrideScope(s_validationOverride, s_validationMonitors);
+        s_validationMonitors = monitors.ToArray();
+        return scope;
     }
 
     private static bool IsUsableScale(double scale) =>
@@ -104,11 +175,13 @@ internal static class MonitorWorkAreaResolver
     private sealed class OverrideScope : IDisposable
     {
         private readonly MonitorWorkArea? _previous;
+        private readonly IReadOnlyList<MonitorWorkArea>? _previousMonitors;
         private bool _disposed;
 
-        internal OverrideScope(MonitorWorkArea? previous)
+        internal OverrideScope(MonitorWorkArea? previous, IReadOnlyList<MonitorWorkArea>? previousMonitors)
         {
             _previous = previous;
+            _previousMonitors = previousMonitors;
         }
 
         public void Dispose()
@@ -120,6 +193,7 @@ internal static class MonitorWorkAreaResolver
 
             _disposed = true;
             s_validationOverride = _previous;
+            s_validationMonitors = _previousMonitors;
         }
     }
 
@@ -143,6 +217,13 @@ internal static class MonitorWorkAreaResolver
 
     [DllImport("user32.dll", ExactSpelling = true)]
     private static extern IntPtr MonitorFromRect(ref NativeRect rect, uint flags);
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
+
+    [DllImport("shcore.dll", ExactSpelling = true)]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 
     [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]

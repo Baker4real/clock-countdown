@@ -49,6 +49,7 @@ internal sealed class ReminderRulesEditorWindow : Window
     private TextBlock _firstDueLabel = null!;
     private Border _dragHeader = null!;
     private bool _hasManualWindowPlacement;
+    private bool _placementInitialized;
     private int _nativeWindowDragRequestCount;
     private int _nativeWindowDragCompletionCount;
 
@@ -86,6 +87,8 @@ internal sealed class ReminderRulesEditorWindow : Window
         Content = BuildContent();
         Bind(_firstDueLabel, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.FirstDueLabel), _viewModel);
         WireEvents();
+        WindowWorkAreaGeometry.TrackChanges(this, ReapplyPlacement,
+            () => _hasManualWindowPlacement = true);
         RenderRules();
     }
 
@@ -101,10 +104,11 @@ internal sealed class ReminderRulesEditorWindow : Window
 
     internal void ReapplyPlacement()
     {
-        if (_hasManualWindowPlacement)
-        {
-            return;
-        }
+        var monitor = MonitorWorkAreaResolver.ResolveForWindow(
+            !_placementInitialized && Owner is { } owner ? owner : this);
+        WindowWorkAreaGeometry.Fit(this, monitor.WorkAreaDip, 18,
+            centerOnOwner: !_placementInitialized && !_hasManualWindowPlacement);
+        _placementInitialized = true;
     }
 
     private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs eventArgs)
@@ -309,6 +313,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             nameof(ReminderRulesEditorViewModel.IsCalendarSelectorVisible));
 
         _saveRuleButton.SetResourceReference(StyleProperty, "PrimaryButton");
+        _cancelRuleEditButton.SetResourceReference(StyleProperty, "SecondaryButton");
         var ruleActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -331,6 +336,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             Margin = new Thickness(8, 0, 0, 0)
         };
         NameControl(cancel, "取消提醒规则草稿");
+        cancel.SetResourceReference(StyleProperty, "SecondaryButton");
         AutomationProperties.SetAutomationId(cancel, "CancelReminderRulesButton");
         Bind(cancel, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.CancelDraftCommand), _viewModel);
         var dialogActions = new StackPanel
@@ -485,6 +491,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         };
         Loaded += (_, _) =>
         {
+            ReapplyPlacement();
             if (_viewModel.HasInitialError)
             {
                 _viewModel.ShowInitialError();

@@ -169,7 +169,7 @@
                      MinHeight="36"
                      VerticalContentAlignment="Center"
                      Background="{DynamicResource CanvasBrush}"
-                     BorderBrush="{DynamicResource PeachLineBrush}"
+                     BorderBrush="{DynamicResource ControlBorderBrush}"
                      Foreground="{DynamicResource FloatingNoteInputTextBrush}" />
             <TextBlock x:Name="FloatingNoteSearchPlaceholder"
                        Margin="8,6,8,0"
@@ -224,7 +224,7 @@
               <Setter Property="Width" Value="10" />
               <Setter Property="Height" Value="Auto" />
               <Setter Property="Background" Value="Transparent" />
-              <Setter Property="Foreground" Value="{DynamicResource PeachLineBrush}" />
+              <Setter Property="Foreground" Value="{DynamicResource ControlBorderBrush}" />
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type ScrollBar}">
@@ -258,11 +258,14 @@
                                   <Border x:Name="FloatingScrollBarThumbVisual"
                                           Width="{TemplateBinding VisualWidth}"
                                           HorizontalAlignment="Right"
-                                          Background="{TemplateBinding Background}"
-                                          BorderBrush="{DynamicResource PeachLineBrush}"
-                                          BorderThickness="0.5"
-                                          CornerRadius="3"
-                                          Opacity="{TemplateBinding ThumbOpacity}" />
+                                          Background="Transparent"
+                                          BorderBrush="{DynamicResource ControlBorderBrush}"
+                                          BorderThickness="1"
+                                          CornerRadius="3">
+                                    <Border Background="{TemplateBinding Background}"
+                                            CornerRadius="2"
+                                            Opacity="{TemplateBinding ThumbOpacity}" />
+                                  </Border>
                                 </Grid>
                               </ControlTemplate>
                             </local:FloatingScrollBarThumb.Template>
@@ -321,7 +324,7 @@
               <Setter Property="Width" Value="10" />
               <Setter Property="Height" Value="Auto" />
               <Setter Property="Background" Value="Transparent" />
-              <Setter Property="Foreground" Value="{DynamicResource PeachLineBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource ControlBorderBrush}" />
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type ScrollBar}">
@@ -355,11 +358,14 @@
                                   <Border x:Name="FloatingScrollBarThumbVisual"
                                           Width="{TemplateBinding VisualWidth}"
                                           HorizontalAlignment="Right"
-                                          Background="{TemplateBinding Background}"
-                                          BorderBrush="{DynamicResource PeachLineBrush}"
-                                          BorderThickness="0.5"
-                                          CornerRadius="3"
-                                          Opacity="{TemplateBinding ThumbOpacity}" />
+                                          Background="Transparent"
+                                          BorderBrush="{DynamicResource ControlBorderBrush}"
+                                          BorderThickness="1"
+                                          CornerRadius="3">
+                                    <Border Background="{TemplateBinding Background}"
+                                            CornerRadius="2"
+                                            Opacity="{TemplateBinding ThumbOpacity}" />
+                                  </Border>
                                 </Grid>
                               </ControlTemplate>
                             </local:FloatingScrollBarThumb.Template>

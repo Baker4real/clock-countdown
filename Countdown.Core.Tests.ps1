@@ -3617,11 +3617,13 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 528 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 524 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 531 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 527 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\app.manifest') '#219 source rebuild includes the PerMonitorV2 manifest'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\app.manifest') '#219 manifest is integrity protected'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 59 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon and content assets'
+Assert-Equal 62 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight helper'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
@@ -3713,13 +3715,13 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-12-v45\\manifest\.json').Count) `
+        'assets\\ui-references\\floating-window\\520x390\\2026-10-12-v46\\manifest\.json').Count) `
     'Validation suite pins the floating visual manifest to the current v33 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-10-12-v45\\manifest\.json').Count) `
+        'assets\\ui-references\\main-window\\1165x1350\\2026-10-12-v46\\manifest\.json').Count) `
     'Validation suite pins the main-window visual manifest to the current v33 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
@@ -3746,8 +3748,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v45\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v45\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v46\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v46\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3756,19 +3758,19 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-12-v45'
+        ExpectedVersion = '2026-10-12-v46'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'long-notes-day-bottom',
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-12-v45/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-12-v46/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-12-v45'
+        ExpectedVersion = '2026-10-12-v46'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3779,7 +3781,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-representative',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-12-v45/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-12-v46/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
@@ -4719,7 +4721,7 @@ try {
             continue
         }
         [void] $evaluatedSourceBuildFiles.Add($projectPath.Substring($releaseContractTestRoot.Length + 1))
-        $evaluatedJson = & $managedDotnet msbuild $projectPath '-getItem:Compile,ApplicationDefinition,Page,Content,ProjectReference' '-getProperty:ApplicationIcon' | Out-String
+        $evaluatedJson = & $managedDotnet msbuild $projectPath '-getItem:Compile,ApplicationDefinition,Page,Content,ProjectReference' '-getProperty:ApplicationIcon,ApplicationManifest' | Out-String
         if ($LASTEXITCODE -ne 0) {
             throw "MSBuild source-closure evaluation failed: $projectPath"
         }
@@ -4753,11 +4755,18 @@ try {
                 [void] $evaluatedSourceBuildFiles.Add($applicationIconPath.Substring($releaseContractTestRoot.Length + 1))
             }
         }
+        $applicationManifest = [string] $evaluatedProject.Properties.ApplicationManifest
+        if (-not [string]::IsNullOrWhiteSpace($applicationManifest)) {
+            $manifestPath = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $projectPath) $applicationManifest))
+            if ($manifestPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+                [void] $evaluatedSourceBuildFiles.Add($manifestPath.Substring($releaseContractTestRoot.Length + 1))
+            }
+        }
     }
     Assert-Equal `
         ((@($releaseContract.SourceBuildFiles) | Sort-Object) -join ',') `
         ((@($evaluatedSourceBuildFiles) | Sort-Object -Unique) -join ',') `
-        'Release contract matches the MSBuild-evaluated project, Compile, WPF XAML, icon and Content closure'
+        'Release contract matches the MSBuild-evaluated project, Compile, WPF XAML, icon, manifest and Content closure'
 
     $isolatedSourceDll = Join-Path $releaseContractTestRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
     [System.IO.File]::WriteAllText(

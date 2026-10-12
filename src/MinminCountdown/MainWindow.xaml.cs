@@ -27,8 +27,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     internal const double PreferredHeight = 1350;
     // #211：工作区安全边距（每边），对齐悬浮窗 12 DIP 边距惯例。
     private const double WorkAreaSafetyMargin = 12;
-    private const int WmDisplayChangeMessage = 0x007E;
-    private const int WmExitSizeMoveMessage = 0x0232;
     // #198: the remaining time is the primary visual anchor.  These are real
     // DIP values now that the main window no longer scales a design canvas.
     private const double CountdownRemainingBaseFontSize = 26;
@@ -195,11 +193,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         LoadPreferences();
         ShowWorkspace(WorkspaceKind.Countdowns);
         RefreshAll();
+        WindowWorkAreaGeometry.TrackChanges(this, ApplyWorkAreaGeometry,
+            () => _hasUserWindowPlacement = true);
         SourceInitialized += (_, _) =>
         {
             _dwmWindowChromeResult = DwmWindowChrome.ApplyMainWindow(this, _logger);
-            var hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-            hwndSource?.AddHook(WorkAreaChangeHook);
         };
         IsVisibleChanged += (_, args) =>
         {
@@ -810,30 +808,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var maximumTop = usable.Bottom - Height;
         Left = Math.Min(Math.Max(Left, usable.Left), Math.Max(usable.Left, maximumLeft));
         Top = Math.Min(Math.Max(Top, usable.Top), Math.Max(usable.Top, maximumTop));
-    }
-
-    private IntPtr WorkAreaChangeHook(
-        IntPtr hwnd,
-        int message,
-        IntPtr wordParameter,
-        IntPtr longParameter,
-        ref bool handled)
-    {
-        switch (message)
-        {
-            case WmDisplayChangeMessage:
-                if (IsVisible)
-                {
-                    ApplyWorkAreaGeometry();
-                }
-
-                break;
-            case WmExitSizeMoveMessage:
-                _hasUserWindowPlacement = true;
-                break;
-        }
-
-        return IntPtr.Zero;
     }
 
     internal void Reveal(WorkspaceKind workspace)

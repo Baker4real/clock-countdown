@@ -1848,17 +1848,18 @@ public sealed partial class MainWindow
 
             // —— 主次按钮角色：倒计时页唯一实心主行动是「＋ 添加倒计时」；
             PreferencesPopup.IsOpen = false;
-            // 「保存设置」为珊瑚语义次级实心 + 主文字色（珊瑚底白字实测 2.77 不达标）。
+            // #217「保存设置」为 CardAlt 次级表面 + 主文字色 + 可辨识的常态边界。
             var solidPrimaryButtons = ProbeVisualDescendants<Button>(CountdownWorkspaceBody)
                 .Where(button => ReferenceEquals(button.Background, FindResource("MainActionBrush")))
                 .ToArray();
             var primarySecondaryRolesDistinct =
                 solidPrimaryButtons.Length == 1 &&
                 ReferenceEquals(solidPrimaryButtons[0], SaveCountdownButton) &&
-                ReferenceEquals(SavePreferencesButton.Background, FindResource("CoralActionBrush")) &&
+                ReferenceEquals(SavePreferencesButton.Background, FindResource("CardAltBrush")) &&
+                ReferenceEquals(SavePreferencesButton.BorderBrush, FindResource("ControlBorderBrush")) &&
                 ReferenceEquals(SavePreferencesButton.Foreground, FindResource("InkBrush")) &&
                 ApplicationTheme.MeetsContrast(
-                    (Color)FindResource("CoralActionColor"),
+                    (Color)FindResource("CardAltColor"),
                     (Color)FindResource("InkColor"),
                     4.5) &&
                 ReferenceEquals(SaveNoteButton.Background, FindResource("MainActionBrush"));

@@ -89,6 +89,7 @@ public sealed partial class FloatingWindow : Window
         _deleteUndoCountdown = new DeleteUndoCountdown(Dispatcher, ExpireOwnedFloatingDeleteUndo);
         ConfigureControls();
         WireEvents();
+        WindowWorkAreaGeometry.TrackChanges(this, Reanchor);
         PreviewKeyDown += OnPreviewKeyDown;
         ApplyTheme();
         _desktopWorkspace.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
@@ -250,7 +251,7 @@ public sealed partial class FloatingWindow : Window
     {
         get
         {
-            var workArea = SystemParameters.WorkArea;
+            var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
             return Math.Abs((Top + ActualHeight) - (workArea.Bottom - 12)) <= 2.5;
         }
     }
@@ -269,7 +270,7 @@ public sealed partial class FloatingWindow : Window
             ShowWorkspace(WorkspaceKind.Notes);
             UpdateLayout();
 
-            var workArea = SystemParameters.WorkArea;
+            var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
             var minimumLeft = workArea.Left + 12;
             var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
             var minimumTop = workArea.Top + 12;
@@ -356,7 +357,7 @@ public sealed partial class FloatingWindow : Window
         var originalBottomAnchorPosition = _bottomAnchorPosition;
         var originalLeft = Left;
         var originalTop = Top;
-        var workArea = SystemParameters.WorkArea;
+        var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
         var minimumLeft = workArea.Left + 12;
         var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
         var minimumTop = workArea.Top + 12;
@@ -737,7 +738,7 @@ public sealed partial class FloatingWindow : Window
 
     internal void Reanchor()
     {
-        var workArea = SystemParameters.WorkArea;
+        var workArea = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
         var minimumLeft = workArea.Left + 12;
         var maximumLeft = Math.Max(minimumLeft, workArea.Right - ActualWidth - 12);
         var minimumTop = workArea.Top + 12;
@@ -859,11 +860,13 @@ public sealed partial class FloatingWindow : Window
         {
             ("CanvasBrush", theme.SurfaceBrushKey),
             ("CardBrush", theme.NoteCardBrushKey),
+            ("CardAltBrush", "CardAltBrush"),
             ("NoteBrush", theme.NoteCardBrushKey),
             ("InkBrush", theme.TextBrushKey),
             ("BodyBrush", theme.MutedBrushKey),
             ("MutedBrush", theme.MutedBrushKey),
             ("PeachLineBrush", theme.BorderBrushKey),
+            ("ControlBorderBrush", "ControlBorderBrush"),
             ("ActiveBrush", activeBrushKey),
             ("ActiveHoverBrush", theme.HeaderHoverBrushKey),
             ("DangerBrush", theme.HeaderDangerBrushKey),
@@ -1231,10 +1234,10 @@ public sealed partial class FloatingWindow : Window
             }
         }
 
-        AddForEach("TextBox", textBoxes, "CanvasBrush", "InkBrush", "PeachLineBrush", "ActiveBrush", "CardBrush");
-        AddForEach("DatePicker", datePickers, "CanvasBrush", "InkBrush", "PeachLineBrush");
-        AddForEach("ComboBox", comboBoxes, "CanvasBrush", "InkBrush", "PeachLineBrush");
-        AddForEach("TagSelector", [FloatingTags, FloatingTags.PopupTrigger], "CanvasBrush", "InkBrush", "PeachLineBrush");
+        AddForEach("TextBox", textBoxes, "CanvasBrush", "InkBrush", "ControlBorderBrush", "ActiveBrush", "CardBrush");
+        AddForEach("DatePicker", datePickers, "CanvasBrush", "InkBrush", "ControlBorderBrush");
+        AddForEach("ComboBox", comboBoxes, "CanvasBrush", "InkBrush", "ControlBorderBrush");
+        AddForEach("TagSelector", [FloatingTags, FloatingTags.PopupTrigger], "CardAltBrush", "InkBrush", "ControlBorderBrush");
 
         if (!checks["TagSelectorPopup"])
         {
@@ -1248,6 +1251,7 @@ public sealed partial class FloatingWindow : Window
                 "CanvasBrush",
                 "InkBrush",
                 "PeachLineBrush",
+                "ControlBorderBrush",
                 "ActiveBrush",
                 "CardBrush");
         }
@@ -1263,14 +1267,14 @@ public sealed partial class FloatingWindow : Window
                 $"Checked={popupCheckBox?.IsChecked?.ToString() ?? "unknown"}",
                 "CanvasBrush",
                 "BodyBrush",
-                "PeachLineBrush",
+                "ControlBorderBrush",
                 "ActiveBrush");
         }
 
         AddForEach(
             "ScrollViewer",
             new FrameworkElement?[] { FloatingBodyScroller, popupScroller }.OfType<FrameworkElement>(),
-            "PeachLineBrush",
+            "ControlBorderBrush",
             "ActiveBrush");
         if (!checks["ScrollBar"])
         {
@@ -1287,7 +1291,7 @@ public sealed partial class FloatingWindow : Window
                     $"Vertical={(vertical is null ? "missing" : "present")};" +
                     $"Horizontal={(horizontal is null ? "missing" : "present")};" +
                     $"Scroller={scroller.Name}",
-                    "PeachLineBrush",
+                    "ControlBorderBrush",
                     "ActiveBrush",
                     "FloatingMutedBrush");
             }
@@ -1362,8 +1366,8 @@ public sealed partial class FloatingWindow : Window
                     ReferenceEquals(textBox, FloatingNoteSearch)
                         ? "FloatingNoteInputTextBrush"
                         : "InkBrush")) &&
-            Equals(textBox.BorderBrush, textBox.TryFindResource("PeachLineBrush")) &&
-            UsesQuickAddResources(textBox, "CanvasBrush", "InkBrush", "PeachLineBrush");
+            Equals(textBox.BorderBrush, textBox.TryFindResource("ControlBorderBrush")) &&
+            UsesQuickAddResources(textBox, "CanvasBrush", "InkBrush", "ControlBorderBrush");
         return surfaceMatches &&
             UsesQuickAddResources(textBox, "ActiveBrush", "CardBrush");
     }
@@ -1377,10 +1381,10 @@ public sealed partial class FloatingWindow : Window
                 Math.Abs(border.Width - 18) <= 0.1 &&
                 Math.Abs(border.Height - 18) <= 0.1);
         var boxBrushKey = checkBox.IsChecked == true ? "ActiveBrush" : "CanvasBrush";
-        var boxBorderBrushKey = checkBox.IsChecked == true ? "ActiveBrush" : "PeachLineBrush";
+        var boxBorderBrushKey = checkBox.IsChecked == true ? "ActiveBrush" : "ControlBorderBrush";
         return
             Equals(checkBox.Foreground, checkBox.TryFindResource("BodyBrush")) &&
-            UsesQuickAddResources(checkBox, "CanvasBrush", "PeachLineBrush", "ActiveBrush") &&
+            UsesQuickAddResources(checkBox, "CanvasBrush", "ControlBorderBrush", "ActiveBrush") &&
             box is not null &&
             Equals(box.Background, checkBox.TryFindResource(boxBrushKey)) &&
             Equals(box.BorderBrush, checkBox.TryFindResource(boxBorderBrushKey));
@@ -1390,7 +1394,7 @@ public sealed partial class FloatingWindow : Window
     {
         scrollViewer.ApplyTemplate();
         return scrollViewer.Template is not null &&
-            UsesQuickAddResources(scrollViewer, "PeachLineBrush", "ActiveBrush");
+            UsesQuickAddResources(scrollViewer, "ControlBorderBrush", "ActiveBrush");
     }
 
     private bool ScrollViewerScrollBarsUseQuickAddTheme(ScrollViewer scrollViewer)
@@ -1408,17 +1412,21 @@ public sealed partial class FloatingWindow : Window
 
         return scrollBars.Length == 2 && scrollBars.All(scrollBar =>
             scrollBar.Template is not null &&
-            Equals(scrollBar.Foreground, scrollBar.TryFindResource("PeachLineBrush")) &&
+            Equals(scrollBar.Foreground, scrollBar.TryFindResource("ControlBorderBrush")) &&
             UsesQuickAddResources(scrollBar, "ActiveBrush"));
     }
 
-    private bool ControlUsesQuickAddSurface(Control control) =>
-        control.Style is not null &&
-        control.Template is not null &&
-        Equals(control.Background, control.TryFindResource("CanvasBrush")) &&
-        Equals(control.Foreground, control.TryFindResource("InkBrush")) &&
-        Equals(control.BorderBrush, control.TryFindResource("PeachLineBrush")) &&
-        UsesQuickAddResources(control, "CanvasBrush", "InkBrush", "PeachLineBrush");
+    private bool ControlUsesQuickAddSurface(Control control)
+    {
+        var surfaceKey = control is Button ? "CardAltBrush" : "CanvasBrush";
+        var borderKey = control is System.Windows.Controls.Calendar ? "PeachLineBrush" : "ControlBorderBrush";
+        return control.Style is not null &&
+            control.Template is not null &&
+            Equals(control.Background, control.TryFindResource(surfaceKey)) &&
+            Equals(control.Foreground, control.TryFindResource("InkBrush")) &&
+            Equals(control.BorderBrush, control.TryFindResource(borderKey)) &&
+            UsesQuickAddResources(control, surfaceKey, "InkBrush", borderKey);
+    }
 
     private bool BorderUsesQuickAddSurface(Border border) =>
         Equals(border.Background, border.TryFindResource("CanvasBrush")) &&

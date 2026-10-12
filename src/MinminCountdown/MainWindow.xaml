@@ -93,8 +93,8 @@
             <Style x:Key="MainSecondaryButton"
                    TargetType="{x:Type Button}"
                    BasedOn="{StaticResource SecondaryButton}">
-              <Setter Property="Background" Value="Transparent" />
-              <Setter Property="BorderBrush" Value="Transparent" />
+              <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+              <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
               <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="Padding" Value="18,0" />
             </Style>
@@ -228,7 +228,7 @@
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
-                  <!-- #152：主按钮焦点例外沿用暖粉 MainActionFocusBrush；改常驻 2px 透明环变色，
+                  <!-- #217：主按钮使用调深暖金 MainActionFocusBrush；常驻 2px 透明环变色，
                        悬停/按压/焦点都不再改 BorderThickness，内容不因状态位移。 -->
                   <ControlTemplate TargetType="{x:Type Button}">
                     <Grid x:Name="InteractionSurface"
@@ -278,12 +278,11 @@
                 </Setter.Value>
               </Setter>
             </Style>
-            <!-- #151：次级实心按钮（「保存设置」）——珊瑚语义底 + 主文字色（白字实测 2.77 不达标），
-                 每页唯一实心主行动仍是 MainPrimaryButton；本样式不是主行动角色。 -->
+            <!-- #217：「保存设置」使用 CardAlt + ControlBorder，保留既有尺寸和主次角色。 -->
             <Style x:Key="MainSecondarySolidButton" TargetType="{x:Type Button}">
               <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-              <Setter Property="Background" Value="{DynamicResource CoralActionBrush}" />
-              <Setter Property="BorderBrush" Value="{DynamicResource CoralActionBrush}" />
+              <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+              <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
               <Setter Property="BorderThickness" Value="1" />
               <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
               <Setter Property="Padding" Value="18,0" />
@@ -291,8 +290,7 @@
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
-                  <!-- #152：次级实心按钮改常驻 2px 透明环；环与珊瑚底之间留 1px 间隙，
-                       ActiveBrush 环对间隙/编辑卡浅色实测 ≥3:1（直接贴珊瑚底仅 1.3 不达非文本门槛）。 -->
+                  <!-- 常驻 2px 透明焦点环与表面保留 1px 间隙，不因焦点挤压内容。 -->
                   <ControlTemplate TargetType="{x:Type Button}">
                     <Grid x:Name="InteractionSurface"
                           Background="Transparent"
@@ -485,7 +483,7 @@
                               Width="26"
                               Height="26"
                               Background="{DynamicResource CanvasBrush}"
-                              BorderBrush="{DynamicResource PeachLineBrush}"
+                              BorderBrush="{DynamicResource ControlBorderBrush}"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
                               CornerRadius="8"
                               VerticalAlignment="Center">
@@ -512,10 +510,17 @@
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionBrush}" />
                         <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
                       </Trigger>
-                      <!-- #152：置顶焦点例外沿用暖粉 MainActionFocusBrush；边框常驻 FocusBorderThickness，
-                       焦点只换色不再从 1px 加粗，不再叠 FocusVisualStyle 第二套描边。 -->
+                      <!-- #217：未选中使用 Active；选中用对外侧浅底达标的暖金。常驻边框只换色。 -->
                       <MultiTrigger>
                         <MultiTrigger.Conditions>
+                          <Condition Property="IsKeyboardFocused" Value="True" />
+                          <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </MultiTrigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsChecked" Value="True" />
                           <Condition Property="IsKeyboardFocused" Value="True" />
                           <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
                         </MultiTrigger.Conditions>
@@ -545,7 +550,7 @@
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"
                               Background="{DynamicResource CanvasBrush}"
-                              BorderBrush="{DynamicResource PeachLineBrush}"
+                              BorderBrush="{DynamicResource ControlBorderBrush}"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
                               CornerRadius="6">
                         <Path x:Name="Tick"
@@ -560,13 +565,16 @@
                       </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
+                      <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="Box" Property="Background" Value="{DynamicResource SuccessBrush}" />
+                        <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+                        <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                      </Trigger>
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
-                      <Trigger Property="IsChecked" Value="True">
-                        <Setter TargetName="Box" Property="Background" Value="{DynamicResource ActiveBrush}" />
+                      <Trigger Property="IsPressed" Value="True">
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                        <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
                       </Trigger>
                       <MultiTrigger>
                         <MultiTrigger.Conditions>
@@ -649,7 +657,7 @@
                         <Grid Width="22" Height="22">
                           <Ellipse x:Name="Ring"
                                    Fill="Transparent"
-                                   Stroke="{DynamicResource PeachLineBrush}"
+                                   Stroke="{DynamicResource ControlBorderBrush}"
                                    StrokeThickness="2" />
                           <!-- #151：选中圆点/描边用焦点·强调轨语义色 ActiveBrush
                               （对编辑卡画布 3.27 ≥ 3:1 非文本门槛；IconAccentBrush 2.13 是装饰色）。 -->
@@ -1991,7 +1999,7 @@
               </Grid>
 
               <!-- 底部动作区：北京时间与状态。#151：状态栏消费状态条表面（StatusBarBrush），
-                   错误字在该表面上达信息文本对比（DangerBrush 实测 4.83 ≥ 4.5）。 -->
+                   错误字在该表面上达信息文本对比（#217 DangerBrush 实测 4.92 ≥ 4.5）。 -->
               <Grid x:Name="MainStatusBarZone" Grid.Row="3" Margin="40,10,45,0" VerticalAlignment="Top">
                 <Border x:Name="MainStatusBarSurface"
                         Background="{DynamicResource StatusBarBrush}"

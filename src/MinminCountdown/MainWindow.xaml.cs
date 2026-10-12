@@ -68,6 +68,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Button> _noteSourceFocusTargets =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TextBlock> _noteReminderSummaryTexts =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<Action<DateTimeOffset>> _noteDateRefreshers = new();
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
     private readonly SegmentIndicator _workspaceTabIndicator;
     private readonly SegmentIndicator _notesSegmentIndicator;
@@ -89,6 +92,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private IReadOnlyList<ReminderRule> _countdownReminderRules = Array.Empty<ReminderRule>();
     private IReadOnlyList<ReminderRule> _noteReminderRules = Array.Empty<ReminderRule>();
     private long _lastRenderedNoteMinuteUtc = -1;
+    private string? _noteTimeRenderSignature;
+    private string? _renderedNoteRevealId;
     private string? _reminderSourceCountdownId;
     private string? _reminderSourceNoteId;
     private string? _countdownRenderSignature;
@@ -195,6 +200,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             if (args.NewValue is true)
             {
                 ApplyWorkAreaGeometry();
+                UpdateTime(ChinaStandardTime.ToBeijingTime(_desktopWorkspace.Snapshot.UtcNow));
             }
         };
         Loaded += (_, _) =>
@@ -658,31 +664,40 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool ProbeReminderSummaryAdvancesAfterFirstDue()
     {
         var originalWorkspace = _workspace;
-        var firstDueUtc = new DateTimeOffset(2031, 4, 6, 1, 30, 0, TimeSpan.Zero);
-        var note = new NoteRecord(
-            "reminder-summary-probe",
-            "提醒摘要探针",
-            "2031-04-06",
-            false,
-            Array.Empty<string>(),
-            30,
-            firstDueUtc.Subtract(TimeSpan.FromMinutes(30)));
+        var firstDueUtc = _desktopWorkspace.Snapshot.UtcNow.AddDays(1);
+        firstDueUtc = new DateTimeOffset(firstDueUtc.Year, firstDueUtc.Month,
+            firstDueUtc.Day, 1, 30, 0, TimeSpan.Zero);
+        string? noteId = null;
         try
         {
-            var before = FormatNoteDetails(note, firstDueUtc.AddSeconds(-1));
-            var after = FormatNoteDetails(note, firstDueUtc);
+            var result = _desktopWorkspace.Apply(new SaveNoteChange(
+                null, "提醒摘要探针", null, false, Array.Empty<string>(),
+                new ReminderRule[]
+                {
+                    new FixedIntervalReminderRule(Guid.NewGuid().ToString("N"), firstDueUtc, new ReminderInterval(30))
+                }));
+            if (!result.Succeeded)
+            {
+                return false;
+            }
+            noteId = _desktopWorkspace.Snapshot.AllNotes.Single(note => note.Text == "提醒摘要探针").Id;
             ShowWorkspace(WorkspaceKind.Notes);
             RenderNotes(firstDueUtc.AddSeconds(-1));
-            var sentinel = new Border();
-            ActiveNoteRows.Children.Add(sentinel);
+            string Summary() => MainValidationDescendants<TextBlock>(_noteSourceRows[noteId])
+                .Single(text => AutomationProperties.GetAutomationId(text) == NoteCardReminderSummaryAutomationId).Text;
+            var before = Summary();
             UpdateTime(ChinaStandardTime.ToBeijingTime(firstDueUtc));
+            var after = Summary();
             return
-                before.Contains("下次 4 月 6 日 09:30", StringComparison.Ordinal) &&
-                after.Contains("下次 4 月 6 日 10:00", StringComparison.Ordinal) &&
-                !ActiveNoteRows.Children.Contains(sentinel);
+                before.Contains("09:30", StringComparison.Ordinal) &&
+                after.Contains("10:00", StringComparison.Ordinal);
         }
         finally
         {
+            if (noteId is not null)
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(noteId));
+            }
             ShowWorkspace(originalWorkspace);
         }
     }
@@ -848,6 +863,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     internal void UpdateTime(DateTimeOffset beijingNow)
     {
+        if (!IsVisible)
+        {
+            return;
+        }
+
         NowText.Text = $"当前北京时间：{beijingNow:yyyy年MM月dd日 HH:mm:ss}";
         RefreshDefaultNoteDate(beijingNow);
         var nowUtc = beijingNow.ToUniversalTime();
@@ -860,7 +880,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var currentMinuteUtc = nowUtc.UtcDateTime.Ticks / TimeSpan.TicksPerMinute;
         if (_lastRenderedNoteMinuteUtc != currentMinuteUtc)
         {
-            RenderNotes(nowUtc);
+            RenderNotes(nowUtc, skipUnchanged: true);
         }
     }
 
@@ -1857,16 +1877,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         return pairs;
     }
 
-    private void RenderNotes(DateTimeOffset? nowUtc = null)
+    private void RenderNotes(DateTimeOffset? nowUtc = null, bool skipUnchanged = false)
     {
         var snapshot = _desktopWorkspace.Snapshot;
         var effectiveNowUtc = (nowUtc ?? snapshot.UtcNow).ToUniversalTime();
         _lastRenderedNoteMinuteUtc = effectiveNowUtc.UtcDateTime.Ticks / TimeSpan.TicksPerMinute;
-        ActiveNoteRows.Children.Clear();
-        CompletedNoteRows.Children.Clear();
-        _noteCompletionBoxes.Clear();
-        _noteSourceRows.Clear();
-        _noteSourceFocusTargets.Clear();
         var visibleIds = snapshot.VisibleNotes
             .Select(static note => note.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1877,6 +1892,48 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     visibleIds.Contains(note.Id) ||
                     string.Equals(note.Id, _reminderSourceNoteId, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
+        // 数据/筛选事件照常重绘；分钟 tick 保留行控件，只就地更新日期与提醒摘要。
+        var timeSignature = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            RevealNoteId = _reminderSourceNoteId,
+            Entries = records.Select(note => new
+            {
+                note.Id,
+                DateLabel = FormatNoteDateLabel(note.Date, effectiveNowUtc),
+                Details = FormatNoteDetails(snapshot.Settings, note, effectiveNowUtc)
+            })
+        });
+        if (skipUnchanged && string.Equals(timeSignature, _noteTimeRenderSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _noteTimeRenderSignature = timeSignature;
+        if (skipUnchanged && string.Equals(_renderedNoteRevealId, _reminderSourceNoteId, StringComparison.Ordinal))
+        {
+            foreach (var note in records)
+            {
+                if (_noteReminderSummaryTexts.TryGetValue(note.Id, out var summary))
+                {
+                    summary.Text = FormatNoteDetails(snapshot.Settings, note, effectiveNowUtc);
+                    AutomationProperties.SetName(summary, $"便签卡提醒摘要：{summary.Text}");
+                }
+            }
+            foreach (var refreshDate in _noteDateRefreshers)
+            {
+                refreshDate(effectiveNowUtc);
+            }
+            return;
+        }
+
+        _renderedNoteRevealId = _reminderSourceNoteId;
+        ActiveNoteRows.Children.Clear();
+        CompletedNoteRows.Children.Clear();
+        _noteCompletionBoxes.Clear();
+        _noteSourceRows.Clear();
+        _noteSourceFocusTargets.Clear();
+        _noteReminderSummaryTexts.Clear();
+        _noteDateRefreshers.Clear();
         var active = records.Where(note => !note.IsCompleted).ToArray();
         var completed = records.Where(note => note.IsCompleted).ToArray();
         var revealNoteId = _reminderSourceNoteId;
@@ -2028,6 +2085,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     isCompleted,
                     expand);
             };
+            var dateText = ((Grid)sectionToggle.Content).Children.OfType<TextBlock>()
+                .Single(text => text.Uid == "NoteDateLabel");
+            _noteDateRefreshers.Add(currentUtc =>
+            {
+                dateLabel = FormatNoteDateLabel(group.Key, currentUtc);
+                dateText.Text = dateLabel;
+                SetNoteDateSectionState(sectionToggle, sectionRows, chevronRotation, dateLabel,
+                    groupedNotes.Length, isCompleted, sectionRows.Visibility == Visibility.Visible);
+            });
 
             var timeline = new Grid
             {
@@ -2262,6 +2328,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             detailText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             AutomationProperties.SetAutomationId(detailText, NoteCardReminderSummaryAutomationId);
             UiAccessibility.Name(detailText, $"便签卡提醒摘要：{details}");
+            _noteReminderSummaryTexts[note.Id] = detailText;
             var detailRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
             var clockGlyph = CreateNoteRowGlyph(
                 "M 9,2.6 C 5.9,2.6 3.4,5.1 3.4,8.2 C 3.4,11.3 5.9,13.8 9,13.8 C 12.1,13.8 14.6,11.3 14.6,8.2 C 14.6,5.1 12.1,2.6 9,2.6 Z M 9,5.2 L 9,8.2 L 11.2,9.6",

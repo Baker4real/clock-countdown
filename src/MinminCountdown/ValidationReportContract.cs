@@ -119,6 +119,8 @@ internal static class ValidationReportContract
         "ProductManifestDeclaresPerMonitorV2",
         "RuntimeDpiChangeUpdatesWindowLayout",
         "MainWindowIdentityZoneDragRegion",
+        "MainWindowHiddenTickSkipsRenderAndShowRefreshes",
+        "MainWindowNoteMinutePreservesFocusAndScroll",
         "TabsRenderAboveDecorationBand",
         "FloatingQuickAddDayResourcesFollowLocalTheme",
         "FloatingQuickAddIndependentFromApplicationTheme",

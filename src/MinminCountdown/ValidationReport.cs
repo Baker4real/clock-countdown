@@ -1056,6 +1056,10 @@ internal static class ValidationReport
         var mixedDpiPhysicalGeometry = MonitorGeometryValidation.MixedDpiUsesPhysicalMonitorGeometry();
         var productManifestPerMonitorV2 = MonitorGeometryValidation.ProductManifestDeclaresPerMonitorV2();
         var runtimeDpiLayout = MonitorGeometryValidation.RuntimeDpiChangeUpdatesWindowLayout();
+        var mainWindowHiddenRefresh =
+            ValidationExercises.RunMainWindowHiddenRefreshBehavior();
+        var mainWindowNoteMinuteRefresh =
+            ValidationExercises.RunMainWindowNoteMinuteRefreshBehavior();
         var reminderCenterDeliveryFailureActionGate =
             ValidationExercises.RunReminderCenterDeliveryFailureActionGateBehavior();
         var reminderCenterEnterUsesNativeButtonActivation =
@@ -2274,6 +2278,10 @@ internal static class ValidationReport
             ["MixedDpiUsesPhysicalMonitorGeometry"] = mixedDpiPhysicalGeometry,
             ["ProductManifestDeclaresPerMonitorV2"] = productManifestPerMonitorV2,
             ["RuntimeDpiChangeUpdatesWindowLayout"] = runtimeDpiLayout,
+            ["MainWindowHiddenTickSkipsRenderAndShowRefreshes"] =
+                mainWindowHiddenRefresh,
+            ["MainWindowNoteMinutePreservesFocusAndScroll"] =
+                mainWindowNoteMinuteRefresh,
             ["ReminderCenterDeliveryFailureDisablesDispositions"] =
                 reminderCenterDeliveryFailureActionGate,
             ["ReminderCenterEnterUsesNativeButtonActivation"] =

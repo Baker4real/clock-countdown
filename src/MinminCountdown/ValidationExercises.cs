@@ -5263,6 +5263,183 @@ internal static class ValidationExercises
         }
     }
 
+    // #230：沿既有窗口 tick/显示入口验证隐藏期间不重建分格，恢复时立即追上时钟。
+    public static bool RunMainWindowHiddenRefreshBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-main-hidden-refresh-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        try
+        {
+            var clock = new AdvancingValidationClock(
+                new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            MustApply(workspace, new SaveCountdownChange(
+                null,
+                "隐藏刷新倒计时",
+                clock.UtcNow.AddMinutes(10),
+                Array.Empty<string>(),
+                Array.Empty<ReminderRule>()));
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var main = new MainWindow(
+                workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            try
+            {
+                main.Show();
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+                main.UpdateLayout();
+                var rows = (Panel)main.FindName("CountdownRows");
+                var blocksBefore = VisualDescendants<TextBlock>(rows).ToArray();
+                var remainingBefore = main.CountdownRemainingTextsForValidation.Values.Single().Text;
+                var nowText = (TextBlock)main.FindName("NowText");
+                var timeBefore = nowText.Text;
+                Must(blocksBefore.Length > 0, "隐藏刷新探针必须先渲染真实倒计时分格。");
+
+                main.Hide();
+                clock.UtcNow = clock.UtcNow.AddMinutes(2);
+                main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+                WindowValidationInput.Pump(main.Dispatcher);
+                Must(
+                    !main.IsVisible &&
+                    blocksBefore.SequenceEqual(VisualDescendants<TextBlock>(rows)) &&
+                    main.CountdownRemainingTextsForValidation.Values.Single().Text == remainingBefore &&
+                    nowText.Text == timeBefore,
+                    "#230：管理窗口隐藏期间 tick 不得重建倒计时分格或更新时间文本。");
+
+                // 不能再调用 UpdateTime；Show 本身必须补上隐藏期间跳过的刷新。
+                main.Show();
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+                Must(
+                    main.IsVisible &&
+                    nowText.Text == "当前北京时间：2038年07月08日 09:02:00" &&
+                    main.CountdownRemainingTextsForValidation.Values.Single().Text != remainingBefore,
+                    "#230：管理窗口重新显示后必须立即显示最新时刻与剩余时间，不等待下一次 tick。");
+                return true;
+            }
+            finally
+            {
+                main.Close();
+            }
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    public static bool RunMainWindowNoteMinuteRefreshBehavior()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-main-note-minute-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        try
+        {
+            var clock = new AdvancingValidationClock(
+                new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            for (var index = 0; index < 12; index++)
+            {
+                MustApply(workspace, new SaveNoteChange(
+                    null, $"分钟刷新便签 {index:D2}", new DateTime(2038, 7, 8), false,
+                    Array.Empty<string>(), Array.Empty<ReminderRule>()));
+            }
+
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var main = new MainWindow(
+                workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            try
+            {
+                main.Show();
+                WindowValidationInput.Pump(main.Dispatcher);
+                ((ButtonBase)main.FindName("NotesTab")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+                var scroller = (ScrollViewer)main.FindName("NotesListRegion");
+                var activeRows = (Panel)main.FindName("ActiveNoteRows");
+                var trigger = VisualDescendants<Button>(activeRows)
+                    .Last(button => button.Uid == "NoteRowOverflowMenu");
+                Keyboard.Focus(trigger);
+                WindowValidationInput.Pump(main.Dispatcher);
+                scroller.ScrollToEnd();
+                WindowValidationInput.Pump(main.Dispatcher);
+                var offset = scroller.VerticalOffset;
+                Must(ReferenceEquals(Keyboard.FocusedElement, trigger) && offset > 0,
+                    "分钟刷新探针须先聚焦真实便签操作按钮并建立非零滚动偏移。");
+
+                clock.UtcNow = clock.UtcNow.AddMinutes(1);
+                main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+                Must(ReferenceEquals(Keyboard.FocusedElement, trigger) &&
+                     VisualDescendants<Button>(activeRows).Contains(trigger) &&
+                     Math.Abs(scroller.VerticalOffset - offset) <= 0.1,
+                    "#230：便签数据未变的分钟刷新必须保留行控件、键盘焦点与滚动位置。");
+
+                var note = workspace.Snapshot.AllNotes.Single(item => item.Id == (string)trigger.Tag);
+                var dueUtc = clock.UtcNow.AddMinutes(1);
+                MustApply(workspace, new SaveNoteChange(note.Id, note.Text, new DateTime(2038, 7, 8), false,
+                    note.TagIds, new ReminderRule[]
+                    {
+                        new FixedIntervalReminderRule("minute-focus-repeat", dueUtc, new ReminderInterval(30))
+                    }));
+                WindowValidationInput.Pump(main.Dispatcher);
+                trigger = VisualDescendants<Button>(activeRows)
+                    .Single(button => button.Uid == "NoteRowOverflowMenu" && (string)button.Tag == note.Id);
+                Keyboard.Focus(trigger);
+                WindowValidationInput.Pump(main.Dispatcher);
+                scroller.ScrollToEnd();
+                WindowValidationInput.Pump(main.Dispatcher);
+                offset = scroller.VerticalOffset;
+                var summary = VisualDescendants<TextBlock>(activeRows).Single(text =>
+                    AutomationProperties.GetAutomationId(text) == MainWindow.NoteCardReminderSummaryAutomationId);
+                Must(summary.Text.Contains("09:02", StringComparison.Ordinal), "周期便签初始摘要应指向首次提醒。");
+                clock.UtcNow = dueUtc;
+                main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+                var summaryAfter = VisualDescendants<TextBlock>(activeRows).Single(text =>
+                    AutomationProperties.GetAutomationId(text) == MainWindow.NoteCardReminderSummaryAutomationId);
+                Must(summaryAfter.Text.Contains("09:32", StringComparison.Ordinal),
+                    "周期提醒跨首次到期后须显示真实的下一次摘要。");
+                Must(ReferenceEquals(Keyboard.FocusedElement, trigger) &&
+                     VisualDescendants<Button>(activeRows).Contains(trigger) &&
+                     Math.Abs(scroller.VerticalOffset - offset) <= 0.1,
+                    "#230：周期提醒摘要变化的分钟刷新必须保留便签操作角色焦点与滚动位置。");
+                clock.UtcNow = new DateTimeOffset(2038, 7, 8, 16, 0, 0, TimeSpan.Zero);
+                main.UpdateTime(ChinaStandardTime.ToBeijingTime(clock.UtcNow));
+                WindowValidationInput.Pump(main.Dispatcher);
+                var dateLabel = VisualDescendants<TextBlock>(activeRows)
+                    .Single(text => text.Uid == "NoteDateLabel");
+                var dateToggle = VisualDescendants<Button>(activeRows)
+                    .Single(button => button.Uid == "NoteDateDisclosure");
+                Must(dateLabel.Text == "昨天 · 7 月 8 日" &&
+                     AutomationProperties.GetName(dateToggle).Contains("昨天 · 7 月 8 日", StringComparison.Ordinal) &&
+                     dateToggle.ToolTip is string dateTip && dateTip.Contains("昨天 · 7 月 8 日", StringComparison.Ordinal) &&
+                     ReferenceEquals(Keyboard.FocusedElement, trigger) &&
+                     Math.Abs(scroller.VerticalOffset - offset) <= 0.1,
+                    "#230：跨北京时间午夜应就地更新便签日期与可访问名并保留焦点和滚动。");
+                return true;
+            }
+            finally
+            {
+                main.Close();
+            }
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
     // #211：管理窗口装进任意工作区。注入 1080p 在 100%/125%/150% 缩放下的三档
     // 工作区高度（1032/826/688 DIP），窗口必须取「首选 1165×1350 与工作区−安全边距」
     // 的较小值并完整落在工作区内；顶端置顶/最小化/关闭免滚动可达；状态栏经外层
@@ -5889,8 +6066,10 @@ internal static class ValidationExercises
                 center.TaskbarFlashRequestCount >= 1,
                 "未激活时新提醒到达必须请求任务栏闪烁。");
 
-            // 用户已激活窗口时，后续到达不再闪烁。
-            center.Activate();
+            // Activate the real HWND on this thread's isolated desktop. WPF's
+            // Activate() requests the foreground desktop, which CI may deny.
+            // The IsActive assertion below still requires a native activation.
+            SetActiveWindow(new WindowInteropHelper(center).Handle);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(center.IsActive, "到达探针未能激活提醒中心。");
             clock.UtcNow = dueUtc.AddMinutes(15);
@@ -5911,6 +6090,9 @@ internal static class ValidationExercises
             DeleteFileIfPresent(settingsPath + ".tmp");
         }
     }
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern IntPtr SetActiveWindow(IntPtr windowHandle);
 
     public static bool RunReminderCenterMinimizeToTaskbarPreservesEntriesBehavior()
     {

@@ -163,7 +163,7 @@ public sealed class TrayMenuVerificationEvidence
     public List<TrayMenuCaptureEvidence> Captures { get; } = new List<TrayMenuCaptureEvidence>();
     public List<TrayMenuActionEvidence> Actions { get; } = new List<TrayMenuActionEvidence>();
     public List<string> Failures { get; } = new List<string>();
-    public bool Passed => Failures.Count == 0 && Captures.Count == 2 && Actions.Count == 3;
+    public bool Passed => Failures.Count == 0 && Captures.Count == 2 && Actions.Count == 4;
 }
 
 public static class CountdownTrayMenuHarness

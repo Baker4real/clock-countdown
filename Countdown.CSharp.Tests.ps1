@@ -38,9 +38,9 @@ function Write-TestSegmentTotal {
         ('[test-segment-total] seconds={0:F3}' -f $script:testClock.Elapsed.TotalSeconds))
 }
 
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v45\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v46\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v45\manifest.json'
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v46\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
 
 function Resolve-ReferenceBaselineMode {
@@ -378,11 +378,58 @@ public static class MinminCountdownActivationWindowProbe
     public static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseDesktop(IntPtr desktop);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetUserObjectInformationW(IntPtr handle, int index, StringBuilder info, int maxLength, out uint lengthNeeded);
+
+    public static string GetInputDesktopName()
+    {
+        IntPtr desktop = OpenInputDesktop(0, false, 0x0001); // DESKTOP_READOBJECTS
+        if (desktop == IntPtr.Zero)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        try
+        {
+            var name = new StringBuilder(256);
+            if (!GetUserObjectInformationW(desktop, 2, name, name.Capacity * 2, out _))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            return name.ToString();
+        }
+        finally { CloseDesktop(desktop); }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
 }
 '@
 }
+
+function Test-ActivationWindowEvidence {
+    param(
+        [bool] $ForegroundMatches,
+        [bool] $FloatingIsActive,
+        [AllowEmptyString()] [string] $ThreadDesktop,
+        [AllowEmptyString()] [string] $InputDesktop
+    )
+
+    # AllowSetForegroundWindow grants permission; it does not make an isolated desktop the input desktop.
+    # Only a positively identified, non-input suite desktop may use WPF activation as its observable.
+    $isolatedNonInputDesktop = (Test-SuiteIsolatedDesktopName -DesktopName $ThreadDesktop) -and
+        -not [string]::IsNullOrWhiteSpace($InputDesktop) -and
+        -not [string]::Equals($ThreadDesktop, $InputDesktop, [StringComparison]::OrdinalIgnoreCase)
+    return $ForegroundMatches -or ($FloatingIsActive -and $isolatedNonInputDesktop)
+}
+
+Assert-Equal $true (Test-ActivationWindowEvidence $false $true 'MinminSuiteIso-CSharp' 'Default') '隔离非输入桌面使用真实 WPF 激活证据'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $false 'MinminSuiteIso-CSharp' 'Default') '隔离桌面未激活不能通过'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $true 'Default' 'Default') '输入桌面仍要求真实前台 HWND'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $true 'MinminSuiteIso-CSharp' 'MinminSuiteIso-CSharp') '成为输入桌面的套件仍要求真实前台 HWND'
+Assert-Equal $false (Test-ActivationWindowEvidence $false $true 'MinminSuiteIso-CSharp' '') '输入桌面未知不能降级'
+Assert-Equal $true (Test-ActivationWindowEvidence $true $false 'Default' 'Default') '真实前台 HWND 是直接激活证据'
 
 function Get-ProcessTopLevelWindows {
     param(
@@ -2344,21 +2391,25 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
                 ) '激活保持工作区、筛选与编辑草稿状态'
             $visibleWindows = @(Get-VisibleProcessWindows -ProcessId $primaryProcess.Id)
             $floatingWindows = @($visibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
+            $activationThreadDesktop = Get-SuiteThreadDesktopName
+            $activationInputDesktop = [MinminCountdownActivationWindowProbe]::GetInputDesktopName()
             if ($floatingWindows.Count -eq 0) {
-                Assert-Equal $true (
-                    [bool] $activationHandled[0].activationFloatingWindowIsActive -or
-                    [int] $activationHandled[0].interactiveFloatingWindowCount -eq 1
-                ) '无交互桌面时用 WPF 悬浮窗计数证明激活，不要求 Win32 可见枚举'
+                Assert-Equal $true (Test-ActivationWindowEvidence -ForegroundMatches $false `
+                    -FloatingIsActive ([bool] $activationHandled[0].activationFloatingWindowIsActive) `
+                    -ThreadDesktop $activationThreadDesktop -InputDesktop $activationInputDesktop `
+                ) '不可枚举时仍要求已确认的隔离非输入桌面与真实 WPF 激活证据'
             }
             else {
                 Assert-Equal 1 $floatingWindows.Count 'Win32 枚举确认主进程只有一个可见悬浮窗'
                 $foregroundMatchesFloating = [long] $floatingWindows[0].Handle -eq
                     [long] $activationHandled[0].activationForegroundWindowHandle
-                $activationWindowEvidenceMatches = (
-                    $foregroundMatchesFloating -or
-                    ([bool] $activationHandled[0].activationFloatingWindowIsActive -and
-                     -not [bool] $activationClientResult[0].activationForegroundPermissionGranted)
-                )
+                $activationWindowEvidenceMatches = Test-ActivationWindowEvidence `
+                    -ForegroundMatches $foregroundMatchesFloating `
+                    -FloatingIsActive ([bool] $activationHandled[0].activationFloatingWindowIsActive) `
+                    -ThreadDesktop $activationThreadDesktop -InputDesktop $activationInputDesktop
+                [Console]::Error.WriteLine(('ACTIVATION_DESKTOP_EVIDENCE: thread={0}; input={1}; foregroundMatches={2}; floatingIsActive={3}' -f `
+                    $activationThreadDesktop, $activationInputDesktop, $foregroundMatchesFloating,
+                    $activationHandled[0].activationFloatingWindowIsActive))
                 if (-not $activationWindowEvidenceMatches) {
                     # Preserve only the already-validated non-content activation fields before fixture purge.
                     $activationFailureEvidence = [ordered]@{
@@ -4742,7 +4793,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
     if ($mainReferenceBaselineRequired) {
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest'
-    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-10-12-v45/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
+    Assert-Equal 'assets/ui-references/main-window/1165x1350/2026-10-12-v46/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
     Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
@@ -4762,7 +4813,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 8 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口八个 Theme/Workspace/State 组合唯一'
     Assert-Equal 8 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口八帧 PNG hash 全部唯一'
     Assert-Equal 8 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口八帧状态指纹全部唯一'
-    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-10-12-v45/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口八帧路径可移植且基线与实拍 SHA 一致'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/1165x1350/2026-10-12-v46/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口八帧路径可移植且基线与实拍 SHA 一致'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 1572750 }).Count '主窗口八帧 1165×1350 画布全部不透明'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 1165x1350 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 1165 -or $_.ContentRoi.Height -ne 1350 -or $_.ContentRoi.PixelCount -ne 1572750 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口八帧像素指标未超过 manifest 固定阈值'
@@ -4802,7 +4853,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $singleBorderMeasurements = @($adapterValidation.MainDaySingleBorder.Measurements | Sort-Object StateId)
     Assert-Equal 'Countdown-Day,Notes-Day' ((@($singleBorderMeasurements.StateId) -join ',')) '主窗口单边框精确覆盖日间两个工作区'
     Assert-Equal 0 @($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count '主窗口两态控件边、标签隔离和声明下半装饰均由像素测量通过'
-    Assert-Equal 'Countdown-Day:521/522/534/535:480:1079;Notes-Day:425/426/495/496/497/499/500/501/503/504/512/513:416:845' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（#189 字号、色板与真实 DIP 改动后按 v25 实拍重推导，扫描阈值不变）'
+    Assert-Equal 'Countdown-Day:499/500/521/522/534/535/554:480:1079;Notes-Day:425/426/470/471/495/496/497/499/500/501/503/504/512/513:416:845' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（#217 深色输入边界按 v46 实拍重推导，#189 扫描阈值与负控不变）'
     }
     else {
         Assert-Equal $false ([bool] $adapterValidation.MainReferenceBaselineValidated) '发布包不伪造未携带主窗口参考资产时的视觉验收'
@@ -4826,7 +4877,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
             'CrossInterfaceIntegration')) {
         Assert-Equal $true ([bool] $adapterValidation.$crossInterfaceGate) "跨界面整合门禁 $crossInterfaceGate 通过"
     }
-    if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v45') {
+    if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-12-v46') {
         throw '跨界面整合证据未记录 v33 真实帧'
     }
     Assert-Equal '8F119A080BE5992E1F32494226C5577FCCE4BE59A659736D809C583879B445AE' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（726字段；去掉#223两项恢复724字段 A74A84EF 形状）'
@@ -4992,8 +5043,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
         Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日间截图通过版本化 manifest'
-        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-10-12-v45/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
-        Assert-Equal '2026-10-12-v45' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
+        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-10-12-v46/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal '2026-10-12-v46' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
@@ -5426,7 +5477,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainShortcutScopeIsSafe) '主窗口快捷键避开输入控件和弹层上下文'
     # #129 去重迁移（U1 独有断言）：键盘焦点基线证据版本钉死。
     Assert-Equal $false ([bool] $adapterValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-12-v45')) '键盘焦点基线证据记录再生的 2026-10-12-v45 帧（#129 自 U1 迁移）'
+    Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-12-v46')) '键盘焦点基线证据记录再生的 2026-10-12-v46 帧（#129 自 U1 迁移）'
     Assert-Equal 'CountdownTab' ([string] $adapterValidation.MainKeyboardBehavior.InitialFocusedAutomationId) '主窗口 Loaded 后真实焦点落到倒计时工作区'
     Assert-Equal 'CountdownTab,NotesTab,FilterButton,TagManagerButton' ([string]::Join(',', @($adapterValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
     $countdownTabPath = $adapterValidation.MainKeyboardBehavior.CountdownTabPath

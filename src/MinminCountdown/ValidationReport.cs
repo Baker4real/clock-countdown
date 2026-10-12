@@ -513,7 +513,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-12-v45";
+    private const string FloatingReferenceBaselineVersion = "2026-10-12-v46";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -606,7 +606,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-12-v45";
+    private const string MainReferenceBaselineVersion = "2026-10-12-v46";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -2018,7 +2018,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-12-v45 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-12-v46 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
@@ -3007,7 +3007,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v45 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v46 frames (8 main + 4 floating) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -3728,14 +3728,13 @@ internal static class ValidationReport
         }
 
         var bands = ReadMainDecorationBands(sourceRoot);
-        // #189: v25 reflects the approved font scale, warm palette and real DIP layout.
-        // Independently re-read x=200 with the existing delta>=30 rule; glyph edges
-        // are part of this exact canary. Scan ranges, label bands and negative fixtures
-        // are unchanged (run-evidence/clock-countdown/implement-spec-189-20261008).
+        // #217: v46 makes the existing input boundaries darker. Independent PNG
+        // sampling at x=200 adds their now-visible edges to this exact canary.
+        // Keep delta>=30, scan ranges, label bands and all #189 negative fixtures.
         var specs = new[]
         {
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 521, 522, 534, 535 }, 469, 491),
-            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 495, 496, 497, 499, 500, 501, 503, 504, 512, 513 }, 405, 424)
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 480, 580, new[] { 499, 500, 521, 522, 534, 535, 554 }, 469, 491),
+            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 405, 525, new[] { 425, 426, 470, 471, 495, 496, 497, 499, 500, 501, 503, 504, 512, 513 }, 405, 424)
         };
         var directory = Path.Combine(
             Path.GetFullPath(sourceRoot),
@@ -4240,8 +4239,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-12-v45", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-12-v45", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-12-v46", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-12-v46", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {

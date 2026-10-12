@@ -5640,6 +5640,98 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunMainRedundancyCleanup()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-redundancy-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var announcements = new List<TextBlock>();
+        void Remember(TextBlock block) => announcements.Add(block);
+        UiAccessibility.Announced += Remember;
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            FlushNarrator(main.Dispatcher);
+            var count = (TextBlock)main.FindName("RecordCountText");
+            Must(ReferenceEquals(count.Parent, main.FindName("MainCommandBarZone")) && count.IsVisible &&
+                 count.ActualWidth > 0 && count.ActualHeight > 0,
+                "#222：数量应为命令栏中的无框纯文字，不再嵌入卡片或图标容器。");
+            Must(main.FindName("DayThemeBadge") is null && main.FindName("MainThemeCaption") is null &&
+                 !VisualDescendants<TextBlock>(main).Any(text => text.IsVisible &&
+                     (text.Text == "日间" || text.Text.Contains("当前主题：", StringComparison.Ordinal))),
+                "#222：页头日间和页脚当前主题文案应删除。");
+            var status = (TextBlock)main.FindName("StatusText");
+            foreach (var kind in new[] { WorkspaceKind.Notes, WorkspaceKind.Countdowns })
+            {
+                announcements.Clear();
+                main.ShowWorkspace(kind);
+                FlushNarrator(main.Dispatcher);
+                Must(!status.Text.Contains("当前工作区", StringComparison.Ordinal) &&
+                     !announcements.Any(text => text.Text.Contains("当前工作区", StringComparison.Ordinal)),
+                    "#222：切页不得显示或播报冗余的当前工作区文案。");
+                var liveCounts = VisualDescendants<TextBlock>(main).Where(text => text.IsVisible &&
+                    AutomationProperties.GetLiveSetting(text) == AutomationLiveSetting.Polite &&
+                    System.Text.RegularExpressions.Regex.IsMatch(text.Text, @"^\d+ 个(?:倒计时|待办)$")).ToArray();
+                Must(liveCounts.Length == 1 && ReferenceEquals(liveCounts[0], count),
+                    "#222：数量纯文字仍是唯一数量直播区。");
+            }
+            announcements.Clear();
+            MustApply(workspace, new SaveCountdownChange(null, "数量变更", DateTimeOffset.UtcNow.AddDays(3),
+                Array.Empty<string>(), Array.Empty<ReminderRule>()));
+            FlushNarrator(main.Dispatcher);
+            Must(count.Text == "1 个倒计时" && announcements.Count(block => ReferenceEquals(block, count)) == 1,
+                "#222：数量改变仍准确播报一次。");
+            announcements.Clear();
+            main.UpdateTime(ChinaStandardTime.ToBeijingTime(workspace.Snapshot.UtcNow).AddMinutes(1));
+            FlushNarrator(main.Dispatcher);
+            Must(!announcements.Contains(count), "#222：数量未变的分钟刷新不得重复播报。");
+            return true;
+        }
+        finally
+        {
+            UiAccessibility.Announced -= Remember;
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunMainTopmostStateSynchronization()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-topmost-sync-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var check = (CheckBox)main.FindName("TopmostCheck");
+            Must(main.Topmost == (check.IsChecked == true), "#222：首次打开时窗口置顶必须与勾选状态一致。");
+            var peer = new CheckBoxAutomationPeer(check);
+            var toggle = (System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(PatternInterface.Toggle);
+            var initial = check.IsChecked;
+            toggle.Toggle();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(check.IsChecked != initial && main.Topmost == (check.IsChecked == true),
+                "#222：切换置顶勾选必须同步窗口 Topmost。");
+            toggle.Toggle();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(check.IsChecked == initial && main.Topmost == (check.IsChecked == true),
+                "#222：再次切换必须恢复初始勾选与窗口 Topmost。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunCountdownPreferencesPopupBehavior()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-preferences-popup-{Guid.NewGuid():N}.json");
@@ -5663,6 +5755,16 @@ internal static class ValidationExercises
             var save = (Button)main.FindName("SavePreferencesButton");
             Must(popup.IsOpen && precision.IsKeyboardFocusWithin,
                 "#221：设置弹层打开时应聚焦显示精度。");
+            if (!WindowValidationInput.RaisePreviewKey(precision, Key.F4, ModifierKeys.None))
+                WindowValidationInput.RaiseKey(precision, Key.F4);
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(precision.IsDropDownOpen, "#221：设置中的显示精度可用 F4 打开嵌套下拉。");
+            if (!WindowValidationInput.RaisePreviewKey(precision, Key.Escape, ModifierKeys.None))
+                WindowValidationInput.RaiseKey(precision, Key.Escape);
+            var nestedPopup = (Popup)precision.Template.FindName("PART_Popup", precision);
+            Must(WindowValidationInput.WaitForPopupClosed(nestedPopup) &&
+                 !precision.IsDropDownOpen && popup.IsOpen && precision.IsVisible && precision.IsKeyboardFocusWithin,
+                "#221：嵌套下拉的首次 Esc 只关闭下拉，设置层仍可见且保留显示精度焦点。");
             save.Focus();
             save.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
             WindowValidationInput.Pump(main.Dispatcher);
@@ -11232,7 +11334,7 @@ internal static class ValidationExercises
     public static MainStructuralAnnouncementGateResults EvaluateMainStructuralAnnouncementGates(
         MainStructuralAnnouncementGateInputs input) =>
         new(
-            input.WorkspaceAnnouncements,
+            input.WorkspaceSelectionWithoutRedundantStatus,
             input.FilterResultAnnouncement,
             input.EmptyStateAnnouncements);
 
@@ -11243,8 +11345,8 @@ internal static class ValidationExercises
             EvaluateMainStructuralAnnouncementGates(passing).AllPassed,
             "主窗口结构变化通知全通过夹具被错误拒绝。");
         VerifyOnlyMainStructuralAnnouncementGateFails(
-            passing with { WorkspaceAnnouncements = false },
-            nameof(MainStructuralAnnouncementGateResults.WorkspaceAnnouncements));
+            passing with { WorkspaceSelectionWithoutRedundantStatus = false },
+            nameof(MainStructuralAnnouncementGateResults.WorkspaceSelectionWithoutRedundantStatus));
         VerifyOnlyMainStructuralAnnouncementGateFails(
             passing with { FilterResultAnnouncement = false },
             nameof(MainStructuralAnnouncementGateResults.FilterResultAnnouncement));
@@ -13343,12 +13445,12 @@ internal sealed record MainKeyboardNavigationGateResults(
 }
 
 internal sealed record MainStructuralAnnouncementGateInputs(
-    bool WorkspaceAnnouncements,
+    bool WorkspaceSelectionWithoutRedundantStatus,
     bool FilterResultAnnouncement,
     bool EmptyStateAnnouncements);
 
 internal sealed record MainStructuralAnnouncementGateResults(
-    bool WorkspaceAnnouncements,
+    bool WorkspaceSelectionWithoutRedundantStatus,
     bool FilterResultAnnouncement,
     bool EmptyStateAnnouncements)
 {
@@ -13356,7 +13458,7 @@ internal sealed record MainStructuralAnnouncementGateResults(
 
     public IReadOnlyList<string> FailedChecks => new[]
     {
-        (nameof(WorkspaceAnnouncements), WorkspaceAnnouncements),
+        (nameof(WorkspaceSelectionWithoutRedundantStatus), WorkspaceSelectionWithoutRedundantStatus),
         (nameof(FilterResultAnnouncement), FilterResultAnnouncement),
         (nameof(EmptyStateAnnouncements), EmptyStateAnnouncements)
     }.Where(pair => !pair.Item2).Select(pair => pair.Item1).ToArray();

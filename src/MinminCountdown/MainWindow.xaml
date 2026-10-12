@@ -12,6 +12,7 @@
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="CanResize"
+        Topmost="{Binding IsChecked, ElementName=TopmostCheck, Mode=OneWay}"
         Background="{DynamicResource BackgroundBrush}">
   <Window.Resources>
     <Style x:Key="MainKeyboardFocusVisual">
@@ -908,44 +909,13 @@
                 <Grid x:Name="MainWindowControls" Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="18" />
-                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="15" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="10" />
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
-                  <Border x:Name="DayThemeBadge"
-                          Grid.Column="0"
-                          Height="48"
-                          Margin="0,11,0,0"
-                          Padding="16,0"
-                          VerticalAlignment="Top"
-                          Background="{DynamicResource CardBrush}"
-                          BorderBrush="{DynamicResource PeachLineBrush}"
-                          BorderThickness="1"
-                          CornerRadius="14"
-                          Focusable="False"
-                          IsHitTestVisible="False"
-                          AutomationProperties.Name="当前主题：日间">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                      <Path Width="22"
-                            Height="22"
-                            Data="M 6.2,11 A 4.8,4.8 0 1 0 15.8,11 A 4.8,4.8 0 1 0 6.2,11 Z M 11,0.8 L 11,3 M 11,19 L 11,21.2 M 0.8,11 L 3,11 M 19,11 L 21.2,11 M 3.8,3.8 L 5.4,5.4 M 16.6,16.6 L 18.2,18.2 M 18.2,3.8 L 16.6,5.4 M 5.4,16.6 L 3.8,18.2"
-                            Stroke="{DynamicResource IconAccentBrush}"
-                            StrokeThickness="1.7"
-                            StrokeStartLineCap="Round"
-                            StrokeEndLineCap="Round"
-                            VerticalAlignment="Center" />
-                      <TextBlock Margin="9,0,0,0"
-                                 Text="日间"
-                                 VerticalAlignment="Center"
-                                 FontSize="{DynamicResource TypeH2FontSize}"
-                                 Foreground="{DynamicResource BodyBrush}" />
-                    </StackPanel>
-                  </Border>
                   <CheckBox x:Name="TopmostCheck"
-                            Grid.Column="2"
+                            Grid.Column="0"
                             Width="132"
                             Height="48"
                             Margin="0,11,0,0"
@@ -956,7 +926,7 @@
                             VerticalContentAlignment="Center"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                   <Button x:Name="MinimizeButton"
-                          Grid.Column="4"
+                          Grid.Column="2"
                           Width="57"
                           Height="58"
                           Style="{StaticResource MainIconButton}"
@@ -973,7 +943,7 @@
                     </Viewbox>
                   </Button>
                   <Button x:Name="CloseButton"
-                          Grid.Column="6"
+                          Grid.Column="4"
                           Width="57"
                           Height="58"
                           Foreground="{DynamicResource DangerBrush}"
@@ -1083,31 +1053,14 @@
                                VerticalAlignment="Center" />
                   </StackPanel>
                 </Button>
-                <Border Grid.Column="6"
-                        Height="48"
-                        Margin="0,11,0,0"
-                        Padding="14,0"
-                        VerticalAlignment="Top"
-                        Background="{DynamicResource CardBrush}"
-                        BorderBrush="{DynamicResource PeachLineBrush}"
-                        BorderThickness="1"
-                        CornerRadius="13">
-                  <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Path Width="20"
-                          Height="20"
-                          Data="M 4,2.5 L 16,2.5 C 16.8,2.5 17.5,3.2 17.5,4 L 17.5,16 C 17.5,16.8 16.8,17.5 16,17.5 L 4,17.5 C 3.2,17.5 2.5,16.8 2.5,16 L 2.5,4 C 2.5,3.2 3.2,2.5 4,2.5 Z M 6,7 L 14,7 M 6,11 L 14,11 M 6,15 L 11,15"
-                          Stroke="{DynamicResource MutedBrush}"
-                          StrokeThickness="1.6"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round"
-                          VerticalAlignment="Center" />
-                    <TextBlock x:Name="RecordCountText"
-                               Margin="9,0,0,0"
-                               FontSize="{DynamicResource TypeH2FontSize}"
-                               Foreground="{DynamicResource BodyBrush}"
-                               VerticalAlignment="Center" />
-                  </StackPanel>
-                </Border>
+                <TextBlock x:Name="RecordCountText"
+                           Grid.Column="6"
+                           Margin="0,11,0,0"
+                           Height="48"
+                           Padding="0,12,0,0"
+                           FontSize="{DynamicResource TypeH2FontSize}"
+                           Foreground="{DynamicResource BodyBrush}"
+                           VerticalAlignment="Top" />
               </Grid>
 
               <!-- 当前工作区主卡 + 列表/管理区 -->
@@ -2012,8 +1965,6 @@
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="16" />
-                  <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="NowText"
                            FontSize="{DynamicResource TypeBodyFontSize}"
@@ -2039,23 +1990,6 @@
                         Content="撤销"
                         Style="{DynamicResource SecondaryButton}"
                         Visibility="Collapsed" />
-                <StackPanel Grid.Column="4" Orientation="Horizontal">
-                  <Path Width="18"
-                        Height="18"
-                        Data="M 6.2,9 A 3.6,3.6 0 1 0 13.4,9 A 3.6,3.6 0 1 0 6.2,9 Z M 9.8,0.8 L 9.8,2.4 M 9.8,15.6 L 9.8,17.2 M 0.8,9.8 L 2.4,9.8 M 15.6,9.8 L 17.2,9.8 M 3.2,3.2 L 4.4,4.4 M 15.2,15.2 L 16.4,16.4 M 16.4,3.2 L 15.2,4.4 M 4.4,15.2 L 3.2,16.4"
-                        Stroke="{DynamicResource IconAccentBrush}"
-                        StrokeThickness="1.5"
-                        StrokeStartLineCap="Round"
-                        StrokeEndLineCap="Round"
-                        VerticalAlignment="Center"
-                        IsHitTestVisible="False" />
-                  <TextBlock x:Name="MainThemeCaption"
-                             Margin="8,0,0,0"
-                             Text="当前主题：日间"
-                             FontSize="{DynamicResource TypeBodyFontSize}"
-                             Foreground="{DynamicResource MutedBrush}"
-                             VerticalAlignment="Center" />
-                </StackPanel>
                 </Grid>
                 </Border>
               </Grid>

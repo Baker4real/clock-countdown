@@ -380,6 +380,8 @@ internal static class ValidationExercises
 
     public static bool RunSettingsRecoveryWindowBehavior()
     {
+        ProbeRecoveryPromptCopyThroughChoose();
+        ProbeRecoveryCompletionMessage();
         var window = SettingsRecoveryWindow.CreateForValidation(
             "设置恢复验证消息",
             canRecover: true);
@@ -392,13 +394,13 @@ internal static class ValidationExercises
             var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
             var recover = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "恢复备份",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryRecover",
                     StringComparison.Ordinal));
             var exit = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "退出",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryExit",
                     StringComparison.Ordinal));
             var defaultDecisionIsExit =
                 window.DecisionForValidation == SettingsRecoveryDecision.Exit;
@@ -437,6 +439,132 @@ internal static class ValidationExercises
         }
     }
 
+    private static void ProbeRecoveryPromptCopyThroughChoose()
+    {
+        var expectedBackupTime = new DateTimeOffset(2031, 1, 2, 3, 4, 0, TimeSpan.Zero);
+        var inspected = false;
+        var correct = false;
+        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
+        {
+            var window = Application.Current.Windows.OfType<SettingsRecoveryWindow>().Single();
+            var body = ((Border)window.Content).Child as StackPanel;
+            var message = body!.Children.OfType<TextBlock>().Last();
+            var buttons = VisualDescendants<Button>(window).ToArray();
+            correct = message.Text.Contains("2031-01-02 11:04", StringComparison.Ordinal) &&
+                message.Text.Contains("北京时间", StringComparison.Ordinal) &&
+                message.Text.Contains("逐字节另存", StringComparison.Ordinal) &&
+                message.Text.Contains("若原文件可读", StringComparison.Ordinal) &&
+                !message.Text.Contains("原文件已另存", StringComparison.Ordinal) &&
+                message.Foreground is SolidColorBrush foreground &&
+                foreground.Color == Color.FromRgb(0x6B, 0x4A, 0x3C) &&
+                ((Border)window.Content).Background is SolidColorBrush background &&
+                ApplicationTheme.MeetsContrast(foreground, background, 4.5) &&
+                buttons.Any(button => Equals(button.Content, "恢复备份并继续")) &&
+                buttons.Any(button => Equals(button.Content, "不改设置，退出"));
+            inspected = true;
+            window.Close();
+        }));
+        var decision = SettingsRecoveryWindow.Choose(new SettingsRecoveryPrompt(2, expectedBackupTime));
+        Must(inspected && correct && decision == SettingsRecoveryDecision.Exit,
+            "#228 Choose真实恢复窗缺少备份时间、阶段准确文案、结果按钮或正文对比度。");
+    }
+
+    private static void ProbeRecoveryCompletionMessage()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"MinminCountdown-recovery-copy-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var damaged = Encoding.UTF8.GetBytes("{unreadable-settings");
+            var payload = SettingsContract.SerializeCanonical(CountdownSettings.Empty);
+            foreach (var mode in new[] { "readable", "acl", "normal", "cancel" })
+            {
+                var branch = Path.Combine(directory, mode);
+                Directory.CreateDirectory(branch);
+                var path = Path.Combine(branch, "settings.json");
+                File.WriteAllBytes(path, mode == "normal" ? Encoding.UTF8.GetBytes(payload) : damaged);
+                File.WriteAllText(path + ".backup1", payload, new UTF8Encoding(false));
+                var evidence = Path.Combine(branch, "settings-recovery-evidence");
+                var store = mode == "acl"
+                    ? new SettingsStore(fileOperations: new AclDeniedMainSettingsFileOperations(path))
+                    : new SettingsStore();
+                DesktopWorkspace? workspace = null;
+                try
+                {
+                    workspace = DesktopWorkspace.Load(path, store, _ =>
+                    {
+                        Must(!Directory.Exists(evidence), "#228 用户确认前不得写恢复证据。");
+                        return mode == "cancel" ? SettingsRecoveryDecision.Exit : SettingsRecoveryDecision.RecoverBackup;
+                    });
+                }
+                catch (SettingsRecoveryDeclinedException) when (mode == "cancel")
+                {
+                    Must(File.ReadAllBytes(path).SequenceEqual(damaged) && !Directory.Exists(evidence) &&
+                        File.ReadAllText(path + ".backup1") == payload,
+                        "#228 取消恢复必须保留主文件和备份且不写证据。");
+                    continue;
+                }
+                Must(workspace is not null && mode != "cancel", "#228 取消恢复不可启动工作区。");
+                using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+                var manager = new MainWindow(workspace!, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+                var floating = new FloatingWindow(workspace!, calendar, manager, AppContext.BaseDirectory);
+                PrepareOffscreenValidationWindow(floating);
+                var announcements = new List<string>();
+                void Observe(TextBlock text)
+                {
+                    if (AutomationProperties.GetAutomationId(text) == "SettingsRecoveryCompletedStatus")
+                        announcements.Add(text.Text);
+                }
+                UiAccessibility.Announced += Observe;
+                try
+                {
+                    floating.Show();
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    var status = VisualDescendants<TextBlock>(floating).SingleOrDefault(text =>
+                        AutomationProperties.GetAutomationId(text) == "SettingsRecoveryCompletedStatus");
+                    if (mode == "normal")
+                    {
+                        Must(status is null || !status.IsVisible, "#228 普通启动不能出现恢复成功提示。");
+                        Must(announcements.Count == 0, "#228 普通启动不播报恢复提示。");
+                        continue;
+                    }
+                    var expected = mode == "readable"
+                        ? "已恢复备份；原文件已另存。"
+                        : "已恢复备份；原文件无法读取，未能另存。";
+                    Must(status is { IsVisible: true } && status.Text == expected &&
+                        AutomationProperties.GetName(status) == expected &&
+                        AutomationProperties.GetLiveSetting(status) == AutomationLiveSetting.Polite &&
+                        announcements.SequenceEqual(new[] { expected }),
+                        "#228 恢复成功后缺少按真实副本结果呈现的一次可见播报。");
+                    var scroller = (ScrollViewer)floating.FindName("FloatingBodyScroller");
+                    var bounds = BoundsOn(status!, scroller);
+                    Must(bounds.Top >= 0 && bounds.Bottom <= scroller.ViewportHeight &&
+                        bounds.Left >= 0 && bounds.Right <= scroller.ViewportWidth + 1,
+                        "#228 恢复成功提示必须在列表首屏完整可见。");
+                    if (mode == "readable")
+                        Must(Directory.GetFiles(evidence).Length == 1 &&
+                            File.ReadAllBytes(Directory.GetFiles(evidence).Single()).SequenceEqual(damaged),
+                            "#228 已另存提示必须对应逐字节落盘副本。");
+                    else Must(!Directory.Exists(evidence), "#228 ACL不可读时不可虚构副本。");
+                    Must(new SettingsStore().Load(path).Settings.Countdowns.Count == 0,
+                        "#228 成功提示之前恢复主设置必须能严格回读。");
+                    floating.UpdateTime(DateTimeOffset.UtcNow);
+                    floating.ShowWorkspace(WorkspaceKind.Notes);
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    Must(status!.Text == expected && announcements.Count == 1,
+                        "#228 刷新和切工作区不得覆盖或重复播报恢复结果。");
+                    floating.Hide();
+                    floating.Show();
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    Must(status.IsVisible && status.Text == expected && announcements.Count == 1,
+                        "#228 隐藏再显示浮窗不得重复播报恢复结果。");
+                }
+                finally { UiAccessibility.Announced -= Observe; floating.Close(); manager.Close(); }
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     public static bool ProbeSettingsRecoveryFailureExitIsDefault()
     {
         var window = SettingsRecoveryWindow.CreateForValidation(
@@ -451,13 +579,13 @@ internal static class ValidationExercises
             var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
             var recover = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "恢复备份",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryRecover",
                     StringComparison.Ordinal));
             var exit = buttons.SingleOrDefault(button =>
                 string.Equals(
-                    AutomationProperties.GetName(button),
-                    "退出",
+                    AutomationProperties.GetAutomationId(button),
+                    "SettingsRecoveryExit",
                     StringComparison.Ordinal));
             return recover is null &&
                    buttons.Length == 1 &&
@@ -539,9 +667,9 @@ internal static class ValidationExercises
                 .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
             var buttons = commands?.Children.OfType<Button>().ToArray() ?? Array.Empty<Button>();
             var recover = buttons.SingleOrDefault(button =>
-                string.Equals(AutomationProperties.GetName(button), "恢复备份", StringComparison.Ordinal));
+                string.Equals(AutomationProperties.GetAutomationId(button), "SettingsRecoveryRecover", StringComparison.Ordinal));
             var exit = buttons.SingleOrDefault(button =>
-                string.Equals(AutomationProperties.GetName(button), "退出", StringComparison.Ordinal));
+                string.Equals(AutomationProperties.GetAutomationId(button), "SettingsRecoveryExit", StringComparison.Ordinal));
             var exitUsesCanvas = exit?.Background is SolidColorBrush exitBrush &&
                                  exitBrush.Color == expected;
             if (expectExitIsDefault)
@@ -1960,10 +2088,20 @@ internal static class ValidationExercises
     public static bool RunInstanceActivationFailurePromptBehavior()
     {
         var window = InstanceActivationFailureWindow.CreateForValidation();
+        PrepareOffscreenValidationWindow(window);
         try
         {
+            window.Show();
+            WindowValidationInput.Pump(window.Dispatcher);
             var body = (window.Content as Border)?.Child as StackPanel;
             var texts = body?.Children.OfType<TextBlock>().ToArray() ?? Array.Empty<TextBlock>();
+            Must(texts.Any(text => text.IsVisible &&
+                text.Text.Contains("任务栏", StringComparison.Ordinal) &&
+                text.Text.Contains("托盘", StringComparison.Ordinal) &&
+                text.Text.Contains("关闭此提示后重试", StringComparison.Ordinal) &&
+                text.Text.Contains("保存其他工作", StringComparison.Ordinal) &&
+                text.Text.Contains("正常重启电脑", StringComparison.Ordinal)),
+                "#228 激活失败提示缺少可执行的打开、重试和安全恢复步骤。");
             var commands = body?.Children
                 .OfType<StackPanel>()
                 .SingleOrDefault(panel => panel.Orientation == Orientation.Horizontal);
@@ -5450,6 +5588,268 @@ internal static class ValidationExercises
         }
     }
 
+    public static bool RunCountdownListFirstBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-list-first-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        using var workArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 2000), 1, 1));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            for (var index = 0; index < 8; index++)
+                MustApply(workspace, new SaveCountdownChange(null, $"列表优先 {index}",
+                    clock.UtcNow.AddDays(index + 1), Array.Empty<string>(), Array.Empty<ReminderRule>()));
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.UpdateLayout();
+            var list = (ScrollViewer)main.FindName("CountdownListRegion");
+            var rows = (Panel)main.FindName("CountdownRows");
+            Must(!((FrameworkElement)main.FindName("CountdownHour")).IsVisible &&
+                 ((Button)main.FindName("SaveCountdownButton")).IsVisible &&
+                 ((TextBox)main.FindName("CountdownName")).IsVisible &&
+                 ((DatePicker)main.FindName("CountdownDate")).IsVisible &&
+                 !((FrameworkElement)main.FindName("MonthlySalary")).IsVisible,
+                "#221：默认新增必须收起，名称/日期/添加可达，偏好不占据列表页面。");
+            var third = (FrameworkElement)rows.Children[2];
+            var thirdBottom = third.TranslatePoint(new Point(0, third.ActualHeight), list).Y;
+            Must(thirdBottom <= list.ViewportHeight + 1,
+                $"#221：首选尺寸至少三行完整可见；thirdBottom={thirdBottom}; viewport={list.ViewportHeight}。");
+            main.Height = 900;
+            WindowValidationInput.Pump(main.Dispatcher);
+            var shortHeight = list.ViewportHeight;
+            var shortRows = FullyVisibleRows();
+            main.Height = 1200;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(list.ViewportHeight > shortHeight + 100 && FullyVisibleRows() > shortRows,
+                $"#221：窗口加高时列表须显示更多完整行；before={shortHeight}/{shortRows}; after={list.ViewportHeight}/{FullyVisibleRows()}。");
+            return true;
+
+            int FullyVisibleRows() => rows.Children.OfType<FrameworkElement>().Count(row =>
+                row.TranslatePoint(new Point(), list).Y >= -1 &&
+                row.TranslatePoint(new Point(0, row.ActualHeight), list).Y <= list.ViewportHeight + 1);
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunCountdownPreferencesPopupBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-preferences-popup-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            main.Activate();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(main.FindName("PreferencesButton") is Button,
+                "#221：命令栏应提供设置齿轮入口。");
+            var trigger = (Button)main.FindName("PreferencesButton");
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            var popup = (Popup)main.FindName("PreferencesPopup");
+            var precision = (ComboBox)main.FindName("DisplayPrecision");
+            var salary = (TextBox)main.FindName("MonthlySalary");
+            var save = (Button)main.FindName("SavePreferencesButton");
+            Must(popup.IsOpen && precision.IsKeyboardFocusWithin,
+                "#221：设置弹层打开时应聚焦显示精度。");
+            save.Focus();
+            save.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(precision.IsKeyboardFocusWithin, "#221：设置弹层 Tab 必须层内循环。");
+            salary.Text = "12345";
+            WindowValidationInput.RaisePreviewKey(salary, Key.Escape, ModifierKeys.None);
+            Must(WindowValidationInput.WaitUntil(main.Dispatcher, () => !popup.IsOpen && trigger.IsKeyboardFocusWithin),
+                "#221：设置弹层 Esc 关闭并归还齿轮焦点。");
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(salary.Text == "12345", "#221：设置弹层收起后保留未保存草稿。");
+            salary.Text = "invalid";
+            save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(((TextBlock)main.FindName("MonthlySalaryError")).IsVisible && salary.IsKeyboardFocusWithin &&
+                 ((TextBlock)main.FindName("StatusText")).Text == "月薪格式无效。",
+                "#221：设置字段错误必须在弹层中可见且镜像状态栏。");
+            salary.Text = "12345";
+            save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(((TextBlock)main.FindName("StatusText")).Text == "设置已保存" &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Preferences.MonthlySalary == 12345,
+                "#221：设置保存应持久化并显示设置已保存。");
+            WindowValidationInput.ClosePopupForCleanup(popup);
+            main.Hide();
+            var lifecycle = new ManagerWindowLifecycle(
+                () => new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory),
+                PrepareOffscreenValidationWindow);
+            try
+            {
+                foreach (var host in new IManagerWorkspaceHost[] { main, lifecycle })
+                {
+                    var floating = new FloatingWindow(workspace, calendar, host, AppContext.BaseDirectory);
+                    try
+                    {
+                        PrepareOffscreenValidationWindow(floating);
+                        floating.Show();
+                        floating.ShowWorkspace(WorkspaceKind.Notes);
+                        WindowValidationInput.Pump(main.Dispatcher);
+                        var settingsButton = (Button)floating.FindName("FloatingOpenSettings");
+                        Must(settingsButton.IsVisible, "#221：悬浮便签页设置入口应可见。");
+                        settingsButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        WindowValidationInput.Pump(main.Dispatcher);
+                        var revealed = host is MainWindow direct ? direct : lifecycle.Window!;
+                        Must(WindowValidationInput.WaitUntil(revealed.Dispatcher, () => revealed.IsVisible && revealed.CurrentWorkspace == WorkspaceKind.Notes &&
+                             ((Popup)revealed.FindName("PreferencesPopup")).IsOpen &&
+                             ((ComboBox)revealed.FindName("DisplayPrecision")).IsKeyboardFocusWithin),
+                            $"#221：悬浮设置应支持直接与懒加载宿主，并直接打开管理窗设置弹层；host={host.GetType().Name}; " +
+                            $"visible={revealed.IsVisible}; workspace={revealed.CurrentWorkspace}; " +
+                            $"popup={((Popup)revealed.FindName("PreferencesPopup")).IsOpen}; " +
+                            $"focus={Keyboard.FocusedElement}; active={revealed.IsActive}; " +
+                            $"precisionVisible={((ComboBox)revealed.FindName("DisplayPrecision")).IsVisible}。");
+                        WindowValidationInput.ClosePopupForCleanup((Popup)revealed.FindName("PreferencesPopup"));
+                        revealed.Hide();
+                    }
+                    finally { floating.Close(); }
+                }
+            }
+            finally { lifecycle.Window?.Close(); }
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunCountdownEditorExpansionBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-editor-expansion-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        MustApply(workspace, new SaveCountdownChange(null, "编辑展开", DateTimeOffset.UtcNow.AddDays(3),
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            main.Activate();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var name = (TextBox)main.FindName("CountdownName");
+            var hour = (ComboBox)main.FindName("CountdownHour");
+            var toggle = (Button)main.FindName("CountdownEditorExpandButton");
+            var rows = (Panel)main.FindName("CountdownRows");
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible, "#221：展开新增应显示时分秒、标签及提醒规则。");
+            name.Text = "未保存草稿";
+            hour.SelectedIndex = 7;
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(name.Text == "未保存草稿" && hour.SelectedIndex == 7 && !hour.IsVisible,
+                "#221：收起和切页须保留新增草稿。");
+            var edit = VisualDescendants<Button>(rows).First(button => Equals(button.Content, "编辑"));
+            edit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible && ((TextBlock)main.FindName("CountdownEditorTitle")).Text == "编辑倒计时" &&
+                 ((Button)main.FindName("CancelCountdownEdit")).IsVisible,
+                "#221：编辑现有倒计时应自动展开并显示编辑标题和取消。");
+            ((Button)main.FindName("CancelCountdownEdit")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(!hour.IsVisible && name.Text.Length == 0 && main.EditingCountdownId is null,
+                "#221：取消编辑返回折叠新增，不写入或删除记录。");
+            Must(DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Single().Name == "编辑展开",
+                "#221：取消编辑不得改变持久记录。");
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            name.Text = "无效时间草稿";
+            hour.SelectedIndex = -1;
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible && hour.IsKeyboardFocusWithin && name.Text == "无效时间草稿" &&
+                 ((TextBlock)main.FindName("CountdownMessage")).IsVisible &&
+                 !string.IsNullOrEmpty(((TextBlock)main.FindName("CountdownMessage")).Text) &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Count == 1,
+                "#221：收起后的非法时间草稿提交必须重新展开并聚焦无效时间，保留草稿且不写入。");
+            hour.SelectedIndex = 7;
+            ((DatePicker)main.FindName("CountdownDate")).SelectedDate = DateTime.Today.AddDays(-1);
+            ((RadioButton)main.FindName("CountdownReminderTimeRadio")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            var reminderErrorFocused = false;
+            main.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var editor = main.OwnedWindows.OfType<ReminderRulesEditorWindow>().SingleOrDefault();
+                if (editor is null) return;
+                try
+                {
+                    var firstDue = VisualDescendants<DatePicker>(editor).Single(control =>
+                        AutomationProperties.GetAutomationId(control) == "ReminderRuleFirstDueDate");
+                    var error = VisualDescendants<TextBlock>(editor).Single(control =>
+                        AutomationProperties.GetAutomationId(control) == "ReminderRuleFirstDueError");
+                    reminderErrorFocused = editor.IsVisible && firstDue.IsKeyboardFocusWithin &&
+                        error.IsVisible && !string.IsNullOrEmpty(error.Text);
+                }
+                finally { editor.Close(); }
+            }));
+            ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(hour.IsVisible && reminderErrorFocused && name.Text == "无效时间草稿" &&
+                 DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Count == 1,
+                "#221：收起后的非法提醒提交必须展开提醒区域并在规则窗口聚焦错误，取消后保留草稿。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    public static bool RunCountdownRowDeadlineAndSecondaryDeleteBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-row-deadline-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        MustApply(workspace, new SaveCountdownChange(null, "截止行验证", new DateTimeOffset(2038, 7, 8, 1, 30, 0, TimeSpan.Zero),
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var rows = (Panel)main.FindName("CountdownRows");
+            Must(VisualDescendants<TextBlock>(rows).Any(text => text.IsVisible && text.Text == "7 月 8 日 09:30 截止"),
+                "#221：倒计时列表应显示北京时区的月日时分截止行。");
+            var delete = VisualDescendants<Button>(rows).Single(button => Equals(button.Content, "删除"));
+            Must(delete.Foreground is SolidColorBrush foreground && foreground.Color == (Color)main.FindResource("DangerColor") &&
+                 delete.BorderBrush is SolidColorBrush border && border.Color.A == 0 &&
+                 VisualDescendants<System.Windows.Shapes.Path>(delete).Any(path => path.IsVisible),
+                "#221：行删除为危险色文字加图标，不使用红色边框。");
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunMainWindowNoteMinuteRefreshBehavior()
     {
         var settingsPath = Path.Combine(
@@ -5643,8 +6043,9 @@ internal static class ValidationExercises
 
                     var scrollHost = (ScrollViewer)main.FindName("MainWindowScrollHost");
                     Must(
-                        scrollHost.ScrollableHeight > 0.5,
-                        $"窗口收缩到 {main.ActualWidth}x{main.ActualHeight} 后外层滚动容器应有纵向可滚动区间。");
+                        scrollHost.ScrollableHeight > 0.5 ||
+                            ((ScrollViewer)main.FindName("CountdownListRegion")).ViewportHeight >= 251,
+                        $"窗口收缩时列表保有最小可读视口，必要时外层纵向滚动，实际 {main.ActualWidth}x{main.ActualHeight}。");
                     scrollHost.ScrollToBottom();
                     WindowValidationInput.Pump(main.Dispatcher);
                     main.UpdateLayout();
@@ -5680,8 +6081,10 @@ internal static class ValidationExercises
                     var scaleViewport = (FrameworkElement)main.FindName("MainScaleViewport");
                     Must(
                         Math.Abs(scaleViewport.ActualWidth - MainWindow.PreferredWidth) <= 0.5 &&
-                        Math.Abs(scaleViewport.ActualHeight - MainWindow.PreferredHeight) <= 0.5,
-                        "窗口收缩时业务内容不得缩放：MainScaleViewport 应保持 1165×1350 设计尺寸、字号不变。");
+                        scaleViewport.LayoutTransform.Value.IsIdentity &&
+                        Math.Abs(((TextBox)main.FindName("CountdownName")).FontSize -
+                            (double)main.FindResource("TypeH2FontSize")) <= 0.01,
+                        "窗口收缩时业务内容不得缩放：宽度保持 1165 DIP、字号不变，列表使用剩余高度。");
                 }
                 finally
                 {
@@ -7509,6 +7912,7 @@ internal static class ValidationExercises
 
     private static bool RunReminderRulesEditorWindowBehavior(DateTimeOffset nowUtc)
     {
+        ProbePlainLanguageRuleLabelsAndPersistence();
         var clock = new AdvancingValidationClock(nowUtc);
         var ids = new[]
         {
@@ -7660,6 +8064,69 @@ internal static class ValidationExercises
                 cancelledEditor.Close();
             }
         }
+    }
+
+    private static void ProbePlainLanguageRuleLabelsAndPersistence()
+    {
+        var now = new DateTimeOffset(2031, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        ReminderRule[] rules =
+        [
+            new AbsoluteOnceReminderRule("plain-once", now.AddHours(1)),
+            new FixedIntervalReminderRule("plain-interval", now.AddHours(2), new ReminderInterval(30)),
+            new CountdownRelativeReminderRule("plain-relative", 15),
+            new CalendarReminderRule("plain-calendar", CalendarFrequency.Daily, 1,
+                new DateOnly(2031, 1, 2), new TimeOnly(9, 30), new DailyCalendarSelector())
+        ];
+        var labels = new[] { "提醒一次", "每隔一段时间", "截止前提醒", "按日历重复" };
+        var descriptions = new[]
+        {
+            "提醒一次 · 2031-01-01 09:00",
+            "每隔一段时间 · 每 30 分钟 · 2031-01-01 10:00 起",
+            "截止前提醒 · 提前 15 分钟",
+            "按日历重复 · 每 1 日 · 09:30"
+        };
+        var editor = new ReminderRulesEditorWindow(rules, new AdvancingValidationClock(now),
+            countdownTargetUtc: now.AddDays(3));
+        PrepareOffscreenValidationWindow(editor);
+        try
+        {
+            editor.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var modes = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
+                Must(modes.Items.Cast<string>().SequenceEqual(labels), "#228 规则类型未使用平实文案。");
+                Must(descriptions.All(expected => VisualDescendants<TextBlock>(editor).Any(text => text.Text == expected)),
+                    "#228 四类规则摘要未保留新文案和完整时间信息。");
+                foreach (var (rule, index) in rules.Select((rule, index) => (rule, index)))
+                {
+                    var edit = VisualDescendants<Button>(editor).Single(button =>
+                        Equals(button.Content, "编辑") && Equals(button.Tag, rule.Id));
+                    InvokeRuleEditorButton(edit);
+                    modes.SelectedItem = labels[index];
+                    InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "SaveReminderRuleButton"));
+                }
+                InvokeRuleEditorButton(FindByAutomationId<Button>(editor, "AcceptReminderRulesButton"));
+            }));
+            Must(editor.ShowDialog() == true, "#228 新类型文案无法提交规则。");
+            Must(editor.ResultRules.Select(rule => rule.GetType()).SequenceEqual(rules.Select(rule => rule.GetType())) &&
+                editor.ResultRules.Select(rule => rule.Id).SequenceEqual(rules.Select(rule => rule.Id)),
+                "#228 可见文案改变了领域类型或稳定 rule ID。");
+            string Canonical(IReadOnlyList<ReminderRule> values) => SettingsContract.SerializeCanonical(
+                CountdownSettings.Empty with { Countdowns =
+                    [new CountdownRecord("plain-countdown", "文案契约", now.AddDays(3), [], values)] });
+            Must(Canonical(editor.ResultRules) == Canonical(rules), "#228 文案变更改变了规范持久化 JSON。");
+        }
+        finally { if (editor.IsVisible) editor.Close(); }
+        var noteEditor = new ReminderRulesEditorWindow([], new AdvancingValidationClock(now));
+        PrepareOffscreenValidationWindow(noteEditor);
+        try
+        {
+            noteEditor.Show();
+            WindowValidationInput.Pump(noteEditor.Dispatcher);
+            Must(FindByAutomationId<ComboBox>(noteEditor, "ReminderRuleMode").Items.Cast<string>()
+                .SequenceEqual(new[] { "提醒一次", "每隔一段时间", "按日历重复" }),
+                "#228 便签类型文案或相对规则隐藏合同不符。");
+        }
+        finally { noteEditor.Close(); }
     }
 
     private static bool RunCountdownRelativeReminderRulesEditorWindowBehavior(

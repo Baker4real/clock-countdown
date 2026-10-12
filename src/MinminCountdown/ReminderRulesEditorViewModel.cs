@@ -72,8 +72,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         _readOnlyRuleItems = new ReadOnlyObservableCollection<ReminderRuleItemViewModel>(_ruleItems);
 
         ModeOptions = _countdownTargetUtc is null
-            ? new[] { "绝对一次", "固定间隔", "日历重复" }
-            : new[] { "绝对一次", "固定间隔", "倒计时相对", "日历重复" };
+            ? new[] { "提醒一次", "每隔一段时间", "按日历重复" }
+            : new[] { "提醒一次", "每隔一段时间", "截止前提醒", "按日历重复" };
         IntervalOptions = new[] { "15 分钟", "30 分钟", "60 分钟", "自定义" };
         CalendarFrequencyOptions = new[] { "每天", "每周", "每月", "每年" };
         Hours = Enumerable.Range(0, 24)
@@ -860,13 +860,13 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     internal static string Describe(ReminderRule rule) => rule switch
     {
         AbsoluteOnceReminderRule once =>
-            $"一次 · {ChinaStandardTime.ToBeijingTime(once.ScheduledUtc):yyyy-MM-dd HH:mm}",
+            $"提醒一次 · {ChinaStandardTime.ToBeijingTime(once.ScheduledUtc):yyyy-MM-dd HH:mm}",
         FixedIntervalReminderRule repeating =>
-            $"每 {repeating.Interval.Minutes} 分钟 · {ChinaStandardTime.ToBeijingTime(repeating.FirstDueUtc):yyyy-MM-dd HH:mm} 起",
+            $"每隔一段时间 · 每 {repeating.Interval.Minutes} 分钟 · {ChinaStandardTime.ToBeijingTime(repeating.FirstDueUtc):yyyy-MM-dd HH:mm} 起",
         CountdownRelativeReminderRule relative => relative.OffsetMinutesBefore == 0
-            ? "倒计时到点"
-            : $"倒计时提前 {relative.OffsetMinutesBefore} 分钟",
-        CalendarReminderRule calendar => DescribeCalendar(calendar),
+            ? "截止前提醒 · 截止时提醒"
+            : $"截止前提醒 · 提前 {relative.OffsetMinutesBefore} 分钟",
+        CalendarReminderRule calendar => $"按日历重复 · {DescribeCalendar(calendar)}",
         _ => throw new ArgumentOutOfRangeException(nameof(rule))
     };
 

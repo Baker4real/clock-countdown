@@ -873,6 +873,10 @@ internal static class ValidationReport
                 noteListPolish.OverflowMenuPopupTabCyclesInsideLayer));
         var popupFocusTabGateIsolationBehavior =
             ValidationExercises.RunPopupFocusTabGateIsolationBehavior();
+        var countdownListFirst = ValidationExercises.RunCountdownListFirstBehavior();
+        var countdownPreferencesPopup = ValidationExercises.RunCountdownPreferencesPopupBehavior();
+        var countdownEditorExpansion = ValidationExercises.RunCountdownEditorExpansionBehavior();
+        var countdownRowPresentation = ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior();
         var mainStructuralAnnouncements = ValidateMainStructuralAnnouncements(assetRoot);
         var mainStructuralAnnouncementGates =
             ValidationExercises.EvaluateMainStructuralAnnouncementGates(
@@ -1244,28 +1248,37 @@ internal static class ValidationReport
         var tagChipsUseUid = tagChips.All(chip => chip.Uid.Length > 0);
 
         var savePreferencesButton = Required<Button>(main, "SavePreferencesButton");
+        var preferencesPopup = Required<Popup>(main, "PreferencesPopup");
+        preferencesPopup.IsOpen = true;
+        PumpDispatcher();
         var savePreferencesButtonFit = MeasureButtonFit(savePreferencesButton);
         var savePreferencesButtonRight = savePreferencesButton
             .TranslatePoint(new Point(savePreferencesButton.ActualWidth, 0), main)
             .X;
         var savePreferencesButtonIsVisible =
+            savePreferencesButton.IsVisible &&
             savePreferencesButton.TranslatePoint(new Point(0, 0), main).X >= 0 &&
             savePreferencesButtonRight <= main.ActualWidth;
+        WindowValidationInput.ClosePopupForCleanup(preferencesPopup);
         var originalMainWidth = main.Width;
         main.Width = main.MinWidth;
         main.UpdateLayout();
-        // #211：最小宽度下业务内容不缩放，「保存设置」经窗口级横向滚动兜底可达且完整落入视口。
+        // #211/#221：最小宽度下经窗口级滚动到达齿轮，再实际打开弹层测量保存按钮。
         var mainScrollHost = Required<ScrollViewer>(main, "MainWindowScrollHost");
-        savePreferencesButton.BringIntoView();
+        Required<Button>(main, "PreferencesButton").BringIntoView();
+        PumpDispatcher();
+        preferencesPopup.IsOpen = true;
         PumpDispatcher();
         main.UpdateLayout();
         var savePreferencesButtonLeftInViewport =
             savePreferencesButton.TranslatePoint(new Point(0, 0), mainScrollHost).X;
         var savePreferencesButtonIsVisibleAtMinimumWidth =
+            savePreferencesButton.IsVisible &&
             mainScrollHost.ScrollableWidth > 0.5 &&
             savePreferencesButtonLeftInViewport >= -0.5 &&
             savePreferencesButtonLeftInViewport + savePreferencesButton.ActualWidth <=
                 mainScrollHost.ViewportWidth + 0.5;
+        WindowValidationInput.ClosePopupForCleanup(preferencesPopup);
         mainScrollHost.ScrollToLeftEnd();
         mainScrollHost.ScrollToTop();
         main.Width = originalMainWidth;
@@ -1680,12 +1693,19 @@ internal static class ValidationReport
         var monthlySalary = Required<TextBox>(main, "MonthlySalary");
         var workStart = Required<TextBox>(main, "WorkStart");
         var workEnd = Required<TextBox>(main, "WorkEnd");
+        var compactOriginalWorkspace = main.CurrentWorkspace;
+        var compactWasExpanded = Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible;
+        main.ShowWorkspace(WorkspaceKind.Countdowns);
+        if (!compactWasExpanded)
+            Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Required<Popup>(main, "PreferencesPopup").IsOpen = true;
+        PumpDispatcher();
         var compactSelection =
-            countdownDate.Width is >= 370 and <= 400 &&
+            countdownDate.Width is >= 290 and <= 310 &&
             countdownHour.Width is >= 180 and <= 205 &&
             countdownMinute.Width is >= 180 and <= 205 &&
             countdownSecond.Width is >= 180 and <= 205 &&
-            displayPrecision.ActualWidth is >= 200 and <= 220 &&
+            displayPrecision.ActualWidth is >= 250 and <= 280 &&
             new Control[]
             {
                 countdownName,
@@ -1693,7 +1713,7 @@ internal static class ValidationReport
                 countdownHour,
                 countdownMinute,
                 countdownSecond
-            }.All(control => control.ActualHeight is >= 55 and <= 57);
+            }.All(control => control.IsVisible && control.ActualHeight is >= 55 and <= 57);
         var compactPreferences =
             displayPrecision.ActualWidth >= 96 &&
             monthlySalary.ActualWidth >= 112 &&
@@ -1705,7 +1725,12 @@ internal static class ValidationReport
                 monthlySalary,
                 workStart,
                 workEnd
-            }.All(control => control.ActualHeight is >= 55 and <= 57);
+            }.All(control => control.IsVisible && control.ActualHeight is >= 55 and <= 57);
+        WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
+        if (!compactWasExpanded)
+            Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        main.ShowWorkspace(compactOriginalWorkspace);
+        PumpDispatcher();
         var characterBackgroundImages = Required<Canvas>(main, "CharacterBackgroundLayer")
             .Children
             .OfType<Image>()
@@ -2035,7 +2060,7 @@ internal static class ValidationReport
             ["MainInitialFocusIsSafeAndDeterministic"] = mainKeyboardBehavior.InitialFocusSafe,
             ["MainTabSequenceStartsWithWorkspaceControls"] =
                 string.Join(',', mainKeyboardBehavior.TabSequence) ==
-                    "CountdownTab,NotesTab,FilterButton,TagManagerButton",
+                    "CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton",
             ["MainStructuralLiveRegionsUsePoliteSemantics"] =
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyCountdownMessage")) == AutomationLiveSetting.Polite &&
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyNotesMessage")) == AutomationLiveSetting.Polite &&
@@ -2293,6 +2318,10 @@ internal static class ValidationReport
                 windowPositionReset,
             ["MainWindowFitsInjectedWorkAreas"] =
                 mainWindowWorkAreaFit,
+            ["CountdownListFirstBehavior"] = countdownListFirst,
+            ["CountdownPreferencesPopupBehavior"] = countdownPreferencesPopup,
+            ["CountdownEditorExpansionBehavior"] = countdownEditorExpansion,
+            ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = countdownRowPresentation,
             ["MainWindowIdentityZoneDragRegion"] =
                 mainWindowIdentityZoneDrag,
             ["FloatingWindowStaysOnSecondaryMonitor"] = floatingSecondaryMonitor,
@@ -2946,7 +2975,7 @@ internal static class ValidationReport
             floatingWorkspace.SwitchingStaysSynchronized;
         var crossInterfaceKeyboardOrder =
             string.Join(',', mainKeyboardBehavior.TabSequence) ==
-                "CountdownTab,NotesTab,FilterButton,TagManagerButton" &&
+                "CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton" &&
             mainKeyboardNavigationGates.AllPassed &&
             reminderCenterKeyboardGates.AllPassed &&
             comboBoxTextClick.ArrowIsNotTabStop &&
@@ -3057,27 +3086,27 @@ internal static class ValidationReport
                     contentProjection);
 
                 scalingMatches &=
-                    SameBounds(
-                        BoundsIn(decorationLayer, root),
-                        BoundsIn(layoutSurface, root)) &&
+                    Math.Abs(BoundsIn(decorationLayer, root).Width -
+                        BoundsIn(layoutSurface, root).Width) <= 0.5 &&
+                    layoutSurface.ClipToBounds &&
                     ReferenceEquals(VisualTreeHelper.GetParent(decorationLayer), layoutSurface) &&
                     ReferenceEquals(VisualTreeHelper.GetParent(contentProjection), layoutSurface) &&
                     ReferenceEquals(VisualTreeHelper.GetParent(contentSurface), contentProjection) &&
                     ReferenceEquals(VisualTreeHelper.GetParent(countdownScene), decorationLayer) &&
                     ReferenceEquals(VisualTreeHelper.GetParent(notesScene), decorationLayer) &&
                     layoutSurface.Width == 1165 &&
-                    layoutSurface.Height == 1350 &&
+                    layoutSurface.Height >= main.ActualHeight - 0.5 &&
                     contentProjection.Width == layoutSurface.Width &&
                     contentProjection.Height == layoutSurface.Height &&
                     contentSurface.Width == layoutSurface.Width &&
-                    contentSurface.Height == layoutSurface.Height &&
+                    contentSurface.Height == MainWindow.PreferredHeight &&
                     countdownScene.Width == layoutSurface.Width &&
-                    countdownScene.Height == layoutSurface.Height &&
+                    countdownScene.Height == MainWindow.PreferredHeight &&
                     notesScene.Width == layoutSurface.Width &&
-                    notesScene.Height == layoutSurface.Height &&
+                    notesScene.Height == MainWindow.PreferredHeight &&
                     !HasNonIdentityTransform(contentProjection) &&
                     scaleViewport.Width == 1165 &&
-                    scaleViewport.Height == 1350 &&
+                    scaleViewport.Height == layoutSurface.Height &&
                     !HasNonIdentityTransform(scaleViewport);
                 layerOrderMatches &=
                     Panel.GetZIndex(decorationLayer) < Panel.GetZIndex(contentProjection) &&
@@ -11707,10 +11736,10 @@ internal static class ValidationReport
         var tabSequence = new List<string>();
         countdownTab.Focus();
         PumpDispatcher();
-        for (var index = 0; index < 4 && Keyboard.FocusedElement is UIElement focused; index++)
+        for (var index = 0; index < 5 && Keyboard.FocusedElement is UIElement focused; index++)
         {
             tabSequence.Add(AutomationProperties.GetAutomationId(focused));
-            if (index < 3)
+            if (index < 4)
             {
                 focused.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
                 PumpDispatcher();
@@ -11827,7 +11856,7 @@ internal static class ValidationReport
             commandResults["SavePreferences"] =
                 preferencesHandled &&
                 preferencesPersisted &&
-                string.Equals(status.Text, "偏好已保存。", StringComparison.Ordinal);
+                string.Equals(status.Text, "设置已保存", StringComparison.Ordinal);
             commandDiagnostics["SavePreferences"] = new(
                 preferencesHandled,
                 preferencesPersisted,
@@ -11968,6 +11997,10 @@ internal static class ValidationReport
             !Required<Popup>(main, "FilterPopup").IsOpen &&
             !countdownDateInput.IsDropDownOpen;
         var countdownHourInput = Required<ComboBox>(main, "CountdownHour");
+        var editorWasExpanded = Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible;
+        if (!editorWasExpanded)
+            Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        PumpDispatcher();
         var comboBoxFocused = countdownHourInput.Focus();
         PumpDispatcher();
         var comboBoxGuarded =
@@ -11978,6 +12011,8 @@ internal static class ValidationReport
             main.CurrentWorkspace == workspaceBeforeTextShortcut &&
             !Required<Popup>(main, "FilterPopup").IsOpen;
         var textInputPreserved = textBoxGuarded && datePickerGuarded && comboBoxGuarded;
+        if (!editorWasExpanded)
+            Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
         countdownTab.Focus();
         main.ShowWorkspace(WorkspaceKind.Countdowns);
@@ -12061,18 +12096,17 @@ internal static class ValidationReport
             ? new[]
             {
                 "TopmostCheck", "MinimizeButton", "CloseButton",
-                "CountdownTab", "NotesTab", "FilterButton", "TagManagerButton",
-                "CountdownName", "CountdownDate", "CountdownHour", "CountdownMinute",
+                "CountdownTab", "NotesTab", "PreferencesButton", "FilterButton", "TagManagerButton",
+                "CountdownName", "CountdownDate", "SaveCountdownButton", "CountdownEditorExpandButton", "CountdownHour", "CountdownMinute",
                 "CountdownSecond", "CountdownTags", "CountdownReminderHelp",
                 "CountdownReminderNoRadio", "CountdownReminderTimeRadio",
                 "CountdownReminderCustomRadio", "CancelCountdownEdit",
-                "SaveCountdownButton", "DisplayPrecision", "MonthlySalary", "WorkStart",
-                "WorkEnd", "SavePreferencesButton", "CountdownListRegion", "StatusText"
+                "CountdownListRegion", "StatusText"
             }
             : new[]
             {
                 "TopmostCheck", "MinimizeButton", "CloseButton",
-                "CountdownTab", "NotesTab", "FilterButton", "TagManagerButton",
+                "CountdownTab", "NotesTab", "PreferencesButton", "FilterButton", "TagManagerButton",
                 "NoteText", "NoteDate", "SaveNoteButton", "CancelNoteEdit",
                 "ManageNoteReminderRulesButton",
                 "NoteTags", "NoteSearch", "NotesListRegion", "StatusText"
@@ -14065,7 +14099,7 @@ internal static class ValidationReport
         {
             var recoveryButton = LogicalDescendants<Button>(recovery)
                 .Single(button =>
-                    string.Equals(AutomationProperties.GetName(button), "恢复备份", StringComparison.Ordinal));
+                    string.Equals(AutomationProperties.GetAutomationId(button), "SettingsRecoveryRecover", StringComparison.Ordinal));
             var activationButton = LogicalDescendants<Button>(activation)
                 .Single(button =>
                     string.Equals(
@@ -14347,15 +14381,24 @@ internal static class ValidationReport
     {
         ReminderCenterWindow? reminderCenter = null;
         ReminderRulesEditorWindow? rulesEditor = null;
+        var originalWorkspace = main.CurrentWorkspace;
+        var expanded = Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible;
         try
         {
-            var mainResults = new[]
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            if (!expanded)
+                Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            PumpDispatcher();
+            var mainResults = new List<ComboBoxPointerExerciseResult>
             {
                 MeasureCombo("Main.CountdownHour", Required<ComboBox>(main, "CountdownHour")),
                 MeasureCombo("Main.CountdownMinute", Required<ComboBox>(main, "CountdownMinute")),
-                MeasureCombo("Main.CountdownSecond", Required<ComboBox>(main, "CountdownSecond")),
-                MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision"))
+                MeasureCombo("Main.CountdownSecond", Required<ComboBox>(main, "CountdownSecond"))
             };
+            Required<Button>(main, "PreferencesButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            PumpDispatcher();
+            mainResults.Add(MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision")));
+            WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
 
             reminderCenter = new ReminderCenterWindow
             {
@@ -14437,13 +14480,19 @@ internal static class ValidationReport
         {
             rulesEditor?.Close();
             reminderCenter?.ForceClose();
+            WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
+            if (!expanded && Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible)
+                Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            main.ShowWorkspace(originalWorkspace);
         }
     }
 
     private static ComboBoxPointerExerciseResult MeasureCombo(string name, ComboBox comboBox)
     {
-        _ = name;
-        return WindowValidationInput.ExerciseComboBox(comboBox);
+        var result = WindowValidationInput.ExerciseComboBox(comboBox);
+        if (!result.ArrowIsNotTabStop)
+            Console.Error.WriteLine($"COMBO_TAB_DIAGNOSTIC {name}; visible={comboBox.IsVisible}; result={result}");
+        return result;
     }
 
     private static SecondaryWindowHeaderDragValidation ValidateSecondaryWindowDrag(MainWindow main)

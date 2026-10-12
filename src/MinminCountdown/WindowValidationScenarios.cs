@@ -662,7 +662,7 @@ public sealed partial class MainWindow
             WindowValidationInput.Pump(Dispatcher);
             var zeroSalaryStillSavesAsUnset =
                 _desktopWorkspace.Snapshot.Settings.Preferences.MonthlySalary == 0m &&
-                string.Equals(StatusText.Text, "偏好已保存。", StringComparison.Ordinal);
+                string.Equals(StatusText.Text, "设置已保存", StringComparison.Ordinal);
 
             return new SettingsDraftRetentionProbe(
                 inputsRetainedOnRefresh,
@@ -1811,6 +1811,8 @@ public sealed partial class MainWindow
                 string.IsNullOrEmpty(CountdownMessage.Text);
 
             // —— 偏好错误出现在对应字段下方并聚焦；错误态错误字落在状态条表面上（见下）。
+            PreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
             MonthlySalary.Text = "not-a-number";
             SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(Dispatcher);
@@ -1819,7 +1821,8 @@ public sealed partial class MainWindow
                 MonthlySalaryError.Visibility == Visibility.Visible &&
                 string.Equals(MonthlySalaryError.Text, "月薪格式无效。", StringComparison.Ordinal) &&
                 MonthlySalary.IsKeyboardFocusWithin &&
-                ValidationBounds(MonthlySalaryError).Top >= ValidationBounds(MonthlySalary).Bottom - 0.5 &&
+                MonthlySalaryError.TranslatePoint(new Point(), CountdownPreferencesSurface).Y >=
+                    MonthlySalary.TranslatePoint(new Point(0, MonthlySalary.ActualHeight), CountdownPreferencesSurface).Y - 0.5 &&
                 EditingValidationErrorIsAccessible(MonthlySalaryError, MonthlySalary) &&
                 string.Equals(StatusText.Text, "月薪格式无效。", StringComparison.Ordinal);
 
@@ -1834,7 +1837,8 @@ public sealed partial class MainWindow
                 WorkStartError.Visibility == Visibility.Visible &&
                 string.Equals(WorkStartError.Text, "上班时间请使用 HH:mm。", StringComparison.Ordinal) &&
                 WorkStart.IsKeyboardFocusWithin &&
-                ValidationBounds(WorkStartError).Top >= ValidationBounds(WorkStart).Bottom - 0.5;
+                WorkStartError.TranslatePoint(new Point(), CountdownPreferencesSurface).Y >=
+                    WorkStart.TranslatePoint(new Point(0, WorkStart.ActualHeight), CountdownPreferencesSurface).Y - 0.5;
 
             // —— 偏好字段修正后错误清除（不保存，避免写入偏好）。
             WorkStart.Text = "09:00";
@@ -1843,6 +1847,7 @@ public sealed partial class MainWindow
                 WorkStartError.Visibility == Visibility.Collapsed;
 
             // —— 主次按钮角色：倒计时页唯一实心主行动是「＋ 添加倒计时」；
+            PreferencesPopup.IsOpen = false;
             // #217「保存设置」为 CardAlt 次级表面 + 主文字色 + 可辨识的常态边界。
             var solidPrimaryButtons = ProbeVisualDescendants<Button>(CountdownWorkspaceBody)
                 .Where(button => ReferenceEquals(button.Background, FindResource("MainActionBrush")))
@@ -1991,9 +1996,11 @@ public sealed partial class MainWindow
     internal MainWindowInteractionStates ProbeMainWindowInteractionStates()
     {
         var originalWorkspace = CurrentWorkspace;
+        var originalExpanded = MainCountdownTimeTagRow.Visibility == Visibility.Visible;
         try
         {
             ShowWorkspace(WorkspaceKind.Countdowns);
+            SetCountdownEditorExpanded(true);
             WindowValidationInput.Pump(Dispatcher);
 
             var focusRingsReserveSpace =
@@ -2042,6 +2049,8 @@ public sealed partial class MainWindow
             var segmentIndicators = ProbeSegmentIndicatorScenarios();
 
             // 聚焦帮助显示与悬停相同的说明（同一 ToolTip 即时打开），并提供帮助文本。
+            SetCountdownEditorExpanded(true);
+            WindowValidationInput.Pump(Dispatcher);
             Activate();
             var helpTooltip = CountdownReminderHelp.ToolTip as ToolTip;
             Keyboard.Focus(CountdownReminderHelp);
@@ -2104,6 +2113,7 @@ public sealed partial class MainWindow
         }
         finally
         {
+            SetCountdownEditorExpanded(originalExpanded);
             ShowWorkspace(originalWorkspace);
             WindowValidationInput.Pump(Dispatcher);
         }
@@ -2485,11 +2495,8 @@ public sealed partial class MainWindow
             ShowWorkspace(WorkspaceKind.Countdowns);
             Activate();
             WindowValidationInput.Pump(Dispatcher);
-            var previous = CancelCountdownEdit.IsVisible
-                ? (UIElement)CancelCountdownEdit
-                : CountdownReminderCustomRadio;
             var saveButtonWorks = TabReachesVisibleRing(
-                previous, SaveCountdownButton, FocusNavigationDirection.Next, "MainActionFocusBrush");
+                CountdownEditorExpandButton, SaveCountdownButton, FocusNavigationDirection.Previous, "MainActionFocusBrush");
 
             ShowWorkspace(WorkspaceKind.Notes);
             WindowValidationInput.Pump(Dispatcher);

@@ -174,14 +174,18 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             NotesSegmentIndicator);
         PopupFocusLifecycle.Attach(FilterPopup, FilterButton, () => AnyTagMode);
         PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput);
+        PopupFocusLifecycle.Attach(PreferencesPopup, PreferencesButton, () => DisplayPrecision);
         PopupFocusLifecycle.ClipToCanvas(FilterPopup, MainLayoutSurface);
         PopupFocusLifecycle.ClipToCanvas(TagManagerPopup, MainLayoutSurface);
+        PopupFocusLifecycle.ClipToCanvas(PreferencesPopup, MainWindowScrollHost);
         PopupFocusLifecycle.ClipToCanvas(NoteTags.Popup, MainLayoutSurface);
         PopupFocusLifecycle.ClipToCanvas(CountdownTags.Popup, MainLayoutSurface);
         LoadCharacterAssets(assetRoot);
         _deleteUndoCountdown = new DeleteUndoCountdown(Dispatcher, ExpireOwnedMainDeleteUndo);
         ConfigureControls();
         WireEvents();
+        SizeChanged += (_, _) => UpdateCountdownListHeight();
+        CountdownEditorSurface.SizeChanged += (_, _) => UpdateCountdownListHeight();
         PreviewKeyDown += OnPreviewKeyDown;
         _desktopWorkspace.StateChanged += OnWorkspaceStateChanged;
         ResetCountdownEditor();
@@ -273,6 +277,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             AutomationProperties.GetLabeledBy(control) is not null);
 
     internal bool HasOnDemandPanels =>
+        !PreferencesPopup.IsOpen &&
         !FilterPopup.IsOpen &&
         !TagManagerPopup.IsOpen &&
         !CountdownTags.IsPopupOpen &&
@@ -280,6 +285,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     internal bool MainShortcutScopeIsSafe =>
         IsEnabled &&
+        !PreferencesPopup.IsOpen &&
         !FilterPopup.IsOpen &&
         !TagManagerPopup.IsOpen &&
         !CountdownTags.IsPopupOpen &&
@@ -708,6 +714,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var showCountdowns = workspace == WorkspaceKind.Countdowns;
         CountdownWorkspace.Visibility = showCountdowns ? Visibility.Visible : Visibility.Collapsed;
         NotesWorkspace.Visibility = showCountdowns ? Visibility.Collapsed : Visibility.Visible;
+        UpdateCountdownListHeight();
         CountdownTab.IsChecked = showCountdowns;
         NotesTab.IsChecked = !showCountdowns;
         UpdateWorkspaceTabIndicator();
@@ -721,6 +728,53 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     }
 
     void IManagerWorkspaceHost.Reveal(WorkspaceKind workspace) => Reveal(workspace);
+
+    void IManagerWorkspaceHost.RevealPreferences(WorkspaceKind workspace) => RevealPreferences(workspace);
+
+    internal void RevealPreferences(WorkspaceKind workspace)
+    {
+        Reveal(workspace);
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            PreferencesButton.Focus();
+            Keyboard.Focus(PreferencesButton);
+            PreferencesPopup.IsOpen = true;
+        }));
+    }
+
+    private void UpdateCountdownListHeight()
+    {
+        var fixedHeight = MainWorkbenchLayout.RowDefinitions[0].Height.Value +
+            MainWorkbenchLayout.RowDefinitions[1].Height.Value + MainWorkbenchLayout.RowDefinitions[3].Height.Value;
+        var bodyTop = CountdownWorkspaceBody.Margin.Top;
+        var minimumCountdownHeight = fixedHeight + bodyTop + CountdownEditorSurface.ActualHeight +
+            CountdownWorkspaceBody.RowDefinitions[1].Height.Value + CountdownListContent.MinHeight +
+            CountdownWorkspaceBody.RowDefinitions[5].Height.Value;
+        var height = _workspace == WorkspaceKind.Countdowns
+            ? Math.Max(minimumCountdownHeight, ActualHeight > 0 ? ActualHeight : Height)
+            : PreferredHeight;
+        MainScaleViewport.Height = height;
+        MainLayoutSurface.Height = height;
+        MainContentProjection.Height = height;
+        MainWorkbenchLayout.Height = height;
+        MainWorkbenchLayout.RowDefinitions[2].Height = new GridLength(height - fixedHeight);
+        CountdownWorkspace.Height = height - fixedHeight;
+        CountdownWorkspaceBody.Height = height - fixedHeight - bodyTop;
+        Canvas.SetTop(CountdownDecoTextBottom, CountdownWorkspace.Height - 26);
+    }
+
+    private void SetCountdownEditorExpanded(bool expanded)
+    {
+        CountdownEditorHeading.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        MainCountdownTimeTagRow.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        MainCountdownActionRow.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        CountdownEditorExpandButton.Content = expanded ? "⌃" : "⌄";
+        var action = expanded ? "收起" : "展开";
+        var mode = _editingCountdownId is null ? "新增" : "编辑";
+        AutomationProperties.SetName(CountdownEditorExpandButton,
+            $"{action}{mode}倒计时选项");
+        CountdownEditorExpandButton.ToolTip = $"{action}时间、标签和提醒";
+    }
 
     // #211：每次显示以及显示器工作区变化时，把窗口夹回所在显示器工作区（DESIGN.md §8）。
     // 未经用户调整的显示取「首选 1165×1350 与工作区−安全边距」的较小值并在工作区内居中；
@@ -1029,11 +1083,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var keyboardPathControls = new FrameworkElement[]
         {
             MinimizeButton, CloseButton,
-            CountdownTab, NotesTab, FilterButton, TagManagerButton,
+            CountdownTab, NotesTab, PreferencesButton, FilterButton, TagManagerButton,
             CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
             CountdownTags.PopupTrigger, CountdownReminderHelp,
             CountdownReminderNoRadio, CountdownReminderTimeRadio, CountdownReminderCustomRadio,
-            CancelCountdownEdit, DisplayPrecision, MonthlySalary, AddEmptyCountdownButton,
+            CancelCountdownEdit, CountdownEditorExpandButton, DisplayPrecision, MonthlySalary, AddEmptyCountdownButton,
             WorkStart, WorkEnd, SavePreferencesButton, CountdownListRegion,
             NoteText, NoteDate, CancelNoteEdit, AddEmptyNoteButton,
             ManageNoteReminderRulesButton,
@@ -1057,6 +1111,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ConfigureReminderHelpFocusHelpText();
 
         SetAutomationIds(
+            (PreferencesButton, "PreferencesButton"),
+            (CountdownEditorExpandButton, "CountdownEditorExpandButton"),
             (TopmostCheck, "TopmostCheck"),
             (MinimizeButton, "MinimizeButton"),
             (CloseButton, "CloseButton"),
@@ -1185,6 +1241,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownMinute.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
         CountdownSecond.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
+        PreferencesButton.Click += (_, _) => PreferencesPopup.IsOpen = !PreferencesPopup.IsOpen;
+        CountdownEditorExpandButton.Click += (_, _) =>
+            SetCountdownEditorExpanded(MainCountdownTimeTagRow.Visibility != Visibility.Visible);
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         AddEmptyCountdownButton.Click += (_, _) => BeginCountdownAddFromEmptyState();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
@@ -1482,7 +1541,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var edit = ActionButton("编辑", record.Id, $"编辑倒计时 {record.Name}");
             edit.Click += OnEditCountdown;
             var delete = ActionButton("删除", record.Id, $"删除倒计时 {record.Name}");
-            delete.Style = (Style)FindResource("DangerButton");
+            delete.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
+            delete.BorderBrush = Brushes.Transparent;
+            delete.ContentTemplate = CreateGlyphButtonTemplate(
+                "M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5",
+                "DangerBrush");
             delete.Click += OnDeleteCountdown;
             var actions = new StackPanel
             {
@@ -1501,6 +1564,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 MaxWidth = CountdownRemainingColumnWidth
             });
             layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var name = new TextBlock
@@ -1558,6 +1622,17 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 TextBlock.ForegroundProperty,
                 active ? "BodyBrush" : isPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush");
             var tagChips = CreateTagChips(record.TagIds);
+            var deadline = new TextBlock
+            {
+                Uid = "CountdownRowDeadlineText",
+                Text = $"{ChinaStandardTime.ToBeijingTime(record.TargetUtc):M 月 d 日 HH:mm} 截止",
+                Margin = new Thickness(0, 6, 0, 0),
+                FontSize = (double)FindResource("TypeCaptionFontSize")
+            };
+            deadline.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            Typography.SetNumeralAlignment(deadline, FontNumeralAlignment.Tabular);
+            Grid.SetRow(deadline, 2);
+            Grid.SetColumnSpan(deadline, 2);
             Grid.SetColumnSpan(title, 2);
             Grid.SetRow(tagChips, 1);
             Grid.SetColumn(remaining, 1);
@@ -1565,12 +1640,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Grid.SetColumn(blocksHost.Surface, 1);
             Grid.SetRow(blocksHost.Surface, 1);
             Grid.SetColumn(actions, 2);
-            Grid.SetRowSpan(actions, 2);
+            Grid.SetRowSpan(actions, 3);
             layout.Children.Add(title);
             layout.Children.Add(tagChips);
             layout.Children.Add(remaining);
             layout.Children.Add(blocksHost.Surface);
             layout.Children.Add(actions);
+            layout.Children.Add(deadline);
             var card = Card(layout, active ? "CardBrush" : "ExpiredBrush");
             _countdownSourceRows[record.Id] = card;
             _countdownSourceFocusTargets[record.Id] = edit;
@@ -2521,12 +2597,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         if (GetCountdownTargetUtc() is not { } target)
         {
+            SetCountdownEditorExpanded(true);
+            var invalidTime = new[] { CountdownHour, CountdownMinute, CountdownSecond }
+                .First(control => control.SelectedIndex < 0 || control.SelectedIndex >= control.Items.Count);
             ShowCountdownValidationError(
                 CountdownDateError,
                 "请先选择完整的倒计时截止时间。",
-                CountdownDate);
+                invalidTime);
             SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
-            CountdownDate.Focus();
+            invalidTime.Focus();
             return;
         }
 
@@ -2541,6 +2620,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             SetMessage(CountdownMessage, $"保存失败：{result.Error}", true);
             if (result.ReminderRuleErrorTarget != ReminderRuleEditingErrorTarget.None)
             {
+                SetCountdownEditorExpanded(true);
                 OpenCountdownReminderRulesEditor(
                     result.ReminderRuleErrorTarget,
                     result.Error);
@@ -2669,7 +2749,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         _settingsDraftDirty = false;
         LoadPreferences();
-        SetMessage(StatusText, "偏好已保存。", false);
+        SetMessage(StatusText, "设置已保存", false);
     }
 
     private void OnEditCountdown(object sender, RoutedEventArgs eventArgs)
@@ -2699,6 +2779,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             _countdownReminderRules = Array.AsReadOnly(record.ReminderRules.ToArray());
             SyncCountdownReminderModeFromRules();
             CountdownEditorTitle.Text = "编辑倒计时";
+            SetCountdownEditorExpanded(true);
             SaveCountdownButton.Content = "保存修改";
             CancelCountdownEdit.Visibility = Visibility.Visible;
         }
@@ -2935,6 +3016,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             _countdownReminderRules = Array.Empty<ReminderRule>();
             SyncCountdownReminderModeFromRules();
             CountdownEditorTitle.Text = "新增倒计时";
+            SetCountdownEditorExpanded(false);
             SaveCountdownButton.Content = "＋ 添加倒计时";
             CancelCountdownEdit.Visibility = Visibility.Collapsed;
             ClearCountdownFieldErrors();

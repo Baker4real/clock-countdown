@@ -40,8 +40,8 @@
 
   <Grid Background="{DynamicResource BackgroundBrush}">
     <!-- #211：1165×1350 是首选尺寸而非最小尺寸。窗口随所在显示器工作区收缩时，
-         业务内容整体进入窗口级滚动容器（纵向为主、宽度不足横向兜底），控件与字号
-         不缩放；视口不小于内容时 MainScaleViewport 仍居中，首选构图与直排一致。
+         #221 倒计时列表先适配剩余高度，低于实际内容最小高度时使用窗口级纵向滚动；
+         便签保留首选内容高度，宽度不足时两页都横向滚动兜底，控件与字号不缩放。
          The named grid is retained as the reference surface and popup clipping root;
          it no longer performs a non-integer Viewbox transform. -->
     <ScrollViewer x:Name="MainWindowScrollHost"
@@ -1036,6 +1036,10 @@
                     </StackPanel>
                   </Grid>
                 </Border>
+                <Button x:Name="PreferencesButton" Grid.Column="1" Width="56" Height="56"
+                        Margin="0,0,16,0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Content="⚙" ToolTip="显示设置" AutomationProperties.Name="打开显示设置"
+                        Style="{StaticResource MainSecondaryButton}" />
                 <Button x:Name="FilterButton"
                         Grid.Column="2"
                         Width="133"
@@ -1112,14 +1116,14 @@
                         Width="1165"
                         Height="996">
                   <Grid x:Name="CountdownWorkspaceBody"
-                        Margin="38,110,39,0"
+                        Margin="38,26,39,0"
                         Width="1088"
-                        Height="886">
+                        Height="970">
                     <Grid.RowDefinitions>
-                      <RowDefinition Height="384" />
+                      <RowDefinition Height="Auto" />
                       <RowDefinition Height="24" />
-                      <RowDefinition Height="176" />
-                      <RowDefinition Height="22" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="0" />
                       <RowDefinition Height="*" />
                       <RowDefinition Height="28" />
                     </Grid.RowDefinitions>
@@ -1137,7 +1141,7 @@
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="1"
                             CornerRadius="16">
-                      <Grid x:Name="CountdownEditorCard" Margin="35,30,35,26">
+                      <Grid x:Name="CountdownEditorCard" Margin="24,18,24,18">
                         <Grid.RowDefinitions>
                           <RowDefinition Height="Auto" />
                           <RowDefinition Height="Auto" />
@@ -1145,7 +1149,7 @@
                           <RowDefinition Height="Auto" />
                           <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <Grid Grid.Row="0">
+                        <Grid Grid.Row="0" x:Name="CountdownEditorHeading" Visibility="Collapsed">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1162,15 +1166,16 @@
                         <!-- #151：字段行距消费 SpacingFieldRow（10，§5 区块内字段行节奏），替代随机 20。 -->
                         <Grid x:Name="MainCountdownNameDateRow" Grid.Row="1" Margin="0,10,0,0">
                           <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="615" />
-                            <ColumnDefinition Width="19" />
-                            <ColumnDefinition Width="384" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="300" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="236" />
                           </Grid.ColumnDefinitions>
                           <StackPanel Grid.Column="0">
                             <TextBlock x:Name="CountdownNameLabel" Text="名称" Style="{StaticResource MainCompactFieldLabel}" />
                             <Grid Margin="0,4,0,0">
                               <TextBox x:Name="CountdownName"
-                                       Width="615"
                                        Style="{StaticResource MainCompactTextInput}"
                                        Padding="48,0,16,0"
                                        MaxLength="30" />
@@ -1216,7 +1221,7 @@
                             <TextBlock x:Name="CountdownDateLabel" Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
                             <Grid Margin="0,4,0,0">
                               <local:WpfUiDatePicker x:Name="CountdownDate"
-                                          Width="384"
+                                          Width="300"
                                           Style="{StaticResource MainCompactDateInput}"
                                           Padding="48,0,16,0" />
                               <Path Width="20"
@@ -1237,8 +1242,15 @@
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed" />
                           </StackPanel>
+                          <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,26,0,0">
+                            <Button x:Name="SaveCountdownButton" Width="180" Height="56" MinHeight="56"
+                                    Content="＋ 添加倒计时" Style="{StaticResource MainPrimaryButton}" />
+                            <Button x:Name="CountdownEditorExpandButton" Width="48" Height="56" Margin="8,0,0,0"
+                                    Content="⌄" ToolTip="展开时间、标签和提醒" AutomationProperties.Name="展开新增倒计时选项"
+                                    Style="{StaticResource MainSecondaryButton}" />
+                          </StackPanel>
                         </Grid>
-                        <Grid x:Name="MainCountdownTimeTagRow" Grid.Row="2" Margin="0,10,0,0">
+                        <Grid x:Name="MainCountdownTimeTagRow" Grid.Row="2" Margin="0,10,0,0" Visibility="Collapsed">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="20" />
@@ -1282,7 +1294,7 @@
                                    FontSize="{DynamicResource TypeBodyFontSize}"
                                    Foreground="{DynamicResource DangerBrush}"
                                    TextWrapping="Wrap" />
-                        <Grid Grid.Row="4" x:Name="MainCountdownActionRow" Margin="0,10,0,0">
+                        <Grid Grid.Row="4" x:Name="MainCountdownActionRow" Margin="0,10,0,0" Visibility="Collapsed">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1341,119 +1353,6 @@
                                   Content="取消"
                                   Visibility="Collapsed"
                                   Style="{StaticResource MainSecondaryButton}" />
-                          <Button x:Name="SaveCountdownButton"
-                                  Grid.Column="4"
-                                  Width="221"
-                                  Height="56"
-                                  MinHeight="56"
-                                  Margin="8,0,0,0"
-                                  Content="＋ 添加倒计时"
-                                  Style="{StaticResource MainPrimaryButton}" />
-                        </Grid>
-                      </Grid>
-                    </Border>
-                    <Border x:Name="CountdownPreferencesSurface"
-                            Grid.Row="2"
-                            Background="{DynamicResource BackgroundBrush}"
-                            BorderBrush="{DynamicResource PeachLineBrush}"
-                            BorderThickness="1"
-                            CornerRadius="16">
-                      <Grid x:Name="CountdownPreferencesCard" Margin="35,18,25,24">
-                        <Grid.RowDefinitions>
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <!-- #139 补齐 §11「显示设置」区块标题：与「新增倒计时」同级（InkBrush SemiBold）。 -->
-                        <StackPanel Grid.Row="0" x:Name="MainPreferenceHeading" Orientation="Horizontal">
-                          <Path Width="22"
-                                Height="22"
-                                Data="M 9.55,1.8 L 12.45,1.8 L 13.05,4.45 C 13.95,4.75 14.75,5.2 15.45,5.75 L 18.05,4.75 L 19.5,7.2 L 17.55,9.05 C 17.75,9.65 17.85,10.3 17.85,11 C 17.85,11.7 17.75,12.35 17.55,12.95 L 19.5,14.8 L 18.05,17.25 L 15.45,16.25 C 14.75,16.8 13.95,17.25 13.05,17.55 L 12.45,20.2 L 9.55,20.2 L 8.95,17.55 C 8.05,17.25 7.25,16.8 6.55,16.25 L 3.95,17.25 L 2.5,14.8 L 4.45,12.95 C 4.25,12.35 4.15,11.7 4.15,11 C 4.15,10.3 4.25,9.65 4.45,9.05 L 2.5,7.2 L 3.95,4.75 L 6.55,5.75 C 7.25,5.2 8.05,4.75 8.95,4.45 Z M 11,8.3 A 2.7,2.7 0 1 0 11,13.7 A 2.7,2.7 0 1 0 11,8.3 Z"
-                                Fill="{DynamicResource InkBrush}"
-                                VerticalAlignment="Center"
-                                IsHitTestVisible="False" />
-                          <TextBlock x:Name="CountdownPreferencesTitle"
-                                     Margin="10,0,0,0"
-                                     VerticalAlignment="Center"
-                                     Text="显示设置"
-                                     FontSize="{StaticResource TypeH1FontSize}"
-                                     FontWeight="SemiBold"
-                                     Foreground="{DynamicResource InkBrush}" />
-                        </StackPanel>
-                        <Grid Grid.Row="1" x:Name="MainPreferenceLabels">
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="210" />
-                            <ColumnDefinition Width="23" />
-                            <ColumnDefinition Width="243" />
-                            <ColumnDefinition Width="19" />
-                            <ColumnDefinition Width="187" />
-                            <ColumnDefinition Width="18" />
-                            <ColumnDefinition Width="172" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="140" />
-                          </Grid.ColumnDefinitions>
-                          <TextBlock Grid.Column="0" x:Name="DisplayPrecisionLabel" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
-                          <TextBlock Grid.Column="2" x:Name="MonthlySalaryLabel" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
-                          <TextBlock Grid.Column="4" x:Name="WorkStartLabel" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
-                          <TextBlock Grid.Column="6" x:Name="WorkEndLabel" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
-                        </Grid>
-                        <Grid Grid.Row="2" x:Name="MainPreferenceInputs" Margin="0,4,0,0">
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="210" />
-                            <ColumnDefinition Width="23" />
-                            <ColumnDefinition Width="243" />
-                            <ColumnDefinition Width="19" />
-                            <ColumnDefinition Width="187" />
-                            <ColumnDefinition Width="18" />
-                            <ColumnDefinition Width="172" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="140" />
-                          </Grid.ColumnDefinitions>
-                          <ComboBox x:Name="DisplayPrecision"
-                                    Grid.Column="0"
-                                    Width="210"
-                                    Style="{StaticResource MainCompactSelectionInput}" />
-                          <StackPanel Grid.Column="2">
-                            <TextBox x:Name="MonthlySalary"
-                                     Width="243"
-                                     Style="{StaticResource MainCompactTextInput}" />
-                            <!-- #151：偏好错误贴对应字段下方（不再只出现在窗口底栏）。 -->
-                            <TextBlock x:Name="MonthlySalaryError"
-                                       Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
-                                       Foreground="{DynamicResource DangerBrush}"
-                                       TextWrapping="Wrap"
-                                       Visibility="Collapsed" />
-                          </StackPanel>
-                          <StackPanel Grid.Column="4">
-                            <TextBox x:Name="WorkStart"
-                                     Width="187"
-                                     Style="{StaticResource MainCompactTextInput}" />
-                            <TextBlock x:Name="WorkStartError"
-                                       Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
-                                       Foreground="{DynamicResource DangerBrush}"
-                                       TextWrapping="Wrap"
-                                       Visibility="Collapsed" />
-                          </StackPanel>
-                          <StackPanel Grid.Column="6">
-                            <TextBox x:Name="WorkEnd"
-                                     Width="172"
-                                     Style="{StaticResource MainCompactTextInput}" />
-                            <TextBlock x:Name="WorkEndError"
-                                       Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
-                                       Foreground="{DynamicResource DangerBrush}"
-                                       TextWrapping="Wrap"
-                                       Visibility="Collapsed" />
-                          </StackPanel>
-                          <Button x:Name="SavePreferencesButton"
-                                  Grid.Column="8"
-                                  Width="140"
-                                  Height="56"
-                                  MinHeight="56"
-                                  Content="保存设置"
-                                  Style="{StaticResource MainSecondarySolidButton}" />
                         </Grid>
                       </Grid>
                     </Border>
@@ -1522,7 +1421,7 @@
                   <!-- #156：倒计时页两处手写体装饰退出控件朗读（SilentTextBlock 无自动化 peer）；
                        不再携带「装饰文案」可访问名，装饰信息不进朗读树（§4/#156 合同）。 -->
                   <local:SilentTextBlock Canvas.Left="640"
-                             Canvas.Top="149"
+                             Canvas.Top="4"
                              Width="412"
                              TextAlignment="Right"
                              Text="每一个期待，都值得被认真对待 ♡"
@@ -2162,6 +2061,55 @@
               </Grid>
             </Grid>
 
+                    <Popup x:Name="PreferencesPopup"
+                           PlacementTarget="{Binding ElementName=PreferencesButton}" Placement="Bottom"
+                           StaysOpen="False" AllowsTransparency="True"
+                           focus:PopupMotionBehavior.IsEnabled="True" PopupAnimation="None">
+                      <Border x:Name="CountdownPreferencesSurface" Width="600" Margin="0,8,0,0" Padding="24"
+                              Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource PeachLineBrush}"
+                              BorderThickness="1" CornerRadius="16">
+                        <Grid x:Name="CountdownPreferencesCard">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                          </Grid.ColumnDefinitions>
+                          <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                          </Grid.RowDefinitions>
+                          <TextBlock x:Name="CountdownPreferencesTitle" Grid.ColumnSpan="2" Text="显示设置"
+                                     FontSize="{StaticResource TypeH1FontSize}" FontWeight="SemiBold"
+                                     Foreground="{DynamicResource InkBrush}" />
+                          <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,16,8,0">
+                            <TextBlock x:Name="DisplayPrecisionLabel" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
+                            <ComboBox x:Name="DisplayPrecision" Margin="0,4,0,0" Style="{StaticResource MainCompactSelectionInput}" />
+                          </StackPanel>
+                          <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,16,0,0">
+                            <TextBlock x:Name="MonthlySalaryLabel" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
+                            <TextBox x:Name="MonthlySalary" Margin="0,4,0,0" Style="{StaticResource MainCompactTextInput}" />
+                            <TextBlock x:Name="MonthlySalaryError" Margin="0,8,0,0" FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
+                          </StackPanel>
+                          <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,16,8,0">
+                            <TextBlock x:Name="WorkStartLabel" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
+                            <TextBox x:Name="WorkStart" Margin="0,4,0,0" Style="{StaticResource MainCompactTextInput}" />
+                            <TextBlock x:Name="WorkStartError" Margin="0,8,0,0" FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
+                          </StackPanel>
+                          <StackPanel Grid.Row="2" Grid.Column="1" Margin="8,16,0,0">
+                            <TextBlock x:Name="WorkEndLabel" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
+                            <TextBox x:Name="WorkEnd" Margin="0,4,0,0" Style="{StaticResource MainCompactTextInput}" />
+                            <TextBlock x:Name="WorkEndError" Margin="0,8,0,0" FontSize="{StaticResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
+                          </StackPanel>
+                          <Button x:Name="SavePreferencesButton" Grid.Row="3" Grid.ColumnSpan="2" Width="140" Height="56"
+                                  MinHeight="56" Margin="0,24,0,0" HorizontalAlignment="Right" Content="保存设置"
+                                  Style="{StaticResource MainSecondarySolidButton}" />
+                        </Grid>
+                      </Border>
+                    </Popup>
             <Popup x:Name="FilterPopup"
                    PlacementTarget="{Binding ElementName=FilterButton}"
                    Placement="Bottom"

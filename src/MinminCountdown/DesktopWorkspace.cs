@@ -16,6 +16,8 @@ internal sealed class DesktopWorkspace
 
     internal IClock Clock => _session.Clock;
 
+    public SettingsRecoveryOutcome Recovery => _session.Recovery;
+
     public static DesktopWorkspace Load(
         string settingsPath,
         SettingsStore? store = null,

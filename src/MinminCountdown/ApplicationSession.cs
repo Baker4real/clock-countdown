@@ -32,6 +32,8 @@ internal sealed class ApplicationSession
 
     public bool SettingsWereMigrated { get; private set; }
 
+    public SettingsRecoveryOutcome Recovery { get; private init; }
+
     public WorkspaceFilter Filter { get; } = new();
 
     public ReminderScheduler Reminders { get; } = new();
@@ -60,7 +62,10 @@ internal sealed class ApplicationSession
             actualStore,
             result.Settings,
             result.SourceSchemaVersion,
-            result.Migrated);
+            result.Migrated)
+        {
+            Recovery = result.Recovery
+        };
     }
 
     public void PersistMigrationIfNeeded()

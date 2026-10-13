@@ -319,6 +319,11 @@ try {
         $installStage = 'wait-window-ready'
         Start-ScheduledTask -TaskName $taskName
         $runtimeStatus = Wait-CountdownWindowReady -Path $runtimeStatusPath -LaunchToken $startupRequest.launchToken -ExpectedSessionId ([int] $interactiveContext.SessionId) -ExpectedApplicationPath $appPath -TimeoutSeconds 30 -PollMilliseconds 250
+        $inventoryEvidenceRoot = 'D:\agents\run-evidence\countdown\install-inventory'
+        [void] [System.IO.Directory]::CreateDirectory($inventoryEvidenceRoot)
+        $inventoryEvidencePath = Join-Path $inventoryEvidenceRoot ('installed-files-{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $installedInventory = @(Get-ChildItem -LiteralPath $install -File -Recurse | Select-Object FullName, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
+        [System.IO.File]::WriteAllText($inventoryEvidencePath, ($installedInventory | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
         $result = [ordered]@{
             TestOutput = $testOutput.Trim()
             CSharpTestOutput = $cSharpTestOutput.Trim()
@@ -333,7 +338,8 @@ try {
                 UiValid = [bool] $validationSuite.UiValid
                 AdapterUiValidated = [bool] $validationSuite.AdapterUiValidated
             }
-            InstalledFiles = @(Get-ChildItem -LiteralPath $install -File -Recurse | Select-Object FullName, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
+            InstalledFileCount = [int] $installedInventory.Count
+            InstalledFilesEvidencePath = $inventoryEvidencePath
             Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
             Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}
             TaskInfo = Get-ScheduledTaskInfo -TaskName $taskName | Select-Object LastRunTime, LastTaskResult, NextRunTime

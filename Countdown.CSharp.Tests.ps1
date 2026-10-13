@@ -210,7 +210,9 @@ function Write-AdapterFailureDiagnosticEvidence {
         [Parameter(Mandatory)] [string] $DirectDiagnosticPath,
         [Parameter(Mandatory)] [string] $RepositoryRoot,
         [Parameter(Mandatory)] [string] $TestRoot,
-        [Parameter(Mandatory)] [System.Text.Encoding] $Encoding
+        [Parameter(Mandatory)] [System.Text.Encoding] $Encoding,
+        [Parameter(Mandatory)] [string] $ApplicationPath,
+        [Parameter(Mandatory)] [string] $FailureStage
     )
 
     $pathReplacements = @{
@@ -269,8 +271,18 @@ function Write-AdapterFailureDiagnosticEvidence {
     }
 
     $summary = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        failureStage = $FailureStage
+        retrySafe = ($AdapterResult.ExitCode -ne 0 -and $DirectResult.ExitCode -eq 0)
+        recommendedAction = if ($DirectResult.ExitCode -eq 0) { 'inspect-adapter-host' } else { 'inspect-native-process-and-WER' }
+        executable = [ordered]@{
+            path = Protect-CountdownDiagnosticText -Text $ApplicationPath -PathReplacements $pathReplacements
+            exists = Test-Path -LiteralPath $ApplicationPath -PathType Leaf
+            sha256 = if (Test-Path -LiteralPath $ApplicationPath -PathType Leaf) {
+                (Get-FileHash -LiteralPath $ApplicationPath -Algorithm SHA256).Hash
+            } else { $null }
+        }
         adapter = [ordered]@{
             exitCode = [int] $AdapterResult.ExitCode
             stdoutEmpty = [string]::IsNullOrWhiteSpace([string] $AdapterResult.Stdout)
@@ -303,6 +315,31 @@ function Write-AdapterFailureDiagnosticEvidence {
             parseErrors = @($parseErrors)
         }
     }
+
+    $summary.nativeFailureClassification = if ($DirectResult.ExitCode -in @(0, 1, 2)) {
+        'managed-validation-failure'
+    } elseif ($DirectResult.ExitCode -eq -1073740791 -or $DirectResult.ExitCode -eq 3221225786) {
+        'native-fail-fast'
+    } else {
+        'native-process-failure'
+    }
+    $summary.wer = [ordered]@{
+        applicationErrorEventObserved = $false
+        queryAttempted = $false
+    }
+    try {
+        $summary.wer.queryAttempted = $true
+        $exeName = [System.IO.Path]::GetFileName($ApplicationPath)
+        $summary.wer.applicationErrorEventObserved = $null -ne (Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = [DateTime]::Now.AddMinutes(-5) } -MaxEvents 50 -ErrorAction Stop | Where-Object { $_.Message -like "*$exeName*" } | Select-Object -First 1)
+    }
+    catch {
+        $summary.wer.queryError = Protect-CountdownDiagnosticText -Text $_.Exception.Message -PathReplacements $pathReplacements
+    }
+    $summary.dumps = @(
+        foreach ($candidate in @($DirectDiagnosticPath, "$DirectDiagnosticPath.dmp", [System.IO.Path]::ChangeExtension($DirectDiagnosticPath, '.dmp'))) {
+            [ordered]@{ path = Protect-CountdownDiagnosticText -Text $candidate -PathReplacements $pathReplacements; present = Test-Path -LiteralPath $candidate -PathType Leaf }
+        }
+    )
 
     $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-csharp-adapter-failures'
     [void] [System.IO.Directory]::CreateDirectory($evidenceRoot)
@@ -4114,7 +4151,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
                 -DirectDiagnosticPath $adapterFailureDirectDiagnosticPath `
                 -RepositoryRoot $PSScriptRoot `
                 -TestRoot $testRoot `
-                -Encoding $utf8NoBom
+                -Encoding $utf8NoBom `
+                -ApplicationPath $application `
+                -FailureStage 'AdapterValidateOnly'
             Write-Host "Adapter failure diagnostic evidence: $($diagnosticEvidence.Path)"
             Write-Host ($diagnosticEvidence.Summary | ConvertTo-Json -Depth 8 -Compress)
         }

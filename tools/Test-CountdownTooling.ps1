@@ -98,6 +98,46 @@ foreach ($markdownFile in $markdownFiles) {
 $docLinkDetail = if ($docLinkFailures.Count -eq 0) { "$($markdownFiles.Count) Markdown files" } else { $docLinkFailures -join ' | ' }
 Add-ToolingCheck -Name 'docs:local-links' -Passed ($docLinkFailures.Count -eq 0) -Detail $docLinkDetail
 
+# Keep the positive fixture contract aligned with the current visual baseline.
+# The Core suite has a separate manifest-content check; this cheap source-tree
+# check catches a stale 8/4 (or other hard-coded) fixture before any windowed
+# stage starts.
+$validationSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'Countdown.Validation.psm1'))
+$coreTestSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'Countdown.Core.Tests.ps1'))
+$baselineFixtureFailures = [System.Collections.Generic.List[string]]::new()
+$baselineManifestRefs = [regex]::Matches(
+    $validationSource,
+    'assets\\ui-references\\(?<surface>main-window|floating-window)\\[^\\]+\\manifest\.json'
+)
+$fixtureDefinitions = [regex]::Matches(
+    $coreTestSource,
+    '(?m)(?<start>\d+)\.\.(?<end>\d+)\s*\|\s*ForEach-Object\s*\{\s*\[pscustomobject\]@\{\s*CaptureId\s*=\s*["''](?<fixtureSurface>main|floating)-\$_["'']'
+)
+foreach ($reference in $baselineManifestRefs) {
+    $relativeManifest = $reference.Value.Replace('\', [System.IO.Path]::DirectorySeparatorChar)
+    $manifestPath = Join-Path $repoRoot $relativeManifest
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        $baselineFixtureFailures.Add("missing current manifest: $relativeManifest")
+        continue
+    }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 100
+    $expectedCount = @($manifest.captures).Count
+    $fixtureSurface = if ($reference.Groups['surface'].Value -eq 'main-window') { 'main' } else { 'floating' }
+    $fixtureMatches = @($fixtureDefinitions | Where-Object { $_.Groups['fixtureSurface'].Value -eq $fixtureSurface })
+    if ($fixtureMatches.Count -ne 1) {
+        $baselineFixtureFailures.Add("$($reference.Groups['surface'].Value) fixture definition count is $($fixtureMatches.Count); expected exactly one")
+        continue
+    }
+    $fixtureStart = [int] $fixtureMatches[0].Groups['start'].Value
+    $fixtureEnd = [int] $fixtureMatches[0].Groups['end'].Value
+    $fixtureCount = if ($fixtureEnd -ge $fixtureStart) { $fixtureEnd - $fixtureStart + 1 } else { 0 }
+    if ($fixtureStart -ne 1 -or $fixtureCount -ne $expectedCount) {
+        $baselineFixtureFailures.Add("$($reference.Groups['surface'].Value) fixture range is $fixtureStart..$fixtureEnd ($fixtureCount captures); manifest declares $expectedCount")
+    }
+}
+$baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { 'current manifests and Core positive fixtures agree' } else { $baselineFixtureFailures -join ' | ' }
+Add-ToolingCheck -Name 'visual-baseline:fixture-shape' -Passed ($baselineFixtureFailures.Count -eq 0) -Detail $baselineFixtureDetail
+
 if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }
 if ([string]::IsNullOrWhiteSpace($CandidateCommit)) { $CandidateCommit = 'HEAD' }
 $diffCheck = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.ps1') -RepositoryRoot $repoRoot -BaseCommit $BaseCommit -CandidateCommit $CandidateCommit -Json | ConvertFrom-Json -Depth 10

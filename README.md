@@ -153,6 +153,9 @@ pwsh.exe -NoLogo -NoProfile -File ./Install-Countdown.ps1 -ValidateOnly
 pwsh.exe -NoLogo -NoProfile -File ./Deploy-OfficeCountdown.ps1 -ValidateOnly
 ```
 
+正式安装结果默认只返回已安装文件数量和清单 evidence 路径；完整逐文件 SHA-256 清单写入该路径，避免把整份 inventory 回显到终端。
+本机替换现有桌面版本继续使用 `Install-Countdown.ps1` 的正式事务入口；它返回 `InstalledFileCount`、`InstalledFilesEvidencePath`、启动器、计划任务和运行态回读字段，不需要临时替换脚本。
+
 标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用（`Countdown.Core.Tests.ps1` 与 `Install-Countdown.ps1 -ValidateOnly`）是有意双轨：前者是阶段级红即停门禁，后者带合同断言；重复成本约 10 秒，不合并。
 
 标注：`Countdown.Core.Tests.ps1`（含 GitHub Actions「Test release contract」的 `-ReleaseContractOnly`）与 `Install-Countdown.ps1 -ValidateOnly` 调用 `Invoke-CountdownValidationSuite`。Core 逻辑不隔离；C#、兼容 UI、应用 `-ValidateOnly` 分别进 `MinminSuiteIso-ValidateCSharp` / `MinminSuiteIso-ValidateUi` / `MinminSuiteIso-ValidateApp`。`windows-latest` 与本机 Default 桌面一样会触发内层 fail-closed，不要在 Default 上关隔离直跑窗口步骤。

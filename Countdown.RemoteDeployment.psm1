@@ -2406,6 +2406,12 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 -Stage '加载安装事务模块' `
                 -Action { param($lockedPath) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
             $AdapterState.TransactionModuleImported = $true
+            $AdapterState.Stage = '候选环境短验证'
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context -Location Source -RelativePath 'Countdown.Validation.psm1' `
+                -Stage '加载候选预检入口' -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
+            Invoke-CountdownCandidatePreflight -Root $Context.SourceRoot -PowerShell7Path (Join-Path $PSHOME 'pwsh.exe') `
+                -EvidenceDirectory (Join-Path (Split-Path -Parent $Context.SourceRoot) 'validation-preflight') -OfficeSession
             $interactiveContext = Get-CountdownInteractiveDesktopContext
             $launcherPath = Join-Path ([string] $interactiveContext.Desktop) '敏敏子倒计时.exe'
             $legacyLauncherPath = Join-Path ([string] $interactiveContext.Desktop) '敏敏子倒计时.cmd'
@@ -2433,7 +2439,15 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 -Location Source `
                 -RelativePath 'Install-Countdown.ps1' `
                 -Stage '执行安装器' `
-                -Action { param($lockedPath) & $lockedPath @installerArguments | Out-String }
+                -Action {
+                    param($lockedPath)
+                    $previousEvidenceRoot = $env:MINMIN_VALIDATION_EVIDENCE_ROOT
+                    try {
+                        $env:MINMIN_VALIDATION_EVIDENCE_ROOT = Join-Path (Split-Path -Parent $Context.SourceRoot) 'validation'
+                        & $lockedPath @installerArguments | Out-String
+                    }
+                    finally { $env:MINMIN_VALIDATION_EVIDENCE_ROOT = $previousEvidenceRoot }
+                }
             $AdapterState.Stage = '读取延迟提交回执'
             $receipt = Read-CountdownDeferredInstallReceipt -Path $Context.DeferredReceiptPath
             if ($null -eq $receipt) {

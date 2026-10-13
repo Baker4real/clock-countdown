@@ -41,7 +41,10 @@ foreach ($requiredPath in @(
         'tools/Test-CountdownBuildPreflight.ps1',
         'tools/Countdown.BuildPreflight.psm1',
         'tools/Countdown.SuiteRun.psm1',
-        'tools/Invoke-CountdownSuiteLowImpact.ps1'
+        'tools/Invoke-CountdownSuiteLowImpact.ps1',
+        'tools/Get-CountdownDeploymentState.ps1',
+        'tools/Test-CountdownWindowPreflight.ps1',
+        'Countdown.DeploymentPreflight.psm1'
     )) { Test-RequiredPath -RelativePath $requiredPath }
 
 $schemaTest = & (Join-Path $PSScriptRoot 'Test-IssueAcceptance.ps1') -SelfTest -Json | ConvertFrom-Json -Depth 10
@@ -56,6 +59,16 @@ $designTokenSelfTest = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Pat
 Add-ToolingCheck -Name 'design-token:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenSelfTest.Valid) -Detail ($designTokenSelfTest | ConvertTo-Json -Compress -Depth 10)
 $designTokenDrift = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-DesignTokenDrift.ps1') -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'design-token:drift' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenDrift.Valid) -Detail ($designTokenDrift | ConvertTo-Json -Compress -Depth 10)
+
+foreach ($test in @('Test-CountdownValidationDiagnostics.ps1', 'Test-CountdownDeploymentPreflight.ps1',
+        'Test-CountdownWindowPreflightContract.ps1', 'Test-CountdownDeploymentState.ps1')) {
+    $arguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot $test), '-Json')
+    if ($test -eq 'Test-CountdownDeploymentState.ps1' -and $env:GITHUB_ACTIONS -eq 'true') {
+        $arguments += '-SkipDiagnosticsWhenUnavailable'
+    }
+    $report = & pwsh @arguments | ConvertFrom-Json -Depth 12 -ErrorAction Stop
+    Add-ToolingCheck -Name "deployment:$test" -Passed ($LASTEXITCODE -eq 0 -and [bool]$report.Valid) -Detail ($report | ConvertTo-Json -Compress -Depth 12)
+}
 
 $parseErrors = [System.Collections.Generic.List[string]]::new()
 $scriptPaths = @(

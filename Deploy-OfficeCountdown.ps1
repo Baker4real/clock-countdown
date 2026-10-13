@@ -1373,6 +1373,46 @@ $controlManifest = New-CountdownDeploymentCommitFileManifest `
     -IdentityManifest $controlIdentityManifest `
     -Stage '控制文件提交身份校验'
 
+Write-OfficeDeploymentProgress '构建前检查 Tailscale 与 SSH 依赖'
+. 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1' | Out-Null
+$officeDestination = [string] $env:REPLICATOR_OFFICE_SSH_DESTINATION
+$officeDestinationSeparator = $officeDestination.LastIndexOf('@')
+if ($officeDestinationSeparator -lt 1 -or $officeDestinationSeparator -ge ($officeDestination.Length - 1)) {
+    throw '受管 office helper 返回的 SSH destination 无效。'
+}
+$officeUser = $officeDestination.Substring(0, $officeDestinationSeparator)
+$officeHost = $officeDestination.Substring($officeDestinationSeparator + 1)
+& tailscale.exe ping --until-direct=false --c 3 --timeout 10s $officeHost | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "办公室设备的 Tailscale 连通性检查失败：$officeHost" }
+$script:sshOptions = @(
+    '-i', $env:REPLICATOR_OFFICE_SSH_IDENTITY_FILE,
+    '-o', 'BatchMode=yes',
+    '-o', 'IdentitiesOnly=yes',
+    '-o', "ConnectTimeout=$env:REPLICATOR_OFFICE_SSH_CONNECT_TIMEOUT_SECONDS",
+    '-o', "ConnectionAttempts=$env:REPLICATOR_OFFICE_SSH_CONNECTION_ATTEMPTS",
+    '-o', 'StrictHostKeyChecking=yes',
+    '-o', "UserKnownHostsFile=$env:REPLICATOR_OFFICE_SSH_USER_KNOWN_HOSTS_FILE",
+    '-o', "KexAlgorithms=$env:REPLICATOR_OFFICE_SSH_KEX_ALGORITHMS"
+)
+$officeSshIdentity = Resolve-OfficeSshClientIdentity
+$script:sshExecutablePath = [string] $officeSshIdentity.SshPath
+$script:scpExecutablePath = [string] $officeSshIdentity.ScpPath
+$officeSshProbeCharacterCount = Resolve-OfficeSshEchoProbeCharacterCount `
+    -SshExecutablePath $script:sshExecutablePath `
+    -SshVersion ([string] $officeSshIdentity.Version) `
+    -Options $script:sshOptions `
+    -DestinationLength $officeDestination.Length
+Write-OfficeSshClientIdentityEvidence `
+    -EvidenceRoot $evidenceRoot `
+    -Identity $officeSshIdentity `
+    -ProbeCharacterCount $officeSshProbeCharacterCount | Out-Null
+Invoke-OfficeSshEchoBehaviorProbe `
+    -SshExecutablePath $script:sshExecutablePath `
+    -SshVersion ([string] $officeSshIdentity.Version) `
+    -Options $script:sshOptions `
+    -Destination $officeDestination `
+    -ProbeCharacterCount $officeSshProbeCharacterCount
+
 $powerShell7 = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
 [void] (Invoke-CountdownDeploymentLockedCommitFile `
     -GitPath $gitPath `
@@ -1496,44 +1536,6 @@ Invoke-CountdownDeploymentLockedCommitFile `
     -Stage '安装事务模块导入' `
     -Action { param($lockedPath, $sha256) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
 Assert-CountdownDeploymentFileManifest -Root $extractRoot -Manifest $packageManifest -Stage '部署模块加载后'
-. 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1' | Out-Null
-$officeDestination = [string] $env:REPLICATOR_OFFICE_SSH_DESTINATION
-$officeDestinationSeparator = $officeDestination.LastIndexOf('@')
-if ($officeDestinationSeparator -lt 1 -or $officeDestinationSeparator -ge ($officeDestination.Length - 1)) {
-    throw '受管 office helper 返回的 SSH destination 无效。'
-}
-$officeUser = $officeDestination.Substring(0, $officeDestinationSeparator)
-$officeHost = $officeDestination.Substring($officeDestinationSeparator + 1)
-& tailscale.exe ping --until-direct=false --c 3 --timeout 10s $officeHost
-if ($LASTEXITCODE -ne 0) { throw "办公室设备的 Tailscale 连通性检查失败：$officeHost" }
-$script:sshOptions = @(
-    '-i', $env:REPLICATOR_OFFICE_SSH_IDENTITY_FILE,
-    '-o', 'BatchMode=yes',
-    '-o', 'IdentitiesOnly=yes',
-    '-o', "ConnectTimeout=$env:REPLICATOR_OFFICE_SSH_CONNECT_TIMEOUT_SECONDS",
-    '-o', "ConnectionAttempts=$env:REPLICATOR_OFFICE_SSH_CONNECTION_ATTEMPTS",
-    '-o', 'StrictHostKeyChecking=yes',
-    '-o', "UserKnownHostsFile=$env:REPLICATOR_OFFICE_SSH_USER_KNOWN_HOSTS_FILE",
-    '-o', "KexAlgorithms=$env:REPLICATOR_OFFICE_SSH_KEX_ALGORITHMS"
-)
-$officeSshIdentity = Resolve-OfficeSshClientIdentity
-$script:sshExecutablePath = [string] $officeSshIdentity.SshPath
-$script:scpExecutablePath = [string] $officeSshIdentity.ScpPath
-$officeSshProbeCharacterCount = Resolve-OfficeSshEchoProbeCharacterCount `
-    -SshExecutablePath $script:sshExecutablePath `
-    -SshVersion ([string] $officeSshIdentity.Version) `
-    -Options $script:sshOptions `
-    -DestinationLength $officeDestination.Length
-Write-OfficeSshClientIdentityEvidence `
-    -EvidenceRoot $evidenceRoot `
-    -Identity $officeSshIdentity `
-    -ProbeCharacterCount $officeSshProbeCharacterCount | Out-Null
-Invoke-OfficeSshEchoBehaviorProbe `
-    -SshExecutablePath $script:sshExecutablePath `
-    -SshVersion ([string] $officeSshIdentity.Version) `
-    -Options $script:sshOptions `
-    -Destination $officeDestination `
-    -ProbeCharacterCount $officeSshProbeCharacterCount
 $remoteRoot = "D:\Codex\deploy\clock-countdown-$shortCommit-$runId"
 $remoteBytesProbe = {
     param([string] $RemotePath)

@@ -80,6 +80,162 @@ public sealed class PopupValidationContractResult
 public static class PopupValidationContractHarness
 {
     [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference[] MakePopupReferences(string assemblyPath, bool attach, bool clip)
+    {
+        var application = Assembly.LoadFrom(assemblyPath);
+        var lifecycle = application.GetType("MinminCountdown.PopupFocusLifecycle", true);
+        var trigger = new Button();
+        var canvas = new Grid();
+        canvas.Children.Add(trigger);
+        var initial = new Button { Content = "Synthetic note action" };
+        var surface = new Border { Child = initial };
+        var popup = new Popup { PlacementTarget = trigger, Child = surface };
+        application.GetType("MinminCountdown.NoteRowOverflowMenuBehavior", true)
+            .GetMethod("SetPopup", BindingFlags.Public | BindingFlags.Static)
+            .Invoke(null, new object[] { trigger, popup });
+        if (attach)
+        {
+            var attachMethod = lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static);
+            var arguments = new object[] { popup, trigger, new Func<IInputElement>(() => initial) };
+            attachMethod.Invoke(null, arguments);
+            attachMethod.Invoke(null, arguments);
+        }
+        if (clip)
+            lifecycle.GetMethod("ClipToCanvas", BindingFlags.Public | BindingFlags.Static)
+                .Invoke(null, new object[] { popup, canvas });
+        // Match discarded note menus: no explicit Detach and no menu open is needed.
+        // Every edge in the menu/trigger/canvas cycle must be collectible together.
+        return new[] { new WeakReference(popup), new WeakReference(trigger),
+            new WeakReference(surface), new WeakReference(canvas) };
+    }
+
+    public static object CheckPopupCollectibility(string assemblyPath)
+    {
+        const int samples = 64;
+        var plain = new List<WeakReference>();
+        var attached = new List<WeakReference>();
+        var clipped = new List<WeakReference>();
+        var combined = new List<WeakReference>();
+        for (int index = 0; index < samples; index++)
+        {
+            plain.AddRange(MakePopupReferences(assemblyPath, false, false));
+            attached.AddRange(MakePopupReferences(assemblyPath, true, false));
+            clipped.AddRange(MakePopupReferences(assemblyPath, false, true));
+            combined.AddRange(MakePopupReferences(assemblyPath, true, true));
+        }
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        return new { SamplesPerScenario = samples, ReferencesPerMenu = 4,
+            PlainRetained = plain.Count(reference => reference.IsAlive),
+            AttachedRetained = attached.Count(reference => reference.IsAlive),
+            ClippedRetained = clipped.Count(reference => reference.IsAlive),
+            CombinedRetained = combined.Count(reference => reference.IsAlive) };
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference[] CaptureNoteMenus(DependencyObject root, MethodInfo getPopup)
+    {
+        var references = new List<WeakReference>();
+        void Visit(DependencyObject item)
+        {
+            if (item is Button button && getPopup.Invoke(null, new object[] { button }) is Popup popup)
+            {
+                references.Add(new WeakReference(popup));
+                references.Add(new WeakReference(button));
+            }
+            for (int index = 0; index < VisualTreeHelper.GetChildrenCount(item); index++)
+                Visit(VisualTreeHelper.GetChild(item, index));
+        }
+        Visit(root);
+        return references.ToArray();
+    }
+
+    public static object CheckFloatingNoteWorkspaceCollectibility(string assemblyPath)
+    {
+        MotionValidationContractHarness.InitializeApplication(assemblyPath);
+        var application = Assembly.LoadFrom(assemblyPath);
+        var root = System.IO.Path.GetDirectoryName(assemblyPath);
+        var core = Assembly.LoadFrom(System.IO.Path.Combine(root, "MinminCountdown.Core.dll"));
+        Type CoreType(string name) => core.GetType("MinminCountdown.Core." + name, true);
+        Type AppType(string name) => application.GetType("MinminCountdown." + name, true);
+        var settingsType = CoreType("CountdownSettings");
+        var empty = settingsType.GetProperty("Empty").GetValue(null);
+        var notes = Array.CreateInstance(CoreType("NoteRecord"), 2);
+        for (int index = 0; index < notes.Length; index++)
+            notes.SetValue(Activator.CreateInstance(CoreType("NoteRecord"), new object[] {
+                Guid.NewGuid().ToString("N"), "Synthetic note " + index, "2032-02-03", false,
+                Array.Empty<string>(), Array.CreateInstance(CoreType("ReminderRule"), 0) }), index);
+        var settings = Activator.CreateInstance(settingsType, new object[] {
+            settingsType.GetProperty("Countdowns").GetValue(empty), notes,
+            settingsType.GetProperty("Tags").GetValue(empty),
+            settingsType.GetProperty("Preferences").GetValue(empty) });
+        var store = Activator.CreateInstance(CoreType("SettingsStore"), new object[] { null, null, null });
+        var fixturePath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(root),
+            "logs", "memory-fixtures", Guid.NewGuid().ToString("N"), "settings.json");
+        // The in-memory constructor neither loads nor saves settings. Never use
+        // DesktopWorkspace.Load here: this test must not access user data.
+        var session = Activator.CreateInstance(AppType("ApplicationSession"),
+            BindingFlags.NonPublic | BindingFlags.Instance, null, new object[] {
+                fixturePath, store, settings,
+                CoreType("SettingsSchema").GetField("CurrentVersion").GetValue(null), false }, null);
+        var workspace = Activator.CreateInstance(AppType("DesktopWorkspace"), new[] { session });
+        var calendar = (IDisposable)Activator.CreateInstance(AppType("HolidayCalendar"), new object[] { root });
+        var windowType = AppType("FloatingWindow");
+        var window = (Window)Activator.CreateInstance(windowType,
+            BindingFlags.NonPublic | BindingFlags.Instance, null,
+            new object[] { workspace, calendar, null, root, true }, null);
+        var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        var pump = AppType("WindowValidationInput").GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
+        var getPopup = AppType("NoteRowOverflowMenuBehavior").GetMethod("GetPopup");
+        var retired = new List<WeakReference>();
+        const int cycles = 64;
+        try
+        {
+            window.ShowInTaskbar = false;
+            window.Show();
+            var showWorkspace = windowType.GetMethod("ShowWorkspace", flags);
+            var notesWorkspace = Enum.Parse(showWorkspace.GetParameters()[0].ParameterType, "Notes");
+            var countdownsWorkspace = Enum.Parse(showWorkspace.GetParameters()[0].ParameterType, "Countdowns");
+            showWorkspace.Invoke(window, new[] { notesWorkspace });
+            pump.Invoke(null, new object[] { window.Dispatcher });
+            var rows = (DependencyObject)window.FindName("FloatingRows");
+            for (int index = 0; index < cycles; index++)
+            {
+                var batch = CaptureNoteMenus(rows, getPopup);
+                if (batch.Length != notes.Length * 2)
+                    throw new InvalidOperationException("Expected two live note menus.");
+                retired.AddRange(batch);
+                // Stable ticks intentionally reuse note rows. A real workspace
+                // switch retires the tree without editing or saving settings.
+                showWorkspace.Invoke(window, new[] { countdownsWorkspace });
+                pump.Invoke(null, new object[] { window.Dispatcher });
+                if (CaptureNoteMenus(rows, getPopup).Length != 0)
+                    throw new InvalidOperationException("Note menus remained after switching workspace.");
+                showWorkspace.Invoke(window, new[] { notesWorkspace });
+                pump.Invoke(null, new object[] { window.Dispatcher });
+            }
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                pump.Invoke(null, new object[] { window.Dispatcher });
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
+            var retained = retired.Count(reference => reference.IsAlive);
+            GC.KeepAlive(window);
+            return new { WorkspaceSwitchCycles = cycles, Notes = notes.Length,
+                ExpectedRetiredReferences = cycles * notes.Length * 2,
+                ObservedRetiredReferences = retired.Count, RetainedReferences = retained,
+                SettingsFileNotCreated = !System.IO.File.Exists(fixturePath) };
+        }
+        finally { window.Close(); calendar.Dispose(); }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference MakeToolTipReference(string assemblyPath, bool enableMotion)
     {
         var tooltip = new ToolTip { Content = "Dynamic tooltip", PlacementTarget = new Button() };
@@ -241,6 +397,9 @@ public static class PopupValidationContractHarness
             }
             lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
                 null, new object[] { popup, trigger, new Func<IInputElement>(() => initial) });
+            // Reattaching must retain the first focus callback and handlers.
+            lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
+                null, new object[] { popup, trigger, new Func<IInputElement>(() => outside) });
             KeyEventHandler recordEscape = (sender, args) =>
             {
                 if (args.Key == Key.Escape && args.Handled) handledEscapeCount++;
@@ -1508,7 +1667,17 @@ $results = @(
     }
 )
 $failures = [Collections.Generic.List[string]]::new()
+$popupCollectibility = [PopupValidationContractHarness]::CheckPopupCollectibility($resolvedAssembly)
+if ($popupCollectibility.PlainRetained -ne 0 -or $popupCollectibility.AttachedRetained -ne 0 -or
+    $popupCollectibility.ClippedRetained -ne 0 -or $popupCollectibility.CombinedRetained -ne 0) {
+    $failures.Add('丢弃的便签菜单、触发器和画布必须可回收；焦点注册与画布约束不能成为静态强引用根。')
+}
 $tooltipCollectibility = [PopupValidationContractHarness]::CheckToolTipCollectibility($resolvedAssembly)
+$floatingNoteCollectibility = [PopupValidationContractHarness]::CheckFloatingNoteWorkspaceCollectibility($resolvedAssembly)
+if ($floatingNoteCollectibility.ObservedRetiredReferences -ne $floatingNoteCollectibility.ExpectedRetiredReferences -or
+    $floatingNoteCollectibility.RetainedReferences -ne 0 -or -not $floatingNoteCollectibility.SettingsFileNotCreated) {
+    $failures.Add('真实悬浮窗连续切换工作区后，已替换的便签菜单及按钮必须全部可回收。')
+}
 if (-not ($tooltipCollectibility.PlainCollected -and $tooltipCollectibility.AnimatedCollected)) {
     $failures.Add('临时 ToolTip 及其动效监听器应可回收；普通 ToolTip 是 GC 正向对照。')
 }
@@ -1580,6 +1749,8 @@ if ($null -eq $trayMenu) {
     Results = $results
     CaptureComposite = $captureComposite
     ClosedPopupResults = $closedPopupResults
+    PopupCollectibility = $popupCollectibility
+    FloatingNoteWorkspaceCollectibility = $floatingNoteCollectibility
     ToolTipCollectibility = $tooltipCollectibility
     Motion = $motion
     TrayMenu = $trayMenu

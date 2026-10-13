@@ -1,0 +1,145 @@
+#requires -Version 7.0
+[CmdletBinding()]
+param([switch] $Json)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$utf8 = [Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8
+$repo = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $repo 'Countdown.Validation.psm1') -Force
+$root = Join-Path $repo ('logs/validation-diagnostics-test-' + [guid]::NewGuid().ToString('N'))
+[void][IO.Directory]::CreateDirectory($root)
+$pwsh = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
+$corePath = Join-Path $root 'Countdown.Core.Tests.ps1'
+[IO.File]::WriteAllText($corePath, @'
+[Console]::Error.WriteLine('正在执行原始查询')
+Write-Error '中文原始错误' -ErrorId 'Countdown.OriginalQuery' -ErrorAction Stop
+'@, $utf8)
+$failure = $null
+try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh | Out-Null }
+catch { $failure = $_ }
+if ($null -eq $failure) { throw '失败的子脚本不得返回成功。' }
+$child = $failure.Exception.Data['ChildErrorRecord']
+if ($null -eq $child -or $child.fullyQualifiedErrorId -notlike '*Countdown.OriginalQuery*' -or
+    $child.exceptionMessage -ne '中文原始错误' -or $child.scriptStackTrace -notlike '*Countdown.Core.Tests.ps1: line 2*' -or
+    [string]::IsNullOrWhiteSpace($child.positionMessage)) {
+    throw "子进程失败必须保留原始中文、FQID、脚本位置与调用栈。实际：$($failure.Exception.Message)"
+}
+$evidence = [string]$failure.Exception.Data['ValidationEvidenceDirectory']
+if (-not (Test-Path -LiteralPath (Join-Path $evidence 'stderr.log'))) { throw '失败后阶段日志必须保留。' }
+Import-Module (Join-Path $repo 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
+$receiptPath = Join-Path $root 'failure-receipt.json'
+$null = Write-CountdownInstallFailureReceipt -Path $receiptPath -Stage 'Core 回归' -ErrorRecord $failure `
+    -TransactionStarted $false -CommitState 'not-committed' -RollbackAttempted $false -RollbackSucceeded $false -PreservedUnmanagedLaunchers $false
+$receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+if ($receipt.fullyQualifiedErrorId -notlike '*Countdown.OriginalQuery*' -or
+    $receipt.scriptStackTrace -notlike '*Countdown.Core.Tests.ps1: line 2*') { throw '正式失败回执必须使用子进程原始错误，而非父执行器调用点。' }
+$assertions = 3
+foreach ($case in @(
+    @{ Source="'native stdout diagnostic'; exit 73"; Message='native stdout diagnostic' },
+    @{ Source=''; Message='未返回 JSON' },
+    @{ Source="'noise'"; Message='无效 JSON' }
+)) {
+    [IO.File]::WriteAllText($corePath, $case.Source, $utf8)
+    $failure = $null
+    try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh -EvidenceDirectory $root | Out-Null }
+    catch { $failure = $_ }
+    if ($null -eq $failure -or $failure.Exception.Message -notlike "*$($case.Message)*") { throw '无效子进程结果必须明确失败。' }
+    $statePath = Join-Path ([string]$failure.Exception.Data['ValidationEvidenceDirectory']) 'stage.json'
+    if ((Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json).Status -ne 'Failed') { throw '无效结果必须留下失败阶段。' }
+    $assertions++
+}
+
+# 套件会测试原生命令失败；脚本最终成功时，应与直接 pwsh -File 一样返回 0。
+[IO.File]::WriteAllText($corePath, @"
+& '$pwsh' -NoProfile -Command 'exit 42'
+'{"Passed":1,"Failed":0}'
+"@, $utf8)
+$failure = $null
+try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh -EvidenceDirectory $root | Out-Null }
+catch { $failure = $_ }
+if ($null -eq $failure -or $failure.Exception.Message -notlike '源码应用 Release 构建*') {
+    throw '成功脚本必须越过 Core；已处理的原生负例不得冒充脚本退出码。'
+}
+$assertions++
+
+# 子脚本写小段日志后等待释放；在释放前读取文件可证明不是退出后才落盘。
+$release = Join-Path $root 'release'
+[IO.File]::WriteAllText($corePath, @"
+[Console]::Error.WriteLine('阶段已开始')
+`$deadline = [datetime]::UtcNow.AddSeconds(15)
+while (-not (Test-Path -LiteralPath '$release')) {
+    if ([datetime]::UtcNow -gt `$deadline) { exit 99 }
+    Start-Sleep -Milliseconds 50
+}
+exit 17
+"@, $utf8)
+$liveRoot = Join-Path $root 'live'
+$driver = Join-Path $root 'driver.ps1'
+[IO.File]::WriteAllText($driver, @"
+Import-Module '$repo/Countdown.Validation.psm1' -Force
+try { Invoke-CountdownValidationSuite -Root '$root' -PowerShell7Path '$pwsh' -DotnetPath '$pwsh' -EvidenceDirectory '$liveRoot' | Out-Null }
+catch { exit 1 }
+"@, $utf8)
+$start = [Diagnostics.ProcessStartInfo]::new($pwsh)
+$start.UseShellExecute=$false; $start.CreateNoWindow=$true
+$start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
+foreach ($arg in @('-NoLogo','-NoProfile','-File',$driver)) { $start.ArgumentList.Add($arg) }
+$process = [Diagnostics.Process]::Start($start)
+$outTask = $process.StandardOutput.ReadToEndAsync()
+$errTask = $process.StandardError.ReadToEndAsync()
+$observed = $false
+try {
+    $deadline = [datetime]::UtcNow.AddSeconds(10)
+    do {
+        $logs = @(Get-ChildItem -LiteralPath $liveRoot -Filter stderr.log -Recurse -ErrorAction SilentlyContinue)
+        foreach ($log in $logs) {
+            $stream = [IO.FileStream]::new($log.FullName,'Open','Read','ReadWrite')
+            $reader = [IO.StreamReader]::new($stream, $utf8)
+            try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            if ($text.Contains('阶段已开始')) { $observed = -not $process.HasExited }
+        }
+        if (-not $observed) { Start-Sleep -Milliseconds 50 }
+    } while (-not $observed -and [datetime]::UtcNow -lt $deadline -and -not $process.HasExited)
+    if (-not $observed) { throw '子进程运行期间必须可读取小段 UTF-8 阶段日志。' }
+    [IO.File]::WriteAllText($release, '', $utf8)
+    if (-not $process.WaitForExit(5000) -or $process.ExitCode -ne 1) { throw '子进程非零必须传播。' }
+    [void]$outTask.GetAwaiter().GetResult(); [void]$errTask.GetAwaiter().GetResult()
+    $assertions++
+}
+finally {
+    if (-not $process.HasExited) { $process.Kill($true); [void]$process.WaitForExit(5000) }
+    $process.Dispose()
+}
+# 候选根是已受发布门控制的外部输入，与既有 suite fixture 使用同一 seam。
+$candidate = Join-Path $root 'candidate'
+[void][IO.Directory]::CreateDirectory((Join-Path $candidate 'tools'))
+[void][IO.Directory]::CreateDirectory((Join-Path $candidate 'app'))
+$dependencies = Join-Path $candidate 'Countdown.DeploymentPreflight.psm1'
+[IO.File]::WriteAllText($dependencies, @'
+function Invoke-CountdownDeploymentPreflight { param($OutputPath) throw 'Dependency fixture failure' }
+Export-ModuleMember -Function Invoke-CountdownDeploymentPreflight
+'@, $utf8)
+$failure = $null
+try { Invoke-CountdownCandidatePreflight -Root $candidate -PowerShell7Path $pwsh -EvidenceDirectory (Join-Path $root 'candidate-evidence') -OfficeSession }
+catch { $failure = $_ }
+if ($null -eq $failure -or $failure.Exception.Message -ne 'Dependency fixture failure') { throw '依赖失败必须先于候选 DLL 和窗口读取。' }
+$assertions++
+[IO.File]::WriteAllText($dependencies, @'
+function Invoke-CountdownDeploymentPreflight { param($OutputPath) [pscustomobject]@{Success=$true} }
+Export-ModuleMember -Function Invoke-CountdownDeploymentPreflight
+'@, $utf8)
+[IO.File]::WriteAllText((Join-Path $candidate 'app/MinminCountdown.dll'), 'synthetic candidate', $utf8)
+[IO.File]::WriteAllText((Join-Path $candidate 'tools/Test-CountdownWindowPreflight.ps1'), @'
+param($AppPath, $ExpectedDllSha256)
+if ((Get-FileHash (Join-Path $AppPath 'MinminCountdown.dll') -Algorithm SHA256).Hash -ne $ExpectedDllSha256) { exit 88 }
+if ($env:MINMIN_SUITE_ALLOW_UNISOLATED -ne '1') { exit 89 }
+'{"Passed":2,"Failed":0}'
+'@, $utf8)
+$priorIsolation = $env:MINMIN_SUITE_ALLOW_UNISOLATED
+$preflightOutput = @(Invoke-CountdownCandidatePreflight -Root $candidate -PowerShell7Path $pwsh -EvidenceDirectory (Join-Path $root 'candidate-evidence') -OfficeSession)
+if ($preflightOutput.Count -ne 0 -or $env:MINMIN_SUITE_ALLOW_UNISOLATED -cne $priorIsolation) { throw '预检不得污染父环境或部署 stdout。' }
+if ((Get-Content (Join-Path $root 'candidate-evidence/window.json') -Raw | ConvertFrom-Json).Passed -ne 2) { throw '窗口结果必须持久化。' }
+$assertions++
+$result = [pscustomobject]@{ Valid=$true; Passed=$assertions; Failed=0; EvidenceRoot=$root }
+if ($Json) { $result | ConvertTo-Json -Compress } else { $result }

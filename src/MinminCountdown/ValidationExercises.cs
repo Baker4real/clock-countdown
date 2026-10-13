@@ -6891,8 +6891,40 @@ internal static class ValidationExercises
     // 纵向滚动完整可见；倒计时前三行逐行滚动可达完整可见；内容不缩放。用户调整
     // 的720×560 位置尺寸在隐藏后再显示时保留；越界显示与 WM_DISPLAYCHANGE 工作区
     // 变化时夹回所在显示器工作区。全程经注入工作区，不依赖真实显示拓扑。
-    public static bool RunMainWindowWorkAreaFitBehavior()
+    public static bool RunMainWindowWorkAreaFitBehavior() =>
+        RunMainWindowWorkAreaFitBehavior(AppContext.BaseDirectory);
+
+    internal static bool RunMainWindowWorkAreaFitBehavior(string assetRoot)
     {
+        // The injected monitor must not depend on the SSH desktop's 1024x768
+        // native tracking limit. Verify both the constrained and roomy fixtures.
+        foreach (var capacity in new[] { new Size(1044, 788), new Size(3840, 2160) })
+        {
+            var probe = new Window { Width = 1165, Height = 1008, WindowStyle = WindowStyle.None };
+            PrepareOffscreenValidationWindow(probe);
+            using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(probe, capacity);
+            try
+            {
+                var preparedHandle = new WindowInteropHelper(probe).Handle;
+                Must(preparedHandle != IntPtr.Zero && !probe.IsVisible,
+                    "原生尺寸夹具应在首次显示前初始化不可见 HWND。");
+                probe.Show();
+                Must(new WindowInteropHelper(probe).Handle == preparedHandle,
+                    "首次显示应复用已设置尺寸容量的 HWND。");
+                probe.Width = 1165;
+                probe.Height = 1008;
+                WindowValidationInput.Pump(probe.Dispatcher);
+                Must(
+                    Math.Abs(probe.ActualWidth - Math.Min(1165, capacity.Width)) <= 0.5 &&
+                    Math.Abs(probe.ActualHeight - Math.Min(1008, capacity.Height)) <= 0.5,
+                    $"原生尺寸夹具未生效：容量 {capacity}，实际 {probe.ActualWidth}x{probe.ActualHeight}。");
+            }
+            finally
+            {
+                probe.Close();
+            }
+        }
+
         var settingsPath = Path.Combine(
             Path.GetTempPath(),
             $"MinminCountdown-main-workarea-fit-{Guid.NewGuid():N}.settings.json");
@@ -6912,7 +6944,7 @@ internal static class ValidationExercises
                     Array.Empty<ReminderRule>()));
             }
 
-            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            using var calendar = new HolidayCalendar(assetRoot);
             var logger = new DiagnosticLogger(diagnosticPath);
             var workAreaCases = new[]
             {
@@ -6930,8 +6962,9 @@ internal static class ValidationExercises
                 Must(
                     Math.Abs(MonitorWorkAreaResolver.ResolveForScreenRect(new Rect(100, 100, 200, 200), 1, 1).DpiScaleX - workAreaCase.Dpi) <= 0.001,
                     "注入的工作区解析应按注入值返回 DIP 矩形与 DPI。");
-                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                var main = new MainWindow(workspace, calendar, logger, assetRoot);
                 PrepareOffscreenValidationWindow(main);
+                using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
                 try
                 {
                     main.Show();
@@ -7022,8 +7055,9 @@ internal static class ValidationExercises
             using (var workAreaOverride = MonitorWorkAreaResolver.OverrideForValidation(
                        new MonitorWorkArea(new Rect(0, 0, 1920, 1032), 1, 1)))
             {
-                var main = new MainWindow(workspace, calendar, logger, AppContext.BaseDirectory);
+                var main = new MainWindow(workspace, calendar, logger, assetRoot);
                 PrepareOffscreenValidationWindow(main);
+                using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
                 try
                 {
                     main.Show();
@@ -7198,14 +7232,96 @@ internal static class ValidationExercises
             .ToInt32();
     }
 
+    internal static IDisposable OverrideWindowTrackingCapacityForValidation(Window window, Size capacity) =>
+        NativeWorkAreaProbe.OverrideTrackingCapacity(window, capacity);
+
     private static class NativeWorkAreaProbe
     {
+        private const int WmGetMinMaxInfo = 0x0024;
         internal const int WmNcHitTest = 0x0084;
         internal const int WmDisplayChange = 0x007E;
         internal const int WmEnterSizeMove = 0x0231;
         internal const int WmExitSizeMove = 0x0232;
         internal const int HitClient = 1;
         internal const int HitCaption = 2;
+
+        internal static IDisposable OverrideTrackingCapacity(Window window, Size capacity) =>
+            new TrackingCapacityScope(window, capacity);
+
+        private sealed class TrackingCapacityScope : IDisposable
+        {
+            private readonly Window _window;
+            private readonly Size _capacity;
+            private HwndSource? _source;
+
+            internal TrackingCapacityScope(Window window, Size capacity)
+            {
+                _window = window;
+                _capacity = capacity;
+                window.SourceInitialized += OnSourceInitialized;
+                try
+                {
+                    // Show raises visibility before creating its HWND. Initialize
+                    // the native limits before business visibility handlers run.
+                    new WindowInteropHelper(window).EnsureHandle();
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
+            }
+
+            private void OnSourceInitialized(object? sender, EventArgs args)
+            {
+                var handle = new WindowInteropHelper(_window).Handle;
+                _source = HwndSource.FromHwnd(handle);
+                _source.AddHook(ApplyCapacity);
+                // WPF cached the real desktop limit during HWND creation, before
+                // SourceInitialized. Feed the fixture limit through its normal
+                // WM_GETMINMAXINFO path before validation applies its sizes.
+                var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<MinMaxInfo>());
+                try
+                {
+                    Marshal.StructureToPtr(new MinMaxInfo(), pointer, false);
+                    SendMessage(handle, WmGetMinMaxInfo, IntPtr.Zero, pointer);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(pointer);
+                }
+            }
+
+            private IntPtr ApplyCapacity(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+            {
+                if (message == WmGetMinMaxInfo)
+                {
+                    var dpi = VisualTreeHelper.GetDpi(_window);
+                    var limits = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+                    limits.MaxTrackX = (int)Math.Ceiling(_capacity.Width * dpi.DpiScaleX);
+                    limits.MaxTrackY = (int)Math.Ceiling(_capacity.Height * dpi.DpiScaleY);
+                    Marshal.StructureToPtr(limits, lParam, false);
+                    // Leave unhandled: WPF must consume the injected limits.
+                }
+                return IntPtr.Zero;
+            }
+
+            public void Dispose()
+            {
+                _window.SourceInitialized -= OnSourceInitialized;
+                _source?.RemoveHook(ApplyCapacity);
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MinMaxInfo
+        {
+            public int ReservedX, ReservedY;
+            public int MaxSizeX, MaxSizeY;
+            public int MaxPositionX, MaxPositionY;
+            public int MinTrackX, MinTrackY;
+            public int MaxTrackX, MaxTrackY;
+        }
 
         [DllImport("user32.dll", ExactSpelling = true, EntryPoint = "SendMessageW")]
         internal static extern IntPtr SendMessage(

@@ -8,7 +8,7 @@ $childOut = Join-Path $env:TEMP 'prio-child.txt'
 $child = Start-Process -FilePath pwsh -ArgumentList @(
     '-NoProfile', '-Command',
     '[System.Diagnostics.Process]::GetCurrentProcess().PriorityClass.ToString()'
-) -RedirectStandardOutput $childOut -PassThru
+) -RedirectStandardOutput $childOut -NoNewWindow -PassThru
 $child.WaitForExit()
 $childPriority = (Get-Content -LiteralPath $childOut -Raw).Trim()
 Write-Output "probe1-parent: BelowNormal"

@@ -528,6 +528,14 @@ public sealed class MotionFrameTiming
     public double RenderingTimeMilliseconds { get; set; }
 }
 
+public sealed class MotionStallEvidence
+{
+    public string Kind { get; set; }
+    public string Phase { get; set; }
+    public double GapMilliseconds { get; set; }
+    public double ThresholdMilliseconds { get; set; }
+}
+
 public sealed class MotionScenarioResult
 {
     public string Scenario { get; set; }
@@ -538,6 +546,8 @@ public sealed class MotionScenarioResult
     public List<MotionSamplingWindow> SamplingWindows { get; } = new List<MotionSamplingWindow>();
     public Dictionary<string, object> InputChecks { get; } = new Dictionary<string, object>();
     public List<string> Failures { get; } = new List<string>();
+    public MotionStallEvidence Stall { get; set; }
+    public List<MotionScenarioResult> StarvedAttempts { get; } = new List<MotionScenarioResult>();
     public bool SystemPreferenceUnchanged { get; set; }
     public bool PreferenceRestored { get; set; }
     public bool ResourcesRestored { get; set; }
@@ -556,6 +566,14 @@ public static class MotionValidationContractHarness
         "MotionPopupExitDuration", "MotionIndicatorDuration", "MotionCountdownDuration"
     };
     private static readonly double[] EnabledMilliseconds = { 120, 100, 140, 90, 160, 90 };
+    // Quartic ease-out stays inside the 10%-90% sample band for
+    // 0.9^(1/4) - 0.1^(1/4) of a transition: about 37 ms of the shortest 90 ms
+    // token. One- or two-tick frame gaps cannot skip that band; a longer stall can.
+    private static readonly double StallGapMilliseconds =
+        EnabledMilliseconds.Min() * (Math.Pow(0.9, 0.25) - Math.Pow(0.1, 0.25));
+    private const int MaxStallRetriesPerScenario = 2;
+    private const int MaxStallRetriesPerRun = 4;
+    private const int InjectedStallMilliseconds = 150;
     private static readonly string[] ResourceKeys = DurationKeys.Concat(
         new[] { "MotionEaseOut", "MotionCubicEaseOut" }).ToArray();
     private static Assembly _assembly;
@@ -810,8 +828,58 @@ public static class MotionValidationContractHarness
             return observed;
         }
         Observe(result, phase + "-unobserved", values, animated, isOpen);
-        throw new InvalidOperationException(phase + "：300 ms 内未取得所需真实样本；renderedFrames=" +
-            sampling.FrameCount + "；不把终态或缺帧当通过。");
+        throw Failure(phase + "：300 ms 内未取得所需真实样本；renderedFrames=" +
+            sampling.FrameCount + "；不把终态或缺帧当通过。", SamplingGap(sampling));
+    }
+
+    // Longest stretch in which a window could not see the transition: Stopwatch
+    // time from the window start, between distinct rendered frames and up to the
+    // deadline, or frame-clock advance between frames. The first callback can
+    // carry a stale RenderingTime, so its frame-clock step is not counted.
+    private static double LongestFrameGap(MotionSamplingWindow sampling)
+    {
+        double longest = 0, entered = 0;
+        double? rendering = null;
+        var frames = 0;
+        foreach (var callback in sampling.CallbackTimes)
+        {
+            if (callback.EnteredMilliseconds > DeadlineMilliseconds) break;
+            if (callback.RenderingTimeMilliseconds == rendering) continue;
+            longest = Math.Max(longest, callback.EnteredMilliseconds - entered);
+            if (++frames > 2) longest = Math.Max(longest, callback.RenderingTimeMilliseconds - rendering.Value);
+            entered = callback.EnteredMilliseconds;
+            rendering = callback.RenderingTimeMilliseconds;
+        }
+        return Math.Max(longest, Math.Min(sampling.ElapsedMilliseconds, DeadlineMilliseconds) - entered);
+    }
+
+    private static MotionStallEvidence SamplingGap(MotionSamplingWindow sampling)
+    {
+        var gap = LongestFrameGap(sampling);
+        return gap < StallGapMilliseconds ? null : new MotionStallEvidence {
+            Kind = "sampling-gap", Phase = sampling.Phase,
+            GapMilliseconds = gap, ThresholdMilliseconds = StallGapMilliseconds
+        };
+    }
+
+    // A first frame no earlier than the whole transition cannot show continuity
+    // either way; the stall starved the verdict instead of refuting it.
+    private static MotionStallEvidence LateFirstFrame(MotionObservation before,
+        MotionObservation after, double durationMs)
+    {
+        var elapsed = after.ElapsedMilliseconds - before.ElapsedMilliseconds;
+        return elapsed < durationMs ? null : new MotionStallEvidence {
+            Kind = "late-first-frame", Phase = after.Phase,
+            GapMilliseconds = elapsed, ThresholdMilliseconds = durationMs
+        };
+    }
+
+    private static InvalidOperationException Failure(string message, MotionStallEvidence stall) =>
+        stall == null ? new InvalidOperationException(message) : new MotionEvidenceStarvedException(message, stall);
+
+    private static void Require(bool condition, string message, MotionStallEvidence stall)
+    {
+        if (!condition) throw Failure(message, stall);
     }
 
     private static bool Near(double[] actual, double[] expected, double tolerance) =>
@@ -926,7 +994,11 @@ public static class MotionValidationContractHarness
             result.ExpectedExceptionObserved = expectedException;
             if (!expectedException) result.Failures.Add("意外夹具异常。");
         }
-        catch (Exception error) { result.Failures.Add(error.GetType().Name + ": " + error.Message); }
+        catch (Exception error)
+        {
+            result.Failures.Add(error.GetType().Name + ": " + error.Message);
+            result.Stall = (error as MotionEvidenceStarvedException)?.Stall;
+        }
         finally
         {
             try { scope?.Dispose(); }
@@ -944,7 +1016,35 @@ public static class MotionValidationContractHarness
         return result;
     }
 
+    // Rerun a case only when its sole failure was a measured stall that left the
+    // required real sample unobservable. Every attempt stays in the evidence, and
+    // the verdict still comes from one complete attempt.
+    private static MotionScenarioResult RunCaseWithStallRetry(string scenario, bool enabled,
+        Action<MotionScenarioResult> exercise, ref int retriesLeft)
+    {
+        var result = RunCase(scenario, enabled, exercise);
+        var starved = new List<MotionScenarioResult>();
+        while (StarvedOnly(result) && starved.Count < MaxStallRetriesPerScenario && retriesLeft > 0)
+        {
+            retriesLeft--;
+            starved.Add(result);
+            result = RunCase(scenario, enabled, exercise);
+        }
+        result.StarvedAttempts.AddRange(starved);
+        return result;
+    }
+
+    private static bool StarvedOnly(MotionScenarioResult result) =>
+        result.Stall != null && result.Failures.Count == 1;
+
     private sealed class ExpectedFixtureException : Exception { }
+
+    private sealed class MotionEvidenceStarvedException : InvalidOperationException
+    {
+        public MotionEvidenceStarvedException(string message, MotionStallEvidence stall) : base(message) =>
+            Stall = stall;
+        public MotionStallEvidence Stall { get; }
+    }
 
     private static double[] ColorValues(Border surface)
     {
@@ -1012,7 +1112,8 @@ public static class MotionValidationContractHarness
                 input(false, false); commit();
                 Observe(result, "hover-reverse-committed", color, colorClock);
                 var after = ObserveFrame(result, "hover-reverse-first-frame", surface, color, colorClock);
-                Require(Continues(before, after, normal, 120, 1), "hover 反转首帧未从当前颜色续接。");
+                Require(Continues(before, after, normal, 120, 1), "hover 反转首帧未从当前颜色续接。",
+                    LateFirstFrame(before, after, 120));
                 WaitFor(result, "hover-reverse-middle", surface, color, colorClock,
                     value => Intermediate(before.Values, value, normal), firstFrame: after);
                 input(true, true); commit();
@@ -1023,14 +1124,14 @@ public static class MotionValidationContractHarness
                 Observe(result, "release-committed", scale, scaleClock);
                 after = ObserveFrame(result, "release-first-frame", surface, scale, scaleClock);
                 Require(Continues(before, after, new[] { 1.0, 1.0 }, 100, 0.0002),
-                    "press 中断释放未从当前缩放续接。");
+                    "press 中断释放未从当前缩放续接。", LateFirstFrame(before, after, 100));
                 WaitFor(result, "release-middle", surface, scale, scaleClock,
                     value => Intermediate(before.Values, value, new[] { 1.0, 1.0 }), firstFrame: after);
                 before = Observe(result, "repress-before", scale, scaleClock);
                 input(true, true); commit();
                 after = ObserveFrame(result, "repress-first-frame", surface, scale, scaleClock);
                 Require(Continues(before, after, new[] { 0.97, 0.97 }, 100, 0.0002),
-                    "连续 press 反转未从当前缩放续接。");
+                    "连续 press 反转未从当前缩放续接。", LateFirstFrame(before, after, 100));
                 WaitFor(result, "press-final", surface, scale, scaleClock,
                     value => Near(value, new[] { 0.97, 0.97 }, 0.00001));
                 input(false, false); commit();
@@ -1162,7 +1263,7 @@ public static class MotionValidationContractHarness
                 category + " 退出期间把宿主关闭请求回写成了打开。");
             var after = ObserveFrame(result, category + "-close-first-frame", visual, values, animated, isOpen);
             Require(ContinuesFromSnapshot(before, immediate, after, new[] { 0.0, 4.0 }, 90, 0.002),
-                category + " 打开中途关闭未从当前值续接。");
+                category + " 打开中途关闭未从当前值续接。", LateFirstFrame(before, after, 90));
             WaitFor(result, category + "-closing-middle", visual, values, animated,
                 value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen, after);
             before = Observe(result, category + "-reopen-before", values, animated, isOpen);
@@ -1170,7 +1271,7 @@ public static class MotionValidationContractHarness
             immediate = Observe(result, category + "-reopen-committed", values, animated, isOpen);
             after = ObserveFrame(result, category + "-reopen-first-frame", visual, values, animated, isOpen);
             Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0, 0.0 }, 140, 0.002),
-                category + " 退出中途重开未从当前值续接。");
+                category + " 退出中途重开未从当前值续接。", LateFirstFrame(before, after, 140));
             WaitFor(result, category + "-reopening-middle", visual, values, animated,
                 value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen, after);
             WaitFor(result, category + "-reopen-final", visual, values, animated,
@@ -1184,7 +1285,7 @@ public static class MotionValidationContractHarness
                     category + " 原生关闭没有分离宿主请求与仍可见的退出表面。");
                 after = ObserveFrame(result, category + "-native-close-first-frame", visual, values, animated, isOpen);
                 Require(ContinuesFromSnapshot(before, immediate, after, new[] { 0.0, 4.0 }, 90, 0.002),
-                    category + " 原生关闭没有从当前值退出。");
+                    category + " 原生关闭没有从当前值退出。", LateFirstFrame(before, after, 90));
                 WaitFor(result, category + "-native-closing-middle", visual, values, animated,
                     value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen, after);
                 before = Observe(result, category + "-native-reopen-before", values, animated, isOpen);
@@ -1192,7 +1293,7 @@ public static class MotionValidationContractHarness
                 immediate = Observe(result, category + "-native-reopen-committed", values, animated, isOpen);
                 after = ObserveFrame(result, category + "-native-reopen-first-frame", visual, values, animated, isOpen);
                 Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0, 0.0 }, 140, 0.002),
-                    category + " 原生退出中途重开没有从当前值续接。");
+                    category + " 原生退出中途重开没有从当前值续接。", LateFirstFrame(before, after, 140));
                 WaitFor(result, category + "-native-reopening-middle", visual, values, animated,
                     value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen, after);
                 WaitFor(result, category + "-native-reopen-final", visual, values, animated,
@@ -1527,7 +1628,7 @@ public static class MotionValidationContractHarness
             Observe(result, "indicator-reverse-committed", values, animated);
             var after = ObserveFrame(result, "indicator-reverse-first-frame", indicator, values, animated);
             Require(Continues(before, after, new[] { 0.0, 80.0 }, 160, 0.02),
-                "指示器反转未沿当前几何继续。");
+                "指示器反转未沿当前几何继续。", LateFirstFrame(before, after, 160));
             WaitFor(result, "indicator-reverse-middle", indicator, values, animated,
                 value => Intermediate(before.Values, value, new[] { 0.0, 80.0 }), firstFrame: after);
             move(right);
@@ -1571,7 +1672,7 @@ public static class MotionValidationContractHarness
             var immediate = Observe(result, "digit-repeat-committed", values, animated);
             var after = ObserveFrame(result, "digit-repeat-first-frame", text, values, animated);
             Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0 }, 90, 0.002),
-                "秒位中断把 opacity 重置到 0.6 或终点。");
+                "秒位中断把 opacity 重置到 0.6 或终点。", LateFirstFrame(before, after, 90));
             WaitFor(result, "digit-repeat-middle", text, values, animated,
                 value => Intermediate(before.Values, value, new[] { 1.0 }), firstFrame: after);
             WaitFor(result, "digit-final", text, values, animated,
@@ -1580,25 +1681,117 @@ public static class MotionValidationContractHarness
         finally { window?.Close(); Pump(); }
     }
 
+    // Proves the rerun path on the production digit clock: the first attempt
+    // blocks the dispatcher at its first frame for longer than the whole 90 ms
+    // transition, so only a real rerun can still observe the 10%-90% band.
+    private static void InjectedStall(MotionScenarioResult result, bool stall)
+    {
+        var text = new TextBlock { Text = "59", FontSize = 26, Width = 80, Height = 42 };
+        Window window = null;
+        try
+        {
+            window = ShowFixture(text);
+            Func<double[]> values = () => new[] { text.Opacity };
+            Func<bool> animated = () => Animated(text, UIElement.OpacityProperty);
+            Call("MotionBehavior", "FadeCountdownDigit", text);
+            Observe(result, "injected-stall-committed", values, animated);
+            var frames = 0;
+            WaitFor(result, "injected-stall-middle", text, values, animated, value => {
+                if (stall && frames++ == 0)
+                {
+                    System.Threading.Thread.Sleep(InjectedStallMilliseconds);
+                    return false;
+                }
+                return Intermediate(new[] { 0.6 }, value, new[] { 1.0 });
+            });
+        }
+        finally { window?.Close(); Pump(); }
+    }
+
+    private static MotionSamplingWindow SyntheticWindow(IEnumerable<int> ticks,
+        Func<int, double> entered, Func<int, double> rendering)
+    {
+        var sampling = new MotionSamplingWindow { Phase = "synthetic", ElapsedMilliseconds = 300.4 };
+        foreach (var tick in ticks)
+            sampling.CallbackTimes.Add(new MotionFrameTiming {
+                EnteredMilliseconds = entered(tick), CompletedMilliseconds = entered(tick),
+                RenderingTimeMilliseconds = rendering(tick)
+            });
+        return sampling;
+    }
+
     public static object Run(string assemblyPath)
     {
         InitializeApplication(assemblyPath);
         var systemBefore = SystemParameters.ClientAreaAnimation;
         var results = new List<MotionScenarioResult>();
+        var stallRetriesLeft = MaxStallRetriesPerRun;
         foreach (var enabled in new[] { false, true })
         {
-            results.Add(RunCase("button-hover-press", enabled, Buttons));
+            results.Add(RunCaseWithStallRetry("button-hover-press", enabled, Buttons, ref stallRetriesLeft));
             foreach (var category in new[] { "calendar", "combobox", "tags", "tooltip" })
-                results.Add(RunCase("popup-" + category, enabled, result => ExercisePopupMotion(result, category)));
-            results.Add(RunCase("segment-indicator", enabled, Indicator));
-            results.Add(RunCase("countdown-digit", enabled, Digit));
+                results.Add(RunCaseWithStallRetry("popup-" + category, enabled,
+                    result => ExercisePopupMotion(result, category), ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("segment-indicator", enabled, Indicator, ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("countdown-digit", enabled, Digit, ref stallRetriesLeft));
         }
-        results.Add(RunCase("datepicker-text-interrupted-input", true,
-            result => DatePickerInterruptedInput(result, true)));
-        results.Add(RunCase("datepicker-arrow-interrupted-input", true,
-            result => DatePickerInterruptedInput(result, false)));
+        results.Add(RunCaseWithStallRetry("datepicker-text-interrupted-input", true,
+            result => DatePickerInterruptedInput(result, true), ref stallRetriesLeft));
+        results.Add(RunCaseWithStallRetry("datepicker-arrow-interrupted-input", true,
+            result => DatePickerInterruptedInput(result, false), ref stallRetriesLeft));
         results.Add(RunCase("override-restoration-after-exception", false,
             result => { throw new ExpectedFixtureException(); }, true));
+        var injectedAttempts = 0;
+        var injectionRetriesLeft = MaxStallRetriesPerScenario;
+        var injection = RunCaseWithStallRetry("stall-retry-injection", true,
+            result => InjectedStall(result, ++injectedAttempts == 1), ref injectionRetriesLeft);
+        results.Add(injection);
+        var injectedStallRerun = injection.Passed && injection.StarvedAttempts.Count > 0 &&
+            injection.StarvedAttempts[0].Stall.Kind == "sampling-gap";
+        var syntheticStall = new MotionStallEvidence { Kind = "synthetic", Phase = "synthetic" };
+        Func<MotionStallEvidence, int, MotionScenarioResult> failed = (stall, failures) => {
+            var result = new MotionScenarioResult { Scenario = "synthetic", Stall = stall };
+            for (var index = 0; index < failures; index++) result.Failures.Add("synthetic");
+            return result;
+        };
+        var perScenarioBudget = MaxStallRetriesPerRun;
+        var perScenarioCapped = RunCaseWithStallRetry("stall-retry-scenario-cap", true,
+            result => { throw Failure("synthetic starved sample", syntheticStall); }, ref perScenarioBudget);
+        var perRunBudget = 1;
+        var perRunCapped = RunCaseWithStallRetry("stall-retry-run-cap", true,
+            result => { throw Failure("synthetic starved sample", syntheticStall); }, ref perRunBudget);
+        var stallControls = new Dictionary<string, bool> {
+            // CI 38334714613 calendar-opening-middle: a stale first frame clock
+            // (+50 ms) with regular callbacks still observed the band.
+            ["stale-first-frame-clock-not-stall"] = SamplingGap(SyntheticWindow(
+                Enumerable.Range(0, 19).Where(tick => tick != 9),
+                tick => tick == 0 ? 0.4 : 4 + 15.625 * tick,
+                tick => tick == 0 ? 9956.7 : 9991.2 + 15.625 * tick)) == null,
+            // CI 38281951585 digit-middle: no callback for 50.9 ms after the first one.
+            ["callback-gap-stall"] = SamplingGap(SyntheticWindow(Enumerable.Range(0, 17),
+                tick => tick == 0 ? 0.12 : 51.05 + 15.625 * (tick - 1),
+                tick => tick == 0 ? 20607.95 : 20654.82 + 15.625 * (tick - 1)))?.Kind == "sampling-gap",
+            ["frame-clock-jump-stall"] = SamplingGap(SyntheticWindow(Enumerable.Range(0, 19),
+                tick => 0.3 + 15.625 * tick,
+                tick => 5000 + 15.625 * tick + (tick >= 6 ? 31.25 : 0))) != null,
+            ["no-frame-stall"] = SamplingGap(SyntheticWindow(Enumerable.Empty<int>(),
+                tick => 0, tick => 0)) != null,
+            // CI 38340245943 attempt 2 hover: first reversed frame 143.8 ms later.
+            ["late-first-frame-stall"] = LateFirstFrame(
+                new MotionObservation { ElapsedMilliseconds = 36.81 },
+                new MotionObservation { ElapsedMilliseconds = 180.60 }, 120)?.Kind == "late-first-frame",
+            ["timely-first-frame-not-stall"] = LateFirstFrame(
+                new MotionObservation { ElapsedMilliseconds = 10 },
+                new MotionObservation { ElapsedMilliseconds = 99.9 }, 90) == null,
+            ["sole-stall-retried"] = StarvedOnly(failed(syntheticStall, 1)),
+            ["stall-with-other-failure-not-retried"] = !StarvedOnly(failed(syntheticStall, 2)),
+            ["failure-without-stall-not-retried"] = !StarvedOnly(failed(null, 1)),
+            ["retries-capped-per-scenario"] = !perScenarioCapped.Passed &&
+                perScenarioCapped.StarvedAttempts.Count == MaxStallRetriesPerScenario &&
+                perScenarioBudget == MaxStallRetriesPerRun - MaxStallRetriesPerScenario,
+            ["retries-capped-per-run"] = !perRunCapped.Passed &&
+                perRunCapped.StarvedAttempts.Count == 1 && perRunBudget == 0
+        };
         var before = new MotionObservation { ElapsedMilliseconds = 10, Values = new[] { 0.65 } };
         var committed = new MotionObservation { ElapsedMilliseconds = 10.2, Values = new[] { 0.65 } };
         var firstFrame = new MotionObservation {
@@ -1654,8 +1847,17 @@ public static class MotionValidationContractHarness
             Results = results,
             SnapshotClockAdvanceAccepted = snapshotClockAdvanceAccepted,
             NegativeControls = negatives,
+            StallRetry = new {
+                GapThresholdMilliseconds = StallGapMilliseconds,
+                MaxRetriesPerScenario = MaxStallRetriesPerScenario,
+                MaxRetriesPerRun = MaxStallRetriesPerRun,
+                RetriesUsed = MaxStallRetriesPerRun - stallRetriesLeft,
+                InjectedStallRerun = injectedStallRerun,
+                Controls = stallControls
+            },
             Passed = startupAbsent && !_applicationExitObserved && systemUnchanged && results.All(result => result.Passed) &&
-                snapshotClockAdvanceAccepted && negatives.Values.All(value => value)
+                snapshotClockAdvanceAccepted && negatives.Values.All(value => value) &&
+                injectedStallRerun && stallControls.Values.All(value => value)
         };
     }
 }
@@ -1702,7 +1904,7 @@ if (-not ($captureComposite.StraightAlphaMatches -and $captureComposite.Premulti
 }
 $motion = [MotionValidationContractHarness]::Run($resolvedAssembly)
 if (-not $motion.Passed) {
-    $failures.Add('生产 WPF 动效模式、连续中断、负例或作用域恢复未通过；详见 Motion.Results。')
+    $failures.Add('生产 WPF 动效模式、连续中断、负例、作用域恢复或卡顿重跑自检未通过；详见 Motion.Results 与 Motion.StallRetry。')
 }
 foreach ($result in $results) {
     if ($result.HandledEscapeCount -lt 1) {

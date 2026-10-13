@@ -1643,9 +1643,9 @@ internal static class ValidationExercises
             var bottomRight = check.InputHitTest(new Point(
                 Math.Max(1, check.ActualWidth - 1),
                 Math.Max(1, check.ActualHeight - 1)));
-            // #152/#208：真实 DIP 槽位 38，直接达到桌面紧凑下限 24。
-            return Math.Abs(check.ActualWidth - 38) <= 1 &&
-                   Math.Abs(check.ActualHeight - 38) <= 1 &&
+            // #152/#208：真实 DIP 槽位 28（管理窗等比收缩后），仍高于桌面紧凑下限 24。
+            return Math.Abs(check.ActualWidth - 28) <= 1 &&
+                   Math.Abs(check.ActualHeight - 28) <= 1 &&
                    check.Tag as string == noteId &&
                    IsSelfOrVisualDescendant(check, topLeft as DependencyObject) &&
                    IsSelfOrVisualDescendant(check, bottomRight as DependencyObject);
@@ -5264,9 +5264,10 @@ internal static class ValidationExercises
     }
 
     // #211：管理窗口装进任意工作区。注入 1080p 在 100%/125%/150% 缩放下的三档
-    // 工作区高度（1032/826/688 DIP），窗口必须取「首选 1165×1350 与工作区−安全边距」
-    // 的较小值并完整落在工作区内；顶端置顶/最小化/关闭免滚动可达；状态栏经外层
-    // 纵向滚动完整可见；倒计时前三行逐行滚动可达完整可见；内容不缩放。用户调整
+    // 工作区高度（1032/826/688 DIP），窗口必须取「首选 864×1000 与工作区−安全边距」
+    // 的较小值并完整落在工作区内；100% 时首选尺寸一屏放下、无纵向滚动，其余档由外层
+    // 纵向滚动兜底；顶端置顶/最小化/关闭免滚动可达；状态栏完整可见；倒计时前三行
+    // 逐行滚动可达完整可见；内容不缩放。用户调整
     // 的720×560 位置尺寸在隐藏后再显示时保留；越界显示与 WM_DISPLAYCHANGE 工作区
     // 变化时夹回所在显示器工作区。全程经注入工作区，不依赖真实显示拓扑。
     public static bool RunMainWindowWorkAreaFitBehavior() =>
@@ -5380,9 +5381,14 @@ internal static class ValidationExercises
                     }
 
                     var scrollHost = (ScrollViewer)main.FindName("MainWindowScrollHost");
+                    var fitsPreferredHeight = MainWindow.PreferredHeight <= usableHeight + 0.5;
                     Must(
-                        scrollHost.ScrollableHeight > 0.5,
-                        $"窗口收缩到 {main.ActualWidth}x{main.ActualHeight} 后外层滚动容器应有纵向可滚动区间。");
+                        fitsPreferredHeight
+                            ? scrollHost.ScrollableHeight <= 0.5
+                            : scrollHost.ScrollableHeight > 0.5,
+                        fitsPreferredHeight
+                            ? $"首选高度装得进工作区时窗口 {main.ActualWidth}x{main.ActualHeight} 应一屏放下、无纵向滚动（可滚 {scrollHost.ScrollableHeight}）。"
+                            : $"窗口收缩到 {main.ActualWidth}x{main.ActualHeight} 后外层滚动容器应有纵向可滚动区间。");
                     scrollHost.ScrollToBottom();
                     WindowValidationInput.Pump(main.Dispatcher);
                     main.UpdateLayout();
@@ -5419,7 +5425,7 @@ internal static class ValidationExercises
                     Must(
                         Math.Abs(scaleViewport.ActualWidth - MainWindow.PreferredWidth) <= 0.5 &&
                         Math.Abs(scaleViewport.ActualHeight - MainWindow.PreferredHeight) <= 0.5,
-                        "窗口收缩时业务内容不得缩放：MainScaleViewport 应保持 1165×1350 设计尺寸、字号不变。");
+                        "窗口收缩时业务内容不得缩放：MainScaleViewport 应保持 864×1000 设计尺寸、字号不变。");
                 }
                 finally
                 {

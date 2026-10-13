@@ -18,7 +18,7 @@ $manifestPaths = foreach ($surface in @('Main', 'Floating')) {
     $versionPattern = 'const string {0}ReferenceBaselineVersion = "(?<version>[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-v[0-9]+)"' -f $surface
     $versionMatch = [regex]::Match($validationSource, $versionPattern)
     if (-not $versionMatch.Success) { throw "无法读取 $surface 当前基线版本。" }
-    $relativeRoot = if ($surface -eq 'Main') { 'main-window/1165x1350' } else { 'floating-window/520x390' }
+    $relativeRoot = if ($surface -eq 'Main') { 'main-window/864x1000' } else { 'floating-window/520x390' }
     $directory = Join-Path $repoRoot "assets/ui-references/$relativeRoot/$($versionMatch.Groups['version'].Value)"
     if (Test-Path -LiteralPath $directory) {
         throw "基线目录已存在，拒绝覆盖：$directory。保留历史目录并先更新源码中的基线版本。"

@@ -5,8 +5,8 @@
         xmlns:focus="clr-namespace:MinminCountdown"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="敏敏子倒计时"
-        Width="1165"
-        Height="1350"
+        Width="864"
+        Height="1000"
         MinWidth="720"
         MinHeight="560"
         WindowStartupLocation="CenterScreen"
@@ -22,16 +22,16 @@
             <Border Margin="-2"
                     BorderBrush="{DynamicResource ActiveBrush}"
                     BorderThickness="2"
-                    CornerRadius="8" />
+                    CornerRadius="6" />
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
   </Window.Resources>
   <shell:WindowChrome.WindowChrome>
-    <!-- #211：标题拖动区覆盖整个身份区（行高 176）的空白；身份区内置顶/最小化/关闭
+    <!-- #211：标题拖动区覆盖整个身份区（行高 130）的空白；身份区内置顶/最小化/关闭
          控件以 IsHitTestVisibleInChrome 保持可点击。 -->
-    <shell:WindowChrome CaptionHeight="176"
+    <shell:WindowChrome CaptionHeight="130"
                         ResizeBorderThickness="6"
                         CornerRadius="0"
                         GlassFrameThickness="0"
@@ -39,7 +39,7 @@
   </shell:WindowChrome.WindowChrome>
 
   <Grid Background="{DynamicResource BackgroundBrush}">
-    <!-- #211：1165×1350 是首选尺寸而非最小尺寸。窗口随所在显示器工作区收缩时，
+    <!-- #211：864×1000 是首选尺寸而非最小尺寸。窗口随所在显示器工作区收缩时，
          业务内容整体进入窗口级滚动容器（纵向为主、宽度不足横向兜底），控件与字号
          不缩放；视口不小于内容时 MainScaleViewport 仍居中，首选构图与直排一致。
          The named grid is retained as the reference surface and popup clipping root;
@@ -49,60 +49,65 @@
                   VerticalScrollBarVisibility="Auto"
                   Focusable="False">
       <Grid x:Name="MainScaleViewport"
-            Width="1165"
-            Height="1350"
+            Width="864"
+            Height="1000"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             ClipToBounds="True">
       <Canvas x:Name="MainLayoutSurface"
-              Width="1165"
-              Height="1350"
+              Width="864"
+              Height="1000"
               ClipToBounds="True">
         <Canvas x:Name="MainReferenceDecorationLayer"
-                Width="1165"
-                Height="1350"
+                Width="864"
+                Height="1000"
                 Panel.ZIndex="1"
                 IsHitTestVisible="False">
           <Image x:Name="CountdownReferenceDecoration"
-                 Width="1165"
-                 Height="1350"
+                 Width="864"
+                 Height="1000"
                  Stretch="Fill"
+                 RenderOptions.BitmapScalingMode="HighQuality"
                  IsHitTestVisible="False"
                  Visibility="Collapsed" />
           <Image x:Name="NotesReferenceDecoration"
-                 Width="1165"
-                 Height="1350"
+                 Width="864"
+                 Height="1000"
                  Stretch="Fill"
+                 RenderOptions.BitmapScalingMode="HighQuality"
                  IsHitTestVisible="False"
                  Visibility="Collapsed" />
         </Canvas>
 
         <Grid x:Name="MainContentProjection"
-              Width="1165"
-              Height="1350"
+              Width="864"
+              Height="1000"
               Panel.ZIndex="2"
-              TextElement.FontSize="{DynamicResource TypeBodyFontSize}"
+              TextElement.FontSize="{DynamicResource TypeCaptionFontSize}"
               Background="Transparent">
           <Grid.Resources>
             <Style x:Key="MainFieldLabel"
                    TargetType="{x:Type TextBlock}"
                    BasedOn="{StaticResource FieldLabel}">
               <Setter Property="Margin" Value="0" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeCaptionFontSize}" />
             </Style>
             <Style x:Key="MainSecondaryButton"
                    TargetType="{x:Type Button}"
                    BasedOn="{StaticResource SecondaryButton}">
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
-              <Setter Property="Padding" Value="18,0" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeCaptionFontSize}" />
+              <Setter Property="Padding" Value="13,0" />
+              <!-- 管理窗口等比收缩：共享 Button 的 38/40 最小命中随之降到 28/30（仍 ≥ 24 紧凑下限）。 -->
+              <Setter Property="MinHeight" Value="28" />
+              <Setter Property="MinWidth" Value="30" />
             </Style>
             <Style x:Key="MainNoteSegmentButton" TargetType="{x:Type ToggleButton}">
               <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderThickness" Value="0" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="Padding" Value="0" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -115,19 +120,19 @@
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                           focus:MotionBehavior.CheckedBackgroundResourceKey="PeachTintBrush">
-                      <!-- #154：激活胶囊短边一半全圆角——环包按钮高 48 → 24；Surface 高 48-2×2=44 → 22。 -->
+                      <!-- #154：激活胶囊短边一半全圆角——环包按钮高 36 → 18；Surface 高 36-2×2=32 → 16。 -->
                       <Border x:Name="FocusRing"
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="24" />
+                              CornerRadius="18" />
                       <Border x:Name="Surface"
                               Margin="2"
                               Padding="{TemplateBinding Padding}"
                               Background="{TemplateBinding Background}"
                               BorderBrush="Transparent"
                               BorderThickness="1"
-                              CornerRadius="22"
+                              CornerRadius="16"
                               RenderTransformOrigin="0.5,0.5">
                         <ContentPresenter VerticalAlignment="Center" />
                       </Border>
@@ -162,8 +167,8 @@
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="Padding" Value="6,4" />
-              <Setter Property="MinHeight" Value="42" />
+              <Setter Property="Padding" Value="4,3" />
+              <Setter Property="MinHeight" Value="31" />
               <Setter Property="HorizontalContentAlignment" Value="Stretch" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -178,14 +183,14 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="7">
+                              CornerRadius="5">
                         <Border x:Name="Surface"
                                 Margin="2"
                                 Padding="{TemplateBinding Padding}"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="5"
+                                CornerRadius="3"
                                 RenderTransformOrigin="0.5,0.5">
                           <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                             VerticalAlignment="Center"
@@ -221,9 +226,9 @@
               <Setter Property="Background" Value="{DynamicResource MainActionBrush}" />
               <Setter Property="BorderBrush" Value="{DynamicResource MainActionBrush}" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="FontWeight" Value="SemiBold" />
-              <Setter Property="Padding" Value="18,0" />
+              <Setter Property="Padding" Value="13,0" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
@@ -241,13 +246,13 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="16" />
+                              CornerRadius="12" />
                       <Border x:Name="Surface"
                               Margin="2"
                               Background="{TemplateBinding Background}"
                               BorderBrush="{TemplateBinding BorderBrush}"
                               BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="14"
+                              CornerRadius="10"
                               Padding="{TemplateBinding Padding}"
                               RenderTransformOrigin="0.5,0.5">
                         <ContentPresenter HorizontalAlignment="Center"
@@ -285,8 +290,8 @@
               <Setter Property="Background" Value="{DynamicResource CoralActionBrush}" />
               <Setter Property="BorderBrush" Value="{DynamicResource CoralActionBrush}" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
-              <Setter Property="Padding" Value="18,0" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+              <Setter Property="Padding" Value="13,0" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
@@ -303,13 +308,13 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="16" />
+                              CornerRadius="12" />
                       <Border x:Name="Surface"
                               Margin="3"
                               Background="{TemplateBinding Background}"
                               BorderBrush="{TemplateBinding BorderBrush}"
                               BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="13"
+                              CornerRadius="9"
                               Padding="{TemplateBinding Padding}"
                               RenderTransformOrigin="0.5,0.5">
                         <ContentPresenter HorizontalAlignment="Center"
@@ -344,9 +349,9 @@
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
-              <Setter Property="Height" Value="60" />
-              <Setter Property="Padding" Value="18,0" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+              <Setter Property="Height" Value="44" />
+              <Setter Property="Padding" Value="13,0" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="Template">
                 <Setter.Value>
@@ -360,18 +365,18 @@
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                           focus:MotionBehavior.CheckedBackgroundResourceKey="PinkTintBrush"
                           focus:MotionBehavior.CheckedBorderBrushResourceKey="PinkTintBrush">
-                      <!-- #154：激活胶囊短边一半全圆角——环包按钮高 60 → 30；Surface 高 60-2×3=54 → 27。 -->
+                      <!-- #154：激活胶囊短边一半全圆角——环包按钮高 44 → 22；Surface 高 44-2×3=38 → 19。 -->
                       <Border x:Name="FocusRing"
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="30" />
+                              CornerRadius="22" />
                       <Border x:Name="Surface"
                               Margin="3"
                               Background="{TemplateBinding Background}"
                               BorderBrush="{TemplateBinding BorderBrush}"
                               BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="27"
+                              CornerRadius="19"
                               Padding="{TemplateBinding Padding}"
                               RenderTransformOrigin="0.5,0.5">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -418,18 +423,18 @@
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                           focus:MotionBehavior.CheckedBackgroundResourceKey="PinkTintBrush"
                           focus:MotionBehavior.CheckedBorderBrushResourceKey="PinkTintBrush">
-                      <!-- #154：同 MainSegmentButton——短边一半全圆角（环 30 / Surface 高 54 → 27）。 -->
+                      <!-- #154：同 MainSegmentButton——短边一半全圆角（环 22 / Surface 高 38 → 19）。 -->
                       <Border x:Name="FocusRing"
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="30" />
+                              CornerRadius="22" />
                       <Border x:Name="Surface"
                               Margin="3"
                               Background="{TemplateBinding Background}"
                               BorderBrush="{TemplateBinding BorderBrush}"
                               BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="27"
+                              CornerRadius="19"
                               Padding="{TemplateBinding Padding}"
                               RenderTransformOrigin="0.5,0.5">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -466,7 +471,7 @@
                    BasedOn="{StaticResource IconButton}">
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="Padding" Value="0" />
             </Style>
             <Style x:Key="MainTopmostCheck" TargetType="{x:Type CheckBox}">
@@ -482,25 +487,25 @@
                         <ColumnDefinition Width="*" />
                       </Grid.ColumnDefinitions>
                       <Border x:Name="Box"
-                              Width="26"
-                              Height="26"
+                              Width="19"
+                              Height="19"
                               Background="{DynamicResource CanvasBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="8"
+                              CornerRadius="6"
                               VerticalAlignment="Center">
                         <Path x:Name="Tick"
-                              Width="15"
-                              Height="11"
+                              Width="11"
+                              Height="8"
                               Stroke="{DynamicResource MainActionTextBrush}"
-                              StrokeThickness="3"
+                              StrokeThickness="2.2"
                               StrokeStartLineCap="Round"
                               StrokeEndLineCap="Round"
-                              Data="M 1,5 L 6,10 L 14,1"
+                              Data="M 0.75,3.75 L 4.5,7.5 L 10.5,0.75"
                               Visibility="Collapsed" />
                       </Border>
                       <ContentPresenter Grid.Column="1"
-                                        Margin="10,0,0,0"
+                                        Margin="7,0,0,0"
                                         VerticalAlignment="Center" />
                     </Grid>
                     <ControlTemplate.Triggers>
@@ -536,26 +541,26 @@
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type CheckBox}">
-                    <!-- #152/#208：真实 DIP 命中槽位 38（≥ 桌面紧凑下限 24），
-                         可见勾选框保持 24 设计坐标居中；边框常驻 2px、焦点只换色。 -->
-                    <Grid x:Name="Surface" Width="38" Height="38" Background="Transparent">
+                    <!-- #152/#208：真实 DIP 命中槽位 28（≥ 桌面紧凑下限 24），
+                         可见勾选框 18 居中；边框常驻 2px、焦点只换色。 -->
+                    <Grid x:Name="Surface" Width="28" Height="28" Background="Transparent">
                       <Border x:Name="Box"
-                              Width="24"
-                              Height="24"
+                              Width="18"
+                              Height="18"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"
                               Background="{DynamicResource CanvasBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="6">
+                              CornerRadius="4">
                         <Path x:Name="Tick"
-                              Width="14"
-                              Height="10"
+                              Width="10"
+                              Height="7"
                               Stroke="{DynamicResource MainActionTextBrush}"
-                              StrokeThickness="2.5"
+                              StrokeThickness="2"
                               StrokeStartLineCap="Round"
                               StrokeEndLineCap="Round"
-                              Data="M 1,5 L 5,9 L 13,1"
+                              Data="M 0.75,3.75 L 3.75,6.75 L 9.75,0.75"
                               Visibility="Collapsed" />
                       </Border>
                     </Grid>
@@ -585,49 +590,49 @@
             </Style>
             <Style TargetType="{x:Type TextBox}"
                    BasedOn="{StaticResource {x:Type TextBox}}">
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
-              <Setter Property="Padding" Value="18,0" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+              <Setter Property="Padding" Value="13,0" />
             </Style>
             <Style TargetType="{x:Type ComboBox}"
                    BasedOn="{StaticResource {x:Type ComboBox}}">
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
-              <Setter Property="Padding" Value="18,0" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+              <Setter Property="Padding" Value="13,0" />
             </Style>
             <Style TargetType="{x:Type local:WpfUiDatePicker}"
                    BasedOn="{StaticResource {x:Type DatePicker}}">
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
             </Style>
             <Style x:Key="MainCompactFieldLabel"
                    TargetType="{x:Type TextBlock}"
                    BasedOn="{StaticResource MainFieldLabel}">
-              <!-- #197：字段标签统一 16px SemiBold。 -->
-              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+              <!-- #197：字段标签统一 13px SemiBold。 -->
+              <Setter Property="FontSize" Value="{DynamicResource TypeCaptionFontSize}" />
             </Style>
             <Style x:Key="MainCompactTextInput"
                    TargetType="{x:Type TextBox}"
                    BasedOn="{StaticResource {x:Type TextBox}}">
-              <Setter Property="Height" Value="56" />
-              <Setter Property="Padding" Value="16,0" />
+              <Setter Property="Height" Value="41" />
+              <Setter Property="Padding" Value="12,0" />
               <!-- #151：输入面使用白纸面板色，与页面画布分开（§4 输入框底 PanelBrush）。 -->
               <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             </Style>
             <Style x:Key="MainCompactSelectionInput"
                    TargetType="{x:Type ComboBox}"
                    BasedOn="{StaticResource {x:Type ComboBox}}">
-              <Setter Property="Height" Value="56" />
-              <Setter Property="Padding" Value="16,0" />
+              <Setter Property="Height" Value="41" />
+              <Setter Property="Padding" Value="12,0" />
               <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             </Style>
             <Style x:Key="MainCompactDateInput"
                    TargetType="{x:Type local:WpfUiDatePicker}"
                    BasedOn="{StaticResource {x:Type local:WpfUiDatePicker}}">
-              <Setter Property="Height" Value="56" />
-              <Setter Property="Padding" Value="16,0" />
+              <Setter Property="Height" Value="41" />
+              <Setter Property="Padding" Value="12,0" />
               <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             </Style>
             <Style x:Key="MainReminderModeRadio" TargetType="{x:Type RadioButton}">
               <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeH2FontSize}" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -641,12 +646,12 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="12" />
+                              CornerRadius="9" />
                       <StackPanel Orientation="Horizontal"
                                   HorizontalAlignment="Left"
-                                  Margin="12,0,0,0"
+                                  Margin="9,0,0,0"
                                   VerticalAlignment="Center">
-                        <Grid Width="22" Height="22">
+                        <Grid Width="16" Height="16">
                           <Ellipse x:Name="Ring"
                                    Fill="Transparent"
                                    Stroke="{DynamicResource PeachLineBrush}"
@@ -654,12 +659,12 @@
                           <!-- #151：选中圆点/描边用焦点·强调轨语义色 ActiveBrush
                               （对编辑卡画布 3.27 ≥ 3:1 非文本门槛；IconAccentBrush 2.13 是装饰色）。 -->
                           <Ellipse x:Name="Dot"
-                                   Width="10"
-                                   Height="10"
+                                   Width="7"
+                                   Height="7"
                                    Fill="{DynamicResource ActiveBrush}"
                                    Visibility="Collapsed" />
                         </Grid>
-                        <ContentPresenter Margin="8,0,12,0"
+                        <ContentPresenter Margin="6,0,9,0"
                                           VerticalAlignment="Center"
                                           RecognizesAccessKey="True" />
                       </StackPanel>
@@ -701,7 +706,7 @@
               <Setter Property="Background" Value="Transparent" />
               <Setter Property="BorderBrush" Value="Transparent" />
               <Setter Property="BorderThickness" Value="1" />
-              <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+              <Setter Property="FontSize" Value="{DynamicResource TypeCaptionFontSize}" />
               <Setter Property="FontWeight" Value="SemiBold" />
               <Setter Property="Cursor" Value="Hand" />
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -715,10 +720,10 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="19" />
+                              CornerRadius="14" />
                       <Ellipse x:Name="Circle"
-                               Width="26"
-                               Height="26"
+                               Width="19"
+                               Height="19"
                                Stroke="{DynamicResource MutedBrush}"
                                StrokeThickness="1.6" />
                       <TextBlock HorizontalAlignment="Center"
@@ -758,33 +763,33 @@
           <!-- 锚点 Canvas：只承载装饰层与工作台骨架，业务内容全部由骨架内的
                Grid / StackPanel / UniformGrid / ScrollViewer 承载（issue #135）。 -->
           <Canvas x:Name="MainContentSurface"
-                  Width="1165"
-                  Height="1350"
+                  Width="864"
+                  Height="1000"
                   Background="Transparent">
             <Canvas x:Name="CharacterBackgroundLayer"
-                    Width="1165"
-                    Height="1350"
+                    Width="864"
+                    Height="1000"
                     Panel.ZIndex="0"
                     Visibility="Collapsed"
                     IsHitTestVisible="False">
-              <Image x:Name="MyMelodyBackground" Canvas.Left="55" Canvas.Top="1020" Width="305" Height="270" Stretch="Uniform" />
-              <Image x:Name="CinnamorollBackground" Canvas.Left="390" Canvas.Top="1060" Width="380" Height="220" Stretch="Uniform" />
-              <Image x:Name="KuromiBackground" Canvas.Left="815" Canvas.Top="1010" Width="270" Height="290" Stretch="Uniform" />
+              <Image x:Name="MyMelodyBackground" Canvas.Left="41" Canvas.Top="756" Width="226" Height="200" Stretch="Uniform" />
+              <Image x:Name="CinnamorollBackground" Canvas.Left="289" Canvas.Top="785" Width="282" Height="163" Stretch="Uniform" />
+              <Image x:Name="KuromiBackground" Canvas.Left="604" Canvas.Top="748" Width="200" Height="215" Stretch="Uniform" />
             </Canvas>
 
             <Canvas x:Name="CharacterPanelLayer"
-                    Canvas.Left="38"
-                    Canvas.Top="292"
-                    Width="1088"
-                    Height="120"
+                    Canvas.Left="28"
+                    Canvas.Top="216"
+                    Width="807"
+                    Height="89"
                     Visibility="Collapsed"
                     IsHitTestVisible="False">
               <Border x:Name="CharacterPanelSurface"
-                      Canvas.Top="45"
-                      Width="1088"
-                      Height="75"
+                      Canvas.Top="33"
+                      Width="807"
+                      Height="56"
                       BorderThickness="1"
-                      CornerRadius="30,30,0,0">
+                      CornerRadius="22,22,0,0">
                 <Border.Style>
                   <Style TargetType="{x:Type Border}">
                     <Setter Property="Background" Value="{DynamicResource CharacterPanelBrush}" />
@@ -799,48 +804,48 @@
                 </Border.Style>
               </Border>
               <Border x:Name="MyMelodyCharacterDock"
-                      Canvas.Left="32"
-                      Width="120"
-                      Height="105"
+                      Canvas.Left="24"
+                      Width="89"
+                      Height="78"
                       Panel.ZIndex="3"
                       BorderBrush="{DynamicResource CharacterLineBrush}"
                       BorderThickness="0"
-                      CornerRadius="18"
-                      ClipToBounds="True"><Image x:Name="MyMelodyPanelCharacter" Height="160" Stretch="Uniform" /></Border>
+                      CornerRadius="13"
+                      ClipToBounds="True"><Image x:Name="MyMelodyPanelCharacter" Height="119" Stretch="Uniform" /></Border>
               <Border x:Name="CinnamorollCharacterDock"
-                      Canvas.Left="450"
-                      Canvas.Top="18"
-                      Width="190"
-                      Height="88"
+                      Canvas.Left="334"
+                      Canvas.Top="13"
+                      Width="141"
+                      Height="65"
                       Panel.ZIndex="3"
                       BorderBrush="{DynamicResource CharacterLineBrush}"
                       BorderThickness="0"
-                      CornerRadius="18"
-                      ClipToBounds="True"><Image x:Name="CinnamorollPanelCharacter" Width="220" Stretch="Uniform" /></Border>
+                      CornerRadius="13"
+                      ClipToBounds="True"><Image x:Name="CinnamorollPanelCharacter" Width="163" Stretch="Uniform" /></Border>
               <Border x:Name="KuromiCharacterDock"
-                      Canvas.Left="936"
-                      Width="120"
-                      Height="105"
+                      Canvas.Left="694"
+                      Width="89"
+                      Height="78"
                       Panel.ZIndex="3"
                       BorderBrush="{DynamicResource CharacterLineBrush}"
                       BorderThickness="0"
-                      CornerRadius="18"
-                      ClipToBounds="True"><Image x:Name="KuromiPanelCharacter" Height="160" Stretch="Uniform" /></Border>
+                      CornerRadius="13"
+                      ClipToBounds="True"><Image x:Name="KuromiPanelCharacter" Height="119" Stretch="Uniform" /></Border>
             </Canvas>
 
             <!-- 工作台骨架：顶部身份区 / 命令栏 / 当前工作区主卡与列表区 / 底部动作区（issue #131 #135）。 -->
             <Grid x:Name="MainWorkbenchLayout"
-                  Width="1165"
-                  Height="1350">
+                  Width="864"
+                  Height="1000">
               <Grid.RowDefinitions>
-                <RowDefinition Height="176" />
-                <RowDefinition Height="116" />
-                <RowDefinition Height="996" />
-                <RowDefinition Height="62" />
+                <RowDefinition Height="130" />
+                <RowDefinition Height="86" />
+                <RowDefinition Height="738" />
+                <RowDefinition Height="46" />
               </Grid.RowDefinitions>
 
               <!-- 顶部身份区：标题 + 副标题 + 窗口控制 -->
-              <Grid x:Name="MainIdentityZone" Grid.Row="0" Margin="40,47,22,0">
+              <Grid x:Name="MainIdentityZone" Grid.Row="0" Margin="30,35,16,0">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="*" />
@@ -849,11 +854,11 @@
                 <StackPanel x:Name="MainTitleZone">
                   <StackPanel Orientation="Horizontal">
                     <!-- 便签页目标图标题左侧的房子标识；倒计时页保持标题右侧心形（§12 各页对齐各自 AI 图）。 -->
-                    <Path Width="44"
-                          Height="40"
-                          Margin="0,0,16,6"
+                    <Path Width="33"
+                          Height="30"
+                          Margin="0,0,12,4"
                           VerticalAlignment="Center"
-                          Data="M 22,3 L 41,18.5 L 36.5,18.5 L 36.5,32.5 C 36.5,34.7 34.7,36.5 32.5,36.5 L 11.5,36.5 C 9.3,36.5 7.5,34.7 7.5,32.5 L 7.5,18.5 L 3,18.5 Z M 17,36.5 L 17,25 C 17,23.9 17.9,23 19,23 L 25,23 C 26.1,23 27,23.9 27,25 L 27,36.5 Z"
+                          Data="M 16.5,2.25 L 30.75,13.88 L 27.38,13.88 L 27.38,24.38 C 27.38,26.03 26.03,27.38 24.38,27.38 L 8.62,27.38 C 6.98,27.38 5.62,26.03 5.62,24.38 L 5.62,13.88 L 2.25,13.88 Z M 12.75,27.38 L 12.75,18.75 C 12.75,17.92 13.42,17.25 14.25,17.25 L 18.75,17.25 C 19.58,17.25 20.25,17.92 20.25,18.75 L 20.25,27.38 Z"
                           Fill="{DynamicResource InkBrush}"
                           IsHitTestVisible="False">
                       <Path.Style>
@@ -871,13 +876,13 @@
                                FontSize="{DynamicResource TypeDisplayFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource InkBrush}" />
-                    <Path Width="32"
-                          Height="28"
-                          Margin="12,0,0,0"
+                    <Path Width="24"
+                          Height="21"
+                          Margin="9,0,0,0"
                           VerticalAlignment="Center"
-                          Data="M 16,26.5 C 7.5,20 2,14.2 2,8.6 C 2,4.4 5.2,1.8 8.5,1.8 C 11.6,1.8 14.4,3.9 16,6.8 C 17.6,3.9 20.4,1.8 23.5,1.8 C 26.8,1.8 30,4.4 30,8.6 C 30,14.2 24.5,20 16,26.5 Z"
+                          Data="M 12,19.88 C 5.62,15 1.5,10.65 1.5,6.45 C 1.5,3.3 3.9,1.35 6.38,1.35 C 8.7,1.35 10.8,2.92 12,5.1 C 13.2,2.92 15.3,1.35 17.62,1.35 C 20.1,1.35 22.5,3.3 22.5,6.45 C 22.5,10.65 18.38,15 12,19.88 Z"
                           Stroke="{DynamicResource IconAccentBrush}"
-                          StrokeThickness="2.6"
+                          StrokeThickness="2"
                           StrokeLineJoin="Round"
                           IsHitTestVisible="False">
                       <Path.Style>
@@ -892,70 +897,70 @@
                       </Path.Style>
                     </Path>
                   </StackPanel>
-                  <TextBlock Margin="0,6,0,0"
+                  <TextBlock Margin="0,4,0,0"
                              Text="重要时刻和今日努力，都在这里慢慢长大"
-                             FontSize="{DynamicResource TypeH2FontSize}"
+                             FontSize="{DynamicResource TypeBodyFontSize}"
                              Foreground="{DynamicResource MutedBrush}" />
                 </StackPanel>
                 <Grid x:Name="MainWindowControls" Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="13" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="15" />
+                    <ColumnDefinition Width="11" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="7" />
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
                   <Border x:Name="DayThemeBadge"
                           Grid.Column="0"
-                          Height="48"
-                          Margin="0,11,0,0"
-                          Padding="16,0"
+                          Height="36"
+                          Margin="0,8,0,0"
+                          Padding="12,0"
                           VerticalAlignment="Top"
                           Background="{DynamicResource CardBrush}"
                           BorderBrush="{DynamicResource PeachLineBrush}"
                           BorderThickness="1"
-                          CornerRadius="14"
+                          CornerRadius="10"
                           Focusable="False"
                           IsHitTestVisible="False"
                           AutomationProperties.Name="当前主题：日间">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                      <Path Width="22"
-                            Height="22"
-                            Data="M 6.2,11 A 4.8,4.8 0 1 0 15.8,11 A 4.8,4.8 0 1 0 6.2,11 Z M 11,0.8 L 11,3 M 11,19 L 11,21.2 M 0.8,11 L 3,11 M 19,11 L 21.2,11 M 3.8,3.8 L 5.4,5.4 M 16.6,16.6 L 18.2,18.2 M 18.2,3.8 L 16.6,5.4 M 5.4,16.6 L 3.8,18.2"
+                      <Path Width="16"
+                            Height="16"
+                            Data="M 4.51,8 A 3.49,3.49 0 1 0 11.49,8 A 3.49,3.49 0 1 0 4.51,8 Z M 8,0.58 L 8,2.18 M 8,13.82 L 8,15.42 M 0.58,8 L 2.18,8 M 13.82,8 L 15.42,8 M 2.76,2.76 L 3.93,3.93 M 12.07,12.07 L 13.24,13.24 M 13.24,2.76 L 12.07,3.93 M 3.93,12.07 L 2.76,13.24"
                             Stroke="{DynamicResource IconAccentBrush}"
                             StrokeThickness="1.7"
                             StrokeStartLineCap="Round"
                             StrokeEndLineCap="Round"
                             VerticalAlignment="Center" />
-                      <TextBlock Margin="9,0,0,0"
+                      <TextBlock Margin="7,0,0,0"
                                  Text="日间"
                                  VerticalAlignment="Center"
-                                 FontSize="{DynamicResource TypeH2FontSize}"
+                                 FontSize="{DynamicResource TypeBodyFontSize}"
                                  Foreground="{DynamicResource BodyBrush}" />
                     </StackPanel>
                   </Border>
                   <CheckBox x:Name="TopmostCheck"
                             Grid.Column="2"
-                            Width="132"
-                            Height="48"
-                            Margin="0,11,0,0"
+                            Width="98"
+                            Height="36"
+                            Margin="0,8,0,0"
                             Content="窗口置顶"
                             IsChecked="True"
-                            FontSize="{DynamicResource TypeH2FontSize}"
+                            FontSize="{DynamicResource TypeBodyFontSize}"
                             Style="{StaticResource MainTopmostCheck}"
                             VerticalContentAlignment="Center"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                   <Button x:Name="MinimizeButton"
                           Grid.Column="4"
-                          Width="57"
-                          Height="58"
+                          Width="42"
+                          Height="43"
                           Style="{StaticResource MainIconButton}"
                           ToolTip="最小化"
                           shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <!-- #154：窗铬改矢量路径，与悬浮窗头部同一几何（12x12 坐标、2px 圆头描边）。 -->
-                    <Viewbox Width="18" Height="18" Margin="0,1,0,0">
+                    <Viewbox Width="13" Height="13" Margin="0,1,0,0">
                       <Path Data="M 2,10 L 12,10"
                             Fill="Transparent"
                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
@@ -966,13 +971,13 @@
                   </Button>
                   <Button x:Name="CloseButton"
                           Grid.Column="6"
-                          Width="57"
-                          Height="58"
+                          Width="42"
+                          Height="43"
                           Foreground="{DynamicResource DangerBrush}"
                           Style="{StaticResource MainIconButton}"
                           ToolTip="关闭"
                           shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Viewbox Width="18" Height="18" Margin="0,1,0,0">
+                    <Viewbox Width="13" Height="13" Margin="0,1,0,0">
                       <Path Data="M 2,2 L 12,12 M 12,2 L 2,12"
                             Fill="Transparent"
                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
@@ -985,24 +990,24 @@
               </Grid>
 
               <!-- 命令栏：工作区页签 + 筛选 / 标签 / 数量 -->
-              <Grid x:Name="MainCommandBarZone" Grid.Row="1" Margin="40,0,8,0" VerticalAlignment="Top">
+              <Grid x:Name="MainCommandBarZone" Grid.Row="1" Margin="30,0,6,0" VerticalAlignment="Top">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="11" />
+                  <ColumnDefinition Width="8" />
                   <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="16" />
+                  <ColumnDefinition Width="12" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Border Grid.Column="0"
-                        Width="255"
-                        Height="69"
-                        Padding="4"
+                        Width="190"
+                        Height="51"
+                        Padding="3"
                         Background="{DynamicResource CardAltBrush}"
                         BorderBrush="Transparent"
                         BorderThickness="1"
-                        CornerRadius="14">
+                        CornerRadius="10">
                   <Grid x:Name="MainWorkspaceTabHost">
                     <!-- #196：选中指示条只改变 RenderTransform，避免切换时重排同级页签。 -->
                     <Canvas x:Name="MainWorkspaceTabIndicatorLayer"
@@ -1010,18 +1015,18 @@
                             IsHitTestVisible="False">
                       <Border x:Name="MainWorkspaceTabIndicator"
                               Width="1"
-                              Height="4"
+                              Height="3"
                               Background="{DynamicResource PinkAccentStrongBrush}"
                               CornerRadius="2"
                               Visibility="Collapsed" />
                     </Canvas>
                     <StackPanel Panel.ZIndex="1" Orientation="Horizontal">
                       <ToggleButton x:Name="CountdownTab"
-                                    Width="133"
+                                    Width="99"
                                     Content="倒计时"
                                     Style="{StaticResource MainSegmentButton}" />
                       <ToggleButton x:Name="NotesTab"
-                                    Width="111"
+                                    Width="82"
                                     Margin="2,0,0,0"
                                     Content="便签"
                                     Style="{StaticResource MainNotesSegmentButton}" />
@@ -1030,22 +1035,22 @@
                 </Border>
                 <Button x:Name="FilterButton"
                         Grid.Column="2"
-                        Width="133"
-                        Height="69"
+                        Width="99"
+                        Height="51"
                         Style="{StaticResource MainSecondaryButton}">
                   <StackPanel Orientation="Horizontal">
                     <!-- #154：漏斗改实心填充（InkBrush）——1.8px 描边漏斗在现役 Aliased 确定性捕获口径下
                          对角笔画消失、按钮只剩「筛选」两字（v22 实证）；实心字形任何栅格化下都可识别。
                          同色描边只做边缘平滑。 -->
-                    <Path Width="22"
-                          Height="22"
-                          Data="M 2.5,4 L 19.5,4 L 13.5,11.5 L 13.5,18 L 8.5,15.5 L 8.5,11.5 Z"
+                    <Path Width="16"
+                          Height="16"
+                          Data="M 1.82,2.91 L 14.18,2.91 L 9.82,8.36 L 9.82,13.09 L 6.18,11.27 L 6.18,8.36 Z"
                           Fill="{DynamicResource InkBrush}"
                           Stroke="{DynamicResource InkBrush}"
                           StrokeThickness="1.8"
                           StrokeLineJoin="Round"
                           VerticalAlignment="Center" />
-                    <TextBlock Margin="10,0,0,0"
+                    <TextBlock Margin="7,0,0,0"
                                x:Name="FilterButtonText"
                                Text="筛选"
                                VerticalAlignment="Center" />
@@ -1053,45 +1058,45 @@
                 </Button>
                 <Button x:Name="TagManagerButton"
                         Grid.Column="4"
-                        Width="132"
-                        Height="69"
+                        Width="98"
+                        Height="51"
                         Style="{StaticResource MainSecondaryButton}">
                   <StackPanel Orientation="Horizontal">
-                    <Path Width="22"
-                          Height="22"
-                          Data="M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7"
+                    <Path Width="16"
+                          Height="16"
+                          Data="M 1.82,2.55 L 1.82,6.69 C 1.82,7.27 2.04,7.85 2.47,8.29 L 8.44,14.25 C 9.24,15.05 10.47,15.05 11.27,14.25 L 14.25,11.27 C 15.05,10.47 15.05,9.24 14.25,8.44 L 8.29,2.47 C 7.85,2.04 7.27,1.82 6.69,1.82 L 2.55,1.82 C 2.11,1.82 1.82,2.11 1.82,2.55 Z M 5.09,5.09 L 5.11,5.09"
                           Stroke="{DynamicResource InkBrush}"
                           StrokeThickness="1.8"
                           StrokeLineJoin="Round"
                           StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round"
                           VerticalAlignment="Center" />
-                    <TextBlock Margin="10,0,0,0"
+                    <TextBlock Margin="7,0,0,0"
                                Text="标签"
                                VerticalAlignment="Center" />
                   </StackPanel>
                 </Button>
                 <Border Grid.Column="6"
-                        Height="48"
-                        Margin="0,11,0,0"
-                        Padding="14,0"
+                        Height="36"
+                        Margin="0,8,0,0"
+                        Padding="10,0"
                         VerticalAlignment="Top"
                         Background="{DynamicResource CardBrush}"
                         BorderBrush="{DynamicResource PeachLineBrush}"
                         BorderThickness="1"
-                        CornerRadius="13">
+                        CornerRadius="10">
                   <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Path Width="20"
-                          Height="20"
-                          Data="M 4,2.5 L 16,2.5 C 16.8,2.5 17.5,3.2 17.5,4 L 17.5,16 C 17.5,16.8 16.8,17.5 16,17.5 L 4,17.5 C 3.2,17.5 2.5,16.8 2.5,16 L 2.5,4 C 2.5,3.2 3.2,2.5 4,2.5 Z M 6,7 L 14,7 M 6,11 L 14,11 M 6,15 L 11,15"
+                    <Path Width="15"
+                          Height="15"
+                          Data="M 3,1.88 L 12,1.88 C 12.6,1.88 13.12,2.4 13.12,3 L 13.12,12 C 13.12,12.6 12.6,13.12 12,13.12 L 3,13.12 C 2.4,13.12 1.88,12.6 1.88,12 L 1.88,3 C 1.88,2.4 2.4,1.88 3,1.88 Z M 4.5,5.25 L 10.5,5.25 M 4.5,8.25 L 10.5,8.25 M 4.5,11.25 L 8.25,11.25"
                           Stroke="{DynamicResource MutedBrush}"
                           StrokeThickness="1.6"
                           StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round"
                           VerticalAlignment="Center" />
                     <TextBlock x:Name="RecordCountText"
-                               Margin="9,0,0,0"
-                               FontSize="{DynamicResource TypeH2FontSize}"
+                               Margin="7,0,0,0"
+                               FontSize="{DynamicResource TypeBodyFontSize}"
                                Foreground="{DynamicResource BodyBrush}"
                                VerticalAlignment="Center" />
                   </StackPanel>
@@ -1101,19 +1106,19 @@
               <!-- 当前工作区主卡 + 列表/管理区 -->
               <Grid x:Name="MainWorkspaceZone" Grid.Row="2">
                 <Canvas x:Name="CountdownWorkspace"
-                        Width="1165"
-                        Height="996">
+                        Width="864"
+                        Height="738">
                   <Grid x:Name="CountdownWorkspaceBody"
-                        Margin="38,110,39,0"
-                        Width="1088"
-                        Height="886">
+                        Margin="28,81,29,0"
+                        Width="807"
+                        Height="657">
                     <Grid.RowDefinitions>
-                      <RowDefinition Height="384" />
-                      <RowDefinition Height="24" />
-                      <RowDefinition Height="176" />
-                      <RowDefinition Height="22" />
+                      <RowDefinition Height="292" />
+                      <RowDefinition Height="14" />
+                      <RowDefinition Height="128" />
+                      <RowDefinition Height="14" />
                       <RowDefinition Height="*" />
-                      <RowDefinition Height="28" />
+                      <RowDefinition Height="21" />
                     </Grid.RowDefinitions>
                     <Border x:Name="CountdownWorkspaceBackdrop"
                             Grid.Row="0"
@@ -1121,15 +1126,15 @@
                             Background="{DynamicResource BackgroundBrush}"
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="0"
-                            CornerRadius="16"
+                            CornerRadius="12"
                             IsHitTestVisible="False" />
                     <Border x:Name="CountdownEditorSurface"
                             Grid.Row="0"
                             Background="{DynamicResource BackgroundBrush}"
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="1"
-                            CornerRadius="16">
-                      <Grid x:Name="CountdownEditorCard" Margin="35,30,35,26">
+                            CornerRadius="12">
+                      <Grid x:Name="CountdownEditorCard" Margin="26,21,26,14">
                         <Grid.RowDefinitions>
                           <RowDefinition Height="Auto" />
                           <RowDefinition Height="Auto" />
@@ -1145,7 +1150,7 @@
                           </Grid.ColumnDefinitions>
                           <TextBlock x:Name="CountdownEditorTitle"
                                      Text="新增倒计时"
-                                     FontSize="{StaticResource TypeH1FontSize}"
+                                     FontSize="{StaticResource TypeH2FontSize}"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource InkBrush}" />
                           <!-- #154：原「每一个期待…」手写体已迁出表单（CountdownWorkspace 装饰层），
@@ -1154,33 +1159,33 @@
                         <!-- #151：字段行距消费 SpacingFieldRow（10，§5 区块内字段行节奏），替代随机 20。 -->
                         <Grid x:Name="MainCountdownNameDateRow" Grid.Row="1" Margin="0,10,0,0">
                           <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="615" />
-                            <ColumnDefinition Width="19" />
-                            <ColumnDefinition Width="384" />
+                            <ColumnDefinition Width="456" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="285" />
                           </Grid.ColumnDefinitions>
                           <StackPanel Grid.Column="0">
                             <TextBlock x:Name="CountdownNameLabel" Text="名称" Style="{StaticResource MainCompactFieldLabel}" />
-                            <Grid Margin="0,4,0,0">
+                            <Grid Margin="0,3,0,0">
                               <TextBox x:Name="CountdownName"
-                                       Width="615"
+                                       Width="456"
                                        Style="{StaticResource MainCompactTextInput}"
-                                       Padding="48,0,16,0"
+                                       Padding="36,0,12,0"
                                        MaxLength="30" />
-                              <Path Width="20"
-                                    Height="20"
-                                    Margin="16,0,0,0"
+                              <Path Width="15"
+                                    Height="15"
+                                    Margin="12,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Data="M 2.5,17.5 L 3.4,13.7 L 14.2,2.9 C 15,2.1 16.3,2.1 17.1,2.9 C 17.9,3.7 17.9,5 17.1,5.8 L 6.3,16.6 L 2.5,17.5 Z"
+                                    Data="M 1.88,13.12 L 2.55,10.27 L 10.65,2.17 C 11.25,1.58 12.23,1.58 12.83,2.17 C 13.42,2.78 13.42,3.75 12.83,4.35 L 4.72,12.45 L 1.88,13.12 Z"
                                     Stroke="{DynamicResource MutedBrush}"
                                     StrokeThickness="1.6"
                                     StrokeLineJoin="Round"
                                     IsHitTestVisible="False" />
-                              <TextBlock Margin="48,0,0,0"
-                                         Height="28"
+                              <TextBlock Margin="36,0,0,0"
+                                         Height="21"
                                          HorizontalAlignment="Left"
                                          VerticalAlignment="Center"
-                                         FontSize="{DynamicResource TypeH2FontSize}"
+                                         FontSize="{DynamicResource TypeBodyFontSize}"
                                          Foreground="{DynamicResource MutedBrush}"
                                          IsHitTestVisible="False"
                                          Text="例如：生日、考试、旅行…">
@@ -1199,24 +1204,24 @@
                             <!-- #151：名称字段错误贴字段显示（不裁切、可换行）；间距消费 SpacingUnit。 -->
                             <TextBlock x:Name="CountdownNameError"
                                        Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       FontSize="{StaticResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource DangerBrush}"
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed" />
                           </StackPanel>
                           <StackPanel Grid.Column="2">
                             <TextBlock x:Name="CountdownDateLabel" Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
-                            <Grid Margin="0,4,0,0">
+                            <Grid Margin="0,3,0,0">
                               <local:WpfUiDatePicker x:Name="CountdownDate"
-                                          Width="384"
+                                          Width="285"
                                           Style="{StaticResource MainCompactDateInput}"
-                                          Padding="48,0,16,0" />
-                              <Path Width="20"
-                                    Height="20"
-                                    Margin="16,0,0,0"
+                                          Padding="36,0,12,0" />
+                              <Path Width="15"
+                                    Height="15"
+                                    Margin="12,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Data="M 3,4.5 L 17,4.5 C 17.6,4.5 18,4.9 18,5.5 L 18,16.5 C 18,17.1 17.6,17.5 17,17.5 L 3,17.5 C 2.4,17.5 2,17.1 2,16.5 L 2,5.5 C 2,4.9 2.4,4.5 3,4.5 Z M 2,8.5 L 18,8.5 M 6.5,2.5 L 6.5,6 M 13.5,2.5 L 13.5,6"
+                                    Data="M 2.25,3.38 L 12.75,3.38 C 13.2,3.38 13.5,3.68 13.5,4.12 L 13.5,12.38 C 13.5,12.83 13.2,13.12 12.75,13.12 L 2.25,13.12 C 1.8,13.12 1.5,12.83 1.5,12.38 L 1.5,4.12 C 1.5,3.68 1.8,3.38 2.25,3.38 Z M 1.5,6.38 L 13.5,6.38 M 4.88,1.88 L 4.88,4.5 M 10.12,1.88 L 10.12,4.5"
                                     Stroke="{DynamicResource MutedBrush}"
                                     StrokeThickness="1.6"
                                     StrokeLineJoin="Round"
@@ -1224,7 +1229,7 @@
                             </Grid>
                             <TextBlock x:Name="CountdownDateError"
                                        Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       FontSize="{StaticResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource DangerBrush}"
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed" />
@@ -1233,45 +1238,45 @@
                         <Grid x:Name="MainCountdownTimeTagRow" Grid.Row="2" Margin="0,10,0,0">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="20" />
-                            <ColumnDefinition Width="386" />
+                            <ColumnDefinition Width="15" />
+                            <ColumnDefinition Width="286" />
                           </Grid.ColumnDefinitions>
                           <UniformGrid x:Name="MainCountdownTimeFields" Columns="3">
                             <StackPanel>
                               <TextBlock x:Name="CountdownHourLabel" Text="时" Style="{StaticResource MainCompactFieldLabel}" />
                               <ComboBox x:Name="CountdownHour"
-                                        Width="195"
-                                        Margin="0,4,0,0"
+                                        Width="145"
+                                        Margin="0,3,0,0"
                                         Style="{StaticResource MainCompactSelectionInput}" />
                             </StackPanel>
                             <StackPanel>
                               <TextBlock x:Name="CountdownMinuteLabel" Text="分" Style="{StaticResource MainCompactFieldLabel}" />
                               <ComboBox x:Name="CountdownMinute"
-                                        Width="188"
-                                        Margin="0,4,0,0"
+                                        Width="139"
+                                        Margin="0,3,0,0"
                                         Style="{StaticResource MainCompactSelectionInput}" />
                             </StackPanel>
                             <StackPanel>
                               <TextBlock x:Name="CountdownSecondLabel" Text="秒" Style="{StaticResource MainCompactFieldLabel}" />
                               <ComboBox x:Name="CountdownSecond"
-                                        Width="188"
-                                        Margin="0,4,0,0"
+                                        Width="139"
+                                        Margin="0,3,0,0"
                                         Style="{StaticResource MainCompactSelectionInput}" />
                             </StackPanel>
                           </UniformGrid>
                           <StackPanel Grid.Column="2">
                             <TextBlock x:Name="CountdownTagsLabel" Text="设置标签" Style="{StaticResource MainCompactFieldLabel}" />
                             <local:TagSelector x:Name="CountdownTags"
-                                               Width="386"
-                                               Height="56"
-                                               Margin="0,4,0,0" />
+                                               Width="286"
+                                               Height="41"
+                                               Margin="0,3,0,0" />
                           </StackPanel>
                         </Grid>
                         <!-- #151：唯一错误行不再固定高度裁切或省略，长错误完整换行可见。 -->
                         <TextBlock x:Name="CountdownMessage"
                                    Grid.Row="3"
                                    Margin="0,8,0,0"
-                                   FontSize="{DynamicResource TypeBodyFontSize}"
+                                   FontSize="{DynamicResource TypeCaptionFontSize}"
                                    Foreground="{DynamicResource DangerBrush}"
                                    TextWrapping="Wrap" />
                         <Grid Grid.Row="4" x:Name="MainCountdownActionRow" Margin="0,10,0,0">
@@ -1287,58 +1292,58 @@
                                        VerticalAlignment="Center"
                                        Style="{StaticResource MainCompactFieldLabel}" />
                     <Button x:Name="CountdownReminderHelp"
-                            Width="38"
-                            Height="38"
-                            Margin="26,0,0,0"
+                            Width="28"
+                            Height="28"
+                            Margin="19,0,0,0"
                             Style="{StaticResource MainReminderHelpButton}"
                             ToolTip="按时间提醒会在倒计时截止时刻提醒一次；自定义提醒可配置多条提醒规则。" />
                             <RadioButton x:Name="CountdownReminderNoRadio"
-                                         Width="118"
-                                         Height="56"
-                                         Margin="16,0,0,0"
+                                         Width="90"
+                                         Height="41"
+                                         Margin="12,0,0,0"
                                          GroupName="CountdownReminderMode"
                                          IsChecked="True"
                                          Style="{StaticResource MainReminderModeRadio}"
                                          Content="不提醒" />
                             <RadioButton x:Name="CountdownReminderTimeRadio"
-                                         Width="172"
-                                         Height="56"
-                                         Margin="8,0,0,0"
+                                         Width="128"
+                                         Height="41"
+                                         Margin="6,0,0,0"
                                          GroupName="CountdownReminderMode"
                                          Style="{StaticResource MainReminderModeRadio}"
                                          Content="按时间提醒" />
                             <RadioButton x:Name="CountdownReminderCustomRadio"
-                                         Width="172"
-                                         Height="56"
-                                         Margin="8,0,0,0"
+                                         Width="128"
+                                         Height="41"
+                                         Margin="6,0,0,0"
                                          GroupName="CountdownReminderMode"
                                          Style="{StaticResource MainReminderModeRadio}"
                                          Content="自定义提醒" />
                           </StackPanel>
                           <TextBlock x:Name="CountdownReminderRulesSummary"
                                      Grid.Column="2"
-                                     Width="132"
-                                     Height="56"
+                                     Width="98"
+                                     Height="41"
                                      VerticalAlignment="Center"
-                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                     FontSize="{DynamicResource TypeCaptionFontSize}"
                                      Foreground="{DynamicResource MutedBrush}"
                                      TextWrapping="Wrap"
                                      Visibility="Collapsed" />
                           <Button x:Name="CancelCountdownEdit"
                                   Grid.Column="3"
-                                  Width="72"
-                                  Height="56"
-                                  Margin="12,0,0,0"
-                                  Padding="8,0"
+                                  Width="53"
+                                  Height="41"
+                                  Margin="9,0,0,0"
+                                  Padding="6,0"
                                   Content="取消"
                                   Visibility="Collapsed"
                                   Style="{StaticResource MainSecondaryButton}" />
                           <Button x:Name="SaveCountdownButton"
                                   Grid.Column="4"
-                                  Width="221"
-                                  Height="56"
-                                  MinHeight="56"
-                                  Margin="8,0,0,0"
+                                  Width="164"
+                                  Height="41"
+                                  MinHeight="41"
+                                  Margin="6,0,0,0"
                                   Content="＋ 添加倒计时"
                                   Style="{StaticResource MainPrimaryButton}" />
                         </Grid>
@@ -1349,8 +1354,8 @@
                             Background="{DynamicResource BackgroundBrush}"
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="1"
-                            CornerRadius="16">
-                      <Grid x:Name="CountdownPreferencesCard" Margin="35,18,25,24">
+                            CornerRadius="12">
+                      <Grid x:Name="CountdownPreferencesCard" Margin="26,13,19,18">
                         <Grid.RowDefinitions>
                           <RowDefinition Height="Auto" />
                           <RowDefinition Height="Auto" />
@@ -1358,92 +1363,92 @@
                         </Grid.RowDefinitions>
                         <!-- #139 补齐 §11「显示设置」区块标题：与「新增倒计时」同级（InkBrush SemiBold）。 -->
                         <StackPanel Grid.Row="0" x:Name="MainPreferenceHeading" Orientation="Horizontal">
-                          <Path Width="22"
-                                Height="22"
-                                Data="M 9.55,1.8 L 12.45,1.8 L 13.05,4.45 C 13.95,4.75 14.75,5.2 15.45,5.75 L 18.05,4.75 L 19.5,7.2 L 17.55,9.05 C 17.75,9.65 17.85,10.3 17.85,11 C 17.85,11.7 17.75,12.35 17.55,12.95 L 19.5,14.8 L 18.05,17.25 L 15.45,16.25 C 14.75,16.8 13.95,17.25 13.05,17.55 L 12.45,20.2 L 9.55,20.2 L 8.95,17.55 C 8.05,17.25 7.25,16.8 6.55,16.25 L 3.95,17.25 L 2.5,14.8 L 4.45,12.95 C 4.25,12.35 4.15,11.7 4.15,11 C 4.15,10.3 4.25,9.65 4.45,9.05 L 2.5,7.2 L 3.95,4.75 L 6.55,5.75 C 7.25,5.2 8.05,4.75 8.95,4.45 Z M 11,8.3 A 2.7,2.7 0 1 0 11,13.7 A 2.7,2.7 0 1 0 11,8.3 Z"
+                          <Path Width="16"
+                                Height="16"
+                                Data="M 6.95,1.31 L 9.05,1.31 L 9.49,3.24 C 10.15,3.45 10.73,3.78 11.24,4.18 L 13.13,3.45 L 14.18,5.24 L 12.76,6.58 C 12.91,7.02 12.98,7.49 12.98,8 C 12.98,8.51 12.91,8.98 12.76,9.42 L 14.18,10.76 L 13.13,12.55 L 11.24,11.82 C 10.73,12.22 10.15,12.55 9.49,12.76 L 9.05,14.69 L 6.95,14.69 L 6.51,12.76 C 5.85,12.55 5.27,12.22 4.76,11.82 L 2.87,12.55 L 1.82,10.76 L 3.24,9.42 C 3.09,8.98 3.02,8.51 3.02,8 C 3.02,7.49 3.09,7.02 3.24,6.58 L 1.82,5.24 L 2.87,3.45 L 4.76,4.18 C 5.27,3.78 5.85,3.45 6.51,3.24 Z M 8,6.04 A 1.96,1.96 0 1 0 8,9.96 A 1.96,1.96 0 1 0 8,6.04 Z"
                                 Fill="{DynamicResource InkBrush}"
                                 VerticalAlignment="Center"
                                 IsHitTestVisible="False" />
                           <TextBlock x:Name="CountdownPreferencesTitle"
-                                     Margin="10,0,0,0"
+                                     Margin="7,0,0,0"
                                      VerticalAlignment="Center"
                                      Text="显示设置"
-                                     FontSize="{StaticResource TypeH1FontSize}"
+                                     FontSize="{StaticResource TypeH2FontSize}"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource InkBrush}" />
                         </StackPanel>
                         <Grid Grid.Row="1" x:Name="MainPreferenceLabels">
                           <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="210" />
-                            <ColumnDefinition Width="23" />
-                            <ColumnDefinition Width="243" />
-                            <ColumnDefinition Width="19" />
-                            <ColumnDefinition Width="187" />
-                            <ColumnDefinition Width="18" />
-                            <ColumnDefinition Width="172" />
+                            <ColumnDefinition Width="156" />
+                            <ColumnDefinition Width="17" />
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="139" />
+                            <ColumnDefinition Width="13" />
+                            <ColumnDefinition Width="128" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="104" />
                           </Grid.ColumnDefinitions>
                           <TextBlock Grid.Column="0" x:Name="DisplayPrecisionLabel" Text="显示精度" Style="{StaticResource MainCompactFieldLabel}" />
                           <TextBlock Grid.Column="2" x:Name="MonthlySalaryLabel" Text="月薪（元）" Style="{StaticResource MainCompactFieldLabel}" />
                           <TextBlock Grid.Column="4" x:Name="WorkStartLabel" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
                           <TextBlock Grid.Column="6" x:Name="WorkEndLabel" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
                         </Grid>
-                        <Grid Grid.Row="2" x:Name="MainPreferenceInputs" Margin="0,4,0,0">
+                        <Grid Grid.Row="2" x:Name="MainPreferenceInputs" Margin="0,3,0,0">
                           <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="210" />
-                            <ColumnDefinition Width="23" />
-                            <ColumnDefinition Width="243" />
-                            <ColumnDefinition Width="19" />
-                            <ColumnDefinition Width="187" />
-                            <ColumnDefinition Width="18" />
-                            <ColumnDefinition Width="172" />
+                            <ColumnDefinition Width="156" />
+                            <ColumnDefinition Width="17" />
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="139" />
+                            <ColumnDefinition Width="13" />
+                            <ColumnDefinition Width="128" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="104" />
                           </Grid.ColumnDefinitions>
                           <ComboBox x:Name="DisplayPrecision"
                                     Grid.Column="0"
-                                    Width="210"
+                                    Width="156"
                                     Style="{StaticResource MainCompactSelectionInput}" />
                           <StackPanel Grid.Column="2">
                             <TextBox x:Name="MonthlySalary"
-                                     Width="243"
+                                     Width="180"
                                      Style="{StaticResource MainCompactTextInput}" />
                             <!-- #151：偏好错误贴对应字段下方（不再只出现在窗口底栏）。 -->
                             <TextBlock x:Name="MonthlySalaryError"
                                        Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       FontSize="{StaticResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource DangerBrush}"
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed" />
                           </StackPanel>
                           <StackPanel Grid.Column="4">
                             <TextBox x:Name="WorkStart"
-                                     Width="187"
+                                     Width="139"
                                      Style="{StaticResource MainCompactTextInput}" />
                             <TextBlock x:Name="WorkStartError"
                                        Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       FontSize="{StaticResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource DangerBrush}"
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed" />
                           </StackPanel>
                           <StackPanel Grid.Column="6">
                             <TextBox x:Name="WorkEnd"
-                                     Width="172"
+                                     Width="128"
                                      Style="{StaticResource MainCompactTextInput}" />
                             <TextBlock x:Name="WorkEndError"
                                        Margin="0,8,0,0"
-                                       FontSize="{StaticResource TypeBodyFontSize}"
+                                       FontSize="{StaticResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource DangerBrush}"
                                        TextWrapping="Wrap"
                                        Visibility="Collapsed" />
                           </StackPanel>
                           <Button x:Name="SavePreferencesButton"
                                   Grid.Column="8"
-                                  Width="140"
-                                  Height="56"
-                                  MinHeight="56"
+                                  Width="104"
+                                  Height="41"
+                                  MinHeight="41"
                                   Content="保存设置"
                                   Style="{StaticResource MainSecondarySolidButton}" />
                         </Grid>
@@ -1457,24 +1462,24 @@
                                   IsTabStop="True"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
-                      <Grid x:Name="CountdownListContent" MinHeight="252">
+                      <Grid x:Name="CountdownListContent" MinHeight="187">
                         <StackPanel x:Name="CountdownRows" />
                         <StackPanel x:Name="CountdownEmptyStateContent"
                                     VerticalAlignment="Center"
                                     HorizontalAlignment="Center"
-                                    MaxWidth="520"
+                                    MaxWidth="386"
                                     Visibility="Collapsed">
                           <Image x:Name="CountdownEmptyMascot"
-                                 Width="92"
-                                 Height="64"
+                                 Width="68"
+                                 Height="47"
                                  HorizontalAlignment="Center"
                                  Stretch="Uniform"
                                  IsHitTestVisible="False"
                                  Focusable="False" />
                           <TextBlock x:Name="EmptyCountdownMessage"
-                                     Margin="0,10,0,0"
+                                     Margin="0,7,0,0"
                                      HorizontalAlignment="Center"
-                                     FontSize="{DynamicResource TypeH2FontSize}"
+                                     FontSize="{DynamicResource TypeBodyFontSize}"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource InkBrush}"
                                      Text="还没有倒计时"
@@ -1482,22 +1487,22 @@
                                      TextAlignment="Center"
                                      Visibility="Collapsed" />
                           <TextBlock x:Name="EmptyCountdownHint"
-                                     Margin="0,6,0,0"
+                                     Margin="0,4,0,0"
                                      HorizontalAlignment="Center"
-                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                     FontSize="{DynamicResource TypeCaptionFontSize}"
                                      Foreground="{DynamicResource MutedBrush}"
                                      Text="把重要的时刻记下来，从一个目标开始吧。"
                                      TextWrapping="Wrap"
                                      TextAlignment="Center"
                                      Visibility="Collapsed" />
                           <Button x:Name="AddEmptyCountdownButton"
-                                  Margin="0,14,0,0"
+                                  Margin="0,10,0,0"
                                   HorizontalAlignment="Center"
                                   Content="添加倒计时"
                                   Style="{StaticResource MainSecondaryButton}"
                                   Visibility="Collapsed" />
                           <Button x:Name="ResetEmptyCountdownFiltersButton"
-                                  Margin="0,12,0,0"
+                                  Margin="0,9,0,0"
                                   HorizontalAlignment="Center"
                                   Content="重置筛选"
                                   Visibility="Collapsed"
@@ -1510,52 +1515,52 @@
                   </Grid>
                   <!-- #154：倒计时页手写体装饰落点（§4/§5 装饰层合同）——设计坐标绝对落点，
                        IsHitTestVisible=False、不参与表单测量、不挤字段；视觉位置与迁移前一致
-                       （右上 (640,149) 右对齐宽 412；右下 (880,970) 右对齐宽 245）。 -->
+                       （右上 (475,108) 右对齐宽 305；右下 (653,718) 右对齐宽 182）。 -->
                   <!-- #156：倒计时页两处手写体装饰退出控件朗读（SilentTextBlock 无自动化 peer）；
                        不再携带「装饰文案」可访问名，装饰信息不进朗读树（§4/#156 合同）。 -->
-                  <local:SilentTextBlock Canvas.Left="640"
-                             Canvas.Top="149"
-                             Width="412"
+                  <local:SilentTextBlock Canvas.Left="475"
+                             Canvas.Top="108"
+                             Width="305"
                              TextAlignment="Right"
                              Text="每一个期待，都值得被认真对待 ♡"
                              FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                             FontSize="{DynamicResource TypeBodyFontSize}"
+                             FontSize="{DynamicResource TypeCaptionFontSize}"
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="CountdownDecoTextTop" />
-                  <local:SilentTextBlock Canvas.Left="880"
-                             Canvas.Top="970"
-                             Width="245"
+                  <local:SilentTextBlock Canvas.Left="653"
+                             Canvas.Top="718"
+                             Width="182"
                              TextAlignment="Right"
                              Text="生活很忙，但别忘了可爱 ♡"
                              FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                             FontSize="{DynamicResource TypeBodyFontSize}"
+                             FontSize="{DynamicResource TypeCaptionFontSize}"
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="CountdownDecoTextBottom" />
                 </Canvas>
                 <Canvas x:Name="NotesWorkspace"
-                        Width="1165"
-                        Height="996"
+                        Width="864"
+                        Height="738"
                         Visibility="Collapsed">
                   <!-- 装饰带手写体落点（§11 便签页装饰带契约；IsHitTestVisible=False，不参与布局测量）。 -->
                   <!-- #156：装饰带手写体退出控件朗读（SilentTextBlock，§4/#156 合同）。 -->
-                  <local:SilentTextBlock Canvas.Left="742"
-                             Canvas.Top="44"
+                  <local:SilentTextBlock Canvas.Left="550"
+                             Canvas.Top="33"
                              Text="今天也要加油呀！♡"
                              FontFamily="{StaticResource HandwrittenDecoFontFamily}"
-                             FontSize="{DynamicResource TypeBodyFontSize}"
+                             FontSize="{DynamicResource TypeCaptionFontSize}"
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="NotesDecoText" />
                   <Grid x:Name="NotesWorkspaceBody"
-                        Margin="46,134,47,0"
-                        Width="1072"
-                        Height="862">
+                        Margin="34,99,35,0"
+                        Width="795"
+                        Height="639">
                     <Grid.RowDefinitions>
-                      <RowDefinition Height="280" />
-                      <RowDefinition Height="24" />
-                      <RowDefinition Height="544" />
+                      <RowDefinition Height="215" />
+                      <RowDefinition Height="14" />
+                      <RowDefinition Height="399" />
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" x:Name="NoteEditorCard">
                       <Border x:Name="NoteEditorPanel"
@@ -1563,7 +1568,7 @@
                               Background="{DynamicResource WorkspacePanelBrush}"
                               BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
                               BorderThickness="0"
-                              CornerRadius="40">
+                              CornerRadius="30">
                         <!-- #136 便签页试点：目标图要求编辑区为装饰带下方的独立卡片。
                              NoteEditorPanel 的画刷被 MainWorkspaceResourcesFollowDayTheme 合同钉在
                              WorkspacePanel 透明角色上，卡片表面由内层 NoteEditorSurface 承担。 -->
@@ -1571,8 +1576,8 @@
                                 Background="{DynamicResource CardBrush}"
                                 BorderBrush="{DynamicResource PeachLineBrush}"
                                 BorderThickness="1"
-                                CornerRadius="16">
-                          <Grid x:Name="NoteEditorFields" Margin="24,14,0,2">
+                                CornerRadius="12">
+                          <Grid x:Name="NoteEditorFields" Margin="18,10,0,2">
                           <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -1583,50 +1588,50 @@
                           </Grid.RowDefinitions>
                           <Grid Grid.Row="0" x:Name="MainNotePrimaryLabels">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="522" />
-                              <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="296" />
-                              <ColumnDefinition Width="7" />
-                              <ColumnDefinition Width="132" />
-                              <ColumnDefinition Width="8" />
-                              <ColumnDefinition Width="66" />
+                              <ColumnDefinition Width="364" />
+                              <ColumnDefinition Width="11" />
+                              <ColumnDefinition Width="242" />
+                              <ColumnDefinition Width="5" />
+                              <ColumnDefinition Width="98" />
+                              <ColumnDefinition Width="6" />
+                              <ColumnDefinition Width="49" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal">
-                              <Path Width="18"
-                                    Height="18"
-                                    Data="M 3.9,2.5 L 14.1,2.5 C 14.9,2.5 15.5,3.1 15.5,3.9 L 15.5,10.9 L 10.9,15.5 L 3.9,15.5 C 3.1,15.5 2.5,14.9 2.5,14.1 L 2.5,3.9 C 2.5,3.1 3.1,2.5 3.9,2.5 Z M 10.9,10.9 L 10.9,15.5"
+                              <Path Width="13"
+                                    Height="13"
+                                    Data="M 2.82,1.81 L 10.18,1.81 C 10.76,1.81 11.19,2.24 11.19,2.82 L 11.19,7.87 L 7.87,11.19 L 2.82,11.19 C 2.24,11.19 1.81,10.76 1.81,10.18 L 1.81,2.82 C 1.81,2.24 2.24,1.81 2.82,1.81 Z M 7.87,7.87 L 7.87,11.19"
                                     Stroke="{DynamicResource IconAccentBrush}"
                                     StrokeThickness="1.6"
                                     StrokeLineJoin="Round"
                                     VerticalAlignment="Center"
                                     IsHitTestVisible="False" />
                               <TextBlock x:Name="NoteTextLabel"
-                                         Margin="8,0,0,0"
+                                         Margin="6,0,0,0"
                                          Text="便签内容"
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
                             <TextBlock x:Name="NoteDateLabel" Grid.Column="2" Text="便签日期" Style="{StaticResource MainCompactFieldLabel}" />
                           </Grid>
-                          <Grid Grid.Row="1" x:Name="MainNotePrimaryInputs" Margin="0,10,0,0">
+                          <Grid Grid.Row="1" x:Name="MainNotePrimaryInputs" Margin="0,7,0,0">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="522" />
-                              <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="296" />
-                              <ColumnDefinition Width="7" />
-                              <ColumnDefinition Width="132" />
-                              <ColumnDefinition Width="8" />
-                              <ColumnDefinition Width="66" />
+                              <ColumnDefinition Width="364" />
+                              <ColumnDefinition Width="11" />
+                              <ColumnDefinition Width="242" />
+                              <ColumnDefinition Width="5" />
+                              <ColumnDefinition Width="98" />
+                              <ColumnDefinition Width="6" />
+                              <ColumnDefinition Width="49" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                               <Grid>
                                 <TextBox x:Name="NoteText"
-                                         MinHeight="68"
+                                         MinHeight="50"
                                          MaxLength="140" />
-                                <TextBlock Margin="18,0,0,0"
-                                           Height="28"
+                                <TextBlock Margin="13,0,0,0"
+                                           Height="21"
                                            HorizontalAlignment="Left"
                                            VerticalAlignment="Center"
-                                           FontSize="{DynamicResource TypeH2FontSize}"
+                                           FontSize="{DynamicResource TypeBodyFontSize}"
                                            Foreground="{DynamicResource MutedBrush}"
                                            IsHitTestVisible="False"
                                            Text="写下要记住的事情吧…">
@@ -1644,23 +1649,25 @@
                               </Grid>
                               <TextBlock x:Name="NoteTextError"
                                          Margin="0,8,0,0"
-                                         FontSize="{StaticResource TypeBodyFontSize}"
+                                         FontSize="{StaticResource TypeCaptionFontSize}"
                                          Foreground="{DynamicResource DangerBrush}"
                                          TextWrapping="Wrap"
                                          Visibility="Collapsed" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                               <Grid>
+                                <!-- 管理窗等比收缩后正文降一档，共享模板的 38px 下拉列不随之收缩；
+                                     日期列由便签内容列让出宽度，保证「2031 年 12 月 31 日」完整可见。 -->
                                 <local:WpfUiDatePicker x:Name="NoteDate"
-                                            Width="296"
-                                            MinHeight="68"
-                                            Padding="48,0,16,0" />
-                                <Path Width="20"
-                                      Height="20"
-                                      Margin="16,0,0,0"
+                                            Width="242"
+                                            MinHeight="50"
+                                            Padding="36,0,12,0" />
+                                <Path Width="15"
+                                      Height="15"
+                                      Margin="12,0,0,0"
                                       HorizontalAlignment="Left"
                                       VerticalAlignment="Center"
-                                      Data="M 3,4.5 L 17,4.5 C 17.6,4.5 18,4.9 18,5.5 L 18,16.5 C 18,17.1 17.6,17.5 17,17.5 L 3,17.5 C 2.4,17.5 2,17.1 2,16.5 L 2,5.5 C 2,4.9 2.4,4.5 3,4.5 Z M 2,8.5 L 18,8.5 M 6.5,2.5 L 6.5,6 M 13.5,2.5 L 13.5,6"
+                                      Data="M 2.25,3.38 L 12.75,3.38 C 13.2,3.38 13.5,3.68 13.5,4.12 L 13.5,12.38 C 13.5,12.83 13.2,13.12 12.75,13.12 L 2.25,13.12 C 1.8,13.12 1.5,12.83 1.5,12.38 L 1.5,4.12 C 1.5,3.68 1.8,3.38 2.25,3.38 Z M 1.5,6.38 L 13.5,6.38 M 4.88,1.88 L 4.88,4.5 M 10.12,1.88 L 10.12,4.5"
                                       Stroke="{DynamicResource MutedBrush}"
                                       StrokeThickness="1.6"
                                       StrokeLineJoin="Round"
@@ -1668,40 +1675,40 @@
                               </Grid>
                               <TextBlock x:Name="NoteDateError"
                                          Margin="0,8,0,0"
-                                         FontSize="{StaticResource TypeBodyFontSize}"
+                                         FontSize="{StaticResource TypeCaptionFontSize}"
                                          Foreground="{DynamicResource DangerBrush}"
                                          TextWrapping="Wrap"
                                          Visibility="Collapsed" />
                             </StackPanel>
                             <Button x:Name="SaveNoteButton"
                                     Grid.Column="4"
-                                    Width="132"
-                                    Height="68"
-                                    Padding="10,0"
+                                    Width="98"
+                                    Height="50"
+                                    Padding="7,0"
                                     Content="＋ 添加"
                                     Style="{StaticResource MainPrimaryButton}" />
                             <Button x:Name="CancelNoteEdit"
                                     Grid.Column="6"
-                                    Width="66"
-                                    Height="68"
-                                    Padding="8,0"
+                                    Width="49"
+                                    Height="50"
+                                    Padding="6,0"
                                     Content="取消"
                                     Visibility="Collapsed"
                                     Style="{StaticResource MainSecondaryButton}" />
                           </Grid>
-                          <Grid Grid.Row="2" x:Name="MainNoteSecondaryLabels" Margin="0,8,0,0">
+                          <Grid Grid.Row="2" x:Name="MainNoteSecondaryLabels" Margin="0,6,0,0">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="202" />
-                              <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="172" />
-                              <ColumnDefinition Width="406" />
-                              <ColumnDefinition Width="220" />
-                              <ColumnDefinition Width="31" />
+                              <ColumnDefinition Width="150" />
+                              <ColumnDefinition Width="11" />
+                              <ColumnDefinition Width="128" />
+                              <ColumnDefinition Width="300" />
+                              <ColumnDefinition Width="163" />
+                              <ColumnDefinition Width="23" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal">
-                              <Path Width="18"
-                                    Height="18"
-                                    Data="M 9,2.2 C 6.2,2.2 4.2,4.4 4.2,7.2 L 4.2,10.4 L 2.8,12.8 L 15.2,12.8 L 13.8,10.4 L 13.8,7.2 C 13.8,4.4 11.8,2.2 9,2.2 Z M 7.2,14.6 A 1.9,1.9 0 0 0 10.8,14.6"
+                              <Path Width="13"
+                                    Height="13"
+                                    Data="M 6.5,1.59 C 4.48,1.59 3.03,3.18 3.03,5.2 L 3.03,7.51 L 2.02,9.24 L 10.98,9.24 L 9.97,7.51 L 9.97,5.2 C 9.97,3.18 8.52,1.59 6.5,1.59 Z M 5.2,10.54 A 1.37,1.37 0 0 0 7.8,10.54"
                                     Stroke="{DynamicResource IconAccentBrush}"
                                     StrokeThickness="1.6"
                                     StrokeStartLineCap="Round"
@@ -1710,14 +1717,14 @@
                                     VerticalAlignment="Center"
                                     IsHitTestVisible="False" />
                               <TextBlock x:Name="NoteReminderModeLabel"
-                                         Margin="8,0,0,0"
+                                         Margin="6,0,0,0"
                                          Text="提醒规则"
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" Orientation="Horizontal">
-                              <Path Width="18"
-                                    Height="18"
-                                    Data="M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7"
+                              <Path Width="13"
+                                    Height="13"
+                                    Data="M 1.81,2.53 L 1.81,6.64 C 1.81,7.22 2.02,7.8 2.46,8.23 L 8.38,14.16 C 9.17,14.95 10.4,14.95 11.19,14.16 L 14.16,11.19 C 14.95,10.4 14.95,9.17 14.16,8.38 L 8.23,2.46 C 7.8,2.02 7.22,1.81 6.64,1.81 L 2.53,1.81 C 2.09,1.81 1.81,2.09 1.81,2.53 Z M 5.06,5.06 L 5.07,5.06"
                                     Stroke="{DynamicResource IconAccentBrush}"
                                     StrokeThickness="1.8"
                                     StrokeLineJoin="Round"
@@ -1726,7 +1733,7 @@
                                     VerticalAlignment="Center"
                                     IsHitTestVisible="False" />
                               <TextBlock x:Name="NoteTagsLabel"
-                                         Margin="8,0,0,0"
+                                         Margin="6,0,0,0"
                                          Text="标签"
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
@@ -1734,54 +1741,54 @@
                               <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
                                    与悬浮窗「搜索便签」单一图标语言一致）。 -->
                               <TextBlock x:Name="NoteSearchLabel"
-                                         Margin="8,0,0,0"
+                                         Margin="6,0,0,0"
                                          Text="搜索便签"
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
                           </Grid>
-                          <Grid Grid.Row="3" x:Name="MainNoteSecondaryInputs" Margin="0,3,0,0">
+                          <Grid Grid.Row="3" x:Name="MainNoteSecondaryInputs" Margin="0,2,0,0">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="202" />
-                              <ColumnDefinition Width="15" />
-                              <ColumnDefinition Width="172" />
-                              <ColumnDefinition Width="406" />
-                              <ColumnDefinition Width="220" />
-                              <ColumnDefinition Width="31" />
+                              <ColumnDefinition Width="150" />
+                              <ColumnDefinition Width="11" />
+                              <ColumnDefinition Width="128" />
+                              <ColumnDefinition Width="300" />
+                              <ColumnDefinition Width="163" />
+                              <ColumnDefinition Width="23" />
                             </Grid.ColumnDefinitions>
                             <Button x:Name="ManageNoteReminderRulesButton"
                                     Grid.Column="0"
-                                    Width="202"
-                                    Height="69"
+                                    Width="150"
+                                    Height="51"
                                     Content="管理提醒规则"
                                     Style="{StaticResource MainSecondaryButton}" />
                             <local:TagSelector x:Name="NoteTags"
                                                Grid.Column="2"
-                                               Width="172"
-                                               Height="69" />
+                                               Width="128"
+                                               Height="51" />
                             <Grid Grid.Column="4">
                               <TextBox x:Name="NoteSearch"
-                                       Width="220"
-                                       MinHeight="69"
+                                       Width="163"
+                                       MinHeight="51"
                                        MaxLength="140"
-                                       Padding="48,0,16,0" />
+                                       Padding="36,0,12,0" />
                               <!-- #154：输入框内搜索镜统一控件层描边语言（§4 单色描边、MutedBrush 1.6、
                                    圆头），与铅笔/日历字段图标同规格；不再是唯一的实心填充图标。 -->
-                              <Path Width="20"
-                                    Height="20"
-                                    Margin="16,0,0,0"
+                              <Path Width="15"
+                                    Height="15"
+                                    Margin="12,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Data="M 13.5,8 A 5.5,5.5 0 1 0 2.5,8 A 5.5,5.5 0 1 0 13.5,8 M 12.6,12.6 L 16.5,16.5"
+                                    Data="M 10.12,6 A 4.12,4.12 0 1 0 1.88,6 A 4.12,4.12 0 1 0 10.12,6 M 9.45,9.45 L 12.38,12.38"
                                     Stroke="{DynamicResource MutedBrush}"
                                     StrokeThickness="1.6"
                                     StrokeStartLineCap="Round"
                                     StrokeEndLineCap="Round"
                                     IsHitTestVisible="False" />
-                              <TextBlock Margin="48,0,0,0"
-                                         Height="28"
+                              <TextBlock Margin="36,0,0,0"
+                                         Height="21"
                                          HorizontalAlignment="Left"
                                          VerticalAlignment="Center"
-                                         FontSize="{DynamicResource TypeH2FontSize}"
+                                         FontSize="{DynamicResource TypeBodyFontSize}"
                                          Foreground="{DynamicResource MutedBrush}"
                                          IsHitTestVisible="False"
                                          Text="搜索关键词…">
@@ -1800,17 +1807,17 @@
                           </Grid>
                           <TextBlock x:Name="NoteReminderRulesSummary"
                                      Grid.Row="4"
-                                     Width="790"
-                                     Margin="0,4,0,0"
-                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                     Width="586"
+                                     Margin="0,3,0,0"
+                                     FontSize="{DynamicResource TypeCaptionFontSize}"
                                      Foreground="{DynamicResource MutedBrush}"
                                      TextWrapping="Wrap"
                                      Text="不提醒" />
                           <TextBlock x:Name="NoteMessage"
                                      Grid.Row="5"
-                                     Width="790"
+                                     Width="586"
                                      Margin="0,2,0,0"
-                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                     FontSize="{DynamicResource TypeCaptionFontSize}"
                                      Foreground="{DynamicResource DangerBrush}"
                                      TextWrapping="Wrap" />
                         </Grid>
@@ -1822,15 +1829,15 @@
                               Background="{DynamicResource CardBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
                               BorderThickness="1"
-                              CornerRadius="16" />
+                              CornerRadius="12" />
                       <ScrollViewer x:Name="NotesListRegion"
                                   FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
                                   Focusable="True"
                                   IsTabStop="True"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
-                      <StackPanel Margin="20,18,12,22">
-                        <Grid x:Name="NotesStatusHeader" Margin="0,0,0,4">
+                      <StackPanel Margin="15,13,9,16">
+                        <Grid x:Name="NotesStatusHeader" Margin="0,0,0,3">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1838,7 +1845,7 @@
                           </Grid.ColumnDefinitions>
                           <Border Padding="2"
                                   Background="Transparent"
-                                  CornerRadius="17">
+                                  CornerRadius="13">
                             <Grid x:Name="NotesSegmentHost">
                               <!-- #196：状态分段与页签共用可中断的 160ms 指示条。 -->
                               <Canvas x:Name="NotesSegmentIndicatorLayer"
@@ -1846,14 +1853,14 @@
                                       IsHitTestVisible="False">
                                 <Border x:Name="NotesSegmentIndicator"
                                         Width="1"
-                                        Height="4"
+                                        Height="3"
                                         Background="{DynamicResource PeachRailBrush}"
                                         CornerRadius="2"
                                         Visibility="Collapsed" />
                               </Canvas>
                               <StackPanel Panel.ZIndex="1" Orientation="Horizontal">
                               <ToggleButton x:Name="ActiveNotesSegment"
-                                            Height="48"
+                                            Height="36"
                                             Style="{StaticResource MainNoteSegmentButton}">
                                 <Grid>
                                   <Grid.ColumnDefinitions>
@@ -1862,9 +1869,9 @@
                                     <ColumnDefinition Width="Auto" />
                                   </Grid.ColumnDefinitions>
                                   <Border x:Name="ActiveNotesSegmentRail"
-                                          Width="4"
-                                          Height="26"
-                                          Margin="10,0,0,0"
+                                          Width="3"
+                                          Height="19"
+                                          Margin="7,0,0,0"
                                           CornerRadius="2"
                                           VerticalAlignment="Center"
                                           Background="{DynamicResource PeachRailBrush}">
@@ -1881,8 +1888,8 @@
                                   </Border>
                                   <TextBlock x:Name="ActiveNotesLabel"
                                              Grid.Column="1"
-                                             Margin="10,0,0,0"
-                                             FontSize="{DynamicResource TypeH2FontSize}"
+                                             Margin="7,0,0,0"
+                                             FontSize="{DynamicResource TypeBodyFontSize}"
                                              Text="未完成"
                                              VerticalAlignment="Center">
                                     <TextBlock.Style>
@@ -1899,10 +1906,10 @@
                                   </TextBlock>
                                   <Border x:Name="ActiveNotesBadge"
                                           Grid.Column="2"
-                                          MinWidth="34"
-                                          Margin="12,0,14,0"
-                                          Padding="9,2"
-                                          CornerRadius="12"
+                                          MinWidth="25"
+                                          Margin="9,0,10,0"
+                                          Padding="7,2"
+                                          CornerRadius="9"
                                           VerticalAlignment="Center">
                                     <Border.Style>
                                       <Style TargetType="{x:Type Border}">
@@ -1917,7 +1924,7 @@
                                     <!-- #156：分段裸数字不再作为独立内容控件朗读（SilentTextBlock）；
                                          数量语义由分段按钮可访问名「查看未完成便签，共 N 条」承担。 -->
                                     <local:SilentTextBlock x:Name="ActiveNotesCount"
-                                               FontSize="{DynamicResource TypeBodyFontSize}"
+                                               FontSize="{DynamicResource TypeCaptionFontSize}"
                                                Text="0"
                                                TextAlignment="Center"
                                                Typography.NumeralAlignment="Tabular">
@@ -1937,7 +1944,7 @@
                                 </Grid>
                               </ToggleButton>
                               <ToggleButton x:Name="CompletedNotesSegment"
-                                            Height="48"
+                                            Height="36"
                                             Margin="2,0,0,0"
                                             Style="{StaticResource MainNoteSegmentButton}">
                                 <Grid>
@@ -1947,9 +1954,9 @@
                                     <ColumnDefinition Width="Auto" />
                                   </Grid.ColumnDefinitions>
                                   <Border x:Name="CompletedNotesSegmentRail"
-                                          Width="4"
-                                          Height="26"
-                                          Margin="10,0,0,0"
+                                          Width="3"
+                                          Height="19"
+                                          Margin="7,0,0,0"
                                           CornerRadius="2"
                                           VerticalAlignment="Center"
                                           Background="{DynamicResource PeachRailBrush}">
@@ -1966,8 +1973,8 @@
                                   </Border>
                                   <TextBlock x:Name="CompletedNotesLabel"
                                              Grid.Column="1"
-                                             Margin="10,0,0,0"
-                                             FontSize="{DynamicResource TypeH2FontSize}"
+                                             Margin="7,0,0,0"
+                                             FontSize="{DynamicResource TypeBodyFontSize}"
                                              Text="已完成"
                                              VerticalAlignment="Center">
                                     <TextBlock.Style>
@@ -1984,10 +1991,10 @@
                                   </TextBlock>
                                   <Border x:Name="CompletedNotesBadge"
                                           Grid.Column="2"
-                                          MinWidth="34"
-                                          Margin="12,0,14,0"
-                                          Padding="9,2"
-                                          CornerRadius="12"
+                                          MinWidth="25"
+                                          Margin="9,0,10,0"
+                                          Padding="7,2"
+                                          CornerRadius="9"
                                           VerticalAlignment="Center">
                                     <Border.Style>
                                       <Style TargetType="{x:Type Border}">
@@ -2002,7 +2009,7 @@
                                     <!-- #156：分段裸数字不再作为独立内容控件朗读（SilentTextBlock）；
                                          数量语义由分段按钮可访问名「查看已完成便签，共 N 条」承担。 -->
                                     <local:SilentTextBlock x:Name="CompletedNotesCount"
-                                               FontSize="{DynamicResource TypeBodyFontSize}"
+                                               FontSize="{DynamicResource TypeCaptionFontSize}"
                                                Text="0"
                                                TextAlignment="Center"
                                                Typography.NumeralAlignment="Tabular">
@@ -2026,35 +2033,35 @@
                           </Border>
                           <ComboBox x:Name="NoteGroupingSelector"
                                     Grid.Column="2"
-                                    Width="188"
-                                    Height="48"
-                                    MinHeight="48"
-                                    FontSize="{DynamicResource TypeBodyFontSize}"
+                                    Width="139"
+                                    Height="36"
+                                    MinHeight="36"
+                                    FontSize="{DynamicResource TypeCaptionFontSize}"
                                     VerticalAlignment="Center"
                                     SelectedIndex="0"
                                     AutomationProperties.Name="按日期分组">
                             <ComboBoxItem Content="按日期分组" />
                           </ComboBox>
                         </Grid>
-                        <StackPanel x:Name="ActiveNoteRows" Margin="8,6,0,0" />
-                        <StackPanel x:Name="CompletedNoteRows" Margin="8,6,0,0" Visibility="Collapsed" />
+                        <StackPanel x:Name="ActiveNoteRows" Margin="6,4,0,0" />
+                        <StackPanel x:Name="CompletedNoteRows" Margin="6,4,0,0" Visibility="Collapsed" />
                         <Grid x:Name="NotesEmptyStateContent"
-                              MinHeight="360"
+                              MinHeight="267"
                               Visibility="Collapsed">
                           <StackPanel VerticalAlignment="Center"
                                       HorizontalAlignment="Center"
-                                      MaxWidth="520">
+                                      MaxWidth="386">
                             <Image x:Name="NotesEmptyMascot"
-                                   Width="92"
-                                   Height="64"
+                                   Width="68"
+                                   Height="47"
                                    HorizontalAlignment="Center"
                                    Stretch="Uniform"
                                    IsHitTestVisible="False"
                                    Focusable="False" />
                             <TextBlock x:Name="EmptyNotesMessage"
-                                       Margin="0,10,0,0"
+                                       Margin="0,7,0,0"
                                        HorizontalAlignment="Center"
-                                       FontSize="{DynamicResource TypeH2FontSize}"
+                                       FontSize="{DynamicResource TypeBodyFontSize}"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource InkBrush}"
                                        Text="还没有便签"
@@ -2062,22 +2069,22 @@
                                        TextAlignment="Center"
                                        Visibility="Collapsed" />
                             <TextBlock x:Name="EmptyNotesHint"
-                                       Margin="0,6,0,0"
+                                       Margin="0,4,0,0"
                                        HorizontalAlignment="Center"
-                                       FontSize="{DynamicResource TypeBodyFontSize}"
+                                       FontSize="{DynamicResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource MutedBrush}"
                                        Text="先写下一件想记住的事。"
                                        TextWrapping="Wrap"
                                        TextAlignment="Center"
                                        Visibility="Collapsed" />
                             <Button x:Name="AddEmptyNoteButton"
-                                    Margin="0,14,0,0"
+                                    Margin="0,10,0,0"
                                     HorizontalAlignment="Center"
                                     Content="添加便签"
                                     Style="{StaticResource MainSecondaryButton}"
                                     Visibility="Collapsed" />
                             <Button x:Name="ResetEmptyNotesFiltersButton"
-                                    Margin="0,12,0,0"
+                                    Margin="0,9,0,0"
                                     HorizontalAlignment="Center"
                                     Content="重置筛选"
                                     Visibility="Collapsed"
@@ -2093,29 +2100,29 @@
 
               <!-- 底部动作区：北京时间与状态。#151：状态栏消费状态条表面（StatusBarBrush），
                    错误字在该表面上达信息文本对比（DangerBrush 实测 4.83 ≥ 4.5）。 -->
-              <Grid x:Name="MainStatusBarZone" Grid.Row="3" Margin="40,10,45,0" VerticalAlignment="Top">
+              <Grid x:Name="MainStatusBarZone" Grid.Row="3" Margin="30,7,33,0" VerticalAlignment="Top">
                 <Border x:Name="MainStatusBarSurface"
                         Background="{DynamicResource StatusBarBrush}"
                         BorderBrush="{DynamicResource PeachLineBrush}"
                         BorderThickness="1"
                         CornerRadius="{DynamicResource RadiusOverlay}"
-                        Padding="14,8">
+                        Padding="10,6">
                 <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="16" />
+                  <ColumnDefinition Width="12" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="NowText"
-                           FontSize="{DynamicResource TypeBodyFontSize}"
+                           FontSize="{DynamicResource TypeCaptionFontSize}"
                            Typography.NumeralAlignment="Tabular"
                            Foreground="{DynamicResource MutedBrush}" />
                 <TextBlock x:Name="StatusText"
                            Grid.Column="1"
-                           MaxWidth="320"
-                           FontSize="{DynamicResource TypeBodyFontSize}"
+                           MaxWidth="237"
+                           FontSize="{DynamicResource TypeCaptionFontSize}"
                            Foreground="{DynamicResource MutedBrush}"
                            FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
                            Focusable="True"
@@ -2125,17 +2132,17 @@
                 <!-- #155：最近一次删除的短时「撤销」入口；常态 Collapsed，状态条默认构图与 v22 帧一致。 -->
                 <Button x:Name="MainStatusUndoButton"
                         Grid.Column="2"
-                        MinWidth="56"
-                        MinHeight="28"
-                        Margin="12,0,0,0"
-                        Padding="10,0"
+                        MinWidth="41"
+                        MinHeight="24"
+                        Margin="9,0,0,0"
+                        Padding="7,0"
                         Content="撤销"
                         Style="{DynamicResource SecondaryButton}"
                         Visibility="Collapsed" />
                 <StackPanel Grid.Column="4" Orientation="Horizontal">
-                  <Path Width="18"
-                        Height="18"
-                        Data="M 6.2,9 A 3.6,3.6 0 1 0 13.4,9 A 3.6,3.6 0 1 0 6.2,9 Z M 9.8,0.8 L 9.8,2.4 M 9.8,15.6 L 9.8,17.2 M 0.8,9.8 L 2.4,9.8 M 15.6,9.8 L 17.2,9.8 M 3.2,3.2 L 4.4,4.4 M 15.2,15.2 L 16.4,16.4 M 16.4,3.2 L 15.2,4.4 M 4.4,15.2 L 3.2,16.4"
+                  <Path Width="13"
+                        Height="13"
+                        Data="M 4.48,6.5 A 2.6,2.6 0 1 0 9.68,6.5 A 2.6,2.6 0 1 0 4.48,6.5 Z M 7.08,0.58 L 7.08,1.73 M 7.08,11.27 L 7.08,12.42 M 0.58,7.08 L 1.73,7.08 M 11.27,7.08 L 12.42,7.08 M 2.31,2.31 L 3.18,3.18 M 10.98,10.98 L 11.84,11.84 M 11.84,2.31 L 10.98,3.18 M 3.18,10.98 L 2.31,11.84"
                         Stroke="{DynamicResource IconAccentBrush}"
                         StrokeThickness="1.5"
                         StrokeStartLineCap="Round"
@@ -2143,9 +2150,9 @@
                         VerticalAlignment="Center"
                         IsHitTestVisible="False" />
                   <TextBlock x:Name="MainThemeCaption"
-                             Margin="8,0,0,0"
+                             Margin="6,0,0,0"
                              Text="当前主题：日间"
-                             FontSize="{DynamicResource TypeBodyFontSize}"
+                             FontSize="{DynamicResource TypeCaptionFontSize}"
                              Foreground="{DynamicResource MutedBrush}"
                              VerticalAlignment="Center" />
                 </StackPanel>
@@ -2161,58 +2168,58 @@
                    AllowsTransparency="True"
                    focus:PopupMotionBehavior.IsEnabled="True"
                    PopupAnimation="None">
-              <Border MinWidth="480"
+              <Border MinWidth="356"
                       MaxHeight="520"
-                      Margin="0,8,0,0"
-                      Padding="20"
+                      Margin="0,6,0,0"
+                      Padding="15"
                       Background="{DynamicResource CanvasBrush}"
                       BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
-                      CornerRadius="12">
+                      CornerRadius="9">
                 <ScrollViewer MaxHeight="480"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-                  <TextBlock Text="标签匹配" FontSize="{DynamicResource TypeBodyFontSize}" FontWeight="SemiBold" />
-                  <StackPanel Margin="0,10,0,0" Orientation="Horizontal">
+                  <TextBlock Text="标签匹配" FontSize="{DynamicResource TypeCaptionFontSize}" FontWeight="SemiBold" />
+                  <StackPanel Margin="0,7,0,0" Orientation="Horizontal">
                     <ToggleButton x:Name="AnyTagMode" Content="任一匹配" Style="{DynamicResource FilterOptionButton}" />
                     <ToggleButton x:Name="AllTagMode" Margin="8,0,0,0" Content="全部匹配" Style="{DynamicResource FilterOptionButton}" />
                     <ToggleButton x:Name="UntaggedOnly" Margin="8,0,0,0" Content="无标签" Style="{DynamicResource FilterOptionButton}" />
                   </StackPanel>
-                  <WrapPanel x:Name="FilterTagOptions" Margin="0,8,0,0" />
-                  <StackPanel x:Name="CountdownFilterOptions" Margin="0,12,0,0">
+                  <WrapPanel x:Name="FilterTagOptions" Margin="0,6,0,0" />
+                  <StackPanel x:Name="CountdownFilterOptions" Margin="0,9,0,0">
                     <TextBlock Text="倒计时状态" FontWeight="SemiBold" />
-                    <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                    <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
                       <ToggleButton x:Name="CountdownAllFilter" Content="全部" Style="{DynamicResource FilterOptionButton}" />
                       <ToggleButton x:Name="CountdownActiveFilter" Margin="8,0,0,0" Content="未到期" Style="{DynamicResource FilterOptionButton}" />
                       <ToggleButton x:Name="CountdownExpiredFilter" Margin="8,0,0,0" Content="已到期" Style="{DynamicResource FilterOptionButton}" />
                     </StackPanel>
                   </StackPanel>
-                  <StackPanel x:Name="NoteFilterOptions" Margin="0,12,0,0" Visibility="Collapsed">
+                  <StackPanel x:Name="NoteFilterOptions" Margin="0,9,0,0" Visibility="Collapsed">
                     <TextBlock Text="便签状态与日期" FontWeight="SemiBold" />
-                    <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                    <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
                       <ToggleButton x:Name="NoteAllFilter" Content="全部" Style="{DynamicResource FilterOptionButton}" />
                       <ToggleButton x:Name="NoteActiveFilter" Margin="8,0,0,0" Content="未完成" Style="{DynamicResource FilterOptionButton}" />
                       <ToggleButton x:Name="NoteCompletedFilter" Margin="8,0,0,0" Content="已完成" Style="{DynamicResource FilterOptionButton}" />
                       <ToggleButton x:Name="NoteUndatedFilter" Margin="8,0,0,0" Content="未设日期" Style="{DynamicResource FilterOptionButton}" />
                     </StackPanel>
-                    <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                    <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
                       <!-- #153：筛选弹层的便签日期筛选有可见标签（字段标签 BodyBrush），不是无名空下拉。 -->
                       <TextBlock x:Name="NoteDateFilterLabel"
                                  VerticalAlignment="Center"
                                  Margin="0,0,8,0"
                                  Foreground="{DynamicResource BodyBrush}"
                                  Text="日期" />
-                      <local:WpfUiDatePicker x:Name="NoteDateFilter" Width="254" />
+                      <local:WpfUiDatePicker x:Name="NoteDateFilter" Width="216" />
                       <Button x:Name="ClearNoteDateFilter"
-                              Width="76"
+                              Width="56"
                               Margin="8,0,0,0"
                               Content="清除"
                               Style="{DynamicResource SecondaryButton}" />
                     </StackPanel>
                   </StackPanel>
                   <Button x:Name="ClearFilterButton"
-                          Margin="0,12,0,0"
+                          Margin="0,9,0,0"
                           HorizontalAlignment="Right"
                           Content="重置筛选"
                           Style="{DynamicResource SecondaryButton}" />
@@ -2228,14 +2235,14 @@
                    AllowsTransparency="True"
                    focus:PopupMotionBehavior.IsEnabled="True"
                    PopupAnimation="None">
-              <Border MinWidth="430"
+              <Border MinWidth="319"
                       MaxHeight="520"
-                      Margin="0,8,0,0"
-                      Padding="20"
+                      Margin="0,6,0,0"
+                      Padding="15"
                       Background="{DynamicResource CanvasBrush}"
                       BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
-                      CornerRadius="12">
+                      CornerRadius="9">
                 <Grid>
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -2245,10 +2252,10 @@
                   <StackPanel>
                     <TextBlock x:Name="NewTagInputLabel"
                                Text="新标签名称"
-                               FontSize="{DynamicResource TypeBodyFontSize}"
+                               FontSize="{DynamicResource TypeCaptionFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource InkBrush}" />
-                    <Grid Margin="0,6,0,0">
+                    <Grid Margin="0,4,0,0">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -2256,18 +2263,18 @@
                       <TextBox x:Name="NewTagInput" MaxLength="30" />
                       <Button x:Name="CreateTagButton"
                               Grid.Column="1"
-                              Width="80"
-                              Margin="8,0,0,0"
+                              Width="59"
+                              Margin="6,0,0,0"
                               Content="新建"
                               Style="{DynamicResource PrimaryButton}" />
                     </Grid>
                   </StackPanel>
-                  <ScrollViewer Grid.Row="1" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
+                  <ScrollViewer Grid.Row="1" Margin="0,7,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="TagManagerRows" />
                   </ScrollViewer>
                   <TextBlock x:Name="TagManagerMessage"
                              Grid.Row="2"
-                             Margin="2,8,2,0"
+                             Margin="2,6,2,0"
                              Foreground="{DynamicResource DangerBrush}"
                              TextWrapping="Wrap" />
                 </Grid>

@@ -19,28 +19,29 @@ namespace MinminCountdown;
 
 public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 {
-    private const double CountdownRemainingColumnWidth = 300;
-    private const double CountdownRemainingLeftMargin = 16;
-    // #211：1165×1350 由钉死尺寸改为首选尺寸；窗口随所在显示器工作区收缩，
+    // 列宽让四格次项在 10 DIP 间距下、四格主项在紧凑 4 DIP 间距下都留出余量（DESIGN.md §8）。
+    private const double CountdownRemainingColumnWidth = 228;
+    private const double CountdownRemainingLeftMargin = 12;
+    // #211：首选尺寸（现为 864×1000，办公室 1920×1080@100% 一屏放下）而非钉死尺寸；窗口随所在显示器工作区收缩，
     // 业务内容滚动而不缩放（DESIGN.md §8）。最小尺寸由 XAML MinWidth/MinHeight 钉住。
-    internal const double PreferredWidth = 1165;
-    internal const double PreferredHeight = 1350;
+    internal const double PreferredWidth = 864;
+    internal const double PreferredHeight = 1000;
     // #211：工作区安全边距（每边），对齐悬浮窗 12 DIP 边距惯例。
     private const double WorkAreaSafetyMargin = 12;
     private const int WmDisplayChangeMessage = 0x007E;
     private const int WmExitSizeMoveMessage = 0x0232;
     // #198: the remaining time is the primary visual anchor.  These are real
     // DIP values now that the main window no longer scales a design canvas.
-    private const double CountdownRemainingBaseFontSize = 26;
-    private const double CountdownRemainingMinimumFontSize = 14;
+    private const double CountdownRemainingBaseFontSize = 20;
+    private const double CountdownRemainingMinimumFontSize = 13;
     // #197：分格单位字收敛到字号阶梯的 caption 档，不随列宽缩小。
     private const double CountdownRemainingUnitFontSize = 13;
     internal const string NoteCardReminderSummaryAutomationId = "MainNoteCardReminderSummary";
-    // #153/#197：便签正文 20px 按悬浮窗 §10「13/18」同一比例（18/13≈1.385）取整为 28 的显式行高，
+    // #153/#197：便签正文继承管理窗 caption 13px，按悬浮窗 §10「13/18」同一比例取 18 的显式行高，
     // 多行正文与「下次提醒」摘要分开，不再挤成一块（§3 便签正文行距合同）。
-    private const double NoteCardBodyLineHeight = 28;
+    private const double NoteCardBodyLineHeight = 18;
     // #153：标签芯片单行不折字，集合由 WrapPanel 先折行；超长芯片按此上限省略并以 ToolTip 提供全文。
-    internal const double TagChipMaxWidth = 200;
+    internal const double TagChipMaxWidth = 148;
 
     private static readonly string[] TagColors =
     {
@@ -710,7 +711,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     void IManagerWorkspaceHost.Reveal(WorkspaceKind workspace) => Reveal(workspace);
 
     // #211：每次显示以及显示器工作区变化时，把窗口夹回所在显示器工作区（DESIGN.md §8）。
-    // 未经用户调整的显示取「首选 1165×1350 与工作区−安全边距」的较小值并在工作区内居中；
+    // 未经用户调整的显示取「首选 864×1000 与工作区−安全边距」的较小值并在工作区内居中；
     // 用户调整过的位置尺寸在本次运行内保留，只夹回工作区。
     private void ApplyWorkAreaGeometry()
     {
@@ -1513,8 +1514,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Uid = "CountdownRowTitleText",
                 Text = record.Name,
-                // #153/#197：列表条目标题落 H2 阶梯，去掉与区块标题混用的旧字号台阶。
-                FontSize = (double)FindResource("TypeH2FontSize"),
+                // #153/#197：列表条目标题比区块标题低一档（管理窗整体降档后为 Body），去掉混用的旧字号台阶。
+                FontSize = (double)FindResource("TypeBodyFontSize"),
                 FontWeight = FontWeights.SemiBold
             };
             name.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
@@ -1528,7 +1529,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             title.Children.Add(name);
             var remaining = new TextBlock
             {
-                Margin = new Thickness(CountdownRemainingLeftMargin, 5, 0, 0),
+                Margin = new Thickness(CountdownRemainingLeftMargin, 4, 0, 0),
                 TextAlignment = TextAlignment.Right,
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.None,
@@ -1667,26 +1668,26 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             !string.Equals(previousSeconds, secondsPair.Value, StringComparison.Ordinal);
 
         // #148：主窗口分格与悬浮窗同一套竖长口径（约 2:3、单位在块外、间距约块宽三分之一），
-        // 主窗真实 DIP：主项 52x78、次项 46x69，圆角约短边 1/4；数值优先压内边距与间距，
+        // 主窗真实 DIP：主项 38x57、次项 34x51，圆角约短边 1/4；数值优先压内边距与间距，
         // 最后才在辅助下限档之上收缩数值字号；单位字固定在下限档、不得缩小硬塞。
-        const double valueFontPrimary = 26;
-        const double valueFontSecondary = 20;
-        const double blockWidthPrimary = 52;
-        const double blockWidthSecondary = 46;
-        const double blockHeightPrimary = 78;
-        const double blockHeightSecondary = 69;
-        const double minimumValueFontSize = 14;
-        const double blockWidthReserve = 3;
-        const double unitGap = 3;
+        const double valueFontPrimary = 20;
+        const double valueFontSecondary = 16;
+        const double blockWidthPrimary = 38;
+        const double blockWidthSecondary = 34;
+        const double blockHeightPrimary = 57;
+        const double blockHeightSecondary = 51;
+        const double minimumValueFontSize = 13;
+        const double blockWidthReserve = 2;
+        const double unitGap = 2;
         var valueFontSize = host.IsPrimary ? valueFontPrimary : valueFontSecondary;
-        var blockPadding = 4;
-        var pairGap = host.IsPrimary ? 14 : 13;
+        var blockPadding = 3;
+        var pairGap = 10;
 
         var valueBlocks = pairs
             .Select(pair => new TextBlock
             {
                 Text = pair.Value,
-                MinWidth = host.IsPrimary ? 38 : 34,
+                MinWidth = host.IsPrimary ? 28 : 25,
                 Padding = new Thickness(blockPadding, 0, blockPadding, 0),
                 FontSize = valueFontSize,
                 FontWeight = FontWeights.SemiBold,
@@ -1747,7 +1748,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
         {
-            pairGap = 6;
+            pairGap = 4;
         }
 
         var required = RequiredWidth(valueFontSize, blockPadding, pairGap);
@@ -2058,22 +2059,22 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var timeline = new Grid
             {
                 Uid = "NoteDateTimeline",
-                Width = 30
+                Width = 22
             };
             var timelineLine = new Border
             {
                 Uid = "NoteTimelineLine",
                 Width = 1,
-                Margin = new Thickness(0, isFirstSection ? 22 : 0, 0, 0),
+                Margin = new Thickness(0, isFirstSection ? 16 : 0, 0, 0),
                 HorizontalAlignment = HorizontalAlignment.Center
             };
             timelineLine.SetResourceReference(Border.BackgroundProperty, "NoteTimelineBrush");
             var timelineNode = new WpfEllipse
             {
                 Uid = "NoteTimelineNode",
-                Width = 10,
-                Height = 10,
-                Margin = new Thickness(0, 16, 0, 0),
+                Width = 7,
+                Height = 7,
+                Margin = new Thickness(0, 12, 0, 0),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Top,
                 StrokeThickness = 2
@@ -2097,7 +2098,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 // #153：日期章节间距消费 §13.3 SpacingBlockGap（12，§5 日期章节 12px 节奏）。
                 Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingBlockGap"))
             };
-            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
+            section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
             section.ColumnDefinitions.Add(new ColumnDefinition());
             Grid.SetColumn(content, 1);
             section.Children.Add(timeline);
@@ -2122,7 +2123,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Uid = "NoteDateLabel",
             Text = dateLabel,
             VerticalAlignment = VerticalAlignment.Center,
-            FontSize = (double)FindResource("TypeH2FontSize"),
+            FontSize = (double)FindResource("TypeBodyFontSize"),
             FontWeight = FontWeights.SemiBold
         };
         label.SetResourceReference(TextBlock.ForegroundProperty, "BodyBrush");
@@ -2130,7 +2131,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             Uid = "NoteDateCount",
             Text = $"{noteCount} 条",
-            Margin = new Thickness(12, 0, 0, 0),
+            Margin = new Thickness(9, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             Typography =
@@ -2142,9 +2143,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var chevron = new WpfPath
         {
             Uid = "NoteDateChevron",
-            Width = 12,
-            Height = 8,
-            Margin = new Thickness(13, 0, 3, 0),
+            Width = 9,
+            Height = 6,
+            Margin = new Thickness(10, 0, 2, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Data = Geometry.Parse("M 1,1 L 6,6 L 11,1"),
             RenderTransform = chevronRotation,
@@ -2233,7 +2234,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 IsChecked = note.IsCompleted,
                 Tag = note.Id,
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 0, 10, 0),
+                Margin = new Thickness(0, 0, 7, 0),
                 Style = (Style)MainContentProjection.FindResource("MainNoteCompletionCheck")
             },
             note.IsCompleted ? $"恢复便签 {note.Text}" : $"完成便签 {note.Text}");
@@ -2249,7 +2250,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         delete.Click += OnDeleteNote;
         var more = NoteActionButton("…", note.Id, $"更多操作：编辑或删除便签 {note.Text}");
         more.Uid = "NoteRowOverflowMenu";
-        more.MinWidth = 56;
+        more.MinWidth = 41;
         more.SetResourceReference(Button.ForegroundProperty, "MutedBrush");
         AttachNoteRowOverflowMenu(more, note);
         var actions = new StackPanel
@@ -2283,12 +2284,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Text = details
             };
-            // #197/#208：摘要使用 H2 阶梯并直接以真实 DIP 渲染，保持长便签提醒的可读下限。
-            detailText.SetResourceReference(TextBlock.FontSizeProperty, "TypeH2FontSize");
+            // #197/#208：摘要比正文高一档（管理窗整体降档后为 Body）并直接以真实 DIP 渲染，保持长便签提醒的可读下限。
+            detailText.SetResourceReference(TextBlock.FontSizeProperty, "TypeBodyFontSize");
             detailText.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             AutomationProperties.SetAutomationId(detailText, NoteCardReminderSummaryAutomationId);
             UiAccessibility.Name(detailText, $"便签卡提醒摘要：{details}");
-            var detailRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+            var detailRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
             var clockGlyph = CreateNoteRowGlyph(
                 "M 9,2.6 C 5.9,2.6 3.4,5.1 3.4,8.2 C 3.4,11.3 5.9,13.8 9,13.8 C 12.1,13.8 14.6,11.3 14.6,8.2 C 14.6,5.1 12.1,2.6 9,2.6 Z M 9,5.2 L 9,8.2 L 11.2,9.6",
                 "MutedBrush");
@@ -2301,7 +2302,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         // 不再换行堆叠在正文下方。
         var tagChips = CreateTagChips(note.TagIds, hashPrefix: true);
         tagChips.VerticalAlignment = VerticalAlignment.Center;
-        tagChips.Margin = new Thickness(8, 0, 8, 0);
+        tagChips.Margin = new Thickness(6, 0, 6, 0);
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -2332,9 +2333,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         var glyph = new WpfPath
         {
-            Width = 18,
-            Height = 18,
-            Margin = new Thickness(0, 1, 7, 0),
+            Width = 13,
+            Height = 13,
+            Margin = new Thickness(0, 1, 5, 0),
             Data = Geometry.Parse(data),
             Stretch = Stretch.Uniform,
             StrokeThickness = 1.6,
@@ -2359,14 +2360,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             item.Margin = new Thickness(0, 2, 0, 2);
         }
 
-        var items = new StackPanel { Margin = new Thickness(4) };
+        var items = new StackPanel { Margin = new Thickness(3) };
         items.Children.Add(menuEdit);
         items.Children.Add(menuDelete);
         var surface = new Border
         {
-            MinWidth = 150,
-            Padding = new Thickness(6),
-            CornerRadius = new CornerRadius(12),
+            MinWidth = 111,
+            Padding = new Thickness(4),
+            CornerRadius = new CornerRadius(9),
             BorderThickness = new Thickness(1),
             Child = items
         };
@@ -3314,7 +3315,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     SetMessage(TagManagerMessage, result.Error, true);
                 }
             };
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -3426,7 +3427,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private FrameworkElement CreateTagChips(IReadOnlyList<string> tagIds, bool hashPrefix = false)
     {
-        var panel = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var panel = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
         foreach (var tag in _desktopWorkspace.Snapshot.Settings.Tags.Where(tag => tagIds.Contains(
                      tag.Id,
                      StringComparer.OrdinalIgnoreCase)))
@@ -3437,7 +3438,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var chipText = new TextBlock
             {
                 Text = hashPrefix ? $"# {tag.Name}" : tag.Name,
-                FontSize = (double)FindResource("TypeBodyFontSize"),
+                FontSize = (double)FindResource("TypeCaptionFontSize"),
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
@@ -3446,9 +3447,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Uid = tag.Id,
                 MaxWidth = TagChipMaxWidth,
-                Margin = new Thickness(0, 0, 5, 0),
-                Padding = new Thickness(7, 3, 7, 3),
-                CornerRadius = new CornerRadius(10),
+                Margin = new Thickness(0, 0, 4, 0),
+                Padding = new Thickness(5, 2, 5, 2),
+                CornerRadius = new CornerRadius(7),
                 Child = chipText,
                 ToolTip = tag.Name
             };
@@ -3489,9 +3490,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var card = new Border
         {
             Child = content,
-            Margin = new Thickness(0, 0, 0, 12),
-            Padding = new Thickness(21),
-            CornerRadius = new CornerRadius(18),
+            Margin = new Thickness(0, 0, 0, 9),
+            Padding = new Thickness(16),
+            CornerRadius = new CornerRadius(13),
             BorderThickness = new Thickness(1)
         };
         card.SetResourceReference(Border.BackgroundProperty, backgroundResource);
@@ -3538,10 +3539,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Content = content,
                 Tag = id,
-                MinWidth = 72,
-                MinHeight = 44,
-                FontSize = (double)FindResource("TypeBodyFontSize"),
-                Margin = new Thickness(6, 0, 0, 0),
+                MinWidth = 53,
+                MinHeight = 33,
+                FontSize = (double)FindResource("TypeCaptionFontSize"),
+                Margin = new Thickness(4, 0, 0, 0),
                 Style = (Style)FindResource("SecondaryButton")
             },
             accessibleName);
@@ -3567,8 +3568,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
         var glyph = new FrameworkElementFactory(typeof(WpfPath));
         glyph.Name = "Glyph";
-        glyph.SetValue(WpfPath.WidthProperty, 16.0);
-        glyph.SetValue(WpfPath.HeightProperty, 16.0);
+        glyph.SetValue(WpfPath.WidthProperty, 12.0);
+        glyph.SetValue(WpfPath.HeightProperty, 12.0);
         glyph.SetValue(WpfPath.DataProperty, Geometry.Parse(glyphData));
         glyph.SetValue(WpfPath.StretchProperty, Stretch.Uniform);
         glyph.SetValue(WpfPath.StrokeThicknessProperty, 1.6);
@@ -3578,7 +3579,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         glyph.SetValue(WpfPath.VerticalAlignmentProperty, VerticalAlignment.Center);
         glyph.SetResourceReference(WpfPath.StrokeProperty, glyphBrushKey);
         var label = new FrameworkElementFactory(typeof(TextBlock));
-        label.SetValue(TextBlock.MarginProperty, new Thickness(7, 0, 0, 0));
+        label.SetValue(TextBlock.MarginProperty, new Thickness(5, 0, 0, 0));
         label.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
         label.SetValue(TextBlock.TextProperty, new Binding());
         row.AppendChild(glyph);
@@ -3593,10 +3594,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Content = content,
                 Tag = id,
-                MinWidth = 88,
-                MinHeight = 52,
-                FontSize = (double)FindResource("TypeBodyFontSize"),
-                Margin = new Thickness(9, 0, 0, 0),
+                MinWidth = 65,
+                MinHeight = 39,
+                FontSize = (double)FindResource("TypeCaptionFontSize"),
+                Margin = new Thickness(7, 0, 0, 0),
                 Style = (Style)FindResource("SecondaryButton")
             },
             accessibleName);
@@ -3810,7 +3811,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     }
 
     // #231：整页装饰图首次显示时只解码当前页，另一页在切换到时才解码；
-    // 解码尺寸等于 PNG 原生尺寸 1165x1350，渲染像素不变。
+    // 解码尺寸等于 PNG 原生尺寸 1165x1350，渲染像素不变；由 Image 以 HighQuality
+    // 缩放 Fill 到 864x1000 管理窗画布。
     private void EnsureReferenceDecoration(WorkspaceKind workspace)
     {
         if (_assetRoot is null)

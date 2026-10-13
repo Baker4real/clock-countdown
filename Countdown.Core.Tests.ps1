@@ -22,6 +22,9 @@ if ($ParentTransactionMutexHeld) {
 }
 
 $ErrorActionPreference = 'Stop'
+# Native validation children emit UTF-8; decoding with Windows' cached 936
+# code page can consume the closing JSON quote after a Chinese path.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 # #126 分段计时插桩：计时行只走 stderr，保持 stdout 单一 JSON 报告契约
 # （Countdown.Validation.psm1 的 Invoke-CountdownValidationProcess 严格解析整个 stdout）。
@@ -3617,12 +3620,17 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 534 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 530 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 536 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 532 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\NoteCompletionExit.cs') '#233 source rebuild includes completion exit animation'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\NoteCompletionExit.cs') '#233 completion exit source is integrity protected'
 Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\app.manifest') '#219 source rebuild includes the PerMonitorV2 manifest'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\app.manifest') '#219 manifest is integrity protected'
+foreach ($preflightFile in @('Countdown.DeploymentPreflight.psm1', 'tools\Test-CountdownWindowPreflight.ps1')) {
+    Assert-Equal $true ($preflightFile -in @($releaseContract.PackageFiles)) "Release package keeps deployment preflight $preflightFile"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($preflightFile) "Deployment preflight is integrity protected: $preflightFile"
+    Assert-Equal $false ($preflightFile -in @($releaseContract.InstalledFiles)) "Deployment preflight is not installed as runtime: $preflightFile"
+}
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 65 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
@@ -3717,14 +3725,14 @@ $validationModuleSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-12-v50\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v33 baseline'
+        'assets\\ui-references\\floating-window\\520x390\\2026-10-13-v52\\manifest\.json').Count) `
+    'Validation suite pins the floating visual manifest to the current v52 baseline'
 Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
     'Validation suite no longer references the retired floating v17 baseline'
 Assert-Equal 1 ([regex]::Matches(
         $validationModuleSource,
-        'assets\\ui-references\\main-window\\1165x1350\\2026-10-12-v50\\manifest\.json').Count) `
-    'Validation suite pins the main-window visual manifest to the current v33 baseline'
+        'assets\\ui-references\\main-window\\1165x1350\\2026-10-13-v52\\manifest\.json').Count) `
+    'Validation suite pins the main-window visual manifest to the current v52 baseline'
 Assert-Equal $false ($validationModuleSource.Contains(
         'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
     'Validation suite no longer references the retired main-window v17 baseline'
@@ -3750,8 +3758,8 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v50\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v50\manifest.json'
+$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-13-v52\manifest.json'
+$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-13-v52\manifest.json'
 $visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
                             (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
 
@@ -3760,7 +3768,7 @@ $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
         ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-12-v50'
+        ExpectedVersion = '2026-10-13-v52'
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'floating-workday-complete-day',
@@ -3768,12 +3776,12 @@ $visualBaselineDefinitions = @(
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-12-v50/'
+        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-13-v52/'
     },
     [pscustomobject]@{
         Name = 'Main'
         ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-12-v50'
+        ExpectedVersion = '2026-10-13-v52'
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3785,7 +3793,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-selected',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-12-v50/'
+        ExpectedPathPrefix = 'assets/ui-references/main-window/1165x1350/2026-10-13-v52/'
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
@@ -3846,16 +3854,21 @@ $deploySnapshotExportIndex = if ($deployCommitGateIndex -ge 0) {
 else { -1 }
 $deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $sourceRoot')
 $transferLedgerImportIndex = $deploySource.IndexOf("-Stage '传输账本模块导入'")
-$credentialImportIndex = $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'", $transferLedgerImportIndex)
+$deployControlIdentityIndex = $deploySource.IndexOf("-Stage '控制文件提交身份校验'")
+$credentialImportIndex = if ($deployControlIdentityIndex -ge 0) {
+    $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'", $deployControlIdentityIndex)
+}
+else { -1 }
 Assert-Equal $true (
     $deployValidationExitIndex -ge 0 -and
     $deployCandidateValidationIndex -gt $deployValidationExitIndex -and
     $deployCommitGateIndex -gt $deployCandidateValidationIndex -and
     $deploySnapshotExportIndex -gt $deployCommitGateIndex -and
-    $deployPackageAssertionIndex -gt $deployCommitGateIndex -and
-    $transferLedgerImportIndex -gt $deployPackageAssertionIndex -and
-    $credentialImportIndex -gt $transferLedgerImportIndex
-) 'Office deploy validates a working-tree candidate before every Git gate while formal deployment snapshots the verified commit before remote imports'
+    $deployControlIdentityIndex -gt $deploySnapshotExportIndex -and
+    $credentialImportIndex -gt $deployControlIdentityIndex -and
+    $deployPackageAssertionIndex -gt $credentialImportIndex -and
+    $transferLedgerImportIndex -gt $deployPackageAssertionIndex
+) 'Office deploy validates the candidate before Git gates and verifies commit source identity before loading SSH credentials'
 $deploymentTokens = $null
 $deploymentParseErrors = $null
 $deploymentAst = [System.Management.Automation.Language.Parser]::ParseInput(
@@ -4408,14 +4421,16 @@ Assert-Equal $false $validateOnlyBlock.Contains('Use-OfficeSshHelper.ps1') 'Vali
 Assert-Equal $false $validateOnlyBlock.Contains('tailscale') 'ValidateOnly does not touch Tailscale'
 $tailscalePingIndex = $deploySource.IndexOf('& tailscale.exe ping')
 $firstRecordedScpIndex = $deploySource.IndexOf('Invoke-CountdownRecordedScpTransfer')
-$identityResolveIndex = $deploySource.IndexOf('Resolve-OfficeSshClientIdentity', $credentialImportIndex)
-$echoProbeIndex = $deploySource.IndexOf('Invoke-OfficeSshEchoBehaviorProbe', $credentialImportIndex)
+$identityResolveIndex = if ($credentialImportIndex -ge 0) { $deploySource.IndexOf('Resolve-OfficeSshClientIdentity', $credentialImportIndex) } else { -1 }
+$echoProbeIndex = if ($credentialImportIndex -ge 0) { $deploySource.IndexOf('Invoke-OfficeSshEchoBehaviorProbe', $credentialImportIndex) } else { -1 }
 Assert-Equal $true (
+    $credentialImportIndex -ge 0 -and
     $tailscalePingIndex -gt $credentialImportIndex -and
     $identityResolveIndex -gt $tailscalePingIndex -and
     $echoProbeIndex -gt $identityResolveIndex -and
+    $buildInvocationIndex -gt $echoProbeIndex -and
     $firstRecordedScpIndex -gt $echoProbeIndex
-) 'Formal deploy resolves SSH identity and runs the echo probe after Tailscale and before the first SCP transfer'
+) 'Formal deploy resolves SSH identity and runs the echo probe after Tailscale, before the build and first SCP transfer'
 $adapterCalls = @(
     $deploymentAst.FindAll({
             param($node)

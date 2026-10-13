@@ -1,0 +1,531 @@
+{
+  "schemaVersion": 1,
+  "baselineVersion": "2026-10-13-v52",
+  "captureKind": "actual-wpf-main-window",
+  "canvas": {
+    "width": 1165,
+    "height": 1350,
+    "metricDpi": 96
+  },
+  "contentRoi": {
+    "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+    "x": 0,
+    "y": 0,
+    "width": 1165,
+    "height": 1350,
+    "pixelCount": 1572750
+  },
+  "sourceBinding": {
+    "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
+    "aggregateSha256": "368BAE541AF4BBB6BCE924DF2C11DC41B61037F7703548ECC4900549D6F0820A",
+    "files": [
+      {
+        "path": "assets/main-decorations/main-countdown-scene-day.png",
+        "sha256": "8165DA49869387FC60351F5961EA4B332EE8C961D17A1D1556B4E935BB5DD9CE"
+      },
+      {
+        "path": "assets/main-decorations/main-notes-scene-day.png",
+        "sha256": "69634D271CC16E585342BCD66231D3DCDBC50F129DEE658C9EDBA54C0AC6FC64"
+      },
+      {
+        "path": "src/MinminCountdown.Core/DateDisplay.cs",
+        "sha256": "90A6F503407D27140E4DA96A724D165171273EA18CD95F7AA3F9815B2E7B2DC3"
+      },
+      {
+        "path": "src/MinminCountdown.Core/NoteOrdering.cs",
+        "sha256": "5495B8AB9E6B1295026EBDA06194ECDB63753D828BBD10C2A02BC792AD7F43A3"
+      },
+      {
+        "path": "src/MinminCountdown.Core/SettingsContract.cs",
+        "sha256": "2CB0870BD0A9D8CF55621CE181C94B64A8267926DA2A49090D326BD41DAF5779"
+      },
+      {
+        "path": "src/MinminCountdown.Core/SettingsModels.cs",
+        "sha256": "8DAEEF60AEE1E67E744452043155F110DDE1E6947A2EED7F004F5F2AA63B9B28"
+      },
+      {
+        "path": "src/MinminCountdown/App.xaml",
+        "sha256": "BE2804CAD1D0C04502E8A7498624F8FE055FE17A452DEA3CF651B3D709555351"
+      },
+      {
+        "path": "src/MinminCountdown/ApplicationSession.cs",
+        "sha256": "AF16D1D44EBCA942D5A0F951339977DAB3C04688CEEF7093CDA54D8091D99413"
+      },
+      {
+        "path": "src/MinminCountdown/ApplicationTheme.cs",
+        "sha256": "5420B0287A6F443F0867E7771D7B2E988F9D426ADF87983D05B87A2727E201CF"
+      },
+      {
+        "path": "src/MinminCountdown/DesktopWorkspace.cs",
+        "sha256": "C8D02368AA038C6D433AFDB779F03190E911BB1DB420897504DC0C544AB4DF21"
+      },
+      {
+        "path": "src/MinminCountdown/DeleteUndoOffer.cs",
+        "sha256": "C42400CD3092697F531F687B53F37C4E793D071A4D68D3FBC4ECB0B34054B282"
+      },
+      {
+        "path": "src/MinminCountdown/DomainLogic.cs",
+        "sha256": "FBFB34378DF7468B8FF911038268BCEEAE8F64D975A5D229A72282BC95DE8248"
+      },
+      {
+        "path": "src/MinminCountdown/MainWindow.xaml",
+        "sha256": "48E8EC43B417D6A6413F4675A58E70B439B936C389590B7B1E7BF83AC6A2ED57"
+      },
+      {
+        "path": "src/MinminCountdown/MainWindow.xaml.cs",
+        "sha256": "67F51D7C8AA70E8C6EFF150933C125460CDDCB616FB6D9A48416983805264CB0"
+      },
+      {
+        "path": "src/MinminCountdown/MinminCountdown.csproj",
+        "sha256": "34DDC5260BA973D4C5485F90D325DF634A0DD60C61754AEBD57D213DB09FAE88"
+      },
+      {
+        "path": "src/MinminCountdown/MotionBehavior.cs",
+        "sha256": "52B526EFFBA105049A3EA94580BFE5154978592DD81A1141F87E898787CD41AB"
+      },
+      {
+        "path": "src/MinminCountdown/NoteCompletionExit.cs",
+        "sha256": "360B7D4E2693284BF0F5B1A27BEDC36438285EE831DB347A40E8E5F355738156"
+      },
+      {
+        "path": "src/MinminCountdown/SegmentIndicator.cs",
+        "sha256": "E5E5C23D555AE212B70784AE4FC3E31BF282AF7B849406A41DF8F90E7840C220"
+      },
+      {
+        "path": "src/MinminCountdown/UiControls.cs",
+        "sha256": "1FCB3ABC43E3C8A6AEA6DF005C52B51E3F66DD8EDB3A5FF7E4192D8870B58F3E"
+      },
+      {
+        "path": "tools/Build-MainDayOrnamentScene.ps1",
+        "sha256": "1C9BFC52DBDE1F6EE076F3EB84A7484FA9A48EFCE7297B57E1D4DF52CA199036"
+      },
+      {
+        "path": "tools/MainDecorationSceneBands.psd1",
+        "sha256": "9DAEDF905F2FD6A0E8396E8718A06B115566EA4A8799354347E3A30D2E41C6B7"
+      },
+      {
+        "path": "tools/Test-MainDayOrnamentScene.ps1",
+        "sha256": "2291AA01AB03161F8500B98E68335F55BD2946795EBE0341687480179563BF81"
+      }
+    ]
+  },
+  "executable": {
+    "path": "app/MinminCountdown.exe",
+    "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+    "generation": "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
+  },
+  "pixelComparison": {
+    "algorithm": "BGRA8 absolute channel delta over 1165x1350 pixels",
+    "maxAbsoluteChannelDelta": 8,
+    "maximumMeanAbsoluteError": 0.02,
+    "maximumRootMeanSquareError": 0.25,
+    "maximumChangedPixelCount": 500
+  },
+  "captures": [
+    {
+      "captureId": "main-day-countdowns-empty",
+      "theme": "Day",
+      "workspace": "Countdowns",
+      "state": "Empty",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-countdowns-empty.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "52AD16CAB34CF68CFC5EA431921D9573C98A75E6DC962676A3509EE0B4D5F41B",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "C06E5103A75A468A5876D2D2D265175DEF8D756026577D6D055F6B90A76F23DB",
+        "theme": "Day",
+        "workspace": "Countdowns",
+        "state": "Empty",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "937224AFDE91AE2139C26FB02458C2EF5CD1040F068B751E301DAB8561B34521",
+        "countdownCount": 0,
+        "noteCount": 0,
+        "activeNoteCount": 0,
+        "completedNoteCount": 0
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-countdowns-representative",
+      "theme": "Day",
+      "workspace": "Countdowns",
+      "state": "Representative",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-countdowns-representative.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "62B385F143265141F806C749DC450707A7B5958DD93F68EEB430BBD4CF50DB04",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "0977D897956D2AEC9E1D43EA418FC76B67A10C736176FB353A438B74D130772F",
+        "theme": "Day",
+        "workspace": "Countdowns",
+        "state": "Representative",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "71BFF3BF7E8A7713A9C473935CFF0A4539B8169EB85247D0400D285BD9975960",
+        "countdownCount": 3,
+        "noteCount": 3,
+        "activeNoteCount": 3,
+        "completedNoteCount": 0
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-countdowns-stress",
+      "theme": "Day",
+      "workspace": "Countdowns",
+      "state": "Stress",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-countdowns-stress.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "F6D49E89FAD79B4AE0E4B5A2FE12DDCE2FCB9EE8EA7E3CDDE3AB146034187A54",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "4B1FD68D569D44B0552851A78760559D18ACAEAFAD98B2DF94716ABFDCAD55D9",
+        "theme": "Day",
+        "workspace": "Countdowns",
+        "state": "Stress",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "A2F31CCC0CB71E8A21366B5277204E160CBF22DEAF5EE7F019D94A7DA6E254DF",
+        "countdownCount": 9,
+        "noteCount": 8,
+        "activeNoteCount": 4,
+        "completedNoteCount": 4
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-notes-empty",
+      "theme": "Day",
+      "workspace": "Notes",
+      "state": "Empty",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-notes-empty.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "7B0A055393E95C8A3CF2EDDF1F342E8A592E6CEAEAA48090DCB93BC49841D429",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "1112E894381C16494AB340056D47ED615DF736F955D6D82C78B250F945F2E6E7",
+        "theme": "Day",
+        "workspace": "Notes",
+        "state": "Empty",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "937224AFDE91AE2139C26FB02458C2EF5CD1040F068B751E301DAB8561B34521",
+        "countdownCount": 0,
+        "noteCount": 0,
+        "activeNoteCount": 0,
+        "completedNoteCount": 0
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-notes-representative",
+      "theme": "Day",
+      "workspace": "Notes",
+      "state": "Representative",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-notes-representative.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "BDDDE284CF0F440A860EC8CDAF863BA086C9180CAFDA5F1A3AF38F37BA8D2EC8",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "F447D5D695A4047119EB295789C8E8386225C9E7C76C3FECFF941E614C79284A",
+        "theme": "Day",
+        "workspace": "Notes",
+        "state": "Representative",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "71BFF3BF7E8A7713A9C473935CFF0A4539B8169EB85247D0400D285BD9975960",
+        "countdownCount": 3,
+        "noteCount": 3,
+        "activeNoteCount": 3,
+        "completedNoteCount": 0
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-notes-stress",
+      "theme": "Day",
+      "workspace": "Notes",
+      "state": "Stress",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-notes-stress.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "A051CD6ED5D80EA1AC56DB648DB942E051DCAD137325B497F3EEFFAEA821838F",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "5C0E665178F0F03653A775B7D5B42DAFCE0EC09911E4058E13835882B5481CE5",
+        "theme": "Day",
+        "workspace": "Notes",
+        "state": "Stress",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "A2F31CCC0CB71E8A21366B5277204E160CBF22DEAF5EE7F019D94A7DA6E254DF",
+        "countdownCount": 9,
+        "noteCount": 8,
+        "activeNoteCount": 4,
+        "completedNoteCount": 4
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-notes-edit",
+      "theme": "Day",
+      "workspace": "Notes",
+      "state": "Edit",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-notes-edit.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "15DD6E179ACC6A50BBAFE143AA1C32405FD3F40F976ED571BA1963AFE5B9AB9F",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "75922BACD2DA68B4A1EA65CE3320F376122C70AF5D7289B4A0D0DED1D3A8B656",
+        "theme": "Day",
+        "workspace": "Notes",
+        "state": "Edit",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "71BFF3BF7E8A7713A9C473935CFF0A4539B8169EB85247D0400D285BD9975960",
+        "countdownCount": 3,
+        "noteCount": 3,
+        "activeNoteCount": 3,
+        "completedNoteCount": 0
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-notes-filter-open",
+      "theme": "Day",
+      "workspace": "Notes",
+      "state": "FilterOpen",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-notes-filter-open.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "3A7F79330052EB5B815E975322BD0AB2EC0EF42D7A19D28310F805315EC27ECD",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "E1BDD0C3849A982FC26C1A74073975690886F2E447A52584256FC68F197FC10D",
+        "theme": "Day",
+        "workspace": "Notes",
+        "state": "FilterOpen",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "71BFF3BF7E8A7713A9C473935CFF0A4539B8169EB85247D0400D285BD9975960",
+        "countdownCount": 3,
+        "noteCount": 3,
+        "activeNoteCount": 3,
+        "completedNoteCount": 0
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    },
+    {
+      "captureId": "main-day-notes-selected",
+      "theme": "Day",
+      "workspace": "Notes",
+      "state": "Selected",
+      "path": "assets/ui-references/main-window/1165x1350/2026-10-13-v52/main-day-notes-selected.png",
+      "beijingTime": "2032-05-18T10:15:30+08:00",
+      "width": 1165,
+      "height": 1350,
+      "pngSha256": "67A48FC35F147F183A9A7C2EC9A8F6A64B5073452D9948B7E4D07FAD132B0AB8",
+      "stateFingerprint": {
+        "algorithm": "SHA-256 of canonical UTF-8 main-window capture state",
+        "sha256": "83E9A564D4D543DEECB64FB19698A8DEC77B6FC51E77D9654E0BD1AE820B312A",
+        "theme": "Day",
+        "workspace": "Notes",
+        "state": "Selected",
+        "beijingTime": "2032-05-18T10:15:30+08:00",
+        "settingsSha256": "71BFF3BF7E8A7713A9C473935CFF0A4539B8169EB85247D0400D285BD9975960",
+        "countdownCount": 3,
+        "noteCount": 3,
+        "activeNoteCount": 3,
+        "completedNoteCount": 0
+      },
+      "alpha": {
+        "algorithm": "Pbgra32 alpha scan; every pixel must equal 255",
+        "minimum": 255,
+        "maximum": 255,
+        "nonOpaquePixelCount": 0,
+        "opaquePixelCount": 1572750
+      },
+      "contentRoi": {
+        "algorithm": "fixed full-canvas ROI for opaque 1165x1350 main-window surface",
+        "x": 0,
+        "y": 0,
+        "width": 1165,
+        "height": 1350,
+        "pixelCount": 1572750
+      },
+      "comparison": {
+        "maxAbsoluteChannelDelta": 0,
+        "meanAbsoluteError": 0,
+        "rootMeanSquareError": 0,
+        "changedPixelCount": 0
+      }
+    }
+  ]
+}

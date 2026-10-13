@@ -24,6 +24,88 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
+    internal static object RunWindowPreflight(ResourceDictionary resources, string assetRoot)
+    {
+        var theme = new ApplicationTheme(resources);
+        theme.Apply();
+        var checks = new List<object>();
+        var failures = new List<string>();
+        var passed = 0;
+
+        bool Check(string name, Func<bool> action)
+        {
+            try
+            {
+                if (!action())
+                {
+                    throw new InvalidOperationException($"{name} returned false.");
+                }
+                checks.Add(new { Name = name, Passed = true, Error = (string?)null });
+                passed++;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"{name}: {exception.Message}");
+                checks.Add(new { Name = name, Passed = false, Error = exception.Message });
+                return false;
+            }
+        }
+
+        if (Check("MainWindowWorkAreaFit", () => ValidationExercises.RunMainWindowWorkAreaFitBehavior(assetRoot)))
+        {
+            Check("ConfirmationDialog", () => RunConfirmationWindowPreflight(theme, assetRoot));
+        }
+        return new { Passed = passed, Total = checks.Count, Failed = failures.Count, Checks = checks, Failures = failures };
+    }
+
+    private static bool RunConfirmationWindowPreflight(ApplicationTheme theme, string assetRoot)
+    {
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"window-preflight-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore());
+        using var calendar = new HolidayCalendar(assetRoot);
+        var logger = new DiagnosticLogger(diagnosticPath);
+        using var logicalWorkArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 1600), 1, 1));
+        var owner = new MainWindow(workspace, calendar, logger, assetRoot)
+        {
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0
+        };
+        // Reproduce the SSH desktop's constrained HWND on larger local desktops
+        // too. The production confirmation validator still owns every verdict.
+        try
+        {
+            using var capacity = ValidationExercises.OverrideWindowTrackingCapacityForValidation(owner, new Size(1044, 788));
+            owner.Show();
+            PumpDispatcher();
+            owner.Hide();
+            owner.Show();
+            PumpDispatcher();
+            owner.UpdateLayout();
+            var validation = ValidateConfirmationDialog(theme, owner, DateTimeOffset.UtcNow);
+            if (!validation.Themed || !validation.Gates.AllPassed)
+            {
+                throw new InvalidOperationException(
+                    $"Confirmation dialog preflight failed: themed={validation.Themed}; " +
+                    string.Join(", ", validation.Gates.FailedChecks));
+            }
+            if (File.Exists(settingsPath))
+            {
+                throw new InvalidOperationException("The confirmation fixture wrote its empty settings file.");
+            }
+            return true;
+        }
+        finally
+        {
+            owner.Close();
+            PumpDispatcher();
+            if (File.Exists(diagnosticPath)) { File.Delete(diagnosticPath); }
+        }
+    }
+
     internal static void RunEmptyDayCaptureProbe(ResourceDictionary resources, string assetRoot)
     {
         const int captureWidth = 1165;
@@ -515,7 +597,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-12-v50";
+    private const string FloatingReferenceBaselineVersion = "2026-10-13-v52";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -622,7 +704,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-12-v50";
+    private const string MainReferenceBaselineVersion = "2026-10-13-v52";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -2078,7 +2160,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-12-v50 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-13-v52 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
@@ -3080,7 +3162,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-12-v50 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-13-v52 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -3917,6 +3999,8 @@ internal static class ValidationReport
         {
             FileName = "D:\\Codex\\tools\\PowerShell\\7.6.4\\pwsh.exe",
             UseShellExecute = false,
+            // 本进程是无控制台的 WPF 应用：不设 CreateNoWindow 会给 pwsh 新建可见控制台，经默认终端委托弹到用户桌面。
+            CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
@@ -4322,8 +4406,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-12-v50", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-12-v50", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-13-v52", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-13-v52", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -12611,9 +12695,19 @@ internal static class ValidationReport
         var measurements = new List<ConfirmationDialogMeasurement>();
         var originalOwnerLeft = owner.Left;
         var originalOwnerTop = owner.Top;
+        var originalOwnerWidth = owner.Width;
+        var originalOwnerHeight = owner.Height;
         try
         {
             var workArea = SystemParameters.WorkArea;
+            // The suite injects a large logical work area for reference captures.
+            // After hide/show, SSH desktops can retain that requested size while
+            // the native HWND is smaller. WPF-UI centers using Width/Height, so
+            // prepare this owner to fit the real desktop before measuring it.
+            owner.Width = Math.Min(owner.ActualWidth, Math.Max(owner.MinWidth, workArea.Width - 48));
+            owner.Height = Math.Min(owner.ActualHeight, Math.Max(owner.MinHeight, workArea.Height - 48));
+            owner.UpdateLayout();
+            PumpDispatcher();
             owner.Left = workArea.Left + Math.Max(24, (workArea.Width - owner.ActualWidth) / 2);
             owner.Top = workArea.Top + Math.Max(24, (workArea.Height - owner.ActualHeight) / 2);
             owner.UpdateLayout();
@@ -12723,6 +12817,8 @@ internal static class ValidationReport
         }
         finally
         {
+            owner.Width = originalOwnerWidth;
+            owner.Height = originalOwnerHeight;
             owner.Left = originalOwnerLeft;
             owner.Top = originalOwnerTop;
             owner.UpdateLayout();

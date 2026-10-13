@@ -529,7 +529,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v50 基线 `assets/ui-references/floating-window/520x390/2026-10-12-v50/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v52 基线 `assets/ui-references/floating-window/520x390/2026-10-13-v52/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -565,13 +565,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-10-12，集成尖端重拍）：#212 悬浮窗稳定刷新、#214 就地撤销、#216 讲述人播报和 #231 按显示尺寸解码叠在同一棵树上，v33 的 sourceBinding 已对不上。现役验收基线改为 `2026-10-10-v43`。BaselineGenerate `20261012T024658620-d4e1fc33` 在物理屏 2560×1440 上生成双 manifest：主窗 8 帧聚合 SHA-256 `567E564D6494DB59E1BAFEBC902B7F59494313904E1B29EEC045430FCC7C9FED`，悬浮窗 4 帧聚合 `64D79233EDC4AEB2B6D41A0B8B88853B09E02B51C3492106E977DA6DA59772DD`，`executable.sha256` 均为 `785ECBDA5FA48535A786DCB4F559A1720D1CF07B0B4CEEE3154D299BE8924D37`。v33 保留为 #211 的历史捕获，不再作为现役门禁。
 
-当前集成候选（2026-10-12，#235 / #236）：主窗便签多选与原子批量操作、下班收尾已合入。候选基线为 `2026-10-12-v50`，双 manifest 重拍与独立 CSharp / Ui 回归通过前不视为验收完成；v49 为上一批已通过完整相关本机检查的集成快照，主工作树 v44 不覆盖。v48 曾因站立帧键盘焦点残留未接受；v49 已修复捕获前清焦点并增加失败闭锁断言，v50 继续保留。
+当前集成候选（2026-10-13，#235 / #236 随 PRD-210 集成分支合入 main）：主窗便签多选与原子批量操作、下班收尾已合入。候选基线为 `2026-10-13-v52`，双 manifest 重拍与独立 CSharp / Ui 回归通过前不视为验收完成。v50 合入 main 后，main 的内存修复（`PopupFocusLifecycle` 将动态菜单状态从静态集合移到 Popup 自身）改变了 `UiControls.cs` 的源码绑定，v50 随之失效；按正式隔离入口重拍为 v52（v51 已被并行分支占用），生成与独立像素复验分别记录，不修改历史 manifest 来替代重拍。v44 为 main 侧内存修复的上一版基线，v49 为上一批已通过完整相关本机检查的集成快照。v48 曾因站立帧键盘焦点残留未接受；v49 已修复捕获前清焦点并增加失败闭锁断言，v50 起继续保留。
 
-1. #189 的 WPF 改版使用纯日间 **v50** 真实渲染系列，版本目录为 `2026-10-12-v50`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+1. #189 的 WPF 改版使用纯日间 **v52** 真实渲染系列，版本目录为 `2026-10-13-v52`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
 
-2. v50 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-12-v50/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v50 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32、v33 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v43。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+2. v52 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/1165x1350/2026-10-13-v52/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v52 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33、v43、v44、v50 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/`、`2026-10-12-v50/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v52。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

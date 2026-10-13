@@ -80,9 +80,9 @@ $null = Set-PSBreakpoint -Script $PSCommandPath -Line @(
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-12-v50\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-13-v52\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-12-v50\manifest.json'
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\1165x1350\2026-10-13-v52\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
@@ -263,7 +263,7 @@ Start-CountdownApplication -ExitAfterReadyForTest -ExitAfterReadyForTestSeconds 
     $runtimeIntegrationOutputPath = Join-Path $runtimeIntegrationRoot 'app.stdout.txt'
     $runtimeIntegrationErrorPath = Join-Path $runtimeIntegrationRoot 'app.stderr.txt'
     $runtimeIntegrationArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', ('"{0}"' -f $runtimeIntegrationEntry))
-    $runtimeIntegrationProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $runtimeIntegrationArguments -PassThru -RedirectStandardOutput $runtimeIntegrationOutputPath -RedirectStandardError $runtimeIntegrationErrorPath
+    $runtimeIntegrationProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $runtimeIntegrationArguments -NoNewWindow -PassThru -RedirectStandardOutput $runtimeIntegrationOutputPath -RedirectStandardError $runtimeIntegrationErrorPath
     $runtimeIntegrationReceipt = Wait-CountdownWindowReady -Path $runtimeIntegrationStatusPath -LaunchToken $runtimeIntegrationRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $runtimeIntegrationEntry -TimeoutSeconds 20 -PollMilliseconds 100 -AllowLegacyPowerShellAdapter
     if ($runtimeIntegrationReceipt.stage -ne 'window-ready') { throw 'Real WPF launch did not emit a window-ready receipt.' }
     if ($runtimeIntegrationReceipt.calendarState -ne 'Pending') { throw 'Real WPF launch should become ready before the holiday calendar finishes.' }
@@ -336,7 +336,7 @@ Start-CountdownApplication -ApplicationPath `$PSCommandPath -HolidayCalendarTask
         $popupUiaOutputPath = Join-Path $popupUiaRoot 'app.stdout.txt'
         $popupUiaErrorPath = Join-Path $popupUiaRoot 'app.stderr.txt'
         $popupUiaArguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', ('"{0}"' -f $popupUiaEntry))
-        $popupUiaProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $popupUiaArguments -PassThru -RedirectStandardOutput $popupUiaOutputPath -RedirectStandardError $popupUiaErrorPath
+        $popupUiaProcess = Start-Process -FilePath $powerShellEngine -ArgumentList $popupUiaArguments -NoNewWindow -PassThru -RedirectStandardOutput $popupUiaOutputPath -RedirectStandardError $popupUiaErrorPath
         $popupUiaReceipt = Wait-CountdownWindowReady -Path $popupUiaStatusPath -LaunchToken $popupUiaRequest.launchToken -ExpectedSessionId ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) -ExpectedApplicationPath $popupUiaEntry -TimeoutSeconds 20 -PollMilliseconds 100 -AllowLegacyPowerShellAdapter
         if ($popupUiaReceipt.stage -ne 'window-ready') { throw 'Popup UIA launch did not emit a window-ready receipt.' }
 

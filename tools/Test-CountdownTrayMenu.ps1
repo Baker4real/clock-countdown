@@ -169,9 +169,12 @@ public sealed class TrayMenuVerificationEvidence
 public static class CountdownTrayMenuHarness
 {
     private const BindingFlags StaticPrivate = BindingFlags.Static | BindingFlags.NonPublic;
+    // #232：托盘菜单消费应用主题 token；期望值是现役 InkBrush / CanvasBrush / MainActionBrush /
+    // MainActionTextBrush 的静态副本（#3B190D / #FDF3EB / #C23E68 / #FFFDFC），随活体 token 同步。
     private static readonly Color Ink = Color.FromRgb(0x3B, 0x19, 0x0D);
-    private static readonly Color Surface = Color.FromRgb(0xFF, 0xFD, 0xFC);
-    private static readonly Color Highlight = Color.FromRgb(0xF6, 0xDF, 0xD3);
+    private static readonly Color Surface = Color.FromRgb(0xFD, 0xF3, 0xEB);
+    private static readonly Color Highlight = Color.FromRgb(0xC2, 0x3E, 0x68);
+    private static readonly Color HighlightInk = Color.FromRgb(0xFF, 0xFD, 0xFC);
 
     public static TrayMenuVerificationEvidence Run(string assemblyPath, string evidenceDirectory)
     {
@@ -491,7 +494,7 @@ public static class CountdownTrayMenuHarness
                         text.ActualWidth + 0.5 >= formatted.WidthIncludingTrailingWhitespace &&
                         text.ActualHeight + 0.5 >= formatted.Height &&
                         itemBounds.Contains(textBounds) && new Rect(menu.RenderSize).Contains(itemBounds),
-                    TextUsesInk = foreground == Ink,
+                    TextUsesInk = foreground == (item.IsHighlighted ? HighlightInk : Ink),
                     TextPixels = pixels.Count(textBounds, foreground),
                     WarmBackgroundPixels = pixels.Count(itemBounds, background)
                 };

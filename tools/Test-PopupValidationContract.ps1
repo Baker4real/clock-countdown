@@ -1681,10 +1681,12 @@ public static class MotionValidationContractHarness
         finally { window?.Close(); Pump(); }
     }
 
-    // Proves the rerun path on the production digit clock: the first attempt
-    // blocks the dispatcher at its first frame for longer than the whole 90 ms
-    // transition, so only a real rerun can still observe the 10%-90% band.
-    private static void InjectedStall(MotionScenarioResult result, bool stall)
+    // Proves the stall gate on the production digit clock: blocking the
+    // dispatcher at the first frame for longer than the whole 90 ms transition
+    // leaves the 10%-90% band unobservable and must count as starved. It runs
+    // once: in CI the block also starved the next attempt, so the rerun path
+    // is proven by a synthetic control instead.
+    private static void InjectedStall(MotionScenarioResult result)
     {
         var text = new TextBlock { Text = "59", FontSize = 26, Width = 80, Height = 42 };
         Window window = null;
@@ -1697,7 +1699,7 @@ public static class MotionValidationContractHarness
             Observe(result, "injected-stall-committed", values, animated);
             var frames = 0;
             WaitFor(result, "injected-stall-middle", text, values, animated, value => {
-                if (stall && frames++ == 0)
+                if (frames++ == 0)
                 {
                     System.Threading.Thread.Sleep(InjectedStallMilliseconds);
                     return false;
@@ -1741,19 +1743,20 @@ public static class MotionValidationContractHarness
             result => DatePickerInterruptedInput(result, false), ref stallRetriesLeft));
         results.Add(RunCase("override-restoration-after-exception", false,
             result => { throw new ExpectedFixtureException(); }, true));
-        var injectedAttempts = 0;
-        var injectionRetriesLeft = MaxStallRetriesPerScenario;
-        var injection = RunCaseWithStallRetry("stall-retry-injection", true,
-            result => InjectedStall(result, ++injectedAttempts == 1), ref injectionRetriesLeft);
-        results.Add(injection);
-        var injectedStallRerun = injection.Passed && injection.StarvedAttempts.Count > 0 &&
-            injection.StarvedAttempts[0].Stall.Kind == "sampling-gap";
+        var injection = RunCase("stall-retry-injection", true, InjectedStall);
+        var injectedStallDetected = StarvedOnly(injection) && injection.Stall.Kind == "sampling-gap" &&
+            injection.Stall.GapMilliseconds >= 90;
         var syntheticStall = new MotionStallEvidence { Kind = "synthetic", Phase = "synthetic" };
         Func<MotionStallEvidence, int, MotionScenarioResult> failed = (stall, failures) => {
             var result = new MotionScenarioResult { Scenario = "synthetic", Stall = stall };
             for (var index = 0; index < failures; index++) result.Failures.Add("synthetic");
             return result;
         };
+        var recoveryAttempts = 0;
+        var recoveryBudget = MaxStallRetriesPerRun;
+        var recovered = RunCaseWithStallRetry("stall-retry-recovery", true, result => {
+            if (++recoveryAttempts == 1) throw Failure("synthetic starved sample", syntheticStall);
+        }, ref recoveryBudget);
         var perScenarioBudget = MaxStallRetriesPerRun;
         var perScenarioCapped = RunCaseWithStallRetry("stall-retry-scenario-cap", true,
             result => { throw Failure("synthetic starved sample", syntheticStall); }, ref perScenarioBudget);
@@ -1784,6 +1787,8 @@ public static class MotionValidationContractHarness
                 new MotionObservation { ElapsedMilliseconds = 10 },
                 new MotionObservation { ElapsedMilliseconds = 99.9 }, 90) == null,
             ["sole-stall-retried"] = StarvedOnly(failed(syntheticStall, 1)),
+            ["starved-attempt-rerun-passes"] = recovered.Passed && recovered.StarvedAttempts.Count == 1 &&
+                recovered.StarvedAttempts[0].Stall == syntheticStall && recoveryBudget == MaxStallRetriesPerRun - 1,
             ["stall-with-other-failure-not-retried"] = !StarvedOnly(failed(syntheticStall, 2)),
             ["failure-without-stall-not-retried"] = !StarvedOnly(failed(null, 1)),
             ["retries-capped-per-scenario"] = !perScenarioCapped.Passed &&
@@ -1852,12 +1857,13 @@ public static class MotionValidationContractHarness
                 MaxRetriesPerScenario = MaxStallRetriesPerScenario,
                 MaxRetriesPerRun = MaxStallRetriesPerRun,
                 RetriesUsed = MaxStallRetriesPerRun - stallRetriesLeft,
-                InjectedStallRerun = injectedStallRerun,
+                InjectedStallDetected = injectedStallDetected,
+                InjectedStall = injection,
                 Controls = stallControls
             },
             Passed = startupAbsent && !_applicationExitObserved && systemUnchanged && results.All(result => result.Passed) &&
                 snapshotClockAdvanceAccepted && negatives.Values.All(value => value) &&
-                injectedStallRerun && stallControls.Values.All(value => value)
+                injectedStallDetected && stallControls.Values.All(value => value)
         };
     }
 }

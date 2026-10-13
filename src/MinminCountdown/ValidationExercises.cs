@@ -6009,6 +6009,7 @@ internal static class ValidationExercises
                 MustApply(workspace, new SaveCountdownChange(null, $"列表优先 {index}",
                     clock.UtcNow.AddDays(index + 1), Array.Empty<string>(), Array.Empty<ReminderRule>()));
             PrepareOffscreenValidationWindow(main);
+            using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
             main.Show();
             WindowValidationInput.Pump(main.Dispatcher);
             main.UpdateLayout();

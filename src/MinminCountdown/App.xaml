@@ -10,7 +10,7 @@
              Startup="OnStartup"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
-    <!-- #197：所有窗口共享 13 / 16 / 20 / 26 / 44 设计坐标字号阶梯。 -->
+    <!-- #197：所有窗口共享 13 / 16 / 20 / 26 / 32 设计坐标字号阶梯（display 32 仅管理窗标题消费）。 -->
     <sys:Double x:Key="SecondaryWindowTitleFontSize">26</sys:Double>
     <sys:Double x:Key="SecondaryWindowSectionFontSize">20</sys:Double>
     <sys:Double x:Key="SecondaryWindowBodyFontSize">16</sys:Double>
@@ -164,7 +164,7 @@
     <FontFamily x:Key="NumeralFontFamily">Bahnschrift SemiCondensed, Bahnschrift, Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>
 
     <!-- ═══ 第 3 层：Component 组件资源（排版 / 间距 / 焦点 / 圆角，主窗口与悬浮窗共用；口径见 DESIGN.md §13） ═══ -->
-    <sys:Double x:Key="TypeDisplayFontSize">44</sys:Double>
+    <sys:Double x:Key="TypeDisplayFontSize">32</sys:Double>
     <sys:Double x:Key="TypeH1FontSize">26</sys:Double>
     <sys:Double x:Key="TypeH2FontSize">20</sys:Double>
     <sys:Double x:Key="TypeBodyFontSize">16</sys:Double>

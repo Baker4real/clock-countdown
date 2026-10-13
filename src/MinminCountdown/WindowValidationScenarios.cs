@@ -825,16 +825,16 @@ public sealed partial class MainWindow
                 editorFieldsDoNotOverlap,
                 legacyInlineReminderControlsStayHidden,
                 editorLabelsVisible,
-                // #211：1165×1350 改为首选尺寸（MainWindow.PreferredWidth/Height），
+                // #211：首选尺寸（MainWindow.PreferredWidth/Height，现为 864×1000）而非钉死尺寸，
                 // 最小尺寸放宽为 720×560，窗口随工作区收缩时业务内容滚动而非缩放。
-                // Native pixel rounding can report Width=1164.8 at 125% DPI
+                // Native pixel rounding can report Width=863.2 at 125% DPI
                 // while WPF still lays out the required DIP surface.
                 ActualWidth >= MinWidth &&
                 ActualHeight >= MinHeight &&
                 Math.Abs(MinWidth - 720) <= 0.1 &&
                 Math.Abs(MinHeight - 560) <= 0.1 &&
-                Math.Abs(MainWindow.PreferredWidth - 1165) <= 0.1 &&
-                Math.Abs(MainWindow.PreferredHeight - 1350) <= 0.1,
+                Math.Abs(MainWindow.PreferredWidth - 864) <= 0.1 &&
+                Math.Abs(MainWindow.PreferredHeight - 1000) <= 0.1,
                 filterPopup.EscapeReturnsFocus &&
                 tagManagerPopup.EscapeReturnsFocus &&
                 tagSelectorPopup.EscapeReturnsFocus,
@@ -1012,19 +1012,19 @@ public sealed partial class MainWindow
                     Math.Abs(dateSection.Margin.Bottom - spacingBlockGap) <= 0.01;
             }
 
-            // AC2：列表条目标题落 H2 阶梯，与 H1 区块标题保持明确层级。
+            // AC2：列表条目标题比区块标题低一档（管理窗整体降档后为 Body / H2），保持明确层级。
             // 空列表没有条目标题可度量，视为满足（空洞真）；有行而缺标题或字号不符才判失败。
             ShowWorkspace(WorkspaceKind.Countdowns);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
-            var rowTitleTypeH2 = (double)FindResource("TypeH2FontSize");
+            var rowTitleType = (double)FindResource("TypeBodyFontSize");
             var rowTitles = MainValidationDescendants<TextBlock>(CountdownRows)
                 .Where(text => string.Equals(text.Uid, "CountdownRowTitleText", StringComparison.Ordinal))
                 .ToArray();
             var rowTitleFallsToBlockTitleLevel =
                 CountdownRows.Children.Count == 0 ||
                 (rowTitles.Length > 0 &&
-                 rowTitles.All(text => Math.Abs(text.FontSize - rowTitleTypeH2) <= 0.01));
+                 rowTitles.All(text => Math.Abs(text.FontSize - rowTitleType) <= 0.01));
 
             // #227：非空真实便签行的编辑/删除键盘动作与取消后的焦点归还。
             var rowActionsKeyboard = ProbeMainWindowNoteRowActionsKeyboard(createdNoteId);
@@ -1090,8 +1090,8 @@ public sealed partial class MainWindow
             // （v22 实证）；门禁钉「漏斗 Path 存在 + Fill/Stroke 同绑 InkBrush + 可见」。
             var funnel = MainValidationDescendants<System.Windows.Shapes.Path>(FilterButton).FirstOrDefault(path =>
                 path.Data is not null &&
-                Math.Abs(path.Data.Bounds.Width - 17) <= 0.5 &&
-                Math.Abs(path.Data.Bounds.Height - 14) <= 0.5);
+                Math.Abs(path.Data.Bounds.Width - 12.36) <= 0.5 &&
+                Math.Abs(path.Data.Bounds.Height - 10.18) <= 0.5);
             var inkBrush = FindResource("InkBrush") as Brush;
             var filterFunnelIconSurvivesAliasedCapture =
                 funnel is not null &&
@@ -1127,14 +1127,14 @@ public sealed partial class MainWindow
                 ChromeButtonHasVectorGlyph(CloseButton, expectedWidth: 10, expectedHeight: 10);
 
             // AC3：页签与分段激活胶囊短边一半全圆角。
-            // 主窗页签：按钮高 60，Surface(3) 54 → 27，环 60 → 30。
-            // 状态分段：按钮高 48，Surface(2) 44 → 22，环 48 → 24。
+            // 主窗页签：按钮高 44，Surface(3) 38 → 19，环 44 → 22。
+            // 状态分段：按钮高 36，Surface(2) 32 → 16，环 36 → 18。
             // 悬浮工作区胶囊（App 级样式，模板宿主实例化检查）：高 36 → 18。
             var segmentActivePillsUseFullRoundedCorners =
-                PillCornersAre(CountdownTab, 27, 30) &&
-                PillCornersAre(NotesTab, 27, 30) &&
-                PillCornersAre(ActiveNotesSegment, 22, 24) &&
-                PillCornersAre(CompletedNotesSegment, 22, 24) &&
+                PillCornersAre(CountdownTab, 19, 22) &&
+                PillCornersAre(NotesTab, 19, 22) &&
+                PillCornersAre(ActiveNotesSegment, 16, 18) &&
+                PillCornersAre(CompletedNotesSegment, 16, 18) &&
                 FloatingSegmentStyleUsesPillCorner();
 
             // 倒计时工作区可见态：手写体装饰落点检查。
@@ -1917,13 +1917,13 @@ public sealed partial class MainWindow
                 editorSurfaceColor is not null &&
                 ApplicationTheme.MeetsContrast(editorSurfaceColor.Value, (Color)FindResource("ActiveColor"), 3.0);
 
-            // —— 排版/间距 token：区块标题落 TypeH1；字段行距/错误行距消费间距 token 值。
-            var typeH1 = (double)FindResource("TypeH1FontSize");
+            // —— 排版/间距 token：区块标题落 TypeH2（管理窗整体降一档）；字段行距/错误行距消费间距 token 值。
+            var blockTitleType = (double)FindResource("TypeH2FontSize");
             var spacingUnit = (double)FindResource("SpacingUnit");
             var spacingFieldRow = (double)FindResource("SpacingFieldRow");
             var editorTypographyTokens =
-                Math.Abs(CountdownEditorTitle.FontSize - typeH1) <= 0.01 &&
-                Math.Abs(CountdownPreferencesTitle.FontSize - typeH1) <= 0.01 &&
+                Math.Abs(CountdownEditorTitle.FontSize - blockTitleType) <= 0.01 &&
+                Math.Abs(CountdownPreferencesTitle.FontSize - blockTitleType) <= 0.01 &&
                 Math.Abs(MainCountdownNameDateRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(MainCountdownTimeTagRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(MainCountdownActionRow.Margin.Top - spacingFieldRow) <= 0.01 &&
@@ -2055,16 +2055,16 @@ public sealed partial class MainWindow
                     System.Text.Json.JsonSerializer.Serialize(new { helpOpensOnFocus, helpTextProvided, helpClosesOnBlur }));
             }
 
-            // #208: the 1165 x 1350 canvas is laid out at 1:1 DIP, so the
-            // compact controls keep their 38 DIP hit slots without a Viewbox.
+            // #208: the 864 x 1000 canvas is laid out at 1:1 DIP, so the
+            // compact controls keep their 28 DIP hit slots without a Viewbox.
             var scale = MainScaleViewport.ActualWidth > 0
                 ? MainScaleViewport.ActualWidth / MainLayoutSurface.Width
                 : 0;
             var compactHitTargetsMeetScaledFloor =
-                Math.Abs(CountdownReminderHelp.ActualWidth - 38) <= 1 &&
-                Math.Abs(CountdownReminderHelp.ActualHeight - 38) <= 1 &&
+                Math.Abs(CountdownReminderHelp.ActualWidth - 28) <= 1 &&
+                Math.Abs(CountdownReminderHelp.ActualHeight - 28) <= 1 &&
                 Math.Abs(scale - 1) <= 0.02 &&
-                38 * scale >= 24;
+                28 * scale >= 24;
 
             // 筛选芯片与日历翻月按钮向同一紧凑下限靠拢（高度 36、相邻间距 8）。
             var chipsAndCalendarNavCompact =
@@ -2837,10 +2837,10 @@ public sealed partial class MainWindow
                         continue;
                     }
 
-                    // 竖长 2:3：块高固定为基准块宽的 1.5 倍（主项 52x78、次项 46x69），
+                    // 竖长 2:3：块高固定为基准块宽的 1.5 倍（主项 38x57、次项 34x51），
                     // 长数值只允许加宽色块，不允许压扁比例或缩单位字。
-                    var expectedBaseWidth = isPrimary ? 52 : 46;
-                    var expectedHeight = isPrimary ? 78 : 69;
+                    var expectedBaseWidth = isPrimary ? 38 : 34;
+                    var expectedHeight = isPrimary ? 57 : 51;
                     var expectedRadius = expectedBaseWidth / 4.0;
                     if (Math.Abs(block.Height - expectedHeight) > 0.01 ||
                         block.MinWidth < expectedBaseWidth - 0.01 ||
@@ -2849,9 +2849,9 @@ public sealed partial class MainWindow
                         result.VerticalRatioMatches = false;
                     }
 
-                    // Four primary blocks keep their 52 DIP width and 26 DIP
-                    // digits by taking the specified compact 6 DIP gap.
-                    var expectedGap = isPrimary ? pairPanels.Length == 4 ? 6 : 14 : 13;
+                    // Four primary blocks keep their 38 DIP width and 20 DIP
+                    // digits by taking the specified compact 4 DIP gap.
+                    var expectedGap = isPrimary && pairPanels.Length == 4 ? 4 : 10;
                     var expectedMargin = index == 0
                         ? new Thickness(0)
                         : new Thickness(expectedGap, 0, 0, 0);

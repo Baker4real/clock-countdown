@@ -108,8 +108,8 @@ internal static class ValidationReport
 
     internal static void RunEmptyDayCaptureProbe(ResourceDictionary resources, string assetRoot)
     {
-        const int captureWidth = 1165;
-        const int captureHeight = 1350;
+        const int captureWidth = 864;
+        const int captureHeight = 1000;
         // #134：PerMonitorV2 变体必须覆盖真实 WM_DPICHANGED 管线；经典 WPF 进程缺省不是
         // PerMonitorV2，必须在首个窗口创建前把本 probe 进程与线程的 DPI 感知提升为
         // PerMonitorV2。本进程是 EMPTY_DAY_PROBE 专用一次性验证进程，窗口与捕获全部
@@ -186,7 +186,7 @@ internal static class ValidationReport
     }
 
     // #134 真实运行态 UI 捕获 seam：在隔离夹具的临时窗口上按固定验收轴捕获真实 WPF 帧，
-    // 证据统一落盘可审查。变体覆盖 1165×1350 真实 DIP 画布和常态窗口（同尺寸）、
+    // 证据统一落盘可审查。变体覆盖 864×1000 真实 DIP 画布和常态窗口（同尺寸）、
     // PerMonitorV2 动态 DPI 变更（WM_DPICHANGED 等比放大 1.5 倍）与文字放大（144 DPI 光栅化）。
     // 任何变体失败都先把原始异常写入 <变体>.error.txt 再原样重抛；不以静态参考图、
     // 空白画布或合成替代帧顶替实拍证据。窗口为 probe 专用临时窗口，设置写入隔离临时根。
@@ -210,13 +210,13 @@ internal static class ValidationReport
         }
 
         Directory.CreateDirectory(evidenceDirectory);
-        var pinnedPath = Path.Combine(evidenceDirectory, "main-1165x1350-countdowns-empty-pinned.png");
+        var pinnedPath = Path.Combine(evidenceDirectory, "main-864x1000-countdowns-empty-pinned.png");
         WriteNewBytes(pinnedPath, pinnedCountdownsPng);
         var entries = new List<MainUiCaptureSeamEntry>
         {
             new(
-                "main-1165x1350-countdowns-empty-pinned",
-                "design-canvas-1165x1350; pinned-baseline frame saved verbatim",
+                "main-864x1000-countdowns-empty-pinned",
+                "design-canvas-864x1000; pinned-baseline frame saved verbatim",
                 pinnedPath,
                 Convert.ToHexString(SHA256.HashData(pinnedCountdownsPng)),
                 designWidth,
@@ -252,8 +252,8 @@ internal static class ValidationReport
             WaitForMainReferenceMotion(window, root);
         }
 
-        // 变体一：1165×1350 设计坐标下的主窗口便签空态（#134 指定必交证据）。
-        RunVariant("main-1165x1350-notes-empty", () =>
+        // 变体一：864×1000 设计坐标下的主窗口便签空态（#134 指定必交证据）。
+        RunVariant("main-864x1000-notes-empty", () =>
         {
             ShowNotesWorkspace();
             var capture = CaptureOpaqueMainSurface(root, designWidth, designHeight);
@@ -261,11 +261,11 @@ internal static class ValidationReport
                 capture,
                 designWidth,
                 designHeight,
-                "main-1165x1350-notes-empty");
+                "main-864x1000-notes-empty");
             return RecordUiCaptureSeamEntry(
                 evidenceDirectory,
-                "main-1165x1350-notes-empty",
-                "design-canvas-1165x1350; notes workspace; empty isolated fixture",
+                "main-864x1000-notes-empty",
+                "design-canvas-864x1000; notes workspace; empty isolated fixture",
                 root,
                 capture,
                 designWidth,
@@ -300,12 +300,12 @@ internal static class ValidationReport
                 designHeight);
         });
 
-        // 变体三：常态窗口。XAML 声明的默认与最小窗口就是 1165×1350
+        // 变体三：常态窗口。XAML 声明的首选窗口就是 864×1000
         // DIP；真实布局直接在该坐标系中排列，不再经过 Viewbox。
-        RunVariant("main-normal-1165x1350-notes-empty", () =>
+        RunVariant("main-normal-864x1000-notes-empty", () =>
         {
-            const int normalWidth = 1165;
-            const int normalHeight = 1350;
+            const int normalWidth = 864;
+            const int normalHeight = 1000;
             ShowNotesWorkspace();
             window.Width = normalWidth;
             window.Height = normalHeight;
@@ -315,11 +315,11 @@ internal static class ValidationReport
                 capture,
                 normalWidth,
                 normalHeight,
-                "main-normal-1165x1350-notes-empty");
+                "main-normal-864x1000-notes-empty");
             var entry = RecordUiCaptureSeamEntry(
                 evidenceDirectory,
-                "main-normal-1165x1350-notes-empty",
-                "normal-window; XAML default/min 1165x1350 DIP; direct layout; notes empty",
+                "main-normal-864x1000-notes-empty",
+                "normal-window; XAML preferred 864x1000 DIP; direct layout; notes empty",
                 root,
                 capture,
                 normalWidth,
@@ -381,7 +381,7 @@ internal static class ValidationReport
                     issue = "#134 real WPF capture and DPI acceptance seam",
                     awarenessElevatedByProbe = awarenessElevatedByProbe,
                     designCanvas = new { width = designWidth, height = designHeight },
-                    normalWindow = new { width = 1165, height = 1350 },
+                    normalWindow = new { width = 864, height = 1000 },
                     dpiChange = dpiChangeTelemetry,
                     entries = entries.Select(entry => new
                     {
@@ -597,7 +597,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-13-v52";
+    private const string FloatingReferenceBaselineVersion = "2026-10-13-v54";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -704,7 +704,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-13-v52";
+    private const string MainReferenceBaselineVersion = "2026-10-13-v54";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -713,11 +713,11 @@ internal static class ValidationReport
     private const string MainReferenceSourceAggregateAlgorithm =
         "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order";
     private const string MainReferencePixelComparisonAlgorithm =
-        "BGRA8 absolute channel delta over 1165x1350 pixels";
+        "BGRA8 absolute channel delta over 864x1000 pixels";
     private const string MainReferenceAlphaAlgorithm =
         "Pbgra32 alpha scan; every pixel must equal 255";
     private const string MainReferenceRoiAlgorithm =
-        "fixed full-canvas ROI for opaque 1165x1350 main-window surface";
+        "fixed full-canvas ROI for opaque 864x1000 main-window surface";
     private const int MainReferenceMaximumAbsoluteChannelDelta = 8;
     private const double MainReferenceMaximumMeanAbsoluteError = 0.02;
     private const double MainReferenceMaximumRootMeanSquareError = 0.25;
@@ -932,12 +932,12 @@ internal static class ValidationReport
         var mainNoteCompletionGates = ValidationExercises.EvaluateMainNoteCompletionGates(
             new MainNoteCompletionGateInputs(
                 mainNoteCompletionValidation.Main.UsesDedicatedStyle,
-                mainNoteCompletionValidation.Main.BoxWidth >= 24 &&
-                    mainNoteCompletionValidation.Main.BoxHeight >= 24,
-                mainNoteCompletionValidation.Main.TickWidth >= 14 &&
-                    mainNoteCompletionValidation.Main.TickHeight >= 10,
+                mainNoteCompletionValidation.Main.BoxWidth >= 17.5 &&
+                    mainNoteCompletionValidation.Main.BoxHeight >= 17.5,
+                mainNoteCompletionValidation.Main.TickWidth >= 9.5 &&
+                    mainNoteCompletionValidation.Main.TickHeight >= 6.5,
                 mainNoteCompletionValidation.Main.UsesWarmTokens,
-                mainNoteCompletionValidation.Main.CornerRadius >= 6,
+                mainNoteCompletionValidation.Main.CornerRadius >= 4,
                 mainNoteCompletionValidation.Interaction.Checked &&
                     mainNoteCompletionValidation.Interaction.Unchecked,
                 mainNoteCompletionValidation.Interaction.PersistenceFailureRolledBack,
@@ -1702,8 +1702,8 @@ internal static class ValidationReport
                 mainCountdownRemainingSamples.Select(sample => sample.ExpectedText).ToArray(),
                 mainCountdownRemainingSamples.Select(sample => sample.RenderedText).ToArray(),
                 mainCountdownRemainingSamples.Count == 6,
-                mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ColumnWidth - 300) <= 0.01),
-                mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ActualColumnWidth - 300) <= 0.5),
+                mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ColumnWidth - 228) <= 0.01),
+                mainCountdownRemainingSamples.All(sample => Math.Abs(sample.ActualColumnWidth - 228) <= 0.5),
                 mainCountdownRemainingSamples.All(sample => sample.IsRightAligned),
                 mainCountdownRemainingSamples.All(sample => sample.IsSingleLineAndUntrimmed),
                 mainCountdownRemainingSamples.All(sample => sample.IsFullyVisible && sample.BlocksFullyVisible &&
@@ -1711,9 +1711,9 @@ internal static class ValidationReport
                 mainCountdownRemainingSamples.All(sample => sample.UsesTabularNumerals),
                 mainCountdownRemainingSamples.All(sample => sample.PreferenceSaved),
                 mainCountdownRemainingSamples.Count == 6 &&
-                    mainCountdownRemainingSamples.Take(4).All(sample => Math.Abs(sample.FontSize - 26) <= 0.01 &&
-                        sample.IsPrimary && sample.ValueFontSize is >= 26 and <= 28 && sample.ValueFontSize > sample.TitleFontSize) &&
-                    mainCountdownRemainingSamples[4].FontSize is >= 14 and < 26 &&
+                    mainCountdownRemainingSamples.Take(4).All(sample => Math.Abs(sample.FontSize - 20) <= 0.01 &&
+                        sample.IsPrimary && sample.ValueFontSize is >= 20 and <= 22 && sample.ValueFontSize > sample.TitleFontSize) &&
+                    mainCountdownRemainingSamples[4].FontSize is >= 13 and < 20 &&
                     mainCountdownRemainingSamples[5].IsPrimary &&
                     mainCountdownRemainingSamples[5].ValueFontSize > mainCountdownRemainingSamples[5].TitleFontSize));
         var legacyMainReferenceCapture =
@@ -1809,12 +1809,15 @@ internal static class ValidationReport
             Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Required<Popup>(main, "PreferencesPopup").IsOpen = true;
         PumpDispatcher();
+        // 管理窗等比收缩（1165→864，×0.74）：宽度区间与 56→41 的高度窗随之换算；
+        // 偏好字段的宽度下限是内容兜底，不随缩放。日期框例外（#237）：共享模板的 38 DIP 下拉列不缩，
+        // 完整中文日期连同 36/12 留白约需 237 DIP，区间按 242 而不是按比例的 222 收。
         var compactSelection =
-            countdownDate.Width is >= 290 and <= 310 &&
-            countdownHour.Width is >= 180 and <= 205 &&
-            countdownMinute.Width is >= 180 and <= 205 &&
-            countdownSecond.Width is >= 180 and <= 205 &&
-            displayPrecision.ActualWidth is >= 250 and <= 280 &&
+            countdownDate.Width is >= 237 and <= 250 &&
+            countdownHour.Width is >= 133 and <= 152 &&
+            countdownMinute.Width is >= 133 and <= 152 &&
+            countdownSecond.Width is >= 133 and <= 152 &&
+            displayPrecision.ActualWidth is >= 185 and <= 208 &&
             new Control[]
             {
                 countdownName,
@@ -1822,7 +1825,7 @@ internal static class ValidationReport
                 countdownHour,
                 countdownMinute,
                 countdownSecond
-            }.All(control => control.IsVisible && control.ActualHeight is >= 55 and <= 57);
+            }.All(control => control.IsVisible && control.ActualHeight is >= 40 and <= 42);
         var compactPreferences =
             displayPrecision.ActualWidth >= 96 &&
             monthlySalary.ActualWidth >= 112 &&
@@ -1834,7 +1837,7 @@ internal static class ValidationReport
                 monthlySalary,
                 workStart,
                 workEnd
-            }.All(control => control.IsVisible && control.ActualHeight is >= 55 and <= 57);
+            }.All(control => control.IsVisible && control.ActualHeight is >= 40 and <= 42);
         WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
         if (!compactWasExpanded)
             Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -1875,16 +1878,17 @@ internal static class ValidationReport
                 ReferenceEquals(control.BorderBrush, Application.Current.FindResource("ControlBorderBrush")) &&
                 ReferenceEquals(control.Foreground, Application.Current.FindResource("InkBrush")));
         countdownDate.ApplyTemplate();
+        // 内部横向留白 16→12、前导图标位 48→36（管理窗等比收缩）。
         var compactInputHorizontalPaddingAligned =
             new[] { monthlySalary, workStart, workEnd }
-                .All(textBox => textBox.Padding.Left == 16 && textBox.Padding.Right == 16) &&
-            countdownName.Padding.Left == 48 &&
-            countdownName.Padding.Right == 16 &&
+                .All(textBox => textBox.Padding.Left == 12 && textBox.Padding.Right == 12) &&
+            countdownName.Padding.Left == 36 &&
+            countdownName.Padding.Right == 12 &&
             new[] { countdownHour, countdownMinute, countdownSecond, displayPrecision }
-                .All(comboBox => comboBox.Padding.Left == 16) &&
+                .All(comboBox => comboBox.Padding.Left == 12) &&
             countdownDate.Template?.FindName("PART_TextBox", countdownDate) is TextBox dateInputTextBox &&
-            dateInputTextBox.Padding.Left == 48 &&
-            dateInputTextBox.Padding.Right == 16;
+            dateInputTextBox.Padding.Left == 36 &&
+            dateInputTextBox.Padding.Right == 12;
         var noteEmptyStateContrast = ValidateNoteEmptyStateContrast(theme, main);
         var noteStatusBadgeTokensFollowState = ValidateNoteStatusBadgeTokensFollowState(theme, main);
         var noteVisualTokenGates = ValidationExercises.EvaluateNoteVisualTokenGates(
@@ -2160,7 +2164,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-13-v52 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-13-v54 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
@@ -3162,7 +3166,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-13-v52 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-13-v54 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -3220,7 +3224,7 @@ internal static class ValidationReport
                     ReferenceEquals(VisualTreeHelper.GetParent(contentSurface), contentProjection) &&
                     ReferenceEquals(VisualTreeHelper.GetParent(countdownScene), decorationLayer) &&
                     ReferenceEquals(VisualTreeHelper.GetParent(notesScene), decorationLayer) &&
-                    layoutSurface.Width == 1165 &&
+                    layoutSurface.Width == 864 &&
                     layoutSurface.Height >= main.ActualHeight - 0.5 &&
                     contentProjection.Width == layoutSurface.Width &&
                     contentProjection.Height == layoutSurface.Height &&
@@ -3231,7 +3235,7 @@ internal static class ValidationReport
                     notesScene.Width == layoutSurface.Width &&
                     notesScene.Height == MainWindow.PreferredHeight &&
                     !HasNonIdentityTransform(contentProjection) &&
-                    scaleViewport.Width == 1165 &&
+                    scaleViewport.Width == 864 &&
                     scaleViewport.Height == layoutSurface.Height &&
                     !HasNonIdentityTransform(scaleViewport);
                 layerOrderMatches &=
@@ -3334,8 +3338,8 @@ internal static class ValidationReport
         DesktopWorkspaceSnapshot workspaceSnapshot,
         string assetRoot)
     {
-        const int captureWidth = 1165;
-        const int captureHeight = 1350;
+        const int captureWidth = 864;
+        const int captureHeight = 1000;
         var countdownCaptureBeijingTime = new DateTimeOffset(
             2026,
             7,
@@ -3667,7 +3671,7 @@ internal static class ValidationReport
 
         var actualCaptures = CaptureMainReferenceScenarios(theme, assetRoot);
         var baselineRelativeDirectory =
-            $"assets/ui-references/main-window/1165x1350/{MainReferenceBaselineVersion}";
+            $"assets/ui-references/main-window/864x1000/{MainReferenceBaselineVersion}";
         var manifestRelativePath = $"{baselineRelativeDirectory}/manifest.json";
         var baselineDirectory = ResolveRepositoryRelativePath(sourceRoot, baselineRelativeDirectory);
         var manifestPath = ResolveRepositoryRelativePath(sourceRoot, manifestRelativePath);
@@ -3698,8 +3702,8 @@ internal static class ValidationReport
         ApplicationTheme theme,
         string assetRoot)
     {
-        const int captureWidth = 1165;
-        const int captureHeight = 1350;
+        const int captureWidth = 864;
+        const int captureHeight = 1000;
         var dayBeijing = new DateTimeOffset(2032, 5, 18, 10, 15, 30, TimeSpan.FromHours(8));
         var referenceUtc = dayBeijing.ToUniversalTime();
         var captures = new List<MainReferenceActualCapture>();
@@ -3893,17 +3897,19 @@ internal static class ValidationReport
         }
 
         var bands = ReadMainDecorationBands(sourceRoot);
-        // #221: v47 moves the opaque compact countdown form above the former
-        // decoration-band boundary. Scan its actual bounds, independently sampled
-        // from the PNG at x=200; retain delta>=30 and every #189 negative fixture.
+        // #221/#237: v54 shrinks the list-first management window to 864x1000. The opaque
+        // compact countdown form stays above the former decoration-band boundary; scan its
+        // actual bounds, independently sampled from the PNG at x=200; retain delta>=30 and
+        // every #189 negative fixture. Notes still starts one row below its top decoration
+        // band scaled to the frame height (TopBandEnd 415 -> ceil(415 * 1000 / 1350) = 308).
         var specs = new[]
         {
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 365, 440, new[] { 370, 371, 390, 391, 397, 398, 405, 406, 425, 427 }, 343, 364),
-            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 416, 525, new[] { 425, 426, 470, 471, 495, 496, 497, 499, 500, 501, 503, 504, 512, 513 }, 405, 424)
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 273, 326, new[] { 277, 278, 279, 294, 295, 298, 299, 301, 302, 303, 304, 305, 317, 318, 319 }, 254, 272),
+            new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 309, 389, new[] { 314, 315, 348, 349, 367, 379, 380 }, 300, 313)
         };
         var directory = Path.Combine(
             Path.GetFullPath(sourceRoot),
-            "assets", "ui-references", "main-window", "1165x1350", MainReferenceBaselineVersion);
+            "assets", "ui-references", "main-window", "864x1000", MainReferenceBaselineVersion);
         var measurements = specs.Select(spec =>
         {
             var path = Path.Combine(directory, spec.FileName);
@@ -3916,6 +3922,12 @@ internal static class ValidationReport
             var band = bands.Scenes[spec.Scene];
             var source = DecodeBitmap(File.ReadAllBytes(path));
             var (pixels, stride) = GetBgra32Pixels(source);
+            // 装饰带定义以装饰图原生像素为坐标；参考帧把装饰图 Fill 到管理窗画布，
+            // 先按帧/装饰图尺寸换算：底部带首行向下取整，缩放过渡行不漏计下沿装饰。
+            var rowScale = (double)source.PixelHeight / bands.CanvasHeight;
+            var bottomBandStart = (int)Math.Floor(band.BottomBandStart * rowScale);
+            var backgroundSampleX = (int)Math.Round(
+                bands.BackgroundSampleX * (double)source.PixelWidth / bands.CanvasWidth);
             var edges = new List<int>();
             var controlScanTop = spec.ScanTop;
             for (var y = controlScanTop; y <= spec.ScanBottom; y++)
@@ -3934,9 +3946,9 @@ internal static class ValidationReport
             }
 
             var lowerDecorationPixelCount = 0;
-            for (var y = band.BottomBandStart; y < source.PixelHeight; y++)
+            for (var y = bottomBandStart; y < source.PixelHeight; y++)
             {
-                var background = y * stride + bands.BackgroundSampleX * 4;
+                var background = y * stride + backgroundSampleX * 4;
                 for (var x = 0; x < source.PixelWidth; x++)
                 {
                     var sample = y * stride + x * 4;
@@ -3957,7 +3969,7 @@ internal static class ValidationReport
                 edges.All(y => y < spec.LabelTop || y > spec.LabelBottom),
                 lowerDecorationPixelCount > 0,
                 controlScanTop,
-                band.BottomBandStart,
+                bottomBandStart,
                 lowerDecorationPixelCount);
         }).ToArray();
         return EvaluateDaySingleBorder(measurements);
@@ -4033,6 +4045,8 @@ internal static class ValidationReport
                 scene.GetProperty("BottomBandStart").GetInt32());
         }
         return new MainDecorationBands(
+            root.GetProperty("CanvasWidth").GetInt32(),
+            root.GetProperty("CanvasHeight").GetInt32(),
             root.GetProperty("BackgroundSampleX").GetInt32(),
             new Dictionary<string, MainDecorationBand>(StringComparer.Ordinal)
             {
@@ -4406,8 +4420,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-13-v52", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "1165x1350", "2026-10-13-v52", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-13-v54", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "864x1000", "2026-10-13-v54", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -4559,8 +4573,8 @@ internal static class ValidationReport
 
             var canvas = root.GetProperty("canvas");
             structureValid &= HasExactJsonProperties(canvas, "width", "height", "metricDpi") &&
-                canvas.GetProperty("width").GetInt32() == 1165 &&
-                canvas.GetProperty("height").GetInt32() == 1350 &&
+                canvas.GetProperty("width").GetInt32() == 864 &&
+                canvas.GetProperty("height").GetInt32() == 1000 &&
                 canvas.GetProperty("metricDpi").GetInt32() == 96;
             var manifestRoi = ReadMainReferenceContentRoi(
                 root.GetProperty("contentRoi"),
@@ -4742,8 +4756,8 @@ internal static class ValidationReport
                         maximumMeanAbsoluteError,
                         maximumRootMeanSquareError,
                         maximumChangedPixelCount),
-                    1165,
-                    1350,
+                    864,
+                    1000,
                     structureValid,
                     captureIdsUnique,
                     capturePathsUnique,
@@ -4845,9 +4859,9 @@ internal static class ValidationReport
         }
         if (actualCaptures.Any(capture =>
                 MeasureMainReferenceCapture(capture.PngBytes) is not
-                { Width: 1165, Height: 1350, Alpha.IsFullyOpaque: true }))
+                { Width: 864, Height: 1000, Alpha.IsFullyOpaque: true }))
         {
-            throw new InvalidOperationException("主窗口正式参考帧必须为 1165x1350 全不透明 PNG。");
+            throw new InvalidOperationException("主窗口正式参考帧必须为 864x1000 全不透明 PNG。");
         }
 
         var pngHashes = actualCaptures
@@ -4874,15 +4888,15 @@ internal static class ValidationReport
                 schemaVersion = 1,
                 baselineVersion = MainReferenceBaselineVersion,
                 captureKind = "actual-wpf-main-window",
-                canvas = new { width = 1165, height = 1350, metricDpi = 96 },
+                canvas = new { width = 864, height = 1000, metricDpi = 96 },
                 contentRoi = new
                 {
                     algorithm = MainReferenceRoiAlgorithm,
                     x = 0,
                     y = 0,
-                    width = 1165,
-                    height = 1350,
-                    pixelCount = 1165 * 1350
+                    width = 864,
+                    height = 1000,
+                    pixelCount = 864 * 1000
                 },
                 sourceBinding = new
                 {
@@ -4939,8 +4953,8 @@ internal static class ValidationReport
             state = capture.Spec.State,
             path,
             beijingTime = capture.BeijingTime,
-            width = 1165,
-            height = 1350,
+            width = 864,
+            height = 1000,
             pngSha256 = Convert.ToHexString(SHA256.HashData(capture.PngBytes)),
             stateFingerprint = new
             {
@@ -8658,7 +8672,7 @@ internal static class ValidationReport
 
         var baselinePath = ResolveRepositoryRelativePath(
             Path.GetFullPath(sourceRoot),
-            $"assets/ui-references/main-window/1165x1350/{MainReferenceBaselineVersion}/main-day-countdowns-empty.png");
+            $"assets/ui-references/main-window/864x1000/{MainReferenceBaselineVersion}/main-day-countdowns-empty.png");
         var baselineBytes = File.ReadAllBytes(baselinePath);
         var actualMetrics = MeasureMainReferenceCapture(actualPng);
         var comparison = CompareMainReferencePixels(baselineBytes, actualPng);
@@ -11011,9 +11025,9 @@ internal static class ValidationReport
             Math.Abs(section.Root.Margin.Bottom - 12) <= 0.01 &&
             root?.ColumnDefinitions.Count > 0 &&
             root.ColumnDefinitions[0].Width.IsAbsolute &&
-            Math.Abs(root.ColumnDefinitions[0].Width.Value - 30) <= 0.01 &&
+            Math.Abs(root.ColumnDefinitions[0].Width.Value - 22) <= 0.01 &&
             timeline is not null &&
-            Math.Abs(timeline.Width - 30) <= 0.01 &&
+            Math.Abs(timeline.Width - 22) <= 0.01 &&
             line &&
             node &&
             label is not null &&
@@ -17151,7 +17165,7 @@ internal static class ValidationReport
             Minimum == byte.MaxValue &&
             Maximum == byte.MaxValue &&
             NonOpaquePixelCount == 0 &&
-            OpaquePixelCount == 1165 * 1350;
+            OpaquePixelCount == 864 * 1000;
     }
 
     private sealed record MainReferenceContentRoi(
@@ -17166,9 +17180,9 @@ internal static class ValidationReport
             MainReferenceRoiAlgorithm,
             0,
             0,
-            1165,
-            1350,
-            1165 * 1350);
+            864,
+            1000,
+            864 * 1000);
     }
 
     private sealed record MainReferencePixelMetrics(
@@ -17218,6 +17232,8 @@ internal static class ValidationReport
         int LowerDecorationPixelCount);
 
     private sealed record MainDecorationBands(
+        int CanvasWidth,
+        int CanvasHeight,
         int BackgroundSampleX,
         IReadOnlyDictionary<string, MainDecorationBand> Scenes);
 

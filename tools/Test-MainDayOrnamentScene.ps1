@@ -19,42 +19,6 @@ $originalSourceRoot = Join-Path $testRoot 'original'
 $firstOutputRoot = Join-Path $testRoot 'first'
 $secondOutputRoot = Join-Path $testRoot 'second'
 
-function Read-GitBlob {
-    param([Parameter(Mandatory)] [string] $RepositoryRelativePath)
-
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = 'git'
-    $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
-    [void] $startInfo.ArgumentList.Add('cat-file')
-    [void] $startInfo.ArgumentList.Add('blob')
-    [void] $startInfo.ArgumentList.Add("HEAD:$RepositoryRelativePath")
-    $process = [System.Diagnostics.Process]::new()
-    $process.StartInfo = $startInfo
-    try {
-        if (-not $process.Start()) {
-            throw "Unable to start git for $RepositoryRelativePath"
-        }
-        $stream = [System.IO.MemoryStream]::new()
-        try {
-            $process.StandardOutput.BaseStream.CopyTo($stream)
-            $process.WaitForExit()
-            if ($process.ExitCode -ne 0) {
-                throw "git cat-file failed for $RepositoryRelativePath`: $($process.StandardError.ReadToEnd())"
-            }
-            return ,$stream.ToArray()
-        }
-        finally {
-            $stream.Dispose()
-        }
-    }
-    finally {
-        $process.Dispose()
-    }
-}
-
 function Get-BitmapPixels {
     param([Parameter(Mandatory)] [string] $Path)
 
@@ -204,11 +168,12 @@ try {
     [System.IO.Directory]::CreateDirectory($firstOutputRoot) | Out-Null
     [System.IO.Directory]::CreateDirectory($secondOutputRoot) | Out-Null
 
+    # Read the checkout's assets, the same snapshot as the generator and band definition beside this script.
     foreach ($sceneName in @('countdown', 'notes')) {
         $fileName = "main-$sceneName-scene-day.png"
-        [System.IO.File]::WriteAllBytes(
-            (Join-Path $originalSourceRoot $fileName),
-            (Read-GitBlob -RepositoryRelativePath "assets/main-decorations/$fileName"))
+        [System.IO.File]::Copy(
+            (Join-Path $ProjectRoot "assets\main-decorations\$fileName"),
+            (Join-Path $originalSourceRoot $fileName))
     }
 
     $firstJson = & $generatorPath -ProjectRoot $ProjectRoot -SourceRoot $originalSourceRoot -OutputRoot $firstOutputRoot | Out-String
@@ -239,6 +204,9 @@ try {
                 -SourcePixels $sourcePixels `
                 -OutputPixels $firstPixels `
                 -Scene $scene
+            # The generator flattens every row outside the bands, so its output is pure by
+            # construction; the shipped asset is covered only if regenerating it changes nothing.
+            regenerationNoopGate = Test-PixelArraysEqual -Left $sourcePixels -Right $firstPixels
             deterministicHashGate =
                 (Get-FileHash -LiteralPath $firstPath -Algorithm SHA256).Hash -eq
                 (Get-FileHash -LiteralPath $secondPath -Algorithm SHA256).Hash
@@ -258,6 +226,9 @@ try {
     if (@($measurements | Where-Object { -not $_.ornamentBandsUnchangedGate }).Count -ne 0) {
         throw '装饰带像素不变门失败。'
     }
+    if (@($measurements | Where-Object { -not $_.regenerationNoopGate }).Count -ne 0) {
+        throw '仓库日间装饰图与生成器输出不一致：先运行 Build-MainDayOrnamentScene.ps1 重建资产。'
+    }
     if (@($measurements | Where-Object { -not $_.deterministicHashGate -or -not $_.deterministicPixelsGate }).Count -ne 0) {
         throw '日间纯装饰图生成结果不稳定。'
     }
@@ -275,6 +246,7 @@ try {
     [pscustomobject]@{
         OrnamentPurityGate = $true
         OrnamentBandsUnchangedGate = $true
+        RegenerationNoopGate = $true
         DeterministicHashGate = $true
         Measurements = @($measurements)
     } | ConvertTo-Json -Depth 5

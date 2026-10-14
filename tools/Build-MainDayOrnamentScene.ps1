@@ -46,20 +46,31 @@ function New-DayOrnamentScene {
             [System.Drawing.Rectangle]::new(0, 0, $source.Width, $source.Height),
             [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         try {
-            for ($y = 0; $y -lt $target.Height; $y++) {
-                $insideTopBand = $y -ge [int] $Scene.TopBandStart -and $y -le [int] $Scene.TopBandEnd
-                $insideBottomBand = $y -ge [int] $Scene.BottomBandStart
-                if ($insideTopBand -or $insideBottomBand) {
-                    continue
-                }
+            # Rows outside the ornament bands become one color across the full width, edge
+            # columns included: DWM draws the window frame, so the raster keeps no frame of its own.
+            $row = [int[]]::new($target.Width)
+            $bits = $target.LockBits(
+                [System.Drawing.Rectangle]::new(0, 0, $target.Width, $target.Height),
+                [System.Drawing.Imaging.ImageLockMode]::ReadWrite,
+                [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            try {
+                for ($y = 0; $y -lt $target.Height; $y++) {
+                    $insideTopBand = $y -ge [int] $Scene.TopBandStart -and $y -le [int] $Scene.TopBandEnd
+                    $insideBottomBand = $y -ge [int] $Scene.BottomBandStart
+                    if ($insideTopBand -or $insideBottomBand) {
+                        continue
+                    }
 
-                # Sample from a safe row in the control region to avoid borders/decorations at top
-                $safeY = if ($y -lt 20) { 100 } else { $y }
-                $background = $source.GetPixel([int] $definition.BackgroundSampleX, $safeY)
-                # Preserve canvas frame borders at x=0..2 and x=1162..1164
-                for ($x = 3; $x -lt 1162; $x++) {
-                    $target.SetPixel($x, $y, $background)
+                    # Sample from a safe row in the control region to avoid borders/decorations at top
+                    $safeY = if ($y -lt 20) { 100 } else { $y }
+                    $background = $source.GetPixel([int] $definition.BackgroundSampleX, $safeY)
+                    [System.Array]::Fill($row, $background.ToArgb())
+                    [System.Runtime.InteropServices.Marshal]::Copy(
+                        $row, 0, [IntPtr]::Add($bits.Scan0, $y * $bits.Stride), $row.Length)
                 }
+            }
+            finally {
+                $target.UnlockBits($bits)
             }
 
             $outputDirectory = Split-Path -Parent $OutputPath

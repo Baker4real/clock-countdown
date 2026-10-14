@@ -181,6 +181,11 @@ $captureProblems = @($captureSelfTestFailures) + @($captureGaps)
 $captureDetail = if ($captureProblems.Count -eq 0) { "$($capturePaths.Count) 个测试与 tools 脚本；自检 4 例通过" } else { $captureProblems -join ' | ' }
 Add-ToolingCheck -Name 'process-capture:explicit-encoding' -Passed ($captureProblems.Count -eq 0) -Detail $captureDetail
 
+# 日间纯装饰图的生成器与仓库 PNG 契约（纯净度、装饰带不变、重建不动点、确定性）只用 System.Drawing、
+# 不开窗口；放在这里随每次 Tooling 与 CI 执行，避免它再次无人运行而静默失效。
+$ornamentScene = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-MainDayOrnamentScene.ps1') -ProjectRoot $repoRoot 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'ornament:day-scene' -Passed ($LASTEXITCODE -eq 0) -Detail (($ornamentScene -join ' ') -replace '\s+', ' ')
+
 $docLinkFailures = [System.Collections.Generic.List[string]]::new()
 $markdownFiles = Get-ChildItem -LiteralPath $repoRoot -Filter '*.md' -File -Recurse |
     Where-Object {

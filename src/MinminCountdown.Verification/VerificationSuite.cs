@@ -44,6 +44,7 @@ internal static class VerificationSuite
         Run(results, "save-writes-canonical-v10-as-utf8-no-bom", VerifySaveWritesUtf8NoBom);
         Run(results, "save-keeps-two-prior-legal-settings-generations", VerifySaveKeepsTwoPriorLegalGenerations);
         Run(results, "save-history-preflight-does-not-consume-domain-clock", VerifySaveHistoryPreflightDoesNotConsumeDomainClock);
+        Run(results, "first-save-retries-transient-temporary-file-lock", VerifyFirstSaveRetriesTransientTemporaryFileLock);
         Run(results, "startup-prefers-missing-or-strict-valid-main", VerifyStartupPrefersMissingOrStrictValidMain);
         Run(results, "startup-occupied-settings-path-never-starts-empty", VerifyStartupOccupiedSettingsPathNeverStartsEmpty);
         Run(results, "startup-recovery-writes-require-explicit-authorization", VerifyStartupRecoveryWritesRequireExplicitAuthorization);
@@ -1176,6 +1177,36 @@ internal static class VerificationSuite
             using var document = JsonDocument.Parse(content);
             Equal(10, document.RootElement.GetProperty("schemaVersion").GetInt32(), "保存后的 schemaVersion");
             Equal("版本七便签", document.RootElement.GetProperty("notes")[0].GetProperty("text").GetString(), "便签正文");
+        });
+    }
+
+    private static void VerifyFirstSaveRetriesTransientTemporaryFileLock()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var temporaryPath = settingsPath + ".tmp";
+            File.WriteAllText(temporaryPath, "stale");
+            // 模拟实时扫描：外部句柄共享读写但不共享删除，覆盖写入仍成功，改名在释放前遇到共享冲突。
+            var scanner = new FileStream(temporaryPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var release = Task.Delay(100).ContinueWith(_ => scanner.Dispose(), TaskScheduler.Default);
+            try
+            {
+                ThrowsAny<IOException, UnauthorizedAccessException>(
+                    () => File.Move(temporaryPath, temporaryPath + ".probe"),
+                    "外部句柄阻止临时文件改名");
+                new SettingsStore().Save(settingsPath, CountdownSettings.Empty);
+            }
+            finally
+            {
+                release.Wait();
+            }
+
+            Equal(
+                SettingsContract.SerializeCanonical(CountdownSettings.Empty),
+                File.ReadAllText(settingsPath, new UTF8Encoding(false)),
+                "首次保存后的主设置");
+            Equal(false, File.Exists(temporaryPath), "临时文件残留");
         });
     }
 

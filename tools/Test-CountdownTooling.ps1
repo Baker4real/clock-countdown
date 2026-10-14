@@ -44,6 +44,7 @@ foreach ($requiredPath in @(
         'tools/Invoke-CountdownSuiteLowImpact.ps1',
         'tools/Get-CountdownDeploymentState.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
+        'tools/PopupValidationContract.cs',
         'Countdown.DeploymentPreflight.psm1'
     )) { Test-RequiredPath -RelativePath $requiredPath }
 
@@ -87,6 +88,29 @@ foreach ($scriptPath in $scriptPaths) {
 $parseDetail = if ($parseErrors.Count -eq 0) { "$($scriptPaths.Count) scripts" } else { $parseErrors -join ' | ' }
 Add-ToolingCheck -Name 'powershell:parse' -Passed ($parseErrors.Count -eq 0) -Detail $parseDetail
 
+# 弹层验证夹具的 C# 否则只在有窗口的 ValidationHarness 阶段才编译。这里在子 pwsh 里用夹具同一组引用只编译、
+# 不加载被测程序集也不开窗口，让 C# 错误在任何窗口阶段之前暴露。
+$harnessCompile = @(& pwsh -NoLogo -NoProfile -NonInteractive -Command {
+        param([string] $SourcePath)
+        Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+        $references = @(
+            Get-ChildItem -LiteralPath (Join-Path $PSHOME 'ref') -Filter '*.dll' |
+                Where-Object Name -ne 'WindowsBase.dll' |
+                Select-Object -ExpandProperty FullName
+            [System.Windows.Window].Assembly.Location
+            [System.Windows.UIElement].Assembly.Location
+            [System.Windows.Threading.Dispatcher].Assembly.Location
+            [System.Windows.Markup.IQueryAmbient].Assembly.Location
+        )
+        $compileErrors = @()
+        try {
+            Add-Type -ReferencedAssemblies $references -TypeDefinition ([System.IO.File]::ReadAllText($SourcePath)) -ErrorAction SilentlyContinue -ErrorVariable compileErrors
+        }
+        catch { $compileErrors += $_ }
+        if ($compileErrors.Count -gt 0) { $compileErrors | ForEach-Object { "$_" } } else { 'compiled' }
+    } -args (Join-Path $PSScriptRoot 'PopupValidationContract.cs') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'popup-harness:compile' -Passed ($LASTEXITCODE -eq 0 -and $harnessCompile.Count -eq 1 -and $harnessCompile[0] -eq 'compiled') -Detail ($harnessCompile -join ' | ')
+
 $docLinkFailures = [System.Collections.Generic.List[string]]::new()
 $markdownFiles = Get-ChildItem -LiteralPath $repoRoot -Filter '*.md' -File -Recurse |
     Where-Object {
@@ -114,14 +138,22 @@ Add-ToolingCheck -Name 'docs:local-links' -Passed ($docLinkFailures.Count -eq 0)
 # Keep the positive fixture contract aligned with the current visual baseline.
 # The Core suite has a separate manifest-content check; this cheap source-tree
 # check catches a stale 8/4 (or other hard-coded) fixture before any windowed
-# stage starts.
+# stage starts. Each surface must have exactly one current manifest reference,
+# so a baseline path-shape change fails here instead of matching nothing.
 $validationSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'Countdown.Validation.psm1'))
 $coreTestSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'Countdown.Core.Tests.ps1'))
 $baselineFixtureFailures = [System.Collections.Generic.List[string]]::new()
+$baselineFixtureAgreements = [System.Collections.Generic.List[string]]::new()
 $baselineManifestRefs = [regex]::Matches(
     $validationSource,
-    'assets\\ui-references\\(?<surface>main-window|floating-window)\\[^\\]+\\manifest\.json'
+    'assets\\ui-references\\(?<surface>main-window|floating-window)\\(?<size>[^\\]+)\\(?<version>[^\\]+)\\manifest\.json'
 )
+foreach ($surface in @('main-window', 'floating-window')) {
+    $surfaceReferenceCount = @($baselineManifestRefs | Where-Object { $_.Groups['surface'].Value -eq $surface }).Count
+    if ($surfaceReferenceCount -ne 1) {
+        $baselineFixtureFailures.Add("Countdown.Validation.psm1 has $surfaceReferenceCount $surface manifest reference(s); expected exactly one")
+    }
+}
 $fixtureDefinitions = [regex]::Matches(
     $coreTestSource,
     '(?m)(?<start>\d+)\.\.(?<end>\d+)\s*\|\s*ForEach-Object\s*\{\s*\[pscustomobject\]@\{\s*CaptureId\s*=\s*["''](?<fixtureSurface>main|floating)-\$_["'']'
@@ -147,8 +179,11 @@ foreach ($reference in $baselineManifestRefs) {
     if ($fixtureStart -ne 1 -or $fixtureCount -ne $expectedCount) {
         $baselineFixtureFailures.Add("$($reference.Groups['surface'].Value) fixture range is $fixtureStart..$fixtureEnd ($fixtureCount captures); manifest declares $expectedCount")
     }
+    else {
+        $baselineFixtureAgreements.Add("$($reference.Groups['surface'].Value) $($reference.Groups['size'].Value)/$($reference.Groups['version'].Value): manifest $expectedCount captures = Core $fixtureSurface $fixtureStart..$fixtureEnd")
+    }
 }
-$baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { 'current manifests and Core positive fixtures agree' } else { $baselineFixtureFailures -join ' | ' }
+$baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { $baselineFixtureAgreements -join '; ' } else { $baselineFixtureFailures -join ' | ' }
 Add-ToolingCheck -Name 'visual-baseline:fixture-shape' -Passed ($baselineFixtureFailures.Count -eq 0) -Detail $baselineFixtureDetail
 
 if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }

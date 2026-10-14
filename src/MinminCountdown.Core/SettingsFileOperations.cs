@@ -90,7 +90,7 @@ internal sealed class SystemSettingsFileOperations : ISettingsFileOperations
         File.Copy(sourcePath, destinationPath, overwrite);
 
     public void MoveFile(string sourcePath, string destinationPath, bool overwrite) =>
-        File.Move(sourcePath, destinationPath, overwrite);
+        SettingsFileReplace.Move(sourcePath, destinationPath, overwrite);
 
     public void ReplaceFile(
         string sourcePath,
@@ -113,20 +113,26 @@ internal sealed class SystemSettingsFileOperations : ISettingsFileOperations
 
 public static class SettingsFileReplace
 {
-    // 本机 File.Replace 在回滚或杀毒扫描时会偶发失败，留下已轮换的 backup。
-    // 短暂重试让失败替换仍能把原字节放回去。
+    // 本机 File.Replace / File.Move 在回滚或杀毒扫描时会偶发失败：实时扫描会短暂持有刚写入的文件且不共享删除。
+    // 短暂重试让失败替换仍能把原字节放回去，首次保存与 backup 2 首次轮转的改名也不因瞬时占用失败。
     public static void Replace(
         string sourcePath,
         string destinationPath,
         string? backupPath,
-        bool ignoreMetadataErrors)
+        bool ignoreMetadataErrors) =>
+        RetryTransient(() => File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors));
+
+    public static void Move(string sourcePath, string destinationPath, bool overwrite) =>
+        RetryTransient(() => File.Move(sourcePath, destinationPath, overwrite));
+
+    private static void RetryTransient(Action operation)
     {
         const int attempts = 5;
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors);
+                operation();
                 return;
             }
             catch (Exception exception) when (

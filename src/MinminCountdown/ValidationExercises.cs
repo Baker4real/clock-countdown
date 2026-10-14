@@ -3520,7 +3520,8 @@ internal static class ValidationExercises
             for (var index = 0; index < 6; index++)
             {
                 Must(session.TrySaveNote(null, $"相对时间便签 {index}", new DateTime(2036, 8, 20), false,
-                    Array.Empty<string>(), ReminderSchedule.CreateOnce(dueUtc), out _), "无法建立相对时间发生项。");
+                    Array.Empty<string>(), ReminderSchedule.CreateOnce(dueUtc), out var saveError),
+                    $"无法建立相对时间发生项：{saveError}");
             }
             clock.UtcNow = dueUtc;
             coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), logger: null);

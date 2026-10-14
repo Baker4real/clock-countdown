@@ -1686,6 +1686,34 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
     }
 }
 
+function Get-ManagedTestRootPurgeRefusal {
+    param(
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $StdoutText
+    )
+
+    # safe-tree-delete 按 stdout JSON 的 refusalReason + 退出码报告拒绝；门禁拒绝（互斥体超时、维护标记）时 stderr 为空。
+    if ([string]::IsNullOrWhiteSpace($StdoutText)) {
+        return 'stdoutChars={0}' -f $StdoutText.Length
+    }
+    try {
+        $refusal = $StdoutText | ConvertFrom-Json
+        $reason = $refusal.PSObject.Properties['refusalReason']
+        if ($null -ne $reason -and -not [string]::IsNullOrWhiteSpace([string] $reason.Value)) {
+            return 'refusalReason={0}' -f ([string] $reason.Value).Trim()
+        }
+    }
+    catch {
+    }
+
+    $excerpt = ($StdoutText -replace '\s+', ' ').Trim() `
+        -replace '(?i)(token|password|passwd|secret|api[-_]?key|cookie|authorization)("?\s*[:=]\s*"?)(?:(?:bearer|basic)\s+)?[^\s",;&]+', '$1$2[redacted]' `
+        -replace '://[^/\s@]+@', '://[redacted]@'
+    if ($excerpt.Length -gt 200) {
+        $excerpt = $excerpt.Substring(0, 200) + '...'
+    }
+    'stdoutChars={0} stdout={1}' -f $StdoutText.Length, $excerpt
+}
+
 function Invoke-ManagedTestRootPurge {
     param(
         [Parameter(Mandatory)] [string] $SafeTreeDelete,
@@ -1742,6 +1770,10 @@ function Invoke-ManagedTestRootPurge {
             }
             if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
                 $lastError = $stderrText.Trim()
+            }
+            if ($lastExitCode -ne 0) {
+                $refusal = Get-ManagedTestRootPurgeRefusal -StdoutText $cleanupJson
+                $lastError = if ($null -eq $lastError) { $refusal } else { "$refusal stderr=$lastError" }
             }
             if ($lastExitCode -eq 0) {
                 $cleanup = $cleanupJson | ConvertFrom-Json

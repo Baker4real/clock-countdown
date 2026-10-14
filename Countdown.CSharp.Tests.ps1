@@ -1837,6 +1837,7 @@ function Invoke-InstanceActivationProcessTests {
     $secondaryProcess = $null
     $firstSecondaryProcess = $null
     $stalledPipe = $null
+    $originalError = $null
     $parallelProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
 
     if ($InstanceActivationClientMode -ne 'Normal' -and
@@ -2562,6 +2563,11 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
             ProcessScenarios = 1
         } | ConvertTo-Json
     }
+    catch {
+        # 记下主失败，finally 里的清理失败据此只告警。
+        $originalError = $_
+        throw
+    }
     finally {
         if ($null -ne $stalledPipe) {
             $stalledPipe.Dispose()
@@ -2582,12 +2588,20 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
         }
 
         if (Test-Path -LiteralPath $testRoot -PathType Container) {
-            Invoke-ManagedTestRootPurge `
-                -SafeTreeDelete $safeTreeDelete `
-                -TestRoot $testRoot `
-                -CapabilityRoot $testCapabilityRoot `
-                -FailedMessage '受管激活测试目录清理失败' `
-                -IncompleteMessage '受管激活测试目录未完成清理'
+            try {
+                Invoke-ManagedTestRootPurge `
+                    -SafeTreeDelete $safeTreeDelete `
+                    -TestRoot $testRoot `
+                    -CapabilityRoot $testCapabilityRoot `
+                    -FailedMessage '受管激活测试目录清理失败' `
+                    -IncompleteMessage '受管激活测试目录未完成清理'
+            }
+            catch {
+                if ($null -eq $originalError) {
+                    throw
+                }
+                Write-Warning "测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)"
+            }
         }
     }
 }
@@ -3089,6 +3103,7 @@ function Invoke-DesktopLauncherProcessTests {
     $warmReady = $null
     $coldSegments = $null
     $warmSegments = $null
+    $originalError = $null
     $currentSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
     Import-Module -Name (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 
@@ -3392,12 +3407,20 @@ function Invoke-DesktopLauncherProcessTests {
         Remove-DesktopLauncherHostPayload -DestinationHost $fallbackHost
 
         if (Test-Path -LiteralPath $testRoot -PathType Container) {
-            Invoke-ManagedTestRootPurge `
-                -SafeTreeDelete $safeTreeDelete `
-                -TestRoot $testRoot `
-                -CapabilityRoot $testCapabilityRoot `
-                -FailedMessage '受管桌面启动器测试目录清理失败' `
-                -IncompleteMessage '受管桌面启动器测试目录未完成清理'
+            try {
+                Invoke-ManagedTestRootPurge `
+                    -SafeTreeDelete $safeTreeDelete `
+                    -TestRoot $testRoot `
+                    -CapabilityRoot $testCapabilityRoot `
+                    -FailedMessage '受管桌面启动器测试目录清理失败' `
+                    -IncompleteMessage '受管桌面启动器测试目录未完成清理'
+            }
+            catch {
+                if ($null -eq $originalError) {
+                    throw
+                }
+                Write-Warning "测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)"
+            }
         }
     }
 }
@@ -3863,6 +3886,7 @@ $mutexHolderProcess = $null
 $interactiveAdapterProcess = $null
 $interactiveApplicationProcess = $null
 $duplicateApplicationProcess = $null
+$originalError = $null
 $fixture = @'
 {
   "schemaVersion": 7,
@@ -6382,6 +6406,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
         AdapterUiValidated = $true
     } | ConvertTo-Json
 }
+catch {
+    # 记下主失败，finally 里的清理失败据此只告警。
+    $originalError = $_
+    throw
+}
 finally {
     if ($null -ne $duplicateApplicationProcess) {
         try {
@@ -6427,11 +6456,19 @@ finally {
         if (Test-Path -LiteralPath $interactiveApplicationPath -PathType Leaf) {
             Remove-DesktopLauncherHostPayload -DestinationHost $interactiveApplicationPath
         }
-        Invoke-ManagedTestRootPurge `
-            -SafeTreeDelete $safeTreeDelete `
-            -TestRoot $testRoot `
-            -CapabilityRoot $testCapabilityRoot `
-            -FailedMessage '受管 C# 测试目录清理失败' `
-            -IncompleteMessage '受管 C# 测试目录未完成清理'
+        try {
+            Invoke-ManagedTestRootPurge `
+                -SafeTreeDelete $safeTreeDelete `
+                -TestRoot $testRoot `
+                -CapabilityRoot $testCapabilityRoot `
+                -FailedMessage '受管 C# 测试目录清理失败' `
+                -IncompleteMessage '受管 C# 测试目录未完成清理'
+        }
+        catch {
+            if ($null -eq $originalError) {
+                throw
+            }
+            Write-Warning "测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)"
+        }
     }
 }

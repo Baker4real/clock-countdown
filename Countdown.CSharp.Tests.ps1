@@ -436,6 +436,9 @@ public static class MinminCountdownActivationWindowProbe
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    public static extern IntPtr FindWindowW(string className, string windowName);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
 
@@ -1683,6 +1686,34 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
     }
 }
 
+function Get-ManagedTestRootPurgeRefusal {
+    param(
+        [Parameter(Mandatory)] [AllowEmptyString()] [string] $StdoutText
+    )
+
+    # safe-tree-delete 按 stdout JSON 的 refusalReason + 退出码报告拒绝；门禁拒绝（互斥体超时、维护标记）时 stderr 为空。
+    if ([string]::IsNullOrWhiteSpace($StdoutText)) {
+        return 'stdoutChars={0}' -f $StdoutText.Length
+    }
+    try {
+        $refusal = $StdoutText | ConvertFrom-Json
+        $reason = $refusal.PSObject.Properties['refusalReason']
+        if ($null -ne $reason -and -not [string]::IsNullOrWhiteSpace([string] $reason.Value)) {
+            return 'refusalReason={0}' -f ([string] $reason.Value).Trim()
+        }
+    }
+    catch {
+    }
+
+    $excerpt = ($StdoutText -replace '\s+', ' ').Trim() `
+        -replace '(?i)(token|password|passwd|secret|api[-_]?key|cookie|authorization)("?\s*[:=]\s*"?)(?:(?:bearer|basic)\s+)?[^\s",;&]+', '$1$2[redacted]' `
+        -replace '://[^/\s@]+@', '://[redacted]@'
+    if ($excerpt.Length -gt 200) {
+        $excerpt = $excerpt.Substring(0, 200) + '...'
+    }
+    'stdoutChars={0} stdout={1}' -f $StdoutText.Length, $excerpt
+}
+
 function Invoke-ManagedTestRootPurge {
     param(
         [Parameter(Mandatory)] [string] $SafeTreeDelete,
@@ -1739,6 +1770,10 @@ function Invoke-ManagedTestRootPurge {
             }
             if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
                 $lastError = $stderrText.Trim()
+            }
+            if ($lastExitCode -ne 0) {
+                $refusal = Get-ManagedTestRootPurgeRefusal -StdoutText $cleanupJson
+                $lastError = if ($null -eq $lastError) { $refusal } else { "$refusal stderr=$lastError" }
             }
             if ($lastExitCode -eq 0) {
                 $cleanup = $cleanupJson | ConvertFrom-Json
@@ -6205,6 +6240,19 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $duplicateDiagnostic = Get-Content -LiteralPath $interactiveDiagnosticPath -Raw -Encoding UTF8
     Assert-Equal $true $duplicateDiagnostic.Contains('InstanceActivationTimedOut', [System.StringComparison]::Ordinal) '验收只读主实例未监听时第二实例记录超时诊断'
     Assert-Equal $false $duplicateDiagnostic.Contains('InstanceActivationSucceeded', [System.StringComparison]::Ordinal) '验收只读阶段不冒充恢复成功'
+    $interactiveEntries = @(
+        Get-Content -LiteralPath $interactiveDiagnosticPath -Encoding UTF8 |
+            ForEach-Object { $_ | ConvertFrom-Json }
+    )
+    if ([MinminCountdownActivationWindowProbe]::FindWindowW('Shell_TrayWnd', $null) -eq [IntPtr]::Zero) {
+        Assert-Equal 1 @($interactiveEntries | Where-Object {
+            $_.processId -eq $interactiveApplicationProcess.Id -and $_.event -eq 'TestTrayHostWithoutShell'
+        }).Count '无 Shell 的测试主实例明确记录内存托盘边界'
+    }
+    Assert-Equal 0 @($interactiveEntries | Where-Object event -eq 'FatalUnhandledException').Count '真实激活期间主次实例均无致命异常'
+    Assert-Equal 0 @($interactiveEntries | Where-Object {
+        $_.processId -eq $duplicateApplicationProcess.Id -and $_.event -eq 'TestTrayHostWithoutShell'
+    }).Count '普通次实例在激活失败路径不进入测试托盘宿主'
     $duplicateApplicationProcess.Dispose()
     $duplicateApplicationProcess = $null
 
@@ -6272,6 +6320,39 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $interactiveApplicationProcess.Refresh()
     Assert-Equal $true $interactiveApplicationProcess.HasExited '测试参数触发 C# EXE 退出'
     Write-TestSegmentTiming -Name 'InteractiveLaunch'
+
+    if ([MinminCountdownActivationWindowProbe]::FindWindowW('Shell_TrayWnd', $null) -eq [IntPtr]::Zero) {
+        # Same isolated fixture, now without the explicit unattended-test switch:
+        # production must try the real Shell host instead of claiming a fake tray.
+        $ordinaryDiagnosticPath = Join-Path $testRoot 'ordinary-no-shell.jsonl'
+        $ordinaryErrorPath = Join-Path $testRoot 'ordinary-no-shell.stderr.txt'
+        $ordinaryProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList @(
+            '--settings-file', ('"{0}"' -f $interactiveSettingsPath),
+            '--diagnostic-log-path', ('"{0}"' -f $ordinaryDiagnosticPath)
+        ) -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $testRoot 'ordinary-no-shell.stdout.txt') `
+            -RedirectStandardError $ordinaryErrorPath
+        try {
+            Assert-Equal $true $ordinaryProcess.WaitForExit(10000) '普通启动在无 Shell 时真实失败而非静默使用测试托盘'
+            $ordinaryProcess.WaitForExit()
+            Assert-Equal 1 $ordinaryProcess.ExitCode '普通启动保留真实 Shell 初始化失败退出码'
+            $ordinaryEntries = @(
+                Get-Content -LiteralPath $ordinaryDiagnosticPath -Encoding UTF8 |
+                    ForEach-Object { $_ | ConvertFrom-Json }
+            )
+            Assert-Equal 0 @($ordinaryEntries | Where-Object event -eq 'TestTrayHostWithoutShell').Count '普通启动不得进入内存托盘测试边界'
+            Assert-Equal 1 @($ordinaryEntries | Where-Object {
+                $_.event -eq 'FatalUnhandledException' -and $_.stackTrace.Contains('H.NotifyIcon.', [StringComparison]::Ordinal)
+            }).Count '普通启动实际调用原生托盘组件并记录其失败'
+        }
+        finally {
+            if (-not $ordinaryProcess.HasExited) {
+                $ordinaryProcess.Kill()
+                [void] $ordinaryProcess.WaitForExit(5000)
+            }
+            $ordinaryProcess.Dispose()
+        }
+    }
 
     $finalizedActivationOutput = Invoke-CheckedNativeCommand `
         -FilePath $pwsh `

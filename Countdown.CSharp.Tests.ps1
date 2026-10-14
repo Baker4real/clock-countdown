@@ -982,7 +982,7 @@ function Complete-DiagnosticConcurrencyFailure {
         $evidenceDirectory = [string] $evidence.Directory
     }
     catch {
-        Write-Warning "并发激活失败证据保全未完成：$($_.Exception.Message)"
+        [Console]::Error.WriteLine("WARNING: 并发激活失败证据保全未完成：$($_.Exception.Message)")
     }
 
     if ([string]::IsNullOrWhiteSpace($evidenceDirectory)) {
@@ -1799,15 +1799,16 @@ function Invoke-ManagedTestRootPurge {
         }
 
         if ($attempt -lt $MaxAttempts) {
-            Write-Warning (
-                "受管测试目录清理将重试（第 {0}/{1} 次未成功）：root={2} exit={3} completed={4} purgedCount={5} {6}" -f `
+            # 调用点都在 finally 中，此时 stdout 已写出单一 JSON 报告；重试提示只走 stderr（Write-Warning 在重定向的 -File 运行下会落到 stdout）。
+            [Console]::Error.WriteLine((
+                "WARNING: 受管测试目录清理将重试（第 {0}/{1} 次未成功）：root={2} exit={3} completed={4} purgedCount={5} {6}" -f `
                     $attempt,
                     $MaxAttempts,
                     $TestRoot,
                     $lastExitCode,
                     $lastCompleted,
                     $lastPurgedCount,
-                    $lastError)
+                    $lastError))
             Start-Sleep -Milliseconds $RetryDelayMilliseconds
         }
     }
@@ -3374,7 +3375,7 @@ function Invoke-DesktopLauncherProcessTests {
             $evidenceDirectory = [string] $evidence.Directory
         }
         catch {
-            Write-Warning "桌面启动器失败证据保全未完成：$($_.Exception.Message)"
+            [Console]::Error.WriteLine("WARNING: 桌面启动器失败证据保全未完成：$($_.Exception.Message)")
         }
 
         if ([string]::IsNullOrWhiteSpace($evidenceDirectory)) {

@@ -43,6 +43,7 @@ $healthyOwner = {
     [pscustomobject]@{ ReturnValue = 0; Domain = 'TEST'; User = 'Fixture' }
 }
 if ($FailureProbe) {
+    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
     Invoke-CountdownDeploymentPreflight -OutputPath (Join-Path $testRoot 'child-failure.json') -HttpGet { throw [Net.Http.HttpRequestException]::new('http://private-user:private-password@proxy.invalid/?secret=fixture') } -CimQuery $healthyCim -CimOwner $healthyOwner
     throw 'Unreachable after failed dependency check.'
 }
@@ -132,6 +133,8 @@ $child.UseShellExecute = $false
 $child.CreateNoWindow = $true
 $child.RedirectStandardOutput = $true
 $child.RedirectStandardError = $true
+$child.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+$child.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
 foreach ($argument in @('-NoLogo', '-NoProfile', '-File', $PSCommandPath, '-FailureProbe')) { $child.ArgumentList.Add($argument) }
 $process = [Diagnostics.Process]::new()
 $process.StartInfo = $child

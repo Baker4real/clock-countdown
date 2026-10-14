@@ -41,6 +41,7 @@ function Invoke-CountdownGit {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
     $process = [System.Diagnostics.Process]::Start($startInfo)
     $stderrTask = $process.StandardError.ReadToEndAsync()
     $buffer = [System.IO.MemoryStream]::new()

@@ -27,6 +27,7 @@ function Read-GitBlob {
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
     [void] $startInfo.ArgumentList.Add('cat-file')
     [void] $startInfo.ArgumentList.Add('blob')
     [void] $startInfo.ArgumentList.Add("HEAD:$RepositoryRelativePath")

@@ -19,6 +19,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
+# 与 Core 及验证套件入口一致按 UTF-8 输出：启动器的隐藏控制台沿用 936 代码页，
+# 不设置时阶段日志里的中文是 GBK 字节，共享控制台的 pwsh 子进程也随之按 GBK 输出。
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $script:assertions = 0
 
 # #126 分段计时插桩：计时行只走 stderr，保持 stdout 单一 JSON 报告契约
@@ -131,6 +134,9 @@ function Invoke-CapturedNativeProcess {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    # 应用与探针按 UTF-8 输出；不显式指定就按控制台代码页（中文系统为 GBK）解码，中文诊断会乱码并丢字节。
+    $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
     foreach ($argument in $ArgumentList) {
         [void] $startInfo.ArgumentList.Add($argument)
     }
@@ -3934,8 +3940,9 @@ try {
     $captureArgumentMarker = 'argument with spaces;not-a-command'
     $captureHelperProbeSource = @'
 param([Parameter(Mandatory)] [string] $Value)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::Out.Write($Value)
-[Console]::Error.Write('captured-stderr')
+[Console]::Error.Write('captured-stderr：中文诊断')
 exit 23
 '@
     [System.IO.File]::WriteAllText($captureHelperProbePath, $captureHelperProbeSource, $utf8NoBom)
@@ -3952,7 +3959,7 @@ exit 23
         )
     Assert-Equal 23 $captureHelperProbe.ExitCode '进程捕获 helper 保留非零退出码而不转绿'
     Assert-Equal $captureArgumentMarker $captureHelperProbe.Stdout '进程捕获 helper 通过 ArgumentList 保留参数边界'
-    Assert-Equal 'captured-stderr' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr'
+    Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
 
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
@@ -4006,6 +4013,7 @@ exit 23
     }
     $hostOptionsProbeSource = @'
 param([Parameter(Mandatory)] [string] $AssemblyPath)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $assembly = [System.Reflection.Assembly]::LoadFrom($AssemblyPath)
 $hostOptionsType = $assembly.GetType('MinminCountdown.HostOptions', $true)
 $parseMethod = $hostOptionsType.GetMethod(

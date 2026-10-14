@@ -87,6 +87,7 @@ catch { exit 1 }
 $start = [Diagnostics.ProcessStartInfo]::new($pwsh)
 $start.UseShellExecute=$false; $start.CreateNoWindow=$true
 $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
+$start.StandardOutputEncoding=$utf8; $start.StandardErrorEncoding=$utf8
 foreach ($arg in @('-NoLogo','-NoProfile','-File',$driver)) { $start.ArgumentList.Add($arg) }
 $process = [Diagnostics.Process]::Start($start)
 $outTask = $process.StandardOutput.ReadToEndAsync()

@@ -111,6 +111,76 @@ $harnessCompile = @(& pwsh -NoLogo -NoProfile -NonInteractive -Command {
     } -args (Join-Path $PSScriptRoot 'PopupValidationContract.cs') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'popup-harness:compile' -Passed ($LASTEXITCODE -eq 0 -and $harnessCompile.Count -eq 1 -and $harnessCompile[0] -eq 'compiled') -Detail ($harnessCompile -join ' | ')
 
+# 按文本读子进程的重定向流时必须在同一作用域显式设置该流的编码：不设置就按控制台代码页（中文系统为 GBK）
+# 解码，UTF-8 子进程的中文诊断会乱码并丢字节。只读 BaseStream 字节的流不受影响。范围是测试与 tools 脚本。
+function Get-EnclosingFunctionAst {
+    param([Parameter(Mandatory)] [System.Management.Automation.Language.Ast] $Node)
+    $current = $Node.Parent
+    while ($null -ne $current -and $current -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+        $current = $current.Parent
+    }
+    $current
+}
+
+function Get-ProcessCaptureEncodingGaps {
+    param([Parameter(Mandatory)] [System.Management.Automation.Language.Ast] $Ast)
+    $encodingAssignments = @($Ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $node.Left -is [System.Management.Automation.Language.MemberExpressionAst] -and
+                $node.Left.Member.Extent.Text -in @('StandardOutputEncoding', 'StandardErrorEncoding')
+            }, $true))
+    $invocations = $Ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] }, $true)
+    foreach ($invocation in $invocations) {
+        $method = $invocation.Member.Extent.Text
+        $stream = $null
+        if ($method -eq 'BeginOutputReadLine') { $stream = 'StandardOutput' }
+        elseif ($method -eq 'BeginErrorReadLine') { $stream = 'StandardError' }
+        elseif ($method -match '^(?:ReadToEnd|ReadLine|ReadBlock|Read)(?:Async)?$' -and
+            $invocation.Expression -is [System.Management.Automation.Language.MemberExpressionAst] -and
+            $invocation.Expression.Member.Extent.Text -in @('StandardOutput', 'StandardError')) {
+            $stream = $invocation.Expression.Member.Extent.Text
+        }
+        if ($null -eq $stream) { continue }
+        $scope = Get-EnclosingFunctionAst $invocation
+        $declared = @($encodingAssignments | Where-Object {
+                $_.Left.Member.Extent.Text -eq "${stream}Encoding" -and
+                [object]::ReferenceEquals((Get-EnclosingFunctionAst $_), $scope)
+            }).Count -gt 0
+        if (-not $declared) { "第 $($invocation.Extent.StartLineNumber) 行按文本读 $stream，同一作用域未设置 ${stream}Encoding" }
+    }
+}
+
+$captureSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'missing'; Gaps = 1; Source = 'function F { $s = [Diagnostics.ProcessStartInfo]::new("x"); $s.RedirectStandardError = $true; $p = [Diagnostics.Process]::Start($s); $p.StandardError.ReadToEnd() }' },
+        @{ Name = 'declared'; Gaps = 0; Source = 'function F { $s = [Diagnostics.ProcessStartInfo]::new("x"); $s.RedirectStandardError = $true; $s.StandardErrorEncoding = [Text.UTF8Encoding]::new($false); $p = [Diagnostics.Process]::Start($s); $p.StandardError.ReadToEnd() }' },
+        @{ Name = 'bytes'; Gaps = 0; Source = 'function F { $s = [Diagnostics.ProcessStartInfo]::new("x"); $s.RedirectStandardOutput = $true; $p = [Diagnostics.Process]::Start($s); $p.StandardOutput.BaseStream.CopyTo([IO.MemoryStream]::new()) }' },
+        @{ Name = 'other-scope'; Gaps = 1; Source = 'function A { $s.StandardErrorEncoding = $e }; function B { $p.StandardError.ReadToEndAsync() }' }
+    )) {
+    $tokens = $null
+    $errors = $null
+    $caseAst = [System.Management.Automation.Language.Parser]::ParseInput($case.Source, [ref] $tokens, [ref] $errors)
+    $caseGaps = @(Get-ProcessCaptureEncodingGaps -Ast $caseAst).Count
+    if ($caseGaps -ne $case.Gaps) { $captureSelfTestFailures.Add("self-test $($case.Name): expected $($case.Gaps) gap(s), got $caseGaps") }
+}
+$captureGaps = [System.Collections.Generic.List[string]]::new()
+$capturePaths = @(
+    Get-ChildItem -LiteralPath $repoRoot -Filter '*.Tests.ps1' -File
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools') -File | Where-Object Extension -in @('.ps1', '.psm1')
+) | Sort-Object FullName -Unique
+foreach ($capturePath in $capturePaths) {
+    $tokens = $null
+    $errors = $null
+    $captureAst = [System.Management.Automation.Language.Parser]::ParseFile($capturePath.FullName, [ref] $tokens, [ref] $errors)
+    foreach ($gap in @(Get-ProcessCaptureEncodingGaps -Ast $captureAst)) {
+        $captureGaps.Add("$([System.IO.Path]::GetRelativePath($repoRoot, $capturePath.FullName))：$gap")
+    }
+}
+$captureProblems = @($captureSelfTestFailures) + @($captureGaps)
+$captureDetail = if ($captureProblems.Count -eq 0) { "$($capturePaths.Count) 个测试与 tools 脚本；自检 4 例通过" } else { $captureProblems -join ' | ' }
+Add-ToolingCheck -Name 'process-capture:explicit-encoding' -Passed ($captureProblems.Count -eq 0) -Detail $captureDetail
+
 $docLinkFailures = [System.Collections.Generic.List[string]]::new()
 $markdownFiles = Get-ChildItem -LiteralPath $repoRoot -Filter '*.md' -File -Recurse |
     Where-Object {

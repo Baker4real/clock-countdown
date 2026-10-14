@@ -44,6 +44,7 @@ foreach ($requiredPath in @(
         'tools/Invoke-CountdownSuiteLowImpact.ps1',
         'tools/Get-CountdownDeploymentState.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
+        'tools/PopupValidationContract.cs',
         'Countdown.DeploymentPreflight.psm1'
     )) { Test-RequiredPath -RelativePath $requiredPath }
 
@@ -86,6 +87,29 @@ foreach ($scriptPath in $scriptPaths) {
 }
 $parseDetail = if ($parseErrors.Count -eq 0) { "$($scriptPaths.Count) scripts" } else { $parseErrors -join ' | ' }
 Add-ToolingCheck -Name 'powershell:parse' -Passed ($parseErrors.Count -eq 0) -Detail $parseDetail
+
+# 弹层验证夹具的 C# 否则只在有窗口的 ValidationHarness 阶段才编译。这里在子 pwsh 里用夹具同一组引用只编译、
+# 不加载被测程序集也不开窗口，让 C# 错误在任何窗口阶段之前暴露。
+$harnessCompile = @(& pwsh -NoLogo -NoProfile -NonInteractive -Command {
+        param([string] $SourcePath)
+        Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+        $references = @(
+            Get-ChildItem -LiteralPath (Join-Path $PSHOME 'ref') -Filter '*.dll' |
+                Where-Object Name -ne 'WindowsBase.dll' |
+                Select-Object -ExpandProperty FullName
+            [System.Windows.Window].Assembly.Location
+            [System.Windows.UIElement].Assembly.Location
+            [System.Windows.Threading.Dispatcher].Assembly.Location
+            [System.Windows.Markup.IQueryAmbient].Assembly.Location
+        )
+        $compileErrors = @()
+        try {
+            Add-Type -ReferencedAssemblies $references -TypeDefinition ([System.IO.File]::ReadAllText($SourcePath)) -ErrorAction SilentlyContinue -ErrorVariable compileErrors
+        }
+        catch { $compileErrors += $_ }
+        if ($compileErrors.Count -gt 0) { $compileErrors | ForEach-Object { "$_" } } else { 'compiled' }
+    } -args (Join-Path $PSScriptRoot 'PopupValidationContract.cs') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'popup-harness:compile' -Passed ($LASTEXITCODE -eq 0 -and $harnessCompile.Count -eq 1 -and $harnessCompile[0] -eq 'compiled') -Detail ($harnessCompile -join ' | ')
 
 $docLinkFailures = [System.Collections.Generic.List[string]]::new()
 $markdownFiles = Get-ChildItem -LiteralPath $repoRoot -Filter '*.md' -File -Recurse |

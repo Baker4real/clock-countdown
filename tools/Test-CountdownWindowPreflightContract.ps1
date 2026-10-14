@@ -7,6 +7,8 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $target = Join-Path $PSScriptRoot 'Test-CountdownWindowPreflight.ps1'
 $appPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'app'
+# Tooling runs before Build, so the hash case hashes a synthetic candidate instead of app.
+$syntheticPath = Join-Path (Split-Path -Parent $PSScriptRoot) ('logs/window-preflight-contract-test-' + [guid]::NewGuid().ToString('N'))
 $checks = [Collections.Generic.List[object]]::new()
 
 # Invalid candidate input must fail before desktop or WPF initialization. These
@@ -50,7 +52,16 @@ function Test-RejectedCandidate {
     finally { $process.Dispose() }
 }
 
-Test-RejectedCandidate -Name 'wrong-dll-hash' -CandidatePath $appPath -Hash ('0' * 64) -ExpectedCode 'CandidateHashMismatch'
+$syntheticDll = Join-Path $syntheticPath 'MinminCountdown.dll'
+[void][IO.Directory]::CreateDirectory($syntheticPath)
+try {
+    [IO.File]::WriteAllText($syntheticDll, 'synthetic candidate')
+    Test-RejectedCandidate -Name 'wrong-dll-hash' -CandidatePath $syntheticPath -Hash ('0' * 64) -ExpectedCode 'CandidateHashMismatch'
+}
+finally {
+    [IO.File]::Delete($syntheticDll)
+    [IO.Directory]::Delete($syntheticPath)
+}
 Test-RejectedCandidate -Name 'malformed-dll-hash' -CandidatePath $appPath -Hash 'not-a-hash' -ExpectedCode 'InvalidExpectedHash'
 Test-RejectedCandidate -Name 'missing-candidate' -CandidatePath (Join-Path $appPath 'missing-window-preflight-candidate') -Hash ('0' * 64) -ExpectedCode 'CandidateMissing'
 $failed = @($checks | Where-Object { -not $_.Passed }).Count

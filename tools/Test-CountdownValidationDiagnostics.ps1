@@ -16,7 +16,7 @@ $corePath = Join-Path $root 'Countdown.Core.Tests.ps1'
 Write-Error '中文原始错误' -ErrorId 'Countdown.OriginalQuery' -ErrorAction Stop
 '@, $utf8)
 $failure = $null
-try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh | Out-Null }
+try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh -EvidenceDirectory $root | Out-Null }
 catch { $failure = $_ }
 if ($null -eq $failure) { throw '失败的子脚本不得返回成功。' }
 $child = $failure.Exception.Data['ChildErrorRecord']
@@ -27,6 +27,9 @@ if ($null -eq $child -or $child.fullyQualifiedErrorId -notlike '*Countdown.Origi
 }
 $evidence = [string]$failure.Exception.Data['ValidationEvidenceDirectory']
 if (-not (Test-Path -LiteralPath (Join-Path $evidence 'stderr.log'))) { throw '失败后阶段日志必须保留。' }
+if (-not [IO.Path]::GetFullPath($evidence).StartsWith([IO.Path]::GetFullPath($root) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "自检的阶段证据必须留在测试根内，不得写入共享证据目录。实际：$evidence"
+}
 Import-Module (Join-Path $repo 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
 $receiptPath = Join-Path $root 'failure-receipt.json'
 $null = Write-CountdownInstallFailureReceipt -Path $receiptPath -Stage 'Core 回归' -ErrorRecord $failure `

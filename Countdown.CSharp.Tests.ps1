@@ -2601,7 +2601,7 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
                 if ($null -eq $originalError) {
                     throw
                 }
-                Write-Warning "测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)"
+                [Console]::Error.WriteLine("WARNING: 测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)")
             }
         }
     }
@@ -3420,7 +3420,7 @@ function Invoke-DesktopLauncherProcessTests {
                 if ($null -eq $originalError) {
                     throw
                 }
-                Write-Warning "测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)"
+                [Console]::Error.WriteLine("WARNING: 测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)")
             }
         }
     }
@@ -6469,7 +6469,7 @@ finally {
             if ($null -eq $originalError) {
                 throw
             }
-            Write-Warning "测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)"
+            [Console]::Error.WriteLine("WARNING: 测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)")
         }
     }
 }

@@ -182,7 +182,6 @@ if ($Clean) {
 Write-BuildSegmentTiming -Name 'ManagedClean'
 
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
 $releaseContract = Get-CountdownReleaseContract
 $assetManifest = @(
     foreach ($asset in $releaseContract.BuildAssets) {
@@ -345,9 +344,12 @@ if (Test-Path -LiteralPath $sourcesMetadata) {
     throw "发布不得包含资产来源说明：$sourcesMetadata"
 }
 
+# 旧版构建曾在 app\ 补写 startup-request.json，但宿主只读应用根目录（app\ 的上一级）那份，从不读它。
+# 增量构建不清空 app\，枚举时排除这份残留，清单才与 -Clean 构建一致。
+$legacyStartupRequestPath = Join-Path $applicationOutput 'startup-request.json'
 $payloadFiles = @(
     Get-ChildItem -LiteralPath $applicationOutput -File -Recurse |
-        Where-Object { $_.Name -ne 'published-payload.json' } |
+        Where-Object { $_.Name -ne 'published-payload.json' -and $_.FullName -ne $legacyStartupRequestPath } |
         ForEach-Object {
             $relative = [System.IO.Path]::GetRelativePath($applicationOutput, $_.FullName)
             [pscustomobject]@{
@@ -383,18 +385,6 @@ Write-Output "PUBLISHED_PAYLOAD_COUNT=$($payloadFiles.Count)"
 Write-Output "PUBLISHED_PAYLOAD_AGGREGATE=$payloadAggregate"
 Write-Output "PUBLISHED_LICENSE_COUNT=$($thirdPartyLicenseFiles.Count)"
 Write-BuildSegmentTiming -Name 'AssetValidationAndPayloadHash'
-
-# 生产启动链 fail-closed：app\startup-request.json 缺失时宿主拒绝启动，而 -Clean 会清空 app\。
-# 每次构建后补写手动启动形态的请求；安装器部署时用自己的请求重写它。
-$startupRequestPath = Join-Path $applicationOutput 'startup-request.json'
-if (Test-Path -LiteralPath $startupRequestPath -PathType Leaf) {
-    Write-Output 'STARTUP_REQUEST_PRESERVED=existing'
-}
-else {
-    [void] (New-CountdownStartupRequest -Path $startupRequestPath)
-    Write-Output 'STARTUP_REQUEST_RESTORED=app\startup-request.json'
-}
-Write-BuildSegmentTiming -Name 'StartupRequestRestore'
 
 & $dotnet publish $verificationProject -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `

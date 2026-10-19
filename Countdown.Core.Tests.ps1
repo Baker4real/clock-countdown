@@ -6448,10 +6448,11 @@ Assert-Equal $true $buildSource.Contains('$resolvedCleanPath -notin $expectedCle
 Assert-Equal $true $buildSource.Contains("`$runEvidenceCapabilityRoot = 'D:\agents\run-evidence'") 'Clean build uses the governed run-evidence capability root for isolated release clones'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($runEvidenceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build detects output paths inside the governed run-evidence tree'
 Assert-Equal $true $buildSource.Contains('-CapabilityRoot $cleanupCapabilityRoot') 'Clean build passes the resolved stable capability root to safe-delete'
-Assert-Equal $true ($buildSource.Contains('New-CountdownStartupRequest -Path $startupRequestPath') -and $buildSource.Contains('STARTUP_REQUEST_RESTORED')) 'Build restores the fail-closed manual startup request when app\startup-request.json is absent'
+Assert-Equal $false $buildSource.Contains('New-CountdownStartupRequest') 'Build writes no startup request: the host reads the installer request at the application root, never app\startup-request.json'
 $buildPayloadHashSegmentIndex = $buildSource.IndexOf("Write-BuildSegmentTiming -Name 'AssetValidationAndPayloadHash'")
-$buildStartupRestoreIndex = $buildSource.IndexOf('STARTUP_REQUEST_RESTORED')
-Assert-Equal $true ($buildPayloadHashSegmentIndex -ge 0 -and $buildStartupRestoreIndex -gt $buildPayloadHashSegmentIndex) 'Startup request restore runs after the payload hash so runtime state never enters the release manifest'
+$buildPayloadEnumerationIndex = $buildSource.IndexOf('$payloadFiles = @(')
+$buildPayloadLegacyStartupRequestExclusionIndex = $buildSource.IndexOf('$_.FullName -ne $legacyStartupRequestPath')
+Assert-Equal $true ($buildPayloadEnumerationIndex -ge 0 -and $buildPayloadLegacyStartupRequestExclusionIndex -gt $buildPayloadEnumerationIndex -and $buildPayloadLegacyStartupRequestExclusionIndex -lt $buildPayloadHashSegmentIndex) 'Payload enumeration skips a stale app\startup-request.json left by older builds so incremental and -Clean manifests match'
 $installerCommittedRecoveryMessageIndex = $installerSource.IndexOf('检测到已提交但未完成应用解锁确认的事务')
 $installerOwnershipRecoveryMessageIndex = $installerSource.IndexOf('检测到用户替换的桌面启动器：应用、任务和时间服务已恢复')
 Assert-Equal $true ($installerCommittedRecoveryMessageIndex -ge 0 -and $installerCommittedRecoveryMessageIndex -lt $installerOwnershipRecoveryMessageIndex) 'Installer prioritizes committed recovery evidence over a simultaneous launcher conflict'

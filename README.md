@@ -52,7 +52,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
 - `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序
-- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个现役应用资产（#231 起三张 floating-plush 派生姿态参考图只随发布/验证包作视觉基线 sourceBinding 输入，不再装进 `app`）；载荷哈希后确保 `app\startup-request.json` 存在，缺失时补写手动启动形态
+- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个现役应用资产（#231 起三张 floating-plush 派生姿态参考图只随发布/验证包作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归夹具；只保留在仓库和部署验证包中，不安装到运行目录，生产入口不调用
@@ -176,10 +176,10 @@ pwsh.exe -NoLogo -NoProfile -File ./Deploy-OfficeCountdown.ps1 -ValidateOnly
 ## 运行应用
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -STA -File ./敏敏子倒计时.ps1
+./CountdownLauncher.exe
 ```
 
-启动链：桌面快捷方式 → `CountdownLauncher.exe` → `敏敏子倒计时.ps1` → `app\MinminCountdown.exe --require-startup-request`。宿主对 `app\startup-request.json` fail-closed（缺失或损坏即拒绝启动）；构建脚本在发布后自动补写手动启动形态（state=none），安装器部署时重写为自己的请求。
+启动链：桌面 `敏敏子倒计时.exe`（安装器复制的 `CountdownLauncher.exe`）→ `app\MinminCountdown.exe`。启动器优先用自身目录下的 `app\MinminCountdown.exe`，没有时回退到 `D:\敏敏子倒计时\app\MinminCountdown.exe`；它不带参数启动宿主，宿主不读启动请求。登录任务执行 `pwsh -STA -File 敏敏子倒计时.ps1`，adapter 以 `--require-startup-request` 启动宿主；宿主从应用根目录（`app\` 的上一级）读取安装器写出的 `startup-request.json`，缺失或损坏即拒绝启动（fail-closed）。构建不写启动请求，所以在仓库 checkout 里直接运行 adapter 会被拒绝。
 
 ## 安装
 

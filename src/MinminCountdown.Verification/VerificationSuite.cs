@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text;
 using MinminCountdown.Core;
@@ -45,6 +46,8 @@ internal static class VerificationSuite
         Run(results, "save-keeps-two-prior-legal-settings-generations", VerifySaveKeepsTwoPriorLegalGenerations);
         Run(results, "save-history-preflight-does-not-consume-domain-clock", VerifySaveHistoryPreflightDoesNotConsumeDomainClock);
         Run(results, "first-save-retries-transient-temporary-file-lock", VerifyFirstSaveRetriesTransientTemporaryFileLock);
+        Run(results, "save-waits-out-scan-locks-beyond-short-retry", VerifySaveWaitsOutScanLocksBeyondShortRetry);
+        Run(results, "save-lock-failure-names-operation-and-paths", VerifySaveLockFailureNamesOperationAndPaths);
         Run(results, "startup-prefers-missing-or-strict-valid-main", VerifyStartupPrefersMissingOrStrictValidMain);
         Run(results, "startup-occupied-settings-path-never-starts-empty", VerifyStartupOccupiedSettingsPathNeverStartsEmpty);
         Run(results, "startup-recovery-writes-require-explicit-authorization", VerifyStartupRecoveryWritesRequireExplicitAuthorization);
@@ -1187,20 +1190,10 @@ internal static class VerificationSuite
             var settingsPath = Path.Combine(directory, "settings.json");
             var temporaryPath = settingsPath + ".tmp";
             File.WriteAllText(temporaryPath, "stale");
-            // 模拟实时扫描：外部句柄共享读写但不共享删除，覆盖写入仍成功，改名在释放前遇到共享冲突。
-            var scanner = new FileStream(temporaryPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var release = Task.Delay(100).ContinueWith(_ => scanner.Dispose(), TaskScheduler.Default);
-            try
-            {
-                ThrowsAny<IOException, UnauthorizedAccessException>(
-                    () => File.Move(temporaryPath, temporaryPath + ".probe"),
-                    "外部句柄阻止临时文件改名");
-                new SettingsStore().Save(settingsPath, CountdownSettings.Empty);
-            }
-            finally
-            {
-                release.Wait();
-            }
+            WhileHeldLikeRealtimeScan(
+                temporaryPath,
+                TimeSpan.FromMilliseconds(100),
+                () => new SettingsStore().Save(settingsPath, CountdownSettings.Empty));
 
             Equal(
                 SettingsContract.SerializeCanonical(CountdownSettings.Empty),
@@ -1208,6 +1201,127 @@ internal static class VerificationSuite
                 "首次保存后的主设置");
             Equal(false, File.Exists(temporaryPath), "临时文件残留");
         });
+    }
+
+    private static void VerifySaveWaitsOutScanLocksBeyondShortRetry()
+    {
+        // 2026-10-14 构建后连跑 BaselineGenerate 两次失败：扫描占用超过旧的约 200 ms 重试，
+        // 首次保存的改名与后续保存的主替换都会撞上。600 ms 是旧预算的三倍，仍在新预算之内。
+        var scanHold = TimeSpan.FromMilliseconds(600);
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var temporaryPath = settingsPath + ".tmp";
+            File.WriteAllText(temporaryPath, "stale");
+            WhileHeldLikeRealtimeScan(
+                temporaryPath,
+                scanHold,
+                () => new SettingsStore().Save(settingsPath, CountdownSettings.Empty));
+
+            Equal(
+                SettingsContract.SerializeCanonical(CountdownSettings.Empty),
+                File.ReadAllText(settingsPath, new UTF8Encoding(false)),
+                "长占用后首次保存的主设置");
+            Equal(false, File.Exists(temporaryPath), "长占用后临时文件残留");
+        });
+
+        // 被扫描的主设置挡住替换（共享冲突）；被扫描的旧 backup 1 无法被转存覆盖（ERROR_UNABLE_TO_REMOVE_REPLACED）。
+        foreach (var (heldSuffix, subject) in new[] { ("", "主设置"), (".backup1", "backup 1") })
+        {
+            WithTemporaryDirectory(directory =>
+            {
+                var settingsPath = Path.Combine(directory, "settings.json");
+                File.WriteAllBytes(settingsPath, CanonicalSettingsBytesWithSalary(200m));
+                File.WriteAllBytes(settingsPath + ".backup1", CanonicalSettingsBytesWithSalary(100m));
+                WhileHeldLikeRealtimeScan(
+                    settingsPath + heldSuffix,
+                    scanHold,
+                    () => new SettingsStore().Save(
+                        settingsPath,
+                        CountdownSettings.Empty with
+                        {
+                            Preferences = CountdownSettings.Empty.Preferences with { MonthlySalary = 300m }
+                        }));
+
+                var store = new SettingsStore();
+                Equal(300m, store.Load(settingsPath).Settings.Preferences.MonthlySalary, $"{subject}长占用后的主设置");
+                Equal(
+                    200m,
+                    store.Load(settingsPath + ".backup1").Settings.Preferences.MonthlySalary,
+                    $"{subject}长占用后的 backup 1");
+                Equal(
+                    100m,
+                    store.Load(settingsPath + ".backup2").Settings.Preferences.MonthlySalary,
+                    $"{subject}长占用后的 backup 2");
+                foreach (var artifactSuffix in new[] { ".tmp", ".backup2.tmp", ".backup2.rollback" })
+                {
+                    Equal(false, File.Exists(settingsPath + artifactSuffix), $"{subject}长占用后 {artifactSuffix} 残留");
+                }
+            });
+        }
+    }
+
+    private static void VerifySaveLockFailureNamesOperationAndPaths()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var backupOnePath = settingsPath + ".backup1";
+            var backupTwoPath = settingsPath + ".backup2";
+            var mainBytes = CanonicalSettingsBytesWithSalary(300m);
+            var backupOneBytes = CanonicalSettingsBytesWithSalary(200m);
+            var backupTwoBytes = CanonicalSettingsBytesWithSalary(100m);
+            File.WriteAllBytes(settingsPath, mainBytes);
+            File.WriteAllBytes(backupOnePath, backupOneBytes);
+            File.WriteAllBytes(backupTwoPath, backupTwoBytes);
+            var candidate = SettingsContract.Deserialize(SettingsFixtures.VersionSeven).Settings;
+
+            // 占用持续到保存放弃。系统给 File.Replace / File.Move 的共享冲突消息不带路径，诊断必须自己写明操作和文件。
+            IOException failure;
+            var elapsed = Stopwatch.StartNew();
+            using (new FileStream(settingsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                failure = Throws<IOException>(
+                    () => new SettingsStore().Save(settingsPath, candidate),
+                    "扫描占用持续到放弃的主替换");
+            }
+
+            elapsed.Stop();
+            Equal(
+                true,
+                failure.Message.StartsWith(
+                    $"设置文件替换失败：{settingsPath}.tmp → {settingsPath}，原文件转存为 {backupOnePath}（",
+                    StringComparison.Ordinal),
+                $"保存失败消息写明操作和路径（实际：{failure.Message}）");
+            Equal(false, failure.Message.Contains("版本七便签", StringComparison.Ordinal), "保存失败消息不含设置正文");
+            Equal(unchecked((int)0x80070020), failure.HResult, "保存失败保留共享冲突 HRESULT");
+            Equal(true, elapsed.Elapsed < TimeSpan.FromSeconds(5), "持续占用时保存在其他写入方的 5 秒互斥等待内放弃");
+            Equal(true, mainBytes.AsSpan().SequenceEqual(File.ReadAllBytes(settingsPath)), "放弃后主设置");
+            Equal(true, backupOneBytes.AsSpan().SequenceEqual(File.ReadAllBytes(backupOnePath)), "放弃后 backup 1");
+            Equal(true, backupTwoBytes.AsSpan().SequenceEqual(File.ReadAllBytes(backupTwoPath)), "放弃后还原的 backup 2");
+            foreach (var artifactSuffix in new[] { ".tmp", ".backup2.tmp", ".backup2.rollback" })
+            {
+                Equal(false, File.Exists(settingsPath + artifactSuffix), $"放弃后 {artifactSuffix} 残留");
+            }
+        });
+    }
+
+    private static void WhileHeldLikeRealtimeScan(string path, TimeSpan hold, Action action)
+    {
+        // 模拟实时扫描：外部句柄共享读写但不共享删除，覆盖写入仍成功，改名、替换和删除在释放前遇到共享冲突。
+        var scanner = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var release = Task.Delay(hold).ContinueWith(_ => scanner.Dispose(), TaskScheduler.Default);
+        try
+        {
+            ThrowsAny<IOException, UnauthorizedAccessException>(
+                () => File.Move(path, path + ".probe"),
+                "外部句柄阻止改名");
+            action();
+        }
+        finally
+        {
+            release.Wait();
+        }
     }
 
     private static void VerifySaveKeepsTwoPriorLegalGenerations()
@@ -1917,7 +2031,7 @@ internal static class VerificationSuite
             File.WriteAllBytes(backupTwoPath, backupTwoBytes);
             var operations = new SaveRollbackFailingSettingsFileOperations(settingsPath, backupTwoPath);
 
-            Throws<IOException>(
+            var rollbackFailure = Throws<IOException>(
                 () => new SettingsStore(fileOperations: operations).Save(
                     settingsPath,
                     CountdownSettings.Empty with
@@ -1926,6 +2040,12 @@ internal static class VerificationSuite
                     }),
                 "backup 2 回滚失败");
 
+            // 调用方只保留 Message，两步的原因（含操作和路径）必须都在外层消息里。
+            Equal(
+                true,
+                rollbackFailure.Message.Contains("Injected main settings commit failure.", StringComparison.Ordinal) &&
+                rollbackFailure.Message.Contains("Injected backup 2 rollback failure.", StringComparison.Ordinal),
+                $"backup 2 回滚失败消息带出提交与还原的原因（实际：{rollbackFailure.Message}）");
             Equal(true, operations.CommitFailureInjected, "主设置提交故障注入");
             Equal(true, operations.RollbackFailureInjected, "backup 2 回滚故障注入");
             Equal(true, File.Exists(rollbackPath), "未决 backup 2 rollback artifact");
@@ -1985,10 +2105,18 @@ internal static class VerificationSuite
             File.WriteAllBytes(settingsPath, original);
             Directory.CreateDirectory(settingsPath + ".tmp");
 
-            ThrowsAny<IOException, UnauthorizedAccessException>(
+            var elapsed = Stopwatch.StartNew();
+            var failure = ThrowsAny<IOException, UnauthorizedAccessException>(
                 () => new SettingsStore().Save(settingsPath, CountdownSettings.Empty),
                 "注入的设置写入失败");
+            elapsed.Stop();
 
+            Equal(
+                true,
+                failure.Message.StartsWith($"设置文件写入失败：{settingsPath}.tmp（", StringComparison.Ordinal),
+                $"确定性写入失败消息写明操作和路径（实际：{failure.Message}）");
+            // 目录占位这类确定性失败不是扫描占用，不得等满重试预算（保存在界面线程上同步执行）。
+            Equal(true, elapsed.Elapsed < TimeSpan.FromSeconds(1), "确定性写入失败不等待扫描占用预算");
             var afterFailure = File.ReadAllBytes(settingsPath);
             Equal(true, original.AsSpan().SequenceEqual(afterFailure), "写入失败后的旧设置字节");
         });
@@ -2109,16 +2237,16 @@ internal static class VerificationSuite
         }
     }
 
-    private static void Throws<TException>(Action action, string subject)
+    private static TException Throws<TException>(Action action, string subject)
         where TException : Exception
     {
         try
         {
             action();
         }
-        catch (TException)
+        catch (TException exception)
         {
-            return;
+            return exception;
         }
         catch (Exception exception)
         {
@@ -2129,7 +2257,7 @@ internal static class VerificationSuite
         throw new VerificationException($"{subject} 未拒绝非法设置。");
     }
 
-    private static void ThrowsAny<TFirst, TSecond>(Action action, string subject)
+    private static Exception ThrowsAny<TFirst, TSecond>(Action action, string subject)
         where TFirst : Exception
         where TSecond : Exception
     {
@@ -2137,13 +2265,13 @@ internal static class VerificationSuite
         {
             action();
         }
-        catch (TFirst)
+        catch (TFirst exception)
         {
-            return;
+            return exception;
         }
-        catch (TSecond)
+        catch (TSecond exception)
         {
-            return;
+            return exception;
         }
         catch (Exception exception)
         {

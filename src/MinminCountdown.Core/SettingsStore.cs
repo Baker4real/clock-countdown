@@ -214,8 +214,9 @@ public sealed class SettingsStore
                     rollbackException is IOException or UnauthorizedAccessException)
                 {
                     preserveBackupTwoRollback = true;
+                    // 调用方只保留 Message，两步各自的操作和路径都要写进外层消息。
                     throw new IOException(
-                        "主设置替换失败，且 backup 2 无法还原。主设置和应用候选均未提交。",
+                        $"主设置替换失败，且 backup 2 无法还原。主设置和应用候选均未提交。提交：{commitException.Message} 还原：{rollbackException.Message}",
                         new AggregateException(commitException, rollbackException));
                 }
 

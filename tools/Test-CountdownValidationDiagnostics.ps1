@@ -145,5 +145,37 @@ $preflightOutput = @(Invoke-CountdownCandidatePreflight -Root $candidate -PowerS
 if ($preflightOutput.Count -ne 0 -or $env:MINMIN_SUITE_ALLOW_UNISOLATED -cne $priorIsolation) { throw '预检不得污染父环境或部署 stdout。' }
 if ((Get-Content (Join-Path $root 'candidate-evidence/window.json') -Raw | ConvertFrom-Json).Passed -ne 2) { throw '窗口结果必须持久化。' }
 $assertions++
-$result = [pscustomobject]@{ Valid=$true; Passed=$assertions; Failed=0; EvidenceRoot=$root }
+
+# CI 上应用 validate-only 偶发以 0xC0000409 崩溃：诊断日志须在清理前复制进该阶段证据目录。
+# -ParentTransactionMutexHeld 让夹具子进程不建隔离桌面，假 dotnet 只让 Release 构建阶段放行。
+$crashRoot = Join-Path $root 'application-crash'
+[void][IO.Directory]::CreateDirectory($crashRoot)
+$crashRecord = Join-Path $crashRoot 'diagnostic-path.txt'
+[IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.Core.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0}'", $utf8)
+[IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.CSharp.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0,`"AdapterUiValidated`":true}'", $utf8)
+[IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.Ui.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0}'", $utf8)
+[IO.File]::WriteAllText((Join-Path $crashRoot '敏敏子倒计时.ps1'), @"
+param([switch] `$ValidateOnly, [string] `$SettingsFile, [string] `$DiagnosticLogPath)
+[IO.File]::WriteAllText('$crashRecord', `$DiagnosticLogPath)
+[IO.File]::WriteAllText(`$DiagnosticLogPath, '{"event":"crash-breadcrumb"}')
+[IO.File]::WriteAllText("`$DiagnosticLogPath.1", '{"event":"rotated"}')
+exit -1073740791
+"@, $utf8)
+$fakeDotnet = Join-Path $crashRoot 'dotnet.cmd'
+[IO.File]::WriteAllText($fakeDotnet, "@exit /b 0`r`n", $utf8)
+$failure = $null
+try { Invoke-CountdownValidationSuite -Root $crashRoot -PowerShell7Path $pwsh -DotnetPath $fakeDotnet -EvidenceDirectory $crashRoot -ParentTransactionMutexHeld | Out-Null }
+catch { $failure = $_ }
+if ($null -eq $failure -or $failure.Exception.Message -notlike '应用 validate-only 失败，退出码：-1073740791*') {
+    throw "应用崩溃必须以原退出码失败。实际：$(if ($null -ne $failure) { $failure.Exception.Message })"
+}
+$diagnosticPath = [IO.File]::ReadAllText($crashRecord, $utf8)
+$preserved = Join-Path ([string]$failure.Exception.Data['ValidationEvidenceDirectory']) ([IO.Path]::GetFileName($diagnosticPath))
+if (-not (Test-Path -LiteralPath $preserved -PathType Leaf) -or [IO.File]::ReadAllText($preserved, $utf8) -ne '{"event":"crash-breadcrumb"}' -or
+    -not (Test-Path -LiteralPath "$preserved.1" -PathType Leaf)) {
+    throw "应用崩溃后诊断日志及其轮转文件必须复制进该阶段证据目录。实际：$preserved"
+}
+if ((Test-Path -LiteralPath $diagnosticPath) -or (Test-Path -LiteralPath "$diagnosticPath.1")) { throw '复制进证据目录后仍须清理临时诊断日志。' }
+$assertions++
+$result =[pscustomobject]@{ Valid=$true; Passed=$assertions; Failed=0; EvidenceRoot=$root }
 if ($Json) { $result | ConvertTo-Json -Compress } else { $result }

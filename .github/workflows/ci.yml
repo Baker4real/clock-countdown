@@ -32,6 +32,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Enable crash dumps for the application
+        # validate-only occasionally exits 0xC0000409 (fast fail) and passes on rerun.
+        # The runner is discarded after the job, so WER LocalDumps only affects this job.
+        # The repository is public and so are its artifacts: minidumps only, no full memory.
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $werPath = 'SOFTWARE\Microsoft\Windows\Windows Error Reporting'
+          $current = Get-ItemProperty -LiteralPath "HKLM:\$werPath" -ErrorAction SilentlyContinue
+          $policy = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting' -ErrorAction SilentlyContinue
+          $service = Get-Service -Name WerSvc -ErrorAction SilentlyContinue
+          Write-Output "WER before: Disabled=$($current.Disabled) DontShowUI=$($current.DontShowUI) PolicyDisabled=$($policy.Disabled) WerSvc=$($service.Status)/$($service.StartType)"
+          if ($null -ne $service -and $service.StartType -eq 'Disabled') { Set-Service -Name WerSvc -StartupType Manual }
+          $dumpFolder = Join-Path $env:RUNNER_TEMP 'crash-dumps'
+          [void][IO.Directory]::CreateDirectory($dumpFolder)
+          $dumps = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey("$werPath\LocalDumps\MinminCountdown.exe")
+          try {
+            $dumps.SetValue('DumpFolder', $dumpFolder, [Microsoft.Win32.RegistryValueKind]::ExpandString)
+            $dumps.SetValue('DumpType', 1, [Microsoft.Win32.RegistryValueKind]::DWord)
+            $dumps.SetValue('DumpCount', 5, [Microsoft.Win32.RegistryValueKind]::DWord)
+          }
+          finally { $dumps.Dispose() }
+          # Nobody on the runner can dismiss a WER dialog.
+          $wer = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($werPath)
+          try { $wer.SetValue('DontShowUI', 1, [Microsoft.Win32.RegistryValueKind]::DWord) }
+          finally { $wer.Dispose() }
+          Write-Output "LocalDumps for MinminCountdown.exe: minidump, up to 5, in $dumpFolder"
+
       - name: Bind publication diff range
         shell: pwsh
         env:
@@ -130,3 +158,44 @@ jobs:
         run: |
           & pwsh.exe -NoLogo -NoProfile -NonInteractive -File ./tools/Test-OfficeDeploymentStatus.ps1 -Json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Collect crash evidence
+        if: ${{ failure() }}
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP 'crash-evidence'
+          [void][IO.Directory]::CreateDirectory($evidence)
+          # Application Error 1000 names the faulting module and offset, WER 1001 carries
+          # the fast-fail code, .NET Runtime 1025/1026 carry managed messages and stacks.
+          # The job times out after 30 minutes, so 40 minutes covers all of its steps.
+          $events = @()
+          try {
+            $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-40) } -ErrorAction Stop |
+              Where-Object { $_.ProviderName -in 'Application Error', 'Windows Error Reporting', '.NET Runtime' } |
+              Sort-Object TimeCreated)
+          }
+          catch {
+            if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') { Write-Warning "Application event query failed: $($_.Exception.Message)" }
+          }
+          $eventText = @($events | ForEach-Object { "[$($_.TimeCreated.ToString('o'))] $($_.ProviderName) $($_.Id)`n$($_.Message)`n" })
+          [IO.File]::WriteAllLines((Join-Path $evidence 'application-events.txt'), [string[]] $eventText)
+          Write-Output "Crash-related application events: $($events.Count)"
+          $eventText | Write-Output
+          foreach ($source in @(
+              @{ Path = (Join-Path $env:RUNNER_TEMP 'crash-dumps'); Name = 'dumps' },
+              @{ Path = 'D:\agents\run-evidence\clock-countdown-validation'; Name = 'validation-evidence' })) {
+            if (-not (Test-Path -LiteralPath $source.Path)) { continue }
+            try { Copy-Item -LiteralPath $source.Path -Destination (Join-Path $evidence $source.Name) -Recurse -Force -ErrorAction Stop }
+            catch { Write-Warning "Copying $($source.Path) failed: $($_.Exception.Message)" }
+          }
+          $files = @(Get-ChildItem -LiteralPath $evidence -Recurse -File)
+          Write-Output ("Crash evidence: {0} files, {1:N1} MB" -f $files.Count, (($files | Measure-Object Length -Sum).Sum / 1MB))
+
+      - name: Upload crash evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: crash-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/crash-evidence
+          if-no-files-found: ignore
+          retention-days: 14

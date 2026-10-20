@@ -616,6 +616,7 @@ function Invoke-CountdownValidationSuite {
     $applicationValidationId = [guid]::NewGuid().ToString('N')
     $applicationSettingsPath = Join-Path $applicationValidationRoot "$applicationValidationId.settings.json"
     $applicationDiagnosticPath = Join-Path $applicationValidationRoot "$applicationValidationId.application.jsonl"
+    $applicationFailureEvidence = $null
     try {
         $application = Invoke-CountdownValidationProcess `
             -PowerShell7Path $resolvedPowerShell `
@@ -637,7 +638,25 @@ function Invoke-CountdownValidationSuite {
             ) `
             -IsolatedDesktopName 'MinminSuiteIso-ValidateApp'
     }
+    catch {
+        $applicationFailureEvidence = [string] $_.Exception.Data['ValidationEvidenceDirectory']
+        throw
+    }
     finally {
+        # 应用失败时，它写的诊断日志也是证据：清理前先复制进本阶段证据目录。
+        # 复制失败只写 stderr，不能盖住应用本身的失败。
+        if (-not [string]::IsNullOrWhiteSpace($applicationFailureEvidence)) {
+            foreach ($diagnosticFile in @($applicationDiagnosticPath, "$applicationDiagnosticPath.1", "$applicationDiagnosticPath.2", "$applicationDiagnosticPath.3")) {
+                try {
+                    if ([System.IO.File]::Exists($diagnosticFile)) {
+                        [System.IO.File]::Copy($diagnosticFile, (Join-Path $applicationFailureEvidence ([System.IO.Path]::GetFileName($diagnosticFile))), $true)
+                    }
+                }
+                catch {
+                    [Console]::Error.WriteLine("[validation-stage] 应用诊断日志未能复制进证据目录：$diagnosticFile；$($_.Exception.Message)")
+                }
+            }
+        }
         Remove-CountdownValidationArtifactFiles -Paths @(
                 $applicationSettingsPath,
                 "$applicationSettingsPath.tmp",

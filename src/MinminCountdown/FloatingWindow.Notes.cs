@@ -39,15 +39,15 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildCalendarIndexNoteCard(NoteRecord note, DateTimeOffset nowUtc, int rowIndex)
     {
+        var theme = ActiveTheme;
         var noteError = new TextBlock
         {
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             Margin = new Thickness(0, 5, 0, 0),
-            Foreground = ThemeBrush((_activeTheme ??
-                throw new InvalidOperationException("悬浮窗主题尚未初始化。")).ErrorBrushKey),
             TextWrapping = TextWrapping.Wrap,
             Visibility = Visibility.Collapsed
         };
+        noteError.SetResourceReference(TextBlock.ForegroundProperty, theme.ErrorBrushKey);
         UiAccessibility.MarkLive(noteError);
 
         var completion = UiAccessibility.Name(
@@ -57,10 +57,10 @@ public sealed partial class FloatingWindow
                 Style = (Style)FindResource("CompletionCheckBox"),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Margin = new Thickness(0, 0, 1, 0),
-                Foreground = _floatingPrimaryBrush
+                Margin = new Thickness(0, 0, 1, 0)
             },
             $"完成便签 {note.Text}");
+        completion.SetResourceReference(Control.ForegroundProperty, theme.TextBrushKey);
         completion.SetValue(NoteControlRoleProperty, NoteControlRoleCompletion);
         if (_noteCardErrors.TryGetValue(note.Id, out var savedError))
         {
@@ -101,15 +101,16 @@ public sealed partial class FloatingWindow
         {
             Margin = new Thickness(0, 9, 8, 9)
         };
-        body.Children.Add(new TextBlock
+        var noteText = new TextBlock
         {
             Text = note.Text,
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             LineHeight = 18,
             LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = _floatingPrimaryBrush
-        });
+            TextWrapping = TextWrapping.Wrap
+        };
+        noteText.SetResourceReference(TextBlock.ForegroundProperty, theme.TextBrushKey);
+        body.Children.Add(noteText);
 
         var nextReminder = ReminderSchedule.GetNextDueUtc(
             _desktopWorkspace.Snapshot.Settings,
@@ -117,23 +118,24 @@ public sealed partial class FloatingWindow
             nowUtc);
         if (nextReminder is not null)
         {
-            body.Children.Add(new TextBlock
+            var reminderText = new TextBlock
             {
                 Text = $"下次提醒：{DateDisplay.Deadline(nextReminder.Value)}",
                 Margin = new Thickness(0, 4, 0, 0),
                 FontSize = (double)FindResource("TypeCaptionFontSize"),
                 LineHeight = 17,
                 LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = _floatingMutedBrush
-            });
+                TextWrapping = TextWrapping.Wrap
+            };
+            reminderText.SetResourceReference(TextBlock.ForegroundProperty, theme.MutedBrushKey);
+            body.Children.Add(reminderText);
         }
 
         body.Children.Add(noteError);
 
         var layout = new Grid
         {
-            Background = CreateCalendarIndexRuleBrush(_floatingBorderBrush),
+            Background = CreateCalendarIndexRuleBrush(ThemeBrush(theme.BorderBrushKey)),
             ClipToBounds = true
         };
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(CalendarIndexCheckboxSlotWidth) });
@@ -165,13 +167,13 @@ public sealed partial class FloatingWindow
             MinHeight = 72,
             Margin = new Thickness(0, 0, 0, 8),
             HorizontalAlignment = HorizontalAlignment.Left,
-            BorderBrush = _floatingBorderBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             ClipToBounds = true,
             SnapsToDevicePixels = true,
             UseLayoutRounding = true
         };
+        card.SetResourceReference(Border.BorderBrushProperty, theme.BorderBrushKey);
         card.PreviewKeyDown += (_, args) =>
         {
             if (args.Handled || args.Key != Key.Delete ||
@@ -181,14 +183,9 @@ public sealed partial class FloatingWindow
             args.Handled = true;
             RequestNoteDelete(note);
         };
-        if (rowIndex % 2 == 0)
-        {
-            card.Background = _floatingNoteCardBrush;
-        }
-        else
-        {
-            card.SetResourceReference(Border.BackgroundProperty, "NoteWhiteBrush");
-        }
+        card.SetResourceReference(
+            Border.BackgroundProperty,
+            rowIndex % 2 == 0 ? theme.NoteCardBrushKey : "NoteWhiteBrush");
 
         _noteDateStampStickyEntries.Add(
             new FloatingDateStampStickyEntry(
@@ -267,7 +264,6 @@ public sealed partial class FloatingWindow
                 Margin = new Thickness(0, 0, 2, 0),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = _floatingMutedBrush,
                 FocusVisualStyle = null,
                 Style = (Style)FindResource("FloatingHeaderIconButton"),
                 Content = new TextBlock
@@ -279,6 +275,7 @@ public sealed partial class FloatingWindow
                 }
             },
             $"更多操作：编辑或删除便签 {note.Text}");
+        trigger.SetResourceReference(Control.ForegroundProperty, ActiveTheme.MutedBrushKey);
         trigger.SetValue(NoteControlRoleProperty, NoteControlRoleOverflow);
 
         var menuEdit = UiAccessibility.Name(
@@ -390,8 +387,7 @@ public sealed partial class FloatingWindow
         var date = CalendarIndexDate(note);
         var culture = CultureInfo.GetCultureInfo("zh-CN");
         var palette = CalendarIndexStampPalette[rowIndex % CalendarIndexStampPalette.Length];
-        var stampBackground = ThemeBrush(palette[0]);
-        var stampText = ThemeBrush(palette[1]);
+        var stampText = palette[1];
         stickyTranslate = new TranslateTransform();
         var stamp = new StackPanel
         {
@@ -422,12 +418,12 @@ public sealed partial class FloatingWindow
         var dateStamp = new Border
         {
             Child = stamp,
-            Background = stampBackground,
             BorderThickness = new Thickness(2, 0, 0, 0),
             Padding = new Thickness(4, 8, 4, 8),
             IsHitTestVisible = false,
             Focusable = false
         };
+        dateStamp.SetResourceReference(Border.BackgroundProperty, palette[0]);
         ApplicationTheme.ApplyContrastAwareBrush(dateStamp, Border.BorderBrushProperty,
             CreateCalendarIndexStampEdgeBrush(ApplicationTheme.DayColorFor(palette[1])), "ControlBorderBrush");
         return dateStamp;
@@ -444,7 +440,7 @@ public sealed partial class FloatingWindow
         string text,
         double fontSize,
         FontWeight fontWeight,
-        Brush foreground,
+        string foregroundKey,
         FontFamily? fontFamily = null,
         Thickness? margin = null)
     {
@@ -453,10 +449,10 @@ public sealed partial class FloatingWindow
             Text = text,
             FontSize = fontSize,
             FontWeight = fontWeight,
-            Foreground = foreground,
             HorizontalAlignment = HorizontalAlignment.Center,
             TextAlignment = TextAlignment.Center
         };
+        label.SetResourceReference(TextBlock.ForegroundProperty, foregroundKey);
         if (margin is { } value)
         {
             label.Margin = value;
@@ -485,6 +481,19 @@ public sealed partial class FloatingWindow
         }
 
         return null;
+    }
+
+    // 横线是由主题线色合成的 DrawingBrush，不能引用资源键；配色替换后为现有卡片重建，卡片实例保留。
+    private void RefreshCalendarIndexRuleBrushes()
+    {
+        var lineBrush = ThemeBrush(ActiveTheme.BorderBrushKey);
+        foreach (var entry in _noteDateStampStickyEntries)
+        {
+            if (entry.Card.Child is Grid layout)
+            {
+                layout.Background = CreateCalendarIndexRuleBrush(lineBrush);
+            }
+        }
     }
 
     private static DrawingBrush CreateCalendarIndexRuleBrush(Brush lineBrush)

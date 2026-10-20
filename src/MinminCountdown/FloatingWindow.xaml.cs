@@ -53,11 +53,6 @@ public sealed partial class FloatingWindow : Window
     private bool _earningsHidden;
     private IReadOnlyList<ReminderRule> _floatingReminderRules = Array.Empty<ReminderRule>();
     private FloatingThemePalette? _activeTheme;
-    private Brush _floatingPrimaryBrush = Brushes.Black;
-    private Brush _floatingMutedBrush = Brushes.Gray;
-    private Brush _floatingSurfaceBrush = Brushes.White;
-    private Brush _floatingNoteCardBrush = Brushes.White;
-    private Brush _floatingBorderBrush = Brushes.Transparent;
     private BitmapImage? _dayCardRaster;
     private bool _isApplyingBottomAnchor;
     private bool _trackManualWindowPlacement;
@@ -834,16 +829,22 @@ public sealed partial class FloatingWindow : Window
         SetRasterTranslation(FloatingIncome, 2, 3);
         FloatingNoteEntry.Background = ThemeBrush(nextTheme.NoteInputBrushKey);
         FloatingNoteEntry.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
-        _floatingPrimaryBrush = ThemeBrush(nextTheme.TextBrushKey);
-        _floatingMutedBrush = ThemeBrush(nextTheme.MutedBrushKey);
-        _floatingSurfaceBrush = ThemeBrush(nextTheme.SurfaceBrushKey);
-        _floatingNoteCardBrush = ThemeBrush(nextTheme.NoteCardBrushKey);
-        _floatingBorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        // 局部 BodyBrush 指向悬浮窗弱化色；恢复提示沿用应用正文色。
+        SettingsRecoveryCompletedStatus.Foreground = ApplicationThemeBrush("BodyBrush");
+        RefreshCalendarIndexRuleBrushes();
         ApplyPlushSceneTheme(nextTheme);
     }
 
+    private FloatingThemePalette ActiveTheme =>
+        _activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。");
+
     private Brush ThemeBrush(string resourceKey) =>
         FindResource(resourceKey) as Brush ??
+        throw new InvalidOperationException($"找不到悬浮窗主题资源：{resourceKey}");
+
+    // 本窗局部字典遮蔽同名应用资源；复制来源必须取应用资源，才能拿到配色替换后的新画刷。
+    private static Brush ApplicationThemeBrush(string resourceKey) =>
+        Application.Current.FindResource(resourceKey) as Brush ??
         throw new InvalidOperationException($"找不到悬浮窗主题资源：{resourceKey}");
 
     private void ApplyQuickAddThemeResources(FloatingThemePalette theme)
@@ -878,9 +879,7 @@ public sealed partial class FloatingWindow : Window
 
         foreach (var binding in bindings)
         {
-            scope[binding.LocalKey] = binding.LocalKey is "ActiveBrush" or "ActiveHoverBrush"
-                ? Application.Current.FindResource(binding.LocalKey)
-                : ThemeBrush(binding.ThemeKey);
+            scope[binding.LocalKey] = ApplicationThemeBrush(binding.ThemeKey);
         }
     }
 
@@ -1497,7 +1496,7 @@ public sealed partial class FloatingWindow : Window
         DayMascotsImage.Visibility == Visibility.Visible ? "DayRaster" : "Mixed";
 
     private void SetActiveThemeBrush(string activeResourceKey, string sourceResourceKey) =>
-        Resources[activeResourceKey] = ThemeBrush(sourceResourceKey);
+        Resources[activeResourceKey] = ApplicationThemeBrush(sourceResourceKey);
 
     private bool HeaderControlsHaveAccessibleStates()
     {
@@ -1667,7 +1666,6 @@ public sealed partial class FloatingWindow : Window
             };
             if (recoveryMessage is not null)
             {
-                SettingsRecoveryCompletedStatus.Foreground = (Brush)Application.Current.FindResource("BodyBrush");
                 SettingsRecoveryCompletedStatus.Visibility = Visibility.Visible;
                 UiAccessibility.MarkLive(SettingsRecoveryCompletedStatus);
                 UiAccessibility.Announce(SettingsRecoveryCompletedStatus, recoveryMessage);
@@ -2095,19 +2093,23 @@ public sealed partial class FloatingWindow : Window
         FloatingBottomStatus.Apply(
             FloatingIncome,
             presentation,
-            _floatingMutedBrush,
-            ThemeBrush("DecoTextSoftBrush"),
+            ActiveTheme.MutedBrushKey,
+            "DecoTextSoftBrush",
             (FontFamily)FindResource("HandwrittenDecoFontFamily"));
     }
 
-    private TextBlock EmptyText(string text) => new()
+    private TextBlock EmptyText(string text)
     {
-        Text = text,
-        FontSize = (double)FindResource("TypeCaptionFontSize"),
-        Margin = new Thickness(2, 8, 2, 8),
-        HorizontalAlignment = HorizontalAlignment.Center,
-        Foreground = _floatingMutedBrush
-    };
+        var empty = new TextBlock
+        {
+            Text = text,
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
+            Margin = new Thickness(2, 8, 2, 8),
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        empty.SetResourceReference(TextBlock.ForegroundProperty, ActiveTheme.MutedBrushKey);
+        return empty;
+    }
 
     internal static bool CountdownConstraintsActive(DesktopWorkspaceFilter filter) =>
         filter.SelectedTagIds.Count > 0 ||
@@ -2133,15 +2135,16 @@ public sealed partial class FloatingWindow : Window
         {
             Margin = new Thickness(2, 8, 2, 8)
         };
-        panel.Children.Add(new TextBlock
+        var message = new TextBlock
         {
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             Text = "没有匹配的便签。",
             Margin = new Thickness(0, 0, 0, 8),
             HorizontalAlignment = HorizontalAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = _floatingMutedBrush
-        });
+            TextWrapping = TextWrapping.Wrap
+        };
+        message.SetResourceReference(TextBlock.ForegroundProperty, ActiveTheme.MutedBrushKey);
+        panel.Children.Add(message);
         var clear = UiAccessibility.Name(
             new Button
             {

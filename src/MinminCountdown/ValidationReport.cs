@@ -597,7 +597,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-14-v55";
+    private const string FloatingReferenceBaselineVersion = "2026-10-20-v56";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -704,7 +704,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-14-v55";
+    private const string MainReferenceBaselineVersion = "2026-10-20-v56";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -2164,7 +2164,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-14-v55 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-20-v56 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
@@ -3166,7 +3166,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-14-v55 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-20-v56 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -4420,8 +4420,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-14-v55", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "864x1000", "2026-10-14-v55", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-20-v56", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "864x1000", "2026-10-20-v56", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -14074,6 +14074,8 @@ internal static class ValidationReport
             var selectedDay = Descendants<CalendarDayButton>(calendarPopup).Single(day => day.IsSelected);
             floating.Activate(); Keyboard.Focus(selectedDay); PumpDispatcher();
             var daySurface = (Border)selectedDay.Template.FindName("Surface", selectedDay);
+            // 主题画刷必须冻结并整枚替换：就地改色会让渲染线程遍历共享画刷的监听者（0xC0000409 崩溃路径）。
+            var dayCanvas = (SolidColorBrush)Application.Current.FindResource("CanvasBrush");
             using (var preference = ApplicationTheme.OverrideHighContrastForValidation(true))
             {
                 PumpDispatcher();
@@ -14090,6 +14092,11 @@ internal static class ValidationReport
                     Color.FromRgb(8, 18, 32), Colors.White, Color.FromRgb(20, 30, 46), Colors.White,
                     Colors.Yellow, Colors.Black, Colors.Silver);
                 preference.ChangeColors(palette); PumpDispatcher();
+                checks["PaletteReplacesFrozenBrushes"] = dayCanvas.IsFrozen &&
+                    new[] { "CanvasBrush", "FloatingDaySurfaceBrush", "SystemContrastControlBrush" }
+                        .All(key => Application.Current.FindResource(key) is SolidColorBrush { IsFrozen: true }) &&
+                    Application.Current.FindResource("CanvasBrush") is SolidColorBrush changedCanvas &&
+                    !ReferenceEquals(changedCanvas, dayCanvas) && changedCanvas.Color == palette.Window;
                 checks["OpenDatePopupChangesColor"] = picker.IsDropDownOpen &&
                     ColorIs(calendarPopup.Background, palette.Window) &&
                     ColorIs(daySurface.Background, palette.Highlight) &&
@@ -14153,7 +14160,7 @@ internal static class ValidationReport
             if (!Directory.EnumerateFileSystemEntries(temporaryRoot).Any()) Directory.Delete(temporaryRoot);
         }
         Console.Error.WriteLine("SYSTEM_CONTRAST_CUSTOM: " + JsonSerializer.Serialize(checks));
-        return checks.Count == 17 && checks.Values.All(value => value);
+        return checks.Count == 18 && checks.Values.All(value => value);
     }
 
     private static IReadOnlyDictionary<string, bool> ValidateIdleControlBoundaries(MainWindow main)

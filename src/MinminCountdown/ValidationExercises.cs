@@ -5385,8 +5385,8 @@ internal static class ValidationExercises
                 "提醒送达失败必须触发强制 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
 
             var income = (AutomationOptionalTextBlock)floating.FindName("FloatingIncome");
-            var statusBrush = income.Foreground;
-            var encouragementBrush = (Brush)floating.FindResource("DecoTextSoftBrush");
+            var statusBrushKey = FloatingThemePalette.Daylight.MutedBrushKey;
+            const string encouragementBrushKey = "DecoTextSoftBrush";
             var encouragementFont = (FontFamily)floating.FindResource("HandwrittenDecoFontFamily");
             const string amountName = "今日已赚 ￥41.13";
             const string encouragementText = "加油！美好的事情正在靠近 ~";
@@ -5404,8 +5404,8 @@ internal static class ValidationExercises
             FloatingBottomStatus.Apply(
                 income,
                 resolvedAmount,
-                statusBrush,
-                encouragementBrush,
+                statusBrushKey,
+                encouragementBrushKey,
                 encouragementFont);
             floating.UpdateLayout();
             FlushNarrator(floating.Dispatcher);
@@ -5431,8 +5431,8 @@ internal static class ValidationExercises
             FloatingBottomStatus.Apply(
                 income,
                 resolvedEncouragement,
-                statusBrush,
-                encouragementBrush,
+                statusBrushKey,
+                encouragementBrushKey,
                 encouragementFont);
             floating.UpdateLayout();
             FlushNarrator(floating.Dispatcher);
@@ -5456,8 +5456,8 @@ internal static class ValidationExercises
             FloatingBottomStatus.Apply(
                 income,
                 resolvedStatus,
-                statusBrush,
-                encouragementBrush,
+                statusBrushKey,
+                encouragementBrushKey,
                 encouragementFont);
             floating.UpdateLayout();
             FlushNarrator(floating.Dispatcher);

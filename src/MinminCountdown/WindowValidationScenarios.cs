@@ -4103,9 +4103,7 @@ public sealed partial class FloatingWindow
                 cards.Select((card, index) => (card, index)).All(pair =>
                     ReferenceEquals(
                         pair.card.Background,
-                        pair.index % 2 == 0
-                            ? _floatingNoteCardBrush
-                            : TryFindResource("NoteWhiteBrush")));
+                        TryFindResource(pair.index % 2 == 0 ? ActiveTheme.NoteCardBrushKey : "NoteWhiteBrush")));
 
             var tagResult = _desktopWorkspace.Apply(new CreateTagChange(
                 $"悬浮探针-{Guid.NewGuid():N}"[..17],

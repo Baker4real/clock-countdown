@@ -63,8 +63,8 @@ internal static class FloatingBottomStatus
     public static void Apply(
         AutomationOptionalTextBlock target,
         FloatingBottomStatusPresentation presentation,
-        Brush statusBrush,
-        Brush encouragementBrush,
+        string statusBrushKey,
+        string encouragementBrushKey,
         FontFamily encouragementFontFamily)
     {
         var isEncouragement = presentation.Kind == FloatingBottomStatusKind.Encouragement;
@@ -82,7 +82,9 @@ internal static class FloatingBottomStatus
         target.Visibility = string.IsNullOrEmpty(presentation.Text)
             ? Visibility.Collapsed
             : Visibility.Visible;
-        target.Foreground = isEncouragement ? encouragementBrush : statusBrush;
+        target.SetResourceReference(
+            TextBlock.ForegroundProperty,
+            isEncouragement ? encouragementBrushKey : statusBrushKey);
         if (isEncouragement)
         {
             target.FontFamily = encouragementFontFamily;

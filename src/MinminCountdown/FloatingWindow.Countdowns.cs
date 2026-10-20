@@ -58,21 +58,23 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildWorkdayCompletionRow()
     {
+        var theme = ActiveTheme;
         var content = new StackPanel { Margin = new Thickness(12, 8, 68, 8) };
-        content.Children.Add(new TextBlock
+        var title = new TextBlock
         {
             Text = "下班啦",
             FontSize = (double)FindResource("TypeBodyFontSize"),
-            FontWeight = FontWeights.SemiBold,
-            Foreground = _floatingPrimaryBrush
-        });
+            FontWeight = FontWeights.SemiBold
+        };
+        title.SetResourceReference(TextBlock.ForegroundProperty, theme.TextBrushKey);
+        content.Children.Add(title);
         _workdayCompletionIncome = new TextBlock
         {
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             Margin = new Thickness(0, 6, 0, 0),
-            Foreground = _floatingMutedBrush,
             TextWrapping = TextWrapping.Wrap
         };
+        _workdayCompletionIncome.SetResourceReference(TextBlock.ForegroundProperty, theme.MutedBrushKey);
         Typography.SetNumeralAlignment(_workdayCompletionIncome, FontNumeralAlignment.Tabular);
         content.Children.Add(_workdayCompletionIncome);
         return BuildWarmPaperRow(content, "下班啦", true);
@@ -80,8 +82,7 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildWarmPaperRow(FrameworkElement content, string accessibleName, bool isPrimary)
     {
-        var theme = _activeTheme ??
-                    throw new InvalidOperationException("悬浮窗主题尚未初始化。");
+        var theme = ActiveTheme;
         var root = new Grid
         {
             MinHeight = isPrimary ? 68 : 39,
@@ -92,47 +93,51 @@ public sealed partial class FloatingWindow
 
         if (isPrimary)
         {
-            root.Children.Add(new Border
+            var tint = new Border
             {
                 Margin = new Thickness(0, 0, CountdownMascotSafeInset, 1),
-                Background = ThemeBrush("PinkTintSoftBrush"),
                 CornerRadius = new CornerRadius(8),
                 Opacity = 0.8,
                 IsHitTestVisible = false
-            });
-            root.Children.Add(new Border
+            };
+            tint.SetResourceReference(Border.BackgroundProperty, "PinkTintSoftBrush");
+            root.Children.Add(tint);
+            var accent = new Border
             {
                 Width = 3,
                 Height = 42,
                 Margin = new Thickness(0, 0, 0, 1),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Center,
-                Background = WarmPaperAccentBrush(theme),
                 CornerRadius = new CornerRadius(1.5),
                 IsHitTestVisible = false
-            });
+            };
+            accent.SetResourceReference(Border.BackgroundProperty, theme.PrimaryCountdownAccentBrushKey);
+            root.Children.Add(accent);
         }
         else
         {
-            root.Children.Add(new Border
+            var tint = new Border
             {
                 Margin = new Thickness(0, 0, CountdownMascotSafeInset, 1),
-                Background = ThemeBrush("CardAltBrush"),
                 CornerRadius = new CornerRadius(6),
                 Opacity = 0.72,
                 IsHitTestVisible = false
-            });
+            };
+            tint.SetResourceReference(Border.BackgroundProperty, "CardAltBrush");
+            root.Children.Add(tint);
         }
 
-        root.Children.Add(new Border
+        var rule = new Border
         {
             Height = 1,
             Margin = new Thickness(0, 0, CountdownMascotSafeInset, 0),
             VerticalAlignment = VerticalAlignment.Bottom,
-            Background = _floatingBorderBrush,
             Opacity = isPrimary ? 0.78 : 0.48,
             IsHitTestVisible = false
-        });
+        };
+        rule.SetResourceReference(Border.BackgroundProperty, theme.BorderBrushKey);
+        root.Children.Add(rule);
 
         root.Children.Add(content);
         return new Border
@@ -150,6 +155,7 @@ public sealed partial class FloatingWindow
         string remaining,
         bool fadeSeconds)
     {
+        var theme = ActiveTheme;
         var layout = new Grid
         {
             Margin = new Thickness(12, 8, CountdownMascotSafeInset + 14, 8)
@@ -169,9 +175,9 @@ public sealed partial class FloatingWindow
             LineHeight = 20,
             LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
             TextWrapping = TextWrapping.Wrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = _floatingPrimaryBrush
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
+        title.SetResourceReference(TextBlock.ForegroundProperty, theme.TextBrushKey);
         Grid.SetRow(title, 0);
         Grid.SetColumn(title, 0);
         layout.Children.Add(title);
@@ -188,9 +194,9 @@ public sealed partial class FloatingWindow
             Padding = new Thickness(0, 0, 3, 0),
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             TextTrimming = TextTrimming.None,
-            TextWrapping = TextWrapping.NoWrap,
-            Foreground = _floatingMutedBrush
+            TextWrapping = TextWrapping.NoWrap
         };
+        deadline.SetResourceReference(TextBlock.ForegroundProperty, theme.MutedBrushKey);
         Typography.SetNumeralAlignment(deadline, FontNumeralAlignment.Tabular);
         deadlineRow.Children.Add(deadline);
 
@@ -203,12 +209,12 @@ public sealed partial class FloatingWindow
                 Margin = new Thickness(12, 0, 0, 0),
                 Padding = new Thickness(6, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Background = ThemeBrush("PinkBadgeBrush"),
                 CornerRadius = new CornerRadius(8),
                 IsHitTestVisible = false,
                 Focusable = false
             };
-            badge.Child = new TextBlock
+            badge.SetResourceReference(Border.BackgroundProperty, "PinkBadgeBrush");
+            var badgeText = new TextBlock
             {
                 Text = EncourageBadgeText,
                 FontSize = (double)FindResource("TypeCaptionFontSize"),
@@ -216,9 +222,10 @@ public sealed partial class FloatingWindow
                 LineHeight = 17,
                 LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
                 TextTrimming = TextTrimming.None,
-                TextWrapping = TextWrapping.NoWrap,
-                Foreground = ThemeBrush("InkBrush")
+                TextWrapping = TextWrapping.NoWrap
             };
+            badgeText.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+            badge.Child = badgeText;
             UiAccessibility.Name(badge, EncourageBadgeText);
             deadlineRow.Children.Add(badge);
         }
@@ -253,9 +260,9 @@ public sealed partial class FloatingWindow
             Margin = new Thickness(0, 0, 10, 0),
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = (double)FindResource("TypeCaptionFontSize"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = _floatingPrimaryBrush
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
+        name.SetResourceReference(TextBlock.ForegroundProperty, ActiveTheme.TextBrushKey);
         var remainingBlocks = BuildRemainingBlocks(
             remaining,
             isPrimary: false,
@@ -271,6 +278,8 @@ public sealed partial class FloatingWindow
         bool isPrimary,
         bool fadeSeconds = false)
     {
+        var theme = ActiveTheme;
+        var valueBrushKey = isPrimary ? "PrimaryCountdownNumberBrush" : theme.TextBrushKey;
         var pairs = ParseRemainingPairs(remaining);
         if (pairs is null || pairs.Count == 0)
         {
@@ -283,9 +292,7 @@ public sealed partial class FloatingWindow
             FitSingleLineText(fallback, isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth);
             fallback.Width = isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth;
             // #148：到期剩余文字不得用强调轨色当字；主项到期回落主项数字色，次项回落主文字。
-            fallback.Foreground = isPrimary
-                ? ThemeBrush("PrimaryCountdownNumberBrush")
-                : _floatingPrimaryBrush;
+            fallback.SetResourceReference(TextBlock.ForegroundProperty, valueBrushKey);
             return fallback;
         }
 
@@ -311,14 +318,12 @@ public sealed partial class FloatingWindow
                 FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center,
                 TextTrimming = TextTrimming.None,
-                TextWrapping = TextWrapping.NoWrap,
-                Foreground = isPrimary
-                    ? ThemeBrush("PrimaryCountdownNumberBrush")
-                    : _floatingPrimaryBrush
+                TextWrapping = TextWrapping.NoWrap
             })
             .ToArray();
         foreach (var valueBlock in valueBlocks)
         {
+            valueBlock.SetResourceReference(TextBlock.ForegroundProperty, valueBrushKey);
             valueBlock.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
             Typography.SetNumeralAlignment(valueBlock, FontNumeralAlignment.Tabular);
         }
@@ -404,9 +409,7 @@ public sealed partial class FloatingWindow
         var keyFontFloorSatisfied =
             required <= availableWidth && valueFontSize >= KeyTextMinimumFontSize;
 
-        var blockBrush = isPrimary
-            ? ThemeBrush("PinkBlockBrush")
-            : ThemeBrush("SecondaryBlockBrush");
+        var blockBrushKey = isPrimary ? "PinkBlockBrush" : "SecondaryBlockBrush";
         var blockHeight = isPrimary ? blockHeightPrimary : blockHeightSecondary;
         var blockRadius = Math.Max(4, (isPrimary ? blockWidthPrimary : blockWidthSecondary) / 4);
         var unitFontSize = (double)FindResource("TypeCaptionFontSize");
@@ -443,10 +446,10 @@ public sealed partial class FloatingWindow
                     Math.Ceiling(valueWidth) + blockPadding * 2 + blockWidthReserve),
                 Height = blockHeight,
                 Padding = new Thickness(blockPadding, 0, blockPadding, 0),
-                Background = blockBrush,
                 CornerRadius = new CornerRadius(blockRadius),
                 Child = value
             };
+            block.SetResourceReference(Border.BackgroundProperty, blockBrushKey);
             var unit = new TextBlock
             {
                 Text = pairs[index].Unit,
@@ -454,9 +457,9 @@ public sealed partial class FloatingWindow
                 VerticalAlignment = VerticalAlignment.Center,
                 FontSize = unitFontSize,
                 TextTrimming = TextTrimming.None,
-                TextWrapping = TextWrapping.NoWrap,
-                Foreground = _floatingMutedBrush
+                TextWrapping = TextWrapping.NoWrap
             };
+            unit.SetResourceReference(TextBlock.ForegroundProperty, theme.MutedBrushKey);
             pair.Children.Add(block);
             pair.Children.Add(unit);
             pairsPanel.Children.Add(pair);
@@ -567,9 +570,6 @@ public sealed partial class FloatingWindow
             pixelsPerDip);
         return formatted.WidthIncludingTrailingWhitespace + Math.Max(0, formatted.OverhangTrailing);
     }
-
-    private Brush WarmPaperAccentBrush(FloatingThemePalette theme) =>
-        ThemeBrush(theme.PrimaryCountdownAccentBrushKey);
 
     private TextBlock CountdownRemainingText(
         string text,

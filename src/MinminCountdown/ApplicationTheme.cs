@@ -1,8 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.ComponentModel;
-using System.Windows.Data;
 
 namespace MinminCountdown;
 
@@ -102,8 +100,10 @@ internal sealed class ApplicationTheme : IDisposable
         Token("FloatingDayPlushGlowColor", "FloatingDayPlushGlowBrush", "#B9794E")
     ];
 
-    // #220：组件画刷可能被局部字典持有而失去应用资源的 invalidation context。
-    // 就地刷新 App.xaml 的同名 alias，已开浮窗与弹层继续持有原画刷。
+    // 主题画刷一律是冻结的 SolidColorBrush：配色变化时整枚替换资源条目，不就地改色。
+    // 就地改色会让 WPF 渲染线程遍历共享画刷的监听者，曾因悬空监听者以 0xC0000409 崩溃。
+    // 窗口内的 DynamicResource 自动重取；复制了画刷实例的局部字典与窗口树外的托盘菜单
+    // 由各自的主题入口按应用资源重取。
     private static readonly (string Brush, string Color)[] ComponentAliases =
     [
         ("FloatingDayPanelBrush", "CardColor"),
@@ -136,8 +136,6 @@ internal sealed class ApplicationTheme : IDisposable
     ];
 
     private readonly ResourceDictionary _resources;
-    private readonly Dictionary<string, ThemeColor> _colors = new(StringComparer.Ordinal);
-    private bool _applied;
     private bool _disposed;
     private static bool? _validationAnimationPreference;
     private static bool? _validationHighContrast;
@@ -204,54 +202,49 @@ internal sealed class ApplicationTheme : IDisposable
 
     public void Apply()
     {
-        _resources["SystemContrastEnabled"] = HighContrastEnabled;
         var systemColors = _validationSystemColors ?? new SystemContrastPalette(SystemColors.WindowColor,
             SystemColors.WindowTextColor, SystemColors.ControlColor, SystemColors.ControlTextColor,
             SystemColors.HighlightColor, SystemColors.HighlightTextColor, SystemColors.GrayTextColor);
-        UpdateSystemBrush("SystemContrastDisabledTextBrush", systemColors.GrayText);
-        UpdateSystemBrush("SystemContrastControlBrush", systemColors.Control);
-        foreach (var token in Tokens)
+        // 批量写入：逐键写入时每个键都会遍历全部窗口失效一次，EndInit 只遍历一次。
+        _resources.BeginInit();
+        try
         {
-            var color = HighContrastEnabled ? SystemColorFor(token.BrushKey, systemColors) : token.Color;
-            _resources[token.ColorKey] = color;
-            if (_applied)
+            _resources["SystemContrastEnabled"] = HighContrastEnabled;
+            SetBrush("SystemContrastDisabledTextBrush", systemColors.GrayText);
+            SetBrush("SystemContrastControlBrush", systemColors.Control);
+            var colors = new Dictionary<string, Color>(StringComparer.Ordinal);
+            foreach (var token in Tokens)
             {
-                _colors[token.ColorKey].Value = color;
+                var color = HighContrastEnabled ? SystemColorFor(token.BrushKey, systemColors) : token.Color;
+                colors.Add(token.ColorKey, color);
+                _resources[token.ColorKey] = color;
+                SetBrush(token.BrushKey, color);
             }
-            else
-            {
-                var source = new ThemeColor { Value = color };
-                _colors.Add(token.ColorKey, source);
-                _resources[token.BrushKey] = BoundBrush(source);
-            }
-        }
-        if (!_applied)
-        {
             foreach (var alias in ComponentAliases)
             {
-                _resources[alias.Brush] = BoundBrush(_colors[alias.Color]);
+                SetBrush(alias.Brush, colors[alias.Color]);
             }
+            ApplyMotionTokens();
         }
-        _applied = true;
-        ApplyMotionTokens();
+        finally
+        {
+            _resources.EndInit();
+        }
         foreach (Window window in Application.Current.Windows)
         {
             if (window is MainWindow main) main.ApplyTheme();
             if (window is FloatingWindow floating) floating.ApplyTheme();
-            if (window is ConfirmationDialog confirmation) confirmation.ApplySystemContrast();
+            if (window is ConfirmationDialog confirmation) confirmation.ApplyTheme();
         }
         PaletteChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void UpdateSystemBrush(string key, Color value)
+    private void SetBrush(string key, Color color)
     {
-        if (_colors.TryGetValue(key, out var source)) source.Value = value;
-        else
-        {
-            source = new ThemeColor { Value = value };
-            _colors.Add(key, source);
-            _resources[key] = BoundBrush(source);
-        }
+        if (_resources[key] is SolidColorBrush { IsFrozen: true } current && current.Color == color) return;
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        _resources[key] = brush;
     }
 
     internal static void ApplyContrastAwareBrush(System.Windows.Controls.Border surface,
@@ -263,31 +256,6 @@ internal sealed class ApplicationTheme : IDisposable
         trigger.Setters.Add(new Setter(property, new DynamicResourceExtension(contrastKey)));
         style.Triggers.Add(trigger);
         surface.Style = style;
-    }
-
-    private static SolidColorBrush BoundBrush(ThemeColor source)
-    {
-        var brush = new SolidColorBrush();
-        // A live binding prevents WPF template/style sealing from freezing the brush.
-        BindingOperations.SetBinding(brush, SolidColorBrush.ColorProperty,
-            new Binding(nameof(ThemeColor.Value)) { Source = source, Mode = BindingMode.OneWay });
-        return brush;
-    }
-
-    private sealed class ThemeColor : INotifyPropertyChanged
-    {
-        private Color _value;
-        public Color Value
-        {
-            get => _value;
-            set
-            {
-                if (_value == value) return;
-                _value = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Value)));
-            }
-        }
-        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     private static Color SystemColorFor(string key, SystemContrastPalette palette) => key switch

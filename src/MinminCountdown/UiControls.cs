@@ -611,19 +611,20 @@ internal sealed class TagSelector : Grid
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center
         };
-        triggerContent.Children.Add(new System.Windows.Shapes.Path
+        var tagGlyph = new System.Windows.Shapes.Path
         {
             Width = 20,
             Height = 20,
             Data = Geometry.Parse(
                 "M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7"),
-            Stroke = (Brush)FindResource("MutedBrush"),
             StrokeThickness = 1.6,
             StrokeLineJoin = PenLineJoin.Round,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             VerticalAlignment = VerticalAlignment.Center
-        });
+        };
+        tagGlyph.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "MutedBrush");
+        triggerContent.Children.Add(tagGlyph);
         triggerContent.Children.Add(_triggerText);
         _trigger = UiAccessibility.Name(
             new Button
@@ -1246,8 +1247,10 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
     private Style? _dayConfirmStyle;
     private bool _systemContrastApplied;
 
-    internal void ApplySystemContrast()
+    internal void ApplyTheme()
     {
+        // 局部别名复制的是画刷实例；配色替换后按应用资源重取，已打开的确认框随之换色。
+        ApplyThemeAliases(Resources);
         if (CancelButton is null || ConfirmButton is null || _systemContrastApplied == ApplicationTheme.HighContrastEnabled) return;
         if (ApplicationTheme.HighContrastEnabled)
         {
@@ -1296,7 +1299,7 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         ShowInTaskbar = false;
         Topmost = false;
         SetResourceReference(BackgroundProperty, "BackgroundBrush");
-        Foreground = (Brush)FindResource("InkBrush");
+        SetResourceReference(ForegroundProperty, "InkBrush");
 
         // WPF-UI MessageBox 的 Primary 按钮默认响应 Enter；把它承载为「取消」后，
         // Enter 与 Esc 都落到安全路径，Secondary 才是唯一的确认路径。
@@ -1416,7 +1419,7 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         UiAccessibility.Name(ConfirmButton, SecondaryButtonText);
         AutomationProperties.SetAutomationId(CancelButton, "ConfirmationCancelButton");
         AutomationProperties.SetAutomationId(ConfirmButton, "ConfirmationConfirmButton");
-        ApplySystemContrast();
+        ApplyTheme();
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root)
@@ -1446,27 +1449,39 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
             Theme = Wpf.Ui.Appearance.ApplicationTheme.Light
         });
         resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ControlsDictionary());
-
-        // WPF-UI resource keys are local aliases of existing warm-pink semantic
-        // tokens. These aliases are intentionally scoped to this dialog Window.
-        resources["MessageBoxBackground"] = ApplicationResource("BackgroundBrush");
-        resources["MessageBoxForeground"] = ApplicationResource("InkBrush");
-        resources["MessageBoxTopOverlay"] = ApplicationResource("BackgroundBrush");
-        resources["MessageBoxSeparatorBorderBrush"] = ApplicationResource("PeachLineBrush");
-        resources["ButtonBackground"] = ApplicationResource("CardBrush");
-        resources["ButtonBackgroundPointerOver"] = ApplicationResource("CardAltBrush");
-        resources["ButtonBackgroundPressed"] = ApplicationResource("PeachTintBrush");
-        resources["ButtonForeground"] = ApplicationResource("InkBrush");
-        resources["ButtonForegroundPointerOver"] = ApplicationResource("InkBrush");
-        resources["ButtonForegroundPressed"] = ApplicationResource("InkBrush");
-        resources["AccentButtonBackground"] = ApplicationResource("MainActionBrush");
-        resources["AccentButtonBackgroundPointerOver"] = ApplicationResource("MainActionHoverBrush");
-        resources["AccentButtonBackgroundPressed"] = ApplicationResource("MainActionPressedBrush");
-        resources["AccentButtonForeground"] = ApplicationResource("MainActionTextBrush");
-        resources["AccentButtonForegroundPointerOver"] = ApplicationResource("MainActionTextBrush");
-        resources["AccentButtonForegroundPressed"] = ApplicationResource("MainActionTextBrush");
-        resources["PaletteRedColor"] = ApplicationResource("DangerColor");
+        ApplyThemeAliases(resources);
         return resources;
+    }
+
+    // WPF-UI resource keys are local aliases of existing warm-pink semantic
+    // tokens. These aliases are intentionally scoped to this dialog Window.
+    private static readonly (string WpfUiKey, string ThemeKey)[] ThemeAliases =
+    [
+        ("MessageBoxBackground", "BackgroundBrush"),
+        ("MessageBoxForeground", "InkBrush"),
+        ("MessageBoxTopOverlay", "BackgroundBrush"),
+        ("MessageBoxSeparatorBorderBrush", "PeachLineBrush"),
+        ("ButtonBackground", "CardBrush"),
+        ("ButtonBackgroundPointerOver", "CardAltBrush"),
+        ("ButtonBackgroundPressed", "PeachTintBrush"),
+        ("ButtonForeground", "InkBrush"),
+        ("ButtonForegroundPointerOver", "InkBrush"),
+        ("ButtonForegroundPressed", "InkBrush"),
+        ("AccentButtonBackground", "MainActionBrush"),
+        ("AccentButtonBackgroundPointerOver", "MainActionHoverBrush"),
+        ("AccentButtonBackgroundPressed", "MainActionPressedBrush"),
+        ("AccentButtonForeground", "MainActionTextBrush"),
+        ("AccentButtonForegroundPointerOver", "MainActionTextBrush"),
+        ("AccentButtonForegroundPressed", "MainActionTextBrush"),
+        ("PaletteRedColor", "DangerColor")
+    ];
+
+    private static void ApplyThemeAliases(ResourceDictionary resources)
+    {
+        foreach (var (wpfUiKey, themeKey) in ThemeAliases)
+        {
+            resources[wpfUiKey] = ApplicationResource(themeKey);
+        }
     }
 
     private static object ApplicationResource(string key) =>

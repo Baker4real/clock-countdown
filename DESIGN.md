@@ -23,7 +23,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 #220：Windows 系统对比度适配不是应用主题，不提供应用内切换入口。系统开启对比度主题时，五类窗口（主窗口、悬浮窗、提醒中心、规则编辑器、确认框）把语义画刷投影到系统窗口底、文字、控件面、高亮、高亮文字和禁用文字；控件边界、焦点、文本选区、选中项及打开的弹层同样适配。玩偶、装饰 raster 与手写体装饰隐藏，悬浮窗透明装饰承载面改为系统窗口底。
 
-运行中开关或更换系统配色立即更新既有画刷与界面，保留业务行、焦点、草稿与选区；后续打开的窗口也使用当前系统状态。关闭后恢复本文定义的暖粉日间原色、自选标签底色和装饰显示。此能力以运行态行为探针验收，不新建应用主题或单独视觉基线；暖粉日间仍服从现役帧回归合同。
+运行中开关或更换系统配色立即更新既有界面（主题画刷整枚替换，见 §13.1），保留业务行、焦点、草稿与选区；后续打开的窗口也使用当前系统状态。关闭后恢复本文定义的暖粉日间原色、自选标签底色和装饰显示。此能力以运行态行为探针验收，不新建应用主题或单独视觉基线；暖粉日间仍服从现役帧回归合同。
 
 本节只定义语义角色与用途，不记录色值：现值以 `src/MinminCountdown/App.xaml` 的 Primitive 层为唯一真源（运行时副本 `ApplicationTheme.Tokens` 逐键同步），承载文字、图形或焦点的现值与对比度门槛见 §13.4，允许的同值 alias 见 §13.1。色板方向来自 5 张 AI 优化稿的像素采样（采样口径见 §11），采样值不是像素门禁的期望值。
 
@@ -530,7 +530,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v55 基线 `assets/ui-references/floating-window/520x390/2026-10-14-v55/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v56 基线 `assets/ui-references/floating-window/520x390/2026-10-20-v56/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -572,11 +572,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-10-14，日间纯装饰图顶角残桩清除重拍）：`tools/Test-MainDayOrnamentScene.ps1` 自 0208b1eb 引入起纯净度门一直失败，且没有任何套件阶段或 CI 执行它。失败像素只在 0–19 行的 x=0–2 与 x=1162–1164：生成器把这 6 列当外框保留，但仓库 PNG 是更早整行铺色版本的原地输出，铺平区的外框早已不存在，保留逻辑实际只把旧顶边留成两个上角的 3×20 px 残桩。生成器改为装饰带外整行铺色（窗框由 DWM 绘制，装饰 raster 不自带外框），两张日间装饰图原地重建：countdown 96 px、notes 120 px 变为所在行背景色，装饰带与其余各行逐字节不变；`MainDecorationSceneBands.psd1` 不变。测试改读当前检出的 PNG，新增重建不动点门（重新生成不得改变仓库 PNG），并接入 Tooling 阶段。生成器、测试与 PNG 均在主窗 `sourceBinding` 内，现役基线改为 `2026-10-14-v55`（跨分支未占用的下一个编号）。BaselineGenerate `20261014T152529217-f6b420cf` 生成双 manifest：主窗 9 帧聚合 SHA-256 `17149D9C56BE5BB44B4B13925064A304892A05531A98C392FB86FBBDF0CE3818`，悬浮窗 5 帧聚合 `C72A8DE6F924101522791D7000844F3D359A7DB5801F2B8A459D39440590DAD6`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。主窗 9 帧与 v54 的像素差异只在顶部 0–14 行的左右两端（倒计时页每帧 54 px、便签页每帧 70 px），悬浮窗 5 帧与 v54 逐字节一致。v54 保留为历史捕获，不再作为现役门禁。
 
-1. #189 的 WPF 改版使用纯日间 **v55** 真实渲染系列，版本目录为 `2026-10-14-v55`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+当前状态（2026-10-20，主题画刷冻结替换重拍）：validate-only 偶发的 0xC0000409 崩溃指向 WPF 渲染线程处理共享 `SolidColorBrush` 的更新命令时，遍历到悬空监听者并触发 CFG 快速失败。`ApplicationTheme` 原把语义与组件画刷做成绑定驱动、不可冻结的共享画刷，配色变化时就地改色；现改为冻结画刷整枚替换（§13.1），悬浮窗行与便签卡、底部状态、确认框别名和托盘菜单改为按资源键或在主题入口重取。`ApplicationTheme.cs`、`UiControls.cs` 与悬浮窗源码在 `sourceBinding` 内，现役基线改为 `2026-10-20-v56`（跨分支未占用的下一个编号）。BaselineGenerate `20261020T182132555-f3e9f6bd` 生成双 manifest：主窗 9 帧聚合 SHA-256 `3CBDAD8382A023E1E8108313DA06C16BB1FBDB6961A0F507F4448D67E0D01A5A`，悬浮窗 5 帧聚合 `38251D8842C7CE90372FD4A861E5F24A5AF4FEC686C4FF5127829CDB1B63460C`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。14 帧的 PNG 与状态指纹都和 v55 逐字节一致，日间渲染没有变化。v55 保留为历史捕获，不再作为现役门禁。
 
-2. v55 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-14-v55/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v55 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52 与 v54 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v55。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+1. #189 的 WPF 改版使用纯日间 **v56** 真实渲染系列，版本目录为 `2026-10-20-v56`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v56 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-20-v56/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v56 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54 与 v55 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v56。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项
@@ -612,6 +614,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 控件不得新增同义色值：新视觉需求先找既有 Semantic 角色；确需新角色时新增 Primitive + Semantic 两层，并同步 `ApplicationTheme.Tokens`。
 - 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#C23E68` → `MainAction` / `PinkAccentStrong`（#199 统一主行动家族）；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#F6DFD3` → `NoteTimeline` / `PeachLine`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#FFFDFC` → `Panel` / `MainActionText`。Tooling 的 design-token 漂移检查双向核对本清单与 App.xaml；#232 删除两项无生产消费者的旧强调文字 token。
 - XAML 允许 6 位与 8 位十六进制写法并存（如 `#FEE0E4` 与 `#FFFEE0E4`），同步校验按解析后 ARGB 相等判断，不强制统一记法。
+- 运行时 `ApplicationTheme` 把 Semantic 与 Component 画刷换成冻结的 `SolidColorBrush`。配色变化（含系统对比度开关与换色）时整枚替换资源条目，不就地改色：就地改色会让渲染线程遍历共享画刷的监听者，曾以 0xC0000409 崩溃。代码引用主题画刷一律用 `DynamicResource` / `SetResourceReference`，不缓存画刷实例；复制了画刷实例的局部字典（悬浮窗、确认框）与窗口树外的托盘菜单，由各自的主题入口按应用资源重取。
 
 ### 13.2 排版层级 token
 

@@ -227,6 +227,15 @@ internal static class TrayMenuFactory
         menu.SetResourceReference(Control.BackgroundProperty, "CanvasBrush");
         menu.SetResourceReference(Control.BorderBrushProperty, "ControlBorderBrush");
         menu.Resources.Add(typeof(MenuItem), CreateMenuItemStyle());
+        // 独立菜单不在任何窗口树内，应用资源替换不会让它重取画刷：打开时按应用资源
+        // 刷新局部副本，打开期间再跟随运行中的配色变化。
+        EventHandler refreshTheme = (_, _) => ApplyThemeResources(menu);
+        menu.Opened += (_, _) =>
+        {
+            ApplyThemeResources(menu);
+            ApplicationTheme.PaletteChanged += refreshTheme;
+        };
+        menu.Closed += (_, _) => ApplicationTheme.PaletteChanged -= refreshTheme;
         menu.Items.Add(openManagerItem);
         menu.Items.Add(restoreItem);
         menu.Items.Add(resetPositionItem);
@@ -236,6 +245,17 @@ internal static class TrayMenuFactory
         resetPositionItem.Click += (_, _) => resetPosition();
         exitItem.Click += (_, _) => exit();
         return (menu, openManagerItem, restoreItem, resetPositionItem, exitItem);
+    }
+
+    private static void ApplyThemeResources(ContextMenu menu)
+    {
+        foreach (var key in new[] { "CanvasBrush", "ControlBorderBrush", "InkBrush", "MainActionBrush", "MainActionTextBrush" })
+        {
+            if (Application.Current?.TryFindResource(key) is System.Windows.Media.Brush brush)
+            {
+                menu.Resources[key] = brush;
+            }
+        }
     }
 
     private static Style CreateMenuItemStyle()

@@ -6,7 +6,23 @@ function Write-SuiteRunJson {
     param([string] $Path, [object] $Value)
     $temporaryPath = "$Path.$([guid]::NewGuid().ToString('N')).tmp"
     [System.IO.File]::WriteAllText($temporaryPath, (ConvertTo-Json -InputObject $Value -Depth 12), [System.Text.UTF8Encoding]::new($false))
-    [System.IO.File]::Move($temporaryPath, $Path, $true)
+    # 目标被任何句柄打开（杀毒扫描、读取方）时替换报 Access denied，临时文件被占时报共享冲突。
+    # 这类占用是瞬时的：短暂重试，2 秒后仍失败才抛出，不让一次扫描把整轮套件判红。
+    $deadline = [datetime]::UtcNow.AddSeconds(2)
+    while ($true) {
+        try {
+            [System.IO.File]::Move($temporaryPath, $Path, $true)
+            return
+        }
+        catch [System.UnauthorizedAccessException], [System.IO.IOException] {
+            if ([datetime]::UtcNow -ge $deadline) {
+                $failure = $_.Exception
+                try { [System.IO.File]::Delete($temporaryPath) } catch { }
+                throw [System.IO.IOException]::new("替换 $Path 失败，重试 2 秒后仍被占用：$($failure.Message)", $failure)
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
 }
 
 function Save-SuiteRun {

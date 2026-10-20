@@ -2292,10 +2292,9 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
             $parallelProcesses.Add($scopeBPrimary)
             $scopeReadyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
             do {
-                $scopeBReady = (Test-Path -LiteralPath $diagnosticPathB -PathType Leaf) -and
-                    (Get-Content -LiteralPath $diagnosticPathB -Raw -Encoding UTF8).Contains(
-                        'WindowReady',
-                        [StringComparison]::Ordinal)
+                $scopeBReady = (Read-SharedTestEvidenceText -Path $diagnosticPathB).Contains(
+                    'WindowReady',
+                    [StringComparison]::Ordinal)
                 if ($scopeBReady) { break }
                 Start-Sleep -Milliseconds 50
             } while (-not $scopeBPrimary.HasExited -and [DateTimeOffset]::UtcNow -lt $scopeReadyDeadline)
@@ -6240,7 +6239,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [System.IO.Path]::GetFullPath($interactiveApplicationProcess.Path)
     ) '交互启动 PID 对应临时应用根内 C# EXE'
     Assert-Equal $false $interactiveAdapterProcess.HasExited 'window-ready 时 adapter 仍在等待 C# EXE'
-    $acceptanceDiagnostic = Get-Content -LiteralPath $interactiveDiagnosticPath -Raw -Encoding UTF8
+    $acceptanceDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
     Assert-Equal $true $acceptanceDiagnostic.Contains('AcceptanceReadOnlyEnabled', [System.StringComparison]::Ordinal) '延期验收启动时 C# 窗口进入只读状态'
 
     $duplicateApplicationArguments = @(
@@ -6270,7 +6269,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 1 $duplicateApplicationProcess.ExitCode '验收只读主实例不提供交互激活 ACK'
     $interactiveApplicationProcess.Refresh()
     Assert-Equal $false $interactiveApplicationProcess.HasExited '第二实例激活超时后首个 C# EXE 仍存活'
-    $duplicateDiagnostic = Get-Content -LiteralPath $interactiveDiagnosticPath -Raw -Encoding UTF8
+    $duplicateDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
     Assert-Equal $true $duplicateDiagnostic.Contains('InstanceActivationTimedOut', [System.StringComparison]::Ordinal) '验收只读主实例未监听时第二实例记录超时诊断'
     Assert-Equal $false $duplicateDiagnostic.Contains('InstanceActivationSucceeded', [System.StringComparison]::Ordinal) '验收只读阶段不冒充恢复成功'
     $interactiveEntries = @(
@@ -6294,7 +6293,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     [void] (Wait-CountdownStartupRequestState -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken -ExpectedState ready -TimeoutSeconds 30 -PollMilliseconds 50)
     $acceptanceReadyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
     do {
-        $acceptanceReadyDiagnostic = Get-Content -LiteralPath $interactiveDiagnosticPath -Raw -Encoding UTF8
+        $acceptanceReadyDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
         if ($acceptanceReadyDiagnostic.Contains('AcceptanceMigrationReady', [System.StringComparison]::Ordinal)) { break }
         Start-Sleep -Milliseconds 50
     } while ([DateTimeOffset]::UtcNow -lt $acceptanceReadyDeadline)
@@ -6319,7 +6318,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (Set-CountdownStartupRequestFinalized -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken) '事务提交标记只把 ready 请求推进为 finalized'
     $acceptanceReleaseDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
     do {
-        $acceptanceReleaseDiagnostic = Get-Content -LiteralPath $interactiveDiagnosticPath -Raw -Encoding UTF8
+        $acceptanceReleaseDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
         if ($acceptanceReleaseDiagnostic.Contains('AcceptanceReadOnlyReleased', [System.StringComparison]::Ordinal)) { break }
         Start-Sleep -Milliseconds 50
     } while ([DateTimeOffset]::UtcNow -lt $acceptanceReleaseDeadline)

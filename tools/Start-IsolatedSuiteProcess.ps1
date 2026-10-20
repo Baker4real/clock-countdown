@@ -5,6 +5,8 @@
     标准输出/错误重定向到文件，等待退出并以唯一一行整数输出退出码。
     用于官方验证套件的窗口隔离：窗口在专用桌面对象中渲染，
     不出现在用户当前桌面，也不参与前台焦点竞争。
+    隔离桌面无人可点：本 job 内进程弹出崩溃对话框（标题含 has stopped working / 已停止工作）时，
+    以退出码 126 结束该进程，并把对话框标题与正文写进 StderrPath，不让已崩溃的进程挂到超时。
 .OUTPUTS
     唯一一行整数：子进程退出码。
 #>
@@ -27,6 +29,7 @@ $ErrorActionPreference = 'Stop'
 
 $source = @'
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -45,6 +48,10 @@ public static class IsolatedSuiteProcess
     private const int StartfUseStdHandles = 0x00000100;
     private const uint Infinite = 0xFFFFFFFF;
     private const uint WaitTimeout = 0x00000102;
+    private const uint CrashDialogExitCode = 126;
+    private const uint ProcessTerminate = 0x0001;
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const uint Synchronize = 0x00100000;
     private static readonly IntPtr InvalidHandleValue = new IntPtr(-1);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -141,6 +148,98 @@ public static class IsolatedSuiteProcess
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    private delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumDesktopWindows(IntPtr desktop, EnumWindowsProc callback, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr parent, EnumWindowsProc callback, IntPtr parameter);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassNameW(IntPtr window, StringBuilder className, int maxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool IsProcessInJob(IntPtr process, IntPtr job, out bool result);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool WriteFile(IntPtr file, byte[] buffer, uint bytesToWrite, out uint bytesWritten, IntPtr overlapped);
+
+    private static string ReadClassName(IntPtr window)
+    {
+        var buffer = new StringBuilder(256);
+        GetClassNameW(window, buffer, buffer.Capacity);
+        return buffer.ToString();
+    }
+
+    // 跨进程读标题与静态文本不向目标线程发消息，崩溃进程不响应也不会卡住这里。
+    private static string ReadWindowText(IntPtr window)
+    {
+        var buffer = new StringBuilder(1024);
+        GetWindowTextW(window, buffer, buffer.Capacity);
+        return buffer.ToString();
+    }
+
+    // 崩溃对话框在隔离桌面上永远等不到点击，进程已崩溃却会挂到阶段超时。来源不止 WER：
+    // 输入法等注入的第三方崩溃处理器（如 CrashRpt 在 CrashSender.exe 缺失时）也弹同类 MessageBox，
+    // 错误模式与 WER 标志都管不到。只处理本 job 内进程，以免同名桌面上别的运行被误杀。
+    private static void TerminateCrashDialogOwners(IntPtr desktop, IntPtr job, IntPtr diagnostics)
+    {
+        var dialogs = new List<KeyValuePair<uint, string>>();
+        EnumDesktopWindows(desktop, (window, unused) =>
+        {
+            if (!IsWindowVisible(window) || ReadClassName(window) != "#32770") return true;
+            var title = ReadWindowText(window);
+            if (!title.EndsWith(" has stopped working", StringComparison.Ordinal) &&
+                title.IndexOf("已停止工作", StringComparison.Ordinal) < 0) return true;
+            uint processId;
+            GetWindowThreadProcessId(window, out processId);
+            var body = new List<string>();
+            EnumChildWindows(window, (child, unusedChild) =>
+            {
+                var text = ReadWindowText(child);
+                if (text.Length > 0 && ReadClassName(child) == "Static") body.Add(text);
+                return true;
+            }, IntPtr.Zero);
+            dialogs.Add(new KeyValuePair<uint, string>(processId, "标题=\"" + title + "\" 正文=\"" + String.Join(" | ", body) + "\""));
+            return true;
+        }, IntPtr.Zero);
+
+        foreach (var dialog in dialogs)
+        {
+            IntPtr process = OpenProcess(ProcessTerminate | ProcessQueryLimitedInformation | Synchronize, false, dialog.Key);
+            if (process == IntPtr.Zero) continue;
+            try
+            {
+                bool inJob;
+                if (!IsProcessInJob(process, job, out inJob) || !inJob) continue;
+                if (!TerminateProcess(process, CrashDialogExitCode)) continue;
+                WaitForSingleObject(process, 5000);
+                var line = "[Start-IsolatedSuiteProcess] 隔离桌面出现崩溃对话框，已以退出码 " + CrashDialogExitCode +
+                    " 结束 pid=" + dialog.Key + "：" + dialog.Value + "\r\n";
+                var bytes = new UTF8Encoding(false).GetBytes(line);
+                uint written;
+                WriteFile(diagnostics, bytes, (uint)bytes.Length, out written, IntPtr.Zero);
+            }
+            finally
+            {
+                CloseHandle(process);
+            }
+        }
+    }
 
     private static IntPtr OpenInheritableFile(string path, uint access, uint creationDisposition)
     {
@@ -240,6 +339,7 @@ public static class IsolatedSuiteProcess
                 throw new InvalidOperationException("ResumeThread 失败 error=" + Marshal.GetLastWin32Error());
             }
             var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+            var nextCrashDialogScan = DateTime.UtcNow.AddSeconds(1);
             while (true)
             {
                 if (!IsOwnerAlive(ownerProcessId, ownerStartedAtUtc))
@@ -260,6 +360,11 @@ public static class IsolatedSuiteProcess
                 if (waitResult != WaitTimeout)
                 {
                     throw new InvalidOperationException("WaitForSingleObject 失败 error=" + Marshal.GetLastWin32Error());
+                }
+                if (DateTime.UtcNow >= nextCrashDialogScan)
+                {
+                    TerminateCrashDialogOwners(desktop, job, stderr);
+                    nextCrashDialogScan = DateTime.UtcNow.AddSeconds(1);
                 }
             }
             uint code;

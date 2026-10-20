@@ -186,6 +186,10 @@ Add-ToolingCheck -Name 'process-capture:explicit-encoding' -Passed ($captureProb
 $ornamentScene = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-MainDayOrnamentScene.ps1') -ProjectRoot $repoRoot 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'ornament:day-scene' -Passed ($LASTEXITCODE -eq 0) -Detail (($ornamentScene -join ' ') -replace '\s+', ' ')
 
+# 隔离启动器遇到崩溃对话框要立即结束进程，不挂到阶段超时；对话框只弹在自建的隔离桌面上。
+$crashDialogWatchdog = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-IsolatedCrashDialogWatchdog.ps1') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'isolation:crash-dialog-watchdog' -Passed ($LASTEXITCODE -eq 0) -Detail (($crashDialogWatchdog -join ' ') -replace '\s+', ' ')
+
 $docLinkFailures = [System.Collections.Generic.List[string]]::new()
 $markdownFiles = Get-ChildItem -LiteralPath $repoRoot -Filter '*.md' -File -Recurse |
     Where-Object {

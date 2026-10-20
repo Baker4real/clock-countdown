@@ -82,7 +82,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`、`Invoke-CountdownSourceValidation.ps1`：窗口套件内层实现，仅由低影响启动器转发，直跑 fail-closed
 - `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化 13 步收口验证 runner 与桌面启动 T0–T4 分段时延探针；收口包含 `Countdown.TransferLedger.Tests.ps1`，探针样本只用于归因，不汇入门槛样本池
 - `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），六阶段套件默认入口；Build 绿后 Core/CSharp/Ui/SourceValidation/InstallValidate 五阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。`Countdown.SuiteRun.psm1` 负责原子 run/summary、阶段超时、取消和失效 owner 的 `Interrupted` 回读；配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
-- `tools/Test-CountdownTooling.ps1`：无窗口自检 issue 验收 schema、回写 dry-run、PowerShell 解析、弹层验证夹具 C# 只编译、日间纯装饰图生成契约（`tools/Test-MainDayOrnamentScene.ps1`）和 `git diff --check`；`tools/Test-PopupValidationContract.ps1` 由低影响启动器的 `ValidationHarness` 阶段执行弹层真实动作与反例，夹具 C# 在 `tools/PopupValidationContract.cs`
+- `tools/Test-CountdownTooling.ps1`：不在用户桌面开窗的自检：issue 验收 schema、回写 dry-run、PowerShell 解析、弹层验证夹具 C# 只编译、日间纯装饰图生成契约（`tools/Test-MainDayOrnamentScene.ps1`）、隔离启动器崩溃对话框看门狗（`tools/Test-IsolatedCrashDialogWatchdog.ps1`，对话框只弹在自建的隔离桌面上）和 `git diff --check`；`tools/Test-PopupValidationContract.ps1` 由低影响启动器的 `ValidationHarness` 阶段执行弹层真实动作与反例，夹具 C# 在 `tools/PopupValidationContract.cs`
 - `docs/agents/issue-acceptance.md`、`docs/agents/issue-acceptance.json`：按 docs / behavior / visual / release / office / gate 区分检查、证据和明确的 N/A 理由；`tools/Invoke-IssueWriteback.ps1` 默认只生成可回读的评论计划，只有显式 `-Apply` 才写 GitHub
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
@@ -95,7 +95,7 @@ WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方�
 
 硬约束：本项目的 PowerShell adapter、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF adapter 入口仍必须使用 `-STA`。
 
-硬约束：套件的默认运行前提是用户正在使用这台电脑。Build / Core / CSharp / Ui / SourceValidation / InstallValidate 六个阶段**仅启动器可跑**，禁止把内层命令当复制模板直跑。启动器默认把整棵进程树放到 BelowNormal，并把控制台与 WPF 窗口放进不可见 Win32 桌面（窗口不上用户屏幕、不抢焦点）；用户 Default 桌面若出现敏敏子 / MinminCountdown 可见顶层窗即红。任一阶段红即停，日志落在 `logs\suite-runs\`，内容是原始字节，编码由写入的进程决定：多数为 UTF-8，未自设编码的进程（如 InstallValidate 的安装器）按控制台代码页写出；中文 Windows 上按 UTF-8 读出乱码时改用 `Get-Content -Encoding 936`。CSharp / Ui / SourceValidation 若检测到自己不在 `MinminSuiteIso-*` 桌面会 fail-closed。关闭隔离必须显式 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。
+硬约束：套件的默认运行前提是用户正在使用这台电脑。Build / Core / CSharp / Ui / SourceValidation / InstallValidate 六个阶段**仅启动器可跑**，禁止把内层命令当复制模板直跑。启动器默认把整棵进程树放到 BelowNormal，并把控制台与 WPF 窗口放进不可见 Win32 桌面（窗口不上用户屏幕、不抢焦点）；用户 Default 桌面若出现敏敏子 / MinminCountdown 可见顶层窗即红。任一阶段红即停，日志落在 `logs\suite-runs\`，内容是原始字节，编码由写入的进程决定：多数为 UTF-8，未自设编码的进程（如 InstallValidate 的安装器）按控制台代码页写出；中文 Windows 上按 UTF-8 读出乱码时改用 `Get-Content -Encoding 936`。CSharp / Ui / SourceValidation 若检测到自己不在 `MinminSuiteIso-*` 桌面会 fail-closed。关闭隔离必须显式 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。隔离桌面上没人能点掉崩溃对话框：套件进程树里有进程弹出“has stopped working / 已停止工作”对话框时，隔离启动器以退出码 126 结束该进程，并把对话框标题与正文写进该阶段的 err 日志。本机微信输入法会把 CrashRpt 注入 GUI 进程，它缺 CrashSender.exe，任何 GUI 进程崩溃都会弹 “Error launching CrashSender.exe”。
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
@@ -109,7 +109,7 @@ $dllHash = (Get-FileHash (Join-Path $appPath 'MinminCountdown.dll') -Algorithm S
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage GeometryPreflight -AppPath $appPath -ExpectedDllSha256 $dllHash -StageTimeoutSeconds 90
 ```
 
-构建前先做只读环境预检和无窗口工具自检；`-RequireClean` 只在当前 safe-tree-delete policy 登记了该 checkout 的正式清理路径时使用：
+构建前先做只读环境预检和工具自检（不在用户桌面开窗）；`-RequireClean` 只在当前 safe-tree-delete policy 登记了该 checkout 的正式清理路径时使用：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownBuildPreflight.ps1 -Json

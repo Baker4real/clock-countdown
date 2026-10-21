@@ -4124,6 +4124,7 @@ public sealed partial class FloatingWindow
                     "搜索便签",
                     StringComparison.Ordinal) &&
                 FloatingNoteEntry.Visibility == Visibility.Collapsed;
+            var settingsGearConcentric = SettingsGearIsConcentric();
 
             var deco = FloatingNotesDecoText;
             var decoLeft = FloatingNotesDecoTextLeft;
@@ -4415,7 +4416,8 @@ public sealed partial class FloatingWindow
                 handwrittenDecorationLands,
                 quickAddPlaceholderMirrorsManager,
                 quickAddToggleSecondaryWhenExpanded,
-                noteMenuKeyboardLifecycle);
+                noteMenuKeyboardLifecycle,
+                settingsGearConcentric);
         }
         finally
         {
@@ -4440,6 +4442,26 @@ public sealed partial class FloatingWindow
                 WindowValidationInput.Pump(Dispatcher);
             }
         }
+    }
+
+    // 「设置」按钮图标：15x15 框内齿轮外轮廓的几何中心、孔的中心与框中心三者重合。容差 0.5 DIP：
+    // 容得下设备像素取整，抓得住外轮廓曾比孔高 1.5 DIP 的偏移。
+    private bool SettingsGearIsConcentric()
+    {
+        if (FloatingOpenSettings.Content is not StackPanel { Children.Count: > 0 } content ||
+            content.Children[0] is not Grid { ActualWidth: > 0 } icon ||
+            icon.Children.OfType<System.Windows.Shapes.Path>().FirstOrDefault() is not { Data: { } outline } outlinePath ||
+            icon.Children.OfType<Ellipse>().FirstOrDefault() is not { } hole)
+        {
+            return false;
+        }
+
+        var bounds = outline.Bounds;
+        var outlineCenter = outlinePath.TranslatePoint(
+            new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2), icon);
+        var holeCenter = hole.TranslatePoint(new Point(hole.ActualWidth / 2, hole.ActualHeight / 2), icon);
+        var boxCenter = new Point(icon.ActualWidth / 2, icon.ActualHeight / 2);
+        return (outlineCenter - holeCenter).Length <= 0.5 && (outlineCenter - boxCenter).Length <= 0.5;
     }
 
     /// <summary>“…”菜单删除：确认弹层取消则保留便签，确认则删除；弹层经 Dispatcher 队列驱动。</summary>
@@ -4929,7 +4951,8 @@ internal sealed record FloatingBottomCommandScenarios(
     bool HandwrittenDecorationLands,
     bool QuickAddPlaceholderMirrorsManager,
     bool QuickAddToggleSecondaryWhenExpanded,
-    bool NoteMenuKeyboardLifecycle)
+    bool NoteMenuKeyboardLifecycle,
+    bool SettingsGearConcentric)
 {
     public bool QuickAddTogglePass =>
         DefaultCollapsedInNotes &&
@@ -4956,7 +4979,8 @@ internal sealed record FloatingBottomCommandScenarios(
         OverflowMenuPass &&
         PastelIndexPass &&
         HandwrittenDecorationLands &&
-        QuickAddPlaceholderMirrorsManager;
+        QuickAddPlaceholderMirrorsManager &&
+        SettingsGearConcentric;
 }
 
 internal sealed record FloatingWorkspaceValidationScenarios(

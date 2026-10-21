@@ -250,7 +250,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 - 居中主按钮 `＋ 添加便签`：`PinkAccentStrongBrush` 实心胶囊、白字、左侧白色加号圆圈图标。
 - 展开态单一实心主行动（#149）：点击 `＋ 添加便签` 原地展开表单后，该切换钮降级为次级「收起」（次级样式、可见文字「收起」、可访问名「收起快速新增便签表单」），表单内「添加」是展开态唯一实心粉钮；收起态切换钮恢复实心胶囊「＋ 添加便签」。两态命中高度均保持 38px。
-- 其右侧次级按钮 `设置`：`PanelBrush` 底、`PeachLineBrush` 边、齿轮图标加文字，点击打开主窗口。
+- 其右侧次级按钮 `设置`：`PanelBrush` 底、`PeachLineBrush` 边、齿轮图标加文字，点击打开主窗口。齿轮是 15x15 框内 1.1px 描边的 6 齿外轮廓加中心孔，外轮廓与孔同心于框中心 (7.5, 7.5)，运行态由 `FloatingSettingsGearConcentric` 钉住。
 - 搜索按钮（可访问名称“搜索便签”，仅便签工作区可见）常驻该命令区，不随快速新增表单收起而隐藏；其形态、三态搜索槽与 Tab 契约见 §10「便签：pastel 分格索引」。
 - 内嵌快速新增表单默认收起，从列表底部移除；点击 `＋ 添加便签` 后**原地展开**该表单，再次点击或提交后收起。展开时不改变列表滚动偏移。展开后表单与底部命令行作为整体收进限高 170 的命令区滚动容器 `FloatingNotesCommandScroller`（滚动热区不越出右侧安全区），内容超高时在该容器内滚动；收起态内容低于限高，布局与既有基线一致。
 - 表单保留正文、日期、标签、添加按钮以及紧凑“提醒规则”入口；复杂规则表单只在共享次级窗口展开。
@@ -579,11 +579,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-10-21，命令栏图标矢量化重拍）：命令栏设置齿轮与折叠新增行展开入口此前用 `⚙`、`⌄`/`⌃` 文本字形，又沿用共享按钮左右 13 的内边距，41/36 宽按钮的内容区只剩 9/4 DIP，比字形还窄；v52–v57 参考帧里齿轮被裁得只剩一截、展开箭头只剩一个小点。现改为矢量路径并把内边距归零（见「视觉铬与窗铬合同」的矢量命令图标），展开入口改为旋转同一 V 形表达收起与展开；新增运行态字段 `MainCommandIconsUseVectorPaths` 并纳入 validate-only 必需真值。`MainWindow.xaml` 与 `MainWindow.xaml.cs` 在主窗 `sourceBinding` 内，现役基线改为 `2026-10-21-v58`（跨分支未占用的下一个编号）。BaselineGenerate `20261021T213458721-3096d689`（Build `20261021T213140162-c12bbc2c`）生成双 manifest：主窗 9 帧聚合 SHA-256 `C427F1EF1B0E522FB08221402A95504FD8208E5DC8301FCEDC51FBFCC984ED87`，悬浮窗 5 帧聚合 `3A20BBD1CEFA1EF8C4C9EF3A38FCEDFA408344C691AF8D3F939CCEA529BB3597`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。与 v57 相比，主窗 `main-day-countdowns-empty`、`main-day-countdowns-representative`、`main-day-countdowns-stress`、`main-day-notes-empty`、`main-day-notes-representative`、`main-day-notes-stress`、`main-day-notes-edit`、`main-day-notes-filter-open`、`main-day-notes-selected` 的 PNG 有变化，悬浮窗 5 帧的 PNG 逐字节一致。v57 保留为历史捕获，不再作为现役门禁。
 
-1. #189 的 WPF 改版使用纯日间 **v58** 真实渲染系列，版本目录为 `2026-10-21-v58`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+当前状态（2026-10-21，悬浮窗设置齿轮同心重拍）：悬浮便签页「设置」按钮的齿轮外轮廓以 15x15 框的 (7.5, 6) 为中心，居中放置的孔在 (7.5, 7.5)，孔偏下 1.5 DIP，齿轮整体也比「设置」文字偏高。现把外轮廓几何整体下移 1.5 DIP，与孔同心于框中心；新增运行态字段 `FloatingSettingsGearConcentric`（外轮廓、孔与框三个中心两两相距不超过 0.5 DIP）并纳入 validate-only 必需真值。`FloatingWindow.xaml` 在悬浮窗 `sourceBinding` 内，现役基线改为 `2026-10-21-v59`（跨分支未占用的下一个编号）。BaselineGenerate `20261021T221246332-b03702bf`（Build `20261021T221045002-00cffe63`）生成双 manifest：主窗 9 帧聚合 SHA-256 `C427F1EF1B0E522FB08221402A95504FD8208E5DC8301FCEDC51FBFCC984ED87`，悬浮窗 5 帧聚合 `EB3D7140A6B29883A3FF38CF2091D98C4C5A1F7E3F19A489318AD3376C0F2BEE`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。与 v58 相比，悬浮窗 `long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day` 的 PNG 有变化，主窗 9 帧与悬浮窗其余 2 帧的 PNG 逐字节一致。v58 保留为历史捕获，不再作为现役门禁。
 
-2. v58 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-21-v58/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v58 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56 与 v57 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v58。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+1. #189 的 WPF 改版使用纯日间 **v59** 真实渲染系列，版本目录为 `2026-10-21-v59`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v59 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-21-v59/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v59 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57 与 v58 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v59。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

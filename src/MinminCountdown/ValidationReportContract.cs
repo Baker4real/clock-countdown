@@ -94,6 +94,7 @@ internal static class ValidationReportContract
         "FloatingDateStampPastelRotationMatches",
         "FloatingNotesHandwrittenDecorationPass",
         "FloatingSettingsButtonOpensManager",
+        "FloatingSettingsGearConcentric",
         "FloatingEmptyStateTextIsolationBehavior",
         "FloatingIncomePrivacyBehavior",
         "FloatingWorkdayCompletionBehavior",

@@ -46,6 +46,9 @@ function Invoke-CountdownProcess {
 
     # PowerShell -File 的错误跨进程后只剩格式化文本。用同一 pwsh/STA 参数运行
     # 极小入口，捕获原始 ErrorRecord；不改变目标脚本的 PSScriptRoot 或 stdout。
+    # 目标脚本点源进入口顶层，即 pwsh -File 的全局作用域：测试脚本的脚本级变量与函数
+    # 要能从模块绑定脚本块和 GetNewClosure 闭包里解析，用 & 会落进子作用域。入口因此
+    # 不定义自有变量，避免与目标脚本互相覆盖。
     $fileIndex = [Array]::IndexOf($ArgumentList, '-File')
     if ([IO.Path]::GetFileNameWithoutExtension($FilePath) -eq 'pwsh' -and $fileIndex -ge 0) {
         $quote = { param([string]$Text) "'" + $Text.Replace("'", "''") + "'" }
@@ -59,25 +62,23 @@ function Invoke-CountdownProcess {
         $entryPath = Join-Path $workRoot 'entry.ps1'
         $entry = @"
 `$ErrorActionPreference = 'Stop'
-`$utf8 = [Text.UTF8Encoding]::new(`$false)
-[Console]::OutputEncoding = `$utf8
-[Console]::InputEncoding = `$utf8
-`$OutputEncoding = `$utf8
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new(`$false)
+[Console]::InputEncoding = [Text.UTF8Encoding]::new(`$false)
+`$OutputEncoding = [Text.UTF8Encoding]::new(`$false)
 `$LASTEXITCODE = 0
 try {
-    & $($tokens -join ' ')
+    . $($tokens -join ' ')
     if (`$?) { exit 0 }
     if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }
     exit 1
 }
 catch {
-    `$record = [ordered]@{
+    [IO.File]::WriteAllText($(& $quote $errorPath), ([ordered]@{
         exceptionMessage = `$_.Exception.Message
         fullyQualifiedErrorId = `$_.FullyQualifiedErrorId
         positionMessage = `$_.InvocationInfo.PositionMessage
         scriptStackTrace = `$_.ScriptStackTrace
-    }
-    [IO.File]::WriteAllText($(& $quote $errorPath), (`$record | ConvertTo-Json -Depth 4), `$utf8)
+    } | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new(`$false))
     [Console]::Error.WriteLine(`$_.Exception.Message)
     exit 1
 }

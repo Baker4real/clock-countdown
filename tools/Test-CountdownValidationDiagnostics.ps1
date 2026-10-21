@@ -66,6 +66,29 @@ if ($null -eq $failure -or $failure.Exception.Message -notlike '源码应用 Rel
 }
 $assertions++
 
+# 入口须保持 pwsh -File 的全局作用域：Core 测试的脚本级变量与函数要能从模块绑定脚本块和
+# GetNewClosure 闭包里解析，否则只在办公室安装期的 Core 回归里报错（2026-10-21 部署回滚）。
+[IO.File]::WriteAllText($corePath, @'
+Set-StrictMode -Version Latest
+$scopeModule = New-Module -Name CountdownEntryScopeProbe -ScriptBlock {
+    Set-StrictMode -Version Latest
+    function Get-CountdownEntryScopeValue { param($Value) $Value }
+}
+$scopeValue = 'script-level'
+function Get-CountdownEntryScopeHelper { 'script-function' }
+$null = & $scopeModule { Get-CountdownEntryScopeValue $scopeValue }
+$scopeClosure = { Get-CountdownEntryScopeHelper }.GetNewClosure()
+$null = & $scopeClosure
+'{"Passed":1,"Failed":0}'
+'@, $utf8)
+$failure = $null
+try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh -EvidenceDirectory $root | Out-Null }
+catch { $failure = $_ }
+if ($null -eq $failure -or $failure.Exception.Message -notlike '源码应用 Release 构建*') {
+    throw "入口必须让脚本级变量与函数在模块作用域和闭包里可见。实际：$(if ($null -ne $failure) { $failure.Exception.Message })"
+}
+$assertions++
+
 # 子脚本写小段日志后等待释放；在释放前读取文件可证明不是退出后才落盘。
 $release = Join-Path $root 'release'
 [IO.File]::WriteAllText($corePath, @"

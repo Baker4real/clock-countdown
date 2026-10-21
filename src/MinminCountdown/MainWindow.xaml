@@ -1173,10 +1173,12 @@
                 <Canvas x:Name="CountdownWorkspace"
                         Width="864"
                         Height="738">
+                  <!-- 编辑卡顶边落在装饰带下沿（画布 DIP 292.6）之下，与便签页同样留约 7 DIP：
+                       不透明编辑卡与列表底层不得盖住三只玩偶。高度由 UpdateCountdownListHeight 按 Margin.Top 重算。 -->
                   <Grid x:Name="CountdownWorkspaceBody"
-                        Margin="28,19,29,0"
+                        Margin="28,84,29,0"
                         Width="807"
-                        Height="719">
+                        Height="654">
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="18" />
@@ -1476,12 +1478,12 @@
                          本行保留为列表与页面下缘之间的结构间距，不再承载装饰文案。 -->
                   </Grid>
                   <!-- #154：倒计时页手写体装饰落点（§4/§5 装饰层合同）——设计坐标绝对落点，
-                       IsHitTestVisible=False、不参与表单测量、不挤字段；视觉位置与迁移前一致
-                       （右上 (475,3) 右对齐宽 305；右下 (653,718) 右对齐宽 182）。 -->
+                       IsHitTestVisible=False、不参与表单测量、不挤字段。右上 (395,55) 右对齐宽 305：
+                       装饰带波浪线下、酷洛米左侧、编辑卡之上，不压任何玩偶；右下 (653,718) 右对齐宽 182。 -->
                   <!-- #156：倒计时页两处手写体装饰退出控件朗读（SilentTextBlock 无自动化 peer）；
                        不再携带「装饰文案」可访问名，装饰信息不进朗读树（§4/#156 合同）。 -->
-                  <local:SilentTextBlock Canvas.Left="475"
-                             Canvas.Top="3"
+                  <local:SilentTextBlock Canvas.Left="395"
+                             Canvas.Top="55"
                              Width="305"
                              TextAlignment="Right"
                              Text="每一个期待，都值得被认真对待 ♡"

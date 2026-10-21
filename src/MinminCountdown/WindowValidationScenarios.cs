@@ -1076,6 +1076,12 @@ public sealed partial class MainWindow
     ///     管理窗最小/关闭为矢量窗铬、页签与分段激活胶囊短边一半全圆角、倒计时页手写体落装饰层、
     ///     管理窗请求 DWM 原生圆角与系统阴影且不开整窗透明、页签在装饰带之上（#135 工作台骨架次序）。
     /// </summary>
+    // 装饰 raster 原生 1165×1350，以 Fill 铺到 864×1000 管理窗画布；顶部装饰带下沿取
+    // tools/MainDecorationSceneBands.psd1 的 TopBandEnd（倒计时 395、便签 415）按画布高换算。
+    private const double DecorationRasterHeight = 1350;
+    private const double CountdownDecorationBandBottom = 395 * 1000 / DecorationRasterHeight;
+    private const double NotesDecorationBandBottom = 415 * 1000 / DecorationRasterHeight;
+
     internal MainVisualChromeScenarios ProbeVisualChromeScenarios()
     {
         var entryWorkspace = _workspace;
@@ -1085,6 +1091,7 @@ public sealed partial class MainWindow
             ShowWorkspace(WorkspaceKind.Notes);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
+            var notesEditorTop = NoteEditorPanel.TranslatePoint(new Point(), MainLayoutSurface).Y;
 
             // AC1：筛选漏斗改实心填充（InkBrush）——1.8px 描边漏斗在 Aliased 捕获下只剩「筛选」文字
             // （v22 实证）；门禁钉「漏斗 Path 存在 + Fill/Stroke 同绑 InkBrush + 可见」。
@@ -1142,6 +1149,13 @@ public sealed partial class MainWindow
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
 
+            // 装饰带玩偶不被业务内容盖住：两页不透明编辑卡的顶边都落在各自装饰带下沿之下
+            // （#221 曾把倒计时编辑卡上移进装饰带，三只玩偶只剩头顶）。
+            var countdownEditorTop = CountdownEditorSurface.TranslatePoint(new Point(), MainLayoutSurface).Y;
+            var decorationBandCharactersUnobstructed =
+                countdownEditorTop >= CountdownDecorationBandBottom &&
+                notesEditorTop >= NotesDecorationBandBottom;
+
             // AC4：倒计时页手写体落装饰层——两处文案都是 CountdownWorkspace Canvas 直接子级
             // （绝对设计坐标落点），不在 CountdownWorkspaceBody 表单子树内参与测量。
             var decoFont = FindResource("HandwrittenDecoFontFamily") as FontFamily;
@@ -1195,7 +1209,8 @@ public sealed partial class MainWindow
                 segmentActivePillsUseFullRoundedCorners,
                 countdownHandwrittenDecoOutOfFormMeasurement,
                 mainWindowSquareChromeNoTransparency,
-                tabsRenderAboveDecorationBand);
+                tabsRenderAboveDecorationBand,
+                decorationBandCharactersUnobstructed);
         }
         finally
         {
@@ -5017,7 +5032,8 @@ internal sealed record MainVisualChromeScenarios(
     bool SegmentActivePillsUseFullRoundedCorners,
     bool CountdownHandwrittenDecoOutOfFormMeasurement,
     bool MainWindowSquareChromeNoTransparency,
-    bool TabsRenderAboveDecorationBand);
+    bool TabsRenderAboveDecorationBand,
+    bool DecorationBandCharactersUnobstructed);
 
 internal sealed record CountdownIncrementalRefreshProbe(
     bool IdentityPreserved,

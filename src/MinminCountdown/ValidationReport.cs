@@ -597,7 +597,7 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-20-v56";
+    private const string FloatingReferenceBaselineVersion = "2026-10-21-v57";
     private const string FloatingReferenceScenario = "floating-countdowns-baseline";
     private const string FloatingLongNotesScenario = "long-notes";
     private const string FloatingSearchExpandedScenario = "notes-search-expanded";
@@ -704,7 +704,7 @@ internal static class ValidationReport
             "Expanded",
             "notes-search-expanded-day.png")
     };
-    private const string MainReferenceBaselineVersion = "2026-10-20-v56";
+    private const string MainReferenceBaselineVersion = "2026-10-21-v57";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
@@ -1086,6 +1086,7 @@ internal static class ValidationReport
             dateCalendar is not null &&
             Equals(dateCalendar.Background, Application.Current.FindResource("CanvasBrush")) &&
             Equals(dateCalendar.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
+        var calendarMonthGridLaidOut = CalendarMonthGridLaidOut(dateCalendar);
         datePicker.IsDropDownOpen = false;
 
         var dateBehaviorAttached = PickerTemplateParts.HasDatePickerContract(datePicker);
@@ -2164,7 +2165,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-20-v56 series includes edit-mode and filter-open standing frames.",
+                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-21-v57 series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
             ["DangerButtonContrast"] = dangerContrast,
             ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
@@ -2229,6 +2230,7 @@ internal static class ValidationReport
                 dateFamilyThemed,
             ["DatePickerTextOpensThemedPopup"] =
                 productionDatePickers.AttachedTextOpensThemedPopups && livePopupThemed,
+            ["DatePickerCalendarMonthGridLaidOut"] = calendarMonthGridLaidOut,
             ["DatePickerEscapeClosesAndReturnsFocus"] =
                 productionDatePickers.AttachedKeyboardLifecycleWorks,
             ["DatePickerProductionInputCount"] = productionDatePickers.ProductionInputCount,
@@ -2744,6 +2746,7 @@ internal static class ValidationReport
             ["FloatingShellLargeShadowRemoved"] = floatingShellLargeShadowRemoved,
             ["MainWindowSquareChromeNoTransparency"] = visualChrome.MainWindowSquareChromeNoTransparency,
             ["TabsRenderAboveDecorationBand"] = visualChrome.TabsRenderAboveDecorationBand,
+            ["DecorationBandCharactersUnobstructed"] = visualChrome.DecorationBandCharactersUnobstructed,
             ["NoteGroupingSelectorAbsent"] = noteGroupingSelectorAbsent,
             ["NoteDateTimelineVisuals"] = noteDateTimelineVisuals,
             ["NoteDisclosureAccessibility"] = noteDisclosureAccessibility,
@@ -3166,7 +3169,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
         report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-20-v56 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-21-v57 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -3898,13 +3901,14 @@ internal static class ValidationReport
 
         var bands = ReadMainDecorationBands(sourceRoot);
         // #221/#237: v54 shrinks the list-first management window to 864x1000. The opaque
-        // compact countdown form stays above the former decoration-band boundary; scan its
-        // actual bounds, independently sampled from the PNG at x=200; retain delta>=30 and
-        // every #189 negative fixture. Notes still starts one row below its top decoration
+        // compact countdown form now starts below its top decoration band (TopBandEnd 395 ->
+        // 395 * 1000 / 1350 = 292.6, form top 300) so it no longer covers the plush characters;
+        // scan its actual bounds, independently sampled from the PNG at x=200; retain delta>=30
+        // and every #189 negative fixture. Notes still starts one row below its top decoration
         // band scaled to the frame height (TopBandEnd 415 -> ceil(415 * 1000 / 1350) = 308).
         var specs = new[]
         {
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 273, 326, new[] { 277, 278, 279, 294, 295, 298, 299, 301, 302, 303, 304, 305, 317, 318, 319 }, 254, 272),
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 338, 391, new[] { 342, 343, 344, 359, 360, 363, 364, 366, 367, 368, 369, 370, 382, 383, 384 }, 319, 337),
             new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 309, 389, new[] { 314, 315, 348, 349, 367, 379, 380 }, 300, 313)
         };
         var directory = Path.Combine(
@@ -4420,8 +4424,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-20-v56", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "864x1000", "2026-10-20-v56", "manifest.json")
+            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-21-v57", "manifest.json"),
+            Path.Combine(referencesRoot, "main-window", "864x1000", "2026-10-21-v57", "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -7958,6 +7962,34 @@ internal static class ValidationReport
     private static Rect BoundsIn(FrameworkElement element, Visual ancestor) =>
         element.TransformToAncestor(ancestor)
             .TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
+
+    // 打开的月视图必须是 7 个有字的星期标题 + 6 行 × 7 列互不重叠的日期格。CalendarItem 只给格子写
+    // Grid.Row/Column，行列定义与星期标题模板都由模板提供；缺了它们，42 个日期会叠进同一格。
+    private static bool CalendarMonthGridLaidOut(WpfCalendar? calendar)
+    {
+        if (calendar?.Template?.FindName("PART_CalendarItem", calendar) is not CalendarItem item ||
+            item.Template?.FindName("PART_MonthView", item) is not Grid monthView)
+        {
+            return false;
+        }
+
+        var days = monthView.Children.OfType<CalendarDayButton>().ToArray();
+        var bounds = days.Select(day => BoundsIn(day, monthView)).ToArray();
+        var titles = monthView.Children.OfType<TextBlock>()
+            .Where(title => Grid.GetRow(title) == 0 && !string.IsNullOrWhiteSpace(title.Text))
+            .ToArray();
+        var overlapping = bounds.Where((rect, index) => bounds.Skip(index + 1).Any(other =>
+        {
+            var shared = Rect.Intersect(rect, other);
+            return !shared.IsEmpty && shared.Width > 0.5 && shared.Height > 0.5;
+        })).Any();
+        return days.Length == 42 &&
+            bounds.All(rect => rect.Width >= 24 && rect.Height >= 24) &&
+            bounds.Select(rect => Math.Round(rect.Left)).Distinct().Count() == 7 &&
+            bounds.Select(rect => Math.Round(rect.Top)).Distinct().Count() == 6 &&
+            !overlapping &&
+            titles.Length == 7;
+    }
 
     private static bool SameBounds(Rect actual, Rect expected) =>
         Math.Abs(actual.X - expected.X) <= 0.25 &&

@@ -41,9 +41,9 @@ function Write-TestSegmentTotal {
         ('[test-segment-total] seconds={0:F3}' -f $script:testClock.Elapsed.TotalSeconds))
 }
 
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-20-v56\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-21-v57\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\864x1000\2026-10-20-v56\manifest.json'
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\864x1000\2026-10-21-v57\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
 
 function Resolve-ReferenceBaselineMode {
@@ -4424,7 +4424,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
     # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
     # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    Assert-Equal 747 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（#235 多选批量操作与 #236 下班收尾行为合同）'
+    # 装饰带不遮挡玩偶与日历月视图布局修复新增 2 个运行时字段（DecorationBandCharactersUnobstructed、DatePickerCalendarMonthGridLaidOut）。
+    Assert-Equal 749 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（装饰带不遮挡玩偶与日历月视图布局合同）'
     Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
@@ -4453,6 +4454,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.FloatingShellLargeShadowRemoved) '悬浮外壳去掉字面色大面积投影，深度由 1px 暖边与 raster 表达（#154）'
     Assert-Equal $true ([bool] $adapterValidation.MainWindowSquareChromeNoTransparency) '管理窗请求 Windows 11 DWM 原生圆角与系统阴影、失败安全降级且不开整窗透明（#200）'
     Assert-Equal $true ([bool] $adapterValidation.TabsRenderAboveDecorationBand) '#135 工作台骨架次序：页签在装饰带之上（#154）'
+    Assert-Equal $true ([bool] $adapterValidation.DecorationBandCharactersUnobstructed) '倒计时与便签编辑卡顶边都落在装饰带下沿之下，三只玩偶不被不透明表面盖住'
     # #155 删除撤销、完成确认与脏退出（新增 3 个顶层键 + 源码契约）。
     Assert-Equal $true ([bool] $adapterValidation.DeleteUndoRestoresLastDelete) '删除成功后撤销出现在发起删除的窗口：悬浮窗就地恢复便签与规则提醒状态，管理窗口仍走状态条；Ctrl+Z 生效；焦点或悬停暂停 10 秒计时；确认框写明可撤销且取消为安全默认（#155/#214）'
     Assert-Equal $true ([bool] $adapterValidation.DirtyExitConfirmsUnsavedWork) '关闭悬浮窗和 Alt+F4 都会确认，正文包含「退出后不再提醒」；有未保存内容时列出未保存项；取消后悬浮窗和提醒派发仍在（#213）'
@@ -4852,7 +4854,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $floatingXamlSource -notmatch '<DropShadowEffect') '悬浮外壳无字面色 DropShadowEffect 元素（#154 源码契约）'
     Assert-Equal $true (
-        $mainWindowXamlSource -match 'Canvas\.Left="475"(?s).*?每一个期待，都值得被认真对待' -and
+        $mainWindowXamlSource -match 'Canvas\.Left="395"(?s).*?每一个期待，都值得被认真对待' -and
         $mainWindowXamlSource -match 'Canvas\.Left="653"(?s).*?生活很忙，但别忘了可爱') '倒计时页手写体装饰落点为 CountdownWorkspace Canvas 绝对坐标（#154 源码契约）'
     $mainWindowRootElement = [regex]::Match(
         $mainWindowXamlSource,
@@ -4885,6 +4887,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.DateInputReadOnly) '日期选择不接受自由文本输入（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.DatePickerButtonOpensCalendar) '点击日期下拉按钮打开日历弹层（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.DatePickerTextOpensCalendar) '点击日期文字打开全部主题化日历（#129 自 U1 迁移）'
+    Assert-Equal $true ([bool] $adapterValidation.DatePickerCalendarMonthGridLaidOut) '打开的月视图是 7 个星期标题 + 6×7 互不重叠的日期格，不叠进同一格'
     Assert-Equal $true ([bool] $adapterValidation.DatePickerTextClicksUseTheme) '日期文字点击绑定到全部主题化日期框（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.DatePickerTextOpensThemedPopup) '点击日期文字打开真实主题化日历弹层（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.DatePickerTextDefersCalendarUntilPointerRelease) '日期文字在指针释放前不提前打开日历（#129 自 U1 迁移）'
@@ -4934,7 +4937,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
     if ($mainReferenceBaselineRequired) {
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest'
-    Assert-Equal 'assets/ui-references/main-window/864x1000/2026-10-20-v56/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
+    Assert-Equal 'assets/ui-references/main-window/864x1000/2026-10-21-v57/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
     Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
@@ -4955,7 +4958,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 9 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口九个 Theme/Workspace/State 组合唯一'
     Assert-Equal 9 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口九帧 PNG hash 全部唯一'
     Assert-Equal 9 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口九帧状态指纹全部唯一'
-    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/864x1000/2026-10-20-v56/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口九帧路径可移植且基线与实拍 SHA 一致'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike 'assets/ui-references/main-window/864x1000/2026-10-21-v57/*.png' -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口九帧路径可移植且基线与实拍 SHA 一致'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 864000 }).Count '主窗口九帧 864×1000 画布全部不透明'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 864x1000 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 864 -or $_.ContentRoi.Height -ne 1000 -or $_.ContentRoi.PixelCount -ne 864000 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口九帧像素指标未超过 manifest 固定阈值'
@@ -4995,7 +4998,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $singleBorderMeasurements = @($adapterValidation.MainDaySingleBorder.Measurements | Sort-Object StateId)
     Assert-Equal 'Countdown-Day,Notes-Day' ((@($singleBorderMeasurements.StateId) -join ',')) '主窗口单边框精确覆盖日间两个工作区'
     Assert-Equal 0 @($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count '主窗口两态控件边、标签隔离和声明下半装饰均由像素测量通过'
-    Assert-Equal 'Countdown-Day:277/278/279/294/295/298/299/301/302/303/304/305/317/318/319:273:799;Notes-Day:314/315/348/349/367/379/380:309:625' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（#221 紧凑表单与 #237 等比收缩按 v54 864x1000 实拍定位，装饰带按帧尺寸换算，#189 扫描阈值与负控不变）'
+    Assert-Equal 'Countdown-Day:342/343/344/359/360/363/364/366/367/368/369/370/382/383/384:338:799;Notes-Day:314/315/348/349/367/379/380:309:625' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（倒计时编辑卡移到装饰带下沿之下后按 v57 864x1000 实拍定位，便签沿用 v54 定位；装饰带按帧尺寸换算，#189 扫描阈值与负控不变）'
     }
     else {
         Assert-Equal $false ([bool] $adapterValidation.MainReferenceBaselineValidated) '发布包不伪造未携带主窗口参考资产时的视觉验收'
@@ -5019,10 +5022,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
             'CrossInterfaceIntegration')) {
         Assert-Equal $true ([bool] $adapterValidation.$crossInterfaceGate) "跨界面整合门禁 $crossInterfaceGate 通过"
     }
-    if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-20-v56') {
-        throw '跨界面整合证据未记录 v56 真实帧'
+    if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-21-v57') {
+        throw '跨界面整合证据未记录 v57 真实帧'
     }
-    Assert-Equal '9A8FB679D3055D9A6553A930B9B4BF5209E251C6421E85AF106D4AA58F57A2D8' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（747字段；#235 多选批量操作与 #236 下班收尾行为合同）'
+    Assert-Equal 'D60BA26BC3AD56D603E1F0A487907C89761A2235AD1FE76933B7DDF53FF66DEA' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（749字段；装饰带不遮挡玩偶与日历月视图布局合同）'
     Assert-Equal $true ([bool] $adapterValidation.NoteCompletionUndoFeedback) '#233 两窗真实完成、重新打开事务、失败回滚、唯一撤销槽及10秒到期行为'
     Assert-Equal $true ([bool] $adapterValidation.NoteBatchKeyboardCompletion) '#235 键盘多选与原子完成，推进cursor并移除对应中心条目，失败整批保留'
     Assert-Equal $true ([bool] $adapterValidation.NoteBatchDeleteUndo) '#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝'
@@ -5193,8 +5196,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
         Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日间截图通过版本化 manifest'
-        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-10-20-v56/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
-        Assert-Equal '2026-10-20-v56' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
+        Assert-Equal 'assets/ui-references/floating-window/520x390/2026-10-21-v57/manifest.json' ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal '2026-10-21-v57' ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
@@ -5633,7 +5636,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainShortcutScopeIsSafe) '主窗口Ctrl快捷键允许输入焦点，避开弹层与模态上下文（#224）'
     # #129 去重迁移（U1 独有断言）：键盘焦点基线证据版本钉死。
     Assert-Equal $false ([bool] $adapterValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-20-v56')) '键盘焦点基线证据记录再生的 2026-10-20-v56 帧（#129 自 U1 迁移）'
+    Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-21-v57')) '键盘焦点基线证据记录再生的 2026-10-21-v57 帧（#129 自 U1 迁移）'
     Assert-Equal 'CountdownTab' ([string] $adapterValidation.MainKeyboardBehavior.InitialFocusedAutomationId) '主窗口 Loaded 后真实焦点落到倒计时工作区'
     Assert-Equal 'CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton' ([string]::Join(',', @($adapterValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
     $countdownTabPath = $adapterValidation.MainKeyboardBehavior.CountdownTabPath

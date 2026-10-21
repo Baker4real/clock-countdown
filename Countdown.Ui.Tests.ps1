@@ -80,9 +80,9 @@ $null = Set-PSBreakpoint -Script $PSCommandPath -Line @(
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-21-v57\manifest.json'
+$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-21-v58\manifest.json'
 $floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\864x1000\2026-10-21-v57\manifest.json'
+$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\864x1000\2026-10-21-v58\manifest.json'
 $mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',

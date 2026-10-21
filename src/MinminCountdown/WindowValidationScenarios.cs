@@ -1202,6 +1202,31 @@ public sealed partial class MainWindow
                 MainContentProjection.IsAncestorOf(CountdownTab) &&
                 MainContentProjection.IsAncestorOf(NotesTab);
 
+            // 命令栏设置齿轮与折叠新增展开入口为矢量路径：填充/描边绑定按钮 Foreground、按钮内容区不把图标挤裁，
+            // 展开入口收起态朝下、展开态转 180°；不再是 ⚙/⌄/⌃ 文本字形（v52–v57 帧里被内边距裁得只剩一截或一个点）。
+            var gear = UnclippedVectorIcon(PreferencesButton);
+            var chevron = UnclippedVectorIcon(CountdownEditorExpandButton);
+            var editorWasExpanded = MainCountdownTimeTagRow.Visibility == Visibility.Visible;
+            SetCountdownEditorExpanded(false);
+            var collapsedChevronAngle = (chevron?.RenderTransform as RotateTransform)?.Angle;
+            SetCountdownEditorExpanded(true);
+            var expandedChevronAngle = (chevron?.RenderTransform as RotateTransform)?.Angle;
+            SetCountdownEditorExpanded(editorWasExpanded);
+            var mainCommandIconsUseVectorPaths =
+                gear is { Data: Geometry gearGeometry } &&
+                Math.Abs(gearGeometry.Bounds.Width - 15.32) <= 0.5 &&
+                Math.Abs(gearGeometry.Bounds.Height - 15.9) <= 0.5 &&
+                ReferenceEquals(gear.Fill, PreferencesButton.Foreground) &&
+                chevron is { Data: Geometry chevronGeometry } &&
+                Math.Abs(chevronGeometry.Bounds.Width - 10) <= 0.5 &&
+                Math.Abs(chevronGeometry.Bounds.Height - 5) <= 0.5 &&
+                Math.Abs(chevron.StrokeThickness - 2) <= 0.01 &&
+                chevron.StrokeStartLineCap == PenLineCap.Round &&
+                chevron.StrokeEndLineCap == PenLineCap.Round &&
+                ReferenceEquals(chevron.Stroke, CountdownEditorExpandButton.Foreground) &&
+                collapsedChevronAngle == 0 &&
+                expandedChevronAngle == 180;
+
             return new MainVisualChromeScenarios(
                 filterFunnelIconSurvivesAliasedCapture,
                 notesSearchDuplicateMagnifierRemoved,
@@ -1210,7 +1235,8 @@ public sealed partial class MainWindow
                 countdownHandwrittenDecoOutOfFormMeasurement,
                 mainWindowSquareChromeNoTransparency,
                 tabsRenderAboveDecorationBand,
-                decorationBandCharactersUnobstructed);
+                decorationBandCharactersUnobstructed,
+                mainCommandIconsUseVectorPaths);
         }
         finally
         {
@@ -1237,6 +1263,22 @@ public sealed partial class MainWindow
             glyph.StrokeStartLineCap == PenLineCap.Round &&
             glyph.StrokeEndLineCap == PenLineCap.Round &&
             ReferenceEquals(glyph.Stroke, button.Foreground);
+    }
+
+    // 命令栏图标按钮：内容为矢量 Path，且按钮留给内容的布局槽（外框扣掉边框与内边距）不比图标小——
+    // 共享按钮左右 13 DIP 的内边距会把 41/36 宽按钮的布局槽挤到 9/4 DIP，图标仍按自身 18/16 宽排版，超出部分被裁掉。
+    private static System.Windows.Shapes.Path? UnclippedVectorIcon(Button button)
+    {
+        button.ApplyTemplate();
+        if (button.Content is not System.Windows.Shapes.Path { Data: not null } icon ||
+            icon.ActualWidth <= 0 ||
+            VisualTreeHelper.GetParent(icon) is not ContentPresenter presenter)
+        {
+            return null;
+        }
+
+        var slot = LayoutInformation.GetLayoutSlot(presenter);
+        return slot.Width + 0.01 >= icon.ActualWidth && slot.Height + 0.01 >= icon.ActualHeight ? icon : null;
     }
 
     // #154：页签/分段模板激活胶囊短边一半全圆角——Surface 与 FocusRing 的 CornerRadius 钉值。
@@ -5033,7 +5075,8 @@ internal sealed record MainVisualChromeScenarios(
     bool CountdownHandwrittenDecoOutOfFormMeasurement,
     bool MainWindowSquareChromeNoTransparency,
     bool TabsRenderAboveDecorationBand,
-    bool DecorationBandCharactersUnobstructed);
+    bool DecorationBandCharactersUnobstructed,
+    bool MainCommandIconsUseVectorPaths);
 
 internal sealed record CountdownIncrementalRefreshProbe(
     bool IdentityPreserved,

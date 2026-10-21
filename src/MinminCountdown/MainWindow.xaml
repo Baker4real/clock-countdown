@@ -1111,10 +1111,18 @@
                     </StackPanel>
                   </Grid>
                 </Border>
-                <Button x:Name="PreferencesButton" Grid.Column="1" Width="41" Height="41"
+                <!-- 设置齿轮为矢量路径（与悬浮窗「设置」同为 6 齿，18x18 坐标系实心齿轮 + 同心孔，填充绑定按钮前景）。
+                     原「⚙」文本字形在 v52–v57 参考帧里被裁得只剩一截：共享按钮左右 13 的内边距把 41 宽按钮的
+                     内容区挤到 9 DIP，比图标还窄，所以 Padding 归零。 -->
+                <Button x:Name="PreferencesButton" Grid.Column="1" Width="41" Height="41" Padding="0"
                         Margin="0,0,12,0" HorizontalAlignment="Right" VerticalAlignment="Top"
-                        Content="⚙" ToolTip="显示设置" AutomationProperties.Name="打开显示设置"
-                        Style="{StaticResource MainSecondaryButton}" />
+                        ToolTip="显示设置" AutomationProperties.Name="打开显示设置"
+                        Style="{StaticResource MainSecondaryButton}">
+                  <Path Width="18"
+                        Height="18"
+                        Data="M 6.95,3.36 L 7.45,1.05 L 10.55,1.05 L 11.05,3.36 A 6,6 0 0 1 12.86,4.4 L 15.11,3.69 L 16.66,6.36 L 14.91,7.96 A 6,6 0 0 1 14.91,10.04 L 16.66,11.64 L 15.11,14.31 L 12.86,13.6 A 6,6 0 0 1 11.05,14.64 L 10.55,16.95 L 7.45,16.95 L 6.95,14.64 A 6,6 0 0 1 5.14,13.6 L 2.89,14.31 L 1.34,11.64 L 3.09,10.04 A 6,6 0 0 1 3.09,7.96 L 1.34,6.36 L 2.89,3.69 L 5.14,4.4 A 6,6 0 0 1 6.95,3.36 Z M 11.7,9 A 2.7,2.7 0 1 0 6.3,9 A 2.7,2.7 0 1 0 11.7,9 Z"
+                        Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" />
+                </Button>
                 <Button x:Name="FilterButton"
                         Grid.Column="2"
                         Width="99"
@@ -1307,9 +1315,26 @@
                           <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,19,0,0">
                             <Button x:Name="SaveCountdownButton" Width="133" Height="41" MinHeight="41"
                                     Content="＋ 添加倒计时" Style="{StaticResource MainPrimaryButton}" />
-                            <Button x:Name="CountdownEditorExpandButton" Width="36" Height="41" Margin="6,0,0,0"
-                                    Content="⌄" ToolTip="展开时间、标签和提醒" AutomationProperties.Name="展开新增倒计时选项"
-                                    Style="{StaticResource MainSecondaryButton}" />
+                            <!-- 展开入口为矢量 V 形（与便签日期分组箭头同一画法，2px 圆头描边绑定按钮前景）：
+                                 收起态朝下，展开态转 180°。原「⌄」「⌃」文本字形在 v52–v57 参考帧里只剩一个小点：
+                                 共享内边距让 36 宽按钮的内容区只剩 4 DIP，所以 Padding 归零。 -->
+                            <Button x:Name="CountdownEditorExpandButton" Width="36" Height="41" Margin="6,0,0,0" Padding="0"
+                                    ToolTip="展开时间、标签和提醒" AutomationProperties.Name="展开新增倒计时选项"
+                                    Style="{StaticResource MainSecondaryButton}">
+                              <Path Width="16"
+                                    Height="16"
+                                    Data="M 3,5.5 L 8,10.5 L 13,5.5"
+                                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                                    StrokeThickness="2"
+                                    StrokeStartLineCap="Round"
+                                    StrokeEndLineCap="Round"
+                                    StrokeLineJoin="Round"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Path.RenderTransform>
+                                  <RotateTransform x:Name="CountdownEditorExpandChevronRotation" Angle="0" />
+                                </Path.RenderTransform>
+                              </Path>
+                            </Button>
                           </StackPanel>
                         </Grid>
                         <Grid x:Name="MainCountdownTimeTagRow" Grid.Row="2" Margin="0,10,0,0" Visibility="Collapsed">

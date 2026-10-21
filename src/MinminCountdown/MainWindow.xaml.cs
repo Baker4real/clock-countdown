@@ -902,7 +902,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownEditorHeading.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         MainCountdownTimeTagRow.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         MainCountdownActionRow.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
-        CountdownEditorExpandButton.Content = expanded ? "⌃" : "⌄";
+        CountdownEditorExpandChevronRotation.Angle = expanded ? 180 : 0;
         var action = expanded ? "收起" : "展开";
         var mode = _editingCountdownId is null ? "新增" : "编辑";
         AutomationProperties.SetName(CountdownEditorExpandButton,

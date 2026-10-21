@@ -141,6 +141,7 @@ internal static class ValidationReportContract
         "CountdownRowDeadlineAndSecondaryDeleteBehavior",
         "TabsRenderAboveDecorationBand",
         "DecorationBandCharactersUnobstructed",
+        "MainCommandIconsUseVectorPaths",
         "FloatingQuickAddDayResourcesFollowLocalTheme",
         "FloatingQuickAddIndependentFromApplicationTheme",
         "FloatingQuickAddThemeResourceIsolationBehavior",

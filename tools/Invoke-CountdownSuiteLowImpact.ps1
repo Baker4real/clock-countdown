@@ -88,16 +88,41 @@ try {
     })
 
     $watcher = @{ Process = $null; LeakLog = $null }
+    # 办公室部署只安装、不跑测试，上传前按提交核对本机套件证据：开跑与收尾各记一次 HEAD
+    # 和工作树是否干净，两次是同一提交且都干净，这轮结果才代表该提交。
+    $readSourceState = {
+        param([string] $Root)
+        $head = @(& git -C $Root rev-parse --verify HEAD 2>$null)
+        $headExitCode = $LASTEXITCODE
+        $status = @(& git -C $Root --no-optional-locks status --porcelain=v1 --untracked-files=all 2>$null)
+        $statusExitCode = $LASTEXITCODE
+        [pscustomobject]@{
+            Commit = if ($headExitCode -eq 0 -and $head.Count -eq 1) { ([string] $head[0]).Trim() } else { $null }
+            Clean = $statusExitCode -eq 0 -and $status.Count -eq 0
+        }
+    }
     $initialize = {
         param($run)
+        $sourceAtStart = & $readSourceState $repoRoot
+        $run | Add-Member -NotePropertyName Source -NotePropertyValue ([pscustomobject]@{
+                Commit = $sourceAtStart.Commit; CleanAtStart = $sourceAtStart.Clean; CommitAtEnd = $null; CleanAtEnd = $null })
         $watcher.LeakLog = Join-Path $run.LogDirectory "$($run.RunId)-desktop-leaks.log"
         $watcher.Process = Start-Process -FilePath $pwsh -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Watch-DesktopWindows.ps1'), '-Seconds', '86400', '-SuiteLeakOnly', '-OutputPath', $watcher.LeakLog) -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $run.LogDirectory "$($run.RunId)-watcher.out.log") -RedirectStandardError (Join-Path $run.LogDirectory "$($run.RunId)-watcher.err.log")
     }.GetNewClosure()
     $finalize = {
         param($run)
-        if ($null -ne $watcher.Process) {
-            try { if (-not $watcher.Process.HasExited) { $watcher.Process.Kill($true); [void]$watcher.Process.WaitForExit(5000) } }
-            finally { $watcher.Process.Dispose() }
+        try {
+            if ($null -ne $watcher.Process) {
+                try { if (-not $watcher.Process.HasExited) { $watcher.Process.Kill($true); [void]$watcher.Process.WaitForExit(5000) } }
+                finally { $watcher.Process.Dispose() }
+            }
+        }
+        finally {
+            if ($null -ne $run.PSObject.Properties['Source']) {
+                $sourceAtEnd = & $readSourceState $repoRoot
+                $run.Source.CommitAtEnd = $sourceAtEnd.Commit
+                $run.Source.CleanAtEnd = $sourceAtEnd.Clean
+            }
         }
     }.GetNewClosure()
     $failureProbe = {

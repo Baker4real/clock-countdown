@@ -65,8 +65,10 @@ $powerShellEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction 
 if ([string]::IsNullOrWhiteSpace($powerShellEngine)) {
     throw '未找到 pwsh.exe；本项目要求 PowerShell 7+，不支持 Windows PowerShell 5.1。'
 }
+# 办公室延迟提交（-DeferCommit）只安装：验收套件已在发起端本机跑完，部署器上传前核对同一提交的
+# 本机套件证据，远端不运行任何测试，也就不需要受管 dotnet。本机直接安装仍先跑完整验收套件。
 $dotnetPath = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
-if (-not (Test-Path -LiteralPath $dotnetPath -PathType Leaf)) {
+if (-not $DeferCommit -and -not (Test-Path -LiteralPath $dotnetPath -PathType Leaf)) {
     throw "未找到验收套件所需的受管 dotnet：$dotnetPath"
 }
 $powerShellProcessName = [System.IO.Path]::GetFileName($powerShellEngine)
@@ -157,15 +159,13 @@ function Wait-CountdownNetworkTimeSource {
     throw "Windows Time did not report a network source within $TimeoutSeconds seconds: $lastResult"
 }
 
-$validationSuite = Invoke-CountdownValidationSuite `
-    -Root $staging `
-    -PowerShell7Path $powerShellEngine `
-    -DotnetPath $dotnetPath `
-    -ParentTransactionMutexHeld:$ParentTransactionMutexHeld
-$testOutput = [string] $validationSuite.TestOutput
-$cSharpTestOutput = [string] $validationSuite.CSharpTestOutput
-$uiTestOutput = [string] $validationSuite.UiTestOutput
-$uiValidationOutput = [string] $validationSuite.UiValidationOutput
+$validationSuite = $null
+if (-not $DeferCommit) {
+    $validationSuite = Invoke-CountdownValidationSuite `
+        -Root $staging `
+        -PowerShell7Path $powerShellEngine `
+        -DotnetPath $dotnetPath
+}
 
 $launcherPath = Join-Path $desktop '敏敏子倒计时.exe'
 $launcherStatePath = Join-Path $install 'launcher-state.json'
@@ -324,12 +324,13 @@ try {
         $inventoryEvidencePath = Join-Path $inventoryEvidenceRoot ('installed-files-{0}.json' -f [guid]::NewGuid().ToString('N'))
         $installedInventory = @(Get-ChildItem -LiteralPath $install -File -Recurse | Select-Object FullName, Length, @{n='Hash';e={(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash}})
         [System.IO.File]::WriteAllText($inventoryEvidencePath, ($installedInventory | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
-        $result = [ordered]@{
-            TestOutput = $testOutput.Trim()
-            CSharpTestOutput = $cSharpTestOutput.Trim()
-            UiTestOutput = $uiTestOutput.Trim()
-            UiValidationOutput = $uiValidationOutput.Trim()
-            Validation = [ordered]@{
+        $result = [ordered]@{}
+        if ($null -ne $validationSuite) {
+            $result.TestOutput = ([string] $validationSuite.TestOutput).Trim()
+            $result.CSharpTestOutput = ([string] $validationSuite.CSharpTestOutput).Trim()
+            $result.UiTestOutput = ([string] $validationSuite.UiTestOutput).Trim()
+            $result.UiValidationOutput = ([string] $validationSuite.UiValidationOutput).Trim()
+            $result.Validation = [ordered]@{
                 SchemaVersion = [int] $validationSuite.SchemaVersion
                 Valid = [bool] $validationSuite.Valid
                 CoreTestsPassed = [int] $validationSuite.CoreTestsPassed
@@ -338,20 +339,20 @@ try {
                 UiValid = [bool] $validationSuite.UiValid
                 AdapterUiValidated = [bool] $validationSuite.AdapterUiValidated
             }
-            InstalledFileCount = [int] $installedInventory.Count
-            InstalledFilesEvidencePath = $inventoryEvidencePath
-            Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
-            Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}
-            TaskInfo = Get-ScheduledTaskInfo -TaskName $taskName | Select-Object LastRunTime, LastTaskResult, NextRunTime
-            RuntimeStatus = $runtimeStatus
-            LaunchToken = $startupRequest.launchToken
-            InteractiveSessionId = [int] $interactiveContext.SessionId
-            TimeSource = $timeSource
-            TimeStatus = $timeStatus
-            RecoveredTransactions = $recoveredTransactions
-            DeferredCommit = [bool] $DeferCommit
-            TransactionPath = if ($DeferCommit) { $transaction.transactionPath } else { $null }
         }
+        $result.InstalledFileCount = [int] $installedInventory.Count
+        $result.InstalledFilesEvidencePath = $inventoryEvidencePath
+        $result.Launcher = Get-Item -LiteralPath $launcherPath | Select-Object FullName, Length
+        $result.Task = Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State, @{n='Execute';e={$_.Actions.Execute}}, @{n='Arguments';e={$_.Actions.Arguments}}, @{n='LogonType';e={$_.Principal.LogonType}}
+        $result.TaskInfo = Get-ScheduledTaskInfo -TaskName $taskName | Select-Object LastRunTime, LastTaskResult, NextRunTime
+        $result.RuntimeStatus = $runtimeStatus
+        $result.LaunchToken = $startupRequest.launchToken
+        $result.InteractiveSessionId = [int] $interactiveContext.SessionId
+        $result.TimeSource = $timeSource
+        $result.TimeStatus = $timeStatus
+        $result.RecoveredTransactions = $recoveredTransactions
+        $result.DeferredCommit = [bool] $DeferCommit
+        $result.TransactionPath = if ($DeferCommit) { $transaction.transactionPath } else { $null }
         if ($DeferCommit) {
             $installStage = 'write-deferred-receipt'
             [void] (Write-CountdownDeferredInstallReceipt -Path $DeferredReceiptPath -TransactionPath $transaction.transactionPath -LaunchToken $startupRequest.launchToken -InteractiveSessionId ([int] $interactiveContext.SessionId))

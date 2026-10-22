@@ -1098,6 +1098,95 @@ function Write-OfficeSshClientIdentityEvidence {
     $path
 }
 
+function ConvertFrom-CountdownLocalValidationEvidenceJson {
+    param(
+        [Parameter(Mandatory)] [string] $Json,
+        [Parameter(Mandatory)] [ValidatePattern('^[0-9a-fA-F]{40}$')] [string] $ExpectedCommit
+    )
+    $evidence = $Json | ConvertFrom-Json -DateKind String
+    if ((@($evidence.PSObject.Properties.Name) -join ',') -cne 'SchemaVersion,Commit,SuiteRunId,SuiteRunSha256,StartedAtUtc,FinishedAtUtc,Stages') {
+        throw '本机验收证据字段不符合契约。'
+    }
+    if ($evidence.SchemaVersion -is [bool] -or $evidence.SchemaVersion -ne 1) { throw '本机验收证据 SchemaVersion 不受支持。' }
+    if ($evidence.Commit -isnot [string] -or -not [string]::Equals($evidence.Commit, $ExpectedCommit, [StringComparison]::OrdinalIgnoreCase)) {
+        throw '本机验收证据的提交与部署提交不一致。'
+    }
+    if ($evidence.SuiteRunId -isnot [string] -or $evidence.SuiteRunId -cnotmatch '^\d{8}T\d{9}-[0-9a-f]{8}$') { throw '本机验收证据的套件 runId 无效。' }
+    if ($evidence.SuiteRunSha256 -isnot [string] -or $evidence.SuiteRunSha256 -cnotmatch '^[A-F0-9]{64}$') { throw '本机验收证据的套件记录哈希无效。' }
+    foreach ($timestamp in @($evidence.StartedAtUtc, $evidence.FinishedAtUtc)) {
+        if ($timestamp -isnot [string]) { throw '本机验收证据的时间戳无效。' }
+        [void] [DateTimeOffset]::Parse($timestamp, [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $requiredStages = [string[]] @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate')
+    $stages = @($evidence.Stages)
+    if ($stages.Count -ne $requiredStages.Count) { throw '本机验收证据的阶段数量不符合六阶段套件。' }
+    for ($i = 0; $i -lt $requiredStages.Count; $i++) {
+        $stage = $stages[$i]
+        if ($null -eq $stage -or (@($stage.PSObject.Properties.Name) -join ',') -cne 'Stage,Status,ExitCode,ElapsedSeconds' -or
+            $stage.Stage -cne $requiredStages[$i] -or $stage.Status -cne 'Completed' -or
+            $stage.ExitCode -is [bool] -or $stage.ExitCode -ne 0 -or
+            $stage.ElapsedSeconds -is [bool] -or $stage.ElapsedSeconds -lt 0) {
+            throw "本机验收证据的阶段 $($requiredStages[$i]) 未通过或不符合契约。"
+        }
+    }
+    $evidence
+}
+
+function Find-CountdownLocalValidationRun {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [ValidatePattern('^[0-9a-fA-F]{40}$')] [string] $Commit,
+        [Parameter(Mandatory)] [string] $RepositoryRoot,
+        [string] $SuiteRunDirectory
+    )
+    # 办公室端只安装、不跑测试：上传前必须有同一提交在本机干净工作树上跑完的六阶段套件记录。
+    # 启动器在 run.json 的 Source 里记下开跑与收尾时的 HEAD 和工作树是否干净。
+    if ([string]::IsNullOrWhiteSpace($SuiteRunDirectory)) { $SuiteRunDirectory = Join-Path $RepositoryRoot 'logs\suite-runs' }
+    $requiredStages = [string[]] @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate')
+    $repositoryRootPath = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\')
+    $rejections = [Collections.Generic.List[string]]::new()
+    $runFiles = @()
+    if (Test-Path -LiteralPath $SuiteRunDirectory -PathType Container) {
+        $runFiles = @(Get-ChildItem -LiteralPath $SuiteRunDirectory -Filter '*-run.json' -File | Sort-Object Name -Descending)
+    }
+    foreach ($runFile in $runFiles) {
+        try { $run = [IO.File]::ReadAllText($runFile.FullName, [Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json -DateKind String }
+        catch { continue }
+        $source = $run.PSObject.Properties['Source']
+        if ($null -eq $source -or $null -eq $source.Value -or $null -eq $source.Value.PSObject.Properties['Commit'] -or
+            -not [string]::Equals([string] $source.Value.Commit, $Commit, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        try {
+            if ($run.SchemaVersion -ne 1) { throw "套件记录 schema 不受支持：$($run.SchemaVersion)" }
+            if (-not [string]::Equals([IO.Path]::GetFullPath([string] $run.RepositoryRoot).TrimEnd('\'), $repositoryRootPath, [StringComparison]::OrdinalIgnoreCase)) {
+                throw '套件记录不属于本仓库 checkout。'
+            }
+            if ($run.Status -cne 'Completed' -or $run.ExitCode -ne 0) { throw "套件未通过：$($run.Status)" }
+            if ($source.Value.CleanAtStart -isnot [bool] -or -not $source.Value.CleanAtStart -or
+                $source.Value.CleanAtEnd -isnot [bool] -or -not $source.Value.CleanAtEnd -or
+                -not [string]::Equals([string] $source.Value.CommitAtEnd, $Commit, [StringComparison]::OrdinalIgnoreCase)) {
+                throw '套件开跑或收尾时工作树不干净或 HEAD 已变化。'
+            }
+            $stages = @(foreach ($name in $requiredStages) {
+                $stageRecords = @($run.Stages | Where-Object { $_.Stage -ceq $name })
+                if ($stageRecords.Count -ne 1 -or $stageRecords[0].Status -cne 'Completed' -or $stageRecords[0].ExitCode -ne 0) { throw "阶段 $name 缺失或未通过。" }
+                [pscustomobject][ordered]@{ Stage = $name; Status = 'Completed'; ExitCode = 0; ElapsedSeconds = [int] $stageRecords[0].ElapsedSeconds }
+            })
+            return [pscustomobject][ordered]@{
+                SchemaVersion = 1
+                Commit = $Commit
+                SuiteRunId = [string] $run.RunId
+                SuiteRunSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $runFile.FullName).Hash
+                StartedAtUtc = [string] $run.StartedAtUtc
+                FinishedAtUtc = [string] $run.FinishedAtUtc
+                Stages = $stages
+            }
+        }
+        catch { $rejections.Add("$($runFile.Name)：$($_.Exception.Message)") }
+    }
+    $detail = if ($rejections.Count -gt 0) { "同提交记录均不合格：$(@($rejections | Select-Object -First 3) -join '；')" } else { '没有同提交的套件记录。' }
+    throw "缺少提交 $($Commit.Substring(0, 7)) 的本机验收证据（$detail）。办公室端不跑测试，请先在干净的 main 上运行 pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage $($requiredStages -join ',')。"
+}
+
 function Get-OfficeDeploymentStatus {
     [CmdletBinding()]
     param(
@@ -1129,6 +1218,10 @@ function Get-OfficeDeploymentStatus {
                     [Text.Encoding]::ASCII.GetString($footer,22,40) -cne $Commit) { throw '提交快照的完整 commit 与目标不一致。' }
             } finally { $stream.Dispose() }
             $success = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson (Read-OfficeEvidenceText $run.FullName 'remote-deployment-success.json')
+            # v2 回执起办公室端不跑测试：成功记录必须带同一提交的本机验收证据。
+            if ($success.SchemaVersion -ge 2) {
+                [void] (ConvertFrom-CountdownLocalValidationEvidenceJson -Json (Read-OfficeEvidenceText $run.FullName 'local-validation.json') -ExpectedCommit $Commit)
+            }
             # Read data literals only; never execute historical scripts or modules.
             $install = Read-OfficeEvidenceText $run.FullName 'remote-install.ps1' -MaxBytes 1048576
             $bindingMatch = [regex]::Matches($install, "(?m)^  DeploymentBindingSha256 = '([A-Fa-f0-9]{64})'\r?$")
@@ -1297,6 +1390,10 @@ $initialRepositoryState = Assert-CountdownDeploymentRepositoryState `
     -RepositoryRoot $repoRoot `
     -Stage '构建前'
 $commit = $initialRepositoryState.Head
+Write-OfficeDeploymentProgress '核对同一提交的本机验收证据'
+$localValidation = Find-CountdownLocalValidationRun -Commit $commit -RepositoryRoot $repoRoot
+$localValidationJson = $localValidation | ConvertTo-Json -Depth 4
+[void] (ConvertFrom-CountdownLocalValidationEvidenceJson -Json $localValidationJson -ExpectedCommit $commit)
 $executionIdentityManifest = New-CountdownDeploymentCommitIdentityManifest `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `
@@ -1323,7 +1420,8 @@ $extractRoot = Join-Path $evidenceRoot 'package-check'
 $archive = Join-Path $evidenceRoot 'clock-countdown-windows.zip'
 $transferLedgerPath = Join-Path $evidenceRoot 'transfer-attempts.json'
 New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
-Write-OfficeDeploymentProgress "提交快照与构建：$shortCommit / $runId"
+[IO.File]::WriteAllText((Join-Path $evidenceRoot 'local-validation.json'), $localValidationJson, [Text.UTF8Encoding]::new($false))
+Write-OfficeDeploymentProgress "本机验收证据：套件 $($localValidation.SuiteRunId)；提交快照与构建：$shortCommit / $runId"
 Export-CountdownDeploymentCommitSnapshot `
     -GitPath $gitPath `
     -RepositoryRoot $repoRoot `

@@ -2,7 +2,6 @@
 
 [CmdletBinding()]
 param(
-    [switch] $ParentTransactionMutexHeld,
     [switch] $AcceptanceOnly,
     [switch] $ReleaseContractOnly,
     [switch] $ValidationOnly,
@@ -11,15 +10,6 @@ param(
 
 # CI 环境检测
 $isCIEnvironment = $env:GITHUB_ACTIONS -eq 'true' -or $env:CI -eq 'true'
-
-# office 上下文（本测试自身以 -ParentTransactionMutexHeld 运行，即办公室 SSH 暂存上下文）：
-# 本进程派生的全部窗口化子步骤（验证接口族、ReleaseContract 段的隔离套件复核等）与安装器
-# 套件调用（6482c5e）同样卸隔离直启——该上下文无法在自建隔离桌面初始化子进程（0xC0000142，
-# 第 5 次远端部署 normal-* 证据缺失与本地 SSH 复现实证的根因）。本地上下文不带标记，
-# 隔离 fail-closed 语义逐字不变；验证接口族区段入口的快照自封闭继续排除外部残留。
-if ($ParentTransactionMutexHeld) {
-    $env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
-}
 
 $ErrorActionPreference = 'Stop'
 # Native validation children emit UTF-8; decoding with Windows' cached 936
@@ -174,13 +164,10 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
     $originalValidationArtifactMode = $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE
     $originalValidationArtifactRecord = $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD
     $originalValidationSiblingMarker = $env:COUNTDOWN_VALIDATION_SIBLING_MARKER
-    # 隔离断言自封闭：快照入口标记（可能来自本脚本顶部对 office 上下文的注入）并在 finally
-    # 恢复；外部进程环境的残留不属于套件自身注入，经双分支断言可证伪。
+    # 隔离断言自封闭：快照入口标记（启动器 -AllowUnisolatedDesktop 调试时会带上）并在 finally
+    # 恢复；验证套件自身从不注入该标记，窗口化子步骤必须进各自的隔离桌面。
     $originalSuiteAllowUnisolated = $env:MINMIN_SUITE_ALLOW_UNISOLATED
     $env:MINMIN_SUITE_ALLOW_UNISOLATED = $null
-    if ($ParentTransactionMutexHeld) {
-        $env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
-    }
     $validationArtifactRecord = Join-Path $validationTestRoot 'application-settings-path.txt'
     $validationArtifactRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
     $validationSiblingMarker = Join-Path $validationArtifactRoot (
@@ -417,9 +404,8 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
 
         $validationApplicationFixture = $validationApplicationJson.Replace("'", "''")
         $validationFixtures = [ordered]@{
-            'Countdown.Core.Tests.ps1' = "param([switch] `$ParentTransactionMutexHeld)`r`n'{`"Passed`":11,`"Failed`":0}'"
+            'Countdown.Core.Tests.ps1' = "'{`"Passed`":11,`"Failed`":0}'"
             'Countdown.CSharp.Tests.ps1' = @"
-param([string] `$OfficeDeploymentStagingRoot)
 if (-not ('SuiteEvidenceDesktopProbe' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -453,16 +439,10 @@ public static class SuiteEvidenceDesktopProbe
 }
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
 [System.IO.File]::WriteAllText(
-    (Join-Path '$validationTestRoot' 'office-csharp-isolation-evidence.txt'),
+    (Join-Path '$validationTestRoot' 'csharp-isolation-evidence.txt'),
     ('allowUnisolated=' + [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') +
         [Environment]::NewLine + 'desktop=' + [SuiteEvidenceDesktopProbe]::GetDesktopName()),
     [System.Text.UTF8Encoding]::new(`$false))
-if (`$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot')) {
-    [System.IO.File]::WriteAllText(
-        (Join-Path '$validationTestRoot' 'office-staging-argument.txt'),
-        `$OfficeDeploymentStagingRoot,
-        [System.Text.UTF8Encoding]::new(`$false))
-}
 '{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
 "@
             'Countdown.Ui.Tests.ps1' = "'{`"Passed`":17,`"Failed`":0}'"
@@ -554,8 +534,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         $validationResult = Invoke-CountdownValidationSuite `
             -Root $validationTestRoot `
             -PowerShell7Path $validationPowerShell `
-            -DotnetPath $fixtureDotnet `
-            -ParentTransactionMutexHeld
+            -DotnetPath $fixtureDotnet
         $successfulValidationSettingsPath = [System.IO.File]::ReadAllText(
             $validationArtifactRecord,
             [System.Text.Encoding]::UTF8)
@@ -576,22 +555,18 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         Assert-Equal '{"Passed":13,"Failed":0,"AdapterUiValidated":true}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
         Assert-Equal '{"Passed":17,"Failed":0}' ([string] $validationResult.UiTestOutput) 'Validation interface preserves UI JSON compatibility'
         Assert-Equal $validationApplicationJson ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
-        Assert-Equal `
-            ([System.IO.Path]::GetFullPath((Split-Path -Parent $validationTestRoot))) `
-            ([System.IO.File]::ReadAllText((Join-Path $validationTestRoot 'office-staging-argument.txt'), [System.Text.Encoding]::UTF8)) `
-            'Validation interface passes the current staging root to C# tests while the parent transaction mutex is held'
-        $officeEvidencePath = Join-Path $validationTestRoot 'office-csharp-isolation-evidence.txt'
-        Assert-Equal $true (Test-Path -LiteralPath $officeEvidencePath -PathType Leaf) 'Validation interface office isolation evidence is written into the same validation run root'
-        $officeIsolationEvidenceLines = @()
-        if (Test-Path -LiteralPath $officeEvidencePath -PathType Leaf) {
-            $officeIsolationEvidenceLines = @((([System.IO.File]::ReadAllText($officeEvidencePath, [System.Text.Encoding]::UTF8)) -split '\r?\n'))
+        $isolationEvidencePath = Join-Path $validationTestRoot 'csharp-isolation-evidence.txt'
+        Assert-Equal $true (Test-Path -LiteralPath $isolationEvidencePath -PathType Leaf) 'Validation interface isolation evidence is written into the same validation run root'
+        $isolationEvidenceLines = @()
+        if (Test-Path -LiteralPath $isolationEvidencePath -PathType Leaf) {
+            $isolationEvidenceLines = @((([System.IO.File]::ReadAllText($isolationEvidencePath, [System.Text.Encoding]::UTF8)) -split '\r?\n'))
         }
-        # 判别式：隔离路径必把子进程放到 MinminSuiteIso-ValidateCSharp 桌面（与父桌面无关）；
-        # 直接启动则继承父桌面。子进程带标记且不在该桌面 = 卸隔离直启生效。
-        $officeChildOnIsolatedDesktop = $officeIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp'
+        # 判别式：隔离路径必把子进程放到 MinminSuiteIso-ValidateCSharp 桌面（与父桌面无关），
+        # 且套件不注入隔离 opt-out 标记；直接启动会继承父桌面。
         Assert-Equal $true `
-            ($officeIsolationEvidenceLines -contains 'allowUnisolated=1' -and -not $officeChildOnIsolatedDesktop) `
-            'Validation interface unisolates the windowed C# child inside the deferred office transaction context'
+            ($isolationEvidenceLines -contains 'allowUnisolated=' -and
+                $isolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp') `
+            'Validation interface keeps the windowed C# child on its isolated desktop'
         $fixtureInvocation = ([System.IO.File]::ReadAllLines($fixtureDotnetRecord, [System.Text.Encoding]::UTF8)[0] | ConvertFrom-Json)
         $dotnetParameter = (Get-Command Invoke-CountdownValidationSuite).Parameters['DotnetPath']
         $expectedApplicationProject = [System.IO.Path]::GetFullPath((Join-Path $validationTestRoot 'src\MinminCountdown\MinminCountdown.csproj'))
@@ -639,48 +614,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         [System.IO.File]::WriteAllText(
             (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
             @"
-param([string] `$OfficeDeploymentStagingRoot)
-if (-not ('SuiteEvidenceDesktopProbe' -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public static class SuiteEvidenceDesktopProbe
-{
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr GetThreadDesktop(uint threadId);
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern bool GetUserObjectInformationW(IntPtr handle, int index, StringBuilder info, int maxLength, out uint lengthNeeded);
-    public static string GetDesktopName()
-    {
-        IntPtr handle = GetThreadDesktop(GetCurrentThreadId());
-        if (handle == IntPtr.Zero)
-        {
-            throw new InvalidOperationException("GetThreadDesktop failed");
-        }
-        StringBuilder builder = new StringBuilder(256);
-        uint lengthNeeded;
-        if (!GetUserObjectInformationW(handle, 2, builder, 256, out lengthNeeded))
-        {
-            throw new InvalidOperationException("GetUserObjectInformationW failed");
-        }
-        return builder.ToString();
-    }
-}
-'@
-}
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
-[System.IO.File]::WriteAllText(
-    (Join-Path '$validationTestRoot' 'normal-office-staging-argument-present.txt'),
-    [string] `$PSBoundParameters.ContainsKey('OfficeDeploymentStagingRoot'),
-    [System.Text.UTF8Encoding]::new(`$false))
-[System.IO.File]::WriteAllText(
-    (Join-Path '$validationTestRoot' 'normal-csharp-isolation-evidence.txt'),
-    ('allowUnisolated=' + [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') +
-        [Environment]::NewLine + 'desktop=' + [SuiteEvidenceDesktopProbe]::GetDesktopName()),
-    [System.Text.UTF8Encoding]::new(`$false))
 [Console]::Error.WriteLine('expected diagnostic')
 '{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
 "@,
@@ -699,71 +633,6 @@ public static class SuiteEvidenceDesktopProbe
             $successfulDiagnosticPreserved = $false
         }
         Assert-Equal $true $successfulDiagnosticPreserved 'Validation interface parses stdout JSON without merging successful stderr diagnostics'
-        # 族级可证伪断言：夹具四份证据任一不在本次运行根内 = 写读发散，红（任一夹具写读发散即红）。
-        $familyEvidenceMissing = @(
-            @(
-                'office-staging-argument.txt',
-                'office-csharp-isolation-evidence.txt',
-                'normal-office-staging-argument-present.txt',
-                'normal-csharp-isolation-evidence.txt'
-            ) | Where-Object { -not (Test-Path -LiteralPath (Join-Path $validationTestRoot $_) -PathType Leaf) })
-        Assert-Equal '' (@($familyEvidenceMissing) -join ',') 'Validation interface fixture family writes and reads every evidence file inside the same run root'
-        $normalStagingArgumentPath = Join-Path $validationTestRoot 'normal-office-staging-argument-present.txt'
-        $normalStagingArgumentLines = @()
-        if (Test-Path -LiteralPath $normalStagingArgumentPath -PathType Leaf) {
-            $normalStagingArgumentLines = @([System.IO.File]::ReadAllText($normalStagingArgumentPath, [System.Text.Encoding]::UTF8) -split '\r?\n')
-        }
-        Assert-Equal `
-            'False' `
-            ([string] $normalStagingArgumentLines[0]) `
-            'Validation interface does not pass the office staging parameter outside the parent transaction context'
-        $normalEvidencePath = Join-Path $validationTestRoot 'normal-csharp-isolation-evidence.txt'
-        Assert-Equal $true (Test-Path -LiteralPath $normalEvidencePath -PathType Leaf) 'Validation interface normal-run isolation evidence is written into the same validation run root'
-        $normalIsolationEvidenceLines = @()
-        if (Test-Path -LiteralPath $normalEvidencePath -PathType Leaf) {
-            $normalIsolationEvidenceLines = @((([System.IO.File]::ReadAllText($normalEvidencePath, [System.Text.Encoding]::UTF8)) -split '\r?\n'))
-        }
-        # 双分支钉死：本地上下文隔离 fail-closed（标记空且子进程在隔离桌面）；
-        # office 上下文（本测试带 -ParentTransactionMutexHeld）与安装器套件调用同语义卸隔离
-        # （标记=1 且不在隔离桌面），与 office 分支断言互为镜像，任一分支语义不放宽。
-        if ($ParentTransactionMutexHeld) {
-            Assert-Equal $true `
-                ($normalIsolationEvidenceLines -contains 'allowUnisolated=1' -and
-                    -not ($normalIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp')) `
-                'Validation interface unisolates the normal-context windowed C# child inside the deferred office transaction context'
-        }
-        else {
-            Assert-Equal $true `
-                ($normalIsolationEvidenceLines -contains 'allowUnisolated=' -and
-                    $normalIsolationEvidenceLines -ccontains 'desktop=MinminSuiteIso-ValidateCSharp') `
-                'Validation interface keeps the windowed C# child on its isolated desktop outside the office transaction context'
-        }
-
-        $cSharpTestScript = Join-Path $PSScriptRoot 'Countdown.CSharp.Tests.ps1'
-        $invalidOfficeStagingRoot = Join-Path 'D:\Codex\deploy' ("invalid-csharp-staging-" + [guid]::NewGuid().ToString('N'))
-        $invalidSourceOutput = @(& $validationPowerShell `
-                -NoLogo `
-                -NoProfile `
-                -NonInteractive `
-                -STA `
-                -File $cSharpTestScript `
-                -OfficeDeploymentStagingRoot $invalidOfficeStagingRoot 2>&1)
-        $invalidSourceExitCode = $LASTEXITCODE
-        # 跨进程捕获的中文错误文本会被 SSH/console 编码边界破坏，断言只匹配 ASCII 标记。
-        Assert-Equal $true ($invalidSourceExitCode -ne 0 -and ($invalidSourceOutput -join "`n") -match 'office-staging-source-mismatch') 'C# tests reject an office staging that does not own the script source before creating test data'
-        Assert-Equal $false (Test-Path -LiteralPath $invalidOfficeStagingRoot) 'Rejected office staging validation creates no directory'
-
-        $nestedOfficeStagingRoot = Join-Path $invalidOfficeStagingRoot 'nested'
-        $nestedStagingOutput = @(& $validationPowerShell `
-                -NoLogo `
-                -NoProfile `
-                -NonInteractive `
-                -STA `
-                -File $cSharpTestScript `
-                -OfficeDeploymentStagingRoot $nestedOfficeStagingRoot 2>&1)
-        $nestedStagingExitCode = $LASTEXITCODE
-        Assert-Equal $true ($nestedStagingExitCode -ne 0 -and ($nestedStagingOutput -join "`n") -match 'office-staging-root-invalid') 'C# tests reject a nested office staging before creating test data'
-        Assert-Equal $false (Test-Path -LiteralPath $invalidOfficeStagingRoot) 'Rejected nested staging validation creates no parent directory'
 
         [System.IO.File]::WriteAllText(
             (Join-Path $validationTestRoot 'Countdown.Ui.Tests.ps1'),
@@ -905,7 +774,7 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
     $remoteDeploymentPowerShell = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop |
         Select-Object -First 1 -ExpandProperty Source)
     function New-CountdownRemoteDeploymentFixtureAdapter {
-        param([ValidateSet('Success', 'BeginFailure', 'ValidationFailure', 'AdapterUiValidationFailure', 'ValidationSchemaFailure', 'AcceptanceFailure', 'CommitThenFail', 'RollbackFailure', 'FinalizeFailure', 'DisposeFailure', 'ValidationAndDisposeFailure', 'CommitProbeFailure', 'UnresolvedCommittedTransaction')] [string] $Mode)
+        param([ValidateSet('Success', 'BeginFailure', 'CandidateFailure', 'AcceptanceFailure', 'CommitThenFail', 'RollbackFailure', 'FinalizeFailure', 'DisposeFailure', 'CandidateAndDisposeFailure', 'CommitProbeFailure', 'UnresolvedCommittedTransaction')] [string] $Mode)
 
         $state = [pscustomobject]@{
             Mode = $Mode
@@ -937,18 +806,10 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
                     $AdapterState.PSObject.Properties.Remove('Committed')
                 }
                 [pscustomobject]@{
-                    Validation = [pscustomobject]@{
-                        SchemaVersion = if ($AdapterState.Mode -eq 'ValidationSchemaFailure') { 999 } else { 1 }
-                        Valid = $AdapterState.Mode -notin @('ValidationFailure', 'RollbackFailure', 'ValidationAndDisposeFailure', 'CommitProbeFailure', 'UnresolvedCommittedTransaction')
-                        CoreTestsPassed = 11
-                        CSharpTestsPassed = 13
-                        UiTestsPassed = 17
-                        UiValid = $true
-                        AdapterUiValidated = $AdapterState.Mode -ne 'AdapterUiValidationFailure'
-                    }
                     RuntimeStatus = [pscustomobject]@{
                         processId = 4242
-                        stage = 'window-ready'
+                        # 候选未达到 window-ready 是提交边界前的候选契约失败，触发回滚路径。
+                        stage = if ($AdapterState.Mode -in @('CandidateFailure', 'RollbackFailure', 'CandidateAndDisposeFailure', 'CommitProbeFailure', 'UnresolvedCommittedTransaction')) { 'starting' } else { 'window-ready' }
                         calendarState = 'Ready'
                     }
                 }
@@ -999,7 +860,7 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
             Dispose = {
                 param($AdapterState, $Context)
                 $AdapterState.Disposed = $true
-                if ($AdapterState.Mode -in @('DisposeFailure', 'ValidationAndDisposeFailure')) {
+                if ($AdapterState.Mode -in @('DisposeFailure', 'CandidateAndDisposeFailure')) {
                     throw '模拟资源释放失败。'
                 }
             }
@@ -1048,15 +909,6 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
         $adapter.Begin = {
             param($AdapterState, $Context)
             [pscustomobject]@{
-                Validation = [pscustomobject]@{
-                    SchemaVersion = 1
-                    Valid = $true
-                    CoreTestsPassed = 11
-                    CSharpTestsPassed = 13
-                    UiTestsPassed = 17
-                    UiValid = $true
-                    AdapterUiValidated = $true
-                }
                 RuntimeStatus = [pscustomobject]@{
                     processId = 4242
                     stage = 'window-ready'
@@ -1395,191 +1247,23 @@ Export-ModuleMember -Function Invoke-CountdownTransactionAcceptance
             '{"sensitive-settings-sentinel":true}',
             [System.Text.UTF8Encoding]::new($false))
 
-        $installedValidationTransaction = Join-Path $remoteDeploymentTestRoot 'installed-validation-transaction'
-        New-Item -ItemType Directory -Path $installedValidationTransaction -Force | Out-Null
-        $installedValidationApplication = Join-Path $remoteDeploymentInstall '敏敏子倒计时.ps1'
-        if (-not (Test-Path -LiteralPath $installedValidationApplication -PathType Leaf)) {
+        $installedApplicationFixture = Join-Path $remoteDeploymentInstall '敏敏子倒计时.ps1'
+        if (-not (Test-Path -LiteralPath $installedApplicationFixture -PathType Leaf)) {
             [System.IO.File]::WriteAllText(
-                $installedValidationApplication,
+                $installedApplicationFixture,
                 "param()`r`n",
                 [System.Text.UTF8Encoding]::new($false))
         }
-        $installedValidationActiveSettings = Join-Path $remoteDeploymentInstall 'settings.json'
-        $installedValidationActiveBefore = Get-Item -LiteralPath $installedValidationActiveSettings
-        $installedValidationActiveHashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $installedValidationActiveSettings).Hash
-        $installedValidationInvocation = [pscustomobject]@{
-            Executable = ''
-            Arguments = @()
-            SettingsFile = ''
-            ActiveSettingsArgumentObserved = $false
-        }
-        $installedValidationNativeInvocation = {
-            param([string] $Executable, [string[]] $Arguments)
 
-            $installedValidationInvocation.Executable = $Executable
-            $installedValidationInvocation.Arguments = [string[]] @($Arguments)
-            $settingsIndex = [Array]::IndexOf($Arguments, '-SettingsFile')
-            if ($settingsIndex -lt 0 -or $settingsIndex + 1 -ge $Arguments.Count) {
-                throw 'Native validation fixture did not receive -SettingsFile.'
-            }
-            $settingsFile = [string] $Arguments[$settingsIndex + 1]
-            $installedValidationInvocation.SettingsFile = $settingsFile
-            $installedValidationInvocation.ActiveSettingsArgumentObserved = @($Arguments) -contains $installedValidationActiveSettings
-            foreach ($path in @(
-                    $settingsFile,
-                    "$settingsFile.tmp",
-                    "$settingsFile.backup1",
-                    "$settingsFile.backup2",
-                    "$settingsFile.backup2.tmp",
-                    "$settingsFile.backup2.rollback"
-                )) {
-                [System.IO.File]::WriteAllText($path, 'fixture', [System.Text.UTF8Encoding]::new($false))
-            }
-            [pscustomobject]@{
-                ExitCode = 0
-                Output = [pscustomobject]@{
-                    Valid = $true
-                    FloatingWindowPresent = $true
-                    FloatingManagerButtonPresent = $true
-                } | ConvertTo-Json -Compress
-            }
-        }.GetNewClosure()
-        $installedValidationResult = Invoke-CountdownInstalledApplicationValidation `
-            -ApplicationPath $installedValidationApplication `
-            -PowerShell7Path $remoteDeploymentPowerShell `
-            -TransactionPath $installedValidationTransaction `
-            -ActiveSettingsPath $installedValidationActiveSettings `
-            -NativeInvocation $installedValidationNativeInvocation
-        $installedValidationActiveAfter = Get-Item -LiteralPath $installedValidationActiveSettings
-        Assert-Equal $true ([bool] $installedValidationResult.Valid) 'Remote installed application validation returns the native validation result'
-        Assert-Equal $true (@($installedValidationInvocation.Arguments) -contains '-ValidateOnly') 'Remote installed application validation invokes the installed app in validate-only mode'
-        Assert-Equal $false $installedValidationInvocation.ActiveSettingsArgumentObserved 'Remote installed application validation never passes the active settings path to the child process'
-        Assert-Equal $true ([System.IO.Path]::GetFullPath($installedValidationInvocation.SettingsFile).StartsWith([System.IO.Path]::GetFullPath($installedValidationTransaction).TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)) 'Remote installed application validation uses a transaction-local settings path'
-        Assert-Equal 0 @(
-            Get-ChildItem -LiteralPath $installedValidationTransaction -Force |
-                Where-Object { $_.Name -like 'installed-validation-*' }
-        ).Count 'Remote installed application validation cleans settings and companion files in finally'
-        Assert-Equal $installedValidationActiveBefore.Length $installedValidationActiveAfter.Length 'Remote installed application validation preserves active settings length'
-        Assert-Equal $installedValidationActiveBefore.LastWriteTimeUtc $installedValidationActiveAfter.LastWriteTimeUtc 'Remote installed application validation preserves active settings mtime'
-        Assert-Equal $installedValidationActiveHashBefore (Get-FileHash -Algorithm SHA256 -LiteralPath $installedValidationActiveSettings).Hash 'Remote installed application validation preserves active settings SHA-256'
-
-        $removedActiveSettingsPath = Join-Path $remoteDeploymentInstall 'removed-active.settings.json'
-        [System.IO.File]::WriteAllText($removedActiveSettingsPath, '{"active-settings":true}', [System.Text.UTF8Encoding]::new($false))
-        $activeSettingsRemovalInvocation = {
-            param([string] $Executable, [string[]] $Arguments)
-
-            [System.IO.File]::Delete($removedActiveSettingsPath)
-            & $installedValidationNativeInvocation $Executable $Arguments
-        }.GetNewClosure()
-        $activeSettingsRemovalRejected = $false
-        try {
-            Invoke-CountdownInstalledApplicationValidation `
-                -ApplicationPath $installedValidationApplication `
-                -PowerShell7Path $remoteDeploymentPowerShell `
-                -TransactionPath $installedValidationTransaction `
-                -ActiveSettingsPath $removedActiveSettingsPath `
-                -NativeInvocation $activeSettingsRemovalInvocation | Out-Null
-        }
-        catch {
-            $activeSettingsRemovalRejected = $_.Exception.Message -match '改变了现役 settings.json'
-        }
-        Assert-Equal $true $activeSettingsRemovalRejected 'Installed validation rejects present active settings removed by the child process'
-
-        $replacedActiveSettingsPath = Join-Path $remoteDeploymentInstall 'replaced-active.settings.json'
-        $replacementCandidatePath = "$replacedActiveSettingsPath.replacement"
-        [System.IO.File]::WriteAllText($replacedActiveSettingsPath, '{"active-settings":true}', [System.Text.UTF8Encoding]::new($false))
-        $replacedActiveSettingsBytes = [System.IO.File]::ReadAllBytes($replacedActiveSettingsPath)
-        $replacedActiveSettingsMtime = (Get-Item -LiteralPath $replacedActiveSettingsPath).LastWriteTimeUtc
-        $activeSettingsReplacementInvocation = {
-            param([string] $Executable, [string[]] $Arguments)
-
-            [System.IO.File]::WriteAllBytes($replacementCandidatePath, $replacedActiveSettingsBytes)
-            [System.IO.File]::SetLastWriteTimeUtc($replacementCandidatePath, $replacedActiveSettingsMtime)
-            [System.IO.File]::Move($replacementCandidatePath, $replacedActiveSettingsPath, $true)
-            [System.IO.File]::SetLastWriteTimeUtc($replacedActiveSettingsPath, $replacedActiveSettingsMtime)
-            & $installedValidationNativeInvocation $Executable $Arguments
-        }.GetNewClosure()
-        $activeSettingsReplacementRejected = $false
-        try {
-            Invoke-CountdownInstalledApplicationValidation `
-                -ApplicationPath $installedValidationApplication `
-                -PowerShell7Path $remoteDeploymentPowerShell `
-                -TransactionPath $installedValidationTransaction `
-                -ActiveSettingsPath $replacedActiveSettingsPath `
-                -NativeInvocation $activeSettingsReplacementInvocation | Out-Null
-        }
-        catch {
-            $activeSettingsReplacementRejected = $_.Exception.Message -match '改变了现役 settings.json'
-        }
-        finally {
-            Remove-Item -LiteralPath $replacementCandidatePath -Force -ErrorAction SilentlyContinue
-        }
-        Assert-Equal $true $activeSettingsReplacementRejected 'Installed validation rejects same-bytes active settings object replacement'
-
-        $freshInstallSettingsPath = Join-Path $remoteDeploymentInstall 'fresh-install.settings.json'
-        Assert-Equal $false (Test-Path -LiteralPath $freshInstallSettingsPath) 'Fresh-install validation starts without an active settings file'
-        $freshInstallValidationResult = Invoke-CountdownInstalledApplicationValidation `
-            -ApplicationPath $installedValidationApplication `
-            -PowerShell7Path $remoteDeploymentPowerShell `
-            -TransactionPath $installedValidationTransaction `
-            -ActiveSettingsPath $freshInstallSettingsPath `
-            -NativeInvocation $installedValidationNativeInvocation
-        Assert-Equal $true ([bool] $freshInstallValidationResult.Valid) 'Fresh-install validation accepts absent active settings that remain absent'
-        Assert-Equal $false (Test-Path -LiteralPath $freshInstallSettingsPath) 'Fresh-install validation does not create active settings'
-        $freshInstallCreationInvocation = {
-            param([string] $Executable, [string[]] $Arguments)
-
-            [System.IO.File]::WriteAllText(
-                $freshInstallSettingsPath,
-                '{"unexpected-active-settings":true}',
-                [System.Text.UTF8Encoding]::new($false))
-            & $installedValidationNativeInvocation $Executable $Arguments
-        }.GetNewClosure()
-        $freshInstallCreationRejected = $false
-        try {
-            Invoke-CountdownInstalledApplicationValidation `
-                -ApplicationPath $installedValidationApplication `
-                -PowerShell7Path $remoteDeploymentPowerShell `
-                -TransactionPath $installedValidationTransaction `
-                -ActiveSettingsPath $freshInstallSettingsPath `
-                -NativeInvocation $freshInstallCreationInvocation | Out-Null
-        }
-        catch {
-            $freshInstallCreationRejected = $_.Exception.Message -match '改变了现役 settings.json'
-        }
-        finally {
-            Remove-Item -LiteralPath $freshInstallSettingsPath -Force -ErrorAction SilentlyContinue
-        }
-        Assert-Equal $true $freshInstallCreationRejected 'Fresh-install validation rejects active settings created by the child process'
-
-        # 第 6 次远端部署死点钉死：安装后应用 validate-only 的应用侧桌面守卫
-        # （ApplicationValidation.EnsureIsolatedValidationDesktop）在 SSH 会话把桌面名解析为
-        # 'Default' 而拒跑。适配器必须在调用点作用域内注入 MINMIN_SUITE_ALLOW_UNISOLATED 且
-        # finally 恢复；应用守卫必须保留环境放行与 MinminSuiteIso 桌面双通道，本地 fail-closed
-        # 语义不变。任一项被移除即红。
+        # 办公室端只安装、不跑测试：验收在发起端本机完成，远端 adapter 不得调用任何验证入口、
+        # 应用 validate-only 或隔离 opt-out 标记。
         $remoteDeploymentAdapterSource = [System.IO.File]::ReadAllText(
             (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1'),
             [System.Text.Encoding]::UTF8)
-        $installedValidationInjectionIndex = $remoteDeploymentAdapterSource.IndexOf(
-            '$env:MINMIN_SUITE_ALLOW_UNISOLATED = ''1''')
-        $installedValidationCallIndex = $remoteDeploymentAdapterSource.IndexOf(
-            'Invoke-CountdownInstalledApplicationValidation `')
-        $installedValidationRestoreIndex = $remoteDeploymentAdapterSource.IndexOf(
-            '$env:MINMIN_SUITE_ALLOW_UNISOLATED = $previousSuiteAllowUnisolated')
-        $installedValidationInjectionCount = [regex]::Matches(
-            $remoteDeploymentAdapterSource,
-            '(?m)^\s*\$env:MINMIN_SUITE_ALLOW_UNISOLATED = ''1''\s*$').Count
-        Assert-Equal 1 $installedValidationInjectionCount 'Remote installed application validation injects the unisolation marker at exactly one scoped call site'
-        Assert-Equal $true (
-                $installedValidationInjectionIndex -ge 0 -and
-                $installedValidationCallIndex -gt $installedValidationInjectionIndex -and
-                $installedValidationRestoreIndex -gt $installedValidationCallIndex) 'Remote installed application validation scopes the unisolation marker around the child invocation and restores it'
-        $applicationValidationSource = [System.IO.File]::ReadAllText(
-            (Join-Path $PSScriptRoot 'src\MinminCountdown\ApplicationValidation.cs'),
-            [System.Text.Encoding]::UTF8)
-        Assert-Equal $true (
-                $applicationValidationSource.Contains('MINMIN_SUITE_ALLOW_UNISOLATED') -and
-                $applicationValidationSource.Contains('"MinminSuiteIso-')) 'Application validation desktop guard keeps the suite override channel and isolated desktop acceptance'
+        $remoteTestEntryPoints = @(
+            @('Invoke-CountdownValidationSuite', 'Invoke-CountdownCandidatePreflight', '-ValidateOnly', 'MINMIN_SUITE_ALLOW_UNISOLATED') |
+                Where-Object { $remoteDeploymentAdapterSource.Contains($_) })
+        Assert-Equal '' ($remoteTestEntryPoints -join ',') 'Remote deployment adapter runs no tests or validate-only on the office device'
 
         $trustedLoaderRoot = Join-Path $remoteDeploymentTestRoot 'trusted-source-loader'
         $trustedLoaderModulePath = Join-Path $trustedLoaderRoot 'Issue4.SourceLoader.Fixture.psm1'
@@ -2183,9 +1867,8 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
             -Adapter $successFixture.Adapter
         Assert-Equal $true ([bool] $successResult.Valid) 'Remote deployment interface reports success only after acceptance'
         Assert-Equal 'finalized-ready' ([string] $successResult.AcceptanceState) 'Remote deployment interface exposes finalized-ready'
-        Assert-Equal 11 ([int] $successResult.CoreTests) 'Remote deployment interface exposes stable Core evidence'
-        Assert-Equal 13 ([int] $successResult.CSharpTests) 'Remote deployment interface exposes stable C# evidence'
-        Assert-Equal 17 ([int] $successResult.UiTests) 'Remote deployment interface exposes stable compatibility UI evidence'
+        Assert-Equal 2 ([int] $successResult.SchemaVersion) 'Remote deployment interface reports the install-only success schema'
+        Assert-Equal '' (@(@('CoreTests', 'CSharpTests', 'UiTests', 'UiValid', 'AdapterUiValidated') | Where-Object { $successResult.PSObject.Properties.Name -contains $_ }) -join ',') 'Remote deployment success carries no remote test results'
         Assert-Equal $true ([bool] $successFixture.State.Accepted) 'Remote deployment success reaches acceptance'
         Assert-Equal $false ([bool] $successFixture.State.RolledBack) 'Remote deployment success does not roll back'
         Assert-Equal $true ([bool] $successFixture.State.Disposed) 'Remote deployment success releases its host adapter'
@@ -2213,7 +1896,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $expectedFixtureTokenHash = [Convert]::ToHexString(
             [System.Security.Cryptography.SHA256]::HashData(
                 [System.Text.UTF8Encoding]::new($false).GetBytes('sensitive-launch-token-sentinel')))
-        Assert-Equal 20 @($bindingResult.PSObject.Properties).Count 'Deployment binding does not change the strict success receipt schema'
+        Assert-Equal 15 @($bindingResult.PSObject.Properties).Count 'Deployment binding does not change the strict success receipt schema'
         Assert-Equal 4 @($bindingDocument.PSObject.Properties).Count 'Deployment binding sidecar uses the exact independent schema'
         Assert-Equal $expectedDeploymentBindingHash ([string] $bindingDocument.DeploymentBindingSha256) 'Deployment binding sidecar preserves the locally generated nonce hash'
         Assert-Equal $expectedFixtureTokenHash ([string] $bindingDocument.TokenSha256) 'Deployment binding sidecar binds the committed launch token hash'
@@ -2244,7 +1927,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
 
         $successReceiptJson = $successResult | ConvertTo-Json -Compress -Depth 4
         $normalizedSuccessReceipt = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $successReceiptJson
-        Assert-Equal 20 @($normalizedSuccessReceipt.PSObject.Properties).Count 'Success receipt parser returns the exact schema field set'
+        Assert-Equal 15 @($normalizedSuccessReceipt.PSObject.Properties).Count 'Success receipt parser returns the exact schema field set'
         Assert-Equal 'Ready' ([string] $normalizedSuccessReceipt.TaskState) 'Success receipt parser requires the ready task state'
         Assert-Equal 0 ([int] $normalizedSuccessReceipt.LastTaskResult) 'Success receipt parser requires lastTaskResult 0'
         Assert-Equal 'window-ready' ([string] $normalizedSuccessReceipt.RuntimeStage) 'Success receipt parser requires window-ready runtime state'
@@ -2257,11 +1940,28 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $acceptedUnchangedReceipt = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson `
             -Json ($unchangedTrueReceipt | ConvertTo-Json -Compress)
         Assert-Equal $true ([bool] $acceptedUnchangedReceipt.SettingsUnchanged) 'Success receipt parser accepts SettingsUnchanged computed from identical fingerprints'
+        # 历史 v1 回执带远端三组测试计数；只为识别既有部署证据而继续可读。
+        $historicalReceipt = [ordered]@{ SchemaVersion = 1; Valid = $true; CoreTests = 11; CSharpTests = 13; UiTests = 17; UiValid = $true; AdapterUiValidated = $true }
+        foreach ($entry in ($successReceiptJson | ConvertFrom-Json -AsHashtable).GetEnumerator()) {
+            if ($entry.Key -notin @('SchemaVersion', 'Valid')) { $historicalReceipt[$entry.Key] = $entry.Value }
+        }
+        $historicalReceiptJson = $historicalReceipt | ConvertTo-Json -Compress
+        $acceptedHistoricalReceipt = ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $historicalReceiptJson
+        Assert-Equal $true (
+                [int] $acceptedHistoricalReceipt.SchemaVersion -eq 1 -and
+                [int] $acceptedHistoricalReceipt.CoreTests -eq 11 -and
+                @($acceptedHistoricalReceipt.PSObject.Properties).Count -eq 20) 'Success receipt parser still reads historical v1 receipts with remote test counts'
 
         $invalidSuccessReceiptCases = [ordered]@{}
         $missingFieldReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
-        [void] $missingFieldReceipt.Remove('UiTests')
+        [void] $missingFieldReceipt.Remove('CalendarState')
         $invalidSuccessReceiptCases['missing field'] = $missingFieldReceipt | ConvertTo-Json -Compress
+        $remoteTestFieldReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
+        $remoteTestFieldReceipt['CoreTests'] = 11
+        $invalidSuccessReceiptCases['v2 with remote test field'] = $remoteTestFieldReceipt | ConvertTo-Json -Compress
+        $historicalMissingTestReceipt = $historicalReceiptJson | ConvertFrom-Json -AsHashtable
+        [void] $historicalMissingTestReceipt.Remove('UiTests')
+        $invalidSuccessReceiptCases['v1 missing remote test field'] = $historicalMissingTestReceipt | ConvertTo-Json -Compress
         $extraFieldReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
         $extraFieldReceipt['Credential'] = 'must-not-be-persisted'
         $invalidSuccessReceiptCases['extra field'] = $extraFieldReceipt | ConvertTo-Json -Compress
@@ -2270,13 +1970,13 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $invalidSuccessReceiptCases['noise output'] = "unexpected output`n$successReceiptJson"
         $invalidSuccessReceiptCases['duplicate field'] = $successReceiptJson.Insert(1, '"Valid":true,')
         $unsupportedSchemaReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
-        $unsupportedSchemaReceipt.SchemaVersion = 2
+        $unsupportedSchemaReceipt.SchemaVersion = 3
         $invalidSuccessReceiptCases['unsupported schema'] = $unsupportedSchemaReceipt | ConvertTo-Json -Compress
         $failedStatusReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
         $failedStatusReceipt.Valid = $false
         $invalidSuccessReceiptCases['failed status'] = $failedStatusReceipt | ConvertTo-Json -Compress
         $wrongTypeReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
-        $wrongTypeReceipt.CoreTests = '11'
+        $wrongTypeReceipt.RuntimeProcessId = '4242'
         $invalidSuccessReceiptCases['wrong type'] = $wrongTypeReceipt | ConvertTo-Json -Compress
         $invalidRangeReceipt = $successReceiptJson | ConvertFrom-Json -AsHashtable
         $invalidRangeReceipt.RuntimeProcessId = 0
@@ -2331,7 +2031,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         Assert-Equal $true (Test-Path -LiteralPath $successReceiptEvidencePath -PathType Leaf) 'Success receipt writer atomically publishes one evidence file'
         Assert-Equal $false ($persistedSuccessBytes.Length -ge 3 -and $persistedSuccessBytes[0] -eq 0xEF -and $persistedSuccessBytes[1] -eq 0xBB -and $persistedSuccessBytes[2] -eq 0xBF) 'Success receipt evidence is UTF-8 without BOM'
         Assert-Equal $false ($persistedSuccessText -match 'Credential|LaunchToken|sensitive-launch-token-sentinel') 'Success receipt evidence excludes credentials and raw launch tokens'
-        Assert-Equal 20 @($persistedSuccessReceipt.PSObject.Properties).Count 'Success receipt writer returns the normalized exact schema'
+        Assert-Equal 15 @($persistedSuccessReceipt.PSObject.Properties).Count 'Success receipt writer returns the normalized exact schema'
         [void] (ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson -Json $persistedSuccessText)
         $persistedSuccessHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $successReceiptEvidencePath).Hash
 
@@ -2772,8 +2472,8 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         $unresolvedCommittedReceipt = [System.IO.File]::ReadAllText($unresolvedCommittedReceiptPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
         Assert-Equal $true ([string] $unresolvedCommittedReceipt.commitState -eq 'committed' -and [bool] $unresolvedCommittedReceipt.rollbackAttempted -and -not [bool] $unresolvedCommittedReceipt.rollbackSucceeded) 'Unresolved committed receipt preserves the no-rollback-success fact'
 
-        $validationFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode ValidationFailure
-        $validationFailureMessage = $null
+        $candidateFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode CandidateFailure
+        $candidateFailureMessage = $null
         try {
             Invoke-CountdownRemoteDeployment `
                 -SourceRoot $PSScriptRoot `
@@ -2782,53 +2482,15 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
                 -DeferredReceiptPath $remoteDeploymentReceipt `
                 -TaskName 'Minmin Countdown Fixture' `
                 -LegacyTaskName '敏敏子倒计时 Fixture' `
-                -Adapter $validationFailureFixture.Adapter | Out-Null
+                -Adapter $candidateFailureFixture.Adapter | Out-Null
         }
         catch {
-            $validationFailureMessage = $_.Exception.Message
+            $candidateFailureMessage = $_.Exception.Message
         }
-        Assert-Equal $true ($validationFailureMessage -match '安装器内置校验未通过') 'Remote deployment rejects a failed stable validation result'
-        Assert-Equal $false ([bool] $validationFailureFixture.State.Accepted) 'Validation failure does not enter acceptance'
-        Assert-Equal $true ([bool] $validationFailureFixture.State.RolledBack) 'Validation failure rolls back the candidate'
-        Assert-Equal $true ([bool] $validationFailureFixture.State.Disposed) 'Validation failure releases its host adapter'
-
-        $adapterUiValidationFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode AdapterUiValidationFailure
-        $adapterUiValidationFailureMessage = $null
-        try {
-            Invoke-CountdownRemoteDeployment `
-                -SourceRoot $remoteDeploymentSource `
-                -InstallPath $remoteDeploymentInstall `
-                -PowerShell7Path $remoteDeploymentPowerShell `
-                -DeferredReceiptPath $remoteDeploymentReceipt `
-                -TaskName 'Minmin Countdown Fixture' `
-                -LegacyTaskName '敏敏子倒计时 Fixture' `
-                -Adapter $adapterUiValidationFailureFixture.Adapter | Out-Null
-        }
-        catch {
-            $adapterUiValidationFailureMessage = $_.Exception.Message
-        }
-        Assert-Equal $true ($adapterUiValidationFailureMessage -match 'adapter UI 验证未通过') 'Remote deployment rejects missing adapter UI evidence before acceptance'
-        Assert-Equal $false ([bool] $adapterUiValidationFailureFixture.State.Accepted) 'Adapter UI validation failure does not enter acceptance'
-        Assert-Equal $true ([bool] $adapterUiValidationFailureFixture.State.RolledBack) 'Adapter UI validation failure rolls back the candidate'
-
-        $validationSchemaFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode ValidationSchemaFailure
-        $validationSchemaFailureMessage = $null
-        try {
-            Invoke-CountdownRemoteDeployment `
-                -SourceRoot $remoteDeploymentSource `
-                -InstallPath $remoteDeploymentInstall `
-                -PowerShell7Path $remoteDeploymentPowerShell `
-                -DeferredReceiptPath $remoteDeploymentReceipt `
-                -TaskName 'Minmin Countdown Fixture' `
-                -LegacyTaskName '敏敏子倒计时 Fixture' `
-                -Adapter $validationSchemaFailureFixture.Adapter | Out-Null
-        }
-        catch {
-            $validationSchemaFailureMessage = $_.Exception.Message
-        }
-        Assert-Equal $true ($validationSchemaFailureMessage -match 'validation interface schemaVersion 不受支持') 'Remote deployment rejects an unknown validation interface version'
-        Assert-Equal $false ([bool] $validationSchemaFailureFixture.State.Accepted) 'Validation schema failure does not enter acceptance'
-        Assert-Equal $true ([bool] $validationSchemaFailureFixture.State.RolledBack) 'Validation schema failure rolls back the candidate'
+        Assert-Equal $true ($candidateFailureMessage -match '候选运行态未达到 window-ready') 'Remote deployment rejects a candidate that never reached window-ready'
+        Assert-Equal $false ([bool] $candidateFailureFixture.State.Accepted) 'Candidate contract failure does not enter acceptance'
+        Assert-Equal $true ([bool] $candidateFailureFixture.State.RolledBack) 'Candidate contract failure rolls back the candidate'
+        Assert-Equal $true ([bool] $candidateFailureFixture.State.Disposed) 'Candidate contract failure releases its host adapter'
 
         $richDiagnosticsDirectory = Join-Path $remoteDeploymentTestRoot 'rich-diagnostics'
         New-Item -ItemType Directory -Path $richDiagnosticsDirectory -Force | Out-Null
@@ -3029,7 +2691,7 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         catch {
             $rollbackFailureMessage = $_.Exception.Message
         }
-        Assert-Equal $true ($rollbackFailureMessage -match '安装器内置校验未通过.*回滚也失败.*模拟回滚失败') 'Remote deployment preserves both primary and rollback failures'
+        Assert-Equal $true ($rollbackFailureMessage -match '候选运行态未达到 window-ready.*回滚也失败.*模拟回滚失败') 'Remote deployment preserves both primary and rollback failures'
         Assert-Equal $true ([bool] $rollbackFailureFixture.State.RolledBack) 'Rollback failure records that rollback was attempted'
         Assert-Equal $true ([bool] $rollbackFailureFixture.State.Disposed) 'Rollback failure still releases its host adapter'
 
@@ -3052,8 +2714,8 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
         Assert-Equal $false ([bool] $finalizeFailureFixture.State.RolledBack) 'Committed cleanup failure does not roll back'
         Assert-Equal $true ([bool] $finalizeFailureFixture.State.Disposed) 'Committed cleanup failure still releases its host adapter'
 
-        $validationAndDisposeFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode ValidationAndDisposeFailure
-        $validationAndDisposeFailureMessage = $null
+        $candidateAndDisposeFailureFixture = New-CountdownRemoteDeploymentFixtureAdapter -Mode CandidateAndDisposeFailure
+        $candidateAndDisposeFailureMessage = $null
         try {
             Invoke-CountdownRemoteDeployment `
                 -SourceRoot $remoteDeploymentSource `
@@ -3062,14 +2724,14 @@ Export-ModuleMember -Function Undo-CountdownInstallTransaction
                 -DeferredReceiptPath $remoteDeploymentReceipt `
                 -TaskName 'Minmin Countdown Fixture' `
                 -LegacyTaskName '敏敏子倒计时 Fixture' `
-                -Adapter $validationAndDisposeFailureFixture.Adapter | Out-Null
+                -Adapter $candidateAndDisposeFailureFixture.Adapter | Out-Null
         }
         catch {
-            $validationAndDisposeFailureMessage = $_.Exception.Message
+            $candidateAndDisposeFailureMessage = $_.Exception.Message
         }
-        Assert-Equal $true ($validationAndDisposeFailureMessage -match '已回滚.*安装器内置校验未通过.*资源释放也失败.*模拟资源释放失败') 'Remote deployment preserves its primary failure when adapter disposal also fails'
-        Assert-Equal $true ([bool] $validationAndDisposeFailureFixture.State.RolledBack) 'Validation and disposal failure still rolls back the candidate'
-        Assert-Equal $true ([bool] $validationAndDisposeFailureFixture.State.Disposed) 'Validation and disposal failure attempts adapter disposal'
+        Assert-Equal $true ($candidateAndDisposeFailureMessage -match '已回滚.*候选运行态未达到 window-ready.*资源释放也失败.*模拟资源释放失败') 'Remote deployment preserves its primary failure when adapter disposal also fails'
+        Assert-Equal $true ([bool] $candidateAndDisposeFailureFixture.State.RolledBack) 'Candidate and disposal failure still rolls back the candidate'
+        Assert-Equal $true ([bool] $candidateAndDisposeFailureFixture.State.Disposed) 'Candidate and disposal failure attempts adapter disposal'
 
         $disposeFailureReceipt = Join-Path $remoteDeploymentTestRoot 'dispose-failure\deferred-install-receipt.json'
         New-Item -ItemType Directory -Path (Split-Path -Parent $disposeFailureReceipt) -Force | Out-Null
@@ -3620,17 +3282,12 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 536 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 532 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 534 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
+Assert-Equal 530 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
 Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\NoteCompletionExit.cs') '#233 source rebuild includes completion exit animation'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\NoteCompletionExit.cs') '#233 completion exit source is integrity protected'
 Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\app.manifest') '#219 source rebuild includes the PerMonitorV2 manifest'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\app.manifest') '#219 manifest is integrity protected'
-foreach ($preflightFile in @('Countdown.DeploymentPreflight.psm1', 'tools\Test-CountdownWindowPreflight.ps1')) {
-    Assert-Equal $true ($preflightFile -in @($releaseContract.PackageFiles)) "Release package keeps deployment preflight $preflightFile"
-    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($preflightFile) "Deployment preflight is integrity protected: $preflightFile"
-    Assert-Equal $false ($preflightFile -in @($releaseContract.InstalledFiles)) "Deployment preflight is not installed as runtime: $preflightFile"
-}
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 65 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
@@ -5960,21 +5617,14 @@ Assert-Equal $true $stopCommand.Parameters.ContainsKey('FreezeFutureStarts') 'Ma
 $mutexProbeModulePath = (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1').Replace("'", "''")
 $mutexProbeCommand = "Import-Module -Name '$mutexProbeModulePath' -Force -DisableNameChecking; try { `$childMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 1; Exit-CountdownInstallTransactionMutex -Mutex `$childMutex; 'unexpected acquisition' } catch { `$_.Exception.Message }"
 $mutexProbeEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
-if ($ParentTransactionMutexHeld) {
-    # 办公室验收已由同一远端 pwsh 持锁：仅验证子进程确实被该锁排除，避免测试进程自锁。
+$transactionMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 1
+try {
+    Assert-Equal $true ($null -ne $transactionMutex) 'Install transaction mutex can be acquired'
     $mutexProbeOutput = & $mutexProbeEngine -NoLogo -NoProfile -NonInteractive -Command $mutexProbeCommand | Out-String
-    Assert-Equal $true ($mutexProbeOutput -match '超时') 'Parent install transaction mutex excludes a child PowerShell process'
+    Assert-Equal $true ($mutexProbeOutput -match '超时') 'Install transaction mutex excludes a second PowerShell process'
 }
-else {
-    $transactionMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 1
-    try {
-        Assert-Equal $true ($null -ne $transactionMutex) 'Install transaction mutex can be acquired'
-        $mutexProbeOutput = & $mutexProbeEngine -NoLogo -NoProfile -NonInteractive -Command $mutexProbeCommand | Out-String
-        Assert-Equal $true ($mutexProbeOutput -match '超时') 'Install transaction mutex excludes a second PowerShell process'
-    }
-    finally {
-        Exit-CountdownInstallTransactionMutex -Mutex $transactionMutex
-    }
+finally {
+    Exit-CountdownInstallTransactionMutex -Mutex $transactionMutex
 }
 $settingsMutexEnterCommand = Get-Command Enter-CountdownSettingsWriteMutex -Module Countdown.Settings -ErrorAction SilentlyContinue
 $settingsMutexExitCommand = Get-Command Exit-CountdownSettingsWriteMutex -Module Countdown.Settings -ErrorAction SilentlyContinue
@@ -6203,16 +5853,10 @@ try {
     [System.IO.File]::WriteAllText($recoveryConflictLauncherPath, 'isolated user replacement', (New-Object System.Text.UTF8Encoding($false)))
     $recoveryConflictPartialRollback = Undo-CountdownInstallTransaction -TransactionPath $recoveryConflictTransaction.transactionPath -PowerShell7Path $transactionPowerShell -ExpectedInstallPath $recoveryConflictInstallPath -ExpectedTaskName "Minmin Countdown Recovery Conflict $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Recovery Conflict $transactionSuffix" -ExpectedLauncherPath $recoveryConflictLauncherPath -ExpectedLegacyLauncherPath $recoveryConflictLegacyLauncherPath -ExpectedLauncherTempPath $recoveryConflictLauncherTempPath -PreserveUnmanagedLaunchers -RestoreWindowsTimeAction { param($snapshot) }
     Assert-Equal $true ([bool] $recoveryConflictPartialRollback.PreservedUnmanagedLaunchers) 'Isolated conflict setup preserves its user launcher during partial rollback'
-    if ($ParentTransactionMutexHeld) {
-        # 办公室验收的父进程已持有全局 mutex；子进程只能验证它被排除，不能调用 Recover 并等待同一把锁超时。
-        Assert-Equal $true $true 'Parent-held transaction mutex skips recovery execution that requires the parent lock'
-    }
-    else {
-        $recoveryConflictStatus = Recover-CountdownInstallTransactions -InstallPath $recoveryConflictInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Recovery Conflict $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Recovery Conflict $transactionSuffix" -ExpectedLauncherPath $recoveryConflictLauncherPath -ExpectedLegacyLauncherPath $recoveryConflictLegacyLauncherPath -ExpectedLauncherTempPath $recoveryConflictLauncherTempPath
-        Assert-Equal 0 @($recoveryConflictStatus.RecoveredTransactionPaths).Count 'Recovery does not falsely report a user-launcher conflict as complete'
-        Assert-Equal 1 @($recoveryConflictStatus.UnresolvedLauncherOwnershipConflicts).Count 'Recovery returns a structured unresolved launcher conflict'
-        Assert-Equal 'isolated user replacement' ([System.IO.File]::ReadAllText($recoveryConflictLauncherPath, [System.Text.Encoding]::UTF8)) 'Recovery status probing does not overwrite the isolated user launcher'
-    }
+    $recoveryConflictStatus = Recover-CountdownInstallTransactions -InstallPath $recoveryConflictInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Recovery Conflict $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Recovery Conflict $transactionSuffix" -ExpectedLauncherPath $recoveryConflictLauncherPath -ExpectedLegacyLauncherPath $recoveryConflictLegacyLauncherPath -ExpectedLauncherTempPath $recoveryConflictLauncherTempPath
+    Assert-Equal 0 @($recoveryConflictStatus.RecoveredTransactionPaths).Count 'Recovery does not falsely report a user-launcher conflict as complete'
+    Assert-Equal 1 @($recoveryConflictStatus.UnresolvedLauncherOwnershipConflicts).Count 'Recovery returns a structured unresolved launcher conflict'
+    Assert-Equal 'isolated user replacement' ([System.IO.File]::ReadAllText($recoveryConflictLauncherPath, [System.Text.Encoding]::UTF8)) 'Recovery status probing does not overwrite the isolated user launcher'
     $strictBooleanTransaction = Start-CountdownInstallTransaction -InstallPath $transactionInstallPath -LauncherPath $transactionLauncherPath -LegacyLauncherPath $transactionLegacyLauncherPath -TaskName "Minmin Countdown Strict Boolean $transactionSuffix" -LegacyTaskName "敏敏子倒计时 Strict Boolean $transactionSuffix"
     $strictBooleanJournalPath = Join-Path $strictBooleanTransaction.transactionPath 'journal.json'
     $strictBooleanJournal = [System.IO.File]::ReadAllText($strictBooleanJournalPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
@@ -6309,39 +5953,37 @@ try {
     Assert-Equal $false (Test-Path -LiteralPath (Join-Path $committedTombstones[0].FullName 'journal.json')) 'Committed cleanup test reproduces a partial deletion that already removed journal.json'
     $committedMarkers = @(Get-ChildItem -LiteralPath $committedTransactionParent -File -Filter "$committedTransactionLeaf.committed-*.marker.json" -Force)
     Assert-Equal 1 $committedMarkers.Count 'External committed cleanup marker survives partial tombstone deletion'
-    if (-not $ParentTransactionMutexHeld) {
-        $committedRecoveryStatus = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -CommittedCleanupAction { param($path) throw "模拟 committed tombstone 重试仍失败：$path" }
-        Assert-Equal 0 @($committedRecoveryStatus.RecoveredTransactionPaths).Count 'Recovery never rolls back a committed tombstone'
-        Assert-Equal 1 @($committedRecoveryStatus.UnresolvedCommittedTransactions).Count 'Recovery reports a committed tombstone while cleanup remains blocked'
-        Assert-Equal '{"committed-new":true}' ([System.IO.File]::ReadAllText((Join-Path $committedCleanupInstallPath 'settings.json'), [System.Text.Encoding]::UTF8)) 'Recovery preserves the accepted install after committed cleanup failure'
-        $committedRetryStatus = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
-        Assert-Equal 0 @($committedRetryStatus.UnresolvedCommittedTransactions).Count 'Recovery automatically clears a committed tombstone after the transient cleanup failure ends'
-        Assert-Equal $false (Test-Path -LiteralPath $committedTombstones[0].FullName) 'Committed tombstone retry removes stale transaction evidence without rollback'
-        Assert-Equal $false (Test-Path -LiteralPath $committedMarkers[0].FullName) 'Committed tombstone retry removes the external marker only after cleanup succeeds'
+    $committedRecoveryStatus = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -CommittedCleanupAction { param($path) throw "模拟 committed tombstone 重试仍失败：$path" }
+    Assert-Equal 0 @($committedRecoveryStatus.RecoveredTransactionPaths).Count 'Recovery never rolls back a committed tombstone'
+    Assert-Equal 1 @($committedRecoveryStatus.UnresolvedCommittedTransactions).Count 'Recovery reports a committed tombstone while cleanup remains blocked'
+    Assert-Equal '{"committed-new":true}' ([System.IO.File]::ReadAllText((Join-Path $committedCleanupInstallPath 'settings.json'), [System.Text.Encoding]::UTF8)) 'Recovery preserves the accepted install after committed cleanup failure'
+    $committedRetryStatus = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Committed Cleanup $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Committed Cleanup $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+    Assert-Equal 0 @($committedRetryStatus.UnresolvedCommittedTransactions).Count 'Recovery automatically clears a committed tombstone after the transient cleanup failure ends'
+    Assert-Equal $false (Test-Path -LiteralPath $committedTombstones[0].FullName) 'Committed tombstone retry removes stale transaction evidence without rollback'
+    Assert-Equal $false (Test-Path -LiteralPath $committedMarkers[0].FullName) 'Committed tombstone retry removes the external marker only after cleanup succeeds'
 
-        $moveFailureTransaction = Start-CountdownInstallTransaction -InstallPath $committedCleanupInstallPath -LauncherPath $committedCleanupLauncherPath -LegacyLauncherPath $committedCleanupLegacyLauncherPath -TaskName "Minmin Countdown Move Failure $transactionSuffix" -LegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix"
-        $moveFailureTransaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
-        $moveFailureTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $moveFailureTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
-        Copy-Item -LiteralPath $candidateLauncherSourcePath -Destination $committedCleanupLauncherPath -Force
-        Complete-CountdownInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
-        Remove-CountdownCommittedInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -MoveAction { param($source, $destination) throw "模拟 committed 后目录重命名失败：$source -> $destination" }
-        $moveFailureJournal = [System.IO.File]::ReadAllText((Join-Path $moveFailureTransaction.transactionPath 'journal.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-        Assert-Equal 'committed' ([string] $moveFailureJournal.phase) 'Move failure after commit leaves the original transaction permanently committed'
-        $committedUndoRejected = $false
-        try { Undo-CountdownInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -PowerShell7Path $transactionPowerShell -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -RestoreWindowsTimeAction { param($snapshot) } }
-        catch { $committedUndoRejected = $_.Exception.Message -match '禁止重新进入回滚' }
-        Assert-Equal $true $committedUndoRejected 'Undo rejects a committed transaction even when tombstone rename failed'
-        $moveFailureCleanupAttempts = [System.Collections.Generic.List[string]]::new()
-        $moveFailureRecovery = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -CommittedCleanupAction {
-            param($path)
-            [void] $moveFailureCleanupAttempts.Add($path)
-            if ($moveFailureCleanupAttempts.Count -eq 1) { throw "模拟同一次 recovery 的首次清理失败：$path" }
-            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
-        }
-        Assert-Equal 2 $moveFailureCleanupAttempts.Count 'Recovery retries the same committed transaction through its sidecar after a transient first failure'
-        Assert-Equal 0 @($moveFailureRecovery.UnresolvedCommittedTransactions).Count 'Recovery cleans a committed transaction left at its original path after move failure'
-        Assert-Equal $false (Test-Path -LiteralPath $moveFailureTransaction.transactionPath) 'Move-failed committed transaction is cleanup-only and never rolled back'
+    $moveFailureTransaction = Start-CountdownInstallTransaction -InstallPath $committedCleanupInstallPath -LauncherPath $committedCleanupLauncherPath -LegacyLauncherPath $committedCleanupLegacyLauncherPath -TaskName "Minmin Countdown Move Failure $transactionSuffix" -LegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix"
+    $moveFailureTransaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+    $moveFailureTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $moveFailureTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+    Copy-Item -LiteralPath $candidateLauncherSourcePath -Destination $committedCleanupLauncherPath -Force
+    Complete-CountdownInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath
+    Remove-CountdownCommittedInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -MoveAction { param($source, $destination) throw "模拟 committed 后目录重命名失败：$source -> $destination" }
+    $moveFailureJournal = [System.IO.File]::ReadAllText((Join-Path $moveFailureTransaction.transactionPath 'journal.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+    Assert-Equal 'committed' ([string] $moveFailureJournal.phase) 'Move failure after commit leaves the original transaction permanently committed'
+    $committedUndoRejected = $false
+    try { Undo-CountdownInstallTransaction -TransactionPath $moveFailureTransaction.transactionPath -PowerShell7Path $transactionPowerShell -ExpectedInstallPath $committedCleanupInstallPath -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -RestoreWindowsTimeAction { param($snapshot) } }
+    catch { $committedUndoRejected = $_.Exception.Message -match '禁止重新进入回滚' }
+    Assert-Equal $true $committedUndoRejected 'Undo rejects a committed transaction even when tombstone rename failed'
+    $moveFailureCleanupAttempts = [System.Collections.Generic.List[string]]::new()
+    $moveFailureRecovery = Recover-CountdownInstallTransactions -InstallPath $committedCleanupInstallPath -PowerShell7Path $transactionPowerShell -ExpectedTaskName "Minmin Countdown Move Failure $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Move Failure $transactionSuffix" -ExpectedLauncherPath $committedCleanupLauncherPath -ExpectedLegacyLauncherPath $committedCleanupLegacyLauncherPath -ExpectedLauncherTempPath $committedCleanupLauncherTempPath -CommittedCleanupAction {
+        param($path)
+        [void] $moveFailureCleanupAttempts.Add($path)
+        if ($moveFailureCleanupAttempts.Count -eq 1) { throw "模拟同一次 recovery 的首次清理失败：$path" }
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
     }
+    Assert-Equal 2 $moveFailureCleanupAttempts.Count 'Recovery retries the same committed transaction through its sidecar after a transient first failure'
+    Assert-Equal 0 @($moveFailureRecovery.UnresolvedCommittedTransactions).Count 'Recovery cleans a committed transaction left at its original path after move failure'
+    Assert-Equal $false (Test-Path -LiteralPath $moveFailureTransaction.transactionPath) 'Move-failed committed transaction is cleanup-only and never rolled back'
     $commitReplacementTransaction = Start-CountdownInstallTransaction -InstallPath $transactionInstallPath -LauncherPath $transactionLauncherPath -LegacyLauncherPath $transactionLegacyLauncherPath -TaskName "Minmin Countdown Commit Replacement $transactionSuffix" -LegacyTaskName "敏敏子倒计时 Commit Replacement $transactionSuffix"
     $commitReplacementTransaction = Capture-CountdownInstallPayloadSnapshot -TransactionPath $commitReplacementTransaction.transactionPath -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Commit Replacement $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Commit Replacement $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
     $commitReplacementTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $commitReplacementTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Commit Replacement $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Commit Replacement $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
@@ -6401,7 +6043,7 @@ Assert-Equal $true $installerValidation.Transactional 'Installer exposes transac
 Assert-Equal $true $installerValidation.DeferredCommitSupported 'Installer exposes deferred commit for office acceptance'
 $installerCommand = Get-Command (Join-Path $PSScriptRoot 'Install-Countdown.ps1')
 Assert-Equal $false $installerCommand.Parameters.ContainsKey('TransactionMutexHeld') 'Installer does not expose a lock-bypass switch'
-Assert-Equal $true $installerCommand.Parameters.ContainsKey('ParentTransactionMutexHeld') 'Installer exposes a parent-lock test context only for deferred office acceptance'
+Assert-Equal $true $installerCommand.Parameters.ContainsKey('ParentTransactionMutexHeld') 'Installer exposes a parent-held transaction lock context only for deferred office acceptance'
 Assert-Equal $true $installerCommand.Parameters.ContainsKey('ExpectedInteractiveUser') 'Office installer validates the expected interactive user'
 Assert-Equal $true $installerCommand.Parameters.ContainsKey('ExpectedInteractiveSessionId') 'Office installer validates the expected interactive session'
 Assert-Equal $true $installerCommand.Parameters.ContainsKey('ExpectedDesktopPath') 'Office installer validates the expected desktop path'
@@ -6427,7 +6069,7 @@ Assert-Equal $true ($buildPreflightSource.Contains("`$env:COUNTDOWN_DOTNET_EXE")
 Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$RepositoryRoot 'global.json'") -and $buildPreflightSource.Contains('Test-CountdownSdkVersionMatch')) 'Shared preflight resolves and checks the repository global.json SDK contract'
 Assert-Equal $true ($buildPreflightScript.Contains('[switch]$RequireClean') -and $buildPreflightScript.Contains('[switch]$Json') -and $buildPreflightScript.Contains('Failures')) 'Build preflight entry point exposes clean gating and structured failure output'
 $installerDotnetPathIndex = $installerSource.IndexOf("`$dotnetPath = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'")
-$installerDotnetCheckIndex = $installerSource.IndexOf('if (-not (Test-Path -LiteralPath $dotnetPath -PathType Leaf))', $installerDotnetPathIndex)
+$installerDotnetCheckIndex = $installerSource.IndexOf('if (-not $DeferCommit -and -not (Test-Path -LiteralPath $dotnetPath -PathType Leaf))', $installerDotnetPathIndex)
 $installerDotnetErrorIndex = $installerSource.IndexOf('未找到验收套件所需的受管 dotnet', $installerDotnetCheckIndex)
 $installerValidationSuiteIndex = $installerSource.IndexOf('$validationSuite = Invoke-CountdownValidationSuite')
 $installerDotnetPassIndex = $installerSource.IndexOf('-DotnetPath $dotnetPath', $installerValidationSuiteIndex)
@@ -6438,6 +6080,7 @@ Assert-Equal $true `
         $installerValidationSuiteIndex -gt $installerDotnetErrorIndex -and
         $installerDotnetPassIndex -gt $installerValidationSuiteIndex) `
     'Installer validates and passes the canonical managed dotnet 10.0 executable before invoking the validation suite'
+Assert-Equal $true ($installerSource -match 'if \(-not \$DeferCommit\) \{\r?\n\s*\$validationSuite = Invoke-CountdownValidationSuite') 'Installer runs the validation suite only outside the office deferred commit'
 Assert-Equal 2 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'Both self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
 Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$project 'bin'") -and $buildPreflightSource.Contains("Join-Path `$project 'obj'")) 'Shared build path contract includes managed bin and obj directories for each project'
 Assert-Equal $true $buildSource.Contains('$buildPaths = Get-CountdownBuildPaths -RepositoryRoot $PSScriptRoot') 'Clean build derives candidates from the shared build path contract'
@@ -6475,6 +6118,10 @@ $launcherStateStageIndex = $installerSource.IndexOf("`$installStage = 'write-lau
 $launcherStateMoveIndex = $installerSource.IndexOf('Move-Item -LiteralPath $launcherStateTempPath -Destination $launcherStatePath -Force')
 Assert-Equal $true ($failureRecordIndex -ge 0 -and $failureStringIndex -gt $failureRecordIndex -and $launcherReplacementStageIndex -ge 0 -and $launcherReplacementStageIndex -lt $launcherMoveIndex -and $launcherStateStageIndex -gt $launcherMoveIndex -and $launcherStateStageIndex -lt $launcherStateMoveIndex) 'Installer preserves the original error record and marks both desktop replacement stages before they execute'
 Assert-Equal $true ($deploymentSource.Contains('Get-OfficeRemoteDeploymentFailureReceipt') -and $deploymentSource.Contains('remote-deployment-failure.json') -and $deploymentSource.Contains('ConvertFrom-CountdownInstallFailureReceiptBytes') -and $deploymentSource.Contains('ReparsePoint') -and $deploymentSource.Contains('WriteAllText(') -and -not $deploymentSource.Contains('WriteAllBytes($failureReceiptEvidencePath')) 'Office deployment validates a bounded non-reparse remote failure receipt before persisting normalized evidence'
+$deploymentCleanMainIndex = $deploymentSource.IndexOf('$initialRepositoryState = Assert-CountdownDeploymentRepositoryState')
+$deploymentLocalValidationIndex = $deploymentSource.IndexOf('$localValidation = Find-CountdownLocalValidationRun -Commit $commit -RepositoryRoot $repoRoot')
+$deploymentSnapshotIndex = $deploymentSource.IndexOf('Export-CountdownDeploymentCommitSnapshot `')
+Assert-Equal $true ($deploymentCleanMainIndex -ge 0 -and $deploymentLocalValidationIndex -gt $deploymentCleanMainIndex -and $deploymentSnapshotIndex -gt $deploymentLocalValidationIndex) 'Office deployment requires same-commit local suite evidence after the clean-main check and before building'
 $installTreeGuardIndex = $installerSource.IndexOf('Assert-CountdownInstallTreeHasNoReparsePoints -Path $install', $payloadCaptureIndex)
 $payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force', $installTreeGuardIndex)
 Assert-Equal $true ($installTreeGuardIndex -gt $payloadCaptureIndex -and $payloadCopyIndex -gt $installTreeGuardIndex) 'Installer rechecks the install tree after the stable snapshot and before writing payload files'
@@ -6493,7 +6140,7 @@ $mtimeJson = (@{ ExpectedSettingsMtimeUtc = $mtimeSample } | ConvertTo-Json -Com
 $coercedMtime = ($mtimeJson | ConvertFrom-Json).ExpectedSettingsMtimeUtc
 $keptMtime = ($mtimeJson | ConvertFrom-Json -DateKind String).ExpectedSettingsMtimeUtc
 Assert-Equal $true ($coercedMtime -is [datetime] -or [string] $keptMtime -eq $mtimeSample) 'ConvertFrom-Json either keeps the settings mtime string or yields a DateTime the fingerprint helper can normalize'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script required by remote core tests'
+Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script the deployment rebuilds from'
 Assert-Equal $true ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the build script required by remote core tests'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Test-CountdownBuildPreflight.ps1') 'Release contract protects the preflight entry script read by remote core tests'
 Assert-Equal $true ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the preflight entry script read by remote core tests'

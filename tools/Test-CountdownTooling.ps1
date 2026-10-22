@@ -44,8 +44,7 @@ foreach ($requiredPath in @(
         'tools/Invoke-CountdownSuiteLowImpact.ps1',
         'tools/Get-CountdownDeploymentState.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
-        'tools/PopupValidationContract.cs',
-        'Countdown.DeploymentPreflight.psm1'
+        'tools/PopupValidationContract.cs'
     )) { Test-RequiredPath -RelativePath $requiredPath }
 
 $schemaTest = & (Join-Path $PSScriptRoot 'Test-IssueAcceptance.ps1') -SelfTest -Json | ConvertFrom-Json -Depth 10
@@ -61,7 +60,7 @@ Add-ToolingCheck -Name 'design-token:self-test' -Passed ($LASTEXITCODE -eq 0 -an
 $designTokenDrift = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-DesignTokenDrift.ps1') -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'design-token:drift' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenDrift.Valid) -Detail ($designTokenDrift | ConvertTo-Json -Compress -Depth 10)
 
-foreach ($test in @('Test-CountdownValidationDiagnostics.ps1', 'Test-CountdownDeploymentPreflight.ps1',
+foreach ($test in @('Test-CountdownValidationDiagnostics.ps1',
         'Test-CountdownWindowPreflightContract.ps1', 'Test-CountdownDeploymentState.ps1')) {
     $arguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot $test), '-Json')
     if ($test -eq 'Test-CountdownDeploymentState.ps1' -and $env:GITHUB_ACTIONS -eq 'true') {

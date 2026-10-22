@@ -138,39 +138,9 @@ finally {
     if (-not $process.HasExited) { $process.Kill($true); [void]$process.WaitForExit(5000) }
     $process.Dispose()
 }
-# 候选根是已受发布门控制的外部输入，与既有 suite fixture 使用同一 seam。
-$candidate = Join-Path $root 'candidate'
-[void][IO.Directory]::CreateDirectory((Join-Path $candidate 'tools'))
-[void][IO.Directory]::CreateDirectory((Join-Path $candidate 'app'))
-$dependencies = Join-Path $candidate 'Countdown.DeploymentPreflight.psm1'
-[IO.File]::WriteAllText($dependencies, @'
-function Invoke-CountdownDeploymentPreflight { param($OutputPath) throw 'Dependency fixture failure' }
-Export-ModuleMember -Function Invoke-CountdownDeploymentPreflight
-'@, $utf8)
-$failure = $null
-try { Invoke-CountdownCandidatePreflight -Root $candidate -PowerShell7Path $pwsh -EvidenceDirectory (Join-Path $root 'candidate-evidence') -OfficeSession }
-catch { $failure = $_ }
-if ($null -eq $failure -or $failure.Exception.Message -ne 'Dependency fixture failure') { throw '依赖失败必须先于候选 DLL 和窗口读取。' }
-$assertions++
-[IO.File]::WriteAllText($dependencies, @'
-function Invoke-CountdownDeploymentPreflight { param($OutputPath) [pscustomobject]@{Success=$true} }
-Export-ModuleMember -Function Invoke-CountdownDeploymentPreflight
-'@, $utf8)
-[IO.File]::WriteAllText((Join-Path $candidate 'app/MinminCountdown.dll'), 'synthetic candidate', $utf8)
-[IO.File]::WriteAllText((Join-Path $candidate 'tools/Test-CountdownWindowPreflight.ps1'), @'
-param($AppPath, $ExpectedDllSha256)
-if ((Get-FileHash (Join-Path $AppPath 'MinminCountdown.dll') -Algorithm SHA256).Hash -ne $ExpectedDllSha256) { exit 88 }
-if ($env:MINMIN_SUITE_ALLOW_UNISOLATED -ne '1') { exit 89 }
-'{"Passed":2,"Failed":0}'
-'@, $utf8)
-$priorIsolation = $env:MINMIN_SUITE_ALLOW_UNISOLATED
-$preflightOutput = @(Invoke-CountdownCandidatePreflight -Root $candidate -PowerShell7Path $pwsh -EvidenceDirectory (Join-Path $root 'candidate-evidence') -OfficeSession)
-if ($preflightOutput.Count -ne 0 -or $env:MINMIN_SUITE_ALLOW_UNISOLATED -cne $priorIsolation) { throw '预检不得污染父环境或部署 stdout。' }
-if ((Get-Content (Join-Path $root 'candidate-evidence/window.json') -Raw | ConvertFrom-Json).Passed -ne 2) { throw '窗口结果必须持久化。' }
-$assertions++
 
 # CI 上应用 validate-only 偶发以 0xC0000409 崩溃：诊断日志须在清理前复制进该阶段证据目录。
-# -ParentTransactionMutexHeld 让夹具子进程不建隔离桌面，假 dotnet 只让 Release 构建阶段放行。
+# 夹具子进程都不开窗口，本进程临时设隔离 opt-out 让它们直接启动；假 dotnet 只让 Release 构建阶段放行。
 $crashRoot = Join-Path $root 'application-crash'
 [void][IO.Directory]::CreateDirectory($crashRoot)
 $crashRecord = Join-Path $crashRoot 'diagnostic-path.txt'
@@ -186,9 +156,12 @@ exit -1073740791
 "@, $utf8)
 $fakeDotnet = Join-Path $crashRoot 'dotnet.cmd'
 [IO.File]::WriteAllText($fakeDotnet, "@exit /b 0`r`n", $utf8)
+$priorIsolation = $env:MINMIN_SUITE_ALLOW_UNISOLATED
+$env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
 $failure = $null
-try { Invoke-CountdownValidationSuite -Root $crashRoot -PowerShell7Path $pwsh -DotnetPath $fakeDotnet -EvidenceDirectory $crashRoot -ParentTransactionMutexHeld | Out-Null }
+try { Invoke-CountdownValidationSuite -Root $crashRoot -PowerShell7Path $pwsh -DotnetPath $fakeDotnet -EvidenceDirectory $crashRoot | Out-Null }
 catch { $failure = $_ }
+finally { $env:MINMIN_SUITE_ALLOW_UNISOLATED = $priorIsolation }
 if ($null -eq $failure -or $failure.Exception.Message -notlike '应用 validate-only 失败，退出码：-1073740791*') {
     throw "应用崩溃必须以原退出码失败。实际：$(if ($null -ne $failure) { $failure.Exception.Message })"
 }

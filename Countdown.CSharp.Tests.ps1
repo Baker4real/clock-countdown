@@ -2,7 +2,6 @@
 
 [CmdletBinding()]
 param(
-    [string] $OfficeDeploymentStagingRoot,
     [switch] $InstanceActivationOnly,
     [switch] $InstanceActivationMatrix,
     [switch] $DesktopLauncherOnly,
@@ -3821,24 +3820,6 @@ $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
 $defaultTestCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
 $testCapabilityRoot = $defaultTestCapabilityRoot
 $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-csharp-tests'
-if (-not [string]::IsNullOrWhiteSpace($OfficeDeploymentStagingRoot)) {
-    $officeDeploymentRoot = [System.IO.Path]::GetFullPath('D:\Codex\deploy')
-    $resolvedStagingRoot = [System.IO.Path]::GetFullPath($OfficeDeploymentStagingRoot)
-    $resolvedSourceRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
-    $expectedSourceRoot = [System.IO.Path]::GetFullPath((Join-Path $resolvedStagingRoot 'source'))
-    if (-not [string]::Equals(
-            [System.IO.Path]::GetDirectoryName($resolvedStagingRoot),
-            $officeDeploymentRoot,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "办公室部署 staging 必须是受管根的直接子目录 [office-staging-root-invalid]：$resolvedStagingRoot"
-    }
-    if (-not [string]::Equals(
-            $resolvedSourceRoot,
-            $expectedSourceRoot,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "C# 测试脚本不属于指定的办公室部署 staging [office-staging-source-mismatch]：$resolvedSourceRoot"
-    }
-}
 $testCapabilityRootPrefix = $testCapabilityRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar,
     [System.IO.Path]::AltDirectorySeparatorChar

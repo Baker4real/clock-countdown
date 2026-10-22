@@ -3,54 +3,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if ($null -eq ('CountdownInstalledSettingsFileIdentity' -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.ComponentModel;
-using System.IO;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
-
-public static class CountdownInstalledSettingsFileIdentity
-{
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ByHandleFileInformation
-    {
-        public uint FileAttributes;
-        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
-        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
-        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
-        public uint VolumeSerialNumber;
-        public uint FileSizeHigh;
-        public uint FileSizeLow;
-        public uint NumberOfLinks;
-        public uint FileIndexHigh;
-        public uint FileIndexLow;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetFileInformationByHandle(
-        SafeFileHandle fileHandle,
-        out ByHandleFileInformation information);
-
-    public static string Read(string path)
-    {
-        using SafeFileHandle handle = File.OpenHandle(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
-        if (!GetFileInformationByHandle(handle, out ByHandleFileInformation information))
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
-        }
-
-        return $"{information.VolumeSerialNumber:X8}:{information.FileIndexHigh:X8}{information.FileIndexLow:X8}";
-    }
-}
-'@
-}
-
 $script:transferLedgerModulePath = [System.IO.Path]::GetFullPath(
     (Join-Path $PSScriptRoot 'Countdown.TransferLedger.psm1'))
 $transferLedgerModule = Get-Module -Name Countdown.TransferLedger |
@@ -229,17 +181,6 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
             throw '远程部署成功回执根节点必须是 object。'
         }
 
-        $expectedNames = [string[]] @(
-            'SchemaVersion', 'Valid', 'CoreTests', 'CSharpTests', 'UiTests',
-            'UiValid', 'AdapterUiValidated', 'TaskState', 'LastTaskResult',
-            'RuntimeProcessId', 'RuntimeStage', 'CalendarState', 'AcceptanceState',
-            'SettingsHashBefore', 'SettingsHashAfter', 'SettingsLengthBefore',
-            'SettingsLengthAfter', 'SettingsMtimeUtcBefore', 'SettingsMtimeUtcAfter',
-            'SettingsUnchanged'
-        )
-        $expectedSet = [System.Collections.Generic.HashSet[string]]::new(
-            $expectedNames,
-            [System.StringComparer]::Ordinal)
         $actualSet = [System.Collections.Generic.HashSet[string]]::new(
             [System.StringComparer]::Ordinal)
         $properties = [ordered]@{}
@@ -247,10 +188,37 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
             if (-not $actualSet.Add($property.Name)) {
                 throw "远程部署成功回执包含重复字段：$($property.Name)"
             }
-            if (-not $expectedSet.Contains($property.Name)) {
-                throw "远程部署成功回执包含额外字段：$($property.Name)"
-            }
             $properties[$property.Name] = $property.Value
+        }
+
+        $schemaVersion = 0L
+        if (-not $actualSet.Contains('SchemaVersion') -or
+            $properties.SchemaVersion.ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
+            -not $properties.SchemaVersion.TryGetInt64([ref] $schemaVersion) -or
+            $schemaVersion -notin @(1, 2)) {
+            throw '远程部署成功回执 SchemaVersion 不受支持。'
+        }
+        # v2 起办公室端只安装、不运行任何测试；v1 是历史回执，带远端三组测试计数，
+        # 只为识别既有部署证据而保留，新部署不再产生。
+        $remoteTestNames = if ($schemaVersion -eq 1) {
+            [string[]] @('CoreTests', 'CSharpTests', 'UiTests', 'UiValid', 'AdapterUiValidated')
+        }
+        else {
+            [string[]] @()
+        }
+        $expectedNames = [string[]] (@('SchemaVersion', 'Valid') + $remoteTestNames + @(
+                'TaskState', 'LastTaskResult',
+                'RuntimeProcessId', 'RuntimeStage', 'CalendarState', 'AcceptanceState',
+                'SettingsHashBefore', 'SettingsHashAfter', 'SettingsLengthBefore',
+                'SettingsLengthAfter', 'SettingsMtimeUtcBefore', 'SettingsMtimeUtcAfter',
+                'SettingsUnchanged'))
+        $expectedSet = [System.Collections.Generic.HashSet[string]]::new(
+            $expectedNames,
+            [System.StringComparer]::Ordinal)
+        foreach ($name in $actualSet) {
+            if (-not $expectedSet.Contains($name)) {
+                throw "远程部署成功回执包含额外字段：$name"
+            }
         }
         foreach ($name in $expectedNames) {
             if (-not $actualSet.Contains($name)) {
@@ -258,21 +226,14 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
             }
         }
 
-        $schemaVersion = 0L
-        if ($properties.SchemaVersion.ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
-            -not $properties.SchemaVersion.TryGetInt64([ref] $schemaVersion) -or
-            $schemaVersion -ne 1) {
-            throw '远程部署成功回执 SchemaVersion 不受支持。'
-        }
-
-        foreach ($name in @('Valid', 'UiValid', 'AdapterUiValidated')) {
+        foreach ($name in @('Valid') + @($remoteTestNames | Where-Object { $_ -in @('UiValid', 'AdapterUiValidated') })) {
             if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::True) {
                 throw "远程部署成功回执 $name 必须是 true bool。"
             }
         }
 
         $testCounts = [ordered]@{}
-        foreach ($name in @('CoreTests', 'CSharpTests', 'UiTests')) {
+        foreach ($name in @($remoteTestNames | Where-Object { $_ -in @('CoreTests', 'CSharpTests', 'UiTests') })) {
             $value = 0L
             if ($properties[$name].ValueKind -ne [System.Text.Json.JsonValueKind]::Number -or
                 -not $properties[$name].TryGetInt64([ref] $value) -or
@@ -344,28 +305,31 @@ function ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson {
             throw '远程部署成功回执 SettingsUnchanged 与指纹前后对照不一致。'
         }
 
-        [pscustomobject][ordered]@{
-            SchemaVersion = 1
+        $receipt = [ordered]@{
+            SchemaVersion = [int] $schemaVersion
             Valid = $true
-            CoreTests = $testCounts.CoreTests
-            CSharpTests = $testCounts.CSharpTests
-            UiTests = $testCounts.UiTests
-            UiValid = $true
-            AdapterUiValidated = $true
-            TaskState = $strings.TaskState
-            LastTaskResult = [long] $lastTaskResult
-            RuntimeProcessId = [int] $runtimeProcessId
-            RuntimeStage = $strings.RuntimeStage
-            CalendarState = $strings.CalendarState
-            AcceptanceState = $strings.AcceptanceState
-            SettingsHashBefore = $strings.SettingsHashBefore
-            SettingsHashAfter = $strings.SettingsHashAfter
-            SettingsLengthBefore = $settingsLengths.SettingsLengthBefore
-            SettingsLengthAfter = $settingsLengths.SettingsLengthAfter
-            SettingsMtimeUtcBefore = $strings.SettingsMtimeUtcBefore
-            SettingsMtimeUtcAfter = $strings.SettingsMtimeUtcAfter
-            SettingsUnchanged = [bool] $settingsUnchanged
         }
+        if ($schemaVersion -eq 1) {
+            $receipt.CoreTests = $testCounts.CoreTests
+            $receipt.CSharpTests = $testCounts.CSharpTests
+            $receipt.UiTests = $testCounts.UiTests
+            $receipt.UiValid = $true
+            $receipt.AdapterUiValidated = $true
+        }
+        $receipt.TaskState = $strings.TaskState
+        $receipt.LastTaskResult = [long] $lastTaskResult
+        $receipt.RuntimeProcessId = [int] $runtimeProcessId
+        $receipt.RuntimeStage = $strings.RuntimeStage
+        $receipt.CalendarState = $strings.CalendarState
+        $receipt.AcceptanceState = $strings.AcceptanceState
+        $receipt.SettingsHashBefore = $strings.SettingsHashBefore
+        $receipt.SettingsHashAfter = $strings.SettingsHashAfter
+        $receipt.SettingsLengthBefore = $settingsLengths.SettingsLengthBefore
+        $receipt.SettingsLengthAfter = $settingsLengths.SettingsLengthAfter
+        $receipt.SettingsMtimeUtcBefore = $strings.SettingsMtimeUtcBefore
+        $receipt.SettingsMtimeUtcAfter = $strings.SettingsMtimeUtcAfter
+        $receipt.SettingsUnchanged = [bool] $settingsUnchanged
+        [pscustomobject] $receipt
     }
     finally {
         $document.Dispose()
@@ -2222,120 +2186,6 @@ function Assert-CountdownRemoteDeploymentAdapter {
     $Adapter
 }
 
-function Get-CountdownInstalledSettingsFingerprint {
-    param([Parameter(Mandatory)] [string] $Path)
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        return [pscustomobject]@{
-            State = 'Absent'
-            Length = $null
-            LastWriteTimeUtc = $null
-            Sha256 = $null
-            FileIdentity = $null
-        }
-    }
-
-    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-    if ($item -isnot [System.IO.FileInfo] -or
-        ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw '现役 settings 路径必须是普通文件或不存在。'
-    }
-
-    [pscustomobject]@{
-        State = 'Present'
-        Length = $item.Length
-        LastWriteTimeUtc = $item.LastWriteTimeUtc
-        Sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
-        FileIdentity = [CountdownInstalledSettingsFileIdentity]::Read($item.FullName)
-    }
-}
-
-function Invoke-CountdownInstalledApplicationValidation {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [string] $ApplicationPath,
-        [Parameter(Mandatory)] [string] $PowerShell7Path,
-        [Parameter(Mandatory)] [string] $TransactionPath,
-        [Parameter(Mandatory)] [string] $ActiveSettingsPath,
-        [scriptblock] $NativeInvocation
-    )
-
-    $validationSettingsPath = Join-Path $TransactionPath `
-        ("installed-validation-{0}.settings.json" -f [guid]::NewGuid().ToString('N'))
-    $activeSettingsBefore = Get-CountdownInstalledSettingsFingerprint -Path $ActiveSettingsPath
-    $arguments = [string[]] @(
-        '-NoLogo',
-        '-NoProfile',
-        '-NonInteractive',
-        '-STA',
-        '-File',
-        $ApplicationPath,
-        '-ValidateOnly',
-        '-SettingsFile',
-        $validationSettingsPath
-    )
-
-    try {
-        if ($null -eq $NativeInvocation) {
-            $output = @(& $PowerShell7Path @arguments 2>&1 | ForEach-Object { [string] $_ })
-            $exitCode = $LASTEXITCODE
-        }
-        else {
-            $nativeResult = & $NativeInvocation $PowerShell7Path $arguments
-            if ($null -eq $nativeResult -or
-                $nativeResult.PSObject.Properties.Name -notcontains 'ExitCode' -or
-                $nativeResult.PSObject.Properties.Name -notcontains 'Output') {
-                throw '安装后应用 native invocation 必须返回 ExitCode 和 Output。'
-            }
-            $exitCode = [int] $nativeResult.ExitCode
-            $output = @($nativeResult.Output | ForEach-Object { [string] $_ })
-        }
-        $validationOutput = $output -join [Environment]::NewLine
-        if ($exitCode -ne 0) {
-            throw "安装后应用 validate-only 失败：$validationOutput"
-        }
-    }
-    finally {
-        foreach ($path in @(
-                $validationSettingsPath,
-                "$validationSettingsPath.tmp",
-                "$validationSettingsPath.backup1",
-                "$validationSettingsPath.backup2",
-                "$validationSettingsPath.backup2.tmp",
-                "$validationSettingsPath.backup2.rollback"
-            )) {
-            if (Test-Path -LiteralPath $path -PathType Leaf) {
-                Remove-Item -LiteralPath $path -Force
-            }
-        }
-        if (Test-Path -LiteralPath "$validationSettingsPath.tmp" -PathType Container) {
-            [System.IO.Directory]::Delete("$validationSettingsPath.tmp", $false)
-        }
-    }
-
-    $activeSettingsAfter = Get-CountdownInstalledSettingsFingerprint -Path $ActiveSettingsPath
-    if ($activeSettingsBefore.State -ne $activeSettingsAfter.State -or
-        ($activeSettingsBefore.State -eq 'Present' -and (
-            $activeSettingsBefore.Length -ne $activeSettingsAfter.Length -or
-            $activeSettingsBefore.LastWriteTimeUtc -ne $activeSettingsAfter.LastWriteTimeUtc -or
-            $activeSettingsBefore.Sha256 -ne $activeSettingsAfter.Sha256 -or
-            $activeSettingsBefore.FileIdentity -ne $activeSettingsAfter.FileIdentity))) {
-        throw '安装后应用 validate-only 改变了现役 settings.json。'
-    }
-    try {
-        $installedValidation = $validationOutput | ConvertFrom-Json -ErrorAction Stop
-    }
-    catch {
-        throw "安装后应用 validate-only 返回了无效 JSON：$($_.Exception.Message)"
-    }
-    if (-not [bool] $installedValidation.Valid -or
-        -not [bool] $installedValidation.FloatingWindowPresent -or
-        -not [bool] $installedValidation.FloatingManagerButtonPresent) {
-        throw '安装后悬浮框验证失败。'
-    }
-    $installedValidation
-}
-
 function New-CountdownRemoteDeploymentWindowsAdapter {
     $state = [pscustomobject]@{
         InstallMutex = $null
@@ -2406,12 +2256,8 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 -Stage '加载安装事务模块' `
                 -Action { param($lockedPath) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
             $AdapterState.TransactionModuleImported = $true
-            $AdapterState.Stage = '候选环境短验证'
-            Invoke-CountdownRemoteDeploymentTrustedFile `
-                -Context $Context -Location Source -RelativePath 'Countdown.Validation.psm1' `
-                -Stage '加载候选预检入口' -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
-            Invoke-CountdownCandidatePreflight -Root $Context.SourceRoot -PowerShell7Path (Join-Path $PSHOME 'pwsh.exe') `
-                -EvidenceDirectory (Join-Path (Split-Path -Parent $Context.SourceRoot) 'validation-preflight') -OfficeSession
+            # 办公室端只安装、不运行任何测试或窗口验证：验收已在发起端本机跑完，
+            # Deploy-OfficeCountdown.ps1 上传前核对同一提交的本机套件证据。
             $interactiveContext = Get-CountdownInteractiveDesktopContext
             $launcherPath = Join-Path ([string] $interactiveContext.Desktop) '敏敏子倒计时.exe'
             $legacyLauncherPath = Join-Path ([string] $interactiveContext.Desktop) '敏敏子倒计时.cmd'
@@ -2439,15 +2285,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 -Location Source `
                 -RelativePath 'Install-Countdown.ps1' `
                 -Stage '执行安装器' `
-                -Action {
-                    param($lockedPath)
-                    $previousEvidenceRoot = $env:MINMIN_VALIDATION_EVIDENCE_ROOT
-                    try {
-                        $env:MINMIN_VALIDATION_EVIDENCE_ROOT = Join-Path (Split-Path -Parent $Context.SourceRoot) 'validation'
-                        & $lockedPath @installerArguments | Out-String
-                    }
-                    finally { $env:MINMIN_VALIDATION_EVIDENCE_ROOT = $previousEvidenceRoot }
-                }
+                -Action { param($lockedPath) & $lockedPath @installerArguments | Out-String }
             $AdapterState.Stage = '读取延迟提交回执'
             $receipt = Read-CountdownDeferredInstallReceipt -Path $Context.DeferredReceiptPath
             if ($null -eq $receipt) {
@@ -2480,12 +2318,6 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             if ([int] $installer.InteractiveSessionId -ne [int] $receipt.interactiveSessionId) {
                 throw '安装器输出与独立事务回执的交互会话不一致。'
             }
-
-            $validationProperty = $installer.PSObject.Properties['Validation']
-            if ($null -eq $validationProperty) {
-                throw '安装器没有返回稳定 validation interface。'
-            }
-            $validation = $validationProperty.Value
 
             $AdapterState.Stage = '验证安装文件'
             if ([bool] $Context.TrustedFileManifestRequired) {
@@ -2529,34 +2361,6 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
 
             $applicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
-            $AdapterState.Stage = '验证已安装应用'
-            $installedValidation = Invoke-CountdownRemoteDeploymentTrustedFile `
-                -Context $Context `
-                -Location Installed `
-                -RelativePath '敏敏子倒计时.ps1' `
-                -Stage '验证已安装应用' `
-                -Action {
-                    param($lockedPath)
-                    # 办公室部署暂存上下文（本适配器只在该上下文执行）：应用侧 validate-only 的
-                    # 桌面守卫（src/MinminCountdown/ApplicationValidation.cs
-                    # EnsureIsolatedValidationDesktop，77b4a33）无法区分 SSH 隐形会话与真交互
-                    # 用户桌面（远端桌面名解析为 'Default'，第 6 次部署死点）。与 6482c5e/验证
-                    # 夹具族同构：仅在此作用域为该子进程注入 MINMIN_SUITE_ALLOW_UNISOLATED，
-                    # 守卫断言本身不放宽；finally 恢复，标记不外泄到后续适配器步骤。
-                    $previousSuiteAllowUnisolated = $env:MINMIN_SUITE_ALLOW_UNISOLATED
-                    try {
-                        $env:MINMIN_SUITE_ALLOW_UNISOLATED = '1'
-                        Invoke-CountdownInstalledApplicationValidation `
-                            -ApplicationPath $lockedPath `
-                            -PowerShell7Path $Context.PowerShell7Path `
-                            -TransactionPath ([string] $receipt.transactionPath) `
-                            -ActiveSettingsPath $settingsPath
-                    }
-                    finally {
-                        $env:MINMIN_SUITE_ALLOW_UNISOLATED = $previousSuiteAllowUnisolated
-                    }
-                }
-
             $AdapterState.Stage = '等待窗口就绪回执'
             $runtimeStatusPath = Join-Path $Context.InstallPath 'runtime-status.json'
             $runtimeStatus = Wait-CountdownWindowReady `
@@ -2597,9 +2401,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             $AdapterState.Stage = '候选安装验证完成'
 
             [pscustomobject]@{
-                Validation = $validation
                 RuntimeStatus = $runtimeStatus
-                InstalledValidation = $installedValidation
             }
         }
         Accept = {
@@ -2887,38 +2689,12 @@ function Invoke-CountdownRemoteDeployment {
                 throw '远端部署 adapter 没有返回候选结果。'
             }
             $stage = '验证候选结果契约'
-            $validation = Get-CountdownRemoteDeploymentProperty -InputObject $candidate -Name 'Validation' -Required
-            $validationSchemaVersion = [int] (Get-CountdownRemoteDeploymentProperty `
-                    -InputObject $validation `
-                    -Name 'SchemaVersion' `
-                    -Required)
-            if ($validationSchemaVersion -ne 1) {
-                throw "validation interface schemaVersion 不受支持：$validationSchemaVersion"
-            }
-            $validationValid = Get-CountdownRemoteDeploymentProperty -InputObject $validation -Name 'Valid' -Required
-            if ($validationValid -isnot [bool] -or -not [bool] $validationValid) {
-                throw '安装器内置校验未通过。'
-            }
-            $coreTestsPassed = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $validation -Name 'CoreTestsPassed' -Required)
-            $cSharpTestsPassed = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $validation -Name 'CSharpTestsPassed' -Required)
-            $uiTestsPassed = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $validation -Name 'UiTestsPassed' -Required)
-            $uiValid = Get-CountdownRemoteDeploymentProperty -InputObject $validation -Name 'UiValid' -Required
-            if ($uiValid -isnot [bool] -or -not [bool] $uiValid) {
-                throw '应用 validate-only 验证未通过。'
-            }
-            $adapterUiValidated = Get-CountdownRemoteDeploymentProperty -InputObject $validation -Name 'AdapterUiValidated' -Required
-            if ($adapterUiValidated -isnot [bool] -or -not [bool] $adapterUiValidated) {
-                throw 'adapter UI 验证未通过。'
-            }
             $runtimeStatus = Get-CountdownRemoteDeploymentProperty -InputObject $candidate -Name 'RuntimeStatus' -Required
             $runtimeStage = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $runtimeStatus -Name 'stage' -Required)
             $calendarState = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $runtimeStatus -Name 'calendarState' -Required)
-            $installedValidation = Get-CountdownRemoteDeploymentProperty -InputObject $candidate -Name 'InstalledValidation'
-            if ($null -ne $installedValidation) {
-                $installedValidationValid = Get-CountdownRemoteDeploymentProperty -InputObject $installedValidation -Name 'Valid' -Required
-                if ($installedValidationValid -isnot [bool] -or -not [bool] $installedValidationValid) {
-                    throw '安装后应用 validate-only 验证未通过。'
-                }
+            # 成功回执要求 window-ready；在提交边界之前拒绝，候选还能整体回滚。
+            if ($runtimeStage -ne 'window-ready') {
+                throw "候选运行态未达到 window-ready：$runtimeStage"
             }
 
             $stage = '执行事务验收'
@@ -2943,13 +2719,8 @@ function Invoke-CountdownRemoteDeployment {
 
             $stage = '组装部署结果'
             $result = [pscustomobject]@{
-                SchemaVersion = 1
+                SchemaVersion = 2
                 Valid = $true
-                CoreTests = $coreTestsPassed
-                CSharpTests = $cSharpTestsPassed
-                UiTests = $uiTestsPassed
-                UiValid = $true
-                AdapterUiValidated = $true
                 TaskState = [string] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'TaskState' -Required)
                 LastTaskResult = [long] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'LastTaskResult' -Required)
                 RuntimeProcessId = [int] (Get-CountdownRemoteDeploymentProperty -InputObject $acceptance -Name 'RuntimeProcessId' -Required)
@@ -3126,7 +2897,6 @@ function Invoke-CountdownRemoteDeployment {
 
 Export-ModuleMember -Function `
     Invoke-CountdownRemoteDeployment, `
-    Invoke-CountdownInstalledApplicationValidation, `
     ConvertFrom-CountdownPreRollbackDiagnosticsBytes, `
     ConvertFrom-CountdownRemoteDeploymentSuccessReceiptJson, `
     Write-CountdownRemoteDeploymentSuccessReceipt, `

@@ -15,7 +15,7 @@
 
 - 按 `README.md` 的“本机验证”选择覆盖改动面的最窄检查；共享逻辑或发布边界变化时运行完整相关组合。
 - UI、安装或部署变化同时满足 `DESIGN.md`、`README.md` 或 `docs/办公室部署.md` 中与该分支对应的验收合同。
-- 改了 `Countdown.ReleaseContract.psm1` 的 `IntegrityHashes` 所覆盖文件后，先 `git add` 这些文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1` 按暂存区 blob 重算对应静态 SHA-256（`-Check` 只列出全部不一致项）；`verification\MinminCountdown.Verification.exe` 按本次构建字节锁定，不进跨环境静态钉死。细节见 `README.md` 安装节与 `docs/办公室部署.md`。
+- 改了 `Countdown.ReleaseContract.psm1` 的 `IntegrityHashes` 所覆盖文件后，先 `git add` 这些文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1` 按暂存区 blob 重算对应静态 SHA-256（`-Check` 只列出全部不一致项）。钉值只覆盖办公室包里的文件：安装与部署用到的 PowerShell 模块、adapter、启动器、图标、节假日数据和应用资产。细节见 `README.md` 安装节与 `docs/办公室部署.md`。
 - 所有适用检查通过且 `git diff --check` 无错误后才声明完成；无法执行的检查必须明确报告原因和剩余风险。
 
 ## 工作流指针

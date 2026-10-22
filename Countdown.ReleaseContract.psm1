@@ -159,12 +159,9 @@ $script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @('countdown-ic
     $script:buildAssetDefinitions | ForEach-Object { [string] $_.SourcePath }
 )
 
+# 发布包只装办公室安装路径会加载或安装的文件，静态钉值也只覆盖这些文件。C# 源码、测试、构建与验证工具、
+# DESIGN.md 留在仓库：正式部署在构建前按提交 blob 身份核对构建输入（BuildInputFiles），不在这里钉死。
 $script:nonAssetHashes = [ordered]@{
-    'Build-CountdownApplication.ps1' = '3EDC0C38E55E50E13C66D80C7C13A1A1866109B7DD0414337B507962E8619457'
-    'tools\Countdown.BuildPreflight.psm1' = '8B6609C8299F58C65CD80FE6A1F35F66D2DEEB1C50FCD488A9F766954407F1B5'
-    'tools\Test-CountdownBuildPreflight.ps1' = '06C387D084227C8F5B56DEBD258F9FCB62248CD973B3D24AA5AA9F5C0E1A3D06'
-    'DESIGN.md' = '8E64BB85FA7AE40D40B3D9E79B947936D10D982AC342E569D3B3F368889472E8'
-    'Countdown.App.psm1' = '604681FC3CF7D32B4D6DC45FC98A4B3FBF1BFBD4FFB958A5CE616F3FB716705B'
     'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = '087F9B4C8F3116D16FC0379F177BB094A3CC5F3A176DEDDC4076B1223576D8B8'
     'Countdown.RemoteDeployment.psm1' = 'AFC49C9E034AA05708EA99B68D946177DA69E2B7066DC03EFCC8D7919744C675'
@@ -175,125 +172,18 @@ $script:nonAssetHashes = [ordered]@{
     'Countdown.Runtime.psm1' = '6EAD9634FAB49CED2C588D74DC62541FEC6852F0DE694EBC53147FD967CD3A88'
     'Countdown.Settings.psm1' = '507BB437A209CC6F340B00D7089171C6D78EFF6C6EF597A87F49E45BF40E95DC'
     'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    'Countdown.Core.Tests.ps1' = '867ECBD515F3A0F6D8CBA64CFE27BF90296618045BE66422875EF72C65505591'
-    'Countdown.Ui.Tests.ps1' = 'ECBF6A5EF30AD6FBC3F5E5DC3FA007D1AE7E601ACD85A00CF5CEC8F491D4BAB9'
-    'Countdown.CSharp.Tests.ps1' = 'CE46DF5A47C47FD5DED3F0D880263F61E4E9BEC4C4B43AF4397A0318ACFDAAD2'
-    'tools\Build-MainDayOrnamentScene.ps1' = '44738F87984639FF6D258E7E442B92909BD12783C13FC2A707CD5318B3ECF15A'
-    'tools\MainDecorationSceneBands.psd1' = '9DAEDF905F2FD6A0E8396E8718A06B115566EA4A8799354347E3A30D2E41C6B7'
-    'tools\Test-MainDayOrnamentScene.ps1' = '1EFB5C921DB082A693FD73FFAA2D18F9C92864F5B681A4198894D7FF25A8A8C9'
-    'tools\Start-IsolatedSuiteProcess.ps1' = '15DEAD609B08DD2A6E6F275E4678EC08088BEEF5BD94369E0109C3520CB2B512'
-    'tools\Countdown.SuiteIsolation.psm1' = '61E87B0912ADD0C0995B9E26DFC66EEF59E1134FF15BAC1AB1B2590BAC73ACCC'
     '敏敏子倒计时.ps1' = '3A4C018DEE2C1453D01BA4C837EBB4E207C1422D0301CE2973757CD4670B3106'
     'CountdownLauncher.exe' = '4B4C66274278049FF185C7824685D1B5A85F5DA10557F70A1D7E458778066440'
-    'CountdownLauncher.cs' = 'FF4602D8C63A42C1237855B7CF787F47A8F09CEA4F49D9006F777A367BBFDC42'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
-    'assets\floating-plush\SOURCES.md' = '0F17E6B2C45AA160A5B6D69135C7FB9BCCBE774B4E5C656908D01D9B6643B272'
     'holiday-data\2026.json' = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
     'holiday-data\README.md' = 'E177C43E1EA189D8C191A058DFC46E0E524ED4DA78881DD1E95CD600E508D53F'
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
-    'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md' = 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80'
-    'assets\floating-plush\floating-plush-mymelody-front.png' = '9D078C528CB6581222D292EA7E13AF42A77DC60C793C9A8B90AE163B30D27A4D'
-    'assets\floating-plush\floating-plush-mymelody-pose.png' = 'FC8EE48368C6BAEBF45CE3250BD93EB0A43760A03089BFBECCCE2295AF9D5333'
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png' = 'DA9BD4C55AD11CAAADD68A8B153D104A4F170B453175BB67DB7AE99C5CFDAD9B'
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png' = '5FABCFB1420B6D3162DED0BC0C0FFC2A97ACCE24C3B214A1708E652CDB62D107'
-    'assets\floating-plush\floating-plush-kuromi-front.png' = '65A0ACB6B90BCFB2E4409840B1AD5A0844951951A1BBE9050330644592DFD8BD'
-    'assets\floating-plush\floating-plush-kuromi-pose.png' = '92A4493D227A3EA60E5BC23D12CF6AC7F8E5CEBED4F3FDA0328DE6C8B5158F93'
-    # #231：三张派生姿态参考图只作悬浮窗视觉基线 sourceBinding 输入，随发布（验证）包分发但不装进应用。
-    'assets\floating-plush\floating-plush-mymelody-reference.png' = '54F7C2EB62D48783D5977CF68AA795757EC891BE96298351D88784866ED98B07'
-    'assets\floating-plush\floating-plush-cinnamoroll-reference.png' = '9B4E007395F1AF3B20E2EC492C22C8A4FB1F205473A2AD16AFD71F457B44E6B9'
-    'assets\floating-plush\floating-plush-kuromi-reference.png' = '52D0814F2A764EE1262F8919FE70BD535CC14BAFC399295532AAEEFA352384DC'
-    'global.json' = 'B132D105648C7DBE49F2C391FE0B9898027E470DDC7CFD4D7239AF5DF63401FA'
-    'src\MinminCountdown.Core\CalendarOccurrenceCalculator.cs' = 'DCDC8D652A32A01914EBCBA9E9FCA55762AC9CCC8DF6BC5968D9F8168845FF66'
-    'src\MinminCountdown.Core\MinminCountdown.Core.csproj' = 'D8CB86FE56DC5E8AB7C61BCBB920969667AA80EBD65E88C33B1590B61338390B'
-    'src\MinminCountdown.Core\SettingsContract.cs' = '2CB0870BD0A9D8CF55621CE181C94B64A8267926DA2A49090D326BD41DAF5779'
-    'src\MinminCountdown.Core\SettingsFileOperations.cs' = '76913F183DC8A6EE7C6CF0D248730A73C060684D8073D81561025F5A44DB8717'
-    'src\MinminCountdown.Core\SettingsModels.cs' = '8DAEEF60AEE1E67E744452043155F110DDE1E6947A2EED7F004F5F2AA63B9B28'
-    'src\MinminCountdown.Core\DateDisplay.cs' = '90A6F503407D27140E4DA96A724D165171273EA18CD95F7AA3F9815B2E7B2DC3'
-    'src\MinminCountdown.Core\NoteOrdering.cs' = '5495B8AB9E6B1295026EBDA06194ECDB63753D828BBD10C2A02BC792AD7F43A3'
-    'src\MinminCountdown.Core\SettingsRecovery.cs' = 'C955F13308523F1B49E017341373EE7E7687FF1E192C8148C4AE541E0FB6D5CB'
-    'src\MinminCountdown.Core\SettingsStore.cs' = '5094D5FE98479E2523C21F4172814A95ADE508AA7EDDDAD89115DF276DACF229'
-    'src\MinminCountdown.Core\SettingsSynchronization.cs' = '0B313C7A4236ACCE0DB1E3EAF464DC10C22C15E4A5EC5357389B9BDA6510B003'
-    'src\MinminCountdown\App.xaml' = '486F36DBEDF323F1E0B827EC8040FF949468D1E6EFC179BED8AAE321293F4A8B'
-    'src\MinminCountdown\App.xaml.cs' = '1907D4A29EF30982F89F0D095EB91AA1C004AC06B3ABF4E23E0AAB8577AEE200'
-    'src\MinminCountdown\ApplicationSession.cs' = 'AF16D1D44EBCA942D5A0F951339977DAB3C04688CEEF7093CDA54D8091D99413'
-    'src\MinminCountdown\ApplicationTheme.cs' = 'BEB15395519A8C11F9242112B1062C12E7919D163C5E0C89BD02237A06FD5CF7'
-    'src\MinminCountdown\ApplicationValidation.cs' = 'F20C58E83BD8C6F676660C7E6359D81F0D63331B105423856ECA5A083E23912E'
-    'src\MinminCountdown\DesktopWorkspace.cs' = 'C8D02368AA038C6D433AFDB779F03190E911BB1DB420897504DC0C544AB4DF21'
-    'src\MinminCountdown\DeleteUndoOffer.cs' = 'C42400CD3092697F531F687B53F37C4E793D071A4D68D3FBC4ECB0B34054B282'
-    'src\MinminCountdown\DiagnosticLogger.cs' = '234EB941A3F13FF23DB6D58B96A1783FD7C9D7A23BA2B87EAAC0D0CE4762A241'
-    'src\MinminCountdown\DwmWindowChrome.cs' = '8D535ABC40E5903F454C5806BA6EBD2EE844E59843778235FC6FDB057C0D2BBA'
-    'src\MinminCountdown\DomainLogic.cs' = 'FBFB34378DF7468B8FF911038268BCEEAE8F64D975A5D229A72282BC95DE8248'
-    'src\MinminCountdown\FloatingBottomStatus.cs' = 'D4D74BA69AE04210BB0A62F2A7DD7C4CABF031DB360FCE732ECD68B02D1DF1FC'
-    'src\MinminCountdown\FloatingTrayController.cs' = '748B194AD533EF14571C92F57D1EAC3A82AF485153920E1B9360D6BE9472B20C'
-    'src\MinminCountdown\FloatingWindow.Countdowns.cs' = '6523996FE8F71E1AEDDF4EE8A4490E6037B3B3A2238375BEEFF5A2762715B0A1'
-    'src\MinminCountdown\FloatingWindow.Notes.cs' = '2ABDE2268D56771E423B4F7A89EE4C4AF29FC4E5B6589205FC84E285FDDA2BBC'
-    'src\MinminCountdown\FloatingWindow.xaml' = '3478993790B2D098C8D4416C3EA1FE1D517FEFF39479ACB8C60A6FB38331B1DE'
-    'src\MinminCountdown\FloatingWindow.xaml.cs' = '0CFD5D7AB2F688DD6D62F5AB2E61D9934898AFE56C4CA350D30CAB3EF682C0DE'
-    'src\MinminCountdown\GlobalUsings.cs' = '9EB56B713F4BD450C169F140E74FF7B6D5E456F3742A30188B947223D01628E4'
-    'src\MinminCountdown\HolidayCalendar.cs' = 'D93311DB5E74931A6B9378D7FC0360560FF08EA6E45AEFE29CB6E92C5A4322DC'
-    'src\MinminCountdown\HostOptions.cs' = '4C3BB5ED222319195A459C0BA4323A49EAB03D119250E926AFE988F25339A4F3'
-    'src\MinminCountdown\InstanceActivation.cs' = '26A31C9A31EC7FF860E3102DBE23EFD840810CD31FDE0F232B91421B2F16D7CE'
-    'src\MinminCountdown\MainWindow.xaml' = 'B55A8A13384C08C40693573684A278CAD9F2447EE87B9AC8020B6D6A2A795251'
-    'src\MinminCountdown\MainWindow.xaml.cs' = '30C1DDC8E4B92C0A2A96321F7AFB78151E505CE7A2ED5E0FAD763FCC54FA54CB'
-    'src\MinminCountdown\MinminCountdown.csproj' = '34DDC5260BA973D4C5485F90D325DF634A0DD60C61754AEBD57D213DB09FAE88'
-    'src\MinminCountdown\app.manifest' = '51D00E5A5BABD249EF22E33CFBED623809398AE9F3C6114729821A085B8A9DD8'
-    'src\MinminCountdown\MonitorGeometryValidation.cs' = '197D1E995CCC16F07424C76D19E1736028393F1961050795C4E9444D089F257E'
-    'src\MinminCountdown\WindowWorkAreaGeometry.cs' = '929150A0624B41CE3551F24F7512843ACD8B76D18CF9C21CE78756115052EB6C'
-    'src\MinminCountdown\MonitorWorkAreaResolver.cs' = 'FAC5BE6DABFB65DFD5D9FC3506F3CE126D47C5A0B922F5D2B847B41F554E9624'
-    'src\MinminCountdown\MotionBehavior.cs' = '52B526EFFBA105049A3EA94580BFE5154978592DD81A1141F87E898787CD41AB'
-    'src\MinminCountdown\NoteCompletionExit.cs' = '360B7D4E2693284BF0F5B1A27BEDC36438285EE831DB347A40E8E5F355738156'
-    'src\MinminCountdown\ReminderCenterViewModel.cs' = '4B270291A913C00085B272D8422DE87922277D3AF00A990EB6867335DCF10408'
-    'src\MinminCountdown\ReminderEditing.cs' = '952F7935F4971A7BDFA145938525A7E7D14F8CE4305EA8ECEC52F4AA5E2FB138'
-    'src\MinminCountdown\ReminderRulesEditorViewModel.cs' = 'DB0A1BB5809E4B791A655F49BE6267E224F7CC0A2940827C3A7A05A69180B688'
-    'src\MinminCountdown\ReminderRulesEditorWindow.cs' = '92794D1F194582363F38DF29440A0E7382E3526BA5760D21B99E7ACBF6C2277B'
-    'src\MinminCountdown\ReminderWindow.cs' = '570E792566A011F6CC019DFE4A8FE9ACD802CEA368FFFA28C694D3ADE4270AF1'
-    'src\MinminCountdown\RuntimeProtocol.cs' = '37E5585174890F4B748DE4394440CE9D674B675EEAD0775472E2222F0AAC9EE2'
-    'src\MinminCountdown\SegmentIndicator.cs' = 'E5E5C23D555AE212B70784AE4FC3E31BF282AF7B849406A41DF8F90E7840C220'
-    'src\MinminCountdown\SettingsRecoveryWindow.cs' = '47694C9EA9C1D025565A6ED490DB8F49085A9535B966E2BEEA815C5EE67EB1AF'
-    'src\MinminCountdown\TrayIconHost.cs' = '8D803B96780544E0BFE86C87198BF7B99418BCE7ACFC25D6E370E4503EF8C84E'
-    'src\MinminCountdown\UiControls.cs' = '88FB299EA2B9026A9343E53B15597F049031C18CADDBE4326D1A3C723C653051'
-    'src\MinminCountdown\ValidationExercises.cs' = 'E6FF78D0358DEEB506BF62ADE6010030C30912F7969A18BA0EAA6BAE6A6171D6'
-    'src\MinminCountdown\ValidationReport.cs' = '4AE890EF1D9273ED0F33D630733BCB74C5AEEBA8A84872F3FA0D5543F93DA704'
-    'src\MinminCountdown\ValidationReportContract.cs' = 'B36A0B4D71FFCFD52C7BE19ECEA1991F7ABDF7671C9149AA8637F9A9D126641D'
-    'src\MinminCountdown\VisualReferenceBaseline.cs' = 'DF0E749EA0D7234AFB6E850AF9F17B46BBB5EE0ACDE11083725FD2B08008FB61'
-    'src\MinminCountdown\WindowValidationScenarios.cs' = 'E42476B407FB6B46E066DE7335A02A39F021FFA847DF9C455C9A74BE5AF4F0D7'
 }
 
-$script:nonAssetIntegrityPaths = @(
-    'Build-CountdownApplication.ps1',
+# 构建脚本自身读取、但不在 MSBuild 项目闭包里的输入：构建前导入的预检模块，以及复制进载荷的许可证原文。
+$script:buildScriptInputFiles = @(
     'tools\Countdown.BuildPreflight.psm1',
-    'tools\Test-CountdownBuildPreflight.ps1',
-    'DESIGN.md',
-    'Countdown.App.psm1',
-    'Countdown.Core.psm1',
-    'Countdown.InstallTransaction.psm1',
-    'Countdown.RemoteDeployment.psm1',
-    'Countdown.TransactionAcceptance.psm1',
-    'Countdown.TransferLedger.psm1',
-    'Countdown.Validation.psm1',
-    'Countdown.Notes.psm1',
-    'Countdown.Runtime.psm1',
-    'Countdown.Settings.psm1',
-    'Countdown.Tags.psm1',
-    'Countdown.Core.Tests.ps1',
-    'Countdown.Ui.Tests.ps1',
-    'Countdown.CSharp.Tests.ps1',
-    'tools\Build-MainDayOrnamentScene.ps1',
-    'tools\MainDecorationSceneBands.psd1',
-    'tools\Test-MainDayOrnamentScene.ps1',
-    'tools\Start-IsolatedSuiteProcess.ps1',
-    'tools\Countdown.SuiteIsolation.psm1',
-    '敏敏子倒计时.ps1',
-    'CountdownLauncher.exe',
-    'CountdownLauncher.cs',
-    'countdown-icon.ico',
-    'assets\floating-plush\SOURCES.md'
     'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md'
-) + @($script:sourceBuildNonAssetFiles) + @($script:offlineHolidayDataFiles)
-
-# 构建产物（如验证程序 exe）跨环境字节不可复现，不进静态哈希钉死；仍必须随发布包传输。
-$script:buildOutputPackageFiles = @(
-    'verification\MinminCountdown.Verification.exe'
 )
 
 function Assert-CountdownReleaseRelativePath {
@@ -436,16 +326,10 @@ function Get-CountdownReleaseHashByPath {
 }
 
 function New-CountdownReleaseIntegrityMap {
-    $integrityPaths = @($script:nonAssetIntegrityPaths)
+    $integrityPaths = @($script:nonAssetHashes.Keys)
     $integrityPaths += @(
         $script:buildAssetDefinitions |
             Where-Object { $_.Category -eq 'OfficialCharacter' } |
-            ForEach-Object { $_.SourcePath }
-    )
-    $integrityPaths += $script:floatingPlushAssets
-    $integrityPaths += @(
-        $script:buildAssetDefinitions |
-            Where-Object { $_.Category -eq 'MainDecoration' } |
             ForEach-Object { $_.SourcePath }
     )
     $integrityPaths += @($script:buildAssetDefinitions | ForEach-Object { $_.PublishedPath })
@@ -526,7 +410,7 @@ function New-CountdownReleaseContractSnapshot {
         'app\assets\floating-plush\floating-plush-kuromi-reference.png'
     )
     $compatibilityFixtures = @('Countdown.App.psm1') + $officialCharacterAssets + $script:legacyFloatingRegressionAssets
-    $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys) + @($script:buildOutputPackageFiles)
+    $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys)
 
     $hashCopy = [ordered]@{}
     foreach ($entry in $integrityHashes.GetEnumerator()) {
@@ -557,6 +441,7 @@ function New-CountdownReleaseContractSnapshot {
         CurrentFloatingRuntimeAssets = [string[]] $currentFloatingRuntimeAssets
         LegacyFloatingRegressionAssets = [string[]] @($script:legacyFloatingRegressionAssets)
         SourceBuildFiles = [string[]] @($script:sourceBuildFiles)
+        BuildInputFiles = [string[]] (@($script:sourceBuildFiles) + @($script:buildScriptInputFiles))
         OfflineHolidayDataFiles = [string[]] @($script:offlineHolidayDataFiles)
     }
 }
@@ -569,6 +454,7 @@ function Assert-CountdownReleaseContractDefinition {
     Assert-CountdownUniqueReleasePaths -Name 'RetiredRuntimeFiles' -Paths $contract.RetiredRuntimeFiles
     Assert-CountdownUniqueReleasePaths -Name 'CompatibilityFixtureFiles' -Paths $contract.CompatibilityFixtureFiles
     Assert-CountdownUniqueReleasePaths -Name 'SourceBuildFiles' -Paths $contract.SourceBuildFiles
+    Assert-CountdownUniqueReleasePaths -Name 'BuildInputFiles' -Paths $contract.BuildInputFiles
     Assert-CountdownUniqueReleasePaths -Name 'BuildAssets.SourcePath' -Paths @($contract.BuildAssets.SourcePath)
     Assert-CountdownUniqueReleasePaths -Name 'BuildAssets.PublishedPath' -Paths @($contract.BuildAssets.PublishedPath)
 
@@ -582,11 +468,6 @@ function Assert-CountdownReleaseContractDefinition {
     foreach ($path in $installedSet) {
         if (-not $integritySet.Contains($path)) { throw "安装运行时文件未受哈希保护：$path" }
         if ($retiredSet.Contains($path)) { throw "安装运行时文件同时被标记为已淘汰：$path" }
-    }
-    foreach ($path in $contract.SourceBuildFiles) {
-        if (-not $packageSet.Contains($path) -or -not $integritySet.Contains($path)) {
-            throw "源码构建输入不属于受保护发布包：$path"
-        }
     }
     foreach ($asset in $contract.BuildAssets) {
         Assert-CountdownReleaseRelativePath -Path $asset.SourcePath

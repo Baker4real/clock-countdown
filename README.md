@@ -52,10 +52,10 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
 - `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序
-- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个现役应用资产（#231 起三张 floating-plush 派生姿态参考图只随发布/验证包作视觉基线 sourceBinding 输入，不再装进 `app`）
+- `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个现役应用资产（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
-- `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归夹具；只保留在仓库和部署验证包中，不安装到运行目录，生产入口不调用
+- `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归夹具；只保留在仓库中，不进办公室发布包、不安装到运行目录，生产入口不调用
 - `Countdown.Core.psm1`：北京时间换算与倒计时核心逻辑
 - `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
@@ -72,7 +72,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `CountdownLauncher.exe`：仓库中的启动器文件；安装后桌面名为 `敏敏子倒计时.exe`，双击直接启动宿主
 - `countdown-icon.ico`：窗口和桌面启动器图标
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口兼容回退与来源校验使用的三张官方透明角色立绘
-- `assets/floating-plush/*.png`：悬浮窗现役视觉资产与旧 PowerShell 回归夹具；#231 起 `floating-plush-*-reference.png` 三张派生姿态参考图仅作视觉基线 sourceBinding 输入随仓库与验证包分发，不再安装到 `app`；来源、处理边界、哈希和用途见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
+- `assets/floating-plush/*.png`：悬浮窗现役视觉资产与旧 PowerShell 回归夹具；#231 起 `floating-plush-*-reference.png` 三张派生姿态参考图仅作视觉基线 sourceBinding 输入留在仓库，不再安装到 `app`；来源、处理边界、哈希和用途见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
 - `assets/main-decorations/*.png`：主窗口暖色日间装饰资产；现役用法见 [DESIGN.md](DESIGN.md)
 - `assets/ui-references/`：用户生成的页面与悬浮窗参考图及机器可读 `manifest.json` 的固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
 - [DESIGN.md](DESIGN.md)：主窗口两页、悬浮窗两工作区与提醒中心的「暖粉日间」现役视觉、交互和单一日间主题合同
@@ -173,7 +173,7 @@ pwsh.exe -NoLogo -NoProfile -File ./Deploy-OfficeCountdown.ps1 -ValidateOnly
 标注：应用 `-ValidateOnly` 失败时，验证套件先把它的诊断日志（`*.application.jsonl` 及轮转文件）复制进该阶段的证据目录，再照常清理临时文件。CI 任一步失败时上传 `crash-evidence-<run_id>-<attempt>`，内容是 Application 日志里的崩溃事件（Application Error、Windows Error Reporting、.NET Runtime）、`MinminCountdown.exe` 的 WER 小型转储，以及 `D:\agents\run-evidence\clock-countdown-validation` 下的阶段证据。仓库公开，artifact 任何人都能下载，所以只收小型转储。
 
 `-DesktopLauncherOnly` 的冷/暖门槛按 2026-08-23 现役探针五对 runId `ca1179d53398413abb236fc0f4d7b490`、`58c35833a6bf4b5ebbab9e3dab973c2a`、`eb12765e030d413a8520bcbf78c4938c`、`9d6ff40ee86745aab70f4dd96522ce60`、`9cf91f34b4f242b5a93c3b04a2fe1f23` 校准。口径是真实首帧 WPF `ContentRendered`（命名事件 `Local\CountdownDesktopLauncherWindowReady`）；测量钟在首次 window-ready 之后才查询 `Win32_Process`。探针 stopwatch T0→T4 冷 p95/max=3776ms、暖 p95/max=3439ms，分段 Σp95+20% 取整为冷 4700ms、暖 4500ms。机器：BAKER / i5-14600KF / 可用内存约 7.3GiB / CPU 中低 / 2026-08-23 16:46–16:49 +08。样本只用于归因，不汇入门槛样本池。`-InstanceActivationMatrix` 的 38900ms 共享截止按真实矩阵 8×100 强制滚动写标定：2026-08-24 五次 Wait 完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 超时证据 run `20260823T1510260920479Z` 最慢写手 21/100 @ 6800ms，线性外推 32381ms，取最差 +20% 取整。样本只用于归因，不汇入门槛样本池。2026-08-23 连续三轮完整本机验证组合中诊断并发 probe 曾在 6800ms 内只完成约 43–86/100；不能把隔离绿灯当成矩阵或连续全套件绿灯。
-以上命令只证明当前机器上的源码行为、发布包、安装与部署预检合同。`Deploy-OfficeCountdown.ps1 -ValidateOnly` 校验当前工作树候选的发布清单、`IntegrityHashes` 静态哈希和临时 ZIP，不要求工作树干净，也不执行 Git fetch；它不连接办公室设备，不上传或安装产物，更不构成办公室远端部署或验收。无开关入口优先识别当前提交的完整历史部署记录并只读复核；进入安装路径时仍只接受干净、已推送且与 `origin/main` 一致的 `main` 提交，并要求本 checkout 有同一提交在干净工作树上跑通的六阶段套件记录：办公室端只安装、不跑任何测试，这份本机记录就是部署的验收门禁。历史查询、实时复核、显式重新安装和完成态合同见 [办公室部署](docs/办公室部署.md)。安装路径在首次传输前会解析 Windows 内置 OpenSSH 或 PATH 中成对的 ssh/scp 绝对路径，并用选定 ssh 做约 32KB 只读 echo 行为探针；截断或找不到候选即闭锁。`-ValidateOnly` 不跑该解析和探针。构建产物 `verification\MinminCountdown.Verification.exe` 的字节由正式部署按本次构建锁定，不在 `-ValidateOnly` 里对照跨环境静态钉。
+以上命令只证明当前机器上的源码行为、发布包、安装与部署预检合同。`Deploy-OfficeCountdown.ps1 -ValidateOnly` 校验当前工作树候选的发布清单、`IntegrityHashes` 静态哈希和临时 ZIP，不要求工作树干净，也不执行 Git fetch；它不连接办公室设备，不上传或安装产物，更不构成办公室远端部署或验收。无开关入口优先识别当前提交的完整历史部署记录并只读复核；进入安装路径时仍只接受干净、已推送且与 `origin/main` 一致的 `main` 提交，并要求本 checkout 有同一提交在干净工作树上跑通的六阶段套件记录：办公室端只安装、不跑任何测试，这份本机记录就是部署的验收门禁。历史查询、实时复核、显式重新安装和完成态合同见 [办公室部署](docs/办公室部署.md)。安装路径在首次传输前会解析 Windows 内置 OpenSSH 或 PATH 中成对的 ssh/scp 绝对路径，并用选定 ssh 做约 32KB 只读 echo 行为探针；截断或找不到候选即闭锁。`-ValidateOnly` 不跑该解析和探针。办公室发布包只含办公室安装会加载或安装的文件：C# 源码、测试、构建与验证工具和 `DESIGN.md` 留在仓库，正式部署在构建前按提交 blob 身份逐项核对构建输入（契约的 `BuildInputFiles`）。
 
 ## 运行应用
 
@@ -185,7 +185,7 @@ pwsh.exe -NoLogo -NoProfile -File ./Deploy-OfficeCountdown.ps1 -ValidateOnly
 
 ## 安装
 
-安装前先运行 `Build-CountdownApplication.ps1 -Clean`。改了发布契约 `IntegrityHashes` 覆盖的源文件、测试或静态资产后，按当前提交 blob 更新 `Countdown.ReleaseContract.psm1` 里对应的 SHA-256：先 `git add` 改过的文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1`（读暂存区 blob 改写钉值；`-Check` 只列出全部不一致项、不改文件）；`verification\MinminCountdown.Verification.exe` 不进静态钉死，由构建和正式部署按本次产物字节锁定。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、把启动器安装到桌面，并另行注册登录任务。桌面双击 `敏敏子倒计时.exe` 直接启动宿主，不经过 schtasks、pwsh 或 adapter；登录任务仍执行 `pwsh -STA -File 敏敏子倒计时.ps1`。登录任务必须用本次启动令牌先写出“窗口首帧已渲染”的 `window-ready` 回执，安装器最多等待 30 秒；设置等价和提交前验收通过、事务进入仍可回滚的 `accepted` 后，应用还必须以同一令牌、进程、会话和应用路径写出 `finalized-ready`，安装器复核计划任务、受管 EXE 身份与运行环境后才把事务标记为 `committed`。正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
+安装前先运行 `Build-CountdownApplication.ps1 -Clean`。改了发布契约 `IntegrityHashes` 覆盖的文件（办公室安装会加载的 PowerShell 模块与 adapter、启动器、图标、节假日数据、根目录官方立绘和 9 个应用资产）后，按当前提交 blob 更新 `Countdown.ReleaseContract.psm1` 里对应的 SHA-256：先 `git add` 改过的文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1`（读暂存区 blob 改写钉值；`-Check` 只列出全部不一致项、不改文件）。C# 源码、测试、构建与验证工具和 `DESIGN.md` 不进静态钉值，改它们不用重算钉值。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、把启动器安装到桌面，并另行注册登录任务。桌面双击 `敏敏子倒计时.exe` 直接启动宿主，不经过 schtasks、pwsh 或 adapter；登录任务仍执行 `pwsh -STA -File 敏敏子倒计时.ps1`。登录任务必须用本次启动令牌先写出“窗口首帧已渲染”的 `window-ready` 回执，安装器最多等待 30 秒；设置等价和提交前验收通过、事务进入仍可回滚的 `accepted` 后，应用还必须以同一令牌、进程、会话和应用路径写出 `finalized-ready`，安装器复核计划任务、受管 EXE 身份与运行环境后才把事务标记为 `committed`。正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./Install-Countdown.ps1

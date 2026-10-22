@@ -29,11 +29,11 @@ intent: 记录悬浮窗玩偶素材的官方来源、派生过程和校验值。
 | `floating-plush-kuromi-front.png` | `zz-2506411531_KU_--1_1600x.jpg` |
 | `floating-plush-kuromi-pose.png` | `zz-2506411531_KU_--6_1600x.jpg` |
 
-以上六张商品素材都由对应官方商品图做了非生成式的连通白底去除、裁切与 256 x 256 缩放；未使用生图或重绘。它们留在部署验证包中只为保持旧 PowerShell 回归可执行，不能作为后续视觉实现的参考目标。
+以上六张商品素材都由对应官方商品图做了非生成式的连通白底去除、裁切与 256 x 256 缩放；未使用生图或重绘。它们留在仓库中只为保持旧 PowerShell 回归可执行，不能作为后续视觉实现的参考目标。
 
 ## 参考图派生姿态
 
-以下三张角色姿态是后述日间外框、标题栏、角色无文字组件（现役 `520 x 390` 运行时源资产）的派生输入。#231 起它们只作悬浮窗视觉基线 manifest 的 sourceBinding 哈希输入：随仓库与发布（验证）包分发，不再装进正式 `app`，运行时从不加载。悬浮窗整体视觉验收以 [DESIGN.md](../../DESIGN.md) 绑定的现役 manifest 为准；`component-day-card-blank.png` 继续随正式 `app` 发布并参与视觉回归，但方向 B 的倒计时暖纸层级和便签台历索引不再把它渲染为卡片背景。
+以下三张角色姿态是后述日间外框、标题栏、角色无文字组件（现役 `520 x 390` 运行时源资产）的派生输入。#231 起它们只作悬浮窗视觉基线 manifest 的 sourceBinding 哈希输入：只留在仓库，不进办公室发布包，也不再装进正式 `app`，运行时从不加载。悬浮窗整体视觉验收以 [DESIGN.md](../../DESIGN.md) 绑定的现役 manifest 为准；`component-day-card-blank.png` 继续随正式 `app` 发布并参与视觉回归，但方向 B 的倒计时暖纸层级和便签台历索引不再把它渲染为卡片背景。
 
 - 参考图：`D:\Codex\.codex\run-evidence\nodesek-image-generation\20260727\floating-window-three-mascots-integration.png`
 - 参考图生成方式：Nodesek `gpt-image-2` 图片编辑接口；请求元数据保存在同目录的 `floating-window-three-mascots-integration.metadata.json`。

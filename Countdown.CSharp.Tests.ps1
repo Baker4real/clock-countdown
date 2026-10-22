@@ -3739,7 +3739,7 @@ $dayRasterComponentFiles = @(
     'component-day-mascots.png'
 )
 # #231：现役悬浮窗运行时资产只剩四张日间组件；三张派生姿态参考图只作视觉基线
-# sourceBinding 输入，留在仓库与发布（验证）包，不再随应用包分发。
+# sourceBinding 输入，只留在仓库，不随应用或办公室发布包分发。
 $verificationOnlyReferenceFiles = @(
     'floating-plush-mymelody-reference.png',
     'floating-plush-cinnamoroll-reference.png',
@@ -3759,7 +3759,7 @@ foreach ($file in $verificationOnlyReferenceFiles) {
 
     $repositoryReference = Join-Path $PSScriptRoot "assets\floating-plush\$file"
     if (-not (Test-Path -LiteralPath $repositoryReference -PathType Leaf)) {
-        throw "验证专用参考图必须随发布（验证）包保留：$repositoryReference"
+        throw "验证专用参考图必须留在仓库：$repositoryReference"
     }
 }
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force

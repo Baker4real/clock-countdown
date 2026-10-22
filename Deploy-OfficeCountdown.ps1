@@ -1470,6 +1470,18 @@ $controlManifest = New-CountdownDeploymentCommitFileManifest `
     -Root $sourceRoot `
     -IdentityManifest $controlIdentityManifest `
     -Stage '控制文件提交身份校验'
+# 构建输入不随发布包下发、也不在契约里静态钉死：构建前逐项按提交 blob 身份核对快照，再加载 SSH 凭据。
+$buildInputIdentityManifest = New-CountdownDeploymentCommitIdentityManifest `
+    -GitPath $gitPath `
+    -RepositoryRoot $repoRoot `
+    -Commit $commit `
+    -RelativePaths ([string[]] @($releaseContract.BuildInputFiles))
+[void] (New-CountdownDeploymentCommitFileManifest `
+    -GitPath $gitPath `
+    -RepositoryRoot $repoRoot `
+    -Root $sourceRoot `
+    -IdentityManifest $buildInputIdentityManifest `
+    -Stage '构建输入提交身份校验')
 
 Write-OfficeDeploymentProgress '构建前检查 Tailscale 与 SSH 依赖'
 . 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1' | Out-Null
@@ -1550,12 +1562,7 @@ foreach ($file in $requiredFiles) {
         $packageManifest[$file] = [string] $controlManifest[$file]
     }
     else {
-        # 构建产物（verification exe）不进静态 IntegrityHashes，按本次构建字节锁定。
-        $builtPath = Join-Path $sourceRoot $file
-        if (-not (Test-Path -LiteralPath $builtPath -PathType Leaf)) {
-            throw "发布包文件缺少提交或发布契约身份：$file"
-        }
-        $packageManifest[$file] = [string] (Get-FileHash -Algorithm SHA256 -LiteralPath $builtPath).Hash
+        throw "发布包文件缺少提交或发布契约身份：$file"
     }
 }
 Assert-CountdownDeploymentRepositoryAndManifest `

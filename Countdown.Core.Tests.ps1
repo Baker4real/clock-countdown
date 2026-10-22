@@ -3282,22 +3282,22 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 534 @($releaseContract.PackageFiles).Count 'Release contract declares every package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal 530 $releaseContract.IntegrityHashes.Count 'Release contract protects every non-root package file including source-build inputs, licenses and offline holiday data'
-Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\NoteCompletionExit.cs') '#233 source rebuild includes completion exit animation'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\NoteCompletionExit.cs') '#233 completion exit source is integrity protected'
-Assert-Equal $true ($releaseContract.PackageFiles -contains 'src\MinminCountdown\app.manifest') '#219 source rebuild includes the PerMonitorV2 manifest'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('src\MinminCountdown\app.manifest') '#219 manifest is integrity protected'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('assets\floating-plush\SOURCES.md') 'Release contract packages the plush source metadata used by Core tests'
+Assert-Equal 447 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
+Assert-Equal 444 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
+Assert-Equal $true ('src\MinminCountdown\NoteCompletionExit.cs' -in @($releaseContract.BuildInputFiles)) '#233 source rebuild checks the completion exit animation by commit identity'
+Assert-Equal $true ('src\MinminCountdown\app.manifest' -in @($releaseContract.BuildInputFiles)) '#219 source rebuild checks the PerMonitorV2 manifest by commit identity'
+foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\MinminCountdown\app.manifest')) {
+    Assert-Equal $false ($buildOnlyInput -in @($releaseContract.PackageFiles)) "Build input stays out of the office package: $buildOnlyInput"
+    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($buildOnlyInput) "Build input is not statically pinned: $buildOnlyInput"
+}
+Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
 Assert-Equal 65 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
-Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight helper'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Countdown.BuildPreflight.psm1') 'PowerShell build preflight remains integrity protected'
-Assert-Equal $true ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'Release package keeps the PowerShell build preflight entry point'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Test-CountdownBuildPreflight.ps1') 'PowerShell build preflight entry point remains integrity protected'
-Assert-Equal $true ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Release package keeps the design contract read by remote C# tests'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('DESIGN.md') 'Design contract remains integrity protected'
+Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.BuildInputFiles)) 'Deploy checks the PowerShell build preflight helper by commit identity'
+Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'PowerShell build preflight helper stays out of the office package'
+Assert-Equal $false ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'PowerShell build preflight entry point stays out of the office package'
+Assert-Equal $false ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Design contract stays in the repository, outside the office package'
 Assert-Equal 9 @($releaseContract.BuildAssets).Count 'Release contract declares nine explicit application asset mappings'
 $expectedInstalledSupportFiles = @(
     'Countdown.Core.psm1',
@@ -3322,6 +3322,35 @@ $installedApplicationFiles = @($releaseContract.InstalledFiles | Where-Object { 
 $publishedPayloadManifest = Get-Content -LiteralPath (
     Join-Path $PSScriptRoot 'app\published-payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-Equal ((@($publishedPayloadManifest.files.path) | Sort-Object) -join ',') (($installedApplicationFiles | Sort-Object) -join ',') 'Release contract preserves every published application file without extra runtime files'
+$expectedOfficePackageSupportFiles = @(
+    'Deploy-OfficeCountdown.ps1',
+    'Install-Countdown.ps1',
+    'Countdown.ReleaseContract.psm1',
+    'Countdown.Core.psm1',
+    'Countdown.InstallTransaction.psm1',
+    'Countdown.RemoteDeployment.psm1',
+    'Countdown.TransactionAcceptance.psm1',
+    'Countdown.TransferLedger.psm1',
+    'Countdown.Validation.psm1',
+    'Countdown.Notes.psm1',
+    'Countdown.Runtime.psm1',
+    'Countdown.Settings.psm1',
+    'Countdown.Tags.psm1',
+    '敏敏子倒计时.ps1',
+    'CountdownLauncher.exe',
+    'countdown-icon.ico',
+    'sanrio-official-mymelody.png',
+    'sanrio-official-cinnamoroll.png',
+    'sanrio-official-kuromi.png',
+    'holiday-data\2026.json',
+    'holiday-data\README.md',
+    'holiday-data\LICENSE.txt'
+)
+$officePackageSupportFiles = @(
+    $releaseContract.PackageFiles |
+        Where-Object { $_ -notin @($publishedPayloadManifest.files.path) -and $_ -ne 'app\published-payload.json' }
+)
+Assert-Equal (($expectedOfficePackageSupportFiles | Sort-Object) -join ',') (($officePackageSupportFiles | Sort-Object) -join ',') 'Office package carries only what the office install loads or installs besides the published payload'
 $expectedPublishedLicenseFiles = @(
     'app\licenses\CommunityToolkit.Mvvm\8.4.2\License.md',
     'app\licenses\CommunityToolkit.Mvvm\8.4.2\ThirdPartyNotices.txt',
@@ -3338,8 +3367,9 @@ foreach ($publishedLicenseFile in $expectedPublishedLicenseFiles) {
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($publishedLicenseFile) "Third-party license is integrity protected: $publishedLicenseFile"
 }
 $notifyIconLicenseSource = 'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md'
-Assert-Equal $true ($notifyIconLicenseSource -in @($releaseContract.PackageFiles)) 'Release package preserves the vendored H.NotifyIcon license needed by the build script'
-Assert-Equal 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80' $releaseContract.IntegrityHashes[$notifyIconLicenseSource] 'Vendored H.NotifyIcon license matches the upstream commit bytes'
+Assert-Equal $true ($notifyIconLicenseSource -in @($releaseContract.BuildInputFiles)) 'Deploy checks the vendored H.NotifyIcon license read by the build script by commit identity'
+Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.PackageFiles)) 'Office package gets the published H.NotifyIcon license copy instead of the repository source'
+Assert-Equal 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80' (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot $notifyIconLicenseSource)).Hash 'Vendored H.NotifyIcon license matches the upstream commit bytes'
 Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.SourceBuildFiles)) 'Build-script license input is not an MSBuild project item'
 Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.InstalledFiles)) 'Runtime uses the published license copy instead of the repository source path'
 foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
@@ -3354,8 +3384,7 @@ foreach ($verificationOnlyReference in @(
         'assets\floating-plush\floating-plush-kuromi-reference.png'
     )) {
     $installedReference = $verificationOnlyReference -replace '^assets\\', 'app\assets\'
-    Assert-Equal $true ($verificationOnlyReference -in @($releaseContract.PackageFiles)) "Plush reference stays in the release (verification) package: $verificationOnlyReference"
-    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($verificationOnlyReference) "Plush reference remains integrity protected: $verificationOnlyReference"
+    Assert-Equal $false ($verificationOnlyReference -in @($releaseContract.PackageFiles)) "Plush reference stays in the repository, outside the office package: $verificationOnlyReference"
     Assert-Equal $false ($installedReference -in @($releaseContract.PackageFiles)) "Plush reference no longer ships inside the application: $installedReference"
     Assert-Equal $false ($installedReference -in @($releaseContract.InstalledFiles)) "Plush reference is not installed as a runtime file: $installedReference"
     Assert-Equal $true ($installedReference -in @($releaseContract.RetiredRuntimeFiles)) "Plush reference is cleaned from existing installations: $installedReference"
@@ -3371,10 +3400,9 @@ foreach ($deploymentModule in @('Countdown.Validation.psm1', 'Countdown.RemoteDe
     Assert-Equal $false ($deploymentModule -in @($releaseContract.InstalledFiles)) "Deployment module is not installed as runtime: $deploymentModule"
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
-foreach ($sourceBuildFile in $releaseContract.SourceBuildFiles) {
-    Assert-Equal $true ($sourceBuildFile -in @($releaseContract.PackageFiles)) "Source-build input is packaged: $sourceBuildFile"
-    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($sourceBuildFile) "Source-build input is integrity protected: $sourceBuildFile"
-}
+Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
+Assert-Equal 67 @($releaseContract.BuildInputFiles).Count 'Build inputs are the source-build closure plus the preflight helper and vendored license read by the build script'
+Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `
     @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `
     'Project, C# and XAML source-build inputs are not installed as runtime files'
@@ -3480,18 +3508,6 @@ foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
 }
 } # End of if ($visualBaselinesAvailable)
 
-foreach ($visualTool in @(
-        'tools\Build-MainDayOrnamentScene.ps1',
-        'tools\MainDecorationSceneBands.psd1',
-        'tools\Test-MainDayOrnamentScene.ps1')) {
-    Assert-Equal $true ($visualTool -in @($releaseContract.PackageFiles)) "Visual generator is packaged: $visualTool"
-    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($visualTool) "Visual generator is integrity protected: $visualTool"
-    Assert-Equal $false ($visualTool -in @($releaseContract.InstalledFiles)) "Visual generator is not installed as runtime: $visualTool"
-}
-$isolationLauncher = 'tools\Start-IsolatedSuiteProcess.ps1'
-Assert-Equal $true ($isolationLauncher -in @($releaseContract.PackageFiles)) 'Isolation launcher is packaged for validation-suite windowed steps'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains($isolationLauncher) 'Isolation launcher is integrity protected'
-Assert-Equal $false ($isolationLauncher -in @($releaseContract.InstalledFiles)) 'Isolation launcher is not installed as runtime'
 foreach ($trustRoot in @('Deploy-OfficeCountdown.ps1', 'Install-Countdown.ps1', 'Countdown.ReleaseContract.psm1')) {
     Assert-Equal $true ($trustRoot -in @($releaseContract.PackageTrustRoots)) "Release contract declares trust root $trustRoot"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($trustRoot) "Release contract does not self-hash trust root $trustRoot"
@@ -3512,8 +3528,9 @@ else { -1 }
 $deployPackageAssertionIndex = $deploySource.IndexOf('$packageValidation = Assert-CountdownReleasePackage -Root $sourceRoot')
 $transferLedgerImportIndex = $deploySource.IndexOf("-Stage '传输账本模块导入'")
 $deployControlIdentityIndex = $deploySource.IndexOf("-Stage '控制文件提交身份校验'")
-$credentialImportIndex = if ($deployControlIdentityIndex -ge 0) {
-    $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'", $deployControlIdentityIndex)
+$deployBuildInputIdentityIndex = $deploySource.IndexOf("-Stage '构建输入提交身份校验'")
+$credentialImportIndex = if ($deployBuildInputIdentityIndex -ge 0) {
+    $deploySource.IndexOf(". 'D:\Codex\.codex\credentials\ssh\replicator\office\Use-OfficeSshHelper.ps1'", $deployBuildInputIdentityIndex)
 }
 else { -1 }
 Assert-Equal $true (
@@ -3522,10 +3539,11 @@ Assert-Equal $true (
     $deployCommitGateIndex -gt $deployCandidateValidationIndex -and
     $deploySnapshotExportIndex -gt $deployCommitGateIndex -and
     $deployControlIdentityIndex -gt $deploySnapshotExportIndex -and
-    $credentialImportIndex -gt $deployControlIdentityIndex -and
+    $deployBuildInputIdentityIndex -gt $deployControlIdentityIndex -and
+    $credentialImportIndex -gt $deployBuildInputIdentityIndex -and
     $deployPackageAssertionIndex -gt $credentialImportIndex -and
     $transferLedgerImportIndex -gt $deployPackageAssertionIndex
-) 'Office deploy validates the candidate before Git gates and verifies commit source identity before loading SSH credentials'
+) 'Office deploy validates the candidate before Git gates and verifies control files and build inputs by commit identity before loading SSH credentials'
 $deploymentTokens = $null
 $deploymentParseErrors = $null
 $deploymentAst = [System.Management.Automation.Language.Parser]::ParseInput(
@@ -3926,6 +3944,21 @@ Export-ModuleMember -Function Get-CountdownIssue4TrustRootFixtureValue
     }
     Assert-Equal $true $replacedArchiveRejected 'Commit snapshot replacement is rejected before the first release-contract code executes'
     Assert-Equal $false ($null -ne (Get-Variable -Name CountdownIssue4MaliciousSentinel -Scope Global -ErrorAction SilentlyContinue)) 'Rejected first trust root never executes its malicious sentinel'
+
+    $missingBuildInputRejected = $false
+    try {
+        [void] (New-CountdownDeploymentCommitFileManifest `
+            -GitPath $fixtureGitPath `
+            -RepositoryRoot $trustRootRepository `
+            -Root $trustedSnapshotRoot `
+            -IdentityManifest ([ordered]@{ 'src\MinminCountdown\Missing.cs' = $trustedBlobIdentity }) `
+            -Stage '构建输入夹具' `
+            -Adapter $trustRootGitAdapter)
+    }
+    catch {
+        $missingBuildInputRejected = $_.FullyQualifiedErrorId -like 'PathNotFound,*'
+    }
+    Assert-Equal $true $missingBuildInputRejected 'Missing build input fails the commit identity check before the build'
 
     $maliciousSwapCandidate = Join-Path $deploymentGateTestRoot 'malicious-release-contract.psm1'
     $trustedSwapBackup = Join-Path $deploymentGateTestRoot 'trusted-release-contract.backup.psm1'
@@ -4341,11 +4374,11 @@ Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath 
 $mutableReleaseContract = Get-CountdownReleaseContract
 $mutableReleaseContract.PackageFiles[0] = 'mutated-package-file'
 $mutableReleaseContract.BuildAssets[0].SourcePath = 'mutated-build-source'
-$mutableReleaseContract.IntegrityHashes['Build-CountdownApplication.ps1'] = ('0' * 64)
+$mutableReleaseContract.IntegrityHashes['Countdown.Core.psm1'] = ('0' * 64)
 $freshReleaseContract = Get-CountdownReleaseContract
 Assert-Equal $false ('mutated-package-file' -in @($freshReleaseContract.PackageFiles)) 'Release contract returns a fresh package list'
 Assert-Equal $false ('mutated-build-source' -in @($freshReleaseContract.BuildAssets.SourcePath)) 'Release contract returns fresh build asset records'
-Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Build-CountdownApplication.ps1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
+Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Countdown.Core.psm1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
 
 $releaseContractTestRoot = Join-Path $PSScriptRoot ("release-contract-test-" + [guid]::NewGuid().ToString('N'))
 try {
@@ -4385,18 +4418,20 @@ try {
     } else {
         'D:\Codex\tools\dotnet\10.0\dotnet.exe'
     }
-    $isolatedApplicationProject = Join-Path $releaseContractTestRoot 'src\MinminCountdown\MinminCountdown.csproj'
+    # 构建输入不随办公室包下发：在仓库根评估 MSBuild 项目闭包，部署器构建前按提交 blob 身份逐项核对同一份清单。
+    $sourceClosureRoot = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
+    $applicationProjectPath = Join-Path $sourceClosureRoot 'src\MinminCountdown\MinminCountdown.csproj'
     $evaluatedSourceBuildFiles = [System.Collections.Generic.List[string]]::new()
     [void] $evaluatedSourceBuildFiles.Add('global.json')
     $projectQueue = [System.Collections.Generic.Queue[string]]::new()
-    $projectQueue.Enqueue($isolatedApplicationProject)
+    $projectQueue.Enqueue($applicationProjectPath)
     $evaluatedProjects = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     while ($projectQueue.Count -gt 0) {
         $projectPath = [System.IO.Path]::GetFullPath($projectQueue.Dequeue())
         if (-not $evaluatedProjects.Add($projectPath)) {
             continue
         }
-        [void] $evaluatedSourceBuildFiles.Add($projectPath.Substring($releaseContractTestRoot.Length + 1))
+        [void] $evaluatedSourceBuildFiles.Add($projectPath.Substring($sourceClosureRoot.Length + 1))
         $evaluatedJson = & $managedDotnet msbuild $projectPath '-getItem:Compile,ApplicationDefinition,Page,Content,ProjectReference' '-getProperty:ApplicationIcon,ApplicationManifest' | Out-String
         if ($LASTEXITCODE -ne 0) {
             throw "MSBuild source-closure evaluation failed: $projectPath"
@@ -4409,9 +4444,9 @@ try {
             }
             foreach ($item in @($itemProperty.Value)) {
                 $fullPath = [System.IO.Path]::GetFullPath([string] $item.FullPath)
-                if ($fullPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase) -and
+                if ($fullPath.StartsWith($sourceClosureRoot + '\', [System.StringComparison]::OrdinalIgnoreCase) -and
                     $fullPath -notmatch '[\\/](bin|obj)[\\/]') {
-                    [void] $evaluatedSourceBuildFiles.Add($fullPath.Substring($releaseContractTestRoot.Length + 1))
+                    [void] $evaluatedSourceBuildFiles.Add($fullPath.Substring($sourceClosureRoot.Length + 1))
                 }
             }
         }
@@ -4420,22 +4455,22 @@ try {
                 if ($null -ne $projectReferenceProperty) { $projectReferenceProperty.Value }
             )) {
             $referencedProjectPath = [System.IO.Path]::GetFullPath([string] $projectReference.FullPath)
-            if ($referencedProjectPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            if ($referencedProjectPath.StartsWith($sourceClosureRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
                 $projectQueue.Enqueue($referencedProjectPath)
             }
         }
         $applicationIcon = [string] $evaluatedProject.Properties.ApplicationIcon
         if (-not [string]::IsNullOrWhiteSpace($applicationIcon)) {
             $applicationIconPath = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $projectPath) $applicationIcon))
-            if ($applicationIconPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
-                [void] $evaluatedSourceBuildFiles.Add($applicationIconPath.Substring($releaseContractTestRoot.Length + 1))
+            if ($applicationIconPath.StartsWith($sourceClosureRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+                [void] $evaluatedSourceBuildFiles.Add($applicationIconPath.Substring($sourceClosureRoot.Length + 1))
             }
         }
         $applicationManifest = [string] $evaluatedProject.Properties.ApplicationManifest
         if (-not [string]::IsNullOrWhiteSpace($applicationManifest)) {
             $manifestPath = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $projectPath) $applicationManifest))
-            if ($manifestPath.StartsWith($releaseContractTestRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
-                [void] $evaluatedSourceBuildFiles.Add($manifestPath.Substring($releaseContractTestRoot.Length + 1))
+            if ($manifestPath.StartsWith($sourceClosureRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+                [void] $evaluatedSourceBuildFiles.Add($manifestPath.Substring($sourceClosureRoot.Length + 1))
             }
         }
     }
@@ -4444,6 +4479,15 @@ try {
         ((@($evaluatedSourceBuildFiles) | Sort-Object -Unique) -join ',') `
         'Release contract matches the MSBuild-evaluated project, Compile, WPF XAML, icon, manifest and Content closure'
 
+    # 办公室包不含源码：补进声明的构建输入，证明它们足以从零重建应用，再在隔离桌面跑应用 validate-only。
+    foreach ($relativePath in $releaseContract.BuildInputFiles) {
+        $testPath = Join-Path $releaseContractTestRoot $relativePath
+        $testParent = Split-Path -Parent $testPath
+        if (-not (Test-Path -LiteralPath $testParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $testParent -Force | Out-Null
+        }
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $relativePath) -Destination $testPath -Force
+    }
     $isolatedSourceDll = Join-Path $releaseContractTestRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
     [System.IO.File]::WriteAllText(
         (Join-Path $releaseContractTestRoot 'Countdown.Core.Tests.ps1'),
@@ -4467,22 +4511,7 @@ try {
     Assert-Equal $true ([bool] $isolatedValidation.AdapterUiValidated) 'Isolated validation preserves adapter UI evidence'
     Assert-Equal $true `
         (Test-Path -LiteralPath $isolatedSourceDll -PathType Leaf) `
-        'Isolated source build produces the DLL required by C# regression'
-
-    foreach ($fixturePath in @('Countdown.Core.Tests.ps1', 'Countdown.CSharp.Tests.ps1', 'Countdown.Ui.Tests.ps1')) {
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $fixturePath) -Destination (Join-Path $releaseContractTestRoot $fixturePath) -Force
-    }
-    $isolatedCoreProject = Join-Path $releaseContractTestRoot 'src\MinminCountdown.Core\MinminCountdown.Core.csproj'
-    Remove-Item -LiteralPath $isolatedCoreProject -Force
-    $missingSourceBuildInputRejected = $false
-    try {
-        Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null
-    }
-    catch {
-        $missingSourceBuildInputRejected = $_.Exception.Message -match '缺少发布包文件：src\\MinminCountdown\.Core\\MinminCountdown\.Core\.csproj'
-    }
-    Assert-Equal $true $missingSourceBuildInputRejected 'Release assertion fails closed when a required project-graph input is missing'
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown.Core\MinminCountdown.Core.csproj') -Destination $isolatedCoreProject -Force
+        'Declared build inputs rebuild the DLL required by C# regression'
 
     foreach ($relativePath in $releaseContract.PackageFiles) {
         $testPath = Join-Path $releaseContractTestRoot $relativePath
@@ -6140,10 +6169,7 @@ $mtimeJson = (@{ ExpectedSettingsMtimeUtc = $mtimeSample } | ConvertTo-Json -Com
 $coercedMtime = ($mtimeJson | ConvertFrom-Json).ExpectedSettingsMtimeUtc
 $keptMtime = ($mtimeJson | ConvertFrom-Json -DateKind String).ExpectedSettingsMtimeUtc
 Assert-Equal $true ($coercedMtime -is [datetime] -or [string] $keptMtime -eq $mtimeSample) 'ConvertFrom-Json either keeps the settings mtime string or yields a DateTime the fingerprint helper can normalize'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Build-CountdownApplication.ps1') 'Release contract protects the build script the deployment rebuilds from'
-Assert-Equal $true ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the build script required by remote core tests'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('tools\Test-CountdownBuildPreflight.ps1') 'Release contract protects the preflight entry script read by remote core tests'
-Assert-Equal $true ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'Release contract packages the preflight entry script read by remote core tests'
+Assert-Equal $false ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Build script stays out of the office package; the deployer runs it from the commit-identity-checked snapshot'
 $clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
 [System.IO.File]::WriteAllText($clearTestPath, '{}')
 [System.IO.File]::WriteAllText("$clearTestPath.tmp", '{}')

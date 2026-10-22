@@ -196,4 +196,12 @@ $entryOutput = @(& pwsh -NoProfile -File (Join-Path $clone 'Deploy-OfficeCountdo
 Assert-Status 0 $LASTEXITCODE 'Status CLI runs with unrelated dirty working tree content'
 $entryStatus = ($entryOutput -join "`n") | ConvertFrom-Json
 Assert-Status $false $entryStatus.LiveVerified 'Status CLI emits one historical JSON result'
+# 断言全部通过才清理测试根；任一断言失败时脚本已中止，测试根留作现场。清理失败只记 stderr，stdout 仍是单个 JSON。
+try {
+    foreach ($file in Get-ChildItem -LiteralPath $testRoot -File -Recurse -Force) { Remove-Item -LiteralPath $file.FullName -Force }
+    foreach ($directory in @(Get-ChildItem -LiteralPath $testRoot -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)) {
+        Remove-Item -LiteralPath $directory.FullName -Force
+    }
+    Remove-Item -LiteralPath $testRoot -Force
+} catch { [Console]::Error.WriteLine("断言已全部通过，但测试根未能清理：$testRoot；$($_.Exception.Message)") }
 [pscustomobject]@{ Valid=$true; Assertions=$assertions } | ConvertTo-Json -Compress

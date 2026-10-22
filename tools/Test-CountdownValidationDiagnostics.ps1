@@ -173,5 +173,13 @@ if (-not (Test-Path -LiteralPath $preserved -PathType Leaf) -or [IO.File]::ReadA
 }
 if ((Test-Path -LiteralPath $diagnosticPath) -or (Test-Path -LiteralPath "$diagnosticPath.1")) { throw '复制进证据目录后仍须清理临时诊断日志。' }
 $assertions++
-$result =[pscustomobject]@{ Valid=$true; Passed=$assertions; Failed=0; EvidenceRoot=$root }
+# 断言全部通过才清理测试根；任一断言失败时脚本已中止，测试根留作现场。清理失败只记 stderr，stdout 仍是单个 JSON。
+try {
+    foreach ($file in Get-ChildItem -LiteralPath $root -File -Recurse -Force) { Remove-Item -LiteralPath $file.FullName -Force }
+    foreach ($directory in @(Get-ChildItem -LiteralPath $root -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)) {
+        Remove-Item -LiteralPath $directory.FullName -Force
+    }
+    Remove-Item -LiteralPath $root -Force
+} catch { [Console]::Error.WriteLine("断言已全部通过，但测试根未能清理：$root；$($_.Exception.Message)") }
+$result =[pscustomobject]@{ Valid=$true; Passed=$assertions; Failed=0 }
 if ($Json) { $result | ConvertTo-Json -Compress } else { $result }

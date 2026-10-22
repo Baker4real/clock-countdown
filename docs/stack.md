@@ -62,6 +62,7 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 - 不进行 Tauri + React + Rust 的全面重写；#209 闸门（2026-10-09）已决定停止该路线，切片仅作为归档证据保留。
 - 不把 Rust 作为当前生产宿主。旧比较表中的“不推荐”结论仍适用；#209 闸门已验证不值得继续投入。
 - 不改用 Electron、WinUI 3、Avalonia 或 MAUI 作为本票目标。
+- 不按 shadcn/ui Nova、Lucide、Motion、react-resizable-panels、dnd-kit、Zustand 这套 React 前端栈改造（2026-10-22 评估）：除 Lucide 外都须先把 WPF 换成 WebView 宿主，且补不上 #209 列出的缺口；Nova 默认按钮与图标按钮为 32px，低于悬浮窗 36 DIP 命中下限，其通用设计语言也与 `DESIGN.md` 冲突；Motion 与现有动效 token 重复；可拖分栏与拖拽排序没有使用场景；状态继续由 `DesktopWorkspace` 与 CommunityToolkit.Mvvm 承担。Lucide 只可作为新增图标的几何参考（ISC），须服从 `DESIGN.md` 图标规格，不整体替换现有图标。
 - 不把 JSON 换成 SQLite；现有 schema v10 和事务边界继续有效。
 - 不因闸门准备提前修改生产入口、计划任务、安装目录、办公室部署链或用户设置路径。
 

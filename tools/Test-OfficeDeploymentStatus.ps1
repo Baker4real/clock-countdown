@@ -172,7 +172,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'holiday-data/LICENSE.txt') -Destination
 if ($LASTEXITCODE -ne 0) { throw 'Fixture init failed' }
 # CLI 身份门使用已提交夹具；当前工作树中的部署模块本身正是待验候选，
 # 不得要求正式入口绕过 HEAD blob 校验来接受它。
-foreach ($source in @('Deploy-OfficeCountdown.ps1','Countdown.TransferLedger.psm1','Countdown.RemoteDeployment.psm1')) {
+foreach ($source in @('Deploy-OfficeCountdown.ps1','Countdown.TransferLedger.psm1','Countdown.RemoteDeployment.psm1','Countdown.InstallTransaction.psm1')) {
     Copy-Item -LiteralPath (Join-Path $repo $source) -Destination (Join-Path $fixture $source)
 }
 & git -C $fixture -c core.autocrlf=true add .

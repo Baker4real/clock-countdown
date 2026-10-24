@@ -793,6 +793,8 @@ internal static class ValidationReport
         var mainReminderModeExercise = mainWindowScenarios.ReminderModes;
         var floatingReminderModeExercise = floatingWindowScenarios.ReminderModes;
         var mainUiPolish = mainWindowScenarios.UiPolish;
+        var mainStructure = mainWindowScenarios.Structure;
+        var floatingStructure = floatingWindowScenarios.Structure;
         var selector = Required<TagSelector>(main, "CountdownTags");
         var mainNoteCompletionValidation = ValidateMainNoteCompletion(
             main,
@@ -836,9 +838,7 @@ internal static class ValidationReport
         // DWM 原生圆角与安全降级/页签次序；
         // 悬浮外壳投影（TaskCard/FloatingThemeBackdrop 无 Effect）由悬浮窗实例直接钉。
         var visualChrome = mainUiPolish.VisualChrome;
-        var floatingShellLargeShadowRemoved =
-            Required<Border>(floating, "TaskCard").Effect is null &&
-            Required<Border>(floating, "FloatingThemeBackdrop").Effect is null;
+        var floatingShellLargeShadowRemoved = floatingStructure.ShellLargeShadowRemoved;
         var popupFocusTabGates = ValidationExercises.EvaluatePopupFocusTabGates(
             new PopupFocusTabGateInputs(
                 noteListPolish.FilterPopupTabCyclesInsideLayer,
@@ -1220,7 +1220,7 @@ internal static class ValidationReport
             main,
             activeNoteRows,
             completedNoteRows);
-        var noteGroupingSelectorAbsent = main.FindName("NoteGroupingSelector") is null;
+        var noteGroupingSelectorAbsent = mainStructure.NoteGroupingSelectorAbsent;
         var tagChips = Descendants<Border>(countdownRows)
             .Concat(Descendants<Border>(activeNoteRows))
             .Where(border => !string.IsNullOrWhiteSpace(border.Uid))
@@ -2152,9 +2152,7 @@ internal static class ValidationReport
             ["TimeDropDowns"] = 3,
             ["TimeOptionCounts"] = main.TimeOptionCounts,
             ["HasCountdownReminderModeRadios"] = Must(
-                main.FindName("CountdownReminderNoRadio") is RadioButton &&
-                main.FindName("CountdownReminderTimeRadio") is RadioButton &&
-                main.FindName("CountdownReminderCustomRadio") is RadioButton,
+                mainStructure.CountdownReminderModeRadiosPresent,
                 "倒计时提醒模式单选组存在（#129 自 U1 迁移）"),
             ["HasCountdownList"] = Must(countdownRows is not null, "多倒计时列表存在（#129 自 U1 迁移）"),
             ["MainCountdownEncourageBadgeAbsent"] = Must(countdownReadability.EncourageBadgeAbsent, "管理窗口倒计时列表不渲染超期待徽章（两窗都只挂距离下班）"),
@@ -2215,41 +2213,28 @@ internal static class ValidationReport
                 keyboardFocusRingContrast.FloatingCapsuleUsesWarmGoldToken,
                 "悬浮窗胶囊键盘焦点环使用暖金色 token"),
             ["FloatingIncomeUsesTabularNumerals"] = Must(
-                Typography.GetNumeralAlignment(Required<TextBlock>(floating, "FloatingIncome")) ==
-                FontNumeralAlignment.Tabular,
+                floatingStructure.IncomeUsesTabularNumerals,
                 "悬浮窗今日已赚使用表格数字"),
-            ["HasNameEditor"] = Must(main.FindName("CountdownName") is TextBox, "倒计时名称编辑器存在（#129 自 U1 迁移）"),
+            ["HasNameEditor"] = Must(mainStructure.NameEditorPresent, "倒计时名称编辑器存在（#129 自 U1 迁移）"),
             ["HasNoteReminderControls"] = Must(
-                main.FindName("ManageNoteReminderRulesButton") is Button &&
-                main.FindName("NoteReminderRulesSummary") is TextBlock &&
-                floating.FindName("FloatingManageReminderRules") is Button &&
-                floating.FindName("FloatingReminderRulesSummary") is TextBlock &&
-                main.FindName("NoteReminder") is null &&
-                main.FindName("NoteReminderSchedule") is null &&
-                main.FindName("FloatingReminderIntervalPanel") is null &&
-                floating.FindName("FloatingReminder") is null &&
-                floating.FindName("FloatingReminderSchedule") is null &&
-                floating.FindName("FloatingReminderIntervalPanel") is null,
+                mainStructure.NoteReminderRulesEntryPresent &&
+                floatingStructure.ReminderRulesEntryPresent &&
+                mainStructure.LegacyNoteReminderControlsAbsent &&
+                floatingStructure.LegacyReminderControlsAbsent,
                 "管理窗口或悬浮入口存在便签提醒选择器与自定义分钟输入（#129 自 U1 迁移）"),
             ["NoteReminderControlsWork"] = Must(reminderRulesEditorSharedEntryWorks, "便签提醒选择器支持预设、自定义分钟与禁用提醒（#129 自 U1 迁移）"),
             ["ReminderRulesEditorSharedEntryWorks"] = Must(
                 reminderRulesEditorSharedEntryWorks &&
-                Required<Button>(main, "ManageNoteReminderRulesButton").Visibility == Visibility.Visible &&
-                Required<TextBlock>(main, "NoteReminderRulesSummary").Visibility == Visibility.Visible &&
-                main.FindName("NoteReminder") is null &&
-                main.FindName("NoteReminderSchedule") is null &&
-                main.FindName("FloatingReminderIntervalPanel") is null &&
-                Required<Button>(floating, "FloatingManageReminderRules").Visibility == Visibility.Visible &&
-                Required<TextBlock>(floating, "FloatingReminderRulesSummary").Visibility == Visibility.Visible &&
-                floating.FindName("FloatingReminder") is null &&
-                floating.FindName("FloatingReminderSchedule") is null &&
-                floating.FindName("FloatingReminderIntervalPanel") is null,
+                mainStructure.NoteReminderRulesEntryVisible &&
+                mainStructure.LegacyNoteReminderControlsAbsent &&
+                floatingStructure.ReminderRulesEntryVisible &&
+                floatingStructure.LegacyReminderControlsAbsent,
                 "主窗口与悬浮窗复用共享提醒规则编辑器入口并隐藏旧复杂控件"),
             ["CalendarReminderStartLabelsUseCalendarSemantics"] = Must(ProbeCalendarReminderStartLabels(), "日历模式开始日期/本地时刻标签与其余模式首次提醒标签区分"),
             ["FloatingReminderRulesEntryStaysCompact"] = Must(
                 Math.Abs(floating.Width - 520) <= 0.1 &&
                 floating.Height <= 391 &&
-                Required<Button>(floating, "FloatingManageReminderRules").Width <= 116,
+                floatingStructure.ReminderRulesEntryCompact,
                 "悬浮窗提醒规则入口保持 520 x 390 紧凑表面"),
             ["NoteReminderTimeOptionCounts"] = new[]
             {
@@ -2457,13 +2442,10 @@ internal static class ValidationReport
             ["InvalidNotesRejected"] = Must(invalidNotesRejected, "非法持久化便签被拒绝（#129 自 U1 迁移）"),
             ["InvalidTagReferencesRejected"] = Must(invalidTagReferencesRejected, "持久化悬空标签引用被拒绝（#129 自 U1 迁移）"),
             ["HasTagControls"] = Must(
-                main.FindName("CountdownTags") is TagSelector &&
-                main.FindName("NoteTags") is TagSelector &&
-                main.FindName("FilterTagOptions") is WrapPanel,
+                mainStructure.TagControlsPresent,
                 "共享标签选择、筛选与管理控件存在（#129 自 U1 迁移）"),
             ["StaticWorkspaceLayout"] = Must(
-                main.FindName("CountdownWorkspace") is Canvas &&
-                main.FindName("DisplayPrecision") is ComboBox,
+                mainStructure.StaticWorkspaceLayout,
                 "倒计时工作区与设置控件使用稳定实例（#221 设置移入按需弹层）"),
             ["MainNoteEditorFieldsDoNotOverlap"] = Must(mainUiPolish.NoteEditorFieldsDoNotOverlap, "主窗口提醒入口、规则摘要与错误区互不重叠"),
             ["LegacyInlineReminderControlsStayHidden"] = Must(
@@ -2531,22 +2513,20 @@ internal static class ValidationReport
                 undatedNoteEdit.ValidationMessagesDistinguished,
             ["HiddenCountdownSubmitDisabled"] = Must(hiddenCountdownSubmitDisabled, "隐藏的倒计时编辑器不暴露默认提交按钮（#129 自 U1 迁移）"),
             ["WorkspaceTabsUseSelectionSemantics"] = Must(
-                main.FindName("CountdownTab") is ToggleButton &&
-                main.FindName("NotesTab") is ToggleButton,
+                mainStructure.CountdownTabPresent &&
+                mainStructure.NotesTabPresent,
                 "工作区页签暴露可访问选中态（#129 自 U1 迁移）"),
             ["TagUiAccessible"] = Must(
                 !string.IsNullOrWhiteSpace(AutomationProperties.GetName(Required<Button>(main, "TagManagerButton"))),
                 "标签搜索标签与图标按钮可访问名称完整（#129 自 U1 迁移）"),
             ["FilterOptionsUseSelectionSemantics"] = Must(
-                main.FindName("AnyTagMode") is ToggleButton &&
-                main.FindName("AllTagMode") is ToggleButton,
+                mainStructure.TagMatchModeTogglesPresent,
                 "筛选选项暴露可访问选中态（#129 自 U1 迁移）"),
             ["CompactFilterSummary"] = Must(Required<Button>(main, "FilterButton").ActualWidth <= 140, "筛选触发器使用紧凑摘要布局（#129 自 U1 迁移）"),
             ["TagCreateAppearsFromSearch"] = Must(createAppears, "新标签可从统一标签搜索框创建（#129 自 U1 迁移）"),
             ["TagCreateStaysCollapsedWithoutQuery"] = Must(createCollapsed, "未输入新标签名前创建动作保持收起（#129 自 U1 迁移）"),
             ["TagFilterSupportsAnyAll"] = Must(
-                main.FindName("AnyTagMode") is ToggleButton &&
-                main.FindName("AllTagMode") is ToggleButton,
+                mainStructure.TagMatchModeTogglesPresent,
                 "标签筛选暴露显式任意/全部匹配（#129 自 U1 迁移）"),
             ["TagChipsUseUid"] = Must(tagChipsUseUid, "标签芯片不复用记录 ID 的 Tag 属性（#129 自 U1 迁移）"),
             ["PersistenceRoundTrip"] = roundTrip,
@@ -2577,10 +2557,7 @@ internal static class ValidationReport
             ["TagEditorSummaryIsCompact"] = tagExercise.EditorSummaryIsCompact,
             ["TagUntaggedAndCountdownStatus"] = tagExercise.UntaggedAndCountdownStatus,
             ["TagNoteStatusSearchAndCompletion"] = tagExercise.NoteStatusSearchAndCompletion,
-            ["NoteDateFilterControls"] =
-                main.FindName("NoteDateFilter") is DatePicker &&
-                main.FindName("NoteUndatedFilter") is ToggleButton &&
-                main.FindName("ClearNoteDateFilter") is Button,
+            ["NoteDateFilterControls"] = mainStructure.NoteDateFilterControlsPresent,
             ["NoteDateFilterBehavior"] = tagExercise.NoteDateFilterBehavior,
             ["TagFloatingNoteInheritsTags"] = tagExercise.FloatingNoteInheritsTags,
             ["TagFloatingNoteDateViaPicker"] = tagExercise.FloatingNoteDateViaPicker,
@@ -2864,33 +2841,27 @@ internal static class ValidationReport
             ["FloatingIncomeText"] = floatingWorkspace.IncomeText,
             ["FloatingIncomeHiddenWithoutSalary"] = Must(floatingWorkspace.IncomeHiddenWithoutSalary, "悬浮窗月薪为 0 时不渲染今日已赚金额：日历就绪显示鼓励文案，未就绪仍显示状态"),
             ["FloatingIncomeRestoredWithSalary"] = Must(floatingWorkspace.IncomeRestoredWithSalary, "悬浮窗恢复正数月薪后今日已赚金额行还原"),
-            ["FloatingManagerButtonPresent"] = Must(floating.FindName("OpenManagerButton") is Button, "悬浮窗倒计时管理动作存在（#129 自 U1 迁移）"),
+            ["FloatingManagerButtonPresent"] = Must(floatingStructure.ManagerButtonPresent, "悬浮窗倒计时管理动作存在（#129 自 U1 迁移）"),
             ["HasUnifiedNoteEntry"] = Must(
-                main.FindName("CountdownTab") is ToggleButton &&
-                main.FindName("NotesTab") is ToggleButton &&
-                floating.FindName("FloatingNotesButton") is ToggleButton,
+                mainStructure.CountdownTabPresent &&
+                mainStructure.NotesTabPresent &&
+                floatingStructure.NotesButtonPresent,
                 "倒计时工作区存在统一便签入口（#129 自 U1 迁移）"),
             ["HasNoteControls"] = Must(
-                main.FindName("NoteText") is TextBox &&
-                main.FindName("SaveNoteButton") is Button &&
-                floating.FindName("FloatingNoteText") is TextBox &&
-                floating.FindName("FloatingAddNote") is Button,
+                mainStructure.NoteEntryControlsPresent &&
+                floatingStructure.NoteEntryControlsPresent,
                 "便签输入或添加动作存在（#129 自 U1 迁移）"),
             ["HasNoteDateControls"] =
-                main.FindName("NoteDate") is DatePicker &&
-                floating.FindName("FloatingNoteDate") is DatePicker,
+                mainStructure.NoteDatePresent &&
+                floatingStructure.NoteDatePresent,
             ["HasOpenNotesActions"] = Must(
-                main.FindName("NotesTab") is ToggleButton &&
-                floating.FindName("FloatingNotesButton") is ToggleButton,
+                mainStructure.NotesTabPresent &&
+                floatingStructure.NotesButtonPresent,
                 "存在打开统一便签工作区的动作（#129 自 U1 迁移）"),
             ["UnifiedWorkspaceSwitches"] = Must(switchesToCountdown && switchesToNotes, "倒计时与便签工作区一起切换（#129 自 U1 迁移）"),
             ["WorkspaceSwitcherBeforeEditors"] = Must(workspaceSwitcherBeforeEditors, "工作区切换器出现在编辑器之前（#129 自 U1 迁移）"),
             ["HasPreferenceControls"] = Must(
-                main.FindName("DisplayPrecision") is ComboBox &&
-                main.FindName("MonthlySalary") is TextBox &&
-                main.FindName("WorkStart") is TextBox &&
-                main.FindName("WorkEnd") is TextBox &&
-                main.FindName("SavePreferencesButton") is Button,
+                mainStructure.PreferenceControlsPresent,
                 "悬浮窗精度与月薪设置控件存在（#129 自 U1 迁移）"),
             ["LoadedCountdowns"] = workspaceSnapshot.Settings.Countdowns.Count,
             ["LoadedNotes"] = workspaceSnapshot.Settings.Notes.Count,
@@ -2947,7 +2918,7 @@ internal static class ValidationReport
             mainUiPolish.MinimumSizeMatchesDefault &&
             switchesToCountdown &&
             switchesToNotes &&
-            main.FindName("CountdownWorkspace") is Canvas &&
+            mainStructure.CountdownWorkspaceIsCanvas &&
             floatingWorkspace.InitialStateMatches &&
             floatingWorkspace.SwitchingStaysSynchronized &&
             reminderCenterRepresentativeCapture.Rendered &&

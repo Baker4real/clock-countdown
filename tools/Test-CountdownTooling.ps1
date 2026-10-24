@@ -259,6 +259,27 @@ foreach ($surface in @(
 $baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { $baselineFixtureAgreements -join '; ' } else { $baselineFixtureFailures -join ' | ' }
 Add-ToolingCheck -Name 'visual-baseline:fixture-shape' -Passed ($baselineFixtureFailures.Count -eq 0) -Detail $baselineFixtureDetail
 
+# 窗口探针只走 RunValidationScenarios：控件名、模板部件和窗口字段留在各窗口的场景 partial 里。
+# 验证代码里按字符串名取控件的存量只减不增；迁走一块区域后把上限改成实际数。
+$controlNameLookupPattern = [regex]'Required<[^>]+>\(\s*[A-Za-z_][\w\.]*\s*,\s*"|\.FindName\(\s*"'
+$controlNameLookupCeilings = [ordered]@{
+    'src/MinminCountdown/ValidationReport.cs' = 358
+    'src/MinminCountdown/ValidationExercises.cs' = 206
+}
+$controlNameLookupFailures = [System.Collections.Generic.List[string]]::new()
+$controlNameLookupCounts = foreach ($entry in $controlNameLookupCeilings.GetEnumerator()) {
+    $count = $controlNameLookupPattern.Matches([System.IO.File]::ReadAllText((Join-Path $repoRoot $entry.Key))).Count
+    if ($count -gt $entry.Value) {
+        $controlNameLookupFailures.Add("$($entry.Key) 按名取控件 $count 处，超过上限 $($entry.Value)：新探针写进窗口的场景 partial")
+    }
+    elseif ($count -lt $entry.Value) {
+        $controlNameLookupFailures.Add("$($entry.Key) 按名取控件已降到 $count 处：把上限从 $($entry.Value) 改成 $count")
+    }
+    "$($entry.Key)=$count"
+}
+$controlNameLookupDetail = if ($controlNameLookupFailures.Count -eq 0) { $controlNameLookupCounts -join '; ' } else { $controlNameLookupFailures -join ' | ' }
+Add-ToolingCheck -Name 'validation:control-name-lookups' -Passed ($controlNameLookupFailures.Count -eq 0) -Detail $controlNameLookupDetail
+
 if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }
 if ([string]::IsNullOrWhiteSpace($CandidateCommit)) { $CandidateCommit = 'HEAD' }
 $diffCheck = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.ps1') -RepositoryRoot $repoRoot -BaseCommit $BaseCommit -CandidateCommit $CandidateCommit -Json | ConvertFrom-Json -Depth 10

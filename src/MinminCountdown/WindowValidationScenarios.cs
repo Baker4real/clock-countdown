@@ -40,8 +40,46 @@ public sealed partial class MainWindow
             ProbeCountdownReadabilityScenarios(),
             ProbeCountdownEditingScenarios(),
             ProbeNoteValidationScenarios(),
-            ProbeMainWindowInteractionStates());
+            ProbeMainWindowInteractionStates(),
+            ProbeStructureScenarios());
     }
+
+    // 静态结构事实：控件名、类型与已退役控件的缺席都在窗口内判定，报告只读结论。
+    private MainStructureScenarios ProbeStructureScenarios() =>
+        new(
+            FindName("NoteGroupingSelector") is null,
+            FindName("CountdownReminderNoRadio") is RadioButton &&
+                FindName("CountdownReminderTimeRadio") is RadioButton &&
+                FindName("CountdownReminderCustomRadio") is RadioButton,
+            FindName("CountdownName") is TextBox,
+            FindName("ManageNoteReminderRulesButton") is Button &&
+                FindName("NoteReminderRulesSummary") is TextBlock,
+            ManageNoteReminderRulesButton.Visibility == Visibility.Visible &&
+                NoteReminderRulesSummary.Visibility == Visibility.Visible,
+            FindName("NoteReminder") is null &&
+                FindName("NoteReminderSchedule") is null &&
+                FindName("FloatingReminderIntervalPanel") is null,
+            FindName("CountdownTags") is TagSelector &&
+                FindName("NoteTags") is TagSelector &&
+                FindName("FilterTagOptions") is WrapPanel,
+            FindName("CountdownWorkspace") is Canvas &&
+                FindName("DisplayPrecision") is ComboBox,
+            FindName("CountdownTab") is ToggleButton,
+            FindName("NotesTab") is ToggleButton,
+            FindName("AnyTagMode") is ToggleButton &&
+                FindName("AllTagMode") is ToggleButton,
+            FindName("NoteDateFilter") is DatePicker &&
+                FindName("NoteUndatedFilter") is ToggleButton &&
+                FindName("ClearNoteDateFilter") is Button,
+            FindName("NoteText") is TextBox &&
+                FindName("SaveNoteButton") is Button,
+            FindName("NoteDate") is DatePicker,
+            FindName("DisplayPrecision") is ComboBox &&
+                FindName("MonthlySalary") is TextBox &&
+                FindName("WorkStart") is TextBox &&
+                FindName("WorkEnd") is TextBox &&
+                FindName("SavePreferencesButton") is Button,
+            FindName("CountdownWorkspace") is Canvas);
 
     // #185/#186/#188：便签字段错误和倒计时提醒日期前置条件必须回到来源控件，
     // 并复用同一字段错误/礼貌直播语义；无效提交不应清掉草稿或打开规则编辑器。
@@ -3193,6 +3231,7 @@ public sealed partial class FloatingWindow
             var stableRefresh = ProbeStableRefreshScenarios();
             // 放在最后：设置按钮与“…”编辑会揭示管理窗口，避免扰动前面的聚焦类探针。
             var bottomCommand = ProbeBottomCommandScenarios();
+            var structure = ProbeStructureScenarios();
 
             return new FloatingWindowValidationScenarios(
                 crossDayReminderAdded,
@@ -3204,7 +3243,8 @@ public sealed partial class FloatingWindow
                 workspace,
                 noteSearch,
                 stableRefresh,
-                bottomCommand);
+                bottomCommand,
+                structure);
         }
         finally
         {
@@ -3218,6 +3258,25 @@ public sealed partial class FloatingWindow
             }
         }
     }
+
+    // 静态结构事实：控件名、类型与已退役控件的缺席都在窗口内判定，报告只读结论。
+    private FloatingStructureScenarios ProbeStructureScenarios() =>
+        new(
+            TaskCard.Effect is null && FloatingThemeBackdrop.Effect is null,
+            Typography.GetNumeralAlignment(FloatingIncome) == FontNumeralAlignment.Tabular,
+            FindName("FloatingManageReminderRules") is Button &&
+                FindName("FloatingReminderRulesSummary") is TextBlock,
+            FloatingManageReminderRules.Visibility == Visibility.Visible &&
+                FloatingReminderRulesSummary.Visibility == Visibility.Visible,
+            FloatingManageReminderRules.Width <= 116,
+            FindName("FloatingReminder") is null &&
+                FindName("FloatingReminderSchedule") is null &&
+                FindName("FloatingReminderIntervalPanel") is null,
+            FindName("OpenManagerButton") is Button,
+            FindName("FloatingNotesButton") is ToggleButton,
+            FindName("FloatingNoteText") is TextBox &&
+                FindName("FloatingAddNote") is Button,
+            FindName("FloatingNoteDate") is DatePicker);
 
     private FloatingWorkspaceValidationScenarios ProbeWorkspaceScenarios(
         bool initialStateMatches)
@@ -4793,7 +4852,26 @@ internal sealed record MainWindowValidationScenarios(
     MainCountdownReadabilityScenarios CountdownReadability,
     CountdownEditingScenarios CountdownEditing,
     NoteValidationScenarios NoteValidation,
-    MainWindowInteractionStates InteractionStates);
+    MainWindowInteractionStates InteractionStates,
+    MainStructureScenarios Structure);
+
+internal sealed record MainStructureScenarios(
+    bool NoteGroupingSelectorAbsent,
+    bool CountdownReminderModeRadiosPresent,
+    bool NameEditorPresent,
+    bool NoteReminderRulesEntryPresent,
+    bool NoteReminderRulesEntryVisible,
+    bool LegacyNoteReminderControlsAbsent,
+    bool TagControlsPresent,
+    bool StaticWorkspaceLayout,
+    bool CountdownTabPresent,
+    bool NotesTabPresent,
+    bool TagMatchModeTogglesPresent,
+    bool NoteDateFilterControlsPresent,
+    bool NoteEntryControlsPresent,
+    bool NoteDatePresent,
+    bool PreferenceControlsPresent,
+    bool CountdownWorkspaceIsCanvas);
 
 internal sealed record NoteValidationScenarios(
     bool BothFieldsShowErrors,
@@ -4913,7 +4991,20 @@ internal sealed record FloatingWindowValidationScenarios(
     FloatingWorkspaceValidationScenarios Workspace,
     FloatingNoteSearchValidationScenarios NoteSearch,
     FloatingStableRefreshScenarios StableRefresh,
-    FloatingBottomCommandScenarios BottomCommand);
+    FloatingBottomCommandScenarios BottomCommand,
+    FloatingStructureScenarios Structure);
+
+internal sealed record FloatingStructureScenarios(
+    bool ShellLargeShadowRemoved,
+    bool IncomeUsesTabularNumerals,
+    bool ReminderRulesEntryPresent,
+    bool ReminderRulesEntryVisible,
+    bool ReminderRulesEntryCompact,
+    bool LegacyReminderControlsAbsent,
+    bool ManagerButtonPresent,
+    bool NotesButtonPresent,
+    bool NoteEntryControlsPresent,
+    bool NoteDatePresent);
 
 /// <summary>#212：渲染签名稳定刷新探针结果，语义见 DESIGN §10「渲染签名稳定刷新」。</summary>
 internal sealed record FloatingStableRefreshScenarios(

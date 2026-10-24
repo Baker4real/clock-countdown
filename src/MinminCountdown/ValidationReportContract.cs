@@ -4,9 +4,13 @@ using System.Text.RegularExpressions;
 
 namespace MinminCountdown;
 
+// 一条必须为真的验证事实：报告里仍是同名 bool 字段，Meaning 是失败时给人看的中文含义。
+internal readonly record struct ValidationFact(bool Passed, string Meaning);
+
 internal sealed class ValidationReportProjection
 {
     private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _facts = new(StringComparer.Ordinal);
     private bool _sealed;
 
     public object? this[string key]
@@ -21,9 +25,15 @@ internal sealed class ValidationReportProjection
             throw new InvalidOperationException("validate-only report 已封存，不能继续追加字段。");
         }
 
-        if (!_values.TryAdd(key, value))
+        var fact = value as ValidationFact?;
+        if (!_values.TryAdd(key, fact is { } declared ? declared.Passed : value))
         {
             throw new InvalidOperationException($"validate-only report 包含重复字段：{key}");
+        }
+
+        if (fact is { } declaredFact)
+        {
+            _facts.Add(key, declaredFact.Meaning);
         }
     }
 
@@ -34,7 +44,7 @@ internal sealed class ValidationReportProjection
             throw new InvalidOperationException("validate-only report 不能重复封存。");
         }
 
-        var snapshot = ValidationReportContract.Seal(_values);
+        var snapshot = ValidationReportContract.Seal(_values, _facts);
         _sealed = true;
         return snapshot;
     }
@@ -42,6 +52,7 @@ internal sealed class ValidationReportProjection
 
 internal static class ValidationReportContract
 {
+    private const string ValidField = "Valid";
     private const string ContractBehaviorField = "ValidationReportContractBehavior";
     private const string ModuleDepthField = "ValidationReportModuleDeep";
     private const int MaximumDiagnosticCount = 12;
@@ -53,209 +64,6 @@ internal static class ValidationReportContract
         @"\s+",
         RegexOptions.CultureInvariant);
 
-    private static readonly string[] RequiredTrueBooleanFields =
-    [
-        "Valid",
-        "NoteBatchKeyboardCompletion",
-        "NoteBatchDeleteUndo",
-        "NoteSelectionAccessibility",
-        "DesktopWorkspaceInterfaceBehavior",
-        "ReminderEditingInterfaceBehavior",
-        "CalendarReminderBehavior",
-        "StartupAcceptanceProtocolInterfaceBehavior",
-        "HolidayCalendarInterfaceBehavior",
-        "MainReferenceDecorationsShareScaleAtMinimumAndWideSizes",
-        "MainReferenceDecorationLayerOrderMatches",
-        "MainDecorationOnDemandDecodeBehavior",
-        "MainWorkspaceResourcesFollowDayTheme",
-        "MainDynamicCountdownCardsUseThemeResources",
-        "MainDynamicNoteCardsUseThemeResources",
-        "FloatingReferenceContentSafeAreaMatches",
-        "FloatingReferenceBaselineGateIsolationBehavior",
-        "FloatingReferenceFreshnessGateIsolationBehavior",
-        "FloatingLongNotesBodyHasNoManualLineBreaks",
-        "FloatingLongNotesNaturalWraps",
-        "FloatingLongNotesUsesOnlyOuterScroller",
-        "FloatingLongNotesOuterScrollable",
-        "FloatingLongNotesTopBottomReachable",
-        "FloatingLongNotesSafeAreaMatches",
-        "FloatingLongNotesTypographyMatches",
-        "FloatingLongNotesLayoutValid",
-        "FloatingTitleUsesSemiBoldWeight",
-        "FloatingNoteInputWraps",
-        "FloatingNoteInputScrolls",
-        "FloatingInitialWorkspaceStateMatches",
-        "FloatingWorkspaceSwitchingStaysSynchronized",
-        "FloatingCountdownSelectionSurvivesRefresh",
-        "FloatingNoteSearchScenariosPass",
-        "FloatingBottomCommandScenariosPass",
-        "FloatingQuickAddToggleScenariosPass",
-        "FloatingNoteOverflowMenuScenariosPass",
-        "FloatingDateStampPastelRotationMatches",
-        "FloatingNotesHandwrittenDecorationPass",
-        "FloatingSettingsButtonOpensManager",
-        "FloatingSettingsGearConcentric",
-        "FloatingEmptyStateTextIsolationBehavior",
-        "FloatingIncomePrivacyBehavior",
-        "FloatingWorkdayCompletionBehavior",
-        "NoteSearchSyncsFromSharedFilter",
-        "NoteDateUsesSpacedChineseFormat",
-        "NoteCardBodyLineHeightSeparatesSummary",
-        "NoteRowTitleFallsToBlockTitleLevel",
-        "MainNoteRowActionsKeyboardWorks",
-        "NoteCardSpacingConsumesTokens",
-        "TagChipSingleLineEllipsisWithFullText",
-        "EmptyStateTextAllowsWrap",
-        "NoteDateFilterHasVisibleLabel",
-        "PopupTabNavigationCyclesInsideLayer",
-        "PopupTabGateIsolationBehavior",
-        "FilterFunnelIconSurvivesAliasedCapture",
-        "NotesSearchDuplicateMagnifierRemoved",
-        "MainWindowChromeButtonsUseVectorPaths",
-        "SegmentActivePillsUseFullRoundedCorners",
-        "CountdownHandwrittenDecoOutOfFormMeasurement",
-        "FloatingShellLargeShadowRemoved",
-        "MainWindowSquareChromeNoTransparency",
-        "MainWindowFitsInjectedWorkAreas",
-        "FloatingWindowStaysOnSecondaryMonitor",
-        "OwnerDialogsFitSecondaryMonitor",
-        "ReminderUsesSourceMonitor",
-        "OpenWindowsFollowMonitorChanges",
-        "MixedDpiUsesPhysicalMonitorGeometry",
-        "ProductManifestDeclaresPerMonitorV2",
-        "RuntimeDpiChangeUpdatesWindowLayout",
-        "MainWindowIdentityZoneDragRegion",
-        "MainWindowHiddenTickSkipsRenderAndShowRefreshes",
-        "MainWindowNoteMinutePreservesFocusAndScroll",
-        "CountdownListFirstBehavior",
-        "MainTopmostStateSynchronization",
-        "MainRedundancyCleanup",
-        "MainNoteEditorSeparation",
-        "MainTextShortcutBehavior",
-        "SingleLineEnterSubmission",
-        "FloatingNoteKeyboardSubmission",
-        "ListDeleteKeyboardBehavior",
-        "MainNoteRowsSimplified",
-        "NoteGroupingSelectorAbsent",
-        "CountdownPreferencesPopupBehavior",
-        "CountdownEditorExpansionBehavior",
-        "CountdownRowDeadlineAndSecondaryDeleteBehavior",
-        "TabsRenderAboveDecorationBand",
-        "DecorationBandCharactersUnobstructed",
-        "MainCommandIconsUseVectorPaths",
-        "FloatingQuickAddDayResourcesFollowLocalTheme",
-        "FloatingQuickAddIndependentFromApplicationTheme",
-        "FloatingQuickAddThemeResourceIsolationBehavior",
-        "FloatingQuickAddDayExpandedScrolledCaptureWritten",
-        "FloatingPrimaryCountdownTextContrast",
-        "FloatingPrimaryCountdownAccentSeparatedFromPlushGlow",
-        "FloatingPrimaryCountdownContrastGateIsolationBehavior",
-        "FloatingSecondaryRemainingUnitSpacingMatches",
-        "FloatingSecondaryRemainingLayoutMatches",
-        "FloatingSecondaryRemainingGateIsolationBehavior",
-        "FloatingViewportGeometryGateIsolationBehavior",
-        "FloatingScrollBarLocalStyleScoped",
-        "FloatingScrollBarHitTargetUsable",
-        "FloatingScrollBarVisualWeightProgression",
-        "FloatingScrollBarUsesWarmThemeTokens",
-        "FloatingScrollBarContentRemainsSafe",
-        "FloatingScrollBarInputPathsWork",
-        "FloatingScrollBarGateIsolationBehavior",
-        "FloatingScrollBarStateCapturesReady",
-        "UiQualityGateIsolationBehavior",
-        "ComboBoxArrowIsNotTabStop",
-        "DatePickerOpenCalendarAccessibleNames",
-        "DatePickerTextOpensCalendar",
-        "DatePickerCalendarMonthGridLaidOut",
-        "CountdownCardActionsIncludeRecordName",
-        "SettingsRecoveryFailureExitIsDefault",
-        "PopupTriggerSecondClickCloses",
-        "PopupEscapeFromTriggerClosesAndKeepsFocus",
-        "RuleEditorInlineDeleteUsesDangerButton",
-        "SettingsRecoverySecondaryUsesCanvas",
-        "ReminderCenterTwoRowActionsLayout",
-        "ReminderCenterEntryVisualIdentity",
-        "ReminderCenterContentHierarchy",
-        "ReminderCenterRelativeTimeUpdatesInPlace",
-        "ReminderCenterAcknowledgeAllWritesAllDispositions",
-        "ReminderCenterAcknowledgeAllMatchesSingleSemantics",
-        "ReminderCenterAcknowledgeAllFailureRetainsAllAtomically",
-        "ReminderCenterAcknowledgeAllBackoffRetryCompletesBatch",
-        "ReminderCenterEscapeFocusesAcknowledge",
-        "ReminderCenterTypographyWeightWhitelist",
-        "ReminderCenterRepresentativeCaptureRendered",
-        "ReminderCenterShowPreservesFocusAndAccessibleName",
-        "ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar",
-        "ReminderCenterMinimizeToTaskbarPreservesEntries",
-        "MainCountdownFieldErrorsAtSource",
-        "MainCountdownFieldErrorsClearOnCorrection",
-        "MainCountdownSingleErrorRowUnclipped",
-        "MainPreferenceErrorsBelowFields",
-        "MainPrimarySecondaryButtonRolesDistinct",
-        "MainInputSurfaceWhitePaper",
-        "MainIdleTextInputBoundaryContrast",
-        "IdleControlBoundariesVisible",
-        "NoteCompletionUndoFeedback",
-        "NoteCompletionExitTransition",
-        "SystemContrastUpdatesOpenWindows",
-        "SystemContrastAccessibleStates",
-        "SystemContrastColorChangesAndCustomSurfaces",
-        "FloatingThumbBoundaryContrast",
-        "SelectedControlSignalsVisible",
-        "DangerSurfacesMeetContrast",
-        "FocusOuterNeighborsMeetContrast",
-        "MainTextSelectionHighlightDistinct",
-        "MainStatusBarSurfaceErrorContrast",
-        "MainReminderRadioSelectedContrast",
-        "MainEditorTypographyTokens",
-        "MainCountdownEditingGateIsolationBehavior",
-        "MainFocusRingConstantThicknessNoSqueeze",
-        "MainPrimaryAndPinSingleFocusStroke",
-        "MainNotesTabHoverDiffersFromSelected",
-        "MainLocalControlsPressAndDisabled",
-        "MainReminderHelpFocusShowsHelp",
-        "MainCompactHitTargetsMeetScaledFloor",
-        "MainFilterChipsAndCalendarNavCompact",
-        "MainHoverStateContrastIsPerceivable",
-        "MainPressedStateGeometryStable",
-        "MainMouseClickDoesNotLeaveFocusRing",
-        "MainKeyboardFocusRingShowsOnTab",
-        "MainSelectedTabWeightDominates",
-        "MainSegmentIndicatorGeometryMatches",
-        "MainSegmentIndicatorReducedMotionIsImmediate",
-        "MainSegmentIndicatorRapidSwitchStaysAligned",
-        "MotionClientAreaAnimationSwitchReadable",
-        "MotionTokensMatch",
-        "KeyboardFocusRingTabGapAvoidsSelectedFill",
-        "KeyboardFocusRingFloatingCapsuleMeetsContrast",
-        "KeyboardFocusRingFloatingCapsuleUsesWarmGold",
-        "PopupAnimationIsInstant",
-        "ActionForegroundsUseMainActionText",
-        "DisabledSelectionControlsUseButtonOpacity",
-        "FloatingDateStampTypographyMatches",
-        "FloatingTypographyWeightWhitelist",
-        "FloatingDateStampDensityMatches",
-        "NoteCancelFitsEditorPanel",
-        "PopupRightInsetIsEightFromCanvas",
-        "FilterPopupScrollsLongTagList",
-        "MainCheckboxHitCoversSlot",
-        "FloatingSearchSlotRightIs396",
-        "FloatingSearchHintMatchesInputHeight",
-        "FloatingQuickAddAlignsWithNoteCards",
-        "FloatingCheckboxHitCoversSlot",
-        "CrossInterfaceAiReferencePriority",
-        "CrossInterfacePageSpecificComposition",
-        "CrossInterfaceSharedWarmPinkTokens",
-        "CrossInterfaceStaticDayThemeInfo",
-        "CrossInterfacePlushDecorationLayering",
-        "CrossInterfaceFilterSharing",
-        "CrossInterfaceKeyboardOrder",
-        "CrossInterfaceHitTesting",
-        "CrossInterfaceDeterministicFixtureIsolation",
-        "CrossInterfaceRealSettingsConserved",
-        "CrossInterfaceIntegration"
-    ];
-
     private static readonly string[] RequiredPositiveIntegerFields =
     [
         "MainDynamicCountdownCardSampleCount",
@@ -263,22 +71,28 @@ internal static class ValidationReportContract
     ];
 
     internal static IReadOnlyDictionary<string, object?> Seal(
-        Dictionary<string, object?> report)
+        Dictionary<string, object?> report,
+        IReadOnlyDictionary<string, string> facts)
     {
-        RunBehaviorExercise();
-        return SealCore(report);
+        RunBehaviorExercise(facts);
+        return SealCore(report, facts);
     }
 
     private static IReadOnlyDictionary<string, object?> SealCore(
-        Dictionary<string, object?> report)
+        Dictionary<string, object?> report,
+        IReadOnlyDictionary<string, string> facts)
     {
-        if (report.ContainsKey(ContractBehaviorField) || report.ContainsKey(ModuleDepthField))
+        if (report.ContainsKey(ValidField) ||
+            report.ContainsKey(ContractBehaviorField) ||
+            report.ContainsKey(ModuleDepthField))
         {
             throw new InvalidDataException(
-                "validate-only report 的契约结果字段只能由 Seal 追加。");
+                "validate-only report 的结论与契约结果字段只能由 Seal 追加。");
         }
 
-        Validate(report);
+        Validate(report, facts);
+        // 走到这里说明每条声明的验证事实都为真；Valid 是这一结论，不再单独赋值。
+        report.Add(ValidField, true);
         report.Add(ContractBehaviorField, true);
         report.Add(ModuleDepthField, true);
 
@@ -288,7 +102,9 @@ internal static class ValidationReportContract
         return snapshot;
     }
 
-    private static void Validate(IReadOnlyDictionary<string, object?> report)
+    private static void Validate(
+        IReadOnlyDictionary<string, object?> report,
+        IReadOnlyDictionary<string, string> facts)
     {
         var json = JsonSerializer.Serialize(report);
         var repeatedJson = JsonSerializer.Serialize(report);
@@ -302,8 +118,13 @@ internal static class ValidationReportContract
         var root = document.RootElement;
         EnsureJsonObject(root, report.Count);
 
-        var failedBooleanFields = new List<string>();
-        foreach (var field in RequiredTrueBooleanFields)
+        if (facts.Count == 0)
+        {
+            throw new InvalidDataException("validate-only report 没有声明任何验证事实。");
+        }
+
+        var failedFacts = new List<string>();
+        foreach (var (field, meaning) in facts)
         {
             if (!report.TryGetValue(field, out var value) || value is not bool typedValue)
             {
@@ -313,14 +134,14 @@ internal static class ValidationReportContract
 
             if (!typedValue)
             {
-                failedBooleanFields.Add(field);
+                failedFacts.Add($"{field}（{meaning}）");
             }
         }
 
-        if (failedBooleanFields.Count > 0)
+        if (failedFacts.Count > 0)
         {
             throw new InvalidDataException(
-                $"validate-only report 的行为字段未通过：{string.Join(", ", failedBooleanFields)}");
+                $"validate-only report 的行为字段未通过：{string.Join(", ", failedFacts)}");
         }
 
         foreach (var field in RequiredPositiveIntegerFields)
@@ -607,11 +428,11 @@ internal static class ValidationReportContract
         EnsureJsonObject(document.RootElement, report.Count);
     }
 
-    private static void RunBehaviorExercise()
+    private static void RunBehaviorExercise(IReadOnlyDictionary<string, string> facts)
     {
-        MustReject(report => report["FloatingWorkdayCompletionBehavior"] = false, false,
+        MustReject(facts, report => report["FloatingWorkdayCompletionBehavior"] = false, false,
             "契约未拒绝 #236 下班收尾行为失败。");
-        MustReject(report => report["FloatingIncomePrivacyBehavior"] = false, false,
+        MustReject(facts, report => report["FloatingIncomePrivacyBehavior"] = false, false,
             "契约未拒绝 #229 金额隐私行为失败。");
         foreach (var field in new[]
                  {
@@ -623,7 +444,7 @@ internal static class ValidationReportContract
                      "FloatingNoteKeyboardSubmission", "ListDeleteKeyboardBehavior"
                  })
         {
-            MustReject(report => report[field] = false, false,
+            MustReject(facts, report => report[field] = false, false,
                 $"契约未拒绝主窗口行为失败：{field}。");
         }
         var duplicateProjection = new ValidationReportProjection
@@ -634,57 +455,85 @@ internal static class ValidationReportContract
             () => duplicateProjection["DuplicateKey"] = false,
             "projection 未立即拒绝重复 key。");
 
+        // 夹具来自生产报告声明的验证事实：上面的关键行为若不再声明为事实，置 false 也不会被拒绝。
+        var probeFact = facts.Keys.First();
         MustReject(
-            report => report.Remove("Valid"),
+            facts,
+            report => report.Remove(probeFact),
             false,
-            "契约未拒绝缺失的 required bool 字段。");
+            "契约未拒绝缺失的验证事实字段。");
         MustReject(
-            report => report["Valid"] = "true",
+            facts,
+            report => report[probeFact] = "true",
             false,
-            "契约未拒绝 required bool 字段的类型错误。");
+            "契约未拒绝验证事实字段的类型错误。");
+        MustRejectWithMessage(
+            facts,
+            report => report[probeFact] = false,
+            $"validate-only report 的行为字段未通过：{probeFact}（{facts[probeFact]}）",
+            "验证事实失败未连同中文含义列入失败清单。");
         MustReject(
+            facts,
+            report => report[ValidField] = true,
+            false,
+            "契约未拒绝报告自带 Valid 结论。");
+        var noFacts = new Dictionary<string, string>(StringComparer.Ordinal);
+        MustThrow<InvalidDataException>(
+            () => SealCore(CreateBehaviorFixture(noFacts, requested: false), noFacts),
+            "契约未拒绝没有声明验证事实的报告。");
+        MustReject(
+            facts,
             report => report["MainDynamicCountdownCardSampleCount"] = 1L,
             false,
             "契约未拒绝 required int 字段的类型错误。");
         MustReject(
+            facts,
             report => report["FloatingReferenceBaselineRequested"] = false,
             true,
             "契约未拒绝 Main/Floating manifest 模式不一致。");
         MustReject(
+            facts,
             report => report["MainReferenceBaselineManifestAvailable"] = true,
             false,
             "契约未拒绝 Requested=false 但 ManifestAvailable=true。");
         MustReject(
+            facts,
             report => report["FloatingReferenceBaselineValidated"] = true,
             false,
             "契约未拒绝 Requested=false 但 Validated=true。");
         MustReject(
+            facts,
             report => report["MainReferenceBaselineCaptures"] = Array.Empty<object>(),
             true,
             "契约未拒绝源码树模式缺少主窗口 capture。");
         MustReject(
+            facts,
             report => report["FloatingReferenceBaselineCaptures"] = Array.Empty<object>(),
             true,
             "契约未拒绝源码树模式缺少悬浮窗 capture。");
         MustRejectWithMessage(
+            facts,
             report => report["MainReferenceBaselineManifestAvailable"] = false,
             "MainReferenceBaseline 源码树模式验证失败：" +
             "manifestAvailable=false, validated=true, captureCount=1, " +
             "falseGates=[<none>], diagnostics=[<none>]。",
             "manifest unavailable 异常未报告精确状态。");
         MustRejectWithMessage(
+            facts,
             report => report["MainReferenceBaselineValidated"] = false,
             "MainReferenceBaseline 源码树模式验证失败：" +
             "manifestAvailable=true, validated=false, captureCount=1, " +
             "falseGates=[<none>], diagnostics=[<none>]。",
             "validated false 异常未报告精确状态。");
         MustRejectWithMessage(
+            facts,
             report => report["MainReferenceBaselineCaptures"] = Array.Empty<object>(),
             "MainReferenceBaseline 源码树模式验证失败：" +
             "manifestAvailable=true, validated=true, captureCount=0, " +
             "falseGates=[<none>], diagnostics=[<none>]。",
             "capture empty 异常未报告精确状态。");
         MustRejectWithMessage(
+            facts,
             report =>
             {
                 report["MainReferenceBaselineValidated"] = false;
@@ -706,35 +555,42 @@ internal static class ValidationReportContract
             "diagnostics=[first diagnostic, source <path> mismatch]。",
             "false gate/diagnostic 异常未报告脱敏精确原因。");
         MustReject(
+            facts,
             report => report["MainStressCountdownTitleMeasurements"] = Array.Empty<object>(),
             true,
             "契约未拒绝源码树模式缺少 Stress 标题测量。");
         MustReject(
+            facts,
             report => report["MainReferenceBaselineCaptures"] = new object[] { new() },
             false,
             "契约未拒绝发布包伪造主窗口 capture。");
         MustReject(
+            facts,
             report => report["FloatingReferenceBaselineCaptures"] = new object[] { new() },
             false,
             "契约未拒绝发布包伪造悬浮窗 capture。");
         MustReject(
+            facts,
             report => report["MainStressCountdownTitleVisuals"] = true,
             false,
             "契约未拒绝发布包伪造 Stress 标题视觉结果。");
         MustReject(
+            facts,
             report => report["MainNoteCardReminderFontMeasurements"] = Array.Empty<object>(),
             true,
             "契约未拒绝源码树模式缺少便签卡提醒摘要测量。");
         MustReject(
+            facts,
             report => report["MainNoteCardReminderFontSizeMeetsContract"] = false,
             true,
             "契约未拒绝源码树模式便签卡提醒摘要未达 12 DIP。");
         MustReject(
+            facts,
             report => report["MainNoteCardReminderFontMeasurements"] = new object[] { new() },
             false,
             "契约未拒绝发布包伪造便签卡提醒摘要测量。");
 
-        var sourceSnapshot = SealCore(CreateBehaviorFixture(requested: true));
+        var sourceSnapshot = SealCore(CreateBehaviorFixture(facts, requested: true), facts);
         var firstJson = JsonSerializer.Serialize(sourceSnapshot);
         var secondJson = JsonSerializer.Serialize(sourceSnapshot);
         if (!string.Equals(firstJson, secondJson, StringComparison.Ordinal))
@@ -742,11 +598,12 @@ internal static class ValidationReportContract
             throw new InvalidOperationException("同一封存报告的两次 JSON 输出不一致。");
         }
 
-        var packageSnapshot = SealCore(CreateBehaviorFixture(requested: false));
-        if (packageSnapshot[ContractBehaviorField] is not true ||
+        var packageSnapshot = SealCore(CreateBehaviorFixture(facts, requested: false), facts);
+        if (packageSnapshot[ValidField] is not true ||
+            packageSnapshot[ContractBehaviorField] is not true ||
             packageSnapshot[ModuleDepthField] is not true)
         {
-            throw new InvalidOperationException("Seal 未追加两个既有契约结果字段。");
+            throw new InvalidOperationException("Seal 未追加 Valid 结论与两个既有契约结果字段。");
         }
 
         MustThrow<NotSupportedException>(
@@ -755,19 +612,22 @@ internal static class ValidationReportContract
     }
 
     private static void MustReject(
+        IReadOnlyDictionary<string, string> facts,
         Action<Dictionary<string, object?>> mutate,
         bool requested,
         string message)
     {
-        var report = CreateBehaviorFixture(requested);
+        var report = CreateBehaviorFixture(facts, requested);
         mutate(report);
-        MustThrow<InvalidDataException>(() => SealCore(report), message);
+        MustThrow<InvalidDataException>(() => SealCore(report, facts), message);
     }
 
-    private static Dictionary<string, object?> CreateBehaviorFixture(bool requested)
+    private static Dictionary<string, object?> CreateBehaviorFixture(
+        IReadOnlyDictionary<string, string> facts,
+        bool requested)
     {
         var report = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var field in RequiredTrueBooleanFields)
+        foreach (var field in facts.Keys)
         {
             report.Add(field, true);
         }
@@ -825,15 +685,16 @@ internal static class ValidationReportContract
     }
 
     private static void MustRejectWithMessage(
+        IReadOnlyDictionary<string, string> facts,
         Action<Dictionary<string, object?>> mutate,
         string expectedMessage,
         string failureMessage)
     {
-        var report = CreateBehaviorFixture(requested: true);
+        var report = CreateBehaviorFixture(facts, requested: true);
         mutate(report);
         try
         {
-            SealCore(report);
+            SealCore(report, facts);
         }
         catch (InvalidDataException exception)
         {

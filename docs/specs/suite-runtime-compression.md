@@ -7,6 +7,8 @@ intent: 将 2026-09-13 套件耗时调查的已确认事实、约束、改进决
 
 # 六阶段验证套件耗时压缩与可观测性
 
+> 2026-10-24 后续：下文的 shape SHA（字段数与 `name:type` 形状钉值）已退役，CSharp 阶段改由 C# 验证事实把关（`ValidationReport` 的 `Must(值, 含义)` 经 `Seal` 派生 `Valid`），见 `docs/架构与语言迁移.md`。其余决策仍按本规格。
+
 ## Problem Statement
 
 维护者在本机跑完整六阶段验证套件（Build / Core / CSharp / Ui / SourceValidation / InstallValidate）需要 19-22 分钟（三次全绿实测 1143s / 1147s / 1316s）。修复-验证循环被这个墙钟拖慢：2026-09-06 至 09-13 的 182 次套件运行累计约 18 小时，其中 09-11 单日约 8.9 小时，大部分是调试期的单阶段失败重跑。耗时不是单一瓶颈：Build 占约 35%（-Clean 受管清理 8 个目录 + 两次 R2R 自包含 publish + 487 文件载荷哈希），CSharp / Ui / Core 各占约 19-23%，且三份测试脚本内部完全没有分段计时，阶段内耗时不可见。调查同时发现结构性浪费：同一份 C# 596 字段完整验证在套件中执行约 13 次；两处 ExitAfterReadyForTest 集成段各固定等待约 30 秒的 DispatcherTimer 自退；InstallValidate 阶段与 Core 测试内联调用是同一条命令跑两遍。此外 Build 之后五个阶段互为只读，却被串行调度。

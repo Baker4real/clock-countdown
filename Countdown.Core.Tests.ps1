@@ -216,53 +216,7 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
         $validationApplicationReport = [ordered]@{
             Valid = $true
             ValidationReportContractBehavior = $true
-            CalendarReminderBehavior = $true
             FloatingWindowPresent = $true
-        }
-        foreach ($fieldName in @(
-                'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
-                'MainReferenceDecorationLayerOrderMatches',
-                'MainWorkspaceResourcesFollowDayTheme',
-                'MainDynamicCountdownCardsUseThemeResources',
-                'MainDynamicNoteCardsUseThemeResources',
-                'FloatingReferenceContentSafeAreaMatches',
-                'FloatingReferenceBaselineGateIsolationBehavior',
-                'FloatingReferenceFreshnessGateIsolationBehavior',
-                'FloatingLongNotesBodyHasNoManualLineBreaks',
-                'FloatingLongNotesNaturalWraps',
-                'FloatingLongNotesUsesOnlyOuterScroller',
-                'FloatingLongNotesOuterScrollable',
-                'FloatingLongNotesTopBottomReachable',
-                'FloatingLongNotesSafeAreaMatches',
-                'FloatingLongNotesLayoutValid',
-                'FloatingTitleUsesSemiBoldWeight',
-                'FloatingNoteInputWraps',
-                'FloatingNoteInputScrolls',
-                'FloatingInitialWorkspaceStateMatches',
-                'FloatingWorkspaceSwitchingStaysSynchronized',
-                'FloatingCountdownSelectionSurvivesRefresh',
-                'FloatingStableRefreshScenariosPass',
-                'FloatingRenderSignatureGateIsolationBehavior',
-                'FloatingNoteSearchScenariosPass',
-                'NoteSearchSyncsFromSharedFilter',
-                'FloatingQuickAddDayResourcesFollowLocalTheme',
-                'FloatingQuickAddIndependentFromApplicationTheme',
-                'FloatingQuickAddThemeResourceIsolationBehavior',
-                'FloatingQuickAddDayExpandedScrolledCaptureWritten',
-                'FloatingSecondaryRemainingUnitSpacingMatches',
-                'FloatingSecondaryRemainingLayoutMatches',
-                'FloatingSecondaryRemainingGateIsolationBehavior',
-                'FloatingScrollBarLocalStyleScoped',
-                'FloatingScrollBarHitTargetUsable',
-                'FloatingScrollBarVisualWeightProgression',
-                'FloatingScrollBarUsesWarmThemeTokens',
-                'FloatingScrollBarContentRemainsSafe',
-                'FloatingScrollBarInputPathsWork',
-                'FloatingScrollBarGateIsolationBehavior',
-                'FloatingScrollBarStateCapturesReady',
-                'UiQualityGateIsolationBehavior'
-            )) {
-            $validationApplicationReport[$fieldName] = $true
         }
         foreach ($baselineName in @('Main', 'Floating')) {
             $validationApplicationReport["${baselineName}ReferenceBaselineRequested"] = $false
@@ -270,8 +224,6 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
             $validationApplicationReport["${baselineName}ReferenceBaselineValidated"] = $false
             $validationApplicationReport["${baselineName}ReferenceBaselineCaptures"] = @()
         }
-        $validationApplicationReport['MainDynamicCountdownCardSampleCount'] = 1
-        $validationApplicationReport['MainDynamicNoteCardSampleCount'] = 1
         $validationApplicationReport['UnknownFutureField'] = [ordered]@{
             Preserved = 'future-compatible'
         }
@@ -319,16 +271,6 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
                 -MainManifestRequired $false `
                 -FloatingManifestRequired $false) `
             'Application validation report interface rejects a missing contract behavior field'
-
-        $stringUiBooleanReport = Copy-CountdownApplicationValidationReportFixture
-        $stringUiBooleanReport.MainReferenceDecorationsShareScaleAtMinimumAndWideSizes = 'true'
-        Assert-Equal `
-            '应用 validate-only 报告的 UI 质量门禁未通过：MainReferenceDecorationsShareScaleAtMinimumAndWideSizes' `
-            (Get-CountdownApplicationValidationReportFailure `
-                -Report $stringUiBooleanReport `
-                -MainManifestRequired $false `
-                -FloatingManifestRequired $false) `
-            'Application validation report interface rejects a string UI boolean'
 
         $sourceTreeValidationReport = Copy-CountdownApplicationValidationReportFixture
         foreach ($baselineName in @('Main', 'Floating')) {
@@ -391,16 +333,6 @@ if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) 
                 -MainManifestRequired $false `
                 -FloatingManifestRequired $false) `
             'Application validation report interface rejects package captures'
-
-        $missingDynamicSampleReport = Copy-CountdownApplicationValidationReportFixture
-        $missingDynamicSampleReport.MainDynamicCountdownCardSampleCount = 0
-        Assert-Equal `
-            '应用 validate-only 报告未命中动态卡片样本：MainDynamicCountdownCardSampleCount' `
-            (Get-CountdownApplicationValidationReportFailure `
-                -Report $missingDynamicSampleReport `
-                -MainManifestRequired $false `
-                -FloatingManifestRequired $false) `
-            'Application validation report interface requires dynamic card samples'
 
         $validationApplicationFixture = $validationApplicationJson.Replace("'", "''")
         $validationFixtures = [ordered]@{

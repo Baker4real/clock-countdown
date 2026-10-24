@@ -70,10 +70,6 @@ try {
     if (-not [bool] $report.Valid) {
         throw '源码 validate-only 报告未通过。'
     }
-    if ($report.PSObject.Properties['CalendarReminderBehavior']?.Value -isnot [bool] -or
-        -not [bool] $report.CalendarReminderBehavior) {
-        throw '源码 validate-only 日历提醒行为未通过。'
-    }
 
     $validationOutput.Trim()
 }

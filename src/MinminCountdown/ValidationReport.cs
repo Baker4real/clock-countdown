@@ -24,6 +24,9 @@ namespace MinminCountdown;
 
 internal static class ValidationReport
 {
+    // 必须为真的验证事实：报告字段仍输出 bool，Seal 按声明派生 Valid 与失败清单。
+    private static ValidationFact Must(bool passed, string meaning) => new(passed, meaning);
+
     internal static object RunWindowPreflight(ResourceDictionary resources, string assetRoot)
     {
         var theme = new ApplicationTheme(resources);
@@ -1922,28 +1925,32 @@ internal static class ValidationReport
 
         var report = new ValidationReportProjection
         {
-            ["DesktopWorkspaceModuleDeep"] = desktopWorkspaceInterfaceBehavior,
-            ["StartupAcceptanceProtocolModuleDeep"] =
-                startupAcceptanceProtocolInterfaceBehavior,
-            ["WorkdayCalendarModuleDeep"] = holidayCalendarInterfaceBehavior,
-            ["Valid"] = true,
-            ["DesktopWorkspaceInterfaceBehavior"] = desktopWorkspaceInterfaceBehavior,
-            ["CountdownReminderTransactionBehavior"] =
+            ["DesktopWorkspaceModuleDeep"] = Must(desktopWorkspaceInterfaceBehavior, "兼容字段由桌面工作区真实 interface 行为计算"),
+            ["StartupAcceptanceProtocolModuleDeep"] = Must(startupAcceptanceProtocolInterfaceBehavior, "兼容字段由启动验收真实 interface 行为计算"),
+            ["WorkdayCalendarModuleDeep"] = Must(holidayCalendarInterfaceBehavior, "兼容字段由工作日历真实 interface 行为计算"),
+            ["DesktopWorkspaceInterfaceBehavior"] = Must(desktopWorkspaceInterfaceBehavior, "桌面工作区 interface 统一持久化、状态变更与筛选行为"),
+            ["CountdownReminderTransactionBehavior"] = Must(
                 countdownReminderTransactionBehavior,
-            ["ReminderEditingInterfaceBehavior"] = reminderEditingInterfaceBehavior,
-            ["CalendarReminderBehavior"] = calendarReminderBehavior,
-            ["StartupAcceptanceProtocolInterfaceBehavior"] =
+                "倒计时规则/目标重算事务：相对 occurrence 按 target-offset 生成、目标移动清理未送达旧 occurrence 并保留 rule ID 与新 occurrence key、过去派生拒绝原子保留内存与磁盘、确认送达后删除规则/倒计时不残留状态（#140）"),
+            ["ReminderEditingInterfaceBehavior"] = Must(reminderEditingInterfaceBehavior, "提醒编辑 interface 统一模式、时间、间隔与既有提醒保留行为"),
+            ["CalendarReminderBehavior"] = Must(calendarReminderBehavior, "日历提醒覆盖类型化规则、北京时间 occurrence、错过合并与 Ical.Net 失败闭锁"),
+            ["StartupAcceptanceProtocolInterfaceBehavior"] = Must(
                 startupAcceptanceProtocolInterfaceBehavior,
-            ["HolidayCalendarInterfaceBehavior"] = holidayCalendarInterfaceBehavior,
+                "启动验收 protocol interface 覆盖请求、回执、状态推进与拒绝路径"),
+            ["HolidayCalendarInterfaceBehavior"] = Must(holidayCalendarInterfaceBehavior, "工作日历 interface 覆盖缓存初始化、派生结果与失败状态"),
             ["VirtualWorkdayCountdownExcludedFromReminders"] =
                 holidayCalendarInterfaceBehavior,
             ["Title"] = main.Title,
             ["Width"] = main.Width,
             ["Height"] = main.Height,
-            ["CompactSelectionFieldLayout"] = compactSelection,
-            ["CompactPreferenceFieldLayout"] = compactPreferences,
-            ["CountdownInputsUseProjectTheme"] = countdownInputsUseProjectTheme,
-            ["CompactInputHorizontalPaddingAligned"] = noteVisualTokenGates.CompactInputPaddingAligned,
+            ["CompactSelectionFieldLayout"] = Must(compactSelection, "短选择字段保持内容尺寸与紧凑高度（#129 自 U1 迁移）"),
+            ["CompactPreferenceFieldLayout"] = Must(compactPreferences, "偏好字段在默认与展开宽度下保持紧凑（#129 自 U1 迁移）"),
+            ["CountdownInputsUseProjectTheme"] = Must(
+                countdownInputsUseProjectTheme,
+                "倒计时输入使用共享 Panel（#151 白纸输入面）、PeachLine 与 Ink 主题资源（#129 自 U1 迁移，#151 换绑）"),
+            ["CompactInputHorizontalPaddingAligned"] = Must(
+                noteVisualTokenGates.CompactInputPaddingAligned,
+                "倒计时编辑区与设置区三类输入内部横向留白对齐 12 DIP（管理窗等比收缩由 16 换算，前导图标位 48→36）"),
             ["CountdownInputHeight"] = countdownName.ActualHeight,
             ["CountdownPreferenceInputHeight"] = displayPrecision.ActualHeight,
             ["CountdownNameWidth"] = countdownName.ActualWidth,
@@ -1963,135 +1970,143 @@ internal static class ValidationReport
             ["ExpandedMonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").ActualWidth,
             ["ExpandedWorkStartWidth"] = Required<TextBox>(main, "WorkStart").ActualWidth,
             ["ExpandedWorkEndWidth"] = Required<TextBox>(main, "WorkEnd").ActualWidth,
-            ["ThemeControlInventoryCovered"] = themeInventory,
-            ["ToolTipTemplateMaterializes"] = toolTipMaterializes,
-            ["ThemedControlTemplatesApplied"] = mainThemeTemplate,
-            ["ComboBoxesUseThemedDropDowns"] = comboThemed,
-            ["DatePickerCalendarIsThemed"] = dateFamilyThemed,
-            ["DatePickerTextFits"] = dateTextMetrics.Fits,
+            ["ThemeControlInventoryCovered"] = Must(themeInventory, "adapter 验证主题控件资产清单"),
+            ["ToolTipTemplateMaterializes"] = Must(toolTipMaterializes, "主题化 ToolTip 模板可安全实例化（#129 自 U1 迁移）"),
+            ["ThemedControlTemplatesApplied"] = Must(mainThemeTemplate, "adapter 验证真实 WPF 主题模板"),
+            ["ComboBoxesUseThemedDropDowns"] = Must(comboThemed, "ComboBox 下拉、选项与滚动条无未主题化表面（#129 自 U1 迁移）"),
+            ["DatePickerCalendarIsThemed"] = Must(dateFamilyThemed, "DatePicker 文本框、触发器与日历族完全主题化（#129 自 U1 迁移）"),
+            ["DatePickerTextFits"] = Must(dateTextMetrics.Fits, "完整选中日期在日期框内完整可见（#129 自 U1 迁移）"),
             ["DatePickerTextAvailableWidth"] = dateTextMetrics.Available,
             ["DatePickerTextRequiredWidth"] = dateTextMetrics.Required,
-            ["LiveDatePickerPopupIsThemed"] = livePopupThemed,
-            ["LiveDatePickerPopupVisuallyUnified"] = livePopupUnified,
+            ["LiveDatePickerPopupIsThemed"] = Must(livePopupThemed, "adapter 验证真实 DatePicker Popup 主题"),
+            ["LiveDatePickerPopupVisuallyUnified"] = Must(livePopupUnified, "打开的 DatePicker 弹层使用共享暖色边框、头部与选中样式（#129 自 U1 迁移）"),
             ["LiveCalendarSurfaceUsesThemeTokens"] = livePopupUnified,
             ["LiveCalendarHeaderUsesThemeTokens"] = dateFamilyThemed,
             ["LiveSelectedDayUsesThemeTokens"] = dateFamilyThemed,
             ["LiveSelectedDayCount"] = 1,
             ["LiveSelectedDayBackground"] = Application.Current.FindResource("ActiveBrush")?.ToString() ?? string.Empty,
             ["LiveSelectedDayForeground"] = Application.Current.FindResource("MainActionTextBrush")?.ToString() ?? string.Empty,
-            ["CalendarHeaderTextFits"] = calendarHeaderMetrics.Fits,
+            ["CalendarHeaderTextFits"] = Must(calendarHeaderMetrics.Fits, "日历月份头部完整可见（#129 自 U1 迁移）"),
             ["CalendarHeaderTextAvailableWidth"] = calendarHeaderMetrics.Available,
             ["CalendarHeaderTextRequiredWidth"] = calendarHeaderMetrics.Required,
-            ["PopupSurfacesUseThemeTokens"] = comboThemed && dateFamilyThemed,
-            ["NoDefaultSystemSurfaces"] = confirmationThemed,
-            ["NoRawFloatingThemeBypass"] = floating.UsesDedicatedThemePalette,
+            ["PopupSurfacesUseThemeTokens"] = Must(comboThemed && dateFamilyThemed, "弹层表面使用共享主题背景、边框与动效（#129 自 U1 迁移）"),
+            ["NoDefaultSystemSurfaces"] = Must(confirmationThemed, "应用流程不残留系统窗口框或 MessageBox（#129 自 U1 迁移）"),
+            ["NoRawFloatingThemeBypass"] = Must(floating.UsesDedicatedThemePalette, "悬浮窗不用原始颜色绕过共享主题 token（#129 自 U1 迁移）"),
             ["MainThemeBackgroundColors"] = mainThemeExercise.BackgroundColors,
             ["MainThemeCharacterOpacities"] = mainThemeExercise.CharacterOpacities,
             ["MainThemeCharacterPanelColors"] = mainThemeExercise.CharacterPanelColors,
-            ["MainThemeReminderLabelFollowsTheme"] = mainThemeExercise.ReminderLabelFollowsTheme,
-            ["MainThemeSegmentSelectedTextContrast"] = mainThemeExercise.SegmentSelectedTextContrast,
-            ["MainCharacterPanelDocksFollowDayTheme"] = mainThemeExercise.CharacterPanelDocksFollowTheme,
-            ["MainReferenceDecorationsFollowDayTheme"] =
-                mainThemeExercise.ReferenceDecorationsFollowTheme,
-            ["MainWorkspaceResourcesFollowDayTheme"] =
-                uiQualityGates.MainWorkspaceResourcesFollowTheme,
-            ["MainDynamicCountdownCardsUseThemeResources"] =
-                uiQualityGates.MainCountdownCardResourcesFollowTheme,
+            ["MainThemeReminderLabelFollowsTheme"] = Must(mainThemeExercise.ReminderLabelFollowsTheme, "主窗口提醒标签保持主题前景色"),
+            ["MainThemeSegmentSelectedTextContrast"] = Must(mainThemeExercise.SegmentSelectedTextContrast, "主窗口工作区选中态文字对比度达标或精确匹配设计声明 token"),
+            ["MainCharacterPanelDocksFollowDayTheme"] = Must(mainThemeExercise.CharacterPanelDocksFollowTheme, "主窗口三个玩偶底座使用日间配色"),
+            ["MainReferenceDecorationsFollowDayTheme"] = Must(mainThemeExercise.ReferenceDecorationsFollowTheme, "主窗口日间参考装饰按工作区切换"),
+            ["MainWorkspaceResourcesFollowDayTheme"] = Must(uiQualityGates.MainWorkspaceResourcesFollowTheme, "主窗口工作区静态表面独立使用主题资源"),
+            ["MainDynamicCountdownCardsUseThemeResources"] = Must(uiQualityGates.MainCountdownCardResourcesFollowTheme, "主窗口动态倒计时卡片命中样本并使用主题资源"),
             ["MainDynamicCountdownCardSampleCount"] =
                 mainWorkspaceThemeValidation.CountdownCardSampleCount,
-            ["MainDynamicNoteCardsUseThemeResources"] =
-                uiQualityGates.MainNoteCardResourcesFollowTheme,
+            ["MainDynamicNoteCardsUseThemeResources"] = Must(uiQualityGates.MainNoteCardResourcesFollowTheme, "主窗口动态便签卡片命中样本并使用主题资源"),
             ["MainDynamicNoteCardSampleCount"] =
                 mainWorkspaceThemeValidation.NoteCardSampleCount,
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
             ["FloatingThemePanelColors"] = floatingThemeExercise.PanelColors,
             ["FloatingThemePlushGlowColors"] = floatingThemeExercise.PlushGlowColors,
             ["FloatingMascotPresentationModes"] = floatingThemeExercise.MascotPresentationModes,
-            ["FloatingRasterMascotPresentationMatches"] =
-                floatingThemeExercise.RasterMascotPresentationMatches,
-            ["FloatingThemeTextContrast"] = floatingThemeExercise.TextContrast,
-            ["FloatingPrimaryCountdownTextContrast"] =
+            ["FloatingRasterMascotPresentationMatches"] = Must(floatingThemeExercise.RasterMascotPresentationMatches, "悬浮窗日间 raster 角色呈现状态完整"),
+            ["FloatingThemeTextContrast"] = Must(floatingThemeExercise.TextContrast, "悬浮窗标题与便签错误提示在日间主题下保持可读对比度"),
+            ["FloatingPrimaryCountdownTextContrast"] = Must(
                 floatingReferenceExercise.PrimaryCountdownContrast.Gates.TextContrast,
-            ["FloatingPrimaryCountdownAccentSeparatedFromPlushGlow"] =
+                "悬浮窗主倒计时数字相对数字色块底达到 3:1 对比度"),
+            ["FloatingPrimaryCountdownAccentSeparatedFromPlushGlow"] = Must(
                 floatingReferenceExercise.PrimaryCountdownContrast.Gates.AccentSeparatedFromPlushGlow,
+                "悬浮窗主倒计时强调与玩偶阴影使用独立语义 token"),
             ["FloatingPrimaryCountdownContrastMeasurements"] =
                 floatingReferenceExercise.PrimaryCountdownContrast.Measurements,
-            ["FloatingPrimaryCountdownContrastGateIsolationBehavior"] =
+            ["FloatingPrimaryCountdownContrastGateIsolationBehavior"] = Must(
                 floatingPrimaryCountdownContrastGateIsolationBehavior,
-            ["FloatingPlushSceneFollowsDayTheme"] =
-                floatingThemeExercise.PlushSceneFollowsDayTheme,
+                "低对比度与共享 token 负向夹具分别单项失败"),
+            ["FloatingPlushSceneFollowsDayTheme"] = Must(floatingThemeExercise.PlushSceneFollowsDayTheme, "悬浮窗角色场景在单一日间主题下稳定呈现"),
             ["FloatingQuickAddDayResourceChecks"] = floatingQuickAddTheme.Day.Checks,
             ["FloatingQuickAddDayResourceDiagnostics"] = floatingQuickAddTheme.Day.Diagnostics,
-            ["FloatingQuickAddDayResourcesFollowLocalTheme"] = floatingQuickAddTheme.Day.Passed,
-            ["FloatingQuickAddIndependentFromApplicationTheme"] =
+            ["FloatingQuickAddDayResourcesFollowLocalTheme"] = Must(floatingQuickAddTheme.Day.Passed, "悬浮窗快速新增真实控件日间使用局部暖色主题"),
+            ["FloatingQuickAddIndependentFromApplicationTheme"] = Must(
                 floatingQuickAddTheme.IndependentFromApplicationTheme,
-            ["FloatingQuickAddThemeResourceIsolationBehavior"] =
-                floatingQuickAddThemeResourceIsolationBehavior,
+                "悬浮窗快速新增局部主题不受应用主题反向切换污染"),
+            ["FloatingQuickAddThemeResourceIsolationBehavior"] = Must(floatingQuickAddThemeResourceIsolationBehavior, "悬浮窗快速新增资源枚举负向夹具可逐控件单项失败"),
             ["FloatingQuickAddPaletteBindings"] = new[]
             {
                 floatingQuickAddTheme.DayPaletteBindings
             },
-            ["FloatingQuickAddDayPaletteBindingsMatch"] =
-                floatingQuickAddTheme.DayPaletteBindingsMatch,
-            ["FloatingQuickAddPaletteBindingIsolationBehavior"] =
+            ["FloatingQuickAddDayPaletteBindingsMatch"] = Must(floatingQuickAddTheme.DayPaletteBindingsMatch, "悬浮窗快速新增日间控件绑定专用日间 palette token"),
+            ["FloatingQuickAddPaletteBindingIsolationBehavior"] = Must(
                 floatingQuickAddPaletteBindingIsolationBehavior,
+                "悬浮窗快速新增 palette 绑定负向夹具可逐控件单项失败"),
             ["FloatingQuickAddLocalCanvasColor"] = floatingQuickAddTheme.CanvasColor,
             ["FloatingQuickAddLocalActiveColor"] = floatingQuickAddTheme.ActiveColor,
-            ["FloatingInitialWorkspaceStateMatches"] =
-                floatingWorkspace.InitialStateMatches,
-            ["FloatingWorkspaceSwitchingStaysSynchronized"] =
-                floatingWorkspace.SwitchingStaysSynchronized,
-            ["FloatingCountdownSelectionSurvivesRefresh"] =
-                floatingWorkspace.CountdownSelectionSurvivesRefresh,
+            ["FloatingInitialWorkspaceStateMatches"] = Must(floatingWorkspace.InitialStateMatches, "悬浮窗首次显示立即同步倒计时选中态、标题、输入区和内容"),
+            ["FloatingWorkspaceSwitchingStaysSynchronized"] = Must(floatingWorkspace.SwitchingStaysSynchronized, "悬浮窗往返切换后始终恰有一个工作区并同步表面"),
+            ["FloatingCountdownSelectionSurvivesRefresh"] = Must(floatingWorkspace.CountdownSelectionSurvivesRefresh, "悬浮窗倒计时首次选中态刷新后保持"),
             ["FloatingNoteSearch"] = floatingWindowScenarios.NoteSearch,
-            ["FloatingNoteSearchScenariosPass"] =
+            ["FloatingNoteSearchScenariosPass"] = Must(
                 floatingWindowScenarios.NoteSearch.AllPassed &&
                 mainUiPolish.NoteSearchSyncsFromSharedFilter,
-            ["FloatingBottomCommandScenariosPass"] =
-                floatingWindowScenarios.BottomCommand.AllPassed,
-            ["FloatingQuickAddToggleScenariosPass"] =
+                "悬浮窗折叠搜索主链路、空态、Ctrl+F 与主题 token 通过"),
+            ["FloatingBottomCommandScenariosPass"] = Must(floatingWindowScenarios.BottomCommand.AllPassed, "悬浮窗便签底部命令区：默认收起、展开/收起、提交收起、设置按钮全链路通过"),
+            ["FloatingQuickAddToggleScenariosPass"] = Must(
                 floatingWindowScenarios.BottomCommand.QuickAddTogglePass,
-            ["FloatingNoteOverflowMenuScenariosPass"] =
+                "悬浮窗＋添加便签默认收起、点击原地展开并按筛选标签初始化、再次点击收起、提交后收起、展开态切换钮降级次级收起（#149）"),
+            ["FloatingNoteOverflowMenuScenariosPass"] = Must(
                 floatingWindowScenarios.BottomCommand.OverflowMenuPass,
-            ["FloatingQuickAddPlaceholderMirrorsManager"] =
+                "悬浮窗便签…菜单提供编辑（复用主窗口编辑流程）与删除（确认后删除，取消保留）"),
+            ["FloatingQuickAddPlaceholderMirrorsManager"] = Must(
                 floatingWindowScenarios.BottomCommand.QuickAddPlaceholderMirrorsManager,
-            ["FloatingQuickAddExpandedSinglePrimaryAction"] =
+                "悬浮快速新增正文占位文与管理窗口一致：空白可见、输入后隐藏（#149）"),
+            ["FloatingQuickAddExpandedSinglePrimaryAction"] = Must(
                 floatingWindowScenarios.BottomCommand.QuickAddToggleSecondaryWhenExpanded,
-            ["FloatingNoteOverflowMenuKeyboardWorks"] =
+                "悬浮展开态底部切换钮为次级「收起」，表单添加为唯一实心粉钮（#149）"),
+            ["FloatingNoteOverflowMenuKeyboardWorks"] = Must(
                 floatingWindowScenarios.BottomCommand.NoteMenuKeyboardLifecycle,
-            ["FloatingSettingsGearConcentric"] =
-                floatingWindowScenarios.BottomCommand.SettingsGearConcentric,
-            ["FloatingConstrainedEmptyStateProvidesAction"] =
+                "悬浮便签…菜单键盘可走完：打开聚焦编辑、Tab 进入删除、Esc 关闭并回触发器（#149）"),
+            ["FloatingSettingsGearConcentric"] = Must(floatingWindowScenarios.BottomCommand.SettingsGearConcentric, "悬浮「设置」齿轮外轮廓与孔同心、在 15x15 图标框内居中"),
+            ["FloatingConstrainedEmptyStateProvidesAction"] = Must(
                 floatingWindowScenarios.NoteSearch.ConstrainedEmptyProvidesAction,
+                "悬浮筛选约束空态提供「清除筛选」且与「清除搜索」互斥，点击还原全量列表（#149）"),
             ["FloatingStableRefreshScenarios"] = floatingWindowScenarios.StableRefresh,
-            ["FloatingStableRefreshScenariosPass"] =
+            ["FloatingStableRefreshScenariosPass"] = Must(
                 floatingWindowScenarios.StableRefresh.AllPassed,
-            ["FloatingStableRefreshFocusStaysOnOverflowTrigger"] =
+                "悬浮窗渲染签名稳定刷新：tick 就地更新、角色焦点恢复、隐藏/最小化门控全链路通过（#212）"),
+            ["FloatingStableRefreshFocusStaysOnOverflowTrigger"] = Must(
                 floatingWindowScenarios.StableRefresh.FocusStaysOnOverflowTriggerAcrossTicks,
-            ["FloatingStableRefreshCountdownUpdatesInPlace"] =
+                "悬浮窗 tick 后焦点停留在便签「…」触发器且便签未被误完成、滚动位置不动（#212）"),
+            ["FloatingStableRefreshCountdownUpdatesInPlace"] = Must(
                 floatingWindowScenarios.StableRefresh.CountdownRowsPreservedAndTextUpdatesInPlace,
-            ["FloatingStableRefreshNoteCardsPreserved"] =
+                "悬浮窗倒计时 tick 行实例保留且剩余时间分格就地更新（#212）"),
+            ["FloatingStableRefreshNoteCardsPreserved"] = Must(
                 floatingWindowScenarios.StableRefresh.NoteCardInstancesPreservedAcrossTicks,
-            ["FloatingStableRefreshRebuildRestoresFocusByRole"] =
+                "悬浮窗便签卡与完成复选框实例跨 tick 保留（#212）"),
+            ["FloatingStableRefreshRebuildRestoresFocusByRole"] = Must(
                 floatingWindowScenarios.StableRefresh.RebuildRestoresFocusAndScrollByRole,
-            ["FloatingStableRefreshHiddenSkipsRenderUntilVisible"] =
+                "悬浮窗数据变化重建后焦点按「记录 ID + 控件角色」回到「…」触发器并还原滚动（#212）"),
+            ["FloatingStableRefreshHiddenSkipsRenderUntilVisible"] = Must(
                 floatingWindowScenarios.StableRefresh.HiddenSkipsRenderUntilVisible,
-            ["FloatingStableRefreshMinimizedSkipsRenderUntilRestored"] =
+                "悬浮窗隐藏期间 tick 与数据变化跳过渲染，恢复可见立即渲染一次（#212）"),
+            ["FloatingStableRefreshMinimizedSkipsRenderUntilRestored"] = Must(
                 floatingWindowScenarios.StableRefresh.MinimizedSkipsRenderUntilRestored,
-            ["FloatingRenderSignatureGateIsolationBehavior"] =
+                "悬浮窗最小化期间 tick 跳过渲染，还原正常态立即渲染一次（#212）"),
+            ["FloatingRenderSignatureGateIsolationBehavior"] = Must(
                 floatingRenderSignatureGateIsolationBehavior,
-            ["FloatingDateStampPastelRotationMatches"] =
-                floatingWindowScenarios.BottomCommand.PastelIndexPass,
-            ["FloatingNotesHandwrittenDecorationPass"] =
+                "渲染签名隔离反例：同输入同签名，标题/精度/筛选/结构变化改签名，剩余时间仅数值变化不改签名（#212）"),
+            ["FloatingDateStampPastelRotationMatches"] = Must(floatingWindowScenarios.BottomCommand.PastelIndexPass, "悬浮窗日期印记按列表顺序粉/蓝/绿轮换且卡底暖黄与白纸交替"),
+            ["FloatingNotesHandwrittenDecorationPass"] = Must(
                 floatingWindowScenarios.BottomCommand.HandwrittenDecorationLands,
-            ["FloatingSettingsButtonOpensManager"] =
+                "悬浮窗便签工作区右下手写体装饰落地且不可命中不可聚焦"),
+            ["FloatingSettingsButtonOpensManager"] = Must(
                 floatingWindowScenarios.BottomCommand.SettingsOpensManagerPreservingWorkspace,
-            ["NoteSearchSyncsFromSharedFilter"] = mainUiPolish.NoteSearchSyncsFromSharedFilter,
-            ["FloatingEmptyStateTextIsolationBehavior"] = floatingEmptyStateTextIsolationBehavior,
-            ["TagPopupFollowsDayTheme"] = tagPopupFollowsDayTheme,
-            ["WarmYellowPaletteMatchesLegacy"] = warmYellowPaletteMatchesLegacy,
-            ["PrimaryButtonHoverTextContrast"] = primaryButtonHoverTextContrast,
-            ["MainActionTextContrast"] = mainActionTextContrast,
+                "悬浮窗底部设置按钮打开管理窗口并沿用当前工作区"),
+            ["NoteSearchSyncsFromSharedFilter"] = Must(mainUiPolish.NoteSearchSyncsFromSharedFilter, "主窗口搜索框回填共享筛选态"),
+            ["FloatingEmptyStateTextIsolationBehavior"] = Must(floatingEmptyStateTextIsolationBehavior, "悬浮窗命中与遮挡门禁（#143）"),
+            ["TagPopupFollowsDayTheme"] = Must(tagPopupFollowsDayTheme, "打开的标签弹层保持日间主题"),
+            ["WarmYellowPaletteMatchesLegacy"] = Must(warmYellowPaletteMatchesLegacy, "全局主题恢复旧版暖黄日间色"),
+            ["PrimaryButtonHoverTextContrast"] = Must(primaryButtonHoverTextContrast, "主操作按钮悬停时保持玫粉底白字的可读对比度"),
+            ["MainActionTextContrast"] = Must(mainActionTextContrast, "主窗口与悬浮窗主操作白字在默认、悬停与按下色上均达到 4.5:1 对比度（#199）"),
             ["MainActionPalette"] = new
             {
                 Default = Application.Current.FindResource("MainActionBrush")?.ToString() ?? string.Empty,
@@ -2101,138 +2116,155 @@ internal static class ValidationReport
                 Text = Application.Current.FindResource("MainActionTextBrush")?.ToString() ?? string.Empty,
                 Danger = Application.Current.FindResource("DangerBrush")?.ToString() ?? string.Empty
             },
-            ["ToolTipThemeTextContrast"] = toolTipThemeTextContrast,
-            ["TagChipTextContrast"] = tagChipTextContrast,
-            ["ThemedInteractiveStates"] = mainThemeTemplate && comboThemed && dateFamilyThemed,
-            ["ThemeTextContrast"] = contrast,
-            ["MainIdleTextInputBoundaryContrast"] = mainIdleTextInputBoundaryContrast,
-            ["IdleControlBoundariesVisible"] = idleControlBoundaries.Values.All(value => value),
+            ["ToolTipThemeTextContrast"] = Must(toolTipThemeTextContrast, "提示气泡在日间主题下保持可读对比度"),
+            ["TagChipTextContrast"] = Must(tagChipTextContrast, "标签芯片在日间主题下保持暖墨文字的可读对比度"),
+            ["ThemedInteractiveStates"] = Must(mainThemeTemplate && comboThemed && dateFamilyThemed, "主题化交互控件具备视觉状态反馈（#129 自 U1 迁移）"),
+            ["ThemeTextContrast"] = Must(contrast, "暖色主题满足全部文字对比度对（#129 自 U1 迁移）"),
+            ["MainIdleTextInputBoundaryContrast"] = Must(mainIdleTextInputBoundaryContrast, "未聚焦的名称输入框真实边界对五种浅色表面及输入底色达到 3:1（#217）"),
+            ["IdleControlBoundariesVisible"] = Must(idleControlBoundaries.Values.All(value => value), "选择控件、输入和次级按钮的真实常态边界可见（#217）"),
             ["IdleControlBoundaryChecks"] = idleControlBoundaries,
-            ["NoteCompletionUndoFeedback"] = ValidationExercises.RunNoteCompletionUndoFeedback(),
-            ["NoteBatchKeyboardCompletion"] = ValidationExercises.RunNoteBatchKeyboardCompletion(),
-            ["NoteBatchDeleteUndo"] = ValidationExercises.RunNoteBatchDeleteUndo(),
-            ["NoteSelectionAccessibility"] = ValidationExercises.RunNoteSelectionAccessibility(),
-            ["NoteCompletionExitTransition"] = ValidationExercises.RunNoteCompletionExitTransition(),
-            ["SystemContrastUpdatesOpenWindows"] = ValidateSystemContrastUpdatesOpenWindows(main, floating),
-            ["SystemContrastAccessibleStates"] = ValidateSystemContrastAccessibleStates(main, floating),
-            ["SystemContrastColorChangesAndCustomSurfaces"] = ValidateSystemContrastCustomSurfaces(assetRoot),
-            ["SelectedControlSignalsVisible"] = selectedControlSignals.Values.All(value => value) &&
+            ["NoteCompletionUndoFeedback"] = Must(ValidationExercises.RunNoteCompletionUndoFeedback(), "#233 两窗真实完成、重新打开事务、失败回滚、唯一撤销槽及10秒到期行为"),
+            ["NoteBatchKeyboardCompletion"] = Must(ValidationExercises.RunNoteBatchKeyboardCompletion(), "#235 键盘多选与原子完成，推进cursor并移除对应中心条目，失败整批保留"),
+            ["NoteBatchDeleteUndo"] = Must(ValidationExercises.RunNoteBatchDeleteUndo(), "#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝"),
+            ["NoteSelectionAccessibility"] = Must(ValidationExercises.RunNoteSelectionAccessibility(), "#235 选中数量直播区、行peer、刷新保留与筛选折叠清理"),
+            ["NoteCompletionExitTransition"] = Must(ValidationExercises.RunNoteCompletionExitTransition(), "#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断"),
+            ["SystemContrastUpdatesOpenWindows"] = Must(ValidateSystemContrastUpdatesOpenWindows(main, floating), "#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复"),
+            ["SystemContrastAccessibleStates"] = Must(ValidateSystemContrastAccessibleStates(main, floating), "#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿"),
+            ["SystemContrastColorChangesAndCustomSurfaces"] = Must(
+                ValidateSystemContrastCustomSurfaces(assetRoot),
+                "#220 系统配色运行中变化更新弹层、自选标签和日期印记并恢复日间原色"),
+            ["SelectedControlSignalsVisible"] = Must(
+                selectedControlSignals.Values.All(value => value) &&
                 mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "MainWindow" && sample.UsesDedicatedStyle) &&
                 mainNoteCompletionValidation.Measurements.Any(sample => sample.User == "FloatingWindow" && sample.UsesCompletionSuccessStyle),
+                "筛选勾号、成功勾选和单选图形在真实模板中可辨识（#217）"),
             ["SelectedControlSignalChecks"] = selectedControlSignals,
-            ["FocusOuterNeighborsMeetContrast"] = focusOuterNeighbors.Values.All(value => value),
+            ["FocusOuterNeighborsMeetContrast"] = Must(focusOuterNeighbors.Values.All(value => value), "主按钮、浮窗胶囊和置顶两态的焦点环对外侧邻色至少 3:1（#217）"),
             ["FocusOuterNeighborChecks"] = focusOuterNeighbors,
             ["ReminderCenterSourceLabelContrast"] = reminderCenterSourceLabelContrast,
-            ["ReminderCenterContentHierarchy"] = reminderCenterSourceLabelContrast.EmphasisPreserved &&
+            ["ReminderCenterContentHierarchy"] = Must(
+                reminderCenterSourceLabelContrast.EmphasisPreserved &&
                 reminderCenterSourceLabelContrast.TextContrast,
-            ["ReminderCenterRelativeTimeUpdatesInPlace"] =
+                "#223 提醒正文为H2标题、来源为caption且可访问名称保来源"),
+            ["ReminderCenterRelativeTimeUpdatesInPlace"] = Must(
                 ValidationExercises.RunReminderCenterRelativeTimeBehavior() &&
                 reminderCenterSourceLabelContrast.RelativeTimeTextContrast,
+                "#223 相对时间按分钟/小时原位更新，保条目、焦点、滚动与失败信息且对比至少4.5"),
             ["SystemDialogPrimaryButtonContrast"] = systemDialogPrimaryButtonContrast,
             ["KeyboardFocusRingContrast"] = keyboardFocusRingContrast,
             ["ComboBoxTextClick"] = comboBoxTextClick,
-            ["ComboBoxArrowIsNotTabStop"] = comboBoxTextClick.ArrowIsNotTabStop,
+            ["ComboBoxArrowIsNotTabStop"] = Must(comboBoxTextClick.ArrowIsNotTabStop, "下拉箭头不是独立 Tab 停靠点"),
             ["SecondaryWindowHeaderDrag"] = secondaryWindowDrag,
             ["CalendarPreviousMonthAccessibleName"] = calendarNavigationNames.Previous,
             ["CalendarNextMonthAccessibleName"] = calendarNavigationNames.Next,
-            ["CalendarNavigationAccessibleNames"] =
+            ["CalendarNavigationAccessibleNames"] = Must(
                 string.Equals(calendarNavigationNames.Previous, "上一个月", StringComparison.Ordinal) &&
                 string.Equals(calendarNavigationNames.Next, "下一个月", StringComparison.Ordinal),
+                "日历上一个月/下一个月按钮具有可访问名称"),
             ["DatePickerOpenCalendarAccessibleName"] = dateButton is null
                 ? string.Empty
                 : AutomationProperties.GetName(dateButton) ?? string.Empty,
-            ["DatePickerOpenCalendarAccessibleNames"] =
-                productionDatePickers.AllOpenCalendarButtonsNamed,
-            ["CountdownCardActionsIncludeRecordName"] = countdownCardActionsIncludeRecordName,
-            ["SettingsRecoveryFailureExitIsDefault"] = settingsRecoveryFailureExitIsDefault,
-            ["RuleEditorInlineDeleteUsesDangerButton"] = ruleEditorInlineDeleteUsesDangerButton,
-            ["SettingsRecoverySecondaryUsesCanvas"] = settingsRecoverySecondaryUsesCanvas,
-            ["ReminderCenterTwoRowActionsLayout"] = reminderCenterTwoRowActionsLayout,
-            ["ReminderCenterEntryVisualIdentity"] = reminderCenterEntryVisualIdentity,
-            ["PopupAnimationIsInstant"] = popupAnimationIsInstant,
-            ["ActionForegroundsUseMainActionText"] = actionForegroundsUseMainActionText,
-            ["DisabledSelectionControlsUseButtonOpacity"] = disabledSelectionControlsUseButtonOpacity,
-            ["FloatingDateStampTypographyMatches"] = floatingDateStampTypographyMatches,
-            ["FloatingTypographyWeightWhitelist"] = floatingTypographyWeightWhitelist,
-            ["FloatingDateStampDensityMatches"] = floatingDateStampDensityMatches,
+            ["DatePickerOpenCalendarAccessibleNames"] = Must(productionDatePickers.AllOpenCalendarButtonsNamed, "生产日期框打开日历按钮均可访问播报"),
+            ["CountdownCardActionsIncludeRecordName"] = Must(countdownCardActionsIncludeRecordName, "倒计时卡编辑/删除可访问名称包含对象名"),
+            ["SettingsRecoveryFailureExitIsDefault"] = Must(settingsRecoveryFailureExitIsDefault, "设置恢复失败态退出按钮是 Enter 默认按钮"),
+            ["RuleEditorInlineDeleteUsesDangerButton"] = Must(ruleEditorInlineDeleteUsesDangerButton, "规则编辑器行内删除使用 DangerButton"),
+            ["SettingsRecoverySecondaryUsesCanvas"] = Must(settingsRecoverySecondaryUsesCanvas, "设置恢复次级按钮使用现役暖白画布副本 #FFFDF3EB"),
+            ["ReminderCenterTwoRowActionsLayout"] = Must(reminderCenterTwoRowActionsLayout, "提醒中心动作按 DESIGN 两行布局且按钮为图标加文字"),
+            ["ReminderCenterEntryVisualIdentity"] = Must(reminderCenterEntryVisualIdentity, "提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN 视觉标识"),
+            ["PopupAnimationIsInstant"] = Must(popupAnimationIsInstant, "五处生产弹层使用即时出现而不是系统淡入"),
+            ["ActionForegroundsUseMainActionText"] = Must(actionForegroundsUseMainActionText, "主按钮、复选勾与日历选中前景使用 MainActionTextBrush"),
+            ["DisabledSelectionControlsUseButtonOpacity"] = Must(
+                disabledSelectionControlsUseButtonOpacity,
+                "禁用 CheckBox/ComboBox 与主窗口专用复选模板表面透明度为 0.45"),
+            ["FloatingDateStampTypographyMatches"] = Must(floatingDateStampTypographyMatches, "日期印记字重、字体 fallback、表格数字与规则线间距符合 §3"),
+            ["FloatingTypographyWeightWhitelist"] = Must(floatingTypographyWeightWhitelist, "悬浮窗字重只使用 Regular 与 SemiBold"),
+            ["FloatingDateStampDensityMatches"] = Must(floatingDateStampDensityMatches, "日期印记上下留白与三行间距降低拥挤感"),
             ["FloatingDateStampStickyAtScrollBottom"] = floatingDateStampStickyAtScrollBottom,
             ["FloatingNotesListBottomPaddingMatches"] = floatingNotesListBottomPaddingMatches,
-            ["NoteCancelFitsEditorPanel"] = noteCancelFitsEditorPanel,
-            ["PopupRightInsetIsEightFromCanvas"] = popupRightInsetIsEightFromCanvas,
-            ["FilterPopupScrollsLongTagList"] = filterPopupScrollsLongTagList,
-            ["MainCheckboxHitCoversSlot"] = mainCheckboxHitCoversSlot,
-            ["FloatingSearchSlotRightIs396"] = floatingSearchSlotRightIs396,
-            ["FloatingSearchHintMatchesInputHeight"] = floatingSearchHintMatchesInputHeight,
-            ["FloatingQuickAddAlignsWithNoteCards"] = floatingQuickAddAlignsWithNoteCards,
-            ["FloatingCheckboxHitCoversSlot"] = floatingCheckboxHitCoversSlot,
+            ["NoteCancelFitsEditorPanel"] = Must(noteCancelFitsEditorPanel, "便签编辑取消按钮完全位于面板右缘内并与保存同高同行"),
+            ["PopupRightInsetIsEightFromCanvas"] = Must(popupRightInsetIsEightFromCanvas, "筛选、标签管理与标签选择弹层右缘距内容画布内缘 8px"),
+            ["FilterPopupScrollsLongTagList"] = Must(filterPopupScrollsLongTagList, "筛选弹层长标签列表有最大高度并内部滚动"),
+            ["MainCheckboxHitCoversSlot"] = Must(mainCheckboxHitCoversSlot, "主窗口便签复选框命中覆盖 38px 槽位（默认缩放后 ≥24 DIP）且保留 Tag=note.Id"),
+            ["FloatingSearchSlotRightIs396"] = Must(floatingSearchSlotRightIs396, "悬浮搜索槽右缘对齐 x=396"),
+            ["FloatingSearchHintMatchesInputHeight"] = Must(floatingSearchHintMatchesInputHeight, "悬浮搜索提示行与输入行等高且展开不跳动视口"),
+            ["FloatingQuickAddAlignsWithNoteCards"] = Must(floatingQuickAddAlignsWithNoteCards, "悬浮快速新增右缘与便签卡列右缘对齐"),
+            ["FloatingCheckboxHitCoversSlot"] = Must(floatingCheckboxHitCoversSlot, "悬浮便签复选框命中覆盖 36px 槽位且不覆盖日期印记"),
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
                 "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-21-v59 series includes edit-mode and filter-open standing frames.",
-            ["AuditContrastGateIsolationBehavior"] = auditContrastGateIsolationBehavior,
-            ["DangerButtonContrast"] = dangerContrast,
-            ["DangerSurfacesMeetContrast"] = dangerSurfaces.Values.All(ratio => ratio >= 4.5),
+            ["AuditContrastGateIsolationBehavior"] = Must(auditContrastGateIsolationBehavior, "审计对比度负向夹具可独立失败"),
+            ["DangerButtonContrast"] = Must(dangerContrast, "危险确认按钮悬停/按下保持文字对比度（#129 自 U1 迁移）"),
+            ["DangerSurfacesMeetContrast"] = Must(dangerSurfaces.Values.All(ratio => ratio >= 4.5), "错误文字对六种真实表面至少 4.5:1（#217）"),
             ["DangerSurfaceMeasurements"] = dangerSurfaces,
-            ["EffectiveThemeTextContrast"] = contrast,
-            ["DestructiveConfirmationIsSafe"] = confirmationThemed && confirmationCancelSafeDefault,
-            ["ConfirmationDialogLongestButtonsVisible"] = confirmationButtonsVisible,
-            ["ConfirmationDialogLongestBodyReachable"] = confirmationBodyReachable,
-            ["ConfirmationDialogSafeDefaultActions"] = confirmationCancelSafeDefault,
-            ["ConfirmationDialogGateIsolationBehavior"] = confirmationDialogGateIsolationBehavior,
+            ["EffectiveThemeTextContrast"] = Must(contrast, "弱化便签/日历文字达到有效对比度（#129 自 U1 迁移）"),
+            ["DestructiveConfirmationIsSafe"] = Must(confirmationThemed && confirmationCancelSafeDefault, "破坏性确认不以删除为 Enter 默认动作（#129 自 U1 迁移）"),
+            ["ConfirmationDialogLongestButtonsVisible"] = Must(confirmationButtonsVisible, "最长删除确认正文下两个按钮完整位于窗口内容区"),
+            ["ConfirmationDialogLongestBodyReachable"] = Must(confirmationBodyReachable, "最长删除确认正文可换行并由滚动容器承载"),
+            ["ConfirmationDialogSafeDefaultActions"] = Must(confirmationCancelSafeDefault, "删除确认取消按钮仍为默认和取消动作"),
+            ["ConfirmationDialogGateIsolationBehavior"] = Must(confirmationDialogGateIsolationBehavior, "删除确认对话框负向夹具可独立失败"),
             ["ConfirmationDialog"] = confirmationValidation,
-            ["FormControlsHaveAccessibleNames"] = main.HasAccessibleCoreControls,
-            ["StatusMessagesUseLiveRegions"] = main.HasLiveStatusRegions,
-            ["MainInitialFocusIsSafeAndDeterministic"] = mainKeyboardBehavior.InitialFocusSafe,
-            ["MainTabSequenceStartsWithWorkspaceControls"] =
+            ["FormControlsHaveAccessibleNames"] = Must(main.HasAccessibleCoreControls, "核心表单控件具有显式可访问名称（#129 自 U1 迁移）"),
+            ["StatusMessagesUseLiveRegions"] = Must(main.HasLiveStatusRegions, "动态状态消息通过 live region 播报（#129 自 U1 迁移）"),
+            ["MainInitialFocusIsSafeAndDeterministic"] = Must(mainKeyboardBehavior.InitialFocusSafe, "主窗口初始焦点落在确定且非危险控件"),
+            ["MainTabSequenceStartsWithWorkspaceControls"] = Must(
                 string.Join(',', mainKeyboardBehavior.TabSequence) ==
                     "CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton",
-            ["MainStructuralLiveRegionsUsePoliteSemantics"] =
+                "主窗口工作区控件具备可遍历顺序"),
+            ["MainStructuralLiveRegionsUsePoliteSemantics"] = Must(
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyCountdownMessage")) == AutomationLiveSetting.Polite &&
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "EmptyNotesMessage")) == AutomationLiveSetting.Polite &&
                 AutomationProperties.GetLiveSetting(Required<TextBlock>(main, "StatusText")) == AutomationLiveSetting.Polite,
-            ["MainShortcutScopeIsSafe"] = mainShortcutScopeIsSafe,
-            ["MainShortcutGateIsolationBehavior"] = mainShortcutGateIsolationBehavior,
+                "主窗口结构变化使用既有可见 polite live region"),
+            ["MainShortcutScopeIsSafe"] = Must(mainShortcutScopeIsSafe, "主窗口Ctrl快捷键允许输入焦点，避开弹层与模态上下文（#224）"),
+            ["MainShortcutGateIsolationBehavior"] = Must(mainShortcutGateIsolationBehavior, "主窗口快捷键负向夹具可独立失败"),
             ["MainShortcutGates"] = mainShortcutGates,
             ["MainKeyboardNavigationGates"] = mainKeyboardNavigationGates,
-            ["MainKeyboardNavigationGateIsolationBehavior"] =
-                mainKeyboardNavigationGateIsolationBehavior,
+            ["MainKeyboardNavigationGateIsolationBehavior"] = Must(mainKeyboardNavigationGateIsolationBehavior, "主窗口初始焦点与完整 Tab 路径负向夹具可独立失败"),
             ["MainKeyboardBehavior"] = mainKeyboardBehavior,
-            ["MainKeyboardPathNegativeFixtures"] = mainKeyboardPathNegativeFixtures,
+            ["MainKeyboardPathNegativeFixtures"] = Must(mainKeyboardPathNegativeFixtures, "完整 Tab 路径负夹具可击穿缺失标签、换序、非对称和不可见焦点"),
             ["MainStructuralAnnouncements"] = mainStructuralAnnouncements,
             ["MainEmptyStateGuidance"] = mainStructuralAnnouncements.EmptyStateGuidance,
             ["MainStructuralAnnouncementGates"] = mainStructuralAnnouncementGates,
-            ["MainStructuralAnnouncementGateIsolationBehavior"] =
-                mainStructuralAnnouncementGateIsolationBehavior,
+            ["MainStructuralAnnouncementGateIsolationBehavior"] = Must(mainStructuralAnnouncementGateIsolationBehavior, "结构变化通知三门负向夹具可独立失败"),
             ["SecondaryWindowTypography"] = secondaryWindowTypography,
-            ["SecondaryWindowTypographyGateIsolationBehavior"] =
-                secondaryWindowTypographyGateIsolationBehavior,
-            ["CompactActionTargetsAreUsable"] = Required<Button>(main, "SaveCountdownButton").MinHeight >= 32,
+            ["SecondaryWindowTypographyGateIsolationBehavior"] = Must(secondaryWindowTypographyGateIsolationBehavior, "次级窗口字号三门负向夹具可独立失败"),
+            ["CompactActionTargetsAreUsable"] = Must(
+                Required<Button>(main, "SaveCountdownButton").MinHeight >= 32,
+                "紧凑标签与便签动作达到桌面交互目标尺寸（#129 自 U1 迁移）"),
             ["RequiredControls"] = 10,
             ["DatePickerTemplateParts"] = dateParts.Count(part => part is not null),
             ["DatePickerText"] = dateTextBox?.Text,
-            ["WpfUiPickerStylesIntegrated"] =
+            ["WpfUiPickerStylesIntegrated"] = Must(
                 productionDatePickers.AllAttached &&
                 productionDatePickers.ReminderCenter.Attached &&
                 comboBoxTextClick.Measurements.All(input => input.Attached),
-            ["DatePickerSelectedDateTextMatchesContract"] =
+                "生产日期与下拉实际继承 WPF-UI 样式并使用库提供的切换模板（#206）"),
+            ["DatePickerSelectedDateTextMatchesContract"] = Must(
                 productionDatePickers.Attached.All(input => input.SelectedDateTextMatchesContract) &&
                 productionDatePickers.ReminderCenter.SelectedDateTextMatchesContract,
-            ["DateInputReadOnly"] = productionDatePickers.AllProductionInputsReadOnly,
-            ["DatePickerButtonOpensCalendar"] =
+                "全部生产日期框在日期变化与日历关闭后保持中文空格格式（#206）"),
+            ["DateInputReadOnly"] = Must(productionDatePickers.AllProductionInputsReadOnly, "日期选择不接受自由文本输入（#129 自 U1 迁移）"),
+            ["DatePickerButtonOpensCalendar"] = Must(
                 dateButtonOpens && productionDatePickers.ReminderCenter.ButtonOpensCalendar,
-            ["DatePickerTextOpensCalendar"] =
+                "点击日期下拉按钮打开日历弹层（#129 自 U1 迁移）"),
+            ["DatePickerTextOpensCalendar"] = Must(
                 productionDatePickers.AttachedTextPointerWorks &&
                 productionDatePickers.AttachedKeyboardLifecycleWorks &&
                 productionDatePickers.UnattachedNegativeTextDoesNotOpen,
-            ["DatePickerTextDefersCalendarUntilPointerRelease"] =
+                "点击日期文字打开全部主题化日历（#129 自 U1 迁移）"),
+            ["DatePickerTextDefersCalendarUntilPointerRelease"] = Must(
                 productionDatePickers.AttachedTextDefersUntilRelease,
-            ["DatePickerTextClicksUseTheme"] =
+                "日期文字在指针释放前不提前打开日历（#129 自 U1 迁移）"),
+            ["DatePickerTextClicksUseTheme"] = Must(
                 dateBehaviorAttached &&
                 productionDatePickers.AllAttached &&
                 productionDatePickers.AttachedTextOpensThemedPopups &&
                 dateFamilyThemed,
-            ["DatePickerTextOpensThemedPopup"] =
+                "日期文字点击绑定到全部主题化日期框（#129 自 U1 迁移）"),
+            ["DatePickerTextOpensThemedPopup"] = Must(
                 productionDatePickers.AttachedTextOpensThemedPopups && livePopupThemed,
-            ["DatePickerCalendarMonthGridLaidOut"] = calendarMonthGridLaidOut,
+                "点击日期文字打开真实主题化日历弹层（#129 自 U1 迁移）"),
+            ["DatePickerCalendarMonthGridLaidOut"] = Must(calendarMonthGridLaidOut, "打开的月视图是 7 个星期标题 + 6×7 互不重叠的日期格，不叠进同一格"),
             ["DatePickerEscapeClosesAndReturnsFocus"] =
                 productionDatePickers.AttachedKeyboardLifecycleWorks,
             ["DatePickerProductionInputCount"] = productionDatePickers.ProductionInputCount,
@@ -2246,73 +2278,75 @@ internal static class ValidationReport
                 productionDatePickers.ReminderCenterComboBoxesUseThemedDropDowns,
             ["TimeDropDowns"] = 3,
             ["TimeOptionCounts"] = main.TimeOptionCounts,
-            ["HasCountdownReminderModeRadios"] = main.FindName("CountdownReminderNoRadio") is RadioButton &&
+            ["HasCountdownReminderModeRadios"] = Must(
+                main.FindName("CountdownReminderNoRadio") is RadioButton &&
                 main.FindName("CountdownReminderTimeRadio") is RadioButton &&
                 main.FindName("CountdownReminderCustomRadio") is RadioButton,
-            ["HasCountdownList"] = countdownRows is not null,
-            ["MainCountdownEncourageBadgeAbsent"] = countdownReadability.EncourageBadgeAbsent,
-            ["MainCountdownExpiredRemainingFollowsContrast"] =
+                "倒计时提醒模式单选组存在（#129 自 U1 迁移）"),
+            ["HasCountdownList"] = Must(countdownRows is not null, "多倒计时列表存在（#129 自 U1 迁移）"),
+            ["MainCountdownEncourageBadgeAbsent"] = Must(countdownReadability.EncourageBadgeAbsent, "管理窗口倒计时列表不渲染超期待徽章（两窗都只挂距离下班）"),
+            ["MainCountdownExpiredRemainingFollowsContrast"] = Must(
                 countdownReadability.ExpiredRemainingFollowsContrast,
+                "到期剩余文字：主项用主项数字色、次项用正文色并保留已到期文案"),
             ["MainCountdownBlocksGeometryMatches"] = countdownReadability.BlocksGeometryMatches,
-            ["MainCountdownNumericTextsMatchContract"] = countdownReadability.NumericTextsMatchContract,
-            ["MainCountdownReadabilityGateIsolationBehavior"] = countdownReadabilityGateIsolationBehavior,
+            ["MainCountdownNumericTextsMatchContract"] = Must(countdownReadability.NumericTextsMatchContract, "北京时间使用表格数字且月薪与今日已赚同一套本地数字格式"),
+            ["MainCountdownReadabilityGateIsolationBehavior"] = Must(countdownReadabilityGateIsolationBehavior, "倒计时可读性门禁用会失败的反例保住"),
             ["MainCountdownReadability"] = countdownReadability,
-            ["MainCountdownFieldErrorsAtSource"] =
-                countdownEditingGates.FieldErrorsAtSourceWithFocus,
-            ["MainCountdownFieldErrorsClearOnCorrection"] =
-                countdownEditingGates.FieldErrorsClear,
-            ["MainCountdownSingleErrorRowUnclipped"] =
-                countdownEditingGates.SingleErrorRowNotClipped,
-            ["MainPreferenceErrorsBelowFields"] =
-                countdownEditingGates.PreferenceErrorsAtSource,
-            ["MainPrimarySecondaryButtonRolesDistinct"] =
+            ["MainCountdownFieldErrorsAtSource"] = Must(countdownEditingGates.FieldErrorsAtSourceWithFocus, "倒计时名称/截止日期错误按字段拆开贴字段显示并聚焦第一个无效控件（#151）"),
+            ["MainCountdownFieldErrorsClearOnCorrection"] = Must(countdownEditingGates.FieldErrorsClear, "倒计时字段值修正后字段错误立即清除（#151）"),
+            ["MainCountdownSingleErrorRowUnclipped"] = Must(countdownEditingGates.SingleErrorRowNotClipped, "倒计时唯一错误行不再固定高度裁切或省略（#151）"),
+            ["MainPreferenceErrorsBelowFields"] = Must(countdownEditingGates.PreferenceErrorsAtSource, "月薪/上下班时间格式错误出现在对应字段下方（#151）"),
+            ["MainPrimarySecondaryButtonRolesDistinct"] = Must(
                 countdownEditingGates.PrimarySecondaryRolesDistinct,
-            ["MainInputSurfaceWhitePaper"] =
-                countdownEditingGates.InputSurfacesWhitePaper,
-            ["MainTextSelectionHighlightDistinct"] =
-                countdownEditingGates.SelectionHighlightDistinct,
-            ["MainStatusBarSurfaceErrorContrast"] =
-                countdownEditingGates.StatusBarErrorContrast,
-            ["MainReminderRadioSelectedContrast"] =
-                countdownEditingGates.ReminderRadioSelectedContrast,
-            ["MainEditorTypographyTokens"] =
-                countdownEditingGates.EditorTypographyTokenized,
-            ["MainCountdownEditingGateIsolationBehavior"] =
-                countdownEditingGateIsolationBehavior,
-            ["MainFocusRingConstantThicknessNoSqueeze"] = interactionStates.FocusRingsReserveSpace,
-            ["MainPrimaryAndPinSingleFocusStroke"] = interactionStates.PrimaryAndPinSingleFocusStroke,
-            ["MainNotesTabHoverDiffersFromSelected"] = interactionStates.NotesTabHoverDiffersFromSelected,
-            ["MainLocalControlsPressAndDisabled"] = interactionStates.LocalControlsPressAndDisabled,
-            ["MainReminderHelpFocusShowsHelp"] = interactionStates.HelpFocusShowsHelpText,
-            ["MainCompactHitTargetsMeetScaledFloor"] = interactionStates.CompactHitTargetsMeetScaledFloor,
-            ["MainFilterChipsAndCalendarNavCompact"] = interactionStates.ChipsAndCalendarNavCompact,
-            ["MainHoverStateContrastIsPerceivable"] = interactionStates.HoverStateContrastIsPerceivable,
-            ["MainPressedStateGeometryStable"] =
+                "倒计时页唯一实心主行动为＋添加倒计时，保存设置为CardAlt次级表面，便签＋添加仍为主按钮（#217）"),
+            ["MainInputSurfaceWhitePaper"] = Must(countdownEditingGates.InputSurfacesWhitePaper, "倒计时编辑输入面使用白纸面板色并与画布分开（#151）"),
+            ["MainTextSelectionHighlightDistinct"] = Must(countdownEditingGates.SelectionHighlightDistinct, "文本选区高亮为独立语义色且选中后肉眼可辨（#151）"),
+            ["MainStatusBarSurfaceErrorContrast"] = Must(countdownEditingGates.StatusBarErrorContrast, "状态栏消费状态条表面且错误字达信息文本对比（#151）"),
+            ["MainReminderRadioSelectedContrast"] = Must(countdownEditingGates.ReminderRadioSelectedContrast, "提醒规则选中圆点与描边达非文本对比门槛（#151）"),
+            ["MainEditorTypographyTokens"] = Must(countdownEditingGates.EditorTypographyTokenized, "编辑卡区块标题与字段行距消费排版/间距 token（#151）"),
+            ["MainCountdownEditingGateIsolationBehavior"] = Must(countdownEditingGateIsolationBehavior, "倒计时编辑门禁用会失败的反例保住（#151）"),
+            ["MainFocusRingConstantThicknessNoSqueeze"] = Must(interactionStates.FocusRingsReserveSpace, "主窗焦点环常驻透明环变色，聚焦不加厚边、不挤布局"),
+            ["MainPrimaryAndPinSingleFocusStroke"] = Must(
+                interactionStates.PrimaryAndPinSingleFocusStroke,
+                "主按钮与置顶不再叠 FocusVisualStyle 第二套焦点描边，常规控件保留 2px 暖边"),
+            ["MainNotesTabHoverDiffersFromSelected"] = Must(interactionStates.NotesTabHoverDiffersFromSelected, "未选中便签页签悬停边换 ActiveBrush，不复用选中实心底"),
+            ["MainLocalControlsPressAndDisabled"] = Must(interactionStates.LocalControlsPressAndDisabled, "本地页签/帮助/提醒单选/日期披露具备按压与禁用外观"),
+            ["MainReminderHelpFocusShowsHelp"] = Must(interactionStates.HelpFocusShowsHelpText, "聚焦提醒规则帮助显示与悬停相同的说明并提供帮助文本"),
+            ["MainCompactHitTargetsMeetScaledFloor"] = Must(interactionStates.CompactHitTargetsMeetScaledFloor, "默认缩放后完成勾选与帮助命中槽位 ≥24 DIP"),
+            ["MainFilterChipsAndCalendarNavCompact"] = Must(interactionStates.ChipsAndCalendarNavCompact, "筛选芯片高度/间距与日历翻月按钮向紧凑下限族靠拢"),
+            ["MainHoverStateContrastIsPerceivable"] = Must(interactionStates.HoverStateContrastIsPerceivable, "主窗按钮悬停具有可感知的暖色底/边反馈"),
+            ["MainPressedStateGeometryStable"] = Must(
                 interactionStates.PressedStateGeometryStable &&
                 interactionStates.SegmentIndicatorRapidSwitchStaysAligned,
-            ["MainMouseClickDoesNotLeaveFocusRing"] = interactionStates.MouseClickDoesNotLeaveFocusRing,
-            ["MainKeyboardFocusRingShowsOnTab"] = interactionStates.KeyboardFocusRingShowsOnTab,
-            ["MainSelectedTabWeightDominates"] =
+                "主窗按钮按下保留常驻 2px 环且不改变布局边界"),
+            ["MainMouseClickDoesNotLeaveFocusRing"] = Must(interactionStates.MouseClickDoesNotLeaveFocusRing, "鼠标点击后不残留键盘焦点环"),
+            ["MainKeyboardFocusRingShowsOnTab"] = Must(interactionStates.KeyboardFocusRingShowsOnTab, "Tab 键聚焦时显示键盘焦点环"),
+            ["MainSelectedTabWeightDominates"] = Must(
                 interactionStates.SelectedTabWeightDominates &&
                 interactionStates.SegmentIndicatorGeometryMatches,
-            ["MainSegmentIndicatorGeometryMatches"] = interactionStates.SegmentIndicatorGeometryMatches,
-            ["MainSegmentIndicatorReducedMotionIsImmediate"] = interactionStates.SegmentIndicatorReducedMotionIsImmediate,
-            ["MainSegmentIndicatorRapidSwitchStaysAligned"] = interactionStates.SegmentIndicatorRapidSwitchStaysAligned,
-            ["MotionClientAreaAnimationSwitchReadable"] =
+                "选中页签使用 PinkTint 底与 SemiBold 权重"),
+            ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口分段指示条几何与选中页签对齐"),
+            ["MainSegmentIndicatorReducedMotionIsImmediate"] = Must(interactionStates.SegmentIndicatorReducedMotionIsImmediate, "减少动态效果时分段指示条立即就位"),
+            ["MainSegmentIndicatorRapidSwitchStaysAligned"] = Must(interactionStates.SegmentIndicatorRapidSwitchStaysAligned, "快速连续切换后分段指示条仍停在当前页签"),
+            ["MotionClientAreaAnimationSwitchReadable"] = Must(
                 ApplicationTheme.ClientAreaAnimationEnabled == SystemParameters.ClientAreaAnimation,
-            ["MotionTokensMatch"] =
+                "已接入系统客户区动画开关读取点"),
+            ["MotionTokensMatch"] = Must(
                 motionTokensMatch && interactionStates.SegmentIndicatorReducedMotionIsImmediate,
-            ["KeyboardFocusRingTabGapAvoidsSelectedFill"] =
-                keyboardFocusRingContrast.TabRingGapAvoidsSelectedFill,
-            ["KeyboardFocusRingFloatingCapsuleMeetsContrast"] =
+                "六个动效时长与 ease-out 缓动符合当前系统动画偏好"),
+            ["KeyboardFocusRingTabGapAvoidsSelectedFill"] = Must(keyboardFocusRingContrast.TabRingGapAvoidsSelectedFill, "页签键盘焦点环与选中底色之间留出间隙"),
+            ["KeyboardFocusRingFloatingCapsuleMeetsContrast"] = Must(
                 keyboardFocusRingContrast.FloatingCapsuleFocusRingMeetsContrast,
-            ["KeyboardFocusRingFloatingCapsuleUsesWarmGold"] =
+                "悬浮窗胶囊键盘焦点环达到对比度要求"),
+            ["KeyboardFocusRingFloatingCapsuleUsesWarmGold"] = Must(
                 keyboardFocusRingContrast.FloatingCapsuleUsesWarmGoldToken,
-            ["FloatingIncomeUsesTabularNumerals"] =
+                "悬浮窗胶囊键盘焦点环使用暖金色 token"),
+            ["FloatingIncomeUsesTabularNumerals"] = Must(
                 Typography.GetNumeralAlignment(Required<TextBlock>(floating, "FloatingIncome")) ==
                 FontNumeralAlignment.Tabular,
-            ["HasNameEditor"] = main.FindName("CountdownName") is TextBox,
-            ["HasNoteReminderControls"] =
+                "悬浮窗今日已赚使用表格数字"),
+            ["HasNameEditor"] = Must(main.FindName("CountdownName") is TextBox, "倒计时名称编辑器存在（#129 自 U1 迁移）"),
+            ["HasNoteReminderControls"] = Must(
                 main.FindName("ManageNoteReminderRulesButton") is Button &&
                 main.FindName("NoteReminderRulesSummary") is TextBlock &&
                 floating.FindName("FloatingManageReminderRules") is Button &&
@@ -2323,9 +2357,9 @@ internal static class ValidationReport
                 floating.FindName("FloatingReminder") is null &&
                 floating.FindName("FloatingReminderSchedule") is null &&
                 floating.FindName("FloatingReminderIntervalPanel") is null,
-            ["NoteReminderControlsWork"] =
-                reminderRulesEditorSharedEntryWorks,
-            ["ReminderRulesEditorSharedEntryWorks"] =
+                "管理窗口或悬浮入口存在便签提醒选择器与自定义分钟输入（#129 自 U1 迁移）"),
+            ["NoteReminderControlsWork"] = Must(reminderRulesEditorSharedEntryWorks, "便签提醒选择器支持预设、自定义分钟与禁用提醒（#129 自 U1 迁移）"),
+            ["ReminderRulesEditorSharedEntryWorks"] = Must(
                 reminderRulesEditorSharedEntryWorks &&
                 Required<Button>(main, "ManageNoteReminderRulesButton").Visibility == Visibility.Visible &&
                 Required<TextBlock>(main, "NoteReminderRulesSummary").Visibility == Visibility.Visible &&
@@ -2337,205 +2371,171 @@ internal static class ValidationReport
                 floating.FindName("FloatingReminder") is null &&
                 floating.FindName("FloatingReminderSchedule") is null &&
                 floating.FindName("FloatingReminderIntervalPanel") is null,
-            ["CalendarReminderStartLabelsUseCalendarSemantics"] =
-                ProbeCalendarReminderStartLabels(),
-            ["FloatingReminderRulesEntryStaysCompact"] =
+                "主窗口与悬浮窗复用共享提醒规则编辑器入口并隐藏旧复杂控件"),
+            ["CalendarReminderStartLabelsUseCalendarSemantics"] = Must(ProbeCalendarReminderStartLabels(), "日历模式开始日期/本地时刻标签与其余模式首次提醒标签区分"),
+            ["FloatingReminderRulesEntryStaysCompact"] = Must(
                 Math.Abs(floating.Width - 520) <= 0.1 &&
                 floating.Height <= 391 &&
                 Required<Button>(floating, "FloatingManageReminderRules").Width <= 116,
+                "悬浮窗提醒规则入口保持 520 x 390 紧凑表面"),
             ["NoteReminderTimeOptionCounts"] = new[]
             {
                 productionDatePickers.ReminderHourOptionCount,
                 productionDatePickers.ReminderMinuteOptionCount
             },
-            ["CrossDayReminderSelectionWorks"] = crossDayReminderBehavior,
-            ["ReminderSummaryAdvancesAfterFirstDue"] = reminderSummaryAdvances,
-            ["OneTimeReminderLifecycleWorks"] = oneTimeReminderBehavior,
-            ["ReminderRequiresContentRenderedConfirmation"] =
+            ["CrossDayReminderSelectionWorks"] = Must(crossDayReminderBehavior, "便签提醒支持跨天选择并按北京时间触发"),
+            ["ReminderSummaryAdvancesAfterFirstDue"] = Must(reminderSummaryAdvances, "首次提醒到期后主窗口摘要显示下一循环时间"),
+            ["OneTimeReminderLifecycleWorks"] = Must(oneTimeReminderBehavior, "一次性提醒支持离线补发并在送达后跨重启去重"),
+            ["ReminderRequiresContentRenderedConfirmation"] = Must(
                 reminderDelivery.RequiresContentRenderedConfirmation,
-            ["ReminderPersistenceFailureStaysVisible"] =
-                reminderDelivery.PersistenceFailureStaysVisible,
-            ["ReminderPersistenceRetryBackoffWorks"] =
-                reminderDelivery.PersistenceRetryBackoffWorks,
-            ["ReminderDeliverySingleFlightWorks"] =
-                reminderDelivery.SingleFlightWorks,
-            ["ReminderIndependentOccurrencesWork"] =
-                reminderDelivery.IndependentOccurrencesWork,
-            ["ReminderPersistenceFailureCloseGuardWorks"] =
-                reminderDelivery.PersistenceFailureCloseGuardWorks,
-            ["ReminderPersistenceFailureDisposeWorks"] =
-                reminderPersistenceFailureDisposeWorks,
-            ["ReminderDiagnosticsExcludePrivatePayload"] =
-                reminderDelivery.DiagnosticsExcludePrivatePayload,
-            ["ReminderCenterSingleWindow"] = reminderCenter.SingleWindow,
-            ["ReminderCenterSameTickBatch"] = reminderCenter.SameTickBatch,
-            ["ReminderCenterAppendsAfterOpen"] =
-                reminderCenterAppendsAfterOpen,
-            ["ReminderCenterStableOrdering"] = reminderCenter.StableOrdering,
-            ["ReminderCenterEntriesRendered"] = reminderCenter.EntriesRendered,
-            ["ReminderAcknowledgementDistinctFromDelivery"] =
-                reminderCenter.AcknowledgementDistinctFromDelivery,
-            ["ReminderAcknowledgementFailureRetainsEntry"] =
-                reminderCenter.AcknowledgementFailureRetainsEntry,
-            ["ReminderAcknowledgementFailureIsAtomic"] =
-                reminderCenter.AcknowledgementFailureIsAtomic,
-            ["ReminderCenterSingleItemDisposition"] =
-                reminderCenter.SingleItemDisposition,
-            ["ReminderCenterOpenSourcePreservesState"] =
-                reminderCenter.OpenSourcePreservesState,
-            ["ReminderCenterOpenSourceFindsExactNote"] =
-                reminderCenter.OpenSourceFindsExactNote,
-            ["ReminderCenterOpenSourceRestoresMinimizedWindow"] =
-                reminderCenter.OpenSourceRestoresMinimizedWindow,
-            ["ReminderCenterPersistenceFailureRetainsCurrentSource"] =
+                "提醒只在真实 ContentRendered 后确认送达"),
+            ["ReminderPersistenceFailureStaysVisible"] = Must(reminderDelivery.PersistenceFailureStaysVisible, "一次提醒持久化失败时保持可见并阻止提前关闭"),
+            ["ReminderPersistenceRetryBackoffWorks"] = Must(reminderDelivery.PersistenceRetryBackoffWorks, "一次提醒按 5/10/20/30 秒上限持续重试"),
+            ["ReminderDeliverySingleFlightWorks"] = Must(reminderDelivery.SingleFlightWorks, "同一提醒 occurrence 在中心内只有一个条目和一个持久化重试"),
+            ["ReminderIndependentOccurrencesWork"] = Must(reminderDelivery.IndependentOccurrencesWork, "不同到期 occurrence 在同一中心独立显示且失败项不阻塞其他项确认"),
+            ["ReminderPersistenceFailureCloseGuardWorks"] = Must(reminderDelivery.PersistenceFailureCloseGuardWorks, "持久化失败态拒绝普通 Close 且保持同一退避状态"),
+            ["ReminderPersistenceFailureDisposeWorks"] = Must(reminderPersistenceFailureDisposeWorks, "应用退出可强制关闭失败态窗口且不触发提前重试"),
+            ["ReminderDiagnosticsExcludePrivatePayload"] = Must(reminderDelivery.DiagnosticsExcludePrivatePayload, "提醒失败诊断不包含便签正文或完整设置载荷"),
+            ["ReminderCenterSingleWindow"] = Must(reminderCenter.SingleWindow, "提醒中心验证门禁"),
+            ["ReminderCenterSameTickBatch"] = Must(reminderCenter.SameTickBatch, "提醒中心验证门禁"),
+            ["ReminderCenterAppendsAfterOpen"] = Must(reminderCenterAppendsAfterOpen, "提醒中心验证门禁"),
+            ["ReminderCenterStableOrdering"] = Must(reminderCenter.StableOrdering, "提醒中心验证门禁"),
+            ["ReminderCenterEntriesRendered"] = Must(reminderCenter.EntriesRendered, "提醒中心验证门禁"),
+            ["ReminderAcknowledgementDistinctFromDelivery"] = Must(reminderCenter.AcknowledgementDistinctFromDelivery, "提醒中心验证门禁"),
+            ["ReminderAcknowledgementFailureRetainsEntry"] = Must(reminderCenter.AcknowledgementFailureRetainsEntry, "提醒中心验证门禁"),
+            ["ReminderAcknowledgementFailureIsAtomic"] = Must(reminderCenter.AcknowledgementFailureIsAtomic, "提醒中心验证门禁"),
+            ["ReminderCenterSingleItemDisposition"] = Must(reminderCenter.SingleItemDisposition, "提醒中心验证门禁"),
+            ["ReminderCenterOpenSourcePreservesState"] = Must(reminderCenter.OpenSourcePreservesState, "提醒中心验证门禁"),
+            ["ReminderCenterOpenSourceFindsExactNote"] = Must(reminderCenter.OpenSourceFindsExactNote, "提醒中心验证门禁"),
+            ["ReminderCenterOpenSourceRestoresMinimizedWindow"] = Must(reminderCenter.OpenSourceRestoresMinimizedWindow, "提醒中心验证门禁"),
+            ["ReminderCenterPersistenceFailureRetainsCurrentSource"] = Must(
                 reminderCenterSourceLifecycle.PersistenceFailureRetainsCurrentSource,
-            ["ReminderCenterRemovesDeletedSource"] =
-                reminderCenterSourceLifecycle.RemovesDeletedSource,
-            ["ReminderCenterCancelsDeletedSourceAckRetry"] =
-                reminderCenterSourceLifecycle.CancelsDeletedSourceAcknowledgementRetry,
-            ["ReminderCenterRemovesDisabledSource"] =
-                reminderCenterSourceLifecycle.RemovesDisabledSource,
-            ["ReminderCenterRemovesCompletedSource"] =
-                reminderCenterSourceLifecycle.RemovesCompletedSource,
-            ["ReminderCenterReopensAfterSourceRemoval"] =
-                reminderCenterSourceLifecycle.ReopensAfterSourceRemoval,
-            ["ReminderCenterClosesWhenEmpty"] = reminderCenter.ClosesWhenEmpty,
-            ["ReminderCenterReopens"] = reminderCenter.Reopens,
-            ["ReminderCenterScrollsLongContent"] = reminderCenter.ScrollsLongContent,
-            ["ReminderCenterFollowsDayTheme"] = reminderCenter.FollowsDayTheme,
-            ["ReminderCenterHasOnlySafeActions"] = reminderCenter.HasOnlySafeActions,
-            ["ReminderCenterDisplaysSourceContentAndTime"] =
-                reminderCenter.DisplaysSourceContentAndTime,
-            ["ReminderCenterAccessible"] = reminderCenter.Accessible,
-            ["RepeatingReminderRenderedLatchWorks"] =
-                repeatingReminderDelivery.RenderedLatchWorks,
-            ["RepeatingReminderDistinctCyclesCoexist"] =
-                repeatingReminderDelivery.SingleUnresolvedOccurrenceWorks,
-            ["RepeatingReminderDueBeforeShow"] = repeatingReminderDelivery.DueBeforeShow,
-            ["ReminderCenterOpened"] = repeatingReminderDelivery.WindowOpened,
-            ["RepeatingReminderContentRendered"] = repeatingReminderDelivery.ContentRendered,
-            ["RepeatingReminderNoDuplicate"] = repeatingReminderDelivery.NoDuplicate,
-            ["ReminderDispositionAndSnoozePersistAcrossRestart"] =
+                "提醒中心验证门禁"),
+            ["ReminderCenterRemovesDeletedSource"] = Must(reminderCenterSourceLifecycle.RemovesDeletedSource, "提醒中心验证门禁"),
+            ["ReminderCenterCancelsDeletedSourceAckRetry"] = Must(reminderCenterSourceLifecycle.CancelsDeletedSourceAcknowledgementRetry, "提醒中心验证门禁"),
+            ["ReminderCenterRemovesDisabledSource"] = Must(reminderCenterSourceLifecycle.RemovesDisabledSource, "提醒中心验证门禁"),
+            ["ReminderCenterRemovesCompletedSource"] = Must(reminderCenterSourceLifecycle.RemovesCompletedSource, "提醒中心验证门禁"),
+            ["ReminderCenterReopensAfterSourceRemoval"] = Must(reminderCenterSourceLifecycle.ReopensAfterSourceRemoval, "提醒中心验证门禁"),
+            ["ReminderCenterClosesWhenEmpty"] = Must(reminderCenter.ClosesWhenEmpty, "提醒中心验证门禁"),
+            ["ReminderCenterReopens"] = Must(reminderCenter.Reopens, "提醒中心验证门禁"),
+            ["ReminderCenterScrollsLongContent"] = Must(reminderCenter.ScrollsLongContent, "提醒中心验证门禁"),
+            ["ReminderCenterFollowsDayTheme"] = Must(reminderCenter.FollowsDayTheme, "提醒中心验证门禁"),
+            ["ReminderCenterHasOnlySafeActions"] = Must(reminderCenter.HasOnlySafeActions, "提醒中心验证门禁"),
+            ["ReminderCenterDisplaysSourceContentAndTime"] = Must(reminderCenter.DisplaysSourceContentAndTime, "提醒中心验证门禁"),
+            ["ReminderCenterAccessible"] = Must(reminderCenter.Accessible, "提醒中心验证门禁"),
+            ["RepeatingReminderRenderedLatchWorks"] = Must(repeatingReminderDelivery.RenderedLatchWorks, "重复提醒只在真实渲染后锁存当前周期"),
+            ["RepeatingReminderDistinctCyclesCoexist"] = Must(repeatingReminderDelivery.SingleUnresolvedOccurrenceWorks, "重复提醒相邻周期聚合到同一中心且同周期不重复加入"),
+            ["RepeatingReminderDueBeforeShow"] = Must(repeatingReminderDelivery.DueBeforeShow, "重复提醒只在窗口显示前已到期时才进入提醒中心"),
+            ["ReminderCenterOpened"] = Must(repeatingReminderDelivery.WindowOpened, "提醒中心状态与失败路径门禁"),
+            ["RepeatingReminderContentRendered"] = Must(repeatingReminderDelivery.ContentRendered, "重复提醒条目经真实渲染确认且未解决 occurrence 唯一"),
+            ["RepeatingReminderNoDuplicate"] = Must(repeatingReminderDelivery.NoDuplicate, "重复提醒同一周期不重复加入提醒中心"),
+            ["ReminderDispositionAndSnoozePersistAcrossRestart"] = Must(
                 reminderDispositionAndSnooze,
-            ["ReminderCompletionAndReopenAreAtomic"] =
-                reminderCompletionAndReopen,
-            ["ReminderCenterSnoozeClickPersists"] =
-                reminderCenterSnoozeClick,
-            ["ReminderCenterExpiredCustomSnoozeRetryAllowsCorrection"] =
-                reminderCenterExpiredCustomSnoozeRetry,
-            ["ReminderCenterCompleteReopenDiscardsStaleRetries"] =
-                reminderCenterStaleRetryAfterCompleteReopen,
-            ["ReminderSnoozeSuppressesBaseCyclesUntilExpiry"] =
+                "知道了处置与 10/30/60 分钟、明天 09:00 及自定义稍后按成功动作时刻计算、规范持久化并跨重启恢复"),
+            ["ReminderCompletionAndReopenAreAtomic"] = Must(reminderCompletionAndReopen, "完成便签事务原子推进 cursor、取消活动稍后并保留未到期 absolute，失败全量保留"),
+            ["ReminderCenterSnoozeClickPersists"] = Must(reminderCenterSnoozeClick, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterExpiredCustomSnoozeRetryAllowsCorrection"] = Must(reminderCenterExpiredCustomSnoozeRetry, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterCompleteReopenDiscardsStaleRetries"] = Must(reminderCenterStaleRetryAfterCompleteReopen, "提醒中心状态与失败路径门禁"),
+            ["ReminderSnoozeSuppressesBaseCyclesUntilExpiry"] = Must(
                 reminderSnoozeSuppressesBaseCycles,
-            ["ReminderCenterCompleteClickIsAtomic"] =
-                reminderCenterCompleteClick,
-            ["ReminderCenterCompleteRequiresConfirmation"] =
+                "活动稍后未到期时抑制同规则基础周期（含重启），到期按原 occurrence 重送达，解决后只补 cursor 之后最新周期"),
+            ["ReminderCenterCompleteClickIsAtomic"] = Must(reminderCenterCompleteClick, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterCompleteRequiresConfirmation"] = Must(
                 reminderCenterCompleteRequiresConfirmation,
-            ["DeleteUndoRestoresLastDelete"] =
+                "提醒中心「完成便签」先确认再提交：取消全量保留便签与条目、确认原子完成并移除条目（#155）"),
+            ["DeleteUndoRestoresLastDelete"] = Must(
                 deleteUndoOffer,
-            ["DirtyExitConfirmsUnsavedWork"] =
-                dirtyExitConfirmation,
-            ["AssistiveNarrationExitsDecorationAndLabelsFields"] =
+                "删除成功后撤销出现在发起删除的窗口：悬浮窗就地恢复便签与规则提醒状态，管理窗口仍走状态条；Ctrl+Z 生效；焦点或悬停暂停 10 秒计时；确认框写明可撤销且取消为安全默认（#155/#214）"),
+            ["DirtyExitConfirmsUnsavedWork"] = Must(dirtyExitConfirmation, "关闭悬浮窗和 Alt+F4 都会确认，正文包含「退出后不再提醒」；有未保存内容时列出未保存项；取消后悬浮窗和提醒派发仍在（#213）"),
+            ["AssistiveNarrationExitsDecorationAndLabelsFields"] = Must(
                 assistiveNarration,
-            ["NarratorAnnouncesLiveRegionChanges"] =
+                "装饰手写体与分段裸数字退出朗读、可见标签经标签关系指向输入不读两遍、数量由一处状态区播完整句、筛选「清除」可访问名说明清除便签日期筛选（#156）"),
+            ["NarratorAnnouncesLiveRegionChanges"] = Must(
                 narratorLiveRegions,
-            ["WindowPositionResetsWithoutDrag"] =
-                windowPositionReset,
-            ["MainWindowFitsInjectedWorkAreas"] =
+                "状态消息、字段错误、数量变化和提醒送达失败触发与声明一致的 LiveRegionChanged；数量不变的分钟刷新不播报；鼓励语退出自动化树，金额与日历状态名称正确（#216）"),
+            ["WindowPositionResetsWithoutDrag"] = Must(windowPositionReset, "越界悬浮窗可经 Ctrl+R 或托盘「复位窗口位置」夹回工作区，隐藏态复位先恢复再夹回（#156）"),
+            ["MainWindowFitsInjectedWorkAreas"] = Must(
                 mainWindowWorkAreaFit,
-            ["CountdownListFirstBehavior"] = countdownListFirst,
-            ["MainTopmostStateSynchronization"] = mainTopmostStateSynchronization,
-            ["MainRedundancyCleanup"] = mainRedundancyCleanup,
-            ["MainNoteEditorSeparation"] = mainNoteEditorSeparation,
-            ["MainTextShortcutBehavior"] = mainTextShortcutBehavior,
-            ["SingleLineEnterSubmission"] = singleLineEnterSubmission,
-            ["FloatingNoteKeyboardSubmission"] = floatingNoteKeyboardSubmission,
-            ["ListDeleteKeyboardBehavior"] = listDeleteKeyboardBehavior,
-            ["MainNoteRowsSimplified"] = mainNoteRowsSimplified,
-            ["CountdownPreferencesPopupBehavior"] = countdownPreferencesPopup,
-            ["CountdownEditorExpansionBehavior"] = countdownEditorExpansion,
-            ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = countdownRowPresentation,
-            ["MainWindowIdentityZoneDragRegion"] =
-                mainWindowIdentityZoneDrag,
-            ["FloatingWindowStaysOnSecondaryMonitor"] = floatingSecondaryMonitor,
-            ["OwnerDialogsFitSecondaryMonitor"] = ownerDialogsFitSecondaryMonitor,
-            ["ReminderUsesSourceMonitor"] = reminderUsesSourceMonitor,
-            ["OpenWindowsFollowMonitorChanges"] = openWindowsFollowMonitorChanges,
-            ["MixedDpiUsesPhysicalMonitorGeometry"] = mixedDpiPhysicalGeometry,
-            ["ProductManifestDeclaresPerMonitorV2"] = productManifestPerMonitorV2,
-            ["RuntimeDpiChangeUpdatesWindowLayout"] = runtimeDpiLayout,
-            ["MainWindowHiddenTickSkipsRenderAndShowRefreshes"] =
-                mainWindowHiddenRefresh,
-            ["MainWindowNoteMinutePreservesFocusAndScroll"] =
-                mainWindowNoteMinuteRefresh,
-            ["ReminderCenterDeliveryFailureDisablesDispositions"] =
-                reminderCenterDeliveryFailureActionGate,
-            ["ReminderCenterEnterUsesNativeButtonActivation"] =
-                reminderCenterEnterUsesNativeButtonActivation,
-            ["ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar"] =
-                reminderCenterArrivalKeepsForegroundAndFlashesTaskbar,
-            ["ReminderCenterMinimizeToTaskbarPreservesEntries"] =
-                reminderCenterMinimizeToTaskbarPreservesEntries,
-            ["ReminderCenterSnoozeGatedDuringCompletionRetry"] =
-                reminderCenterSnoozeGatedDuringCompletionRetry,
-            ["ReminderCenterCustomSnoozeErrorRoutesByCode"] =
-                reminderCenterCustomSnoozeErrorRoutesByCode,
-            ["ReminderCenterShowFailureRollsBack"] =
-                reminderCenterShowFailureRollsBack,
-            ["ReminderCenterShowFailureRollbackSurvivesEntryFailure"] =
+                "管理窗口装进 1032/826/688 DIP 注入工作区：首选尺寸收缩、顶端控件与状态栏可达、倒计时三行滚动可见、720×560 滚动不裁切、隐藏再显保留用户几何、越界与工作区变化夹回（#211）"),
+            ["CountdownListFirstBehavior"] = Must(countdownListFirst, "倒计时默认折叠新增，首选尺寸至少三行，窗口增高显示更多完整行（#221）"),
+            ["MainTopmostStateSynchronization"] = Must(mainTopmostStateSynchronization, "置顶首次打开与两次切换均由勾选状态单向驱动（#222）"),
+            ["MainRedundancyCleanup"] = Must(mainRedundancyCleanup, "数量纯文字保留唯一直播区，删除主题与工作区冗余文字（#222）"),
+            ["MainNoteEditorSeparation"] = Must(mainNoteEditorSeparation, "搜索属于列表区、编辑标题与规则字段对齐、Ctrl+F及取消行为正常（#227）"),
+            ["MainTextShortcutBehavior"] = Must(mainTextShortcutBehavior, "输入焦点下Ctrl+S与便签Ctrl+Enter持久保存，Enter换行与弹层守卫（#224）"),
+            ["SingleLineEnterSubmission"] = Must(singleLineEnterSubmission, "单行名称、标签、设置Enter提交及首个无效字段焦点（#224）"),
+            ["FloatingNoteKeyboardSubmission"] = Must(floatingNoteKeyboardSubmission, "悬浮便签Ctrl+Enter提交、普通Enter换行与校验（#224）"),
+            ["ListDeleteKeyboardBehavior"] = Must(listDeleteKeyboardBehavior, "列表Delete安全确认、取消归还、撤销与文本Ctrl+Z隔离（#224）"),
+            ["MainNoteRowsSimplified"] = Must(mainNoteRowsSimplified, "主便签行仅保留编辑删除、正文摘要层级和跨分组交替底色（#227）"),
+            ["CountdownPreferencesPopupBehavior"] = Must(countdownPreferencesPopup, "设置弹层焦点、Tab/Esc、草稿、字段错误、持久化及浮窗双宿主入口（#221）"),
+            ["CountdownEditorExpansionBehavior"] = Must(countdownEditorExpansion, "展开保留草稿，编辑自动展开，取消回到折叠新增并保全持久记录（#221）"),
+            ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = Must(countdownRowPresentation, "倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）"),
+            ["MainWindowIdentityZoneDragRegion"] = Must(mainWindowIdentityZoneDrag, "身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）"),
+            ["FloatingWindowStaysOnSecondaryMonitor"] = Must(floatingSecondaryMonitor, "#219 悬浮窗保留副屏手动位置，键盘与托盘复位夹回当前屏，保持 520×390 DIP"),
+            ["OwnerDialogsFitSecondaryMonitor"] = Must(ownerDialogsFitSecondaryMonitor, "#219 所有者弹窗装进副屏，规则编辑器底部按钮与缩放手柄可达"),
+            ["ReminderUsesSourceMonitor"] = Must(reminderUsesSourceMonitor, "#219 提醒中心首次在悬浮所在屏右上，此后保留手动位置"),
+            ["OpenWindowsFollowMonitorChanges"] = Must(openWindowsFollowMonitorChanges, "#219 显示器与工作区变化后所有已打开窗口归位"),
+            ["MixedDpiUsesPhysicalMonitorGeometry"] = Must(mixedDpiPhysicalGeometry, "#219 重叠 DIP 坐标按物理像素与目标屏 DPI 解析"),
+            ["ProductManifestDeclaresPerMonitorV2"] = Must(productManifestPerMonitorV2, "#219 发布 EXE 嵌入清单声明 PerMonitorV2"),
+            ["RuntimeDpiChangeUpdatesWindowLayout"] = Must(runtimeDpiLayout, "#219 真实 DPI 事件更新比例、窗口几何与可操作布局"),
+            ["MainWindowHiddenTickSkipsRenderAndShowRefreshes"] = Must(mainWindowHiddenRefresh, "管理窗口隐藏期间 tick 不重建分格，重新显示立即同步最新时间（#230）"),
+            ["MainWindowNoteMinutePreservesFocusAndScroll"] = Must(mainWindowNoteMinuteRefresh, "便签数据不变的分钟刷新保留行控件、键盘焦点和非零滚动位置（#230）"),
+            ["ReminderCenterDeliveryFailureDisablesDispositions"] = Must(reminderCenterDeliveryFailureActionGate, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterEnterUsesNativeButtonActivation"] = Must(reminderCenterEnterUsesNativeButtonActivation, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar"] = Must(reminderCenterArrivalKeepsForegroundAndFlashesTaskbar, "提醒中心验证门禁"),
+            ["ReminderCenterMinimizeToTaskbarPreservesEntries"] = Must(reminderCenterMinimizeToTaskbarPreservesEntries, "提醒中心验证门禁"),
+            ["ReminderCenterSnoozeGatedDuringCompletionRetry"] = Must(reminderCenterSnoozeGatedDuringCompletionRetry, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterCustomSnoozeErrorRoutesByCode"] = Must(reminderCenterCustomSnoozeErrorRoutesByCode, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterShowFailureRollsBack"] = Must(reminderCenterShowFailureRollsBack, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterShowFailureRollbackSurvivesEntryFailure"] = Must(
                 reminderCenterShowFailureRollbackSurvivesEntryFailure,
-            ["ReminderCenterCustomSnoozeControlsVisibility"] =
-                reminderCenterCustomSnoozeControlsVisibility,
-            ["ReminderCenterCustomSnoozeCalendarBehavior"] =
-                reminderCenterCustomSnoozeCalendarBehavior,
-            ["ReminderCenterOpenSourcePreservesNoteGroupState"] =
-                reminderCenterOpenSourcePreservesNoteGroupState,
-            ["ReminderCenterAcknowledgeAllWritesAllDispositions"] =
-                reminderCenterAcknowledgeAll.WritesAllDispositions,
-            ["ReminderCenterAcknowledgeAllMatchesSingleSemantics"] =
-                reminderCenterAcknowledgeAll.MatchesSingleSemantics,
-            ["ReminderCenterAcknowledgeAllFailureRetainsAllAtomically"] =
-                reminderCenterAcknowledgeAll.FailureRetainsAllAtomically,
-            ["ReminderCenterAcknowledgeAllBackoffRetryCompletesBatch"] =
-                reminderCenterAcknowledgeAll.BackoffRetryCompletesBatch,
-            ["ReminderCenterRepresentativeCaptureRendered"] =
+                "提醒中心展示失败回滚在条目回滚抛异常时仍清理协调器状态"),
+            ["ReminderCenterCustomSnoozeControlsVisibility"] = Must(reminderCenterCustomSnoozeControlsVisibility, "提醒中心自定义稍后子控件随选项真实展开与收起"),
+            ["ReminderCenterCustomSnoozeCalendarBehavior"] = Must(reminderCenterCustomSnoozeCalendarBehavior, "提醒中心自定义稍后日历保持统一只读、Esc 关闭与聚焦行为"),
+            ["ReminderCenterOpenSourcePreservesNoteGroupState"] = Must(reminderCenterOpenSourcePreservesNoteGroupState, "提醒中心状态与失败路径门禁"),
+            ["ReminderCenterAcknowledgeAllWritesAllDispositions"] = Must(reminderCenterAcknowledgeAll.WritesAllDispositions, "提醒中心验证门禁"),
+            ["ReminderCenterAcknowledgeAllMatchesSingleSemantics"] = Must(reminderCenterAcknowledgeAll.MatchesSingleSemantics, "提醒中心验证门禁"),
+            ["ReminderCenterAcknowledgeAllFailureRetainsAllAtomically"] = Must(reminderCenterAcknowledgeAll.FailureRetainsAllAtomically, "提醒中心验证门禁"),
+            ["ReminderCenterAcknowledgeAllBackoffRetryCompletesBatch"] = Must(reminderCenterAcknowledgeAll.BackoffRetryCompletesBatch, "提醒中心验证门禁"),
+            ["ReminderCenterRepresentativeCaptureRendered"] = Must(
                 reminderCenterRepresentativeCapture.Rendered,
+                "提醒中心代表态真实帧渲染出白底页面、暖黄卡、待处理徽章、主行动按钮与便签来源图标"),
             ["ReminderCenterRepresentativeCapture"] = reminderCenterRepresentativeCapture,
-            ["ValidateOnlySettingsIsolationBehavior"] =
-                validateOnlySettingsIsolation,
+            ["ValidateOnlySettingsIsolationBehavior"] = Must(validateOnlySettingsIsolation, "validate-only 强制使用显式非根 settings 路径且不改变生产默认路径"),
             ["LazyManagerLifecycleBehavior"] = lazyManagerLifecycle,
-            ["MainDecorationOnDemandDecodeBehavior"] = mainDecorationOnDemandDecode,
-            ["CountdownReminderWpfBehavior"] = countdownReminderWpf,
-            ["ReminderAcknowledgementMonotonicAcrossOccurrences"] =
+            ["MainDecorationOnDemandDecodeBehavior"] = Must(mainDecorationOnDemandDecode, "主窗口装饰图按当前页按需解码且解码尺寸等于显示尺寸（#231）"),
+            ["CountdownReminderWpfBehavior"] = Must(countdownReminderWpf, "倒计时 occurrence 进入只含安全动作的提醒中心：完成便签不出现，打开倒计时来源保留草稿"),
+            ["ReminderAcknowledgementMonotonicAcrossOccurrences"] = Must(
                 repeatingReminderDelivery.AcknowledgementMonotonicAcrossOccurrences,
-            ["NoteReminderDispatchWorks"] = reminderBehavior,
-            ["ReminderCenterIsThemed"] = reminderThemed,
-            ["ReminderCenterSupportsKeyboardNavigation"] =
-                reminderCenterKeyboardGates.AllPassed,
-            ["ReminderCenterShowPreservesFocusAndAccessibleName"] =
+                "提醒中心验证门禁"),
+            ["NoteReminderDispatchWorks"] = Must(reminderBehavior, "便签提醒按到期区间恰好派发一次（#129 自 U1 迁移）"),
+            ["ReminderCenterIsThemed"] = Must(reminderThemed, "提醒中心验证门禁"),
+            ["ReminderCenterSupportsKeyboardNavigation"] = Must(reminderCenterKeyboardGates.AllPassed, "提醒中心验证门禁"),
+            ["ReminderCenterShowPreservesFocusAndAccessibleName"] = Must(
                 reminderCenterKeyboardGates.ShowPreservesFocusAndAccessibleName,
-            ["ReminderCenterEscapeFocusesAcknowledge"] =
+                "提醒中心出现时不抢焦点且保留可访问名称"),
+            ["ReminderCenterEscapeFocusesAcknowledge"] = Must(
                 reminderCenterKeyboardGates.EscapeFocusesAcknowledge,
-            ["ReminderCenterTypographyWeightWhitelist"] =
-                reminderCenterTypographyWeightWhitelist,
-            ["ReminderCenterKeyboardGateIsolationBehavior"] =
-                reminderCenterKeyboardGateIsolationBehavior,
-            ["OfficialCharacterBackgroundLoaded"] =
+                "提醒中心有条目时 Esc 不关窗只把焦点移到知道了（失败态回落打开来源）"),
+            ["ReminderCenterTypographyWeightWhitelist"] = Must(reminderCenterTypographyWeightWhitelist, "提醒中心字重只用 Regular 与 SemiBold 且感叹号为矢量图形"),
+            ["ReminderCenterKeyboardGateIsolationBehavior"] = Must(reminderCenterKeyboardGateIsolationBehavior, "提醒中心 Tab 遍历、关闭守卫与初始焦点/可访问名负向夹具可独立失败"),
+            ["OfficialCharacterBackgroundLoaded"] = Must(
                 Required<Image>(main, "MyMelodyBackground").Source is not null &&
                 Required<Image>(main, "CinnamorollBackground").Source is not null &&
                 Required<Image>(main, "KuromiBackground").Source is not null,
-            ["OfficialCharacterBackgroundCharactersExclusive"] =
+                "adapter 验证角色图片资产已加载"),
+            ["OfficialCharacterBackgroundCharactersExclusive"] = Must(
                 officialCharacterBackgroundCharactersExclusive,
-            ["OfficialCharacterBackgroundLowContrast"] = main.CharacterBackgroundRemainsSubtle,
+                "官方角色背景只包含美乐蒂、玉桂狗与库洛米（#129 自 U1 迁移）"),
+            ["OfficialCharacterBackgroundLowContrast"] = Must(main.CharacterBackgroundRemainsSubtle, "官方角色背景保持低对比不干扰应用内容（#129 自 U1 迁移）"),
             ["MainCharacterPanelDockCount"] = mainCharacterDocks.Length,
-            ["MainCharacterPanelDocksIntegrateWithPanel"] = mainCharacterDocksIntegrateWithPanel,
-            ["MainCharacterPanelDecorationsAreNonInteractive"] = main.CharacterPanelDecorationsAreNonInteractive,
-            ["MainReferenceDecorationAssetsLoaded"] = main.MainReferenceDecorationsLoaded,
-            ["MainReferenceDecorationsAreNonInteractive"] = main.MainReferenceDecorationsAreNonInteractive,
-            ["MainReferenceDecorationsShareScaleAtMinimumAndWideSizes"] =
+            ["MainCharacterPanelDocksIntegrateWithPanel"] = Must(mainCharacterDocksIntegrateWithPanel, "主窗口三个玩偶底座与工作区面板形成一体"),
+            ["MainCharacterPanelDecorationsAreNonInteractive"] = Must(main.CharacterPanelDecorationsAreNonInteractive, "主窗口角色场景栏不拦截工作区操作"),
+            ["MainReferenceDecorationAssetsLoaded"] = Must(main.MainReferenceDecorationsLoaded, "主窗口日间参考装饰资产已加载"),
+            ["MainReferenceDecorationsAreNonInteractive"] = Must(main.MainReferenceDecorationsAreNonInteractive, "主窗口日间参考装饰不会阻断真实控件输入"),
+            ["MainReferenceDecorationsShareScaleAtMinimumAndWideSizes"] = Must(
                 uiQualityGates.MainReferenceDecorationScaling,
-            ["MainReferenceDecorationLayerOrderMatches"] =
-                uiQualityGates.MainReferenceDecorationLayerOrder,
+                "主窗口日间参考装饰在最小和放大尺寸下与真实控件共用缩放坐标系"),
+            ["MainReferenceDecorationLayerOrderMatches"] = Must(uiQualityGates.MainReferenceDecorationLayerOrder, "主窗口装饰层级顺序独立通过"),
             ["MainReferenceCaptureRequested"] = legacyMainReferenceCapture.Requested,
             ["MainReferenceCaptureWritten"] = legacyMainReferenceCapture.CapturesWritten,
             ["MainReferenceCaptureUsesZeroState"] = legacyMainReferenceCapture.UsesZeroState,
@@ -2547,8 +2547,9 @@ internal static class ValidationReport
             ["MainReferenceBaselineRequested"] = mainReferenceBaseline.Requested,
             ["MainReferenceBaselineManifestAvailable"] = mainReferenceBaseline.ManifestAvailable,
             ["MainReferenceBaselineValidated"] = mainReferenceBaseline.AllPassed,
-            ["MainReferenceBaselineGateIsolationBehavior"] =
+            ["MainReferenceBaselineGateIsolationBehavior"] = Must(
                 mainReferenceBaselineGateIsolationBehavior,
+                "主窗口十六个 manifest 门禁负向夹具与视觉基线 module interface 均通过"),
             ["MainReferenceBaselineManifestPath"] = mainReferenceBaseline.ManifestPath,
             ["MainReferenceBaselineSourceAggregateSha256"] =
                 mainReferenceBaseline.SourceAggregateSha256,
@@ -2569,8 +2570,7 @@ internal static class ValidationReport
             ["MainReferenceBaselineNegativeFixtures"] = MainReferenceBaselineNegativeFixtures,
             ["MainStressCountdownTitleVisuals"] =
                 mainReferenceBaseline.StressCountdownTitleVisuals,
-            ["MainStressCountdownTitleGateIsolationBehavior"] =
-                mainStressCountdownTitleGateIsolationBehavior,
+            ["MainStressCountdownTitleGateIsolationBehavior"] = Must(mainStressCountdownTitleGateIsolationBehavior, "主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁"),
             ["MainStressCountdownTitleMeasurements"] =
                 mainReferenceBaseline.StressCountdownTitleMeasurements,
             ["MainNoteCardReminderFontSizeDip"] =
@@ -2579,102 +2579,103 @@ internal static class ValidationReport
                 mainReferenceBaseline.NoteCardReminderFontSizeMeetsContract,
             ["MainNoteCardReminderFontMeasurements"] =
                 mainReferenceBaseline.NoteCardReminderFontMeasurements,
-            ["LegacyMigrationSupported"] = legacyMigration,
-            ["DuplicateSettingsRejected"] = duplicateRejected,
-            ["InvalidNotesRejected"] = invalidNotesRejected,
-            ["InvalidTagReferencesRejected"] = invalidTagReferencesRejected,
-            ["HasTagControls"] =
+            ["LegacyMigrationSupported"] = Must(legacyMigration, "旧版单倒计时设置受支持并被迁移（#129 自 U1 迁移）"),
+            ["DuplicateSettingsRejected"] = Must(duplicateRejected, "重复的持久化倒计时名称被拒绝（#129 自 U1 迁移）"),
+            ["InvalidNotesRejected"] = Must(invalidNotesRejected, "非法持久化便签被拒绝（#129 自 U1 迁移）"),
+            ["InvalidTagReferencesRejected"] = Must(invalidTagReferencesRejected, "持久化悬空标签引用被拒绝（#129 自 U1 迁移）"),
+            ["HasTagControls"] = Must(
                 main.FindName("CountdownTags") is TagSelector &&
                 main.FindName("NoteTags") is TagSelector &&
                 main.FindName("FilterTagOptions") is WrapPanel,
-            ["StaticWorkspaceLayout"] =
+                "共享标签选择、筛选与管理控件存在（#129 自 U1 迁移）"),
+            ["StaticWorkspaceLayout"] = Must(
                 main.FindName("CountdownWorkspace") is Canvas &&
                 main.FindName("DisplayPrecision") is ComboBox,
-            ["MainNoteEditorFieldsDoNotOverlap"] = mainUiPolish.NoteEditorFieldsDoNotOverlap,
-            ["LegacyInlineReminderControlsStayHidden"] =
+                "倒计时工作区与设置控件使用稳定实例（#221 设置移入按需弹层）"),
+            ["MainNoteEditorFieldsDoNotOverlap"] = Must(mainUiPolish.NoteEditorFieldsDoNotOverlap, "主窗口提醒入口、规则摘要与错误区互不重叠"),
+            ["LegacyInlineReminderControlsStayHidden"] = Must(
                 mainUiPolish.LegacyInlineReminderControlsStayHidden,
-            ["MainNoteEditorLabelsVisible"] = mainUiPolish.NoteEditorLabelsVisible,
-            ["MainMinimumSizeMatchesDefault"] = mainUiPolish.MinimumSizeMatchesDefault,
-            ["PopupKeyboardLifecycleWorks"] = mainUiPolish.PopupKeyboardLifecycleWorks,
-            ["PopupOutsideFocusPreserved"] = mainUiPolish.PopupOutsideFocusPreserved,
-            ["PopupTriggerSecondClickCloses"] = mainUiPolish.PopupTriggerSecondClickCloses,
-            ["PopupEscapeFromTriggerClosesAndKeepsFocus"] =
-                mainUiPolish.PopupEscapeFromTriggerClosesAndKeepsFocus,
-            ["NoteEmptyStatesDistinguished"] = mainUiPolish.EmptyStatesDistinguished,
-            ["NoteNoResultsResetWorks"] = mainUiPolish.NoResultsResetWorks,
-            ["CountdownEmptyStatesDistinguished"] = mainUiPolish.CountdownEmptyStatesDistinguished,
+                "编辑单条一次/固定间隔便签后旧版内嵌提醒控件保持收起且摘要不被遮挡"),
+            ["MainNoteEditorLabelsVisible"] = Must(mainUiPolish.NoteEditorLabelsVisible, "主窗口便签编辑器保留可见字段标签"),
+            ["MainMinimumSizeMatchesDefault"] = Must(mainUiPolish.MinimumSizeMatchesDefault, "主窗口首选尺寸 864×1000、最小可用尺寸 720×560（#211）"),
+            ["PopupKeyboardLifecycleWorks"] = Must(mainUiPolish.PopupKeyboardLifecycleWorks, "筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦"),
+            ["PopupOutsideFocusPreserved"] = Must(mainUiPolish.PopupOutsideFocusPreserved, "鼠标或外部焦点关闭弹层时不会抢回触发器焦点"),
+            ["PopupTriggerSecondClickCloses"] = Must(mainUiPolish.PopupTriggerSecondClickCloses, "弹层打开后再点触发器关闭而不是重开"),
+            ["PopupEscapeFromTriggerClosesAndKeepsFocus"] = Must(mainUiPolish.PopupEscapeFromTriggerClosesAndKeepsFocus, "焦点在触发器上按 Esc 关闭弹层并保持触发器焦点"),
+            ["NoteEmptyStatesDistinguished"] = Must(mainUiPolish.EmptyStatesDistinguished, "首次空态与筛选无结果状态具有不同反馈"),
+            ["NoteNoResultsResetWorks"] = Must(mainUiPolish.NoResultsResetWorks, "筛选无结果状态可就地重置完整筛选条件"),
+            ["CountdownEmptyStatesDistinguished"] = Must(mainUiPolish.CountdownEmptyStatesDistinguished, "倒计时首次空态与筛选无结果状态具有不同反馈"),
             ["CountdownNoResultsResetWorks"] = mainUiPolish.CountdownEmptyPointerResetRestoresResults,
             ["CountdownEmptyPointerResetRestoresResults"] =
                 mainUiPolish.CountdownEmptyPointerResetRestoresResults,
             ["CountdownEmptyKeyboardResetRestoresResults"] =
                 mainUiPolish.CountdownEmptyKeyboardResetRestoresResults,
-            ["CountdownEmptyStateTextContrast"] = countdownEmptyStateGates.DayThemeTextContrast,
+            ["CountdownEmptyStateTextContrast"] = Must(countdownEmptyStateGates.DayThemeTextContrast, "倒计时空态文字对实际日间背景达到 4.5:1"),
             ["CountdownEmptyStateContrastMeasurements"] = countdownEmptyStateContrast.Measurements,
-            ["CountdownEmptyStateGateIsolationBehavior"] = countdownEmptyStateGateIsolationBehavior,
-            ["NoteStatusBadgeTokensFollowState"] = noteVisualTokenGates.BadgeTokensFollowState,
-            ["NoteEmptyStateTextContrast"] = noteVisualTokenGates.EmptyStateTextContrast,
+            ["CountdownEmptyStateGateIsolationBehavior"] = Must(countdownEmptyStateGateIsolationBehavior, "倒计时空态门禁可独立失败（#129 自 U1 迁移）"),
+            ["NoteStatusBadgeTokensFollowState"] = Must(noteVisualTokenGates.BadgeTokensFollowState, "validate-only 验证分段数量徽章随激活态切换专用 token"),
+            ["NoteEmptyStateTextContrast"] = Must(noteVisualTokenGates.EmptyStateTextContrast, "便签空态文字对实际日间背景达到 4.5:1 并使用 MutedBrush"),
             ["NoteEmptyStateContrastMeasurements"] = noteEmptyStateContrast.Measurements,
-            ["NoteVisualTokenGateIsolationBehavior"] = noteVisualTokenGateIsolationBehavior,
-            ["CountdownRemainingLayoutMatches"] = mainCountdownRemainingGates.FixedColumnLayoutMatches,
-            ["CountdownRemainingUnitSpacingMatches"] = mainCountdownRemainingGates.UnitSpacingMatches,
-            ["CountdownRemainingGateIsolationBehavior"] = mainCountdownRemainingGateIsolationBehavior,
+            ["NoteVisualTokenGateIsolationBehavior"] = Must(noteVisualTokenGateIsolationBehavior, "主窗口便签视觉合同负向夹具逐项失败且不误伤无关契约"),
+            ["CountdownRemainingLayoutMatches"] = Must(mainCountdownRemainingGates.FixedColumnLayoutMatches, "主窗口倒计时剩余时间使用固定列、表格数字和单行布局"),
+            ["CountdownRemainingUnitSpacingMatches"] = Must(mainCountdownRemainingGates.UnitSpacingMatches, "主窗口倒计时剩余时间保留 FormatRemaining 单位空格与六项样本"),
+            ["CountdownRemainingGateIsolationBehavior"] = Must(mainCountdownRemainingGateIsolationBehavior, "主窗口倒计时剩余时间门禁负向夹具独立失败"),
             ["CountdownIncrementalRefreshIdentityMatches"] =
                 mainUiPolish.CountdownIncrementalRefresh.IdentityPreserved,
             ["CountdownExpiryVisualsFlipTogether"] =
                 mainUiPolish.CountdownIncrementalRefresh.ExpiryVisualsFlipTogether,
             ["CountdownIncrementalRefresh"] = mainUiPolish.CountdownIncrementalRefresh,
-            ["CountdownIncrementalRefreshGateIsolationBehavior"] =
-                countdownIncrementalRefreshGateIsolationBehavior,
+            ["CountdownIncrementalRefreshGateIsolationBehavior"] = Must(countdownIncrementalRefreshGateIsolationBehavior, "主窗口倒计时增量刷新负向夹具可独立失败"),
             ["CountdownRemainingSamples"] = mainUiPolish.CountdownRemainingSamples,
-            ["MainNoteCompletionTargetSizeAndBehavior"] =
-                mainNoteCompletionGates.MainTargetSizeAndBehavior,
-            ["MainNoteCompletionOtherUserSizesUnchanged"] =
-                mainNoteCompletionGates.OtherUserSizesUnchanged,
-            ["MainNoteCompletionGateIsolationBehavior"] =
-                mainNoteCompletionGateIsolationBehavior,
+            ["MainNoteCompletionTargetSizeAndBehavior"] = Must(mainNoteCompletionGates.MainTargetSizeAndBehavior, "主窗口便签完成复选框达到 24px 模板与交互合同"),
+            ["MainNoteCompletionOtherUserSizesUnchanged"] = Must(mainNoteCompletionGates.OtherUserSizesUnchanged, "标签选择器与悬浮窗复选框保持原尺寸"),
+            ["MainNoteCompletionGateIsolationBehavior"] = Must(mainNoteCompletionGateIsolationBehavior, "主窗口便签完成尺寸门与样式隔离门可独立失败"),
             ["MainNoteCompletionMeasurements"] = mainNoteCompletionValidation.Measurements,
             ["MainNoteCompletionInteractionBehavior"] =
                 mainNoteCompletionValidation.Interaction with
                 {
                     AccessibleNamesHaveNoLineBreaks = accessibleNameWhitespaceIsolationBehavior
                 },
-            ["MainNoteCompletionStyleScoped"] = mainNoteCompletionGates.AllPassed,
-            ["TransientPanelsOnDemand"] = main.HasOnDemandPanels,
+            ["MainNoteCompletionStyleScoped"] = Must(mainNoteCompletionGates.AllPassed, "兼容便签完成样式门保持通过"),
+            ["TransientPanelsOnDemand"] = Must(main.HasOnDemandPanels, "筛选、标签选择与标签管理按需交互（#129 自 U1 迁移）"),
             ["TransientPanelsStartClosed"] = main.HasOnDemandPanels,
             ["CountdownTagPickerOpensOnDemand"] = !selector.IsPopupOpen,
             ["FilterOpensOnDemand"] = !Required<Popup>(main, "FilterPopup").IsOpen,
             ["TagManagerOpensOnDemand"] = !Required<Popup>(main, "TagManagerPopup").IsOpen,
-            ["NoteTagPickerOpensOnDemand"] = !Required<TagSelector>(main, "NoteTags").IsPopupOpen,
-            ["WorkspaceDraftsRetained"] = workspaceDraftsRetained,
-            ["CountdownReminderModeMappingWorks"] =
+            ["NoteTagPickerOpensOnDemand"] = Must(!Required<TagSelector>(main, "NoteTags").IsPopupOpen, "validate-only 验证便签标签选择弹层默认按需收起"),
+            ["WorkspaceDraftsRetained"] = Must(workspaceDraftsRetained, "切换工作区保留未保存的倒计时与便签草稿（#129 自 U1 迁移）"),
+            ["CountdownReminderModeMappingWorks"] = Must(
                 mainWindowScenarios.CountdownReminderModeMappingWorks,
-            ["SettingsDraftsRetainedOnRefresh"] = settingsDrafts.InputsRetainedOnRefresh,
-            ["SettingsSavedValuesReflectedAfterSave"] =
-                settingsDrafts.SavedValuesReflectedAfterSave,
-            ["NegativeMonthlySalaryRejectedKeepsDraft"] =
-                settingsDrafts.NegativeSalaryRejectedKeepsDraft,
-            ["ZeroMonthlySalaryStillSavesAsUnset"] =
-                settingsDrafts.ZeroSalaryStillSavesAsUnset,
+                "主窗口提醒规则单选组三态映射：不提醒清空、按时间提醒到点 absoluteOnce、自定义打开编辑器并按规则集反显"),
+            ["SettingsDraftsRetainedOnRefresh"] = Must(settingsDrafts.InputsRetainedOnRefresh, "后台状态刷新不丢弃设置区未保存编辑（#129 自 U1 迁移）"),
+            ["SettingsSavedValuesReflectedAfterSave"] = Must(settingsDrafts.SavedValuesReflectedAfterSave, "设置区在保存成功后立即回显持久化值（#129 自 U1 迁移）"),
+            ["NegativeMonthlySalaryRejectedKeepsDraft"] = Must(settingsDrafts.NegativeSalaryRejectedKeepsDraft, "负月薪保存被拒绝、原偏好与草稿文本保留并提示月薪不能小于 0"),
+            ["ZeroMonthlySalaryStillSavesAsUnset"] = Must(settingsDrafts.ZeroSalaryStillSavesAsUnset, "月薪 0 仍合法保存为未输入状态"),
             ["NewNoteRejectsEmptyDate"] = undatedNoteEdit.NewNoteRejectsEmptyDate,
             ["UndatedNoteEditSavesWithoutDate"] = undatedNoteEdit.UndatedEditSavesWithoutDate,
             ["DatedNoteEditRejectsClearedDate"] = undatedNoteEdit.DatedEditRejectsClearedDate,
             ["NoteDateValidationMessagesDistinguished"] =
                 undatedNoteEdit.ValidationMessagesDistinguished,
-            ["HiddenCountdownSubmitDisabled"] = hiddenCountdownSubmitDisabled,
-            ["WorkspaceTabsUseSelectionSemantics"] =
+            ["HiddenCountdownSubmitDisabled"] = Must(hiddenCountdownSubmitDisabled, "隐藏的倒计时编辑器不暴露默认提交按钮（#129 自 U1 迁移）"),
+            ["WorkspaceTabsUseSelectionSemantics"] = Must(
                 main.FindName("CountdownTab") is ToggleButton &&
                 main.FindName("NotesTab") is ToggleButton,
-            ["TagUiAccessible"] = !string.IsNullOrWhiteSpace(AutomationProperties.GetName(Required<Button>(main, "TagManagerButton"))),
-            ["FilterOptionsUseSelectionSemantics"] =
+                "工作区页签暴露可访问选中态（#129 自 U1 迁移）"),
+            ["TagUiAccessible"] = Must(
+                !string.IsNullOrWhiteSpace(AutomationProperties.GetName(Required<Button>(main, "TagManagerButton"))),
+                "标签搜索标签与图标按钮可访问名称完整（#129 自 U1 迁移）"),
+            ["FilterOptionsUseSelectionSemantics"] = Must(
                 main.FindName("AnyTagMode") is ToggleButton &&
                 main.FindName("AllTagMode") is ToggleButton,
-            ["CompactFilterSummary"] = Required<Button>(main, "FilterButton").ActualWidth <= 140,
-            ["TagCreateAppearsFromSearch"] = createAppears,
-            ["TagCreateStaysCollapsedWithoutQuery"] = createCollapsed,
-            ["TagFilterSupportsAnyAll"] =
+                "筛选选项暴露可访问选中态（#129 自 U1 迁移）"),
+            ["CompactFilterSummary"] = Must(Required<Button>(main, "FilterButton").ActualWidth <= 140, "筛选触发器使用紧凑摘要布局（#129 自 U1 迁移）"),
+            ["TagCreateAppearsFromSearch"] = Must(createAppears, "新标签可从统一标签搜索框创建（#129 自 U1 迁移）"),
+            ["TagCreateStaysCollapsedWithoutQuery"] = Must(createCollapsed, "未输入新标签名前创建动作保持收起（#129 自 U1 迁移）"),
+            ["TagFilterSupportsAnyAll"] = Must(
                 main.FindName("AnyTagMode") is ToggleButton &&
                 main.FindName("AllTagMode") is ToggleButton,
-            ["TagChipsUseUid"] = tagChipsUseUid,
+                "标签筛选暴露显式任意/全部匹配（#129 自 U1 迁移）"),
+            ["TagChipsUseUid"] = Must(tagChipsUseUid, "标签芯片不复用记录 ID 的 Tag 属性（#129 自 U1 迁移）"),
             ["PersistenceRoundTrip"] = roundTrip,
             ["NotePersistenceRoundTrip"] = roundTrip,
             ["TagPersistenceRoundTrip"] = roundTrip,
@@ -2730,81 +2731,88 @@ internal static class ValidationReport
             ["NoteStatusLabelsPresent"] =
                 noteStatusLabels || workspaceSnapshot.Settings.Notes.Count == 0,
             ["NoteStatusSegmentSwitch"] = noteStatusSegmentSwitch,
-            ["NoteDateUsesSpacedChineseFormat"] = noteListPolish.SpacedChineseDateEverywhere,
-            ["NoteCardBodyLineHeightSeparatesSummary"] = noteListPolish.BodyLineHeightSeparatesSummary,
-            ["NoteRowTitleFallsToBlockTitleLevel"] = noteListPolish.RowTitleFallsToBlockTitleLevel,
-            ["MainNoteRowActionsKeyboardWorks"] = noteListPolish.MainNoteRowActionsKeyboardWorks,
-            ["NoteCardSpacingConsumesTokens"] = noteListPolish.CardSpacingConsumesTokens,
-            ["TagChipSingleLineEllipsisWithFullText"] = noteListPolish.TagChipSingleLineEllipsisWithFullText,
-            ["EmptyStateTextAllowsWrap"] = noteListPolish.EmptyStateTextAllowsWrap,
-            ["NoteDateFilterHasVisibleLabel"] = noteListPolish.FilterDateHasVisibleLabel,
-            ["PopupTabNavigationCyclesInsideLayer"] = popupFocusTabGates.AllCyclesInsideLayer,
-            ["PopupTabGateIsolationBehavior"] = popupFocusTabGateIsolationBehavior,
-            ["FilterFunnelIconSurvivesAliasedCapture"] = visualChrome.FilterFunnelIconSurvivesAliasedCapture,
-            ["NotesSearchDuplicateMagnifierRemoved"] = visualChrome.NotesSearchDuplicateMagnifierRemoved,
-            ["MainWindowChromeButtonsUseVectorPaths"] = visualChrome.MainWindowChromeButtonsUseVectorPaths,
-            ["SegmentActivePillsUseFullRoundedCorners"] = visualChrome.SegmentActivePillsUseFullRoundedCorners,
-            ["CountdownHandwrittenDecoOutOfFormMeasurement"] = visualChrome.CountdownHandwrittenDecoOutOfFormMeasurement,
-            ["FloatingShellLargeShadowRemoved"] = floatingShellLargeShadowRemoved,
-            ["MainWindowSquareChromeNoTransparency"] = visualChrome.MainWindowSquareChromeNoTransparency,
-            ["TabsRenderAboveDecorationBand"] = visualChrome.TabsRenderAboveDecorationBand,
-            ["DecorationBandCharactersUnobstructed"] = visualChrome.DecorationBandCharactersUnobstructed,
-            ["MainCommandIconsUseVectorPaths"] = visualChrome.MainCommandIconsUseVectorPaths,
-            ["NoteGroupingSelectorAbsent"] = noteGroupingSelectorAbsent,
-            ["NoteDateTimelineVisuals"] = noteDateTimelineVisuals,
-            ["NoteDisclosureAccessibility"] = noteDisclosureAccessibility,
-            ["NoteDisclosureThemeTokens"] = noteDisclosureThemeTokens,
+            ["NoteDateUsesSpacedChineseFormat"] = Must(noteListPolish.SpacedChineseDateEverywhere, "便签日期与倒计时截止同一中文日期格式：数字与「月」「日」之间留空格（#153）"),
+            ["NoteCardBodyLineHeightSeparatesSummary"] = Must(noteListPolish.BodyLineHeightSeparatesSummary, "便签正文行距足够分开正文与提醒摘要（#153）"),
+            ["NoteRowTitleFallsToBlockTitleLevel"] = Must(noteListPolish.RowTitleFallsToBlockTitleLevel, "列表条目标题落 H2 阶梯、与 H1 区块标题保持明确层级（#153/#197）"),
+            ["MainNoteRowActionsKeyboardWorks"] = Must(
+                noteListPolish.MainNoteRowActionsKeyboardWorks,
+                "管理窗非空便签行编辑/删除键盘可达，Enter打开正确记录及安全确认，取消归还焦点（#227）"),
+            ["NoteCardSpacingConsumesTokens"] = Must(noteListPolish.CardSpacingConsumesTokens, "便签卡内边距与日期章节间距消费间距 token（#153）"),
+            ["TagChipSingleLineEllipsisWithFullText"] = Must(noteListPolish.TagChipSingleLineEllipsisWithFullText, "标签芯片单行不折字、集合折行、超长省略并提供全文提示（#153）"),
+            ["EmptyStateTextAllowsWrap"] = Must(noteListPolish.EmptyStateTextAllowsWrap, "倒计时与便签空态文案都允许换行（#153）"),
+            ["NoteDateFilterHasVisibleLabel"] = Must(noteListPolish.FilterDateHasVisibleLabel, "筛选弹层便签日期有可见标签，不是无名空下拉（#153）"),
+            ["PopupTabNavigationCyclesInsideLayer"] = Must(popupFocusTabGates.AllCyclesInsideLayer, "筛选/标签管理/标签选择器弹层 Tab 层内循环，焦点不逃到被挡住的主窗（#153/#227）"),
+            ["PopupTabGateIsolationBehavior"] = Must(popupFocusTabGateIsolationBehavior, "弹层 Tab 层内循环门禁负向夹具逐项只击穿目标字段（#153）"),
+            ["FilterFunnelIconSurvivesAliasedCapture"] = Must(
+                visualChrome.FilterFunnelIconSurvivesAliasedCapture,
+                "筛选漏斗实心填充且常驻按钮内，运行时摘要刷新不再销毁图标（#154）"),
+            ["NotesSearchDuplicateMagnifierRemoved"] = Must(visualChrome.NotesSearchDuplicateMagnifierRemoved, "便签页标签旁重复搜索镜已移除，输入框内搜索镜统一描边语言（#154）"),
+            ["MainWindowChromeButtonsUseVectorPaths"] = Must(visualChrome.MainWindowChromeButtonsUseVectorPaths, "管理窗最小/关闭为矢量路径窗铬，与悬浮窗头部同一几何（#154）"),
+            ["SegmentActivePillsUseFullRoundedCorners"] = Must(
+                visualChrome.SegmentActivePillsUseFullRoundedCorners,
+                "页签与分段激活胶囊短边一半全圆角（主窗页签 27/分段 22/悬浮 18）（#154）"),
+            ["CountdownHandwrittenDecoOutOfFormMeasurement"] = Must(
+                visualChrome.CountdownHandwrittenDecoOutOfFormMeasurement,
+                "倒计时页手写体落装饰层：不参与表单测量、不可点（#154）"),
+            ["FloatingShellLargeShadowRemoved"] = Must(floatingShellLargeShadowRemoved, "悬浮外壳去掉字面色大面积投影，深度由 1px 暖边与 raster 表达（#154）"),
+            ["MainWindowSquareChromeNoTransparency"] = Must(
+                visualChrome.MainWindowSquareChromeNoTransparency,
+                "管理窗请求 Windows 11 DWM 原生圆角与系统阴影、失败安全降级且不开整窗透明（#200）"),
+            ["TabsRenderAboveDecorationBand"] = Must(visualChrome.TabsRenderAboveDecorationBand, "#135 工作台骨架次序：页签在装饰带之上（#154）"),
+            ["DecorationBandCharactersUnobstructed"] = Must(visualChrome.DecorationBandCharactersUnobstructed, "倒计时与便签编辑卡顶边都落在装饰带下沿之下，三只玩偶不被不透明表面盖住"),
+            ["MainCommandIconsUseVectorPaths"] = Must(visualChrome.MainCommandIconsUseVectorPaths, "命令栏设置齿轮与展开入口为矢量路径：绑定按钮前景、内容区不挤裁、展开态箭头转 180°"),
+            ["NoteGroupingSelectorAbsent"] = Must(noteGroupingSelectorAbsent, "移除只有单一选项的按日期分组下拉（#227）"),
+            ["NoteDateTimelineVisuals"] = Must(noteDateTimelineVisuals, "validate-only 验证便签日期时间轴视觉"),
+            ["NoteDisclosureAccessibility"] = Must(noteDisclosureAccessibility, "validate-only 验证便签披露控件无障碍契约"),
+            ["NoteDisclosureThemeTokens"] = Must(noteDisclosureThemeTokens, "validate-only 验证便签披露与分段切换日间主题 token"),
             ["NoteDatesRendered"] = noteDatesRendered,
             ["NotesGroupedByDay"] = notesGroupedByDay,
-            ["ActiveNotesGrouped"] = activeNotesGrouped,
-            ["ActiveNotesSegmentSelectedByDefault"] =
-                activeNoteRows.Visibility == Visibility.Visible,
-            ["ActiveNotesKeepDateOrder"] = activeNotesKeepDateOrder,
-            ["ManagerNoteRowsFollowSortOrder"] = managerNoteRowsFollowSortOrder,
-            ["NoteDateSectionsCanCollapse"] = noteSectionExercise.DateSectionsCanCollapse,
-            ["NoteDateSectionsAreIndependent"] = noteSectionExercise.DateSectionsAreIndependent,
-            ["NoteDateSectionStateSurvivesRefresh"] = noteSectionExercise.DateSectionStateSurvivesRefresh,
-            ["NoteStatusSegmentsSwitchExclusively"] = noteSectionExercise.SegmentsSwitchExclusively,
+            ["ActiveNotesGrouped"] = Must(activeNotesGrouped, "未完成便签收拢在独立分组中"),
+            ["ActiveNotesSegmentSelectedByDefault"] = activeNoteRows.Visibility == Visibility.Visible,
+            ["ActiveNotesKeepDateOrder"] = Must(activeNotesKeepDateOrder, "未完成便签组内按较新日期优先显示"),
+            ["ManagerNoteRowsFollowSortOrder"] = Must(managerNoteRowsFollowSortOrder, "完整管理窗口的实际便签行遵循管理排序"),
+            ["NoteDateSectionsCanCollapse"] = Must(noteSectionExercise.DateSectionsCanCollapse, "未完成与已完成便签支持独立的日期级展开和收起"),
+            ["NoteDateSectionsAreIndependent"] = Must(noteSectionExercise.DateSectionsAreIndependent, "同一日期的未完成与已完成折叠状态互不影响"),
+            ["NoteDateSectionStateSurvivesRefresh"] = Must(noteSectionExercise.DateSectionStateSurvivesRefresh, "日期折叠状态在管理窗口刷新后保持"),
+            ["NoteStatusSegmentsSwitchExclusively"] = Must(noteSectionExercise.SegmentsSwitchExclusively, "未完成/已完成分段切换互斥、两状态不同屏且刷新后保持"),
             ["CompletedNotesCollapsed"] = main.CompletedNotesAreCollapsed,
-            ["FloatingWindowPresent"] = floating! is not null,
-            ["FloatingWindowStaysAboveWorkAreaBottom"] = floatingBottomMargin >= 0,
-            ["FloatingWindowBottomAnchored"] = floatingBottomAnchored,
-            ["FloatingWindowReanchorsAfterContentChanges"] = floatingReanchorsAfterContentChanges,
-            ["FloatingWindowHeightConstrainedToWorkArea"] = floatingHeightConstrained,
-            ["FloatingDragSurfaceCoversWindowBackground"] =
-                floatingDragInteraction.CoversWindowBackground,
-            ["FloatingDragHandleReceivesPointerGestures"] =
-                floatingDragInteraction.ReceivesPointerGesture,
-            ["FloatingDragHandleRequestsNativeWindowDrag"] =
-                floatingDragInteraction.RequestsNativeWindowDrag,
-            ["FloatingSyntheticDragDoesNotClaimPhysicalCompletion"] =
+            ["FloatingWindowPresent"] = Must(floating! is not null, "桌面悬浮倒计时窗口存在（#129 自 U1 迁移）"),
+            ["FloatingWindowStaysAboveWorkAreaBottom"] = Must(floatingBottomMargin >= 0, "悬浮窗不遮挡任务栏工作区（#129 自 U1 迁移）"),
+            ["FloatingWindowBottomAnchored"] = Must(floatingBottomAnchored, "内容尺寸变化后悬浮窗回到工作区底部（#129 自 U1 迁移）"),
+            ["FloatingWindowReanchorsAfterContentChanges"] = Must(floatingReanchorsAfterContentChanges, "便签内容增删时悬浮窗保持底部锚定（#129 自 U1 迁移）"),
+            ["FloatingWindowHeightConstrainedToWorkArea"] = Must(floatingHeightConstrained, "悬浮窗高度受工作区约束（#129 自 U1 迁移）"),
+            ["FloatingDragSurfaceCoversWindowBackground"] = Must(floatingDragInteraction.CoversWindowBackground, "悬浮窗非交互背景均可接收拖动手势"),
+            ["FloatingDragHandleReceivesPointerGestures"] = Must(floatingDragInteraction.ReceivesPointerGesture, "悬浮窗标题拖动区接收真实 WPF 左键手势"),
+            ["FloatingDragHandleRequestsNativeWindowDrag"] = Must(floatingDragInteraction.RequestsNativeWindowDrag, "悬浮窗标题拖动区经 WPF 左键路由请求原生窗口拖动"),
+            ["FloatingSyntheticDragDoesNotClaimPhysicalCompletion"] = Must(
                 floatingDragInteraction.SyntheticGestureDoesNotClaimPhysicalCompletion,
-            ["FloatingDragAttemptClampsToWorkArea"] =
-                floatingDragInteraction.DragAttemptClampsToWorkArea,
-            ["FloatingInteractiveControlsDoNotRequestWindowDrag"] =
+                "悬浮窗合成拖动验收不会把被 WPF 拒绝的 DragMove 误报为物理拖动成功"),
+            ["FloatingDragAttemptClampsToWorkArea"] = Must(floatingDragInteraction.DragAttemptClampsToWorkArea, "悬浮窗拖动尝试结束后立即收紧到工作区内"),
+            ["FloatingInteractiveControlsDoNotRequestWindowDrag"] = Must(
                 floatingDragInteraction.InteractiveControlsDoNotRequestWindowDrag,
-            ["FloatingDragHandleExcludesInteractiveControls"] =
-                floatingDragInteraction.ExcludesInteractiveControls,
-            ["FloatingWindowManualPositionPersistsAndRemainsVisibleAfterRefresh"] =
+                "悬浮窗按钮、输入和滚动控件不请求窗口拖动"),
+            ["FloatingDragHandleExcludesInteractiveControls"] = Must(floatingDragInteraction.ExcludesInteractiveControls, "悬浮窗标题拖动区不覆盖按钮或输入控件"),
+            ["FloatingWindowManualPositionPersistsAndRemainsVisibleAfterRefresh"] = Must(
                 floatingManualPlacement.PersistsAndRemainsVisibleAfterRefresh,
-            ["FloatingPlushTaskWrapLoaded"] = floating!.DayRasterShellAndHeaderLoaded,
-            ["FloatingPlushMascotsLoaded"] = dayMascotsImage.Source is not null,
-            ["FloatingPlushSceneIntegratesWithPanel"] = plushSceneIntegratesWithPanel,
-            ["FloatingPlushReferenceComposition"] = plushReferenceComposition,
-            ["FloatingPlushHeaderIntegration"] = plushHeaderIntegration,
-            ["FloatingReferenceAspectMatches"] = floatingReferenceExercise.AspectMatches,
-            ["FloatingReferencePanelGeometryMatches"] = floatingReferenceExercise.PanelGeometryMatches,
-            ["FloatingReferenceMascotGeometryMatches"] = floatingReferenceExercise.MascotGeometryMatches,
+                "悬浮窗手动移动后内容刷新会保留位置并限制在工作区内"),
+            ["FloatingPlushTaskWrapLoaded"] = Must(floating!.DayRasterShellAndHeaderLoaded, "悬浮窗日间 raster 外壳与头部已加载（#129 自 U1 迁移）"),
+            ["FloatingPlushMascotsLoaded"] = Must(dayMascotsImage.Source is not null, "悬浮窗日间角色场景已加载"),
+            ["FloatingPlushSceneIntegratesWithPanel"] = Must(plushSceneIntegratesWithPanel, "悬浮窗角色场景层在任务面板上方且不拦截交互"),
+            ["FloatingPlushReferenceComposition"] = Must(plushReferenceComposition, "悬浮窗命中与遮挡门禁（#143）"),
+            ["FloatingPlushHeaderIntegration"] = Must(plushHeaderIntegration, "悬浮窗命中与遮挡门禁（#143）"),
+            ["FloatingReferenceAspectMatches"] = Must(floatingReferenceExercise.AspectMatches, "悬浮窗参考场景保持 520×390 的 4:3 比例"),
+            ["FloatingReferencePanelGeometryMatches"] = Must(floatingReferenceExercise.PanelGeometryMatches, "悬浮窗外框、内容面板与标题栏匹配参考图构图"),
+            ["FloatingReferenceMascotGeometryMatches"] = Must(floatingReferenceExercise.MascotGeometryMatches, "悬浮窗三角色可见像素匹配参考图锚点和裁切"),
             ["FloatingReferenceBaselineRequested"] =
                 floatingReferenceExercise.Baseline.Requested,
             ["FloatingReferenceBaselineManifestAvailable"] =
                 floatingReferenceExercise.Baseline.ManifestAvailable,
             ["FloatingReferenceBaselineValidated"] =
                 floatingReferenceExercise.Baseline.AllPassed,
-            ["FloatingReferenceBaselineGateIsolationBehavior"] =
+            ["FloatingReferenceBaselineGateIsolationBehavior"] = Must(
                 floatingReferenceBaselineGateIsolationBehavior,
-            ["FloatingReferenceFreshnessGateIsolationBehavior"] =
-                floatingReferenceFreshnessGateIsolationBehavior,
+                "悬浮窗参考 manifest 十二个负向夹具与视觉基线 module interface 均通过"),
+            ["FloatingReferenceFreshnessGateIsolationBehavior"] = Must(floatingReferenceFreshnessGateIsolationBehavior, "长便签帧新鲜度与排版八个负向夹具逐项失败闭锁"),
             ["FloatingReferenceBaselineManifestPath"] =
                 floatingReferenceExercise.Baseline.ManifestPath,
             ["FloatingReferenceBaselineSourceAggregateSha256"] =
@@ -2823,22 +2831,14 @@ internal static class ValidationReport
                 FloatingReferenceBaselineNegativeFixtures,
             ["FloatingReferenceFreshnessNegativeFixtures"] =
                 FloatingReferenceFreshnessNegativeFixtures,
-            ["FloatingLongNotesBodyHasNoManualLineBreaks"] =
-                floatingReferenceExercise.LongNotes.BodyHasNoManualLineBreaks,
-            ["FloatingLongNotesNaturalWraps"] =
-                floatingReferenceExercise.LongNotes.NaturalWraps,
-            ["FloatingLongNotesUsesOnlyOuterScroller"] =
-                floatingReferenceExercise.LongNotes.UsesOnlyOuterScroller,
-            ["FloatingLongNotesOuterScrollable"] =
-                floatingReferenceExercise.LongNotes.OuterScrollable,
-            ["FloatingLongNotesTopBottomReachable"] =
-                floatingReferenceExercise.LongNotes.TopBottomReachable,
-            ["FloatingLongNotesSafeAreaMatches"] =
-                floatingReferenceExercise.LongNotes.SafeAreaMatches,
-            ["FloatingLongNotesTypographyMatches"] =
-                floatingReferenceExercise.LongNotes.TypographyMatches,
-            ["FloatingLongNotesLayoutValid"] =
-                floatingReferenceExercise.LongNotes.LayoutValid,
+            ["FloatingLongNotesBodyHasNoManualLineBreaks"] = Must(floatingReferenceExercise.LongNotes.BodyHasNoManualLineBreaks, "长便签真实 WPF 门禁"),
+            ["FloatingLongNotesNaturalWraps"] = Must(floatingReferenceExercise.LongNotes.NaturalWraps, "长便签真实 WPF 门禁"),
+            ["FloatingLongNotesUsesOnlyOuterScroller"] = Must(floatingReferenceExercise.LongNotes.UsesOnlyOuterScroller, "长便签真实 WPF 门禁"),
+            ["FloatingLongNotesOuterScrollable"] = Must(floatingReferenceExercise.LongNotes.OuterScrollable, "长便签真实 WPF 门禁"),
+            ["FloatingLongNotesTopBottomReachable"] = Must(floatingReferenceExercise.LongNotes.TopBottomReachable, "长便签真实 WPF 门禁"),
+            ["FloatingLongNotesSafeAreaMatches"] = Must(floatingReferenceExercise.LongNotes.SafeAreaMatches, "长便签真实 WPF 门禁"),
+            ["FloatingLongNotesTypographyMatches"] = Must(floatingReferenceExercise.LongNotes.TypographyMatches, "长便签真实 WPF 门禁"),
+            ["FloatingLongNotesLayoutValid"] = Must(floatingReferenceExercise.LongNotes.LayoutValid, "长便签真实 WPF 门禁"),
             ["FloatingLongNotesMeasurements"] =
                 floatingReferenceExercise.LongNotes.Measurements,
             ["FloatingLongNotesCaptures"] = floatingReferenceExercise.LongNotes.Captures
@@ -2852,74 +2852,69 @@ internal static class ValidationReport
                     capture.StateFingerprint
                 })
                 .ToArray(),
-            ["FloatingReferenceContentSafeAreaMatches"] =
-                uiQualityGates.FloatingContentSafeArea,
-            ["FloatingTitleUsesSemiBoldWeight"] =
-                uiQualityGates.FloatingTitleUsesSemiBoldWeight,
-            ["FloatingNoteInputWraps"] = uiQualityGates.FloatingNoteInputWraps,
-            ["FloatingNoteInputScrolls"] = uiQualityGates.FloatingNoteInputScrolls,
-            ["FloatingQuickAddDayExpandedScrolledCaptureWritten"] =
+            ["FloatingReferenceContentSafeAreaMatches"] = Must(uiQualityGates.FloatingContentSafeArea, "悬浮窗角色 alpha 不遮挡标题、图标、卡片文字或收入"),
+            ["FloatingTitleUsesSemiBoldWeight"] = Must(uiQualityGates.FloatingTitleUsesSemiBoldWeight, "悬浮窗标题独立保持 SemiBold 字重"),
+            ["FloatingNoteInputWraps"] = Must(uiQualityGates.FloatingNoteInputWraps, "悬浮窗便签输入独立保持自动换行"),
+            ["FloatingNoteInputScrolls"] = Must(uiQualityGates.FloatingNoteInputScrolls, "悬浮窗便签输入独立保持垂直滚动"),
+            ["FloatingQuickAddDayExpandedScrolledCaptureWritten"] = Must(
                 floatingReferenceExercise.QuickAddDayExpandedScrolledCaptureWritten,
+                "悬浮窗快速新增日间展开滚动场景可离屏捕获"),
             ["FloatingReferenceContentOverlapCount"] = floatingReferenceExercise.ContentOverlapCount,
             ["FloatingReferenceContentOverlapTargets"] = floatingReferenceExercise.ContentOverlapTargets,
-            ["FloatingReferenceCaptureWritten"] = floatingReferenceExercise.CaptureWritten,
-            ["FloatingWorkdayCountdownUsesPrimaryVisual"] =
+            ["FloatingReferenceCaptureWritten"] = Must(floatingReferenceExercise.CaptureWritten, "悬浮窗参考场景可由 RenderTargetBitmap 写出非空 PNG"),
+            ["FloatingWorkdayCountdownUsesPrimaryVisual"] = Must(
                 floatingReferenceExercise.WorkdayCountdownUsesPrimaryVisual,
-            ["FloatingWorkdayPrimaryBadgeExclusive"] =
-                floatingReferenceExercise.WorkdayPrimaryBadgeExclusive,
-            ["FloatingReferenceScenarioMatches"] = floatingReferenceExercise.ScenarioMatches,
-            ["FloatingPrimaryDeadlineTextFullyVisible"] =
-                floatingReferenceExercise.PrimaryDeadlineTextFullyVisible,
-            ["FloatingPrimaryExtremeRemainingShrinks"] =
+                "距离下班在首行使用唯一主项的 Automation 语义、暖粉主项底、粉红轨、数字色块与超期待徽章"),
+            ["FloatingWorkdayPrimaryBadgeExclusive"] = Must(floatingReferenceExercise.WorkdayPrimaryBadgeExclusive, "超期待徽章仅距离下班主项显示，普通倒计时主项不显示"),
+            ["FloatingReferenceScenarioMatches"] = Must(floatingReferenceExercise.ScenarioMatches, "悬浮窗参考场景将距离下班作为首行主项，并保持两张卡片、收入和主项单行剩余时间"),
+            ["FloatingPrimaryDeadlineTextFullyVisible"] = Must(floatingReferenceExercise.PrimaryDeadlineTextFullyVisible, "悬浮窗主项的最宽日期在有无滚动条时均完整可见"),
+            ["FloatingPrimaryExtremeRemainingShrinks"] = Must(
                 floatingReferenceExercise.PrimaryExtremeRemainingShrinks,
+                "超长天数主项剩余时间在 194px 列内收缩且完整分格显示"),
             ["FloatingExpiredFallbackRemainingTextFullyVisible"] =
                 floatingReferenceExercise.ExpiredFallbackRemainingTextFullyVisible,
             ["FloatingPrimaryDeadlineMeasurements"] =
                 floatingReferenceExercise.PrimaryDeadlineMeasurements,
-            ["FloatingReferenceViewportStatesMatch"] = floatingReferenceExercise.ViewportStatesMatch,
-            ["FloatingViewportGeometryGateIsolationBehavior"] =
+            ["FloatingReferenceViewportStatesMatch"] = Must(floatingReferenceExercise.ViewportStatesMatch, "悬浮窗固定视口覆盖零、一、多卡片及便签提醒滚动状态"),
+            ["FloatingViewportGeometryGateIsolationBehavior"] = Must(
                 floatingViewportGeometryGateIsolationBehavior,
-            ["FloatingViewportScrollAndFocusRestored"] =
-                floatingReferenceExercise.ViewportScrollAndFocusRestored,
-            ["FloatingNoteFailureAppearsInSourceCard"] =
-                floatingReferenceExercise.NoteFailureAppearsInSourceCard,
-            ["FloatingResolvedNoteCardErrorDoesNotReturn"] =
-                floatingReferenceExercise.ResolvedNoteCardErrorDoesNotReturn,
-            ["FloatingSecondaryRemainingTextFullyVisible"] =
-                floatingReferenceExercise.SecondaryRemainingTextFullyVisible,
-            ["FloatingIncomeEncouragementWithoutSalary"] =
+                "悬浮视口几何门禁用会失败的反例保住确定性边界：卡/印记/快速新增越界即红、滚动条隐藏零扣除（#157）"),
+            ["FloatingViewportScrollAndFocusRestored"] = Must(floatingReferenceExercise.ViewportScrollAndFocusRestored, "悬浮窗刷新后恢复当前滚动位置与便签焦点"),
+            ["FloatingNoteFailureAppearsInSourceCard"] = Must(floatingReferenceExercise.NoteFailureAppearsInSourceCard, "悬浮便签完成失败时在来源卡片显示可访问错误"),
+            ["FloatingResolvedNoteCardErrorDoesNotReturn"] = Must(floatingReferenceExercise.ResolvedNoteCardErrorDoesNotReturn, "便签完成并恢复后不会重新显示旧卡片错误"),
+            ["FloatingSecondaryRemainingTextFullyVisible"] = Must(floatingReferenceExercise.SecondaryRemainingTextFullyVisible, "超长次级倒计时在固定视口内单行完整显示"),
+            ["FloatingIncomeEncouragementWithoutSalary"] = Must(
                 floatingReferenceExercise.IncomeEncouragementWithoutSalary,
-            ["FloatingIncomePrivacyBehavior"] = floatingReferenceExercise.IncomePrivacyBehavior,
-            ["FloatingWorkdayCompletionBehavior"] = floatingReferenceExercise.WorkdayCompletionBehavior,
-            ["FloatingSecondaryRemainingUnitSpacingMatches"] =
+                "悬浮窗参考会话月薪清零后底部显示手写体鼓励文案并随正数月薪还原"),
+            ["FloatingIncomePrivacyBehavior"] = Must(
+                floatingReferenceExercise.IncomePrivacyBehavior,
+                "悬浮金额鼠标键盘 Invoke 切换，tick 切页临时无金额后仍隐藏，真实自动化树不泄露且新实例默认显示（#229）"),
+            ["FloatingWorkdayCompletionBehavior"] = Must(
+                floatingReferenceExercise.WorkdayCompletionBehavior,
+                "实际工作日下班到北京时间午夜收尾，日历筛选守卫、计数提醒排除、原位刷新及共用金额隐私（#236）"),
+            ["FloatingSecondaryRemainingUnitSpacingMatches"] = Must(
                 floatingReferenceExercise.SecondaryRemainingGates.UnitSpacingMatches,
-            ["FloatingSecondaryRemainingLayoutMatches"] =
+                "次级倒计时直接保留 FormatRemaining 的单位分隔空格"),
+            ["FloatingSecondaryRemainingLayoutMatches"] = Must(
                 floatingReferenceExercise.SecondaryRemainingGates.FixedColumnLayoutMatches,
-            ["FloatingSecondaryRemainingGateIsolationBehavior"] =
-                floatingSecondaryRemainingGateIsolationBehavior,
+                "次级倒计时保持 194px 右对齐、单行、完整显示及表格数字"),
+            ["FloatingSecondaryRemainingGateIsolationBehavior"] = Must(floatingSecondaryRemainingGateIsolationBehavior, "次级倒计时去空格与破坏固定列负向夹具可分别单独变红"),
             ["FloatingSecondaryRemainingSamples"] =
                 floatingReferenceExercise.SecondaryRemainingSamples,
-            ["FloatingScrollBarLocalStyleScoped"] =
-                floatingReferenceExercise.ScrollBar.Gates.LocalStyleScoped,
-            ["FloatingScrollBarHitTargetUsable"] =
-                floatingReferenceExercise.ScrollBar.Gates.HitTargetUsable,
-            ["FloatingScrollBarVisualWeightProgression"] =
-                floatingReferenceExercise.ScrollBar.Gates.VisualWeightProgression,
-            ["FloatingScrollBarUsesWarmThemeTokens"] =
-                floatingReferenceExercise.ScrollBar.Gates.UsesWarmThemeTokens,
-            ["FloatingScrollBarContentRemainsSafe"] =
-                floatingReferenceExercise.ScrollBar.Gates.ContentRemainsSafe,
-            ["FloatingScrollBarInputPathsWork"] =
-                floatingReferenceExercise.ScrollBar.Gates.InputPathsWork,
-            ["FloatingScrollBarGateIsolationBehavior"] =
-                floatingScrollBarGateIsolationBehavior,
-            ["FloatingScrollBarStateCapturesReady"] =
-                floatingReferenceExercise.ScrollBar.StateCapturesReady,
+            ["FloatingScrollBarLocalStyleScoped"] = Must(floatingReferenceExercise.ScrollBar.Gates.LocalStyleScoped, "悬浮窗滚动条门禁"),
+            ["FloatingScrollBarHitTargetUsable"] = Must(floatingReferenceExercise.ScrollBar.Gates.HitTargetUsable, "悬浮窗滚动条门禁"),
+            ["FloatingScrollBarVisualWeightProgression"] = Must(floatingReferenceExercise.ScrollBar.Gates.VisualWeightProgression, "悬浮窗滚动条门禁"),
+            ["FloatingScrollBarUsesWarmThemeTokens"] = Must(floatingReferenceExercise.ScrollBar.Gates.UsesWarmThemeTokens, "悬浮窗滚动条门禁"),
+            ["FloatingScrollBarContentRemainsSafe"] = Must(floatingReferenceExercise.ScrollBar.Gates.ContentRemainsSafe, "悬浮窗滚动条门禁"),
+            ["FloatingScrollBarInputPathsWork"] = Must(floatingReferenceExercise.ScrollBar.Gates.InputPathsWork, "悬浮窗滚动条门禁"),
+            ["FloatingScrollBarGateIsolationBehavior"] = Must(floatingScrollBarGateIsolationBehavior, "悬浮窗滚动条门禁"),
+            ["FloatingScrollBarStateCapturesReady"] = Must(floatingReferenceExercise.ScrollBar.StateCapturesReady, "悬浮窗滚动条门禁"),
             ["FloatingScrollBarStateMeasurements"] =
                 floatingReferenceExercise.ScrollBar.Measurements,
-            ["FloatingThumbBoundaryContrast"] =
+            ["FloatingThumbBoundaryContrast"] = Must(
                 floatingReferenceExercise.ScrollBar.Measurements.Count > 0 &&
                 floatingReferenceExercise.ScrollBar.Measurements.All(sample => sample.BoundaryContrast >= 3),
+                "浮窗滚动条合成后的边界对实际邻色至少 3:1（#217）"),
             ["FloatingScrollBarWheelOffsets"] = new[]
             {
                 floatingReferenceExercise.ScrollBar.WheelOffsetBefore,
@@ -2933,61 +2928,60 @@ internal static class ValidationReport
             ["FloatingScrollBarCaptureNames"] =
                 floatingReferenceExercise.ScrollBar.Captures.Keys,
             ["FloatingDayRasterComponentAssetNames"] = floating.DayRasterComponentAssetNames,
-            ["FloatingDayRasterShellAndHeaderLoaded"] = floating.DayRasterShellAndHeaderLoaded,
-            ["FloatingRasterSurfacesFollowTheme"] =
-                floatingThemeExercise.SurfacesFollowActiveTheme,
-            ["FloatingDayRasterDecorationsAreNonInteractive"] = floating.DayRasterDecorationsAreNonInteractive,
-            ["FloatingDayRasterCardStatesMatch"] = floatingReferenceExercise.RasterCardStatesMatch,
-            ["FloatingDynamicCardContentRemainsWpf"] = floatingReferenceExercise.DynamicCardContentRemainsWpf,
-            ["FloatingDatePickerKeyboardLifecycleWorks"] =
-                floatingUiPolish.DatePickerKeyboardLifecycleWorks,
-            ["FloatingFieldErrorsAppearAtSource"] = floatingUiPolish.FieldErrorsAppearAtSource,
-            ["FloatingCorrectedFieldErrorsClearLiveMessage"] =
-                floatingUiPolish.CorrectedFieldErrorsClearLiveMessage,
-            ["FloatingDynamicHeaderControlsRemainWpf"] = floating.DynamicHeaderControlsRemainWpf,
-            ["FloatingHeaderIconAccessibility"] = floatingHeaderIconAccessibility,
-            ["FloatingHeaderIconClickCommandsWork"] = floatingHeaderIconClickCommandsWork,
-            ["FloatingTrayButtonAccessibility"] = floatingTrayButtonAccessibility,
-            ["FloatingTrayProductionControllerActive"] =
-                floatingTrayInteraction.ProductionControllerActive,
-            ["FloatingTrayMinimizeHidesWindowAndShowsIcon"] =
+            ["FloatingDayRasterShellAndHeaderLoaded"] = Must(floating.DayRasterShellAndHeaderLoaded, "悬浮窗日间 shell 与无文字标题栏组件已加载"),
+            ["FloatingRasterSurfacesFollowTheme"] = Must(floatingThemeExercise.SurfacesFollowActiveTheme, "悬浮窗 raster 表面保持单一日间主题"),
+            ["FloatingDayRasterDecorationsAreNonInteractive"] = Must(floating.DayRasterDecorationsAreNonInteractive, "悬浮窗日间 raster 装饰不拦截鼠标命中"),
+            ["FloatingDayRasterCardStatesMatch"] = Must(floatingReferenceExercise.RasterCardStatesMatch, "悬浮窗日间 0/1/2 张倒计时及便签均按真实记录复用无文字卡片底板"),
+            ["FloatingDynamicCardContentRemainsWpf"] = Must(floatingReferenceExercise.DynamicCardContentRemainsWpf, "悬浮窗卡片文字与便签勾选框仍由真实 WPF 控件渲染"),
+            ["FloatingDatePickerKeyboardLifecycleWorks"] = Must(floatingUiPolish.DatePickerKeyboardLifecycleWorks, "悬浮窗两个日期选择器支持日历聚焦、Esc 关闭与按钮返焦"),
+            ["FloatingFieldErrorsAppearAtSource"] = Must(floatingUiPolish.FieldErrorsAppearAtSource, "悬浮快速便签错误显示在无效字段附近并关联输入控件"),
+            ["FloatingCorrectedFieldErrorsClearLiveMessage"] = Must(floatingUiPolish.CorrectedFieldErrorsClearLiveMessage, "悬浮快速便签字段修正后清除局部与全局错误"),
+            ["FloatingDynamicHeaderControlsRemainWpf"] = Must(floating.DynamicHeaderControlsRemainWpf, "悬浮窗标题、页签与命令图标仍由真实 WPF 控件渲染"),
+            ["FloatingHeaderIconAccessibility"] = Must(floatingHeaderIconAccessibility, "悬浮窗图标按钮保留 ToolTip 与可访问名称"),
+            ["FloatingHeaderIconClickCommandsWork"] = Must(floatingHeaderIconClickCommandsWork, "悬浮窗打开管理与退出图标保留真实点击命令"),
+            ["FloatingTrayButtonAccessibility"] = Must(floatingTrayButtonAccessibility, "悬浮窗缩小按钮提供明确 ToolTip 与可访问名称"),
+            ["FloatingTrayProductionControllerActive"] = Must(floatingTrayInteraction.ProductionControllerActive, "应用宿主与托盘验收共用生产切换控制器"),
+            ["FloatingTrayMinimizeHidesWindowAndShowsIcon"] = Must(
                 floatingTrayInteraction.MinimizeHidesWindowAndShowsIcon,
-            ["FloatingTrayRestoreShowsWindowAndHidesIcon"] =
+                "悬浮窗缩小按钮隐藏悬浮窗，托盘图标在窗口仍可见时已经常驻（#213）"),
+            ["FloatingTrayRestoreShowsWindowAndHidesIcon"] = Must(
                 floatingTrayInteraction.RestoreShowsWindowAndHidesIcon,
-            ["FloatingTrayExitRequestsApplicationExit"] =
-                floatingTrayInteraction.ExitRequestsApplicationExit,
-            ["FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry"] =
+                "单击托盘图标或「打开悬浮窗」恢复悬浮窗且图标保持常驻；「打开管理窗口」保留草稿和筛选（#213）"),
+            ["FloatingTrayExitRequestsApplicationExit"] = Must(floatingTrayInteraction.ExitRequestsApplicationExit, "系统托盘退出命令触发应用退出请求"),
+            ["FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry"] = Must(
                 floatingTrayInteraction.FailedRestoreKeepsTrayStateAndAllowsRetry,
+                "恢复判定失败时托盘图标保留且可再次恢复"),
             ["FloatingReferenceActualSize"] = floatingReferenceExercise.ActualSize,
             ["FloatingReferenceCapturePath"] = floatingReferenceExercise.CapturePath,
-            ["FloatingPlushCardIsUnobscured"] = visiblePlushDoesNotObscureTaskCardContent,
-            ["FloatingPlushTouchesTaskCard"] = plushBridgesTaskCardEdges,
-            ["FloatingPlushDoesNotObscureTaskCardContent"] = plushDoesNotObscureTaskCardContent,
-            ["FloatingPlushVisibleEdgesMeetCard"] = visiblePlushEdgesMeetTaskCard,
-            ["FloatingPlushGroupWithinWorkArea"] = plushGroupWithinWorkArea,
+            ["FloatingPlushCardIsUnobscured"] = Must(visiblePlushDoesNotObscureTaskCardContent, "悬浮窗命中与遮挡门禁（#143）"),
+            ["FloatingPlushTouchesTaskCard"] = Must(plushBridgesTaskCardEdges, "悬浮窗命中与遮挡门禁（#143）"),
+            ["FloatingPlushDoesNotObscureTaskCardContent"] = Must(plushDoesNotObscureTaskCardContent, "悬浮窗命中与遮挡门禁（#143）"),
+            ["FloatingPlushVisibleEdgesMeetCard"] = Must(visiblePlushEdgesMeetTaskCard, "悬浮窗命中与遮挡门禁（#143）"),
+            ["FloatingPlushGroupWithinWorkArea"] = Must(plushGroupWithinWorkArea, "悬浮窗命中与遮挡门禁（#143）"),
             ["FloatingCountdownBottomMargin"] = floatingBottomMargin,
             ["FloatingNotesBottomMargin"] = floatingBottomMargin,
-            ["FloatingCountdownButtonTextFits"] = floatingWorkspace.CountdownButtonTextFit.Fits,
+            ["FloatingCountdownButtonTextFits"] = Must(floatingWorkspace.CountdownButtonTextFit.Fits, "悬浮倒计时页签文字完整可见（#129 自 U1 迁移）"),
             ["FloatingCountdownButtonTextAvailableWidth"] =
                 floatingWorkspace.CountdownButtonTextFit.Available,
             ["FloatingCountdownButtonTextRequiredWidth"] =
                 floatingWorkspace.CountdownButtonTextFit.Required,
-            ["FloatingNotesButtonTextFits"] = floatingWorkspace.NotesButtonTextFit.Fits,
+            ["FloatingNotesButtonTextFits"] = Must(floatingWorkspace.NotesButtonTextFit.Fits, "悬浮便签页签文字完整可见（#129 自 U1 迁移）"),
             ["FloatingNotesButtonTextAvailableWidth"] =
                 floatingWorkspace.NotesButtonTextFit.Available,
             ["FloatingNotesButtonTextRequiredWidth"] =
                 floatingWorkspace.NotesButtonTextFit.Required,
-            ["FloatingNotesKeepExistingSortOrder"] = floatingWorkspace.NotesKeepExistingSortOrder,
-            ["FloatingTitleTextFits"] = floatingWorkspace.TitleTextFit.Fits,
+            ["FloatingNotesKeepExistingSortOrder"] = Must(floatingWorkspace.NotesKeepExistingSortOrder, "悬浮窗使用共享领域便签排序"),
+            ["FloatingTitleTextFits"] = Must(floatingWorkspace.TitleTextFit.Fits, "悬浮窗待办便签标题在实际父布局槽内完整可见"),
             ["FloatingTitleTextAvailableWidth"] = floatingWorkspace.TitleTextFit.Available,
             ["FloatingTitleTextRequiredWidth"] = floatingWorkspace.TitleTextFit.Required,
-            ["FloatingTitleTextHasVerticalClearance"] = floatingWorkspace.TitleTextHeightFit.Fits,
+            ["FloatingTitleTextHasVerticalClearance"] = Must(floatingWorkspace.TitleTextHeightFit.Fits, "悬浮窗待办便签标题保留完整字形所需的垂直余量"),
             ["FloatingTitleTextAvailableHeight"] = floatingWorkspace.TitleTextHeightFit.Available,
             ["FloatingTitleTextRequiredHeight"] = floatingWorkspace.TitleTextHeightFit.Required,
-            ["SavePreferencesButtonTextFits"] = savePreferencesButtonFit.Fits,
-            ["SavePreferencesButtonIsFullyVisible"] = savePreferencesButtonIsVisible,
-            ["SavePreferencesButtonIsFullyVisibleAtMinimumWidth"] =
+            ["SavePreferencesButtonTextFits"] = Must(savePreferencesButtonFit.Fits, "设置保存按钮文字完整显示"),
+            ["SavePreferencesButtonIsFullyVisible"] = Must(savePreferencesButtonIsVisible, "设置保存按钮完整位于主窗口内"),
+            ["SavePreferencesButtonIsFullyVisibleAtMinimumWidth"] = Must(
                 savePreferencesButtonIsVisibleAtMinimumWidth,
+                "最小主窗口宽度下经横向滚动到达齿轮，设置保存按钮完整落入视口（#211/#221）"),
             ["SavePreferencesButtonRight"] = Math.Round(savePreferencesButtonRight, 2),
             ["MainWindowActualWidth"] = Math.Round(main.ActualWidth, 2),
             ["FloatingCountdownCount"] = floatingWorkspace.CountdownCount,
@@ -2995,34 +2989,36 @@ internal static class ValidationReport
                 false,
             ["FloatingCountdownTexts"] = floatingWorkspace.CountdownTexts,
             ["FloatingIncomeText"] = floatingWorkspace.IncomeText,
-            ["FloatingIncomeHiddenWithoutSalary"] =
-                floatingWorkspace.IncomeHiddenWithoutSalary,
-            ["FloatingIncomeRestoredWithSalary"] =
-                floatingWorkspace.IncomeRestoredWithSalary,
-            ["FloatingManagerButtonPresent"] = floating.FindName("OpenManagerButton") is Button,
-            ["HasUnifiedNoteEntry"] =
+            ["FloatingIncomeHiddenWithoutSalary"] = Must(floatingWorkspace.IncomeHiddenWithoutSalary, "悬浮窗月薪为 0 时不渲染今日已赚金额：日历就绪显示鼓励文案，未就绪仍显示状态"),
+            ["FloatingIncomeRestoredWithSalary"] = Must(floatingWorkspace.IncomeRestoredWithSalary, "悬浮窗恢复正数月薪后今日已赚金额行还原"),
+            ["FloatingManagerButtonPresent"] = Must(floating.FindName("OpenManagerButton") is Button, "悬浮窗倒计时管理动作存在（#129 自 U1 迁移）"),
+            ["HasUnifiedNoteEntry"] = Must(
                 main.FindName("CountdownTab") is ToggleButton &&
                 main.FindName("NotesTab") is ToggleButton &&
                 floating.FindName("FloatingNotesButton") is ToggleButton,
-            ["HasNoteControls"] =
+                "倒计时工作区存在统一便签入口（#129 自 U1 迁移）"),
+            ["HasNoteControls"] = Must(
                 main.FindName("NoteText") is TextBox &&
                 main.FindName("SaveNoteButton") is Button &&
                 floating.FindName("FloatingNoteText") is TextBox &&
                 floating.FindName("FloatingAddNote") is Button,
+                "便签输入或添加动作存在（#129 自 U1 迁移）"),
             ["HasNoteDateControls"] =
                 main.FindName("NoteDate") is DatePicker &&
                 floating.FindName("FloatingNoteDate") is DatePicker,
-            ["HasOpenNotesActions"] =
+            ["HasOpenNotesActions"] = Must(
                 main.FindName("NotesTab") is ToggleButton &&
                 floating.FindName("FloatingNotesButton") is ToggleButton,
-            ["UnifiedWorkspaceSwitches"] = switchesToCountdown && switchesToNotes,
-            ["WorkspaceSwitcherBeforeEditors"] = workspaceSwitcherBeforeEditors,
-            ["HasPreferenceControls"] =
+                "存在打开统一便签工作区的动作（#129 自 U1 迁移）"),
+            ["UnifiedWorkspaceSwitches"] = Must(switchesToCountdown && switchesToNotes, "倒计时与便签工作区一起切换（#129 自 U1 迁移）"),
+            ["WorkspaceSwitcherBeforeEditors"] = Must(workspaceSwitcherBeforeEditors, "工作区切换器出现在编辑器之前（#129 自 U1 迁移）"),
+            ["HasPreferenceControls"] = Must(
                 main.FindName("DisplayPrecision") is ComboBox &&
                 main.FindName("MonthlySalary") is TextBox &&
                 main.FindName("WorkStart") is TextBox &&
                 main.FindName("WorkEnd") is TextBox &&
                 main.FindName("SavePreferencesButton") is Button,
+                "悬浮窗精度与月薪设置控件存在（#129 自 U1 迁移）"),
             ["LoadedCountdowns"] = workspaceSnapshot.Settings.Countdowns.Count,
             ["LoadedNotes"] = workspaceSnapshot.Settings.Notes.Count,
             ["LoadedTags"] = workspaceSnapshot.Settings.Tags.Count,
@@ -3160,20 +3156,20 @@ internal static class ValidationReport
             crossInterfaceHitTesting &&
             crossInterfaceDeterministicFixtureIsolation &&
             crossInterfaceRealSettingsConserved;
-        report["CrossInterfaceAiReferencePriority"] = crossInterfaceAiReferencePriority;
-        report["CrossInterfacePageSpecificComposition"] = crossInterfacePageSpecificComposition;
-        report["CrossInterfaceSharedWarmPinkTokens"] = crossInterfaceSharedWarmPinkTokens;
-        report["CrossInterfaceStaticDayThemeInfo"] = crossInterfaceStaticDayThemeInfo;
-        report["CrossInterfacePlushDecorationLayering"] = crossInterfacePlushDecorationLayering;
-        report["CrossInterfaceFilterSharing"] = crossInterfaceFilterSharing;
-        report["CrossInterfaceKeyboardOrder"] = crossInterfaceKeyboardOrder;
-        report["CrossInterfaceHitTesting"] = crossInterfaceHitTesting;
-        report["CrossInterfaceDeterministicFixtureIsolation"] = crossInterfaceDeterministicFixtureIsolation;
-        report["CrossInterfaceRealSettingsConserved"] = crossInterfaceRealSettingsConserved;
-        report["CrossInterfaceIntegration"] = crossInterfaceIntegration;
+        report["CrossInterfaceAiReferencePriority"] = Must(crossInterfaceAiReferencePriority, "跨界面整合门禁");
+        report["CrossInterfacePageSpecificComposition"] = Must(crossInterfacePageSpecificComposition, "跨界面整合门禁");
+        report["CrossInterfaceSharedWarmPinkTokens"] = Must(crossInterfaceSharedWarmPinkTokens, "跨界面整合门禁");
+        report["CrossInterfaceStaticDayThemeInfo"] = Must(crossInterfaceStaticDayThemeInfo, "跨界面整合门禁");
+        report["CrossInterfacePlushDecorationLayering"] = Must(crossInterfacePlushDecorationLayering, "跨界面整合门禁");
+        report["CrossInterfaceFilterSharing"] = Must(crossInterfaceFilterSharing, "跨界面整合门禁");
+        report["CrossInterfaceKeyboardOrder"] = Must(crossInterfaceKeyboardOrder, "跨界面整合门禁");
+        report["CrossInterfaceHitTesting"] = Must(crossInterfaceHitTesting, "跨界面整合门禁");
+        report["CrossInterfaceDeterministicFixtureIsolation"] = Must(crossInterfaceDeterministicFixtureIsolation, "跨界面整合门禁");
+        report["CrossInterfaceRealSettingsConserved"] = Must(crossInterfaceRealSettingsConserved, "跨界面整合门禁");
+        report["CrossInterfaceIntegration"] = Must(crossInterfaceIntegration, "跨界面整合门禁");
         report["CrossInterfaceIntegrationEvidence"] =
             "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-21-v59 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
-        report["UiQualityGateIsolationBehavior"] = uiQualityGateIsolationBehavior;
+        report["UiQualityGateIsolationBehavior"] = Must(uiQualityGateIsolationBehavior, "UI 质量门禁负向夹具逐项失败且不误伤无关契约");
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
         floating.Hide();

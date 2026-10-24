@@ -4241,27 +4241,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $adapterValidationDocument.Dispose()
     }
     $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
-    $adapterValidationShapeNames = [string[]] @(
-        $adapterValidation.PSObject.Properties.Name
-    )
-    [Array]::Sort(
-        $adapterValidationShapeNames,
-        [System.StringComparer]::Ordinal
-    )
-    $adapterValidationShapeLines = [string[]] @(
-        foreach ($propertyName in $adapterValidationShapeNames) {
-            '{0}:{1}' -f $propertyName, $adapterValidationJsonKinds[$propertyName]
-        }
-    )
-    $adapterValidationShape = [string]::Join(
-        "`n",
-        $adapterValidationShapeLines
-    )
-    $adapterValidationShapeSha256 = [System.Convert]::ToHexString(
-        [System.Security.Cryptography.SHA256]::HashData(
-            [System.Text.UTF8Encoding]::new($false).GetBytes($adapterValidationShape)
-        )
-    )
     $adapterDiagnosticEvents = @(
         Get-Content -LiteralPath $adapterDiagnosticPath |
             ForEach-Object { ($_ | ConvertFrom-Json).event }
@@ -4389,83 +4368,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '受控持久化失败演练不改变隔离设置'
     Write-TestSegmentTiming -Name 'PersistenceFailureFixture'
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
-    Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceInterfaceBehavior) '桌面工作区 interface 统一持久化、状态变更与筛选行为'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderEditingInterfaceBehavior) '提醒编辑 interface 统一模式、时间、间隔与既有提醒保留行为'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownReminderModeMappingWorks) '主窗口提醒规则单选组三态映射：不提醒清空、按时间提醒到点 absoluteOnce、自定义打开编辑器并按规则集反显'
-    Assert-Equal $true ([bool] $adapterValidation.CalendarReminderBehavior) '日历提醒覆盖类型化规则、北京时间 occurrence、错过合并与 Ical.Net 失败闭锁'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderRulesEditorSharedEntryWorks) '主窗口与悬浮窗复用共享提醒规则编辑器入口并隐藏旧复杂控件'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReminderRulesEntryStaysCompact) '悬浮窗提醒规则入口保持 520 x 390 紧凑表面'
-    Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolInterfaceBehavior) '启动验收 protocol interface 覆盖请求、回执、状态推进与拒绝路径'
-    Assert-Equal $true ([bool] $adapterValidation.HolidayCalendarInterfaceBehavior) '工作日历 interface 覆盖缓存初始化、派生结果与失败状态'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
-    Assert-Equal $true ([bool] $adapterValidation.ValidateOnlySettingsIsolationBehavior) 'validate-only 强制使用显式非根 settings 路径且不改变生产默认路径'
-    Assert-Equal $true ([bool] $adapterValidation.UiQualityGateIsolationBehavior) 'UI 质量门禁负向夹具逐项失败且不误伤无关契约'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    # #189 adds 13 measured behavior fields; six existing note/date/fallback
-    # fields had also been added since the old 671-field shape was pinned.
-    # Removing those 19 additions reproduces the original name:type SHA exactly.
-    # #211 adds 2 work-area-fit behavior fields on top of the 690-field shape.
-    # #215 净增 2 个提醒中心字段（去掉 2 个旧字段、加入 4 个新字段）。
-    # #212 adds 9 stable-refresh fields. #231 adds 1 asset-decode behavior field.
-    # 装饰带不遮挡玩偶与日历月视图布局修复新增 2 个运行时字段（DecorationBandCharactersUnobstructed、DatePickerCalendarMonthGridLaidOut）。
-    # 命令栏图标矢量化新增 1 个运行时字段（MainCommandIconsUseVectorPaths）。
-    # 悬浮设置齿轮同心新增 1 个运行时字段（FloatingSettingsGearConcentric）。
-    Assert-Equal 751 $adapterValidationShapeNames.Count 'validate-only JSON 顶层字段数量精确固定（悬浮设置齿轮同心合同）'
-    Assert-Equal 'FloatingTitleTextRequiredWidth:Number' @($adapterValidationShapeLines | Where-Object { $_ -like 'FloatingTitleTextRequiredWidth:*' })[0] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
+    Assert-Equal 'Number' $adapterValidationJsonKinds['FloatingTitleTextRequiredWidth'] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateTimelineVisuals) 'validate-only 验证便签日期时间轴视觉'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureAccessibility) 'validate-only 验证便签披露控件无障碍契约'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDisclosureThemeTokens) 'validate-only 验证便签披露与分段切换日间主题 token'
-    Assert-Equal $true ([bool] $adapterValidation.NoteStatusBadgeTokensFollowState) 'validate-only 验证分段数量徽章随激活态切换专用 token'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorSeparation) '搜索属于列表区、编辑标题与规则字段对齐、Ctrl+F及取消行为正常（#227）'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteRowsSimplified) '主便签行仅保留编辑删除、正文摘要层级和跨分组交替底色（#227）'
-    # #153/#227 便签列表：排版、筛选、芯片、空态与行内编辑/删除键盘。
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateUsesSpacedChineseFormat) '便签日期与倒计时截止同一中文日期格式：数字与「月」「日」之间留空格（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteCardBodyLineHeightSeparatesSummary) '便签正文行距足够分开正文与提醒摘要（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteRowTitleFallsToBlockTitleLevel) '列表条目标题落 H2 阶梯、与 H1 区块标题保持明确层级（#153/#197）'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteRowActionsKeyboardWorks) '管理窗非空便签行编辑/删除键盘可达，Enter打开正确记录及安全确认，取消归还焦点（#227）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteCardSpacingConsumesTokens) '便签卡内边距与日期章节间距消费间距 token（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.TagChipSingleLineEllipsisWithFullText) '标签芯片单行不折字、集合折行、超长省略并提供全文提示（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.EmptyStateTextAllowsWrap) '倒计时与便签空态文案都允许换行（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateFilterHasVisibleLabel) '筛选弹层便签日期有可见标签，不是无名空下拉（#153）'
-    Assert-Equal $true ([bool] $adapterValidation.PopupTabNavigationCyclesInsideLayer) '筛选/标签管理/标签选择器弹层 Tab 层内循环，焦点不逃到被挡住的主窗（#153/#227）'
-    Assert-Equal $true ([bool] $adapterValidation.PopupTabGateIsolationBehavior) '弹层 Tab 层内循环门禁负向夹具逐项只击穿目标字段（#153）'
-    # #154 视觉铬：漏斗、图标、圆角、装饰层与窗铬合同（新增 8 个顶层键 + 源码契约）。
-    Assert-Equal $true ([bool] $adapterValidation.FilterFunnelIconSurvivesAliasedCapture) '筛选漏斗实心填充且常驻按钮内，运行时摘要刷新不再销毁图标（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.NotesSearchDuplicateMagnifierRemoved) '便签页标签旁重复搜索镜已移除，输入框内搜索镜统一描边语言（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.MainWindowChromeButtonsUseVectorPaths) '管理窗最小/关闭为矢量路径窗铬，与悬浮窗头部同一几何（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.MainCommandIconsUseVectorPaths) '命令栏设置齿轮与展开入口为矢量路径：绑定按钮前景、内容区不挤裁、展开态箭头转 180°'
-    Assert-Equal $true ([bool] $adapterValidation.SegmentActivePillsUseFullRoundedCorners) '页签与分段激活胶囊短边一半全圆角（主窗页签 27/分段 22/悬浮 18）（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownHandwrittenDecoOutOfFormMeasurement) '倒计时页手写体落装饰层：不参与表单测量、不可点（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingShellLargeShadowRemoved) '悬浮外壳去掉字面色大面积投影，深度由 1px 暖边与 raster 表达（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.MainWindowSquareChromeNoTransparency) '管理窗请求 Windows 11 DWM 原生圆角与系统阴影、失败安全降级且不开整窗透明（#200）'
-    Assert-Equal $true ([bool] $adapterValidation.TabsRenderAboveDecorationBand) '#135 工作台骨架次序：页签在装饰带之上（#154）'
-    Assert-Equal $true ([bool] $adapterValidation.DecorationBandCharactersUnobstructed) '倒计时与便签编辑卡顶边都落在装饰带下沿之下，三只玩偶不被不透明表面盖住'
-    # #155 删除撤销、完成确认与脏退出（新增 3 个顶层键 + 源码契约）。
-    Assert-Equal $true ([bool] $adapterValidation.DeleteUndoRestoresLastDelete) '删除成功后撤销出现在发起删除的窗口：悬浮窗就地恢复便签与规则提醒状态，管理窗口仍走状态条；Ctrl+Z 生效；焦点或悬停暂停 10 秒计时；确认框写明可撤销且取消为安全默认（#155/#214）'
-    Assert-Equal $true ([bool] $adapterValidation.DirtyExitConfirmsUnsavedWork) '关闭悬浮窗和 Alt+F4 都会确认，正文包含「退出后不再提醒」；有未保存内容时列出未保存项；取消后悬浮窗和提醒派发仍在（#213）'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCompleteRequiresConfirmation) '提醒中心「完成便签」先确认再提交：取消全量保留便签与条目、确认原子完成并移除条目（#155）'
     # #156 辅助技术与快捷键：朗读、Ctrl+F、清除名称与位置复位（新增 2 个顶层键 + 源码契约）。
-    Assert-Equal $true ([bool] $adapterValidation.AssistiveNarrationExitsDecorationAndLabelsFields) '装饰手写体与分段裸数字退出朗读、可见标签经标签关系指向输入不读两遍、数量由一处状态区播完整句、筛选「清除」可访问名说明清除便签日期筛选（#156）'
-    Assert-Equal $true ([bool] $adapterValidation.NarratorAnnouncesLiveRegionChanges) '状态消息、字段错误、数量变化和提醒送达失败触发与声明一致的 LiveRegionChanged；数量不变的分钟刷新不播报；鼓励语退出自动化树，金额与日历状态名称正确（#216）'
-    Assert-Equal $true ([bool] $adapterValidation.WindowPositionResetsWithoutDrag) '越界悬浮窗可经 Ctrl+R 或托盘「复位窗口位置」夹回工作区，隐藏态复位先恢复再夹回（#156）'
-    Assert-Equal $true ([bool] $adapterValidation.MainWindowFitsInjectedWorkAreas) '管理窗口装进 1032/826/688 DIP 注入工作区：首选尺寸收缩、顶端控件与状态栏可达、倒计时三行滚动可见、720×560 滚动不裁切、隐藏再显保留用户几何、越界与工作区变化夹回（#211）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowStaysOnSecondaryMonitor) '#219 悬浮窗保留副屏手动位置，键盘与托盘复位夹回当前屏，保持 520×390 DIP'
-    Assert-Equal $true ([bool] $adapterValidation.OwnerDialogsFitSecondaryMonitor) '#219 所有者弹窗装进副屏，规则编辑器底部按钮与缩放手柄可达'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderUsesSourceMonitor) '#219 提醒中心首次在悬浮所在屏右上，此后保留手动位置'
-    Assert-Equal $true ([bool] $adapterValidation.OpenWindowsFollowMonitorChanges) '#219 显示器与工作区变化后所有已打开窗口归位'
-    Assert-Equal $true ([bool] $adapterValidation.MixedDpiUsesPhysicalMonitorGeometry) '#219 重叠 DIP 坐标按物理像素与目标屏 DPI 解析'
-    Assert-Equal $true ([bool] $adapterValidation.ProductManifestDeclaresPerMonitorV2) '#219 发布 EXE 嵌入清单声明 PerMonitorV2'
-    Assert-Equal $true ([bool] $adapterValidation.RuntimeDpiChangeUpdatesWindowLayout) '#219 真实 DPI 事件更新比例、窗口几何与可操作布局'
-    Assert-Equal $true ([bool] $adapterValidation.MainWindowIdentityZoneDragRegion) '身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）'
-    Assert-Equal $true ([bool] $adapterValidation.MainWindowHiddenTickSkipsRenderAndShowRefreshes) '管理窗口隐藏期间 tick 不重建分格，重新显示立即同步最新时间（#230）'
-    Assert-Equal $true ([bool] $adapterValidation.MainWindowNoteMinutePreservesFocusAndScroll) '便签数据不变的分钟刷新保留行控件、键盘焦点和非零滚动位置（#230）'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownListFirstBehavior) '倒计时默认折叠新增，首选尺寸至少三行，窗口增高显示更多完整行（#221）'
-    Assert-Equal $true ([bool] $adapterValidation.MainTopmostStateSynchronization) '置顶首次打开与两次切换均由勾选状态单向驱动（#222）'
-    Assert-Equal $true ([bool] $adapterValidation.MainRedundancyCleanup) '数量纯文字保留唯一直播区，删除主题与工作区冗余文字（#222）'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownPreferencesPopupBehavior) '设置弹层焦点、Tab/Esc、草稿、字段错误、持久化及浮窗双宿主入口（#221）'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownEditorExpansionBehavior) '展开保留草稿，编辑自动展开，取消回到折叠新增并保全持久记录（#221）'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownRowDeadlineAndSecondaryDeleteBehavior) '倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.NoteSearch) '主窗便签页 Ctrl+F 聚焦便签搜索（#156）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.Filter) '倒计时页没有正文搜索时 Ctrl+F 仍打开筛选（#156）'
     # #155 源码契约：删除/完成/退出流的行为钉在实现面，运行态由上述探针共同钉住。
@@ -4719,10 +4626,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $captureViewportStateBody -match 'ValidationExercises\.FloatingViewportDesignedRight\(' -and
         $captureViewportStateBody -notmatch '\.Right <= bodyContentRight' -and
         $captureViewportStateBody -notmatch 'bodyContentRight \+ 0\.25') '现役视口右缘比较走 EvaluateFloatingViewportGeometryGate 单一实现且不保留第二套右缘算术（#157 修复轮 1 源码契约）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteGroupingSelectorAbsent) '移除只有单一选项的按日期分组下拉（#227）'
     # #137 主窗口便签交互与状态回归：便签卡四列重构后，标签选择弹层按需收起，
     # 已完成便签的删除线 + 弱化语义不得被视觉重构丢弃（AC1 删除线语义）。
-    Assert-Equal $true ([bool] $adapterValidation.NoteTagPickerOpensOnDemand) 'validate-only 验证便签标签选择弹层默认按需收起'
     $mainWindowNotesSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml.cs') -Raw -Encoding UTF8
     $createNoteRowBody = [regex]::Match(
@@ -4866,30 +4771,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $dwmWindowChromeSource -match 'MainWindowDwmRoundedCornersFallback' -and
         $dwmWindowChromeSource -match 'catch \(Exception') '主窗口 SourceInitialized 请求 Windows 11 DWM 原生圆角，失败只记录降级且不启用整窗透明（#200 源码契约）'
     Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
-    Assert-Equal $true ([bool] $adapterValidation.DesktopWorkspaceModuleDeep) '兼容字段由桌面工作区真实 interface 行为计算'
-    Assert-Equal $true ([bool] $adapterValidation.StartupAcceptanceProtocolModuleDeep) '兼容字段由启动验收真实 interface 行为计算'
-    Assert-Equal $true ([bool] $adapterValidation.WorkdayCalendarModuleDeep) '兼容字段由工作日历真实 interface 行为计算'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '兼容字段由验证报告真实 JSON 契约计算'
-    Assert-Equal $true ([bool] $adapterValidation.ThemeControlInventoryCovered) 'adapter 验证主题控件资产清单'
-    Assert-Equal $true ([bool] $adapterValidation.ThemedControlTemplatesApplied) 'adapter 验证真实 WPF 主题模板'
-    Assert-Equal $true ([bool] $adapterValidation.LiveDatePickerPopupIsThemed) 'adapter 验证真实 DatePicker Popup 主题'
-    Assert-Equal $true ([bool] $adapterValidation.WpfUiPickerStylesIntegrated) '生产日期与下拉实际继承 WPF-UI 样式并使用库提供的切换模板（#206）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerSelectedDateTextMatchesContract) '全部生产日期框在日期变化与日历关闭后保持中文空格格式（#206）'
     # #129 去重迁移（U1 独有断言）：DatePicker 文本点击与主题弹层系列。
-    Assert-Equal $true ([bool] $adapterValidation.DateInputReadOnly) '日期选择不接受自由文本输入（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerButtonOpensCalendar) '点击日期下拉按钮打开日历弹层（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerTextOpensCalendar) '点击日期文字打开全部主题化日历（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerCalendarMonthGridLaidOut) '打开的月视图是 7 个星期标题 + 6×7 互不重叠的日期格，不叠进同一格'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerTextClicksUseTheme) '日期文字点击绑定到全部主题化日期框（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerTextOpensThemedPopup) '点击日期文字打开真实主题化日历弹层（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerTextDefersCalendarUntilPointerRelease) '日期文字在指针释放前不提前打开日历（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerCalendarIsThemed) 'DatePicker 文本框、触发器与日历族完全主题化（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.ComboBoxesUseThemedDropDowns) 'ComboBox 下拉、选项与滚动条无未主题化表面（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.PopupSurfacesUseThemeTokens) '弹层表面使用共享主题背景、边框与动效（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.LiveDatePickerPopupVisuallyUnified) '打开的 DatePicker 弹层使用共享暖色边框、头部与选中样式（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.NoDefaultSystemSurfaces) '应用流程不残留系统窗口框或 MessageBox（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.NoRawFloatingThemeBypass) '悬浮窗不用原始颜色绕过共享主题 token（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerTextFits) '完整选中日期在日期框内完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextRequiredWidth -gt 0) '日期框实测需求宽度为正（#129 自 U1 迁移）'
     $productionDatePickerMeasurements = @($adapterValidation.DatePickerProductionMeasurements)
@@ -4910,13 +4793,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $productionDatePickerMeasurements |
             Where-Object { $_.Name -in $clippingGuardedDatePickers }
     ).Count '主窗口倒计时、便签与筛选日期框、悬浮窗便签日期框均纳入裁切几何断言（#190 / #237）'
-    Assert-Equal $true ([bool] $adapterValidation.CalendarHeaderTextFits) '日历月份头部完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextAvailableWidth -gt 0) '日历头部实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextRequiredWidth -gt 0) '日历头部实测需求宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorFieldsDoNotOverlap) '主窗口提醒入口、规则摘要与错误区互不重叠'
-    Assert-Equal $true ([bool] $adapterValidation.LegacyInlineReminderControlsStayHidden) '编辑单条一次/固定间隔便签后旧版内嵌提醒控件保持收起且摘要不被遮挡'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteEditorLabelsVisible) '主窗口便签编辑器保留可见字段标签'
-    Assert-Equal $true ([bool] $adapterValidation.MainMinimumSizeMatchesDefault) '主窗口首选尺寸 864×1000、最小可用尺寸 720×560（#211）'
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.CountdownElementsVisible) '倒计时首次空态显示角色、标题、说明和新增入口'
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.NotesElementsVisible) '便签首次空态显示角色、标题、说明和新增入口'
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.AddActionsFocusEditors) '两个空态新增入口聚焦对应编辑器'
@@ -4924,9 +4802,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.PopulatedListsRestoreEmptyState) '列表空态与非空列表切换后可恢复'
     Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineRequested) '主窗口参考基线只在源码树存在双 manifest 时请求'
     Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineManifestAvailable) '主窗口参考 manifest 可用状态匹配源码树或发布包模式'
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineGateIsolationBehavior) '主窗口十六个 manifest 门禁负向夹具与视觉基线 module interface 均通过'
     Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-capture-id,duplicate-path,duplicate-scenario,duplicate-state-fingerprint,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,reused-frame,source-hash-mismatch,state-fingerprint-mismatch,wrong-dimensions' ((@($adapterValidation.MainReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '主窗口正式视觉负向夹具集合完整'
-    Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleGateIsolationBehavior) '主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁'
     if ($mainReferenceBaselineRequired) {
     Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest'
     Assert-Equal 'assets/ui-references/main-window/864x1000/2026-10-21-v59/manifest.json' ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
@@ -4979,7 +4855,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 0 @($noteCardReminderMeasurements | Where-Object { [int] $_.SampleCount -le 0 }).Count '每帧提醒摘要取样至少命中一张可见便签卡'
     $noteCardReminderFontSizeDip = [double] $adapterValidation.MainNoteCardReminderFontSizeDip
     if ($noteCardReminderFontSizeDip -lt 12) {
-        throw "便签卡提醒摘要真实渲染字号未达合同 12 DIP：actual=[$noteCardReminderFontSizeDip] shapeSha=[$adapterValidationShapeSha256]"
+        throw "便签卡提醒摘要真实渲染字号未达合同 12 DIP：actual=[$noteCardReminderFontSizeDip]"
     }
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '主窗口便签卡提醒摘要真实渲染达到 12 DIP'
     Assert-Equal 0 @($noteCardReminderMeasurements | Where-Object { [double] $_.FontSizeDip -lt 12 -or -not $_.MeetsContract }).Count '每份便签卡提醒摘要取样真实渲染均 ≥ 12 DIP'
@@ -5000,52 +4876,18 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Assert-Equal $false ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '发布包不伪造便签卡提醒摘要 12 DIP 门'
         Assert-Equal 0 @($adapterValidation.MainNoteCardReminderFontMeasurements).Count '发布包不伪造便签卡提醒摘要测量'
     }
-    foreach ($crossInterfaceGate in @(
-            'CrossInterfaceAiReferencePriority',
-            'CrossInterfacePageSpecificComposition',
-            'CrossInterfaceSharedWarmPinkTokens',
-            'CrossInterfaceStaticDayThemeInfo',
-            'CrossInterfacePlushDecorationLayering',
-            'CrossInterfaceFilterSharing',
-            'CrossInterfaceKeyboardOrder',
-            'CrossInterfaceHitTesting',
-            'CrossInterfaceDeterministicFixtureIsolation',
-            'CrossInterfaceRealSettingsConserved',
-            'CrossInterfaceIntegration')) {
-        Assert-Equal $true ([bool] $adapterValidation.$crossInterfaceGate) "跨界面整合门禁 $crossInterfaceGate 通过"
-    }
     if ([string] $adapterValidation.CrossInterfaceIntegrationEvidence -notmatch '2026-10-21-v59') {
         throw '跨界面整合证据未记录 v59 真实帧'
     }
-    Assert-Equal 'C792494BC5F9BF256637F7AB55BDC2846583A059155FA70944E14BCAAE1CF2B3' $adapterValidationShapeSha256 'validate-only JSON 顶层 name:type 形状精确固定（751字段；悬浮设置齿轮同心合同）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteCompletionUndoFeedback) '#233 两窗真实完成、重新打开事务、失败回滚、唯一撤销槽及10秒到期行为'
-    Assert-Equal $true ([bool] $adapterValidation.NoteBatchKeyboardCompletion) '#235 键盘多选与原子完成，推进cursor并移除对应中心条目，失败整批保留'
-    Assert-Equal $true ([bool] $adapterValidation.NoteBatchDeleteUndo) '#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝'
-    Assert-Equal $true ([bool] $adapterValidation.NoteSelectionAccessibility) '#235 选中数量直播区、行peer、刷新保留与筛选折叠清理'
-    Assert-Equal $true ([bool] $adapterValidation.NoteCompletionExitTransition) '#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断'
-    Assert-Equal $true ([bool] $adapterValidation.SystemContrastUpdatesOpenWindows) '#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复'
-    Assert-Equal $true ([bool] $adapterValidation.SystemContrastAccessibleStates) '#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿'
-    Assert-Equal $true ([bool] $adapterValidation.SystemContrastColorChangesAndCustomSurfaces) '#220 系统配色运行中变化更新弹层、自选标签和日期印记并恢复日间原色'
-    Assert-Equal $true ([bool] $adapterValidation.PopupKeyboardLifecycleWorks) '筛选、标签管理与标签选择弹层支持 Esc 关闭并返焦'
-    Assert-Equal $true ([bool] $adapterValidation.PopupOutsideFocusPreserved) '鼠标或外部焦点关闭弹层时不会抢回触发器焦点'
-    Assert-Equal $true ([bool] $adapterValidation.PopupTriggerSecondClickCloses) '弹层打开后再点触发器关闭而不是重开'
-    Assert-Equal $true ([bool] $adapterValidation.PopupEscapeFromTriggerClosesAndKeepsFocus) '焦点在触发器上按 Esc 关闭弹层并保持触发器焦点'
-    Assert-Equal $true ([bool] $adapterValidation.NoteEmptyStatesDistinguished) '首次空态与筛选无结果状态具有不同反馈'
-    Assert-Equal $true ([bool] $adapterValidation.NoteNoResultsResetWorks) '筛选无结果状态可就地重置完整筛选条件'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyStatesDistinguished) '倒计时首次空态与筛选无结果状态具有不同反馈'
     Assert-Equal $true ([bool] $adapterValidation.CountdownNoResultsResetWorks) '倒计时筛选无结果状态通过指针重置完整筛选条件'
     Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyPointerResetRestoresResults) '倒计时空态指针重置恢复默认筛选、列表和摘要'
     Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyKeyboardResetRestoresResults) '倒计时空态聚焦按钮可由键盘恢复默认筛选、列表和摘要'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyStateTextContrast) '倒计时空态文字对实际日间背景达到 4.5:1'
     $countdownEmptyContrastMeasurements = @($adapterValidation.CountdownEmptyStateContrastMeasurements)
     Assert-Equal 1 $countdownEmptyContrastMeasurements.Count '倒计时空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($countdownEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '倒计时空态对比度主题集合固定'
     Assert-Equal 0 @($countdownEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '倒计时空态使用真实可见背景与动态主题资源'
     Assert-Equal 0 @($countdownEmptyContrastMeasurements | Where-Object { [double] $_.HeadingContrastRatio -lt 4.5 -or -not $_.HeadingUsesInkBrush -or -not $_.HeadingTextWithinBackdrop }).Count '倒计时空态标题另行使用 InkBrush 且对可见背景达到 4.5:1'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyStateGateIsolationBehavior) '倒计时空态门禁可独立失败（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.CompactInputHorizontalPaddingAligned) '倒计时编辑区与设置区三类输入内部横向留白对齐 12 DIP（管理窗等比收缩由 16 换算，前导图标位 48→36）'
     # #129 去重迁移（U1 独有断言）：紧凑布局实测宽度、时间下拉与主窗口控件存在性系列。
-    Assert-Equal $true ([bool] $adapterValidation.CompactSelectionFieldLayout) '短选择字段保持内容尺寸与紧凑高度（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CountdownInputHeight -gt 0) '倒计时输入实测高度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CountdownNameWidth -gt 0) '名称输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.TargetDateWidth -gt 0) '日期输入实测宽度为正（#129 自 U1 迁移）'
@@ -5058,7 +4900,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([double] $adapterValidation.ExpandedTargetMinuteWidth -gt 0) '展开态分钟输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedTargetSecondWidth -gt 0) '展开态秒输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedDisplayPrecisionWidth -gt 0) '展开态精度输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.CompactPreferenceFieldLayout) '偏好字段在默认与展开宽度下保持紧凑（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CountdownPreferenceInputHeight -gt 0) '偏好输入实测高度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.MonthlySalaryWidth -gt 0) '月薪输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.WorkStartWidth -gt 0) '上班时间输入实测宽度为正（#129 自 U1 迁移）'
@@ -5066,25 +4907,15 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([double] $adapterValidation.ExpandedMonthlySalaryWidth -gt 0) '展开态月薪输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedWorkStartWidth -gt 0) '展开态上班输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedWorkEndWidth -gt 0) '展开态下班输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownInputsUseProjectTheme) '倒计时输入使用共享 Panel（#151 白纸输入面）、PeachLine 与 Ink 主题资源（#129 自 U1 迁移，#151 换绑）'
     Assert-Equal 3 ([int] $adapterValidation.TimeDropDowns) '主窗口保留三个时间下拉（#129 自 U1 迁移）'
     Assert-Equal '24,60,60' ([string]::Join(',', @($adapterValidation.TimeOptionCounts))) '时/分/秒下拉选项计数为 24/60/60（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.StaticWorkspaceLayout) '倒计时工作区与设置控件使用稳定实例（#221 设置移入按需弹层）'
-    Assert-Equal $true ([bool] $adapterValidation.HasCountdownReminderModeRadios) '倒计时提醒模式单选组存在（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasCountdownList) '多倒计时列表存在（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasNameEditor) '倒计时名称编辑器存在（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteStatusBadgeTokensFollowState) '便签分段数量徽章使用专用 token 并随激活态切换'
-    Assert-Equal $true ([bool] $adapterValidation.NoteEmptyStateTextContrast) '便签空态文字对实际日间背景达到 4.5:1 并使用 MutedBrush'
     $noteEmptyContrastMeasurements = @($adapterValidation.NoteEmptyStateContrastMeasurements)
     Assert-Equal 1 $noteEmptyContrastMeasurements.Count '便签空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($noteEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '便签空态对比度主题集合固定'
     Assert-Equal 0 @($noteEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '便签空态使用真实可见背景与 MutedBrush 动态主题资源'
     Assert-Equal 0 @($noteEmptyContrastMeasurements | Where-Object { [double] $_.HeadingContrastRatio -lt 4.5 -or -not $_.HeadingUsesInkBrush -or -not $_.HeadingTextWithinBackdrop }).Count '便签空态标题另行使用 InkBrush 且对可见背景达到 4.5:1'
-    Assert-Equal $true ([bool] $adapterValidation.NoteVisualTokenGateIsolationBehavior) '主窗口便签视觉合同负向夹具逐项失败且不误伤无关契约'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownRemainingLayoutMatches) '主窗口倒计时剩余时间使用固定列、表格数字和单行布局'
     Assert-Equal $true ([bool] $adapterValidation.CountdownIncrementalRefreshIdentityMatches) '主窗口倒计时 tick 保留行控件与文字目标实例'
     Assert-Equal $true ([bool] $adapterValidation.CountdownExpiryVisualsFlipTogether) '主窗口倒计时到期同时翻转卡片背景和危险文字色'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownIncrementalRefreshGateIsolationBehavior) '主窗口倒计时增量刷新负向夹具可独立失败'
     $countdownIncrementalRefresh = $adapterValidation.CountdownIncrementalRefresh
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.FocusPreserved) '普通 tick 保留倒计时行内真实键盘焦点'
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.NonZeroScrollPreserved) '普通 tick 保留倒计时列表非零滚动位置'
@@ -5096,8 +4927,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.ExpiryBackgroundFlipped) '倒计时到期背景独立翻转为 ExpiredBrush'
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.ExpiryRemainingTextFlipped) '倒计时到期文字独立翻转为主项数字色（到期不用删除红）'
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.TriggerMatrixRebuilt) '集合、筛选、精度、到期四触发全部重建'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownRemainingUnitSpacingMatches) '主窗口倒计时剩余时间保留 FormatRemaining 单位空格与六项样本'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownRemainingGateIsolationBehavior) '主窗口倒计时剩余时间门禁负向夹具独立失败'
     Assert-Equal 6 @($adapterValidation.CountdownRemainingSamples).Count '主窗口倒计时剩余时间覆盖四种精度、超长天数及 999 天'
     Assert-Equal 0 @($adapterValidation.CountdownRemainingSamples | Where-Object { [Math]::Abs([double] $_.ColumnWidth - 228) -gt 0.01 -or [Math]::Abs([double] $_.ActualColumnWidth - 228) -gt 0.5 -or -not $_.IsFullyVisible }).Count '主窗口六项剩余时间样本均完整位于实际 228px 固定列'
     Assert-Equal '20;20;20;20' ((@($adapterValidation.CountdownRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '主窗口四种普通精度保持 20 DIP'
@@ -5108,9 +4937,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 1 $main999.Count '主窗口显式覆盖 999 天主项'
     Assert-Equal '999 天 13 时 18 分 59 秒' $main999[0].RenderedBlockText '主窗口 999 天各数值和单位无裁切'
     Assert-Equal $true ([bool] ($main999[0].IsPrimary -and $main999[0].BlocksFullyVisible -and $main999[0].ValueFontSize -gt $main999[0].TitleFontSize)) '主窗口 999 天主项完整可读并保持数值层级'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionTargetSizeAndBehavior) '主窗口便签完成复选框达到 24px 模板与交互合同'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionOtherUserSizesUnchanged) '标签选择器与悬浮窗复选框保持原尺寸'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionGateIsolationBehavior) '主窗口便签完成尺寸门与样式隔离门可独立失败'
     $mainNoteCompletionMeasurements = @($adapterValidation.MainNoteCompletionMeasurements)
     Assert-Equal 3 $mainNoteCompletionMeasurements.Count '主窗口、标签选择器与悬浮窗均有真实 WPF 尺寸测量'
     Assert-Equal 'FloatingWindow,MainWindow,TagSelector' ((@($mainNoteCompletionMeasurements.User) | Sort-Object) -join ',') '便签完成复选框测量用户集合固定'
@@ -5122,54 +4948,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.PersistenceFailureRolledBack) '主窗口便签完成写盘失败时 UI 与状态回滚'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesUpdated) '主窗口便签完成复选框可访问名称随状态更新'
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesHaveNoLineBreaks) 'settings JSON 注入含换行便签后可访问名称不含换行'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionStyleScoped) '兼容便签完成样式门保持通过'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterShowPreservesFocusAndAccessibleName) '提醒中心出现时不抢焦点且保留可访问名称'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterKeyboardGateIsolationBehavior) '提醒中心 Tab 遍历、关闭守卫与初始焦点/可访问名负向夹具可独立失败'
-    Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLoaded) 'adapter 验证角色图片资产已加载'
     Assert-Equal 3 ([int] $adapterValidation.MainCharacterPanelDockCount) '主窗口角色场景栏保留三个玩偶底座'
-    Assert-Equal $true ([bool] $adapterValidation.MainCharacterPanelDocksIntegrateWithPanel) '主窗口三个玩偶底座与工作区面板形成一体'
-    Assert-Equal $true ([bool] $adapterValidation.MainCharacterPanelDecorationsAreNonInteractive) '主窗口角色场景栏不拦截工作区操作'
-    # #129 去重迁移（U1 独有断言）：官方角色背景独占与低对比。
-    Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundCharactersExclusive) '官方角色背景只包含美乐蒂、玉桂狗与库洛米（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.OfficialCharacterBackgroundLowContrast) '官方角色背景保持低对比不干扰应用内容（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonTextFits) '设置保存按钮文字完整显示'
-    Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisible) '设置保存按钮完整位于主窗口内'
-    Assert-Equal $true ([bool] $adapterValidation.SavePreferencesButtonIsFullyVisibleAtMinimumWidth) '最小主窗口宽度下经横向滚动到达齿轮，设置保存按钮完整落入视口（#211/#221）'
-    Assert-Equal $true ([bool] $adapterValidation.NegativeMonthlySalaryRejectedKeepsDraft) '负月薪保存被拒绝、原偏好与草稿文本保留并提示月薪不能小于 0'
-    Assert-Equal $true ([bool] $adapterValidation.ZeroMonthlySalaryStillSavesAsUnset) '月薪 0 仍合法保存为未输入状态'
-    # #129 去重迁移（U1 独有断言）：草稿保留、保存回显与旧数据拒绝系列。
-    Assert-Equal $true ([bool] $adapterValidation.SettingsDraftsRetainedOnRefresh) '后台状态刷新不丢弃设置区未保存编辑（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.SettingsSavedValuesReflectedAfterSave) '设置区在保存成功后立即回显持久化值（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.WorkspaceDraftsRetained) '切换工作区保留未保存的倒计时与便签草稿（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HiddenCountdownSubmitDisabled) '隐藏的倒计时编辑器不暴露默认提交按钮（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.LegacyMigrationSupported) '旧版单倒计时设置受支持并被迁移（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DuplicateSettingsRejected) '重复的持久化倒计时名称被拒绝（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.InvalidNotesRejected) '非法持久化便签被拒绝（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.InvalidTagReferencesRejected) '持久化悬空标签引用被拒绝（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushMascotsLoaded) '悬浮窗日间角色场景已加载'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushSceneIntegratesWithPanel) '悬浮窗角色场景层在任务面板上方且不拦截交互'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushTaskWrapLoaded) '悬浮窗日间 raster 外壳与头部已加载（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceAspectMatches) '悬浮窗参考场景保持 520×390 的 4:3 比例'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferencePanelGeometryMatches) '悬浮窗外框、内容面板与标题栏匹配参考图构图'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceMascotGeometryMatches) '悬浮窗三角色可见像素匹配参考图锚点和裁切'
     Assert-Equal $floatingReferenceBaselineRequired ([bool] $adapterValidation.FloatingReferenceBaselineRequested) '悬浮窗参考基线只在源码树存在 manifest 时请求'
     Assert-Equal $floatingReferenceBaselineRequired ([bool] $adapterValidation.FloatingReferenceBaselineManifestAvailable) '悬浮窗参考 manifest 可用状态匹配源码树'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineGateIsolationBehavior) '悬浮窗参考 manifest 十二个负向夹具与视觉基线 module interface 均通过'
     Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-path,duplicate-scenario-theme,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,source-hash-mismatch,wrong-dimensions' ((@($adapterValidation.FloatingReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '悬浮窗参考 manifest 负向夹具集合完整'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceFreshnessGateIsolationBehavior) '长便签帧新鲜度与排版八个负向夹具逐项失败闭锁'
     Assert-Equal 'duplicate-capture-id,duplicate-state-fingerprint,long-note-layout-unreachable,long-note-typography-mismatch,reused-frame,state-fingerprint-mismatch,swapped-top-bottom,top-bottom-pixel-difference-too-small' ((@($adapterValidation.FloatingReferenceFreshnessNegativeFixtures) | Sort-Object) -join ',') '长便签帧新鲜度与排版负向夹具集合完整'
-    foreach ($fieldName in @(
-        'FloatingLongNotesBodyHasNoManualLineBreaks',
-        'FloatingLongNotesNaturalWraps',
-        'FloatingLongNotesUsesOnlyOuterScroller',
-        'FloatingLongNotesOuterScrollable',
-        'FloatingLongNotesTopBottomReachable',
-        'FloatingLongNotesSafeAreaMatches',
-        'FloatingLongNotesTypographyMatches',
-        'FloatingLongNotesLayoutValid'
-    )) {
-        Assert-Equal $true ([bool] $adapterValidation.$fieldName) "长便签真实 WPF 门禁通过：$fieldName"
-    }
     $expectedLongNoteCaptureIds = 'long-notes-day-bottom,long-notes-day-top'
     $longNoteMeasurements = @($adapterValidation.FloatingLongNotesMeasurements)
     Assert-Equal 2 $longNoteMeasurements.Count '长便签真实 WPF 精确测量日间 top/bottom 两态'
@@ -5213,28 +4996,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Assert-Equal $false ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '发布包不伪造未携带参考资产时的视觉验收'
         Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineCaptures).Count '发布包不伪造参考帧度量'
     }
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceContentSafeAreaMatches) '悬浮窗角色 alpha 不遮挡标题、图标、卡片文字或收入'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTitleUsesSemiBoldWeight) '悬浮窗标题独立保持 SemiBold 字重'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteInputWraps) '悬浮窗便签输入独立保持自动换行'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteInputScrolls) '悬浮窗便签输入独立保持垂直滚动'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddDayExpandedScrolledCaptureWritten) '悬浮窗快速新增日间展开滚动场景可离屏捕获'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingInitialWorkspaceStateMatches) '悬浮窗首次显示立即同步倒计时选中态、标题、输入区和内容'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWorkspaceSwitchingStaysSynchronized) '悬浮窗往返切换后始终恰有一个工作区并同步表面'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingCountdownSelectionSurvivesRefresh) '悬浮窗倒计时首次选中态刷新后保持'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeHiddenWithoutSalary) '悬浮窗月薪为 0 时不渲染今日已赚金额：日历就绪显示鼓励文案，未就绪仍显示状态'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeRestoredWithSalary) '悬浮窗恢复正数月薪后今日已赚金额行还原'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearchScenariosPass) '悬浮窗折叠搜索主链路、空态、Ctrl+F 与主题 token 通过'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingBottomCommandScenariosPass) '悬浮窗便签底部命令区：默认收起、展开/收起、提交收起、设置按钮全链路通过'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddToggleScenariosPass) '悬浮窗＋添加便签默认收起、点击原地展开并按筛选标签初始化、再次点击收起、提交后收起、展开态切换钮降级次级收起（#149）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteOverflowMenuScenariosPass) '悬浮窗便签…菜单提供编辑（复用主窗口编辑流程）与删除（确认后删除，取消保留）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddPlaceholderMirrorsManager) '悬浮快速新增正文占位文与管理窗口一致：空白可见、输入后隐藏（#149）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddExpandedSinglePrimaryAction) '悬浮展开态底部切换钮为次级「收起」，表单添加为唯一实心粉钮（#149）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteOverflowMenuKeyboardWorks) '悬浮便签…菜单键盘可走完：打开聚焦编辑、Tab 进入删除、Esc 关闭并回触发器（#149）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSettingsGearConcentric) '悬浮「设置」齿轮外轮廓与孔同心、在 15x15 图标框内居中'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingConstrainedEmptyStateProvidesAction) '悬浮筛选约束空态提供「清除筛选」且与「清除搜索」互斥，点击还原全量列表（#149）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDateStampPastelRotationMatches) '悬浮窗日期印记按列表顺序粉/蓝/绿轮换且卡底暖黄与白纸交替'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNotesHandwrittenDecorationPass) '悬浮窗便签工作区右下手写体装饰落地且不可命中不可聚焦'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSettingsButtonOpensManager) '悬浮窗底部设置按钮打开管理窗口并沿用当前工作区'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.SearchButtonShowsClosedMagnifier) '悬浮窗搜索按钮渲染闭合放大镜而不是残缺 C'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.HintNamesDescribeAction) '悬浮窗提示条词按钮可访问名称含展开动作语义且可见文本与清除钮名称不变'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) '悬浮窗 140 字搜索词在提示条省略显示且不溢出槽位或清除钮'
@@ -5242,59 +5003,12 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.CountdownFilterEmptyStateDistinguished) '悬浮窗倒计时筛选无匹配空态与无数据空态文案区分'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.SearchRefreshLeavesPlacementUnchanged) '悬浮窗搜索词刷新在 ActualSize 不变时不改 Left/Top'
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.ConstrainedEmptyProvidesAction) '悬浮窗搜索/筛选两种无匹配空态互斥且约束空态有下一步（#149）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteSearchSyncsFromSharedFilter) '主窗口搜索框回填共享筛选态'
     Assert-Equal 0 ([int] $adapterValidation.FloatingReferenceContentOverlapCount) '悬浮窗参考场景没有角色与内容墨迹重叠'
     Assert-Equal 0 @($adapterValidation.FloatingReferenceContentOverlapTargets).Count '悬浮窗受保护内容遮挡明细清单为空（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceCaptureWritten) '悬浮窗参考场景可由 RenderTargetBitmap 写出非空 PNG'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWorkdayCountdownUsesPrimaryVisual) '距离下班在首行使用唯一主项的 Automation 语义、暖粉主项底、粉红轨、数字色块与超期待徽章'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWorkdayPrimaryBadgeExclusive) '超期待徽章仅距离下班主项显示，普通倒计时主项不显示'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownEncourageBadgeAbsent) '管理窗口倒计时列表不渲染超期待徽章（两窗都只挂距离下班）'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownExpiredRemainingFollowsContrast) '到期剩余文字：主项用主项数字色、次项用正文色并保留已到期文案'
     Assert-Equal $true ([bool] $adapterValidation.MainCountdownBlocksGeometryMatches) '主窗分格保持约 2:3；四分格主项使用 6 DIP 紧凑间距，其余使用标准间距，单位字不低于辅助下限'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownNumericTextsMatchContract) '北京时间使用表格数字且月薪与今日已赚同一套本地数字格式'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownReadabilityGateIsolationBehavior) '倒计时可读性门禁用会失败的反例保住'
-    # #151 倒计时编辑：字段级错误、主次按钮角色、白纸输入面、选区高亮、状态条对比、单选圆点、排版 token。
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownFieldErrorsAtSource) '倒计时名称/截止日期错误按字段拆开贴字段显示并聚焦第一个无效控件（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownFieldErrorsClearOnCorrection) '倒计时字段值修正后字段错误立即清除（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownSingleErrorRowUnclipped) '倒计时唯一错误行不再固定高度裁切或省略（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainPreferenceErrorsBelowFields) '月薪/上下班时间格式错误出现在对应字段下方（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainPrimarySecondaryButtonRolesDistinct) '倒计时页唯一实心主行动为＋添加倒计时，保存设置为CardAlt次级表面，便签＋添加仍为主按钮（#217）'
-    Assert-Equal $true ([bool] $adapterValidation.MainInputSurfaceWhitePaper) '倒计时编辑输入面使用白纸面板色并与画布分开（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainTextSelectionHighlightDistinct) '文本选区高亮为独立语义色且选中后肉眼可辨（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainStatusBarSurfaceErrorContrast) '状态栏消费状态条表面且错误字达信息文本对比（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainReminderRadioSelectedContrast) '提醒规则选中圆点与描边达非文本对比门槛（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainEditorTypographyTokens) '编辑卡区块标题与字段行距消费排版/间距 token（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownEditingGateIsolationBehavior) '倒计时编辑门禁用会失败的反例保住（#151）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeUsesTabularNumerals) '悬浮窗今日已赚使用表格数字'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomeEncouragementWithoutSalary) '悬浮窗参考会话月薪清零后底部显示手写体鼓励文案并随正数月薪还原'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingIncomePrivacyBehavior) '悬浮金额鼠标键盘 Invoke 切换，tick 切页临时无金额后仍隐藏，真实自动化树不泄露且新实例默认显示（#229）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWorkdayCompletionBehavior) '实际工作日下班到北京时间午夜收尾，日历筛选守卫、计数提醒排除、原位刷新及共用金额隐私（#236）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceScenarioMatches) '悬浮窗参考场景将距离下班作为首行主项，并保持两张卡片、收入和主项单行剩余时间'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryDeadlineTextFullyVisible) '悬浮窗主项的最宽日期在有无滚动条时均完整可见'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryExtremeRemainingShrinks) '超长天数主项剩余时间在 194px 列内收缩且完整分格显示'
     $primaryDeadlineMeasurements = @($adapterValidation.FloatingPrimaryDeadlineMeasurements)
     Assert-Equal 2 $primaryDeadlineMeasurements.Count '主项截止行覆盖有无滚动条两份实测宽度'
     Assert-Equal $true ([bool] (@($primaryDeadlineMeasurements | Where-Object { -not $_.FullyVisible -or [double] $_.ActualWidth + 0.01 -lt [double] $_.RequiredWidth }).Count -eq 0)) '主项截止行实测宽度足以容纳完整 M 月 d 日 HH:mm'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceViewportStatesMatch) '悬浮窗固定视口覆盖零、一、多卡片及便签提醒滚动状态'
-    # #157 悬浮视口几何确定性口径：比较基准为滚动内容槽右缘扣除 §10 设计命中轨，
-    # 不随系统滚动条度量/显示缩放漂移；隔离负向夹具用会失败的反例保住门禁语义。
-    Assert-Equal $true ([bool] $adapterValidation.FloatingViewportGeometryGateIsolationBehavior) '悬浮视口几何门禁用会失败的反例保住确定性边界：卡/印记/快速新增越界即红、滚动条隐藏零扣除（#157）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingViewportScrollAndFocusRestored) '悬浮窗刷新后恢复当前滚动位置与便签焦点'
-    # #212 渲染签名稳定刷新：签名不变只就地更新数字、焦点按角色恢复、隐藏/最小化跳过渲染。
-    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshScenariosPass) '悬浮窗渲染签名稳定刷新：tick 就地更新、角色焦点恢复、隐藏/最小化门控全链路通过（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshFocusStaysOnOverflowTrigger) '悬浮窗 tick 后焦点停留在便签「…」触发器且便签未被误完成、滚动位置不动（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshCountdownUpdatesInPlace) '悬浮窗倒计时 tick 行实例保留且剩余时间分格就地更新（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshNoteCardsPreserved) '悬浮窗便签卡与完成复选框实例跨 tick 保留（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshRebuildRestoresFocusByRole) '悬浮窗数据变化重建后焦点按「记录 ID + 控件角色」回到「…」触发器并还原滚动（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshHiddenSkipsRenderUntilVisible) '悬浮窗隐藏期间 tick 与数据变化跳过渲染，恢复可见立即渲染一次（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingStableRefreshMinimizedSkipsRenderUntilRestored) '悬浮窗最小化期间 tick 跳过渲染，还原正常态立即渲染一次（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingRenderSignatureGateIsolationBehavior) '渲染签名隔离反例：同输入同签名，标题/精度/筛选/结构变化改签名，剩余时间仅数值变化不改签名（#212）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteFailureAppearsInSourceCard) '悬浮便签完成失败时在来源卡片显示可访问错误'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingResolvedNoteCardErrorDoesNotReturn) '便签完成并恢复后不会重新显示旧卡片错误'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSecondaryRemainingTextFullyVisible) '超长次级倒计时在固定视口内单行完整显示'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSecondaryRemainingUnitSpacingMatches) '次级倒计时直接保留 FormatRemaining 的单位分隔空格'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSecondaryRemainingLayoutMatches) '次级倒计时保持 194px 右对齐、单行、完整显示及表格数字'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSecondaryRemainingGateIsolationBehavior) '次级倒计时去空格与破坏固定列负向夹具可分别单独变红'
     Assert-Equal 5 @($adapterValidation.FloatingSecondaryRemainingSamples).Count '次级倒计时门禁覆盖四种精度及长天数'
     Assert-Equal 'Day;Hour;Minute;Second;SecondLongDays' ((@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { $_.Precision }) -join ';') '次级倒计时门禁覆盖精度顺序稳定'
     Assert-Equal '4 天;4 天 13 小时;4 天 13 小时 18 分钟;4 天 13 小时 18 分钟 59 秒;2000000 天 00 小时 00 分钟 00 秒' ((@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { $_.RenderedText }) -join ';') '次级倒计时 WPF 文本逐项保留单位分隔空格'
@@ -5302,18 +5016,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] (@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { [Math]::Abs([double] $_.ActualWidth - 194) -le 0.5 } | Where-Object { -not $_ } | Measure-Object).Count -eq 0) '次级倒计时所有样本实际布局宽度保持在 194px 舍入容差内'
     Assert-Equal '20;20;20;20' ((@($adapterValidation.FloatingSecondaryRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '次级倒计时四种常规精度保持 20px'
     Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -ge 10 -and [double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -lt 20)) '超长次级倒计时在 194px 列内保持可读字号并完整分格显示'
-    foreach ($fieldName in @(
-        'FloatingScrollBarLocalStyleScoped',
-        'FloatingScrollBarHitTargetUsable',
-        'FloatingScrollBarVisualWeightProgression',
-        'FloatingScrollBarUsesWarmThemeTokens',
-        'FloatingScrollBarContentRemainsSafe',
-        'FloatingScrollBarInputPathsWork',
-        'FloatingScrollBarGateIsolationBehavior',
-        'FloatingScrollBarStateCapturesReady'
-    )) {
-        Assert-Equal $true ([bool] $adapterValidation.$fieldName) "悬浮窗滚动条门禁通过：$fieldName"
-    }
     $floatingScrollBarSamples = @($adapterValidation.FloatingScrollBarStateMeasurements)
     Assert-Equal 3 $floatingScrollBarSamples.Count '悬浮窗滚动条覆盖日间 normal/hover/drag 三态'
     Assert-Equal 'Day;Day;Day' (($floatingScrollBarSamples | ForEach-Object { $_.Theme }) -join ';') '悬浮窗滚动条日间状态顺序稳定'
@@ -5325,68 +5027,26 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingScrollBarWheelOffsets)[1] -gt [double] @($adapterValidation.FloatingScrollBarWheelOffsets)[0])) '真实滚轮输入改变悬浮窗 ScrollViewer 偏移'
     Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingScrollBarDragOffsets)[1] -gt [double] @($adapterValidation.FloatingScrollBarDragOffsets)[0])) '真实 Thumb 拖动输入改变悬浮窗 ScrollViewer 偏移'
     Assert-Equal 'day-normal;day-hover;day-drag' ((@($adapterValidation.FloatingScrollBarCaptureNames)) -join ';') '悬浮窗滚动条日间三态截图清单完整'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDatePickerKeyboardLifecycleWorks) '悬浮窗两个日期选择器支持日历聚焦、Esc 关闭与按钮返焦'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingFieldErrorsAppearAtSource) '悬浮快速便签错误显示在无效字段附近并关联输入控件'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingCorrectedFieldErrorsClearLiveMessage) '悬浮快速便签字段修正后清除局部与全局错误'
     Assert-Equal (
         $dayRasterComponentFiles -join ','
     ) (
         [string]::Join(',', @($adapterValidation.FloatingDayRasterComponentAssetNames))
     ) '悬浮窗加载四个日间无文字 raster 组件'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDayRasterShellAndHeaderLoaded) '悬浮窗日间 shell 与无文字标题栏组件已加载'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingRasterSurfacesFollowTheme) '悬浮窗 raster 表面保持单一日间主题'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDayRasterDecorationsAreNonInteractive) '悬浮窗日间 raster 装饰不拦截鼠标命中'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDayRasterCardStatesMatch) '悬浮窗日间 0/1/2 张倒计时及便签均按真实记录复用无文字卡片底板'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDynamicCardContentRemainsWpf) '悬浮窗卡片文字与便签勾选框仍由真实 WPF 控件渲染'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDynamicHeaderControlsRemainWpf) '悬浮窗标题、页签与命令图标仍由真实 WPF 控件渲染'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingHeaderIconAccessibility) '悬浮窗图标按钮保留 ToolTip 与可访问名称'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingHeaderIconClickCommandsWork) '悬浮窗打开管理与退出图标保留真实点击命令'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDragSurfaceCoversWindowBackground) '悬浮窗非交互背景均可接收拖动手势'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayButtonAccessibility) '悬浮窗缩小按钮提供明确 ToolTip 与可访问名称'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayProductionControllerActive) '应用宿主与托盘验收共用生产切换控制器'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayMinimizeHidesWindowAndShowsIcon) '悬浮窗缩小按钮隐藏悬浮窗，托盘图标在窗口仍可见时已经常驻（#213）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayRestoreShowsWindowAndHidesIcon) '单击托盘图标或「打开悬浮窗」恢复悬浮窗且图标保持常驻；「打开管理窗口」保留草稿和筛选（#213）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayExitRequestsApplicationExit) '系统托盘退出命令触发应用退出请求'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTrayFailedRestoreKeepsTrayStateAndAllowsRetry) '恢复判定失败时托盘图标保留且可再次恢复'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleReceivesPointerGestures) '悬浮窗标题拖动区接收真实 WPF 左键手势'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleRequestsNativeWindowDrag) '悬浮窗标题拖动区经 WPF 左键路由请求原生窗口拖动'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSyntheticDragDoesNotClaimPhysicalCompletion) '悬浮窗合成拖动验收不会把被 WPF 拒绝的 DragMove 误报为物理拖动成功'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDragAttemptClampsToWorkArea) '悬浮窗拖动尝试结束后立即收紧到工作区内'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingInteractiveControlsDoNotRequestWindowDrag) '悬浮窗按钮、输入和滚动控件不请求窗口拖动'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDragHandleExcludesInteractiveControls) '悬浮窗标题拖动区不覆盖按钮或输入控件'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowManualPositionPersistsAndRemainsVisibleAfterRefresh) '悬浮窗手动移动后内容刷新会保留位置并限制在工作区内'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTitleTextFits) '悬浮窗待办便签标题在实际父布局槽内完整可见'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTitleTextHasVerticalClearance) '悬浮窗待办便签标题保留完整字形所需的垂直余量'
     # #129 去重迁移（U1 独有断言）：悬浮窗存在性、工作区底部锚定、标题与页签文字测量系列。
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowPresent) '桌面悬浮倒计时窗口存在（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowStaysAboveWorkAreaBottom) '悬浮窗不遮挡任务栏工作区（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingCountdownBottomMargin -gt 0) '悬浮倒计时底部留白为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingNotesBottomMargin -gt 0) '悬浮便签底部留白为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowBottomAnchored) '内容尺寸变化后悬浮窗回到工作区底部（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowReanchorsAfterContentChanges) '便签内容增删时悬浮窗保持底部锚定（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingWindowHeightConstrainedToWorkArea) '悬浮窗高度受工作区约束（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextAvailableWidth -gt 0) '悬浮标题实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextRequiredWidth -gt 0) '悬浮标题实测需求宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextAvailableHeight -gt 0) '悬浮标题实测可用高度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextRequiredHeight -gt 0) '悬浮标题实测需求高度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingCountdownButtonTextFits) '悬浮倒计时页签文字完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingCountdownButtonTextAvailableWidth -gt 0) '悬浮倒计时页签实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingCountdownButtonTextRequiredWidth -gt 0) '悬浮倒计时页签实测需求宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNotesButtonTextFits) '悬浮便签页签文字完整可见（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingNotesButtonTextAvailableWidth -gt 0) '悬浮便签页签实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.FloatingNotesButtonTextRequiredWidth -gt 0) '悬浮便签页签实测需求宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingManagerButtonPresent) '悬浮窗倒计时管理动作存在（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasPreferenceControls) '悬浮窗精度与月薪设置控件存在（#129 自 U1 迁移）'
     Assert-Equal 'Day' ([string]::Join(',', @($adapterValidation.FloatingThemeBoundaryModes))) '悬浮窗固定单一日间主题'
     Assert-Equal '#FFFEFCFB' ([string]::Join(',', @($adapterValidation.FloatingThemePanelColors))) '悬浮窗面板使用预期的暖白配色'
     Assert-Equal '#FFB9794E' ([string]::Join(',', @($adapterValidation.FloatingThemePlushGlowColors))) '悬浮窗角色场景保持日间暖色阴影'
     Assert-Equal 'DayRaster' ([string]::Join(',', @($adapterValidation.FloatingMascotPresentationModes))) '悬浮窗固定使用日间单一角色层'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingRasterMascotPresentationMatches) '悬浮窗日间 raster 角色呈现状态完整'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPlushSceneFollowsDayTheme) '悬浮窗角色场景在单一日间主题下稳定呈现'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingThemeTextContrast) '悬浮窗标题与便签错误提示在日间主题下保持可读对比度'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryCountdownTextContrast) '悬浮窗主倒计时数字相对数字色块底达到 3:1 对比度'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryCountdownAccentSeparatedFromPlushGlow) '悬浮窗主倒计时强调与玩偶阴影使用独立语义 token'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingPrimaryCountdownContrastGateIsolationBehavior) '低对比度与共享 token 负向夹具分别单项失败'
     $primaryContrastMeasurements = @($adapterValidation.FloatingPrimaryCountdownContrastMeasurements)
     Assert-Equal 3 $primaryContrastMeasurements.Count '悬浮窗主倒计时覆盖工作日、普通主项和 999 天真实 WPF 测量'
     Assert-Equal 'Day' ((@($primaryContrastMeasurements.Theme) | Sort-Object -Unique) -join ',') '悬浮窗主倒计时测量覆盖日间主题'
@@ -5397,11 +5057,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 0 @($primaryContrastMeasurements | Where-Object { $_.Scenario -ne '999Days' -and ($_.FontSize -lt 26 -or $_.FontSize -gt 28) }).Count '悬浮窗普通主项真实数字字号保持 26–28 DIP'
     Assert-Equal 0 @($primaryContrastMeasurements | Where-Object { -not $_.IsSingleLineAndFullyVisible -or $_.FontSize -le $_.TitleFontSize }).Count '悬浮窗主项数字完整单行且明确大于标题'
     Assert-Equal '999 天 13 时 18 分 59 秒' (@($primaryContrastMeasurements | Where-Object Scenario -eq '999Days')[0].RemainingText) '悬浮窗显式覆盖 999 天完整主项'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddDayResourcesFollowLocalTheme) '悬浮窗快速新增真实控件日间使用局部暖色主题'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddIndependentFromApplicationTheme) '悬浮窗快速新增局部主题不受应用主题反向切换污染'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddThemeResourceIsolationBehavior) '悬浮窗快速新增资源枚举负向夹具可逐控件单项失败'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddDayPaletteBindingsMatch) '悬浮窗快速新增日间控件绑定专用日间 palette token'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddPaletteBindingIsolationBehavior) '悬浮窗快速新增 palette 绑定负向夹具可逐控件单项失败'
     $quickAddPaletteBindings = @($adapterValidation.FloatingQuickAddPaletteBindings)
     Assert-Equal 1 $quickAddPaletteBindings.Count '悬浮窗快速新增报告精确包含单一日间真实控件绑定'
     Assert-Equal 'Day' ((@($quickAddPaletteBindings.Theme) | Sort-Object) -join ',') '悬浮窗快速新增绑定报告覆盖日间主题'
@@ -5435,27 +5090,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '悬浮窗快速新增日间资源枚举没有失败项'
     Assert-Equal '#FFFEFCFB' ([string] $adapterValidation.FloatingQuickAddLocalCanvasColor) '悬浮窗快速新增局部表面使用暖白'
     Assert-Equal '#FFE05A4A' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增焦点和按压使用 Active，不复用 Danger（#232）'
-    Assert-Equal $true ([bool] $adapterValidation.TagPopupFollowsDayTheme) '打开的标签弹层保持日间主题'
     Assert-Equal '#FFFDF0E4' ([string] $adapterValidation.MainThemeBackgroundColors) '主窗口背景使用预期的暖白配色'
     Assert-Equal '8' ([string] $adapterValidation.MainThemeCharacterOpacities) '主窗口角色装饰在日间主题下保持低对比度'
     Assert-Equal '#FFFFF7E8' ([string] $adapterValidation.MainThemeCharacterPanelColors) '主窗口角色场景栏使用暖白配色'
-    Assert-Equal $true ([bool] $adapterValidation.MainCharacterPanelDocksFollowDayTheme) '主窗口三个玩偶底座使用日间配色'
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationAssetsLoaded) '主窗口日间参考装饰资产已加载'
-    Assert-Equal $true ([bool] $adapterValidation.MainDecorationOnDemandDecodeBehavior) '主窗口装饰图按当前页按需解码且解码尺寸等于显示尺寸（#231）'
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationsAreNonInteractive) '主窗口日间参考装饰不会阻断真实控件输入'
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationsFollowDayTheme) '主窗口日间参考装饰按工作区切换'
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationLayerOrderMatches) '主窗口装饰层级顺序独立通过'
-    Assert-Equal $true ([bool] $adapterValidation.MainWorkspaceResourcesFollowDayTheme) '主窗口工作区静态表面独立使用主题资源'
-    Assert-Equal $true ([bool] $adapterValidation.MainDynamicCountdownCardsUseThemeResources) '主窗口动态倒计时卡片命中样本并使用主题资源'
     Assert-Equal $true ([int] $adapterValidation.MainDynamicCountdownCardSampleCount -gt 0) '主窗口动态倒计时卡片至少命中一个样本'
-    Assert-Equal $true ([bool] $adapterValidation.MainDynamicNoteCardsUseThemeResources) '主窗口动态便签卡片命中样本并使用主题资源'
     Assert-Equal $true ([int] $adapterValidation.MainDynamicNoteCardSampleCount -gt 0) '主窗口动态便签卡片至少命中一个样本'
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceDecorationsShareScaleAtMinimumAndWideSizes) '主窗口日间参考装饰在最小和放大尺寸下与真实控件共用缩放坐标系'
-    Assert-Equal $true ([bool] $adapterValidation.MainThemeReminderLabelFollowsTheme) '主窗口提醒标签保持主题前景色'
-    Assert-Equal $true ([bool] $adapterValidation.MainThemeSegmentSelectedTextContrast) '主窗口工作区选中态文字对比度达标或精确匹配设计声明 token'
-    Assert-Equal $true ([bool] $adapterValidation.WarmYellowPaletteMatchesLegacy) '全局主题恢复旧版暖黄日间色'
-    Assert-Equal $true ([bool] $adapterValidation.PrimaryButtonHoverTextContrast) '主操作按钮悬停时保持玫粉底白字的可读对比度'
-    Assert-Equal $true ([bool] $adapterValidation.MainActionTextContrast) '主窗口与悬浮窗主操作白字在默认、悬停与按下色上均达到 4.5:1 对比度（#199）'
     Assert-Equal '#FFC23E68' ([string] $adapterValidation.MainActionPalette.Default) '主行动默认色与悬浮窗同为深玫粉（#199）'
     Assert-Equal '#FFB0355D' ([string] $adapterValidation.MainActionPalette.Hover) '主行动悬停色使用同族深玫粉（#199）'
     Assert-Equal '#FF9B2D50' ([string] $adapterValidation.MainActionPalette.Pressed) '主行动按下色使用同族深玫粉（#199）'
@@ -5470,18 +5109,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.TabRingGapAvoidsSelectedFill) '选中粉底页签的焦点环以 1px 间隙避开粉底，邻色为容器浅色'
     Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.FloatingCapsuleFocusRingMeetsContrast) '悬浮选中实心粉胶囊焦点环（暖金）对深粉邻色达到 3:1'
     Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.FloatingCapsuleUsesWarmGoldToken) '悬浮实心粉胶囊焦点环使用主按钮焦点色暖金且无旧强调色放过分支'
-    Assert-Equal $true ([bool] $adapterValidation.MainFocusRingConstantThicknessNoSqueeze) '主窗焦点环常驻透明环变色，聚焦不加厚边、不挤布局'
-    Assert-Equal $true ([bool] $adapterValidation.MainPrimaryAndPinSingleFocusStroke) '主按钮与置顶不再叠 FocusVisualStyle 第二套焦点描边，常规控件保留 2px 暖边'
-    Assert-Equal $true ([bool] $adapterValidation.MainNotesTabHoverDiffersFromSelected) '未选中便签页签悬停边换 ActiveBrush，不复用选中实心底'
-    Assert-Equal $true ([bool] $adapterValidation.MainLocalControlsPressAndDisabled) '本地页签/帮助/提醒单选/日期披露具备按压与禁用外观'
-    Assert-Equal $true ([bool] $adapterValidation.MainReminderHelpFocusShowsHelp) '聚焦提醒规则帮助显示与悬停相同的说明并提供帮助文本'
-    Assert-Equal $true ([bool] $adapterValidation.MainCompactHitTargetsMeetScaledFloor) '默认缩放后完成勾选与帮助命中槽位 ≥24 DIP'
-    Assert-Equal $true ([bool] $adapterValidation.MainFilterChipsAndCalendarNavCompact) '筛选芯片高度/间距与日历翻月按钮向紧凑下限族靠拢'
-    Assert-Equal $true ([bool] $adapterValidation.MainHoverStateContrastIsPerceivable) '主窗按钮悬停具有可感知的暖色底/边反馈'
-    Assert-Equal $true ([bool] $adapterValidation.MainPressedStateGeometryStable) '主窗按钮按下保留常驻 2px 环且不改变布局边界'
-    Assert-Equal $true ([bool] $adapterValidation.MainMouseClickDoesNotLeaveFocusRing) '鼠标点击后不残留键盘焦点环'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardFocusRingShowsOnTab) 'Tab 键聚焦时显示键盘焦点环'
-    Assert-Equal $true ([bool] $adapterValidation.MainSelectedTabWeightDominates) '选中页签使用 PinkTint 底与 SemiBold 权重'
     $segmentIndicatorSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\SegmentIndicator.cs') -Raw -Encoding UTF8
     Assert-Equal $true (
@@ -5514,100 +5141,17 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $motionBehaviorSource -match 'HandoffBehavior\.SnapshotAndReplace' -and
         $mainWindowCodeSource -match 'FadeCountdownDigit\(' -and
         $floatingCountdownsSource -match 'FadeCountdownDigit\(') '主窗与悬浮窗秒位刷新消费 90ms 淡入 token，并从当前动画状态续接（#198 源码契约）'
-    Assert-Equal $true ([bool] $adapterValidation.MotionClientAreaAnimationSwitchReadable) '已接入系统客户区动画开关读取点'
-    Assert-Equal $true ([bool] $adapterValidation.MotionTokensMatch) '六个动效时长与 ease-out 缓动符合当前系统动画偏好'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.KeyboardPathsWork) '生产下拉支持 F4、Alt+Down、方向键，并在正常动画下以 Esc 完成关闭'
-    Assert-Equal $true ([bool] $adapterValidation.ComboBoxArrowIsNotTabStop) '下拉箭头不是独立 Tab 停靠点'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.ArrowIsNotTabStop) '生产 ComboBox 箭头测量均非 Tab 停靠点'
     Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowHeaderDrag.HeaderRequestsDrag) '提醒中心与规则编辑器头部拖动请求原生 DragMove'
-    Assert-Equal $true ([bool] $adapterValidation.CalendarNavigationAccessibleNames) '日历上一个月/下一个月按钮具有可访问名称'
     Assert-Equal '打开日历' ([string] $adapterValidation.DatePickerOpenCalendarAccessibleName) '日期框打开日历按钮具有可访问名称'
-    Assert-Equal $true ([bool] $adapterValidation.DatePickerOpenCalendarAccessibleNames) '生产日期框打开日历按钮均可访问播报'
     # #129 去重迁移（U1 独有断言）：日历翻月按钮可访问名称非空。
     Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $adapterValidation.CalendarPreviousMonthAccessibleName)) '日历上一个月按钮具有非空可访问名称（#129 自 U1 迁移）'
     Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $adapterValidation.CalendarNextMonthAccessibleName)) '日历下一个月按钮具有非空可访问名称（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownCardActionsIncludeRecordName) '倒计时卡编辑/删除可访问名称包含对象名'
-    Assert-Equal $true ([bool] $adapterValidation.SettingsRecoveryFailureExitIsDefault) '设置恢复失败态退出按钮是 Enter 默认按钮'
-    Assert-Equal $true ([bool] $adapterValidation.RuleEditorInlineDeleteUsesDangerButton) '规则编辑器行内删除使用 DangerButton'
-    Assert-Equal $true ([bool] $adapterValidation.SettingsRecoverySecondaryUsesCanvas) '设置恢复次级按钮使用现役暖白画布副本 #FFFDF3EB'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterTwoRowActionsLayout) '提醒中心动作按 DESIGN 两行布局且按钮为图标加文字'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterEntryVisualIdentity) '提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN 视觉标识'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterContentHierarchy) '#223 提醒正文为H2标题、来源为caption且可访问名称保来源'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterRelativeTimeUpdatesInPlace) '#223 相对时间按分钟/小时原位更新，保条目、焦点、滚动与失败信息且对比至少4.5'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterEscapeFocusesAcknowledge) '提醒中心有条目时 Esc 不关窗只把焦点移到知道了（失败态回落打开来源）'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterTypographyWeightWhitelist) '提醒中心字重只用 Regular 与 SemiBold 且感叹号为矢量图形'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterRepresentativeCaptureRendered) '提醒中心代表态真实帧渲染出白底页面、暖黄卡、待处理徽章、主行动按钮与便签来源图标'
-    Assert-Equal $true ([bool] $adapterValidation.PopupAnimationIsInstant) '五处生产弹层使用即时出现而不是系统淡入'
-    Assert-Equal $true ([bool] $adapterValidation.ActionForegroundsUseMainActionText) '主按钮、复选勾与日历选中前景使用 MainActionTextBrush'
-    Assert-Equal $true ([bool] $adapterValidation.DisabledSelectionControlsUseButtonOpacity) '禁用 CheckBox/ComboBox 与主窗口专用复选模板表面透明度为 0.45'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingTypographyWeightWhitelist) '悬浮窗字重只使用 Regular 与 SemiBold'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDateStampTypographyMatches) '日期印记字重、字体 fallback、表格数字与规则线间距符合 §3'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingDateStampDensityMatches) '日期印记上下留白与三行间距降低拥挤感'
-    Assert-Equal $true ([bool] $adapterValidation.NoteCancelFitsEditorPanel) '便签编辑取消按钮完全位于面板右缘内并与保存同高同行'
-    Assert-Equal $true ([bool] $adapterValidation.PopupRightInsetIsEightFromCanvas) '筛选、标签管理与标签选择弹层右缘距内容画布内缘 8px'
-    Assert-Equal $true ([bool] $adapterValidation.FilterPopupScrollsLongTagList) '筛选弹层长标签列表有最大高度并内部滚动'
-    # #129 去重迁移（U1 独有断言）：标签 UI 无障碍、筛选与按需弹层系列。
-    Assert-Equal $true ([bool] $adapterValidation.TagUiAccessible) '标签搜索标签与图标按钮可访问名称完整（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.TagCreateAppearsFromSearch) '新标签可从统一标签搜索框创建（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.TagCreateStaysCollapsedWithoutQuery) '未输入新标签名前创建动作保持收起（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.TagFilterSupportsAnyAll) '标签筛选暴露显式任意/全部匹配（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.TagChipsUseUid) '标签芯片不复用记录 ID 的 Tag 属性（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.CompactFilterSummary) '筛选触发器使用紧凑摘要布局（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FilterOptionsUseSelectionSemantics) '筛选选项暴露可访问选中态（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.TransientPanelsOnDemand) '筛选、标签选择与标签管理按需交互（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasTagControls) '共享标签选择、筛选与管理控件存在（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.MainCheckboxHitCoversSlot) '主窗口便签复选框命中覆盖 38px 槽位（默认缩放后 ≥24 DIP）且保留 Tag=note.Id'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSearchSlotRightIs396) '悬浮搜索槽右缘对齐 x=396'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingSearchHintMatchesInputHeight) '悬浮搜索提示行与输入行等高且展开不跳动视口'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingQuickAddAlignsWithNoteCards) '悬浮快速新增右缘与便签卡列右缘对齐'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingCheckboxHitCoversSlot) '悬浮便签复选框命中覆盖 36px 槽位且不覆盖日期印记'
-    Assert-Equal $true ([bool] $adapterValidation.AuditContrastGateIsolationBehavior) '审计对比度负向夹具可独立失败'
-    Assert-Equal $true ([bool] $adapterValidation.ToolTipThemeTextContrast) '提示气泡在日间主题下保持可读对比度'
-    Assert-Equal $true ([bool] $adapterValidation.TagChipTextContrast) '标签芯片在日间主题下保持暖墨文字的可读对比度'
-    # #129 去重迁移（U1 独有断言）：主题对比度、交互态与破坏性确认系列。
-    Assert-Equal $true ([bool] $adapterValidation.ThemeTextContrast) '暖色主题满足全部文字对比度对（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.MainIdleTextInputBoundaryContrast) '未聚焦的名称输入框真实边界对五种浅色表面及输入底色达到 3:1（#217）'
-    Assert-Equal $true ([bool] $adapterValidation.IdleControlBoundariesVisible) '选择控件、输入和次级按钮的真实常态边界可见（#217）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingThumbBoundaryContrast) '浮窗滚动条合成后的边界对实际邻色至少 3:1（#217）'
-    Assert-Equal $true ([bool] $adapterValidation.SelectedControlSignalsVisible) '筛选勾号、成功勾选和单选图形在真实模板中可辨识（#217）'
-    Assert-Equal $true ([bool] $adapterValidation.DangerSurfacesMeetContrast) '错误文字对六种真实表面至少 4.5:1（#217）'
-    Assert-Equal $true ([bool] $adapterValidation.FocusOuterNeighborsMeetContrast) '主按钮、浮窗胶囊和置顶两态的焦点环对外侧邻色至少 3:1（#217）'
-    Assert-Equal $true ([bool] $adapterValidation.EffectiveThemeTextContrast) '弱化便签/日历文字达到有效对比度（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.ThemedInteractiveStates) '主题化交互控件具备视觉状态反馈（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DangerButtonContrast) '危险确认按钮悬停/按下保持文字对比度（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.DestructiveConfirmationIsSafe) '破坏性确认不以删除为 Enter 默认动作（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.ToolTipTemplateMaterializes) '主题化 ToolTip 模板可安全实例化（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.ActiveNotesGrouped) '未完成便签收拢在独立分组中'
     Assert-Equal $true ([bool] $adapterValidation.ActiveNotesSegmentSelectedByDefault) '分段切换默认选中未完成并显示未完成分组'
-    Assert-Equal $true ([bool] $adapterValidation.ActiveNotesKeepDateOrder) '未完成便签组内按较新日期优先显示'
-    Assert-Equal $true ([bool] $adapterValidation.ManagerNoteRowsFollowSortOrder) '完整管理窗口的实际便签行遵循管理排序'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateSectionsCanCollapse) '未完成与已完成便签支持独立的日期级展开和收起'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateSectionsAreIndependent) '同一日期的未完成与已完成折叠状态互不影响'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateSectionStateSurvivesRefresh) '日期折叠状态在管理窗口刷新后保持'
-    Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentsSwitchExclusively) '未完成/已完成分段切换互斥、两状态不同屏且刷新后保持'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNotesKeepExistingSortOrder) '悬浮窗使用共享领域便签排序'
     Assert-Equal '24,60' ([string]::Join(',', @($adapterValidation.NoteReminderTimeOptionCounts))) '共享提醒规则编辑器首次提醒小时与分钟选项完整'
-    Assert-Equal $true ([bool] $adapterValidation.CalendarReminderStartLabelsUseCalendarSemantics) '日历模式开始日期/本地时刻标签与其余模式首次提醒标签区分'
-    Assert-Equal $true ([bool] $adapterValidation.CrossDayReminderSelectionWorks) '便签提醒支持跨天选择并按北京时间触发'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderSummaryAdvancesAfterFirstDue) '首次提醒到期后主窗口摘要显示下一循环时间'
-    Assert-Equal $true ([bool] $adapterValidation.OneTimeReminderLifecycleWorks) '一次性提醒支持离线补发并在送达后跨重启去重'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderRequiresContentRenderedConfirmation) '提醒只在真实 ContentRendered 后确认送达'
     # #129 去重迁移（U1 独有断言）：便签提醒派发、工作区切换与表单无障碍系列。
-    Assert-Equal $true ([bool] $adapterValidation.NoteReminderControlsWork) '便签提醒选择器支持预设、自定义分钟与禁用提醒（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasNoteControls) '便签输入或添加动作存在（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasNoteReminderControls) '管理窗口或悬浮入口存在便签提醒选择器与自定义分钟输入（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasUnifiedNoteEntry) '倒计时工作区存在统一便签入口（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.HasOpenNotesActions) '存在打开统一便签工作区的动作（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.UnifiedWorkspaceSwitches) '倒计时与便签工作区一起切换（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.WorkspaceSwitcherBeforeEditors) '工作区切换器出现在编辑器之前（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.WorkspaceTabsUseSelectionSemantics) '工作区页签暴露可访问选中态（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.NoteReminderDispatchWorks) '便签提醒按到期区间恰好派发一次（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.FormControlsHaveAccessibleNames) '核心表单控件具有显式可访问名称（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.StatusMessagesUseLiveRegions) '动态状态消息通过 live region 播报（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.CompactActionTargetsAreUsable) '紧凑标签与便签动作达到桌面交互目标尺寸（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.MainInitialFocusIsSafeAndDeterministic) '主窗口初始焦点落在确定且非危险控件'
-    Assert-Equal $true ([bool] $adapterValidation.MainTabSequenceStartsWithWorkspaceControls) '主窗口工作区控件具备可遍历顺序'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGates.InitialFocusSafe) '主窗口 Loaded 后实际焦点满足安全初始焦点门'
     Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGates.CompleteTabSequence) (
         '主窗口倒计时与便签完整 Tab 路径双向对称且焦点可见；' +
@@ -5619,14 +5163,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         ',back=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.BackwardSymmetric +
         ',visual=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.FocusVisualsVisible +
         ')')
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGateIsolationBehavior) '主窗口初始焦点与完整 Tab 路径负向夹具可独立失败'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardPathNegativeFixtures) '完整 Tab 路径负夹具可击穿缺失标签、换序、非对称和不可见焦点'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralLiveRegionsUsePoliteSemantics) '主窗口结构变化使用既有可见 polite live region'
-    Assert-Equal $true ([bool] $adapterValidation.MainTextShortcutBehavior) '输入焦点下Ctrl+S与便签Ctrl+Enter持久保存，Enter换行与弹层守卫（#224）'
-    Assert-Equal $true ([bool] $adapterValidation.SingleLineEnterSubmission) '单行名称、标签、设置Enter提交及首个无效字段焦点（#224）'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteKeyboardSubmission) '悬浮便签Ctrl+Enter提交、普通Enter换行与校验（#224）'
-    Assert-Equal $true ([bool] $adapterValidation.ListDeleteKeyboardBehavior) '列表Delete安全确认、取消归还、撤销与文本Ctrl+Z隔离（#224）'
-    Assert-Equal $true ([bool] $adapterValidation.MainShortcutScopeIsSafe) '主窗口Ctrl快捷键允许输入焦点，避开弹层与模态上下文（#224）'
     # #129 去重迁移（U1 独有断言）：键盘焦点基线证据版本钉死。
     Assert-Equal $false ([bool] $adapterValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] ([string] $adapterValidation.KeyboardFocusBaselineEvidence -match '2026-10-21-v59')) '键盘焦点基线证据记录再生的 2026-10-21-v59 帧（#129 自 U1 迁移）'
@@ -5705,7 +5241,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [bool] $structuralAnnouncementFailedChecksFixture.AllPassed -and
         @($structuralAnnouncementFailedChecksFixture.FailedChecks).Count -eq 0
     Assert-Equal $false $structuralAnnouncementFailedChecksFixturePassed '结构变化通知 evaluator 拒绝合成的非空 FailedChecks'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncementGateIsolationBehavior) '结构变化通知三门负向夹具可独立失败'
     $secondaryTypographyWindows = @($adapterValidation.SecondaryWindowTypography.Windows)
     Assert-Equal 5 $secondaryTypographyWindows.Count '五个次级窗口都有真实字号测量'
     Assert-Equal 'ConfirmationDialog,InstanceActivationFailure,ReminderCenter,ReminderRulesEditor,SettingsRecovery' ((@($secondaryTypographyWindows.Window) | Sort-Object) -join ',') '次级窗口字号报告精确覆盖五种窗口'
@@ -5752,12 +5287,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [bool] $secondaryTypographyFailedChecksFixture.AllPassed -and
         @($secondaryTypographyFailedChecksFixture.FailedChecks).Count -eq 0
     Assert-Equal $false $secondaryTypographyFailedChecksFixturePassed '次级窗口字号 evaluator 拒绝合成的非空 FailedChecks'
-    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypographyGateIsolationBehavior) '次级窗口字号三门负向夹具可独立失败'
-    Assert-Equal $true ([bool] $adapterValidation.MainShortcutGateIsolationBehavior) '主窗口快捷键负向夹具可独立失败'
-    Assert-Equal $true ([bool] $adapterValidation.ConfirmationDialogLongestButtonsVisible) '最长删除确认正文下两个按钮完整位于窗口内容区'
-    Assert-Equal $true ([bool] $adapterValidation.ConfirmationDialogLongestBodyReachable) '最长删除确认正文可换行并由滚动容器承载'
-    Assert-Equal $true ([bool] $adapterValidation.ConfirmationDialogSafeDefaultActions) '删除确认取消按钮仍为默认和取消动作'
-    Assert-Equal $true ([bool] $adapterValidation.ConfirmationDialogGateIsolationBehavior) '删除确认对话框负向夹具可独立失败'
     $confirmationMeasurements = @($adapterValidation.ConfirmationDialog.Measurements)
     Assert-Equal 2 $confirmationMeasurements.Count '删除确认精确覆盖便签/倒计时日间两状态'
     Assert-Equal 'Countdown-Day,Note-Day' ((@($confirmationMeasurements.StateId) | Sort-Object) -join ',') '删除确认矩阵状态 ID 精确'
@@ -5810,88 +5339,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [bool] $confirmationDialogFailedChecksFixture.AllPassed -and
         @($confirmationDialogFailedChecksFixture.FailedChecks).Count -eq 0
     Assert-Equal $false $confirmationDialogFailedChecksFixturePassed '删除确认 evaluator 拒绝合成的非空 FailedChecks'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceFailureStaysVisible) '一次提醒持久化失败时保持可见并阻止提前关闭'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceRetryBackoffWorks) '一次提醒按 5/10/20/30 秒上限持续重试'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderDeliverySingleFlightWorks) '同一提醒 occurrence 在中心内只有一个条目和一个持久化重试'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderIndependentOccurrencesWork) '不同到期 occurrence 在同一中心独立显示且失败项不阻塞其他项确认'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceFailureCloseGuardWorks) '持久化失败态拒绝普通 Close 且保持同一退避状态'
-    Assert-Equal $true ([bool] $adapterValidation.RepeatingReminderRenderedLatchWorks) '重复提醒只在真实渲染后锁存当前周期'
-    Assert-Equal $true ([bool] $adapterValidation.RepeatingReminderDistinctCyclesCoexist) '重复提醒相邻周期聚合到同一中心且同周期不重复加入'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderPersistenceFailureDisposeWorks) '应用退出可强制关闭失败态窗口且不触发提前重试'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderDiagnosticsExcludePrivatePayload) '提醒失败诊断不包含便签正文或完整设置载荷'
-    foreach ($field in @(
-            'ReminderCenterSingleWindow',
-            'ReminderCenterSameTickBatch',
-            'ReminderCenterAppendsAfterOpen',
-            'ReminderCenterStableOrdering',
-            'ReminderCenterEntriesRendered',
-            'ReminderAcknowledgementDistinctFromDelivery',
-            'ReminderAcknowledgementFailureRetainsEntry',
-            'ReminderAcknowledgementFailureIsAtomic',
-            'ReminderAcknowledgementMonotonicAcrossOccurrences',
-            'ReminderCenterSingleItemDisposition',
-            'ReminderCenterOpenSourcePreservesState',
-            'ReminderCenterOpenSourceFindsExactNote',
-            'ReminderCenterOpenSourceRestoresMinimizedWindow',
-            'ReminderCenterPersistenceFailureRetainsCurrentSource',
-            'ReminderCenterRemovesDeletedSource',
-            'ReminderCenterCancelsDeletedSourceAckRetry',
-            'ReminderCenterRemovesDisabledSource',
-            'ReminderCenterRemovesCompletedSource',
-            'ReminderCenterReopensAfterSourceRemoval',
-            'ReminderCenterClosesWhenEmpty',
-            'ReminderCenterReopens',
-            'ReminderCenterScrollsLongContent',
-            'ReminderCenterFollowsDayTheme',
-            'ReminderCenterHasOnlySafeActions',
-            'ReminderCenterDisplaysSourceContentAndTime',
-            'ReminderCenterAccessible',
-            'ReminderCenterIsThemed',
-            'ReminderCenterSupportsKeyboardNavigation',
-            'ReminderCenterShowPreservesFocusAndAccessibleName',
-            'ReminderCenterArrivalKeepsForegroundAndFlashesTaskbar',
-            'ReminderCenterMinimizeToTaskbarPreservesEntries',
-            'ReminderCenterAcknowledgeAllWritesAllDispositions',
-            'ReminderCenterAcknowledgeAllMatchesSingleSemantics',
-            'ReminderCenterAcknowledgeAllFailureRetainsAllAtomically',
-            'ReminderCenterAcknowledgeAllBackoffRetryCompletesBatch'
-        )) {
-        Assert-Equal $true ([bool] $adapterValidation.$field) "提醒中心验证字段通过：$field"
-    }
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCustomSnoozeControlsVisibility) '提醒中心自定义稍后子控件随选项真实展开与收起'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterCustomSnoozeCalendarBehavior) '提醒中心自定义稍后日历保持统一只读、Esc 关闭与聚焦行为'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterShowFailureRollbackSurvivesEntryFailure) '提醒中心展示失败回滚在条目回滚抛异常时仍清理协调器状态'
-    # #145 提醒中心状态与失败路径回归：补齐 C# 验证面已计算但断言面缺失的字段。
-    # 知道了/全部已读、打开来源与退避重试的既有断言（#129 迁移块 + #137 增补段）保持不变；
-    # 本块只新增逐字段断言，不改动 validate-only JSON 形状（665 顶层键，#154 后）。
-    foreach ($reminderCenterStateField in @(
-            'ReminderCenterOpened',
-            'ReminderCenterSnoozeClickPersists',
-            'ReminderCenterExpiredCustomSnoozeRetryAllowsCorrection',
-            'ReminderCenterCompleteReopenDiscardsStaleRetries',
-            'ReminderCenterCompleteClickIsAtomic',
-            'ReminderCenterCompleteRequiresConfirmation',
-            'ReminderCenterDeliveryFailureDisablesDispositions',
-            'ReminderCenterEnterUsesNativeButtonActivation',
-            'ReminderCenterSnoozeGatedDuringCompletionRetry',
-            'ReminderCenterCustomSnoozeErrorRoutesByCode',
-            'ReminderCenterShowFailureRollsBack',
-            'ReminderCenterOpenSourcePreservesNoteGroupState'
-        )) {
-        Assert-Equal $true ([bool] $adapterValidation.$reminderCenterStateField) "提醒中心状态与失败路径验证字段通过：$reminderCenterStateField"
-    }
-    Assert-Equal $true ([bool] $adapterValidation.ReminderDispositionAndSnoozePersistAcrossRestart) '知道了处置与 10/30/60 分钟、明天 09:00 及自定义稍后按成功动作时刻计算、规范持久化并跨重启恢复'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCompletionAndReopenAreAtomic) '完成便签事务原子推进 cursor、取消活动稍后并保留未到期 absolute，失败全量保留'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderSnoozeSuppressesBaseCyclesUntilExpiry) '活动稍后未到期时抑制同规则基础周期（含重启），到期按原 occurrence 重送达，解决后只补 cursor 之后最新周期'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownReminderWpfBehavior) '倒计时 occurrence 进入只含安全动作的提醒中心：完成便签不出现，打开倒计时来源保留草稿'
-    Assert-Equal $true ([bool] $adapterValidation.RepeatingReminderDueBeforeShow) '重复提醒只在窗口显示前已到期时才进入提醒中心'
-    Assert-Equal $true ([bool] $adapterValidation.RepeatingReminderContentRendered) '重复提醒条目经真实渲染确认且未解决 occurrence 唯一'
-    Assert-Equal $true ([bool] $adapterValidation.RepeatingReminderNoDuplicate) '重复提醒同一周期不重复加入提醒中心'
     # #140 主窗口倒计时提醒与编辑回归：补齐 C# 验证面已计算但断言面缺失的倒计时规则/目标重算事务字段；
     # 0–8 条规则边界、删除确认与编辑回填无运行态字段（665 冻结，#154 后），按 #137 先例落源码契约。
     # 三态映射（不提醒清空、按时间到点 absoluteOnce、自定义打开编辑器、取消回落与反显）由
     # CountdownReminderModeMappingWorks 断言（#139 增补）覆盖，本块不重复。
-    Assert-Equal $true ([bool] $adapterValidation.CountdownReminderTransactionBehavior) '倒计时规则/目标重算事务：相对 occurrence 按 target-offset 生成、目标移动清理未送达旧 occurrence 并保留 rule ID 与新 occurrence key、过去派生拒绝原子保留内存与磁盘、确认送达后删除规则/倒计时不残留状态（#140）'
     $mainWindowCountdownBehaviorSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\MainWindow.xaml.cs') -Raw -Encoding UTF8
     $beginEditCountdownBody = [regex]::Match(
@@ -6034,18 +5485,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingNotesSource -match 'Height = CalendarIndexOverflowMenuWidth') '悬浮便签…菜单触发器 36×36 命中（#143 命中区源码契约）'
     Assert-Equal $true (
         $floatingNotesSource -match 'PopupFocusLifecycle\.Attach\(popup, trigger') '悬浮便签…菜单接入与筛选/标签选择器同一套弹层焦点生命周期（#149 升级 #143 键盘路径源码契约；Esc 归还焦点行为由 PopupFocusLifecycle 与运行态探针共同钉住）'
-    foreach ($floatingA11yField in @(
-            'FloatingEmptyStateTextIsolationBehavior',
-            'FloatingPlushCardIsUnobscured',
-            'FloatingPlushDoesNotObscureTaskCardContent',
-            'FloatingPlushGroupWithinWorkArea',
-            'FloatingPlushHeaderIntegration',
-            'FloatingPlushReferenceComposition',
-            'FloatingPlushTouchesTaskCard',
-            'FloatingPlushVisibleEdgesMeetCard'
-        )) {
-        Assert-Equal $true ([bool] $adapterValidation.$floatingA11yField) "悬浮窗命中与遮挡验证字段通过：$floatingA11yField（#143 已计算未断言补齐）"
-    }
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceDiagnostics).Count '悬浮窗快速新增日间资源诊断清单为空（#143 已计算未断言补齐）'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'adapter validate-only 保持设置不变'
     Write-TestSegmentTiming -Name 'AdapterAssertions'

@@ -356,61 +356,7 @@ function Assert-CountdownApplicationValidationReport {
         throw '应用 validate-only 报告契约未通过：ValidationReportContractBehavior'
     }
 
-    foreach ($fieldName in @('CalendarReminderBehavior')) {
-        $field = $Report.PSObject.Properties[$fieldName]
-        if ($null -eq $field -or $field.Value -isnot [bool] -or -not [bool] $field.Value) {
-            throw "应用 validate-only 报告的提醒行为未通过：$fieldName"
-        }
-    }
-
-    $requiredUiQualityFields = @(
-        'MainReferenceDecorationsShareScaleAtMinimumAndWideSizes',
-        'MainReferenceDecorationLayerOrderMatches',
-        'MainWorkspaceResourcesFollowDayTheme',
-        'MainDynamicCountdownCardsUseThemeResources',
-        'MainDynamicNoteCardsUseThemeResources',
-        'FloatingReferenceContentSafeAreaMatches',
-        'FloatingReferenceBaselineGateIsolationBehavior',
-        'FloatingReferenceFreshnessGateIsolationBehavior',
-        'FloatingLongNotesBodyHasNoManualLineBreaks',
-        'FloatingLongNotesNaturalWraps',
-        'FloatingLongNotesUsesOnlyOuterScroller',
-        'FloatingLongNotesOuterScrollable',
-        'FloatingLongNotesTopBottomReachable',
-        'FloatingLongNotesSafeAreaMatches',
-        'FloatingLongNotesLayoutValid',
-        'FloatingTitleUsesSemiBoldWeight',
-        'FloatingNoteInputWraps',
-        'FloatingNoteInputScrolls',
-        'FloatingInitialWorkspaceStateMatches',
-        'FloatingWorkspaceSwitchingStaysSynchronized',
-        'FloatingCountdownSelectionSurvivesRefresh',
-        'FloatingStableRefreshScenariosPass',
-        'FloatingRenderSignatureGateIsolationBehavior',
-        'FloatingQuickAddDayResourcesFollowLocalTheme',
-        'FloatingQuickAddIndependentFromApplicationTheme',
-        'FloatingQuickAddThemeResourceIsolationBehavior',
-        'FloatingQuickAddDayExpandedScrolledCaptureWritten',
-        'FloatingSecondaryRemainingUnitSpacingMatches',
-        'FloatingSecondaryRemainingLayoutMatches',
-        'FloatingSecondaryRemainingGateIsolationBehavior',
-        'FloatingScrollBarLocalStyleScoped',
-        'FloatingScrollBarHitTargetUsable',
-        'FloatingScrollBarVisualWeightProgression',
-        'FloatingScrollBarUsesWarmThemeTokens',
-        'FloatingScrollBarContentRemainsSafe',
-        'FloatingScrollBarInputPathsWork',
-        'FloatingScrollBarGateIsolationBehavior',
-        'FloatingScrollBarStateCapturesReady',
-        'UiQualityGateIsolationBehavior'
-    )
-    foreach ($fieldName in $requiredUiQualityFields) {
-        $field = $Report.PSObject.Properties[$fieldName]
-        if ($null -eq $field -or $field.Value -isnot [bool] -or -not [bool] $field.Value) {
-            throw "应用 validate-only 报告的 UI 质量门禁未通过：$fieldName"
-        }
-    }
-
+    # 行为字段与动态卡片样本由应用 Seal 按声明的验证事实把关，Valid 为真即已全部通过；这里只核对随输入变化的参考基线状态。
     if ($MainManifestRequired -ne $FloatingManifestRequired) {
         throw '主窗口与悬浮窗视觉 manifest 模式不一致。'
     }
@@ -458,26 +404,6 @@ function Assert-CountdownApplicationValidationReport {
         }
         elseif ($actualCaptureCount -ne 0) {
             throw "不携带参考资产的发布包伪造了$($baseline.Label)参考基线 captures。"
-        }
-    }
-
-    foreach ($sampleCountFieldName in @(
-            'MainDynamicCountdownCardSampleCount',
-            'MainDynamicNoteCardSampleCount'
-        )) {
-        $sampleCountField = $Report.PSObject.Properties[$sampleCountFieldName]
-        $isInteger = $null -ne $sampleCountField -and (
-            $sampleCountField.Value -is [sbyte] -or
-            $sampleCountField.Value -is [byte] -or
-            $sampleCountField.Value -is [int16] -or
-            $sampleCountField.Value -is [uint16] -or
-            $sampleCountField.Value -is [int32] -or
-            $sampleCountField.Value -is [uint32] -or
-            $sampleCountField.Value -is [int64] -or
-            $sampleCountField.Value -is [uint64]
-        )
-        if (-not $isInteger -or [int64] $sampleCountField.Value -lt 1) {
-            throw "应用 validate-only 报告未命中动态卡片样本：$sampleCountFieldName"
         }
     }
 

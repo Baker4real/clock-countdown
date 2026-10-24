@@ -73,6 +73,12 @@ internal static class VerificationSuite
         Run(results, "desktop-workspace-multi-rule-note-keeps-rules-and-states", VerifyDesktopWorkspaceMultiRuleNoteKeepsRulesAndStates);
         Run(results, "desktop-workspace-note-due-rules-stay-independent", VerifyDesktopWorkspaceNoteDueRulesStayIndependent);
         Run(results, "desktop-workspace-countdown-relative-reminders-follow-target", VerifyDesktopWorkspaceCountdownRelativeReminders);
+        Run(results, "desktop-workspace-undo-snapshot-is-taken-at-commit", VerifyDesktopWorkspaceUndoSnapshotIsTakenAtCommit);
+        Run(results, "desktop-workspace-undo-slot-keeps-only-latest-offer", VerifyDesktopWorkspaceUndoSlotKeepsOnlyLatestOffer);
+        Run(results, "desktop-workspace-undo-expires-at-ten-seconds-of-workspace-clock", VerifyDesktopWorkspaceUndoExpiresAtTenSeconds);
+        Run(results, "desktop-workspace-undo-hold-pauses-only-offering-surface", VerifyDesktopWorkspaceUndoHoldPausesOnlyOfferingSurface);
+        Run(results, "desktop-workspace-undo-failures-keep-offer-and-timing", VerifyDesktopWorkspaceUndoFailuresKeepOfferAndTiming);
+        Run(results, "desktop-workspace-batch-undo-restores-order-and-states", VerifyDesktopWorkspaceBatchUndoRestoresOrderAndStates);
         if (externalSettingsPath is not null)
         {
             Run(
@@ -2593,6 +2599,356 @@ internal static class VerificationSuite
             Applied(workspace, new DeleteCountdownChange(current.Id), "删除倒计时");
             Equal(0, workspace.Snapshot.Settings.Countdowns.Count, "删除后的倒计时数");
             Equal(false, workspace.Snapshot.Settings.ReminderStates.ContainsKey(replacement.Id), "删除倒计时后残留其规则状态");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceUndoSnapshotIsTakenAtCommit()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+            var clock = new SettableClock(nowUtc);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var rule = new AbsoluteOnceReminderRule("undo-snapshot-rule", nowUtc.AddMinutes(30));
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "撤销快照便签", null, false, [], new ReminderRule[] { rule }),
+                "保存带提醒的便签");
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            var stateBeforeDelivery = workspace.Snapshot.Settings.ReminderStates.GetValueOrDefault(rule.Id);
+            var changes = new List<WorkspaceUndoChangedEventArgs>();
+            workspace.UndoChanged += (_, args) => changes.Add(args);
+
+            // 确认框打开期间提醒照常送达：撤销载荷要带上这次送达，而不是弹框前的状态。
+            clock.UtcNow = rule.ScheduledUtc;
+            Equal(
+                true,
+                workspace.ConfirmReminderDisplayed(ReminderSourceKind.Note, note.Id, rule.Id, rule.ScheduledUtc).Succeeded,
+                "确认框期间送达提醒");
+            var deliveredState = workspace.Snapshot.Settings.ReminderStates[rule.Id];
+            Equal(false, Equals(stateBeforeDelivery, deliveredState), "送达前后的提醒状态不同");
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(note.Id), WorkspaceUndoSurface.Floating).Succeeded,
+                "带撤销的删除");
+            var offer = workspace.UndoOffer;
+            Equal<WorkspaceUndoSurface?>(WorkspaceUndoSurface.Floating, offer?.Surface, "撤销载荷所在表面");
+            Equal("撤销删除便签「撤销快照便签」", offer?.Payload.AccessibleName, "撤销入口名称");
+            Equal(deliveredState, (offer?.Payload as DeletedRecordUndo)?.ReminderStates[rule.Id], "撤销载荷里的提醒状态");
+            Equal(1, changes.Count, "提供撤销的槽变更次数");
+
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "撤销删除");
+            Equal("撤销快照便签", workspace.Snapshot.Settings.Notes.Single().Text, "撤销恢复的便签");
+            Equal(deliveredState, workspace.Snapshot.Settings.ReminderStates[rule.Id], "撤销恢复的提醒状态");
+            Equal<WorkspaceUndoOffer?>(null, workspace.UndoOffer, "撤销成功后的槽");
+            Equal(2, changes.Count, "撤销成功后的槽变更次数");
+            Equal<WorkspaceUndoEnd?>(WorkspaceUndoEnd.Restored, changes[1].EndReason, "撤销成功的槽结束原因");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceUndoSlotKeepsOnlyLatestOffer()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: new SettableClock(nowUtc)));
+            Applied(workspace, new SaveCountdownChange(null, "槽替换倒计时", nowUtc.AddDays(2), []), "保存倒计时");
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "槽替换便签", null, false, [], Array.Empty<ReminderRule>()),
+                "保存便签");
+            var countdown = workspace.Snapshot.Settings.Countdowns.Single();
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            var changes = new List<WorkspaceUndoChangedEventArgs>();
+            workspace.UndoChanged += (_, args) => changes.Add(args);
+
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteCountdownChange(countdown.Id), WorkspaceUndoSurface.Main).Succeeded,
+                "主窗口带撤销的删除");
+            var deleteOffer = workspace.UndoOffer;
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new SetNoteCompletionChange(note.Id, true), WorkspaceUndoSurface.Floating).Succeeded,
+                "悬浮窗带撤销的完成");
+            Equal(2, changes.Count, "两次提供撤销的槽变更次数");
+            Equal<WorkspaceUndoSurface?>(WorkspaceUndoSurface.Floating, changes[1].Current?.Surface, "替换后的槽表面");
+            Equal("撤销完成便签「槽替换便签」", changes[1].Current?.Payload.AccessibleName, "替换后的撤销入口名称");
+            Equal(deleteOffer, changes[1].Ended, "被替换的载荷");
+            Equal<WorkspaceUndoEnd?>(WorkspaceUndoEnd.Superseded, changes[1].EndReason, "被替换载荷的结束原因");
+
+            var wrongSurface = workspace.Undo(WorkspaceUndoSurface.Main);
+            Equal(false, wrongSurface.Succeeded, "从未发起的表面撤销");
+            Equal("没有可撤销的操作。", wrongSurface.Error, "从未发起的表面撤销的错误");
+            Equal(0, workspace.Snapshot.Settings.Countdowns.Count, "被替换的删除不能再恢复");
+
+            Throws<ArgumentException>(
+                () => workspace.ApplyWithUndo(new SetNoteCompletionChange(note.Id, false), WorkspaceUndoSurface.Main),
+                "重新打开便签申请撤销");
+            Equal(true, workspace.Snapshot.Settings.Notes.Single().IsCompleted, "被拒绝的重新打开没有提交");
+            Equal(2, changes.Count, "失败的撤销与被拒绝的变更不改槽");
+
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "撤销最近一次完成");
+            Equal(false, workspace.Snapshot.Settings.Notes.Single().IsCompleted, "撤销完成后的便签");
+            Equal(0, workspace.Snapshot.Settings.Countdowns.Count, "撤销完成不恢复更早的删除");
+            Equal<WorkspaceUndoOffer?>(null, workspace.UndoOffer, "撤销后的槽");
+            Equal(false, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "空槽再次撤销");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceUndoExpiresAtTenSeconds()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+            var clock = new SettableClock(nowUtc);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            foreach (var text in new[] { "到期甲", "到期乙" })
+            {
+                Applied(
+                    workspace,
+                    new SaveNoteChange(null, text, null, false, [], Array.Empty<ReminderRule>()),
+                    $"保存{text}");
+            }
+
+            string Id(string text) => workspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id;
+            var changes = new List<WorkspaceUndoChangedEventArgs>();
+            workspace.UndoChanged += (_, args) => changes.Add(args);
+            Equal(TimeSpan.FromSeconds(10), DesktopWorkspace.UndoWindow, "撤销窗口");
+
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(Id("到期甲")), WorkspaceUndoSurface.Main).Succeeded,
+                "第一次带撤销的删除");
+            clock.UtcNow = nowUtc.AddSeconds(6);
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(Id("到期乙")), WorkspaceUndoSurface.Main).Succeeded,
+                "6 秒后第二次带撤销的删除");
+
+            // 新载荷重新计满 10 秒：第一次删除后第 15.9999999 秒仍在，第 16 秒（新载荷满 10 秒）收起。
+            clock.UtcNow = nowUtc.AddSeconds(16).AddTicks(-1);
+            workspace.ExpireUndoIfDue();
+            Equal("撤销删除便签「到期乙」", workspace.UndoOffer?.Payload.AccessibleName, "新载荷满 10 秒前的槽");
+            clock.UtcNow = nowUtc.AddSeconds(16);
+            workspace.ExpireUndoIfDue();
+            Equal<WorkspaceUndoOffer?>(null, workspace.UndoOffer, "新载荷满 10 秒的槽");
+            Equal(3, changes.Count, "提供、替换与到期的槽变更次数");
+            Equal<WorkspaceUndoEnd?>(WorkspaceUndoEnd.Expired, changes[2].EndReason, "到期的结束原因");
+            Equal(0, workspace.Snapshot.Settings.Notes.Count, "到期不恢复便签");
+            Equal(false, workspace.Undo(WorkspaceUndoSurface.Main).Succeeded, "到期后撤销");
+            workspace.ExpireUndoIfDue();
+            Equal(3, changes.Count, "空槽到期检查不发变更");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceUndoHoldPausesOnlyOfferingSurface()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+            var clock = new SettableClock(nowUtc);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            foreach (var text in new[] { "暂停甲", "暂停乙", "暂停丙" })
+            {
+                Applied(
+                    workspace,
+                    new SaveNoteChange(null, text, null, false, [], Array.Empty<ReminderRule>()),
+                    $"保存{text}");
+            }
+
+            string Id(string text) => workspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id;
+            void At(int seconds)
+            {
+                clock.UtcNow = nowUtc.AddSeconds(seconds);
+                workspace.ExpireUndoIfDue();
+            }
+
+            // 另一表面上的悬停不暂停这份载荷。
+            workspace.SetUndoHovered(WorkspaceUndoSurface.Main, true);
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(Id("暂停甲")), WorkspaceUndoSurface.Floating).Succeeded,
+                "悬浮窗带撤销的删除");
+            At(4);
+            workspace.SetUndoHovered(WorkspaceUndoSurface.Floating, true);
+            At(30);
+            Equal("撤销删除便签「暂停甲」", workspace.UndoOffer?.Payload.AccessibleName, "悬停暂停后的槽");
+            workspace.SetUndoFocused(WorkspaceUndoSurface.Floating, true);
+            workspace.SetUndoHovered(WorkspaceUndoSurface.Floating, false);
+            At(40);
+            Equal("撤销删除便签「暂停甲」", workspace.UndoOffer?.Payload.AccessibleName, "焦点仍在时的槽");
+
+            // 焦点离开后按剩余 6 秒继续，而不是重新计满 10 秒。
+            workspace.SetUndoFocused(WorkspaceUndoSurface.Floating, false);
+            clock.UtcNow = nowUtc.AddSeconds(46).AddTicks(-1);
+            workspace.ExpireUndoIfDue();
+            Equal("撤销删除便签「暂停甲」", workspace.UndoOffer?.Payload.AccessibleName, "剩余时间走完前的槽");
+            At(46);
+            Equal<WorkspaceUndoOffer?>(null, workspace.UndoOffer, "剩余时间走完的槽");
+
+            // 新载荷落在已被悬停的表面上：从暂停开始，移开后才计满 10 秒。
+            At(50);
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(Id("暂停乙")), WorkspaceUndoSurface.Main).Succeeded,
+                "主窗口带撤销的删除");
+            At(120);
+            Equal("撤销删除便签「暂停乙」", workspace.UndoOffer?.Payload.AccessibleName, "悬停中提供的槽");
+            workspace.SetUndoHovered(WorkspaceUndoSurface.Main, false);
+            clock.UtcNow = nowUtc.AddSeconds(130).AddTicks(-1);
+            workspace.ExpireUndoIfDue();
+            Equal("撤销删除便签「暂停乙」", workspace.UndoOffer?.Payload.AccessibleName, "移开后满 10 秒前的槽");
+            At(130);
+            Equal<WorkspaceUndoOffer?>(null, workspace.UndoOffer, "移开后满 10 秒的槽");
+
+            // 已到点但节拍还没来时悬停，不能把过期载荷留住。
+            At(140);
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(Id("暂停丙")), WorkspaceUndoSurface.Floating).Succeeded,
+                "到点前带撤销的删除");
+            clock.UtcNow = nowUtc.AddSeconds(150);
+            WorkspaceUndoEnd? endReason = null;
+            workspace.UndoChanged += (_, args) => endReason = args.EndReason;
+            workspace.SetUndoHovered(WorkspaceUndoSurface.Floating, true);
+            Equal<WorkspaceUndoOffer?>(null, workspace.UndoOffer, "到点后悬停的槽");
+            Equal<WorkspaceUndoEnd?>(WorkspaceUndoEnd.Expired, endReason, "到点后悬停的结束原因");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceUndoFailuresKeepOfferAndTiming()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+            var clock = new SettableClock(nowUtc);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            foreach (var text in new[] { "失败甲", "失败乙" })
+            {
+                Applied(
+                    workspace,
+                    new SaveNoteChange(null, text, null, false, [], Array.Empty<ReminderRule>()),
+                    $"保存{text}");
+            }
+
+            string Id(string text) => workspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id;
+            var firstId = Id("失败甲");
+            var secondId = Id("失败乙");
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(firstId), WorkspaceUndoSurface.Floating).Succeeded,
+                "带撤销的删除");
+            var offer = workspace.UndoOffer;
+            var changes = new List<WorkspaceUndoChangedEventArgs>();
+            workspace.UndoChanged += (_, args) => changes.Add(args);
+
+            clock.UtcNow = nowUtc.AddSeconds(5);
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            Equal(
+                false,
+                workspace.ApplyWithUndo(new DeleteNoteChange(secondId), WorkspaceUndoSurface.Main).Succeeded,
+                "落盘失败的带撤销删除");
+            Equal(offer, workspace.UndoOffer, "提交失败后的槽");
+            Equal(false, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "落盘失败的撤销");
+            Equal(offer, workspace.UndoOffer, "撤销失败后的槽");
+            Equal(0, changes.Count, "失败时的槽变更次数");
+            Directory.Delete(settingsPath + ".tmp");
+
+            clock.UtcNow = nowUtc.AddSeconds(9);
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "失败后重试撤销");
+            SequenceEqual(
+                new[] { "失败乙", "失败甲" },
+                workspace.Snapshot.Settings.Notes.Select(note => note.Text).ToArray(),
+                "重试撤销后的便签");
+
+            // 失败的提交不重置计时：第 20 秒提供，第 25 秒失败，仍在第 30 秒到期。
+            clock.UtcNow = nowUtc.AddSeconds(20);
+            Equal(
+                true,
+                workspace.ApplyWithUndo(new DeleteNoteChange(firstId), WorkspaceUndoSurface.Floating).Succeeded,
+                "再次带撤销的删除");
+            clock.UtcNow = nowUtc.AddSeconds(25);
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            Equal(
+                false,
+                workspace.ApplyWithUndo(new DeleteNoteChange(secondId), WorkspaceUndoSurface.Main).Succeeded,
+                "再次落盘失败的带撤销删除");
+            Directory.Delete(settingsPath + ".tmp");
+            clock.UtcNow = nowUtc.AddSeconds(30);
+            workspace.ExpireUndoIfDue();
+            Equal<WorkspaceUndoOffer?>(null, workspace.UndoOffer, "失败没有重置的计时");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceBatchUndoRestoresOrderAndStates()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+            var clock = new SettableClock(nowUtc);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var rule = new AbsoluteOnceReminderRule("batch-undo-rule", nowUtc.AddMinutes(5));
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "批量一", null, false, [], Array.Empty<ReminderRule>()),
+                "保存批量一");
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "批量二", null, false, [], new ReminderRule[] { rule }),
+                "保存批量二");
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "批量三", null, false, [], Array.Empty<ReminderRule>()),
+                "保存批量三");
+            string Id(string text) => workspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id;
+            string[] Texts() => workspace.Snapshot.Settings.Notes.Select(note => note.Text).ToArray();
+            clock.UtcNow = rule.ScheduledUtc;
+            Equal(
+                true,
+                workspace.ConfirmReminderDisplayed(ReminderSourceKind.Note, Id("批量二"), rule.Id, rule.ScheduledUtc).Succeeded,
+                "送达批量二的提醒");
+            var deliveredState = workspace.Snapshot.Settings.ReminderStates[rule.Id];
+
+            Equal(
+                true,
+                workspace.ApplyWithUndo(
+                    new DeleteNotesChange(new[] { Id("批量二").ToUpperInvariant(), Id("批量一") }),
+                    WorkspaceUndoSurface.Main).Succeeded,
+                "带撤销的批量删除");
+            Equal("已删除 2 条便签。", workspace.UndoOffer?.Payload.OfferedMessage, "批量删除的撤销提示");
+            Equal(false, workspace.Snapshot.Settings.ReminderStates.ContainsKey(rule.Id), "批量删除清理提醒状态");
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "批量四", null, false, [], Array.Empty<ReminderRule>()),
+                "删除后新增便签");
+
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Main).Succeeded, "撤销批量删除");
+            SequenceEqual(new[] { "批量一", "批量二", "批量三", "批量四" }, Texts(), "撤销批量删除后的原位置");
+            Equal(deliveredState, workspace.Snapshot.Settings.ReminderStates[rule.Id], "撤销批量删除恢复的提醒状态");
+
+            Equal(
+                true,
+                workspace.ApplyWithUndo(
+                    new SetNotesCompletionChange(new[] { Id("批量三"), Id("批量一") }, true),
+                    WorkspaceUndoSurface.Floating).Succeeded,
+                "带撤销的批量完成");
+            Equal("已完成 2 条便签 ·", workspace.UndoOffer?.Payload.OfferedMessage, "批量完成的撤销提示");
+            SequenceEqual(
+                new[] { true, false, true, false },
+                workspace.Snapshot.Settings.Notes.Select(note => note.IsCompleted).ToArray(),
+                "批量完成后的完成状态");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "撤销批量完成");
+            SequenceEqual(
+                new[] { false, false, false, false },
+                workspace.Snapshot.Settings.Notes.Select(note => note.IsCompleted).ToArray(),
+                "撤销批量完成后的完成状态");
         });
     }
 

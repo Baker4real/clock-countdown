@@ -62,9 +62,7 @@ public sealed partial class FloatingWindow : Window
     private int _nativeWindowDragCompletionCount;
     private readonly string _assetRoot;
     private bool _assetsLoaded;
-    private readonly WorkspaceUndoCountdown _deleteUndoCountdown;
     private NoteCompletionExit? _noteCompletionExit;
-    private bool _retainFloatingUndoMessage;
 
     internal FloatingWindow(
         DesktopWorkspace desktopWorkspace,
@@ -83,7 +81,6 @@ public sealed partial class FloatingWindow : Window
             LoadAssets(assetRoot);
         }
 
-        _deleteUndoCountdown = new WorkspaceUndoCountdown(Dispatcher, ExpireOwnedFloatingDeleteUndo);
         ConfigureControls();
         WireEvents();
         WindowWorkAreaGeometry.TrackChanges(this, Reanchor);
@@ -1607,17 +1604,17 @@ public sealed partial class FloatingWindow : Window
         };
         FloatingOpenSettings.Click += (_, _) => _manager.RevealPreferences(_workspace);
         FloatingSearchNotes.Click += (_, _) => ToggleNoteSearch();
-        FloatingDeleteUndoButton.Click += (_, _) => CommitFloatingDeleteUndo();
-        FloatingDeleteUndoButton.MouseEnter += (_, _) => _deleteUndoCountdown.SetHovering(true);
-        FloatingDeleteUndoButton.MouseLeave += (_, _) => _deleteUndoCountdown.SetHovering(false);
-        FloatingDeleteUndoButton.GotKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(true);
-        FloatingDeleteUndoButton.LostKeyboardFocus += (_, _) => _deleteUndoCountdown.SetFocused(false);
-        var floatingUndo = WorkspaceUndoOffers.For(_desktopWorkspace);
-        floatingUndo.Changed += OnFloatingDeleteUndoChanged;
+        FloatingDeleteUndoButton.Click += (_, _) => CommitFloatingUndo();
+        FloatingDeleteUndoButton.MouseEnter += (_, _) => _desktopWorkspace.SetUndoHovered(WorkspaceUndoSurface.Floating, true);
+        FloatingDeleteUndoButton.MouseLeave += (_, _) => _desktopWorkspace.SetUndoHovered(WorkspaceUndoSurface.Floating, false);
+        FloatingDeleteUndoButton.GotKeyboardFocus += (_, _) => _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Floating, true);
+        FloatingDeleteUndoButton.LostKeyboardFocus += (_, _) => _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Floating, false);
+        _desktopWorkspace.UndoChanged += OnFloatingUndoChanged;
         Closed += (_, _) =>
         {
-            _deleteUndoCountdown.Stop();
-            floatingUndo.Changed -= OnFloatingDeleteUndoChanged;
+            _desktopWorkspace.UndoChanged -= OnFloatingUndoChanged;
+            _desktopWorkspace.SetUndoHovered(WorkspaceUndoSurface.Floating, false);
+            _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Floating, false);
         };
         // #149：滚动时把被裁切长卡的日期印记粘在卡片可见区域内（三行始终可见）。
         FloatingBodyScroller.ScrollChanged += (_, _) => UpdateNoteDateStampStickyOffsets();
@@ -2212,47 +2209,40 @@ public sealed partial class FloatingWindow : Window
         });
     }
 
-    private void OnFloatingDeleteUndoChanged(object? sender, EventArgs eventArgs)
+    // #214：悬浮窗发起的删除与完成就地呈现。本窗载荷被撤销或到期时保留结果文字、只收起按钮；
+    // 被另一窗口替换或收起时整行收起。计时与载荷都在 DesktopWorkspace。
+    private void OnFloatingUndoChanged(object? sender, WorkspaceUndoChangedEventArgs change)
     {
-        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface == WorkspaceUndoSurface.Floating && slot.Payload is { } undo)
+        if (change.Current is { Surface: WorkspaceUndoSurface.Floating } offer)
         {
-            _retainFloatingUndoMessage = false;
-            PresentFloatingDeleteUndo(undo);
+            FloatingDeleteUndoText.Text = offer.Payload.OfferedMessage;
+            AutomationProperties.SetName(
+                FloatingDeleteUndoButton,
+                offer.Payload.AccessibleName);
+            FloatingDeleteUndoButton.Visibility = Visibility.Visible;
+            FloatingDeleteUndoLine.Visibility = Visibility.Visible;
             return;
         }
 
-        _deleteUndoCountdown.Stop();
         FloatingDeleteUndoButton.Visibility = Visibility.Collapsed;
-        if (!_retainFloatingUndoMessage)
-        {
-            FloatingDeleteUndoLine.Visibility = Visibility.Collapsed;
-            FloatingDeleteUndoText.Text = string.Empty;
-        }
-
-        _retainFloatingUndoMessage = false;
-    }
-
-    private void PresentFloatingDeleteUndo(WorkspaceUndo undo)
-    {
-        FloatingDeleteUndoText.Text = undo.OfferedMessage;
-        AutomationProperties.SetName(
-            FloatingDeleteUndoButton,
-            undo.AccessibleName);
-        FloatingDeleteUndoButton.Visibility = Visibility.Visible;
-        FloatingDeleteUndoLine.Visibility = Visibility.Visible;
-        _deleteUndoCountdown.Restart();
-    }
-
-    private void CommitFloatingDeleteUndo()
-    {
-        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface != WorkspaceUndoSurface.Floating || slot.Payload is not { } undo)
+        if (change.Ended is { Surface: WorkspaceUndoSurface.Floating } &&
+            change.EndReason is WorkspaceUndoEnd.Restored or WorkspaceUndoEnd.Expired)
         {
             return;
         }
 
-        var result = _desktopWorkspace.Apply(undo.ToChange());
+        FloatingDeleteUndoLine.Visibility = Visibility.Collapsed;
+        FloatingDeleteUndoText.Text = string.Empty;
+    }
+
+    private void CommitFloatingUndo()
+    {
+        if (_desktopWorkspace.UndoOffer is not { Surface: WorkspaceUndoSurface.Floating } offer)
+        {
+            return;
+        }
+
+        var result = _desktopWorkspace.Undo(WorkspaceUndoSurface.Floating);
         if (!result.Succeeded)
         {
             FloatingDeleteUndoText.Text = $"撤销失败：{result.Error}";
@@ -2260,47 +2250,17 @@ public sealed partial class FloatingWindow : Window
             return;
         }
 
-        FloatingDeleteUndoText.Text = undo.RestoredMessage;
-        _retainFloatingUndoMessage = true;
-        slot.Clear();
+        FloatingDeleteUndoText.Text = offer.Payload.RestoredMessage;
     }
 
-    private void ExpireOwnedFloatingDeleteUndo()
-    {
-        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface != WorkspaceUndoSurface.Floating)
-        {
-            return;
-        }
-
-        _retainFloatingUndoMessage = true;
-        slot.Clear();
-    }
-
-    internal void AdvanceDeleteUndoForValidation(TimeSpan elapsed) =>
-        _deleteUndoCountdown.Advance(elapsed);
-
-    internal DeletedRecordUndo? DeleteUndoForValidation
-    {
-        get
-        {
-            var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
-            return slot.Surface == WorkspaceUndoSurface.Floating ? slot.Payload as DeletedRecordUndo : null;
-        }
-    }
-
-    internal void ExpireDeleteUndoForValidation() => ExpireOwnedFloatingDeleteUndo();
+    internal DeletedRecordUndo? DeleteUndoForValidation =>
+        _desktopWorkspace.UndoOffer is { Surface: WorkspaceUndoSurface.Floating } offer
+            ? offer.Payload as DeletedRecordUndo
+            : null;
 
     internal void DismissDeleteUndoForValidation()
     {
-        _retainFloatingUndoMessage = false;
-        var slot = WorkspaceUndoOffers.For(_desktopWorkspace);
-        if (slot.Surface == WorkspaceUndoSurface.Floating)
-        {
-            slot.Clear();
-            return;
-        }
-
+        _desktopWorkspace.DismissUndo(WorkspaceUndoSurface.Floating);
         FloatingDeleteUndoButton.Visibility = Visibility.Collapsed;
         FloatingDeleteUndoLine.Visibility = Visibility.Collapsed;
         FloatingDeleteUndoText.Text = string.Empty;
@@ -2320,9 +2280,9 @@ public sealed partial class FloatingWindow : Window
             args.Key == Key.Z &&
             IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen &&
             Keyboard.FocusedElement is not TextBoxBase &&
-            WorkspaceUndoOffers.For(_desktopWorkspace).Surface == WorkspaceUndoSurface.Floating)
+            _desktopWorkspace.UndoOffer?.Surface == WorkspaceUndoSurface.Floating)
         {
-            CommitFloatingDeleteUndo();
+            CommitFloatingUndo();
             args.Handled = true;
             return;
         }

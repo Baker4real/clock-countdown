@@ -72,7 +72,9 @@ public sealed partial class FloatingWindow
             var card = _noteDateStampStickyEntries.Select(entry => entry.Card)
                 .FirstOrDefault(candidate => candidate.Child is Grid grid && grid.Children.Contains(completion));
             var exit = NoteCompletionExit.Capture(card, FloatingBodyScroller);
-            var result = _desktopWorkspace.Apply(new SetNoteCompletionChange(note.Id, true));
+            var result = _desktopWorkspace.ApplyWithUndo(
+                new SetNoteCompletionChange(note.Id, true),
+                WorkspaceUndoSurface.Floating);
             if (!result.Succeeded)
             {
                 exit?.Dispose();
@@ -84,7 +86,6 @@ public sealed partial class FloatingWindow
             }
             else
             {
-                WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Floating, new CompletedNoteUndo(note.Id, note.Text));
                 _noteCompletionExit = exit;
                 exit?.Start();
                 var previousError = noteError.Text;
@@ -351,20 +352,11 @@ public sealed partial class FloatingWindow
         }
 
         // #214：撤销留在发起删除的悬浮窗，不转交管理窗口。
-        var snapshot = _desktopWorkspace.Snapshot;
-        var undo = DeletedRecordUndo.ForNote(
-            note,
-            DeletedRecordUndo.CaptureReminderStates(
-                snapshot.Settings.ReminderStates,
-                note.ReminderRules));
-        var result = _desktopWorkspace.Apply(new DeleteNoteChange(note.Id));
+        var result = _desktopWorkspace.ApplyWithUndo(new DeleteNoteChange(note.Id), WorkspaceUndoSurface.Floating);
         if (!result.Succeeded)
         {
             SetNoteMessage($"删除失败：{result.Error}");
-            return;
         }
-
-        WorkspaceUndoOffers.For(_desktopWorkspace).Offer(WorkspaceUndoSurface.Floating, undo);
     }
 
     private static void SetNoteCardError(TextBlock error, Control source, string message)

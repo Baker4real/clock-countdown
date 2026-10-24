@@ -601,6 +601,8 @@ public sealed partial class App : Application
         }
         _mainWindow?.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
         _floatingWindow.UpdateTime(nowUtc);
+        // #214：10 秒撤销窗口唯一的节拍来源；到期判断在工作区里按注入时钟做。
+        _desktopWorkspace.ExpireUndoIfDue();
         if (_acceptanceReadOnly)
         {
             return;

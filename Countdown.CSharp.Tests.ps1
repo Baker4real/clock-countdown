@@ -4448,10 +4448,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $requestNoteDeleteBody -match 'new ConfirmationDialog\(\s*this,\s*"删除便签"' -and
         $requestNoteDeleteBody -match 'DeleteConfirmationCopy\.For\(note\.Text\)' -and
-        $requestNoteDeleteBody -match 'ShowDialog\(\) != true' -and
-        $requestNoteDeleteBody -match 'DeletedRecordUndo\.ForNote' -and
-        $requestNoteDeleteBody -match 'WorkspaceUndoSurface\.Floating' -and
-        $requestNoteDeleteBody -notmatch 'NoteDeleted') '悬浮窗删除便签确认写明 10 秒可撤销，成功后在悬浮窗就地登记撤销载荷（#214 源码契约）'
+        $requestNoteDeleteBody -match 'ShowDialog\(\) != true[\s\S]*ApplyWithUndo\(new DeleteNoteChange\(note\.Id\), WorkspaceUndoSurface\.Floating\)' -and
+        $requestNoteDeleteBody -notmatch 'NoteDeleted') '悬浮窗删除便签确认写明 10 秒可撤销，确认后才带撤销提交、在悬浮窗就地登记撤销载荷（#214 源码契约）'
+    $updateInteractiveStateBody = [regex]::Match(
+        $appHostSource,
+        'private void UpdateInteractiveState\(\).*?\r?\n    private void AdvanceAcceptanceState',
+        [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
+    Assert-Equal $true (
+        $updateInteractiveStateBody -match '_desktopWorkspace\.ExpireUndoIfDue\(\);') '应用节拍驱动工作区检查 10 秒撤销是否到期；validate-only 没有这个节拍（#214 源码契约）'
     # #156 源码契约：朗读退出映射、标签关系、快捷键与窗口复位钉在实现面，运行态由探针共同钉住。
     Assert-Equal $true (
         $uiControlsSource -match 'internal sealed class SilentTextBlock : TextBlock' -and
@@ -5367,9 +5371,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $onDeleteCountdownBody -match 'ShowDialog\(\) != true' -and
         $onDeleteCountdownBody -match 'new DeleteCountdownChange\(id\)') '倒计时删除先经确认弹层（取消即返回不删）再提交 DeleteCountdownChange（#140 删除确认源码契约）'
     Assert-Equal $true (
-        $onDeleteCountdownBody -match 'DeletedRecordUndo\.ForCountdown' -and
-        $onDeleteCountdownBody -match 'DeletedRecordUndo\.CaptureReminderStates' -and
-        $onDeleteCountdownBody -match 'RegisterDeleteUndo\(undo\);') '倒计时删除成功后捕获记录与规则提醒状态为撤销载荷并提供状态条入口（#155 源码契约）'
+        $onDeleteCountdownBody -match 'ShowDialog\(\) != true[\s\S]*ApplyWithUndo\(new DeleteCountdownChange\(id\), WorkspaceUndoSurface\.Main\)') '倒计时删除确认后才带撤销提交，记录与规则提醒状态由工作区在提交时捕获并经状态条呈现（#155/#214 源码契约）'
     $onDeleteNoteBody = [regex]::Match(
         $mainWindowCountdownBehaviorSource,
         'private void OnDeleteNote\(object sender, RoutedEventArgs eventArgs\).*?\r?\n    // #155',
@@ -5377,35 +5379,34 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ($onDeleteNoteBody.Length -gt 0) '便签删除 OnDeleteNote 方法体可定位（#155 源码契约）'
     Assert-Equal $true (
         $onDeleteNoteBody -match 'new ConfirmationDialog\(\s*this,\s*"删除便签"' -and
-        $onDeleteNoteBody -match 'ShowDialog\(\) != true' -and
-        $onDeleteNoteBody -match 'new DeleteNoteChange\(id\)' -and
-        $onDeleteNoteBody -match 'DeletedRecordUndo\.ForNote' -and
-        $onDeleteNoteBody -match 'RegisterDeleteUndo\(undo\);') '便签删除先经确认弹层（取消即返回不删）再提交 DeleteNoteChange 并提供状态条撤销入口（#155 源码契约）'
-    $registerDeleteUndoBody = [regex]::Match(
+        $onDeleteNoteBody -match 'ShowDialog\(\) != true[\s\S]*ApplyWithUndo\(new DeleteNoteChange\(id\), WorkspaceUndoSurface\.Main\)') '便签删除先经确认弹层（取消即返回不删），确认后才带撤销提交 DeleteNoteChange 并经状态条提供撤销（#155/#214 源码契约）'
+    $mainUndoChangedBody = [regex]::Match(
         $mainWindowCountdownBehaviorSource,
-        'internal void RegisterDeleteUndo\(DeletedRecordUndo undo\).*?\r?\n    private void OnUndoDeleteClick',
+        'private void OnMainUndoChanged\(object\? sender, WorkspaceUndoChangedEventArgs change\).*?\r?\n    private void CommitMainUndo',
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true (
-        $registerDeleteUndoBody.Length -gt 0 -and
-        $registerDeleteUndoBody -match 'MainStatusUndoButton\.Visibility = Visibility\.Visible' -and
-        $registerDeleteUndoBody -match 'ResetDeleteUndoTimer\(\);' -and
-        $registerDeleteUndoBody -match 'WorkspaceUndoSurface\.Main') '删除撤销入口经主窗状态条呈现并重置短时过期计时（#155/#214 源码契约）'
+        $mainUndoChangedBody.Length -gt 0 -and
+        $mainUndoChangedBody -match 'WorkspaceUndoSurface\.Main' -and
+        $mainUndoChangedBody -match 'MainStatusUndoButton\.Visibility = Visibility\.Visible' -and
+        $mainUndoChangedBody -match 'MainStatusUndoButton\.Visibility = Visibility\.Collapsed') '主窗只呈现自己发起的撤销载荷，槽换走或收起时收起状态条入口（#155/#214 源码契约）'
     Assert-Equal $true (
         $mainWindowCountdownBehaviorSource -match 'Key\.Z' -and
-        $mainWindowCountdownBehaviorSource -match 'SetHovering\(true\)' -and
-        $mainWindowCountdownBehaviorSource -match 'SetFocused\(true\)') '管理窗口撤销期间 Ctrl+Z 生效，焦点或悬停暂停计时（#214 源码契约）'
+        $mainWindowCountdownBehaviorSource -match 'SetUndoHovered\(WorkspaceUndoSurface\.Main, true\)' -and
+        $mainWindowCountdownBehaviorSource -match 'SetUndoFocused\(WorkspaceUndoSurface\.Main, true\)') '管理窗口撤销期间 Ctrl+Z 生效，焦点或悬停暂停计时（#214 源码契约）'
     $floatingWindowCodeSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.xaml.cs') -Raw -Encoding UTF8
     $deleteUndoOfferSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\DeleteUndoOffer.cs') -Raw -Encoding UTF8
+    $desktopWorkspaceUndoSource = Get-Content -LiteralPath (
+        Join-Path $PSScriptRoot 'src\MinminCountdown.Core\DesktopWorkspace.cs') -Raw -Encoding UTF8
     Assert-Equal $true (
         $deleteUndoOfferSource -match '删除后 10 秒内可撤销' -and
-        $deleteUndoOfferSource -match 'TimeSpan\.FromSeconds\(10\)') '删除确认写明 10 秒可撤销，撤销窗口为 10 秒（#214 源码契约）'
+        $desktopWorkspaceUndoSource -match 'UndoWindow \{ get; \} = TimeSpan\.FromSeconds\(10\)') '删除确认写明 10 秒可撤销，撤销窗口为 10 秒（#214 源码契约）'
     Assert-Equal $true (
         $floatingWindowCodeSource -match 'Key\.Z' -and
         $floatingWindowCodeSource -match 'WorkspaceUndoSurface\.Floating' -and
-        $floatingWindowCodeSource -match 'SetHovering\(true\)' -and
-        $floatingWindowCodeSource -match 'SetFocused\(true\)' -and
+        $floatingWindowCodeSource -match 'SetUndoHovered\(WorkspaceUndoSurface\.Floating, true\)' -and
+        $floatingWindowCodeSource -match 'SetUndoFocused\(WorkspaceUndoSurface\.Floating, true\)' -and
         $floatingWindowXamlSource -match 'x:Name="FloatingDeleteUndoLine"[\s\S]{0,240}Visibility="Collapsed"' -and
         $floatingWindowXamlSource -match 'x:Name="FloatingDeleteUndoButton"') '悬浮窗底部撤销行常态收起，Ctrl+Z 与悬停/焦点暂停接到同一撤销槽（#214 源码契约）'
     $describeUnsavedExitWorkBody = [regex]::Match(

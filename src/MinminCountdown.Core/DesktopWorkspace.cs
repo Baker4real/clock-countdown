@@ -10,6 +10,11 @@ public sealed partial class DesktopWorkspace
     private CountdownSettings _current;
     private DesktopWorkspaceFilter _filter = DesktopWorkspaceFilter.Empty;
     private bool _settingsWereMigrated;
+    private readonly HashSet<WorkspaceUndoSurface> _undoHovered = new();
+    private readonly HashSet<WorkspaceUndoSurface> _undoFocused = new();
+    private WorkspaceUndoOffer? _undoOffer;
+    private TimeSpan _undoRemaining;
+    private DateTimeOffset? _undoRunningSinceUtc;
 
     private DesktopWorkspace(
         string settingsPath,
@@ -28,7 +33,14 @@ public sealed partial class DesktopWorkspace
 
     public event EventHandler? StateChanged;
 
+    public event EventHandler<WorkspaceUndoChangedEventArgs>? UndoChanged;
+
+    public static TimeSpan UndoWindow { get; } = TimeSpan.FromSeconds(10);
+
     public IClock Clock => _store.Clock;
+
+    // #214/#233：唯一最近操作槽。删除与完成共用，只由发起的表面呈现。
+    public WorkspaceUndoOffer? UndoOffer => _undoOffer;
 
     public SettingsRecoveryOutcome Recovery { get; }
 
@@ -276,6 +288,162 @@ public sealed partial class DesktopWorkspace
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    // 撤销载荷在提交这一刻从当前设置取（确认框关闭之后），提交成功才替换槽并重新计满 10 秒；
+    // 提交失败时槽原样保留。只支持删除与完成，其余变更直接拒绝且不提交。
+    public DesktopWorkspaceChangeResult ApplyWithUndo(
+        DesktopWorkspaceChange change,
+        WorkspaceUndoSurface surface)
+    {
+        var undo = CaptureUndo(change);
+        var result = Apply(change);
+        if (result.Succeeded && undo is not null)
+        {
+            OfferUndo(new WorkspaceUndoOffer(surface, undo));
+        }
+
+        return result;
+    }
+
+    // 只撤销发起表面上的那一份载荷；恢复失败时载荷与计时原样保留，供用户重试。
+    public DesktopWorkspaceChangeResult Undo(WorkspaceUndoSurface surface)
+    {
+        if (_undoOffer is not { } offer || offer.Surface != surface)
+        {
+            return Result(false, "没有可撤销的操作。");
+        }
+
+        var result = Apply(offer.Payload.ToChange());
+        if (result.Succeeded)
+        {
+            EndUndo(WorkspaceUndoEnd.Restored);
+        }
+
+        return result;
+    }
+
+    public void DismissUndo(WorkspaceUndoSurface surface)
+    {
+        if (_undoOffer?.Surface == surface)
+        {
+            EndUndo(WorkspaceUndoEnd.Dismissed);
+        }
+    }
+
+    // 悬停或焦点停在发起表面的撤销入口上时暂停计时，移开后按剩余时间继续，而不是重新计满。
+    public void SetUndoHovered(WorkspaceUndoSurface surface, bool hovered) =>
+        SetUndoHold(_undoHovered, surface, hovered);
+
+    public void SetUndoFocused(WorkspaceUndoSurface surface, bool focused) =>
+        SetUndoHold(_undoFocused, surface, focused);
+
+    // 计时只读注入的时钟；界面计时器按节拍调用这里，走满 10 秒（含）即收起载荷。
+    public void ExpireUndoIfDue()
+    {
+        if (_undoRunningSinceUtc is { } runningSinceUtc &&
+            _store.Clock.UtcNow - runningSinceUtc >= _undoRemaining)
+        {
+            EndUndo(WorkspaceUndoEnd.Expired);
+        }
+    }
+
+    private WorkspaceUndo? CaptureUndo(DesktopWorkspaceChange change) => change switch
+    {
+        DeleteCountdownChange delete => _current.Countdowns.FirstOrDefault(record =>
+                string.Equals(record.Id, delete.Id, StringComparison.OrdinalIgnoreCase)) is { } countdown
+            ? DeletedRecordUndo.ForCountdown(
+                FreezeCountdown(countdown),
+                DeletedRecordUndo.CaptureReminderStates(_current.ReminderStates, countdown.ReminderRules))
+            : null,
+        DeleteNoteChange delete => FindNote(delete.Id) is { } note
+            ? DeletedRecordUndo.ForNote(
+                FreezeNote(note),
+                DeletedRecordUndo.CaptureReminderStates(_current.ReminderStates, note.ReminderRules))
+            : null,
+        DeleteNotesChange delete => CaptureDeletedNotes(delete.Ids),
+        SetNoteCompletionChange { Completed: true } completion => FindNote(completion.Id) is { } note
+            ? new CompletedNoteUndo(note.Id, note.Text)
+            : null,
+        SetNotesCompletionChange { Completed: true } completion =>
+            new CompletedNotesUndo(FreezeStrings(completion.Ids)),
+        _ => throw new ArgumentException("该变更不提供撤销。", nameof(change))
+    };
+
+    private NoteRecord? FindNote(string id) =>
+        _current.Notes.FirstOrDefault(note => string.Equals(note.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    // 批量删除按设置里的原位置记下每条便签，撤销时插回原处。
+    private DeletedNotesUndo CaptureDeletedNotes(IReadOnlyList<string> ids)
+    {
+        var records = _current.Notes
+            .Select((note, index) => new DeletedNoteEntry(FreezeNote(note), index))
+            .Where(entry => ids.Contains(entry.Record.Id, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        return new DeletedNotesUndo(
+            Array.AsReadOnly(records),
+            DeletedRecordUndo.CaptureReminderStates(
+                _current.ReminderStates,
+                records.SelectMany(entry => entry.Record.ReminderRules).ToArray()));
+    }
+
+    private void OfferUndo(WorkspaceUndoOffer offer)
+    {
+        var superseded = _undoOffer;
+        _undoOffer = offer;
+        _undoRemaining = UndoWindow;
+        _undoRunningSinceUtc = UndoHeld() ? null : _store.Clock.UtcNow;
+        UndoChanged?.Invoke(this, new WorkspaceUndoChangedEventArgs(
+            offer,
+            superseded,
+            superseded is null ? null : WorkspaceUndoEnd.Superseded));
+    }
+
+    private void EndUndo(WorkspaceUndoEnd reason)
+    {
+        if (_undoOffer is not { } ended)
+        {
+            return;
+        }
+
+        _undoOffer = null;
+        _undoRunningSinceUtc = null;
+        UndoChanged?.Invoke(this, new WorkspaceUndoChangedEventArgs(null, ended, reason));
+    }
+
+    private void SetUndoHold(HashSet<WorkspaceUndoSurface> holds, WorkspaceUndoSurface surface, bool active)
+    {
+        var wasHeld = UndoHeld();
+        var changed = active ? holds.Add(surface) : holds.Remove(surface);
+        if (!changed || _undoOffer is null || UndoHeld() == wasHeld)
+        {
+            return;
+        }
+
+        var nowUtc = _store.Clock.UtcNow;
+        if (wasHeld)
+        {
+            _undoRunningSinceUtc = nowUtc;
+            return;
+        }
+
+        var elapsed = nowUtc - _undoRunningSinceUtc!.Value;
+        if (elapsed >= _undoRemaining)
+        {
+            EndUndo(WorkspaceUndoEnd.Expired);
+            return;
+        }
+
+        if (elapsed > TimeSpan.Zero)
+        {
+            _undoRemaining -= elapsed;
+        }
+
+        _undoRunningSinceUtc = null;
+    }
+
+    private bool UndoHeld() =>
+        _undoOffer is { } offer &&
+        (_undoHovered.Contains(offer.Surface) || _undoFocused.Contains(offer.Surface));
+
     private DesktopWorkspaceChangeResult ApplySaveCountdown(SaveCountdownChange change)
     {
         var succeeded = TrySaveCountdown(
@@ -362,12 +530,15 @@ public sealed partial class DesktopWorkspace
 
     private static IReadOnlyList<CountdownRecord> FreezeCountdowns(
         IEnumerable<CountdownRecord> records) =>
-        Array.AsReadOnly(records.Select(record => new CountdownRecord(
+        Array.AsReadOnly(records.Select(FreezeCountdown).ToArray());
+
+    private static CountdownRecord FreezeCountdown(CountdownRecord record) =>
+        new(
             record.Id,
             record.Name,
             record.TargetUtc,
             FreezeStrings(record.TagIds),
-            FreezeRules(record.ReminderRules))).ToArray());
+            FreezeRules(record.ReminderRules));
 
     private static IReadOnlyList<NoteRecord> FreezeNotes(IEnumerable<NoteRecord> notes) =>
         Array.AsReadOnly(notes.Select(FreezeNote).ToArray());
@@ -412,13 +583,7 @@ public sealed partial class DesktopWorkspace
 
     private static ReminderSource FreezeReminderSource(ReminderSource source) => source switch
     {
-        CountdownReminderSource countdown => new CountdownReminderSource(
-            new CountdownRecord(
-                countdown.Countdown.Id,
-                countdown.Countdown.Name,
-                countdown.Countdown.TargetUtc,
-                FreezeStrings(countdown.Countdown.TagIds),
-                FreezeRules(countdown.Countdown.ReminderRules))),
+        CountdownReminderSource countdown => new CountdownReminderSource(FreezeCountdown(countdown.Countdown)),
         NoteReminderSource note => new NoteReminderSource(FreezeNote(note.Note)),
         _ => throw new ArgumentOutOfRangeException(nameof(source))
     };
@@ -520,6 +685,28 @@ public abstract record WorkspaceUndo(string Description)
     public abstract string AccessibleName { get; }
     public abstract string RestoredMessage { get; }
 }
+
+public enum WorkspaceUndoSurface
+{
+    Main,
+    Floating
+}
+
+public enum WorkspaceUndoEnd
+{
+    Superseded,
+    Restored,
+    Expired,
+    Dismissed
+}
+
+public sealed record WorkspaceUndoOffer(WorkspaceUndoSurface Surface, WorkspaceUndo Payload);
+
+// Current 是槽里现在的载荷；Ended 是这次被收起的载荷及原因（新载荷替换旧载荷时为 Superseded）。
+public sealed record WorkspaceUndoChangedEventArgs(
+    WorkspaceUndoOffer? Current,
+    WorkspaceUndoOffer? Ended,
+    WorkspaceUndoEnd? EndReason);
 
 // #233：完成撤销只重新打开同一便签，不回写旧cursor或已处置的提醒状态。
 public sealed record CompletedNoteUndo(string Id, string Description) : WorkspaceUndo(Description)

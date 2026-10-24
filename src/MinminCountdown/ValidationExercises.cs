@@ -4347,9 +4347,11 @@ internal static class ValidationExercises
                 latestDisk.Notes.Single(item => item.Id == other.Id).IsCompleted &&
                 !floating.FloatingDeleteUndoButton.IsVisible, "#233：删除撤销不能恢复更早的完成撤销提示。");
             CompleteIn(floating, deleted.Id);
-            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(9));
+            clock.UtcNow = clock.UtcNow.AddSeconds(9);
+            workspace.ExpireUndoIfDue();
             Must(floating.FloatingDeleteUndoButton.IsVisible, "#233：完成撤销应保留10秒。");
-            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(2));
+            clock.UtcNow = clock.UtcNow.AddSeconds(2);
+            workspace.ExpireUndoIfDue();
             Must(!floating.FloatingDeleteUndoButton.IsVisible &&
                 new SettingsStore(clock: clock).Load(path).Settings.Notes.Single(item => item.Id == deleted.Id).IsCompleted,
                 "#233：完成撤销到期应只关闭提示，不重新打开便签。");
@@ -4524,7 +4526,8 @@ internal static class ValidationExercises
                 main.DeleteUndoForValidation is not null &&
                 !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteC.Id),
                 "删除后撤销入口应可用。");
-            main.ExpireDeleteUndoForValidation();
+            clock.UtcNow = clock.UtcNow.Add(DesktopWorkspace.UndoWindow);
+            workspace.ExpireUndoIfDue();
             WindowValidationInput.Pump(main.Dispatcher);
             Must(
                 main.DeleteUndoForValidation is null &&
@@ -4681,23 +4684,30 @@ internal static class ValidationExercises
                 floating.DeleteUndoForValidation is null,
                 "悬浮窗 Ctrl+Z 必须撤销刚刚的删除。");
 
+            // 撤销计时只读工作区的注入时钟；validate-only 没有 App 节拍，推进时钟后显式检查到期。
+            void AdvanceUndoClock(int seconds)
+            {
+                clock.UtcNow = clock.UtcNow.AddSeconds(seconds);
+                workspace.ExpireUndoIfDue();
+            }
+
             DriveFloatingNoteDelete(floating, noteA, confirm: true);
-            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(7));
+            AdvanceUndoClock(7);
             Must(
                 floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible,
                 "未到 10 秒时撤销入口必须仍在。");
             RaiseMouseTransition(floating.FloatingDeleteUndoButton, Mouse.MouseEnterEvent);
-            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(10));
+            AdvanceUndoClock(10);
             Must(
                 floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible &&
                 !workspace.Snapshot.Settings.Notes.Any(item => item.Id == noteA.Id),
                 "鼠标停在撤销按钮上时不得自动收起。");
             RaiseMouseTransition(floating.FloatingDeleteUndoButton, Mouse.MouseLeaveEvent);
-            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(2));
+            AdvanceUndoClock(2);
             Must(
                 floating.FloatingDeleteUndoButton.Visibility == Visibility.Visible,
                 "移开鼠标后必须按剩余时间继续，而不是重新算满 10 秒。");
-            floating.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(2));
+            AdvanceUndoClock(2);
             Must(
                 floating.DeleteUndoForValidation is null &&
                 floating.FloatingDeleteUndoButton.Visibility == Visibility.Collapsed &&
@@ -4781,13 +4791,13 @@ internal static class ValidationExercises
             Must(
                 main.MainStatusUndoButton.Focus(),
                 "撤销按钮必须能获得键盘焦点。");
-            main.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(15));
+            AdvanceUndoClock(15);
             Must(
                 main.MainStatusUndoButton.Visibility == Visibility.Visible &&
                 !workspace.Snapshot.Settings.Countdowns.Any(item => item.Id == countdown.Id),
                 "焦点停在撤销按钮上时不得自动收起。");
             Must(main.StatusText.Focus(), "焦点必须能离开撤销按钮。");
-            main.AdvanceDeleteUndoForValidation(TimeSpan.FromSeconds(12));
+            AdvanceUndoClock(12);
             Must(
                 main.DeleteUndoForValidation is null &&
                 main.MainStatusUndoButton.Visibility == Visibility.Collapsed &&

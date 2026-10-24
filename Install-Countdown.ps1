@@ -75,7 +75,6 @@ $powerShellProcessName = [System.IO.Path]::GetFileName($powerShellEngine)
 Get-Service -Name W32Time -ErrorAction Stop | Out-Null
 
 Import-Module (Join-Path $staging 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path $staging 'Countdown.Validation.psm1') -Force
 $interactiveContext = Get-CountdownInteractiveDesktopContext
 $contextExpectationProvided = $PSBoundParameters.ContainsKey('ExpectedInteractiveUser') -or $PSBoundParameters.ContainsKey('ExpectedInteractiveSessionId') -or $PSBoundParameters.ContainsKey('ExpectedDesktopPath')
 if ($contextExpectationProvided) {
@@ -161,6 +160,8 @@ function Wait-CountdownNetworkTimeSource {
 
 $validationSuite = $null
 if (-not $DeferCommit) {
+    # 验证 module 只在本机直接安装时从仓库加载，不随办公室发布包分发。
+    Import-Module (Join-Path $staging 'Countdown.Validation.psm1') -Force
     $validationSuite = Invoke-CountdownValidationSuite `
         -Root $staging `
         -PowerShell7Path $powerShellEngine `

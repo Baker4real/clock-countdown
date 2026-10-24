@@ -56,14 +56,14 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归夹具；只保留在仓库中，不进办公室发布包、不安装到运行目录，生产入口不调用
-- `Countdown.Core.psm1`：北京时间换算与倒计时核心逻辑
+- `Countdown.Core.psm1`：旧 PowerShell WPF 兼容回归夹具使用的北京时间换算与倒计时核心逻辑；只保留在仓库中，不进办公室发布包，安装时从运行目录移除残留
 - `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
 - `Countdown.Runtime.psm1`：每次启动的令牌、窗口首帧就绪回执、有界等待与滚动诊断日志
 - `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
 - `Countdown.InstallTransaction.psm1`：带全机互斥锁的可回滚安装事务；覆盖安装目录、启动器、两份计划任务与 Windows 时间服务状态，并为办公室验收原子写出独立回执
 - `Countdown.TransactionAcceptance.psm1`：安装与办公室部署共用的事务验收状态机
-- `Countdown.Validation.psm1`：本机正式安装运行的 Core、C#、兼容 UI 与应用 validate-only 验证 module；办公室延迟提交路径不调用
+- `Countdown.Validation.psm1`：本机正式安装运行的 Core、C#、兼容 UI 与应用 validate-only 验证 module；安装器只在本机直接安装时从仓库加载，办公室延迟提交路径不调用，也不进办公室发布包
 - `Countdown.RemoteDeployment.psm1`：办公室候选安装（不跑测试）、事务验收、回滚、提交后收尾，以及成功/失败回执、部署 binding、独立回读与回滚前诊断的严格契约 module
 - `Countdown.TransferLedger.psm1`：办公室全部 SCP 与 SSH 证据回读共用的计时、吞吐和失败尝试账本 module
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约

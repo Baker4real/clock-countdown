@@ -162,12 +162,10 @@ $script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @('countdown-ic
 # 发布包只装办公室安装路径会加载或安装的文件，静态钉值也只覆盖这些文件。C# 源码、测试、构建与验证工具、
 # DESIGN.md 留在仓库：正式部署在构建前按提交 blob 身份核对构建输入（BuildInputFiles），不在这里钉死。
 $script:nonAssetHashes = [ordered]@{
-    'Countdown.Core.psm1' = 'E1A639B06D404F7F4638CAB4DE6392FB27E5C324D77A2AC44D1B226C8375410B'
     'Countdown.InstallTransaction.psm1' = '087F9B4C8F3116D16FC0379F177BB094A3CC5F3A176DEDDC4076B1223576D8B8'
-    'Countdown.RemoteDeployment.psm1' = 'AFC49C9E034AA05708EA99B68D946177DA69E2B7066DC03EFCC8D7919744C675'
+    'Countdown.RemoteDeployment.psm1' = '16D48EBA79B86849F37E1E46E827D976BC19DFDA21593EC1B8F83F1E98B14D0A'
     'Countdown.TransactionAcceptance.psm1' = 'EC8D18BDBF438D9050A842A3DE7BCFA79EB58F4E9433D856F2062F83882FFE93'
     'Countdown.TransferLedger.psm1' = 'B3051D0F5AF1F7E0351A9637B076E0402DCC9500A21CC41C02594EC9012D88B8'
-    'Countdown.Validation.psm1' = '8AC1BCFC3C299F16DE36F10CB2AC2D01AF5BD33F660CEEBB2CD2C9A6056ABF1A'
     'Countdown.Notes.psm1' = 'CF41E5A29B5FCFB0807E1EA1E6F52AC7FADE4478A18990698F2BA6F725E08CA0'
     'Countdown.Runtime.psm1' = '6EAD9634FAB49CED2C588D74DC62541FEC6852F0DE694EBC53147FD967CD3A88'
     'Countdown.Settings.psm1' = '507BB437A209CC6F340B00D7089171C6D78EFF6C6EF597A87F49E45BF40E95DC'
@@ -376,7 +374,6 @@ function New-CountdownReleaseContractSnapshot {
     $installedFiles = @(
         $script:offlineHolidayDataFiles
     ) + @(
-        'Countdown.Core.psm1',
         'Countdown.InstallTransaction.psm1',
         'Countdown.Notes.psm1',
         'Countdown.Runtime.psm1',
@@ -397,7 +394,8 @@ function New-CountdownReleaseContractSnapshot {
         }
     }
     $installedFiles = @($uniqueInstalled)
-    $retiredRuntimeFiles = @('Countdown.App.psm1') + $script:floatingPlushAssets + @(
+    # 旧 PowerShell WPF 宿主及其独占的核心 module 只留在仓库作兼容回归夹具，安装时从运行目录移除残留。
+    $retiredRuntimeFiles = @('Countdown.App.psm1', 'Countdown.Core.psm1') + $script:floatingPlushAssets + @(
         'app\assets\floating-plush\floating-plush-mymelody-front.png',
         'app\assets\floating-plush\floating-plush-mymelody-pose.png',
         'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
@@ -409,7 +407,7 @@ function New-CountdownReleaseContractSnapshot {
         'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
         'app\assets\floating-plush\floating-plush-kuromi-reference.png'
     )
-    $compatibilityFixtures = @('Countdown.App.psm1') + $officialCharacterAssets + $script:legacyFloatingRegressionAssets
+    $compatibilityFixtures = @('Countdown.App.psm1', 'Countdown.Core.psm1') + $officialCharacterAssets + $script:legacyFloatingRegressionAssets
     $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys)
 
     $hashCopy = [ordered]@{}

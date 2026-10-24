@@ -2631,7 +2631,6 @@ function Invoke-CountdownRemoteDeployment {
         foreach ($requiredPath in @(
                 'Countdown.ReleaseContract.psm1',
                 'Countdown.InstallTransaction.psm1',
-                'Countdown.Validation.psm1',
                 'Countdown.Runtime.psm1',
                 'Countdown.Settings.psm1',
                 'Countdown.TransactionAcceptance.psm1',

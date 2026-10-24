@@ -959,7 +959,6 @@ if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOn
         foreach ($relativePath in @(
                 'Countdown.ReleaseContract.psm1',
                 'Countdown.InstallTransaction.psm1',
-                'Countdown.Validation.psm1',
                 'Countdown.Runtime.psm1',
                 'Countdown.Settings.psm1',
                 'Countdown.TransactionAcceptance.psm1',
@@ -3270,6 +3269,7 @@ $expectedBuildAssets = @(
 $actualBuildAssets = @($releaseContract.BuildAssets | ForEach-Object { "$($_.SourcePath)=>$($_.PublishedPath)" })
 $expectedCompatibilityFixtures = @(
     'Countdown.App.psm1',
+    'Countdown.Core.psm1',
     'sanrio-official-mymelody.png',
     'sanrio-official-cinnamoroll.png',
     'sanrio-official-kuromi.png',
@@ -3282,8 +3282,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 447 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
-Assert-Equal 444 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
+Assert-Equal 445 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
+Assert-Equal 442 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
 Assert-Equal $true ('src\MinminCountdown\NoteCompletionExit.cs' -in @($releaseContract.BuildInputFiles)) '#233 source rebuild checks the completion exit animation by commit identity'
 Assert-Equal $true ('src\MinminCountdown\app.manifest' -in @($releaseContract.BuildInputFiles)) '#219 source rebuild checks the PerMonitorV2 manifest by commit identity'
 foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\MinminCountdown\app.manifest')) {
@@ -3300,7 +3300,6 @@ Assert-Equal $false ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseCont
 Assert-Equal $false ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Design contract stays in the repository, outside the office package'
 Assert-Equal 9 @($releaseContract.BuildAssets).Count 'Release contract declares nine explicit application asset mappings'
 $expectedInstalledSupportFiles = @(
-    'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',
     'Countdown.Notes.psm1',
     'Countdown.Runtime.psm1',
@@ -3326,12 +3325,10 @@ $expectedOfficePackageSupportFiles = @(
     'Deploy-OfficeCountdown.ps1',
     'Install-Countdown.ps1',
     'Countdown.ReleaseContract.psm1',
-    'Countdown.Core.psm1',
     'Countdown.InstallTransaction.psm1',
     'Countdown.RemoteDeployment.psm1',
     'Countdown.TransactionAcceptance.psm1',
     'Countdown.TransferLedger.psm1',
-    'Countdown.Validation.psm1',
     'Countdown.Notes.psm1',
     'Countdown.Runtime.psm1',
     'Countdown.Settings.psm1',
@@ -3377,7 +3374,7 @@ foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Offline holiday data is installed: $offlineHolidayFile"
 }
-Assert-Equal 23 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
+Assert-Equal 24 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
 foreach ($verificationOnlyReference in @(
         'assets\floating-plush\floating-plush-mymelody-reference.png',
         'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
@@ -3394,11 +3391,17 @@ Assert-Equal ($expectedCompatibilityFixtures -join ',') (@($releaseContract.Comp
 Assert-Equal $true ('Countdown.TransactionAcceptance.psm1' -in @($releaseContract.PackageFiles)) 'Transaction acceptance is packaged'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Countdown.TransactionAcceptance.psm1') 'Transaction acceptance is integrity protected'
 Assert-Equal $false ('Countdown.TransactionAcceptance.psm1' -in @($releaseContract.InstalledFiles)) 'Transaction acceptance is not installed as runtime'
-foreach ($deploymentModule in @('Countdown.Validation.psm1', 'Countdown.RemoteDeployment.psm1', 'Countdown.TransferLedger.psm1')) {
+foreach ($deploymentModule in @('Countdown.RemoteDeployment.psm1', 'Countdown.TransferLedger.psm1')) {
     Assert-Equal $true ($deploymentModule -in @($releaseContract.PackageFiles)) "Deployment module is packaged: $deploymentModule"
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($deploymentModule) "Deployment module is integrity protected: $deploymentModule"
     Assert-Equal $false ($deploymentModule -in @($releaseContract.InstalledFiles)) "Deployment module is not installed as runtime: $deploymentModule"
 }
+foreach ($repositoryOnlyModule in @('Countdown.Validation.psm1', 'Countdown.Core.psm1')) {
+    Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.PackageFiles)) "Module the office install never loads stays out of the office package: $repositoryOnlyModule"
+    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($repositoryOnlyModule) "Module the office install never loads is not statically pinned: $repositoryOnlyModule"
+    Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.InstalledFiles)) "Module the office install never loads is not installed as runtime: $repositoryOnlyModule"
+}
+Assert-Equal $true ('Countdown.Core.psm1' -in @($releaseContract.RetiredRuntimeFiles)) 'Legacy core module is cleaned from existing installations'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
 Assert-Equal 67 @($releaseContract.BuildInputFiles).Count 'Build inputs are the source-build closure plus the preflight helper and vendored license read by the build script'
@@ -4374,11 +4377,11 @@ Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath 
 $mutableReleaseContract = Get-CountdownReleaseContract
 $mutableReleaseContract.PackageFiles[0] = 'mutated-package-file'
 $mutableReleaseContract.BuildAssets[0].SourcePath = 'mutated-build-source'
-$mutableReleaseContract.IntegrityHashes['Countdown.Core.psm1'] = ('0' * 64)
+$mutableReleaseContract.IntegrityHashes['Countdown.Notes.psm1'] = ('0' * 64)
 $freshReleaseContract = Get-CountdownReleaseContract
 Assert-Equal $false ('mutated-package-file' -in @($freshReleaseContract.PackageFiles)) 'Release contract returns a fresh package list'
 Assert-Equal $false ('mutated-build-source' -in @($freshReleaseContract.BuildAssets.SourcePath)) 'Release contract returns fresh build asset records'
-Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Countdown.Core.psm1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
+Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Countdown.Notes.psm1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
 
 $releaseContractTestRoot = Join-Path $PSScriptRoot ("release-contract-test-" + [guid]::NewGuid().ToString('N'))
 try {
@@ -6109,7 +6112,8 @@ Assert-Equal $true `
         $installerValidationSuiteIndex -gt $installerDotnetErrorIndex -and
         $installerDotnetPassIndex -gt $installerValidationSuiteIndex) `
     'Installer validates and passes the canonical managed dotnet 10.0 executable before invoking the validation suite'
-Assert-Equal $true ($installerSource -match 'if \(-not \$DeferCommit\) \{\r?\n\s*\$validationSuite = Invoke-CountdownValidationSuite') 'Installer runs the validation suite only outside the office deferred commit'
+Assert-Equal $true ($installerSource -match 'if \(-not \$DeferCommit\) \{\r?\n(?:\s*#[^\r\n]*\r?\n)?\s*Import-Module \(Join-Path \$staging ''Countdown\.Validation\.psm1''\) -Force\r?\n\s*\$validationSuite = Invoke-CountdownValidationSuite') 'Installer loads the validation module and runs the validation suite only outside the office deferred commit'
+Assert-Equal 1 ([regex]::Matches($installerSource, 'Countdown\.Validation\.psm1').Count) 'Installer references the validation module only inside the local-install branch'
 Assert-Equal 2 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'Both self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
 Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$project 'bin'") -and $buildPreflightSource.Contains("Join-Path `$project 'obj'")) 'Shared build path contract includes managed bin and obj directories for each project'
 Assert-Equal $true $buildSource.Contains('$buildPaths = Get-CountdownBuildPaths -RepositoryRoot $PSScriptRoot') 'Clean build derives candidates from the shared build path contract'

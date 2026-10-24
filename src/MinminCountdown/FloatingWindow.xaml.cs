@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -1761,7 +1760,10 @@ public sealed partial class FloatingWindow : Window
         _workspaceScrollOffsets[previouslyRenderedWorkspace] = FloatingBodyScroller.VerticalOffset;
         var workspace = _workspace;
         var snapshot = _desktopWorkspace.Snapshot;
-        var signature = ComputeRenderSignature(snapshot, workspace, nowUtc);
+        var countdownView = workspace == WorkspaceKind.Countdowns
+            ? ProjectFloatingCountdowns(snapshot, nowUtc)
+            : null;
+        var signature = ComputeRenderSignature(snapshot, workspace, countdownView, nowUtc);
         if (string.Equals(signature, _floatingRenderSignature, StringComparison.Ordinal) &&
             workspace == _renderedWorkspace)
         {
@@ -1770,9 +1772,9 @@ public sealed partial class FloatingWindow : Window
             // 不 bump _floatingRowsRenderVersion：上一次重建排队的视口恢复回调仍然有效，
             // 避免同周期内的就地 tick 把尚未执行的滚动/焦点恢复取消掉。
             FloatingLastRenderWasInPlaceForValidation = true;
-            if (workspace == WorkspaceKind.Countdowns)
+            if (countdownView is not null)
             {
-                UpdateCountdownRowsInPlace(snapshot, nowUtc);
+                UpdateCountdownRowsInPlace(countdownView);
             }
 
             ApplyFloatingBottomStatus(snapshot, workspace, nowUtc);
@@ -1793,45 +1795,33 @@ public sealed partial class FloatingWindow : Window
         FloatingRows.Children.Clear();
         _workdayCompletionIncome = null;
         ClearNoteDateStampStickyEntries();
-        if (workspace == WorkspaceKind.Countdowns)
+        if (countdownView is not null)
         {
-            var records = ResolveFloatingCountdownRecords(snapshot, nowUtc);
-            var visibleCountdownIds = records
-                .Select(static record => record.Id)
+            var visibleRowKeys = countdownView.Rows
+                .Select(static row => row.Key)
                 .ToHashSet(StringComparer.Ordinal);
-            foreach (var staleId in _lastCountdownSeconds.Keys
-                         .Where(id => !visibleCountdownIds.Contains(id))
+            foreach (var staleKey in _lastCountdownSeconds.Keys
+                         .Where(key => !visibleRowKeys.Contains(key))
                          .ToArray())
             {
-                _lastCountdownSeconds.Remove(staleId);
+                _lastCountdownSeconds.Remove(staleKey);
             }
 
-            FloatingCountdownCount = records.Count(record => record.Id != "__workday_end__");
-            FloatingCountdownTexts = records
-                .Where(record => record.Id != "__workday_end__")
-                .Select(record => CountdownFormatting.FormatRemaining(
-                    record.TargetUtc,
-                    nowUtc,
-                    snapshot.Settings.Preferences.DisplayPrecision))
-                .ToArray();
+            FloatingCountdownTexts = countdownView.UserRemainingTexts;
+            FloatingCountdownCount = FloatingCountdownTexts.Count;
             _countdownRowElements.Clear();
-            var hasCompletionCard = ShowWorkdayCompletion(snapshot, nowUtc);
-            if (hasCompletionCard) FloatingRows.Children.Add(BuildWorkdayCompletionRow());
-            var countdownRows = BuildWarmPaperCountdownRows(
-                records,
-                nowUtc,
-                snapshot.Settings.Preferences.DisplayPrecision,
-                hasCompletionCard);
-            for (var index = 0; index < countdownRows.Count; index++)
+            if (countdownView.ShowsWorkdayCompletion) FloatingRows.Children.Add(BuildWorkdayCompletionRow());
+            foreach (var row in countdownView.Rows)
             {
-                _countdownRowElements[records[index].Id] = countdownRows[index];
-                FloatingRows.Children.Add(countdownRows[index]);
+                var element = BuildWarmPaperCountdownRow(row);
+                _countdownRowElements[row.Key] = element;
+                FloatingRows.Children.Add(element);
             }
 
-            if (records.Count == 0 && !hasCompletionCard)
+            if (countdownView.EmptyStateText is { } emptyStateText)
             {
-                FloatingRows.Children.Add(EmptyText(CountdownEmptyStateText(snapshot.Filter)));
-                if (CountdownConstraintsActive(snapshot.Filter))
+                FloatingRows.Children.Add(EmptyText(emptyStateText));
+                if (countdownView.OffersClearFilter)
                 {
                     FloatingRows.Children.Add(BuildCountdownConstrainedEmptyStateAction());
                 }
@@ -1888,51 +1878,33 @@ public sealed partial class FloatingWindow : Window
         FloatingRowsRebuildGenerationForValidation++;
     }
 
-    private bool ShowWorkdayCompletion(DesktopWorkspaceSnapshot snapshot, DateTimeOffset nowUtc) =>
-        !snapshot.HasFilterConstraints && _calendar.IsWorkdayComplete(nowUtc, snapshot.Settings.Preferences);
-
-    private List<CountdownRecord> ResolveFloatingCountdownRecords(
-        DesktopWorkspaceSnapshot snapshot,
-        DateTimeOffset nowUtc)
-    {
-        var records = snapshot.VisibleCountdowns
-            .Where(record => record.TargetUtc > nowUtc)
-            .ToList();
-        if (!snapshot.HasFilterConstraints &&
-            _calendar.GetWorkdayEndCountdown(nowUtc, snapshot.Settings.Preferences) is { } workdayEnd)
-        {
-            records.Insert(0, workdayEnd);
-        }
-
-        return records;
-    }
+    // #148/#212/#236：倒计时页的行、唯一主项、用户计数、空态与签名条目都由 Core 投影一次算出；
+    // 窗口只接入工作日历给出的下班时刻与收尾判断。
+    private FloatingCountdownView ProjectFloatingCountdowns(DesktopWorkspaceSnapshot snapshot, DateTimeOffset nowUtc) =>
+        FloatingCountdownProjection.Project(
+            snapshot,
+            nowUtc,
+            _calendar.GetWorkdayEndUtc(nowUtc, snapshot.Settings.Preferences),
+            _calendar.IsWorkdayComplete(nowUtc, snapshot.Settings.Preferences));
 
     // #212：签名不变的就地更新——逐条重建行内剩余时间分格（在行容器内原位替换，
     // 行实例保留），秒位变化仍按 #198 执行 0.6→1 fade；底部状态由调用方统一 Apply。
-    private void UpdateCountdownRowsInPlace(DesktopWorkspaceSnapshot snapshot, DateTimeOffset nowUtc)
+    private void UpdateCountdownRowsInPlace(FloatingCountdownView view)
     {
-        var precision = snapshot.Settings.Preferences.DisplayPrecision;
-        var records = ResolveFloatingCountdownRecords(snapshot, nowUtc);
-        FloatingCountdownCount = records.Count(record => record.Id != "__workday_end__");
-        FloatingCountdownTexts = records
-            .Where(record => record.Id != "__workday_end__")
-            .Select(record => CountdownFormatting.FormatRemaining(record.TargetUtc, nowUtc, precision))
-            .ToArray();
-        for (var index = 0; index < records.Count; index++)
+        FloatingCountdownTexts = view.UserRemainingTexts;
+        FloatingCountdownCount = FloatingCountdownTexts.Count;
+        foreach (var row in view.Rows)
         {
-            var record = records[index];
-            if (!_countdownRowElements.TryGetValue(record.Id, out var row) ||
-                FindRemainingBlocksCluster(row) is not { } cluster ||
+            if (!_countdownRowElements.TryGetValue(row.Key, out var element) ||
+                FindRemainingBlocksCluster(element) is not { } cluster ||
                 VisualTreeHelper.GetParent(cluster) is not Grid host)
             {
                 // 签名一致时行必然在册；防御性跳过，下一次签名变化会走整表重建。
                 continue;
             }
 
-            var remaining = CountdownFormatting.FormatRemaining(record.TargetUtc, nowUtc, precision);
-            var fadeSeconds = TrackSecondsChange(record.Id, remaining);
-            var fresh = BuildRemainingBlocks(remaining,
-                isPrimary: index == 0 && !ShowWorkdayCompletion(snapshot, nowUtc), fadeSeconds: fadeSeconds);
+            var fadeSeconds = TrackSecondsChange(row.Key, row.Remaining);
+            var fresh = BuildRemainingBlocks(row.Remaining, isPrimary: row.IsPrimary, fadeSeconds: fadeSeconds);
             var childIndex = host.Children.IndexOf(cluster);
             host.Children.RemoveAt(childIndex);
             Grid.SetColumn(fresh, 1);
@@ -1961,10 +1933,11 @@ public sealed partial class FloatingWindow : Window
     }
 
     // #212：渲染签名只比较语义输入；剩余时间的数值变化（同一结构、同一精度下的下一秒）
-    // 不改变签名，由就地路径更新数字。
+    // 不改变签名，由就地路径更新数字。倒计时页的条目由投影给出。
     private string ComputeRenderSignature(
         DesktopWorkspaceSnapshot snapshot,
         WorkspaceKind workspace,
+        FloatingCountdownView? countdownView,
         DateTimeOffset nowUtc)
     {
         var filter = snapshot.Filter;
@@ -1980,27 +1953,9 @@ public sealed partial class FloatingWindow : Window
             filter.UndatedNotesOnly.ToString()
         });
         var entries = new List<string>();
-        if (workspace == WorkspaceKind.Countdowns)
+        if (countdownView is not null)
         {
-            if (ShowWorkdayCompletion(snapshot, nowUtc))
-            {
-                entries.Add("workday-complete:" + ChinaStandardTime.ToBeijingTime(nowUtc)
-                    .ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            }
-            var precision = snapshot.Settings.Preferences.DisplayPrecision;
-            foreach (var record in ResolveFloatingCountdownRecords(snapshot, nowUtc))
-            {
-                entries.Add(string.Join("\u001e", new[]
-                {
-                    record.Id,
-                    record.Name,
-                    record.TargetUtc.UtcTicks.ToString(CultureInfo.InvariantCulture),
-                    NormalizeFloatingRemainingStructure(CountdownFormatting.FormatRemaining(
-                        record.TargetUtc,
-                        nowUtc,
-                        precision))
-                }));
-            }
+            entries.AddRange(countdownView.SignatureEntries);
         }
         else
         {
@@ -2040,31 +1995,6 @@ public sealed partial class FloatingWindow : Window
             filterFingerprint,
             "\u001f",
             string.Join("\u001f", entryFingerprints));
-
-    // 剩余时间签名只保留结构与单位：数字串折叠为单个 0，位数变化由行内分格重建吸收。
-    internal static string NormalizeFloatingRemainingStructure(string remaining)
-    {
-        var builder = new StringBuilder(remaining.Length);
-        var inDigits = false;
-        foreach (var character in remaining)
-        {
-            if (char.IsDigit(character))
-            {
-                if (!inDigits)
-                {
-                    builder.Append('0');
-                    inDigits = true;
-                }
-
-                continue;
-            }
-
-            inDigits = false;
-            builder.Append(character);
-        }
-
-        return builder.ToString();
-    }
 
     private void ApplyFloatingBottomStatus(
         DesktopWorkspaceSnapshot snapshot,
@@ -2108,20 +2038,12 @@ public sealed partial class FloatingWindow : Window
         return empty;
     }
 
-    internal static bool CountdownConstraintsActive(DesktopWorkspaceFilter filter) =>
-        filter.SelectedTagIds.Count > 0 ||
-        filter.UntaggedOnly ||
-        filter.CountdownStatus != CountdownStatusFilter.All;
-
     internal static bool NoteConstraintsActive(DesktopWorkspaceFilter filter) =>
         filter.SelectedTagIds.Count > 0 ||
         filter.UntaggedOnly ||
         filter.NoteStatus != NoteStatusFilter.All ||
         filter.NoteDate is not null ||
         filter.UndatedNotesOnly;
-
-    internal static string CountdownEmptyStateText(DesktopWorkspaceFilter filter) =>
-        CountdownConstraintsActive(filter) ? "没有匹配的倒计时。" : "没有未到期的倒计时。";
 
     internal static string NoteEmptyStateText(DesktopWorkspaceFilter filter) =>
         NoteConstraintsActive(filter) ? "没有匹配的便签。" : "还没有待办便签。";

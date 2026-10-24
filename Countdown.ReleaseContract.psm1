@@ -103,6 +103,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown.Core\DesktopWorkspace.cs',
     'src\MinminCountdown.Core\DesktopWorkspace.Transactions.cs',
     'src\MinminCountdown.Core\DomainLogic.cs',
+    'src\MinminCountdown.Core\FloatingCountdownProjection.cs',
     'src\MinminCountdown.Core\MinminCountdown.Core.csproj',
     'src\MinminCountdown.Core\ReminderEditing.cs',
     'src\MinminCountdown.Core\SettingsContract.cs',

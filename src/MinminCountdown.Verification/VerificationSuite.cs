@@ -79,6 +79,9 @@ internal static class VerificationSuite
         Run(results, "desktop-workspace-undo-hold-pauses-only-offering-surface", VerifyDesktopWorkspaceUndoHoldPausesOnlyOfferingSurface);
         Run(results, "desktop-workspace-undo-failures-keep-offer-and-timing", VerifyDesktopWorkspaceUndoFailuresKeepOfferAndTiming);
         Run(results, "desktop-workspace-batch-undo-restores-order-and-states", VerifyDesktopWorkspaceBatchUndoRestoresOrderAndStates);
+        Run(results, "floating-countdown-projection-rows-and-primary", VerifyFloatingCountdownProjectionRowsAndPrimary);
+        Run(results, "floating-countdown-projection-filter-scopes", VerifyFloatingCountdownProjectionFilterScopes);
+        Run(results, "floating-countdown-projection-keys-and-signature", VerifyFloatingCountdownProjectionKeysAndSignature);
         if (externalSettingsPath is not null)
         {
             Run(
@@ -2949,6 +2952,171 @@ internal static class VerificationSuite
                 new[] { false, false, false, false },
                 workspace.Snapshot.Settings.Notes.Select(note => note.IsCompleted).ToArray(),
                 "撤销批量完成后的完成状态");
+        });
+    }
+
+    // 北京时间 2034-05-06 09:30 保存三条倒计时；投影时刻取 11:30，此时「一小时后」已到期。
+    private static DesktopWorkspace FloatingProjectionWorkspace(string directory, DateTimeOffset savedUtc)
+    {
+        var workspace = DesktopWorkspace.Load(
+            Path.Combine(directory, "settings.json"),
+            new SettingsStore(clock: new SettableClock(savedUtc)));
+        Applied(
+            workspace,
+            new SavePreferencesChange("Second", 0m, TimeSpan.FromHours(9), TimeSpan.FromHours(18)),
+            "设置秒级显示精度");
+        Applied(workspace, new SaveCountdownChange(null, "一小时后", savedUtc.AddHours(1), []), "保存一小时后");
+        Applied(workspace, new SaveCountdownChange(null, "五天后", savedUtc.AddDays(5), []), "保存五天后");
+        Applied(workspace, new SaveCountdownChange(null, "一天后", savedUtc.AddDays(1), []), "保存一天后");
+        return workspace;
+    }
+
+    private static string DescribeFloatingRows(FloatingCountdownView view) =>
+        string.Join(
+            " | ",
+            view.Rows.Select(row => $"{row.Kind}/{row.Name}/{(row.IsPrimary ? "主" : "次")}/{row.Remaining}"));
+
+    private static void VerifyFloatingCountdownProjectionRowsAndPrimary()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var savedUtc = new DateTimeOffset(2034, 5, 6, 1, 30, 0, TimeSpan.Zero);
+            var nowUtc = savedUtc.AddHours(2);
+            var workdayEndUtc = new DateTimeOffset(2034, 5, 6, 10, 0, 0, TimeSpan.Zero);
+            var workspace = FloatingProjectionWorkspace(directory, savedUtc);
+            var snapshot = workspace.Snapshot;
+
+            var cases = new (string Name, DateTimeOffset? WorkdayEndUtc, bool WorkdayComplete, string Rows, bool Completion)[]
+            {
+                (
+                    "下班前",
+                    workdayEndUtc,
+                    false,
+                    "WorkdayEnd/距离下班/主/0 天 06 小时 30 分钟 00 秒 | " +
+                    "Countdown/一天后/次/0 天 22 小时 00 分钟 00 秒 | " +
+                    "Countdown/五天后/次/4 天 22 小时 00 分钟 00 秒",
+                    false),
+                (
+                    "下班后收尾",
+                    null,
+                    true,
+                    "Countdown/一天后/次/0 天 22 小时 00 分钟 00 秒 | " +
+                    "Countdown/五天后/次/4 天 22 小时 00 分钟 00 秒",
+                    true),
+                (
+                    "非工作日",
+                    null,
+                    false,
+                    "Countdown/一天后/主/0 天 22 小时 00 分钟 00 秒 | " +
+                    "Countdown/五天后/次/4 天 22 小时 00 分钟 00 秒",
+                    false)
+            };
+            foreach (var testCase in cases)
+            {
+                var view = FloatingCountdownProjection.Project(
+                    snapshot,
+                    nowUtc,
+                    testCase.WorkdayEndUtc,
+                    testCase.WorkdayComplete);
+                Equal(testCase.Rows, DescribeFloatingRows(view), $"{testCase.Name}的悬浮行");
+                Equal(testCase.Completion, view.ShowsWorkdayCompletion, $"{testCase.Name}的下班收尾");
+                SequenceEqual(
+                    new[] { "0 天 22 小时 00 分钟 00 秒", "4 天 22 小时 00 分钟 00 秒" },
+                    view.UserRemainingTexts,
+                    $"{testCase.Name}的用户倒计时剩余时间");
+                Equal<string?>(null, view.EmptyStateText, $"{testCase.Name}的空态");
+            }
+
+            var completion = FloatingCountdownProjection.Project(snapshot, nowUtc, null, true);
+            Equal("workday-complete:2034-05-06", completion.SignatureEntries[0], "收尾卡的签名条目");
+            var allExpired = FloatingCountdownProjection.Project(snapshot, savedUtc.AddDays(6), null, false);
+            Equal(0, allExpired.Rows.Count, "全部到期后的悬浮行");
+            Equal<string?>("没有未到期的倒计时。", allExpired.EmptyStateText, "全部到期后的空态");
+            Equal(false, allExpired.OffersClearFilter, "全部到期后的清除筛选");
+        });
+    }
+
+    private static void VerifyFloatingCountdownProjectionFilterScopes()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var savedUtc = new DateTimeOffset(2034, 5, 6, 1, 30, 0, TimeSpan.Zero);
+            var nowUtc = savedUtc.AddHours(2);
+            var workdayEndUtc = new DateTimeOffset(2034, 5, 6, 10, 0, 0, TimeSpan.Zero);
+            var workspace = FloatingProjectionWorkspace(directory, savedUtc);
+            var empty = DesktopWorkspaceFilter.Empty;
+            const string userRows =
+                "Countdown/一天后/主/0 天 22 小时 00 分钟 00 秒 | Countdown/五天后/次/4 天 22 小时 00 分钟 00 秒";
+
+            // 任意筛选约束都让距离下班与下班收尾退出；空态与清除筛选只看倒计时自己的约束。
+            var cases = new (string Name, DesktopWorkspaceFilter Filter, string Rows, string? EmptyText, bool ClearFilter)[]
+            {
+                ("只有便签搜索", empty with { NoteSearch = "便签搜索" }, userRows, null, false),
+                ("只有便签状态", empty with { NoteStatus = NoteStatusFilter.Completed }, userRows, null, false),
+                ("只看无标签", empty with { UntaggedOnly = true }, userRows, null, false),
+                ("选了标签", empty with { SelectedTagIds = new[] { "projection-tag" } }, string.Empty, "没有匹配的倒计时。", true),
+                ("只看已到期", empty with { CountdownStatus = CountdownStatusFilter.Expired }, string.Empty, "没有匹配的倒计时。", true)
+            };
+            foreach (var testCase in cases)
+            {
+                workspace.ApplyFilter(testCase.Filter);
+                var snapshot = workspace.Snapshot;
+                var beforeWork = FloatingCountdownProjection.Project(snapshot, nowUtc, workdayEndUtc, false);
+                Equal(testCase.Rows, DescribeFloatingRows(beforeWork), $"{testCase.Name}时的悬浮行");
+                Equal(testCase.EmptyText, beforeWork.EmptyStateText, $"{testCase.Name}时的空态");
+                Equal(testCase.ClearFilter, beforeWork.OffersClearFilter, $"{testCase.Name}时的清除筛选");
+                Equal(
+                    false,
+                    FloatingCountdownProjection.Project(snapshot, nowUtc, null, true).ShowsWorkdayCompletion,
+                    $"{testCase.Name}时的下班收尾");
+            }
+
+            // 现行两套口径并存：只有便签条件时距离下班已退出，倒计时空态却仍说“没有未到期”、不给清除筛选。
+            workspace.ApplyFilter(empty with { NoteSearch = "便签搜索" });
+            var noteOnly = FloatingCountdownProjection.Project(workspace.Snapshot, savedUtc.AddDays(6), workdayEndUtc, false);
+            Equal(0, noteOnly.Rows.Count, "只有便签条件且用户倒计时全部到期时的悬浮行");
+            Equal<string?>("没有未到期的倒计时。", noteOnly.EmptyStateText, "只有便签条件时的倒计时空态");
+            Equal(false, noteOnly.OffersClearFilter, "只有便签条件时的清除筛选");
+        });
+    }
+
+    private static void VerifyFloatingCountdownProjectionKeysAndSignature()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var savedUtc = new DateTimeOffset(2034, 5, 6, 1, 30, 0, TimeSpan.Zero);
+            var nowUtc = savedUtc.AddHours(2);
+            var workdayEndUtc = new DateTimeOffset(2034, 5, 6, 10, 0, 0, TimeSpan.Zero);
+            var workspace = FloatingProjectionWorkspace(directory, savedUtc);
+            // 旧版用 "__workday_end__" 当距离下班的假 ID；同名 ID 的用户倒计时必须仍是普通用户行。
+            Applied(
+                workspace,
+                new SaveCountdownChange("__workday_end__", "同名 ID 的用户倒计时", savedUtc.AddDays(3), []),
+                "保存同名 ID 的用户倒计时");
+            var view = FloatingCountdownProjection.Project(workspace.Snapshot, nowUtc, workdayEndUtc, false);
+            Equal(
+                "WorkdayEnd/距离下班/主/0 天 06 小时 30 分钟 00 秒 | " +
+                "Countdown/一天后/次/0 天 22 小时 00 分钟 00 秒 | " +
+                "Countdown/同名 ID 的用户倒计时/次/2 天 22 小时 00 分钟 00 秒 | " +
+                "Countdown/五天后/次/4 天 22 小时 00 分钟 00 秒",
+                DescribeFloatingRows(view),
+                "同名 ID 用户倒计时的悬浮行");
+            Equal(3, view.UserRemainingTexts.Count, "同名 ID 用户倒计时计入用户数量");
+            Equal(view.Rows.Count, view.Rows.Select(row => row.Key).Distinct(StringComparer.Ordinal).Count(), "行 Key 唯一");
+
+            // 下一秒只有数字变化：签名条目不变；距离下班出现或消失、收尾卡出现都改签名。
+            var nextSecond = FloatingCountdownProjection.Project(workspace.Snapshot, nowUtc.AddSeconds(1), workdayEndUtc, false);
+            SequenceEqual(view.SignatureEntries, nextSecond.SignatureEntries, "下一秒的签名条目");
+            Equal(
+                false,
+                view.SignatureEntries.SequenceEqual(
+                    FloatingCountdownProjection.Project(workspace.Snapshot, nowUtc, null, false).SignatureEntries),
+                "距离下班消失后的签名条目");
+            Equal(
+                false,
+                FloatingCountdownProjection.Project(workspace.Snapshot, nowUtc, null, false).SignatureEntries.SequenceEqual(
+                    FloatingCountdownProjection.Project(workspace.Snapshot, nowUtc, null, true).SignatureEntries),
+                "下班收尾出现后的签名条目");
         });
     }
 

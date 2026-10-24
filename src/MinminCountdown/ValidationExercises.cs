@@ -10637,7 +10637,7 @@ internal static class ValidationExercises
                     .RefreshAsync(workdayNowUtc, CancellationToken.None)
                     .GetAwaiter()
                     .GetResult();
-                var workdayCountdown = calendar.GetWorkdayEndCountdown(workdayNowUtc, preferences);
+                var workdayEndUtc = calendar.GetWorkdayEndUtc(workdayNowUtc, preferences);
 
                 Must(
                     calendar.State == "Ready" &&
@@ -10646,18 +10646,11 @@ internal static class ValidationExercises
                     stateChangedCount == 1,
                     "工作日历 interface 未从本地缓存进入 Ready 状态。");
                 Must(
-                    workdayCountdown is
-                    {
-                        Id: "__workday_end__",
-                        Name: "距离下班",
-                        TargetUtc: var targetUtc
-                    } &&
-                    targetUtc == new DateTimeOffset(2034, 5, 6, 10, 0, 0, TimeSpan.Zero) &&
-                    workdayCountdown.ReminderRules.Count == 0 &&
+                    workdayEndUtc == new DateTimeOffset(2034, 5, 6, 10, 0, 0, TimeSpan.Zero) &&
                     calendar.GetEarnings(workdayNowUtc, preferences) == 1550m,
-                    "工作日历 interface 未按北京时间和当月工作日派生下班倒计时与今日收入。");
+                    "工作日历 interface 未按北京时间和当月工作日派生下班时刻与今日收入。");
                 Must(
-                    calendar.GetWorkdayEndCountdown(nonWorkdayNowUtc, preferences) is null &&
+                    calendar.GetWorkdayEndUtc(nonWorkdayNowUtc, preferences) is null &&
                     calendar.GetEarnings(nonWorkdayNowUtc, preferences) == 0m,
                     "工作日历 interface 未在非工作日停止派生结果。");
                 var unsetSalaryPreferences = preferences with { MonthlySalary = 0m };
@@ -10677,15 +10670,14 @@ internal static class ValidationExercises
                     .RefreshAsync(nextYearNowUtc, CancellationToken.None)
                     .GetAwaiter()
                     .GetResult();
-                var nextYearCountdown = calendar.GetWorkdayEndCountdown(nextYearNowUtc, preferences);
+                var nextYearWorkdayEndUtc = calendar.GetWorkdayEndUtc(nextYearNowUtc, preferences);
                 Must(
                     !sameYearRefresh &&
                     nextYearRefresh &&
                     calendar.State == "Ready" &&
                     calendar.StatusText == "已同步 2035 年法定节假日与调休" &&
                     stateChangedCount == 2 &&
-                    nextYearCountdown is { TargetUtc: var nextYearTargetUtc } &&
-                    nextYearTargetUtc == new DateTimeOffset(2035, 5, 6, 10, 0, 0, TimeSpan.Zero) &&
+                    nextYearWorkdayEndUtc == new DateTimeOffset(2035, 5, 6, 10, 0, 0, TimeSpan.Zero) &&
                     calendar.GetEarnings(nextYearNowUtc, preferences) == 1550m,
                     "工作日历 interface 未在北京时间跨年后刷新年份与派生结果。");
             }
@@ -10726,7 +10718,7 @@ internal static class ValidationExercises
                     calendar.State == "Unavailable" &&
                     calendar.StatusText == "节假日日历未就绪" &&
                     stateChangedCount == 2 &&
-                    calendar.GetWorkdayEndCountdown(nowUtc, preferences) is null &&
+                    calendar.GetWorkdayEndUtc(nowUtc, preferences) is null &&
                     calendar.GetEarnings(nowUtc, preferences) is null,
                     "工作日历 interface 未把本地缓存读取失败收敛为 Unavailable 状态。");
 
@@ -10739,7 +10731,7 @@ internal static class ValidationExercises
                     calendar.State == "Ready" &&
                     calendar.StatusText == "已同步 2034 年法定节假日与调休" &&
                     stateChangedCount == 3 &&
-                    calendar.GetWorkdayEndCountdown(nowUtc, preferences) is not null &&
+                    calendar.GetWorkdayEndUtc(nowUtc, preferences) is not null &&
                     calendar.GetEarnings(nowUtc, preferences) == 1550m,
                     "工作日历 interface 未在退避后恢复同年失败的刷新。");
             }
@@ -10839,7 +10831,7 @@ internal static class ValidationExercises
                     refreshed &&
                     packagedCalendar.State == "Ready" &&
                     packagedCalendar.StatusText == "已加载 2037 年随包法定节假日与调休" &&
-                    packagedCalendar.GetWorkdayEndCountdown(nowUtc, preferences) is not null &&
+                    packagedCalendar.GetWorkdayEndUtc(nowUtc, preferences) is not null &&
                     packagedCalendar.GetEarnings(nowUtc, preferences) == 1550m,
                     "随包年度数据在离线网络下未提供有效的工作日历结果。");
             }
@@ -10858,7 +10850,7 @@ internal static class ValidationExercises
                     refreshed &&
                     conflictCalendar.State == "Ready" &&
                     conflictCalendar.StatusText == "已同步 2037 年法定节假日与调休" &&
-                    conflictCalendar.GetWorkdayEndCountdown(nowUtc, preferences) is null &&
+                    conflictCalendar.GetWorkdayEndUtc(nowUtc, preferences) is null &&
                     conflictCalendar.GetEarnings(nowUtc, preferences) == 0m &&
                     File.Exists(Path.Combine(conflictRoot, "holiday-cache", $"{packagedYear}.json")),
                     "联网结果未覆盖冲突的随包数据或未写入本地缓存。");
@@ -10877,7 +10869,7 @@ internal static class ValidationExercises
                     refreshed &&
                     missingCalendar.State == "Unavailable" &&
                     missingCalendar.StatusText == "节假日日历未就绪" &&
-                    missingCalendar.GetWorkdayEndCountdown(unsupportedNowUtc, preferences) is null &&
+                    missingCalendar.GetWorkdayEndUtc(unsupportedNowUtc, preferences) is null &&
                     missingCalendar.GetEarnings(unsupportedNowUtc, preferences) is null,
                     "未覆盖年份必须保持日历未就绪且不估算工资。");
             }
@@ -11016,7 +11008,7 @@ internal static class ValidationExercises
         var clearFilter = DesktopWorkspaceFilter.Empty;
         Must(
             string.Equals(
-                FloatingWindow.CountdownEmptyStateText(clearFilter),
+                FloatingCountdownProjection.CountdownEmptyStateText(clearFilter),
                 "没有未到期的倒计时。",
                 StringComparison.Ordinal) &&
             string.Equals(
@@ -11038,7 +11030,7 @@ internal static class ValidationExercises
         {
             Must(
                 string.Equals(
-                    FloatingWindow.CountdownEmptyStateText(countdownConstrained),
+                    FloatingCountdownProjection.CountdownEmptyStateText(countdownConstrained),
                     "没有匹配的倒计时。",
                     StringComparison.Ordinal),
                 "悬浮窗倒计时筛选无匹配空态未使用匹配口径文案。");
@@ -11061,7 +11053,7 @@ internal static class ValidationExercises
         var searchOnlyFilter = clearFilter with { NoteSearch = "悬浮空态搜索词" };
         Must(
             string.Equals(
-                FloatingWindow.CountdownEmptyStateText(searchOnlyFilter),
+                FloatingCountdownProjection.CountdownEmptyStateText(searchOnlyFilter),
                 "没有未到期的倒计时。",
                 StringComparison.Ordinal) &&
             string.Equals(
@@ -11073,15 +11065,15 @@ internal static class ValidationExercises
         // 便签侧约束不影响倒计时文案，倒计时侧约束不影响便签文案。
         Must(
             string.Equals(
-                FloatingWindow.CountdownEmptyStateText(noteStatusFilter),
+                FloatingCountdownProjection.CountdownEmptyStateText(noteStatusFilter),
                 "没有未到期的倒计时。",
                 StringComparison.Ordinal) &&
             string.Equals(
-                FloatingWindow.CountdownEmptyStateText(noteDateFilter),
+                FloatingCountdownProjection.CountdownEmptyStateText(noteDateFilter),
                 "没有未到期的倒计时。",
                 StringComparison.Ordinal) &&
             string.Equals(
-                FloatingWindow.CountdownEmptyStateText(undatedNotesFilter),
+                FloatingCountdownProjection.CountdownEmptyStateText(undatedNotesFilter),
                 "没有未到期的倒计时。",
                 StringComparison.Ordinal) &&
             string.Equals(
@@ -11733,17 +11725,17 @@ internal static class ValidationExercises
             "记录序列变化必须改变渲染签名。");
 
         Must(string.Equals(
-                FloatingWindow.NormalizeFloatingRemainingStructure("12 天 03 小时 7 分钟 09 秒"),
-                FloatingWindow.NormalizeFloatingRemainingStructure("9 天 3 小时 40 分钟 8 秒"),
+                FloatingCountdownProjection.NormalizeRemainingStructure("12 天 03 小时 7 分钟 09 秒"),
+                FloatingCountdownProjection.NormalizeRemainingStructure("9 天 3 小时 40 分钟 8 秒"),
                 StringComparison.Ordinal),
             "剩余时间仅数值变化（含位数变化）必须保持同一签名结构。");
         Must(!string.Equals(
-                FloatingWindow.NormalizeFloatingRemainingStructure("2 天 0 小时"),
-                FloatingWindow.NormalizeFloatingRemainingStructure("2 天 0 小时 0 分钟"),
+                FloatingCountdownProjection.NormalizeRemainingStructure("2 天 0 小时"),
+                FloatingCountdownProjection.NormalizeRemainingStructure("2 天 0 小时 0 分钟"),
                 StringComparison.Ordinal),
             "剩余时间单位序列变化必须产生不同签名结构。");
         Must(string.Equals(
-                FloatingWindow.NormalizeFloatingRemainingStructure("已到期"),
+                FloatingCountdownProjection.NormalizeRemainingStructure("已到期"),
                 "已到期",
                 StringComparison.Ordinal),
             "到期回落文案不含数字，结构归一化必须保持原文。");

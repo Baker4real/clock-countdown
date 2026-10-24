@@ -14,46 +14,18 @@ public sealed partial class FloatingWindow
     private const double PrimaryRemainingWidth = 194;
     private const double SecondaryRemainingWidth = 194;
     internal const string RemainingBlocksTag = "FloatingRemainingBlocks";
-    private const string WorkdayEndCountdownId = "__workday_end__";
     private const string EncourageBadgeText = "超期待！";
     private const double KeyTextMinimumFontSize = 12;
     private TextBlock? _workdayCompletionIncome;
 
-    private IReadOnlyList<FrameworkElement> BuildWarmPaperCountdownRows(
-        IReadOnlyList<CountdownRecord> records,
-        DateTimeOffset nowUtc,
-        string displayPrecision,
-        bool hasCompletionCard = false)
+    private FrameworkElement BuildWarmPaperCountdownRow(FloatingCountdownRow row)
     {
-        var rows = new List<FrameworkElement>(records.Count);
-        for (var index = 0; index < records.Count; index++)
-        {
-            rows.Add(BuildWarmPaperCountdownRow(
-                records[index],
-                nowUtc,
-                displayPrecision,
-                index == 0 && !hasCompletionCard));
-        }
-
-        return rows;
-    }
-
-    private FrameworkElement BuildWarmPaperCountdownRow(
-        CountdownRecord record,
-        DateTimeOffset nowUtc,
-        string displayPrecision,
-        bool isPrimary)
-    {
-        var remaining = CountdownFormatting.FormatRemaining(
-            record.TargetUtc,
-            nowUtc,
-            displayPrecision);
-        var secondsChanged = TrackSecondsChange(record.Id, remaining);
+        var secondsChanged = TrackSecondsChange(row.Key, row.Remaining);
         return BuildWarmPaperRow(
-            isPrimary ? BuildWarmPaperPrimaryContent(record, remaining, secondsChanged)
-                : BuildWarmPaperSecondaryContent(record, remaining, secondsChanged),
-            isPrimary ? $"主要倒计时 {record.Name}，{remaining}" : $"倒计时 {record.Name}，{remaining}",
-            isPrimary);
+            row.IsPrimary ? BuildWarmPaperPrimaryContent(row, secondsChanged)
+                : BuildWarmPaperSecondaryContent(row, secondsChanged),
+            row.IsPrimary ? $"主要倒计时 {row.Name}，{row.Remaining}" : $"倒计时 {row.Name}，{row.Remaining}",
+            row.IsPrimary);
     }
 
     private FrameworkElement BuildWorkdayCompletionRow()
@@ -151,8 +123,7 @@ public sealed partial class FloatingWindow
     }
 
     private FrameworkElement BuildWarmPaperPrimaryContent(
-        CountdownRecord record,
-        string remaining,
+        FloatingCountdownRow row,
         bool fadeSeconds)
     {
         var theme = ActiveTheme;
@@ -166,7 +137,7 @@ public sealed partial class FloatingWindow
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var title = new TextBlock
         {
-            Text = record.Name,
+            Text = row.Name,
             MaxHeight = 40,
             Margin = new Thickness(0, 0, 3, 0),
             VerticalAlignment = VerticalAlignment.Center,
@@ -189,7 +160,7 @@ public sealed partial class FloatingWindow
         var deadline = new TextBlock
         {
             // #148：截止行数字与「月」「日」之间留空格，并使用表格数字避免刷新跳动。
-            Text = DateDisplay.Deadline(record.TargetUtc),
+            Text = DateDisplay.Deadline(row.TargetUtc),
             VerticalAlignment = VerticalAlignment.Center,
             Padding = new Thickness(0, 0, 3, 0),
             FontSize = (double)FindResource("TypeCaptionFontSize"),
@@ -200,7 +171,7 @@ public sealed partial class FloatingWindow
         Typography.SetNumeralAlignment(deadline, FontNumeralAlignment.Tabular);
         deadlineRow.Children.Add(deadline);
 
-        if (string.Equals(record.Id, WorkdayEndCountdownId, StringComparison.Ordinal))
+        if (row.Kind == FloatingCountdownRowKind.WorkdayEnd)
         {
             // #148：徽章只挂距离下班；文字用主文字色（旧白字对比不足），
             // #229：与截止日期同行，给四字标题留出完整宽度。
@@ -233,7 +204,7 @@ public sealed partial class FloatingWindow
         Grid.SetRow(deadlineRow, 1);
         Grid.SetColumnSpan(deadlineRow, 2);
         var remainingBlocks = BuildRemainingBlocks(
-            remaining,
+            row.Remaining,
             isPrimary: true,
             fadeSeconds: fadeSeconds);
         Grid.SetColumn(remainingBlocks, 1);
@@ -243,8 +214,7 @@ public sealed partial class FloatingWindow
     }
 
     private FrameworkElement BuildWarmPaperSecondaryContent(
-        CountdownRecord record,
-        string remaining,
+        FloatingCountdownRow row,
         bool fadeSeconds)
     {
         var layout = new Grid
@@ -256,7 +226,7 @@ public sealed partial class FloatingWindow
 
         var name = new TextBlock
         {
-            Text = record.Name,
+            Text = row.Name,
             Margin = new Thickness(0, 0, 10, 0),
             VerticalAlignment = VerticalAlignment.Center,
             FontSize = (double)FindResource("TypeCaptionFontSize"),
@@ -264,7 +234,7 @@ public sealed partial class FloatingWindow
         };
         name.SetResourceReference(TextBlock.ForegroundProperty, ActiveTheme.TextBrushKey);
         var remainingBlocks = BuildRemainingBlocks(
-            remaining,
+            row.Remaining,
             isPrimary: false,
             fadeSeconds: fadeSeconds);
         Grid.SetColumn(remainingBlocks, 1);
@@ -492,21 +462,21 @@ public sealed partial class FloatingWindow
         bool isPrimary) =>
         BuildRemainingBlocks(remaining, isPrimary);
 
-    // #198/#212：秒位变化判定与每条记录的上次秒值簿记，重建路径与就地更新路径共用。
-    private bool TrackSecondsChange(string recordId, string remaining)
+    // #198/#212：秒位变化判定与每行的上次秒值簿记（按投影行 Key），重建路径与就地更新路径共用。
+    private bool TrackSecondsChange(string rowKey, string remaining)
     {
         var currentSeconds = ParseRemainingPairs(remaining)?.FirstOrDefault(static pair =>
             string.Equals(pair.Unit, "秒", StringComparison.Ordinal))?.Value;
         var secondsChanged = currentSeconds is not null &&
-            _lastCountdownSeconds.TryGetValue(recordId, out var previousSeconds) &&
+            _lastCountdownSeconds.TryGetValue(rowKey, out var previousSeconds) &&
             !string.Equals(previousSeconds, currentSeconds, StringComparison.Ordinal);
         if (currentSeconds is null)
         {
-            _lastCountdownSeconds.Remove(recordId);
+            _lastCountdownSeconds.Remove(rowKey);
         }
         else
         {
-            _lastCountdownSeconds[recordId] = currentSeconds;
+            _lastCountdownSeconds[rowKey] = currentSeconds;
         }
 
         return secondsChanged;

@@ -175,7 +175,8 @@ internal sealed class HolidayCalendar : IDisposable
         }
     }
 
-    public CountdownRecord? GetWorkdayEndCountdown(DateTimeOffset nowUtc, CountdownPreferences preferences)
+    // 只给出今天的下班时刻：非工作日、已过下班或日历未就绪时为 null；距离下班行由悬浮窗倒计时投影组装。
+    public DateTimeOffset? GetWorkdayEndUtc(DateTimeOffset nowUtc, CountdownPreferences preferences)
     {
         var beijing = ChinaStandardTime.ToBeijingTime(nowUtc);
         if (!TryGetWorkdayMap(beijing.Year, out var workdayMap))
@@ -191,12 +192,11 @@ internal sealed class HolidayCalendar : IDisposable
             return null;
         }
 
-        var targetUtc = CountdownFormatting.ToUtc(
+        return CountdownFormatting.ToUtc(
             beijing.Date,
             preferences.WorkEnd.Hours,
             preferences.WorkEnd.Minutes,
             0);
-        return new CountdownRecord("__workday_end__", "距离下班", targetUtc, Array.Empty<string>());
     }
 
     public bool IsWorkdayComplete(DateTimeOffset nowUtc, CountdownPreferences preferences)

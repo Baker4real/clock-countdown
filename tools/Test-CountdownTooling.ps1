@@ -220,49 +220,40 @@ Add-ToolingCheck -Name 'docs:local-links' -Passed ($docLinkFailures.Count -eq 0)
 # Keep the positive fixture contract aligned with the current visual baseline.
 # The Core suite has a separate manifest-content check; this cheap source-tree
 # check catches a stale 8/4 (or other hard-coded) fixture before any windowed
-# stage starts. Each surface must have exactly one current manifest reference,
-# so a baseline path-shape change fails here instead of matching nothing.
-$validationSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'Countdown.Validation.psm1'))
+# stage starts. The manifests are located from the single C# version constant,
+# so a missing current manifest fails here instead of matching nothing.
+Import-Module (Join-Path $repoRoot 'Countdown.Validation.psm1') -Force
+$visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $repoRoot
 $coreTestSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'Countdown.Core.Tests.ps1'))
 $baselineFixtureFailures = [System.Collections.Generic.List[string]]::new()
 $baselineFixtureAgreements = [System.Collections.Generic.List[string]]::new()
-$baselineManifestRefs = [regex]::Matches(
-    $validationSource,
-    'assets\\ui-references\\(?<surface>main-window|floating-window)\\(?<size>[^\\]+)\\(?<version>[^\\]+)\\manifest\.json'
-)
-foreach ($surface in @('main-window', 'floating-window')) {
-    $surfaceReferenceCount = @($baselineManifestRefs | Where-Object { $_.Groups['surface'].Value -eq $surface }).Count
-    if ($surfaceReferenceCount -ne 1) {
-        $baselineFixtureFailures.Add("Countdown.Validation.psm1 has $surfaceReferenceCount $surface manifest reference(s); expected exactly one")
-    }
-}
 $fixtureDefinitions = [regex]::Matches(
     $coreTestSource,
     '(?m)(?<start>\d+)\.\.(?<end>\d+)\s*\|\s*ForEach-Object\s*\{\s*\[pscustomobject\]@\{\s*CaptureId\s*=\s*["''](?<fixtureSurface>main|floating)-\$_["'']'
 )
-foreach ($reference in $baselineManifestRefs) {
-    $relativeManifest = $reference.Value.Replace('\', [System.IO.Path]::DirectorySeparatorChar)
-    $manifestPath = Join-Path $repoRoot $relativeManifest
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-        $baselineFixtureFailures.Add("missing current manifest: $relativeManifest")
+foreach ($surface in @(
+        [pscustomobject]@{ Fixture = 'floating'; Baseline = $visualBaseline.Floating },
+        [pscustomobject]@{ Fixture = 'main'; Baseline = $visualBaseline.Main })) {
+    $relativeDirectory = $surface.Baseline.RelativeDirectory
+    if (-not (Test-Path -LiteralPath $surface.Baseline.ManifestPath -PathType Leaf)) {
+        $baselineFixtureFailures.Add("missing current manifest: $relativeDirectory/manifest.json")
         continue
     }
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -Depth 100
+    $manifest = Get-Content -LiteralPath $surface.Baseline.ManifestPath -Raw | ConvertFrom-Json -Depth 100
     $expectedCount = @($manifest.captures).Count
-    $fixtureSurface = if ($reference.Groups['surface'].Value -eq 'main-window') { 'main' } else { 'floating' }
-    $fixtureMatches = @($fixtureDefinitions | Where-Object { $_.Groups['fixtureSurface'].Value -eq $fixtureSurface })
+    $fixtureMatches = @($fixtureDefinitions | Where-Object { $_.Groups['fixtureSurface'].Value -eq $surface.Fixture })
     if ($fixtureMatches.Count -ne 1) {
-        $baselineFixtureFailures.Add("$($reference.Groups['surface'].Value) fixture definition count is $($fixtureMatches.Count); expected exactly one")
+        $baselineFixtureFailures.Add("$relativeDirectory fixture definition count is $($fixtureMatches.Count); expected exactly one")
         continue
     }
     $fixtureStart = [int] $fixtureMatches[0].Groups['start'].Value
     $fixtureEnd = [int] $fixtureMatches[0].Groups['end'].Value
     $fixtureCount = if ($fixtureEnd -ge $fixtureStart) { $fixtureEnd - $fixtureStart + 1 } else { 0 }
     if ($fixtureStart -ne 1 -or $fixtureCount -ne $expectedCount) {
-        $baselineFixtureFailures.Add("$($reference.Groups['surface'].Value) fixture range is $fixtureStart..$fixtureEnd ($fixtureCount captures); manifest declares $expectedCount")
+        $baselineFixtureFailures.Add("$relativeDirectory fixture range is $fixtureStart..$fixtureEnd ($fixtureCount captures); manifest declares $expectedCount")
     }
     else {
-        $baselineFixtureAgreements.Add("$($reference.Groups['surface'].Value) $($reference.Groups['size'].Value)/$($reference.Groups['version'].Value): manifest $expectedCount captures = Core $fixtureSurface $fixtureStart..$fixtureEnd")
+        $baselineFixtureAgreements.Add("${relativeDirectory}: manifest $expectedCount captures = Core $($surface.Fixture) $fixtureStart..$fixtureEnd")
     }
 }
 $baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { $baselineFixtureAgreements -join '; ' } else { $baselineFixtureFailures -join ' | ' }

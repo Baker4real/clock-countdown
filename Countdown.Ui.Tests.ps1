@@ -80,10 +80,10 @@ $null = Set-PSBreakpoint -Script $PSCommandPath -Line @(
     'stale-test-request',
     [EnvironmentVariableTarget]::Process
 )
-$floatingReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-21-v59\manifest.json'
-$floatingReferenceBaselineRequired = Test-Path -LiteralPath $floatingReferenceBaselineManifest -PathType Leaf
-$mainReferenceBaselineManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\864x1000\2026-10-21-v59\manifest.json'
-$mainReferenceBaselineRequired = Test-Path -LiteralPath $mainReferenceBaselineManifest -PathType Leaf
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Validation.psm1') -Force
+$visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $PSScriptRoot
+$floatingReferenceBaselineRequired = Test-Path -LiteralPath $visualBaseline.Floating.ManifestPath -PathType Leaf
+$mainReferenceBaselineRequired = Test-Path -LiteralPath $visualBaseline.Main.ManifestPath -PathType Leaf
 [Environment]::SetEnvironmentVariable(
     'MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT',
     $(if ($floatingReferenceBaselineRequired) { $PSScriptRoot } else { $null }),

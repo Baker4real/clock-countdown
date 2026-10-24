@@ -13,17 +13,14 @@ $applicationPath = Join-Path $repoRoot 'app/MinminCountdown.exe'
 if (-not (Test-Path -LiteralPath $applicationPath -PathType Leaf)) {
     throw "未找到应用：$applicationPath。请先构建当前源码。"
 }
-$validationSource = Get-Content (Join-Path $repoRoot 'src/MinminCountdown/ValidationReport.cs') -Raw
-$manifestPaths = foreach ($surface in @('Main', 'Floating')) {
-    $versionPattern = 'const string {0}ReferenceBaselineVersion = "(?<version>[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-v[0-9]+)"' -f $surface
-    $versionMatch = [regex]::Match($validationSource, $versionPattern)
-    if (-not $versionMatch.Success) { throw "无法读取 $surface 当前基线版本。" }
-    $relativeRoot = if ($surface -eq 'Main') { 'main-window/864x1000' } else { 'floating-window/520x390' }
-    $directory = Join-Path $repoRoot "assets/ui-references/$relativeRoot/$($versionMatch.Groups['version'].Value)"
+Import-Module (Join-Path $repoRoot 'Countdown.Validation.psm1') -Force
+$visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $repoRoot
+$manifestPaths = foreach ($surface in @($visualBaseline.Main, $visualBaseline.Floating)) {
+    $directory = Split-Path -Parent $surface.ManifestPath
     if (Test-Path -LiteralPath $directory) {
         throw "基线目录已存在，拒绝覆盖：$directory。保留历史目录并先更新源码中的基线版本。"
     }
-    Join-Path $directory 'manifest.json'
+    $surface.ManifestPath
 }
 
 function Get-RootSettingsFingerprint {

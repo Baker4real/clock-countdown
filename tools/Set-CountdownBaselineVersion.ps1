@@ -4,8 +4,8 @@
 把现役视觉基线版本号换成新编号，一次改完源码、测试与验证模块里的全部钉点。
 
 .DESCRIPTION
-现役版本以 src/MinminCountdown/ValidationReport.cs 的 MainReferenceBaselineVersion 与
-FloatingReferenceBaselineVersion 为准，二者必须相同。本工具把受 Git 跟踪的 *.ps1、*.psm1、*.cs（assets 除外）
+现役版本以 src/MinminCountdown/VisualReferenceBaseline.cs 的 Version 常量为准（主窗与悬浮窗共用），脚本经
+Countdown.Validation.psm1 的 Get-CountdownVisualBaseline 读取它。本工具把受 Git 跟踪的 *.ps1、*.psm1、*.cs（assets 除外）
 里的旧版本字符串全部换成新版本，保留原有 BOM 与换行，写回后复核旧版本不再残留；DESIGN.md 等文档的叙述与
 聚合哈希仍需人工更新，工具只列出仍提到旧版本的文件。
 
@@ -82,19 +82,8 @@ if (-not [datetime]::TryParseExact($Version.Substring(0, 10), 'yyyy-MM-dd', [cul
 }
 $newNumber = Get-BaselineNumber -Name $Version
 
-$reportText = (Read-Utf8File -Path (Join-Path $repoRoot 'src/MinminCountdown/ValidationReport.cs')).Text
-$currentVersions = @(foreach ($surface in @('Main', 'Floating')) {
-        $pattern = 'const string {0}ReferenceBaselineVersion = "(?<version>[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}-v[0-9]+)"' -f $surface
-        $match = [regex]::Match($reportText, $pattern)
-        if (-not $match.Success) {
-            throw "ValidationReport.cs 里找不到 ${surface}ReferenceBaselineVersion，格式可能已变，先更新本工具。"
-        }
-        $match.Groups['version'].Value
-    })
-if ($currentVersions[0] -cne $currentVersions[1]) {
-    throw "主窗与悬浮窗现役版本不同（$($currentVersions[0]) / $($currentVersions[1])），本工具只处理两者相同的情况。"
-}
-$oldVersion = $currentVersions[0]
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) 'Countdown.Validation.psm1') -Force
+$oldVersion = (Get-CountdownVisualBaseline -RepositoryRoot $repoRoot).Version
 if ($oldVersion -ceq $Version) {
     throw "现役版本已是 $Version。"
 }

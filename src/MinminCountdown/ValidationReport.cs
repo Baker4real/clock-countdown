@@ -600,54 +600,6 @@ internal static class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
-    private const string FloatingReferenceBaselineVersion = "2026-10-21-v59";
-    private const string FloatingReferenceScenario = "floating-countdowns-baseline";
-    private const string FloatingLongNotesScenario = "long-notes";
-    private const string FloatingSearchExpandedScenario = "notes-search-expanded";
-    private const string FloatingReferenceStateFingerprintAlgorithm =
-        "SHA-256 of canonical UTF-8 floating capture state";
-    private const string FloatingReferenceSourceAggregateAlgorithm =
-        "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order";
-    private const string FloatingReferencePixelComparisonAlgorithm =
-        "BGRA8 absolute channel delta over 520x390 pixels";
-    private const string FloatingReferenceAlphaAlgorithm = "BGRA8 alpha scan";
-    private const string FloatingReferenceRoiAlgorithm =
-        "minimal bounding rectangle of pixels with alpha > 32";
-    private const int FloatingReferenceMaximumAbsoluteChannelDelta = 8;
-    private const double FloatingReferenceMaximumMeanAbsoluteError = 0.02;
-    private const double FloatingReferenceMaximumRootMeanSquareError = 0.25;
-    private const int FloatingReferenceMaximumChangedPixelCount = 500;
-    private const double FloatingReferenceMinimumTopBottomMeanAbsoluteError = 0.1;
-    private const double FloatingReferenceMinimumTopBottomRootMeanSquareError = 1;
-    private const int FloatingReferenceMinimumTopBottomChangedPixelCount = 1_000;
-    private static readonly string[] FloatingReferenceCanonicalSourcePaths =
-    {
-        "assets/floating-plush/component-day-card-blank.png",
-        "assets/floating-plush/component-day-header-blank.png",
-        "assets/floating-plush/component-day-mascots.png",
-        "assets/floating-plush/component-day-outer-shell.png",
-        "assets/floating-plush/floating-plush-cinnamoroll-reference.png",
-        "assets/floating-plush/floating-plush-kuromi-reference.png",
-        "assets/floating-plush/floating-plush-mymelody-reference.png",
-        "src/MinminCountdown.Core/DateDisplay.cs",
-        "src/MinminCountdown.Core/NoteOrdering.cs",
-        "src/MinminCountdown/App.xaml",
-        "src/MinminCountdown/ApplicationSession.cs",
-        "src/MinminCountdown/ApplicationTheme.cs",
-        "src/MinminCountdown/DesktopWorkspace.cs",
-        "src/MinminCountdown/DeleteUndoOffer.cs",
-        "src/MinminCountdown/DomainLogic.cs",
-        "src/MinminCountdown/FloatingBottomStatus.cs",
-        "src/MinminCountdown/FloatingWindow.Countdowns.cs",
-        "src/MinminCountdown/FloatingWindow.Notes.cs",
-        "src/MinminCountdown/FloatingWindow.xaml",
-        "src/MinminCountdown/FloatingWindow.xaml.cs",
-        "src/MinminCountdown/HolidayCalendar.cs",
-        "src/MinminCountdown/MinminCountdown.csproj",
-        "src/MinminCountdown/MotionBehavior.cs",
-        "src/MinminCountdown/NoteCompletionExit.cs",
-        "src/MinminCountdown/UiControls.cs"
-    };
     private static readonly string[] FloatingReferenceBaselineNegativeFixtures =
     {
         "malformed-manifest",
@@ -674,82 +626,9 @@ internal static class ValidationReport
         "long-note-typography-mismatch",
         "long-note-layout-unreachable"
     };
-    private static readonly FloatingReferenceCaptureSpec[] FloatingReferenceCaptureSpecs =
-    {
-        new(
-            "floating-countdowns-day",
-            FloatingReferenceScenario,
-            "Day",
-            "Baseline",
-            "floating-countdowns-day.png"),
-        new(
-            "floating-workday-complete-day",
-            "floating-workday-complete",
-            "Day",
-            "Complete",
-            "floating-workday-complete-day.png"),
-        new(
-            "long-notes-day-top",
-            FloatingLongNotesScenario,
-            "Day",
-            "Top",
-            "long-notes-day-top.png"),
-        new(
-            "long-notes-day-bottom",
-            FloatingLongNotesScenario,
-            "Day",
-            "Bottom",
-            "long-notes-day-bottom.png"),
-        new(
-            "notes-search-expanded-day",
-            FloatingSearchExpandedScenario,
-            "Day",
-            "Expanded",
-            "notes-search-expanded-day.png")
-    };
-    private const string MainReferenceBaselineVersion = "2026-10-21-v59";
     private const double MainNoteCardReminderMinimumFontSizeDip = 12;
     private const string MainStressCountdownTitle =
         "极长倒计时标题用于验证主窗口列表不会挤压操作区或破坏暖纸层级";
-    private const string MainReferenceStateFingerprintAlgorithm =
-        "SHA-256 of canonical UTF-8 main-window capture state";
-    private const string MainReferenceSourceAggregateAlgorithm =
-        "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order";
-    private const string MainReferencePixelComparisonAlgorithm =
-        "BGRA8 absolute channel delta over 864x1000 pixels";
-    private const string MainReferenceAlphaAlgorithm =
-        "Pbgra32 alpha scan; every pixel must equal 255";
-    private const string MainReferenceRoiAlgorithm =
-        "fixed full-canvas ROI for opaque 864x1000 main-window surface";
-    private const int MainReferenceMaximumAbsoluteChannelDelta = 8;
-    private const double MainReferenceMaximumMeanAbsoluteError = 0.02;
-    private const double MainReferenceMaximumRootMeanSquareError = 0.25;
-    private const int MainReferenceMaximumChangedPixelCount = 500;
-    private static readonly string[] MainReferenceCanonicalSourcePaths =
-    {
-        "assets/main-decorations/main-countdown-scene-day.png",
-        "assets/main-decorations/main-notes-scene-day.png",
-        "src/MinminCountdown.Core/DateDisplay.cs",
-        "src/MinminCountdown.Core/NoteOrdering.cs",
-        "src/MinminCountdown.Core/SettingsContract.cs",
-        "src/MinminCountdown.Core/SettingsModels.cs",
-        "src/MinminCountdown/App.xaml",
-        "src/MinminCountdown/ApplicationSession.cs",
-        "src/MinminCountdown/ApplicationTheme.cs",
-        "src/MinminCountdown/DesktopWorkspace.cs",
-        "src/MinminCountdown/DeleteUndoOffer.cs",
-        "src/MinminCountdown/DomainLogic.cs",
-        "src/MinminCountdown/MainWindow.xaml",
-        "src/MinminCountdown/MainWindow.xaml.cs",
-        "src/MinminCountdown/MinminCountdown.csproj",
-        "src/MinminCountdown/MotionBehavior.cs",
-        "src/MinminCountdown/NoteCompletionExit.cs",
-        "src/MinminCountdown/SegmentIndicator.cs",
-        "src/MinminCountdown/UiControls.cs",
-        "tools/Build-MainDayOrnamentScene.ps1",
-        "tools/MainDecorationSceneBands.psd1",
-        "tools/Test-MainDayOrnamentScene.ps1"
-    };
     private static readonly string[] MainReferenceBaselineNegativeFixtures =
     {
         "malformed-manifest",
@@ -768,18 +647,6 @@ internal static class ValidationReport
         "pixel-metrics-mismatch",
         "duplicate-state-fingerprint",
         "reused-frame"
-    };
-    private static readonly MainReferenceCaptureSpec[] MainReferenceCaptureSpecs =
-    {
-        new("main-day-countdowns-empty", "Day", "Countdowns", "Empty", "main-day-countdowns-empty.png"),
-        new("main-day-countdowns-representative", "Day", "Countdowns", "Representative", "main-day-countdowns-representative.png"),
-        new("main-day-countdowns-stress", "Day", "Countdowns", "Stress", "main-day-countdowns-stress.png"),
-        new("main-day-notes-empty", "Day", "Notes", "Empty", "main-day-notes-empty.png"),
-        new("main-day-notes-representative", "Day", "Notes", "Representative", "main-day-notes-representative.png"),
-        new("main-day-notes-stress", "Day", "Notes", "Stress", "main-day-notes-stress.png"),
-        new("main-day-notes-edit", "Day", "Notes", "Edit", "main-day-notes-edit.png"),
-        new("main-day-notes-filter-open", "Day", "Notes", "FilterOpen", "main-day-notes-filter-open.png"),
-        new("main-day-notes-selected", "Day", "Notes", "Selected", "main-day-notes-selected.png")
     };
 
     /// <summary>
@@ -1563,7 +1430,7 @@ internal static class ValidationReport
             ValidationExercises.RunVisualReferenceBaselineInterfaceBehavior();
         var floatingReferenceBaselineGateIsolationBehavior =
             ValidationExercises.RunFloatingReferenceManifestGateIsolationBehavior() &&
-            visualReferenceBaselineInterfaceBehavior && RunReferenceSourceDriftBehavior(isMain: false);
+            visualReferenceBaselineInterfaceBehavior;
         var floatingReferenceFreshnessGateIsolationBehavior =
             ValidationExercises.RunFloatingReferenceFreshnessGateIsolationBehavior();
         var floatingPrimaryCountdownContrastGateIsolationBehavior =
@@ -1722,7 +1589,13 @@ internal static class ValidationReport
                     mainCountdownRemainingSamples[5].ValueFontSize > mainCountdownRemainingSamples[5].TitleFontSize));
         var legacyMainReferenceCapture =
             RunMainReferenceCapture(theme, main, workspaceSnapshot, assetRoot);
-        var mainReferenceBaseline = RunMainReferenceBaseline(theme, assetRoot);
+        var mainReferenceMode = VisualReferenceBaseline.Main.ModeFromEnvironment();
+        var mainReferenceScenes = mainReferenceMode.Requested
+            ? CaptureMainReferenceScenarios(theme, assetRoot)
+            : MainReferenceScenes.NotCaptured;
+        var mainReferenceBaseline = VisualReferenceBaseline.Main.Run(
+            mainReferenceMode,
+            mainReferenceScenes.Captures);
         // #213 退出探针会再开窗口。放在参考帧捕获之后，避免打乱 v33 像素。
         dirtyExitConfirmation = dirtyExitConfirmation &&
             ValidationExercises.RunAlwaysConfirmExitKeepsReminderBehavior();
@@ -1760,7 +1633,7 @@ internal static class ValidationReport
         var daySingleBorderGateIsolationBehavior = RunDaySingleBorderGateIsolationBehavior();
         var mainReferenceBaselineGateIsolationBehavior =
             ValidationExercises.RunMainReferenceManifestGateIsolationBehavior() &&
-            visualReferenceBaselineInterfaceBehavior && RunReferenceSourceDriftBehavior(isMain: true);
+            visualReferenceBaselineInterfaceBehavior;
         var mainStressCountdownTitleGateIsolationBehavior =
             ValidationExercises.RunMainStressCountdownTitleGateIsolationBehavior();
 
@@ -2191,7 +2064,7 @@ internal static class ValidationReport
             ["FloatingCheckboxHitCoversSlot"] = Must(floatingCheckboxHitCoversSlot, "悬浮便签复选框命中覆盖 36px 槽位且不覆盖日期印记"),
             ["KeyboardFocusBaselineFramesAffected"] = false,
             ["KeyboardFocusBaselineEvidence"] =
-                "Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the 2026-10-21-v59 series includes edit-mode and filter-open standing frames.",
+                $"Standing captures clear keyboard focus before every frame so baselines are foreground-independent; the {VisualReferenceBaseline.Version} series includes edit-mode and filter-open standing frames.",
             ["AuditContrastGateIsolationBehavior"] = Must(auditContrastGateIsolationBehavior, "审计对比度负向夹具可独立失败"),
             ["DangerButtonContrast"] = Must(dangerContrast, "危险确认按钮悬停/按下保持文字对比度（#129 自 U1 迁移）"),
             ["DangerSurfacesMeetContrast"] = Must(dangerSurfaces.Values.All(ratio => ratio >= 4.5), "错误文字对六种真实表面至少 4.5:1（#217）"),
@@ -2569,16 +2442,16 @@ internal static class ValidationReport
             ["MainReferenceBaselineDiagnostics"] = mainReferenceBaseline.Diagnostics,
             ["MainReferenceBaselineNegativeFixtures"] = MainReferenceBaselineNegativeFixtures,
             ["MainStressCountdownTitleVisuals"] =
-                mainReferenceBaseline.StressCountdownTitleVisuals,
+                mainReferenceScenes.StressCountdownTitleVisuals,
             ["MainStressCountdownTitleGateIsolationBehavior"] = Must(mainStressCountdownTitleGateIsolationBehavior, "主窗口 Stress 标题缺失和截断或重叠负夹具逐项失败闭锁"),
             ["MainStressCountdownTitleMeasurements"] =
-                mainReferenceBaseline.StressCountdownTitleMeasurements,
+                mainReferenceScenes.StressCountdownTitleMeasurements,
             ["MainNoteCardReminderFontSizeDip"] =
-                mainReferenceBaseline.NoteCardReminderFontSizeDip,
+                mainReferenceScenes.NoteCardReminderFontSizeDip,
             ["MainNoteCardReminderFontSizeMeetsContract"] =
-                mainReferenceBaseline.NoteCardReminderFontSizeMeetsContract,
+                mainReferenceScenes.NoteCardReminderFontSizeMeetsContract,
             ["MainNoteCardReminderFontMeasurements"] =
-                mainReferenceBaseline.NoteCardReminderFontMeasurements,
+                mainReferenceScenes.NoteCardReminderFontMeasurements,
             ["LegacyMigrationSupported"] = Must(legacyMigration, "旧版单倒计时设置受支持并被迁移（#129 自 U1 迁移）"),
             ["DuplicateSettingsRejected"] = Must(duplicateRejected, "重复的持久化倒计时名称被拒绝（#129 自 U1 迁移）"),
             ["InvalidNotesRejected"] = Must(invalidNotesRejected, "非法持久化便签被拒绝（#129 自 U1 迁移）"),
@@ -3168,7 +3041,7 @@ internal static class ValidationReport
         report["CrossInterfaceRealSettingsConserved"] = Must(crossInterfaceRealSettingsConserved, "跨界面整合门禁");
         report["CrossInterfaceIntegration"] = Must(crossInterfaceIntegration, "跨界面整合门禁");
         report["CrossInterfaceIntegrationEvidence"] =
-            "#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real 2026-10-21-v59 frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
+            $"#119 cross-interface integration: AI direction images stay outside manifests and pixel gates while real {VisualReferenceBaseline.Version} frames (9 main + 5 floating, including #235 selection and #236 completion) carry regression; per-page composition, shared warm-pink tokens, single static day theme without a switch entry, plush/decoration layering, shared filter state, keyboard order, hit-test boundaries, deterministic fixture isolation and real-settings conservation each aggregate existing fail-closed probes.";
         report["UiQualityGateIsolationBehavior"] = Must(uiQualityGateIsolationBehavior, "UI 质量门禁负向夹具逐项失败且不误伤无关契约");
         datePicker.IsDropDownOpen = false;
         reminderCenterWindow.Close();
@@ -3651,56 +3524,7 @@ internal static class ValidationReport
         }).ToArray();
     }
 
-    private static MainReferenceBaselineValidation RunMainReferenceBaseline(
-        ApplicationTheme theme,
-        string assetRoot)
-    {
-        const string sourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
-        var sourceRoot = Environment.GetEnvironmentVariable(sourceRootVariable);
-        if (string.IsNullOrWhiteSpace(sourceRoot))
-        {
-            return MainReferenceBaselineValidation.NotRequested;
-        }
-
-        sourceRoot = Path.GetFullPath(sourceRoot);
-        if (!Directory.Exists(sourceRoot))
-        {
-            return MainReferenceBaselineValidation.Invalid(
-                true,
-                false,
-                $"视觉源码根目录不存在：{sourceRootVariable}。");
-        }
-
-        var actualCaptures = CaptureMainReferenceScenarios(theme, assetRoot);
-        var baselineRelativeDirectory =
-            $"assets/ui-references/main-window/864x1000/{MainReferenceBaselineVersion}";
-        var manifestRelativePath = $"{baselineRelativeDirectory}/manifest.json";
-        var baselineDirectory = ResolveRepositoryRelativePath(sourceRoot, baselineRelativeDirectory);
-        var manifestPath = ResolveRepositoryRelativePath(sourceRoot, manifestRelativePath);
-        var generationRequested = string.Equals(
-            Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE"),
-            "1",
-            StringComparison.Ordinal);
-        if (generationRequested)
-        {
-            GenerateMainReferenceBaseline(
-                sourceRoot,
-                baselineDirectory,
-                manifestPath,
-                baselineRelativeDirectory,
-                actualCaptures);
-        }
-
-        return ValidateMainReferenceBaseline(
-            sourceRoot,
-            baselineDirectory,
-            manifestPath,
-            manifestRelativePath,
-            baselineRelativeDirectory,
-            actualCaptures);
-    }
-
-    private static IReadOnlyList<MainReferenceActualCapture> CaptureMainReferenceScenarios(
+    private static MainReferenceScenes CaptureMainReferenceScenarios(
         ApplicationTheme theme,
         string assetRoot)
     {
@@ -3709,6 +3533,8 @@ internal static class ValidationReport
         var dayBeijing = new DateTimeOffset(2032, 5, 18, 10, 15, 30, TimeSpan.FromHours(8));
         var referenceUtc = dayBeijing.ToUniversalTime();
         var captures = new List<MainReferenceActualCapture>();
+        var stressCountdownTitles = new List<MainStressCountdownTitleMeasurement>();
+        var noteCardReminderFonts = new List<MainNoteCardReminderFontMeasurement>();
 
         try
         {
@@ -3754,7 +3580,7 @@ internal static class ValidationReport
                     }
 
                     var stressNotesPrepared = false;
-                    foreach (var spec in MainReferenceCaptureSpecs.Where(spec =>
+                    foreach (var spec in VisualReferenceBaseline.Main.CaptureSpecs.Where(spec =>
                                  string.Equals(spec.State, state, StringComparison.Ordinal)))
                     {
                         var workspaceKind = Enum.Parse<WorkspaceKind>(spec.Workspace);
@@ -3827,31 +3653,19 @@ internal static class ValidationReport
                             spec.State is "Representative" or "Stress"
                                 ? MeasureMainNoteCardReminderFont(validationMain, spec)
                                 : null;
-                        var metrics = MeasureMainReferenceCapture(pngBytes);
-                        if (metrics.Width != captureWidth || metrics.Height != captureHeight)
-                        {
-                            throw new InvalidOperationException(
-                                $"主窗口参考帧 {spec.CaptureId} 不是 {captureWidth}x{captureHeight}（actual={metrics.Width}x{metrics.Height}）。");
-                        }
-                        if (!metrics.Alpha.IsFullyOpaque)
-                        {
-                            throw new InvalidOperationException(
-                                $"主窗口参考帧 {spec.CaptureId} 包含非不透明像素。");
-                        }
-
-                        var fingerprint = CreateMainReferenceStateFingerprint(
-                            spec,
-                            beijingTime,
-                            settings);
-                        captures.Add(new MainReferenceActualCapture(
+                        captures.Add(VisualReferenceBaseline.Main.ActualCapture(
                             spec,
                             beijingTime,
                             pngBytes,
-                            fingerprint,
-                            metrics.Alpha,
-                            metrics.ContentRoi,
-                            stressCountdownTitle,
-                            noteCardReminderFont));
+                            settings));
+                        if (stressCountdownTitle is not null)
+                        {
+                            stressCountdownTitles.Add(stressCountdownTitle);
+                        }
+                        if (noteCardReminderFont is not null)
+                        {
+                            noteCardReminderFonts.Add(noteCardReminderFont);
+                        }
                     }
                 }
                 finally
@@ -3880,14 +3694,18 @@ internal static class ValidationReport
             theme.Apply();
         }
 
-        if (captures.Count != MainReferenceCaptureSpecs.Length)
+        var specs = VisualReferenceBaseline.Main.CaptureSpecs;
+        if (captures.Count != specs.Count)
         {
             throw new InvalidOperationException(
-                $"主窗口正式参考场景未生成严格 {MainReferenceCaptureSpecs.Length} 帧。");
+                $"主窗口正式参考场景未生成严格 {specs.Count} 帧。");
         }
 
-        return MainReferenceCaptureSpecs.Select(spec => captures.Single(capture =>
-            string.Equals(capture.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal))).ToArray();
+        return new MainReferenceScenes(
+            specs.Select(spec => captures.Single(capture =>
+                string.Equals(capture.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal))).ToArray(),
+            stressCountdownTitles.OrderBy(measurement => measurement.CaptureId, StringComparer.Ordinal).ToArray(),
+            noteCardReminderFonts.OrderBy(measurement => measurement.CaptureId, StringComparer.Ordinal).ToArray());
     }
 
     private static MainDaySingleBorderValidation ValidateDaySingleBorder()
@@ -3910,12 +3728,9 @@ internal static class ValidationReport
             new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 338, 391, new[] { 342, 343, 344, 359, 360, 363, 364, 366, 367, 368, 369, 370, 382, 383, 384 }, 319, 337),
             new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 309, 389, new[] { 314, 315, 348, 349, 367, 379, 380 }, 300, 313)
         };
-        var directory = Path.Combine(
-            Path.GetFullPath(sourceRoot),
-            "assets", "ui-references", "main-window", "864x1000", MainReferenceBaselineVersion);
         var measurements = specs.Select(spec =>
         {
-            var path = Path.Combine(directory, spec.FileName);
+            var path = VisualReferenceBaseline.Main.BaselineFilePath(sourceRoot, spec.FileName);
             if (!File.Exists(path))
             {
                 return new MainDaySingleBorderMeasurement(
@@ -4423,8 +4238,8 @@ internal static class ValidationReport
 
         var manifestPaths = new[]
         {
-            Path.Combine(referencesRoot, "floating-window", "520x390", "2026-10-21-v59", "manifest.json"),
-            Path.Combine(referencesRoot, "main-window", "864x1000", "2026-10-21-v59", "manifest.json")
+            VisualReferenceBaseline.Floating.BaselineFilePath(sourceRoot, "manifest.json"),
+            VisualReferenceBaseline.Main.BaselineFilePath(sourceRoot, "manifest.json")
         };
         foreach (var manifestPath in manifestPaths)
         {
@@ -4496,811 +4311,6 @@ internal static class ValidationReport
         }
 
         return !HasThemeSwitchEntry(main) && !HasThemeSwitchEntry(floating);
-    }
-
-    private static MainReferenceStateFingerprint CreateMainReferenceStateFingerprint(
-        MainReferenceCaptureSpec spec,
-        DateTimeOffset beijingTime,
-        CountdownSettings settings)
-    {
-        var settingsSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            SettingsContract.SerializeCanonical(settings))));
-        var activeNoteCount = settings.Notes.Count(note => !note.IsCompleted);
-        var completedNoteCount = settings.Notes.Count(note => note.IsCompleted);
-        var canonicalState = string.Join(
-            "\n",
-            $"theme={spec.Theme}",
-            $"workspace={spec.Workspace}",
-            $"state={spec.State}",
-            $"beijingTime={beijingTime.ToString("O", CultureInfo.InvariantCulture)}",
-            $"settingsSha256={settingsSha256}",
-            $"countdownCount={settings.Countdowns.Count}",
-            $"noteCount={settings.Notes.Count}",
-            $"activeNoteCount={activeNoteCount}",
-            $"completedNoteCount={completedNoteCount}");
-        return new MainReferenceStateFingerprint(
-            MainReferenceStateFingerprintAlgorithm,
-            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
-            spec.Theme,
-            spec.Workspace,
-            spec.State,
-            beijingTime,
-            settingsSha256,
-            settings.Countdowns.Count,
-            settings.Notes.Count,
-            activeNoteCount,
-            completedNoteCount);
-    }
-
-    private static MainReferenceBaselineValidation ValidateMainReferenceBaseline(
-        string sourceRoot,
-        string baselineDirectory,
-        string manifestPath,
-        string manifestRelativePath,
-        string baselineRelativeDirectory,
-        IReadOnlyList<MainReferenceActualCapture> actualCaptures)
-    {
-        if (!File.Exists(manifestPath))
-        {
-            return MainReferenceBaselineValidation.Invalid(
-                true,
-                false,
-                $"主窗口正式参考 manifest 不存在：{manifestRelativePath}。",
-                manifestRelativePath);
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
-            var root = document.RootElement;
-            var structureValid = HasExactJsonProperties(
-                    root,
-                    "schemaVersion",
-                    "baselineVersion",
-                    "captureKind",
-                    "canvas",
-                    "contentRoi",
-                    "sourceBinding",
-                    "executable",
-                    "pixelComparison",
-                    "captures") &&
-                root.GetProperty("schemaVersion").GetInt32() == 1 &&
-                string.Equals(
-                    root.GetProperty("baselineVersion").GetString(),
-                    MainReferenceBaselineVersion,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    root.GetProperty("captureKind").GetString(),
-                    "actual-wpf-main-window",
-                    StringComparison.Ordinal);
-
-            var canvas = root.GetProperty("canvas");
-            structureValid &= HasExactJsonProperties(canvas, "width", "height", "metricDpi") &&
-                canvas.GetProperty("width").GetInt32() == 864 &&
-                canvas.GetProperty("height").GetInt32() == 1000 &&
-                canvas.GetProperty("metricDpi").GetInt32() == 96;
-            var manifestRoi = ReadMainReferenceContentRoi(
-                root.GetProperty("contentRoi"),
-                ref structureValid);
-            structureValid &= manifestRoi == MainReferenceContentRoi.FullCanvas;
-
-            var sourceBinding = root.GetProperty("sourceBinding");
-            structureValid &= HasExactJsonProperties(
-                sourceBinding,
-                "aggregateAlgorithm",
-                "aggregateSha256",
-                "files");
-            var aggregateAlgorithm = sourceBinding
-                .GetProperty("aggregateAlgorithm")
-                .GetString() ?? string.Empty;
-            var manifestAggregateSha256 = sourceBinding
-                .GetProperty("aggregateSha256")
-                .GetString() ?? string.Empty;
-            var sourceBindings = sourceBinding
-                .GetProperty("files")
-                .EnumerateArray()
-                .Select(element =>
-                {
-                    structureValid &= HasExactJsonProperties(element, "path", "sha256");
-                    return new MainReferenceSourceBinding(
-                        element.GetProperty("path").GetString() ?? string.Empty,
-                        element.GetProperty("sha256").GetString() ?? string.Empty);
-                })
-                .ToArray();
-
-            var executable = root.GetProperty("executable");
-            structureValid &= HasExactJsonProperties(executable, "path", "sha256", "generation");
-            var executablePath = executable.GetProperty("path").GetString() ?? string.Empty;
-            var manifestExecutableSha256 = executable.GetProperty("sha256").GetString() ?? string.Empty;
-            var executableGeneration = executable.GetProperty("generation").GetString() ?? string.Empty;
-
-            var pixelComparison = root.GetProperty("pixelComparison");
-            structureValid &= HasExactJsonProperties(
-                pixelComparison,
-                "algorithm",
-                "maxAbsoluteChannelDelta",
-                "maximumMeanAbsoluteError",
-                "maximumRootMeanSquareError",
-                "maximumChangedPixelCount");
-            var comparisonAlgorithm = pixelComparison.GetProperty("algorithm").GetString() ?? string.Empty;
-            var maximumAbsoluteChannelDelta = pixelComparison
-                .GetProperty("maxAbsoluteChannelDelta")
-                .GetInt32();
-            var maximumMeanAbsoluteError = pixelComparison
-                .GetProperty("maximumMeanAbsoluteError")
-                .GetDouble();
-            var maximumRootMeanSquareError = pixelComparison
-                .GetProperty("maximumRootMeanSquareError")
-                .GetDouble();
-            var maximumChangedPixelCount = pixelComparison
-                .GetProperty("maximumChangedPixelCount")
-                .GetInt32();
-
-            var captures = root.GetProperty("captures")
-                .EnumerateArray()
-                .Select(element => ReadMainReferenceManifestCapture(element, ref structureValid))
-                .ToArray();
-            structureValid &=
-                captures.Length == MainReferenceCaptureSpecs.Length &&
-                string.Equals(
-                    aggregateAlgorithm,
-                    MainReferenceSourceAggregateAlgorithm,
-                    StringComparison.Ordinal) &&
-                string.Equals(executablePath, "app/MinminCountdown.exe", StringComparison.Ordinal) &&
-                string.Equals(
-                    executableGeneration,
-                    "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary",
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    comparisonAlgorithm,
-                    MainReferencePixelComparisonAlgorithm,
-                    StringComparison.Ordinal) &&
-                maximumAbsoluteChannelDelta == MainReferenceMaximumAbsoluteChannelDelta &&
-                Math.Abs(maximumMeanAbsoluteError - MainReferenceMaximumMeanAbsoluteError) < 0.0000001 &&
-                Math.Abs(maximumRootMeanSquareError - MainReferenceMaximumRootMeanSquareError) < 0.0000001 &&
-                maximumChangedPixelCount == MainReferenceMaximumChangedPixelCount;
-
-            var expectedPaths = MainReferenceCaptureSpecs
-                .Select(spec => $"{baselineRelativeDirectory}/{spec.FileName}")
-                .ToArray();
-            var captureIds = captures.Select(capture => capture.CaptureId).ToArray();
-            var capturePaths = captures.Select(capture => capture.Path).ToArray();
-            var captureIdsUnique =
-                captureIds.Distinct(StringComparer.Ordinal).Count() == captures.Length &&
-                captureIds.Order(StringComparer.Ordinal).SequenceEqual(
-                    MainReferenceCaptureSpecs.Select(spec => spec.CaptureId).Order(StringComparer.Ordinal),
-                    StringComparer.Ordinal);
-            var capturePathsUnique =
-                capturePaths.Distinct(StringComparer.Ordinal).Count() == captures.Length &&
-                capturePaths.Order(StringComparer.Ordinal).SequenceEqual(
-                    expectedPaths.Order(StringComparer.Ordinal),
-                    StringComparer.Ordinal);
-            var scenarioBindingsUnique = captures
-                .Select(capture => $"{capture.Theme}\0{capture.Workspace}\0{capture.State}")
-                .Distinct(StringComparer.Ordinal)
-                .Count() == captures.Length;
-            var stateBindingsMatch = captures.All(capture =>
-            {
-                var spec = MainReferenceCaptureSpecs.SingleOrDefault(candidate =>
-                    string.Equals(candidate.CaptureId, capture.CaptureId, StringComparison.Ordinal));
-                return spec is not null &&
-                    string.Equals(capture.Theme, spec.Theme, StringComparison.Ordinal) &&
-                    string.Equals(capture.Workspace, spec.Workspace, StringComparison.Ordinal) &&
-                    string.Equals(capture.State, spec.State, StringComparison.Ordinal) &&
-                    string.Equals(
-                        capture.Path,
-                        $"{baselineRelativeDirectory}/{spec.FileName}",
-                        StringComparison.Ordinal) &&
-                    string.Equals(capture.StateFingerprint.Theme, spec.Theme, StringComparison.Ordinal) &&
-                    string.Equals(capture.StateFingerprint.Workspace, spec.Workspace, StringComparison.Ordinal) &&
-                    string.Equals(capture.StateFingerprint.State, spec.State, StringComparison.Ordinal);
-            });
-            structureValid &= captureIdsUnique && capturePathsUnique &&
-                scenarioBindingsUnique && stateBindingsMatch;
-
-            var currentSourceBindings = GetMainReferenceSourceBindings(sourceRoot);
-            var currentSourceAggregate = AggregateMainReferenceSourceBindings(currentSourceBindings);
-            var sourceHashesMatch = MainReferenceSourcesMatch(sourceBindings, currentSourceBindings, manifestAggregateSha256);
-
-            var processPath = Environment.ProcessPath;
-            var executableSha256 = !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
-                ? Sha256File(processPath)
-                : string.Empty;
-            var executableHashMatches =
-                IsUpperSha256(manifestExecutableSha256) &&
-                string.Equals(manifestExecutableSha256, executableSha256, StringComparison.Ordinal);
-
-            var actualByCaptureId = actualCaptures.ToDictionary(
-                capture => capture.Spec.CaptureId,
-                StringComparer.Ordinal);
-            var stateFingerprintsMatch = captures.All(capture =>
-                actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture) &&
-                MainReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
-                capture.StateFingerprint == actualCapture.StateFingerprint);
-            var stateFingerprintsUnique =
-                captures.Select(capture => capture.StateFingerprint.Sha256)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count() == captures.Length;
-            var baselineEvaluation = VisualReferenceBaseline.Main.Validate(
-                new MainVisualReferenceRequest(
-                    new VisualReferenceFileRequest(
-                        sourceRoot,
-                        baselineDirectory,
-                        expectedPaths,
-                        captures.Select(capture => new VisualReferenceManifestCapture(
-                            capture.CaptureId,
-                            capture.Path,
-                            capture.Width,
-                            capture.Height,
-                            capture.PngSha256,
-                            new VisualReferenceAlphaMetrics(
-                                capture.Alpha.Minimum,
-                                capture.Alpha.Maximum,
-                                0,
-                                capture.Alpha.NonOpaquePixelCount,
-                                capture.Alpha.OpaquePixelCount),
-                            new VisualReferenceContentRoi(
-                                0,
-                                capture.ContentRoi.X,
-                                capture.ContentRoi.Y,
-                                capture.ContentRoi.Width,
-                                capture.ContentRoi.Height,
-                                capture.ContentRoi.PixelCount),
-                            new VisualReferencePixelMetrics(
-                                capture.Comparison.MaxAbsoluteChannelDelta,
-                                capture.Comparison.MeanAbsoluteError,
-                                capture.Comparison.RootMeanSquareError,
-                                capture.Comparison.ChangedPixelCount)))
-                            .ToArray(),
-                        actualCaptures.Select(capture => new VisualReferenceActualCapture(
-                            capture.Spec.CaptureId,
-                            capture.PngBytes)).ToArray(),
-                        maximumAbsoluteChannelDelta,
-                        maximumMeanAbsoluteError,
-                        maximumRootMeanSquareError,
-                        maximumChangedPixelCount),
-                    864,
-                    1000,
-                    structureValid,
-                    captureIdsUnique,
-                    capturePathsUnique,
-                    scenarioBindingsUnique,
-                    sourceHashesMatch,
-                    executableHashMatches,
-                    stateFingerprintsMatch,
-                    stateFingerprintsUnique));
-            var measurements = baselineEvaluation.Measurements.Select(measurement =>
-            {
-                var capture = captures.Single(candidate => string.Equals(
-                    candidate.CaptureId,
-                    measurement.CaptureId,
-                    StringComparison.Ordinal));
-                return new MainReferenceBaselineCaptureMeasurement(
-                    capture.CaptureId,
-                    capture.Theme,
-                    capture.Workspace,
-                    capture.State,
-                    capture.Path,
-                    capture.BeijingTime,
-                    measurement.BaselineSha256,
-                    measurement.ActualSha256,
-                    capture.StateFingerprint,
-                    new MainReferenceAlphaMetrics(
-                        MainReferenceAlphaAlgorithm,
-                        measurement.ActualAlpha.Minimum,
-                        measurement.ActualAlpha.Maximum,
-                        measurement.ActualAlpha.NonOpaquePixelCount,
-                        measurement.ActualAlpha.OpaquePixelCount),
-                    new MainReferenceContentRoi(
-                        MainReferenceRoiAlgorithm,
-                        measurement.ActualContentRoi.X,
-                        measurement.ActualContentRoi.Y,
-                        measurement.ActualContentRoi.Width,
-                        measurement.ActualContentRoi.Height,
-                        measurement.ActualContentRoi.PixelCount),
-                    new MainReferencePixelMetrics(
-                        measurement.Comparison.MaxAbsoluteChannelDelta,
-                        measurement.Comparison.MeanAbsoluteError,
-                        measurement.Comparison.RootMeanSquareError,
-                        measurement.Comparison.ChangedPixelCount));
-            }).ToArray();
-            var gates = baselineEvaluation.Gates;
-            var diagnostics = baselineEvaluation.Diagnostics;
-            var stressCountdownTitleMeasurements = actualCaptures
-                .Select(capture => capture.StressCountdownTitle)
-                .OfType<MainStressCountdownTitleMeasurement>()
-                .OrderBy(measurement => measurement.CaptureId, StringComparer.Ordinal)
-                .ToArray();
-            var noteCardReminderFontMeasurements = actualCaptures
-                .Select(capture => capture.NoteCardReminderFont)
-                .OfType<MainNoteCardReminderFontMeasurement>()
-                .OrderBy(measurement => measurement.CaptureId, StringComparer.Ordinal)
-                .ToArray();
-            return new MainReferenceBaselineValidation(
-                true,
-                true,
-                manifestRelativePath,
-                currentSourceAggregate,
-                executableSha256,
-                gates,
-                measurements,
-                stressCountdownTitleMeasurements,
-                noteCardReminderFontMeasurements,
-                diagnostics);
-        }
-        catch (Exception exception) when (exception is IOException or JsonException or
-               InvalidOperationException or FormatException or KeyNotFoundException)
-        {
-            return MainReferenceBaselineValidation.Invalid(
-                true,
-                File.Exists(manifestPath),
-                exception.Message,
-                manifestRelativePath);
-        }
-    }
-
-    private static void GenerateMainReferenceBaseline(
-        string sourceRoot,
-        string baselineDirectory,
-        string manifestPath,
-        string baselineRelativeDirectory,
-        IReadOnlyList<MainReferenceActualCapture> actualCaptures)
-    {
-        if (actualCaptures.Count != MainReferenceCaptureSpecs.Length ||
-            actualCaptures.Select(capture => capture.Spec.CaptureId)
-                .Distinct(StringComparer.Ordinal)
-                .Count() != MainReferenceCaptureSpecs.Length)
-        {
-            throw new InvalidOperationException(
-                $"主窗口参考图生成必须提供严格 {MainReferenceCaptureSpecs.Length} 帧 inventory。");
-        }
-        if (Directory.Exists(baselineDirectory) &&
-            Directory.EnumerateFileSystemEntries(baselineDirectory).Any())
-        {
-            throw new InvalidOperationException(
-                $"主窗口正式参考基线已存在，拒绝覆盖：{MainReferenceBaselineVersion}。");
-        }
-        if (actualCaptures.Any(capture =>
-                MeasureMainReferenceCapture(capture.PngBytes) is not
-                { Width: 864, Height: 1000, Alpha.IsFullyOpaque: true }))
-        {
-            throw new InvalidOperationException("主窗口正式参考帧必须为 864x1000 全不透明 PNG。");
-        }
-
-        var pngHashes = actualCaptures
-            .Select(capture => Convert.ToHexString(SHA256.HashData(capture.PngBytes)))
-            .ToArray();
-        if (pngHashes.Distinct(StringComparer.Ordinal).Count() != pngHashes.Length)
-        {
-            throw new InvalidOperationException("主窗口参考图生成拒绝写入复用 PNG 的基线目录。");
-        }
-
-        Directory.CreateDirectory(baselineDirectory);
-        var sourceBindings = GetMainReferenceSourceBindings(sourceRoot);
-        var sourceAggregate = AggregateMainReferenceSourceBindings(sourceBindings);
-        var processPath = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(processPath) || !File.Exists(processPath))
-        {
-            throw new InvalidOperationException("无法绑定生成主窗口参考图的当前 EXE。");
-        }
-
-        var executableSha256 = Sha256File(processPath);
-        var manifest = JsonSerializer.SerializeToUtf8Bytes(
-            new
-            {
-                schemaVersion = 1,
-                baselineVersion = MainReferenceBaselineVersion,
-                captureKind = "actual-wpf-main-window",
-                canvas = new { width = 864, height = 1000, metricDpi = 96 },
-                contentRoi = new
-                {
-                    algorithm = MainReferenceRoiAlgorithm,
-                    x = 0,
-                    y = 0,
-                    width = 864,
-                    height = 1000,
-                    pixelCount = 864 * 1000
-                },
-                sourceBinding = new
-                {
-                    aggregateAlgorithm = MainReferenceSourceAggregateAlgorithm,
-                    aggregateSha256 = sourceAggregate,
-                    files = sourceBindings.Select(binding => new
-                    {
-                        path = binding.Path,
-                        sha256 = binding.Sha256
-                    })
-                },
-                executable = new
-                {
-                    path = "app/MinminCountdown.exe",
-                    sha256 = executableSha256,
-                    generation = "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
-                },
-                pixelComparison = new
-                {
-                    algorithm = MainReferencePixelComparisonAlgorithm,
-                    maxAbsoluteChannelDelta = MainReferenceMaximumAbsoluteChannelDelta,
-                    maximumMeanAbsoluteError = MainReferenceMaximumMeanAbsoluteError,
-                    maximumRootMeanSquareError = MainReferenceMaximumRootMeanSquareError,
-                    maximumChangedPixelCount = MainReferenceMaximumChangedPixelCount
-                },
-                captures = MainReferenceCaptureSpecs.Select(spec =>
-                {
-                    var capture = actualCaptures.Single(actual =>
-                        string.Equals(actual.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal));
-                    return CreateMainReferenceManifestCapture(
-                        capture,
-                        $"{baselineRelativeDirectory}/{spec.FileName}");
-                })
-            },
-            new JsonSerializerOptions { WriteIndented = true });
-        foreach (var capture in actualCaptures)
-        {
-            var path = ResolveRepositoryRelativePath(
-                sourceRoot,
-                $"{baselineRelativeDirectory}/{capture.Spec.FileName}");
-            WriteBytesAtomically(path, capture.PngBytes);
-        }
-        WriteBytesAtomically(manifestPath, manifest);
-    }
-
-    private static object CreateMainReferenceManifestCapture(
-        MainReferenceActualCapture capture,
-        string path) =>
-        new
-        {
-            captureId = capture.Spec.CaptureId,
-            theme = capture.Spec.Theme,
-            workspace = capture.Spec.Workspace,
-            state = capture.Spec.State,
-            path,
-            beijingTime = capture.BeijingTime,
-            width = 864,
-            height = 1000,
-            pngSha256 = Convert.ToHexString(SHA256.HashData(capture.PngBytes)),
-            stateFingerprint = new
-            {
-                algorithm = capture.StateFingerprint.Algorithm,
-                sha256 = capture.StateFingerprint.Sha256,
-                theme = capture.StateFingerprint.Theme,
-                workspace = capture.StateFingerprint.Workspace,
-                state = capture.StateFingerprint.State,
-                beijingTime = capture.StateFingerprint.BeijingTime,
-                settingsSha256 = capture.StateFingerprint.SettingsSha256,
-                countdownCount = capture.StateFingerprint.CountdownCount,
-                noteCount = capture.StateFingerprint.NoteCount,
-                activeNoteCount = capture.StateFingerprint.ActiveNoteCount,
-                completedNoteCount = capture.StateFingerprint.CompletedNoteCount
-            },
-            alpha = new
-            {
-                algorithm = capture.Alpha.Algorithm,
-                minimum = capture.Alpha.Minimum,
-                maximum = capture.Alpha.Maximum,
-                nonOpaquePixelCount = capture.Alpha.NonOpaquePixelCount,
-                opaquePixelCount = capture.Alpha.OpaquePixelCount
-            },
-            contentRoi = new
-            {
-                algorithm = capture.ContentRoi.Algorithm,
-                x = capture.ContentRoi.X,
-                y = capture.ContentRoi.Y,
-                width = capture.ContentRoi.Width,
-                height = capture.ContentRoi.Height,
-                pixelCount = capture.ContentRoi.PixelCount
-            },
-            comparison = new
-            {
-                maxAbsoluteChannelDelta = 0,
-                meanAbsoluteError = 0,
-                rootMeanSquareError = 0,
-                changedPixelCount = 0
-            }
-        };
-
-    private static MainReferenceManifestCapture ReadMainReferenceManifestCapture(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "captureId",
-            "theme",
-            "workspace",
-            "state",
-            "path",
-            "beijingTime",
-            "width",
-            "height",
-            "pngSha256",
-            "stateFingerprint",
-            "alpha",
-            "contentRoi",
-            "comparison");
-        return new MainReferenceManifestCapture(
-            element.GetProperty("captureId").GetString() ?? string.Empty,
-            element.GetProperty("theme").GetString() ?? string.Empty,
-            element.GetProperty("workspace").GetString() ?? string.Empty,
-            element.GetProperty("state").GetString() ?? string.Empty,
-            element.GetProperty("path").GetString() ?? string.Empty,
-            element.GetProperty("beijingTime").GetDateTimeOffset(),
-            element.GetProperty("width").GetInt32(),
-            element.GetProperty("height").GetInt32(),
-            element.GetProperty("pngSha256").GetString() ?? string.Empty,
-            ReadMainReferenceStateFingerprint(
-                element.GetProperty("stateFingerprint"),
-                ref structureValid),
-            ReadMainReferenceAlphaMetrics(element.GetProperty("alpha"), ref structureValid),
-            ReadMainReferenceContentRoi(element.GetProperty("contentRoi"), ref structureValid),
-            ReadMainReferencePixelMetrics(element.GetProperty("comparison"), ref structureValid));
-    }
-
-    private static MainReferenceStateFingerprint ReadMainReferenceStateFingerprint(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "algorithm",
-            "sha256",
-            "theme",
-            "workspace",
-            "state",
-            "beijingTime",
-            "settingsSha256",
-            "countdownCount",
-            "noteCount",
-            "activeNoteCount",
-            "completedNoteCount");
-        return new MainReferenceStateFingerprint(
-            element.GetProperty("algorithm").GetString() ?? string.Empty,
-            element.GetProperty("sha256").GetString() ?? string.Empty,
-            element.GetProperty("theme").GetString() ?? string.Empty,
-            element.GetProperty("workspace").GetString() ?? string.Empty,
-            element.GetProperty("state").GetString() ?? string.Empty,
-            element.GetProperty("beijingTime").GetDateTimeOffset(),
-            element.GetProperty("settingsSha256").GetString() ?? string.Empty,
-            element.GetProperty("countdownCount").GetInt32(),
-            element.GetProperty("noteCount").GetInt32(),
-            element.GetProperty("activeNoteCount").GetInt32(),
-            element.GetProperty("completedNoteCount").GetInt32());
-    }
-
-    private static MainReferenceAlphaMetrics ReadMainReferenceAlphaMetrics(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "algorithm",
-            "minimum",
-            "maximum",
-            "nonOpaquePixelCount",
-            "opaquePixelCount");
-        return new MainReferenceAlphaMetrics(
-            element.GetProperty("algorithm").GetString() ?? string.Empty,
-            element.GetProperty("minimum").GetInt32(),
-            element.GetProperty("maximum").GetInt32(),
-            element.GetProperty("nonOpaquePixelCount").GetInt32(),
-            element.GetProperty("opaquePixelCount").GetInt32());
-    }
-
-    private static MainReferenceContentRoi ReadMainReferenceContentRoi(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "algorithm",
-            "x",
-            "y",
-            "width",
-            "height",
-            "pixelCount");
-        return new MainReferenceContentRoi(
-            element.GetProperty("algorithm").GetString() ?? string.Empty,
-            element.GetProperty("x").GetInt32(),
-            element.GetProperty("y").GetInt32(),
-            element.GetProperty("width").GetInt32(),
-            element.GetProperty("height").GetInt32(),
-            element.GetProperty("pixelCount").GetInt32());
-    }
-
-    private static MainReferencePixelMetrics ReadMainReferencePixelMetrics(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "maxAbsoluteChannelDelta",
-            "meanAbsoluteError",
-            "rootMeanSquareError",
-            "changedPixelCount");
-        return new MainReferencePixelMetrics(
-            element.GetProperty("maxAbsoluteChannelDelta").GetInt32(),
-            element.GetProperty("meanAbsoluteError").GetDouble(),
-            element.GetProperty("rootMeanSquareError").GetDouble(),
-            element.GetProperty("changedPixelCount").GetInt32());
-    }
-
-    private static bool MainReferenceStateFingerprintMatchesCanonical(
-        MainReferenceStateFingerprint fingerprint)
-    {
-        if (!IsUpperSha256(fingerprint.Sha256) ||
-            !IsUpperSha256(fingerprint.SettingsSha256) ||
-            fingerprint.CountdownCount < 0 ||
-            fingerprint.NoteCount < 0 ||
-            fingerprint.ActiveNoteCount < 0 ||
-            fingerprint.CompletedNoteCount < 0 ||
-            fingerprint.ActiveNoteCount + fingerprint.CompletedNoteCount != fingerprint.NoteCount)
-        {
-            return false;
-        }
-
-        var canonicalState = string.Join(
-            "\n",
-            $"theme={fingerprint.Theme}",
-            $"workspace={fingerprint.Workspace}",
-            $"state={fingerprint.State}",
-            $"beijingTime={fingerprint.BeijingTime.ToString("O", CultureInfo.InvariantCulture)}",
-            $"settingsSha256={fingerprint.SettingsSha256}",
-            $"countdownCount={fingerprint.CountdownCount}",
-            $"noteCount={fingerprint.NoteCount}",
-            $"activeNoteCount={fingerprint.ActiveNoteCount}",
-            $"completedNoteCount={fingerprint.CompletedNoteCount}");
-        return string.Equals(
-                   fingerprint.Algorithm,
-                   MainReferenceStateFingerprintAlgorithm,
-                   StringComparison.Ordinal) &&
-               string.Equals(
-                   Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
-                   fingerprint.Sha256,
-                   StringComparison.Ordinal);
-    }
-
-    private static IReadOnlyList<MainReferenceSourceBinding> GetMainReferenceSourceBindings(
-        string sourceRoot) =>
-        MainReferenceCanonicalSourcePaths.Select(relativePath =>
-        {
-            var path = ResolveRepositoryRelativePath(sourceRoot, relativePath);
-            if (!File.Exists(path))
-            {
-                throw new FileNotFoundException(
-                    $"主窗口参考图绑定的视觉源码不存在：{relativePath}",
-                    path);
-            }
-
-            return new MainReferenceSourceBinding(relativePath, Sha256File(path));
-        }).ToArray();
-
-    private static bool MainReferenceSourcesMatch(
-        IReadOnlyList<MainReferenceSourceBinding> manifest,
-        IReadOnlyList<MainReferenceSourceBinding> current,
-        string aggregate) =>
-        manifest.Count == current.Count &&
-        manifest.Select(binding => binding.Path).SequenceEqual(MainReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
-        manifest.Zip(current).All(pair => pair.First.Path == pair.Second.Path && IsUpperSha256(pair.First.Sha256) &&
-            pair.First.Sha256 == pair.Second.Sha256) &&
-        IsUpperSha256(aggregate) && aggregate == AggregateMainReferenceSourceBindings(manifest) &&
-        aggregate == AggregateMainReferenceSourceBindings(current);
-
-    private static bool RunReferenceSourceDriftBehavior(bool isMain)
-    {
-        // Exercise the same source comparison used by the real manifest reader.
-        // A self-consistent stale manifest must still reject changed visual sources.
-        const string motionPath = "src/MinminCountdown/MotionBehavior.cs";
-        const string indicatorPath = "src/MinminCountdown/SegmentIndicator.cs";
-        const string datePath = "src/MinminCountdown.Core/DateDisplay.cs";
-        const string orderPath = "src/MinminCountdown.Core/NoteOrdering.cs";
-        const string sessionPath = "src/MinminCountdown/ApplicationSession.cs";
-        const string workspacePath = "src/MinminCountdown/DesktopWorkspace.cs";
-        const string completionExitPath = "src/MinminCountdown/NoteCompletionExit.cs";
-        const string undoPath = "src/MinminCountdown/DeleteUndoOffer.cs";
-        const string bottomStatusPath = "src/MinminCountdown/FloatingBottomStatus.cs";
-        const string holidayPath = "src/MinminCountdown/HolidayCalendar.cs";
-        var paths = isMain ? MainReferenceCanonicalSourcePaths : FloatingReferenceCanonicalSourcePaths;
-        var requiredPaths = isMain
-            ? new[] { motionPath, indicatorPath, datePath, orderPath, sessionPath, workspacePath, completionExitPath, undoPath }
-            : new[] { motionPath, datePath, orderPath, sessionPath, workspacePath, completionExitPath, undoPath, bottomStatusPath, holidayPath };
-        var currentHash = new string('A', 64);
-        var staleHash = new string('B', 64);
-        foreach (var changedPath in requiredPaths)
-        {
-            if (!paths.Contains(changedPath, StringComparer.Ordinal))
-            {
-                Console.Error.WriteLine($"REFERENCE_SOURCE_DRIFT_DIAGNOSTIC main={isMain}, missing={changedPath}");
-                return false;
-            }
-            if (isMain)
-            {
-                var current = paths.Select(path => new MainReferenceSourceBinding(path, currentHash)).ToArray();
-                var stale = current.Select(binding => binding.Path == changedPath ? binding with { Sha256 = staleHash } : binding).ToArray();
-                var missing = current.Where(binding => binding.Path != changedPath).ToArray();
-                if (!MainReferenceSourcesMatch(current, current, AggregateMainReferenceSourceBindings(current)) ||
-                    MainReferenceSourcesMatch(missing, current, AggregateMainReferenceSourceBindings(missing)) ||
-                    MainReferenceSourcesMatch(stale, current, AggregateMainReferenceSourceBindings(stale)))
-                    return false;
-            }
-            else
-            {
-                var current = paths.Select(path => new FloatingReferenceSourceBinding(path, currentHash)).ToArray();
-                var stale = current.Select(binding => binding.Path == changedPath ? binding with { Sha256 = staleHash } : binding).ToArray();
-                var missing = current.Where(binding => binding.Path != changedPath).ToArray();
-                if (!FloatingReferenceSourcesMatch(current, current, AggregateFloatingReferenceSourceBindings(current)) ||
-                    FloatingReferenceSourcesMatch(missing, current, AggregateFloatingReferenceSourceBindings(missing)) ||
-                    FloatingReferenceSourcesMatch(stale, current, AggregateFloatingReferenceSourceBindings(stale)) ||
-                    FloatingReferenceSourcesMatch(missing, missing, AggregateFloatingReferenceSourceBindings(missing)))
-                    return false;
-            }
-        }
-        return true;
-    }
-
-    private static string AggregateMainReferenceSourceBindings(
-        IEnumerable<MainReferenceSourceBinding> bindings)
-    {
-        using var stream = new MemoryStream();
-        foreach (var binding in bindings.OrderBy(binding => binding.Path, StringComparer.Ordinal))
-        {
-            var line = Encoding.UTF8.GetBytes($"{binding.Path}\0{binding.Sha256}\n");
-            stream.Write(line, 0, line.Length);
-        }
-
-        return Convert.ToHexString(SHA256.HashData(stream.ToArray()));
-    }
-
-    private static MainReferenceCaptureMetrics MeasureMainReferenceCapture(byte[] bytes)
-    {
-        var bitmap = DecodeBitmap(bytes);
-        var (pixels, _) = GetBgra32Pixels(bitmap);
-        var minimum = byte.MaxValue;
-        var maximum = byte.MinValue;
-        var nonOpaque = 0;
-        var opaque = 0;
-        for (var index = 3; index < pixels.Length; index += 4)
-        {
-            var alpha = pixels[index];
-            minimum = Math.Min(minimum, alpha);
-            maximum = Math.Max(maximum, alpha);
-            if (alpha == byte.MaxValue)
-            {
-                opaque++;
-            }
-            else
-            {
-                nonOpaque++;
-            }
-        }
-
-        return new MainReferenceCaptureMetrics(
-            bitmap.PixelWidth,
-            bitmap.PixelHeight,
-            new MainReferenceAlphaMetrics(
-                MainReferenceAlphaAlgorithm,
-                minimum,
-                maximum,
-                nonOpaque,
-                opaque),
-            new MainReferenceContentRoi(
-                MainReferenceRoiAlgorithm,
-                0,
-                0,
-                bitmap.PixelWidth,
-                bitmap.PixelHeight,
-                bitmap.PixelWidth * bitmap.PixelHeight));
-    }
-
-    private static MainReferencePixelMetrics CompareMainReferencePixels(
-        byte[] baselineBytes,
-        byte[] actualBytes)
-    {
-        var metrics = CompareFloatingReferencePixels(baselineBytes, actualBytes);
-        return new MainReferencePixelMetrics(
-            metrics.MaxAbsoluteChannelDelta,
-            metrics.MeanAbsoluteError,
-            metrics.RootMeanSquareError,
-            metrics.ChangedPixelCount);
     }
 
     private static FloatingReferenceExerciseResult RunFloatingReferenceExercise(
@@ -5536,20 +4546,16 @@ internal static class ValidationReport
             var captureBytes = EncodePng(framedCapture);
             var captureWritten = captureBytes.Length > 0;
             var baselineBodyScroller = Required<ScrollViewer>(referenceWindow, "FloatingBodyScroller");
-            var dayCountdownCapture = CreateFloatingReferenceActualCapture(
-                FloatingReferenceCaptureSpecs.Single(spec =>
-                    spec.CaptureId == "floating-countdowns-day"),
+            var dayCountdownCapture = VisualReferenceBaseline.Floating.ActualCapture(
+                "floating-countdowns-day",
                 captureBytes,
-                CreateFloatingReferenceStateFingerprint(
-                    "Day",
-                    "Countdowns",
-                    string.Empty,
-                    string.Empty,
-                    "Baseline",
-                    baselineBodyScroller.VerticalOffset,
-                    baselineBodyScroller.ScrollableHeight,
-                    "距离下班",
-                    "七月倒计时"));
+                "Countdowns",
+                string.Empty,
+                string.Empty,
+                baselineBodyScroller.VerticalOffset,
+                baselineBodyScroller.ScrollableHeight,
+                "距离下班",
+                "七月倒计时");
             var expiredFallbackProbe = referenceWindow.BuildRemainingBlocksForValidation(
                 "已到期",
                 isPrimary: false);
@@ -5967,8 +4973,8 @@ internal static class ValidationReport
                 referenceUtc,
                 captureWidth,
                 captureHeight);
-            floatingReferenceBaseline = ValidateFloatingReferenceBaseline(
-                assetRoot,
+            floatingReferenceBaseline = VisualReferenceBaseline.Floating.Run(
+                VisualReferenceBaseline.Floating.ModeFromEnvironment(),
                 new[] { dayCountdownCapture, completionResult.Capture }
                     .Concat(floatingLongNotesValidation.Captures)
                     .Concat(searchExpandedCaptures)
@@ -6537,24 +5543,25 @@ internal static class ValidationReport
                     ? string.Empty
                     : FloatingLongNoteAnchor(visibleBindings[^1], takeSuffix: true);
                 var captureId = $"long-notes-day-{state.ToLowerInvariant()}";
-                var fingerprint = CreateFloatingReferenceStateFingerprint(
-                    "Day",
-                    "Notes",
-                    primaryBinding?.Note.Id ?? string.Empty,
-                    primaryBinding?.Note.Text ?? string.Empty,
-                    state,
-                    bodyScroller.VerticalOffset,
-                    bodyScroller.ScrollableHeight,
-                    firstVisibleAnchor,
-                    lastVisibleAnchor);
+                // 状态指纹取清焦点与编码之前的滚动位置。
+                var fingerprintVerticalOffset = bodyScroller.VerticalOffset;
+                var fingerprintScrollableHeight = bodyScroller.ScrollableHeight;
                 ClearCaptureKeyboardFocus(root);
                 var pngBytes = EncodePng(ScaleToFrame(
                     CaptureVisual(root),
                     captureWidth,
                     captureHeight));
-                var spec = FloatingReferenceCaptureSpecs.Single(candidate =>
-                    string.Equals(candidate.CaptureId, captureId, StringComparison.Ordinal));
-                captures.Add(CreateFloatingReferenceActualCapture(spec, pngBytes, fingerprint));
+                var longNoteCapture = VisualReferenceBaseline.Floating.ActualCapture(
+                    captureId,
+                    pngBytes,
+                    "Notes",
+                    primaryBinding?.Note.Id ?? string.Empty,
+                    primaryBinding?.Note.Text ?? string.Empty,
+                    fingerprintVerticalOffset,
+                    fingerprintScrollableHeight,
+                    firstVisibleAnchor,
+                    lastVisibleAnchor);
+                captures.Add(longNoteCapture);
                 measurements.Add(new FloatingLongNoteFrameMeasurement(
                     captureId,
                     "Day",
@@ -6562,7 +5569,7 @@ internal static class ValidationReport
                     Math.Round(bodyScroller.VerticalOffset, 2),
                     Math.Round(bodyScroller.ScrollableHeight, 2),
                     primaryBinding?.Note.Id ?? string.Empty,
-                    fingerprint.NoteTextSha256,
+                    longNoteCapture.StateFingerprint.NoteTextSha256,
                     firstVisibleAnchor,
                     lastVisibleAnchor,
                     bodyHasNoManualLineBreaks,
@@ -6887,22 +5894,16 @@ internal static class ValidationReport
                 rows,
                 rows.Children.OfType<Border>().Count());
             ClearCaptureKeyboardFocus(root);
-            const string captureId = "notes-search-expanded-day";
-            var spec = FloatingReferenceCaptureSpecs.Single(candidate =>
-                string.Equals(candidate.CaptureId, captureId, StringComparison.Ordinal));
-            captures.Add(CreateFloatingReferenceActualCapture(
-                spec,
+            captures.Add(VisualReferenceBaseline.Floating.ActualCapture(
+                "notes-search-expanded-day",
                 EncodePng(ScaleToFrame(CaptureVisual(root), captureWidth, captureHeight)),
-                CreateFloatingReferenceStateFingerprint(
-                    "Day",
-                    "Notes",
-                    string.Empty,
-                    string.Empty,
-                    spec.State,
-                    scroller.VerticalOffset,
-                    scroller.ScrollableHeight,
-                    "search-expanded",
-                    "search-expanded")));
+                "Notes",
+                string.Empty,
+                string.Empty,
+                scroller.VerticalOffset,
+                scroller.ScrollableHeight,
+                "search-expanded",
+                "search-expanded"));
         }
         finally
         {
@@ -6915,981 +5916,6 @@ internal static class ValidationReport
         }
 
         return captures;
-    }
-
-    private static FloatingReferenceActualCapture CreateFloatingReferenceActualCapture(
-        FloatingReferenceCaptureSpec spec,
-        byte[] pngBytes,
-        FloatingReferenceStateFingerprint stateFingerprint) =>
-        new(spec, pngBytes, stateFingerprint);
-
-    private static FloatingReferenceStateFingerprint CreateFloatingReferenceStateFingerprint(
-        string theme,
-        string workspace,
-        string noteId,
-        string noteText,
-        string viewportState,
-        double verticalOffset,
-        double scrollableHeight,
-        string firstVisibleAnchor,
-        string lastVisibleAnchor)
-    {
-        var roundedOffset = Math.Round(verticalOffset, 2);
-        var roundedScrollableHeight = Math.Round(scrollableHeight, 2);
-        var noteTextSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(noteText)));
-        var canonicalState = string.Join(
-            "\n",
-            $"theme={theme}",
-            $"workspace={workspace}",
-            $"noteId={noteId}",
-            $"noteTextSha256={noteTextSha256}",
-            $"viewportState={viewportState}",
-            $"verticalOffset={roundedOffset.ToString("F2", CultureInfo.InvariantCulture)}",
-            $"scrollableHeight={roundedScrollableHeight.ToString("F2", CultureInfo.InvariantCulture)}",
-            $"firstVisibleAnchor={firstVisibleAnchor}",
-            $"lastVisibleAnchor={lastVisibleAnchor}");
-        return new FloatingReferenceStateFingerprint(
-            FloatingReferenceStateFingerprintAlgorithm,
-            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
-            theme,
-            workspace,
-            noteId,
-            noteTextSha256,
-            viewportState,
-            roundedOffset,
-            roundedScrollableHeight,
-            firstVisibleAnchor,
-            lastVisibleAnchor);
-    }
-
-    private static FloatingReferenceBaselineValidation ValidateFloatingReferenceBaseline(
-        string assetRoot,
-        IReadOnlyList<FloatingReferenceActualCapture> actualCaptures,
-        bool longNoteTypographyMatches,
-        bool longNoteLayoutValid)
-    {
-        const string sourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
-        var sourceRootValue = Environment.GetEnvironmentVariable(sourceRootVariable);
-        if (string.IsNullOrWhiteSpace(sourceRootValue))
-        {
-            return FloatingReferenceBaselineValidation.NotRequested;
-        }
-
-        var sourceRoot = Path.GetFullPath(sourceRootValue);
-        if (!Directory.Exists(sourceRoot))
-        {
-            return FloatingReferenceBaselineValidation.Invalid(
-                true,
-                false,
-                $"视觉源码根目录不存在：{sourceRootVariable}。");
-        }
-
-        var baselineRelativeDirectory =
-            $"assets/ui-references/floating-window/520x390/{FloatingReferenceBaselineVersion}";
-        var manifestRelativePath = $"{baselineRelativeDirectory}/manifest.json";
-        var baselineDirectory = ResolveRepositoryRelativePath(sourceRoot, baselineRelativeDirectory);
-        var manifestPath = ResolveRepositoryRelativePath(sourceRoot, manifestRelativePath);
-        var generationRequested = string.Equals(
-            Environment.GetEnvironmentVariable("MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE"),
-            "1",
-            StringComparison.Ordinal);
-        if (generationRequested)
-        {
-            GenerateFloatingReferenceBaseline(
-                sourceRoot,
-                baselineDirectory,
-                manifestPath,
-                baselineRelativeDirectory,
-                actualCaptures);
-        }
-
-        if (!File.Exists(manifestPath))
-        {
-            return FloatingReferenceBaselineValidation.Invalid(
-                true,
-                false,
-                $"未找到悬浮窗参考图 manifest：{manifestRelativePath}");
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
-            var root = document.RootElement;
-            var structureValid =
-                HasExactJsonProperties(
-                    root,
-                    "schemaVersion",
-                    "baselineVersion",
-                    "captureKind",
-                    "canvas",
-                    "sourceBinding",
-                    "executable",
-                    "pixelComparison",
-                    "freshness",
-                    "captures") &&
-                root.GetProperty("schemaVersion").GetInt32() == 1 &&
-                string.Equals(
-                    root.GetProperty("baselineVersion").GetString(),
-                    FloatingReferenceBaselineVersion,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    root.GetProperty("captureKind").GetString(),
-                    "actual-wpf-floating-window",
-                    StringComparison.Ordinal);
-
-            var canvas = root.GetProperty("canvas");
-            structureValid &=
-                HasExactJsonProperties(canvas, "width", "height", "metricDpi") &&
-                canvas.GetProperty("width").GetInt32() == 520 &&
-                canvas.GetProperty("height").GetInt32() == 390 &&
-                canvas.GetProperty("metricDpi").GetInt32() == 96;
-
-            var sourceBindingElement = root.GetProperty("sourceBinding");
-            structureValid &= HasExactJsonProperties(
-                sourceBindingElement,
-                "aggregateAlgorithm",
-                "aggregateSha256",
-                "files");
-            var aggregateAlgorithm = sourceBindingElement
-                .GetProperty("aggregateAlgorithm")
-                .GetString() ?? string.Empty;
-            var manifestAggregateSha256 = sourceBindingElement
-                .GetProperty("aggregateSha256")
-                .GetString() ?? string.Empty;
-            var sourceBindings = sourceBindingElement
-                .GetProperty("files")
-                .EnumerateArray()
-                .Select(element =>
-                {
-                    structureValid &= HasExactJsonProperties(element, "path", "sha256");
-                    return new FloatingReferenceSourceBinding(
-                        element.GetProperty("path").GetString() ?? string.Empty,
-                        element.GetProperty("sha256").GetString() ?? string.Empty);
-                })
-                .ToArray();
-
-            var executable = root.GetProperty("executable");
-            structureValid &= HasExactJsonProperties(
-                executable,
-                "path",
-                "sha256",
-                "generation");
-            var executableLogicalPath = executable.GetProperty("path").GetString() ?? string.Empty;
-            var manifestExecutableSha256 = executable.GetProperty("sha256").GetString() ?? string.Empty;
-            var executableGeneration = executable.GetProperty("generation").GetString() ?? string.Empty;
-
-            var pixelComparison = root.GetProperty("pixelComparison");
-            structureValid &= HasExactJsonProperties(
-                pixelComparison,
-                "algorithm",
-                "maxAbsoluteChannelDelta",
-                "maximumMeanAbsoluteError",
-                "maximumRootMeanSquareError",
-                "maximumChangedPixelCount");
-            var comparisonAlgorithm = pixelComparison.GetProperty("algorithm").GetString() ?? string.Empty;
-            var maximumAbsoluteChannelDelta = pixelComparison
-                .GetProperty("maxAbsoluteChannelDelta")
-                .GetInt32();
-            var maximumMeanAbsoluteError = pixelComparison
-                .GetProperty("maximumMeanAbsoluteError")
-                .GetDouble();
-            var maximumRootMeanSquareError = pixelComparison
-                .GetProperty("maximumRootMeanSquareError")
-                .GetDouble();
-            var maximumChangedPixelCount = pixelComparison
-                .GetProperty("maximumChangedPixelCount")
-                .GetInt32();
-
-            var freshness = root.GetProperty("freshness");
-            structureValid &= HasExactJsonProperties(
-                freshness,
-                "stateFingerprintAlgorithm",
-                "minimumTopBottomMeanAbsoluteError",
-                "minimumTopBottomRootMeanSquareError",
-                "minimumTopBottomChangedPixelCount",
-                "topBottomComparisons");
-            var stateFingerprintAlgorithm = freshness
-                .GetProperty("stateFingerprintAlgorithm")
-                .GetString() ?? string.Empty;
-            var minimumTopBottomMeanAbsoluteError = freshness
-                .GetProperty("minimumTopBottomMeanAbsoluteError")
-                .GetDouble();
-            var minimumTopBottomRootMeanSquareError = freshness
-                .GetProperty("minimumTopBottomRootMeanSquareError")
-                .GetDouble();
-            var minimumTopBottomChangedPixelCount = freshness
-                .GetProperty("minimumTopBottomChangedPixelCount")
-                .GetInt32();
-            var topBottomComparisons = freshness
-                .GetProperty("topBottomComparisons")
-                .EnumerateArray()
-                .Select(element => ReadFloatingReferenceStateDifference(element, ref structureValid))
-                .ToArray();
-
-            var captureElements = root.GetProperty("captures").EnumerateArray().ToArray();
-            var captures = captureElements.Select(element =>
-                ReadFloatingReferenceCapture(element, ref structureValid)).ToArray();
-            structureValid &=
-                captures.Length == FloatingReferenceCaptureSpecs.Length &&
-                string.Equals(
-                    aggregateAlgorithm,
-                    FloatingReferenceSourceAggregateAlgorithm,
-                    StringComparison.Ordinal) &&
-                string.Equals(executableLogicalPath, "app/MinminCountdown.exe", StringComparison.Ordinal) &&
-                string.Equals(
-                    executableGeneration,
-                    "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary",
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    comparisonAlgorithm,
-                    FloatingReferencePixelComparisonAlgorithm,
-                    StringComparison.Ordinal) &&
-                maximumAbsoluteChannelDelta == FloatingReferenceMaximumAbsoluteChannelDelta &&
-                Math.Abs(maximumMeanAbsoluteError - FloatingReferenceMaximumMeanAbsoluteError) < 0.0000001 &&
-                Math.Abs(maximumRootMeanSquareError - FloatingReferenceMaximumRootMeanSquareError) < 0.0000001 &&
-                maximumChangedPixelCount == FloatingReferenceMaximumChangedPixelCount &&
-                string.Equals(
-                    stateFingerprintAlgorithm,
-                    FloatingReferenceStateFingerprintAlgorithm,
-                    StringComparison.Ordinal) &&
-                Math.Abs(
-                    minimumTopBottomMeanAbsoluteError -
-                    FloatingReferenceMinimumTopBottomMeanAbsoluteError) < 0.0000001 &&
-                Math.Abs(
-                    minimumTopBottomRootMeanSquareError -
-                    FloatingReferenceMinimumTopBottomRootMeanSquareError) < 0.0000001 &&
-                minimumTopBottomChangedPixelCount ==
-                    FloatingReferenceMinimumTopBottomChangedPixelCount &&
-                topBottomComparisons.Length == 1;
-
-            var expectedCapturePaths = FloatingReferenceCaptureSpecs
-                .Select(spec => $"{baselineRelativeDirectory}/{spec.FileName}")
-                .ToArray();
-            var capturePaths = captures.Select(capture => capture.Path).ToArray();
-            var capturePathsUnique =
-                capturePaths.Distinct(StringComparer.Ordinal).Count() == capturePaths.Length;
-            structureValid &=
-                capturePaths.Length == expectedCapturePaths.Length &&
-                capturePaths.Order(StringComparer.Ordinal)
-                    .SequenceEqual(expectedCapturePaths.Order(StringComparer.Ordinal), StringComparer.Ordinal);
-            var expectedStateBindingsMatch = captures.All(capture =>
-            {
-                var spec = FloatingReferenceCaptureSpecs.SingleOrDefault(candidate =>
-                    string.Equals(candidate.CaptureId, capture.CaptureId, StringComparison.Ordinal));
-                return spec is not null &&
-                    string.Equals(capture.Scenario, spec.Scenario, StringComparison.Ordinal) &&
-                    string.Equals(capture.Theme, spec.Theme, StringComparison.Ordinal) &&
-                    string.Equals(capture.State, spec.State, StringComparison.Ordinal) &&
-                    string.Equals(
-                        capture.Path,
-                        $"{baselineRelativeDirectory}/{spec.FileName}",
-                        StringComparison.Ordinal) &&
-                    string.Equals(capture.StateFingerprint.Theme, spec.Theme, StringComparison.Ordinal) &&
-                    string.Equals(capture.StateFingerprint.ViewportState, spec.State, StringComparison.Ordinal);
-            });
-            structureValid &= expectedStateBindingsMatch;
-            var captureIds = captures.Select(capture => capture.CaptureId).ToArray();
-            var captureIdsUnique =
-                captureIds.Distinct(StringComparer.Ordinal).Count() == captureIds.Length &&
-                captureIds.Order(StringComparer.Ordinal).SequenceEqual(
-                    FloatingReferenceCaptureSpecs
-                        .Select(spec => spec.CaptureId)
-                        .Order(StringComparer.Ordinal),
-                    StringComparer.Ordinal);
-            var scenarioThemePairsUnique =
-                captures
-                    .Select(capture => $"{capture.Scenario}\0{capture.Theme}\0{capture.State}")
-                    .Distinct(StringComparer.Ordinal)
-                    .Count() == captures.Length;
-
-            var currentSourceBindings = GetFloatingReferenceSourceBindings(sourceRoot);
-            var currentSourceAggregate = AggregateFloatingReferenceSourceBindings(currentSourceBindings);
-            var sourceHashesMatch = FloatingReferenceSourcesMatch(sourceBindings, currentSourceBindings, manifestAggregateSha256);
-
-            var processPath = Environment.ProcessPath;
-            var executableSha256 = !string.IsNullOrWhiteSpace(processPath) && File.Exists(processPath)
-                ? Sha256File(processPath)
-                : string.Empty;
-            var executableHashMatches =
-                IsUpperSha256(manifestExecutableSha256) &&
-                string.Equals(manifestExecutableSha256, executableSha256, StringComparison.Ordinal);
-
-            var actualByCaptureId = actualCaptures.ToDictionary(
-                capture => capture.Spec.CaptureId,
-                StringComparer.Ordinal);
-            var stateFingerprintsMatch = captures.All(capture =>
-                actualByCaptureId.TryGetValue(capture.CaptureId, out var actualCapture) &&
-                FloatingReferenceStateFingerprintMatchesCanonical(capture.StateFingerprint) &&
-                capture.StateFingerprint == actualCapture.StateFingerprint);
-            var stateFingerprintsUnique =
-                captures.Select(capture => capture.StateFingerprint.Sha256)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count() == captures.Length;
-            var topBottomPixelsDiffer = true;
-            foreach (var themeName in new[] { "Day" })
-            {
-                var topId = $"long-notes-{themeName.ToLowerInvariant()}-top";
-                var bottomId = $"long-notes-{themeName.ToLowerInvariant()}-bottom";
-                if (!actualByCaptureId.TryGetValue(topId, out var topActual) ||
-                    !actualByCaptureId.TryGetValue(bottomId, out var bottomActual))
-                {
-                    topBottomPixelsDiffer = false;
-                    continue;
-                }
-
-                var measuredDifference = CompareFloatingReferencePixels(
-                    topActual.PngBytes,
-                    bottomActual.PngBytes);
-                var manifestDifference = topBottomComparisons.SingleOrDefault(difference =>
-                    string.Equals(difference.Theme, themeName, StringComparison.Ordinal));
-                topBottomPixelsDiffer &=
-                    manifestDifference is not null &&
-                    string.Equals(manifestDifference.TopCaptureId, topId, StringComparison.Ordinal) &&
-                    string.Equals(manifestDifference.BottomCaptureId, bottomId, StringComparison.Ordinal) &&
-                    manifestDifference.Metrics == measuredDifference &&
-                    measuredDifference.MeanAbsoluteError >=
-                        FloatingReferenceMinimumTopBottomMeanAbsoluteError &&
-                    measuredDifference.RootMeanSquareError >=
-                        FloatingReferenceMinimumTopBottomRootMeanSquareError &&
-                    measuredDifference.ChangedPixelCount >=
-                        FloatingReferenceMinimumTopBottomChangedPixelCount;
-            }
-
-            var baselineEvaluation = VisualReferenceBaseline.Floating.Validate(
-                new FloatingVisualReferenceRequest(
-                    new VisualReferenceFileRequest(
-                        sourceRoot,
-                        baselineDirectory,
-                        expectedCapturePaths,
-                        captures.Select(capture => new VisualReferenceManifestCapture(
-                            capture.CaptureId,
-                            capture.Path,
-                            capture.Width,
-                            capture.Height,
-                            capture.PngSha256,
-                            new VisualReferenceAlphaMetrics(
-                                capture.Alpha.Minimum,
-                                capture.Alpha.Maximum,
-                                capture.Alpha.TransparentPixelCount,
-                                capture.Alpha.NonOpaquePixelCount,
-                                capture.Alpha.OpaquePixelCount),
-                            new VisualReferenceContentRoi(
-                                capture.ContentRoi.AlphaThreshold,
-                                capture.ContentRoi.X,
-                                capture.ContentRoi.Y,
-                                capture.ContentRoi.Width,
-                                capture.ContentRoi.Height,
-                                capture.ContentRoi.PixelCount),
-                            new VisualReferencePixelMetrics(
-                                capture.Comparison.MaxAbsoluteChannelDelta,
-                                capture.Comparison.MeanAbsoluteError,
-                                capture.Comparison.RootMeanSquareError,
-                                capture.Comparison.ChangedPixelCount)))
-                            .ToArray(),
-                        actualCaptures.Select(capture => new VisualReferenceActualCapture(
-                            capture.Spec.CaptureId,
-                            capture.PngBytes)).ToArray(),
-                        maximumAbsoluteChannelDelta,
-                        maximumMeanAbsoluteError,
-                        maximumRootMeanSquareError,
-                        maximumChangedPixelCount),
-                    520,
-                    390,
-                    structureValid,
-                    capturePathsUnique,
-                    scenarioThemePairsUnique,
-                    sourceHashesMatch,
-                    executableHashMatches,
-                    expectedStateBindingsMatch,
-                    captureIdsUnique,
-                    stateFingerprintsMatch,
-                    stateFingerprintsUnique,
-                    topBottomPixelsDiffer,
-                    longNoteTypographyMatches,
-                    longNoteLayoutValid));
-            var measurements = baselineEvaluation.Measurements.Select(measurement =>
-            {
-                var capture = captures.Single(candidate => string.Equals(
-                    candidate.CaptureId,
-                    measurement.CaptureId,
-                    StringComparison.Ordinal));
-                return new FloatingReferenceBaselineCaptureMeasurement(
-                    capture.CaptureId,
-                    capture.Scenario,
-                    capture.Theme,
-                    capture.State,
-                    capture.Path,
-                    measurement.BaselineSha256,
-                    measurement.ActualSha256,
-                    capture.StateFingerprint,
-                    new FloatingReferenceAlphaMetrics(
-                        measurement.ActualAlpha.Minimum,
-                        measurement.ActualAlpha.Maximum,
-                        measurement.ActualAlpha.TransparentPixelCount,
-                        measurement.ActualAlpha.NonOpaquePixelCount,
-                        measurement.ActualAlpha.OpaquePixelCount),
-                    new FloatingReferenceContentRoi(
-                        measurement.ActualContentRoi.AlphaThreshold,
-                        measurement.ActualContentRoi.X,
-                        measurement.ActualContentRoi.Y,
-                        measurement.ActualContentRoi.Width,
-                        measurement.ActualContentRoi.Height,
-                        measurement.ActualContentRoi.PixelCount),
-                    new FloatingReferencePixelMetrics(
-                        measurement.Comparison.MaxAbsoluteChannelDelta,
-                        measurement.Comparison.MeanAbsoluteError,
-                        measurement.Comparison.RootMeanSquareError,
-                        measurement.Comparison.ChangedPixelCount));
-            }).ToArray();
-            var gates = baselineEvaluation.Gates;
-            var freshnessGates = baselineEvaluation.FreshnessGates;
-            var diagnostics = baselineEvaluation.Diagnostics;
-            return new FloatingReferenceBaselineValidation(
-                true,
-                true,
-                manifestRelativePath,
-                currentSourceAggregate,
-                executableSha256,
-                gates,
-                freshnessGates,
-                measurements,
-                diagnostics);
-        }
-        catch (Exception exception) when (exception is IOException or JsonException or InvalidOperationException or FormatException or KeyNotFoundException)
-        {
-            return FloatingReferenceBaselineValidation.Invalid(
-                true,
-                File.Exists(manifestPath),
-                exception.Message,
-                manifestRelativePath);
-        }
-    }
-
-    private static void GenerateFloatingReferenceBaseline(
-        string sourceRoot,
-        string baselineDirectory,
-        string manifestPath,
-        string baselineRelativeDirectory,
-        IReadOnlyList<FloatingReferenceActualCapture> actualCaptures)
-    {
-        if (actualCaptures.Count != FloatingReferenceCaptureSpecs.Length ||
-            actualCaptures.Select(capture => capture.Spec.CaptureId)
-                .Distinct(StringComparer.Ordinal)
-                .Count() != FloatingReferenceCaptureSpecs.Length)
-        {
-            throw new InvalidOperationException(
-                $"悬浮窗参考图生成必须提供严格 {FloatingReferenceCaptureSpecs.Length} 帧 inventory。");
-        }
-
-        var pngHashes = actualCaptures
-            .Select(capture => Convert.ToHexString(SHA256.HashData(capture.PngBytes)))
-            .ToArray();
-        if (pngHashes.Distinct(StringComparer.Ordinal).Count() != pngHashes.Length)
-        {
-            throw new InvalidOperationException("悬浮窗参考图生成拒绝写入复用 PNG 的基线目录。");
-        }
-
-        if (Directory.Exists(baselineDirectory) &&
-            Directory.EnumerateFileSystemEntries(baselineDirectory).Any())
-        {
-            throw new InvalidOperationException(
-                $"悬浮窗正式参考基线已存在，拒绝覆盖：{FloatingReferenceBaselineVersion}。");
-        }
-
-        Directory.CreateDirectory(baselineDirectory);
-        var captureMetrics = actualCaptures.ToDictionary(
-            capture => capture.Spec.CaptureId,
-            capture => MeasureFloatingReferenceCapture(capture.PngBytes),
-            StringComparer.Ordinal);
-        if (captureMetrics.Values.Any(metrics => metrics.Width != 520 || metrics.Height != 390))
-        {
-            throw new InvalidOperationException("悬浮窗参考图生成帧不是 520x390。");
-        }
-
-        var sourceBindings = GetFloatingReferenceSourceBindings(sourceRoot);
-        var sourceAggregate = AggregateFloatingReferenceSourceBindings(sourceBindings);
-        var processPath = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(processPath) || !File.Exists(processPath))
-        {
-            throw new InvalidOperationException("无法绑定生成参考图的当前 EXE。");
-        }
-
-        var executableSha256 = Sha256File(processPath);
-        var stateDifferences = new[] { "Day" }
-            .Select(theme =>
-            {
-                var topId = $"long-notes-{theme.ToLowerInvariant()}-top";
-                var bottomId = $"long-notes-{theme.ToLowerInvariant()}-bottom";
-                var top = actualCaptures.Single(capture => capture.Spec.CaptureId == topId);
-                var bottom = actualCaptures.Single(capture => capture.Spec.CaptureId == bottomId);
-                return new FloatingReferenceStateDifference(
-                    theme,
-                    topId,
-                    bottomId,
-                    CompareFloatingReferencePixels(top.PngBytes, bottom.PngBytes));
-            })
-            .ToArray();
-        if (stateDifferences.Any(difference =>
-                difference.Metrics.MeanAbsoluteError < FloatingReferenceMinimumTopBottomMeanAbsoluteError ||
-                difference.Metrics.RootMeanSquareError < FloatingReferenceMinimumTopBottomRootMeanSquareError ||
-                difference.Metrics.ChangedPixelCount < FloatingReferenceMinimumTopBottomChangedPixelCount))
-        {
-            throw new InvalidOperationException("长便签 top/bottom 帧像素差不足，拒绝生成可复用旧帧的 manifest。");
-        }
-
-        var manifest = JsonSerializer.SerializeToUtf8Bytes(
-            new
-            {
-                schemaVersion = 1,
-                baselineVersion = FloatingReferenceBaselineVersion,
-                captureKind = "actual-wpf-floating-window",
-                canvas = new { width = 520, height = 390, metricDpi = 96 },
-                sourceBinding = new
-                {
-                    aggregateAlgorithm = FloatingReferenceSourceAggregateAlgorithm,
-                    aggregateSha256 = sourceAggregate,
-                    files = sourceBindings.Select(binding => new
-                    {
-                        path = binding.Path,
-                        sha256 = binding.Sha256
-                    })
-                },
-                executable = new
-                {
-                    path = "app/MinminCountdown.exe",
-                    sha256 = executableSha256,
-                    generation = "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
-                },
-                pixelComparison = new
-                {
-                    algorithm = FloatingReferencePixelComparisonAlgorithm,
-                    maxAbsoluteChannelDelta = FloatingReferenceMaximumAbsoluteChannelDelta,
-                    maximumMeanAbsoluteError = FloatingReferenceMaximumMeanAbsoluteError,
-                    maximumRootMeanSquareError = FloatingReferenceMaximumRootMeanSquareError,
-                    maximumChangedPixelCount = FloatingReferenceMaximumChangedPixelCount
-                },
-                freshness = new
-                {
-                    stateFingerprintAlgorithm = FloatingReferenceStateFingerprintAlgorithm,
-                    minimumTopBottomMeanAbsoluteError =
-                        FloatingReferenceMinimumTopBottomMeanAbsoluteError,
-                    minimumTopBottomRootMeanSquareError =
-                        FloatingReferenceMinimumTopBottomRootMeanSquareError,
-                    minimumTopBottomChangedPixelCount =
-                        FloatingReferenceMinimumTopBottomChangedPixelCount,
-                    topBottomComparisons = stateDifferences.Select(difference => new
-                    {
-                        theme = difference.Theme,
-                        topCaptureId = difference.TopCaptureId,
-                        bottomCaptureId = difference.BottomCaptureId,
-                        maxAbsoluteChannelDelta = difference.Metrics.MaxAbsoluteChannelDelta,
-                        meanAbsoluteError = difference.Metrics.MeanAbsoluteError,
-                        rootMeanSquareError = difference.Metrics.RootMeanSquareError,
-                        changedPixelCount = difference.Metrics.ChangedPixelCount
-                    })
-                },
-                captures = FloatingReferenceCaptureSpecs.Select(spec =>
-                {
-                    var capture = actualCaptures.Single(actual =>
-                        string.Equals(actual.Spec.CaptureId, spec.CaptureId, StringComparison.Ordinal));
-                    var path = $"{baselineRelativeDirectory}/{spec.FileName}";
-                    return CreateFloatingReferenceManifestCapture(
-                        capture,
-                        path,
-                        captureMetrics[spec.CaptureId]);
-                })
-            },
-            new JsonSerializerOptions { WriteIndented = true });
-        foreach (var capture in actualCaptures)
-        {
-            var relativePath = $"{baselineRelativeDirectory}/{capture.Spec.FileName}";
-            var path = ResolveRepositoryRelativePath(sourceRoot, relativePath);
-            WriteBytesAtomically(path, capture.PngBytes);
-        }
-        WriteBytesAtomically(manifestPath, manifest);
-    }
-
-    private static object CreateFloatingReferenceManifestCapture(
-        FloatingReferenceActualCapture capture,
-        string path,
-        FloatingReferenceCaptureMetrics metrics) =>
-        new
-        {
-            captureId = capture.Spec.CaptureId,
-            scenario = capture.Spec.Scenario,
-            theme = capture.Spec.Theme,
-            state = capture.Spec.State,
-            path,
-            width = metrics.Width,
-            height = metrics.Height,
-            pngSha256 = Convert.ToHexString(SHA256.HashData(capture.PngBytes)),
-            stateFingerprint = new
-            {
-                algorithm = capture.StateFingerprint.Algorithm,
-                sha256 = capture.StateFingerprint.Sha256,
-                theme = capture.StateFingerprint.Theme,
-                workspace = capture.StateFingerprint.Workspace,
-                noteId = capture.StateFingerprint.NoteId,
-                noteTextSha256 = capture.StateFingerprint.NoteTextSha256,
-                viewportState = capture.StateFingerprint.ViewportState,
-                verticalOffset = capture.StateFingerprint.VerticalOffset,
-                scrollableHeight = capture.StateFingerprint.ScrollableHeight,
-                firstVisibleAnchor = capture.StateFingerprint.FirstVisibleAnchor,
-                lastVisibleAnchor = capture.StateFingerprint.LastVisibleAnchor
-            },
-            alpha = new
-            {
-                algorithm = FloatingReferenceAlphaAlgorithm,
-                minimum = metrics.Alpha.Minimum,
-                maximum = metrics.Alpha.Maximum,
-                transparentPixelCount = metrics.Alpha.TransparentPixelCount,
-                nonOpaquePixelCount = metrics.Alpha.NonOpaquePixelCount,
-                opaquePixelCount = metrics.Alpha.OpaquePixelCount
-            },
-            contentRoi = new
-            {
-                algorithm = FloatingReferenceRoiAlgorithm,
-                alphaThreshold = metrics.ContentRoi.AlphaThreshold,
-                x = metrics.ContentRoi.X,
-                y = metrics.ContentRoi.Y,
-                width = metrics.ContentRoi.Width,
-                height = metrics.ContentRoi.Height,
-                pixelCount = metrics.ContentRoi.PixelCount
-            },
-            comparison = new
-            {
-                maxAbsoluteChannelDelta = 0,
-                meanAbsoluteError = 0d,
-                rootMeanSquareError = 0d,
-                changedPixelCount = 0
-            }
-        };
-
-    private static FloatingReferenceManifestCapture ReadFloatingReferenceCapture(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "captureId",
-            "scenario",
-            "theme",
-            "state",
-            "path",
-            "width",
-            "height",
-            "pngSha256",
-            "stateFingerprint",
-            "alpha",
-            "contentRoi",
-            "comparison");
-        var stateFingerprint = ReadFloatingReferenceStateFingerprint(
-            element.GetProperty("stateFingerprint"),
-            ref structureValid);
-        var alpha = element.GetProperty("alpha");
-        structureValid &=
-            HasExactJsonProperties(
-                alpha,
-                "algorithm",
-                "minimum",
-                "maximum",
-                "transparentPixelCount",
-                "nonOpaquePixelCount",
-                "opaquePixelCount") &&
-            string.Equals(
-                alpha.GetProperty("algorithm").GetString(),
-                FloatingReferenceAlphaAlgorithm,
-                StringComparison.Ordinal);
-        var contentRoi = element.GetProperty("contentRoi");
-        structureValid &=
-            HasExactJsonProperties(
-                contentRoi,
-                "algorithm",
-                "alphaThreshold",
-                "x",
-                "y",
-                "width",
-                "height",
-                "pixelCount") &&
-            string.Equals(
-                contentRoi.GetProperty("algorithm").GetString(),
-                FloatingReferenceRoiAlgorithm,
-                StringComparison.Ordinal);
-        var comparison = element.GetProperty("comparison");
-        structureValid &= HasExactJsonProperties(
-            comparison,
-            "maxAbsoluteChannelDelta",
-            "meanAbsoluteError",
-            "rootMeanSquareError",
-            "changedPixelCount");
-        return new FloatingReferenceManifestCapture(
-            element.GetProperty("captureId").GetString() ?? string.Empty,
-            element.GetProperty("scenario").GetString() ?? string.Empty,
-            element.GetProperty("theme").GetString() ?? string.Empty,
-            element.GetProperty("state").GetString() ?? string.Empty,
-            element.GetProperty("path").GetString() ?? string.Empty,
-            element.GetProperty("width").GetInt32(),
-            element.GetProperty("height").GetInt32(),
-            element.GetProperty("pngSha256").GetString() ?? string.Empty,
-            stateFingerprint,
-            new FloatingReferenceAlphaMetrics(
-                alpha.GetProperty("minimum").GetInt32(),
-                alpha.GetProperty("maximum").GetInt32(),
-                alpha.GetProperty("transparentPixelCount").GetInt32(),
-                alpha.GetProperty("nonOpaquePixelCount").GetInt32(),
-                alpha.GetProperty("opaquePixelCount").GetInt32()),
-            new FloatingReferenceContentRoi(
-                contentRoi.GetProperty("alphaThreshold").GetInt32(),
-                contentRoi.GetProperty("x").GetInt32(),
-                contentRoi.GetProperty("y").GetInt32(),
-                contentRoi.GetProperty("width").GetInt32(),
-                contentRoi.GetProperty("height").GetInt32(),
-                contentRoi.GetProperty("pixelCount").GetInt32()),
-            new FloatingReferencePixelMetrics(
-                comparison.GetProperty("maxAbsoluteChannelDelta").GetInt32(),
-                comparison.GetProperty("meanAbsoluteError").GetDouble(),
-                comparison.GetProperty("rootMeanSquareError").GetDouble(),
-                comparison.GetProperty("changedPixelCount").GetInt32()));
-    }
-
-    private static FloatingReferenceStateFingerprint ReadFloatingReferenceStateFingerprint(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "algorithm",
-            "sha256",
-            "theme",
-            "workspace",
-            "noteId",
-            "noteTextSha256",
-            "viewportState",
-            "verticalOffset",
-            "scrollableHeight",
-            "firstVisibleAnchor",
-            "lastVisibleAnchor");
-        return new FloatingReferenceStateFingerprint(
-            element.GetProperty("algorithm").GetString() ?? string.Empty,
-            element.GetProperty("sha256").GetString() ?? string.Empty,
-            element.GetProperty("theme").GetString() ?? string.Empty,
-            element.GetProperty("workspace").GetString() ?? string.Empty,
-            element.GetProperty("noteId").GetString() ?? string.Empty,
-            element.GetProperty("noteTextSha256").GetString() ?? string.Empty,
-            element.GetProperty("viewportState").GetString() ?? string.Empty,
-            element.GetProperty("verticalOffset").GetDouble(),
-            element.GetProperty("scrollableHeight").GetDouble(),
-            element.GetProperty("firstVisibleAnchor").GetString() ?? string.Empty,
-            element.GetProperty("lastVisibleAnchor").GetString() ?? string.Empty);
-    }
-
-    private static FloatingReferenceStateDifference ReadFloatingReferenceStateDifference(
-        JsonElement element,
-        ref bool structureValid)
-    {
-        structureValid &= HasExactJsonProperties(
-            element,
-            "theme",
-            "topCaptureId",
-            "bottomCaptureId",
-            "maxAbsoluteChannelDelta",
-            "meanAbsoluteError",
-            "rootMeanSquareError",
-            "changedPixelCount");
-        return new FloatingReferenceStateDifference(
-            element.GetProperty("theme").GetString() ?? string.Empty,
-            element.GetProperty("topCaptureId").GetString() ?? string.Empty,
-            element.GetProperty("bottomCaptureId").GetString() ?? string.Empty,
-            new FloatingReferencePixelMetrics(
-                element.GetProperty("maxAbsoluteChannelDelta").GetInt32(),
-                element.GetProperty("meanAbsoluteError").GetDouble(),
-                element.GetProperty("rootMeanSquareError").GetDouble(),
-                element.GetProperty("changedPixelCount").GetInt32()));
-    }
-
-    private static bool FloatingReferenceStateFingerprintMatchesCanonical(
-        FloatingReferenceStateFingerprint fingerprint)
-    {
-        if (!string.Equals(
-                fingerprint.Algorithm,
-                FloatingReferenceStateFingerprintAlgorithm,
-                StringComparison.Ordinal) ||
-            !IsUpperSha256(fingerprint.Sha256) ||
-            !IsUpperSha256(fingerprint.NoteTextSha256))
-        {
-            return false;
-        }
-
-        var canonical = CreateFloatingReferenceStateFingerprint(
-            fingerprint.Theme,
-            fingerprint.Workspace,
-            fingerprint.NoteId,
-            string.Empty,
-            fingerprint.ViewportState,
-            fingerprint.VerticalOffset,
-            fingerprint.ScrollableHeight,
-            fingerprint.FirstVisibleAnchor,
-            fingerprint.LastVisibleAnchor);
-        var canonicalState = string.Join(
-            "\n",
-            $"theme={fingerprint.Theme}",
-            $"workspace={fingerprint.Workspace}",
-            $"noteId={fingerprint.NoteId}",
-            $"noteTextSha256={fingerprint.NoteTextSha256}",
-            $"viewportState={fingerprint.ViewportState}",
-            $"verticalOffset={fingerprint.VerticalOffset.ToString("F2", CultureInfo.InvariantCulture)}",
-            $"scrollableHeight={fingerprint.ScrollableHeight.ToString("F2", CultureInfo.InvariantCulture)}",
-            $"firstVisibleAnchor={fingerprint.FirstVisibleAnchor}",
-            $"lastVisibleAnchor={fingerprint.LastVisibleAnchor}");
-        return string.Equals(canonical.Algorithm, fingerprint.Algorithm, StringComparison.Ordinal) &&
-               string.Equals(
-                   Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalState))),
-                   fingerprint.Sha256,
-                   StringComparison.Ordinal);
-    }
-
-    private static IReadOnlyList<FloatingReferenceSourceBinding> GetFloatingReferenceSourceBindings(
-        string sourceRoot) =>
-        FloatingReferenceCanonicalSourcePaths.Select(relativePath =>
-        {
-            var path = ResolveRepositoryRelativePath(sourceRoot, relativePath);
-            if (!File.Exists(path))
-            {
-                throw new FileNotFoundException(
-                    $"悬浮窗参考图绑定的视觉源码不存在：{relativePath}",
-                    path);
-            }
-
-            return new FloatingReferenceSourceBinding(relativePath, Sha256File(path));
-        }).ToArray();
-
-    private static bool FloatingReferenceSourcesMatch(
-        IReadOnlyList<FloatingReferenceSourceBinding> manifest,
-        IReadOnlyList<FloatingReferenceSourceBinding> current,
-        string aggregate) =>
-        manifest.Count == current.Count &&
-        manifest.Select(binding => binding.Path).SequenceEqual(FloatingReferenceCanonicalSourcePaths, StringComparer.Ordinal) &&
-        manifest.Zip(current).All(pair => pair.First.Path == pair.Second.Path && IsUpperSha256(pair.First.Sha256) &&
-            pair.First.Sha256 == pair.Second.Sha256) &&
-        IsUpperSha256(aggregate) && aggregate == AggregateFloatingReferenceSourceBindings(manifest) &&
-        aggregate == AggregateFloatingReferenceSourceBindings(current);
-
-    private static string AggregateFloatingReferenceSourceBindings(
-        IEnumerable<FloatingReferenceSourceBinding> bindings)
-    {
-        using var stream = new MemoryStream();
-        foreach (var binding in bindings.OrderBy(binding => binding.Path, StringComparer.Ordinal))
-        {
-            var line = Encoding.UTF8.GetBytes($"{binding.Path}\0{binding.Sha256}\n");
-            stream.Write(line, 0, line.Length);
-        }
-
-        return Convert.ToHexString(SHA256.HashData(stream.ToArray()));
-    }
-
-    private static FloatingReferenceCaptureMetrics MeasureFloatingReferenceCapture(byte[] bytes)
-    {
-        var bitmap = DecodeBitmap(bytes);
-        var (pixels, stride) = GetBgra32Pixels(bitmap);
-        var minimum = byte.MaxValue;
-        var maximum = byte.MinValue;
-        var transparent = 0;
-        var nonOpaque = 0;
-        var opaque = 0;
-        var minX = bitmap.PixelWidth;
-        var minY = bitmap.PixelHeight;
-        var maxX = -1;
-        var maxY = -1;
-        var contentPixels = 0;
-        for (var y = 0; y < bitmap.PixelHeight; y++)
-        {
-            for (var x = 0; x < bitmap.PixelWidth; x++)
-            {
-                var alpha = pixels[(y * stride) + (x * 4) + 3];
-                minimum = Math.Min(minimum, alpha);
-                maximum = Math.Max(maximum, alpha);
-                if (alpha == 0)
-                {
-                    transparent++;
-                }
-                if (alpha < byte.MaxValue)
-                {
-                    nonOpaque++;
-                }
-                else
-                {
-                    opaque++;
-                }
-                if (alpha <= 32)
-                {
-                    continue;
-                }
-
-                contentPixels++;
-                minX = Math.Min(minX, x);
-                minY = Math.Min(minY, y);
-                maxX = Math.Max(maxX, x);
-                maxY = Math.Max(maxY, y);
-            }
-        }
-
-        var roi = contentPixels == 0
-            ? new FloatingReferenceContentRoi(32, 0, 0, 0, 0, 0)
-            : new FloatingReferenceContentRoi(
-                32,
-                minX,
-                minY,
-                maxX - minX + 1,
-                maxY - minY + 1,
-                contentPixels);
-        return new FloatingReferenceCaptureMetrics(
-            bitmap.PixelWidth,
-            bitmap.PixelHeight,
-            new FloatingReferenceAlphaMetrics(minimum, maximum, transparent, nonOpaque, opaque),
-            roi);
-    }
-
-    private static FloatingReferencePixelMetrics CompareFloatingReferencePixels(
-        byte[] baselineBytes,
-        byte[] actualBytes)
-    {
-        var baseline = DecodeBitmap(baselineBytes);
-        var actual = DecodeBitmap(actualBytes);
-        if (baseline.PixelWidth != actual.PixelWidth || baseline.PixelHeight != actual.PixelHeight)
-        {
-            return new FloatingReferencePixelMetrics(int.MaxValue, double.MaxValue, double.MaxValue, int.MaxValue);
-        }
-
-        var (baselinePixels, _) = GetBgra32Pixels(baseline);
-        var (actualPixels, _) = GetBgra32Pixels(actual);
-        var maximumDelta = 0;
-        var absoluteDeltaSum = 0d;
-        var squaredDeltaSum = 0d;
-        var changedPixels = 0;
-        for (var pixelOffset = 0; pixelOffset < baselinePixels.Length; pixelOffset += 4)
-        {
-            var pixelChanged = false;
-            for (var channel = 0; channel < 4; channel++)
-            {
-                var delta = Math.Abs(
-                    baselinePixels[pixelOffset + channel] - actualPixels[pixelOffset + channel]);
-                maximumDelta = Math.Max(maximumDelta, delta);
-                absoluteDeltaSum += delta;
-                squaredDeltaSum += delta * delta;
-                pixelChanged |= delta != 0;
-            }
-
-            if (pixelChanged)
-            {
-                changedPixels++;
-            }
-        }
-
-        return new FloatingReferencePixelMetrics(
-            maximumDelta,
-            Math.Round(absoluteDeltaSum / baselinePixels.Length, 6),
-            Math.Round(Math.Sqrt(squaredDeltaSum / baselinePixels.Length), 6),
-            changedPixels);
     }
 
     private static BitmapSource DecodeBitmap(byte[] bytes)
@@ -7914,49 +5940,6 @@ internal static class ValidationReport
         converted.CopyPixels(pixels, stride, 0);
         return (pixels, stride);
     }
-
-    private static bool HasExactJsonProperties(JsonElement element, params string[] expected)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
-        {
-            return false;
-        }
-
-        var actual = element.EnumerateObject().Select(property => property.Name).ToArray();
-        return actual.Length == expected.Length &&
-               actual.Distinct(StringComparer.Ordinal).Count() == actual.Length &&
-               actual.Order(StringComparer.Ordinal)
-                   .SequenceEqual(expected.Order(StringComparer.Ordinal), StringComparer.Ordinal);
-    }
-
-    private static string ResolveRepositoryRelativePath(string sourceRoot, string relativePath)
-    {
-        if (string.IsNullOrWhiteSpace(relativePath) ||
-            relativePath.Contains('\\', StringComparison.Ordinal) ||
-            Path.IsPathRooted(relativePath))
-        {
-            throw new InvalidOperationException($"参考图路径不是可移植仓库相对路径：{relativePath}");
-        }
-
-        var root = Path.GetFullPath(sourceRoot).TrimEnd(Path.DirectorySeparatorChar) +
-                   Path.DirectorySeparatorChar;
-        var resolved = Path.GetFullPath(Path.Combine(
-            root,
-            relativePath.Replace('/', Path.DirectorySeparatorChar)));
-        if (!resolved.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"参考图路径逃出源码根目录：{relativePath}");
-        }
-
-        return resolved;
-    }
-
-    private static string Sha256File(string path) =>
-        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
-
-    private static bool IsUpperSha256(string value) =>
-        value.Length == 64 && value.All(character =>
-            character is >= '0' and <= '9' or >= 'A' and <= 'F');
 
     private static Rect BoundsIn(FrameworkElement element, Visual ancestor) =>
         element.TransformToAncestor(ancestor)
@@ -8701,22 +6684,21 @@ internal static class ValidationReport
                 "empty-day probe 需要 MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT。");
         }
 
-        var baselinePath = ResolveRepositoryRelativePath(
-            Path.GetFullPath(sourceRoot),
-            $"assets/ui-references/main-window/864x1000/{MainReferenceBaselineVersion}/main-day-countdowns-empty.png");
-        var baselineBytes = File.ReadAllBytes(baselinePath);
-        var actualMetrics = MeasureMainReferenceCapture(actualPng);
-        var comparison = CompareMainReferencePixels(baselineBytes, actualPng);
-        var (pixels, stride) = GetBgra32Pixels(DecodeBitmap(actualPng));
+        var baselineBytes = File.ReadAllBytes(VisualReferenceBaseline.Main.BaselineFilePath(
+            sourceRoot,
+            "main-day-countdowns-empty.png"));
+        var comparison = VisualReferenceBaseline.ComparePixels(baselineBytes, actualPng);
+        var actualBitmap = DecodeBitmap(actualPng);
+        var (pixels, stride) = GetBgra32Pixels(actualBitmap);
         int? firstX = null;
         int? firstY = null;
         byte? firstA = null;
         var holeCount = 0;
         var minA = byte.MaxValue;
         var maxA = byte.MinValue;
-        for (var y = 0; y < actualMetrics.Height; y++)
+        for (var y = 0; y < actualBitmap.PixelHeight; y++)
         {
-            for (var x = 0; x < actualMetrics.Width; x++)
+            for (var x = 0; x < actualBitmap.PixelWidth; x++)
             {
                 var alpha = pixels[(y * stride) + (x * 4) + 3];
                 minA = Math.Min(minA, alpha);
@@ -8736,17 +6718,17 @@ internal static class ValidationReport
 
         var actualSha = Convert.ToHexString(SHA256.HashData(actualPng));
         var baselineSha = Convert.ToHexString(SHA256.HashData(baselineBytes));
-        var withinRmse = comparison.RootMeanSquareError <= MainReferenceMaximumRootMeanSquareError;
-        var withinMae = comparison.MeanAbsoluteError <= MainReferenceMaximumMeanAbsoluteError;
-        var withinChanged = comparison.ChangedPixelCount <= MainReferenceMaximumChangedPixelCount;
+        var withinRmse = comparison.RootMeanSquareError <= VisualReferenceBaseline.Main.MaximumRootMeanSquareError;
+        var withinMae = comparison.MeanAbsoluteError <= VisualReferenceBaseline.Main.MaximumMeanAbsoluteError;
+        var withinChanged = comparison.ChangedPixelCount <= VisualReferenceBaseline.Main.MaximumChangedPixelCount;
         var hashesMatch = string.Equals(actualSha, baselineSha, StringComparison.Ordinal);
         var reportPath = Path.Combine(Path.GetTempPath(), "minmin-empty-day-probe.json");
         var report = new Dictionary<string, object?>
         {
             ["emptyRender"] = emptyRender,
             ["captureDiagnostics"] = captureDiagnostics,
-            ["width"] = actualMetrics.Width,
-            ["height"] = actualMetrics.Height,
+            ["width"] = actualBitmap.PixelWidth,
+            ["height"] = actualBitmap.PixelHeight,
             ["minA"] = minA,
             ["maxA"] = maxA,
             ["holeCount"] = holeCount,
@@ -8761,7 +6743,7 @@ internal static class ValidationReport
             ["baselineSha256"] = baselineSha,
             ["hashesMatch"] = hashesMatch,
             ["withinRmse"] = withinRmse,
-            ["rmseLimit"] = MainReferenceMaximumRootMeanSquareError,
+            ["rmseLimit"] = VisualReferenceBaseline.Main.MaximumRootMeanSquareError,
             ["reportPath"] = reportPath
         };
         File.WriteAllText(
@@ -9150,23 +7132,6 @@ internal static class ValidationReport
     {
         using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         stream.Write(bytes, 0, bytes.Length);
-    }
-
-    private static void WriteBytesAtomically(string path, byte[] bytes)
-    {
-        var directory = Path.GetDirectoryName(path) ??
-            throw new InvalidOperationException("原子写入目标没有父目录。");
-        Directory.CreateDirectory(directory);
-        var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
-        try
-        {
-            WriteNewBytes(temporaryPath, bytes);
-            File.Move(temporaryPath, path, overwrite: true);
-        }
-        finally
-        {
-            TryDeleteFile(temporaryPath);
-        }
     }
 
     private static AlphaMetrics MeasureAlpha(BitmapSource source)
@@ -15426,11 +13391,9 @@ internal static class ValidationReport
             "收尾期间 tick 不应重建主卡。");
         WaitForStableFloatingReferenceLayout(window, root, rows, 2);
         ClearCaptureKeyboardFocus(root);
-        var spec = FloatingReferenceCaptureSpecs.Single(spec => spec.CaptureId == "floating-workday-complete-day");
-        var capture = CreateFloatingReferenceActualCapture(spec,
+        var capture = VisualReferenceBaseline.Floating.ActualCapture("floating-workday-complete-day",
             EncodePng(ScaleToFrame(CaptureVisual(root), 520, 390)),
-            CreateFloatingReferenceStateFingerprint("Day", "Countdowns", string.Empty,
-                "下班啦，今日已赚 ￥169.54", "Complete", 0, 0, "下班啦", "七月倒计时"));
+            "Countdowns", string.Empty, "下班啦，今日已赚 ￥169.54", 0, 0, "下班啦", "七月倒计时");
         ToggleIncome();
         At(end.AddHours(1));
         Require(Descendants<TextBlock>(card).Any(text => text.Text == "今日已赚 ¥••••") &&
@@ -17169,84 +15132,52 @@ internal static class ValidationReport
         double DpiScaleAfterX,
         double DpiScaleAfterY);
 
-    private sealed record MainReferenceCaptureSpec(
-        string CaptureId,
-        string Theme,
-        string Workspace,
-        string State,
-        string FileName);
-
-    private sealed record MainReferenceSourceBinding(string Path, string Sha256);
-
-    private sealed record MainReferenceStateFingerprint(
-        string Algorithm,
-        string Sha256,
-        string Theme,
-        string Workspace,
-        string State,
-        DateTimeOffset BeijingTime,
-        string SettingsSha256,
-        int CountdownCount,
-        int NoteCount,
-        int ActiveNoteCount,
-        int CompletedNoteCount);
-
-    private sealed record MainReferenceAlphaMetrics(
-        string Algorithm,
-        int Minimum,
-        int Maximum,
-        int NonOpaquePixelCount,
-        int OpaquePixelCount)
+    // 主窗口参考场景：交给视觉基线的实拍帧，加上同一批场景里量到的 Stress 标题与提醒字号。
+    private sealed record MainReferenceScenes(
+        IReadOnlyList<MainReferenceActualCapture> Captures,
+        IReadOnlyList<MainStressCountdownTitleMeasurement> StressCountdownTitleMeasurements,
+        IReadOnlyList<MainNoteCardReminderFontMeasurement> NoteCardReminderFontMeasurements)
     {
-        public bool IsFullyOpaque =>
-            string.Equals(Algorithm, MainReferenceAlphaAlgorithm, StringComparison.Ordinal) &&
-            Minimum == byte.MaxValue &&
-            Maximum == byte.MaxValue &&
-            NonOpaquePixelCount == 0 &&
-            OpaquePixelCount == 864 * 1000;
+        public static MainReferenceScenes NotCaptured { get; } = new(
+            Array.Empty<MainReferenceActualCapture>(),
+            Array.Empty<MainStressCountdownTitleMeasurement>(),
+            Array.Empty<MainNoteCardReminderFontMeasurement>());
+
+        public bool StressCountdownTitleVisuals =>
+            StressCountdownTitleMeasurements.Count == 1 &&
+            StressCountdownTitleMeasurements
+                .Select(measurement => measurement.CaptureId)
+                .Order(StringComparer.Ordinal)
+                .SequenceEqual(
+                    new[]
+                    {
+                        "main-day-countdowns-stress"
+                    },
+                    StringComparer.Ordinal) &&
+            StressCountdownTitleMeasurements.All(measurement =>
+                ValidationExercises.EvaluateMainStressCountdownTitleGates(
+                    new MainStressCountdownTitleGateInputs(
+                        measurement.ExactTitleRendered &&
+                        string.Equals(
+                            measurement.ExpectedText,
+                            measurement.RenderedText,
+                            StringComparison.Ordinal),
+                        string.Equals(measurement.TextWrapping, "NoWrap", StringComparison.Ordinal) &&
+                        string.Equals(measurement.TextTrimming, "None", StringComparison.Ordinal),
+                        measurement.TextFits,
+                        measurement.FullyVisibleInViewport,
+                        measurement.SeparatedFromRemaining,
+                        measurement.SeparatedFromActions)).AllPassed);
+
+        public double NoteCardReminderFontSizeDip =>
+            NoteCardReminderFontMeasurements.Count == 0
+                ? 0
+                : NoteCardReminderFontMeasurements.Min(measurement => measurement.FontSizeDip);
+
+        public bool NoteCardReminderFontSizeMeetsContract =>
+            NoteCardReminderFontMeasurements.Count > 0 &&
+            NoteCardReminderFontMeasurements.All(measurement => measurement.MeetsContract);
     }
-
-    private sealed record MainReferenceContentRoi(
-        string Algorithm,
-        int X,
-        int Y,
-        int Width,
-        int Height,
-        int PixelCount)
-    {
-        public static MainReferenceContentRoi FullCanvas { get; } = new(
-            MainReferenceRoiAlgorithm,
-            0,
-            0,
-            864,
-            1000,
-            864 * 1000);
-    }
-
-    private sealed record MainReferencePixelMetrics(
-        int MaxAbsoluteChannelDelta,
-        double MeanAbsoluteError,
-        double RootMeanSquareError,
-        int ChangedPixelCount)
-    {
-        public static MainReferencePixelMetrics Zero { get; } = new(0, 0, 0, 0);
-    }
-
-    private sealed record MainReferenceCaptureMetrics(
-        int Width,
-        int Height,
-        MainReferenceAlphaMetrics Alpha,
-        MainReferenceContentRoi ContentRoi);
-
-    private sealed record MainReferenceActualCapture(
-        MainReferenceCaptureSpec Spec,
-        DateTimeOffset BeijingTime,
-        byte[] PngBytes,
-        MainReferenceStateFingerprint StateFingerprint,
-        MainReferenceAlphaMetrics Alpha,
-        MainReferenceContentRoi ContentRoi,
-        MainStressCountdownTitleMeasurement? StressCountdownTitle,
-        MainNoteCardReminderFontMeasurement? NoteCardReminderFont);
 
     private sealed record MainDaySingleBorderSpec(
         string StateId,
@@ -17361,290 +15292,10 @@ internal static class ValidationReport
                 false);
     }
 
-    private sealed record MainReferenceManifestCapture(
-        string CaptureId,
-        string Theme,
-        string Workspace,
-        string State,
-        string Path,
-        DateTimeOffset BeijingTime,
-        int Width,
-        int Height,
-        string PngSha256,
-        MainReferenceStateFingerprint StateFingerprint,
-        MainReferenceAlphaMetrics Alpha,
-        MainReferenceContentRoi ContentRoi,
-        MainReferencePixelMetrics Comparison);
-
-    private sealed record MainReferenceBaselineCaptureMeasurement(
-        string CaptureId,
-        string Theme,
-        string Workspace,
-        string State,
-        string Path,
-        DateTimeOffset BeijingTime,
-        string BaselineSha256,
-        string ActualSha256,
-        MainReferenceStateFingerprint StateFingerprint,
-        MainReferenceAlphaMetrics Alpha,
-        MainReferenceContentRoi ContentRoi,
-        MainReferencePixelMetrics Comparison);
-
-    private sealed record MainReferenceBaselineValidation(
-        bool Requested,
-        bool ManifestAvailable,
-        string ManifestPath,
-        string SourceAggregateSha256,
-        string ExecutableSha256,
-        MainReferenceManifestGateResults Gates,
-        IReadOnlyList<MainReferenceBaselineCaptureMeasurement> Captures,
-        IReadOnlyList<MainStressCountdownTitleMeasurement> StressCountdownTitleMeasurements,
-        IReadOnlyList<MainNoteCardReminderFontMeasurement> NoteCardReminderFontMeasurements,
-        IReadOnlyList<string> Diagnostics)
-    {
-        private static MainReferenceManifestGateResults FailedGates { get; } = new(
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false);
-
-        public bool AllPassed => Gates.AllPassed;
-
-        public bool StressCountdownTitleVisuals =>
-            StressCountdownTitleMeasurements.Count == 1 &&
-            StressCountdownTitleMeasurements
-                .Select(measurement => measurement.CaptureId)
-                .Order(StringComparer.Ordinal)
-                .SequenceEqual(
-                    new[]
-                    {
-                        "main-day-countdowns-stress"
-                    },
-                    StringComparer.Ordinal) &&
-            StressCountdownTitleMeasurements.All(measurement =>
-                ValidationExercises.EvaluateMainStressCountdownTitleGates(
-                    new MainStressCountdownTitleGateInputs(
-                        measurement.ExactTitleRendered &&
-                        string.Equals(
-                            measurement.ExpectedText,
-                            measurement.RenderedText,
-                            StringComparison.Ordinal),
-                        string.Equals(measurement.TextWrapping, "NoWrap", StringComparison.Ordinal) &&
-                        string.Equals(measurement.TextTrimming, "None", StringComparison.Ordinal),
-                        measurement.TextFits,
-                        measurement.FullyVisibleInViewport,
-                        measurement.SeparatedFromRemaining,
-                        measurement.SeparatedFromActions)).AllPassed);
-
-        public double NoteCardReminderFontSizeDip =>
-            NoteCardReminderFontMeasurements.Count == 0
-                ? 0
-                : NoteCardReminderFontMeasurements.Min(measurement => measurement.FontSizeDip);
-
-        public bool NoteCardReminderFontSizeMeetsContract =>
-            NoteCardReminderFontMeasurements.Count > 0 &&
-            NoteCardReminderFontMeasurements.All(measurement => measurement.MeetsContract);
-
-        public static MainReferenceBaselineValidation NotRequested { get; } = new(
-            false,
-            false,
-            string.Empty,
-            string.Empty,
-            string.Empty,
-            FailedGates,
-            Array.Empty<MainReferenceBaselineCaptureMeasurement>(),
-            Array.Empty<MainStressCountdownTitleMeasurement>(),
-            Array.Empty<MainNoteCardReminderFontMeasurement>(),
-            new[] { "未设置 MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT；运行时发布包不携带主窗口参考图。" });
-
-        public static MainReferenceBaselineValidation Invalid(
-            bool requested,
-            bool manifestAvailable,
-            string diagnostic,
-            string manifestPath = "") =>
-            new(
-                requested,
-                manifestAvailable,
-                manifestPath,
-                string.Empty,
-                string.Empty,
-                FailedGates,
-                Array.Empty<MainReferenceBaselineCaptureMeasurement>(),
-                Array.Empty<MainStressCountdownTitleMeasurement>(),
-                Array.Empty<MainNoteCardReminderFontMeasurement>(),
-                new[] { diagnostic });
-    }
-
     private sealed record VisualCaptureArtifactBinding(
         string Id,
         string Path,
         string Sha256);
-
-    private sealed record FloatingReferenceSourceBinding(string Path, string Sha256);
-
-    private sealed record FloatingReferenceCaptureSpec(
-        string CaptureId,
-        string Scenario,
-        string Theme,
-        string State,
-        string FileName);
-
-    private sealed record FloatingReferenceStateFingerprint(
-        string Algorithm,
-        string Sha256,
-        string Theme,
-        string Workspace,
-        string NoteId,
-        string NoteTextSha256,
-        string ViewportState,
-        double VerticalOffset,
-        double ScrollableHeight,
-        string FirstVisibleAnchor,
-        string LastVisibleAnchor);
-
-    private sealed record FloatingReferenceActualCapture(
-        FloatingReferenceCaptureSpec Spec,
-        byte[] PngBytes,
-        FloatingReferenceStateFingerprint StateFingerprint);
-
-    private sealed record FloatingReferenceStateDifference(
-        string Theme,
-        string TopCaptureId,
-        string BottomCaptureId,
-        FloatingReferencePixelMetrics Metrics);
-
-    private sealed record FloatingReferenceAlphaMetrics(
-        int Minimum,
-        int Maximum,
-        int TransparentPixelCount,
-        int NonOpaquePixelCount,
-        int OpaquePixelCount);
-
-    private sealed record FloatingReferenceContentRoi(
-        int AlphaThreshold,
-        int X,
-        int Y,
-        int Width,
-        int Height,
-        int PixelCount);
-
-    private sealed record FloatingReferencePixelMetrics(
-        int MaxAbsoluteChannelDelta,
-        double MeanAbsoluteError,
-        double RootMeanSquareError,
-        int ChangedPixelCount)
-    {
-        public static FloatingReferencePixelMetrics Zero { get; } = new(0, 0, 0, 0);
-    }
-
-    private sealed record FloatingReferenceCaptureMetrics(
-        int Width,
-        int Height,
-        FloatingReferenceAlphaMetrics Alpha,
-        FloatingReferenceContentRoi ContentRoi);
-
-    private sealed record FloatingReferenceManifestCapture(
-        string CaptureId,
-        string Scenario,
-        string Theme,
-        string State,
-        string Path,
-        int Width,
-        int Height,
-        string PngSha256,
-        FloatingReferenceStateFingerprint StateFingerprint,
-        FloatingReferenceAlphaMetrics Alpha,
-        FloatingReferenceContentRoi ContentRoi,
-        FloatingReferencePixelMetrics Comparison);
-
-    private sealed record FloatingReferenceBaselineCaptureMeasurement(
-        string CaptureId,
-        string Scenario,
-        string Theme,
-        string State,
-        string Path,
-        string BaselineSha256,
-        string ActualSha256,
-        FloatingReferenceStateFingerprint StateFingerprint,
-        FloatingReferenceAlphaMetrics Alpha,
-        FloatingReferenceContentRoi ContentRoi,
-        FloatingReferencePixelMetrics Comparison);
-
-    private sealed record FloatingReferenceBaselineValidation(
-        bool Requested,
-        bool ManifestAvailable,
-        string ManifestPath,
-        string SourceAggregateSha256,
-        string ExecutableSha256,
-        FloatingReferenceManifestGateResults Gates,
-        FloatingReferenceFreshnessGateResults FreshnessGates,
-        IReadOnlyList<FloatingReferenceBaselineCaptureMeasurement> Captures,
-        IReadOnlyList<string> Diagnostics)
-    {
-        private static FloatingReferenceManifestGateResults FailedGates { get; } = new(
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false);
-        private static FloatingReferenceFreshnessGateResults FailedFreshnessGates { get; } = new(
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false);
-
-        public bool AllPassed => Gates.AllPassed && FreshnessGates.AllPassed;
-
-        public static FloatingReferenceBaselineValidation NotRequested { get; } = new(
-            false,
-            false,
-            string.Empty,
-            string.Empty,
-            string.Empty,
-            FailedGates,
-            FailedFreshnessGates,
-            Array.Empty<FloatingReferenceBaselineCaptureMeasurement>(),
-            new[] { "未设置 MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT；运行时发布包不携带参考图。" });
-
-        public static FloatingReferenceBaselineValidation Invalid(
-            bool requested,
-            bool manifestAvailable,
-            string diagnostic,
-            string manifestPath = "") =>
-            new(
-                requested,
-                manifestAvailable,
-                manifestPath,
-                string.Empty,
-                string.Empty,
-                FailedGates,
-                FailedFreshnessGates,
-                Array.Empty<FloatingReferenceBaselineCaptureMeasurement>(),
-                new[] { diagnostic });
-    }
 
     private sealed record FloatingNoteCardBinding(
         Border Card,

@@ -51,7 +51,7 @@ intent: 定义时钟倒计时项目的统一领域词汇和时间语义。
 
 ## 视觉基线
 
-真实应用渲染截取、经 `assets/ui-references/` 下对应 manifest 钉死的界面截图集合，用于回归检查实现是否发生退化。第一眼识别一致的目标由方向参考图决定；实现沿方向参考图完成并渲染出真实界面后，以重拍的真实截图更新视觉基线。
+真实应用渲染截取、经 `assets/ui-references/` 下对应 manifest 钉死的界面截图集合，用于回归检查实现是否发生退化。第一眼识别一致的目标由方向参考图决定；实现沿方向参考图完成并渲染出真实界面后，以重拍的真实截图更新视觉基线。主窗与悬浮窗共用一个版本号，只在 `VisualReferenceBaseline.Version` 声明一次；生成、比对与源码绑定都在 `VisualReferenceBaseline` 内，调用方只交出实拍帧，脚本经 `Get-CountdownVisualBaseline` 取版本与 manifest 位置。
 
 ## 验证事实
 

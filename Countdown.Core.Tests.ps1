@@ -3293,28 +3293,30 @@ Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:
 Assert-Equal 0 `
     @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `
     'Project, C# and XAML source-build inputs are not installed as runtime files'
-$validationModuleSource = [System.IO.File]::ReadAllText(
-    (Join-Path $PSScriptRoot 'Countdown.Validation.psm1'))
-Assert-Equal 1 ([regex]::Matches(
-        $validationModuleSource,
-        'assets\\ui-references\\floating-window\\520x390\\2026-10-21-v59\\manifest\.json').Count) `
-    'Validation suite pins the floating visual manifest to the current v56 baseline'
-Assert-Equal $false ($validationModuleSource.Contains('2026-08-25-v17')) `
-    'Validation suite no longer references the retired floating v17 baseline'
-Assert-Equal 1 ([regex]::Matches(
-        $validationModuleSource,
-        'assets\\ui-references\\main-window\\864x1000\\2026-10-21-v59\\manifest\.json').Count) `
-    'Validation suite pins the main-window visual manifest to the current v56 baseline'
-Assert-Equal $false ($validationModuleSource.Contains(
-        'assets\ui-references\main-window\1165x1350\2026-08-23-v17\manifest.json')) `
-    'Validation suite no longer references the retired main-window v17 baseline'
-Assert-Equal $false ($validationModuleSource.Contains(
-        'assets\ui-references\main-window\1165x1350\2026-08-19-v16\manifest.json')) `
-    'Validation suite no longer references the retired main-window v16 baseline'
-Assert-Equal $false ($validationModuleSource.Contains('2026-08-13-v11')) `
-    'Validation suite no longer references the retired v11 visual baseline'
-Assert-Equal $false ($validationModuleSource.Contains('2026-08-06-v6')) `
-    'Validation suite no longer references the retired v6 visual baseline'
+# 视觉基线版本只在 VisualReferenceBaseline.cs 声明一次；脚本经 Get-CountdownVisualBaseline 取版本与两块 manifest 的位置。
+$visualBaselineFixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "countdown-visual-baseline-$([guid]::NewGuid().ToString('N'))"
+$visualBaselineFixtureSource = Join-Path $visualBaselineFixtureRoot 'src\MinminCountdown\VisualReferenceBaseline.cs'
+New-Item -ItemType Directory -Path (Split-Path -Parent $visualBaselineFixtureSource) -Force | Out-Null
+try {
+    [System.IO.File]::WriteAllText(
+        $visualBaselineFixtureSource,
+        "internal static class VisualReferenceBaseline`n{`n    public const string Version = `"2031-01-02-v77`";`n}`n")
+    $fixtureVisualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $visualBaselineFixtureRoot
+    Assert-Equal '2031-01-02-v77' $fixtureVisualBaseline.Version 'Visual baseline lookup reads the single C# version constant'
+    Assert-Equal 'assets/ui-references/main-window/864x1000/2031-01-02-v77' $fixtureVisualBaseline.Main.RelativeDirectory `
+        'Main-window baseline directory follows the version constant'
+    Assert-Equal (Join-Path $visualBaselineFixtureRoot 'assets\ui-references\floating-window\520x390\2031-01-02-v77\manifest.json') `
+        $fixtureVisualBaseline.Floating.ManifestPath 'Floating manifest path follows the version constant'
+    [System.IO.File]::WriteAllText($visualBaselineFixtureSource, "internal static class VisualReferenceBaseline { }`n")
+    $missingVisualBaselineVersionMessage = $null
+    try { $null = Get-CountdownVisualBaseline -RepositoryRoot $visualBaselineFixtureRoot }
+    catch { $missingVisualBaselineVersionMessage = $_.Exception.Message }
+    Assert-Equal "找不到视觉基线版本常量：$visualBaselineFixtureSource" $missingVisualBaselineVersionMessage `
+        'Visual baseline lookup fails closed without the version constant'
+}
+finally {
+    Remove-Item -LiteralPath $visualBaselineFixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 $floatingPlushSources = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'assets\floating-plush\SOURCES.md'))
 Assert-Equal $true ($floatingPlushSources.Contains('DESIGN.md') -and $floatingPlushSources.Contains('现役 manifest')) `
@@ -3330,17 +3332,16 @@ foreach ($retiredBaseline in @(
 }
 
 # 条件化现役 visual baseline 验证
-$floatingVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\floating-window\520x390\2026-10-21-v59\manifest.json'
-$mainVisualManifest = Join-Path $PSScriptRoot 'assets\ui-references\main-window\864x1000\2026-10-21-v59\manifest.json'
-$visualBaselinesAvailable = (Test-Path -LiteralPath $floatingVisualManifest -PathType Leaf) -and `
-                            (Test-Path -LiteralPath $mainVisualManifest -PathType Leaf)
+$visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $PSScriptRoot
+$visualBaselinesAvailable = (Test-Path -LiteralPath $visualBaseline.Floating.ManifestPath -PathType Leaf) -and `
+                            (Test-Path -LiteralPath $visualBaseline.Main.ManifestPath -PathType Leaf)
 
 if ($visualBaselinesAvailable) {
 $visualBaselineDefinitions = @(
     [pscustomobject]@{
         Name = 'Floating'
-        ManifestPath = $floatingVisualManifest
-        ExpectedVersion = '2026-10-21-v59'
+        ManifestPath = $visualBaseline.Floating.ManifestPath
+        ExpectedVersion = $visualBaseline.Version
         ExpectedCaptureIds = @(
             'floating-countdowns-day',
             'floating-workday-complete-day',
@@ -3348,12 +3349,12 @@ $visualBaselineDefinitions = @(
             'long-notes-day-top',
             'notes-search-expanded-day'
         )
-        ExpectedPathPrefix = 'assets/ui-references/floating-window/520x390/2026-10-21-v59/'
+        ExpectedPathPrefix = "$($visualBaseline.Floating.RelativeDirectory)/"
     },
     [pscustomobject]@{
         Name = 'Main'
-        ManifestPath = $mainVisualManifest
-        ExpectedVersion = '2026-10-21-v59'
+        ManifestPath = $visualBaseline.Main.ManifestPath
+        ExpectedVersion = $visualBaseline.Version
         ExpectedCaptureIds = @(
             'main-day-countdowns-empty',
             'main-day-countdowns-representative',
@@ -3365,7 +3366,7 @@ $visualBaselineDefinitions = @(
             'main-day-notes-selected',
             'main-day-notes-stress'
         )
-        ExpectedPathPrefix = 'assets/ui-references/main-window/864x1000/2026-10-21-v59/'
+        ExpectedPathPrefix = "$($visualBaseline.Main.RelativeDirectory)/"
     }
 )
 foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {

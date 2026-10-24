@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -12703,171 +12704,225 @@ internal static class ValidationExercises
 
     public static bool RunVisualReferenceBaselineInterfaceBehavior()
     {
-        const int width = 4;
-        const int height = 4;
-        const string mainRelativePath = "references/main/main.png";
-        const string floatingRelativePath = "references/floating/floating.png";
-        var fixtureRoot = Path.Combine(
+        // 走调用方同一交界面：临时源码树 + 合成帧先生成再校验，再逐项篡改，看对应门禁变红。
+        var sourceRoot = Path.Combine(
             Path.GetTempPath(),
             "MinminCountdown.VisualReferenceBaseline",
             Guid.NewGuid().ToString("N"));
-        var mainDirectory = Path.Combine(fixtureRoot, "references", "main");
-        var floatingDirectory = Path.Combine(fixtureRoot, "references", "floating");
-        Directory.CreateDirectory(mainDirectory);
-        Directory.CreateDirectory(floatingDirectory);
-
         try
         {
-            var opaquePng = CreateOpaqueVisualReferenceFixturePng(blue: 48);
-            var alternateOpaquePng = CreateOpaqueVisualReferenceFixturePng(blue: 96);
-            var transparentPng = CreateTransparentVisualReferenceFixturePng();
-            var mainPath = Path.Combine(mainDirectory, "main.png");
-            var floatingPath = Path.Combine(floatingDirectory, "floating.png");
-            File.WriteAllBytes(mainPath, opaquePng);
-            File.WriteAllBytes(floatingPath, transparentPng);
+            var interactionSources = new[]
+            {
+                "src/MinminCountdown/MotionBehavior.cs",
+                "src/MinminCountdown.Core/DateDisplay.cs",
+                "src/MinminCountdown.Core/NoteOrdering.cs",
+                "src/MinminCountdown/ApplicationSession.cs",
+                "src/MinminCountdown/DesktopWorkspace.cs",
+                "src/MinminCountdown/NoteCompletionExit.cs",
+                "src/MinminCountdown/DeleteUndoOffer.cs"
+            };
+            Must(
+                interactionSources
+                    .Append("src/MinminCountdown/SegmentIndicator.cs")
+                    .All(path => VisualReferenceBaseline.Main.CanonicalSourcePaths.Contains(path, StringComparer.Ordinal)) &&
+                interactionSources
+                    .Append("src/MinminCountdown/FloatingBottomStatus.cs")
+                    .Append("src/MinminCountdown/HolidayCalendar.cs")
+                    .All(path => VisualReferenceBaseline.Floating.CanonicalSourcePaths.Contains(path, StringComparer.Ordinal)),
+                "视觉基线源码绑定漏掉了交互行为源码。");
+            foreach (var relativePath in VisualReferenceBaseline.Main.CanonicalSourcePaths
+                         .Concat(VisualReferenceBaseline.Floating.CanonicalSourcePaths)
+                         .Distinct(StringComparer.Ordinal))
+            {
+                WriteVisualReferenceFixtureSource(sourceRoot, relativePath, string.Empty);
+            }
 
-            var mainCapture = new VisualReferenceManifestCapture(
-                "main",
-                mainRelativePath,
-                width,
-                height,
-                Convert.ToHexString(SHA256.HashData(opaquePng)),
-                new VisualReferenceAlphaMetrics(255, 255, 0, 0, width * height),
-                new VisualReferenceContentRoi(0, 0, 0, width, height, width * height),
-                VisualReferencePixelMetrics.Zero);
-            var mainRequest = new MainVisualReferenceRequest(
-                new VisualReferenceFileRequest(
-                    fixtureRoot,
-                    mainDirectory,
-                    new[] { mainRelativePath },
-                    new[] { mainCapture },
-                    new[] { new VisualReferenceActualCapture("main", opaquePng) },
+            var generate = new VisualReferenceMode(sourceRoot, Generate: true);
+            var validate = new VisualReferenceMode(sourceRoot, Generate: false);
+
+            var beijingTime = new DateTimeOffset(2032, 5, 18, 10, 15, 30, TimeSpan.FromHours(8));
+            var mainFrames = VisualReferenceBaseline.Main.CaptureSpecs
+                .Select((spec, index) => VisualReferenceBaseline.Main.ActualCapture(
+                    spec,
+                    beijingTime,
+                    CreateSolidVisualReferenceFixturePng(864, 1000, (byte)(40 + (index * 20))),
+                    CountdownSettings.Empty))
+                .ToArray();
+            var mainResult = VisualReferenceBaseline.Main.Run(generate, mainFrames);
+            Must(
+                mainResult.AllPassed && mainResult.Diagnostics.Count == 0,
+                "主窗口视觉基线生成后未通过同一交界面的校验。");
+            Must(
+                ThrowsInvalidOperation(() => VisualReferenceBaseline.Main.Run(generate, mainFrames)),
+                "主窗口视觉基线未拒绝覆盖已有版本目录。");
+            var nonOpaqueFrame = CreateSolidVisualReferenceFixturePng(864, 1000, 40, firstPixelAlpha: 0);
+            Must(
+                ThrowsInvalidOperation(() => VisualReferenceBaseline.Main.ActualCapture(
+                    VisualReferenceBaseline.Main.CaptureSpecs[0],
+                    beijingTime,
+                    nonOpaqueFrame,
+                    CountdownSettings.Empty)),
+                "主窗口视觉基线未拒绝含非不透明像素的实拍帧。");
+            WriteVisualReferenceFixtureSource(sourceRoot, "src/MinminCountdown/MotionBehavior.cs", "// drift");
+            Must(
+                VisualReferenceBaseline.Main.Run(validate, mainFrames).Diagnostics
+                    .SequenceEqual(new[] { "SourceHashesMatch" }, StringComparer.Ordinal),
+                "主窗口视觉基线未只以源码哈希门禁拒绝改动过的绑定源码。");
+            WriteVisualReferenceFixtureSource(sourceRoot, "src/MinminCountdown/MotionBehavior.cs", string.Empty);
+
+            // ROI 帧只有 (100,50) 起 200x100 的不透明矩形；左上角 alpha=32 的像素不算内容。
+            var floatingFrames = new[]
+            {
+                VisualReferenceBaseline.Floating.ActualCapture(
+                    "floating-countdowns-day",
+                    CreateContentRoiVisualReferenceFixturePng(),
+                    "Countdowns",
+                    string.Empty,
+                    string.Empty,
                     0,
                     0,
+                    "距离下班",
+                    "七月倒计时"),
+                VisualReferenceBaseline.Floating.ActualCapture(
+                    "floating-workday-complete-day",
+                    CreateSolidVisualReferenceFixturePng(520, 390, 60),
+                    "Countdowns",
+                    string.Empty,
+                    "下班啦",
                     0,
-                    0),
-                width,
-                height,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true);
-
-            var floatingAlpha = new VisualReferenceAlphaMetrics(0, 255, 11, 12, 4);
-            var floatingRoi = new VisualReferenceContentRoi(32, 1, 1, 2, 2, 4);
-            var floatingCapture = new VisualReferenceManifestCapture(
-                "floating",
-                floatingRelativePath,
-                width,
-                height,
-                Convert.ToHexString(SHA256.HashData(transparentPng)),
-                floatingAlpha,
-                floatingRoi,
-                VisualReferencePixelMetrics.Zero);
-            var floatingFiles = new VisualReferenceFileRequest(
-                fixtureRoot,
-                floatingDirectory,
-                new[] { floatingRelativePath },
-                new[] { floatingCapture },
-                new[] { new VisualReferenceActualCapture("floating", transparentPng) },
-                0,
-                0,
-                0,
-                0);
-            var floatingRequest = new FloatingVisualReferenceRequest(
-                floatingFiles,
-                width,
-                height,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true,
-                true);
-
-            var mainResult = VisualReferenceBaseline.Main.Validate(mainRequest);
-            var floatingResult = VisualReferenceBaseline.Floating.Validate(floatingRequest);
-            Must(mainResult.AllPassed, "主窗口视觉基线 module 未通过正常文件集。");
-            Must(floatingResult.AllPassed, "悬浮窗视觉基线 module 未通过正常文件集。");
+                    0,
+                    "下班啦",
+                    "七月倒计时"),
+                FloatingLongNoteFixtureFrame("long-notes-day-top", 100, 0),
+                FloatingLongNoteFixtureFrame("long-notes-day-bottom", 140, 400),
+                VisualReferenceBaseline.Floating.ActualCapture(
+                    "notes-search-expanded-day",
+                    CreateSolidVisualReferenceFixturePng(520, 390, 180),
+                    "Notes",
+                    string.Empty,
+                    string.Empty,
+                    0,
+                    0,
+                    "search-expanded",
+                    "search-expanded")
+            };
+            FloatingReferenceBaselineValidation ValidateFloating(
+                IReadOnlyList<FloatingReferenceActualCapture> frames) =>
+                VisualReferenceBaseline.Floating.Run(validate, frames, true, true);
+            var floatingResult = VisualReferenceBaseline.Floating.Run(generate, floatingFrames, true, true);
             Must(
-                floatingResult.Measurements.Single().ActualContentRoi == floatingRoi,
-                "悬浮窗视觉基线 module 未按 alpha > 32 收缩内容 ROI。");
-
-            var escapingPath = "../escape.png";
-            var escapingResult = VisualReferenceBaseline.Main.Validate(
-                mainRequest with
-                {
-                    Files = mainRequest.Files with
-                    {
-                        ExpectedCapturePaths = new[] { escapingPath },
-                        ManifestCaptures = new[] { mainCapture with { Path = escapingPath } }
-                    }
-                });
+                floatingResult.AllPassed && floatingResult.Diagnostics.Count == 0,
+                "悬浮窗视觉基线生成后未通过同一交界面的校验。");
             Must(
-                !escapingResult.Gates.ManifestStructureValid &&
-                escapingResult.Diagnostics.Any(diagnostic =>
-                    diagnostic.Contains("逃出源码根目录", StringComparison.Ordinal)),
-                "视觉基线 module 未拒绝逃出源码根目录的路径。");
+                floatingResult.Captures.Single(capture => capture.CaptureId == "floating-countdowns-day").ContentRoi ==
+                    new VisualReferenceContentRoi(32, 100, 50, 200, 100, 20_000),
+                "悬浮窗视觉基线未按 alpha > 32 收缩内容 ROI。");
 
-            File.Delete(mainPath);
-            Must(
-                !VisualReferenceBaseline.Main.Validate(mainRequest).Gates.ExpectedCaptureFilesPresent,
-                "视觉基线 module 未让缺失 PNG 的文件门禁失败。");
-            File.WriteAllBytes(mainPath, opaquePng);
+            var searchPngPath = VisualReferenceBaseline.Floating.BaselineFilePath(sourceRoot, "notes-search-expanded-day.png");
+            var searchPng = File.ReadAllBytes(searchPngPath);
+            File.WriteAllBytes(searchPngPath, CreateSolidVisualReferenceFixturePng(520, 390, 200));
+            Must(!ValidateFloating(floatingFrames).Gates.PngHashesMatch, "悬浮窗视觉基线未让合法但不同的 PNG 触发哈希失败。");
+            File.Delete(searchPngPath);
+            Must(!ValidateFloating(floatingFrames).Gates.ExpectedCaptureFilesPresent, "悬浮窗视觉基线未让缺失 PNG 的文件门禁失败。");
+            File.WriteAllBytes(searchPngPath, searchPng);
 
-            var orphanPath = Path.Combine(mainDirectory, "orphan.png");
-            File.WriteAllBytes(orphanPath, opaquePng);
+            var orphanPath = VisualReferenceBaseline.Floating.BaselineFilePath(sourceRoot, "orphan.png");
+            File.WriteAllBytes(orphanPath, searchPng);
             Must(
-                !VisualReferenceBaseline.Main.Validate(mainRequest).Gates.NoOrphanPngFiles,
-                "视觉基线 module 未让孤儿 PNG 的 inventory 门禁失败。");
+                ValidateFloating(floatingFrames).Diagnostics.SequenceEqual(new[] { "NoOrphanPngFiles" }, StringComparer.Ordinal),
+                "悬浮窗视觉基线未只以 inventory 门禁拒绝孤儿 PNG。");
             File.Delete(orphanPath);
 
-            File.WriteAllBytes(mainPath, alternateOpaquePng);
+            var manifestPath = VisualReferenceBaseline.Floating.BaselineFilePath(sourceRoot, "manifest.json");
+            var manifest = File.ReadAllBytes(manifestPath);
+            var escaping = JsonNode.Parse(manifest)!;
+            escaping["captures"]![0]!["path"] = "../escape.png";
+            File.WriteAllText(manifestPath, escaping.ToJsonString());
+            var escapingResult = ValidateFloating(floatingFrames);
             Must(
-                !VisualReferenceBaseline.Main.Validate(mainRequest).Gates.PngHashesMatch,
-                "视觉基线 module 未让合法但不同的 PNG 触发哈希失败。");
-            File.WriteAllBytes(mainPath, opaquePng);
+                !escapingResult.Gates.ManifestStructureValid &&
+                escapingResult.Diagnostics.Any(diagnostic => diagnostic.Contains("逃出源码根目录", StringComparison.Ordinal)),
+                "悬浮窗视觉基线未拒绝逃出源码根目录的路径。");
+            var unbound = JsonNode.Parse(manifest)!;
+            unbound["sourceBinding"]!["files"]!.AsArray().RemoveAt(0);
+            File.WriteAllText(manifestPath, unbound.ToJsonString());
+            Must(!ValidateFloating(floatingFrames).Gates.SourceHashesMatch, "悬浮窗视觉基线未拒绝少绑一个源码文件的 manifest。");
+            File.WriteAllBytes(manifestPath, manifest);
 
-            var transparentMainResult = VisualReferenceBaseline.Main.Validate(
-                new MainVisualReferenceRequest(
-                    floatingFiles,
-                    width,
-                    height,
-                    true,
-                    true,
-                    true,
-                    true,
-                    true,
-                    true,
-                    true,
-                    true));
+            WriteVisualReferenceFixtureSource(sourceRoot, "src/MinminCountdown/HolidayCalendar.cs", "// drift");
             Must(
-                !transparentMainResult.Gates.AlphaMetricsMatch,
-                "主窗口视觉基线 module 未拒绝含透明像素的帧。");
+                ValidateFloating(floatingFrames).Diagnostics.SequenceEqual(new[] { "SourceHashesMatch" }, StringComparer.Ordinal),
+                "悬浮窗视觉基线未只以源码哈希门禁拒绝改动过的绑定源码。");
+            WriteVisualReferenceFixtureSource(sourceRoot, "src/MinminCountdown/HolidayCalendar.cs", string.Empty);
+
+            var scrolledFrames = floatingFrames
+                .Select(frame => frame.Spec.CaptureId == "long-notes-day-top"
+                    ? FloatingLongNoteFixtureFrame("long-notes-day-top", 100, 1)
+                    : frame)
+                .ToArray();
+            Must(
+                !ValidateFloating(scrolledFrames).FreshnessGates.StateFingerprintsMatch,
+                "悬浮窗视觉基线未拒绝滚动状态与 manifest 不一致的实拍帧。");
+
+            var bottomStatusPath = Path.Combine(sourceRoot, "src", "MinminCountdown", "FloatingBottomStatus.cs");
+            File.Delete(bottomStatusPath);
+            Must(
+                ValidateFloating(floatingFrames).Diagnostics.Single()
+                    .Contains("悬浮窗参考图绑定的视觉源码不存在", StringComparison.Ordinal),
+                "悬浮窗视觉基线未报出缺失的绑定源码。");
             return true;
         }
         finally
         {
-            if (Directory.Exists(fixtureRoot))
+            if (Directory.Exists(sourceRoot))
             {
-                Directory.Delete(fixtureRoot, recursive: true);
+                Directory.Delete(sourceRoot, recursive: true);
             }
         }
     }
 
-    private static byte[] CreateOpaqueVisualReferenceFixturePng(byte blue)
+    private static FloatingReferenceActualCapture FloatingLongNoteFixtureFrame(
+        string captureId,
+        byte blue,
+        double verticalOffset) =>
+        VisualReferenceBaseline.Floating.ActualCapture(
+            captureId,
+            CreateSolidVisualReferenceFixturePng(520, 390, blue),
+            "Notes",
+            "fixture-note",
+            "长便签夹具",
+            verticalOffset,
+            400,
+            "长便签夹具",
+            "长便签夹具");
+
+    private static void WriteVisualReferenceFixtureSource(string sourceRoot, string relativePath, string suffix)
     {
-        var pixels = new byte[4 * 4 * 4];
+        var path = Path.Combine(sourceRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, relativePath + suffix);
+    }
+
+    private static bool ThrowsInvalidOperation(Action action)
+    {
+        try
+        {
+            action();
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
+    private static byte[] CreateSolidVisualReferenceFixturePng(
+        int width,
+        int height,
+        byte blue,
+        byte firstPixelAlpha = byte.MaxValue)
+    {
+        var pixels = new byte[width * height * 4];
         for (var offset = 0; offset < pixels.Length; offset += 4)
         {
             pixels[offset] = blue;
@@ -12875,35 +12930,41 @@ internal static class ValidationExercises
             pixels[offset + 2] = 176;
             pixels[offset + 3] = byte.MaxValue;
         }
-        return EncodeVisualReferenceFixturePng(pixels);
+        pixels[3] = firstPixelAlpha;
+        return EncodeVisualReferenceFixturePng(width, height, pixels);
     }
 
-    private static byte[] CreateTransparentVisualReferenceFixturePng()
+    private static byte[] CreateContentRoiVisualReferenceFixturePng()
     {
-        var pixels = new byte[4 * 4 * 4];
+        const int width = 520;
+        const int height = 390;
+        var pixels = new byte[width * height * 4];
         pixels[3] = 32;
-        foreach (var (x, y) in new[] { (1, 1), (2, 1), (1, 2), (2, 2) })
+        for (var y = 50; y < 150; y++)
         {
-            var offset = ((y * 4) + x) * 4;
-            pixels[offset] = 48;
-            pixels[offset + 1] = 112;
-            pixels[offset + 2] = 176;
-            pixels[offset + 3] = byte.MaxValue;
+            for (var x = 100; x < 300; x++)
+            {
+                var offset = ((y * width) + x) * 4;
+                pixels[offset] = 48;
+                pixels[offset + 1] = 112;
+                pixels[offset + 2] = 176;
+                pixels[offset + 3] = byte.MaxValue;
+            }
         }
-        return EncodeVisualReferenceFixturePng(pixels);
+        return EncodeVisualReferenceFixturePng(width, height, pixels);
     }
 
-    private static byte[] EncodeVisualReferenceFixturePng(byte[] pixels)
+    private static byte[] EncodeVisualReferenceFixturePng(int width, int height, byte[] pixels)
     {
         var source = BitmapSource.Create(
-            4,
-            4,
+            width,
+            height,
             96,
             96,
             PixelFormats.Bgra32,
             null,
             pixels,
-            4 * 4);
+            width * 4);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(source));
         using var stream = new MemoryStream();

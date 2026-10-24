@@ -410,6 +410,33 @@ function Assert-CountdownApplicationValidationReport {
     $Report
 }
 
+function Get-CountdownVisualBaseline {
+    # 视觉基线版本只在 VisualReferenceBaseline.cs 声明一次；脚本由此取版本与两块 manifest 的位置。
+    param([Parameter(Mandatory)] [string] $RepositoryRoot)
+
+    $sourcePath = Join-Path $RepositoryRoot 'src\MinminCountdown\VisualReferenceBaseline.cs'
+    $match = [regex]::Match(
+        [IO.File]::ReadAllText($sourcePath),
+        'public const string Version = "(?<version>[0-9]{4}-[0-9]{2}-[0-9]{2}-v[0-9]+)";')
+    if (-not $match.Success) {
+        throw "找不到视觉基线版本常量：$sourcePath"
+    }
+
+    $version = $match.Groups['version'].Value
+    $surfaces = foreach ($relativeRoot in @('main-window/864x1000', 'floating-window/520x390')) {
+        $relativeDirectory = "assets/ui-references/$relativeRoot/$version"
+        [pscustomobject]@{
+            RelativeDirectory = $relativeDirectory
+            ManifestPath = Join-Path $RepositoryRoot ("$relativeDirectory/manifest.json".Replace('/', '\'))
+        }
+    }
+    [pscustomobject]@{
+        Version = $version
+        Main = $surfaces[0]
+        Floating = $surfaces[1]
+    }
+}
+
 function Invoke-CountdownValidationSuite {
     [CmdletBinding()]
     param(
@@ -491,10 +518,14 @@ function Invoke-CountdownValidationSuite {
         -IsolatedDesktopName 'MinminSuiteIso-ValidateUi'
     $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
 
-    $floatingBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\floating-window\520x390\2026-10-21-v59\manifest.json'
-    $floatingBaselineRequired = Test-Path -LiteralPath $floatingBaselineManifest -PathType Leaf
-    $mainBaselineManifest = Join-Path $resolvedRoot 'assets\ui-references\main-window\864x1000\2026-10-21-v59\manifest.json'
-    $mainBaselineRequired = Test-Path -LiteralPath $mainBaselineManifest -PathType Leaf
+    # 夹具根不带视觉源码，也就没有可要求的基线，与 manifest 缺席同样处理。
+    $floatingBaselineRequired = $false
+    $mainBaselineRequired = $false
+    if (Test-Path -LiteralPath (Join-Path $resolvedRoot 'src\MinminCountdown\VisualReferenceBaseline.cs') -PathType Leaf) {
+        $visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $resolvedRoot
+        $floatingBaselineRequired = Test-Path -LiteralPath $visualBaseline.Floating.ManifestPath -PathType Leaf
+        $mainBaselineRequired = Test-Path -LiteralPath $visualBaseline.Main.ManifestPath -PathType Leaf
+    }
     $visualBaselinesRequired = $floatingBaselineRequired -and $mainBaselineRequired
     $applicationEnvironment = @{
         MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT = if ($visualBaselinesRequired) { $resolvedRoot } else { $null }
@@ -588,4 +619,4 @@ function Invoke-CountdownValidationSuite {
     }
 }
 
-Export-ModuleMember -Function Assert-CountdownApplicationValidationReport, Invoke-CountdownValidationSuite
+Export-ModuleMember -Function Assert-CountdownApplicationValidationReport, Get-CountdownVisualBaseline, Invoke-CountdownValidationSuite

@@ -12247,6 +12247,7 @@ internal static class ValidationExercises
                 interactionSources
                     .Append("src/MinminCountdown/FloatingBottomStatus.cs")
                     .Append("src/MinminCountdown/HolidayCalendar.cs")
+                    .Append("src/MinminCountdown.Core/FloatingCountdownProjection.cs")
                     .All(path => VisualReferenceBaseline.Floating.CanonicalSourcePaths.Contains(path, StringComparer.Ordinal)),
                 "视觉基线源码绑定漏掉了交互行为源码。");
             foreach (var relativePath in VisualReferenceBaseline.Main.CanonicalSourcePaths

@@ -920,6 +920,7 @@ internal static class VisualReferenceBaseline
             "src/MinminCountdown.Core/DesktopWorkspace.Transactions.cs",
             "src/MinminCountdown.Core/DesktopWorkspace.cs",
             "src/MinminCountdown.Core/DomainLogic.cs",
+            "src/MinminCountdown.Core/FloatingCountdownProjection.cs",
             "src/MinminCountdown.Core/NoteOrdering.cs",
             "src/MinminCountdown/App.xaml",
             "src/MinminCountdown/ApplicationTheme.cs",

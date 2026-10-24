@@ -46,6 +46,9 @@ internal static class ApplicationPaths
 
 internal static class RuntimeProtocol
 {
+    private const int SharingViolation = unchecked((int)0x80070020);
+    private const int LockViolation = unchecked((int)0x80070021);
+    private static readonly TimeSpan TransientLockBudget = TimeSpan.FromSeconds(2);
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -239,13 +242,46 @@ internal static class RuntimeProtocol
         try
         {
             File.WriteAllText(temporaryPath, JsonSerializer.Serialize(value, JsonOptions), Utf8NoBom);
-            File.Move(temporaryPath, resolvedPath, overwrite: true);
+            ReplaceWithTransientRetry(temporaryPath, resolvedPath);
         }
         finally
         {
             if (File.Exists(temporaryPath))
             {
                 File.Delete(temporaryPath);
+            }
+        }
+    }
+
+    // 安装器轮询启动请求和回执时用 File.ReadAllText 打开的读句柄不共享删除，此刻覆盖目标报 Access denied；
+    // 临时文件被扫描占住时报共享冲突。这类占用是瞬时的：按设置文件替换的同一预算退避约 2 秒，仍失败才把
+    // 路径写进消息抛出，不让一次轮询撞车变成验收中的未处理异常。
+    private static void ReplaceWithTransientRetry(string temporaryPath, string resolvedPath)
+    {
+        var elapsed = Stopwatch.StartNew();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(temporaryPath, resolvedPath, overwrite: true);
+                return;
+            }
+            catch (Exception exception) when (
+                (exception is UnauthorizedAccessException ||
+                 exception is IOException { HResult: SharingViolation or LockViolation }) &&
+                elapsed.Elapsed < TransientLockBudget)
+            {
+                Thread.Sleep(Math.Min(20 * attempt, 200));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                var message =
+                    $"运行状态文件替换失败：{resolvedPath}（尝试 {attempt} 次，历时 {elapsed.ElapsedMilliseconds} ms）。{exception.Message}";
+                Exception failure = exception is UnauthorizedAccessException
+                    ? new UnauthorizedAccessException(message, exception)
+                    : new IOException(message, exception);
+                failure.HResult = exception.HResult;
+                throw failure;
             }
         }
     }

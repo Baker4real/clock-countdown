@@ -104,7 +104,33 @@ function Write-CountdownRuntimeJsonAtomically {
     try {
         $json = $Value | ConvertTo-Json -Depth 6
         [System.IO.File]::WriteAllText($temporaryPath, $json, (New-Object System.Text.UTF8Encoding($false)))
-        Move-Item -LiteralPath $temporaryPath -Destination $resolvedPath -Force
+        # 应用在验收只读期每个节拍都用 File.ReadAllText 读启动请求，安装器也在轮询应用写的回执；读句柄不共享删除，
+        # 此刻覆盖目标报 Access denied，临时文件被扫描占住时报共享冲突。这类占用是瞬时的，按设置文件替换的同一
+        # 预算退避约 2 秒，仍失败才带路径抛出。File.Move 覆盖是一次改名：Move-Item -Force 会先删目标再改名，
+        # 读方会在中间看到文件不存在。
+        $clock = [System.Diagnostics.Stopwatch]::StartNew()
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                [System.IO.File]::Move($temporaryPath, $resolvedPath, $true)
+                break
+            }
+            catch [System.UnauthorizedAccessException], [System.IO.IOException] {
+                $failure = $_.Exception
+                $transient = $failure -is [System.UnauthorizedAccessException] -or $failure.HResult -in @(0x80070020, 0x80070021)
+                if (-not $transient -or $clock.Elapsed -ge [TimeSpan]::FromSeconds(2)) {
+                    $message = "运行状态文件替换失败：$resolvedPath（尝试 $attempt 次，历时 $($clock.ElapsedMilliseconds) ms）。$($failure.Message)"
+                    $wrapped = if ($failure -is [System.UnauthorizedAccessException]) {
+                        [System.UnauthorizedAccessException]::new($message, $failure)
+                    }
+                    else {
+                        [System.IO.IOException]::new($message, $failure)
+                    }
+                    $wrapped.HResult = $failure.HResult
+                    throw $wrapped
+                }
+                Start-Sleep -Milliseconds ([Math]::Min(20 * $attempt, 200))
+            }
+        }
     }
     finally {
         Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue

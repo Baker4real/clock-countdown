@@ -4441,6 +4441,7 @@ $acceptanceStatusPath = Join-Path $acceptanceTestRoot 'acceptance-status.json'
 $acceptanceSettingsSnapshotPath = Join-Path $acceptanceTestRoot 'settings-snapshot.json'
 $acceptanceSettingsPath = Join-Path $acceptanceTestRoot 'settings.json'
 $acceptanceApplicationPath = Join-Path $acceptanceTestRoot '敏敏子倒计时.ps1'
+$acceptanceHeldRequestPath = Join-Path $acceptanceTestRoot 'held-startup-request.json'
 $acceptanceExpectedContext = [pscustomobject]@{
     User = 'MINMIN\AcceptanceUser'
     SessionId = 7
@@ -4531,6 +4532,40 @@ function Start-CountdownAcceptanceTestApplication {
     }
     [void] $acceptanceJobs.Add($job)
     $job
+}
+
+function Start-CountdownAcceptanceHeldReader {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [int] $HoldMilliseconds
+    )
+
+    # 模拟应用读启动请求：像 File.ReadAllText 一样只共享读地打开目标，打开后才建标记文件；
+    # 持有到 HoldMilliseconds 到期或调用方删掉标记为止，删标记就是让读方立即关闭句柄。
+    $markerPath = "$Path.$([guid]::NewGuid().ToString('N')).holding"
+    $job = Start-Job -ArgumentList $Path, $markerPath, $HoldMilliseconds -ScriptBlock {
+        param($Path, $MarkerPath, $HoldMilliseconds)
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        try {
+            [System.IO.File]::WriteAllText($MarkerPath, 'holding')
+            $deadline = [DateTimeOffset]::UtcNow.AddMilliseconds($HoldMilliseconds)
+            while ([DateTimeOffset]::UtcNow -lt $deadline -and (Test-Path -LiteralPath $MarkerPath -PathType Leaf)) {
+                Start-Sleep -Milliseconds 10
+            }
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+    [void] $acceptanceJobs.Add($job)
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
+    while (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+        if ([DateTimeOffset]::UtcNow -ge $deadline -or $job.State -in @('Completed', 'Failed', 'Stopped')) {
+            throw '读句柄夹具未能占住启动请求。'
+        }
+        Start-Sleep -Milliseconds 10
+    }
+    [pscustomobject]@{ Job = $job; MarkerPath = $markerPath }
 }
 
 function Invoke-CountdownAcceptanceTestCase {
@@ -4857,13 +4892,42 @@ try {
     Assert-Equal 1 $acceptanceAdapterState.Completed 'Finalized-ready timeout occurs after transaction acceptance'
     Assert-Equal 0 $acceptanceAdapterState.Removed 'Finalized-ready timeout preserves rollback evidence'
     Assert-Equal 'finalized' ([string] ((Get-Content -LiteralPath $acceptanceStartupRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'Finalized-ready timeout preserves the finalized startup state for recovery'
+
+    # 应用在验收只读期每个节拍都读启动请求；安装器推进 released / finalized 时撞上这个读句柄，
+    # 要等句柄释放后完成替换，而不是报错让验收失败。
+    $heldRequest = New-CountdownStartupRequest -Path $acceptanceHeldRequestPath -AcceptanceReadOnly
+    $heldReader = Start-CountdownAcceptanceHeldReader -Path $acceptanceHeldRequestPath -HoldMilliseconds 500
+    $heldReleaseError = $null
+    try { [void] (Complete-CountdownStartupRequest -Path $acceptanceHeldRequestPath -LaunchToken $heldRequest.launchToken) }
+    catch { $heldReleaseError = $_.Exception.Message }
+    finally {
+        Remove-Item -LiteralPath $heldReader.MarkerPath -Force -ErrorAction SilentlyContinue
+        Wait-Job -Job $heldReader.Job -Timeout 10 | Out-Null
+    }
+    Assert-Equal $null $heldReleaseError 'Startup request release waits out an application read handle instead of failing'
+    Assert-Equal 'released' ([string] ((Get-Content -LiteralPath $acceptanceHeldRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'Startup request release completes after the read handle closes'
+
+    # 读句柄超过约 2 秒退避预算时明确失败：报出被占用的路径，启动请求保持原状态，不留临时文件。
+    # 读方一直持有到调用返回后才删标记释放，所以这一段也证明夹具确实挡住了替换。
+    $stuckRequest = New-CountdownStartupRequest -Path $acceptanceHeldRequestPath -AcceptanceReadOnly
+    $stuckReader = Start-CountdownAcceptanceHeldReader -Path $acceptanceHeldRequestPath -HoldMilliseconds 30000
+    $stuckReleaseError = $null
+    try { [void] (Complete-CountdownStartupRequest -Path $acceptanceHeldRequestPath -LaunchToken $stuckRequest.launchToken) }
+    catch { $stuckReleaseError = $_.Exception.Message }
+    finally {
+        Remove-Item -LiteralPath $stuckReader.MarkerPath -Force -ErrorAction SilentlyContinue
+        Wait-Job -Job $stuckReader.Job -Timeout 10 | Out-Null
+    }
+    Assert-Equal $true ([string] $stuckReleaseError).Contains($acceptanceHeldRequestPath) 'Startup request release names the held path after the retry budget'
+    Assert-Equal 'active' ([string] ((Get-Content -LiteralPath $acceptanceHeldRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json).acceptanceState)) 'Startup request keeps its previous state when the release gives up'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $acceptanceTestRoot -Filter 'held-startup-request.json.*.tmp').Count 'Startup request release leaves no temporary file after giving up'
 }
 finally {
     foreach ($job in $acceptanceJobs) {
         Stop-Job -Job $job -ErrorAction SilentlyContinue
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
-    foreach ($path in @($acceptanceStartupRequestPath, $acceptanceRuntimeStatusPath, $acceptanceStatusPath, $acceptanceSettingsSnapshotPath, $acceptanceSettingsPath, $acceptanceApplicationPath)) {
+    foreach ($path in @($acceptanceStartupRequestPath, $acceptanceRuntimeStatusPath, $acceptanceStatusPath, $acceptanceSettingsSnapshotPath, $acceptanceSettingsPath, $acceptanceApplicationPath, $acceptanceHeldRequestPath)) {
         Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
     }
     Remove-Item -LiteralPath $acceptanceTestRoot -Force -ErrorAction SilentlyContinue

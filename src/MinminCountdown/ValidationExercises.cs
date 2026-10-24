@@ -10515,6 +10515,45 @@ internal static class ValidationExercises
                 !released.MarkAcceptanceReady(),
                 "启动验收 interface 未完成 released -> ready 单次推进。");
 
+            // 安装器轮询启动请求时持有不共享删除的读句柄：released -> ready 要等句柄关闭后完成替换；
+            // 句柄超过约 2 秒退避预算仍不关闭时带路径失败，启动请求保持 released，不留临时文件。
+            WriteStartupRequest(startupRequestPath, launchToken, "released");
+            var installerPoll = new FileStream(startupRequestPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var installerPollClosed = Task.Delay(500).ContinueWith(_ => installerPoll.Dispose(), TaskScheduler.Default);
+            bool readyAfterPollClosed;
+            try
+            {
+                readyAfterPollClosed = released.MarkAcceptanceReady();
+            }
+            finally
+            {
+                installerPollClosed.Wait();
+            }
+
+            Must(
+                readyAfterPollClosed && released.ReadAcceptanceState() == "ready",
+                "启动验收 interface 未等安装器读句柄关闭后完成 released -> ready。");
+
+            WriteStartupRequest(startupRequestPath, launchToken, "released");
+            Exception? stuckPollFailure = null;
+            using (new FileStream(startupRequestPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                try
+                {
+                    released.MarkAcceptanceReady();
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    stuckPollFailure = exception;
+                }
+            }
+
+            Must(
+                stuckPollFailure?.Message.Contains(startupRequestPath, StringComparison.Ordinal) == true &&
+                released.ReadAcceptanceState() == "released" &&
+                Directory.GetFiles(temporaryRoot, "*.tmp").Length == 0,
+                "启动验收 interface 未在读句柄超过退避预算时带路径失败并保持 released。");
+
             WriteStartupRequest(startupRequestPath, launchToken, "finalized");
             var finalized = StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true);
             Must(

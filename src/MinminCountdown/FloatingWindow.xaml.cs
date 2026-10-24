@@ -831,6 +831,8 @@ public sealed partial class FloatingWindow : Window
         ApplyPlushSceneTheme(nextTheme);
     }
 
+    private void OnPaletteChanged(object? sender, EventArgs args) => ApplyTheme();
+
     private FloatingThemePalette ActiveTheme =>
         _activeTheme ?? throw new InvalidOperationException("悬浮窗主题尚未初始化。");
 
@@ -1609,8 +1611,10 @@ public sealed partial class FloatingWindow : Window
         FloatingDeleteUndoButton.GotKeyboardFocus += (_, _) => _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Floating, true);
         FloatingDeleteUndoButton.LostKeyboardFocus += (_, _) => _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Floating, false);
         _desktopWorkspace.UndoChanged += OnFloatingUndoChanged;
+        ApplicationTheme.PaletteChanged += OnPaletteChanged;
         Closed += (_, _) =>
         {
+            ApplicationTheme.PaletteChanged -= OnPaletteChanged;
             _desktopWorkspace.UndoChanged -= OnFloatingUndoChanged;
             _desktopWorkspace.SetUndoHovered(WorkspaceUndoSurface.Floating, false);
             _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Floating, false);

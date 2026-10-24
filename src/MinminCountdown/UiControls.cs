@@ -1356,7 +1356,11 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         };
         surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         Content = surface;
+        ApplicationTheme.PaletteChanged += OnPaletteChanged;
+        Closed += (_, _) => ApplicationTheme.PaletteChanged -= OnPaletteChanged;
     }
+
+    private void OnPaletteChanged(object? sender, EventArgs args) => ApplyTheme();
 
     // WPF-UI MessageBox intentionally hides Window.Show/ShowDialog/Close and asks
     // consumers to use ShowDialogAsync. The existing product seam is synchronous,

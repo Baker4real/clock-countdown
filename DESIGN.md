@@ -25,7 +25,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 运行中开关或更换系统配色立即更新既有界面（主题画刷整枚替换，见 §13.1），保留业务行、焦点、草稿与选区；后续打开的窗口也使用当前系统状态。关闭后恢复本文定义的暖粉日间原色、自选标签底色和装饰显示。此能力以运行态行为探针验收，不新建应用主题或单独视觉基线；暖粉日间仍服从现役帧回归合同。
 
-本节只定义语义角色与用途，不记录色值：现值以 `src/MinminCountdown/App.xaml` 的 Primitive 层为唯一真源（运行时副本 `ApplicationTheme.Tokens` 逐键同步），承载文字、图形或焦点的现值与对比度门槛见 §13.4，允许的同值 alias 见 §13.1。色板方向来自 5 张 AI 优化稿的像素采样（采样口径见 §11），采样值不是像素门禁的期望值。
+本节只定义语义角色与用途，不记录色值：现值以 `src/MinminCountdown/ApplicationTheme.cs` 的 `Tokens` 配色表为唯一真源，承载文字、图形或焦点的现值与对比度门槛见 §13.4，允许的同值 alias 见 §13.1。色板方向来自 5 张 AI 优化稿的像素采样（采样口径见 §11），采样值不是像素门禁的期望值。
 
 ### 画布与表面
 
@@ -608,20 +608,20 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ## 13. Token 分层与可读性基线
 
-本节是暖粉日间 token 的实现基线（issue #132）：三层资源模型、排版/间距/圆角/焦点 token、对比度门槛与装饰限制。实现权威源是 `src/MinminCountdown/App.xaml` 与 `src/MinminCountdown/ApplicationTheme.cs`（两者逐键同步）；§2 只定义语义角色，色值以实现文件为准。
+本节是暖粉日间 token 的实现基线（issue #132）：三层资源模型、排版/间距/圆角/焦点 token、对比度门槛与装饰限制。色值与系统对比度角色只在 `src/MinminCountdown/ApplicationTheme.cs` 的 `Tokens` 配色表声明；字体、排版、间距、圆角、焦点、动效 token 与控件样式在 `src/MinminCountdown/App.xaml`。§2 只定义语义角色，色值以配色表为准。
 
 ### 13.1 三层 token 模型
 
 | 层 | 资源形态 | 位置 | 规则 |
 | --- | --- | --- | --- |
-| Primitive 原色 | `*Color`（`<Color x:Key>`） | App.xaml 第 1 层 + `ApplicationTheme.Tokens` | 全部色值的唯一来源；新增颜色必须先落原色 |
-| Semantic 语义角色 | `*Brush`（`SolidColorBrush`） | App.xaml 第 2 层 | 每支画刷绑定一个原色、只承载一个语义角色；控件只引用语义画刷 |
-| Component 组件 | 悬浮窗画刷、控件样式、排版/间距/圆角/焦点 token | App.xaml 第 3 层 | 色值一律绑回 Primitive（`Color="{DynamicResource *Color}"`），不得自持字面色值 |
+| Primitive 原色 | `*Color`（`Color` 资源） | `ApplicationTheme.Tokens` 配色表 | 全部色值的唯一来源；每行写原色键、画刷键、日间色值和系统对比度角色，新增颜色只加一行 |
+| Semantic 语义角色 | `*Brush`（冻结的 `SolidColorBrush`） | 由配色表同一行生成 | 每支画刷对应一个原色、只承载一个语义角色；控件只引用语义画刷 |
+| Component 组件 | 悬浮窗组件画刷（`ApplicationTheme.ComponentAliases`）、控件样式、排版/间距/圆角/焦点 token | 组件画刷由别名表生成；样式与尺寸 token 在 App.xaml | 组件画刷一律指向配色表的原色；App.xaml 不写任何色值 |
 
-- 控件不得新增同义色值：新视觉需求先找既有 Semantic 角色；确需新角色时新增 Primitive + Semantic 两层，并同步 `ApplicationTheme.Tokens`。
-- 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#C23E68` → `MainAction` / `PinkAccentStrong`（#199 统一主行动家族）；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#F6DFD3` → `NoteTimeline` / `PeachLine`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#FFFDFC` → `Panel` / `MainActionText`。Tooling 的 design-token 漂移检查双向核对本清单与 App.xaml；#232 删除两项无生产消费者的旧强调文字 token。
-- XAML 允许 6 位与 8 位十六进制写法并存（如 `#FEE0E4` 与 `#FFFEE0E4`），同步校验按解析后 ARGB 相等判断，不强制统一记法。
-- 运行时 `ApplicationTheme` 把 Semantic 与 Component 画刷换成冻结的 `SolidColorBrush`。配色变化（含系统对比度开关与换色）时整枚替换资源条目，不就地改色：就地改色会让渲染线程遍历共享画刷的监听者，曾以 0xC0000409 崩溃。代码引用主题画刷一律用 `DynamicResource` / `SetResourceReference`，不缓存画刷实例；复制了画刷实例的局部字典（悬浮窗、确认框）与窗口树外的托盘菜单，由各自的主题入口按应用资源重取。
+- 控件不得新增同义色值：新视觉需求先找既有 Semantic 角色；确需新角色时在配色表加一行（同时得到原色与语义画刷，并写明系统对比度角色）。
+- 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#C23E68` → `MainAction` / `PinkAccentStrong`（#199 统一主行动家族）；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#F6DFD3` → `NoteTimeline` / `PeachLine`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#FFFDFC` → `Panel` / `MainActionText`。Tooling 的 design-token 漂移检查双向核对本清单与配色表；#232 删除两项无生产消费者的旧强调文字 token。
+- 配色表允许 6 位与 8 位十六进制写法并存（如 `#FEE0E4` 与 `#FFFEE0E4`），漂移检查按解析后 ARGB 相等判断，不强制统一记法。
+- 启动入口在任何窗口之前用配色表写入日间色板（等同原先 App.xaml 声明的默认值），随后 `ApplicationTheme.Apply` 按系统对比度开关写入原色、冻结的 `SolidColorBrush` 与组件别名。配色变化（含系统对比度开关与换色）时整枚替换资源条目，不就地改色：就地改色会让渲染线程遍历共享画刷的监听者，曾以 0xC0000409 崩溃。代码引用主题画刷一律用 `DynamicResource` / `SetResourceReference`，不缓存画刷实例；复制了画刷实例的局部字典（悬浮窗、确认框）与窗口树外的托盘菜单，由各自登记的 `PaletteChanged` 处理按应用资源重取：主窗口、悬浮窗与确认框在构造时登记、关闭时注销，托盘菜单在打开期间登记，主题 module 不枚举具体窗口。
 
 ### 13.2 排版层级 token
 
@@ -670,7 +670,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - 非文本图形（焦点边、强调轨、复选图形）≥ `3:1`；
 - 装饰（13.5）豁免，只记录实测值。
 
-可复核计算：`python <run-evidence>\clock-countdown-issue-132-contrast\compute_contrast.py src\MinminCountdown\App.xaml`，脚本解析 App.xaml 资源值并输出下表（证据：`run-evidence\clock-countdown-issue-132-contrast\baseline-after.md`，修改前审计 `audit-before.md`）。
+可复核计算：#132 用 `python <run-evidence>\clock-countdown-issue-132-contrast\compute_contrast.py` 按当时 App.xaml 的资源值输出下表（证据：`run-evidence\clock-countdown-issue-132-contrast\baseline-after.md`，修改前审计 `audit-before.md`）；色值迁入配色表后，表中前景值由 Tooling 漂移检查逐行对准配色表，比值按同一公式复算。
 
 | 前景 token | 前景值 | 背景 | 对比度 | 门槛 | 类别 | 结论 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -716,7 +716,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 13.6 同步与验证接线
 
-- `ApplicationTheme.Tokens` 是 App.xaml 第 1 层的运行时权威副本，键与顺序一一对应；新增或修改颜色必须两处同步，校验按解析后 ARGB 比较。
+- `ApplicationTheme.Tokens` 配色表是色值与系统对比度角色的唯一来源，新增或修改颜色只改这一行；App.xaml 不写色值。Tooling `design-token:drift` 让 §13.4 前景值与 §13.1 alias 清单对准配色表（按解析后 ARGB 比较），并拒绝 App.xaml 重新出现 `<Color>` 资源或字面色值。
 - 修改 `App.xaml` / `ApplicationTheme.cs` 会使现役视觉基线 `sourceBinding` 失配：按 §11 口径在新版本目录重拍并生成双 manifest 后基线门禁才恢复。本节 token 变更应与后续界面节点的消费面修正（13.4 例外表）在同一次重拍中收口。
 
 ## Agent Prompt Guide

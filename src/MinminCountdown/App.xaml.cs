@@ -51,6 +51,8 @@ public sealed partial class App : Application
         var exitCode = 1;
         try
         {
+            // App.xaml 不写色值：在任何窗口（含验证、激活失败与设置恢复提示）之前先写入日间色板。
+            ApplicationTheme.WriteDayPalette(Resources);
             _options = HostOptions.Parse(eventArgs.Args);
             _applicationRoot = ApplicationPaths.ResolveApplicationRoot();
             _startupProtocol = StartupAcceptanceProtocol.Load(_applicationRoot, _options.RequireStartupRequest);

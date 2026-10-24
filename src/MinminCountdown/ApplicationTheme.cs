@@ -6,8 +6,8 @@ namespace MinminCountdown;
 
 /// <summary>
 /// 应用固定为单一日间主题；Windows 对比度模式开启时将语义画刷映射为系统色。
-/// Tokens 是 Primitive 原色层（App.xaml *Color 资源）的运行时权威副本：
-/// 键与顺序与 App.xaml 的第 1 层保持一一对应，新增或修改颜色必须两处同步。
+/// Tokens 配色表是全部色值的唯一来源：每行声明原色键、语义画刷键、日间色值和系统对比度角色，
+/// 由它生成 *Color 原色、冻结的 *Brush 画刷、组件别名与对比度映射；App.xaml 不写色值。
 /// 分层与可读性契约见 DESIGN.md §13。
 /// </summary>
 internal sealed class ApplicationTheme : IDisposable
@@ -15,95 +15,95 @@ internal sealed class ApplicationTheme : IDisposable
     private static readonly ThemeToken[] Tokens =
     [
         // 画布与表面
-        Token("CanvasColor", "CanvasBrush", "#FFFDF3EB"),
-        Token("CanvasDeepColor", "CanvasDeepBrush", "#FFFDE8DC"),
-        Token("BackgroundColor", "BackgroundBrush", "#FFFDF0E4"),
-        Token("CardColor", "CardBrush", "#FFFEFCFB"),
-        Token("PanelColor", "PanelBrush", "#FFFFFDFC"),
-        Token("CardAltColor", "CardAltBrush", "#FFFEF9F5"),
-        Token("StatusBarColor", "StatusBarBrush", "#FFFDFAF8"),
-        Token("NoteColor", "NoteBrush", "#FFFEF5DC"),
-        Token("NoteWhiteColor", "NoteWhiteBrush", "#FFFEFDFD"),
-        Token("NoteLineColor", "NoteLineBrush", "#FFF6D9B2"),
-        Token("NoteActiveRailColor", "NoteActiveRailBrush", "#FFCD623E"),
-        Token("NoteCompletedRailColor", "NoteCompletedRailBrush", "#FF8A7069"),
-        Token("NoteTimelineColor", "NoteTimelineBrush", "#FFF6DFD3"),
+        Token("CanvasColor", "CanvasBrush", "#FFFDF3EB", SystemColorRole.Window),
+        Token("CanvasDeepColor", "CanvasDeepBrush", "#FFFDE8DC", SystemColorRole.Window),
+        Token("BackgroundColor", "BackgroundBrush", "#FFFDF0E4", SystemColorRole.Window),
+        Token("CardColor", "CardBrush", "#FFFEFCFB", SystemColorRole.Window),
+        Token("PanelColor", "PanelBrush", "#FFFFFDFC", SystemColorRole.Window),
+        Token("CardAltColor", "CardAltBrush", "#FFFEF9F5", SystemColorRole.Window),
+        Token("StatusBarColor", "StatusBarBrush", "#FFFDFAF8", SystemColorRole.Window),
+        Token("NoteColor", "NoteBrush", "#FFFEF5DC", SystemColorRole.Window),
+        Token("NoteWhiteColor", "NoteWhiteBrush", "#FFFEFDFD", SystemColorRole.Window),
+        Token("NoteLineColor", "NoteLineBrush", "#FFF6D9B2", SystemColorRole.WindowText),
+        Token("NoteActiveRailColor", "NoteActiveRailBrush", "#FFCD623E", SystemColorRole.Highlight),
+        Token("NoteCompletedRailColor", "NoteCompletedRailBrush", "#FF8A7069", SystemColorRole.WindowText),
+        Token("NoteTimelineColor", "NoteTimelineBrush", "#FFF6DFD3", SystemColorRole.WindowText),
 
         // 文字与结构线
-        Token("InkColor", "InkBrush", "#FF3B190D"),
-        Token("BodyColor", "BodyBrush", "#FF6B4A3C"),
-        Token("MutedColor", "MutedBrush", "#FF82665F"),
-        Token("ActiveColor", "ActiveBrush", "#FFE05A4A"),
-        Token("ActiveHoverColor", "ActiveHoverBrush", "#FFB84A36"),
+        Token("InkColor", "InkBrush", "#FF3B190D", SystemColorRole.WindowText),
+        Token("BodyColor", "BodyBrush", "#FF6B4A3C", SystemColorRole.WindowText),
+        Token("MutedColor", "MutedBrush", "#FF82665F", SystemColorRole.WindowText),
+        Token("ActiveColor", "ActiveBrush", "#FFE05A4A", SystemColorRole.Highlight),
+        Token("ActiveHoverColor", "ActiveHoverBrush", "#FFB84A36", SystemColorRole.Highlight),
         // #151：文本选区高亮独立语义色（不得复用 1px 结构线色）。
-        Token("SelectionColor", "SelectionBrush", "#FFD4526A"),
+        Token("SelectionColor", "SelectionBrush", "#FFD4526A", SystemColorRole.Highlight),
         // #199：主窗口与悬浮窗统一使用深玫粉主行动；Danger 保留砖红。
-        Token("MainActionColor", "MainActionBrush", "#FFC23E68"),
-        Token("MainActionHoverColor", "MainActionHoverBrush", "#FFB0355D"),
-        Token("MainActionPressedColor", "MainActionPressedBrush", "#FF9B2D50"),
-        Token("MainActionFocusColor", "MainActionFocusBrush", "#FFA87324"),
-        Token("MainActionTextColor", "MainActionTextBrush", "#FFFDFC"),
+        Token("MainActionColor", "MainActionBrush", "#FFC23E68", SystemColorRole.Highlight),
+        Token("MainActionHoverColor", "MainActionHoverBrush", "#FFB0355D", SystemColorRole.Highlight),
+        Token("MainActionPressedColor", "MainActionPressedBrush", "#FF9B2D50", SystemColorRole.Highlight),
+        Token("MainActionFocusColor", "MainActionFocusBrush", "#FFA87324", SystemColorRole.Highlight),
+        Token("MainActionTextColor", "MainActionTextBrush", "#FFFDFC", SystemColorRole.HighlightText),
         // 历史珊瑚语义色；#217 次级按钮使用 CardAlt + ControlBorder。
-        Token("CoralActionColor", "CoralActionBrush", "#FFD68481"),
-        Token("PeachLineColor", "PeachLineBrush", "#FFF6DFD3"),
-        Token("ControlBorderColor", "ControlBorderBrush", "#FFA87866"),
-        Token("DangerColor", "DangerBrush", "#FFB74C39"),
-        Token("SuccessColor", "SuccessBrush", "#FF266B5E"),
-        Token("TagColor", "TagBrush", "#FFF7E8"),
-        Token("TagChipTextColor", "TagChipTextBrush", "#FF3B190D"),
-        Token("ExpiredColor", "ExpiredBrush", "#FFF9DFDB"),
-        Token("SegmentSelectedColor", "SegmentSelectedBrush", "#FFFEEFE1"),
-        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#FF3B190D"),
-        Token("WorkspacePanelColor", "WorkspacePanelBrush", "#00FFFDFC"),
-        Token("WorkspacePanelLineColor", "WorkspacePanelLineBrush", "#00F6DFD3"),
+        Token("CoralActionColor", "CoralActionBrush", "#FFD68481", SystemColorRole.Window),
+        Token("PeachLineColor", "PeachLineBrush", "#FFF6DFD3", SystemColorRole.WindowText),
+        Token("ControlBorderColor", "ControlBorderBrush", "#FFA87866", SystemColorRole.WindowText),
+        Token("DangerColor", "DangerBrush", "#FFB74C39", SystemColorRole.WindowText),
+        Token("SuccessColor", "SuccessBrush", "#FF266B5E", SystemColorRole.Highlight),
+        Token("TagColor", "TagBrush", "#FFF7E8", SystemColorRole.Control),
+        Token("TagChipTextColor", "TagChipTextBrush", "#FF3B190D", SystemColorRole.ControlText),
+        Token("ExpiredColor", "ExpiredBrush", "#FFF9DFDB", SystemColorRole.Window),
+        Token("SegmentSelectedColor", "SegmentSelectedBrush", "#FFFEEFE1", SystemColorRole.Highlight),
+        Token("SegmentSelectedForegroundColor", "SegmentSelectedForegroundBrush", "#FF3B190D", SystemColorRole.HighlightText),
+        Token("WorkspacePanelColor", "WorkspacePanelBrush", "#00FFFDFC", SystemColorRole.Window),
+        Token("WorkspacePanelLineColor", "WorkspacePanelLineBrush", "#00F6DFD3", SystemColorRole.WindowText),
 
         // 强调与控件
-        Token("PrimaryCountdownNumberColor", "PrimaryCountdownNumberBrush", "#FFC0102F"),
-        Token("PinkTintColor", "PinkTintBrush", "#FFFEDDDE"),
-        Token("PinkAccentStrongColor", "PinkAccentStrongBrush", "#FFC23E68"),
-        Token("PinkBadgeColor", "PinkBadgeBrush", "#FFFD97A1"),
-        Token("PinkBlockColor", "PinkBlockBrush", "#FEE0E4"),
-        Token("PinkTintSoftColor", "PinkTintSoftBrush", "#FEF0F1"),
-        Token("SecondaryBlockColor", "SecondaryBlockBrush", "#FAF0EA"),
-        Token("PeachTintColor", "PeachTintBrush", "#FEEFE1"),
-        Token("PeachRailColor", "PeachRailBrush", "#CD623E"),
-        Token("PeachBadgeColor", "PeachBadgeBrush", "#FBAE90"),
-        Token("PeachBadgeMutedColor", "PeachBadgeMutedBrush", "#F3DED8"),
-        Token("IconAccentColor", "IconAccentBrush", "#F28995"),
+        Token("PrimaryCountdownNumberColor", "PrimaryCountdownNumberBrush", "#FFC0102F", SystemColorRole.WindowText),
+        Token("PinkTintColor", "PinkTintBrush", "#FFFEDDDE", SystemColorRole.Window),
+        Token("PinkAccentStrongColor", "PinkAccentStrongBrush", "#FFC23E68", SystemColorRole.Highlight),
+        Token("PinkBadgeColor", "PinkBadgeBrush", "#FFFD97A1", SystemColorRole.Window),
+        Token("PinkBlockColor", "PinkBlockBrush", "#FEE0E4", SystemColorRole.Window),
+        Token("PinkTintSoftColor", "PinkTintSoftBrush", "#FEF0F1", SystemColorRole.Window),
+        Token("SecondaryBlockColor", "SecondaryBlockBrush", "#FAF0EA", SystemColorRole.Window),
+        Token("PeachTintColor", "PeachTintBrush", "#FEEFE1", SystemColorRole.Window),
+        Token("PeachRailColor", "PeachRailBrush", "#CD623E", SystemColorRole.Highlight),
+        Token("PeachBadgeColor", "PeachBadgeBrush", "#FBAE90", SystemColorRole.Window),
+        Token("PeachBadgeMutedColor", "PeachBadgeMutedBrush", "#F3DED8", SystemColorRole.Window),
+        Token("IconAccentColor", "IconAccentBrush", "#F28995", SystemColorRole.WindowText),
 
         // 便签与提醒
-        Token("WarningAccentColor", "WarningAccentBrush", "#FFAD4A10"),
-        Token("WarningTintColor", "WarningTintBrush", "#FDEDD8"),
-        Token("ReminderCardColor", "ReminderCardBrush", "#FEF9E8"),
-        Token("ReminderPageColor", "ReminderPageBrush", "#FEFEFE"),
-        Token("SourceNoteIconColor", "SourceNoteIconBrush", "#FED67F"),
-        Token("DecoTextColor", "DecoTextBrush", "#D9B7B1"),
-        Token("DecoTextSoftColor", "DecoTextSoftBrush", "#E5AE9C"),
+        Token("WarningAccentColor", "WarningAccentBrush", "#FFAD4A10", SystemColorRole.WindowText),
+        Token("WarningTintColor", "WarningTintBrush", "#FDEDD8", SystemColorRole.Window),
+        Token("ReminderCardColor", "ReminderCardBrush", "#FEF9E8", SystemColorRole.Window),
+        Token("ReminderPageColor", "ReminderPageBrush", "#FEFEFE", SystemColorRole.Window),
+        Token("SourceNoteIconColor", "SourceNoteIconBrush", "#FED67F", SystemColorRole.Window),
+        Token("DecoTextColor", "DecoTextBrush", "#D9B7B1", SystemColorRole.WindowText),
+        Token("DecoTextSoftColor", "DecoTextSoftBrush", "#E5AE9C", SystemColorRole.WindowText),
 
         // 日期印记 pastel 轮换
-        Token("StampPinkColor", "StampPinkBrush", "#FEEFF1"),
-        Token("StampPinkTextColor", "StampPinkTextBrush", "#D41F57"),
-        Token("StampBlueColor", "StampBlueBrush", "#EEF5FE"),
-        Token("StampBlueTextColor", "StampBlueTextBrush", "#FF1D6BB0"),
-        Token("StampGreenColor", "StampGreenBrush", "#EDF6E8"),
-        Token("StampGreenTextColor", "StampGreenTextBrush", "#FF26732D"),
+        Token("StampPinkColor", "StampPinkBrush", "#FEEFF1", SystemColorRole.Window),
+        Token("StampPinkTextColor", "StampPinkTextBrush", "#D41F57", SystemColorRole.WindowText),
+        Token("StampBlueColor", "StampBlueBrush", "#EEF5FE", SystemColorRole.Window),
+        Token("StampBlueTextColor", "StampBlueTextBrush", "#FF1D6BB0", SystemColorRole.WindowText),
+        Token("StampGreenColor", "StampGreenBrush", "#EDF6E8", SystemColorRole.Window),
+        Token("StampGreenTextColor", "StampGreenTextBrush", "#FF26732D", SystemColorRole.WindowText),
 
         // 角色面板（三丽鸥玩偶泊位）
-        Token("CharacterPanelColor", "CharacterPanelBrush", "#FFF7E8"),
-        Token("CharacterLineColor", "CharacterLineBrush", "#EFC9A7"),
-        Token("CharacterMyMelodyDockColor", "CharacterMyMelodyDockBrush", "#FFE3C7"),
-        Token("CharacterCinnamorollDockColor", "CharacterCinnamorollDockBrush", "#FFF0D2"),
-        Token("CharacterKuromiDockColor", "CharacterKuromiDockBrush", "#F5DEC5"),
+        Token("CharacterPanelColor", "CharacterPanelBrush", "#FFF7E8", SystemColorRole.Window),
+        Token("CharacterLineColor", "CharacterLineBrush", "#EFC9A7", SystemColorRole.WindowText),
+        Token("CharacterMyMelodyDockColor", "CharacterMyMelodyDockBrush", "#FFE3C7", SystemColorRole.Window),
+        Token("CharacterCinnamorollDockColor", "CharacterCinnamorollDockBrush", "#FFF0D2", SystemColorRole.Window),
+        Token("CharacterKuromiDockColor", "CharacterKuromiDockBrush", "#F5DEC5", SystemColorRole.Window),
 
         // 悬浮窗组件原色
-        Token("FloatingDayPrimaryCountdownAccentColor", "FloatingDayPrimaryCountdownAccentBrush", "#EE2B46"),
-        Token("FloatingDayPlushGlowColor", "FloatingDayPlushGlowBrush", "#B9794E")
+        Token("FloatingDayPrimaryCountdownAccentColor", "FloatingDayPrimaryCountdownAccentBrush", "#EE2B46", SystemColorRole.Highlight),
+        Token("FloatingDayPlushGlowColor", "FloatingDayPlushGlowBrush", "#B9794E", SystemColorRole.Window)
     ];
 
     // 主题画刷一律是冻结的 SolidColorBrush：配色变化时整枚替换资源条目，不就地改色。
     // 就地改色会让 WPF 渲染线程遍历共享画刷的监听者，曾因悬空监听者以 0xC0000409 崩溃。
     // 窗口内的 DynamicResource 自动重取；复制了画刷实例的局部字典与窗口树外的托盘菜单
-    // 由各自的主题入口按应用资源重取。
+    // 由各自登记的 PaletteChanged 处理按应用资源重取。
     private static readonly (string Brush, string Color)[] ComponentAliases =
     [
         ("FloatingDayPanelBrush", "CardColor"),
@@ -200,51 +200,67 @@ internal sealed class ApplicationTheme : IDisposable
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
+    // App.xaml 不写色值：启动入口在任何窗口之前先写入日间色板，等同原先 XAML 声明的默认值；
+    // 系统对比度映射、动效 token 与配色刷新仍由 Apply 负责。
+    internal static void WriteDayPalette(ResourceDictionary resources)
+    {
+        resources.BeginInit();
+        try
+        {
+            WritePalette(resources, static token => token.Color);
+        }
+        finally
+        {
+            resources.EndInit();
+        }
+    }
+
     public void Apply()
     {
         var systemColors = _validationSystemColors ?? new SystemContrastPalette(SystemColors.WindowColor,
             SystemColors.WindowTextColor, SystemColors.ControlColor, SystemColors.ControlTextColor,
             SystemColors.HighlightColor, SystemColors.HighlightTextColor, SystemColors.GrayTextColor);
+        var highContrast = HighContrastEnabled;
         // 批量写入：逐键写入时每个键都会遍历全部窗口失效一次，EndInit 只遍历一次。
         _resources.BeginInit();
         try
         {
-            _resources["SystemContrastEnabled"] = HighContrastEnabled;
-            SetBrush("SystemContrastDisabledTextBrush", systemColors.GrayText);
-            SetBrush("SystemContrastControlBrush", systemColors.Control);
-            var colors = new Dictionary<string, Color>(StringComparer.Ordinal);
-            foreach (var token in Tokens)
-            {
-                var color = HighContrastEnabled ? SystemColorFor(token.BrushKey, systemColors) : token.Color;
-                colors.Add(token.ColorKey, color);
-                _resources[token.ColorKey] = color;
-                SetBrush(token.BrushKey, color);
-            }
-            foreach (var alias in ComponentAliases)
-            {
-                SetBrush(alias.Brush, colors[alias.Color]);
-            }
+            _resources["SystemContrastEnabled"] = highContrast;
+            SetBrush(_resources, "SystemContrastDisabledTextBrush", systemColors.GrayText);
+            SetBrush(_resources, "SystemContrastControlBrush", systemColors.Control);
+            WritePalette(_resources, token => highContrast ? SystemColorFor(token.SystemRole, systemColors) : token.Color);
             ApplyMotionTokens();
         }
         finally
         {
             _resources.EndInit();
         }
-        foreach (Window window in Application.Current.Windows)
-        {
-            if (window is MainWindow main) main.ApplyTheme();
-            if (window is FloatingWindow floating) floating.ApplyTheme();
-            if (window is ConfirmationDialog confirmation) confirmation.ApplyTheme();
-        }
+        // 各表面在构造时登记 PaletteChanged，配色写入后统一按应用资源重取；主题 module 不枚举具体窗口。
         PaletteChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void SetBrush(string key, Color color)
+    private static void WritePalette(ResourceDictionary resources, Func<ThemeToken, Color> colorOf)
     {
-        if (_resources[key] is SolidColorBrush { IsFrozen: true } current && current.Color == color) return;
+        var colors = new Dictionary<string, Color>(StringComparer.Ordinal);
+        foreach (var token in Tokens)
+        {
+            var color = colorOf(token);
+            colors.Add(token.ColorKey, color);
+            resources[token.ColorKey] = color;
+            SetBrush(resources, token.BrushKey, color);
+        }
+        foreach (var alias in ComponentAliases)
+        {
+            SetBrush(resources, alias.Brush, colors[alias.Color]);
+        }
+    }
+
+    private static void SetBrush(ResourceDictionary resources, string key, Color color)
+    {
+        if (resources[key] is SolidColorBrush { IsFrozen: true } current && current.Color == color) return;
         var brush = new SolidColorBrush(color);
         brush.Freeze();
-        _resources[key] = brush;
+        resources[key] = brush;
     }
 
     internal static void ApplyContrastAwareBrush(System.Windows.Controls.Border surface,
@@ -258,31 +274,15 @@ internal sealed class ApplicationTheme : IDisposable
         surface.Style = style;
     }
 
-    private static Color SystemColorFor(string key, SystemContrastPalette palette) => key switch
+    private static Color SystemColorFor(SystemColorRole role, SystemContrastPalette palette) => role switch
     {
-        "MainActionBrush" or "MainActionHoverBrush" or "MainActionPressedBrush" or
-        "PinkAccentStrongBrush" or "SelectionBrush" or "SegmentSelectedBrush" or "SuccessBrush" => palette.Highlight,
-        "MainActionTextBrush" or "SegmentSelectedForegroundBrush" => palette.HighlightText,
-        "ActiveBrush" or "ActiveHoverBrush" or "MainActionFocusBrush" or
-        "NoteActiveRailBrush" or "PeachRailBrush" or "FloatingDayPrimaryCountdownAccentBrush" => palette.Highlight,
-        "InkBrush" or "BodyBrush" or "MutedBrush" or "ControlBorderBrush" or "PeachLineBrush" or
-        "NoteLineBrush" or "NoteCompletedRailBrush" or "NoteTimelineBrush" or "DangerBrush" or
-        "PrimaryCountdownNumberBrush" or "IconAccentBrush" or
-        "WarningAccentBrush" or "DecoTextBrush" or "DecoTextSoftBrush" or
-        "StampPinkTextBrush" or "StampBlueTextBrush" or "StampGreenTextBrush" or
-        "CharacterLineBrush" or "WorkspacePanelLineBrush" => palette.WindowText,
-        "TagBrush" => palette.Control,
-        "TagChipTextBrush" => palette.ControlText,
-        "CardAltBrush" or "StatusBarBrush" or "CoralActionBrush" or
-        "SourceNoteIconBrush" or "PinkTintBrush" or "PinkBadgeBrush" or "PinkBlockBrush" or
-        "PinkTintSoftBrush" or "SecondaryBlockBrush" or "PeachTintBrush" or "PeachBadgeBrush" or
-        "PeachBadgeMutedBrush" => palette.Window,
-        "CanvasBrush" or "CanvasDeepBrush" or "BackgroundBrush" or "CardBrush" or "PanelBrush" or
-        "NoteBrush" or "NoteWhiteBrush" or "ExpiredBrush" or "WorkspacePanelBrush" or "WarningTintBrush" or
-        "ReminderCardBrush" or "ReminderPageBrush" or "StampPinkBrush" or "StampBlueBrush" or "StampGreenBrush" or
-        "CharacterPanelBrush" or "CharacterMyMelodyDockBrush" or "CharacterCinnamorollDockBrush" or
-        "CharacterKuromiDockBrush" or "FloatingDayPlushGlowBrush" => palette.Window,
-        _ => throw new InvalidOperationException($"缺少系统对比度映射：{key}")
+        SystemColorRole.Window => palette.Window,
+        SystemColorRole.WindowText => palette.WindowText,
+        SystemColorRole.Control => palette.Control,
+        SystemColorRole.ControlText => palette.ControlText,
+        SystemColorRole.Highlight => palette.Highlight,
+        SystemColorRole.HighlightText => palette.HighlightText,
+        _ => throw new ArgumentOutOfRangeException(nameof(role))
     };
 
     private void OnSystemParametersChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
@@ -429,8 +429,9 @@ internal sealed class ApplicationTheme : IDisposable
     private static ThemeToken Token(
         string colorKey,
         string brushKey,
-        string dayColor) =>
-        new(colorKey, brushKey, ParseColor(dayColor));
+        string dayColor,
+        SystemColorRole systemRole) =>
+        new(colorKey, brushKey, ParseColor(dayColor), systemRole);
 
     private static Color ParseColor(string value) =>
         ColorConverter.ConvertFromString(value) is Color color
@@ -440,7 +441,19 @@ internal sealed class ApplicationTheme : IDisposable
     private sealed record ThemeToken(
         string ColorKey,
         string BrushKey,
-        Color Color);
+        Color Color,
+        SystemColorRole SystemRole);
+
+    // 系统对比度模式下每个原色改用的系统色；与色值同行声明，漏写角色即编译失败。
+    private enum SystemColorRole
+    {
+        Window,
+        WindowText,
+        Control,
+        ControlText,
+        Highlight,
+        HighlightText
+    }
 }
 
 internal static class MotionTokens

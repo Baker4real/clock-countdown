@@ -1068,6 +1068,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UpdateReferenceDecorationVisibility();
     }
 
+    private void OnPaletteChanged(object? sender, EventArgs args) => ApplyTheme();
+
     internal bool CharacterBackgroundRemainsSubtle =>
         CharacterBackgroundLayer.Visibility == Visibility.Collapsed
             ? MainReferenceDecorationsLoaded
@@ -1436,8 +1438,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         MainStatusUndoButton.GotKeyboardFocus += (_, _) => _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Main, true);
         MainStatusUndoButton.LostKeyboardFocus += (_, _) => _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Main, false);
         _desktopWorkspace.UndoChanged += OnMainUndoChanged;
+        ApplicationTheme.PaletteChanged += OnPaletteChanged;
         Closed += (_, _) =>
         {
+            ApplicationTheme.PaletteChanged -= OnPaletteChanged;
             _desktopWorkspace.UndoChanged -= OnMainUndoChanged;
             _desktopWorkspace.SetUndoHovered(WorkspaceUndoSurface.Main, false);
             _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Main, false);

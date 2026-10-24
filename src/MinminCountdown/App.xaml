@@ -3,7 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:focus="clr-namespace:MinminCountdown"
              xmlns:core="clr-namespace:MinminCountdown.Core;assembly=MinminCountdown.Core"
-             xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
              xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
              xmlns:sys="clr-namespace:System;assembly=System.Runtime"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
@@ -16,149 +15,9 @@
     <sys:Double x:Key="SecondaryWindowBodyFontSize">16</sys:Double>
     <sys:Double x:Key="SecondaryWindowMinorFontSize">13</sys:Double>
 
-    <!-- ═══ 第 1 层：Primitive 原色（*Color；与 ApplicationTheme.Tokens 一一对应，是全部色值的唯一来源） ═══ -->
-    <Color x:Key="CanvasColor">#FFFDF3EB</Color>
-    <Color x:Key="CanvasDeepColor">#FFFDE8DC</Color>
-    <Color x:Key="BackgroundColor">#FFFDF0E4</Color>
-    <Color x:Key="CardColor">#FFFEFCFB</Color>
-    <Color x:Key="PanelColor">#FFFFFDFC</Color>
-    <Color x:Key="CardAltColor">#FFFEF9F5</Color>
-    <Color x:Key="StatusBarColor">#FFFDFAF8</Color>
-    <Color x:Key="NoteColor">#FFFEF5DC</Color>
-    <Color x:Key="NoteWhiteColor">#FFFEFDFD</Color>
-    <Color x:Key="NoteLineColor">#FFF6D9B2</Color>
-    <Color x:Key="NoteActiveRailColor">#FFCD623E</Color>
-    <Color x:Key="NoteCompletedRailColor">#FF8A7069</Color>
-    <Color x:Key="NoteTimelineColor">#FFF6DFD3</Color>
-    <Color x:Key="InkColor">#FF3B190D</Color>
-    <Color x:Key="BodyColor">#FF6B4A3C</Color>
-    <Color x:Key="MutedColor">#FF82665F</Color>
-    <Color x:Key="ActiveColor">#FFE05A4A</Color>
-    <Color x:Key="ActiveHoverColor">#FFB84A36</Color>
-    <!-- #151：文本选区高亮独立语义色（0.4 SelectionOpacity 合成在白纸输入面上肉眼可辨），
-         不得复用 1px 结构线色 PeachLineColor。 -->
-    <Color x:Key="SelectionColor">#FFD4526A</Color>
-    <!-- #199：主窗口与悬浮窗统一使用深玫粉主行动；Danger 保留砖红。 -->
-    <Color x:Key="MainActionColor">#FFC23E68</Color>
-    <Color x:Key="MainActionHoverColor">#FFB0355D</Color>
-    <Color x:Key="MainActionPressedColor">#FF9B2D50</Color>
-    <Color x:Key="MainActionFocusColor">#FFA87324</Color>
-    <Color x:Key="MainActionTextColor">#FFFDFC</Color>
-    <!-- #151：主窗口次级实心按钮（「保存设置」）珊瑚语义色，比主行动更浅，文字用主文字色。 -->
-    <Color x:Key="CoralActionColor">#FFD68481</Color>
-    <Color x:Key="PeachLineColor">#FFF6DFD3</Color>
-    <Color x:Key="ControlBorderColor">#FFA87866</Color>
-    <Color x:Key="DangerColor">#FFB74C39</Color>
-    <Color x:Key="SuccessColor">#FF266B5E</Color>
-    <Color x:Key="TagColor">#FFF7E8</Color>
-    <Color x:Key="TagChipTextColor">#FF3B190D</Color>
-    <Color x:Key="ExpiredColor">#F9DFDB</Color>
-    <Color x:Key="SegmentSelectedColor">#FFFEEFE1</Color>
-    <Color x:Key="SegmentSelectedForegroundColor">#FF3B190D</Color>
-    <Color x:Key="WorkspacePanelColor">#00FFFDFC</Color>
-    <Color x:Key="WorkspacePanelLineColor">#00F6DFD3</Color>
-    <Color x:Key="CharacterPanelColor">#FFF7E8</Color>
-    <Color x:Key="CharacterLineColor">#EFC9A7</Color>
-    <Color x:Key="CharacterMyMelodyDockColor">#FFE3C7</Color>
-    <Color x:Key="CharacterCinnamorollDockColor">#FFF0D2</Color>
-    <Color x:Key="CharacterKuromiDockColor">#F5DEC5</Color>
-    <Color x:Key="IconAccentColor">#F28995</Color>
-    <Color x:Key="DecoTextColor">#D9B7B1</Color>
-    <Color x:Key="DecoTextSoftColor">#E5AE9C</Color>
-    <Color x:Key="PinkBadgeColor">#FD97A1</Color>
-    <Color x:Key="PinkTintColor">#FFFEDDDE</Color>
-    <Color x:Key="PinkBlockColor">#FEE0E4</Color>
-    <Color x:Key="PrimaryCountdownNumberColor">#FFC0102F</Color>
-    <Color x:Key="SecondaryBlockColor">#FAF0EA</Color>
-    <Color x:Key="PinkTintSoftColor">#FEF0F1</Color>
-    <Color x:Key="PeachTintColor">#FEEFE1</Color>
-    <Color x:Key="PeachRailColor">#CD623E</Color>
-    <Color x:Key="PeachBadgeColor">#FBAE90</Color>
-    <Color x:Key="PeachBadgeMutedColor">#F3DED8</Color>
-    <Color x:Key="PinkAccentStrongColor">#FFC23E68</Color>
-    <Color x:Key="StampPinkColor">#FEEFF1</Color>
-    <Color x:Key="StampPinkTextColor">#D41F57</Color>
-    <Color x:Key="StampBlueColor">#EEF5FE</Color>
-    <Color x:Key="StampBlueTextColor">#FF1D6BB0</Color>
-    <Color x:Key="StampGreenColor">#EDF6E8</Color>
-    <Color x:Key="StampGreenTextColor">#FF26732D</Color>
-    <Color x:Key="WarningAccentColor">#FFAD4A10</Color>
-    <Color x:Key="WarningTintColor">#FDEDD8</Color>
-    <Color x:Key="ReminderCardColor">#FEF9E8</Color>
-    <Color x:Key="ReminderPageColor">#FEFEFE</Color>
-    <Color x:Key="SourceNoteIconColor">#FED67F</Color>
-    <Color x:Key="FloatingDayPrimaryCountdownAccentColor">#EE2B46</Color>
-    <Color x:Key="FloatingDayPlushGlowColor">#B9794E</Color>
-
-    <!-- ═══ 第 2 层：Semantic 语义角色（*Brush；每支画刷只承载一个语义角色，见 DESIGN.md §13） ═══ -->
-    <SolidColorBrush x:Key="CanvasBrush" Color="{DynamicResource CanvasColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CanvasDeepBrush" Color="{DynamicResource CanvasDeepColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="BackgroundBrush" Color="{DynamicResource BackgroundColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CardBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PanelBrush" Color="{DynamicResource PanelColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CardAltBrush" Color="{DynamicResource CardAltColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="StatusBarBrush" Color="{DynamicResource StatusBarColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteWhiteBrush" Color="{DynamicResource NoteWhiteColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteLineBrush" Color="{DynamicResource NoteLineColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteActiveRailBrush" Color="{DynamicResource NoteActiveRailColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteCompletedRailBrush" Color="{DynamicResource NoteCompletedRailColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="NoteTimelineBrush" Color="{DynamicResource NoteTimelineColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="InkBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="BodyBrush" Color="{DynamicResource BodyColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="MutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="ActiveBrush" Color="{DynamicResource ActiveColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="ActiveHoverBrush" Color="{DynamicResource ActiveHoverColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="SelectionBrush" Color="{DynamicResource SelectionColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="MainActionBrush" Color="{DynamicResource MainActionColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="MainActionHoverBrush" Color="{DynamicResource MainActionHoverColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="MainActionPressedBrush" Color="{DynamicResource MainActionPressedColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="MainActionFocusBrush" Color="{DynamicResource MainActionFocusColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="MainActionTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CoralActionBrush" Color="{DynamicResource CoralActionColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PeachLineBrush" Color="{DynamicResource PeachLineColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="ControlBorderBrush" Color="{DynamicResource ControlBorderColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="TagBrush" Color="{DynamicResource TagColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="TagChipTextBrush" Color="{DynamicResource TagChipTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="ExpiredBrush" Color="{DynamicResource ExpiredColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="SegmentSelectedBrush" Color="{DynamicResource SegmentSelectedColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="SegmentSelectedForegroundBrush" Color="{DynamicResource SegmentSelectedForegroundColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="WorkspacePanelBrush" Color="{DynamicResource WorkspacePanelColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="WorkspacePanelLineBrush" Color="{DynamicResource WorkspacePanelLineColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CharacterPanelBrush" Color="{DynamicResource CharacterPanelColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CharacterLineBrush" Color="{DynamicResource CharacterLineColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CharacterMyMelodyDockBrush" Color="{DynamicResource CharacterMyMelodyDockColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CharacterCinnamorollDockBrush" Color="{DynamicResource CharacterCinnamorollDockColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="CharacterKuromiDockBrush" Color="{DynamicResource CharacterKuromiDockColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="IconAccentBrush" Color="{DynamicResource IconAccentColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="DecoTextBrush" Color="{DynamicResource DecoTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="DecoTextSoftBrush" Color="{DynamicResource DecoTextSoftColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PinkBadgeBrush" Color="{DynamicResource PinkBadgeColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PinkTintBrush" Color="{DynamicResource PinkTintColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PinkBlockBrush" Color="{DynamicResource PinkBlockColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PrimaryCountdownNumberBrush" Color="{DynamicResource PrimaryCountdownNumberColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="SecondaryBlockBrush" Color="{DynamicResource SecondaryBlockColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PinkTintSoftBrush" Color="{DynamicResource PinkTintSoftColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PeachTintBrush" Color="{DynamicResource PeachTintColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PeachRailBrush" Color="{DynamicResource PeachRailColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PeachBadgeBrush" Color="{DynamicResource PeachBadgeColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PeachBadgeMutedBrush" Color="{DynamicResource PeachBadgeMutedColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="PinkAccentStrongBrush" Color="{DynamicResource PinkAccentStrongColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="StampPinkBrush" Color="{DynamicResource StampPinkColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="StampPinkTextBrush" Color="{DynamicResource StampPinkTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="StampBlueBrush" Color="{DynamicResource StampBlueColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="StampBlueTextBrush" Color="{DynamicResource StampBlueTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="StampGreenBrush" Color="{DynamicResource StampGreenColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="StampGreenTextBrush" Color="{DynamicResource StampGreenTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="WarningAccentBrush" Color="{DynamicResource WarningAccentColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="WarningTintBrush" Color="{DynamicResource WarningTintColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="ReminderCardBrush" Color="{DynamicResource ReminderCardColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="ReminderPageBrush" Color="{DynamicResource ReminderPageColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="SourceNoteIconBrush" Color="{DynamicResource SourceNoteIconColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayPrimaryCountdownAccentBrush" Color="{DynamicResource FloatingDayPrimaryCountdownAccentColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayPlushGlowBrush" Color="{DynamicResource FloatingDayPlushGlowColor}" po:Freeze="False" />
+    <!-- ═══ 第 1、2 层：Primitive 原色（*Color）与 Semantic 语义画刷（*Brush）不在本文件声明 ═══
+         色值与系统对比度角色只在 ApplicationTheme.Tokens 配色表写一行；启动时由它生成原色、冻结画刷与悬浮窗组件别名。
+         本文件只放字体、排版、间距、圆角、焦点、动效 token 与控件样式（DESIGN.md §13）。 -->
     <FontFamily x:Key="HandwrittenDecoFontFamily">Segoe Print, Ink Free, Segoe Script, KaiTi, Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>
     <FontFamily x:Key="UiFontFamily">Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>
     <FontFamily x:Key="NumeralFontFamily">Bahnschrift SemiCondensed, Bahnschrift, Microsoft YaHei UI, Microsoft YaHei, DengXian, Segoe UI, Arial, sans-serif</FontFamily>
@@ -191,36 +50,6 @@
     <Duration x:Key="MotionCountdownDuration">0:0:0.090</Duration>
     <PowerEase x:Key="MotionEaseOut" EasingMode="EaseOut" Power="4" />
     <CubicEase x:Key="MotionCubicEaseOut" EasingMode="EaseOut" />
-
-    <!-- 悬浮窗组件画刷：色值全部绑回第 1 层 Primitive，不在组件层自持色值 -->
-    <SolidColorBrush x:Key="FloatingDayPanelBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayBackdropBrush" Color="{DynamicResource BackgroundColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayBorderBrush" Color="{DynamicResource PeachLineColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayHeaderBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayHeaderTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayHeaderDangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayHeaderHoverBrush" Color="{DynamicResource CardAltColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayHeaderSelectedBrush" Color="{DynamicResource PinkAccentStrongColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayHeaderSelectedTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDaySurfaceBrush" Color="{DynamicResource CardColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayNoteCardBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayNoteInputBrush" Color="{DynamicResource NoteColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayNoteInputTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayErrorBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayMutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayMyMelodyDockBrush" Color="{DynamicResource CharacterMyMelodyDockColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayCinnamorollDockBrush" Color="{DynamicResource CharacterCinnamorollDockColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingDayKuromiDockBrush" Color="{DynamicResource CharacterKuromiDockColor}" po:Freeze="False" />
-
-    <SolidColorBrush x:Key="FloatingHeaderTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingHeaderDangerBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingHeaderHoverBrush" Color="{DynamicResource CardAltColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingHeaderSelectedBrush" Color="{DynamicResource PinkAccentStrongColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingHeaderSelectedTextBrush" Color="{DynamicResource MainActionTextColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingNoteInputTextBrush" Color="{DynamicResource InkColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingErrorBrush" Color="{DynamicResource DangerColor}" po:Freeze="False" />
-    <SolidColorBrush x:Key="FloatingMutedBrush" Color="{DynamicResource MutedColor}" po:Freeze="False" />
 
     <Style TargetType="{x:Type Window}">
       <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
